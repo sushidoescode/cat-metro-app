@@ -100,18 +100,26 @@ if [ -x scripts/setup-rulesets.sh ]; then
       bad "remote enforcement confirmed DRIFTED or MISSING"
       ;;
     3)
-      doctor_stakes_mode=$(grep -E '^mode=' state/mode 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
-      case "$doctor_stakes_mode" in
-        production)
-          bad "solo ruleset posture at production stakes — graduate to dual (second human CODEOWNER) before production work"
-          ;;
-        sprint|standard)
-          note "remote enforcement PARTIAL: solo posture — no server-side human gate on default-branch merges (declared in state/mode)"
-          ;;
-        *)
-          bad "solo ruleset posture with unrecognized stakes mode '${doctor_stakes_mode:-unset}' — fix state/mode (fail-closed)"
-          ;;
-      esac
+      # Strict, mirroring setup-rulesets' posture parse: last-line-wins would let an APPEND to
+      # this hook-protected file silently reinterpret stakes (mode=production + mode=sprint
+      # rendering as the soft note). Multiple mode= lines are a fail-closed error, not a vote.
+      doctor_mode_line_count=$(grep -cE '^mode=' state/mode 2>/dev/null || true)
+      doctor_stakes_mode=$(grep -E '^mode=' state/mode 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')
+      if [ "${doctor_mode_line_count:-0}" -gt 1 ]; then
+        bad "solo ruleset posture with ${doctor_mode_line_count} mode= lines in state/mode — keep exactly one (fail-closed)"
+      else
+        case "$doctor_stakes_mode" in
+          production)
+            bad "solo ruleset posture at production stakes — graduate to dual (second human CODEOWNER) before production work"
+            ;;
+          sprint|standard)
+            note "remote enforcement PARTIAL: solo posture — no server-side human gate on default-branch merges (declared in state/mode)"
+            ;;
+          *)
+            bad "solo ruleset posture with unrecognized stakes mode '${doctor_stakes_mode:-unset}' — fix state/mode (fail-closed)"
+            ;;
+        esac
+      fi
       ;;
     *)
       unverified "remote enforcement could not be confirmed (no remote/auth/plan/network)"
