@@ -16,9 +16,9 @@
 ## Recently done (last 7 days — one line each, PR links)
 - 2026-08-02 — forge-init: substrate installed (kit 3.4.1), mode=sprint, stack deferred pending specs.
 - 2026-08-02 — docs/plan/ Shipaton 2026 drop committed (secret-scanned clean); private repo github.com/sushidoescode/cat-metro-app created; first CI run green on push.
+- 2026-08-02 — server-side wall LIVE (kit 3.5.0 solo posture, ADR-0001): forge-main-solo + forge-tags + forge-tag-creators applied, `--check` = 3 (match, declared residual); owner is the named tag-creation bypass actor; direct-push probe bounced (GH013). ALL main-bound work now goes branch → PR → green CI → squash self-merge (human).
 
 ## Blocked / waiting-on-human
-- Server-side rulesets (solo posture): full sequence + evidence in `state/handoffs/2026-08-02-rulesets-solo-rollout.md`. Waiting on (1) forge-kit PR #2 merge — handled in a separate kit-focused session; (2) the human's `posture=solo` declaration commit; then an agent applies + runs the live probes.
 - Repo-name drift: plan of record says `cat-metro`; actual repo/dir is `cat-metro-app`. Human call: rename or amend the plan line.
 
 ## Decisions this week (promote to ADR if architectural)
@@ -32,3 +32,5 @@
 - TODO(secret-scan): wire gitleaks (or equivalent) into CI — required before graduation to production.
 - TODO(review-auth): per-push claude-review is disabled (sprint) and the human runs subscriptions, not API keys — at graduation wire claude-code-action OAuth (Claude Max) or keep the review leg human+local.
 - Perf budgets: docs/perf/budgets.md rows are TBD (human) — required before /forge-release.
+- Update the forge plugin in Claude Code 3.4.1 → 3.5.0 (kit released; skills text drifted slightly).
+- Upstream (forge-kit): show_error trailing-blank-line bug — a gh startup failure dies mid-diagnosis with exit 1 (reads as DRIFT) instead of UNVERIFIED 2; fixed locally in scripts/setup-rulesets.sh, issue filed.
