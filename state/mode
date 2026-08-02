@@ -3,3 +3,4 @@
 # This file is under the enforcement belts too: changing it is a HUMAN-authored commit
 # (FORGE_HUMAN_OVERRIDE=1) — agents never dial down the ceremony they run under.
 mode=sprint
+posture=solo
