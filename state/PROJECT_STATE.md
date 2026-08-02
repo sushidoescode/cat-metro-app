@@ -18,7 +18,7 @@
 - 2026-08-02 — docs/plan/ Shipaton 2026 drop committed (secret-scanned clean); private repo github.com/sushidoescode/cat-metro-app created; first CI run green on push.
 
 ## Blocked / waiting-on-human
-- Server-side rulesets blocked by GitHub plan tier: repo is private on Free (rulesets → HTTP 403 "Upgrade to GitHub Pro"). Plan of record requires private (EXECUTION_PLAN.md D1 §4), so the options are: upgrade to GitHub Pro (~$4/mo) or defer rulesets — deferral is acceptable in sprint but rulesets are one of the five production-graduation gates (docs/security/checklist-runs/2026-08-02-init.md).
+- Server-side rulesets (solo posture): full sequence + evidence in `state/handoffs/2026-08-02-rulesets-solo-rollout.md`. Waiting on (1) forge-kit PR #2 merge — handled in a separate kit-focused session; (2) the human's `posture=solo` declaration commit; then an agent applies + runs the live probes.
 - Repo-name drift: plan of record says `cat-metro`; actual repo/dir is `cat-metro-app`. Human call: rename or amend the plan line.
 
 ## Decisions this week (promote to ADR if architectural)
