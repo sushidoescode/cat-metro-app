@@ -237,9 +237,16 @@ cat >"$work/forge-tag-creators.desired.json" <<'JSON'
 JSON
 
 show_error() {
+  # A trailing blank line in the error file must not become the loop's (and thus the
+  # function's) exit status: under set -e that kills the script between show_error and
+  # unverified(), turning "cannot verify" into a bare exit 1 that doctor misreads as
+  # DRIFT. Observed live with gh's config-load failure output. (Upstream: forge-kit issue.)
   while IFS= read -r line; do
-    [ -n "$line" ] && echo "  $line" >&2
+    if [ -n "$line" ]; then
+      echo "  $line" >&2
+    fi
   done <"$1"
+  return 0
 }
 
 hint_plan_limit() {

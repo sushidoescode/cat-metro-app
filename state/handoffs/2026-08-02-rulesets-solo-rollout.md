@@ -30,4 +30,6 @@ Not done (in order):
 - Graduation to production (before monetization code): flip posture to dual (needs second human CODEOWNER or kit solo→dual path), re-run setup-rulesets without --solo, delete forge-main-solo in GitHub settings, re-enable claude-review workflow, flip mode=production.
 
 ## Next step
-Wait for kit PR #2 to merge (other session). Then: human runs step 2 above; agent runs steps 3–5.
+~~Wait for kit PR #2 to merge (other session). Then: human runs step 2 above; agent runs steps 3–5.~~
+**COMPLETE (2026-08-02):** kit PR #2 merged (kit released as 3.5.0); human declared `posture=solo` (`b51a27e`); apply exit 3 with exact post-apply match (GitHub echoed the 0-approval ruleset unmodified); owner (id 130815589) added as tag-creators bypass, `--check` still 3; direct-push probe REJECTED with GH013 (wall proven live); doctor renders the posture as PARTIAL. Bonus dogfood find during rollout: `show_error` trailing-blank-line bug (gh startup failure → bare exit 1 read as DRIFT) — fixed in this repo's copy, filed upstream.
+**Fresh session starts at:** `/forge-sprint` against `docs/plan/EXECUTION_PLAN.md`. Remember: main only accepts PRs now — branch → PR → green CI → squash self-merge (human clicks merge).
