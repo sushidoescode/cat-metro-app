@@ -94,10 +94,24 @@ if [ -x scripts/setup-rulesets.sh ]; then
   remote_rc=$?
   case "$remote_rc" in
     0)
-      ok "remote enforcement confirmed: exact rulesets + trusted default-branch workflow active"
+      ok "remote enforcement confirmed: rulesets match the declared posture (details below)"
       ;;
     1)
       bad "remote enforcement confirmed DRIFTED or MISSING"
+      ;;
+    3)
+      doctor_stakes_mode=$(grep -E '^mode=' state/mode 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
+      case "$doctor_stakes_mode" in
+        production)
+          bad "solo ruleset posture at production stakes — graduate to dual (second human CODEOWNER) before production work"
+          ;;
+        sprint|standard)
+          note "remote enforcement PARTIAL: solo posture — no server-side human gate on default-branch merges (declared in state/mode)"
+          ;;
+        *)
+          bad "solo ruleset posture with unrecognized stakes mode '${doctor_stakes_mode:-unset}' — fix state/mode (fail-closed)"
+          ;;
+      esac
       ;;
     *)
       unverified "remote enforcement could not be confirmed (no remote/auth/plan/network)"
