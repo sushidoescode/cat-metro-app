@@ -1,0 +1,19 @@
+# Standing agent review on every PR — the floor, not the ceiling; humans review above it.
+# Requires: Claude GitHub app installed (/install-github-app) + ANTHROPIC_API_KEY repo secret.
+name: claude-review
+on:
+  pull_request: { types: [opened, synchronize] }
+jobs:
+  review:
+    # Injection guard: never run the agent on PRs from untrusted forks
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions: { contents: read, pull-requests: write, issues: read }
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: "/code-review"
+          claude_args: "--max-turns 15 --max-budget-usd 2"

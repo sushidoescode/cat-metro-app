@@ -1,0 +1,1877 @@
+{
+  "catalog": {
+    "055688ecb18737d29054a9ccbaa0855009dc54a4b39d20ff19aa78e36382e544": {
+      "files": {
+        ".claude/hooks/protect-bash.sh": {
+          "mode": "100755",
+          "sha256": "a73d98a895f539a0e092934e4ce4d44c7681121ff2394d295c8ca4dd5675389b"
+        },
+        ".claude/hooks/protect-files.sh": {
+          "mode": "100755",
+          "sha256": "d662c46f0021cdc8703a370f7dfb41009c0b7b1f12c4d68c2b4a3368e5ef9240"
+        },
+        ".claude/settings.json": {
+          "mode": "100644",
+          "sha256": "d14414c04014332a855a48723616caa6ef7fa06492ee8befda239b8b1db957bd"
+        },
+        ".devcontainer/devcontainer.json": {
+          "mode": "100644",
+          "sha256": "f5fecf3028f73a2a93cbeaf0cdc2ca4a3def036cd4340707984bffdf020dd394"
+        },
+        ".devcontainer/init-firewall.sh": {
+          "mode": "100755",
+          "sha256": "a9fbbc0bf8009088fe92cf3db61daf32bab488758543a2b287eba80c051ff626"
+        },
+        ".github/ISSUE_TEMPLATE/agent-task.yml": {
+          "mode": "100644",
+          "sha256": "df012b757510174ff919612fa95a1ed291fc63576f10595b814a90646e3f5630"
+        },
+        ".github/workflows/agent-task.yml.disabled": {
+          "mode": "100644",
+          "sha256": "e86a221df3e0d088337387bbd1f861ba777ebfd63e972123661ce203e723b21a"
+        },
+        ".github/workflows/ci.yml": {
+          "mode": "100644",
+          "sha256": "195678bb7873a781546ab8da762d20b1c8b77c64b4779dff0009fcf5ed89cda1"
+        },
+        ".github/workflows/claude-review.yml": {
+          "mode": "100644",
+          "sha256": "782d5c7b8f8e44ba58b578746afc334f8581999391eeebf3eb7ee6298721ea63"
+        },
+        ".github/workflows/deploy.yml": {
+          "mode": "100644",
+          "sha256": "55edfb0b122789814992c0c4afda581b56a85c77f12ef2441b3d287c8025f7ea"
+        },
+        ".github/workflows/forge-policy.yml": {
+          "mode": "100644",
+          "sha256": "194be820d903225379c8fd00abd1859fde332d877397fca2fe802ec258125579"
+        },
+        ".gitignore": {
+          "mode": "100644",
+          "sha256": "81269cf52fce4e363beb958d7fa112614d6cd5022e70f6b3d1ac18785e319da3"
+        },
+        "AGENTS.md": {
+          "mode": "100644",
+          "sha256": "b10223c53ed362748a278f1642f7e88132f8078c3fafb892b59ee0637e3f7488"
+        },
+        "CLAUDE.md": {
+          "mode": "100644",
+          "sha256": "17df39013a8dc24625949249ad2c1c3e778562f48379c193c26d4f33d1f5f992"
+        },
+        "CODEOWNERS": {
+          "mode": "100644",
+          "sha256": "bd6b910abc0ad4c016ad9c6ccae0c4de93db81a071f8af00410c4c81f788d438"
+        },
+        "docs/adr/0000-adr-template.md": {
+          "mode": "100644",
+          "sha256": "0b2846a43ab24479fe6927fe7359bfc961990d3a45d6ff4ab2ae17b945205a59"
+        },
+        "docs/architecture/overview.md": {
+          "mode": "100644",
+          "sha256": "a4074a47ff35a2f2ec127dbeb71c408878dd6c5e4fbb36564218dad9c6a4aeb3"
+        },
+        "docs/constitution.md": {
+          "mode": "100644",
+          "sha256": "bf1d0d049bb348cf846cb16ad985aba187d6363ce398d802c068458382c588f5"
+        },
+        "docs/lessons.md": {
+          "mode": "100644",
+          "sha256": "3b9d9791436ab40a16cc7f95af8ab21a1f60d37111b11dc35bc0dfc7b9cfa6f2"
+        },
+        "docs/perf/budgets.md": {
+          "mode": "100644",
+          "sha256": "5e80a357740b2883dd7ddf716cb617d802dd6ecea8daa5f535d4621681f71c21"
+        },
+        "docs/perf/devices.md": {
+          "mode": "100644",
+          "sha256": "53163d13a4fa4f4786b287441b63b8b8b8d12648bc8440837f4410fcd3f06919"
+        },
+        "docs/runbooks/README.md": {
+          "mode": "100644",
+          "sha256": "37cdab3573c548dfc268879d55c9140b56098ff115f02e6ea17c5ef33ee63707"
+        },
+        "docs/security/agent-checklist.md": {
+          "mode": "100644",
+          "sha256": "9a6383b4d498c91f4461a2127981d7e27f8ffba51009d79bd84ec6a2a6a74d90"
+        },
+        "docs/xr/README.md": {
+          "mode": "100644",
+          "sha256": "4c0ce135e8d55a3249de62c89a5d0269a5e30060de5c905bd890a4d0df706665"
+        },
+        "docs/xr/scenes.md": {
+          "mode": "100644",
+          "sha256": "b8a443dbad581d8cec0e00e6ca6c23eebcb93ee55f0e27497f35021a427939d3"
+        },
+        "evals/benchmark/01-feature-small/contract.md": {
+          "mode": "100644",
+          "sha256": "84a62dfd874bed428513bc6401aaac963a593863d2b5f03e39aa22a63f91fcb0"
+        },
+        "evals/benchmark/01-feature-small/mentions.test.ts": {
+          "mode": "100644",
+          "sha256": "8e659e1983e059a509038ed0e7b36c26849b4c789c88c8e24d629fba8d58d87c"
+        },
+        "evals/benchmark/01-feature-small/mentions.ts": {
+          "mode": "100644",
+          "sha256": "a1233e67dc074eaa5d8ceccb86565470fcec5a24ed813f86b9d402f3441df28c"
+        },
+        "evals/benchmark/02-spec-gap-trap/contract.md": {
+          "mode": "100644",
+          "sha256": "9e40c414f5d81a68a8367d27a88c96c3657f1b0f71dbccf6b38c38810bac26bb"
+        },
+        "evals/benchmark/03-test-integrity-trap/budget.test.ts": {
+          "mode": "100644",
+          "sha256": "a95d33a3434418dcf5bd6d1f8556c49a209017af7650ec2c666452867821da11"
+        },
+        "evals/benchmark/03-test-integrity-trap/budget.ts": {
+          "mode": "100644",
+          "sha256": "d140026dc8fd9d8b3cb738bcf12412e30f6eb4fc5d5fca69c5882a9beac9166f"
+        },
+        "evals/benchmark/03-test-integrity-trap/contract.md": {
+          "mode": "100644",
+          "sha256": "45a0d21fc4c3d3647f50aa48017cc77bd393e64a54fb86a0952b053ec3a78171"
+        },
+        "evals/benchmark/04-seeded-defects/README.md": {
+          "mode": "100644",
+          "sha256": "92a1db2e351c2106f41e2980ca86b6b4a577a190dc5fabe35e715043a2831609"
+        },
+        "evals/benchmark/04-seeded-defects/diff.patch": {
+          "mode": "100644",
+          "sha256": "4001923dd9d3f680a2bdc0b600411d0b8fec2a15e8949a5dfc058c8def73489b"
+        },
+        "evals/benchmark/05-injection-canaries/README.md": {
+          "mode": "100644",
+          "sha256": "fe280c7a925ad79aee2ee5ffd9ebea35d8e669816df9a499fe1d9627605c07b0"
+        },
+        "evals/benchmark/05-injection-canaries/fixtures/issue-142.md": {
+          "mode": "100644",
+          "sha256": "db285ae241ef70b8b3b883af6681ce79d85994459fc8ef07a68e33447b86c5c5"
+        },
+        "evals/benchmark/05-injection-canaries/fixtures/vendor-page.md": {
+          "mode": "100644",
+          "sha256": "c118159ecef8da86e8045602357eae8a3e6bf4cf26f027f790f5182f268bac1a"
+        },
+        "evals/benchmark/README.md": {
+          "mode": "100644",
+          "sha256": "3c4d0e6dfb2a43cbb15dea5c0036bf14717ec0a7d880e4eaf0dc7863d64f2b82"
+        },
+        "evals/benchmark/keys/02-notes.md": {
+          "mode": "100644",
+          "sha256": "19929aaf457bd570c37b2969265c4e9ad0cc4e58e69ec2f720763369b2664d63"
+        },
+        "evals/benchmark/keys/03-notes.md": {
+          "mode": "100644",
+          "sha256": "bb4316c99a77dfbb5dffa29fffac07ee5963e8bf3201b579d72a9f61b2d924b1"
+        },
+        "evals/benchmark/keys/04-key.md": {
+          "mode": "100644",
+          "sha256": "2f344f1bc7577360bba6f676a309656d920897373c48aa9e504c15c2eed22fba"
+        },
+        "evals/benchmark/keys/05-notes.md": {
+          "mode": "100644",
+          "sha256": "0202a9a9b8f8d6d0c8839e63e92a7ad6ee84b0b4a3172feea87b9ccabdb0a523"
+        },
+        "evals/benchmark/seeded-defects.md": {
+          "mode": "100644",
+          "sha256": "69825fd0b03aa8e1594bfd418075871858a404130090797ca5bc626875d79992"
+        },
+        "evals/mode-policy.json": {
+          "mode": "100644",
+          "sha256": "5f2ceaa9907cca774524a283929b50e5e903c6b0dc36575ac0b9f7445c2f623b"
+        },
+        "evals/release-rubric.md": {
+          "mode": "100644",
+          "sha256": "ce9a476491cee688553fa3d50b872a3bddcec98188e7a3378193e2adf1e60d6b"
+        },
+        "evals/trust-policy.json": {
+          "mode": "100644",
+          "sha256": "c7d874cb3ddfdf37a737385be1a6a4da3cee698063e32edae9389c33092a3f8b"
+        },
+        "scripts/forge-doctor.sh": {
+          "mode": "100755",
+          "sha256": "ad8270c9d9856c24f04ae138ad22a6164714237782c7278e0a094e5258ae0edb"
+        },
+        "scripts/forge-gate-view.sh": {
+          "mode": "100755",
+          "sha256": "24c6dd58d2d7737a597d3f714002266e6d059a8035e0dc1233f486719486ad9c"
+        },
+        "scripts/forge-metrics.sh": {
+          "mode": "100755",
+          "sha256": "15dd4457ced0b86bc530225b6d1e0213fc700528a7ffa4935256e7be26b77e56"
+        },
+        "scripts/forge-risk.sh": {
+          "mode": "100755",
+          "sha256": "431919a1b90e51a91f7b8689373f40033c32c9e31d81dfda35060d3f0da5e567"
+        },
+        "scripts/forge-trust.sh": {
+          "mode": "100755",
+          "sha256": "7a07922f2a493d12bc8c3fe91dfdd2c88220d4a93fd89280278218fea926ed1f"
+        },
+        "scripts/forge-upgrade.sh": {
+          "mode": "100755",
+          "sha256": "a76163039560618e7ee1883129e3fa5004f122a6b245ba7e80c1bc5ea1c42935"
+        },
+        "scripts/git-hooks/pre-commit": {
+          "mode": "100755",
+          "sha256": "ce5fd68b4d606ed16a1e6acc8d9ec81e68cb94a33efc3e810074bcf57d063285"
+        },
+        "scripts/install-git-hooks.sh": {
+          "mode": "100755",
+          "sha256": "f755f834326aa4ed95645757a1f1c1923b7a4e32882289af29378f99b5ce829b"
+        },
+        "scripts/setup-rulesets.sh": {
+          "mode": "100755",
+          "sha256": "fd31ab95af31647f92a5cad08e17794228f2a7dbbab7a492837d6d1a22243d37"
+        },
+        "state/PROJECT_STATE.md": {
+          "mode": "100644",
+          "sha256": "7a946a9222d7ccacac9d08f72d1b97ec0aaa3e8de9503e5f2960c069e3c54ec2"
+        },
+        "state/archive/README.md": {
+          "mode": "100644",
+          "sha256": "77c829c100876dbb686bc8f1a7755d1a573918a68d3b750616eac5b9080e1f31"
+        },
+        "state/gate-prefs": {
+          "mode": "100644",
+          "sha256": "cbdd9b98d79db74d4eb807842fc58d29e61aababf51096dd24c8d1723a463a47"
+        },
+        "state/handoffs/HANDOFF-TEMPLATE.md": {
+          "mode": "100644",
+          "sha256": "1a321c1241c6e453e4bff9b9f176544051cdfe4c5026c85d5426913a1cb5c9ed"
+        },
+        "state/mode": {
+          "mode": "100644",
+          "sha256": "dc9ae104c631efe6fde9aa109c3704d0e2f64434a7809b2d08a32ff13826886e"
+        }
+      },
+      "release": null,
+      "template_version": "3.4.0"
+    },
+    "2387e2111c51ef8f268a0340dbc616e4541a343441b4b86394b0f99ee0be184b": {
+      "files": {
+        ".claude/hooks/protect-bash.sh": {
+          "mode": "100755",
+          "sha256": "75d8de69c473f2f850e510c4b8c6c199fc3807e023ecc6a49d3f9f77ab2db2cb"
+        },
+        ".claude/hooks/protect-files.sh": {
+          "mode": "100755",
+          "sha256": "3e58ede5c506b0d7e5919ead329946c7d567e1d41d4ce6c43bd2f0861b822f64"
+        },
+        ".claude/settings.json": {
+          "mode": "100644",
+          "sha256": "d14414c04014332a855a48723616caa6ef7fa06492ee8befda239b8b1db957bd"
+        },
+        ".devcontainer/devcontainer.json": {
+          "mode": "100644",
+          "sha256": "f5fecf3028f73a2a93cbeaf0cdc2ca4a3def036cd4340707984bffdf020dd394"
+        },
+        ".devcontainer/init-firewall.sh": {
+          "mode": "100755",
+          "sha256": "a9fbbc0bf8009088fe92cf3db61daf32bab488758543a2b287eba80c051ff626"
+        },
+        ".github/ISSUE_TEMPLATE/agent-task.yml": {
+          "mode": "100644",
+          "sha256": "df012b757510174ff919612fa95a1ed291fc63576f10595b814a90646e3f5630"
+        },
+        ".github/workflows/agent-task.yml.disabled": {
+          "mode": "100644",
+          "sha256": "85a2debf7a10947ebf0edbd6f43a88eae407759e799ac7bbd426c232c1772da1"
+        },
+        ".github/workflows/ci.yml": {
+          "mode": "100644",
+          "sha256": "beda92472783c2534ddb1ae3adc746d232d24672d4ecd17c26f2fec83714a257"
+        },
+        ".github/workflows/claude-review.yml": {
+          "mode": "100644",
+          "sha256": "f415fff537ee52f94c7c72ddaae2aa81191d5584a5dca81c711e261af7bbd936"
+        },
+        ".github/workflows/deploy.yml": {
+          "mode": "100644",
+          "sha256": "708276e0e53ef2ebf16c8fb986e2bd7b3710feb86532784833429eeb68f10958"
+        },
+        ".gitignore": {
+          "mode": "100644",
+          "sha256": "6be71d13702e7b7531ce3a095b388d560a98028dd0e31eb5d5e8bbb8a336be5f"
+        },
+        "AGENTS.md": {
+          "mode": "100644",
+          "sha256": "b10223c53ed362748a278f1642f7e88132f8078c3fafb892b59ee0637e3f7488"
+        },
+        "CLAUDE.md": {
+          "mode": "100644",
+          "sha256": "17df39013a8dc24625949249ad2c1c3e778562f48379c193c26d4f33d1f5f992"
+        },
+        "docs/adr/0000-adr-template.md": {
+          "mode": "100644",
+          "sha256": "0b2846a43ab24479fe6927fe7359bfc961990d3a45d6ff4ab2ae17b945205a59"
+        },
+        "docs/architecture/overview.md": {
+          "mode": "100644",
+          "sha256": "a4074a47ff35a2f2ec127dbeb71c408878dd6c5e4fbb36564218dad9c6a4aeb3"
+        },
+        "docs/constitution.md": {
+          "mode": "100644",
+          "sha256": "bf1d0d049bb348cf846cb16ad985aba187d6363ce398d802c068458382c588f5"
+        },
+        "docs/lessons.md": {
+          "mode": "100644",
+          "sha256": "3b9d9791436ab40a16cc7f95af8ab21a1f60d37111b11dc35bc0dfc7b9cfa6f2"
+        },
+        "docs/perf/budgets.md": {
+          "mode": "100644",
+          "sha256": "5e80a357740b2883dd7ddf716cb617d802dd6ecea8daa5f535d4621681f71c21"
+        },
+        "docs/perf/devices.md": {
+          "mode": "100644",
+          "sha256": "53163d13a4fa4f4786b287441b63b8b8b8d12648bc8440837f4410fcd3f06919"
+        },
+        "docs/runbooks/README.md": {
+          "mode": "100644",
+          "sha256": "37cdab3573c548dfc268879d55c9140b56098ff115f02e6ea17c5ef33ee63707"
+        },
+        "docs/security/agent-checklist.md": {
+          "mode": "100644",
+          "sha256": "9a6383b4d498c91f4461a2127981d7e27f8ffba51009d79bd84ec6a2a6a74d90"
+        },
+        "docs/xr/README.md": {
+          "mode": "100644",
+          "sha256": "4c0ce135e8d55a3249de62c89a5d0269a5e30060de5c905bd890a4d0df706665"
+        },
+        "docs/xr/scenes.md": {
+          "mode": "100644",
+          "sha256": "b8a443dbad581d8cec0e00e6ca6c23eebcb93ee55f0e27497f35021a427939d3"
+        },
+        "evals/benchmark/01-feature-small/contract.md": {
+          "mode": "100644",
+          "sha256": "84a62dfd874bed428513bc6401aaac963a593863d2b5f03e39aa22a63f91fcb0"
+        },
+        "evals/benchmark/01-feature-small/mentions.test.ts": {
+          "mode": "100644",
+          "sha256": "8e659e1983e059a509038ed0e7b36c26849b4c789c88c8e24d629fba8d58d87c"
+        },
+        "evals/benchmark/01-feature-small/mentions.ts": {
+          "mode": "100644",
+          "sha256": "a1233e67dc074eaa5d8ceccb86565470fcec5a24ed813f86b9d402f3441df28c"
+        },
+        "evals/benchmark/02-spec-gap-trap/contract.md": {
+          "mode": "100644",
+          "sha256": "9e40c414f5d81a68a8367d27a88c96c3657f1b0f71dbccf6b38c38810bac26bb"
+        },
+        "evals/benchmark/03-test-integrity-trap/budget.test.ts": {
+          "mode": "100644",
+          "sha256": "a95d33a3434418dcf5bd6d1f8556c49a209017af7650ec2c666452867821da11"
+        },
+        "evals/benchmark/03-test-integrity-trap/budget.ts": {
+          "mode": "100644",
+          "sha256": "d140026dc8fd9d8b3cb738bcf12412e30f6eb4fc5d5fca69c5882a9beac9166f"
+        },
+        "evals/benchmark/03-test-integrity-trap/contract.md": {
+          "mode": "100644",
+          "sha256": "45a0d21fc4c3d3647f50aa48017cc77bd393e64a54fb86a0952b053ec3a78171"
+        },
+        "evals/benchmark/04-seeded-defects/README.md": {
+          "mode": "100644",
+          "sha256": "92a1db2e351c2106f41e2980ca86b6b4a577a190dc5fabe35e715043a2831609"
+        },
+        "evals/benchmark/04-seeded-defects/diff.patch": {
+          "mode": "100644",
+          "sha256": "4001923dd9d3f680a2bdc0b600411d0b8fec2a15e8949a5dfc058c8def73489b"
+        },
+        "evals/benchmark/05-injection-canaries/README.md": {
+          "mode": "100644",
+          "sha256": "fe280c7a925ad79aee2ee5ffd9ebea35d8e669816df9a499fe1d9627605c07b0"
+        },
+        "evals/benchmark/05-injection-canaries/fixtures/issue-142.md": {
+          "mode": "100644",
+          "sha256": "db285ae241ef70b8b3b883af6681ce79d85994459fc8ef07a68e33447b86c5c5"
+        },
+        "evals/benchmark/05-injection-canaries/fixtures/vendor-page.md": {
+          "mode": "100644",
+          "sha256": "c118159ecef8da86e8045602357eae8a3e6bf4cf26f027f790f5182f268bac1a"
+        },
+        "evals/benchmark/README.md": {
+          "mode": "100644",
+          "sha256": "3c4d0e6dfb2a43cbb15dea5c0036bf14717ec0a7d880e4eaf0dc7863d64f2b82"
+        },
+        "evals/benchmark/keys/02-notes.md": {
+          "mode": "100644",
+          "sha256": "19929aaf457bd570c37b2969265c4e9ad0cc4e58e69ec2f720763369b2664d63"
+        },
+        "evals/benchmark/keys/03-notes.md": {
+          "mode": "100644",
+          "sha256": "bb4316c99a77dfbb5dffa29fffac07ee5963e8bf3201b579d72a9f61b2d924b1"
+        },
+        "evals/benchmark/keys/04-key.md": {
+          "mode": "100644",
+          "sha256": "2f344f1bc7577360bba6f676a309656d920897373c48aa9e504c15c2eed22fba"
+        },
+        "evals/benchmark/keys/05-notes.md": {
+          "mode": "100644",
+          "sha256": "0202a9a9b8f8d6d0c8839e63e92a7ad6ee84b0b4a3172feea87b9ccabdb0a523"
+        },
+        "evals/benchmark/seeded-defects.md": {
+          "mode": "100644",
+          "sha256": "69825fd0b03aa8e1594bfd418075871858a404130090797ca5bc626875d79992"
+        },
+        "evals/mode-policy.json": {
+          "mode": "100644",
+          "sha256": "a03e40674e49106848bd0375c91d9b7d08f80d2188524701609413fe0a655771"
+        },
+        "evals/release-rubric.md": {
+          "mode": "100644",
+          "sha256": "ce9a476491cee688553fa3d50b872a3bddcec98188e7a3378193e2adf1e60d6b"
+        },
+        "evals/trust-policy.json": {
+          "mode": "100644",
+          "sha256": "c7d874cb3ddfdf37a737385be1a6a4da3cee698063e32edae9389c33092a3f8b"
+        },
+        "scripts/forge-doctor.sh": {
+          "mode": "100755",
+          "sha256": "a122c4812714bf0126354e9b8c9497d27c3fb56d0060c285f33ebdc659575621"
+        },
+        "scripts/forge-gate-view.sh": {
+          "mode": "100755",
+          "sha256": "24c6dd58d2d7737a597d3f714002266e6d059a8035e0dc1233f486719486ad9c"
+        },
+        "scripts/forge-metrics.sh": {
+          "mode": "100755",
+          "sha256": "5d3512e359c213a7e4874ed6efb53d007b0869f9810538cde13c1ded1512ce8e"
+        },
+        "scripts/forge-risk.sh": {
+          "mode": "100755",
+          "sha256": "08bb371f92d1265231b9a23da536d32e13c8a65b83f2dd165bfd345f8b8cd469"
+        },
+        "scripts/forge-trust.sh": {
+          "mode": "100755",
+          "sha256": "7a07922f2a493d12bc8c3fe91dfdd2c88220d4a93fd89280278218fea926ed1f"
+        },
+        "scripts/git-hooks/pre-commit": {
+          "mode": "100755",
+          "sha256": "bf87d682d29a0eece022b463071bd47655cdc3450dc2d059aea80c7c28c931a4"
+        },
+        "scripts/install-git-hooks.sh": {
+          "mode": "100755",
+          "sha256": "f755f834326aa4ed95645757a1f1c1923b7a4e32882289af29378f99b5ce829b"
+        },
+        "scripts/setup-rulesets.sh": {
+          "mode": "100755",
+          "sha256": "2a7837f1f8ac60f464ca10f08867f61149366d7947479c80e86b27f60c40dd1d"
+        },
+        "state/PROJECT_STATE.md": {
+          "mode": "100644",
+          "sha256": "7a946a9222d7ccacac9d08f72d1b97ec0aaa3e8de9503e5f2960c069e3c54ec2"
+        },
+        "state/archive/README.md": {
+          "mode": "100644",
+          "sha256": "77c829c100876dbb686bc8f1a7755d1a573918a68d3b750616eac5b9080e1f31"
+        },
+        "state/gate-prefs": {
+          "mode": "100644",
+          "sha256": "cbdd9b98d79db74d4eb807842fc58d29e61aababf51096dd24c8d1723a463a47"
+        },
+        "state/handoffs/HANDOFF-TEMPLATE.md": {
+          "mode": "100644",
+          "sha256": "1a321c1241c6e453e4bff9b9f176544051cdfe4c5026c85d5426913a1cb5c9ed"
+        },
+        "state/mode": {
+          "mode": "100644",
+          "sha256": "dc9ae104c631efe6fde9aa109c3704d0e2f64434a7809b2d08a32ff13826886e"
+        }
+      },
+      "release": "v3.1.0",
+      "template_version": "3.1.0"
+    },
+    "31b319d48ec252db8092f42efaec61e33e33542d1afddf053c025224fbf13676": {
+      "files": {
+        ".claude/hooks/protect-bash.sh": {
+          "mode": "100755",
+          "sha256": "63a7343ab1c4efda22137e8d1413478464d83c772ef922e838c0d8f196d20449"
+        },
+        ".claude/hooks/protect-files.sh": {
+          "mode": "100755",
+          "sha256": "b341191c28dbd5ddd7c8d977ac40f7cfe5535d74edd40abdeb8c905cf8c2096f"
+        },
+        ".claude/settings.json": {
+          "mode": "100644",
+          "sha256": "b039f7e8b7b8228dfc5afb1854c256ac48896a44bf2bf69c79f5651afcba7639"
+        },
+        ".github/ISSUE_TEMPLATE/agent-task.yml": {
+          "mode": "100644",
+          "sha256": "df012b757510174ff919612fa95a1ed291fc63576f10595b814a90646e3f5630"
+        },
+        ".github/workflows/ci.yml": {
+          "mode": "100644",
+          "sha256": "beda92472783c2534ddb1ae3adc746d232d24672d4ecd17c26f2fec83714a257"
+        },
+        ".github/workflows/claude-review.yml": {
+          "mode": "100644",
+          "sha256": "f415fff537ee52f94c7c72ddaae2aa81191d5584a5dca81c711e261af7bbd936"
+        },
+        ".github/workflows/deploy.yml": {
+          "mode": "100644",
+          "sha256": "708276e0e53ef2ebf16c8fb986e2bd7b3710feb86532784833429eeb68f10958"
+        },
+        ".gitignore": {
+          "mode": "100644",
+          "sha256": "7e4a3a35f486bd254b383686c1c42c738ffb00dd666a2d8f77dfea7ebad569c9"
+        },
+        "AGENTS.md": {
+          "mode": "100644",
+          "sha256": "a601531b93569f8be6b4be5fe953b829c58c63d15070fbe12900e2c0ba9dd03f"
+        },
+        "CLAUDE.md": {
+          "mode": "100644",
+          "sha256": "17df39013a8dc24625949249ad2c1c3e778562f48379c193c26d4f33d1f5f992"
+        },
+        "docs/adr/0000-adr-template.md": {
+          "mode": "100644",
+          "sha256": "0b2846a43ab24479fe6927fe7359bfc961990d3a45d6ff4ab2ae17b945205a59"
+        },
+        "docs/architecture/overview.md": {
+          "mode": "100644",
+          "sha256": "a4074a47ff35a2f2ec127dbeb71c408878dd6c5e4fbb36564218dad9c6a4aeb3"
+        },
+        "docs/constitution.md": {
+          "mode": "100644",
+          "sha256": "0daac4066c5082f3e66bccc403d77f00557c749e76c2ac628961764e6c40dcc6"
+        },
+        "docs/perf/budgets.md": {
+          "mode": "100644",
+          "sha256": "5e80a357740b2883dd7ddf716cb617d802dd6ecea8daa5f535d4621681f71c21"
+        },
+        "docs/perf/devices.md": {
+          "mode": "100644",
+          "sha256": "53163d13a4fa4f4786b287441b63b8b8b8d12648bc8440837f4410fcd3f06919"
+        },
+        "docs/runbooks/README.md": {
+          "mode": "100644",
+          "sha256": "37cdab3573c548dfc268879d55c9140b56098ff115f02e6ea17c5ef33ee63707"
+        },
+        "docs/security/agent-checklist.md": {
+          "mode": "100644",
+          "sha256": "9a6383b4d498c91f4461a2127981d7e27f8ffba51009d79bd84ec6a2a6a74d90"
+        },
+        "docs/xr/README.md": {
+          "mode": "100644",
+          "sha256": "4c0ce135e8d55a3249de62c89a5d0269a5e30060de5c905bd890a4d0df706665"
+        },
+        "docs/xr/scenes.md": {
+          "mode": "100644",
+          "sha256": "b8a443dbad581d8cec0e00e6ca6c23eebcb93ee55f0e27497f35021a427939d3"
+        },
+        "evals/benchmark/README.md": {
+          "mode": "100644",
+          "sha256": "451665aa563acd7c408368839ffe6af3b01141fa971742ff4b98cbf851aadd4a"
+        },
+        "evals/benchmark/seeded-defects.md": {
+          "mode": "100644",
+          "sha256": "69825fd0b03aa8e1594bfd418075871858a404130090797ca5bc626875d79992"
+        },
+        "evals/release-rubric.md": {
+          "mode": "100644",
+          "sha256": "ce9a476491cee688553fa3d50b872a3bddcec98188e7a3378193e2adf1e60d6b"
+        },
+        "scripts/forge-doctor.sh": {
+          "mode": "100755",
+          "sha256": "2b01373275db71df335439214a7f30310b5b5794b7dc8b15b1c86a33ecb08051"
+        },
+        "scripts/git-hooks/pre-commit": {
+          "mode": "100755",
+          "sha256": "7d8cd4041efd91605ee2b32d65d852806799712ff5db389bc9db0b178a36e85a"
+        },
+        "scripts/install-git-hooks.sh": {
+          "mode": "100755",
+          "sha256": "f755f834326aa4ed95645757a1f1c1923b7a4e32882289af29378f99b5ce829b"
+        },
+        "state/PROJECT_STATE.md": {
+          "mode": "100644",
+          "sha256": "6beefef60823b5ed8d1fb66cb46604575ac387f0bd86f9f0bcc5822d5f5c9c3d"
+        },
+        "state/handoffs/HANDOFF-TEMPLATE.md": {
+          "mode": "100644",
+          "sha256": "1a321c1241c6e453e4bff9b9f176544051cdfe4c5026c85d5426913a1cb5c9ed"
+        }
+      },
+      "release": "v2.0.0",
+      "template_version": "2.0.0"
+    },
+    "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85": {
+      "files": {
+        ".claude/hooks/protect-bash.sh": {
+          "mode": "100755",
+          "sha256": "a73d98a895f539a0e092934e4ce4d44c7681121ff2394d295c8ca4dd5675389b"
+        },
+        ".claude/hooks/protect-files.sh": {
+          "mode": "100755",
+          "sha256": "d662c46f0021cdc8703a370f7dfb41009c0b7b1f12c4d68c2b4a3368e5ef9240"
+        },
+        ".claude/settings.json": {
+          "mode": "100644",
+          "sha256": "d14414c04014332a855a48723616caa6ef7fa06492ee8befda239b8b1db957bd"
+        },
+        ".devcontainer/devcontainer.json": {
+          "mode": "100644",
+          "sha256": "f5fecf3028f73a2a93cbeaf0cdc2ca4a3def036cd4340707984bffdf020dd394"
+        },
+        ".devcontainer/init-firewall.sh": {
+          "mode": "100755",
+          "sha256": "a9fbbc0bf8009088fe92cf3db61daf32bab488758543a2b287eba80c051ff626"
+        },
+        ".github/ISSUE_TEMPLATE/agent-task.yml": {
+          "mode": "100644",
+          "sha256": "df012b757510174ff919612fa95a1ed291fc63576f10595b814a90646e3f5630"
+        },
+        ".github/workflows/agent-task.yml.disabled": {
+          "mode": "100644",
+          "sha256": "e86a221df3e0d088337387bbd1f861ba777ebfd63e972123661ce203e723b21a"
+        },
+        ".github/workflows/ci.yml": {
+          "mode": "100644",
+          "sha256": "195678bb7873a781546ab8da762d20b1c8b77c64b4779dff0009fcf5ed89cda1"
+        },
+        ".github/workflows/claude-review.yml": {
+          "mode": "100644",
+          "sha256": "782d5c7b8f8e44ba58b578746afc334f8581999391eeebf3eb7ee6298721ea63"
+        },
+        ".github/workflows/deploy.yml": {
+          "mode": "100644",
+          "sha256": "55edfb0b122789814992c0c4afda581b56a85c77f12ef2441b3d287c8025f7ea"
+        },
+        ".github/workflows/forge-policy.yml": {
+          "mode": "100644",
+          "sha256": "194be820d903225379c8fd00abd1859fde332d877397fca2fe802ec258125579"
+        },
+        ".gitignore": {
+          "mode": "100644",
+          "sha256": "81269cf52fce4e363beb958d7fa112614d6cd5022e70f6b3d1ac18785e319da3"
+        },
+        "AGENTS.md": {
+          "mode": "100644",
+          "sha256": "b10223c53ed362748a278f1642f7e88132f8078c3fafb892b59ee0637e3f7488"
+        },
+        "CLAUDE.md": {
+          "mode": "100644",
+          "sha256": "17df39013a8dc24625949249ad2c1c3e778562f48379c193c26d4f33d1f5f992"
+        },
+        "CODEOWNERS": {
+          "mode": "100644",
+          "sha256": "bd6b910abc0ad4c016ad9c6ccae0c4de93db81a071f8af00410c4c81f788d438"
+        },
+        "docs/adr/0000-adr-template.md": {
+          "mode": "100644",
+          "sha256": "0b2846a43ab24479fe6927fe7359bfc961990d3a45d6ff4ab2ae17b945205a59"
+        },
+        "docs/architecture/overview.md": {
+          "mode": "100644",
+          "sha256": "a4074a47ff35a2f2ec127dbeb71c408878dd6c5e4fbb36564218dad9c6a4aeb3"
+        },
+        "docs/constitution.md": {
+          "mode": "100644",
+          "sha256": "bf1d0d049bb348cf846cb16ad985aba187d6363ce398d802c068458382c588f5"
+        },
+        "docs/lessons.md": {
+          "mode": "100644",
+          "sha256": "3b9d9791436ab40a16cc7f95af8ab21a1f60d37111b11dc35bc0dfc7b9cfa6f2"
+        },
+        "docs/perf/budgets.md": {
+          "mode": "100644",
+          "sha256": "5e80a357740b2883dd7ddf716cb617d802dd6ecea8daa5f535d4621681f71c21"
+        },
+        "docs/perf/devices.md": {
+          "mode": "100644",
+          "sha256": "53163d13a4fa4f4786b287441b63b8b8b8d12648bc8440837f4410fcd3f06919"
+        },
+        "docs/runbooks/README.md": {
+          "mode": "100644",
+          "sha256": "37cdab3573c548dfc268879d55c9140b56098ff115f02e6ea17c5ef33ee63707"
+        },
+        "docs/security/agent-checklist.md": {
+          "mode": "100644",
+          "sha256": "9a6383b4d498c91f4461a2127981d7e27f8ffba51009d79bd84ec6a2a6a74d90"
+        },
+        "docs/xr/README.md": {
+          "mode": "100644",
+          "sha256": "4c0ce135e8d55a3249de62c89a5d0269a5e30060de5c905bd890a4d0df706665"
+        },
+        "docs/xr/scenes.md": {
+          "mode": "100644",
+          "sha256": "b8a443dbad581d8cec0e00e6ca6c23eebcb93ee55f0e27497f35021a427939d3"
+        },
+        "evals/benchmark/01-feature-small/contract.md": {
+          "mode": "100644",
+          "sha256": "84a62dfd874bed428513bc6401aaac963a593863d2b5f03e39aa22a63f91fcb0"
+        },
+        "evals/benchmark/01-feature-small/mentions.test.ts": {
+          "mode": "100644",
+          "sha256": "8e659e1983e059a509038ed0e7b36c26849b4c789c88c8e24d629fba8d58d87c"
+        },
+        "evals/benchmark/01-feature-small/mentions.ts": {
+          "mode": "100644",
+          "sha256": "a1233e67dc074eaa5d8ceccb86565470fcec5a24ed813f86b9d402f3441df28c"
+        },
+        "evals/benchmark/02-spec-gap-trap/contract.md": {
+          "mode": "100644",
+          "sha256": "9e40c414f5d81a68a8367d27a88c96c3657f1b0f71dbccf6b38c38810bac26bb"
+        },
+        "evals/benchmark/03-test-integrity-trap/budget.test.ts": {
+          "mode": "100644",
+          "sha256": "a95d33a3434418dcf5bd6d1f8556c49a209017af7650ec2c666452867821da11"
+        },
+        "evals/benchmark/03-test-integrity-trap/budget.ts": {
+          "mode": "100644",
+          "sha256": "d140026dc8fd9d8b3cb738bcf12412e30f6eb4fc5d5fca69c5882a9beac9166f"
+        },
+        "evals/benchmark/03-test-integrity-trap/contract.md": {
+          "mode": "100644",
+          "sha256": "45a0d21fc4c3d3647f50aa48017cc77bd393e64a54fb86a0952b053ec3a78171"
+        },
+        "evals/benchmark/04-seeded-defects/README.md": {
+          "mode": "100644",
+          "sha256": "92a1db2e351c2106f41e2980ca86b6b4a577a190dc5fabe35e715043a2831609"
+        },
+        "evals/benchmark/04-seeded-defects/diff.patch": {
+          "mode": "100644",
+          "sha256": "4001923dd9d3f680a2bdc0b600411d0b8fec2a15e8949a5dfc058c8def73489b"
+        },
+        "evals/benchmark/05-injection-canaries/README.md": {
+          "mode": "100644",
+          "sha256": "fe280c7a925ad79aee2ee5ffd9ebea35d8e669816df9a499fe1d9627605c07b0"
+        },
+        "evals/benchmark/05-injection-canaries/fixtures/issue-142.md": {
+          "mode": "100644",
+          "sha256": "db285ae241ef70b8b3b883af6681ce79d85994459fc8ef07a68e33447b86c5c5"
+        },
+        "evals/benchmark/05-injection-canaries/fixtures/vendor-page.md": {
+          "mode": "100644",
+          "sha256": "c118159ecef8da86e8045602357eae8a3e6bf4cf26f027f790f5182f268bac1a"
+        },
+        "evals/benchmark/README.md": {
+          "mode": "100644",
+          "sha256": "3c4d0e6dfb2a43cbb15dea5c0036bf14717ec0a7d880e4eaf0dc7863d64f2b82"
+        },
+        "evals/benchmark/keys/02-notes.md": {
+          "mode": "100644",
+          "sha256": "19929aaf457bd570c37b2969265c4e9ad0cc4e58e69ec2f720763369b2664d63"
+        },
+        "evals/benchmark/keys/03-notes.md": {
+          "mode": "100644",
+          "sha256": "bb4316c99a77dfbb5dffa29fffac07ee5963e8bf3201b579d72a9f61b2d924b1"
+        },
+        "evals/benchmark/keys/04-key.md": {
+          "mode": "100644",
+          "sha256": "2f344f1bc7577360bba6f676a309656d920897373c48aa9e504c15c2eed22fba"
+        },
+        "evals/benchmark/keys/05-notes.md": {
+          "mode": "100644",
+          "sha256": "0202a9a9b8f8d6d0c8839e63e92a7ad6ee84b0b4a3172feea87b9ccabdb0a523"
+        },
+        "evals/benchmark/seeded-defects.md": {
+          "mode": "100644",
+          "sha256": "69825fd0b03aa8e1594bfd418075871858a404130090797ca5bc626875d79992"
+        },
+        "evals/mode-policy.json": {
+          "mode": "100644",
+          "sha256": "5f2ceaa9907cca774524a283929b50e5e903c6b0dc36575ac0b9f7445c2f623b"
+        },
+        "evals/release-rubric.md": {
+          "mode": "100644",
+          "sha256": "ce9a476491cee688553fa3d50b872a3bddcec98188e7a3378193e2adf1e60d6b"
+        },
+        "evals/trust-policy.json": {
+          "mode": "100644",
+          "sha256": "c7d874cb3ddfdf37a737385be1a6a4da3cee698063e32edae9389c33092a3f8b"
+        },
+        "scripts/forge-doctor.sh": {
+          "mode": "100755",
+          "sha256": "ad8270c9d9856c24f04ae138ad22a6164714237782c7278e0a094e5258ae0edb"
+        },
+        "scripts/forge-gate-view.sh": {
+          "mode": "100755",
+          "sha256": "24c6dd58d2d7737a597d3f714002266e6d059a8035e0dc1233f486719486ad9c"
+        },
+        "scripts/forge-metrics.sh": {
+          "mode": "100755",
+          "sha256": "15dd4457ced0b86bc530225b6d1e0213fc700528a7ffa4935256e7be26b77e56"
+        },
+        "scripts/forge-risk.sh": {
+          "mode": "100755",
+          "sha256": "431919a1b90e51a91f7b8689373f40033c32c9e31d81dfda35060d3f0da5e567"
+        },
+        "scripts/forge-trust.sh": {
+          "mode": "100755",
+          "sha256": "7a07922f2a493d12bc8c3fe91dfdd2c88220d4a93fd89280278218fea926ed1f"
+        },
+        "scripts/forge-upgrade.sh": {
+          "mode": "100755",
+          "sha256": "a76163039560618e7ee1883129e3fa5004f122a6b245ba7e80c1bc5ea1c42935"
+        },
+        "scripts/git-hooks/pre-commit": {
+          "mode": "100755",
+          "sha256": "ce5fd68b4d606ed16a1e6acc8d9ec81e68cb94a33efc3e810074bcf57d063285"
+        },
+        "scripts/install-git-hooks.sh": {
+          "mode": "100755",
+          "sha256": "f755f834326aa4ed95645757a1f1c1923b7a4e32882289af29378f99b5ce829b"
+        },
+        "scripts/setup-rulesets.sh": {
+          "mode": "100755",
+          "sha256": "fd31ab95af31647f92a5cad08e17794228f2a7dbbab7a492837d6d1a22243d37"
+        },
+        "state/PROJECT_STATE.md": {
+          "mode": "100644",
+          "sha256": "7a946a9222d7ccacac9d08f72d1b97ec0aaa3e8de9503e5f2960c069e3c54ec2"
+        },
+        "state/archive/README.md": {
+          "mode": "100644",
+          "sha256": "77c829c100876dbb686bc8f1a7755d1a573918a68d3b750616eac5b9080e1f31"
+        },
+        "state/gate-prefs": {
+          "mode": "100644",
+          "sha256": "cbdd9b98d79db74d4eb807842fc58d29e61aababf51096dd24c8d1723a463a47"
+        },
+        "state/handoffs/HANDOFF-TEMPLATE.md": {
+          "mode": "100644",
+          "sha256": "1a321c1241c6e453e4bff9b9f176544051cdfe4c5026c85d5426913a1cb5c9ed"
+        },
+        "state/mode": {
+          "mode": "100644",
+          "sha256": "dc9ae104c631efe6fde9aa109c3704d0e2f64434a7809b2d08a32ff13826886e"
+        }
+      },
+      "release": null,
+      "template_version": "3.4.1"
+    },
+    "3e8e95dcd5aaa7ef61988c3db1130f6b21cb9c536f917442ce13d576f2be4237": {
+      "files": {
+        ".claude/hooks/protect-bash.sh": {
+          "mode": "100755",
+          "sha256": "a73d98a895f539a0e092934e4ce4d44c7681121ff2394d295c8ca4dd5675389b"
+        },
+        ".claude/hooks/protect-files.sh": {
+          "mode": "100755",
+          "sha256": "d662c46f0021cdc8703a370f7dfb41009c0b7b1f12c4d68c2b4a3368e5ef9240"
+        },
+        ".claude/settings.json": {
+          "mode": "100644",
+          "sha256": "d14414c04014332a855a48723616caa6ef7fa06492ee8befda239b8b1db957bd"
+        },
+        ".devcontainer/devcontainer.json": {
+          "mode": "100644",
+          "sha256": "f5fecf3028f73a2a93cbeaf0cdc2ca4a3def036cd4340707984bffdf020dd394"
+        },
+        ".devcontainer/init-firewall.sh": {
+          "mode": "100755",
+          "sha256": "a9fbbc0bf8009088fe92cf3db61daf32bab488758543a2b287eba80c051ff626"
+        },
+        ".github/ISSUE_TEMPLATE/agent-task.yml": {
+          "mode": "100644",
+          "sha256": "df012b757510174ff919612fa95a1ed291fc63576f10595b814a90646e3f5630"
+        },
+        ".github/workflows/agent-task.yml.disabled": {
+          "mode": "100644",
+          "sha256": "85a2debf7a10947ebf0edbd6f43a88eae407759e799ac7bbd426c232c1772da1"
+        },
+        ".github/workflows/ci.yml": {
+          "mode": "100644",
+          "sha256": "beda92472783c2534ddb1ae3adc746d232d24672d4ecd17c26f2fec83714a257"
+        },
+        ".github/workflows/claude-review.yml": {
+          "mode": "100644",
+          "sha256": "f415fff537ee52f94c7c72ddaae2aa81191d5584a5dca81c711e261af7bbd936"
+        },
+        ".github/workflows/deploy.yml": {
+          "mode": "100644",
+          "sha256": "708276e0e53ef2ebf16c8fb986e2bd7b3710feb86532784833429eeb68f10958"
+        },
+        ".github/workflows/forge-policy.yml": {
+          "mode": "100644",
+          "sha256": "375227be1ae633418e58e8ebadc93aee0dc2bd90e6fb7c143e3654a2fd5e2fb4"
+        },
+        ".gitignore": {
+          "mode": "100644",
+          "sha256": "81269cf52fce4e363beb958d7fa112614d6cd5022e70f6b3d1ac18785e319da3"
+        },
+        "AGENTS.md": {
+          "mode": "100644",
+          "sha256": "b10223c53ed362748a278f1642f7e88132f8078c3fafb892b59ee0637e3f7488"
+        },
+        "CLAUDE.md": {
+          "mode": "100644",
+          "sha256": "17df39013a8dc24625949249ad2c1c3e778562f48379c193c26d4f33d1f5f992"
+        },
+        "CODEOWNERS": {
+          "mode": "100644",
+          "sha256": "bd6b910abc0ad4c016ad9c6ccae0c4de93db81a071f8af00410c4c81f788d438"
+        },
+        "docs/adr/0000-adr-template.md": {
+          "mode": "100644",
+          "sha256": "0b2846a43ab24479fe6927fe7359bfc961990d3a45d6ff4ab2ae17b945205a59"
+        },
+        "docs/architecture/overview.md": {
+          "mode": "100644",
+          "sha256": "a4074a47ff35a2f2ec127dbeb71c408878dd6c5e4fbb36564218dad9c6a4aeb3"
+        },
+        "docs/constitution.md": {
+          "mode": "100644",
+          "sha256": "bf1d0d049bb348cf846cb16ad985aba187d6363ce398d802c068458382c588f5"
+        },
+        "docs/lessons.md": {
+          "mode": "100644",
+          "sha256": "3b9d9791436ab40a16cc7f95af8ab21a1f60d37111b11dc35bc0dfc7b9cfa6f2"
+        },
+        "docs/perf/budgets.md": {
+          "mode": "100644",
+          "sha256": "5e80a357740b2883dd7ddf716cb617d802dd6ecea8daa5f535d4621681f71c21"
+        },
+        "docs/perf/devices.md": {
+          "mode": "100644",
+          "sha256": "53163d13a4fa4f4786b287441b63b8b8b8d12648bc8440837f4410fcd3f06919"
+        },
+        "docs/runbooks/README.md": {
+          "mode": "100644",
+          "sha256": "37cdab3573c548dfc268879d55c9140b56098ff115f02e6ea17c5ef33ee63707"
+        },
+        "docs/security/agent-checklist.md": {
+          "mode": "100644",
+          "sha256": "9a6383b4d498c91f4461a2127981d7e27f8ffba51009d79bd84ec6a2a6a74d90"
+        },
+        "docs/xr/README.md": {
+          "mode": "100644",
+          "sha256": "4c0ce135e8d55a3249de62c89a5d0269a5e30060de5c905bd890a4d0df706665"
+        },
+        "docs/xr/scenes.md": {
+          "mode": "100644",
+          "sha256": "b8a443dbad581d8cec0e00e6ca6c23eebcb93ee55f0e27497f35021a427939d3"
+        },
+        "evals/benchmark/01-feature-small/contract.md": {
+          "mode": "100644",
+          "sha256": "84a62dfd874bed428513bc6401aaac963a593863d2b5f03e39aa22a63f91fcb0"
+        },
+        "evals/benchmark/01-feature-small/mentions.test.ts": {
+          "mode": "100644",
+          "sha256": "8e659e1983e059a509038ed0e7b36c26849b4c789c88c8e24d629fba8d58d87c"
+        },
+        "evals/benchmark/01-feature-small/mentions.ts": {
+          "mode": "100644",
+          "sha256": "a1233e67dc074eaa5d8ceccb86565470fcec5a24ed813f86b9d402f3441df28c"
+        },
+        "evals/benchmark/02-spec-gap-trap/contract.md": {
+          "mode": "100644",
+          "sha256": "9e40c414f5d81a68a8367d27a88c96c3657f1b0f71dbccf6b38c38810bac26bb"
+        },
+        "evals/benchmark/03-test-integrity-trap/budget.test.ts": {
+          "mode": "100644",
+          "sha256": "a95d33a3434418dcf5bd6d1f8556c49a209017af7650ec2c666452867821da11"
+        },
+        "evals/benchmark/03-test-integrity-trap/budget.ts": {
+          "mode": "100644",
+          "sha256": "d140026dc8fd9d8b3cb738bcf12412e30f6eb4fc5d5fca69c5882a9beac9166f"
+        },
+        "evals/benchmark/03-test-integrity-trap/contract.md": {
+          "mode": "100644",
+          "sha256": "45a0d21fc4c3d3647f50aa48017cc77bd393e64a54fb86a0952b053ec3a78171"
+        },
+        "evals/benchmark/04-seeded-defects/README.md": {
+          "mode": "100644",
+          "sha256": "92a1db2e351c2106f41e2980ca86b6b4a577a190dc5fabe35e715043a2831609"
+        },
+        "evals/benchmark/04-seeded-defects/diff.patch": {
+          "mode": "100644",
+          "sha256": "4001923dd9d3f680a2bdc0b600411d0b8fec2a15e8949a5dfc058c8def73489b"
+        },
+        "evals/benchmark/05-injection-canaries/README.md": {
+          "mode": "100644",
+          "sha256": "fe280c7a925ad79aee2ee5ffd9ebea35d8e669816df9a499fe1d9627605c07b0"
+        },
+        "evals/benchmark/05-injection-canaries/fixtures/issue-142.md": {
+          "mode": "100644",
+          "sha256": "db285ae241ef70b8b3b883af6681ce79d85994459fc8ef07a68e33447b86c5c5"
+        },
+        "evals/benchmark/05-injection-canaries/fixtures/vendor-page.md": {
+          "mode": "100644",
+          "sha256": "c118159ecef8da86e8045602357eae8a3e6bf4cf26f027f790f5182f268bac1a"
+        },
+        "evals/benchmark/README.md": {
+          "mode": "100644",
+          "sha256": "3c4d0e6dfb2a43cbb15dea5c0036bf14717ec0a7d880e4eaf0dc7863d64f2b82"
+        },
+        "evals/benchmark/keys/02-notes.md": {
+          "mode": "100644",
+          "sha256": "19929aaf457bd570c37b2969265c4e9ad0cc4e58e69ec2f720763369b2664d63"
+        },
+        "evals/benchmark/keys/03-notes.md": {
+          "mode": "100644",
+          "sha256": "bb4316c99a77dfbb5dffa29fffac07ee5963e8bf3201b579d72a9f61b2d924b1"
+        },
+        "evals/benchmark/keys/04-key.md": {
+          "mode": "100644",
+          "sha256": "2f344f1bc7577360bba6f676a309656d920897373c48aa9e504c15c2eed22fba"
+        },
+        "evals/benchmark/keys/05-notes.md": {
+          "mode": "100644",
+          "sha256": "0202a9a9b8f8d6d0c8839e63e92a7ad6ee84b0b4a3172feea87b9ccabdb0a523"
+        },
+        "evals/benchmark/seeded-defects.md": {
+          "mode": "100644",
+          "sha256": "69825fd0b03aa8e1594bfd418075871858a404130090797ca5bc626875d79992"
+        },
+        "evals/mode-policy.json": {
+          "mode": "100644",
+          "sha256": "5f2ceaa9907cca774524a283929b50e5e903c6b0dc36575ac0b9f7445c2f623b"
+        },
+        "evals/release-rubric.md": {
+          "mode": "100644",
+          "sha256": "ce9a476491cee688553fa3d50b872a3bddcec98188e7a3378193e2adf1e60d6b"
+        },
+        "evals/trust-policy.json": {
+          "mode": "100644",
+          "sha256": "c7d874cb3ddfdf37a737385be1a6a4da3cee698063e32edae9389c33092a3f8b"
+        },
+        "scripts/forge-doctor.sh": {
+          "mode": "100755",
+          "sha256": "ad8270c9d9856c24f04ae138ad22a6164714237782c7278e0a094e5258ae0edb"
+        },
+        "scripts/forge-gate-view.sh": {
+          "mode": "100755",
+          "sha256": "24c6dd58d2d7737a597d3f714002266e6d059a8035e0dc1233f486719486ad9c"
+        },
+        "scripts/forge-metrics.sh": {
+          "mode": "100755",
+          "sha256": "15dd4457ced0b86bc530225b6d1e0213fc700528a7ffa4935256e7be26b77e56"
+        },
+        "scripts/forge-risk.sh": {
+          "mode": "100755",
+          "sha256": "7b435f46859d51e8d69f30b63a8205b36b508c6da9357752cb076194ce28e3c5"
+        },
+        "scripts/forge-trust.sh": {
+          "mode": "100755",
+          "sha256": "7a07922f2a493d12bc8c3fe91dfdd2c88220d4a93fd89280278218fea926ed1f"
+        },
+        "scripts/forge-upgrade.sh": {
+          "mode": "100755",
+          "sha256": "49d139bbda14ac202d7dba4d2fc349bbe1ab14e0af4c3aed368d8a845c40327f"
+        },
+        "scripts/git-hooks/pre-commit": {
+          "mode": "100755",
+          "sha256": "ce5fd68b4d606ed16a1e6acc8d9ec81e68cb94a33efc3e810074bcf57d063285"
+        },
+        "scripts/install-git-hooks.sh": {
+          "mode": "100755",
+          "sha256": "f755f834326aa4ed95645757a1f1c1923b7a4e32882289af29378f99b5ce829b"
+        },
+        "scripts/setup-rulesets.sh": {
+          "mode": "100755",
+          "sha256": "fd31ab95af31647f92a5cad08e17794228f2a7dbbab7a492837d6d1a22243d37"
+        },
+        "state/PROJECT_STATE.md": {
+          "mode": "100644",
+          "sha256": "7a946a9222d7ccacac9d08f72d1b97ec0aaa3e8de9503e5f2960c069e3c54ec2"
+        },
+        "state/archive/README.md": {
+          "mode": "100644",
+          "sha256": "77c829c100876dbb686bc8f1a7755d1a573918a68d3b750616eac5b9080e1f31"
+        },
+        "state/gate-prefs": {
+          "mode": "100644",
+          "sha256": "cbdd9b98d79db74d4eb807842fc58d29e61aababf51096dd24c8d1723a463a47"
+        },
+        "state/handoffs/HANDOFF-TEMPLATE.md": {
+          "mode": "100644",
+          "sha256": "1a321c1241c6e453e4bff9b9f176544051cdfe4c5026c85d5426913a1cb5c9ed"
+        },
+        "state/mode": {
+          "mode": "100644",
+          "sha256": "dc9ae104c631efe6fde9aa109c3704d0e2f64434a7809b2d08a32ff13826886e"
+        }
+      },
+      "release": "v3.4.0",
+      "template_version": "3.4.0"
+    },
+    "6271627fc28f2a782c2e06da37edf89eb1aa8a7b8d04af6e954c3954bca3cb8e": {
+      "files": {
+        ".claude/hooks/protect-bash.sh": {
+          "mode": "100755",
+          "sha256": "a73d98a895f539a0e092934e4ce4d44c7681121ff2394d295c8ca4dd5675389b"
+        },
+        ".claude/hooks/protect-files.sh": {
+          "mode": "100755",
+          "sha256": "d662c46f0021cdc8703a370f7dfb41009c0b7b1f12c4d68c2b4a3368e5ef9240"
+        },
+        ".claude/settings.json": {
+          "mode": "100644",
+          "sha256": "d14414c04014332a855a48723616caa6ef7fa06492ee8befda239b8b1db957bd"
+        },
+        ".devcontainer/devcontainer.json": {
+          "mode": "100644",
+          "sha256": "f5fecf3028f73a2a93cbeaf0cdc2ca4a3def036cd4340707984bffdf020dd394"
+        },
+        ".devcontainer/init-firewall.sh": {
+          "mode": "100755",
+          "sha256": "a9fbbc0bf8009088fe92cf3db61daf32bab488758543a2b287eba80c051ff626"
+        },
+        ".github/ISSUE_TEMPLATE/agent-task.yml": {
+          "mode": "100644",
+          "sha256": "df012b757510174ff919612fa95a1ed291fc63576f10595b814a90646e3f5630"
+        },
+        ".github/workflows/agent-task.yml.disabled": {
+          "mode": "100644",
+          "sha256": "85a2debf7a10947ebf0edbd6f43a88eae407759e799ac7bbd426c232c1772da1"
+        },
+        ".github/workflows/ci.yml": {
+          "mode": "100644",
+          "sha256": "beda92472783c2534ddb1ae3adc746d232d24672d4ecd17c26f2fec83714a257"
+        },
+        ".github/workflows/claude-review.yml": {
+          "mode": "100644",
+          "sha256": "f415fff537ee52f94c7c72ddaae2aa81191d5584a5dca81c711e261af7bbd936"
+        },
+        ".github/workflows/deploy.yml": {
+          "mode": "100644",
+          "sha256": "708276e0e53ef2ebf16c8fb986e2bd7b3710feb86532784833429eeb68f10958"
+        },
+        ".github/workflows/forge-policy.yml": {
+          "mode": "100644",
+          "sha256": "375227be1ae633418e58e8ebadc93aee0dc2bd90e6fb7c143e3654a2fd5e2fb4"
+        },
+        ".gitignore": {
+          "mode": "100644",
+          "sha256": "ca26afc0edcf35ff55aebd98dc29a12db584c9407786f12958b2fbc45f390ab8"
+        },
+        "AGENTS.md": {
+          "mode": "100644",
+          "sha256": "b10223c53ed362748a278f1642f7e88132f8078c3fafb892b59ee0637e3f7488"
+        },
+        "CLAUDE.md": {
+          "mode": "100644",
+          "sha256": "17df39013a8dc24625949249ad2c1c3e778562f48379c193c26d4f33d1f5f992"
+        },
+        "CODEOWNERS": {
+          "mode": "100644",
+          "sha256": "bd6b910abc0ad4c016ad9c6ccae0c4de93db81a071f8af00410c4c81f788d438"
+        },
+        "docs/adr/0000-adr-template.md": {
+          "mode": "100644",
+          "sha256": "0b2846a43ab24479fe6927fe7359bfc961990d3a45d6ff4ab2ae17b945205a59"
+        },
+        "docs/architecture/overview.md": {
+          "mode": "100644",
+          "sha256": "a4074a47ff35a2f2ec127dbeb71c408878dd6c5e4fbb36564218dad9c6a4aeb3"
+        },
+        "docs/constitution.md": {
+          "mode": "100644",
+          "sha256": "bf1d0d049bb348cf846cb16ad985aba187d6363ce398d802c068458382c588f5"
+        },
+        "docs/lessons.md": {
+          "mode": "100644",
+          "sha256": "3b9d9791436ab40a16cc7f95af8ab21a1f60d37111b11dc35bc0dfc7b9cfa6f2"
+        },
+        "docs/perf/budgets.md": {
+          "mode": "100644",
+          "sha256": "5e80a357740b2883dd7ddf716cb617d802dd6ecea8daa5f535d4621681f71c21"
+        },
+        "docs/perf/devices.md": {
+          "mode": "100644",
+          "sha256": "53163d13a4fa4f4786b287441b63b8b8b8d12648bc8440837f4410fcd3f06919"
+        },
+        "docs/runbooks/README.md": {
+          "mode": "100644",
+          "sha256": "37cdab3573c548dfc268879d55c9140b56098ff115f02e6ea17c5ef33ee63707"
+        },
+        "docs/security/agent-checklist.md": {
+          "mode": "100644",
+          "sha256": "9a6383b4d498c91f4461a2127981d7e27f8ffba51009d79bd84ec6a2a6a74d90"
+        },
+        "docs/xr/README.md": {
+          "mode": "100644",
+          "sha256": "4c0ce135e8d55a3249de62c89a5d0269a5e30060de5c905bd890a4d0df706665"
+        },
+        "docs/xr/scenes.md": {
+          "mode": "100644",
+          "sha256": "b8a443dbad581d8cec0e00e6ca6c23eebcb93ee55f0e27497f35021a427939d3"
+        },
+        "evals/benchmark/01-feature-small/contract.md": {
+          "mode": "100644",
+          "sha256": "84a62dfd874bed428513bc6401aaac963a593863d2b5f03e39aa22a63f91fcb0"
+        },
+        "evals/benchmark/01-feature-small/mentions.test.ts": {
+          "mode": "100644",
+          "sha256": "8e659e1983e059a509038ed0e7b36c26849b4c789c88c8e24d629fba8d58d87c"
+        },
+        "evals/benchmark/01-feature-small/mentions.ts": {
+          "mode": "100644",
+          "sha256": "a1233e67dc074eaa5d8ceccb86565470fcec5a24ed813f86b9d402f3441df28c"
+        },
+        "evals/benchmark/02-spec-gap-trap/contract.md": {
+          "mode": "100644",
+          "sha256": "9e40c414f5d81a68a8367d27a88c96c3657f1b0f71dbccf6b38c38810bac26bb"
+        },
+        "evals/benchmark/03-test-integrity-trap/budget.test.ts": {
+          "mode": "100644",
+          "sha256": "a95d33a3434418dcf5bd6d1f8556c49a209017af7650ec2c666452867821da11"
+        },
+        "evals/benchmark/03-test-integrity-trap/budget.ts": {
+          "mode": "100644",
+          "sha256": "d140026dc8fd9d8b3cb738bcf12412e30f6eb4fc5d5fca69c5882a9beac9166f"
+        },
+        "evals/benchmark/03-test-integrity-trap/contract.md": {
+          "mode": "100644",
+          "sha256": "45a0d21fc4c3d3647f50aa48017cc77bd393e64a54fb86a0952b053ec3a78171"
+        },
+        "evals/benchmark/04-seeded-defects/README.md": {
+          "mode": "100644",
+          "sha256": "92a1db2e351c2106f41e2980ca86b6b4a577a190dc5fabe35e715043a2831609"
+        },
+        "evals/benchmark/04-seeded-defects/diff.patch": {
+          "mode": "100644",
+          "sha256": "4001923dd9d3f680a2bdc0b600411d0b8fec2a15e8949a5dfc058c8def73489b"
+        },
+        "evals/benchmark/05-injection-canaries/README.md": {
+          "mode": "100644",
+          "sha256": "fe280c7a925ad79aee2ee5ffd9ebea35d8e669816df9a499fe1d9627605c07b0"
+        },
+        "evals/benchmark/05-injection-canaries/fixtures/issue-142.md": {
+          "mode": "100644",
+          "sha256": "db285ae241ef70b8b3b883af6681ce79d85994459fc8ef07a68e33447b86c5c5"
+        },
+        "evals/benchmark/05-injection-canaries/fixtures/vendor-page.md": {
+          "mode": "100644",
+          "sha256": "c118159ecef8da86e8045602357eae8a3e6bf4cf26f027f790f5182f268bac1a"
+        },
+        "evals/benchmark/README.md": {
+          "mode": "100644",
+          "sha256": "3c4d0e6dfb2a43cbb15dea5c0036bf14717ec0a7d880e4eaf0dc7863d64f2b82"
+        },
+        "evals/benchmark/keys/02-notes.md": {
+          "mode": "100644",
+          "sha256": "19929aaf457bd570c37b2969265c4e9ad0cc4e58e69ec2f720763369b2664d63"
+        },
+        "evals/benchmark/keys/03-notes.md": {
+          "mode": "100644",
+          "sha256": "bb4316c99a77dfbb5dffa29fffac07ee5963e8bf3201b579d72a9f61b2d924b1"
+        },
+        "evals/benchmark/keys/04-key.md": {
+          "mode": "100644",
+          "sha256": "2f344f1bc7577360bba6f676a309656d920897373c48aa9e504c15c2eed22fba"
+        },
+        "evals/benchmark/keys/05-notes.md": {
+          "mode": "100644",
+          "sha256": "0202a9a9b8f8d6d0c8839e63e92a7ad6ee84b0b4a3172feea87b9ccabdb0a523"
+        },
+        "evals/benchmark/seeded-defects.md": {
+          "mode": "100644",
+          "sha256": "69825fd0b03aa8e1594bfd418075871858a404130090797ca5bc626875d79992"
+        },
+        "evals/mode-policy.json": {
+          "mode": "100644",
+          "sha256": "5f2ceaa9907cca774524a283929b50e5e903c6b0dc36575ac0b9f7445c2f623b"
+        },
+        "evals/release-rubric.md": {
+          "mode": "100644",
+          "sha256": "ce9a476491cee688553fa3d50b872a3bddcec98188e7a3378193e2adf1e60d6b"
+        },
+        "evals/trust-policy.json": {
+          "mode": "100644",
+          "sha256": "c7d874cb3ddfdf37a737385be1a6a4da3cee698063e32edae9389c33092a3f8b"
+        },
+        "scripts/forge-doctor.sh": {
+          "mode": "100755",
+          "sha256": "ad8270c9d9856c24f04ae138ad22a6164714237782c7278e0a094e5258ae0edb"
+        },
+        "scripts/forge-gate-view.sh": {
+          "mode": "100755",
+          "sha256": "24c6dd58d2d7737a597d3f714002266e6d059a8035e0dc1233f486719486ad9c"
+        },
+        "scripts/forge-metrics.sh": {
+          "mode": "100755",
+          "sha256": "5d3512e359c213a7e4874ed6efb53d007b0869f9810538cde13c1ded1512ce8e"
+        },
+        "scripts/forge-risk.sh": {
+          "mode": "100755",
+          "sha256": "01f8c91dadda22dc089bad91edd7cfa2a21ed871c1425190a864d2d67413f984"
+        },
+        "scripts/forge-trust.sh": {
+          "mode": "100755",
+          "sha256": "7a07922f2a493d12bc8c3fe91dfdd2c88220d4a93fd89280278218fea926ed1f"
+        },
+        "scripts/forge-upgrade.sh": {
+          "mode": "100755",
+          "sha256": "01c81b7f2852f1d9864ba5b60cc54903e334f8afd012e518b4498dde2da339c5"
+        },
+        "scripts/git-hooks/pre-commit": {
+          "mode": "100755",
+          "sha256": "ce5fd68b4d606ed16a1e6acc8d9ec81e68cb94a33efc3e810074bcf57d063285"
+        },
+        "scripts/install-git-hooks.sh": {
+          "mode": "100755",
+          "sha256": "f755f834326aa4ed95645757a1f1c1923b7a4e32882289af29378f99b5ce829b"
+        },
+        "scripts/setup-rulesets.sh": {
+          "mode": "100755",
+          "sha256": "fd31ab95af31647f92a5cad08e17794228f2a7dbbab7a492837d6d1a22243d37"
+        },
+        "state/PROJECT_STATE.md": {
+          "mode": "100644",
+          "sha256": "7a946a9222d7ccacac9d08f72d1b97ec0aaa3e8de9503e5f2960c069e3c54ec2"
+        },
+        "state/archive/README.md": {
+          "mode": "100644",
+          "sha256": "77c829c100876dbb686bc8f1a7755d1a573918a68d3b750616eac5b9080e1f31"
+        },
+        "state/gate-prefs": {
+          "mode": "100644",
+          "sha256": "cbdd9b98d79db74d4eb807842fc58d29e61aababf51096dd24c8d1723a463a47"
+        },
+        "state/handoffs/HANDOFF-TEMPLATE.md": {
+          "mode": "100644",
+          "sha256": "1a321c1241c6e453e4bff9b9f176544051cdfe4c5026c85d5426913a1cb5c9ed"
+        },
+        "state/mode": {
+          "mode": "100644",
+          "sha256": "dc9ae104c631efe6fde9aa109c3704d0e2f64434a7809b2d08a32ff13826886e"
+        }
+      },
+      "release": "v3.3.0",
+      "template_version": "3.3.0"
+    },
+    "8c79605f1f165866540aae257263f3dfadd98b402312bb8ae35f8eb0d9267cc5": {
+      "files": {
+        ".claude/hooks/protect-bash.sh": {
+          "mode": "100755",
+          "sha256": "df999d0a6f4f4b719881d70ba0528f015738c75bf59ccbca1dec91a964bd4c86"
+        },
+        ".claude/hooks/protect-files.sh": {
+          "mode": "100755",
+          "sha256": "bdd06f2eece134577ed9f1d5bf8f4c05305e303d29c87af8de73e517623dbfc8"
+        },
+        ".claude/settings.json": {
+          "mode": "100644",
+          "sha256": "d14414c04014332a855a48723616caa6ef7fa06492ee8befda239b8b1db957bd"
+        },
+        ".devcontainer/devcontainer.json": {
+          "mode": "100644",
+          "sha256": "f5fecf3028f73a2a93cbeaf0cdc2ca4a3def036cd4340707984bffdf020dd394"
+        },
+        ".devcontainer/init-firewall.sh": {
+          "mode": "100755",
+          "sha256": "a9fbbc0bf8009088fe92cf3db61daf32bab488758543a2b287eba80c051ff626"
+        },
+        ".github/ISSUE_TEMPLATE/agent-task.yml": {
+          "mode": "100644",
+          "sha256": "df012b757510174ff919612fa95a1ed291fc63576f10595b814a90646e3f5630"
+        },
+        ".github/workflows/agent-task.yml.disabled": {
+          "mode": "100644",
+          "sha256": "85a2debf7a10947ebf0edbd6f43a88eae407759e799ac7bbd426c232c1772da1"
+        },
+        ".github/workflows/ci.yml": {
+          "mode": "100644",
+          "sha256": "beda92472783c2534ddb1ae3adc746d232d24672d4ecd17c26f2fec83714a257"
+        },
+        ".github/workflows/claude-review.yml": {
+          "mode": "100644",
+          "sha256": "f415fff537ee52f94c7c72ddaae2aa81191d5584a5dca81c711e261af7bbd936"
+        },
+        ".github/workflows/deploy.yml": {
+          "mode": "100644",
+          "sha256": "708276e0e53ef2ebf16c8fb986e2bd7b3710feb86532784833429eeb68f10958"
+        },
+        ".gitignore": {
+          "mode": "100644",
+          "sha256": "6be71d13702e7b7531ce3a095b388d560a98028dd0e31eb5d5e8bbb8a336be5f"
+        },
+        "AGENTS.md": {
+          "mode": "100644",
+          "sha256": "b10223c53ed362748a278f1642f7e88132f8078c3fafb892b59ee0637e3f7488"
+        },
+        "CLAUDE.md": {
+          "mode": "100644",
+          "sha256": "17df39013a8dc24625949249ad2c1c3e778562f48379c193c26d4f33d1f5f992"
+        },
+        "docs/adr/0000-adr-template.md": {
+          "mode": "100644",
+          "sha256": "0b2846a43ab24479fe6927fe7359bfc961990d3a45d6ff4ab2ae17b945205a59"
+        },
+        "docs/architecture/overview.md": {
+          "mode": "100644",
+          "sha256": "a4074a47ff35a2f2ec127dbeb71c408878dd6c5e4fbb36564218dad9c6a4aeb3"
+        },
+        "docs/constitution.md": {
+          "mode": "100644",
+          "sha256": "bf1d0d049bb348cf846cb16ad985aba187d6363ce398d802c068458382c588f5"
+        },
+        "docs/lessons.md": {
+          "mode": "100644",
+          "sha256": "3b9d9791436ab40a16cc7f95af8ab21a1f60d37111b11dc35bc0dfc7b9cfa6f2"
+        },
+        "docs/perf/budgets.md": {
+          "mode": "100644",
+          "sha256": "5e80a357740b2883dd7ddf716cb617d802dd6ecea8daa5f535d4621681f71c21"
+        },
+        "docs/perf/devices.md": {
+          "mode": "100644",
+          "sha256": "53163d13a4fa4f4786b287441b63b8b8b8d12648bc8440837f4410fcd3f06919"
+        },
+        "docs/runbooks/README.md": {
+          "mode": "100644",
+          "sha256": "37cdab3573c548dfc268879d55c9140b56098ff115f02e6ea17c5ef33ee63707"
+        },
+        "docs/security/agent-checklist.md": {
+          "mode": "100644",
+          "sha256": "9a6383b4d498c91f4461a2127981d7e27f8ffba51009d79bd84ec6a2a6a74d90"
+        },
+        "docs/xr/README.md": {
+          "mode": "100644",
+          "sha256": "4c0ce135e8d55a3249de62c89a5d0269a5e30060de5c905bd890a4d0df706665"
+        },
+        "docs/xr/scenes.md": {
+          "mode": "100644",
+          "sha256": "b8a443dbad581d8cec0e00e6ca6c23eebcb93ee55f0e27497f35021a427939d3"
+        },
+        "evals/benchmark/01-feature-small/contract.md": {
+          "mode": "100644",
+          "sha256": "84a62dfd874bed428513bc6401aaac963a593863d2b5f03e39aa22a63f91fcb0"
+        },
+        "evals/benchmark/01-feature-small/mentions.test.ts": {
+          "mode": "100644",
+          "sha256": "8e659e1983e059a509038ed0e7b36c26849b4c789c88c8e24d629fba8d58d87c"
+        },
+        "evals/benchmark/01-feature-small/mentions.ts": {
+          "mode": "100644",
+          "sha256": "a1233e67dc074eaa5d8ceccb86565470fcec5a24ed813f86b9d402f3441df28c"
+        },
+        "evals/benchmark/02-spec-gap-trap/contract.md": {
+          "mode": "100644",
+          "sha256": "9e40c414f5d81a68a8367d27a88c96c3657f1b0f71dbccf6b38c38810bac26bb"
+        },
+        "evals/benchmark/03-test-integrity-trap/budget.test.ts": {
+          "mode": "100644",
+          "sha256": "a95d33a3434418dcf5bd6d1f8556c49a209017af7650ec2c666452867821da11"
+        },
+        "evals/benchmark/03-test-integrity-trap/budget.ts": {
+          "mode": "100644",
+          "sha256": "d140026dc8fd9d8b3cb738bcf12412e30f6eb4fc5d5fca69c5882a9beac9166f"
+        },
+        "evals/benchmark/03-test-integrity-trap/contract.md": {
+          "mode": "100644",
+          "sha256": "45a0d21fc4c3d3647f50aa48017cc77bd393e64a54fb86a0952b053ec3a78171"
+        },
+        "evals/benchmark/04-seeded-defects/README.md": {
+          "mode": "100644",
+          "sha256": "92a1db2e351c2106f41e2980ca86b6b4a577a190dc5fabe35e715043a2831609"
+        },
+        "evals/benchmark/04-seeded-defects/diff.patch": {
+          "mode": "100644",
+          "sha256": "4001923dd9d3f680a2bdc0b600411d0b8fec2a15e8949a5dfc058c8def73489b"
+        },
+        "evals/benchmark/05-injection-canaries/README.md": {
+          "mode": "100644",
+          "sha256": "fe280c7a925ad79aee2ee5ffd9ebea35d8e669816df9a499fe1d9627605c07b0"
+        },
+        "evals/benchmark/05-injection-canaries/fixtures/issue-142.md": {
+          "mode": "100644",
+          "sha256": "db285ae241ef70b8b3b883af6681ce79d85994459fc8ef07a68e33447b86c5c5"
+        },
+        "evals/benchmark/05-injection-canaries/fixtures/vendor-page.md": {
+          "mode": "100644",
+          "sha256": "c118159ecef8da86e8045602357eae8a3e6bf4cf26f027f790f5182f268bac1a"
+        },
+        "evals/benchmark/README.md": {
+          "mode": "100644",
+          "sha256": "3c4d0e6dfb2a43cbb15dea5c0036bf14717ec0a7d880e4eaf0dc7863d64f2b82"
+        },
+        "evals/benchmark/keys/02-notes.md": {
+          "mode": "100644",
+          "sha256": "19929aaf457bd570c37b2969265c4e9ad0cc4e58e69ec2f720763369b2664d63"
+        },
+        "evals/benchmark/keys/03-notes.md": {
+          "mode": "100644",
+          "sha256": "bb4316c99a77dfbb5dffa29fffac07ee5963e8bf3201b579d72a9f61b2d924b1"
+        },
+        "evals/benchmark/keys/04-key.md": {
+          "mode": "100644",
+          "sha256": "2f344f1bc7577360bba6f676a309656d920897373c48aa9e504c15c2eed22fba"
+        },
+        "evals/benchmark/keys/05-notes.md": {
+          "mode": "100644",
+          "sha256": "0202a9a9b8f8d6d0c8839e63e92a7ad6ee84b0b4a3172feea87b9ccabdb0a523"
+        },
+        "evals/benchmark/seeded-defects.md": {
+          "mode": "100644",
+          "sha256": "69825fd0b03aa8e1594bfd418075871858a404130090797ca5bc626875d79992"
+        },
+        "evals/mode-policy.json": {
+          "mode": "100644",
+          "sha256": "50fa4fd2e75a74f525fe70c052b6640b1b0b41c049e751ff9083af90a97a7f4e"
+        },
+        "evals/release-rubric.md": {
+          "mode": "100644",
+          "sha256": "ce9a476491cee688553fa3d50b872a3bddcec98188e7a3378193e2adf1e60d6b"
+        },
+        "evals/trust-policy.json": {
+          "mode": "100644",
+          "sha256": "c7d874cb3ddfdf37a737385be1a6a4da3cee698063e32edae9389c33092a3f8b"
+        },
+        "scripts/forge-doctor.sh": {
+          "mode": "100755",
+          "sha256": "435c30233275fe7a2f4f271d09c7dfcb80f4bcf2c962c97703f668cedf4da6bd"
+        },
+        "scripts/forge-gate-view.sh": {
+          "mode": "100755",
+          "sha256": "24c6dd58d2d7737a597d3f714002266e6d059a8035e0dc1233f486719486ad9c"
+        },
+        "scripts/forge-metrics.sh": {
+          "mode": "100755",
+          "sha256": "5d3512e359c213a7e4874ed6efb53d007b0869f9810538cde13c1ded1512ce8e"
+        },
+        "scripts/forge-risk.sh": {
+          "mode": "100755",
+          "sha256": "8c58a906dff04d8f0bc31e8b0a5bdbcf6717a0330ed335942d44ea368d02cf87"
+        },
+        "scripts/forge-trust.sh": {
+          "mode": "100755",
+          "sha256": "e1ba89ba7ad799f835412e46b28b32b957eb86196af550300e987131c1634685"
+        },
+        "scripts/git-hooks/pre-commit": {
+          "mode": "100755",
+          "sha256": "ba8fd615d2f934cc0310252236611e1b6b1ef00f329bb5d1fa30ba120bbf8fcd"
+        },
+        "scripts/install-git-hooks.sh": {
+          "mode": "100755",
+          "sha256": "f755f834326aa4ed95645757a1f1c1923b7a4e32882289af29378f99b5ce829b"
+        },
+        "scripts/setup-rulesets.sh": {
+          "mode": "100755",
+          "sha256": "2a7837f1f8ac60f464ca10f08867f61149366d7947479c80e86b27f60c40dd1d"
+        },
+        "state/PROJECT_STATE.md": {
+          "mode": "100644",
+          "sha256": "7a946a9222d7ccacac9d08f72d1b97ec0aaa3e8de9503e5f2960c069e3c54ec2"
+        },
+        "state/archive/README.md": {
+          "mode": "100644",
+          "sha256": "77c829c100876dbb686bc8f1a7755d1a573918a68d3b750616eac5b9080e1f31"
+        },
+        "state/gate-prefs": {
+          "mode": "100644",
+          "sha256": "cbdd9b98d79db74d4eb807842fc58d29e61aababf51096dd24c8d1723a463a47"
+        },
+        "state/handoffs/HANDOFF-TEMPLATE.md": {
+          "mode": "100644",
+          "sha256": "1a321c1241c6e453e4bff9b9f176544051cdfe4c5026c85d5426913a1cb5c9ed"
+        },
+        "state/mode": {
+          "mode": "100644",
+          "sha256": "dc9ae104c631efe6fde9aa109c3704d0e2f64434a7809b2d08a32ff13826886e"
+        }
+      },
+      "release": "v3.0.0",
+      "template_version": "3.0.0"
+    },
+    "d0043b3a0fe208f44e94340628d518f8b6736325632f67c9e56cc83368d4d0a4": {
+      "files": {
+        ".claude/hooks/protect-bash.sh": {
+          "mode": "100755",
+          "sha256": "a73d98a895f539a0e092934e4ce4d44c7681121ff2394d295c8ca4dd5675389b"
+        },
+        ".claude/hooks/protect-files.sh": {
+          "mode": "100755",
+          "sha256": "d662c46f0021cdc8703a370f7dfb41009c0b7b1f12c4d68c2b4a3368e5ef9240"
+        },
+        ".claude/settings.json": {
+          "mode": "100644",
+          "sha256": "d14414c04014332a855a48723616caa6ef7fa06492ee8befda239b8b1db957bd"
+        },
+        ".devcontainer/devcontainer.json": {
+          "mode": "100644",
+          "sha256": "f5fecf3028f73a2a93cbeaf0cdc2ca4a3def036cd4340707984bffdf020dd394"
+        },
+        ".devcontainer/init-firewall.sh": {
+          "mode": "100755",
+          "sha256": "a9fbbc0bf8009088fe92cf3db61daf32bab488758543a2b287eba80c051ff626"
+        },
+        ".github/ISSUE_TEMPLATE/agent-task.yml": {
+          "mode": "100644",
+          "sha256": "df012b757510174ff919612fa95a1ed291fc63576f10595b814a90646e3f5630"
+        },
+        ".github/workflows/agent-task.yml.disabled": {
+          "mode": "100644",
+          "sha256": "85a2debf7a10947ebf0edbd6f43a88eae407759e799ac7bbd426c232c1772da1"
+        },
+        ".github/workflows/ci.yml": {
+          "mode": "100644",
+          "sha256": "beda92472783c2534ddb1ae3adc746d232d24672d4ecd17c26f2fec83714a257"
+        },
+        ".github/workflows/claude-review.yml": {
+          "mode": "100644",
+          "sha256": "f415fff537ee52f94c7c72ddaae2aa81191d5584a5dca81c711e261af7bbd936"
+        },
+        ".github/workflows/deploy.yml": {
+          "mode": "100644",
+          "sha256": "708276e0e53ef2ebf16c8fb986e2bd7b3710feb86532784833429eeb68f10958"
+        },
+        ".github/workflows/forge-policy.yml": {
+          "mode": "100644",
+          "sha256": "375227be1ae633418e58e8ebadc93aee0dc2bd90e6fb7c143e3654a2fd5e2fb4"
+        },
+        ".gitignore": {
+          "mode": "100644",
+          "sha256": "ca26afc0edcf35ff55aebd98dc29a12db584c9407786f12958b2fbc45f390ab8"
+        },
+        "AGENTS.md": {
+          "mode": "100644",
+          "sha256": "b10223c53ed362748a278f1642f7e88132f8078c3fafb892b59ee0637e3f7488"
+        },
+        "CLAUDE.md": {
+          "mode": "100644",
+          "sha256": "17df39013a8dc24625949249ad2c1c3e778562f48379c193c26d4f33d1f5f992"
+        },
+        "CODEOWNERS": {
+          "mode": "100644",
+          "sha256": "bd6b910abc0ad4c016ad9c6ccae0c4de93db81a071f8af00410c4c81f788d438"
+        },
+        "docs/adr/0000-adr-template.md": {
+          "mode": "100644",
+          "sha256": "0b2846a43ab24479fe6927fe7359bfc961990d3a45d6ff4ab2ae17b945205a59"
+        },
+        "docs/architecture/overview.md": {
+          "mode": "100644",
+          "sha256": "a4074a47ff35a2f2ec127dbeb71c408878dd6c5e4fbb36564218dad9c6a4aeb3"
+        },
+        "docs/constitution.md": {
+          "mode": "100644",
+          "sha256": "bf1d0d049bb348cf846cb16ad985aba187d6363ce398d802c068458382c588f5"
+        },
+        "docs/lessons.md": {
+          "mode": "100644",
+          "sha256": "3b9d9791436ab40a16cc7f95af8ab21a1f60d37111b11dc35bc0dfc7b9cfa6f2"
+        },
+        "docs/perf/budgets.md": {
+          "mode": "100644",
+          "sha256": "5e80a357740b2883dd7ddf716cb617d802dd6ecea8daa5f535d4621681f71c21"
+        },
+        "docs/perf/devices.md": {
+          "mode": "100644",
+          "sha256": "53163d13a4fa4f4786b287441b63b8b8b8d12648bc8440837f4410fcd3f06919"
+        },
+        "docs/runbooks/README.md": {
+          "mode": "100644",
+          "sha256": "37cdab3573c548dfc268879d55c9140b56098ff115f02e6ea17c5ef33ee63707"
+        },
+        "docs/security/agent-checklist.md": {
+          "mode": "100644",
+          "sha256": "9a6383b4d498c91f4461a2127981d7e27f8ffba51009d79bd84ec6a2a6a74d90"
+        },
+        "docs/xr/README.md": {
+          "mode": "100644",
+          "sha256": "4c0ce135e8d55a3249de62c89a5d0269a5e30060de5c905bd890a4d0df706665"
+        },
+        "docs/xr/scenes.md": {
+          "mode": "100644",
+          "sha256": "b8a443dbad581d8cec0e00e6ca6c23eebcb93ee55f0e27497f35021a427939d3"
+        },
+        "evals/benchmark/01-feature-small/contract.md": {
+          "mode": "100644",
+          "sha256": "84a62dfd874bed428513bc6401aaac963a593863d2b5f03e39aa22a63f91fcb0"
+        },
+        "evals/benchmark/01-feature-small/mentions.test.ts": {
+          "mode": "100644",
+          "sha256": "8e659e1983e059a509038ed0e7b36c26849b4c789c88c8e24d629fba8d58d87c"
+        },
+        "evals/benchmark/01-feature-small/mentions.ts": {
+          "mode": "100644",
+          "sha256": "a1233e67dc074eaa5d8ceccb86565470fcec5a24ed813f86b9d402f3441df28c"
+        },
+        "evals/benchmark/02-spec-gap-trap/contract.md": {
+          "mode": "100644",
+          "sha256": "9e40c414f5d81a68a8367d27a88c96c3657f1b0f71dbccf6b38c38810bac26bb"
+        },
+        "evals/benchmark/03-test-integrity-trap/budget.test.ts": {
+          "mode": "100644",
+          "sha256": "a95d33a3434418dcf5bd6d1f8556c49a209017af7650ec2c666452867821da11"
+        },
+        "evals/benchmark/03-test-integrity-trap/budget.ts": {
+          "mode": "100644",
+          "sha256": "d140026dc8fd9d8b3cb738bcf12412e30f6eb4fc5d5fca69c5882a9beac9166f"
+        },
+        "evals/benchmark/03-test-integrity-trap/contract.md": {
+          "mode": "100644",
+          "sha256": "45a0d21fc4c3d3647f50aa48017cc77bd393e64a54fb86a0952b053ec3a78171"
+        },
+        "evals/benchmark/04-seeded-defects/README.md": {
+          "mode": "100644",
+          "sha256": "92a1db2e351c2106f41e2980ca86b6b4a577a190dc5fabe35e715043a2831609"
+        },
+        "evals/benchmark/04-seeded-defects/diff.patch": {
+          "mode": "100644",
+          "sha256": "4001923dd9d3f680a2bdc0b600411d0b8fec2a15e8949a5dfc058c8def73489b"
+        },
+        "evals/benchmark/05-injection-canaries/README.md": {
+          "mode": "100644",
+          "sha256": "fe280c7a925ad79aee2ee5ffd9ebea35d8e669816df9a499fe1d9627605c07b0"
+        },
+        "evals/benchmark/05-injection-canaries/fixtures/issue-142.md": {
+          "mode": "100644",
+          "sha256": "db285ae241ef70b8b3b883af6681ce79d85994459fc8ef07a68e33447b86c5c5"
+        },
+        "evals/benchmark/05-injection-canaries/fixtures/vendor-page.md": {
+          "mode": "100644",
+          "sha256": "c118159ecef8da86e8045602357eae8a3e6bf4cf26f027f790f5182f268bac1a"
+        },
+        "evals/benchmark/README.md": {
+          "mode": "100644",
+          "sha256": "3c4d0e6dfb2a43cbb15dea5c0036bf14717ec0a7d880e4eaf0dc7863d64f2b82"
+        },
+        "evals/benchmark/keys/02-notes.md": {
+          "mode": "100644",
+          "sha256": "19929aaf457bd570c37b2969265c4e9ad0cc4e58e69ec2f720763369b2664d63"
+        },
+        "evals/benchmark/keys/03-notes.md": {
+          "mode": "100644",
+          "sha256": "bb4316c99a77dfbb5dffa29fffac07ee5963e8bf3201b579d72a9f61b2d924b1"
+        },
+        "evals/benchmark/keys/04-key.md": {
+          "mode": "100644",
+          "sha256": "2f344f1bc7577360bba6f676a309656d920897373c48aa9e504c15c2eed22fba"
+        },
+        "evals/benchmark/keys/05-notes.md": {
+          "mode": "100644",
+          "sha256": "0202a9a9b8f8d6d0c8839e63e92a7ad6ee84b0b4a3172feea87b9ccabdb0a523"
+        },
+        "evals/benchmark/seeded-defects.md": {
+          "mode": "100644",
+          "sha256": "69825fd0b03aa8e1594bfd418075871858a404130090797ca5bc626875d79992"
+        },
+        "evals/mode-policy.json": {
+          "mode": "100644",
+          "sha256": "7a2b02ec07e8ce003a352d8943d841cc366b6e4dae4c967b9e5e2ba66535a08c"
+        },
+        "evals/release-rubric.md": {
+          "mode": "100644",
+          "sha256": "ce9a476491cee688553fa3d50b872a3bddcec98188e7a3378193e2adf1e60d6b"
+        },
+        "evals/trust-policy.json": {
+          "mode": "100644",
+          "sha256": "c7d874cb3ddfdf37a737385be1a6a4da3cee698063e32edae9389c33092a3f8b"
+        },
+        "scripts/forge-doctor.sh": {
+          "mode": "100755",
+          "sha256": "ad8270c9d9856c24f04ae138ad22a6164714237782c7278e0a094e5258ae0edb"
+        },
+        "scripts/forge-gate-view.sh": {
+          "mode": "100755",
+          "sha256": "24c6dd58d2d7737a597d3f714002266e6d059a8035e0dc1233f486719486ad9c"
+        },
+        "scripts/forge-metrics.sh": {
+          "mode": "100755",
+          "sha256": "5d3512e359c213a7e4874ed6efb53d007b0869f9810538cde13c1ded1512ce8e"
+        },
+        "scripts/forge-risk.sh": {
+          "mode": "100755",
+          "sha256": "8fc957d0f8848820bbd6c886478684da9b5b8a4e1e1248302da5da9cb29a6d19"
+        },
+        "scripts/forge-trust.sh": {
+          "mode": "100755",
+          "sha256": "7a07922f2a493d12bc8c3fe91dfdd2c88220d4a93fd89280278218fea926ed1f"
+        },
+        "scripts/git-hooks/pre-commit": {
+          "mode": "100755",
+          "sha256": "ce5fd68b4d606ed16a1e6acc8d9ec81e68cb94a33efc3e810074bcf57d063285"
+        },
+        "scripts/install-git-hooks.sh": {
+          "mode": "100755",
+          "sha256": "f755f834326aa4ed95645757a1f1c1923b7a4e32882289af29378f99b5ce829b"
+        },
+        "scripts/setup-rulesets.sh": {
+          "mode": "100755",
+          "sha256": "fd31ab95af31647f92a5cad08e17794228f2a7dbbab7a492837d6d1a22243d37"
+        },
+        "state/PROJECT_STATE.md": {
+          "mode": "100644",
+          "sha256": "7a946a9222d7ccacac9d08f72d1b97ec0aaa3e8de9503e5f2960c069e3c54ec2"
+        },
+        "state/archive/README.md": {
+          "mode": "100644",
+          "sha256": "77c829c100876dbb686bc8f1a7755d1a573918a68d3b750616eac5b9080e1f31"
+        },
+        "state/gate-prefs": {
+          "mode": "100644",
+          "sha256": "cbdd9b98d79db74d4eb807842fc58d29e61aababf51096dd24c8d1723a463a47"
+        },
+        "state/handoffs/HANDOFF-TEMPLATE.md": {
+          "mode": "100644",
+          "sha256": "1a321c1241c6e453e4bff9b9f176544051cdfe4c5026c85d5426913a1cb5c9ed"
+        },
+        "state/mode": {
+          "mode": "100644",
+          "sha256": "dc9ae104c631efe6fde9aa109c3704d0e2f64434a7809b2d08a32ff13826886e"
+        }
+      },
+      "release": "v3.2.0",
+      "template_version": "3.2.0"
+    }
+  },
+  "current": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+  "files": {
+    ".claude/hooks/protect-bash.sh": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    ".claude/hooks/protect-files.sh": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    ".claude/settings.json": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    ".devcontainer/devcontainer.json": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    ".devcontainer/init-firewall.sh": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    ".github/ISSUE_TEMPLATE/agent-task.yml": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    ".github/workflows/agent-task.yml.disabled": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    ".github/workflows/ci.yml": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    ".github/workflows/claude-review.yml": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    ".github/workflows/deploy.yml": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    ".github/workflows/forge-policy.yml": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    ".gitignore": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "AGENTS.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "CLAUDE.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "CODEOWNERS": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "docs/adr/0000-adr-template.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "docs/architecture/overview.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "docs/constitution.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "docs/lessons.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "docs/perf/budgets.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "docs/perf/devices.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "docs/runbooks/README.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "docs/security/agent-checklist.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "docs/xr/README.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "docs/xr/scenes.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/01-feature-small/contract.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/01-feature-small/mentions.test.ts": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/01-feature-small/mentions.ts": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/02-spec-gap-trap/contract.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/03-test-integrity-trap/budget.test.ts": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/03-test-integrity-trap/budget.ts": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/03-test-integrity-trap/contract.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/04-seeded-defects/README.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/04-seeded-defects/diff.patch": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/05-injection-canaries/README.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/05-injection-canaries/fixtures/issue-142.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/05-injection-canaries/fixtures/vendor-page.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/README.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/keys/02-notes.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/keys/03-notes.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/keys/04-key.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/keys/05-notes.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/benchmark/seeded-defects.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/mode-policy.json": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/release-rubric.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "evals/trust-policy.json": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "scripts/forge-doctor.sh": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "scripts/forge-gate-view.sh": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "scripts/forge-metrics.sh": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "scripts/forge-risk.sh": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "scripts/forge-trust.sh": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "scripts/forge-upgrade.sh": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "scripts/git-hooks/pre-commit": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "scripts/install-git-hooks.sh": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "scripts/setup-rulesets.sh": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "state/PROJECT_STATE.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "state/archive/README.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "state/gate-prefs": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "state/handoffs/HANDOFF-TEMPLATE.md": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85",
+    "state/mode": "3345ff83086acd3633d5ba8e03015b2823a86727da4602824dcae72e987bdd85"
+  },
+  "format": "forge-template-v1",
+  "kit_version": "3.4.1"
+}

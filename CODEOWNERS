@@ -1,0 +1,21 @@
+# Write-capable human owner(s) for enforcement-bearing paths (anchors server-side review).
+# (for example: @octocat @octo-org/maintainers). GitHub uses this file from the PR base branch.
+
+/tests/contract/                 @sushidoescode
+/docs/constitution.md            @sushidoescode
+/.claude/hooks/                  @sushidoescode
+/scripts/git-hooks/              @sushidoescode
+
+# Definitions are human-owned; ordinary result claims are writable. Attested results remain owned.
+/evals/                          @sushidoescode
+/evals/results/
+/evals/results/attested/         @sushidoescode
+
+/state/mode                      @sushidoescode
+/state/trust.json                @sushidoescode
+/.github/workflows/              @sushidoescode
+
+# Own this policy and both alternate CODEOWNERS locations before one can be introduced.
+/CODEOWNERS                      @sushidoescode
+/.github/CODEOWNERS              @sushidoescode
+/docs/CODEOWNERS                 @sushidoescode

@@ -1,0 +1,10 @@
+.DS_Store
+.env
+.env.*
+.claude/settings.local.json
+CLAUDE.local.md
+state/gate-views/
+state/run-records/
+state/gate-ledger/
+# TODO(stack): append engine-specific ignores when the stack lands
+# (Unity: Library/ Temp/ Logs/ UserSettings/ · Gradle/Android: .gradle/ build/ local.properties · Godot: .godot/)

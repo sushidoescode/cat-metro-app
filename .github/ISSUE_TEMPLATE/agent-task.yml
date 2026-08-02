@@ -1,0 +1,20 @@
+name: Agent task contract
+description: A task scoped for agent execution via /forge-build
+labels: [agent-task]
+body:
+  - type: textarea
+    attributes: { label: Goal, description: "One sentence. What exists after this task that doesn't now?" }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: Spec reference, description: "PRD/ADR sections this implements (e.g. docs/prd/PRD.md#4.2)" }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: Acceptance criteria, description: "Numbered; each independently testable. Vague criteria will be bounced by the testability lint." }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: Scope boundary, description: "Files/dirs in scope; explicit non-goals. Must be disjoint from other in-flight contracts." }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: Assumptions, description: "The executing agent lists its assumptions here before coding; an unlisted assumption is a defect." }
+  - type: input
+    attributes: { label: Stop conditions, description: "Defaults always apply (schema change, new dep, criteria conflict → stop and ask); add task-specific ones here." }

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cat Metro — a routing puzzle, coming to Google Play</title>
+<meta name="description" content="Cat Metro is a one-thumb metro routing puzzle. Tap the switch, route the trains, get every cat home. No forced ads, no energy bars. Coming to Google Play, late summer 2026.">
+<meta property="og:title" content="Cat Metro — tap the switch, get every cat home">
+<meta property="og:description" content="A one-thumb metro routing puzzle with no forced ads and no energy bars. Being built in public, daily. Coming to Google Play.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://catmetro.com">
+<style>
+  :root{
+    --navy:#16223A; --navy-deep:#0E1626; --cream:#F2E9D8; --cream-dim:#B9AE98;
+    --teal:#2FA6A0; --orange:#E8863A; --line-w:6px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    background:linear-gradient(180deg,var(--navy-deep) 0%,var(--navy) 38%,var(--navy) 100%);
+    color:var(--cream);
+    font-family:-apple-system,"Helvetica Neue",Helvetica,Segoe UI,Arial,sans-serif;
+    min-height:100svh;display:flex;flex-direction:column;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--teal)}
+  a:focus-visible{outline:3px solid var(--orange);outline-offset:3px;border-radius:2px}
+
+  header{display:flex;align-items:center;gap:.75rem;padding:1.5rem clamp(1.25rem,5vw,4rem)}
+  .marker{width:22px;height:22px;border-radius:50%;border:5px solid var(--orange);background:var(--cream);flex:none}
+  .wordmark{font-size:1rem;font-weight:800;letter-spacing:.34em;text-transform:uppercase}
+  .wordmark span{color:var(--orange)}
+
+  main{flex:1;display:flex;flex-direction:column;justify-content:center;
+       padding:clamp(1.5rem,4vw,3rem) clamp(1.25rem,5vw,4rem) 0}
+
+  .eyebrow{color:var(--cream-dim);font-size:.78rem;letter-spacing:.26em;text-transform:uppercase;margin-bottom:1.1rem}
+  h1{
+    font-weight:850;line-height:.98;letter-spacing:-.022em;
+    font-size:clamp(2.6rem,7.2vw,5.4rem);max-width:14ch;text-wrap:balance;
+  }
+  h1 em{font-style:normal;color:var(--teal)}
+  .sub{margin-top:1.4rem;max-width:44ch;font-size:clamp(1rem,1.4vw,1.15rem);line-height:1.65;color:var(--cream-dim)}
+  .sub strong{color:var(--cream);font-weight:600}
+
+  /* ——— the line ——— */
+  .line{margin:clamp(2.5rem,6vh,4.5rem) 0 0;position:relative}
+  .track{list-style:none;display:flex;justify-content:space-between;position:relative;
+         padding:0 6px}
+  .track::before{content:"";position:absolute;left:0;right:0;top:10px;height:var(--line-w);
+                 background:var(--teal);border-radius:3px}
+  .train{position:absolute;top:4px;left:0;width:18px;height:18px;border-radius:5px;
+         background:var(--orange);box-shadow:0 0 0 3px var(--navy),0 0 14px rgba(232,134,58,.55);
+         animation:ride 14s linear infinite}
+  @keyframes ride{
+    0%{left:0}
+    22%{left:31%} 27%{left:31%}
+    48%{left:62%} 53%{left:62%}
+    78%{left:calc(100% - 18px)} 100%{left:calc(100% - 18px)}
+  }
+  .track li{position:relative;padding-top:2.4rem;width:24%;min-width:0}
+  .track li::before{content:"";position:absolute;top:2px;left:0;width:14px;height:14px;
+                    border-radius:50%;background:var(--cream);border:4px solid var(--navy-deep);
+                    box-shadow:0 0 0 3px var(--teal)}
+  .track li.now::before{background:var(--orange)}
+  .st-name{display:block;font-size:.72rem;font-weight:800;letter-spacing:.2em;text-transform:uppercase}
+  .st-note{display:block;margin-top:.35rem;font-size:.8rem;line-height:1.45;color:var(--cream-dim)}
+  .track li.now .st-name{color:var(--orange)}
+
+  .follow{margin-top:clamp(2.5rem,6vh,4rem);display:flex;flex-wrap:wrap;gap:1rem;align-items:center}
+  .btn{display:inline-block;padding:.85rem 1.4rem;border-radius:8px;font-weight:700;
+       text-decoration:none;font-size:.95rem}
+  .btn-primary{background:var(--orange);color:var(--navy-deep)}
+  .btn-primary:hover{background:#f09a55}
+  .btn-quiet{color:var(--cream);border:1.5px solid rgba(242,233,216,.35)}
+  .btn-quiet:hover{border-color:var(--cream)}
+  .hash{color:var(--cream-dim);font-size:.9rem;letter-spacing:.06em}
+
+  footer{display:flex;flex-wrap:wrap;gap:.5rem 2rem;align-items:center;
+         padding:2.2rem clamp(1.25rem,5vw,4rem) 2rem;color:var(--cream-dim);font-size:.85rem}
+  footer a{color:var(--cream-dim)}
+  footer a:hover{color:var(--cream)}
+  footer .spacer{flex:1}
+
+  @media (max-width:640px){
+    .track{flex-direction:column;gap:1.9rem;padding:6px 0 0 4px}
+    .track::before{left:10px;right:auto;top:0;bottom:0;width:var(--line-w);height:auto}
+    .train{animation:ride-v 14s linear infinite;left:4px;top:0}
+    @keyframes ride-v{
+      0%{top:0}
+      22%{top:31%} 27%{top:31%}
+      48%{top:62%} 53%{top:62%}
+      78%{top:calc(100% - 18px)} 100%{top:calc(100% - 18px)}
+    }
+    .track li{padding:0 0 0 2.6rem;width:auto}
+    .track li::before{top:0;left:4px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .train{animation:none;left:31%}
+    @media (max-width:640px){.train{left:4px;top:31%}}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="marker" aria-hidden="true"></div>
+  <div class="wordmark">Cat<span>&nbsp;Metro</span></div>
+</header>
+
+<main>
+  <p class="eyebrow">A one-thumb routing puzzle · Google Play · late summer 2026</p>
+  <h1>Tap the switch.<br>Get every cat <em>home</em>.</h1>
+  <p class="sub">Color-coded cat commuters, tiny metro trains, one junction switch under your
+  thumb. <strong>No forced ads. No energy bars. Every level solvable free.</strong>
+  We're building it in public — every day, warts and all.</p>
+
+  <div class="line" aria-label="Progress: closed test running now; building in public daily; launching on Google Play late summer 2026; then Whisker Junction">
+    <div class="train" aria-hidden="true"></div>
+    <ol class="track">
+      <li class="now">
+        <span class="st-name">Closed Test</span>
+        <span class="st-note">Running now with our first 12 riders</span>
+      </li>
+      <li>
+        <span class="st-name">Built in Public</span>
+        <span class="st-note">Daily build logs, honest numbers</span>
+      </li>
+      <li>
+        <span class="st-name">Google Play</span>
+        <span class="st-note">First departure, late summer 2026</span>
+      </li>
+      <li>
+        <span class="st-name">Whisker Junction</span>
+        <span class="st-note">Every cat home on time</span>
+      </li>
+    </ol>
+  </div>
+
+  <div class="follow">
+    <a class="btn btn-primary" href="https://x.com/CatMetroGame">Follow the build — @CatMetroGame</a>
+    <a class="btn btn-quiet" href="https://www.tiktok.com/@CatMetroGame">TikTok</a>
+    <span class="hash">#Shipaton</span>
+  </div>
+</main>
+
+<footer>
+  <span>© 2026 Cat Metro</span>
+  <span class="spacer"></span>
+  <a href="mailto:hello@catmetro.com">hello@catmetro.com</a>
+  <a href="/privacy/">Privacy policy</a>
+</footer>
+
+</body>
+</html>

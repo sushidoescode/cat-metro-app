@@ -1,0 +1,15 @@
+# Tag-triggered deploy — the structural half of "humans ship, agents don't":
+# agents have no tag-push permission, and this is the ONLY path to production.
+# forge-init fills the steps for your target, or leaves this commented if no production exists yet.
+name: deploy
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production   # add reviewers/protection rules on this environment in repo settings
+    steps:
+      - uses: actions/checkout@v5
+      # TODO(deploy): no production yet — fill Google Play rollout (internal → closed → production track) when the first release exists
+      # Keep migrations expand/contract so rollback stays one step (see /forge-release).

@@ -1,0 +1,34 @@
+# Issue-to-PR automation (Strategy S6) — SHIPPED DISABLED BY DESIGN.
+# This module inherits its safety from CI gates you have WATCHED work. Enable only when the
+# /forge-retro graduation checkpoint is met (CI first-pass ≥80%, low escapes, a mechanical tail
+# exists), by renaming:  git mv .github/workflows/agent-task.yml.disabled .github/workflows/agent-task.yml
+# Record the enabling decision + date in state/PROJECT_STATE.md.
+#
+# Scope discipline: this runs ONLY on issues a human labeled `agent-ready` — crisp, mechanical,
+# low-risk contracts (dep bumps, small reproducible fixes, doc corrections). Never ambiguous work.
+name: agent-task
+on:
+  issues: { types: [labeled] }
+permissions: { contents: write, pull-requests: write, issues: write }
+jobs:
+  implement:
+    if: >
+      github.event.label.name == 'agent-ready' &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - run: bash scripts/install-git-hooks.sh   # enforcement travels into CI checkouts too
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Execute the forge build loop (/forge-build) on issue #${{ github.event.issue.number }},
+            treating the issue body as the task contract. Hard bounds: contract scope only; if the
+            issue is ambiguous, missing acceptance criteria, or needs a dependency/schema change,
+            STOP and comment on the issue instead of implementing. Open a PR with the per-criterion
+            evidence table; never merge it.
+          claude_args: "--max-turns 30 --max-budget-usd 3"
+# The human review + merge gate is unchanged: this workflow can only ever produce a PR that the
+# standing ci + claude-review workflows and a human must still pass.

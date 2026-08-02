@@ -1,0 +1,198 @@
+<title>Cat Metro — Shipaton 2026 Execution Report</title>
+<style>
+  :root {
+    --bg: #FAF7F2; --ink: #1F2530; --muted: #66707F; --rule: #DCD4C8;
+    --accent: #0E8A78; --accent-ink: #0A6B5D; --line2: #D97B29;
+    --card: #F2EDE4; --card-ink: #3A4150; --code-bg: #EFE9DE;
+    --good: #2E7D4F; --warn: #B26A1B; --bad: #B3402F;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151A21; --ink: #E9E5DC; --muted: #97A0AE; --rule: #2A3240;
+      --accent: #35B39E; --accent-ink: #4CC5B0; --line2: #E29A55;
+      --card: #1C232D; --card-ink: #C9CFDA; --code-bg: #1E2631;
+      --good: #5FBE8A; --warn: #DFA45C; --bad: #E07A64;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151A21; --ink: #E9E5DC; --muted: #97A0AE; --rule: #2A3240;
+    --accent: #35B39E; --accent-ink: #4CC5B0; --line2: #E29A55;
+    --card: #1C232D; --card-ink: #C9CFDA; --code-bg: #1E2631;
+    --good: #5FBE8A; --warn: #DFA45C; --bad: #E07A64;
+  }
+  :root[data-theme="light"] {
+    --bg: #FAF7F2; --ink: #1F2530; --muted: #66707F; --rule: #DCD4C8;
+    --accent: #0E8A78; --accent-ink: #0A6B5D; --line2: #D97B29;
+    --card: #F2EDE4; --card-ink: #3A4150; --code-bg: #EFE9DE;
+    --good: #2E7D4F; --warn: #B26A1B; --bad: #B3402F;
+  }
+  html { background: var(--bg); }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: Charter, "Iowan Old Style", Georgia, "Times New Roman", serif;
+    font-size: 17px; line-height: 1.62; margin: 0; padding: 0 20px 96px;
+  }
+  .wrap { max-width: 74ch; margin: 0 auto; }
+  h1, h2, h3, .eyebrow, .sign, th {
+    font-family: "Avenir Next", Avenir, Futura, "Century Gothic", "Trebuchet MS", sans-serif;
+  }
+  h1 { font-size: 2.1rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; margin: 0.4em 0 0.2em; text-wrap: balance; }
+  h2 { font-size: 1.35rem; font-weight: 700; margin: 0 0 0.5em; text-wrap: balance; }
+  h3 { font-size: 1.02rem; font-weight: 600; margin: 1.6em 0 0.4em; }
+  p { margin: 0.8em 0; }
+  a { color: var(--accent-ink); }
+  code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.86em; background: var(--code-bg); padding: 0.08em 0.35em; border-radius: 3px; }
+  .masthead { border-bottom: 3px solid var(--ink); padding: 44px 0 18px; margin-bottom: 8px; }
+  .sign {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: var(--ink); color: var(--bg); border-radius: 6px;
+    padding: 7px 16px 7px 10px; font-weight: 600; font-size: 0.82rem; letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .sign .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); flex: none; }
+  .masthead .meta { color: var(--muted); font-size: 0.92rem; margin-top: 10px; }
+  section { border-top: 1px solid var(--rule); padding-top: 26px; margin-top: 40px; }
+  .eyebrow {
+    display: flex; align-items: center; gap: 9px;
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 10px;
+  }
+  .eyebrow::before { content: ""; width: 11px; height: 11px; border-radius: 50%; background: var(--accent); flex: none; }
+  .eyebrow.l2::before { background: var(--line2); }
+  .verdict {
+    background: var(--card); border-left: 4px solid var(--line2); border-radius: 0 8px 8px 0;
+    padding: 16px 20px; margin: 18px 0; color: var(--card-ink);
+  }
+  .verdict strong { color: var(--ink); }
+  .tablebox { overflow-x: auto; margin: 16px 0; border: 1px solid var(--rule); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.86rem; line-height: 1.45; }
+  th { text-align: left; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  th, td { padding: 9px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { white-space: nowrap; }
+  .num { font-variant-numeric: tabular-nums; }
+  ul { padding-left: 1.2em; } li { margin: 0.35em 0; }
+  .filelist li { margin: 0.2em 0; }
+  .k { color: var(--good); font-weight: 600; } .w { color: var(--warn); font-weight: 600; } .x { color: var(--bad); font-weight: 600; }
+  .small { font-size: 0.88rem; color: var(--muted); }
+  .final { border-top: 3px solid var(--ink); margin-top: 48px; padding-top: 22px; font-style: italic; }
+  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <span class="sign"><span class="dot"></span>Shipaton 2026 · Execution Report</span>
+    <h1>Cat Metro</h1>
+    <p class="meta">Independent verification &amp; definitive build plan · Prepared 31 July 2026, the day the submission window opened · All claims re-verified against primary sources by a 10-agent research fleet · Machine-readable deliverables in <code>cat-metro/deliverables/</code></p>
+  </header>
+
+  <section>
+    <div class="eyebrow l2">Line 1 · Executive verdict</div>
+    <h2>Build the routing puzzle. Rename it. Rebalance the plan around five verified facts the prior research got wrong or missed.</h2>
+    <p>The prior blueprint&rsquo;s core recommendation survives audit: a one-thumb, deterministic, fixed-tick route-switching puzzle with cat commuters is the highest risk-adjusted-EV concept for a solo Unity developer in this window. The whitespace is real: <strong>no cat-themed metro or route-switching puzzle exists on Google Play</strong> (four store searches, 31&nbsp;Jul). The ancestors are gone — Trainyard delisted in 2019, Mini Motorways never shipped on Android, STATIONflow and Overcrowd are PC-only. And both genre poles leave an opening: premium transit puzzles are beloved but tiny (Railbound: 211K installs at $4.99 despite an Apple Design Award), while F2P routing hits are enormous but resented (Arrows: 103.6M installs in 12 months with &ldquo;ad every other level&rdquo; backlash; Bus Traffic Fever: 15.4M installs, 3.72★).</p>
+    <div class="verdict"><strong>Five corrections now bound the plan:</strong> ① &ldquo;Loopline&rdquo; is renamed <strong>Cat Metro</strong> — the old name collides on both stores and <code>catmetro.com/.io/.app</code> are all free. ② The Grand Prize shortlist is literally <strong>total revenue reported in RevenueCat</strong> — the catalog was repriced upward. ③ OneSignal Journeys are plan-gated (Free&nbsp;=&nbsp;1, Growth&nbsp;$19/mo&nbsp;=&nbsp;3) — the 7-journey design was unbuildable and is now a 3-journey architecture. ④ <strong>#BuildInPublic pays $30k</strong> and Samsung&rsquo;s award is non-cash — priorities flipped. ⑤ Unity 6000.3.17f1+ ships AGP&nbsp;9 (SDK breakage) — pin <strong>6000.3.16f1</strong>.</div>
+    <p><strong>Launch target: public 1.0 on Google Play, Aug 24–28.</strong> Feasible only because the 12-tester / 14-day closed test starts Aug 1–2 — the store-access clock, not the game, is the critical path.</p>
+  </section>
+
+  <section>
+    <div class="eyebrow">Line 2 · The game</div>
+    <h2>Cat Metro — one thumb, sixty seconds, every line moving</h2>
+    <p>Portrait puzzle: tap two-state junction switches to route color-and-symbol-coded cat commuter trains to matching stations before platform queues overflow. 45–90-second levels, instant retry, cause-first failure camera. A pure-C# fixed-tick simulation (8 ticks/s, seeded, command-logged — no physics, no NavMesh) makes every level solver-validated, replayable, and AI-generatable behind deterministic quality gates.</p>
+    <ul>
+      <li><strong>Launch scope:</strong> 30 curated levels across 6 districts · 4 mechanics (switch, queue, second source, wildcard) · seeded shared Daily Line · share-card + challenge deep link · full offline play.</li>
+      <li><strong>Monetization — &ldquo;fair by design&rdquo;:</strong> $6.99 All Access (bonus district, both premium themes, daily rewind, permanently zero non-rewarded ads) · $9.99 Supporter Pack · $2.99 themes · $1.99/$4.99 rewind packs · rewarded ads <em>only when the player asks</em>. No interstitials, no energy, no loot boxes, <strong>no subscription</strong> (formally rejected — no honest recurring value a solo dev can sustain in-window).</li>
+      <li><strong>Stack:</strong> Unity 6000.3.16f1 · URP · IL2CPP/ARM64 · API 24→36 · purchases-unity 9.7.0 + RevenueCatUI · OneSignal 5.3.2 · Google Mobile Ads 11.3.0 · one EDM4U (1.2.188).</li>
+      <li><strong>Awards:</strong> P0 — Best Game, HAMM, #BuildInPublic, OneSignal, Catvertising. P1 — Design, Grand Prize, Most Viral. P2 — Stripe Funnel (Day-35 gate), Galaxy. Skip — Replit, JetBrains, influencer categories.</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="eyebrow">Line 3 · Concept decision</div>
+    <h2>Six concepts, one winner — shown with the math</h2>
+    <p>Scored on the brief&rsquo;s 24 criteria (23 weighted 1–10 scores; weights sum to 100; overall EV = weighted total). Alternatives were designed <em>before</em> the verification results returned, to avoid anchoring on the prior reports.</p>
+    <div class="tablebox"><table>
+      <tr><th>Concept</th><th class="num">Score /10</th><th>Ruling</th></tr>
+      <tr><td><strong>C1 Cat Metro</strong> (route-switching)</td><td class="num"><strong>8.08</strong></td><td class="k">BUILD</td></tr>
+      <tr><td>C4 &ldquo;Meowmelon&rdquo; (cat merge-drop)</td><td class="num">7.10</td><td class="w">New Plan B — reuses the whole commercial stack if the Day-7 fun gate fails</td></tr>
+      <tr><td>C2 ChronoRoute: Tokyo Express</td><td class="num">6.70</td><td class="x">Dominated variant of C1 (drag input, interstitial/energy baggage)</td></tr>
+      <tr><td>C5 &ldquo;Whisker Watch&rdquo; (daily deduction)</td><td class="num">6.60</td><td class="x">Traction ceiling, weak HAMM/Catvertising surface</td></tr>
+      <tr><td>C6 &ldquo;Cat Snack Line&rdquo; (idle café)</td><td class="num">6.19</td><td class="x">Best raw monetization, worst feasibility + ethics narrative</td></tr>
+      <tr><td>C3 CineCraft: Director&rsquo;s Cut</td><td class="num">5.61</td><td class="x">Asset volume + subjective scoring; removed even as Plan B</td></tr>
+    </table></div>
+    <p class="small">Red-team notes (full argument in <code>specs/product_spec.md</code>): switch-tapping sits one cognitive step above tap-to-release arrow games — an input class with 103M verified installs; the sim&rsquo;s watchability is the plan&rsquo;s biggest real product risk and is gate-checked at Day 7, not assumed; &ldquo;Cat Metro&rdquo; deliberately invites the Mini Metro comparison while the mechanic (discrete switching vs line-drawing) stays distinct.</p>
+  </section>
+
+  <section>
+    <div class="eyebrow">Line 4 · Verified fact ledger</div>
+    <h2>What the Official Rules actually say <span class="small">(published in full; fetched 31 Jul)</span></h2>
+    <div class="tablebox"><table>
+      <tr><th>Item</th><th>Verified fact</th></tr>
+      <tr><td>Window</td><td>Submissions <strong>Jul 31 8:00am PDT – Sep 30 11:45pm PDT</strong> · judging Oct 1–13 · winners Oct 21 (FAQ says Oct 22 — rules prevail)</td></tr>
+      <tr><td>Eligibility</td><td>First public release during the window on App Store / Google Play / Galaxy Store (new in 2026); pre-work allowed; updates ineligible; must be accessible from the US</td></tr>
+      <tr><td>Integration</td><td>RevenueCat SDK powering ≥1 purchase <em>or</em> serving ads through RevenueCat Ads (an ads-only app qualifies)</td></tr>
+      <tr><td>Submission</td><td>&lt;2-min public YouTube/Vimeo video (on-device footage, no third-party trademarks/music) · store URL · 1024² icon · frameless 1179×2556 screenshot · free trial or promo codes for judges</td></tr>
+      <tr><td>Grand Prize $100k</td><td>Shortlist = <strong>total revenue reported in RevenueCat</strong>; criteria &ldquo;Early and Effective Release&rdquo; + &ldquo;Growth by numbers&rdquo;; highest revenue doesn&rsquo;t auto-win</td></tr>
+      <tr><td>Best Game (new)</td><td>&ldquo;Great gameplay, art direction, and a monetization fit that suits the genre&rdquo;</td></tr>
+      <tr><td>Catvertising (new)</td><td>&ldquo;Clever placements, smart integration with the rest of your revenue stack&hellip; an experience users don&rsquo;t hate&rdquo;</td></tr>
+      <tr><td>OneSignal $25k</td><td>Implementation · User value · Resourcefulness; &ldquo;a single deployed message is sufficient for eligibility&rdquo;</td></tr>
+      <tr><td>#BuildInPublic <strong>$30k</strong></td><td>Story (&ldquo;audience size does not matter&rdquo;) · Engagement · Lessons · tag #Shipaton</td></tr>
+      <tr><td>Multi-category</td><td>Multi-entry allowed; <strong>no one-prize-per-project cap found</strong></td></tr>
+      <tr><td>Marketing / AI</td><td>No paid-UA restrictions (marketing experiments are a named criterion) · <strong>no AI-disclosure requirement anywhere</strong></td></tr>
+      <tr><td>2025 calibration</td><td>812 submissions · Grand winner: 17k users / $30,017 / 1,750 payers (organic + ASO) · category awards won at 1k–13k users, $1k–2k revenue</td></tr>
+    </table></div>
+    <div class="tablebox"><table>
+      <tr><th>Platform fact</th><th>Verified 31 Jul 2026</th></tr>
+      <tr><td>Play access (new personal acct)</td><td><strong>12 testers, 14 continuous days</strong> → production application (≤7d typical) → first-release review (up to 7d+). 3–5 weeks total — the critical path</td></tr>
+      <tr><td>Target API / Billing</td><td>API 36 + Billing Library 8 required from Aug 31 2026 — purchases-unity 9.7.0 ships Billing 8.3.0 ✓ · 16 KB pages unavoidable at API 36</td></tr>
+      <tr><td>Play fees (US/UK/EEA)</td><td>Changed Jun 30 2026: 10% service + 5% Play billing = <strong>15% effective</strong>; external billing now permitted</td></tr>
+      <tr><td>Judge access</td><td>Play one-time promo codes <strong>work for one-time in-app products</strong> — judge unlock solved</td></tr>
+      <tr><td>RevenueCat Ads</td><td>Public-beta <em>tracking layer</em> over an existing ad SDK (AdMob serves; Unity uses manual AdTracker, 9.1.0+; server-verified rewards not in Unity)</td></tr>
+      <tr><td>RC in Unity</td><td>Paywalls v2 + Customer Center ✓ (device-only; 3 open Android crash issues → custom fallback) · Placements ✓ · Test Store ✓ · Experiments/Targeting <span class="w">Pro-plan gated</span> · win-back offers <span class="x">iOS-only</span></td></tr>
+      <tr><td>OneSignal in Unity</td><td>5.3.2 · custom events since 5.2.0 (paid plans) · Journeys: Free 1 / Growth 3 / Pro 20 · frequency capping Enterprise-only → caps enforced in-app</td></tr>
+      <tr><td>Families policy</td><td>Cute art ≠ child-directed, but child-appealing <em>store listing</em> art can trigger rejection → 13+ targeting, adult-legible diorama look</td></tr>
+      <tr><td>Benchmarks</td><td>Widely-quoted puzzle retention figures are 2022-vintage; current medians D1 ~22% / D7 ~4% / D30 ~0.7%, top-10% ≈ 40/12/4 · US Android rewarded eCPM $15–30 (2024 measured) · NA gaming CPI $1.68</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Line 5 · Money</div>
+    <h2>Model B: Balanced Hybrid — generous free game, premium complete edition</h2>
+    <div class="tablebox"><table>
+      <tr><th>SKU</th><th>Price</th><th>Type</th><th>Contents</th></tr>
+      <tr><td><code>cm_all_access</code></td><td class="num">$6.99</td><td>Non-consumable</td><td>Bonus district · both premium themes · daily free rewind · permanently zero non-rewarded ad surfaces · gold badge</td></tr>
+      <tr><td><code>cm_supporter_pack</code></td><td class="num">$9.99</td><td>Non-consumable</td><td>All Access + Founder livery + name-a-cat cameo + supporter badge (shop-only, never interrupts)</td></tr>
+      <tr><td><code>cm_theme_sakura</code> / <code>_neon</code></td><td class="num">$2.99</td><td>Non-consumable</td><td>Full visual + ambient theme</td></tr>
+      <tr><td><code>cm_rewind_5</code> / <code>_20</code></td><td class="num">$1.99 / $4.99</td><td>Consumable</td><td>Rewind to last safe decision tick — never required; 1 free daily; also earnable via rewarded ad</td></tr>
+    </table></div>
+    <p><strong>Cut deliberately:</strong> starter pack, theme bundle (decoy), currency packs, streak-saver IAP, season pass, cosmetic club, any subscription. First paywall only after the Level-5 win; never after a first failure; payers fully suppressed from offers. Rewarded placements (5, all opt-in, all tracked in RC AdTracker): failure rewind, ticket doubler, daily-gift doubler, streak saver, theme rental. <strong>Zero interstitials is the Catvertising thesis</strong> — &ldquo;ads only when the player asks,&rdquo; measured end-to-end.</p>
+    <p class="small">Organic base case ≈ 3k installs and ~$500–900 net revenue by Sep 30 — inside the verified range where 2025 category awards were won ($1–2k), below Grand Prize scale unless a creative breaks out. Full auditable scenarios: <code>data/revenue_scenarios.csv</code>.</p>
+  </section>
+
+  <section>
+    <div class="eyebrow">Line 6 · Schedule</div>
+    <h2>The only chain that can kill the entry</h2>
+    <p><strong>Aug 1–2:</strong> closed test live with 12 opted-in testers (clock starts) · <strong>Aug 7:</strong> fun gate — 5 testers voluntarily replay, else pivot to Plan B · <strong>Aug 14:</strong> 20 validated levels + commercial SDK spikes pass on device · <strong>Aug 15–16:</strong> apply for production access · <strong>Aug 21:</strong> commercial beta full smoke · <strong>Aug 24–28: PUBLIC 1.0</strong> · <strong>Sep:</strong> five weeks of live operation, experiments, build-in-public · <strong>Sep 26:</strong> submission freeze · <strong>Sep 30:</strong> submitted with time to spare.</p>
+    <p class="small">Hard cut gates at Days 7 / 14 / 21 / 28 / 35 / 42 define exactly what gets cut and what never does (purchase integrity, crash-free floor, honest listing, judge access). Full day-by-day plan: <code>data/roadmap_56_days.csv</code>.</p>
+  </section>
+
+  <section>
+    <div class="eyebrow">Line 7 · The package</div>
+    <h2>Deliverables index</h2>
+    <p>Everything is in <code>cat-metro/deliverables/</code>:</p>
+    <ul class="filelist">
+      <li><code>FINAL_REPORT.md</code> — this report in full (27 sections) · <code>DECISIONS_BRIEF.md</code> — locked decisions, single source of truth</li>
+      <li><strong>data/</strong> — <code>monetization_catalog.csv</code> · <code>revenuecat_configuration.csv</code> · <code>entitlement_map.json</code> · <code>offering_and_placement_map.json</code> · <code>paywall_experiments.csv</code> · <code>ad_placement_map.csv</code> · <code>economy_sources_and_sinks.csv</code> · <code>revenue_scenarios.csv</code> · <code>analytics_event_taxonomy.csv</code> · <code>onesignal_journeys.csv</code> · <code>notification_copy.csv</code> · <code>experiment_backlog.csv</code> · <code>level_schema.json</code> · <code>example_levels.json</code> · <code>roadmap_56_days.csv</code> · <code>risk_register.csv</code> · <code>device_test_matrix.csv</code> · <code>google_play_checklist.csv</code> · <code>github_issue_backlog.md</code></li>
+      <li><strong>specs/</strong> — <code>product_spec.md</code> · <code>monetization_spec.md</code> · <code>revenuecat_implementation.md</code> · <code>onesignal_retention.md</code> · <code>liveops_spec.md</code> · <code>growth_aso_plan.md</code> · <code>submission_script.md</code> · <code>architecture.md</code></li>
+      <li><strong>agents/</strong> — <code>agent_system_prompts.md</code> — the 10-agent build fleet with path fences, merge gates, and escalation rules</li>
+    </ul>
+    <p class="small">20 deliverable files · ~5,400 lines of specs and backlog · 14 CSVs and 4 JSON files, all machine-validated (consistent columns, valid JSON, offering and product IDs reconciled across every document). Three CSVs open with a <code>#</code> policy comment line — skip it or pass <code>comment='#'</code>.</p>
+    <h3>Manual checks only you can close</h3>
+    <ul>
+      <li>Devpost prizes page on Aug 1 (finalized categories) + email <code>shipaton@revenuecat.com</code> re: multi-category wins &amp; pre-order listings</li>
+      <li>RevenueCat plan tier (Experiments gating) + Ads beta approval · OneSignal Growth-plan custom events confirmation</li>
+      <li>USPTO/EUIPO screen for &ldquo;Cat Metro&rdquo; / &ldquo;Meowtro&rdquo; · register <code>catmetro.com/.io/.app</code> + social handles today</li>
+      <li>One smoke build on Unity 6000.3.21f1 (AGP 9) — if green, unpin; else stay on 6000.3.16f1</li>
+    </ul>
+  </section>
+
+  <p class="final">The strongest version of this entry is not a better idea — it&rsquo;s discipline bolted to verified rails: release in week 4 because the closed-test clock and the &ldquo;Early and Effective Release&rdquo; criterion both demand it; monetize generously because every competitor&rsquo;s one-star reviews prove the alternative; let the deterministic sim be the content factory, the marketing engine, and the AI-quality story; and spend the final five weeks doing what 90% of entries never get to do — operating a live game with real players and honest numbers.</p>
+</div>

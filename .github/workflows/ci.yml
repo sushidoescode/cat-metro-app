@@ -1,0 +1,17 @@
+# The machine gate every agent and human faces. forge-init resolves every double-brace token below:
+# concrete steps get filled in; deliberately deferred ones become "# TODO(<name>): ..." comments
+# (the init completion check greps for leftover tokens and fails if any remain).
+name: ci
+on: { pull_request: {}, push: { branches: [main] } }
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # TODO(stack): toolchain setup once the engine lands (pinned version + cache)
+      # TODO(stack): lockfile-strict dependency install once a package manager exists
+      - run: "bash scripts/check.sh"      # lint + typecheck — must exist and must be able to fail
+      - run: "bash scripts/test.sh"       # full suite; add coverage floor once a baseline exists
+      # TODO(e2e): critical-journey tests once they exist
+      # TODO(audit): dependency audit gate once a package manager exists
+      # TODO(secret-scan): gitleaks step — required before graduation to production mode

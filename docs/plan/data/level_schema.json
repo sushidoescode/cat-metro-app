@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CatMetroLevel",
+  "description": "v2 of the Loopline appendix schema. Additions over v1: teaching/mechanic metadata (validator enforces the 'one new mechanic at a time' rule), accessibility constraints (minActionWindowTicks), authoring provenance, and star thresholds. A level file is the single source of truth; ScriptableObjects are a build-time cache only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "name", "seed", "board", "sources", "stations", "switches", "waves", "win", "meta"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 2 },
+    "id": { "type": "string", "pattern": "^L[0-9]{3}$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 48 },
+    "seed": { "type": "integer", "minimum": 0 },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["band", "difficultyTarget", "mechanics", "newMechanic", "teachingGoal", "authoredBy"],
+      "properties": {
+        "band": { "enum": ["onboarding", "alternation", "queue-reading", "two-source", "combo", "multi-line", "timed-gates", "pressure", "combination", "expert", "capstone", "daily"] },
+        "difficultyTarget": { "type": "number", "minimum": 0, "maximum": 1 },
+        "mechanics": { "type": "array", "items": { "enum": ["switch", "queue", "second-source", "wildcard", "cooldown", "gate", "express", "reversible"] }, "minItems": 1 },
+        "newMechanic": { "type": ["string", "null"], "description": "At most one mechanic may appear here that is not in any earlier level's mechanics list; validator enforces" },
+        "teachingGoal": { "type": "string", "maxLength": 160 },
+        "minActionWindowTicks": { "type": "integer", "minimum": 3, "description": "Accessibility floor: solver rejects levels whose only solutions require action windows below this. Default 6 ticks (~750ms at 8 ticks/s)" },
+        "authoredBy": { "enum": ["human", "llm+validator", "generator+validator"] },
+        "validatedAt": { "type": "string", "description": "ISO date of last validator pass; CI rejects stale entries after schema/sim changes" }
+      }
+    },
+    "board": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodes", "edges"],
+      "properties": {
+        "nodes": {
+          "type": "array", "minItems": 3, "maxItems": 40,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["id", "x", "y"],
+            "properties": {
+              "id": { "type": "string" },
+              "x": { "type": "number" }, "y": { "type": "number" },
+              "queueCapacity": { "type": "integer", "minimum": 1, "maximum": 8 }
+            }
+          }
+        },
+        "edges": {
+          "type": "array", "minItems": 2, "maxItems": 70,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["id", "from", "to", "travelTicks"],
+            "properties": {
+              "id": { "type": "string" },
+              "from": { "type": "string" }, "to": { "type": "string" },
+              "travelTicks": { "type": "integer", "minimum": 1, "maximum": 40 },
+              "oneWay": { "type": "boolean", "default": true },
+              "reversible": { "type": "boolean", "default": false, "description": "Only valid when meta.mechanics includes 'reversible'" }
+            }
+          }
+        }
+      }
+    },
+    "sources": {
+      "type": "array", "minItems": 1, "maxItems": 6,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["nodeId", "allowedColors"],
+        "properties": {
+          "nodeId": { "type": "string" },
+          "allowedColors": { "type": "array", "minItems": 1, "items": { "enum": ["red", "blue", "yellow", "green", "wild"] } }
+        }
+      }
+    },
+    "stations": {
+      "type": "array", "minItems": 1, "maxItems": 6,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["nodeId", "accepts"],
+        "properties": {
+          "nodeId": { "type": "string" },
+          "accepts": { "type": "array", "minItems": 1, "items": { "enum": ["red", "blue", "yellow", "green", "wild"] } },
+          "capacity": { "type": "integer", "minimum": 1, "maximum": 12 }
+        }
+      }
+    },
+    "switches": {
+      "type": "array", "maxItems": 10,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["id", "nodeId", "routes", "initialRoute"],
+        "properties": {
+          "id": { "type": "string" },
+          "nodeId": { "type": "string" },
+          "routes": { "type": "array", "minItems": 2, "maxItems": 3, "items": { "type": "string" } },
+          "initialRoute": { "type": "integer", "minimum": 0, "maximum": 2 },
+          "cooldownTicks": { "type": "integer", "minimum": 0, "maximum": 20, "default": 0 }
+        }
+      }
+    },
+    "gates": {
+      "type": "array", "maxItems": 8,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["edgeId", "openWindows"],
+        "properties": {
+          "edgeId": { "type": "string" },
+          "openWindows": {
+            "type": "array", "minItems": 1,
+            "items": { "type": "array", "prefixItems": [{ "type": "integer" }, { "type": "integer" }], "minItems": 2, "maxItems": 2 }
+          },
+          "previewTicks": { "type": "integer", "minimum": 8, "default": 16, "description": "How far ahead the gate schedule is visualized; accessibility floor 8" }
+        }
+      }
+    },
+    "waves": {
+      "type": "array", "minItems": 1, "maxItems": 30,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["tick", "sourceNode", "color", "count"],
+        "properties": {
+          "tick": { "type": "integer", "minimum": 0, "maximum": 2000 },
+          "sourceNode": { "type": "string" },
+          "color": { "enum": ["red", "blue", "yellow", "green", "wild"] },
+          "count": { "type": "integer", "minimum": 1, "maximum": 8 },
+          "spacingTicks": { "type": "integer", "minimum": 1, "maximum": 40, "default": 12 },
+          "express": { "type": "boolean", "default": false, "description": "Cannot wait in node queues; only valid when meta.mechanics includes 'express'" }
+        }
+      }
+    },
+    "win": {
+      "type": "object", "additionalProperties": false, "required": ["deliveries", "timeLimitTicks", "stars"],
+      "properties": {
+        "deliveries": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "timeLimitTicks": { "type": "integer", "minimum": 20, "maximum": 4000 },
+        "perfectMaxSwitches": { "type": "integer", "minimum": 0, "maximum": 200 },
+        "stars": {
+          "type": "object", "additionalProperties": false, "required": ["two", "three"],
+          "description": "Star 1 = clear. Score thresholds for 2 and 3 stars; validator checks 3-star is achievable by solver within band slack",
+          "properties": { "two": { "type": "integer", "minimum": 1 }, "three": { "type": "integer", "minimum": 1 } }
+        }
+      }
+    },
+    "economy": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "baseTickets": { "type": "integer", "minimum": 0, "maximum": 500 },
+        "perfectBonus": { "type": "integer", "minimum": 0, "maximum": 500 }
+      }
+    },
+    "tags": { "type": "array", "maxItems": 12, "items": { "type": "string" } }
+  }
+}

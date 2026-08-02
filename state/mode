@@ -1,0 +1,5 @@
+# Stakes posture for this project: mode=sprint | standard | production
+# What each mode changes is defined in evals/mode-policy.json (human-changeable only).
+# This file is under the enforcement belts too: changing it is a HUMAN-authored commit
+# (FORGE_HUMAN_OVERRIDE=1) — agents never dial down the ceremony they run under.
+mode=sprint

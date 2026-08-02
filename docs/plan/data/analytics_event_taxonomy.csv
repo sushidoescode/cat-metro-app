@@ -1,0 +1,46 @@
+event_name,area,trigger,required_params,optional_params,user_properties_updated,destinations,privacy_class,qa_procedure
+app_open,acquisition,app foregrounded (new session after 30m gap),"session_id,app_version,install_age_days,build_channel","referrer_source,notification_campaign_id","last_seen_at,session_count","analytics,onesignal_tag",behavioral_no_pii,cold launch + warm launch; verify session dedupe at 29m/31m
+first_open,acquisition,first launch ever,"app_version,device_tier,os_api_level",install_referrer,install_date,analytics,behavioral_no_pii,fresh install; verify fires exactly once incl. after reinstall w/ backup off
+tutorial_started,onboarding,level 1 loaded,variant,,,analytics,behavioral_no_pii,fresh profile
+tutorial_step,onboarding,each teaching beat completed,"step_id,duration_s",retries,,analytics,behavioral_no_pii,walk all steps; abandon mid-step and relaunch
+tutorial_completed,onboarding,level 3 won,"duration_s,total_retries",,tutorial_done,"analytics,onesignal_event",behavioral_no_pii,verify OneSignal receives event within 60s
+level_started,gameplay,level begins,"level_id,mode,attempt,difficulty_target","from_screen,active_theme",,analytics,behavioral_no_pii,campaign + daily + retry paths
+switch_toggled,gameplay,player toggles switch,"level_id,switch_id,tick",,,analytics_sampled_10pct,behavioral_no_pii,verify sampling; compare vs replay log
+level_completed,gameplay,win condition met,"level_id,mode,attempt,duration_s,switches_used,perfect,score,stars",rewind_used,"highest_level,last_level_at","analytics,onesignal_tag(highest_level)",behavioral_no_pii,verify stars/score match result screen
+level_failed,gameplay,fail condition met,"level_id,mode,attempt,fail_reason,progress_pct,duration_s","congested_node,queue_state","last_fail_level","analytics,onesignal_event",behavioral_no_pii,force each fail_reason enum value
+level_quit,gameplay,player exits mid-level,"level_id,attempt,progress_pct,duration_s",,,analytics,behavioral_no_pii,quit via back + home + kill
+rewind_used,gameplay,rewind consumed,"level_id,source(free|purchased|rewarded),balance_after",,,analytics,behavioral_no_pii,all 3 sources; verify ledger decrement once
+daily_unlocked,retention,daily mode unlocked (L7),highest_level,,daily_unlocked,"analytics,onesignal_tag,onesignal_event",behavioral_no_pii,verify single fire; OneSignal custom event is Journey 1 entry trigger
+daily_started,retention,daily level begins,"seed,local_date",streak_days,,analytics,behavioral_no_pii,verify same seed as server-of-truth for date
+daily_completed,retention,daily won,"seed,score,rank_bucket,streak_days",,"streak_days,daily_last_done","analytics,onesignal_event",behavioral_no_pii,complete on 2 devices; verify same seed
+streak_changed,retention,streak increments/resets,"new_streak,change(inc|reset|saved)",saver_source,streak_days,"analytics,onesignal_tag",behavioral_no_pii,timezone-change test; DST edge
+event_joined,liveops,weekly event first play,"event_id",,active_event,"analytics,onesignal_event",behavioral_no_pii,join + verify journey entry
+event_completed,liveops,weekly event goal met,"event_id,score",,,"analytics,onesignal_event",behavioral_no_pii,verify journey exit
+ticket_earned,economy,soft currency granted,"amount,source(level|daily|gift|event|ad),balance_after",,,analytics,behavioral_no_pii,each source; balance reconciles
+ticket_spent,economy,soft currency spent,"amount,sink(cosmetic|saver),item_id,balance_after",,,analytics,behavioral_no_pii,insufficient-funds path
+cosmetic_unlocked,collection,cosmetic acquired,"item_id,method(tickets|iap|event|default)",,owned_cosmetics_count,analytics,behavioral_no_pii,each method
+cosmetic_equipped,collection,theme/skin applied,"item_id",previous_item_id,active_theme,"analytics,onesignal_tag(preferred_theme)",behavioral_no_pii,persist across restart
+ad_offer_viewed,ads,rewarded offer shown,"placement,level_id",eligibility_reason,,analytics,behavioral_no_pii,every placement; verify caps suppress
+ad_offer_declined,ads,player declines offer,"placement",,,analytics,behavioral_no_pii,decline path never penalizes
+rewarded_ad_started,ads,ad begins,"placement,network,ad_unit",,,"analytics,revenuecat_adtracker",behavioral_ad,airplane-mode failure path
+rewarded_ad_completed,ads,reward callback verified,"placement,network,reward_type,reward_amount",revenue_micros,ad_watches_today,"analytics,revenuecat_adtracker",behavioral_ad,reward granted exactly once; kill app mid-ad
+rewarded_ad_failed,ads,load/show failure,"placement,network,error_code",,,"analytics,revenuecat_adtracker",behavioral_ad,no-fill simulation; verify graceful UI
+paywall_viewed,monetization,paywall visible,"placement,offering_id,paywall_variant",trigger,paywall_views,"analytics,(revenuecat auto if RC paywall)",behavioral_no_pii,verify RC impression parity for custom paywalls
+paywall_dismissed,monetization,closed without purchase,"placement,offering_id,view_duration_s",,,analytics,behavioral_no_pii,close button + back + outside tap
+purchase_started,monetization,CTA tapped,"product_id,placement,offering_id",,,analytics,transactional,cancel at store sheet
+purchase_completed,monetization,verified transaction,"product_id,offering_id,placement,price_local_bucket,txn_id_hash",first_purchase,"payer_status,ltv_bucket","analytics,onesignal_event,revenuecat(source of truth)",transactional,sandbox + real; duplicate-callback dedupe
+purchase_failed,monetization,store error,"product_id,error_domain,error_code,user_cancelled",,,analytics,transactional,each error class; offline purchase
+restore_started,monetization,restore tapped,,,,analytics,transactional,
+restore_completed,monetization,restore finished,"entitlements_restored_count",products_restored,payer_status,analytics,transactional,fresh reinstall restore
+entitlement_changed,monetization,RC customerInfo delta,"entitlement_id,change(granted|revoked|expired)",source,payer_status,"analytics,onesignal_tag(payer_status)",transactional,refund revocation test via RC dashboard
+push_soft_prompt_viewed,messaging,pre-permission IAM shown,"trigger,variant",,soft_prompt_seen,"analytics,onesignal",behavioral_no_pii,verify only after value moment; cap 1/build
+push_permission_result,messaging,system dialog resolved,"granted,source_trigger",,push_enabled,"analytics,onesignal",behavioral_no_pii,grant + deny + settings-later paths
+notification_opened,messaging,push tapped,"campaign_id,journey_id,deep_link",,last_notif_open_at,"analytics,onesignal(native)",behavioral_no_pii,cold + warm + killed states route correctly
+iam_viewed,messaging,in-app message shown,"message_id,trigger",,,onesignal,behavioral_no_pii,frequency cap verified
+scorecard_shared,virality,share sheet completed/attempted,"mode,seed_or_level,channel_if_known",score,shares_count,analytics,behavioral_no_pii,share + cancel; no PII in image
+challenge_opened,virality,deep link entry,"seed,source(link|code)",referrer_hash,,analytics,behavioral_no_pii,invalid/expired code fallback to home
+review_prompt_shown,reviews,in-app review API invoked,"trigger,sessions_count",,review_prompted,analytics,behavioral_no_pii,verify Play quota behavior; never after failure
+feedback_submitted,reviews,beta feedback form,"topic,rating_bucket",build,,analytics,behavioral_no_pii,skip path
+error_caught,quality,handled exception,"domain,code,context",,,crash_reporter,diagnostic,forced test exception
+perf_sample,quality,periodic frame sample,"avg_ms,p95_ms,device_tier,level_id",,,analytics_sampled_1pct,diagnostic,verify sampling rate + no jank from sampler
+save_migrated,quality,save schema upgraded,"from_version,to_version,success",,,analytics,diagnostic,downgrade-protection test

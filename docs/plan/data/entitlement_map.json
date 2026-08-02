@@ -1,0 +1,417 @@
+{
+  "$comment": "Cat Metro - RevenueCat entitlement + consumable contract. v1, 2026-07-31. Locked against DECISIONS_BRIEF.md and specs/revenuecat_implementation.md (entitlement attach, offering IDs) and specs/monetization_spec.md (runtime effects, suppression, revocation). Machine-readable companion to revenuecat_configuration.csv.",
+  "version": "1.0",
+  "generated": "2026-07-31",
+  "app": {
+    "package_name": "io.catmetro.game",
+    "store": "play_store",
+    "rc_project": "Cat Metro",
+    "sdk": "purchases-unity 9.7.0 (Google Play Billing 8.3.0)",
+    "identity_model": "anonymous RevenueCat App User IDs only - no accounts, no Purchases.LogIn; the only identity link is the $onesignalUserId subscriber attribute"
+  },
+  "global_rules": {
+    "single_check_principle": "Game code checks exactly ONE entitlement id per feature. Umbrella products (cm_all_access, cm_supporter_pack) are attached directly to the theme entitlements in the RevenueCat dashboard so no boolean algebra ever appears in client code.",
+    "grant_choke_point": "Only EntitlementCache.ApplyCustomerInfo (non-consumables) and ConsumableLedger.TryGrant (consumables) may mutate durable ownership state. Both run on the main thread and commit through one atomic save write (temp+rename).",
+    "source_of_truth": "RevenueCat CustomerInfo. The on-device cache is a projection, never an authority: it may only ADD certainty offline, never invent or expire ownership.",
+    "revocation_authority": "An entitlement is revoked if and only if a fresh CustomerInfo says so. Offline, clock changes, cache staleness, reinstall, and save-file migration may NEVER revoke anything.",
+    "payer_suppression": "Any active all_access or supporter entitlement suppresses every system-initiated commerce surface (post_level_5, district-complete shop card, bonus_district lock, theme upsells, All Access cross-lines). Enforced in one place: OfferEligibilityService. QA hard gate: zero paywall_viewed events for suppressed surfaces on a payer.",
+    "analytics_events_used": [
+      "entitlement_changed",
+      "purchase_started",
+      "purchase_completed",
+      "purchase_failed",
+      "restore_started",
+      "restore_completed",
+      "cosmetic_unlocked",
+      "cosmetic_equipped",
+      "rewind_used",
+      "error_caught"
+    ]
+  },
+
+  "entitlements": {
+    "all_access": {
+      "display_name": "All Access",
+      "priority": "P0",
+      "granted_by": [
+        {
+          "product_id": "cm_all_access",
+          "store_type": "managed_product_non_consumable",
+          "us_price": "$6.99",
+          "rc_package": "all_access",
+          "offerings": ["ofr_core", "ofr_shop", "ofr_themes (cross-line only)", "ofr_rewind (cross-line only)"],
+          "note": "The primary purchase. Sold at post_level_5, bonus_district and shop."
+        },
+        {
+          "product_id": "cm_supporter_pack",
+          "store_type": "managed_product_non_consumable",
+          "us_price": "$9.99",
+          "rc_package": "supporter",
+          "offerings": ["ofr_core (filtered out of interrupts)", "ofr_shop"],
+          "note": "Attached to all_access as well as supporter so a Supporter buyer never has to also buy All Access."
+        },
+        {
+          "product_id": "cm_all_access_499",
+          "store_type": "managed_product_non_consumable",
+          "us_price": "$4.99",
+          "rc_package": "all_access",
+          "offerings": ["PW01 variant offering only"],
+          "conditional": true,
+          "note": "Experiment-only SKU (PW01, $6.99 vs $4.99). Play prices are per-SKU so the cheap arm needs its own product. Created Aug 1, INACTIVE at launch, attached to all_access + theme_sakura + theme_neon BEFORE it is ever activated, deactivated at experiment end."
+        }
+      ],
+      "runtime_effects": [
+        {
+          "effect": "unlock_bonus_district",
+          "detail": "Night Harbor district (10 handcrafted levels) becomes playable; the map tile stops rendering the All Access label and the lock view is never presented again.",
+          "code_hook": "DistrictUnlockService.IsUnlocked(districtId) -> entitlements.IsActive(\"all_access\")"
+        },
+        {
+          "effect": "grant_both_premium_themes",
+          "detail": "Sakura Line and Neon Line become owned. Implemented via the RC dashboard attach (this product also activates theme_sakura and theme_neon) - NOT via client-side inference.",
+          "code_hook": "ThemeWardrobe binds to theme_sakura / theme_neon entitlement ids only"
+        },
+        {
+          "effect": "double_daily_free_rewind",
+          "detail": "Daily free rewind goes from 1/day to 2/day. Applied at local-midnight refill; a mid-day grant tops the day up to 2 rather than adding 2.",
+          "code_hook": "RewindWallet.DailyFreeAllowance => entitlements.IsActive(\"all_access\") ? 2 : 1"
+        },
+        {
+          "effect": "permanent_removal_of_non_rewarded_ad_surfaces",
+          "detail": "Contractual: Cat Metro ships zero forced ad surfaces at 1.0, so this promise removes nothing today. It binds every future build - if any interstitial/banner/app-open surface is ever added post-launch, all_access holders are excluded permanently. Rewarded, player-initiated ads remain available to All Access owners because the player asks for them.",
+          "code_hook": "AdGate.IsForcedSurfaceAllowed() => !entitlements.IsActive(\"all_access\") (currently always false for everyone)"
+        },
+        {
+          "effect": "gold_conductor_badge",
+          "detail": "Gold badge renders on the profile header and the level results screen.",
+          "code_hook": "ProfileBadgeResolver"
+        },
+        {
+          "effect": "system_paywall_suppression",
+          "detail": "post_level_5 never fires (even if unfired), district-complete shop card never renders, bonus_district lock view is unreachable, theme rows render Owned, All Access cross-lines are stripped from ofr_themes and ofr_rewind renders. Still shown: rewind packs (the only honest offer to a payer) and the reframed Supporter card in shop.",
+          "code_hook": "OfferEligibilityService.IsSuppressed(placementId)"
+        }
+      ],
+      "offline_behavior": {
+        "served_from": "EntitlementCache snapshot persisted inside the main save file (atomic temp+rename write)",
+        "available_before_sdk_init": true,
+        "answer_latency": "synchronous from disk at boot; the game never shows a spinner to answer an ownership question",
+        "expiry": "none - non-consumable entitlements are honored indefinitely offline",
+        "staleness": "IsStale at >30 days since last successful CustomerInfo fetch. Staleness raises reconcile priority and logs error_caught(domain=entitlement_cache_stale). It NEVER downgrades, gates, or nags.",
+        "reconcile": "Background GetCustomerInfo at boot and on every foreground; on error the cache is kept untouched and the fetch is retried next foreground.",
+        "clock_tamper": "Device clock changes cannot revoke: revocation requires an explicit RC answer, not a time comparison."
+      },
+      "revocation_behavior": {
+        "triggers": ["Google Play refund with revoke", "chargeback", "RevenueCat dashboard revoke (QA path)"],
+        "detected_via": "CustomerInfo delta -> EntitlementCache.ApplyCustomerInfo emits entitlement_changed(entitlement_id=all_access, change=revoked, source=refund)",
+        "applied_when": "next session boundary or next Home visit - NEVER mid-level (hard gate; a level in progress always finishes)",
+        "content_effects": [
+          "Night Harbor relocks but retains every star, score and completion record - repurchase resumes exactly where the player left off",
+          "Equipped premium theme reverts to the default cream/navy/teal/orange board at the next Home load, silently",
+          "Daily free rewind returns to 1/day at the next local-midnight refill; already-granted rewinds are not clawed back",
+          "Gold conductor badge is removed with no ceremony and no message"
+        ],
+        "commerce_effects": "All system-initiated paywalls suppressed for 30 days (post_level_5 stays once-ever and does not re-arm). Player-initiated surfaces (shop, bonus_district on tap, theme_preview on tap) remain available and are styled normally - no urgency, no discount, no win-back offer.",
+        "messaging": "One quiet IAM: 'Your refund was processed. Your Night Harbor progress is saved if you ever come back.' CTA: OK. No shaming, no counter-offer.",
+        "downstream": "payer_status user property downgraded; OneSignal tag updated via the RC integration so the account exits payer journeys and re-enters the ordinary lifecycle after the 30-day window."
+      },
+      "qa": [
+        "Buy cm_all_access on a clean license-tester account -> all_access + theme_sakura + theme_neon active in one CustomerInfo",
+        "Airplane-mode cold start with a cached grant -> bonus district playable, zero network spinner, boot log entitlements=cache",
+        "Device clock +31 days offline -> still owned; only error_caught(domain=entitlement_cache_stale) logged",
+        "Refund with revoke -> three entitlement_changed(revoked) events, relock at a session boundary, stars intact"
+      ]
+    },
+
+    "supporter": {
+      "display_name": "Supporter",
+      "priority": "P1",
+      "granted_by": [
+        {
+          "product_id": "cm_supporter_pack",
+          "store_type": "managed_product_non_consumable",
+          "us_price": "$9.99",
+          "rc_package": "supporter",
+          "offerings": ["ofr_shop", "ofr_core (present but filtered out of every interrupt surface)"],
+          "note": "The ONLY product attached to this entitlement. Sold exclusively in the shop - brief-locked: it never interrupts."
+        }
+      ],
+      "runtime_effects": [
+        {
+          "effect": "founder_livery",
+          "detail": "Exclusive Founder train livery unlocked in the wardrobe; can be equipped alongside any theme.",
+          "code_hook": "CosmeticCatalog gates item founder_livery on entitlements.IsActive(\"supporter\")"
+        },
+        {
+          "effect": "name_a_cat_cameo",
+          "detail": "Local-only: a 12-character, profanity-filtered name the player types once; one commuter cat on every board carries it. Stored in the save, never uploaded - no UGC moderation surface, consistent with the offline-first decision.",
+          "code_hook": "CommuterNameOverride (save field, no network)"
+        },
+        {
+          "effect": "supporter_badge",
+          "detail": "Supporter badge on the profile header, shown next to (not instead of) the gold conductor badge.",
+          "code_hook": "ProfileBadgeResolver"
+        },
+        {
+          "effect": "implies_all_access",
+          "detail": "The same product also activates all_access, so every All Access runtime effect applies. The shop card discloses this overlap explicitly rather than selling it twice.",
+          "code_hook": "none - handled entirely by the RC dashboard product attach"
+        }
+      ],
+      "offline_behavior": {
+        "served_from": "same EntitlementCache snapshot as all_access",
+        "expiry": "none",
+        "note": "The name-a-cat cameo string lives in the save and works offline forever, including during a CustomerInfo outage."
+      },
+      "revocation_behavior": {
+        "triggers": ["refund or chargeback of cm_supporter_pack"],
+        "detected_via": "entitlement_changed(entitlement_id=supporter, change=revoked) plus the same event for all_access, theme_sakura and theme_neon (one product, four entitlements)",
+        "applied_when": "next session boundary - never mid-level",
+        "content_effects": [
+          "Founder livery unequips to the default livery at the next Home load",
+          "Supporter badge removed silently",
+          "The typed cat name is retained in the save but stops rendering on the board; it returns intact if the pack is ever repurchased",
+          "All all_access revocation effects apply simultaneously"
+        ],
+        "commerce_effects": "Same 30-day system-paywall suppression as all_access. The Supporter card itself remains visible in the shop with its normal honesty line - a refund is not a reason to hide the product, only a reason to stop pushing it."
+      },
+      "qa": [
+        "Buy cm_supporter_pack on a clean account -> supporter + all_access + theme_sakura + theme_neon all active",
+        "Buy cm_all_access -> supporter NOT active (negative test)",
+        "Refund cm_supporter_pack -> four revoked events; typed cat name still present in the save file after revocation"
+      ]
+    },
+
+    "theme_sakura": {
+      "display_name": "Sakura Line Theme",
+      "priority": "P1",
+      "granted_by": [
+        {
+          "product_id": "cm_theme_sakura",
+          "store_type": "managed_product_non_consumable",
+          "us_price": "$2.99",
+          "rc_package": "theme_sakura",
+          "offerings": ["ofr_themes", "ofr_shop"]
+        },
+        {
+          "product_id": "cm_all_access",
+          "us_price": "$6.99",
+          "rc_package": "all_access",
+          "note": "Umbrella attach - buying All Access activates this entitlement directly in RevenueCat."
+        },
+        {
+          "product_id": "cm_supporter_pack",
+          "us_price": "$9.99",
+          "rc_package": "supporter",
+          "note": "Umbrella attach."
+        },
+        {
+          "product_id": "cm_all_access_499",
+          "us_price": "$4.99",
+          "conditional": true,
+          "note": "PW01 experiment SKU - must carry the identical attach set before activation."
+        }
+      ],
+      "runtime_effects": [
+        {
+          "effect": "theme_ownership",
+          "detail": "Sakura swatch renders Owned/Equip instead of a price; the theme_preview sheet's purchase and rental rows are replaced by an Equip action.",
+          "code_hook": "ThemeWardrobe.IsOwned(\"sakura\") -> entitlements.IsActive(\"theme_sakura\")"
+        },
+        {
+          "effect": "board_reskin_on_equip",
+          "detail": "Stations, tracks, trains and UI accents repaint. Colorblind-safe encoding (color + symbol + silhouette) is unchanged by any theme - readability outranks beauty.",
+          "code_hook": "ThemeService.Equip(themeId) -> cosmetic_equipped(item_id=theme_sakura)"
+        }
+      ],
+      "offline_behavior": {
+        "served_from": "EntitlementCache snapshot",
+        "expiry": "none",
+        "equipped_state": "The equipped theme id is a separate save field, so an owned theme stays equipped across offline sessions, reinstalls (after Restore) and CustomerInfo outages.",
+        "rental_interaction": "A rewarded theme_rental (3 levels, 1/theme/day) is a LOCAL timer, not an entitlement. If connectivity drops mid-rental the remaining levels are still honored - the rental counts levels, not clock time or network calls."
+      },
+      "revocation_behavior": {
+        "triggers": ["refund of cm_theme_sakura, or refund of an umbrella product that granted it"],
+        "detected_via": "entitlement_changed(entitlement_id=theme_sakura, change=revoked)",
+        "applied_when": "next Home load - never mid-level (a level rendered in Sakura finishes in Sakura)",
+        "content_effects": [
+          "If equipped, the board reverts to the default theme at the next Home load with no modal and no explanation banner",
+          "Swatch returns to its locked state with the normal price row - never a 'you lost this' message"
+        ],
+        "commerce_effects": "theme_preview remains player-initiated and available; the 30-day system-paywall suppression from an umbrella refund also applies here."
+      },
+      "qa": [
+        "Buy cm_all_access -> theme_sakura active; swatch shows Owned",
+        "Buy cm_theme_sakura only -> theme_neon NOT active (negative test)",
+        "Rental during an airplane-mode session still runs its full 3 levels"
+      ]
+    },
+
+    "theme_neon": {
+      "display_name": "Neon Line Theme",
+      "priority": "P1",
+      "granted_by": [
+        {
+          "product_id": "cm_theme_neon",
+          "store_type": "managed_product_non_consumable",
+          "us_price": "$2.99",
+          "rc_package": "theme_neon",
+          "offerings": ["ofr_themes", "ofr_shop"]
+        },
+        {
+          "product_id": "cm_all_access",
+          "us_price": "$6.99",
+          "rc_package": "all_access",
+          "note": "Umbrella attach."
+        },
+        {
+          "product_id": "cm_supporter_pack",
+          "us_price": "$9.99",
+          "rc_package": "supporter",
+          "note": "Umbrella attach."
+        },
+        {
+          "product_id": "cm_all_access_499",
+          "us_price": "$4.99",
+          "conditional": true,
+          "note": "PW01 experiment SKU - identical attach set required before activation."
+        }
+      ],
+      "runtime_effects": [
+        {
+          "effect": "theme_ownership",
+          "detail": "Neon swatch renders Owned/Equip; preview sheet swaps purchase and rental rows for Equip.",
+          "code_hook": "ThemeWardrobe.IsOwned(\"neon\") -> entitlements.IsActive(\"theme_neon\")"
+        },
+        {
+          "effect": "board_reskin_on_equip",
+          "detail": "Night-city repaint of stations, tracks, trains and UI accents. The neon palette must pass the colorblind check before the product is switched on in ofr_themes.",
+          "code_hook": "ThemeService.Equip(themeId) -> cosmetic_equipped(item_id=theme_neon)"
+        }
+      ],
+      "offline_behavior": {
+        "served_from": "EntitlementCache snapshot",
+        "expiry": "none",
+        "equipped_state": "Same separate-save-field behavior as theme_sakura.",
+        "rental_interaction": "Same local level-counted rental contract as theme_sakura."
+      },
+      "revocation_behavior": {
+        "triggers": ["refund of cm_theme_neon, or refund of an umbrella product that granted it"],
+        "detected_via": "entitlement_changed(entitlement_id=theme_neon, change=revoked)",
+        "applied_when": "next Home load - never mid-level",
+        "content_effects": [
+          "Reverts to default theme if equipped; swatch returns to the locked price state",
+          "No takeaway messaging of any kind"
+        ],
+        "commerce_effects": "Identical to theme_sakura."
+      },
+      "qa": [
+        "Buy cm_supporter_pack -> theme_neon active",
+        "Refund cm_all_access -> theme_neon revoked at a session boundary while a level in progress is unaffected"
+      ]
+    }
+  },
+
+  "consumables": {
+    "policy": "Rewind packs deliberately carry NO RevenueCat entitlement. Rewinds are spent, not owned, so ownership semantics would be wrong and would break restore expectations. Fulfillment is a local, durable, append-only ledger; RevenueCat webhooks are an independent audit trail, never a grant path.",
+    "products": [
+      {
+        "product_id": "cm_rewind_5",
+        "us_price": "$1.99",
+        "grant_quantity": 5,
+        "rc_package": "rewind_5",
+        "offerings": ["ofr_rewind", "ofr_shop"],
+        "placements": ["rewind_failure", "shop"],
+        "repeat_purchasable": true,
+        "anomaly_alert": ">10 packs/day/user"
+      },
+      {
+        "product_id": "cm_rewind_20",
+        "us_price": "$4.99",
+        "grant_quantity": 20,
+        "rc_package": "rewind_20",
+        "offerings": ["ofr_rewind", "ofr_shop"],
+        "placements": ["rewind_failure", "shop"],
+        "repeat_purchasable": true,
+        "per_unit_claim": "$0.25/rewind vs $0.40 in the 5-pack - the only comparative badge allowed, and it is arithmetically true",
+        "anomaly_alert": ">5 packs/day/user"
+      }
+    ],
+    "ledger_contract": {
+      "component": "CatMetro.Application/ConsumableLedger.cs",
+      "storage": {
+        "location": "inside the main save file - not a separate file, so it cannot drift from the balance it authorizes",
+        "write_mode": "atomic temp+rename via ISave.CommitAtomic(); the ledger entry, the dedupe hash and the rewind balance land in ONE durable write or none of them do",
+        "audit_entries": "List<Entry>{txnHash, productId, qty, grantedAtUtc} capped at the most recent 200 (FIFO trim)",
+        "dedupe_set": "HashSet<string> of granted txn hashes is NEVER trimmed - trimming it would re-open double-grant on redelivery. Bounded by lifetime consumable purchases per install (single digits in practice)."
+      },
+      "key": {
+        "field": "txnHash",
+        "derivation": "SHA-256 over the store transaction id, first 16 bytes rendered as 32 lowercase hex chars",
+        "privacy": "The raw store transaction id never leaves the device and is never logged. Only the hash appears in analytics, as the taxonomy field txn_id_hash on purchase_completed.",
+        "collision_note": "128 bits of a SHA-256 digest keyed on store-unique transaction ids - collision risk is not a practical concern at any plausible scale."
+      },
+      "grant_exactly_once": {
+        "rule": "TryGrant(transactionId, productId) is the ONLY function in the codebase that may increase the rewind balance from a purchase. There is no second grant site - the initial purchase callback and the redelivered-transaction path both funnel into it.",
+        "steps": [
+          "1. Look up the product in the quantity table {cm_rewind_5:5, cm_rewind_20:20}; unknown product id -> return 0 (never guess a quantity)",
+          "2. Hash the transaction id",
+          "3. If the hash is already in the dedupe set -> log error_caught(domain=ledger_dedupe, context=productId) and return 0. This is an EXPECTED path, not an error condition",
+          "4. Add the hash, append the audit entry, increment the balance, CommitAtomic - one write",
+          "5. Emit purchase_completed(product_id, txn_id_hash) after the write succeeds, never before"
+        ],
+        "threading": "Must be called on the main thread; the RevenueCat adapter marshals every SDK callback through MainThread.Post before touching the ledger. Dev builds assert MainThread.IsMainThread at the entry point and a violation is build-blocking.",
+        "ordering_guarantee": "The grant IS the write. Analytics is emitted after the durable write, so a crash between them costs an event (replayed from the queue) but never a grant."
+      },
+      "process_death_safety": {
+        "breadcrumb": "purchase_breadcrumb{placementId, productId, state, startedAtUtc} is written on entering Purchasing and cleared at Done/Cancelled/Failed.",
+        "on_boot": [
+          "Breadcrumb present -> enter Verifying silently; fetch CustomerInfo, or serve the cache and queue the fetch when offline",
+          "Consumables: RevenueCat redelivers unconsumed transactions on the next sync and each one is routed to TryGrant, where the dedupe set makes replay harmless",
+          "Breadcrumb expires after 72h with purchase_failed(error_domain=recovery, error_code=breadcrumb_expired); Play's own refund path protects the player if money actually moved"
+        ],
+        "kill_scenarios_covered": [
+          "Kill during the Play sheet -> purchase completes on relaunch through redelivery, or cleanly voids; never a stuck modal",
+          "Kill immediately after the success toast, before any further save -> the atomic commit already held the grant; relaunch shows the balance and one ledger row",
+          "Three consecutive relaunches with a redelivered transaction -> balance moves exactly once, two dedupe logs"
+        ],
+        "pending_purchases": "Billing pending/deferred purchases are a first-class state, not an error. UI: 'Your payment is processing. We'll deliver automatically as soon as Google Play confirms - keep playing!' Completion may arrive in a later session and still lands exactly once."
+      },
+      "webhook_reconciliation": {
+        "endpoint": "https://rc-hooks.catmetro.io/v1/revenuecat (Cloudflare Worker, append-only KV log, Authorization-header shared secret)",
+        "events_watched": ["NON_RENEWING_PURCHASE", "INITIAL_PURCHASE", "CANCELLATION", "EXPIRATION", "BILLING_ISSUE"],
+        "primary_event": "NON_RENEWING_PURCHASE - this is the consumable fulfillment signal for cm_rewind_5 / cm_rewind_20",
+        "job": "Nightly cron compares NON_RENEWING_PURCHASE counts per product against device-reported purchase_completed(txn_id_hash) rows; any mismatch emails a one-line alert with the hashed ids",
+        "non_authority": "The webhook NEVER grants, never revokes and is never in the purchase path. The game does not know the endpoint exists and never blocks on it. Its only jobs are dispute evidence, refund visibility and a 7-day zero-mismatch gate before the production submit.",
+        "gate": "7 consecutive days of zero mismatches during the commercial beta is a release-readiness item"
+      },
+      "spend_and_sources": {
+        "balance": "One integer in the save. Purchased, free-daily and rewarded rewinds all land in it; the SOURCE is recorded per use via rewind_used(source=free|purchased|rewarded, balance_after).",
+        "spend_order": "today's free rewind -> owned balance -> rewarded ad -> purchase. Purchase rows always render below the free options (brief-locked: purchase secondary).",
+        "offline": "Rewinds are fully usable offline: spending decrements the local balance and queues the analytics event. Only ACQUIRING a pack needs the network.",
+        "eligibility_floor": "The rewind sheet cannot even be fetched on attempt 1 of any level - a hard EditMode-tested rule, not a UI convention.",
+        "never_required": "Every level is solver-validated as completable with zero rewinds; the sheet footer states this and it is true."
+      },
+      "refund_behavior": {
+        "consumed_rewinds": "NOT clawed back on a rewind-pack refund - goodwill, and clawing back a spent convenience would corrupt a live save for pennies",
+        "ledger_annotation": "The refunded transaction hash is annotated from the CANCELLATION webhook so repeat refund-farming is visible",
+        "abuse_response": ">2 refunded consumable purchases on an account -> pack rows hidden for that account; free, daily and rewarded rows are unaffected (the game stays fully playable and fair)",
+        "no_entitlement_impact": "A rewind refund changes no entitlement and triggers no revocation path - the two systems are deliberately disjoint"
+      },
+      "restore_semantics": {
+        "rule": "Consumables are NOT restorable. Restore copy must never imply otherwise.",
+        "copy": "An account whose only history is rewind packs sees 'No purchases found on this Google account.' plus the account-switch hint - never a false-hope 'restoring your rewinds' message.",
+        "event": "restore_completed(entitlements_restored_count=0)"
+      }
+    }
+  },
+
+  "cross_references": {
+    "configuration_runbook": "deliverables/data/revenuecat_configuration.csv",
+    "implementation_spec": "deliverables/specs/revenuecat_implementation.md (sections 7-8: dashboard checklist, ledger, cache, presenter)",
+    "monetization_spec": "deliverables/specs/monetization_spec.md (sections 3.11-3.14: suppression, failed purchase, restore, refund)",
+    "placements": "deliverables/data/offering_and_placement_map.json",
+    "catalog": "deliverables/data/monetization_catalog.csv",
+    "taxonomy": "deliverables/data/analytics_event_taxonomy.csv"
+  }
+}
