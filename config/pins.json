@@ -1,0 +1,15 @@
+{
+  "_comment": "Toolchain pins, dotnet rows (CM-C1 criterion 3; ADR-0004:56-72,90-96). Exact versions only; the committed dotnet/packages.lock.json is the enforcement (dotnet restore --locked-mode). Microsoft.NET.Test.Sdk is the dotnet-test platform precondition recorded as handoff assumption A-C1-9.",
+  "dotnet": {
+    "sdkMajor": 8,
+    "targetFrameworks": {
+      "domain": "netstandard2.1",
+      "tests": "net8.0"
+    },
+    "packages": {
+      "NUnit": "3.14.0",
+      "NUnit3TestAdapter": "4.5.0",
+      "Microsoft.NET.Test.Sdk": "17.9.0"
+    }
+  }
+}

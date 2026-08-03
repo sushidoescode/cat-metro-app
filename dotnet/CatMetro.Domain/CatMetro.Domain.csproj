@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ADR-0005: netstandard2.1 = the engine pin's scripting profile; sources are LINKED from
+       unity/Assets so Unity later compiles the same files through its asmdef (one source tree,
+       two compilers). EnableDefaultCompileItems=false so the glob below is the whole truth. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <AssemblyName>CatMetro.Domain</AssemblyName>
+    <RootNamespace>CatMetro.Domain</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../unity/Assets/Scripts/Domain/**/*.cs" />
+  </ItemGroup>
+
+</Project>
