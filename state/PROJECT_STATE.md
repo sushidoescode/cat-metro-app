@@ -12,6 +12,8 @@
 ## Active tasks
 | id | title | owner (human/session) | status | branch |
 |---|---|---|---|---|
+| CM-C1 | Domain skeleton + replay-hash test | session 2026-08-02/03 | PR #3 open; 30/31 green; awaiting human golden + review round + merge | task/cm-c1-domain-skeleton |
+| CM-C2 | Greybox board + L001 | — | BLOCKED-ON human Unity scaffold (Q-G) | — |
 
 ## Recently done (last 7 days — one line each, PR links)
 - 2026-08-02 — forge-init: substrate installed (kit 3.4.1), mode=sprint, stack deferred pending specs.
