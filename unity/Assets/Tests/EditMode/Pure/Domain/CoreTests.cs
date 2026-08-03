@@ -82,38 +82,77 @@ namespace CatMetro.Tests.Domain
             }
         }
 
-        // Criterion 8b: the offset table on the L001-shape initial state — the digest layout IS
-        // the contract (ADR-0002 §7; overview.md:312-320; A-C1-10 slot conventions).
+        // Criterion 8b: the offset table on the L001-shape state — the digest layout IS the
+        // contract (ADR-0002 §7; overview.md:312-320; A-C1-10 slot conventions). Review F1:
+        // EVERY field group carries a DISTINCT NON-ZERO marker and is asserted as RAW BYTES so
+        // (a) no field-order swap can hide behind zeros and (b) little-endianness is positively
+        // asserted (BitConverter is host-endian and is deliberately not used here). This is a
+        // LAYOUT test: setting Score/Chain markers here does not contradict their stay-zero
+        // gameplay rule (which the golden and the boundary tests pin).
         [Test]
-        public void OffsetTable_L001Shape()
+        public void OffsetTable_L001Shape_EveryFieldPinnedLittleEndian()
         {
             var state = SimulationState.CreateInitial(Fixtures.L001Shape(), Fixtures.L001Seed);
-            state.Deliveries = 7;            // marker values prove offsets, not just zeros
-            state.SwitchesUsed = 3;
-            state.OverloadTimers[2] = 9;
+            state.Tick = 101; state.Score = 102; state.Chain = 103; state.Deliveries = 104;
+            state.Rejections = 105; state.Overloads = 106; state.SwitchesUsed = 107;
+            state.Rng.State = 0x1112131415161718UL;
+            state.Rng.Inc = 0x2122232425262728UL;
+            // SwitchRoutes[0] stays 1 (initialRoute)
+            state.NodeQueueCounts[0] = 2; state.NodeQueueSlots[0][0] = 513; state.NodeQueueSlots[0][1] = 1027;
+            state.NodeQueueCounts[1] = 1; state.NodeQueueSlots[1][0] = 1541;
+            state.OverloadTimers[0] = 21; state.OverloadTimers[1] = 22; state.OverloadTimers[2] = 23; state.OverloadTimers[3] = 24;
+            state.Trains[0] = new TrainSlot { Id = 31, Color = 32, EdgeId = 33, ProgressTicks = 34, NodeId = 35, State = 36 };
+            state.Trains[1] = new TrainSlot { Id = 41, Color = 42, EdgeId = 43, ProgressTicks = 44, NodeId = 45, State = 46 };
+            state.Outcome = SimOutcome.MakeFailed(FailReason.TimeOut);
+
             var d = new byte[143];
             state.WriteDigest(d);
 
-            Assert.That(BitConverter.ToInt32(d, 0), Is.EqualTo(0), "Tick @0");
-            Assert.That(BitConverter.ToInt32(d, 4), Is.EqualTo(0), "Score @4");
-            Assert.That(BitConverter.ToInt32(d, 8), Is.EqualTo(0), "Chain @8");
-            Assert.That(BitConverter.ToInt32(d, 12), Is.EqualTo(7), "Deliveries @12");
-            Assert.That(BitConverter.ToInt32(d, 16), Is.EqualTo(0), "Rejections @16");
-            Assert.That(BitConverter.ToInt32(d, 20), Is.EqualTo(0), "Overloads @20");
-            Assert.That(BitConverter.ToInt32(d, 24), Is.EqualTo(3), "SwitchesUsed @24");
-            Assert.That(BitConverter.ToUInt64(d, 28), Is.EqualTo(state.Rng.State), "Rng.State @28");
-            Assert.That(BitConverter.ToUInt64(d, 36), Is.EqualTo(state.Rng.Inc), "Rng.Inc @36");
+            void I32At(int off, int v, string name)
+            {
+                Assert.That(d[off], Is.EqualTo((byte)v), $"{name} low byte @{off} (LE)");
+                Assert.That(d[off + 1], Is.EqualTo(0), $"{name} @{off + 1}");
+                Assert.That(d[off + 2], Is.EqualTo(0), $"{name} @{off + 2}");
+                Assert.That(d[off + 3], Is.EqualTo(0), $"{name} @{off + 3}");
+            }
+            void I16At(int off, int v, string name)
+            {
+                Assert.That(d[off], Is.EqualTo((byte)(v & 0xFF)), $"{name} low byte @{off} (LE)");
+                Assert.That(d[off + 1], Is.EqualTo((byte)(v >> 8)), $"{name} high byte @{off + 1}");
+            }
+
+            I32At(0, 101, "Tick"); I32At(4, 102, "Score"); I32At(8, 103, "Chain");
+            I32At(12, 104, "Deliveries"); I32At(16, 105, "Rejections"); I32At(20, 106, "Overloads");
+            I32At(24, 107, "SwitchesUsed");
+            var rngState = new byte[] { 0x18, 0x17, 0x16, 0x15, 0x14, 0x13, 0x12, 0x11 };
+            var rngInc = new byte[] { 0x28, 0x27, 0x26, 0x25, 0x24, 0x23, 0x22, 0x21 };
+            for (int i = 0; i < 8; i++)
+            {
+                Assert.That(d[28 + i], Is.EqualTo(rngState[i]), $"Rng.State byte {i} @28+{i} (LE)");
+                Assert.That(d[36 + i], Is.EqualTo(rngInc[i]), $"Rng.Inc byte {i} @36+{i} (LE)");
+            }
             Assert.That(d[44], Is.EqualTo(1), "SwitchRoutes[0] @44 == initialRoute 1");
-            // NodeQueues: node i at 45 + 17*i (1-byte count + 8 shorts)
-            for (int i = 0; i < 4; i++)
-                Assert.That(d[45 + 17 * i], Is.EqualTo(0), $"queue count node {i}");
+            // NodeQueues: node i at 45 + 17*i (1-byte count + 8 LE shorts, unused slots zero)
+            Assert.That(d[45], Is.EqualTo(2), "node0 count @45");
+            I16At(46, 513, "node0 slot0");   // 0x0201
+            I16At(48, 1027, "node0 slot1");  // 0x0403
+            for (int b = 50; b < 62; b++) Assert.That(d[b], Is.EqualTo(0), $"node0 unused slot byte @{b}");
+            Assert.That(d[62], Is.EqualTo(1), "node1 count @62");
+            I16At(63, 1541, "node1 slot0");  // 0x0605
+            Assert.That(d[79], Is.EqualTo(0), "node2 count @79");
+            Assert.That(d[96], Is.EqualTo(0), "node3 count @96");
             // OverloadTimers: node i at 113 + 2*i
-            Assert.That(BitConverter.ToInt16(d, 113 + 2 * 2), Is.EqualTo(9), "OverloadTimers[2] @117");
-            // Trains: slot j at 121 + 10*j, zeroed at initial
-            for (int b = 121; b < 141; b++)
-                Assert.That(d[b], Is.EqualTo(0), $"train bytes zeroed @{b}");
-            Assert.That(d[141], Is.EqualTo((byte)OutcomeKind.Running), "Outcome tag @141");
-            Assert.That(d[142], Is.EqualTo(0), "FailReason @142");
+            I16At(113, 21, "OverloadTimers[0]"); I16At(115, 22, "OverloadTimers[1]");
+            I16At(117, 23, "OverloadTimers[2]"); I16At(119, 24, "OverloadTimers[3]");
+            // Trains: slot j at 121 + 10*j — Id:2 Color:1 EdgeId:2 Progress:2 NodeId:2 State:1
+            I16At(121, 31, "train0 Id"); Assert.That(d[123], Is.EqualTo(32), "train0 Color @123");
+            I16At(124, 33, "train0 EdgeId"); I16At(126, 34, "train0 Progress"); I16At(128, 35, "train0 NodeId");
+            Assert.That(d[130], Is.EqualTo(36), "train0 State @130");
+            I16At(131, 41, "train1 Id"); Assert.That(d[133], Is.EqualTo(42), "train1 Color @133");
+            I16At(134, 43, "train1 EdgeId"); I16At(136, 44, "train1 Progress"); I16At(138, 45, "train1 NodeId");
+            Assert.That(d[140], Is.EqualTo(46), "train1 State @140");
+            Assert.That(d[141], Is.EqualTo((byte)OutcomeKind.Failed), "Outcome tag @141");
+            Assert.That(d[142], Is.EqualTo((byte)FailReason.TimeOut), "FailReason @142");
         }
     }
 }

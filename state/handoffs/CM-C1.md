@@ -74,6 +74,24 @@ delivered at RED (ticks 30, 50) → `Won`. Zero contention, zero rejection, zero
 **Suite: 30 passed / 1 failed (the golden test, red by design) of 31.**
 **GOLDEN FOR THE HUMAN (criterion 12 hand-off):** commit this as `tests/contract/replay-hash-golden.json` on this branch (extraction: run `bash tests/domain/determinism.test.sh` and `sed -n '/^GOLDEN_JSON_BEGIN$/,/^GOLDEN_JSON_END$/p'` on a `dotnet test --logger "console;verbosity=detailed"` run, or copy from the PR description). Hash: `d4818af81bb5c4d8161c1132264f2d7f3908f0038e121c664ad3f007134e35b9`.
 
+## Review round (2026-08-03, fresh-context code-reviewer — verdict REQUEST CHANGES, all findings addressed)
+
+F1 offset table → every digest field now carries a distinct non-zero marker, asserted as RAW bytes
+(little-endianness positively asserted; BitConverter removed) · F2 zero-dwell pass-through →
+ratified against product_spec.md:224 ("departs immediately") which wins over the contract's 13(d)
+phrasing by authority order; documented as A-C1-8(iv) in Simulation.cs + pinned by
+Step_NodeArrival_PassThroughLeavesQueueUntouched — **human ratifies at merge, before committing the
+golden** · F3 → timer==16 at raise + exact expiry tick 17 asserted · F4 → check.sh --root
+fail-closed (missing dir = FAIL; missing value = immediate error, no hang) · F5 → wrapper counts
+ANCHORED ^REPLAY_HASH= lines (second emitter now fails it) · F6 → runner span order pinned via
+DueCommands; application-order unobservability under commutative toggles stated in the test ·
+F7 → ADR-0005 amended (isolated commit) naming Microsoft.NET.Test.Sdk, pending the human ADR gate ·
+F8 → observation count + both-branch counters asserted · F9 → count-1 waves spacing-independent;
+count>1 with spacing<=0 refused loudly at construction (+2 tests) · F10 → replay-vs-level switch-id
+mismatch and sourceless-source both throw diagnosable errors · F11 → no change (human ratifies the
+gitignore precedent). Suite after round: **32 passed / 1 failed (golden, by design) of 33; replay
+hash byte-identical: d4818af81bb5c4d8161c1132264f2d7f3908f0038e121c664ad3f007134e35b9.**
+
 **Deviations / noticed-but-not-done:** `.gitignore` gained dotnet bin/obj entries (out of ownership table; isolated commit `3e6a59a`, flagged for review) · `Microsoft.NET.Test.Sdk` 17.9.0 added per A-C1-9 (mechanical precondition of the contract's `dotnet test` check command) · Step_Commands test observation mapping had a red-phase off-by-one, repaired without changing the assertion set (twin test unchanged and green both sides) · zero-alloc (CM-R01.6) not measured — explicitly out of CM-C1 scope (criteria 3/4/6 of CM-R01 are device/perf contracts).
 
 ---

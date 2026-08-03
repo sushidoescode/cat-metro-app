@@ -13,11 +13,13 @@ run_once() {
 out1="$(run_once)"; rc1=$?
 out2="$(run_once)"; rc2=$?
 
-# Test stdout may be indented by the console logger; extract the token, not the line anchor.
-h1="$(printf '%s\n' "$out1" | grep -Eo 'REPLAY_HASH=[0-9a-f]{64}' | sort -u)"
-h2="$(printf '%s\n' "$out2" | grep -Eo 'REPLAY_HASH=[0-9a-f]{64}' | sort -u)"
-n1="$(printf '%s' "$h1" | grep -c 'REPLAY_HASH=' || true)"
-n2="$(printf '%s' "$h2" | grep -c 'REPLAY_HASH=' || true)"
+# Criterion 11(b): count ANCHORED lines (the raw column-0 test-host passthrough), so a second
+# emitter anywhere in the suite fails the wrapper (review F5). NUnit's indented "Standard Output
+# Messages" copy of the same line is deliberately not counted — it never sits at column 0.
+n1="$(printf '%s\n' "$out1" | grep -cE '^REPLAY_HASH=[0-9a-f]{64}$')" || true
+n2="$(printf '%s\n' "$out2" | grep -cE '^REPLAY_HASH=[0-9a-f]{64}$')" || true
+h1="$(printf '%s\n' "$out1" | grep -E '^REPLAY_HASH=[0-9a-f]{64}$' | head -1)"
+h2="$(printf '%s\n' "$out2" | grep -E '^REPLAY_HASH=[0-9a-f]{64}$' | head -1)"
 
 fail=0
 if [ "$rc1" -ne 0 ] || [ "$rc2" -ne 0 ]; then

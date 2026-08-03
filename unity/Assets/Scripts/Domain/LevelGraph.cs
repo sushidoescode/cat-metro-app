@@ -63,9 +63,14 @@ namespace CatMetro.Domain
             // accident (contract criterion 14, stop condition 1).
             SourceNode = sourceNodes.Length == 1 ? sourceNodes[0] : ThrowSecondSource();
             for (int w = 0; w < waveColor.Length; w++)
+            {
                 if (waveColor[w] == CatColor.Wild)
                     throw new NotSupportedException(
                         "pinned NEW-Q35: the wild color is out of CM-C1 scope — the resolution boundary changes the command-log format (state/backlog.md Q-A, criterion 14)");
+                if (waveCount[w] > 1 && waveSpacingTicks[w] <= 0)
+                    throw new ArgumentException(
+                        $"wave {w}: spacingTicks must be positive when count > 1 — a zero spacing would silently emit nothing (review F9)");
+            }
             SwitchRoutes = switchRoutes;
             SwitchNode = switchNode;
             SwitchInitialRoute = switchInitialRoute;

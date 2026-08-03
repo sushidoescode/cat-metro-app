@@ -210,8 +210,15 @@ Android lifecycle, or performance. Those are Unity and device legs. A green `dot
   adversarial level JSON is exercised by a fast, licence-free job that can run thousands of cases per
   PR, rather than by a device job that would never be built.
 - **New supply-chain surface:** the `dotnet` leg introduces NuGet restore (NUnit, NUnit3TestAdapter,
-  Newtonsoft.Json). Package sources must be pinned to nuget.org, versions pinned exactly (no floating
-  ranges), and the lock file committed; the RK-36 SCA pass (ADR-0004) covers this tree too.
+  **Microsoft.NET.Test.Sdk**, Newtonsoft.Json). Package sources must be pinned to nuget.org, versions
+  pinned exactly (no floating ranges), and the lock file committed; the RK-36 SCA pass (ADR-0004)
+  covers this tree too.
+  *Amendment 2026-08-03 (CM-C1 build round, review finding F7 — pending the same human gate as this
+  ADR):* `Microsoft.NET.Test.Sdk` was missing from the original enumeration. It is the VSTest
+  platform without which the `dotnet test` command this ADR builds on cannot discover
+  NUnit3TestAdapter tests at all — a mechanical precondition of the chosen harness, not a
+  discretionary library. Pinned exactly (17.9.0 at adoption) in `config/pins.json` and the lock
+  file; it is a test-time-only dependency and never ships.
 - **Immutable-path dependency:** the integrity of this whole scheme rests on `tests/contract/` and
   `.claude/hooks/` staying human-authored. ADR-0001 records the residual honestly — under solo
   posture a write-capable principal can merge changes to hook-protected paths. That residual, not the

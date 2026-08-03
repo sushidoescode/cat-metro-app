@@ -30,15 +30,24 @@ namespace CatMetro.Tests.Domain
             Assert.That(atTick6.SwitchRoutes[0], Is.EqualTo(0), "applied at step 1 of tick 6");
         }
 
-        [Test] // criterion 9: append-only receipt order; both same-tick commands apply
+        [Test] // criterion 9: append-only receipt order; both same-tick commands apply.
+        // Review F6 honesty note: APPLICATION order is unobservable under CM-C1's command
+        // vocabulary (switch toggles commute), so this test pins (a) log order, (b) the ordered
+        // span handed to Step, and (c) that both commands applied. Application-order becomes
+        // directly testable the day a non-commutative command lands — that test is owed then.
         public void SameTick_Commands_AppearAndApplyInReceiptOrder()
         {
             var log = new CommandLog();
-            log.Append(new ToggleSwitchCommand(0, 5));
-            log.Append(new ToggleSwitchCommand(1, 5));
-            Assert.That(log.Entries.Select(e => (int)e.SwitchId), Is.EqualTo(new[] { 0, 1 }), "receipt order preserved");
+            log.Append(new ToggleSwitchCommand(3, 5)); // deliberately not id-sorted:
+            log.Append(new ToggleSwitchCommand(1, 5)); // sorting or reversing would fail below
+            Assert.That(log.Entries.Select(e => (int)e.SwitchId), Is.EqualTo(new[] { 3, 1 }), "receipt order preserved in the log");
+            var due = Fixtures.DueCommands(log, 6).ToArray();
+            Assert.That(due.Select(e => (int)e.SwitchId), Is.EqualTo(new[] { 3, 1 }), "runner hands Step the span in receipt order");
 
-            var state = Fixtures.RunThroughTick(Fixtures.TwoSwitchShape(), 2, log, 6);
+            var applyLog = new CommandLog();
+            applyLog.Append(new ToggleSwitchCommand(0, 5));
+            applyLog.Append(new ToggleSwitchCommand(1, 5));
+            var state = Fixtures.RunThroughTick(Fixtures.TwoSwitchShape(), 2, applyLog, 6);
             Assert.That(state.SwitchRoutes[0], Is.EqualTo(1), "S0 toggled");
             Assert.That(state.SwitchRoutes[1], Is.EqualTo(1), "S1 toggled");
             Assert.That(state.SwitchesUsed, Is.EqualTo(2), "both applied at the same boundary");

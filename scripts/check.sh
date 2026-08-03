@@ -13,7 +13,7 @@ fail=0
 purity_root=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --root) purity_root="${2:-}"; shift 2 ;;
+    --root) purity_root="${2:?check.sh: --root requires a directory argument}"; shift; shift ;;
     *) shift ;;
   esac
 done
@@ -40,8 +40,14 @@ fi
 # "doubled" from matching.
 banned_full='\b(UnityEngine|DateTime|DateTimeOffset|Stopwatch|Environment\.TickCount|System\.Random|Guid\.NewGuid|RandomNumberGenerator|float|double|decimal|System\.Numerics)\b'
 banned_pure='\b(UnityEngine|UnityEngine\.TestTools)\b'
-scan_banned() { # $1 = root dir, $2 = pattern, $3 = label
-  [ -d "$1" ] || return 0
+scan_banned() { # $1 = root dir, $2 = pattern, $3 = label — FAIL-CLOSED on a missing root:
+  # a purity gate that reports OK after scanning nothing is the fail-open pattern this repo
+  # already removed once (review F4; cf. commit ee637c9).
+  if [ ! -d "$1" ]; then
+    echo "check: FAIL — banned-symbol scan root '$1' does not exist ($3)"
+    fail=1
+    return 0
+  fi
   if grep -rEnq --include='*.cs' "$2" "$1" 2>/dev/null; then
     echo "check: FAIL — banned symbol(s) under $1 ($3):"
     grep -rEn --include='*.cs' "$2" "$1" | head -20

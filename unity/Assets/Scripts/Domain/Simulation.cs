@@ -14,6 +14,14 @@ namespace CatMetro.Domain
     //        node per tick, before same-tick arrivals resolve;
     //   (iii) an emission joins the back of the source queue if the queue is non-empty or the
     //        mouth is occupied; otherwise it enters the edge directly.
+    //   (iv) ZERO-DWELL PASS-THROUGH (golden-defining; review finding F2): an arrival whose
+    //        outgoing mouth is free departs in the same step and never touches the queue —
+    //        this is product_spec.md:224 verbatim ("the train departs immediately on the
+    //        switch's current route if the edge mouth is free; otherwise it enters the node
+    //        queue"), which wins over the contract 13(d) "is enqueued" phrasing by the
+    //        authority order. FIFO holds: a non-empty queue implies an occupied mouth, so an
+    //        arrival can only bypass an EMPTY queue (reviewer-verified). Pinned by
+    //        Step_NodeArrival_PassThroughLeavesQueueUntouched.
     // Trains that enter an edge during a tick do not advance that tick (their ProgressTicks stays
     // 0 until the next step 3), which is what makes "entered at tick t, arrives at t + travelTicks"
     // hold exactly (contract 13(c)/(d)).
@@ -32,22 +40,36 @@ namespace CatMetro.Domain
             for (int c = 0; c < commandsThisTick.Length; c++)
             {
                 int sw = commandsThisTick[c].SwitchId;
+                if (sw >= state.SwitchRoutes.Length)
+                    throw new InvalidOperationException(
+                        $"command names switch {sw} but the level has {state.SwitchRoutes.Length} — replay log does not belong to this level (F10)");
                 state.SwitchRoutes[sw] = (byte)((state.SwitchRoutes[sw] + 1) % g.SwitchRoutes[sw].Length);
                 state.SwitchesUsed++;
             }
 
-            // step 2 — emit waves whose emission tick matches (wave.tick + k*spacing, k < count)
+            // step 2 — emit waves whose emission tick matches (wave.tick + k*spacing, k < count).
+            // A single-count wave is spacing-independent; spacing <= 0 with count > 1 is refused
+            // loudly at LevelGraph construction (F9) — no silent non-emission.
             for (int w = 0; w < g.WaveTick.Length; w++)
             {
                 int offset = tick - g.WaveTick[w];
-                if (offset < 0 || g.WaveSpacingTicks[w] <= 0) continue;
-                if (offset % g.WaveSpacingTicks[w] != 0) continue;
-                if (offset / g.WaveSpacingTicks[w] >= g.WaveCount[w]) continue;
+                if (offset < 0) continue;
+                if (g.WaveCount[w] == 1)
+                {
+                    if (offset != 0) continue;
+                }
+                else
+                {
+                    if (offset % g.WaveSpacingTicks[w] != 0) continue;
+                    if (offset / g.WaveSpacingTicks[w] >= g.WaveCount[w]) continue;
+                }
                 int slot = AllocateTrain(ref state);
                 state.Trains[slot].Id = (short)(slot + 1); // 1-based; 0 = empty slot (A-C1-10)
                 state.Trains[slot].Color = g.WaveColor[w];
                 state.Trains[slot].NodeId = (short)g.SourceNode;
                 int outEdge = SingleOutgoingEdge(g, g.SourceNode, state);
+                if (outEdge < 0)
+                    throw new InvalidOperationException("source node has no outgoing edge — invalid fixture (F10)");
                 if (state.NodeQueueCounts[g.SourceNode] == 0 && MouthFree(state, outEdge))
                     EnterEdge(ref state, slot, outEdge, enteredThisTick);
                 else

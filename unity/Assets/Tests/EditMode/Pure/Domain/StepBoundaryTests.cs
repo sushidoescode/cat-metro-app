@@ -27,19 +27,25 @@ namespace CatMetro.Tests.Domain
             // first visible in the tick==7 entry. (Same semantics as the passing twin test
             // SingleCommand_AppliesAtNextTickBoundary; this mapping had an off-by-one in the red
             // phase, repaired without changing the assertion set.)
+            int before = 0, after = 0; // review F8: both branches must actually execute
             foreach (var (tick, route, used) in seen)
             {
                 if (tick <= 6) // states after processing ticks 0..5: not applied yet
                 {
                     Assert.That(route, Is.EqualTo(1), $"route must still be initialRoute after processing tick {tick - 1}");
                     Assert.That(used, Is.EqualTo(0));
+                    before++;
                 }
                 else // states after processing ticks 6..: applied at step 1 of tick 6
                 {
                     Assert.That(route, Is.EqualTo(0), $"route must have flipped after processing tick {tick - 1}");
                     Assert.That(used, Is.EqualTo(1));
+                    after++;
                 }
             }
+            Assert.That(seen.Count, Is.EqualTo(8), "fixture shortened — observations missing (F8)");
+            Assert.That(before, Is.GreaterThan(0).And.LessThan(8), "both sides of the boundary observed");
+            Assert.That(after, Is.GreaterThan(0), "the applied branch executed");
         }
 
         [Test] // step 2
@@ -142,23 +148,75 @@ namespace CatMetro.Tests.Domain
             Assert.That(slotCleared, Is.True, "delivered train's slot is zeroed (A-C1-10)");
         }
 
-        [Test] // step 6
+        [Test] // step 6 — review F3: the 16-tick countdown and the exact expiry tick are pinned
         public void Step_Overflow_RaisesAtCapacityCancelsOnClearFailsOnExpiry()
         {
-            // Raise + expiry -> Failed(QueueOverflow): continuous double emission, drain 1/tick.
-            var fail = Fixtures.RunThroughTick(Fixtures.OverflowFailShape(), 7, new CommandLog(), 399);
+            // Raise + expiry -> Failed(QueueOverflow). The raise happens during processing tick 0
+            // (double emission at tick 0), so the first observed post-state (Tick==1) must carry
+            // the full 16-tick timer, and expiry lands exactly 17 post-ticks after the raise
+            // (16 decrements on processing ticks 1..16 -> fail at processing tick 16 -> Tick 17).
+            int raisePostTick = -1; short timerAtRaise = -1;
+            var fail = Fixtures.RunThroughTick(Fixtures.OverflowFailShape(), 7, new CommandLog(), 399, s =>
+            {
+                if (raisePostTick < 0 && s.OverloadTimers[0] > 0) { raisePostTick = s.Tick; timerAtRaise = s.OverloadTimers[0]; }
+            });
+            Assert.That(raisePostTick, Is.EqualTo(1), "raised during processing tick 0");
+            Assert.That(timerAtRaise, Is.EqualTo(16), "CM-R02.5: the countdown is 16 ticks (2 s), exactly");
             Assert.That(fail.Outcome.Kind, Is.EqualTo(OutcomeKind.Failed));
             Assert.That(fail.Outcome.Reason, Is.EqualTo(FailReason.QueueOverflow));
             Assert.That(fail.Overloads, Is.GreaterThanOrEqualTo(1), "raise was counted");
-            Assert.That(fail.Tick, Is.LessThanOrEqualTo(20), "expiry at ~16 ticks after the raise");
+            Assert.That(fail.Tick, Is.EqualTo(17), "expiry exactly 16 decrements after the raise");
 
             // Raise + clear -> cancel, run continues and completes Won.
-            bool sawTimer = false;
+            bool sawFullTimer = false;
             var ok = Fixtures.RunThroughTick(Fixtures.OverflowCancelShape(), 7, new CommandLog(), 399,
-                s => { if (s.OverloadTimers[0] > 0) sawTimer = true; });
-            Assert.That(sawTimer, Is.True, "Overload was raised transiently");
+                s => { if (s.OverloadTimers[0] == 16) sawFullTimer = true; });
+            Assert.That(sawFullTimer, Is.True, "Overload was raised with the full 16-tick timer");
             Assert.That(ok.Outcome.Kind, Is.EqualTo(OutcomeKind.Won), "cleared queue cancels the countdown");
             Assert.That(ok.OverloadTimers[0], Is.EqualTo(0), "timer cleared on cancel");
+        }
+
+        [Test] // review F2: the zero-dwell pass-through rule (A-C1-8 iv) is pinned, not silent.
+        public void Step_NodeArrival_PassThroughLeavesQueueUntouched()
+        {
+            // Golden-defining semantic: an arrival whose outgoing mouth is free departs in the
+            // same step and never touches the queue (product_spec.md:224 "departs immediately").
+            // J1's queue must be empty at EVERY observed tick of the L001 run through tick 19.
+            int maxQueueAtJ1 = 0;
+            TrainSlot at18 = default;
+            Fixtures.RunThroughTick(Fixtures.L001Shape(), Fixtures.L001Seed, new CommandLog(), 19, s =>
+            {
+                if (s.NodeQueueCounts[1] > maxQueueAtJ1) maxQueueAtJ1 = s.NodeQueueCounts[1];
+                foreach (var t in s.Trains) if (t.Id == 1 && s.Tick - 1 == 18) at18 = t;
+            });
+            Assert.That(maxQueueAtJ1, Is.EqualTo(0), "zero dwell: the pass-through arrival never enqueues");
+            Assert.That(at18.State, Is.EqualTo(TrainState.OnEdge), "already re-entered an edge in the same step");
+            Assert.That(at18.EdgeId, Is.EqualTo(2), "departed on the current route within the arrival step");
+        }
+
+        [Test] // review F9: single-count waves are spacing-independent; multi-count zero spacing is loud
+        public void Step_Waves_SingleCountEmitsOnceAndZeroSpacingMultiCountThrows()
+        {
+            var single = new LevelGraph(
+                "FX-1W", 2, new[] { 8, 8 },
+                new[] { 0 }, new[] { 1 }, new[] { 5 },
+                new[] { 0 },
+                new int[0][], new int[0], new byte[0],
+                new[] { 1 }, new[] { new[] { CatColor.Red } }, new[] { 6 },
+                new[] { 3 }, new[] { CatColor.Red }, new[] { 1 }, new[] { 0 }, // count 1, spacing 0
+                1, 100, 8, 1);
+            var end = Fixtures.RunThroughTick(single, 1, new CommandLog(), 99);
+            Assert.That(end.Outcome.Kind, Is.EqualTo(OutcomeKind.Won), "the single cat spawned at tick 3 and was delivered");
+            Assert.That(end.Deliveries, Is.EqualTo(1));
+
+            Assert.Throws<ArgumentException>(() => new LevelGraph(
+                "FX-0SP", 2, new[] { 8, 8 },
+                new[] { 0 }, new[] { 1 }, new[] { 5 },
+                new[] { 0 },
+                new int[0][], new int[0], new byte[0],
+                new[] { 1 }, new[] { new[] { CatColor.Red } }, new[] { 6 },
+                new[] { 0 }, new[] { CatColor.Red }, new[] { 2 }, new[] { 0 }, // count 2, spacing 0
+                2, 100, 8, 2), "multi-count zero spacing must be refused loudly, never silently emit nothing");
         }
 
         [Test] // step 8
