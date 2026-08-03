@@ -34,13 +34,16 @@ A shareable web version of the report is published as a private Artifact (link i
 
 ## Data (`data/`)
 
-Machine-readable appendices. All CSVs parse with standard readers; three files
-(`ad_placement_map.csv`, `economy_sources_and_sinks.csv`, `revenue_scenarios.csv`) begin with a
-single `#` policy/assumption comment line — skip it or pass `comment='#'`.
+Machine-readable appendices. All CSVs parse with standard readers; seven files begin with `#`
+policy/assumption comment lines — skip them or pass `comment='#'`. Single comment line:
+`ad_placement_map.csv`, `device_test_matrix.csv`, `economy_sources_and_sinks.csv`,
+`google_play_checklist.csv`, `revenue_scenarios.csv`. Multi-line comment notes:
+`revenuecat_configuration.csv` (3 lines) and `paywall_experiments.csv` (6 lines) — naive
+"skip the first line" parsing fails on those two.
 
 | File | Contents |
 |---|---|
-| `monetization_catalog.csv` | 6 live SKUs + 10 evaluated-and-cut products with rationale |
+| `monetization_catalog.csv` | 6 live SKUs + 1 experiment-only SKU (`cm_all_access_499`, PW01) + 9 evaluated-and-cut + 1 P2 web SKU, with rationale |
 | `revenuecat_configuration.csv` | Ordered dashboard setup: products, entitlements, offerings, placements, paywall, webhooks, Test Store, promo codes |
 | `entitlement_map.json` | Entitlements → products → runtime effects → offline/revocation behavior; consumable ledger contract |
 | `offering_and_placement_map.json` | Placement → offering → packages → eligibility/caps/suppression → analytics events |
@@ -57,8 +60,8 @@ single `#` policy/assumption comment line — skip it or pass `comment='#'`.
 | `roadmap_56_days.csv` | Day-by-day plan with gates, acceptance criteria, dependencies, fallbacks, hour estimates |
 | `risk_register.csv` | 18 risks with early-warning signals, mitigations, contingencies, owners |
 | `device_test_matrix.csv` | Test tiers incl. 16 KB page-size image and foldable |
-| `google_play_checklist.csv` | ~25 dated compliance items with evidence requirements and source URLs |
-| `github_issue_backlog.md` | 6 milestones, ~45 issues, plus PR/bug/feature/ADR templates |
+| `google_play_checklist.csv` | 35 dated compliance items with evidence requirements and source URLs |
+| `github_issue_backlog.md` | 6 milestones, 50 issues, plus PR/bug/feature/ADR templates |
 
 ## Agents (`agents/`)
 
@@ -79,7 +82,21 @@ avoid anchoring on the prior reports' conclusions). Kept for traceability.
 The original research package remains in the repo root: `Shipaton_2026_Winning_Game_Blueprint.pdf`,
 `Shipaton 2026 Game Strategy.pdf`, `RevenueCat Shipaton 2026 Hackathon and Mobile Game Strategy.pdf`,
 `I'm going to be participating in the this hackatho.pdf`, and `Loopline_Technical_Appendix/`.
-Treat those as superseded wherever they conflict with `DECISIONS_BRIEF.md`.
+Treat those as superseded wherever they conflict with `DECISIONS_BRIEF.md`. The verification
+audit trail (~150 findings with URLs) is committed at `data/research_results.json`.
+
+**Original master brief — not recoverable (audit C9).** The "14 phases / 27 sections /
+~23 appendices" master brief ([U01], user-supplied 2026-07-30) exists only as citations: it is
+not among the four research PDFs, and exhaustive search of the package and the extract caches
+found no copy. `ORIGINAL_BRIEF.md` therefore cannot be created by an agent — open ask
+(recorded 2026-08-03): the human author must supply the text. Until it is committed,
+completeness against the 14/27/23 structure is unverifiable.
+
+**Consciously dropped from the Loopline appendix** (recorded so the drop is no longer silent):
+the three reusable `SKILL.md` agent workflows (launch-content, level-generation, unity-feature)
+and the validator's numeric classification thresholds / beam-evaluation weights. The 11-stage
+validator pipeline description survives in the specs; the workflow files and constants were not
+ported — the Loopline appendix remains authoritative for them until re-derived in-repo.
 
 ## Standing verification duty
 

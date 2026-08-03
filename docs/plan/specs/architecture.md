@@ -12,7 +12,7 @@ compatibility matrix after SDK verification.
 | Scripting | IL2CPP, ARM64 only, .NET Standard 2.1 | Play requirement + performance |
 | Input | Unity Input System (tap/pointer only) | Single tap interaction; new-project default; EnhancedTouch for multi-safe hit tests |
 | UI | UGUI + TextMeshPro (not UI Toolkit) | Mature world-space + screen-space mixing, mature localization/accessibility patterns; UI Toolkit runtime still weaker for game HUD juice |
-| Android | minSdk 24, targetSdk 36, 16 KB page-size audit of all native libs | Play policy (verify exact deadline); API 24 covers >97% actives |
+| Android | minSdk 25, targetSdk 36, 16 KB page-size audit of all native libs | Play policy (verify exact deadline); min API 25 (Android 7.1+) is the Unity 6.3 documented Android minimum |
 | Determinism | Pure C# fixed-tick domain (8 ticks/s), integer/fixed-point state, seeded PCG RNG, command log | Replay, solver, level validation, capture system, and bug repro all depend on it |
 | Save | Versioned JSON + binary header, atomic write (temp+rename), migration table, durable purchase ledger | Process-death safety; consumable double-grant protection |
 | Content | Levels as validated JSON in StreamingAssets, imported to immutable DTOs at load; content hash in save | No remote-content failure path during the event |

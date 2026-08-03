@@ -23,7 +23,7 @@ One copy of everything. No Unity IAP. No second EDM4U.
 | OneSignal Unity | **5.3.2** | brief | Still uses Google EDM4U. Needs custom Gradle templates (`mainTemplate.gradle`, `gradleTemplate.properties` under version control) + Force Resolve. |
 | Google Mobile Ads Unity (AdMob) | **11.3.0** | brief | Ad serving SDK; RevenueCat Ads (beta) is a tracking layer on top — it does NOT serve ads. AdMob convenience module is NOT available for Unity → manual AdTracker calls (Section 3). Fallback network: AppLovin MAX 8.6.4 (not installed unless AdMob fails spike). |
 | External Dependency Manager (EDM4U) | **1.2.188** | brief | **Exactly ONE copy in the project.** GMA and OneSignal installers both try to bundle their own — delete duplicates, keep the standalone 1.2.188. CI runs Force Resolve and diffs the resolved-dependencies file on every SDK-touching PR. |
-| Android minSdk / targetSdk | **24 / 36** | brief | Target API 36 required for new apps from Aug 31 2026 (ext. Nov 1). 16 KB page size mandatory (API 35+ since Nov 2025): RevenueCat/Billing are Java-only (safe); audit GMA + Unity native `.so` files on the 16 KB emulator image. |
+| Android minSdk / targetSdk | **25 / 36** | brief | Target API 36 required for new apps from Aug 31 2026 (ext. Nov 1). 16 KB page size mandatory (API 35+ since Nov 2025): RevenueCat/Billing are Java-only (safe); audit GMA + Unity native `.so` files on the 16 KB emulator image. |
 | Scripting | IL2CPP, ARM64 only | architecture.md | Play requirement. |
 
 Known integration landmines (all verified 2026-07-31, all covered in Week-1 device spike):
@@ -50,7 +50,7 @@ take up to ~36 h to propagate — so the credential and upload steps front-run e
 | # | Step | Detail | Priority |
 |---|---|---|---|
 | 1 | Create RC project | Project name **Cat Metro**. Note: check project plan tier here — Experiments and Targeting are Pro/Enterprise-gated (verified 2026-07-31); if not Pro, the A/B plan for $4.99 vs $6.99 becomes sequential offering changes + Placements. | P0 |
-| 2 | Add Android app to project | Package name **io.catmetro.game** (catmetro.io verified unregistered via RDAP 2026-07-31 — register the domain the same day; package name is immutable after first Play upload). Copy the public Android SDK key (`goog_…`) into the build config. | P0 |
+| 2 | Add Android app to project | Package name **com.catmetro.game** (catmetro.io verified unregistered via RDAP 2026-07-31 — register the domain the same day; package name is immutable after first Play upload). Copy the public Android SDK key (`goog_…`) into the build config. | P0 |
 | 3 | Play Console app + first upload | Create the Play app (13+ target audience per brief Families decision), enable Play App Signing, upload the Day-1 skeleton AAB (with Billing permission, targetSdk 36) to the **closed test track** and recruit the 12 testers — this also starts the mandatory 14-day closed-test clock (personal account path, verified 2026-07-31). | P0 |
 | 4 | Play service account JSON → RC | Google Cloud project → enable Google Play Android Developer API → create service account → JSON key. In Play Console *Users & permissions*, invite the service account with **View app information**, **View financial data**, **Manage orders** (financial + orders are required for RC to validate purchases and see refunds). Upload JSON in RC app settings. Expect up to 36 h validation lag — this is why it is step 4 of Day 1, not Day 5. | P0 |
 | 5 | Create the 6 Play in-app products | `cm_all_access` $6.99 · `cm_supporter_pack` $9.99 · `cm_theme_sakura` $2.99 · `cm_theme_neon` $2.99 · `cm_rewind_5` $1.99 · `cm_rewind_20` $4.99. All "Managed product" type (consumption is client-driven via Billing 8; RC consumes rewinds automatically after our server-less grant). Activate all six. | P0 |
@@ -222,7 +222,7 @@ is written when entering Purchasing and cleared at Done/Cancelled/Failed. On boo
 ## 5. Purchase test matrix
 
 Run on the mid-tier device (Pixel 6a class) minimum; rows marked ▲ also on low-tier
-(API 24–29) per the architecture.md device matrix. "License tester" = Google account
+(API 25–29) per the architecture.md device matrix. "License tester" = Google account
 added in Play Console → License testing (test payment methods, no real charge).
 
 | # | Scenario | Setup | Steps | Expected | Evidence / event |
@@ -233,7 +233,7 @@ added in Play Console → License testing (test payment methods, no real charge)
 | 4 | User cancel | License tester | Open Play sheet → back out | Return to paywall intact; no grant; no error dialog | `purchase_failed(user_cancelled=true)` |
 | 5 | Network drop before sheet | Airplane mode ON, then tap buy | CTA on any paywall | Friendly offline message ≤2 s; state → Idle | `purchase_failed(error_domain=network)` |
 | 6 | Network drop mid-purchase | Start purchase, airplane ON at Play spinner | Complete when network returns | No grant from memory; grant arrives via CustomerInfo sync on reconnect, exactly once | breadcrumb → `purchase_completed` |
-| 7 | Process death mid-purchase ▲ | `adb shell am kill io.catmetro.game` during Play sheet | Relaunch | Breadcrumb recovery path runs; purchase completes or cleanly voids; no stuck modal | recovery log + single `purchase_completed` or none |
+| 7 | Process death mid-purchase ▲ | `adb shell am kill com.catmetro.game` during Play sheet | Relaunch | Breadcrumb recovery path runs; purchase completes or cleanly voids; no stuck modal | recovery log + single `purchase_completed` or none |
 | 8 | Process death after grant, before flush | Kill immediately after success toast | Relaunch | Atomic save held grant; no double grant; analytics event replays from queue once | ledger shows 1 entry for txn hash |
 | 9 | Duplicate callback / redelivery | Buy `cm_rewind_20`; force RC re-sync (relaunch ×3) | Observe balance | Balance +20 exactly once; dedupe logged on replays | ledger dedupe log, single `purchase_completed` |
 | 10 | Restore, fresh install | Buy #1 account, uninstall, reinstall | Shop → Restore | `all_access` (+themes) re-granted, no charge | `restore_completed(entitlements_restored_count=3)` |
@@ -293,7 +293,7 @@ never show raw codes, always leave a next step. All dialogs dismissible, ≥48 d
 Build & compliance
 - [ ] Merged manifest shows Billing **8.3.0** (from purchases-unity 9.7.0) and no second BillingClient; resolved-deps diff clean. (P0)
 - [ ] Unity IAP absent from manifest and packages. (P0)
-- [ ] targetSdk 36 / minSdk 24; IL2CPP ARM64 only; AAB ≤60 MB. (P0)
+- [ ] targetSdk 36 / minSdk 25; IL2CPP ARM64 only; AAB ≤60 MB. (P0)
 - [ ] 16 KB page-size audit passed on 16 KB emulator image (GMA + Unity `.so` files). (P0)
 - [ ] R8-minified release build completes full test-matrix rows 1–4 (ProGuard rules for Billing/GMA/OneSignal intact). (P0)
 - [ ] Exactly one EDM4U (1.2.188); custom Gradle templates committed. (P0)

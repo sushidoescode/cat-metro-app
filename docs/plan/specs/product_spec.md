@@ -381,12 +381,15 @@ L020–L025 reached, streak ≥4, 1–2 cosmetics owned, push opted in ≥35% of
 | 5. Resolve | 75–90 | Final deliveries | Win: score rollup → stars → tickets → next. Fail: cause camera → retry <1 s (back to Phase 1 with knowledge) | Pride / "one more" |
 | Exit ramps | at 90 | Next level; OR Daily Line; OR share card (post-daily); OR shop browse | Results screen offers exactly one primary CTA (Next), others quiet | Momentum |
 
-Loop invariants: level duration 45–90 s (LOCKED); retry <1 s (LOCKED); rewarded offers appear only inside
-the fail path per eligibility (Section 21), never in Phases 1–4.
+Loop invariants: retry <1 s (LOCKED); rewarded offers appear only inside the fail path per eligibility
+(Section 21), never in Phases 1–4. Level duration: the flat "45–90 s (LOCKED)" figure now applies from the
+combo band (L021) onward; earlier teaching bands ramp up per the **per-band duration table in Section 22**
+(amended per AMD-02 — the shipped anchors L001/L006/L018 are deliberately shorter than 45 s, and the flat
+invariant contradicted the package's own anchor files).
 
 - **Decision:** The loop's monetization surface is confined to Phase-5 fail path and post-win results footer.
 - **Evidence:** Session/retry constraints LOCKED (brief); "ad every other level" is the #1 comp complaint (Arrows, verified 2026-07-31).
-- **Action:** Loop timing audited per level by the validator (solver optimal time must land 40–75 s so real play lands 45–90).
+- **Action:** Loop timing audited per level by the validator against the per-band duration table (Section 22); from the combo band (L021) onward, solver-optimal time must land 40–75 s so real play lands 45–90 s.
 - **Risk:** Read phase collapses to zero on replays, shortening loops below the fun threshold.
 - **Fallback:** Retry keeps switch states from the previous attempt's tick 0 (initialRoute), not mid-run states — the read phase stays meaningful.
 
@@ -395,7 +398,7 @@ the fail path per eligibility (Section 21), never in Phases 1–4.
 ## 16. Meta progression
 
 - **Stars** (1–3 per level, 90 total at launch): gate nothing mechanically; district cosmetic milestones read them (e.g., conductor cap at Whisker Yard 15★). Best score + stars shown on every level pin.
-- **Districts** (6 launch, LOCKED 30 levels = 6×5): Whisker Yard → Harbor Line → Market Cross → Twin Platforms → Catnip Gardens → Midnight Terminus. Sequential unlock by completing the previous district (any stars). Bonus district **Rooftop Line** (L901–L910) is All Access content (LOCKED product).
+- **Districts** (6 launch, LOCKED 30 levels = 6×5): Whisker Yard → Harbor Line → Market Cross → Twin Platforms → Catnip Gardens → Midnight Terminus. Sequential unlock by completing the previous district (any stars). Bonus district **Night Harbor** (L901–L910) is All Access content (LOCKED product).
 - **Tickets** (soft currency, client-side — RC Virtual Currency NOT used at launch, verified/LOCKED): earn 20–50/level base + perfect bonus (matches examples: 20/25/30/40/50), 100 first daily, 30–80 daily gift; sinks: cosmetic variants 600–1200; nothing gameplay-gated; no premium currency (all LOCKED, brief).
 - **Cosmetics**: themes (board+train reskins), liveries (train paint), badges (profile/share card). Full catalog in Section 17.
 - **Streak badge**: consecutive Daily Line days; tiers at 3/7/14/30 (bronze/silver/gold/opal collar tags). Cosmetic-only, no gameplay power, repairable (Section 20) — loss-aversion deliberately blunted (journeys CSV harm note).
@@ -404,7 +407,7 @@ the fail path per eligibility (Section 21), never in Phases 1–4.
 - **Evidence:** Economy LOCKED (brief); Cats&Soup shows a cosmetics spine carrying 42.7M installs (verified 2026-07-31).
 - **Action:** Ticket faucet/sink model spreadsheet check: a no-IAP, no-ad player owns their first 600-ticket cosmetic by ~Day 2–3 and one per ~4–5 days after — tune gift sizes to hold that line.
 - **Risk:** 90 stars is a thin completionist surface for week-3+ players.
-- **Fallback:** Daily Line + streak is the designed endgame until post-launch bands 31–60 ship in Sep.
+- **Fallback:** Daily Line + streak is the designed endgame until post-launch bands 31–40 ship in Sep.
 
 ---
 
@@ -536,6 +539,23 @@ Launch band table (30 levels, **launch mechanics only: switch, queue, second-sou
 
 Anchors L001/L006/L018 ship exactly as in example_levels.json. Diff = computed difficultyTarget; FA = first-attempt clear target.
 
+**Per-band duration table** (AMD-02, stated choice: the anchors ship as authored and the flat 45–90 s loop
+invariant is amended to this table — the alternative, re-authoring L001/L006/L018 wave scripts to a 40–75 s
+solver optimum, was rejected because no solver exists yet to substantiate the claim). Hard data points are
+the shipped anchors' `timeLimitTicks` (8 ticks/s); the range endpoints marked ~ are provisional
+interpolation and need human sign-off + validator backfill (Aug 10) before being treated as LOCKED:
+
+| Band(s) | Levels | Shipped anchor (timeLimitTicks → s) | Duration target |
+|---|---|---|---|
+| onboarding | L001–L005 | L001: 160 → 20 s | ~15–35 s |
+| alternation | L006–L010 | L006: 260 → 32.5 s | ~25–40 s |
+| queue-reading / two-source | L011–L020 | L018: 300 → 37.5 s | ~30–50 s |
+| combo → capstone (incl. daily/bonus) | L021+ | L042: 360 → 45 s · L088: 380 → 47.5 s | 45–90 s real play; solver-optimal 40–75 s (the original LOCKED target, unchanged from here on) |
+
+Cross-references: the Section 15 loop-invariant line and its validator Action point here; example_levels.json
+is unchanged by this amendment (no 40–75 s solver-optimal claim is made for L001/L006/L018 — they sit below
+that band by design as teaching levels).
+
 | Level | Name | District | Band | New element | Diff | FA |
 |---|---|---|---|---|---|---|
 | L001 | First Switch | Whisker Yard | onboarding | switch (mechanic) | 0.08 | 97% |
@@ -569,11 +589,11 @@ Anchors L001/L006/L018 ship exactly as in example_levels.json. Diff = computed d
 | L029 | Rush of Rushes | Midnight Terminus | pressure | min headroom (H-axis peak) | 0.53 | 46% |
 | L030 | Midnight Capstone | Midnight Terminus | capstone | full launch vocabulary | 0.55 | 45% |
 
-Bonus district (All Access, LOCKED): **Rooftop Line** L901–L910, remix spread 0.30–0.55, launch mechanics
+Bonus district (All Access, LOCKED): **Night Harbor** L901–L910, remix spread 0.30–0.55, launch mechanics
 only, no new mechanics (nothing a free player needs is here — extra content, not gated progression).
 
 - **Decision:** Table above is the launch content plan of record; every level solver-validated to schema v2 before authoring is "done."
-- **Evidence:** 30 levels / 6 districts LOCKED; anchor levels already validated (example_levels.json); D14 gate requires 20 validated levels (brief schedule).
+- **Evidence:** 30 levels / 6 districts LOCKED; anchor levels already authored (example_levels.json); D14 gate requires 20 validated levels (brief schedule).
 - **Action:** Author order: L002–L005 (Aug 4), L007–L017 (Aug 5–12), L019–L030 (Aug 12–18), L901–L910 (Aug 18–21) — 20 validated by D14 Aug 14 ✓ gate.
 - **Risk:** FA targets are pre-telemetry guesses; the L018 and L028–L030 cliffs are the likely misses.
 - **Fallback:** JSON-only retune path (Section 14 fallback); each capstone has a pre-authored "-easier" variant on the shelf (wave spacing +2 ticks, capacity +1) that can swap in within one content update.
@@ -582,15 +602,16 @@ only, no new mechanics (nothing a free player needs is here — extra content, n
 
 ## 23. 100-level expansion framework (bands 31–100)
 
-Post-launch mechanics enter in LOCKED order: cooldown + gates in bands 31–60 (Sep updates), express +
+Post-launch mechanics enter in LOCKED order: cooldown + gates in bands 31–60 (in-window: 31–35 in the
+Week-5 build, 36–40 in v1.1 by Sep 11; 41–60 post-event), express +
 reversible in expansion 61–100 (post-event). One new mechanic per band start; validator's
 one-new-mechanic rule continues to apply.
 
 | Levels | Band (schema enum) | New mechanic | Diff range | Ships |
 |---|---|---|---|---|
-| L031–L041 | combination | cooldown (L031: switches lock cooldownTicks after toggle) | 0.50–0.58 | Sep update 1 (districts 7–8) |
-| L042–L055 | timed-gates | gate (L042 "Rush-Hour Gate" — already authored, example_levels.json) | 0.55–0.68 | Sep update 2 (districts 9–10) |
-| L056–L060 | pressure | — (cooldown+gate mastery) | 0.68–0.72 | Sep update 2 |
+| L031–L041 | combination | cooldown (L031: switches lock cooldownTicks after toggle) | 0.50–0.58 | L031–L035 Week-5 build; L036–L040 v1.1 by Sep 11; L041 post-event |
+| L042–L055 | timed-gates | gate (L042 "Rush-Hour Gate" — already authored, example_levels.json) | 0.55–0.68 | Post-event |
+| L056–L060 | pressure | — (cooldown+gate mastery) | 0.68–0.72 | Post-event |
 | L061–L075 | combination | express (L061: express cats cannot wait in node queues) | 0.70–0.80 | Post-event |
 | L076–L090 | expert | reversible (L076: reversible edges flip flow direction) | 0.78–0.88 (anchor: L088 "Last Local" 0.83, authored) | Post-event |
 | L091–L100 | capstone | — (full vocabulary) | 0.86–0.95 | Post-event |
@@ -602,9 +623,9 @@ reversible edges — zero schema migration needed for the entire 100-level arc.
 
 - **Decision:** 70 expansion levels in 6 bands, mechanics in LOCKED order, schema-stable.
 - **Evidence:** Mechanics sequencing LOCKED (brief); L042/L088 anchors already authored and solver-validated in the examples file.
-- **Action:** Bands 31–60 authoring starts Sep 1 (after 1.0 submission), targeting Sep 12 and Sep 22 updates inside the event window (Growth-by-numbers criteria reward live momentum, verified 2026-07-31).
+- **Action:** In-window authoring covers 31–40 only: levels 31–35 land in the Week-5 build and levels 36–40 in v1.1 by Sep 11 (roadmap version — the one content schedule); 41–60 are authored post-event (Growth-by-numbers criteria reward live momentum, verified 2026-07-31).
 - **Risk:** Expansion authoring competes with launch-week firefighting.
-- **Fallback:** Bands 31–60 slip cleanly (Daily Line + Cup carry retention); nothing in the event submission depends on them.
+- **Fallback:** Bands 31–40 slip cleanly (Daily Line + Cup carry retention); nothing in the event submission depends on them.
 
 ---
 
@@ -672,7 +693,7 @@ level fails, not just that it fails. Difficulty-model refit (Section 21 fallback
 | Fail thud + cause-camera pan | Failure clarity | P0 |
 | Win rollup: score ticks, star pops, ticket count-up | Results juice | P0 |
 | Mute-friendly design pass (all critical info visual) | Sound-off commuters are the primary persona | P0 |
-| Purr meter: board hum + cat tail-sync at chain ≥3 | Flow-state feedback | P1 |
+| Purr meter: board hum + cat tail-sync at chain ≥3 | Flow-state feedback; promoted P1→P0 per AMD-02 — the sound-off persona needs the flow channel, so the tail-sync visual must read with audio muted | P0 |
 | Layered combo music stems (central mixer, stems add per chain tier — architecture.md) | | P1 |
 | District ambience beds (harbor gulls, market chatter, night crickets) | | P1 |
 | 3★ purr + cat pile-up celebration on capstones | | P1 |
@@ -714,7 +735,7 @@ validated — brief gate); tutorial trio; cause-first fail camera; instant retry
 Home map District 1–4; save v1 (atomic, versioned); closed-test build with RC + OneSignal + AdMob SDK
 spikes passing on device (brief D14); placeholder-quality art on final palette.
 
-**Launch scope (1.0, Aug 24–28):** 30 levels + Rooftop Line (L901–L910); full IAP catalog (cm_all_access
+**Launch scope (1.0, Aug 24–28):** 30 levels + Night Harbor (L901–L910); full IAP catalog (cm_all_access
 $6.99, cm_supporter_pack $9.99, cm_theme_sakura $2.99, cm_theme_neon $2.99, cm_rewind_5 $1.99,
 cm_rewind_20 $4.99) with RC entitlements + Placements (post_level_5, theme_preview, bonus_district, shop,
 rewind_failure); RC Paywalls v2 on post_level_5 with custom fallback; 5 rewarded placements with LOCKED
@@ -723,8 +744,8 @@ journeys live (daily/streak in one, lapse ladder, hard-level help) + IAM + local
 backup; shop + 15-item cosmetic catalog; accessibility set (Section 24 P0s); offline-first everything;
 feature flags per architecture.md.
 
-**Post-launch (Sep, event window):** District Cup weekly from Aug 31 (Week 5); bands 31–60 in two Sep
-content updates; price A/B $4.99 vs $6.99 via RC Experiments if plan allows, else sequential offerings
+**Post-launch (Sep, event window):** District Cup weekly from Aug 31 (Week 5); bands 31–40 in two
+content updates (31–35 in the Week-5 build, 36–40 in v1.1 by Sep 11; 41–60 post-event); price A/B $4.99 vs $6.99 via RC Experiments if plan allows, else sequential offerings
 (LOCKED); Noise-platform go/no-go ~Day 21; Stripe Funnel Vision go/no-go Day 35 (P2 stretch, LOCKED);
 learned notification send-times; difficulty-model refit; livery variant drops.
 
@@ -742,14 +763,14 @@ verified 2026-07-31).
 - **Decision:** Scope ladder above is the plan of record; anything not listed is out.
 - **Evidence:** Monetization catalog, caps, placements, schedule gates all LOCKED (brief); D7/14/21/28/35/42 hard cut gates per roadmap.
 - **Action:** Each rung gets a one-page gate review on its date; the D14 review explicitly signs off MVP completeness before commercial polish begins.
-- **Risk:** Rooftop Line (10 paid-content levels) is the most cuttable launch item and the most tempting to slip.
-- **Fallback:** If D21 is red, Rooftop Line ships in the first Sep update instead; All Access buyers before then get it as an automatic content drop (entitlement already grants it — messaging: "bonus district arrives this week"), and the paywall copy says "includes the Rooftop Line district (arriving this week)" — never sell what isn't dated.
+- **Risk:** Night Harbor (10 paid-content levels) is the most cuttable launch item and the most tempting to slip.
+- **Fallback:** If D21 is red, Night Harbor ships in the first Sep update instead; All Access buyers before then get it as an automatic content drop (entitlement already grants it — messaging: "bonus district arrives this week"), and the paywall copy says "includes the Night Harbor district (arriving this week)" — never sell what isn't dated.
 
 ---
 
 ## 29. Vertical-slice acceptance test (D14 checklist)
 
-Run on: low-tier (Mali, API 24-29, 720p), mid-tier (Pixel 6a-class), 16 KB-page emulator (matrix per
+Run on: low-tier (Mali, API 25-29, 720p), mid-tier (Pixel 6a-class), 16 KB-page emulator (matrix per
 architecture.md). ALL must pass:
 
 - [ ] Replay determinism: 3 recorded command logs × 3 devices → identical outcome hashes.

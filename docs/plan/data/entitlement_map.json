@@ -3,7 +3,7 @@
   "version": "1.0",
   "generated": "2026-07-31",
   "app": {
-    "package_name": "io.catmetro.game",
+    "package_name": "com.catmetro.game",
     "store": "play_store",
     "rc_project": "Cat Metro",
     "sdk": "purchases-unity 9.7.0 (Google Play Billing 8.3.0)",

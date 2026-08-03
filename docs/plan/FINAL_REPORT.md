@@ -1,7 +1,7 @@
 # CAT METRO — Shipaton 2026 Definitive Execution Report
 
 **Prepared:** 31 July 2026 (event window opened today, 8:00am PDT).
-**Method:** Every load-bearing claim in the supplied research package was independently re-verified against primary sources on 31 Jul 2026 by a 10-agent research fleet (Official Rules, RevenueCat/OneSignal/Google/Unity docs and GitHub, live Play Store listings, registry RDAP). Full findings with URLs: `research notes → /tmp/catmetro-extract/research_results.json`; machine-readable deliverables in `deliverables/data/` and `deliverables/specs/`.
+**Method:** Every load-bearing claim in the supplied research package was independently re-verified against primary sources on 31 Jul 2026 by a 10-agent research fleet (Official Rules, RevenueCat/OneSignal/Google/Unity docs and GitHub, live Play Store listings, registry RDAP). Full findings with URLs: `deliverables/data/research_results.json` (committed with this package); machine-readable deliverables in `deliverables/data/` and `deliverables/specs/`.
 
 ---
 
@@ -32,7 +32,7 @@ Portrait, one-thumb: tap two-state junction switches to route color-and-symbol-c
 - **Launch scope:** 30 curated levels (6 districts), 4 mechanics (switch, queue capacity, second source, wildcard), seeded shared Daily Line (unlocks at L7), share-card + challenge deep link, 3 visual themes, full offline play.
 - **Monetization (Model B, "fair by design"):** free game complete on its own; $6.99 All Access (bonus district + both premium themes + daily rewind + permanently zero non-rewarded ad surfaces); $9.99 Supporter Pack; $2.99 themes; $1.99/$4.99 rewind packs; rewarded ads **only when the player asks** (rewind, double tickets, streak saver, theme rental) — no interstitials, no banners, no energy, no loot boxes, no subscription. This positioning attacks the single loudest complaint in every verified competitor's reviews.
 - **Retention:** Daily Line + streak badge + weekly District Cup from Week 5, powered by a 3-journey OneSignal architecture with explicit exits and in-app frequency caps.
-- **Stack:** Unity 6000.3.16f1, URP, IL2CPP/ARM64, min API 24 / target API 36; purchases-unity 9.7.0 (+RevenueCatUI), OneSignal Unity 5.3.2, Google Mobile Ads Unity 11.3.0, EDM4U 1.2.188 (single copy).
+- **Stack:** Unity 6000.3.16f1, URP, IL2CPP/ARM64, min API 25 / target API 36; purchases-unity 9.7.0 (+RevenueCatUI), OneSignal Unity 5.3.2, Google Mobile Ads Unity 11.3.0, EDM4U 1.2.188 (single copy).
 - **Award targets:** P0 = Best Game, HAMM, #BuildInPublic, OneSignal, Catvertising. P1 = Design, Grand Prize, Most Viral. P2 = Stripe Funnel Vision (Day-35 gate), Galaxy (non-cash). Skip = Replit, JetBrains, influencer categories.
 
 Full spec: `specs/product_spec.md`. Full catalog: `data/monetization_catalog.csv`.
@@ -126,9 +126,11 @@ Known-unknowable (no credible current public source — reported as gaps, not nu
 
 ## 6. Concept Comparison & Final Decision
 
-Six concepts scored on the brief's 24 criteria (23 scored 1–10; #24 overall EV = the weighted total). Weights sum to 100; full per-criterion table and rationale in `_working_concept_analysis.md` (drafted before verification to avoid anchoring; scores locked after).
+Six concepts scored 1–10 against the weighted criterion set below (weights sum to 100). The weighted totals reflect structured judgment; the per-criterion table was not preserved — only the totals and the pre-verification framework draft in `_working_concept_analysis.md` survive.
 
 Weights: comprehension 5, fun-30s 5, depth 4, solo feasibility 7, Unity risk 5, content burden 5, AI pipeline 3, visual distinction 4, video 5, organic 4, ASO 4, RC fit 6, rewarded fit 4, OneSignal fit 4, live-ops 3, ethics 4, Best Game 4, Design 3, HAMM 3, Catvertising 3, Grand traction 4, launch-by-D28 7, polish-by-D56 4.
+
+Disclosure: the criterion set changed after verification. The framework draft in `_working_concept_analysis.md` lists 20 criteria; 23 were scored. Added post-verification: AI pipeline (3) and Grand traction (4); dropped: daily replayability (5); OneSignal/live-ops fit and Best Game/Design appeal were each split into two criteria, with weight shifts elsewhere (e.g. solo feasibility 8→7, launch-by-D28 6→7). The 8.08/7.10 totals are as-scored under the 23-criterion set and are not reproducible per-criterion from this repo.
 
 | Concept | Weighted score | Verdict |
 |---|---|---|
@@ -139,7 +141,7 @@ Weights: comprehension 5, fun-30s 5, depth 4, solo feasibility 7, Unity risk 5, 
 | C6 "Cat Snack Line" idle café | 6.19 | Best raw monetization, worst feasibility+ethics narrative |
 | C3 CineCraft: Director's Cut | 5.61 | Asset volume + subjective scoring kill it; **removed even as Plan B** |
 
-**Plan B change:** the prior blueprint's pivot target (CineCraft) is replaced by **C4 Meowmelon** — if the Day-7 fun gate fails, a merge-drop pivot reuses the entire commercial/retention/analytics stack, ships even faster, and its weaknesses (differentiation) matter less than not shipping.
+**Plan B change:** the prior blueprint's pivot target (CineCraft) is replaced by **C4 Meowmelon** — if the Day-7 fun gate goes RED, the merge-drop pivot runs per `PLAN_B_RUNBOOK.md` in the same Play app entry and package (tester clock preserved). Honest framing: ~50% of sunk build effort, 100% of accounts/pipeline/SDK integrations, ~0% of content/design deliverables survive; its weaknesses (differentiation) matter less than not shipping.
 
 **Red-team verdicts on Cat Metro** (details argued in `specs/product_spec.md`):
 - *Switch intuitiveness:* one cognitive step above tap-to-release arrow games (103M installs prove the input class); mitigated by live route-highlighting from every switch and a hand-guided first tap. Risk accepted, tested at D7 gate.
@@ -166,28 +168,29 @@ The execution-grade detail lives in the deliverable files; the rulings that bind
 - **8. Monetization strategy** → `specs/monetization_spec.md`. Model B chosen; Model A is the contingency (if AdMob/RC-Ads access fails); Model C rejected (content burden). **Subscription: REJECTED** — no honest recurring value a solo dev can sustain in-window; one-time premium fits genre evidence (Neko Atsume gentle-IAP at 13.6M installs/4.78★) and the judge-access promo-code path; revisit only post-event.
 - **9. Catalog** → `data/monetization_catalog.csv` + `data/revenuecat_configuration.csv` + `data/entitlement_map.json`. Six live SKUs; starter pack, bundle, currency packs, streak-saver IAP, season pass, club: **Cut** (rationale in file).
 - **10. Paywall & purchase journey** → `specs/monetization_spec.md` §3–4 + `data/offering_and_placement_map.json`. First paywall after L5 win only; never after first failure; payer suppression; RC Paywalls v2 on post_level_5 with custom fallback (3 open Android crash issues verified in the RC Unity repo — device-test gate).
-- **11. Ads & Catvertising** → `data/ad_placement_map.csv`. 5 live opt-in placements, 8+ evaluated/cut; **no interstitials/banners/app-open at launch — this absence is the Catvertising narrative**, measured end-to-end in RC AdTracker (Loaded/Displayed/Opened/Revenue/Failed per placement). AdMob serves; RC Ads beta tracks; caps enforced in-app.
+- **11. Ads & Catvertising** → `data/ad_placement_map.csv`. 5 live opt-in placements, 12 evaluated/cut; **no interstitials/banners/app-open at launch — this absence is the Catvertising narrative**, measured end-to-end in RC AdTracker (Loaded/Displayed/Opened/Revenue/Failed per placement). AdMob serves; RC Ads beta tracks; caps enforced in-app.
 - **12. Economy** → `data/economy_sources_and_sinks.csv`. One soft currency (tickets), no premium currency, cosmetic-only sinks, Day-1/7/30 balance simulations for three player profiles, anti-inflation caps.
-- **13. Revenue scenarios** → `data/revenue_scenarios.csv`. 3 budgets × 3 outcomes with auditable formula notes; benchmark ranges only (labeled vintages); explicit "scenario ≠ forecast" header. Directional midpoint: organic base case ≈ 3k installs, ~$500–900 net revenue by Sep 30 — enough for category awards (2025 calibration: winners at $1–2k), not Grand Prize; the $2k budget optimistic case is where a Grand-Prize-shaped revenue curve becomes conceivable.
+- **13. Revenue scenarios** → `data/revenue_scenarios.csv`. 3 budgets × 3 outcomes with auditable formula notes; benchmark ranges only (labeled vintages); explicit "scenario ≠ forecast" header. Directional midpoint: organic base case ≈ 3k installs, base ≈ $253 net — short of the $1–2k 2025 category band on revenue alone; competes on craft and narrative.
 
 ## 14–19. Implementation systems (pointers)
 
-- **14. RevenueCat implementation** → `specs/revenuecat_implementation.md` (dashboard checklist, wrapper architecture, purchase/restore state machine, 20-row test matrix, failure matrix, 3 risk-path code skeletons). Compatibility matrix pinned: Unity 6000.3.16f1 / purchases-unity 9.7.0 / RevenueCatUI paired / Billing 8.3.0 / OneSignal 5.3.2 / GMA 11.3.0 / EDM4U 1.2.188 single-copy.
+- **14. RevenueCat implementation** → `specs/revenuecat_implementation.md` (dashboard checklist, wrapper architecture, purchase/restore state machine, 22-row test matrix, failure matrix, 3 risk-path code skeletons). Compatibility matrix pinned: Unity 6000.3.16f1 / purchases-unity 9.7.0 / RevenueCatUI paired / Billing 8.3.0 / OneSignal 5.3.2 / GMA 11.3.0 / EDM4U 1.2.188 single-copy.
 - **15. OneSignal retention** → `specs/onesignal_retention.md` + `data/onesignal_journeys.csv` + `data/notification_copy.csv` (3 copy variants per priority message). Growth plan $19/mo; 3 active journeys (Daily+Streak / Lapse Ladder / Hard-Level Help); IAM + one-off sends + Unity local notifications for the rest; permission asked only after first daily completion.
 - **16. Analytics & experimentation** → `data/analytics_event_taxonomy.csv` (45 events, params, destinations, privacy class, QA steps) + `data/experiment_backlog.csv` (26; honest about which are A/B-able at hackathon scale vs sequential/directional) + `data/paywall_experiments.csv`. Stack: one product-analytics backend behind a typed wrapper + RevenueCat (source of truth for money) + OneSignal (messaging) + Crashlytics/Cloud Diagnostics.
 - **17. Unity architecture** → `specs/architecture.md` (assemblies, deterministic sim, scene map, state machine, lifecycle rules, budgets, flags, EDM/Gradle risk zones, device matrix → also `data/device_test_matrix.csv`).
-- **18. Google Play & policy** → `data/google_play_checklist.csv` (25 dated items with evidence column). Highlights: 13+ target audience, no child-appealing store art, data-safety rows per SDK, account-deletion N/A (no accounts), in-app review only after 3-star wins.
+- **18. Google Play & policy** → `data/google_play_checklist.csv` (35 dated items with evidence column). Highlights: 13+ target audience, no child-appealing store art, data-safety rows per SDK, account-deletion N/A (no accounts), in-app review only after 3-star wins.
 - **19. Growth & ASO** → `specs/growth_aso_plan.md` (positioning, differentiation grid, full store listing draft, 30-day calendar, 15 video concepts, 10 hooks, outreach templates, Reddit/press/Devpost angles, capture pipeline). Pre-registration: **skip** (rules silent = risk). Product Hunt: ~Sep 1, value-led.
 
 ## 20. Eight-Week Execution Roadmap
 
-→ `data/roadmap_56_days.csv` (day-by-day D1–28, weekly D29–56, all gates) and `data/github_issue_backlog.md` (6 milestones, ~45 issues, templates).
+→ `data/roadmap_56_days.csv` (day-by-day D1–28, weekly D29–56, all gates) and `data/github_issue_backlog.md` (6 milestones, 50 issues, templates).
 
 **Critical path (the only chain that can kill the entry):**
-Play account + identity ✓ → **closed test live with 12 opted-in testers (Aug 1–2)** → 14 uninterrupted days → production application (Aug 15–16) → review ≤7d → first-release review ≤7d → **public Aug 24–28** → 5 weeks of live data → submission freeze Sep 26 → submit ≤Sep 30 11:45pm PDT.
+Play account + identity ✓ → **closed test live; the 14-day clock starts when 12/12 opted in (target Aug 1, latest Aug 2)** → 14 uninterrupted days → production application filed the day the clock completes (~Aug 15) → access review ≤7d → **submit-on-grant: the first production release (current commercial-beta build, managed publishing ON, publish held) is submitted the day access is granted (P50 ~Aug 20–21); the polished 1.0 ships as an immediate update** → first-release review ≤7d → **public Aug 24–28 best case; planning basis P50 Sep 1–2, P80 Sep 12–16; latest viable Sep 19** → live data through the window → submission freeze Sep 26 → submit ≤Sep 30 11:45pm PDT.
+**Rejection branch (triggers the day a rejection email arrives, expected window ~Aug 20–22):** keep all testers opted in continuously until *grant* (never stop at application), fix the stated reasons, re-apply the moment the trailing-14-day criterion re-satisfies; P50 re-grant ~Sep 8, launch ~Sep 13–15.
 Everything else (fun gate D7, level system D14, commercial beta D21, monetization-ready D21, store-ready D24) is scheduled to stay off this chain.
 
-**Hard cut gates:** D7 fun gate (fail → pivot to Meowmelon, keep all integrations); D14 (fail → 20 levels, cut wildcard); D21 (fail → freeze content, fix commercial path); D28 (fail → ship smallest compliant build: cut daily leaderboard, themes ×1, event); D35 (fail → no paid tests, no Funnel, onboarding only); D42 (fail → feature freeze, defects + evidence only). Never cut: purchase/restore integrity, crash-free floor, honest store listing, judge access.
+**Hard cut gates (D7/D14/D21/D24/D24-28/D35(+35b)/D42/D54):** D7 fun gate — YELLOW (2 of 4 metrics missed) = 48h mechanic surgery + re-gate D9; RED (3+ of 4, or metric (i) alone) = execute the Plan-B runbook (PLAN_B_RUNBOOK.md); D14 (fail → 20 levels, cut wildcard); D21 (fail → freeze content, fix commercial path); D24 store-ready (fail → escalate via Play support, submit the hour access clears); D24-28 launch window (slip → planning basis P50 Sep 1–2 / P80 Sep 12–16); D35 retention + D35b funnel go/no-go (fail → no paid tests, no Funnel, onboarding only); D42 (fail → feature freeze, defects + evidence only); D54 submission-ready (miss → D55-56 + the Sep 26–30 freeze absorb it). Never cut: purchase/restore integrity, crash-free floor, honest store listing, judge access.
 
 ## 21. Autonomous Agent Workflow
 
@@ -195,7 +198,7 @@ Everything else (fun gate D7, level system D14, commercial beta D21, monetizatio
 
 ## 22. Risk Register
 
-→ `data/risk_register.csv` (18 risks). Top five: (1) Play production-access delay — mitigated by Aug 1 closed-test start + daily status checks + buffer to Nov-1 API extension if catastrophic; (2) core loop fails fun gate — Meowmelon pivot preserves 80% of built stack; (3) AGP9/SDK build breakage — version pins + Week-1 integration smoke build; (4) RC paywall Android crashes — custom paywall fallback behind a flag; (5) low retention sample — launch early, report cohort sizes honestly, lean on activation metrics.
+→ `data/risk_register.csv` (18 risks). Top five: (1) Play production-access delay — mitigated by Aug 1 closed-test start + daily status checks + buffer to Nov-1 API extension if catastrophic; (2) core loop fails fun gate — Meowmelon pivot per PLAN_B_RUNBOOK.md (same app entry/package; ~50% of sunk build effort, 100% of accounts/pipeline/SDK integrations, ~0% of content/design deliverables survive); (3) AGP9/SDK build breakage — version pins + Week-1 integration smoke build; (4) RC paywall Android crashes — custom paywall fallback behind a flag; (5) low retention sample — launch early, report cohort sizes honestly, lean on activation metrics.
 
 ## 23. Shipaton Submission Plan
 
@@ -203,8 +206,8 @@ Everything else (fun gate D7, level system D14, commercial beta D21, monetizatio
 
 ## 24. First 72-Hour Action List (Aug 1–3)
 
-**Day 1 (Aug 1):** Google Play dev account identity + payments verified; create app entry (com.yourstudio.catmetro — do NOT publish); privacy policy URL live; RevenueCat project + Android app + **Ads beta access request**; **verify RC plan tier for Experiments** (fallback noted); OneSignal Growth plan + FCM v1 service-account JSON; AdMob account + app + test units; Firebase (Crashlytics); register catmetro.com/.io/.app + @playcatmetro handles; repo + CI skeleton; Unity **6000.3.16f1** project (URP, IL2CPP, ARM64, API 24/36); import purchases-unity 9.7.0 + RevenueCatUI + OneSignal 5.3.2 + GMA 11.3.0, single EDM4U, **Android smoke build on device** (the whole stack compiles or nothing else matters); recruit 12+ closed testers (Shipaton Discord + friends); upload first internal build; **start closed test**; first #BuildInPublic post (#Shipaton).
-**Day 2:** Deterministic domain core (graph, tick, switch, wave, queue, fail) + EditMode replay test; greybox board renders; closed-test opt-ins confirmed ≥12 (the 14-day clock must be running); Test Store purchase round-trip; capture 5s greybox clip → post.
+**Day 1 (Aug 1):** Google Play dev account identity + payments verified; create app entry (com.catmetro.game — do NOT publish); privacy policy URL live; RevenueCat project + Android app + **Ads beta access request**; **verify RC plan tier for Experiments** (fallback noted); OneSignal Growth plan + FCM v1 service-account JSON; AdMob account + app + test units; Firebase (Crashlytics); register catmetro.com/.io/.app + @CatMetroGame handles; repo + CI skeleton; Unity **6000.3.16f1** project (URP, IL2CPP, ARM64, API 25/36); import purchases-unity 9.7.0 + RevenueCatUI + OneSignal 5.3.2 + GMA 11.3.0, single EDM4U, **Android smoke build on device** (the whole stack compiles or nothing else matters); recruit 12+ closed testers (Shipaton Discord + friends); upload first internal build; **start closed test** (the 14-day clock starts when 12/12 are opted in — target Aug 1, latest Aug 2); first #BuildInPublic post (#Shipaton).
+**Day 2:** Deterministic domain core (graph, tick, switch, wave, queue, fail) + EditMode replay test; greybox board renders; closed-test opt-ins confirmed ≥12 (the clock starts when 12/12 are opted in — target Aug 1, latest Aug 2); Test Store purchase round-trip; capture 5s greybox clip → post.
 **Day 3:** Delivery/scoring/retry loop complete; first onboarding level playable; schema v2 validator CLI stub; analytics wrapper with 8 core events; tester build #2; devlog #2.
 **Acceptance for the 72h block:** stack builds on device, sim replay is deterministic (hash-stable), closed test clock running with 12 opt-ins, one playable level, RC sandbox purchase verified, 3 public build-log posts.
 
@@ -228,7 +231,7 @@ Everything else (fun gate D7, level system D14, commercial beta D21, monetizatio
 
 ## 27. Complete Source List
 
-Consolidated in §5 above; full URL-level citations with dates and verdicts for all ~150 findings are preserved in the research JSON and the per-agent transcripts. Every number in the deliverable files carries its vintage label; the four benchmark gaps (puzzle ARPDAU, opt-in %, refund norms, puzzle CVR) are reported as gaps — no invented figures anywhere in this package.
+Consolidated in §5 above; full URL-level citations with dates and verdicts for all ~150 findings are preserved in `deliverables/data/research_results.json` (committed with this package; the per-agent session transcripts were not preserved). Every number in the deliverable files carries its vintage label; the four benchmark gaps (puzzle ARPDAU, opt-in %, refund norms, puzzle CVR) are reported as gaps — no invented figures anywhere in this package.
 
 ---
 
