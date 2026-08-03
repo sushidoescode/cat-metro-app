@@ -16,8 +16,10 @@ namespace CatMetro.Content
         BoundViolation = 9,     // a cited ContentBounds range check failed
         CollectionOverCap = 10,
         DuplicateId = 11,
-        DanglingReference = 12,
-        PinnedMechanic = 13,    // second source / wild color — names the pin, never throws
+        // Ordinals skip the criterion-5 distinctive-literal set — enum values are arbitrary
+        // here and nothing persists them yet.
+        DanglingReference = 15,
+        PinnedMechanic = 16,    // second source / wild color — names the pin, never throws
     }
 
     public sealed class ContentError

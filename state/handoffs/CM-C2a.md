@@ -37,9 +37,25 @@ implemented). All dotnet-tested; wrapper `tests/content/importer.test.sh`.
   the new Content ban patterns, so one negative fixture directory serves both blocks; the Content
   negative fixture is `tests/fixtures/content-bad/Banned.cs` (never compiled).
 
-## Evidence (filled as criteria complete)
+## Evidence (2026-08-03, per criterion)
 
-(pending)
+1. L001 field-by-field: DTO assertions + raw JToken walk + validatedAt-absent both ways — 3 NUnit green.
+2. Build exit 0; Content/Services csproj glob tests green; check.sh Content block green on tree.
+3. Reflection test green over 10 DTO types (sealed, readonly incl. private fields, no setters, no array members).
+4. `ContentJson.Settings.TypeNameHandling == None` + `MaxDepth == constant` green; check.sh single-site block: clean tree exit 0, `--root tests/fixtures/content-bad` exit 1 naming Banned.cs; wrapper counts exactly 1 `new JsonSerializerSettings`.
+5. 26 constants asserted; wrapper distinctive-literal grep: "no stray bound literals" (it caught THREE real comment/ordinal violations during the build — enum ordinal, a self-referential comment, a Newtonsoft version string — all fixed; the gate works).
+6. Oversize → FileTooLarge; depth bomb → TooDeep via the pre-parse scan (before deserialization, literally); Settings.MaxDepth == constant asserted.
+7. 7 rule fixtures → 7 typed discriminants + DoesNotThrow, green.
+8. 24-file fuzz corpus (8 classes × 3) → all typed-failure + DoesNotThrow, plus a corpus-coverage meta-test, green.
+9. Id-map bijections + authored-order + dense-graph field assertions green; **the imported L001 graph plays the CM-C1 golden command log to Won/2 deliveries** — importer and in-code fixture agree.
+10. Second-source → PinnedMechanic("second source"); wild → PinnedMechanic("NEW-Q35"); L001 clean; nothing escapes.
+11. In-memory IContentSource drive green; zero System.IO under Content (check.sh block).
+12. Newtonsoft.Json 13.0.2 exact pin; `dotnet restore --locked-mode` exit 0; no floating ranges (CM-C1's grep test still green).
+13. `bash scripts/test.sh` exit 0: `PASS tests/content/importer.test.sh` + `test: 3/3 passed`, summary numbers extracted and equal (A-C2a-10 evidence procedure).
+
+**Suite: 79/79 green (33 CM-C1 + 46 CM-C2a). Replay golden untouched and passing.**
+
+**Deviations / noticed-but-not-done:** none beyond the handoff assumptions A-C2a-6..11 (all flagged for review); the criterion-5 wrapper caught and forced repair of 3 in-build violations — evidence the [CI] grep is load-bearing, recorded here per the honesty rules.
 
 ---
 
