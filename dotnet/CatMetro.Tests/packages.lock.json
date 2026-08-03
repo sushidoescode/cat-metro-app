@@ -64,15 +64,26 @@
       },
       "Newtonsoft.Json": {
         "type": "Transitive",
-        "resolved": "13.0.1",
-        "contentHash": "ppPFpBcvxdsfUonNcvITKqLl3bqxWbDCZIzDWHzjpdAHRFfZe0Dw9HmA0+za13IdyrgJwpkDTDA9fHaxOrt20A=="
+        "resolved": "13.0.2",
+        "contentHash": "R2pZ3B0UjeyHShm9vG+Tu0EBb2lC8b0dFzV9gVn50ofHXh9Smjk6kTn7A/FdAsC8B5cKib1OnGYOXxRBz5XQDg=="
       },
       "System.Reflection.Metadata": {
         "type": "Transitive",
         "resolved": "1.6.0",
         "contentHash": "COC1aiAJjCoA5GBF+QKL2uLqEBew4JsCkQmoHKbN3TlOZKa2fKLz5CpiRQKDz0RsAOEGsVKqOD5bomsXq/4STQ=="
       },
+      "catmetro.content": {
+        "type": "Project",
+        "dependencies": {
+          "CatMetro.Domain": "[1.0.0, )",
+          "CatMetro.Services": "[1.0.0, )",
+          "Newtonsoft.Json": "[13.0.2, )"
+        }
+      },
       "catmetro.domain": {
+        "type": "Project"
+      },
+      "catmetro.services": {
         "type": "Project"
       }
     }

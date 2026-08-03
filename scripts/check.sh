@@ -62,5 +62,32 @@ else
   scan_banned unity/Assets/Tests/EditMode/Pure "$banned_pure" "linked test purity, ADR-0005"
 fi
 
+# --- CM-C2a: Content receives bytes + single serializer-settings site (criteria 2 & 4; ADR-0008 MUST 1) ---
+# Content is byte-fed through IContentSource (ADR-0008:53-56): zero UnityEngine, zero System.IO.
+# TypeNameHandling may appear ONLY at the single settings site — the exception is a PATH, so later
+# contracts satisfy this block without editing it. --root scans the union (handoff A-C2a-11).
+content_banned='\b(UnityEngine|System\.IO)\b'
+tnh_scan() { # $1 = scan root; fail-closed like scan_banned
+  if [ ! -d "$1" ]; then
+    echo "check: FAIL — TypeNameHandling scan root '$1' does not exist"
+    fail=1
+    return 0
+  fi
+  local tnh_hits
+  tnh_hits=$(grep -rln --include='*.cs' 'TypeNameHandling' "$1" 2>/dev/null | grep -v 'unity/Assets/Scripts/Content/ContentJson\.cs$' || true)
+  if [ -n "$tnh_hits" ]; then
+    echo "check: FAIL — TypeNameHandling outside the single settings site (ADR-0008 MUST 1):"
+    echo "$tnh_hits"
+    fail=1
+  fi
+}
+if [ -n "$purity_root" ]; then
+  scan_banned "$purity_root" "$content_banned" "--root override, Content ban list"
+  tnh_scan "$purity_root"
+else
+  scan_banned unity/Assets/Scripts/Content "$content_banned" "Content purity, ADR-0008"
+  tnh_scan unity/Assets/Scripts
+fi
+
 [ "$fail" -eq 0 ] && echo "check: OK (interim harness — real lint+typecheck arrive with the stack)"
 exit "$fail"

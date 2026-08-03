@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- CM-C2a criterion 2: engine-free Content joins the dotnet leg (ADR-0005). Newtonsoft is
+       pinned to the exact version inside com.unity.nuget.newtonsoft-json 3.2.x (ADR-0008:166-172;
+       handoff A-C2a-7): 13.0.2 — whose ARM deserialization fix is Android-relevant. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <AssemblyName>CatMetro.Content</AssemblyName>
+    <RootNamespace>CatMetro.Content</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../unity/Assets/Scripts/Content/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../CatMetro.Domain/CatMetro.Domain.csproj" />
+    <ProjectReference Include="../CatMetro.Services/CatMetro.Services.csproj" />
+  </ItemGroup>
+
+</Project>

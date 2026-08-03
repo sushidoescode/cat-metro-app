@@ -25,6 +25,8 @@
 
   <ItemGroup>
     <ProjectReference Include="../CatMetro.Domain/CatMetro.Domain.csproj" />
+    <ProjectReference Include="../CatMetro.Content/CatMetro.Content.csproj" />
+    <ProjectReference Include="../CatMetro.Services/CatMetro.Services.csproj" />
   </ItemGroup>
 
 </Project>
