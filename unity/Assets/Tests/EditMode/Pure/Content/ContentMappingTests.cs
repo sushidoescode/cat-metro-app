@@ -101,12 +101,98 @@ namespace CatMetro.Tests.Content
             Assert.That(r.Value.Dto.Id, Is.EqualTo("L001"));
         }
 
+        [Test] // review F2 — the seam is TOTAL: throw/cancel/null-source/null-task all typed
+        public async Task Importer_SourceSeamNeverLetsAnExceptionEscape()
+        {
+            var r = await LevelImporter.ImportFromSourceAsync(new ThrowingSource(), "x", CancellationToken.None);
+            Assert.That(r.Ok, Is.False);
+            Assert.That(r.Error.Kind, Is.EqualTo(ContentErrorKind.SourceReadFailed), "throwing source");
+
+            using (var cts = new CancellationTokenSource())
+            {
+                cts.Cancel();
+                r = await LevelImporter.ImportFromSourceAsync(new CancellingSource(), "x", cts.Token);
+                Assert.That(r.Ok, Is.False);
+                Assert.That(r.Error.Kind, Is.EqualTo(ContentErrorKind.SourceReadFailed), "pre-cancelled token");
+            }
+
+            r = await LevelImporter.ImportFromSourceAsync(null, "x", CancellationToken.None);
+            Assert.That(r.Ok, Is.False);
+            Assert.That(r.Error.Kind, Is.EqualTo(ContentErrorKind.SourceReadFailed), "null source");
+
+            r = await LevelImporter.ImportFromSourceAsync(new NullTaskSource(), "x", CancellationToken.None);
+            Assert.That(r.Ok, Is.False);
+            Assert.That(r.Error.Kind, Is.EqualTo(ContentErrorKind.SourceReadFailed), "null task");
+        }
+
+        [Test] // review F4 — the wild pin holds ANYWHERE a color appears; unknown colors rejected
+        public void WildAndUnknownColors_RejectedInAcceptsAndAllowedColors()
+        {
+            ContentResult<ImportedLevel> r = default;
+
+            var wildAccepts = Mutated(j => j["stations"][0]["accepts"] = new JArray("wild"));
+            Assert.DoesNotThrow(() => r = LevelImporter.Import(wildAccepts));
+            Assert.That(r.Ok, Is.False);
+            Assert.That(r.Error.Kind, Is.EqualTo(ContentErrorKind.PinnedMechanic), "wild in station accepts");
+            Assert.That(r.Error.Detail, Does.Contain("NEW-Q35"));
+
+            var wildAllowed = Mutated(j => j["sources"][0]["allowedColors"] = new JArray("wild"));
+            Assert.DoesNotThrow(() => r = LevelImporter.Import(wildAllowed));
+            Assert.That(r.Ok, Is.False);
+            Assert.That(r.Error.Kind, Is.EqualTo(ContentErrorKind.PinnedMechanic), "wild in allowedColors");
+
+            var unknown = Mutated(j => j["sources"][0]["allowedColors"] = new JArray("chartreuse"));
+            Assert.DoesNotThrow(() => r = LevelImporter.Import(unknown));
+            Assert.That(r.Ok, Is.False);
+            Assert.That(r.Error.Kind, Is.EqualTo(ContentErrorKind.BoundViolation), "unknown color");
+        }
+
+        [Test] // review F5 — well-formed-input failures carry their true discriminants
+        public void DuplicateStationNode_And_HugeSeed_TypedCorrectly()
+        {
+            ContentResult<ImportedLevel> r = default;
+
+            var dupStation = Mutated(j => ((JArray)j["stations"]).Add(new JObject(
+                new JProperty("nodeId", "RED"), new JProperty("accepts", new JArray("red")), new JProperty("capacity", 6))));
+            Assert.DoesNotThrow(() => r = LevelImporter.Import(dupStation));
+            Assert.That(r.Ok, Is.False);
+            Assert.That(r.Error.Kind, Is.EqualTo(ContentErrorKind.DuplicateId), "duplicate station nodeId");
+
+            var hugeSeed = Mutated(j => j["seed"] = Newtonsoft.Json.Linq.JToken.Parse("99999999999999999999999999"));
+            Assert.DoesNotThrow(() => r = LevelImporter.Import(hugeSeed));
+            Assert.That(r.Ok, Is.False);
+            Assert.That(r.Error.Kind, Is.EqualTo(ContentErrorKind.BoundViolation), "BigInteger seed");
+        }
+
         private sealed class InMemorySource : IContentSource
         {
             private readonly Dictionary<string, byte[]> _files;
             public InMemorySource(Dictionary<string, byte[]> files) { _files = files; }
             public Task<byte[]> ReadAsync(string relativePath, CancellationToken ct) => Task.FromResult(_files[relativePath]);
             public bool Exists(string relativePath) => _files.ContainsKey(relativePath);
+        }
+
+        private sealed class ThrowingSource : IContentSource
+        {
+            public Task<byte[]> ReadAsync(string relativePath, CancellationToken ct) =>
+                throw new System.InvalidOperationException("device read failed");
+            public bool Exists(string relativePath) => true;
+        }
+
+        private sealed class CancellingSource : IContentSource
+        {
+            public Task<byte[]> ReadAsync(string relativePath, CancellationToken ct)
+            {
+                ct.ThrowIfCancellationRequested();
+                return Task.FromResult(new byte[0]);
+            }
+            public bool Exists(string relativePath) => true;
+        }
+
+        private sealed class NullTaskSource : IContentSource
+        {
+            public Task<byte[]> ReadAsync(string relativePath, CancellationToken ct) => null;
+            public bool Exists(string relativePath) => true;
         }
     }
 }

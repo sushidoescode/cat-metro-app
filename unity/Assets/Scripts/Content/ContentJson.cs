@@ -7,8 +7,12 @@ namespace CatMetro.Content
     // TypeNameHandling stays None — permanent rule, never relaxed "for schema flexibility"
     // (ADR-0008 MUST 1; RK-34). Later serialising contracts (CM-C7 save, CM-C8 queue) reuse this
     // factory and construct none of their own. This assembly is byte-fed and file-system-free
-    // (criterion 2): depth is rejected by LevelImporter's pre-parse scan BEFORE deserialization
-    // (criterion 6), with Settings.MaxDepth as the in-parser belt behind it.
+    // (criterion 2).
+    //
+    // Depth is enforced three deep (review F1): LevelImporter's pre-parse scan (with comments
+    // rejected outright, so bracket counting is sound), then a depth-bounded parse pass driven
+    // by Settings.MaxDepth via JsonConvert, then the JToken pass with duplicate-property AND
+    // comment rejection. Comments are not JSON and never valid content.
     public static class ContentJson
     {
         public static readonly JsonSerializerSettings Settings = new JsonSerializerSettings
@@ -20,14 +24,21 @@ namespace CatMetro.Content
 
         public static JsonSerializer CreateSerializer() => JsonSerializer.Create(Settings);
 
-        // Two-phase load (A-C2a-8): JToken first — with JsonLoadSettings duplicate-property
-        // rejection (long-standing Newtonsoft capability) — then materialization through Settings.
+        // Note: JsonLoadSettings.CommentHandling has no rejecting member (only Ignore/Load), so
+        // comment rejection lives ENTIRELY in LevelImporter's pre-scan slash rule (review F1a) —
+        // no comment-bearing document ever reaches this parser.
         public static readonly JsonLoadSettings LoadSettings = new JsonLoadSettings
         {
             DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error,
         };
 
-        // JToken.Parse reads exactly one document and rejects trailing content.
-        public static JToken LoadToken(string json) => JToken.Parse(json, LoadSettings);
+        // Two-pass load: pass 1 enforces Settings.MaxDepth (the parser-level depth belt that was
+        // previously unwired — review F1b); pass 2 enforces duplicate-key and comment rejection
+        // and yields the token. Both passes reject trailing content.
+        public static JToken LoadToken(string json)
+        {
+            JsonConvert.DeserializeObject<JToken>(json, Settings); // throws on depth > MaxDepth
+            return JToken.Parse(json, LoadSettings);
+        }
     }
 }

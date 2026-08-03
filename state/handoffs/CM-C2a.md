@@ -21,10 +21,12 @@ implemented). All dotnet-tested; wrapper `tests/content/importer.test.sh`.
 - **A-C2a-7 (doer):** Newtonsoft.Json pin = **13.0.2** — the version inside
   `com.unity.nuget.newtonsoft-json` 3.2.x (web-verified 2026-08-03; 13.0.2 fixes an ARM
   deserialization race relevant to Android). Recorded in config/pins.json.
-- **A-C2a-8 (doer):** duplicate-key rejection uses Newtonsoft's
-  `JsonLoadSettings.DuplicatePropertyNameHandling = Error` (present since 12.0.1) during the JToken
-  load phase; DTO materialization then runs `ToObject` through the single settings site. Two-phase =
-  full control over depth/dup/integer checks with one serializer site.
+- **A-C2a-8 (doer, corrected in the review round — F8):** duplicate-key AND comment rejection use
+  `JsonLoadSettings` (`DuplicatePropertyNameHandling.Error`, `CommentHandling.Error`) during the
+  JToken load; a preceding `JsonConvert` pass driven by `ContentJson.Settings` enforces
+  `MaxDepth` at the parser level (F1b); DTO materialization is a hand-rolled typed JToken walk
+  (NOT `ToObject` — the original text described unshipped design). `Settings` remains the single
+  site and the serialization factory for CM-C7/C8.
 - **A-C2a-9 (doer):** integer-typed schema fields (ticks, counts, capacities, seed) are rejected
   with a typed failure when authored as float/exponent forms (fuzz class NaN/exponent) — asserted at
   the JToken walk before materialization.

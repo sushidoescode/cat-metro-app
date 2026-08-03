@@ -76,13 +76,17 @@ namespace CatMetro.Tests.Content
     [TestFixture]
     public class ContentImmutabilityTests
     {
-        [Test]
+        [Test] // review F8: criterion 3 names the NAMESPACE, not the Dto suffix — sweep every
+        // public non-static type (ContentIdMap, LevelIdMaps, ImportedLevel, ContentError,
+        // ContentResult included).
         public void EveryDto_IsSealedReadonlyAndArrayFree()
         {
             var dtoTypes = typeof(LevelDto).Assembly.GetTypes()
-                .Where(t => t.Namespace == "CatMetro.Content" && t.Name.EndsWith("Dto"))
+                .Where(t => t.Namespace == "CatMetro.Content"
+                    && t.IsPublic && !t.IsEnum && !t.IsInterface
+                    && !(t.IsAbstract && t.IsSealed)) // exclude static classes
                 .ToArray();
-            Assert.That(dtoTypes.Length, Is.GreaterThanOrEqualTo(10), "the DTO family must be discovered");
+            Assert.That(dtoTypes.Length, Is.GreaterThanOrEqualTo(15), "the public type family must be discovered");
             foreach (var t in dtoTypes)
             {
                 Assert.That(t.IsSealed, Is.True, $"{t.Name} must be sealed");

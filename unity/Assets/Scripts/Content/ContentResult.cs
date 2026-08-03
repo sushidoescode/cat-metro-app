@@ -20,6 +20,7 @@ namespace CatMetro.Content
         // here and nothing persists them yet.
         DanglingReference = 15,
         PinnedMechanic = 16,    // second source / wild color — names the pin, never throws
+        SourceReadFailed = 17,  // review F2: the IContentSource seam failed (throw/null/cancel)
     }
 
     public sealed class ContentError

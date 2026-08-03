@@ -55,10 +55,16 @@ namespace CatMetro.Content
                     return Fail(ContentErrorKind.EncodingError, "payload is not valid UTF-8");
                 }
 
-                int depth = ScanMaxDepth(json);
-                if (depth > ContentBounds.CONTENT_MAX_JSON_DEPTH)
+                // Review F1a: comments are rejected outright — Newtonsoft would otherwise ignore
+                // them, letting closers inside /* */ desync the bracket scan. With '/' outside
+                // strings refused, bracket counting is sound (a bare '/' never appears in valid
+                // comment-free JSON outside a string).
+                var scan = ScanDocument(json);
+                if (scan.HasSlashOutsideString)
+                    return Fail(ContentErrorKind.MalformedJson, "comments (or a bare '/') are not valid content JSON");
+                if (scan.MaxDepth > ContentBounds.CONTENT_MAX_JSON_DEPTH)
                     return Fail(ContentErrorKind.TooDeep,
-                        $"nesting depth {depth} exceeds CONTENT_MAX_JSON_DEPTH");
+                        $"nesting depth {scan.MaxDepth} exceeds CONTENT_MAX_JSON_DEPTH");
 
                 JToken root;
                 try
@@ -67,9 +73,13 @@ namespace CatMetro.Content
                 }
                 catch (JsonReaderException ex)
                 {
-                    return ex.Message.IndexOf("same name", StringComparison.OrdinalIgnoreCase) >= 0
-                        ? Fail(ContentErrorKind.DuplicateKey, ex.Message)
-                        : Fail(ContentErrorKind.MalformedJson, ex.Message);
+                    // Review F3: Newtonsoft's duplicate-property message says "already exists".
+                    if (ex.Message.IndexOf("already exists", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return Fail(ContentErrorKind.DuplicateKey, ex.Message);
+                    // Review F1b: the parser-level depth belt maps to the same discriminant.
+                    if (ex.Message.IndexOf("MaxDepth", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return Fail(ContentErrorKind.TooDeep, ex.Message);
+                    return Fail(ContentErrorKind.MalformedJson, ex.Message);
                 }
                 catch (JsonException ex)
                 {
@@ -89,19 +99,48 @@ namespace CatMetro.Content
         }
 
         // Criterion 11: the read seam. Content never touches a filesystem; it receives bytes.
+        // Review F2: TOTAL across the seam — a throwing/null/cancelled source becomes a typed
+        // SourceReadFailed, never an escaping exception (ADR-0008 MUST 3: the boot path's
+        // likeliest crash source must not crash). Cancellation is typed, not rethrown: the boot
+        // caller treats it like any other failed read and falls back per MUST 3.
         public static async Task<ContentResult<ImportedLevel>> ImportFromSourceAsync(
             IContentSource source, string relativePath, CancellationToken ct)
         {
-            var bytes = await source.ReadAsync(relativePath, ct).ConfigureAwait(false);
+            if (source == null)
+                return Fail(ContentErrorKind.SourceReadFailed, "content source is null");
+            byte[] bytes;
+            try
+            {
+                var task = source.ReadAsync(relativePath, ct);
+                if (task == null)
+                    return Fail(ContentErrorKind.SourceReadFailed, "content source returned a null task");
+                bytes = await task.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return Fail(ContentErrorKind.SourceReadFailed, "read cancelled: " + relativePath);
+            }
+            catch (Exception ex)
+            {
+                return Fail(ContentErrorKind.SourceReadFailed, ex.GetType().Name + ": " + ex.Message);
+            }
             return Import(bytes);
         }
 
+        private readonly struct ScanResult
+        {
+            public readonly int MaxDepth;
+            public readonly bool HasSlashOutsideString;
+            public ScanResult(int maxDepth, bool slash) { MaxDepth = maxDepth; HasSlashOutsideString = slash; }
+        }
+
         // Criterion 6: depth is rejected BEFORE the parser sees the document. Counts bracket
-        // nesting outside string literals; exact for well-formed input, conservative otherwise.
-        private static int ScanMaxDepth(string json)
+        // nesting outside string literals. Sound because '/' outside a string is rejected by the
+        // caller (review F1a): no comment can hide a bracket from this scan in accepted input.
+        private static ScanResult ScanDocument(string json)
         {
             int depth = 0, max = 0;
-            bool inString = false, escaped = false;
+            bool inString = false, escaped = false, slash = false;
             foreach (char c in json)
             {
                 if (inString)
@@ -112,10 +151,11 @@ namespace CatMetro.Content
                     continue;
                 }
                 if (c == '"') inString = true;
+                else if (c == '/') slash = true;
                 else if (c == '{' || c == '[') { depth++; if (depth > max) max = depth; }
                 else if (c == '}' || c == ']') depth--;
             }
-            return max;
+            return new ScanResult(max, slash);
         }
 
         private sealed class WalkException : Exception
@@ -138,7 +178,15 @@ namespace CatMetro.Content
                 throw new WalkException(t.Type == JTokenType.Float
                     ? ContentErrorKind.IntegerExpected
                     : ContentErrorKind.MalformedJson, name + " must be an integer");
-            return (long)t;
+            try
+            {
+                return (long)t;
+            }
+            catch (OverflowException)
+            {
+                // Review F5: a BigInteger-backed token must fail as a bound, not as "unexpected".
+                throw new WalkException(ContentErrorKind.BoundViolation, name + " magnitude exceeds the supported range");
+            }
         }
 
         private static int ReqIntIn(JObject o, string name, long min, long max)
@@ -200,7 +248,10 @@ namespace CatMetro.Content
 
                 // meta
                 var metaObj = AsObj(Req(o, "meta"), "meta");
-                var mechArr = ReqArr(metaObj, "mechanics", ContentBounds.MAX_SWITCHES);
+                // Review F9: mechanics/allowedColors/accepts have NO schema maxItems; the cap here
+                // is a structural work bound only (reusing the largest cited constant), and every
+                // element is individually validated below.
+                var mechArr = ReqArr(metaObj, "mechanics", ContentBounds.MAX_NODES);
                 var mechanics = new string[mechArr.Count];
                 for (int i = 0; i < mechArr.Count; i++) mechanics[i] = (string)mechArr[i];
                 string validatedAt = null;
@@ -261,7 +312,7 @@ namespace CatMetro.Content
                 for (int i = 0; i < sourcesArr.Count; i++)
                 {
                     var s = AsObj(sourcesArr[i], "source");
-                    var colorsArr = ReqArr(s, "allowedColors", ContentBounds.MAX_SOURCES);
+                    var colorsArr = ReqArr(s, "allowedColors", ContentBounds.MAX_NODES); // structural bound only (F9)
                     var colors = new string[colorsArr.Count];
                     for (int c = 0; c < colorsArr.Count; c++) colors[c] = (string)colorsArr[c];
                     sources[i] = new SourceDto(ReqStr(s, "nodeId"), colors);
@@ -272,7 +323,7 @@ namespace CatMetro.Content
                 for (int i = 0; i < stationsArr.Count; i++)
                 {
                     var s = AsObj(stationsArr[i], "station");
-                    var acceptsArr = ReqArr(s, "accepts", ContentBounds.MAX_STATIONS);
+                    var acceptsArr = ReqArr(s, "accepts", ContentBounds.MAX_NODES); // structural bound only (F9)
                     var accepts = new string[acceptsArr.Count];
                     for (int c = 0; c < acceptsArr.Count; c++) accepts[c] = (string)acceptsArr[c];
                     stations[i] = new StationDto(ReqStr(s, "nodeId"), accepts,
@@ -338,11 +389,17 @@ namespace CatMetro.Content
                 {
                     if (!nodeIndex.ContainsKey(s.NodeId))
                         throw new WalkException(ContentErrorKind.DanglingReference, $"source nodeId '{s.NodeId}'");
-                    sourceNodeIds.Add(s.NodeId);
+                    if (!sourceNodeIds.Add(s.NodeId))
+                        throw new WalkException(ContentErrorKind.DuplicateId, $"source nodeId '{s.NodeId}' duplicated"); // F5
                 }
+                var stationNodeIds = new HashSet<string>();
                 foreach (var s in stations)
+                {
                     if (!nodeIndex.ContainsKey(s.NodeId))
                         throw new WalkException(ContentErrorKind.DanglingReference, $"station nodeId '{s.NodeId}'");
+                    if (!stationNodeIds.Add(s.NodeId))
+                        throw new WalkException(ContentErrorKind.DuplicateId, $"station nodeId '{s.NodeId}' duplicated"); // F5
+                }
                 foreach (var s in switches)
                 {
                     if (!nodeIndex.ContainsKey(s.NodeId))
@@ -356,16 +413,27 @@ namespace CatMetro.Content
                         throw new WalkException(ContentErrorKind.DanglingReference, $"wave sourceNode '{w.SourceNode}'");
 
                 // pin pre-checks (criterion 10): typed failures naming the pin; the shipped
-                // LevelGraph guards then never fire for imported content.
+                // LevelGraph guards then never fire for imported content. Review F4: the wild
+                // pin applies ANYWHERE a color appears — waves, station accepts, source
+                // allowedColors — and unknown colors are rejected in the same sweep, so no
+                // imported level can detonate the Domain's NEW-Q4/NEW-Q35 guards mid-run.
                 if (sources.Length > 1)
                     throw new WalkException(ContentErrorKind.PinnedMechanic,
                         "second source is pinned out of CM-C1 scope (state/backlog.md, criterion 14)");
                 foreach (var w in waves)
-                {
                     if (ColorCode(w.Color, "wave") == CatColor.Wild)
                         throw new WalkException(ContentErrorKind.PinnedMechanic,
-                            "pinned NEW-Q35: the wild color's resolution boundary is undecided");
-                }
+                            "pinned NEW-Q35: the wild color's resolution boundary is undecided (wave)");
+                foreach (var s in stations)
+                    foreach (var c in s.Accepts.Span)
+                        if (ColorCode(c, "station accepts") == CatColor.Wild)
+                            throw new WalkException(ContentErrorKind.PinnedMechanic,
+                                "pinned NEW-Q35: the wild color's resolution boundary is undecided (station accepts)");
+                foreach (var s in sources)
+                    foreach (var c in s.AllowedColors.Span)
+                        if (ColorCode(c, "source allowedColors") == CatColor.Wild)
+                            throw new WalkException(ContentErrorKind.PinnedMechanic,
+                                "pinned NEW-Q35: the wild color's resolution boundary is undecided (source allowedColors)");
 
                 // dense mapping (criterion 9): authored order IS the index order (A-C1-10)
                 var dto = new LevelDto(schemaVersion, id, name, seed, meta,

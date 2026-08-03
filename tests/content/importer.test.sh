@@ -17,9 +17,11 @@ if [ "$rc" -ne 0 ]; then
   fail=1
 fi
 
-settings_count="$(grep -rc --include='*.cs' 'new JsonSerializerSettings' unity/Assets/Scripts 2>/dev/null | awk -F: '{s+=$2} END{print s+0}')"
+# Review F8: the criterion says "the tree" — scan all of unity/Assets (tests included), and
+# count occurrences, not matching lines.
+settings_count="$(grep -ro --include='*.cs' 'new JsonSerializerSettings' unity/Assets 2>/dev/null | wc -l | tr -d ' ')"
 if [ "$settings_count" -ne 1 ]; then
-  echo "importer: FAIL — expected exactly 1 'new JsonSerializerSettings' under unity/Assets/Scripts, found $settings_count"
+  echo "importer: FAIL — expected exactly 1 'new JsonSerializerSettings' under unity/Assets, found $settings_count"
   fail=1
 fi
 
