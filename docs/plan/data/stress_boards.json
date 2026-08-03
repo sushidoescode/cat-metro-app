@@ -1,0 +1,76 @@
+{
+  "comment": "Two greybox stress boards for fun-gate build 2 (D6), authored per AMD-02 / EXECUTION_PLAN section 2.4: 'Build 2 includes 2 greybox stress boards at difficulty ~0.30-0.35.' Schema v2 (level_schema.json). They use only the mechanics that exist by build 2 (switch, queue) so gate testers feel mid-band pressure, not just onboarding levels. NOT campaign content: never enter the L001-L030 progression or the level-order manifest; they ride the closed-track builds for D5-D7 gate sessions only. validatedAt is intentionally absent - the batch validator does not exist until D10 (Aug 10); these boards must pass it (static, lower-bound, solver, triviality, brittleness, novelty) plus human playtest before any further use.",
+  "levels": [
+    {
+      "schemaVersion": 2, "id": "L701", "name": "Stress: Crossflow", "seed": 1701,
+      "meta": { "band": "queue-reading", "difficultyTarget": 0.3, "mechanics": ["switch", "queue"], "newMechanic": null, "teachingGoal": "Stress board (fun-gate build 2): route three colors through chained junctions under interleaved waves", "minActionWindowTicks": 10, "authoredBy": "llm+validator" },
+      "board": {
+        "nodes": [
+          { "id": "SRC", "x": 3, "y": 9 },
+          { "id": "J1", "x": 3, "y": 7, "queueCapacity": 3 },
+          { "id": "J2", "x": 4, "y": 5, "queueCapacity": 2 },
+          { "id": "RED", "x": 1, "y": 2 }, { "id": "BLU", "x": 5, "y": 2 }, { "id": "YEL", "x": 3, "y": 1 }
+        ],
+        "edges": [
+          { "id": "E1", "from": "SRC", "to": "J1", "travelTicks": 8 },
+          { "id": "E2", "from": "J1", "to": "RED", "travelTicks": 10 },
+          { "id": "E3", "from": "J1", "to": "J2", "travelTicks": 6 },
+          { "id": "E4", "from": "J2", "to": "BLU", "travelTicks": 8 },
+          { "id": "E5", "from": "J2", "to": "YEL", "travelTicks": 8 }
+        ]
+      },
+      "sources": [ { "nodeId": "SRC", "allowedColors": ["red", "blue", "yellow"] } ],
+      "stations": [
+        { "nodeId": "RED", "accepts": ["red"], "capacity": 5 },
+        { "nodeId": "BLU", "accepts": ["blue"], "capacity": 5 },
+        { "nodeId": "YEL", "accepts": ["yellow"], "capacity": 4 }
+      ],
+      "switches": [
+        { "id": "S1", "nodeId": "J1", "routes": ["E2", "E3"], "initialRoute": 0 },
+        { "id": "S2", "nodeId": "J2", "routes": ["E4", "E5"], "initialRoute": 0 }
+      ],
+      "waves": [
+        { "tick": 8, "sourceNode": "SRC", "color": "red", "count": 2, "spacingTicks": 12 },
+        { "tick": 40, "sourceNode": "SRC", "color": "blue", "count": 2, "spacingTicks": 12 },
+        { "tick": 72, "sourceNode": "SRC", "color": "yellow", "count": 2, "spacingTicks": 14 },
+        { "tick": 110, "sourceNode": "SRC", "color": "red", "count": 2, "spacingTicks": 10 },
+        { "tick": 140, "sourceNode": "SRC", "color": "blue", "count": 3, "spacingTicks": 10 }
+      ],
+      "win": { "deliveries": 11, "timeLimitTicks": 280, "perfectMaxSwitches": 8, "stars": { "two": 950, "three": 1300 } },
+      "economy": { "baseTickets": 30, "perfectBonus": 15 },
+      "tags": ["stress-board", "greybox", "build-2", "fun-gate"]
+    },
+    {
+      "schemaVersion": 2, "id": "L702", "name": "Stress: Tight Headways", "seed": 1702,
+      "meta": { "band": "queue-reading", "difficultyTarget": 0.35, "mechanics": ["switch", "queue"], "newMechanic": null, "teachingGoal": "Stress board (fun-gate build 2): alternate one switch under burst waves with a 2-cat junction queue", "minActionWindowTicks": 8, "authoredBy": "llm+validator" },
+      "board": {
+        "nodes": [
+          { "id": "SRC", "x": 3, "y": 9 },
+          { "id": "J1", "x": 3, "y": 6, "queueCapacity": 2 },
+          { "id": "RED", "x": 1, "y": 2 }, { "id": "BLU", "x": 5, "y": 2 }
+        ],
+        "edges": [
+          { "id": "E1", "from": "SRC", "to": "J1", "travelTicks": 6 },
+          { "id": "E2", "from": "J1", "to": "RED", "travelTicks": 12 },
+          { "id": "E3", "from": "J1", "to": "BLU", "travelTicks": 12 }
+        ]
+      },
+      "sources": [ { "nodeId": "SRC", "allowedColors": ["red", "blue"] } ],
+      "stations": [
+        { "nodeId": "RED", "accepts": ["red"], "capacity": 6 },
+        { "nodeId": "BLU", "accepts": ["blue"], "capacity": 6 }
+      ],
+      "switches": [ { "id": "S1", "nodeId": "J1", "routes": ["E2", "E3"], "initialRoute": 0 } ],
+      "waves": [
+        { "tick": 8, "sourceNode": "SRC", "color": "red", "count": 2, "spacingTicks": 10 },
+        { "tick": 30, "sourceNode": "SRC", "color": "blue", "count": 2, "spacingTicks": 10 },
+        { "tick": 52, "sourceNode": "SRC", "color": "red", "count": 3, "spacingTicks": 8 },
+        { "tick": 80, "sourceNode": "SRC", "color": "blue", "count": 2, "spacingTicks": 8 },
+        { "tick": 100, "sourceNode": "SRC", "color": "red", "count": 2, "spacingTicks": 8 }
+      ],
+      "win": { "deliveries": 11, "timeLimitTicks": 240, "perfectMaxSwitches": 9, "stars": { "two": 950, "three": 1250 } },
+      "economy": { "baseTickets": 30, "perfectBonus": 15 },
+      "tags": ["stress-board", "greybox", "build-2", "fun-gate"]
+    }
+  ]
+}

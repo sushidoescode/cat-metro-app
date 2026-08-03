@@ -54,6 +54,8 @@ Allocation (this REPLACES the prior 7-journey design, per brief):
 Total journey message steps: **6/6**. Priority labels: Journey 1 **P0**, Journey 2 **P1**,
 Journey 3 **P1**, IAM/scheduled/local substitutions **P1**, review_coordination **P0** (cheap, high leverage), everything else in the CSV not listed here **Cut for the event window**.
 
+Push ceiling (global, honest): max 2 pushes/day - a daily nudge, plus a streak warning if one's at risk - never at night (nothing delivers 21:00-09:00 local). (Same statement, verbatim, in liveops_spec.md §6.3 and onesignal_journeys.csv.)
+
 - **Decision:** 2+3+1 message-step split; the three journeys are the three highest-frequency, highest-leverage automations (daily habit, lapse recovery, difficulty rescue).
 - **Evidence:** Journey rows and KPIs in onesignal_journeys.csv; Growth limits verified 2026-07-31.
 - **Action:** Build journeys in dashboard in priority order (J1 by Aug 8, J2 by Aug 15, J3 by Aug 20) so each soaks in closed test before public launch Aug 24–28.
@@ -69,7 +71,7 @@ without loss-aversion pressure.
 
 **Entry**
 - Trigger: custom event **`daily_unlocked`** (fires once at L7). Re-entry: enabled, cooldown 20h, re-entry trigger custom event **`daily_completed`** — every completed daily re-arms tomorrow's cycle.
-- Taxonomy delta: taxonomy row `daily_unlocked` currently lists destination `onesignal_tag` only; adapter also emits the matching OneSignal custom event. (Action item below updates the CSV.)
+- Taxonomy: row `daily_unlocked` already lists destinations `analytics, onesignal_tag, onesignal_event` — the adapter emits the matching OneSignal custom event; no CSV change needed (stale delta removed 2026-08-03, AMD-05).
 - Eligibility filters on entry: `push_enabled = true` tag, `payer_status` any (payers get dailies too), `daily_opt_in = true` (settings toggle, default on).
 - Design property: a player who lapses stops firing `daily_completed`, so Journey 1 self-silences within one cycle and hands off to Journey 2 — no cross-journey collision logic needed.
 
@@ -86,11 +88,11 @@ without loss-aversion pressure.
 
 **KPIs:** daily participation rate (daily_started / DAU with daily unlocked), push open rate per variant, streak-save rate (dailies completed 18:00–24:00 after Message 2 / Message 2 sends). Copy variant with best open→complete rate wins by Week 4; losers pruned.
 
-**Harm risk:** MEDIUM on the streak message (loss aversion). Mitigations already in copy: streak is cosmetic-only; variant A literally says "Campaign progress is safe either way"; hard 21:00 stop; 1 streak message per day max; streak saver is free/rewarded only (never sold — brief, MONETIZATION item 7).
+**Harm risk:** MEDIUM on the streak message (loss aversion). Mitigations already in copy: a streak break never gates content and costs at most 150 tickets of gift escalation (the saver is free/rewarded); variant A literally says "Campaign progress is safe either way"; hard 21:00 stop; 1 streak message per day max; streak saver is free/rewarded only (never sold — brief, MONETIZATION item 7).
 
 - **Decision:** Daily journey is event-armed by completion, not clock-armed by segment, so it automatically stops nagging lapsed players.
 - **Evidence:** journeys.csv rows daily_challenge + streak_risk; copy rows 2–7; Time Window availability verified 2026-07-31.
-- **Action:** Add `onesignal_event` to the `daily_unlocked` row destinations in analytics_event_taxonomy.csv; build + device-test J1 by Aug 8 (test push → deep link → daily board on cold/warm/killed states).
+- **Action:** (`daily_unlocked` already carries `onesignal_event` in analytics_event_taxonomy.csv — no CSV edit needed.) Build + device-test J1 by Aug 8 (test push → deep link → daily board on cold/warm/killed states).
 - **Risk:** Dashboard permits only one entry event (no OR of daily_unlocked/daily_completed).
 - **Fallback:** Entry = `daily_completed` alone; bridge the L7→first-daily gap with a one-shot local notification scheduled at daily-unlock + 20h ("Today's Line is ready").
 
@@ -213,7 +215,7 @@ us **two** system-dialog attempts before the OS stops showing the dialog. We spe
 like scarce currency:
 
 1. **Never at first launch.** No prompt of any kind before the player has felt value.
-2. **Soft IAM prompt** after the **first `daily_completed`** (the moment notifications become obviously useful): OneSignal IAM push-prompt template, copy: *"Want tomorrow's Line delivered? One tap — we send at most one reminder a day."* Buttons: "Yes, remind me" / "Not now". Fires `push_soft_prompt_viewed` (taxonomy row 36; cap 1/build, tag `soft_prompt_seen`).
+2. **Soft IAM prompt** after the **first `daily_completed`** (the moment notifications become obviously useful): OneSignal IAM push-prompt template, copy: *"Want tomorrow's Line delivered? A daily nudge, plus a streak warning if one's at risk — never at night."* Buttons: "Yes, remind me" / "Not now". Fires `push_soft_prompt_viewed` (taxonomy row 36; cap 1/build, tag `soft_prompt_seen`).
 3. "Yes" → `OneSignal.Notifications.RequestPermissionAsync(fallbackToSettings: false)` — **attempt 1**. Result fires `push_permission_result` (grant/deny paths, taxonomy row 37) and tags `push_enabled`.
 4. "Not now" or system-deny → nothing until the **second value moment**: `streak_changed` with `new_streak = 3`. Second soft IAM ("Your 3-day streak can get a nightly heads-up"). Accept → **attempt 2**, still `fallbackToSettings: false`.
 5. Both attempts spent or exhausted → the only remaining surface is an explicit row in Settings: "Enable notifications" → `RequestPermissionAsync(fallbackToSettings: true)`, which deep-links to app settings when the dialog can no longer be shown. User-initiated, so it never feels like nagging.
@@ -238,7 +240,7 @@ only writer.
 | Event | Journey use |
 |---|---|
 | `tutorial_completed` | J2 eligibility tag flip (`tutorial_done`) |
-| `daily_unlocked` | J1 entry (taxonomy delta: add `onesignal_event` to this row) |
+| `daily_unlocked` | J1 entry (taxonomy row already lists `onesignal_event`) |
 | `daily_completed` | J1 re-entry + exit; outcome |
 | `level_failed` (×2-filtered, client-side) | J3 entry |
 | `event_joined` / `event_completed` | scheduled-send segment maintenance |
@@ -262,7 +264,7 @@ only writer.
 
 - **Decision:** Copy-substitution variables ride as tags; behavioral triggers ride as custom events; the taxonomy CSV is the single registry.
 - **Evidence:** analytics_event_taxonomy.csv destination column (rows 2–39); notification_copy.csv substitution variables.
-- **Action:** Update taxonomy CSV: `daily_unlocked` destinations += `onesignal_event`; add `hint_color`/`district`/`fail_pct` to the tag-writer spec in the adapter ticket.
+- **Action:** (Taxonomy CSV already lists `onesignal_event` on `daily_unlocked` — no change needed.) Add `hint_color`/`district`/`fail_pct` to the tag-writer spec in the adapter ticket.
 - **Risk:** Tag sprawl / per-user tag limits on Growth plan.
 - **Fallback:** Prune P2 tags (`preferred_theme`) first; all journeys above need ≤12 tags.
 
@@ -294,7 +296,7 @@ only writer.
 
 **Measurement**
 - **Session attribution:** `notification_opened` → session tagged `notification_campaign_id`; report "sessions within 2h of send / sends" per journey and per copy variant.
-- **Outcomes API:** send `daily_completed` (J1), `session_after_lapse` (J2), `level_completed_after_help` (J3) as outcomes; `purchase_completed` as an outcome with value — this puts revenue-per-journey inside OneSignal's own reporting, which is exactly the chart the OneSignal judges can read natively.
+- **Outcomes API:** send `daily_completed` (J1), `session_after_lapse` (J2), `level_completed_after_help` (J3) as outcomes; `purchase_completed` as an outcome with value. (`session_after_lapse` and `level_completed_after_help` are **derived-only OneSignal outcome names** — computed from session timing and `level_completed` relative to sends, never emitted by the client; they are deliberately NOT rows in analytics_event_taxonomy.csv, which stays at 45 client events.) — this puts revenue-per-journey inside OneSignal's own reporting, which is exactly the chart the OneSignal judges can read natively.
 - **Holdout thinking at our scale:** at a few hundred DAU, formal holdouts are underpowered everywhere except where they're free. So: **no holdout** on J1/J3 (the retention cost of withholding exceeds the information value; use pre/post + variant comparison and say so honestly); **10% holdout on J2 only** (lapsed users cost nothing to hold out) — report rung-level return rates with n's, no significance theater.
 - Every reported rate ships with its denominator (this discipline is also the submission's honesty story — see submission_script.md).
 

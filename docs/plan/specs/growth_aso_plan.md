@@ -140,7 +140,7 @@ BUILT TO BE READ
 Color is never the only signal. Every line carries a color, a symbol, and its own cat silhouette, so the board reads for colorblind players. Tap targets are large. Motion and haptics have toggles. Planning-pause mode freezes the simulation while you think it through.
 
 IF YOU WANT MORE
-All Access is one purchase, never a subscription: the Rooftop Line bonus district with 10 extra levels, both premium themes, a doubled daily rewind, a permanent ad-free guarantee, and a gold conductor badge. Themes are also sold separately. Rewind packs exist if you want them. That is the entire shop, and it lives in one tab you have to open yourself.
+All Access is one purchase, never a subscription: the Night Harbor bonus district with 10 extra levels, both premium themes, a doubled daily rewind, a permanent ad-free guarantee, and a gold conductor badge. Themes are also sold separately. Rewind packs exist if you want them. That is the entire shop, and it lives in one tab you have to open yourself.
 
 BUILT IN PUBLIC
 Cat Metro was made by one developer in 56 days for RevenueCat Shipaton 2026, with the numbers posted openly along the way: installs, retention, revenue, and the mistakes.
@@ -350,7 +350,8 @@ launch day via a single "it's live" post across every channel, and it doubles as
 *and* an award submission *and* press hooks.
 
 **Revisit condition:** pre-registration becomes correct for the **post-event content update** (a
-1.2 release with bands 31–60 and a new district), where there is no release-timing constraint. Evaluate
+1.2 release with bands 41–60 and a new district — 31–40 ship in-window per the one content
+schedule), where there is no release-timing constraint. Evaluate
 in October.
 
 **Decision:** SKIP pre-registration for 1.0; revisit for the post-event content release.
@@ -382,6 +383,9 @@ subs on the same day. (g) If a mod removes it, thank them and move on — do not
 Bonus (not counted in the five): **r/playmygame** during closed test for tester backfill (already in
 roadmap D1 fallback), and **r/CatsWithJobs**-style cat communities **only** with a genuinely funny
 standalone asset and full disclosure — a cat subreddit is a place to be charming, not to advertise.
+Also standing in the channel list (event-hosted, not a launch angle): the **r/AppBusiness Shipaton
+check-in threads** — post the weekly check-in there with the **Shipaton flair** (official judging
+guide, Aug 1), subject to the same non-negotiable rules at the top of this section.
 
 **Decision:** Five angles across five subs, staggered over five days, each with a genuinely different artifact and first-line disclosure.
 **Evidence:** Roadmap D26 already schedules "Reddit drafts for r/AndroidGaming per sub self-promo rules"; the brief's verified rules place no restriction on organic promotion.
@@ -397,7 +401,7 @@ standalone asset and full disclosure — a cat subreddit is a place to be charmi
 server is worse than no server. Two-tier plan:
 
 **Tier 1 — be a good guest (P0, starts Aug 1).**
-- The **official RevenueCat Shipaton Discord** (link from the Devpost event page): post the daily #BuildInPublic beat in the appropriate build-log channel, answer other builders' RevenueCat/Unity/EDM4U questions with real answers. This is simultaneously the highest-signal audience for the event's awards and a genuine peer group. 15 min/day cap.
+- The **official RevenueCat Shipaton Discord** (discord.gg/shipaton26): post the daily #BuildInPublic beat in the appropriate build-log channel, answer other builders' RevenueCat/Unity/EDM4U questions with real answers. This is simultaneously the highest-signal audience for the event's awards and a genuine peer group. 15 min/day cap.
 - Unity and gamedev communities where I already have standing: share the determinism/solver work as *content*, not as promotion; link only when asked.
 - Cozy/puzzle player communities: lurk from Aug 1, participate for three weeks before ever mentioning the game, and then only in the designated self-promo channel.
 
@@ -670,7 +674,7 @@ One row per day. Channels: **X** (daily, non-negotiable — the #BuildInPublic c
 | 14 | Sep 6 | Sun | Values | "Why there's no subscription" (monetization_spec §5, public version) | X (thread), RD (r/gamedev comment) | "Read the reasoning, tell me I'm wrong" |
 | 15 | Sep 7 | Mon | **Event** | Commuter Rescue Cup round 2 live; wildcard-commuter explainer | X, DC, TT | "Wildcards are slack — here's how to spend them" |
 | 16 | Sep 8 | Tue | Outreach | Influencer wave 2 (10 sends) + press follow-up; publish the response rate | X, PR, DM | "0 for 10 last time. Trying again in public" |
-| 17 | Sep 9 | Wed | **Content patch** | v1.1: levels 31–35 (cooldown mechanic) + depot-pass streak repair | X, DC, TT, YTS, PR | "Five new levels, one new mechanic. Free." |
+| 17 | Sep 9 | Wed | **Content patch** | v1.1: levels 36–40 + depot-pass streak repair (levels 31–35 shipped in the Week-5 build) | X, DC, TT, YTS, PR | "Five new levels, one new mechanic. Free." |
 | 18 | Sep 10 | Thu | Craft | Cooldown-mechanic teaching clip (how the new lock reads) | TT, YTS, IG | "New rule: switches lock after you throw them" |
 | 19 | Sep 11 | Fri | Data | **D42 content-complete gate** + pricing A/B interim readout (HAMM evidence) | X (thread) | "$6.99 vs $4.99 — here's the interim, with n" |
 | 20 | Sep 12 | Sat | UGC | Saturday Express #3; route-ribbon gallery grid | IG, X, DC | "Nine ribbons, one board, one day" |
@@ -687,7 +691,10 @@ One row per day. Channels: **X** (daily, non-negotiable — the #BuildInPublic c
 
 Weekly rhythm baked into the table: **Mon = event/product beat, Tue = data or outreach, Wed = craft,
 Thu = teach, Fri = numbers/gate, Sat = UGC, Sun = essay.** If a day collapses, the pillar tells you
-what to substitute from the pre-cut queue.
+what to substitute from the pre-cut queue. The Sunday essay doubles as the **weekly long-form recap,
+republished on HackerNoon tagged #shipaton** — HackerNoon republication feeds an extra $2,500 BIP
+prize pool (official judging guide, Aug 1) — and the weekly numbers beat is cross-posted to the
+**r/AppBusiness Shipaton check-in threads with the Shipaton flair**.
 
 **Decision:** 30 days, one pillar per day, X every single day, a weekly repeating rhythm so no day starts from a blank page.
 **Evidence:** Roadmap already commits to daily BIP posts through 56/56 and schedules the Sep 9 patch, the Cup rounds (liveops §3), the D35/D42 gates, and the Sep 22 submission work; #BuildInPublic is a **P0** $30k target.
@@ -710,7 +717,7 @@ All 9:16, 1080×1920, captured per §23. Text-on-screen always; audio optional. 
 7. **"The solver plays it first" (20s).** B1: editor view, solver runner executing on L018 at beam width 2.5k. B2: solution overlay draws the switch timeline. B3: cut to the real game, same level, my human attempt. B4: I need more switches than the solver did. Text: `IT CANNOT SHIP UNTIL A SOLVER PROVES IT.`
 8. **"Same board, everywhere" (15s).** B1: split-screen two devices, both showing the same Daily Line date. B2: identical boards confirmed. B3: two different route ribbons on the share cards. Text: `ONE SEED. ONE WORLD. NO SERVER.`
 9. **"Saturday Express" (12s).** B1: the date header reads Saturday. B2: fast-cut of the harder board, denser waves. B3: my score card. Text: `SATURDAYS ARE MEANER. BEAT THIS.`
-10. **"What $6.99 buys" (20s).** B1: the Rooftop Line district tile unlocking. B2: quick pan through the 10 bonus levels' names. B3: both themes swapping. B4: the ad-free guarantee line. Text: `ONE PURCHASE. NOT A SUBSCRIPTION.` (No price numeral on screen — the store shows it.)
+10. **"What $6.99 buys" (20s).** B1: the Night Harbor district tile unlocking. B2: quick pan through the 10 bonus levels' names. B3: both themes swapping. B4: the ad-free guarantee line. Text: `ONE PURCHASE. NOT A SUBSCRIPTION.` (No price numeral on screen — the store shows it.)
 11. **"Building it in public, day {n}" (20s).** Format template: B1 today's Unity editor screen. B2 the thing that broke. B3 the fix. B4 today's number. Text: `DAY {n} OF 56`.
 12. **"Planning pause" (14s).** B1: board at max pressure. B2: hold anywhere → sim freezes, switches still tappable. B3: 3-2-1 countdown, resume, clean solve. Text: `HOLD TO THINK. IT'S NOT CHEATING.`
 13. **"The wildcard cat" (16s).** B1: scruffy bent-ear cat spawns among colored ones. B2: it gets accepted at the "wrong" station. B3: the plan it just rescued. Text: `THE WILDCARD IS YOUR SLACK.`
@@ -758,6 +765,19 @@ failure with real numbers is not.
 Note: the locked brief records the #BuildInPublic prize tiers but does **not** capture verbatim judging
 criteria for this award. Re-verify the criteria text on the official award page before writing the
 final Devpost paragraph (tracked as a submission-checklist item in `submission_script.md`).
+
+**BIP post 1/56 (Day 1, Aug 1) — seeded draft: the pre-registration post (AMD-02).** Post 1 does double
+duty: it announces the build AND publicly pre-registers the D7 fun-gate bar before any data exists —
+pre-registration is the honesty moat applied to ourselves. Draft:
+
+> Day 1/56 of building Cat Metro for #Shipaton. Before a single tester touches it, here is the Day-7
+> fun-gate bar we will grade ourselves against in public (12 closed testers, pushes disabled):
+> (i) ≥6/12 testers open the app unprompted on a second calendar day during D5–D7;
+> (ii) ≥4/12 replay an already-won level (excludes fail-retries by construction);
+> (iii) median session ≥3 levels;
+> (iv) quit-without-retry after failure <50%.
+> Fail rule, pre-committed: YELLOW (2 of 4 metrics missed) = 48h mechanic surgery + re-gate D9; RED (3+ of 4, or metric (i) alone) = execute the Plan-B runbook (PLAN_B_RUNBOOK.md).
+> A named outside person confirms the tally before the gate decision is written. Results on Day 7, pass or fail.
 
 **BIP-1 — Daily standup**
 > Day {n}/56 of building Cat Metro for #Shipaton.

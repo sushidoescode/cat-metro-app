@@ -100,7 +100,7 @@
     <ul>
       <li><strong>Launch scope:</strong> 30 curated levels across 6 districts · 4 mechanics (switch, queue, second source, wildcard) · seeded shared Daily Line · share-card + challenge deep link · full offline play.</li>
       <li><strong>Monetization — &ldquo;fair by design&rdquo;:</strong> $6.99 All Access (bonus district, both premium themes, daily rewind, permanently zero non-rewarded ads) · $9.99 Supporter Pack · $2.99 themes · $1.99/$4.99 rewind packs · rewarded ads <em>only when the player asks</em>. No interstitials, no energy, no loot boxes, <strong>no subscription</strong> (formally rejected — no honest recurring value a solo dev can sustain in-window).</li>
-      <li><strong>Stack:</strong> Unity 6000.3.16f1 · URP · IL2CPP/ARM64 · API 24→36 · purchases-unity 9.7.0 + RevenueCatUI · OneSignal 5.3.2 · Google Mobile Ads 11.3.0 · one EDM4U (1.2.188).</li>
+      <li><strong>Stack:</strong> Unity 6000.3.16f1 · URP · IL2CPP/ARM64 · API 25→36 · purchases-unity 9.7.0 + RevenueCatUI · OneSignal 5.3.2 · Google Mobile Ads 11.3.0 · one EDM4U (1.2.188).</li>
       <li><strong>Awards:</strong> P0 — Best Game, HAMM, #BuildInPublic, OneSignal, Catvertising. P1 — Design, Grand Prize, Most Viral. P2 — Stripe Funnel (Day-35 gate), Galaxy. Skip — Replit, JetBrains, influencer categories.</li>
     </ul>
   </section>
@@ -147,7 +147,7 @@
       <tr><td>Judge access</td><td>Play one-time promo codes <strong>work for one-time in-app products</strong> — judge unlock solved</td></tr>
       <tr><td>RevenueCat Ads</td><td>Public-beta <em>tracking layer</em> over an existing ad SDK (AdMob serves; Unity uses manual AdTracker, 9.1.0+; server-verified rewards not in Unity)</td></tr>
       <tr><td>RC in Unity</td><td>Paywalls v2 + Customer Center ✓ (device-only; 3 open Android crash issues → custom fallback) · Placements ✓ · Test Store ✓ · Experiments/Targeting <span class="w">Pro-plan gated</span> · win-back offers <span class="x">iOS-only</span></td></tr>
-      <tr><td>OneSignal in Unity</td><td>5.3.2 · custom events since 5.2.0 (paid plans) · Journeys: Free 1 / Growth 3 / Pro 20 · frequency capping Enterprise-only → caps enforced in-app</td></tr>
+      <tr><td>OneSignal in Unity</td><td>5.3.2 · custom events since 5.2.0 (paid plans) · Journeys: Free 1 / Growth 3 · frequency capping Enterprise-only → caps enforced in-app</td></tr>
       <tr><td>Families policy</td><td>Cute art ≠ child-directed, but child-appealing <em>store listing</em> art can trigger rejection → 13+ targeting, adult-legible diorama look</td></tr>
       <tr><td>Benchmarks</td><td>Widely-quoted puzzle retention figures are 2022-vintage; current medians D1 ~22% / D7 ~4% / D30 ~0.7%, top-10% ≈ 40/12/4 · US Android rewarded eCPM $15–30 (2024 measured) · NA gaming CPI $1.68</td></tr>
     </table></div>
@@ -164,7 +164,7 @@
       <tr><td><code>cm_rewind_5</code> / <code>_20</code></td><td class="num">$1.99 / $4.99</td><td>Consumable</td><td>Rewind to last safe decision tick — never required; 1 free daily; also earnable via rewarded ad</td></tr>
     </table></div>
     <p><strong>Cut deliberately:</strong> starter pack, theme bundle (decoy), currency packs, streak-saver IAP, season pass, cosmetic club, any subscription. First paywall only after the Level-5 win; never after a first failure; payers fully suppressed from offers. Rewarded placements (5, all opt-in, all tracked in RC AdTracker): failure rewind, ticket doubler, daily-gift doubler, streak saver, theme rental. <strong>Zero interstitials is the Catvertising thesis</strong> — &ldquo;ads only when the player asks,&rdquo; measured end-to-end.</p>
-    <p class="small">Organic base case ≈ 3k installs and ~$500–900 net revenue by Sep 30 — inside the verified range where 2025 category awards were won ($1–2k), below Grand Prize scale unless a creative breaks out. Full auditable scenarios: <code>data/revenue_scenarios.csv</code>.</p>
+    <p class="small">Organic base case ≈ 3k installs, base ≈ $253 net — short of the $1–2k 2025 category band on revenue alone; competes on craft and narrative. Full auditable scenarios: <code>data/revenue_scenarios.csv</code>.</p>
   </section>
 
   <section>
@@ -179,12 +179,12 @@
     <h2>Deliverables index</h2>
     <p>Everything is in <code>cat-metro/deliverables/</code>:</p>
     <ul class="filelist">
-      <li><code>FINAL_REPORT.md</code> — this report in full (27 sections) · <code>DECISIONS_BRIEF.md</code> — locked decisions, single source of truth</li>
-      <li><strong>data/</strong> — <code>monetization_catalog.csv</code> · <code>revenuecat_configuration.csv</code> · <code>entitlement_map.json</code> · <code>offering_and_placement_map.json</code> · <code>paywall_experiments.csv</code> · <code>ad_placement_map.csv</code> · <code>economy_sources_and_sinks.csv</code> · <code>revenue_scenarios.csv</code> · <code>analytics_event_taxonomy.csv</code> · <code>onesignal_journeys.csv</code> · <code>notification_copy.csv</code> · <code>experiment_backlog.csv</code> · <code>level_schema.json</code> · <code>example_levels.json</code> · <code>roadmap_56_days.csv</code> · <code>risk_register.csv</code> · <code>device_test_matrix.csv</code> · <code>google_play_checklist.csv</code> · <code>github_issue_backlog.md</code></li>
+      <li><code>FINAL_REPORT.md</code> — this report in full (27 sections) · <code>DECISIONS_BRIEF.md</code> — locked decisions, single source of truth · <code>PLAN_B_RUNBOOK.md</code> — the pre-committed pivot runbook</li>
+      <li><strong>data/</strong> — <code>monetization_catalog.csv</code> · <code>revenuecat_configuration.csv</code> · <code>entitlement_map.json</code> · <code>offering_and_placement_map.json</code> · <code>paywall_experiments.csv</code> · <code>ad_placement_map.csv</code> · <code>economy_sources_and_sinks.csv</code> · <code>revenue_scenarios.csv</code> · <code>analytics_event_taxonomy.csv</code> · <code>onesignal_journeys.csv</code> · <code>notification_copy.csv</code> · <code>experiment_backlog.csv</code> · <code>level_schema.json</code> · <code>example_levels.json</code> · <code>stress_boards.json</code> · <code>roadmap_56_days.csv</code> · <code>risk_register.csv</code> · <code>device_test_matrix.csv</code> · <code>google_play_checklist.csv</code> · <code>github_issue_backlog.md</code></li>
       <li><strong>specs/</strong> — <code>product_spec.md</code> · <code>monetization_spec.md</code> · <code>revenuecat_implementation.md</code> · <code>onesignal_retention.md</code> · <code>liveops_spec.md</code> · <code>growth_aso_plan.md</code> · <code>submission_script.md</code> · <code>architecture.md</code></li>
       <li><strong>agents/</strong> — <code>agent_system_prompts.md</code> — the 10-agent build fleet with path fences, merge gates, and escalation rules</li>
     </ul>
-    <p class="small">20 deliverable files · ~5,400 lines of specs and backlog · 14 CSVs and 4 JSON files, all machine-validated (consistent columns, valid JSON, offering and product IDs reconciled across every document). Three CSVs open with a <code>#</code> policy comment line — skip it or pass <code>comment='#'</code>.</p>
+    <p class="small">32 deliverable files · ~6,900 lines of specs and backlog · 14 CSVs and 5 JSON files, all machine-validated (consistent columns, valid JSON, offering and product IDs reconciled across every document). Seven CSVs open with <code>#</code> policy comment lines — skip them or pass <code>comment='#'</code>.</p>
     <h3>Manual checks only you can close</h3>
     <ul>
       <li>Devpost prizes page on Aug 1 (finalized categories) + email <code>shipaton@revenuecat.com</code> re: multi-category wins &amp; pre-order listings</li>

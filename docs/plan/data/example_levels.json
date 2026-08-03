@@ -3,7 +3,7 @@
   "levels": [
     {
       "schemaVersion": 2, "id": "L001", "name": "First Switch", "seed": 1001,
-      "meta": { "band": "onboarding", "difficultyTarget": 0.08, "mechanics": ["switch"], "newMechanic": "switch", "teachingGoal": "One tap changes the route; deliver two red cats to the red station", "minActionWindowTicks": 16, "authoredBy": "human", "validatedAt": "2026-08-02" },
+      "meta": { "band": "onboarding", "difficultyTarget": 0.08, "mechanics": ["switch"], "newMechanic": "switch", "teachingGoal": "One tap changes the route; deliver two red cats to the red station", "minActionWindowTicks": 16, "authoredBy": "human" },
       "board": {
         "nodes": [ { "id": "SRC", "x": 3, "y": 9 }, { "id": "J1", "x": 3, "y": 6 }, { "id": "RED", "x": 1, "y": 2 }, { "id": "BLU", "x": 5, "y": 2 } ],
         "edges": [ { "id": "E1", "from": "SRC", "to": "J1", "travelTicks": 10 }, { "id": "E2", "from": "J1", "to": "RED", "travelTicks": 12 }, { "id": "E3", "from": "J1", "to": "BLU", "travelTicks": 12 } ]
@@ -17,7 +17,7 @@
     },
     {
       "schemaVersion": 2, "id": "L006", "name": "Alternating Line", "seed": 1006,
-      "meta": { "band": "alternation", "difficultyTarget": 0.2, "mechanics": ["switch", "queue"], "newMechanic": null, "teachingGoal": "Read the next-wave preview and alternate the switch in rhythm", "minActionWindowTicks": 12, "authoredBy": "llm+validator", "validatedAt": "2026-08-09" },
+      "meta": { "band": "alternation", "difficultyTarget": 0.2, "mechanics": ["switch", "queue"], "newMechanic": null, "teachingGoal": "Read the next-wave preview and alternate the switch in rhythm", "minActionWindowTicks": 12, "authoredBy": "llm+validator" },
       "board": {
         "nodes": [ { "id": "SRC", "x": 3, "y": 9 }, { "id": "J1", "x": 3, "y": 6, "queueCapacity": 3 }, { "id": "RED", "x": 1, "y": 2 }, { "id": "BLU", "x": 5, "y": 2 } ],
         "edges": [ { "id": "E1", "from": "SRC", "to": "J1", "travelTicks": 8 }, { "id": "E2", "from": "J1", "to": "RED", "travelTicks": 12 }, { "id": "E3", "from": "J1", "to": "BLU", "travelTicks": 12 } ]
@@ -36,7 +36,7 @@
     },
     {
       "schemaVersion": 2, "id": "L018", "name": "Two Platforms", "seed": 1018,
-      "meta": { "band": "two-source", "difficultyTarget": 0.38, "mechanics": ["switch", "queue", "second-source"], "newMechanic": "second-source", "teachingGoal": "Prioritize between two interleaved sources sharing one junction", "minActionWindowTicks": 10, "authoredBy": "llm+validator", "validatedAt": "2026-08-13" },
+      "meta": { "band": "two-source", "difficultyTarget": 0.38, "mechanics": ["switch", "queue", "second-source"], "newMechanic": "second-source", "teachingGoal": "Prioritize between two interleaved sources sharing one junction", "minActionWindowTicks": 10, "authoredBy": "llm+validator" },
       "board": {
         "nodes": [
           { "id": "SA", "x": 1, "y": 9 }, { "id": "SB", "x": 5, "y": 9 },
@@ -63,7 +63,7 @@
     },
     {
       "schemaVersion": 2, "id": "L042", "name": "Rush-Hour Gate", "seed": 1042,
-      "meta": { "band": "timed-gates", "difficultyTarget": 0.58, "mechanics": ["switch", "queue", "second-source", "cooldown", "gate"], "newMechanic": "gate", "teachingGoal": "Synchronize route choice with a previewed gate schedule", "minActionWindowTicks": 8, "authoredBy": "generator+validator", "validatedAt": "2026-08-20" },
+      "meta": { "band": "timed-gates", "difficultyTarget": 0.58, "mechanics": ["switch", "queue", "second-source", "cooldown", "gate"], "newMechanic": "gate", "teachingGoal": "Synchronize route choice with a previewed gate schedule", "minActionWindowTicks": 8, "authoredBy": "generator+validator" },
       "board": {
         "nodes": [
           { "id": "SRC", "x": 3, "y": 9 }, { "id": "J1", "x": 3, "y": 7, "queueCapacity": 3 },
@@ -97,7 +97,7 @@
     },
     {
       "schemaVersion": 2, "id": "L088", "name": "Last Local", "seed": 1088,
-      "meta": { "band": "expert", "difficultyTarget": 0.83, "mechanics": ["switch", "queue", "second-source", "wildcard", "cooldown", "gate"], "newMechanic": null, "teachingGoal": "Full-vocabulary capstone with multiple viable strategies and scarce recovery", "minActionWindowTicks": 6, "authoredBy": "generator+validator", "validatedAt": "2026-09-05" },
+      "meta": { "band": "expert", "difficultyTarget": 0.83, "mechanics": ["switch", "queue", "second-source", "wildcard", "cooldown", "gate"], "newMechanic": null, "teachingGoal": "Full-vocabulary capstone with multiple viable strategies and scarce recovery", "minActionWindowTicks": 6, "authoredBy": "generator+validator" },
       "board": {
         "nodes": [
           { "id": "SA", "x": 1, "y": 9 }, { "id": "SB", "x": 5, "y": 9 },

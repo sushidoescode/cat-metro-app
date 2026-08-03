@@ -421,11 +421,10 @@ Text wireframe, top to bottom:
 2. **Hero** (top 35%): Night Harbor diorama render — night-lit station, cats on the platform, sakura + neon theme swatches peeking at the edges. No text overlay on the hero.
 3. **Headline** (H1, centered): `One ticket. Every line.`
 4. **Sub-head** (1 line): `All Access is the complete Cat Metro — one purchase, yours forever.`
-5. **Benefit list** (5 rows, icon + text):
+5. **Benefit list** (4 rows, icon + text):
    - 🌃 `Night Harbor — a bonus district of 10 handcrafted levels`
    - 🎨 `Both premium themes: Sakura Line + Neon Line`
    - ⏪ `Daily free rewind doubled — 2 every day`
-   - 🚫 `Ad-free, guaranteed forever` — sub-line (smaller): `Cat Metro has no forced ads today. All Access makes that a permanent promise.`
    - 🥇 `Gold conductor badge on your profile`
 6. **Price row**: `{localized_price} · one-time purchase` (US reference $6.99; string from store, §7).
 7. **Primary CTA** (full-width): `Unlock All Access — {localized_price}`
@@ -434,7 +433,7 @@ Text wireframe, top to bottom:
    - `One-time payment. Not a subscription. No recurring charges.`
    - `Every level outside Night Harbor is free and fully solvable without paying.`
    - `Purchases restore on any device with your Google account.` → tappable → Restore
-10. **Trust line** (footer, brand voice): `Fair by design: no forced ads, no energy, no loot boxes.`
+10. **Trust line** (footer, brand voice): `Fair by design: no forced ads, no energy, no loot boxes. Cat Metro has no forced ads today — All Access makes that a permanent promise.` (The former "Ad-free, guaranteed forever" benefit row is demoted here: it sold removal of ad surfaces the free game does not have.)
 
 Behavior notes: this exact layout is replicated in RC Paywalls v2 template config AND as the custom Unity fallback prefab (crash contingency, §3 fallback). The $4.99 experiment variant changes ONLY the price row and CTA price token (offering `ofr_core_b`); copy is otherwise identical so the test isolates price.
 
@@ -519,14 +518,14 @@ HAMM criteria (verified 2026-07-31): "smartest use of RevenueCat to drive real r
 
 **Thoughtful pricing and packaging.**
 - A clean five-point ladder: $1.99 → $2.99 → $4.99 → $6.99 → $9.99, each price a different JOB (small consumable / cosmetic / large consumable / complete edition / tip jar). The theme bundle was cut on decoy-confusion grounds — All Access IS the bundle; that cut is part of the story.
-- A documented price DECISION with reasoning: All Access raised $4.99→$6.99 because the Grand Prize shortlist keys on window revenue and comp data supports $6.99 for a complete edition — then validated, not assumed, via experiment (below).
+- A documented price DECISION with reasoning: All Access raised $4.99→$6.99 — raised because (a) downside is bounded (~$40 net base-case) with a 28.6% conversion-loss cushion, (b) $4.99 breaks the ladder — the everything-tier would price below its own two themes ($5.98) and tie cm_rewind_20, the decoy-confusion grounds on which the theme bundle was cut, and (c) the verified $7.26 casual D90 ARPPU shape supports a ~$7 completion price. The Grand-shortlist revenue argument is immaterial at our scale. Then stress-tested directionally (pre-registered as non-significant at our scale) via experiment (below).
 - A formal, reasoned subscription rejection (§5) shows packaging discipline: knowing what NOT to sell.
 - Supporter Pack packaging honesty (overlap disclosure to existing owners, §3.11) as an example of packaging that respects the customer.
 
 **Strong conversion (the catalog → placements → experiments arc).**
 - **Catalog:** 6 live SKUs, 4 entitlements, consumable ledger with RC webhooks — the full product-type spread on one small game.
 - **Placements:** all five RC Placements (`post_level_5`, `theme_preview`, `bonus_district`, `shop`, `rewind_failure`) resolve offerings server-side, so every surface is remotely retargetable; per-placement funnels instrumented via the taxonomy (`paywall_viewed → purchase_started → purchase_completed` with placement + offering_id on every event).
-- **Experiments:** the $6.99 vs $4.99 All Access price test runs via RC Experiments if the project plan allows (Pro/Enterprise-gated — verified; plan check is a D1 task), else the pre-declared fallback: sequential offering swaps through Placements with cohort-split readouts by install week. Either way, judges see a hypothesis → test → decision loop inside the window.
+- **Experiments:** the $6.99 vs $4.99 All Access price test runs via RC Experiments if the project plan allows (Pro/Enterprise-gated — verified; plan check is a D1 task), else the pre-declared fallback: sequential offering swaps through Placements with cohort-split readouts by install week. Either way, judges see a hypothesis → test → decision loop inside the window. Scale caveat (pre-registered): at base-case traffic PW01 sees ~300–490 paywall views per arm against the ~7,700 needed for significance — roughly 6 vs 8 purchases per arm — so the readout is directional, decided on summed arm revenue, and never claimed as significant.
 - **Evidence pack for judging (judges may judge from text/images/video alone — verified):** RC dashboard screenshots of offerings/placements/paywall config, the funnel numbers per placement, the experiment readout, and this spec's §3 map as the design document. Target headline numbers: view→purchase ≥1.5% on `post_level_5`, ≥6% on `bonus_district`, payer rate benchmarked against the 2025 grand-winner calibration (1,750 payers/17k users ≈ 10% — verified) as aspiration, with honest self-set targets labeled as such.
 
 **Decision:** The HAMM entry is written as "the fair-by-design revenue machine": full RC surface area (Offerings, Packages, Entitlements, Placements, Paywalls v2, Customer Center, AdTracker, Experiments-or-fallback) on a game whose monetization users publicly don't hate.

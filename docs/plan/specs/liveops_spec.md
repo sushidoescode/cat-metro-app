@@ -6,7 +6,7 @@ Public 1.0 target: Aug 24–28 2026. This spec covers everything that runs after
 
 Design principles (from the locked brief):
 1. Offline-first, no remote content service at launch. Every live-ops beat must work from data baked into the build, with OneSignal + RevenueCat Offerings as the only remote levers.
-2. Fair by design: no forced ads, no energy, no pay-to-win, streaks are cosmetic-only.
+2. Fair by design: no forced ads, no energy, no pay-to-win; streaks never gate content (a break costs at most 150 tickets of gift escalation, and a free saver exists).
 3. Solo-dev sustainable: every recurring beat has an explicit hours budget; anything over budget gets Cut.
 4. Everything ships behind a feature flag (architecture.md flags section) so the commercial beta can carry systems dark.
 
@@ -108,15 +108,15 @@ Aug 24 is a Monday; all weeks run Mon–Sun. Submission freeze Sep 26–30 (brie
 | Week | Dates | Theme | Content beats | Monetization beat | Messaging (see §6) | Build-in-public beat |
 |---|---|---|---|---|---|---|
 | W1 Launch Week | Mon Aug 24 – Sun Aug 30 | "Opening Day" | 1.0 live (30 levels, Daily Line from day 1); no event — let the core breathe; hotfix window Thu Aug 27 | Default offering `launch_v1` live at all 5 placements (post_level_5, theme_preview, bonus_district, shop, rewind_failure); no discounts | Journeys 1–3 activate as cohorts qualify; launch announcement is store+social only (no push list yet) | Launch day numbers thread; D1 retention post Fri Aug 28 |
-| W2 Neon Nights | Mon Aug 31 – Sun Sep 6 | Night-city Cup round #1 | 3 neon-lit routes (baked in 1.0); Neon Nights livery; cross-sell moment for `cm_theme_neon` $2.99 via theme_preview placement (preview only — event routes render in neon for everyone) | Sequential offering test A begins Sep 1: `post_level_5` shows All Access at $6.99 (baseline week; $4.99 comparison is W3 — Experiments is Pro-gated per brief, sequential is the fallback) | Scheduled send Mon 17:00 `event_start`; Sun 11:00 `event_ending` (progress ≥30% segment) | "First event week, real numbers" post; Devpost draft started |
-| W3 Commuter Rescue | Mon Sep 7 – Sun Sep 13 | Rescue-cats Cup round #2 | 3 routes with heavy wildcard-commuter use; Rescue livery; first content patch Wed Sep 9: levels 31–35 (cooldown mechanic enters, per brief bands) + depot-pass streak repair (P1) | Sequential offering test B: `post_level_5` at $4.99 (Sep 7–13); pick winner by paywall CVR × net revenue Sep 14 | event sends ×2; `new_content` one-off send Thu Sep 10 for the level patch | Pricing A/B results post (HAMM evidence); mid-event metrics |
+| W2 Neon Nights | Mon Aug 31 – Sun Sep 6 | Night-city Cup round #1 | 3 neon-lit routes (baked in 1.0); Neon Nights livery; the Week-5 build ships levels 31–35 (cooldown mechanic enters, per brief bands); cross-sell moment for `cm_theme_neon` $2.99 via theme_preview placement (preview only — event routes render in neon for everyone) | Sequential offering test A begins Sep 1: `post_level_5` shows All Access at $6.99 (baseline week; $4.99 comparison is W3 — Experiments is Pro-gated per brief, sequential is the fallback) | Scheduled send Mon 17:00 `event_start`; Sun 11:00 `event_ending` (progress ≥30% segment) | "First event week, real numbers" post; Devpost draft started |
+| W3 Commuter Rescue | Mon Sep 7 – Sun Sep 13 | Rescue-cats Cup round #2 | 3 routes with heavy wildcard-commuter use; Rescue livery; v1.1 content patch Wed Sep 9 (live by Sep 11): levels 36–40 + depot-pass streak repair (P1) — levels 31–35 already shipped in the Week-5 build (one content schedule, roadmap version) | Sequential offering test B: `post_level_5` at $4.99 (Sep 8–14, the second equal 7-day cell); pick winner by paywall CVR × net revenue Sep 15 | event sends ×2; `new_content` one-off send Thu Sep 10 for the level patch | Pricing A/B results post (HAMM evidence); mid-event metrics |
 | W4 District Cup Championship | Mon Sep 14 – Sun Sep 20 | Flagship round: best-of remix routes | 3 remix routes of W2/W3 favorites (by completion data); Championship gold livery; share-code push: "beat my Cup score" cards | Winning price locked; `shop` placement gets Supporter Pack spotlight card (shop-only, never interrupts — brief) | event sends ×2; IAM for share-card feature | "How the Cup works with no backend" technical post |
 | W5 Founders Wrap | Mon Sep 21 – Wed Sep 30 | 10-day "Founding Riders" wrap | Founders participation badge for anyone who plays any 3 days during the wrap; no new routes (freeze); Devpost video capture week; **Sep 26–30 submission freeze** (brief) | No changes after Sep 24 — stable revenue reporting through window close Sep 30 11:45pm PDT | One `new_content`-slot scheduled send Mon Sep 21 ("Founding Riders week"); all experiments stopped | Devpost submission + wrap-up thread; full revenue transparency post |
 
-Cut from this window (explicit): mid-week flash sales (violates fair-play positioning), limited-time IAP (same), second content patch (capacity), any event requiring a server.
+Cut from this window (explicit): mid-week flash sales (violates fair-play positioning), limited-time IAP (same), any third content update (capacity), any event requiring a server.
 
-**Decision:** Five Mon-anchored weeks, first two event rounds baked into the 1.0 binary, one content patch (Sep 9), freeze from Sep 24.
-**Evidence:** Brief schedule spine (D28 public Aug 24–28; Sep 26–30 freeze); Play production review ≤7d typical (verified 2026-07-31) makes the single mid-Sep patch the only safe update slot; 2025 Grand winner calibration (17k users/$30,017 — verified) says steady weeks beat stunt weeks.
+**Decision:** Five Mon-anchored weeks, first two event rounds baked into the 1.0 binary, two content updates (Week-5 build: levels 31–35; v1.1 Sep 9, live by Sep 11: levels 36–40), freeze from Sep 24.
+**Evidence:** Brief schedule spine (D28 public Aug 24–28; Sep 26–30 freeze); Play production review ≤7d typical (verified 2026-07-31) makes mid-Sep the last safe update slot; 2025 Grand winner calibration (17k users/$30,017 — verified) says steady weeks beat stunt weeks.
 **Action:** Content for W2+W3 rounds validated and merged before the Aug 21 commercial-beta gate; W4 remix selection is a 2h data query on Sep 8.
 **Risk:** The Sep 9 patch hits a slow Play review and lands mid-event.
 **Fallback:** Patch content is additive-only; if review slips past Sep 12, W3's `new_content` send is re-scheduled to align with actual availability (sends are one-off, not journey-locked), and W4 proceeds on baked content regardless.
@@ -155,13 +155,13 @@ Weekly recurring budget (hard cap 10 h/week on live-ops content; the rest is eng
 | District Cup round | generator+validator drafts 12 → pick 3 → hand-tune | 3 routes/wk | ~4 |
 | Event livery | Palette/decal swap on base train material | 1/wk | ~2 |
 | Send + IAM copy | 2 sends + 1 IAM per round, written from templates in notification_copy.csv | weekly | ~1 |
-| Campaign batch | Hand-tuned batch of 5 (levels 31–35, cooldown band) | once, Sep 9 patch | ~10 one-time |
+| Campaign batch | Hand-tuned batches of 5 (levels 31–35 cooldown, Week-5 build; levels 36–40, v1.1 Sep 9 patch) | twice | ~10 one-time per batch |
 | Cosmetic ticket-sink variants | 600–1200-ticket earnable variants (brief economy) | 2 shipped in 1.0, +2 in Sep 9 patch | ~3 one-time |
 
 Rules that make this survivable:
 - The validator is the content team. Nothing hand-built from scratch except tuning passes; `authoredBy: "generator+validator"` and `"llm+validator"` are first-class in schema v2 (already in level_schema.json).
 - Two-rounds-ahead buffer at all times (§2.2). If the buffer is ever empty, the next round auto-falls-back to "Classic Cup" — 3 re-validated remixes of campaign levels 8/14/22 kept permanently on the shelf.
-- Cut permanently for the event window: new mechanics beyond the Sep 9 cooldown band, new districts, narrative content, localization (EN-only, brief), any content requiring new art beyond palette swaps.
+- Cut permanently for the event window: new mechanics beyond the in-window bands 31–40, new districts, narrative content, localization (EN-only, brief), any content requiring new art beyond palette swaps.
 
 **Decision:** ≤10 h/week live-ops content, generator-first with hand-tuning, one campaign patch, permanent fallback round on the shelf.
 **Evidence:** Brief locks the subscription rejection for exactly this reason ("no recurring content cadence a solo dev can honestly sustain in 8 weeks"); schema v2 was designed for validated generation (verified in level_schema.json meta.authoredBy).
@@ -173,15 +173,15 @@ Rules that make this survivable:
 
 ## 6. OneSignal under the Growth-plan constraint (P0)
 
-Plan: **Growth, $19/mo** (locked in brief). Hard limits (verified 2026-07-31): **3 active journeys, 6 message steps each**; frequency capping is Enterprise-only → caps enforced by journey design + in-app-written tags; no quiet hours → Time Window steps; FCM v1 service-account JSON required; RC↔OneSignal linked via `$onesignalUserId` and RC purchase tags (brief).
+Plan: **Growth, $19/mo** (locked in brief). Hard limits (verified 2026-07-31): **3 active journeys, 6 message steps total** (the 2+3+1 design below uses all 6 — zero spare); frequency capping is Enterprise-only → caps enforced by journey design + in-app-written tags; no quiet hours → Time Window steps; FCM v1 service-account JSON required; RC↔OneSignal linked via `$onesignalUserId` and RC purchase tags (brief).
 
 ### 6.1 The 3 active Journeys (mapped from `onesignal_journeys.csv`)
 
 | Slot | Journey | CSV rows absorbed | Design (message steps used / 6) |
 |---|---|---|---|
-| J1 `daily_streak` | Daily Line + streak risk combined | `daily_challenge` (P0) + `streak_risk` (P0) | Entry: custom event `daily_unlocked` tag true. Branch A (no streak risk): Wait Until learned play window (default 10:00 local) → Time Window 09:00–21:00 → **Msg 1** daily_challenge A/B/C. Branch B (tag `streak_days>=3` AND daily not done, evening): Wait Until 6h before local midnight → Time Window 09:00–22:00 → **Msg 2** streak_risk A/B/C. Exit: `daily_completed` custom event or app_open. Steps used: 2/6. |
-| J2 `lapse_ladder` | 48h → 7d → 14d in one journey | `inactivity_48h` (P1) + `winback_7d` (P1) + `winback_14d` (P1) | Entry: no `app_open` for 48h (last_active). **Msg 1** inactivity_48h (afternoon Time Window) → Wait Until 7d-inactive → exit-check → **Msg 2** winback_7d (evening) → Wait Until 14d-inactive AND Msg 2 unopened → **Msg 3** winback_14d (final, journey re-entry OFF permanently after this send). Exit at any step: app_open. Steps used: 3/6, one spare for a post-event A/B step. |
-| J3 `hard_level_help` | Stuck-player rescue | `hard_level_help` (P1) | Entry: custom event `level_failed` with same `level_id` twice in 60 min (client emits a derived `level_stuck` custom event to keep journey logic simple — OneSignal custom events are on all paid plans, verified). Wait 45 min → exit if `level_completed` → Time Window 09:00–21:00 → **Msg 1** hard_level_help A/B/C with free rewind flag. One entry per level ever (tag `helped_levels` list written by app). Steps used: 1/6. |
+| J1 `daily_streak` | Daily Line + streak risk combined | `daily_challenge` (P0) + `streak_risk` (P0) | Entry: custom event `daily_unlocked` tag true. Branch A (no streak risk): Wait Until learned play window (default 10:00 local) → Time Window 09:00–21:00 → **Msg 1** daily_challenge A/B/C. Branch B (tag `streak_days>=3` AND daily not done, evening): Wait Until 6h before local midnight → Time Window 09:00–21:00 → **Msg 2** streak_risk A/B/C. Exit: `daily_completed` custom event or app_open. Steps used: 2/6. |
+| J2 `lapse_ladder` | 48h → 7d → 14d in one journey | `inactivity_48h` (P1) + `winback_7d` (P1) + `winback_14d` (P1) | Entry: no `app_open` for 48h (last_active). **Msg 1** inactivity_48h (afternoon Time Window) → Wait Until 7d-inactive → exit-check → **Msg 2** winback_7d (evening) → Wait Until 14d-inactive AND Msg 2 unopened → **Msg 3** winback_14d (final, journey re-entry OFF permanently after this send). Exit at any step: app_open. Steps used: 3/6 (no spare — the 2+3+1 design uses the full 6-step budget). |
+| J3 `hard_level_help` | Stuck-player rescue | `hard_level_help` (P1) | Entry: custom event `level_failed`, forwarded to OneSignal only on the second failure of the same `level_id` within 60 min with no completion in between — the ×2 filter lives client-side in the adapter, per onesignal_retention.md §5; no separate derived stuck-level event exists in the taxonomy (OneSignal custom events are on all paid plans, verified). Wait 45 min → exit if `level_completed` → Time Window 09:00–21:00 → **Msg 1** hard_level_help A/B/C with free rewind flag. One entry per level ever (tag `helped_levels` list written by app). Steps used: 1/6. |
 
 ### 6.2 Everything else — explicitly NOT Journeys
 
@@ -189,21 +189,21 @@ Plan: **Growth, $19/mo** (locked in brief). Hard limits (verified 2026-07-31): *
 |---|---|---|
 | `event_start`, `event_ending` | **One-off scheduled sends** (2 per Cup week), segment: push-granted + `highest_level>=8` + active-in-14d; event_ending adds `event_joined` AND NOT `event_completed` | Copy from notification_copy.csv rows 17–21; scheduled Friday for the following week during the §2.2 runbook |
 | `payer_thanks` | **IAM** on next session start after `entitlement_changed(granted)` + the RC purchase tag | Never a push; copy rows 25–26 |
-| `purchase_issue` | **IAM** on next session (2h+ after `purchase_failed` non-cancel) + a **local notification** at +4h if the app never reopened | Copy rows 27–28; states no charge occurred |
-| `feedback_request` | **IAM only** (its own CSV row already says IAM-first) | Push escalation dropped entirely under the 3-journey cap — Cut |
+| `purchase_issue` | **Local notification** scheduled **+2h** after `purchase_failed` where `user_cancelled = false`, canceled if `purchase_completed` arrives first; falls back to an **IAM** at next session if the notification permission is denied (onesignal_retention.md §6, matches journeys CSV) | Copy rows 27–28; states no charge occurred |
+| `feedback_request` | **IAM first**; if unseen after 3 sessions, a **one-off dashboard send** to the segment `feedback_pending = true` (onesignal_retention.md §6) | No journey slot — the fallback is a scheduled send, not a journey |
 | `new_content` | **One-off scheduled send** per release (Sep 10, Sep 21) | Copy rows 31–32 |
 | `review_coordination` | **In-app review API only** — never any notification (CSV row 14 already says so; brief: quota-limited, never after failure) | Unchanged |
 | Streak-expiry backup | **Unity Mobile Notifications (local)**: on each daily completion with `streak_days>=3`, schedule a local notification for tomorrow 20:00 local; cancel on app open or daily completion. Fires even if push permission was granted but OneSignal delivery fails; suppressed entirely if J1 Msg 2 already delivered today (app writes `streak_push_sent_today` tag mirror locally). | Brief names this backup explicitly |
 
 ### 6.3 In-app frequency-cap enforcement (Enterprise capping unavailable)
 
-Client-maintained tags checked in every journey/send audience: `last_push_open_at`, `pushes_this_week` (app increments on `notification_opened` and on FCM delivered-receipt where available; conservative default: count sends). Global policy: **max 1 push/day, 3/week** across all sources (matches journey CSV caps); scheduled event sends count against it — which is why Cup weeks get exactly 2. Local notifications respect the same counter.
+Client-maintained tags checked in every journey/send audience: `last_push_open_at`, `pushes_this_week` (app increments on `notification_opened` and on FCM delivered-receipt where available; conservative default: count sends). Global policy: Push ceiling (global, honest): max 2 pushes/day - a daily nudge, plus a streak warning if one's at risk - never at night (nothing delivers 21:00-09:00 local). Scheduled event sends count against the same ceiling — which is why Cup weeks get exactly 2 one-off sends — and local notifications respect the same counter. (Same statement, verbatim, in onesignal_retention.md §2 and onesignal_journeys.csv.)
 
 ### 6.4 OneSignal award angle (P0 target, $25k/15k/5k)
 
 Criteria (verified 2026-07-31): Implementation, User value, Resourcefulness — "a single deployed message is sufficient for eligibility," so the bar to clear is trivial and the ceiling is the story: *three journeys, six copy variants, zero guilt mechanics, local-notification failover, and hard self-imposed caps on a plan without capping.* Screenshot every journey canvas + copy table for the Devpost writeup.
 
-**Decision:** J1 daily+streak, J2 lapse ladder, J3 hard-level help as the 3 active Journeys; events/payer/purchase/new-content via scheduled sends + IAM; streak backup via local notifications; 1/day 3/week self-cap.
+**Decision:** J1 daily+streak, J2 lapse ladder, J3 hard-level help as the 3 active Journeys; events/payer/purchase/new-content via scheduled sends + IAM; streak backup via local notifications; self-enforced 2/day push ceiling (§6.3).
 **Evidence:** Plan gates verified 2026-07-31 (Free = 1 journey/2 steps; Growth = 3/6; capping Enterprise-only; custom events on all paid plans); brief locks this exact 3-journey replacement of the 7-journey design; all copy already exists in notification_copy.csv.
 **Action:** Aug 1: create OneSignal app, upload FCM v1 service-account JSON, wire `Login(external_id)` + RC `$onesignalUserId` attribute. Aug 15–21: build J1–J3 in dashboard against the closed-test cohort; verify `tutorial_completed` custom event arrives <60s (taxonomy QA row). Journeys flip to the production audience at 1.0.
 **Risk:** J1's two-branch design exceeds what one Journey canvas can express cleanly, or Wait Until on learned play window misbehaves.

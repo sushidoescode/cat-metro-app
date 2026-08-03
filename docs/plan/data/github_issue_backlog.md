@@ -10,9 +10,9 @@ Aligned day-for-day to `deliverables/data/roadmap_56_days.csv`. Specs referenced
 GitHub's own issue numbers will differ. Put the backlog ID at the front of every issue title so
 dependency references survive.
 
-Repo: `cat-metro` (private until launch). Android package: **`io.catmetro.game`** (see CM-009 —
-`roadmap_56_days.csv` D1 currently writes `com.catmetro.game`; the package id must be reconciled and
-frozen **before** the first AAB is uploaded, because it cannot be changed afterward).
+Repo: `cat-metro` (private until launch). Android package: **`com.catmetro.game`** (FROZEN
+2026-08-01 per AMD-04; matches `roadmap_56_days.csv` D1 — it cannot be changed after the first
+AAB upload; the CM-009 package-id conflict is resolved). Handle: **@CatMetroGame**.
 
 ---
 
@@ -24,8 +24,8 @@ frozen **before** the first AAB is uploaded, because it cannot be changed afterw
 | **M2 — Level System** | **Aug 8–14** | D8–D14 | **LEVEL-SYSTEM GATE (D14):** 20 levels solver-validated in CI; RC sandbox purchase + rewarded ad + push each pass on the current device build; Play Console shows 12 testers continuous for 14 days | CM-010 → CM-018 |
 | **M3 — Commercial Beta** | **Aug 15–21** | D15–D21 | **COMMERCIAL-BETA GATE (D21):** 100% smoke pass; purchases/restore/refund-revoke + 5 ad surfaces + 3 journeys + offline campaign all green; crash-free ≥99.5% across beta sessions | CM-019 → CM-028 |
 | **M4 — Public 1.0** | **Aug 22–28** | D22–D28 | **STORE-READY GATE (D24)** then **PUBLIC LAUNCH WINDOW (D24–28):** production submission in; Cat Metro 1.0 live on Google Play, accessible from the USA, release date logged | CM-029 → CM-035 |
-| **M5 — Growth & Experiments** | **Aug 29 – Sep 21** | D29–D49 | **D35 RETENTION GATE** (D1 ≥22% floor; Daily participation ≥25% of DAU; top-2 levers chosen), **D35b FUNNEL GO/NO-GO** (default NO-GO), **D42 CONTENT-COMPLETE GATE** (feature freeze begins) | CM-036 → CM-043 |
-| **M6 — Submission** | **Sep 22–30** | D50–D56 | **SUBMISSION-READY GATE (D54, Sep 23)** then submitted by **Sep 29 18:00 PDT**; absolute deadline **Sep 30 11:45pm PDT** | CM-044 → CM-049 |
+| **M5 — Growth & Experiments** | **Aug 29 – Sep 18** | D29–D49 | **D35 RETENTION GATE** (D1 ≥22% floor; Daily participation ≥25% of DAU; top-2 levers chosen), **D35b FUNNEL GO/NO-GO** (default NO-GO), **D42 CONTENT-COMPLETE GATE** (feature freeze begins) | CM-036 → CM-043 |
+| **M6 — Submission** | **Sep 19–25 + Sep 26–30 buffer** | D50–D56 | **SUBMISSION-READY GATE (D54, Sep 23)** then submitted by **Sep 29 18:00 PDT**; absolute deadline **Sep 30 11:45pm PDT** | CM-044 → CM-049 |
 
 Milestone rule: an issue may only move to a later milestone by an explicit Cut decision recorded in an
 ADR. Slipping work silently across a gate is how 8-week schedules die.
@@ -90,7 +90,7 @@ rather than assumed.
 **CM-001 — Bootstrap repo, Unity 6000.3.16f1 project, and CI skeleton**
 `type/chore` `area/build` `area/ci` `P0` `size/L`
 AC: Private repo `cat-metro` with the `architecture.md` asmdef folder layout; Unity **6000.3.16f1**
-project (IL2CPP, ARM64-only, URP, Input System, minSdk 24, targetSdk 36, package `io.catmetro.game`);
+project (IL2CPP, ARM64-only, URP, Input System, minSdk 25, targetSdk 36, package `com.catmetro.game`);
 GitHub Actions compiles and runs EditMode tests on every PR.
 Deps: none. **Blocks everything.** Do **not** upgrade past 6000.3.16f1 (Gradle 9/AGP 9.0 breaks
 unverified SDKs until GMA/RC/OneSignal confirm compat — brief).
@@ -158,10 +158,10 @@ day and ship the tester build without it.
 AC: Gate criteria met and recorded (≥5 of 12 testers replay ≥1 level unprompted; median session ≥3
 levels; testers explain the goal unaided) with an evidence pack and ADR-0007; **and** two spec
 conflicts are reconciled in writing before any store asset is built: (a) Android package id —
-`io.catmetro.game` (this backlog + task brief) vs `com.catmetro.game` (`roadmap_56_days.csv` D1); (b)
-bonus-district name — **Rooftop Line L901–L910** (`product_spec.md` §22) vs "Night Harbor"
-(`monetization_spec.md` §3.6). Pick one of each, edit the losing document, and note the change in the
-ADR.
+RESOLVED 2026-08-01 (AMD-04): frozen at `com.catmetro.game` in every deliverable; record it in the ADR; (b)
+bonus-district name — RESOLVED 2026-08-03 (AMD-03): **Night Harbor** (L901–L910) everywhere;
+`product_spec.md` §22 edited to match `monetization_spec.md` §3.6. Both choices are now applied in the
+files; record both in the ADR.
 Deps: CM-005 (playtests), CM-001 (package id must be frozen pre-first-AAB). Fallback if the gate
 fails: 48h of mechanic surgery (tick speed / queue caps / wave pacing), re-gate on D9. The concept
 stays — the brief's verdict is KEEP; redesign pacing, not premise.
@@ -370,8 +370,11 @@ AC: Production access granted; v1.0.0 AAB built from the release branch and subm
 review**); listing 100% complete; staged-rollout plan documented with halt criteria (crash-free <99% or
 ANR >0.47%); **Play one-time promo codes minted for `cm_all_access` and one redeem-tested on a clean
 device**; ADR-0024 signed.
-Deps: CM-020, CM-029, CM-030, CM-031. Blocks CM-034. First-release review can take up to 7 days — this
-is why the submission window is D24–26 and not D27.
+Deps: CM-020, CM-029, CM-030, CM-031. Blocks CM-034. SUBMIT-ON-GRANT: the first production release is
+submitted the day production access is granted (P50 ~Aug 20–21), using the current commercial-beta
+build, managed publishing ON, publish held — the polished 1.0 ships as an immediate update. First-release
+review can take up to 7 days, so launch Aug 24–28 is the best case; planning basis P50 Sep 1–2,
+P80 Sep 12–16.
 
 **CM-033 — Launch comms kit: press, Devpost shell, community, Discord**
 `type/growth` `area/marketing` `P1` `size/L` `award/bip`
@@ -403,7 +406,7 @@ Deps: CM-034. Blocks CM-036. The Day-1 numbers post (with denominators) is also 
 
 ---
 
-## 7. M5 — Growth & Experiments (Aug 29 – Sep 21)
+## 7. M5 — Growth & Experiments (Aug 29 – Sep 18)
 
 **CM-036 — District Cup event container + two baked rounds**
 `type/feat` `type/content` `area/application` `area/content` `P1` `size/L`
@@ -418,20 +421,21 @@ solver-calibrated static values, not percentiles (we have no backend to compute 
 **CM-037 — All Access price experiment: $6.99 vs $4.99**
 `type/ops` `area/integrations-rc` `P1` `size/M` `award/hamm`
 AC: RC Experiments if the project plan allows, otherwise the pre-declared fallback — sequential
-offering swaps (`ofr_core` at $6.99 Sep 1–6, `ofr_core_b` at $4.99 Sep 7–13) with
+offering swaps (`ofr_core` at $6.99 Sep 1–7, `ofr_core_b` at $4.99 Sep 8–14 — equal 7-day cells) with
 cohort-split readouts by install week; both price points serve correctly and **never simultaneously to
-the same client**; winner picked Sep 14 on revenue-per-1k-paywall-views; readout written as ADR-0035
+the same client**; winner picked Sep 15 on revenue-per-1k-paywall-views; readout written as ADR-0035
 with the method disclosed and labeled **directional, not significant**.
 Deps: CM-022, CM-034. Blocks CM-046. E07 in `experiment_backlog.csv` is the governing design.
 
 **CM-038 — ASO iterations + Play store-listing experiment queue**
 `type/growth` `area/store` `area/marketing` `P1` `size/M` `award/grand`
 AC: E16 (icon A vs B) starts once the listing has ~3 days of stable traffic; E17 (screenshot order) and
-E18 (short description) queue behind it, **one at a time, 14 days each**; ASO iteration 1 (Aug 29–Sep 4)
+E18 (short description) queue behind it, **one at a time, 14 days each**; **freeze guard on every
+slot: no listing experiment may run past Sep 25**; ASO iteration 1 (Aug 29–Sep 4)
 and iteration 2 (Sep 5–11) change one field at a time from Play Console search-term data; every readout
 is adopted only above Play's >90% probability-to-beat, and nulls are reported as nulls.
-Deps: CM-031, CM-034. Blocks CM-047. Slot 3 (E18) only starts if it does not touch the Sep 26–30
-freeze and its variant copy is one we would be happy for a judge to read.
+Deps: CM-031, CM-034. Blocks CM-047. Every slot obeys the Sep 25 freeze guard; Slot 3 (E18)
+additionally only starts if its variant copy is one we would be happy for a judge to read.
 
 **CM-039 — Levels 31–40 + in-app review flow + v1.1 release**
 `type/content` `type/feat` `area/content` `area/presentation` `P1` `size/XL — split` `award/best-game`
@@ -480,7 +484,7 @@ budget holds), run an FTUE surgery sprint, and cut levels 36–40.
 
 ---
 
-## 8. M6 — Submission (Sep 22–30)
+## 8. M6 — Submission (Sep 19–25 + Sep 26–30 buffer)
 
 **CM-044 — Evidence pack: 32 exhibits**
 `type/docs` `area/marketing` `P0` `size/L` `award/hamm` `award/onesignal` `award/catvertising` `award/bip`
@@ -500,13 +504,16 @@ uploaded to YouTube and playback verified on a second device.
 Deps: CM-030 (banked takes), CM-044. Blocks CM-048. Storyboard and script are locked in
 `submission_script.md` §5. Fallback: the on-screen-text-only cut carries the full argument without VO.
 
-**CM-046 — Devpost submission draft: story + seven award paragraphs**
+**CM-046 — Devpost submission LIVE early: story + seven award paragraphs + category questions**
 `type/docs` `P0` `size/L` `award/best-game` `award/hamm` `award/catvertising` `award/onesignal` `award/bip` `award/design` `award/grand`
-AC: The 300-word Story field, all seven award paragraphs tuned to the **verified** criteria wording,
-"Built with" list, category selections, and every remaining field filled — **no field left blank** in a
-full dry run; every number in the draft passes the claims audit (denominator, date range, vintage) and
-the overstatement audit (no "significant", no bare D30, no extrapolated LTV, no attribution language
-for correlational spikes).
+AC: The submission goes **LIVE on Devpost ~Sep 15** (submit early, edit continuously — official
+judging guide, Aug 1) and is edited to the freeze. The 300-word Story field, all seven award
+paragraphs tuned to the **verified** criteria wording, a drafted answer to **every targeted
+category's category-specific question** (an empty question = not judged in that category —
+`submission_script.md` §2.9), "Built with" list, category selections, and every remaining field
+filled — **no field left blank**; every number passes the claims audit (denominator, date range,
+vintage) and the overstatement audit (no "significant", no bare D30, no extrapolated LTV, no
+attribution language for correlational spikes).
 Deps: CM-037, CM-043, CM-044. Blocks CM-048.
 
 **CM-047 — Judge access: fresh codes and testing instructions**
@@ -526,9 +533,13 @@ screenshot, and judge access all verified against the Official Rules; winners-da
 Oct 21 vs FAQ Oct 22) re-verified; checklist ADR-0054 signed. **T-72h (Sun Sep 27)** — full rules
 re-read and diffed against DECISIONS_BRIEF §VERIFIED EVENT FACTS, plus re-verification of the two
 criteria texts the brief did not capture (**#BuildInPublic** and **Design**) with the corresponding
-paragraphs retuned. **Submit by Tue Sep 29 18:00 PDT**, with Sep 30 reserved for the final metrics
-refresh and buffer; hard deadline Sep 30 11:45pm PDT.
-Deps: CM-044, CM-045, CM-046, CM-047. Blocks CM-049. The 42-row timed checklist (items 0–38) lives in
+paragraphs retuned. The submission has been **live since ~Sep 15** (CM-046, submit-early flow) —
+**final edit pass complete by Tue Sep 29 18:00 PDT**, with Sep 30 reserved for the final metrics
+refresh and buffer; hard deadline Sep 30 11:45pm PDT. Package-name/video-match audit passes:
+submitted package name exactly matches the live app (RC SDK integration is verified
+programmatically against it) and the live build matches what the video shows (an RC advocate
+downloads it before winners are finalized).
+Deps: CM-044, CM-045, CM-046, CM-047. Blocks CM-049. The 44-row timed checklist (items 0–38) lives in
 `submission_script.md` §7 and is mirrored to `/submission/checklist.md`.
 
 **CM-049 — Post-submission stability watch through judging (Oct 1–13)**
@@ -539,6 +550,19 @@ judging; RC offerings stable with no experiment mid-flight showing a judge an od
 ANR inside halt criteria; reviews replied to daily.
 Deps: CM-048. Blocks nothing. **Zero feature work.** The only acceptable change during judging is a
 crash fix, and even that goes through staged rollout.
+
+**CM-050 — In-app Promotions integration + clean-device promo-code redemption test (added 2026-08-03, AMD-03)**
+`type/feat` `area/integrations-rc` `area/store` `P0` `size/M` `status/needs-device`
+AC: The app integrates Play **In-app Promotions** — required for one-time-product promo codes to
+redeem (answer/6321495; only Active buy options can be promoted); whether purchases-unity coexists
+cleanly with the In-app Promotions redemption flow is UNVERIFIED, so the proof is an **end-to-end
+promo-code redemption test on a clean device**, run as an acceptance criterion at **D17** (commerce
+build) and re-run at **D24** (pre-submit sweep): code redeemed in the Play Store app → `all_access`
+entitlement arrives via CustomerInfo sync with no purchase UI → `purchase_completed(price_local_bucket=promo)`
+logged. If redemption fails, the judge-access mechanism named in the rules is broken (R-16) and fixing
+it becomes the top P0.
+Deps: CM-022, CM-023. Blocks CM-047. Cross-ref: google_play_checklist.csv In-app Promotions row;
+rc config D2-51.
 
 ---
 

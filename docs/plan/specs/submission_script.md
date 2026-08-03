@@ -34,7 +34,7 @@ the second voice). This is the skeleton for the Devpost "Story"/"Inspiration" fi
 | 4 | **SEARCH** (they adapt) | The board gets harder honestly: queues as buffers, a second source, a wildcard commuter. They fail. The camera shows them *why* — the platform that overflowed, and the moment it started. Retry is under a second. |
 | 5 | **FIND** (they get what they wanted) | Somewhere around level twelve the game clicks: they stop reacting and start planning a wave ahead. The Daily Line unlocks and the habit forms — the same board as everyone on Earth, from a shared seed, with no server. |
 | 6 | **TAKE** (they pay a price for it) | The one moment the game asks: after level five, once, ever, a celebratory paywall for All Access. It closes in one tap. If they fail a level twice and open the rewind sheet themselves, the free options sit above the paid ones, under a line that says the level is solvable without them. That line is enforced by a solver in CI. |
-| 7 | **RETURN** (they come back changed) | They come back tomorrow because a notification arrived at 10am that they opted into after their first daily — not because a streak was held hostage. Streaks are cosmetic. The lapse ladder ends with "no more reminders after this," and keeps that promise with a tag. |
+| 7 | **RETURN** (they come back changed) | They come back tomorrow because a notification arrived at 10am that they opted into after their first daily — not because a streak was held hostage. Streaks never gate content — a break costs at most 150 tickets of gift escalation, and a free saver exists. The lapse ladder ends with "no more reminders after this," and keeps that promise with a tag. |
 | 8 | **CHANGE** (they are different now) | They tell someone. Usually with a share card: a route ribbon of their own switch timeline on today's board, which nobody can fake without the same deterministic simulation. |
 
 **The developer's half of the circle (the #BuildInPublic spine):** comfort (a solo dev with an idea) →
@@ -62,7 +62,7 @@ build log anyone can audit).
 > It is free on Google Play. The whole shop lives in one tab you have to open yourself.
 
 **Decision:** One narrative skeleton feeds every field, every award paragraph, and the video; the developer arc is the #BuildInPublic story and the player arc is the Best Game / Design story.
-**Evidence:** Every beat maps to a shipped, locked system (paywall exposure rules, solver-in-CI, seeded Daily Line, cosmetic streaks, lapse-ladder final message) documented in the sibling specs.
+**Evidence:** Every beat maps to a shipped, locked system (paywall exposure rules, solver-in-CI, seeded Daily Line, streaks that never gate content, lapse-ladder final message) documented in the sibling specs.
 **Action:** Paste the 300-word version into the Devpost Story field during roadmap week 7 (Sep 12–18); reuse beats 3–6 as the video's middle section.
 **Risk:** A narrative this tidy reads as marketing if no evidence sits beside it.
 **Fallback:** Every claim in the prose has a screenshot in §5's shot-list; if a claim ever loses its exhibit, the claim comes out of the prose, not the other way around.
@@ -94,7 +94,7 @@ colorblind-simulation pass.
 paywall, thoughtful pricing and packaging, strong conversion"*.
 
 **Paragraph (submission-ready):**
-> **Well-crafted paywall:** the flagship post-level-5 paywall renders through RevenueCat Paywalls v2 (RevenueCatUI), device-tested against three open Android crash issues (#745/#736/#732) with a pixel-matched custom Unity fallback behind a feature flag — we show the risk management, not just the happy path. It fires **once per install, ever**, closes in one tap, has no countdown, nothing preselected, an equal-weight decline button, and a trust line on the paywall itself. The hard case is the rewind sheet: it monetizes failure without monetizing frustration — no offer *ever* appears after a first failure (enforced by a unit test on the eligibility service), the sheet only opens when the player taps the rewind chip, free and rewarded options sit above the divider, and the footer states the level is solvable without rewinds — which a solver proves in CI. **Thoughtful pricing and packaging:** a five-point ladder where every price does a different job — $1.99 small consumable, $2.99 cosmetic, $4.99 large consumable, $6.99 complete edition, $9.99 tip jar — plus two documented *negative* decisions: the theme bundle was cut on decoy-confusion grounds (All Access **is** the bundle), and subscriptions were formally rejected with a written record, because a solo dev cannot honestly sustain a recurring content promise in eight weeks. All Access was raised from $4.99 to $6.99 on comp evidence, then tested rather than assumed. **Strong conversion:** 6 live SKUs, 4 entitlements, a durable consumable ledger with double-grant protection, and all five RC Placements (`post_level_5`, `theme_preview`, `bonus_district`, `shop`, `rewind_failure`) resolving offerings server-side, with `paywall_viewed → purchase_started → purchase_completed` instrumented with placement and offering_id on every event. The $6.99 vs $4.99 test ran through RC Experiments where the plan allowed and a pre-declared sequential offering swap where it did not — either way judges see hypothesis → test → decision inside the window, with the method disclosed.
+> **Well-crafted paywall:** the flagship post-level-5 paywall renders through RevenueCat Paywalls v2 (RevenueCatUI), device-tested against three open Android crash issues (#745/#736/#732) with a pixel-matched custom Unity fallback behind a feature flag — we show the risk management, not just the happy path. It fires **once per install, ever**, closes in one tap, has no countdown, nothing preselected, an equal-weight decline button, and a trust line on the paywall itself. The hard case is the rewind sheet: it monetizes failure without monetizing frustration — no offer *ever* appears after a first failure (enforced by a unit test on the eligibility service), the sheet only opens when the player taps the rewind chip, free and rewarded options sit above the divider, and the footer states the level is solvable without rewinds — which a solver proves in CI. **Thoughtful pricing and packaging:** a five-point ladder where every price does a different job — $1.99 small consumable, $2.99 cosmetic, $4.99 large consumable, $6.99 complete edition, $9.99 tip jar — plus two documented *negative* decisions: the theme bundle was cut on decoy-confusion grounds (All Access **is** the bundle), and subscriptions were formally rejected with a written record, because a solo dev cannot honestly sustain a recurring content promise in eight weeks. All Access was raised from $4.99 to $6.99: raised because (a) downside is bounded (~$40 net base-case) with a 28.6% conversion-loss cushion, (b) $4.99 breaks the ladder — the everything-tier would price below its own two themes ($5.98) and tie cm_rewind_20, the decoy-confusion grounds on which the theme bundle was cut, and (c) the verified $7.26 casual D90 ARPPU shape supports a ~$7 completion price. The Grand-shortlist revenue argument is immaterial at our scale. Then tested rather than assumed. **Strong conversion:** 6 live SKUs, 4 entitlements, a durable consumable ledger with double-grant protection, and all five RC Placements (`post_level_5`, `theme_preview`, `bonus_district`, `shop`, `rewind_failure`) resolving offerings server-side, with `paywall_viewed → purchase_started → purchase_completed` instrumented with placement and offering_id on every event. The $6.99 vs $4.99 test ran through RC Experiments where the plan allowed and a pre-declared sequential offering swap where it did not — either way judges see hypothesis → test → decision inside the window, with the method disclosed. For revenue calibration: 2025 category winners reported $1–2k in the window; our organic base case computes to ≈ $253 net — this entry argues craft of monetization, not volume.
 
 **Exhibits:** RC dashboard products/entitlements/offerings/placements, the Paywalls v2 editor, the live
 paywall on device, per-placement funnel numbers with denominators, the experiment readout, the
@@ -107,11 +107,12 @@ rest of your revenue stack… an experience users don't hate"*. **Requires descr
 Ads.**
 
 **Paragraph (submission-ready):**
-> Our entry is an inversion: the cleverest ad placement is the one you refuse to build. Cat Metro ships with **no interstitial, no banner, and no app-open ad surface anywhere in the binary** — not capped, not throttled, absent. Every ad in the game is rewarded and player-initiated, across five surfaces with hard caps: `rewind_failure` (2/session, 5/day), `double_tickets` (3/day), `daily_gift_double` (1/day), `streak_saver` (1/day), and `theme_rental` (3 levels, 1/theme/day). **Clever placements:** each one sits exactly where the player already wants something — a rewind after their own second failure, doubled tickets at the results screen, a three-level test drive of a theme they just previewed on their live board. Three consecutive declines mute ad rows entirely for 24 hours: telling us no is a signal we obey. **Smart integration with the rest of the revenue stack:** we use **RevenueCat Ads** (Ad Monetization, public beta) as the tracking layer over Google Mobile Ads Unity 11.3.0, wired manually through **AdTracker** — `TrackAdLoaded`, `TrackAdDisplayed`, `TrackAdOpened`, `TrackAdRevenue`, `TrackAdFailedToLoad` on every ad event, because the AdMob convenience module is not available for Unity. Ad revenue therefore lands in the same RevenueCat dashboard as IAP revenue, so a single view answers "what is this player worth, and which half came from an ad they chose to watch." **An experience users don't hate:** the verified market data is unambiguous — Arrows – Puzzle Escape reached 103.6M installs in 12 months at 4.83★ but carries "ad every other level" backlash, and Bus Traffic Fever sits at 3.72★ on 15.4M installs under forced 30s ads (all verified 2026-07-31). We built the opposite on purpose, published the opt-in and decline rates, and made "ads only when you ask" the store listing's first paragraph.
+> Our entry is an inversion: the cleverest ad placement is the one you refuse to build. Cat Metro ships with **no interstitial, no banner, and no app-open ad surface anywhere in the binary** — not capped, not throttled, absent. Every ad in the game is rewarded and player-initiated, across five surfaces with hard caps: `rewind_failure` (2/session, 5/day), `double_tickets` (3/day), `daily_gift_double` (1/day), `streak_saver` (1/day), and `theme_rental` (3 levels, 1/theme/day). **Clever placements:** each one sits exactly where the player already wants something — a rewind after their own second failure, doubled tickets at the results screen, a three-level test drive of a theme they just previewed on their live board. Three consecutive declines mute ad rows entirely for 24 hours: telling us no is a signal we obey. **Smart integration with the rest of the revenue stack:** we use **RevenueCat Ads** (Ad Monetization, public beta) as the tracking layer over Google Mobile Ads Unity 11.3.0, wired manually through **AdTracker** — `TrackAdLoaded`, `TrackAdDisplayed`, `TrackAdOpened`, `TrackAdRevenue`, `TrackAdFailedToLoad` on every ad event, because the AdMob convenience module is not available for Unity. Verified at the D10 integration spike rather than assumed (RC Ads is in public beta and we do not assume tracked ad revenue reaches the dashboard views until we see it), ad revenue then lands in the same RevenueCat dashboard as IAP revenue, so a single view answers "what is this player worth, and which half came from an ad they chose to watch." **An experience users don't hate:** the verified market data is unambiguous — Arrows – Puzzle Escape reached 103.6M installs in 12 months at 4.83★ but carries "ad every other level" backlash, and Bus Traffic Fever sits at 3.72★ on 15.4M installs under forced 30s ads (all verified 2026-07-31). We built the opposite on purpose, published the opt-in and decline rates, and made "ads only when you ask" the store listing's first paragraph.
 
 **Exhibits:** RC AdTracker charts in the RC dashboard, the rewind sheet with free options above the
 divider (screenshot 4), the ad-surface UX recordings from roadmap week 6, opt-in/decline rates with
-denominators, the store listing's ads paragraph.
+denominators, the store listing's ads paragraph, and the theme_rental→purchase conversion table
+(rentals started → cm_theme_* purchases, with denominators — the ad surface that closes as a sale).
 **Contingency:** if RC Ads beta access or AdMob end-to-end fails the D14 gate, Model A fires,
 `ads_enabled` ships OFF, and **this category is dropped** with effort redirected to HAMM + OneSignal
 (`monetization_spec.md` §2.4). Do not submit a Catvertising entry describing ads that are not live.
@@ -122,7 +123,7 @@ denominators, the store listing's ads paragraph.
 **Implementation, User value, Resourcefulness**.
 
 **Paragraph (submission-ready):**
-> Eligibility takes one message; we are past it in week 2. The entry is about the other three words. **Implementation:** the full surface in one small game — push, in-app messages, tags, custom events, Time Windows, deep links, outcomes, `Login(external_id)`, and the RevenueCat `$onesignalUserId` integration so purchase state flows RC → OneSignal with no server of our own. It is wired through a typed adapter behind an `IMessaging` interface, with a taxonomy-enforced tag registry (an unknown tag or event name is a build error in development) and cold/warm/killed deep-link routing verified on the device matrix. **User value:** messaging that gives before it asks. Journey 3 (hard-level help) sends a free rewind and a route tip and **never sells** — the deep link lands on the level, not a paywall, and the purchase row is suppressed on that attempt. Journey 2 ends with an explicit "no more reminders after this" and keeps the promise with a tag that permanently blocks re-entry past that rung. Streaks are cosmetic, the streak-saver is free or rewarded and never sold, and the Android 13 permission budget of two system dialogs is spent only at real value moments — the first soft prompt appears after the player's first completed Daily Line, not at install. **Resourcefulness — the core story:** a 13-touchpoint retention design compressed into the **Growth plan's hard ceiling of 3 active journeys and 6 message steps** (2+3+1). Frequency capping is Enterprise-only, so we rebuilt it client-side in the adapter (max 1 push/day, 3/week, enforced across journeys, scheduled sends *and* local notifications). Quiet hours do not exist on our plan, so every message step sits inside a Time Window. Streak protection is backstopped by Unity local notifications so the system degrades gracefully when push fails. Purchase recovery ships as a +2h local notification needing no plan feature at all. Calendar-known content — event start/end, content patches — never consumes a journey slot; it goes out as scheduled sends. A solo developer on the $19/month plan getting Enterprise-shaped behavior by design.
+> Eligibility takes one message; we are past it in week 2. The entry is about the other three words. **Implementation:** the full surface in one small game — push, in-app messages, tags, custom events, Time Windows, deep links, outcomes, `Login(external_id)`, and the RevenueCat `$onesignalUserId` integration so purchase state flows RC → OneSignal with no server of our own. It is wired through a typed adapter behind an `IMessaging` interface, with a taxonomy-enforced tag registry (an unknown tag or event name is a build error in development) and cold/warm/killed deep-link routing verified on the device matrix. **User value:** messaging that gives before it asks. Journey 3 (hard-level help) sends a free rewind and a route tip and **never sells** — the deep link lands on the level, not a paywall, and the purchase row is suppressed on that attempt. Journey 2 ends with an explicit "no more reminders after this" and keeps the promise with a tag that permanently blocks re-entry past that rung. Streaks never gate content (a break costs at most 150 tickets of gift escalation), the streak-saver is free or rewarded and never sold, and the Android 13 permission budget of two system dialogs is spent only at real value moments — the first soft prompt appears after the player's first completed Daily Line, not at install. **Resourcefulness — the core story:** a 13-touchpoint retention design compressed into the **Growth plan's hard ceiling of 3 active journeys and 6 message steps** (2+3+1). Frequency capping is Enterprise-only, so we rebuilt it client-side in the adapter (an honest ceiling of 2 pushes/day for an engaged streak-holder — a daily nudge plus a streak warning at most — enforced across journeys, scheduled sends *and* local notifications). Quiet hours do not exist on our plan, so every message step sits inside a Time Window. Streak protection is backstopped by Unity local notifications so the system degrades gracefully when push fails. Purchase recovery ships as a +2h local notification needing no plan feature at all. Calendar-known content — event start/end, content patches — never consumes a journey slot; it goes out as scheduled sends. A solo developer on the $19/month plan getting Enterprise-shaped behavior by design.
 
 **Exhibits:** all three journey canvases, the copy variant table, the outcomes chart with revenue
 linkage, delivery/open rates with denominators, unsubscribe rate, the caps table, an adapter code
@@ -181,6 +182,39 @@ release timeline, the staged-rollout and vitals screenshots, the growth readouts
 **Action:** Draft all seven paragraphs in roadmap week 7 (Sep 12–18); tighten to the exact official wording during week 8 (Sep 19–25); re-verify #BuildInPublic and Design criteria text at T-72h.
 **Risk:** Two of the seven paragraphs are written without verbatim criteria in hand and may miss the actual rubric.
 **Fallback:** Both are written to substance that any plausible rubric rewards, and both are short enough to rewrite in 30 minutes on Sep 27 once the official wording is read.
+
+### 2.9 Category-specific questions (Devpost form) — drafted answers
+
+**Rule (official judging guide, Aug 1): a targeted category whose category-specific question is left
+empty is not judged in that category. No targeted category's question may be left blank — ever.** The
+exact question wording becomes visible once the submission is live (~Sep 15, submit-early flow); the
+drafts below carry each category's core answer and are retuned to the actual question text during the
+week-8 copy pass and again at the T-72h re-check.
+
+- **Best Game:** One verb — tap — routing color- and symbol-coded cat commuters in 45–90-second
+  levels, every level proven solvable by a solver in CI before it can merge. Monetization fits the
+  genre: a single $6.99 complete edition, $2.99 cosmetic themes, and five player-initiated rewarded
+  surfaces — no interstitials, no banners, no energy, no subscription. (Long form: §2.1.)
+- **HAMM:** A five-point price ladder where every price does a different job, a once-ever
+  post-level-5 paywall through RC Placements + Paywalls v2 with a pixel-matched fallback, two
+  documented negative decisions (theme bundle cut on decoy-confusion grounds; subscriptions rejected
+  in writing), and a $6.99-vs-$4.99 test disclosed method-first. (Long form: §2.2.)
+- **Catvertising:** The cleverest placement is the one we refused to build — zero forced ad surfaces
+  in the binary. Five rewarded, player-initiated surfaces with hard caps and a 3-decline→24h mute,
+  each tracked through RC AdTracker. (Long form: §2.3.)
+- **OneSignal:** Enterprise-shaped behavior on the $19 plan: 3 journeys / 6 message steps,
+  client-side frequency caps, Time Windows as quiet hours, and a hard-level-help journey that gives a
+  free rewind and never sells. (Long form: §2.4.)
+- **#BuildInPublic:** 56 posts in 56 days — gates pre-registered before data existed, failures
+  published the same day, every number with its denominator and every benchmark with its vintage,
+  including our public correction of the outdated 2022 retention figures. (Long form: §2.5.)
+- **Design:** Readability outranks beauty and the game is beautiful anyway: a tabletop-diorama cat
+  city, color + symbol + cat silhouette on every line (colorblind simulation is a merge gate), and
+  failure rendered as information by the cause-first camera. (Long form: §2.6.)
+- **Grand Prize:** Released early inside our own Aug 24–28 target by making the closed-test clock the
+  schedule's first constraint; grown organically at a $0 default budget; revenue reported exactly as
+  RevenueCat has it, with the 2025 winner's numbers quoted as calibration, not as a claim.
+  (Long form: §2.7.)
 
 ---
 
@@ -245,7 +279,7 @@ dashboard shows one. Redact nothing except personal account identifiers and API 
 **B. RevenueCat (HAMM + Grand Prize)**
 6. `06_rc_products` — the Products list: all six SKUs (`cm_all_access`, `cm_supporter_pack`, `cm_theme_sakura`, `cm_theme_neon`, `cm_rewind_5`, `cm_rewind_20`) plus the experiment SKU.
 7. `07_rc_entitlements` — Entitlements: `all_access`, `supporter`, `theme_sakura`, `theme_neon`, with product attachments (showing Supporter attaching to both `supporter` and `all_access`).
-8. `08_rc_offerings` — Offerings `ofr_core`, `ofr_core_b`, `ofr_themes`, `ofr_rewind` with their packages.
+8. `08_rc_offerings` — Offerings `ofr_core`, `ofr_themes`, `ofr_rewind`, `ofr_shop` (the four permanent launch offerings) with their packages. `ofr_core_b` is a PW01 experiment artifact deleted after the readout — it appears in exhibit 13, not here.
 9. `09_rc_placements` — all five Placements (`post_level_5`, `theme_preview`, `bonus_district`, `shop`, `rewind_failure`) mapped to offerings.
 10. `10_rc_paywall_editor` — the Paywalls v2 editor showing the post-level-5 paywall configuration.
 11. `11_rc_charts_revenue` — the revenue chart for **Jul 31 – Sep 30 2026** (the Grand Prize shortlist's own source), totals visible.
@@ -297,6 +331,14 @@ transit authority marks, no stock footage, no licensed track.
 **Structure follows RevenueCat's own "how to win" guidance: the gameplay hook lands in the first 15
 seconds.** No logo sting, no talking head, no "hi, I'm…" — the first frame is a thumb on a live board.
 
+**Judging-funnel rules (official judging guide, Aug 1):** prescreeners see only the video's **first
+two minutes** plus the text fields — the elevator pitch, the app running on a device, and an
+**explicit statement of the targeted categories** must all land inside 2:00. In this cut: the pitch
+and live on-device play run from 0:00, and the category-target card is at 1:52. Two verification
+rules bind the assets: the submitted **package name must exactly match the live app** (the RevenueCat
+SDK integration is verified programmatically against it), and the **app must match what the video
+shows** — an RC advocate downloads and plays the build before winners are finalized.
+
 ### 5.1 Time-coded storyboard
 
 | Time | Visual | On-screen text | VO (segment) |
@@ -309,7 +351,7 @@ seconds.** No logo sting, no talking head, no "hi, I'm…" — the first frame i
 | 1:05–1:30 | The post-level-5 paywall appearing (once), closing in one tap; cut to RC dashboard Placements screen; cut to the rewind sheet with free rows above the divider; cut to the CI log showing the solver validating a level | `ONE PAYWALL. ONCE. EVER.` → `FREE OPTIONS FIRST` → `SOLVER-PROVEN SOLVABLE` | "The paywall fires once, ever, after level five, through RevenueCat Placements and Paywalls v2. All Access is a single purchase, never a subscription. And when you fail, the rewind sheet puts the free options above the paid ones, under a footer that says every level is solvable without them. That footer is true, because a solver proves it in CI before a level is allowed to merge." |
 | 1:30–1:42 | OneSignal journey canvases (three, quick cuts), then the copy table, then a device receiving the daily notification | `3 JOURNEYS · 6 STEPS · $19/MO` | "Retention runs on three OneSignal journeys and six message steps, on the nineteen-dollar plan, with the frequency caps rebuilt in our own code." |
 | 1:42–1:52 | Fast montage of the build-in-public feed: daily posts, a failed gate post, the numbers thread with denominators circled | `56 DAYS · PUBLISHED DAILY` | "Fifty-six days. One developer. Every number published with its denominator while it happened." |
-| 1:52–1:58 | Wordmark on Cream Card, cat conductor tips its cap, Play CTA | `CAT METRO — FREE ON GOOGLE PLAY` | "Cat Metro. Free on Google Play." |
+| 1:52–1:58 | Wordmark on Cream Card, cat conductor tips its cap, Play CTA, category-target card | `CAT METRO — FREE ON GOOGLE PLAY` → `ENTERED: BEST GAME · HAMM · CATVERTISING · ONESIGNAL · #BUILDINPUBLIC · DESIGN · GRAND PRIZE` | "Cat Metro. Free on Google Play." |
 
 ### 5.2 Voice-over script (275 words — read at ~140 wpm, lands at ~1:58)
 
@@ -348,7 +390,7 @@ text track carries the full argument alone.
 
 Paste-ready text, with the operational reasoning kept in this spec.
 
-> **Platform:** Android 7.0+ (API 24). Google Play, available in the USA. Free download, no account, no sign-up, works offline.
+> **Platform:** Android 7.1+ (API 25). Google Play, available in the USA. Free download, no account, no sign-up, works offline.
 > **Store URL:** {play_url}
 >
 > **You do not need a code to evaluate the game.** The entire 30-level campaign, the Daily Line, the shop, and every paywall surface are reachable for free. Codes are only for the paid content.
@@ -360,9 +402,9 @@ Paste-ready text, with the operational reasoning kept in this spec.
 > |---|---|---|
 > | Shop (RC placement `shop`) | Home → Shop tab | instant |
 > | Theme preview sheet (`theme_preview`) | Home → tap a locked theme swatch in the map header. The live board re-skins behind the sheet | instant |
-> | Bonus-district paywall (`bonus_district`) | Home → tap the Rooftop Line district tile | instant |
+> | Bonus-district paywall (`bonus_district`) | Home → tap the Night Harbor district tile | instant |
 > | **The flagship paywall (`post_level_5`, RC Paywalls v2)** | Play levels 1–5 and win L5. It fires once, ever, after the celebration | ~5 min |
-> | **The rewind sheet (`rewind_failure`)** | On L004 or later, fail once — **note that nothing is offered, by design** — then fail a second time with the level at least 40% complete. A ⏪ chip appears next to "Try again"; tap it | ~2 min |
+> | **The rewind sheet (`rewind_failure`)** | Fail L006 twice: fail once — **note that nothing is offered, by design; the sheet never appears on a first failure** — then fail a second time with the level at least 40% complete. A ⏪ chip appears next to "Try again"; tap it | ~2 min |
 > | Rewarded ad | Inside the rewind sheet, "Watch an ad for a rewind"; or "Double your tickets" on any results screen | ~2 min |
 > | Daily Line + streak | Unlocks after level 7 | ~8 min total |
 > | Restore purchases | Shop → footer → "Restore purchases" (also in Settings and on every paywall) | instant |
@@ -371,7 +413,7 @@ Paste-ready text, with the operational reasoning kept in this spec.
 > `{CODE_1}` `{CODE_2}` `{CODE_3}` `{CODE_4}` `{CODE_5}`
 > Redeem in the Play Store app → profile picture → **Payments & subscriptions → Redeem code**, or at **play.google.com/redeem**. Each code is single-use. Email {support_email} and I will send more within a few hours — no questions asked.
 >
-> **To verify the restore path:** redeem a code, confirm All Access unlocks (Rooftop Line district opens, both themes show "Owned ✓", the gold conductor badge appears), then uninstall and reinstall, open Shop → Restore purchases. Entitlements return on the same Google account.
+> **To verify the restore path:** redeem a code, confirm All Access unlocks (Night Harbor district opens, both themes show "Owned ✓", the gold conductor badge appears), then uninstall and reinstall, open Shop → Restore purchases. Entitlements return on the same Google account.
 >
 > **To verify "no forced ads":** play ten levels in a row. Nothing will interrupt you — there is no interstitial, banner, or app-open ad surface in the build.
 >
@@ -395,8 +437,10 @@ least 10 unminted codes. Codes have expiry dates — confirm every listed code's
 
 ## 7. The final 48-hour submission checklist
 
-Deadline: **Wed Sep 30 2026, 11:45pm PDT.** Working target: **submitted by Tue Sep 29 18:00 PDT**, with
-Sep 30 reserved for the final metrics refresh and pure buffer. Nothing on this list is code — the
+Deadline: **Wed Sep 30 2026, 11:45pm PDT.** The submission has been **live on Devpost since ~Sep 15**
+and edited continuously (submit early, edit continuously — official judging guide, Aug 1). Working
+target: **final edit pass complete by Tue Sep 29 18:00 PDT**, with Sep 30 reserved for the final
+metrics refresh and pure buffer. Nothing on this list is code — the
 feature freeze started Sep 24 and the Sep 26–30 window is submission-only (roadmap).
 
 **T-72h — Sun Sep 27**
@@ -419,8 +463,8 @@ feature freeze started Sep 24 and the Sep 26–30 window is submission-only (roa
 | 5 | 10:30 | Verify the **1024×1024 icon** export: exact dimensions, no alpha issues, no text, matches the live store icon. | ☐ |
 | 6 | 10:45 | Verify the **1179×2556 frameless screenshot**: exact dimensions, rendered at that resolution (not upscaled), no device frame, no overlay. | ☐ |
 | 7 | 11:00 | Verify the **store URL** loads publicly in an incognito window and that the app is **available in the USA** (check the listing's country availability in Play Console). | ☐ |
-| 8 | 11:30 | **Mint 5 fresh Play one-time promo codes** for `cm_all_access`; record each code's **expiry date** and confirm all extend past **Oct 13**. | ☐ |
-| 9 | 12:00 | **Redeem-test one code on a clean device**: entitlement grants, Rooftop Line unlocks, themes show Owned ✓, badge appears. Then burn that code (do not list a used code). | ☐ |
+| 8 | 11:30 | **From the 25-code batch minted at launch (15 judges / 5 press / 5 spare), pick the 5 judge codes to list on Devpost** — mint fresh replacements for any that were used or expire early; record each listed code's **expiry date** and confirm all extend past **Oct 13**. | ☐ |
+| 9 | 12:00 | **Redeem-test one code on a clean device**: entitlement grants, Night Harbor unlocks, themes show Owned ✓, badge appears. Then burn that code (do not list a used code). | ☐ |
 | 10 | 12:30 | Reinstall on the same clean device → Shop → **Restore purchases** → entitlements return. Screenshot the result for exhibit 14. | ☐ |
 | 11 | 13:30 | Capture/refresh evidence exhibits 1–14 (store + RevenueCat) per §4. | ☐ |
 | 12 | 15:00 | Capture/refresh evidence exhibits 15–24 (AdTracker + OneSignal) per §4. | ☐ |
@@ -436,6 +480,8 @@ feature freeze started Sep 24 and the Sep 26–30 window is submission-only (roa
 | 17 | 10:30 | Paste the **judge testing instructions** (§6) with the five live codes and the support email. | ☐ |
 | 18 | 11:00 | Fill "**Built with**": Unity 6000.3.16f1, C#, RevenueCat (purchases-unity 9.7.0, RevenueCatUI, Placements, Paywalls v2, AdTracker), OneSignal Unity 5.3.2, Google Mobile Ads Unity 11.3.0, Firebase Crashlytics, GitHub Actions. | ☐ |
 | 19 | 11:30 | **Select every targeted category**: Best Game, HAMM, Catvertising, OneSignal, #BuildInPublic, Design, Grand Prize (+ Stripe Funnel Vision / Samsung only if their gates passed). Screenshot the selection. | ☐ |
+| 19b | 11:40 | **Category-question audit (§2.9):** every targeted category's category-specific question has a non-empty, tuned answer — an empty question means the entry is not judged in that category. | ☐ |
+| 19c | 11:50 | **Package-name and video-match audit:** the submitted package name exactly matches the live app (`com.catmetro.game` — the RevenueCat SDK integration is verified programmatically against it), and the final video is re-watched against the live production build: the app must match what the video shows (an RC advocate downloads and plays it before winners are finalized). | ☐ |
 | 20 | 12:00 | **Claims audit** — read the whole submission and mark every number. For each: does it have a denominator? A date range? A vintage if it is a benchmark? Delete or fix anything that fails. | ☐ |
 | 21 | 13:00 | **Overstatement audit** against §3.2: no "significant", no D30 without its caveat, no extrapolated LTV, no attribution language for correlational spikes. | ☐ |
 | 22 | 13:45 | Verify **every link** in the submission: store URL, video URL, press kit, build-in-public index, privacy policy, support email (send a test email to it and confirm it arrives). | ☐ |

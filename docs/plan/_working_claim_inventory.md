@@ -32,13 +32,13 @@ TA = Loopline_Technical_Appendix.
 | B5 | POST_NOTIFICATIONS runtime permission; Android 13+ default off | BP [S12] |
 | B6 | 16 KB page-size compatibility audit needed for all native SDKs | BP [S13] |
 | B7 | No paid random rewards (loot boxes) without odds disclosure | BP |
-| B8 | Min API 24 / target API 36 baseline is right for Unity 6 | BP, TA |
+| B8 | Min API 25 / target API 36 baseline is right for Unity 6 (min corrected 24→25 per Unity 6.3 docs, AMD-08) | BP, TA |
 
 ## C. RevenueCat claims
 | # | Claim | Where |
 |---|---|---|
 | C1 | Unity SDK supports purchases, entitlements, offerings, analytics, webhooks | BP [S15][S16] |
-| C2 | RevenueCatUI paywalls available in Unity; Android API 24+ | BP [S17] |
+| C2 | RevenueCatUI paywalls available in Unity; Android min-API floor met by our API-25 baseline | BP [S17] |
 | C3 | Experiments can test offerings/paywalls "when plan and SDK support it" | BP [S18] |
 | C4 | Ad Monetization is opt-in BETA reporting layer over existing ad SDK (AdMob/MAX); does NOT serve ads; Unity has AdTracker | BP [S19][S21], TA README |
 | C5 | Test Store exists for pre-store-setup sandbox | BP [S20] |
