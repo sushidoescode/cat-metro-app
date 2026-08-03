@@ -8,3 +8,7 @@ state/run-records/
 state/gate-ledger/
 # TODO(stack): append engine-specific ignores when the stack lands
 # (Unity: Library/ Temp/ Logs/ UserSettings/ · Gradle/Android: .gradle/ build/ local.properties · Godot: .godot/)
+
+# dotnet build outputs (ADR-0005 dotnet leg; TODO(stack) engine entries land with the scaffold)
+dotnet/**/bin/
+dotnet/**/obj/

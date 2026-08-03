@@ -1,0 +1,216 @@
+{
+  "evaluation": "ADR completeness + supersession + coherence lint (forge-architect quality gate)",
+  "date": "2026-08-02",
+  "evaluator": "evaluator subagent, fresh context",
+  "scope": [
+    "docs/adr/0002-deterministic-fixed-tick-domain.md",
+    "docs/adr/0003-assembly-isolation-and-dependency-rule.md",
+    "docs/adr/0004-toolchain-and-sdk-version-pins.md",
+    "docs/adr/0005-dotnet-first-dual-test-harness.md",
+    "docs/adr/0006-save-format-purchase-ledger-and-runtime-bounds.md",
+    "docs/adr/0007-presentation-and-runtime-baseline.md",
+    "docs/adr/0008-content-pipeline-and-level-schema.md",
+    "docs/adr/0009-ci-topology-and-secret-custody.md",
+    "docs/architecture/overview.md"
+  ],
+  "sources_of_truth": [
+    "docs/plan/specs/architecture.md",
+    "docs/plan/EXECUTION_PLAN.md:14-53",
+    "docs/prd/PRD.md §4.1 (:971-999) + cited criteria",
+    "docs/prd/risks.md",
+    "docs/plan/data/level_schema.json",
+    "docs/constitution.md"
+  ],
+  "axis_scores": {
+    "1_adr_completeness": {
+      "score": "pass",
+      "evidence": "All 8 carry Context / Decision / Alternatives seriously considered / Consequences / Security notes per docs/adr/0000-adr-template.md:5-9. Alternatives carry real advantages before the loss reason (e.g. ADR-0004:99-105 Unity Cloud Diagnostics 'genuinely close'; ADR-0005:102-110 'loses to calendar and blast radius, not to elegance') — not strawmen. Gap: ADR-0007's Input decision (:87-91) has no rejected alternative (finding F19)."
+    },
+    "2_status_proposed": {
+      "score": "pass",
+      "evidence": "Status: Proposed present on all eight (0002:3, 0003:3, 0004:3, 0005:3, 0006:3, 0007:3, 0008:3, 0009:3). Only ADR-0001 is 'approved', correctly."
+    },
+    "3_supersessions_honored": {
+      "score": "pass",
+      "evidence": "minSdk 25 pinned (ADR-0004:36,40-42) with AMD-08 cited and verified at EXECUTION_PLAN.md:341-359; 'minSdk 24' appears in ADR-0004 only as the superseded figure (:12,:40,:109). Firebase Crashlytics resolves the architecture.md:24 PIN (ADR-0004:53,56-60), matching EXECUTION_PLAN.md:22. Unity 6000.3.16f1 exact (ADR-0004:32; EXECUTION_PLAN.md:18,439). 8 tps / 125 ms (ADR-0002:30; overview:30,115). No stale value found in the ADR set or overview.md."
+    },
+    "4_no_re_derivation": {
+      "score": "pass_with_declared_deviations",
+      "evidence": "Three deviations from architecture.md, each declared in the document that makes it: integer-only instead of 'integer/fixed-point' (ADR-0002:88-96, keeps the intent 'no floats'); a 10th asmdef CatMetro.Bootstrap (ADR-0003:27-30,83-90); dotnet-first harness declared as a NEW decision (ADR-0005:3). No locked Global Constraint (EXECUTION_PLAN.md:24-53) is contradicted: catalog, ads-rewarded-only, OneSignal journey budget, 30+10 content, package id, honesty and agent-conduct rules are all either restated or untouched."
+    },
+    "5_arch_constants": {
+      "score": "fail",
+      "evidence": "ADR-0006:116-165 sets every [ARCH] constant in one file with a per-value rationale, satisfying PRD:88 and PRD:174. But the QUEUE_MAX_EVENTS/QUEUE_MAX_BYTES pair is internally inconsistent with the PRD's own worked instance and with CM-R43.4(a) as written — see finding F1 (blocking)."
+    },
+    "6_irreversibles": {
+      "score": "pass_with_gap",
+      "evidence": "Explicit 'declare irreversible, human ADR gate' blocks in ADR-0003:122-125, ADR-0006:61,243-249, ADR-0008:163-167; vendor-set freeze ADR-0004:125-128; release path ADR-0009:115-118. Gap: ADR-0002:121-128 uses 'Locked in (hard to reverse)' without the human-gate flag though tick order and digest layout invalidate the whole authored corpus (F20)."
+    },
+    "7_overview_coherence": {
+      "score": "fail",
+      "evidence": "Diagram and ADR-0003's reference table disagree (F12); assembly count wrong (F11); SDK pin count wrong (F14); the CI byte-identity check has no source path in either the content flow or the repo layout (F5)."
+    },
+    "8_no_invented_sdk_apis": {
+      "score": "pass_with_one_exception",
+      "evidence": "overview:183-185 disclaims the interface shapes as 'ours' and re-states the never-invent rule (A-07, EXECUTION_PLAN.md:480-481). Named third-party symbols are real and appear in the corpus: BillingClient, Force Resolve, EDM4U (architecture.md:106-114), RC CustomerInfo (risks.md:139), Handheld.Vibrate / VibrationEffect (architecture.md:22), TypeNameHandling / MaxDepth (Newtonsoft), File.Replace (.NET), noEngineReferences (hedged at ADR-0003:53-57). One exception: the directory-fsync step (F7)."
+    }
+  },
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "high",
+      "file": "docs/adr/0006-save-format-purchase-ledger-and-runtime-bounds.md:127-128,153-158",
+      "issue": "QUEUE_MAX_EVENTS=2000 and QUEUE_MAX_BYTES=262144 are deliberately set to bind 'at roughly the same point' (2000 x ~128 B ~= 256 KB, :156-157), but PRD.md:688 CM-R43.4(a) runs the no-loss/no-duplication test with exactly QUEUE_MAX_EVENTS events enqueued. At the cap the byte limit can trip first and oldest-first drops fire (:167-168), so the MUST criterion is flaky-to-unsatisfiable by construction. The stated rationale ('4x the PRD's worked instance of 500 events / 24 h, so the no-loss test runs comfortably below the cap') misreads its own citation: 500/24h is the smoke instance, not the criterion instance.",
+      "fix": "Give the byte cap headroom against the event cap: set QUEUE_MAX_BYTES >= QUEUE_MAX_EVENTS * QUEUE_EVENT_MAX_BYTES (2000 x 512 = 1 MiB), or lower QUEUE_MAX_EVENTS so 2000 x worst-case serialized size fits inside 256 KiB. Then restate the rationale as 'the event cap is the binding cap; the byte cap is the backstop', and say explicitly that CM-R43.4(a) is run at QUEUE_MAX_EVENTS with the 500/24h smoke instance as the fast variant."
+    },
+    {
+      "id": "F2",
+      "severity": "high",
+      "file": "docs/adr/0005-dotnet-first-dual-test-harness.md:51-52,93",
+      "issue": "CatMetro.Tests.csproj links unity/Assets/Tests/EditMode/**/*.cs unconditionally, while the same ADR says the Unity EditMode leg covers 'anything needing UnityEngine types' (:93). The first EditMode test that touches UnityEngine or [UnityTest]/UnityEngine.TestTools breaks the dotnet build — i.e. breaks the credential-free required `ci` check (ADR-0009:33) — for a reason unrelated to the code under test.",
+      "fix": "Split the EditMode tree: unity/Assets/Tests/EditMode/Pure/** (linked by the csproj, engine-free, enforced by the same banned-symbol check as Domain) and unity/Assets/Tests/EditMode/Engine/** (Unity-only, never linked). State the split in the layout block and add it to the asmdef<->csproj parity check in `ci`."
+    },
+    {
+      "id": "F3",
+      "severity": "high",
+      "file": "docs/adr/0003-assembly-isolation-and-dependency-rule.md:37,66-78; docs/architecture/overview.md:196-202",
+      "issue": "No assembly is assigned as the implementer of ISave, and no storage-root abstraction exists. CatMetro.Application is declared engine-free (:37,:53), yet the save path on Android comes from UnityEngine.Application.persistentDataPath. The same problem was solved for reads with IContentSource (:70-74) and left unsolved for writes; as written, either ISave has no home or CatMetro.Application acquires an engine reference and rule 2 collapses (which would also break ADR-0005's dotnet leg and ADR-0006's claim that the kill-during-write and migration tests run engine-free).",
+      "fix": "Add the symmetric abstraction (e.g. IStorageRoot { string SaveDirectory; string CacheDirectory; }) to the CatMetro.Services set, note it as a third architect addition with its named requirement, have CatMetro.Bootstrap supply persistentDataPath, and name the assembly that implements ISave (Application, given a root) in ADR-0003's table and overview.md §5."
+    },
+    {
+      "id": "F4",
+      "severity": "high",
+      "file": "docs/adr/0009-ci-topology-and-secret-custody.md:37,40,97-100",
+      "issue": "android-smoke is triggered 'nightly + pre-gate', yet the same section asserts 'A red android-smoke run blocks merge (docs/prd/PRD.md:830)'. PRD.md:830 is a MUST criterion whose text is 'a red smoke run blocks merge'; a nightly job cannot block the merge that broke it. The alternatives section argues for keeping it off per-PR (:97-100) without recording that this weakens a MUST or escalating it.",
+      "fix": "Either (a) run android-smoke on PRs touching unity/**, content/** and the sim (with the nightly retained for the full AVD matrix), or (b) state plainly that CM-R52.6's merge-blocking reading is narrowed to 'blocks the next merge and the release gate; main is pinned until green', record it as a deviation from PRD.md:830, and escalate it as a human decision alongside NEW-Q48."
+    },
+    {
+      "id": "F5",
+      "severity": "medium",
+      "file": "docs/adr/0009-ci-topology-and-secret-custody.md:33; docs/adr/0008-content-pipeline-and-level-schema.md:32-37; docs/architecture/overview.md:334",
+      "issue": "The required `ci` check asserts 'config/runtime_bounds.json <-> StreamingAssets byte-identity', but neither ADR-0008's content flow nor overview.md §7's StreamingAssets listing places runtime_bounds.json under StreamingAssets, and catalog.json's per-file SHA-256 index does not cover it. The check has no defined source path, so it cannot be implemented as written.",
+      "fix": "Add unity/Assets/StreamingAssets/config/runtime_bounds.json to ADR-0008's flow diagram and to overview.md §7, state whether it is listed in catalog.json (and therefore folded into content.sha256), and name the copy step that produces it."
+    },
+    {
+      "id": "F6",
+      "severity": "medium",
+      "file": "docs/adr/0002-deterministic-fixed-tick-domain.md:66-71,157-159",
+      "issue": "Cause-attribution is 'implemented as <= C such re-runs, where C = distinct routing decisions in the trailing 24 ticks', and C is never bounded by a number. The schema allows switches maxItems 10 (docs/plan/data/level_schema.json:81) over a 24-tick window, so C can reach the low hundreds; at timeLimitTicks max 4000 (level_schema.json:125) that is ~10^6 tick-steps against the 3 s ghost-replay budget (PRD.md:311). The security note claims the work is 'bounded by the 24-tick candidate window', which bounds the window but not the re-run count. The ADR then defers the number to the implementer.",
+      "fix": "Pin ATTRIBUTION_MAX_RESIMS in config/runtime_bounds.json (ADR-0006 §4) and make the 'camera on the node, zero blame chips' path (PRD.md:310) a hard trigger at the cap rather than a judgement call. State the derived worst case (C_max = switch count x 24) in the security note."
+    },
+    {
+      "id": "F7",
+      "severity": "medium",
+      "file": "docs/adr/0006-save-format-purchase-ledger-and-runtime-bounds.md:48-49",
+      "issue": "'serialize -> write save.dat.tmp -> flush/fsync -> File.Replace/rename -> (best effort) fsync the directory'. Managed .NET (and Unity/IL2CPP on Android) exposes no API to fsync a directory entry; an implementer following this step will either invent one or add JNI for it. This is the one place the ADR set names an operation with no platform API behind it.",
+      "fix": "Specify what is actually reachable: FileStream.Flush(flushToDisk: true) on the temp file before close, then File.Replace (or File.Move with overwrite), and state explicitly that directory-entry durability is not obtainable from managed code and is therefore not part of the guarantee — the .bak fallback is what covers that residual."
+    },
+    {
+      "id": "F8",
+      "severity": "medium",
+      "file": "docs/adr/0004-toolchain-and-sdk-version-pins.md:64-67; docs/adr/0005-dotnet-first-dual-test-harness.md:47-53,172-174",
+      "issue": "Pin hygiene item 1 says versions live in 'exactly two machine-readable places' (unity/Packages/manifest.json + ProjectVersion.txt) and that a [CI] check asserts them against config/pins.json. That excludes the entire dotnet leg: NUnit, NUnit3TestAdapter, the Newtonsoft NuGet package and the .NET SDK 8 requirement have no pin row, while ADR-0005:172-174 requires exactly-pinned versions and a committed lock file. Two ADRs give two different definitions of 'the pinned set'.",
+      "fix": "Add a third machine-readable location (dotnet/**/*.csproj + packages.lock.json) to ADR-0004 pin hygiene item 1, add pin rows for the NuGet packages and the SDK band to config/pins.json, and extend the `ci` assertion in ADR-0009:33 to cover the lock file."
+    },
+    {
+      "id": "F9",
+      "severity": "medium",
+      "file": "docs/adr/0006-save-format-purchase-ledger-and-runtime-bounds.md:61-85 (esp. :72,:76,:77,:78)",
+      "issue": "The v1 payload is declared IRREVERSIBLE and 'the key set and nesting are an irreversible contract' (:83-85), but three sub-objects have no specified shape: caps.counters ({ }), flags ({ }) and breadcrumbs.purchase (null). An irreversible contract with unspecified sub-shapes is not pinned — the first implementer choice becomes the contract without a human gate.",
+      "fix": "Enumerate them in §2: the five cap counter keys from the locked ad surfaces (rewind_failure, double_tickets, daily_gift_double, streak_saver, theme_rental — EXECUTION_PLAN.md:35-37), the six flag keys already listed at ADR-0007:48-49, and the fields of breadcrumbs.purchase (productId, placement, startedAtUtc, state). Anything left open should be named as open, not rendered as an empty object."
+    },
+    {
+      "id": "F10",
+      "severity": "medium",
+      "file": "docs/adr/0006-save-format-purchase-ledger-and-runtime-bounds.md:30 vs :267",
+      "issue": "§1 opens 'One file, save.dat, written atomically', while the security notes say 'the offline queue is a separate, metrics-only file with its own bounds'. The queue file is never named, and its path, format, atomicity and backup-exclusion posture are unspecified. The §Open conflict analysis of options A/B/C (:180-195) also reasons as if only save.dat exists, so the backup decision is being escalated with an incomplete file inventory.",
+      "fix": "Name the queue file in §4 (e.g. analytics_queue.dat), state its format, that it is written outside the save's atomic write, that it is never durable-transactional with the ledger, and fold it into the option A/B/C backup analysis."
+    },
+    {
+      "id": "F11",
+      "severity": "medium",
+      "file": "docs/architecture/overview.md:31",
+      "issue": "'10 asmdefs' contradicts ADR-0003:32-46, which lists 13 assemblies (9 spec rows with Integrations.* expanded into four, plus Bootstrap, plus Editor and two test asmdefs), and contradicts overview.md's own diagram (11 non-test nodes).",
+      "fix": "State it as ADR-0003 does: '13 assemblies (the 9 spec rows, Integrations.* expanded to four, plus CatMetro.Bootstrap), inward-only, SDKs visible to one assembly'."
+    },
+    {
+      "id": "F12",
+      "severity": "medium",
+      "file": "docs/architecture/overview.md:66-85",
+      "issue": "The mermaid graph is missing reference edges that ADR-0003's table grants: Services -> Content (ADR-0003:36), Presentation -> Content and Presentation -> Domain (:38), Editor -> Services (:44). A reader validating the dependency rule against the diagram will derive a narrower rule than the one the asmdefs will encode.",
+      "fix": "Add the four edges, or add a stated convention line ('transitive/read-only-type edges omitted for readability; ADR-0003's table is normative') — the diagram is the artifact reviewers will use, so it should not be quietly stricter than the rule."
+    },
+    {
+      "id": "F13",
+      "severity": "low",
+      "file": "docs/adr/0004-toolchain-and-sdk-version-pins.md:35",
+      "issue": "The engine/toolchain table row labelled 'API level' carries the value '.NET Standard 2.1 scripting profile'. Two rows later, 'Android | minSdk 25 / targetSdk 36' is the real API-level row. In the one document whose job is to make the API 24 -> 25 supersession binding, an 'API level' row that means something else is a live misreading risk.",
+      "fix": "Rename the row to 'Scripting API compatibility level'."
+    },
+    {
+      "id": "F14",
+      "severity": "low",
+      "file": "docs/architecture/overview.md:32",
+      "issue": "'5 pinned SDKs' does not match ADR-0004:46-54, which pins seven rows (purchases-unity+RevenueCatUI, OneSignal, GMA, EDM4U, AppLovin MAX fallback, Firebase Crashlytics, Newtonsoft.Json).",
+      "fix": "Say 'the 7-row SDK pin table (incl. the dormant AppLovin fallback)' or count only shipped-by-default SDKs and say so."
+    },
+    {
+      "id": "F15",
+      "severity": "low",
+      "file": "docs/adr/0005-dotnet-first-dual-test-harness.md:142-143",
+      "issue": "'netstandard2.1 occasionally bites (no Span-heavy modern APIs, older BCL surface)' is wrong about Span: netstandard2.1 includes System.Span<T>/ReadOnlySpan<T>/Memory<T>, which ADR-0002:33,52-53 and ADR-0008:53 require in public signatures (Step(ref, ReadOnlySpan<Command>), WriteDigest(Span<byte>), ReadOnlyMemory<T> DTO views). As written it invites an implementer to avoid the exact types the other ADRs mandate.",
+      "fix": "Reword to name the real gap — netstandard2.1 lacks the .NET Core 3.0+ additions (e.g. newer System.Text.Json, IAsyncEnumerable-adjacent surface, some MemoryMarshal/BitOperations members) — and state that Span/ReadOnlySpan/Memory are available and are the intended vocabulary."
+    },
+    {
+      "id": "F16",
+      "severity": "low",
+      "file": "docs/adr/0008-content-pipeline-and-level-schema.md:185-186; docs/adr/0005-dotnet-first-dual-test-harness.md:102; docs/adr/0009-ci-topology-and-secret-custody.md:88-89",
+      "issue": "Three off-by-one citations in load-bearing places. ADR-0008 cites docs/prd/PRD.md:734 for the <=200 ms boot validation budget; that criterion is PRD.md:733 (734 is CM-R46.5, the weekday difficulty ramp). ADR-0005 cites EXECUTION_PLAN.md:527 for 'Unity -batchmode -runTests'; it is :526. ADR-0009 cites EXECUTION_PLAN.md:95 for 'Codemagic CI 500 free min/mo'; it is :94.",
+      "fix": "Correct the three line numbers. (All other citations sampled — PRD 38/46/54/88/96/98/99/102/103/108/111/114/121/129/150/174/197/198/211/227/232/268/274/306/310/311/430/456/685/688/830/910/931/959, risks 80/82/83/94/95/103/104/106/107/115/116/124/125/126/136/137/139/145/149, level_schema 4/12/25/34/40/45/51/60/70/76/81/108/115/116/125, EXECUTION_PLAN 12/44/188/190/200/341-359/422-424/439-445/474-475/480-487/513-515/526-528/560, constitution 7/8/26, scripts/test.sh 2/3/18 — resolved correctly.)"
+    },
+    {
+      "id": "F17",
+      "severity": "low",
+      "file": "docs/adr/0008-content-pipeline-and-level-schema.md:9 vs :32,:35",
+      "issue": "The context line says the corpus is '30 campaign levels + 10 Night Harbor + 30 pre-validated dailies', conflating the 30-board dated backup pool with the daily pipeline, which pre-validates 90 dates in CI (:32; ADR-0009:35; PRD.md:728).",
+      "fix": "Rewrite as '30 campaign + 10 Night Harbor levels, 90 daily dates pre-validated in CI, and a 30-board dated backup pool shipped in the build'."
+    },
+    {
+      "id": "F18",
+      "severity": "low",
+      "file": "docs/adr/0002-deterministic-fixed-tick-domain.md:122; docs/adr/0007-presentation-and-runtime-baseline.md:38; docs/adr/0006-save-format-purchase-ledger-and-runtime-bounds.md:142",
+      "issue": "Three different level counts across the set: '40 shipped levels + 30 pre-validated dailies' (0002), '~50 levels of JSON' (0007), '70 levels of progress' in the SAVE_MAX_BYTES model (0006). The save-size model is a load-bearing number and its basis is unstated.",
+      "fix": "State the basis once (40 shipped at 1.0, up to 60 post-event per EXECUTION_PLAN.md:42-43, plus a 30-board backup pool that produces daily keys rather than per-level progress rows) and make ADR-0006:141-145 cite it."
+    },
+    {
+      "id": "F19",
+      "severity": "low",
+      "file": "docs/adr/0007-presentation-and-runtime-baseline.md:87-91 vs :100-137",
+      "issue": "ADR-0007 bundles nine ratified decisions and supplies a rejected alternative for eight of them. Input (Unity Input System, tap/pointer only) has none — the legacy Input Manager is never weighed, so per the template (docs/adr/0000-adr-template.md:7) that row is a restatement rather than a decision.",
+      "fix": "Add the legacy Input Manager alternative with its real advantage (zero package, simplest possible tap read) and why it loses (EnhancedTouch multi-safe hit tests per architecture.md:13, new-project default), or mark the row explicitly as ratified-with-no-live-alternative."
+    },
+    {
+      "id": "F20",
+      "severity": "low",
+      "file": "docs/adr/0002-deterministic-fixed-tick-domain.md:121-128",
+      "issue": "ADR-0002 uses 'Locked in (hard to reverse)' where ADR-0003:122, ADR-0006:243 and ADR-0008:163 use 'declare irreversible, human ADR gate'. Per-tick order and digest layout invalidate every authored level and every checked-in golden — the sharpest irreversibles in the set — so the weaker phrasing under-signals them relative to its siblings.",
+      "fix": "Use the same 'declare irreversible — human ADR gate' heading in ADR-0002 for the tick order and the digest layout, and cross-reference the golden-regeneration rule at ADR-0009:66-69."
+    },
+    {
+      "id": "F21",
+      "severity": "low",
+      "file": "docs/adr/0004-toolchain-and-sdk-version-pins.md (consequences); /Users/sushantsrikrish/cat-metro-app/AGENTS.md",
+      "issue": "AGENTS.md still records 'Stack: TBD — deferred until the product specs land' with a stack-agnostic gate harness, while ADR-0004 pins Unity/IL2CPP/.NET Standard 2.1 and ADR-0005 changes what scripts/check.sh and scripts/test.sh actually run. No ADR names the AGENTS.md update as a consequence, so ratifying this set leaves the repo's own instruction file contradicting it.",
+      "fix": "Add to ADR-0004 Consequences (and overview.md §7): 'ratification updates AGENTS.md's Stack line to Unity 6000.3.16f1 / C# / IL2CPP and records that check.sh/test.sh now route to the dotnet leg (ADR-0005)'."
+    }
+  ],
+  "could_not_verify": [
+    "External claims: googleads-mobile-unity #4212 open as of 2026-08-02, AdMob-on-AGP9 breakage, AppLovin MAX 8.6.4 / EDM4U 1.2.188 / OneSignal 5.3.2 / GMA 11.3.0 / purchases-unity 9.7.0 release facts, libcurl CVE-2026-27135. No network fetch performed; all traced only to docs/plan/EXECUTION_PLAN.md:18-22,188,346-347 and docs/prd/risks.md:136,149.",
+    "The exact Unity asmdef field name noEngineReferences (ADR-0003:53-57 hedges it deliberately; no Unity project exists in the repo to check against).",
+    "That API 25 is the documented Unity 6.3 floor — traced only to EXECUTION_PLAN.md:349 ('min API 25 = Android 7.1+, per Unity 6.3 docs'), not to a primary source.",
+    "Gradle 8.13 / AGP 8.10.0 pin — data-file-only per PRD A-17 (PRD.md:957); not independently stated in EXECUTION_PLAN.md's pinned stack line.",
+    "RevenueCat 9.7.0 API surface (RK-39 / A-07); ADR-0004:137-140 correctly refuses to assert it.",
+    "Runtime performance claims deferred by design: the attribution 3 s budget (ADR-0002:67-71), the ~128 B average serialized event (ADR-0006:156), the 500 ms/200 ms boot budgets — none measurable before the vertical slice.",
+    "config/runtime_bounds.json, config/pins.json, tests/contract/replay-hash-golden.json, content/ and unity/ do not exist yet; every ADR claim about their contents is a design assertion, not a verified artifact."
+  ]
+}

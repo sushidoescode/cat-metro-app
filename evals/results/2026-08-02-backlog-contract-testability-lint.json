@@ -1,0 +1,158 @@
+{
+  "artifact": "state/backlog.md",
+  "evaluated_at": "2026-08-02",
+  "evaluator": "evaluator (fresh context; did not participate in forge-decompose)",
+  "rubric": "forge-decompose contract quality bar, 10 items (stranger-verifiable / independently testable / template fields / disjoint file-path scope / non-goals / stop conditions / pin-guard / no invented requirements / immutable-path discipline / HUMAN-VERIFIED marking)",
+  "inputs_read": [
+    "state/backlog.md",
+    ".github/ISSUE_TEMPLATE/agent-task.yml",
+    "docs/plan/data/roadmap_56_days.csv rows 2-4 (file lines 3-5)",
+    "docs/prd/PRD.md CM-R01..CM-R03 (lines 94-125)",
+    "docs/prd/ux-flows.md:43,188,254,265,287,290",
+    "docs/architecture/overview.md:300-327",
+    "docs/adr/0002 (§§4-9, blocking gaps 155-166), 0004:56-72,90-96, 0005:92-106,169-172,191-195, 0006:166-191, 0008:43-61,93",
+    "docs/plan/specs/product_spec.md:214-256",
+    "docs/plan/data/example_levels.json:4-17",
+    "scripts/check.sh, scripts/test.sh, tests/contract/ (empty)"
+  ],
+  "verdict": "CONDITIONAL PASS — structurally strong (all 6 template fields present in all 3 contracts; pin-guard and immutable-path discipline honored in CM-C1; citations spot-checked and accurate); 14 defects require fixes before human ordering. One is blocking (D-01: PlatformOverflow criteria are unreachable under the contract's own NEW-Q4 guard).",
+  "per_rubric_item": {
+    "1_stranger_verifiable": "PARTIAL — D-04, D-05, D-06, D-13",
+    "2_independently_testable_named_check": "PARTIAL — D-02, D-03, D-05, D-06, D-07, D-08",
+    "3_template_fields_present": "PASS (with template defect D-14): Goal, Spec reference, Acceptance criteria, Scope boundary, Assumptions, Stop conditions present in CM-C1/C2/C3",
+    "4_scope_disjoint_path_explicit": "FAIL — D-09, D-10, D-11",
+    "5_non_goals_explicit": "PASS for CM-C1/C2/C3; gap in D-12 (immutable-path non-goal only in CM-C1)",
+    "6_stop_conditions_concrete": "PASS — all three contracts list defaults + 4-6 task-specific, each with an observable trigger",
+    "7_pin_guard_C1": "PASS with one hole — FormatVersion=1 envelope (crit 9) excluded from hash (crit 10); Score/Chain present-and-0 (crit 8); NotSupportedException guards (crit 14). Hole = D-01 (PlatformOverflow depends on NEW-Q4 rejection semantics).",
+    "8_no_invented_requirements": "PARTIAL — D-02 (invented 'switch routing' step boundary), D-13 (analyst-authored TimeOut tie-break criterion not raised as a human question)",
+    "9_immutable_path_discipline": "PASS for CM-C1 (crit 12 + stop condition 2 + non-goal; tests/contract/ verified empty, ADR-0005:95-101 concurs). Gap: D-12.",
+    "10_human_verified_marking": "PARTIAL — CM-C2 crit 12 and CM-C3 crit 7 correctly marked; D-08 (CM-C3 crit 2/4 device budgets unmarked)"
+  },
+  "defects": [
+    {
+      "id": "D-01",
+      "severity": "blocking",
+      "rubric_items": [7, 8],
+      "where": "state/backlog.md CM-C1 criterion 13(g) and CM-C2 criterion 9",
+      "issue": "PlatformOverflow is asserted as reachable, but the spec's only trigger for it is rejected cats: 'Station platform: rejected cats exceeding station capacity -> immediate fail (fail_reason: platform_overflow)' (docs/plan/specs/product_spec.md:225; docs/prd/PRD.md CM-R02.3 at :113). CM-C1 pins rejection entirely out (non-goal 'No station rejection / reverse traversal', pin NEW-Q4) and criterion 14 makes a non-matching cat at a station throw NotSupportedException. With match-only acceptance (criterion 13(f)) a matching cat is removed on arrival, so a station can never reach `capacity`. Criterion 13(g)'s PlatformOverflow clause and CM-C2's criterion 9 therefore either contradict criterion 14 or silently invent a new trigger (accepted cats occupying capacity) that no spec defines. Roadmap D3 acceptance 'fail by platform overflow' (roadmap_56_days.csv:4) is unmeetable while NEW-Q4 is open.",
+      "fix": "Add Q-J to the human-questions table: 'What raises platform_overflow while NEW-Q4 pins rejection out?'. Until answered, re-cut CM-C1 13(g) to QueueOverflow only, keep PlatformOverflow in the FailReason enum (criterion 14 is unaffected) with a NotSupportedException guard on any code path that would raise it, and re-cut CM-C2 criterion 9 to Failed(QueueOverflow) with an explicit note that the roadmap's 'fail by platform overflow' is deferred. Alternatively the human ratifies an interim trigger in an ADR-0002 amendment before CM-C1 starts."
+    },
+    {
+      "id": "D-02",
+      "severity": "major",
+      "rubric_items": [2, 8],
+      "where": "CM-C1 criterion 13",
+      "issue": "Criterion claims 'eight named tests, each asserting an observable state delta at exactly one boundary of the tick order (specs/product_spec.md:216-227 via CM-R02.2)'. The authoritative order has 8 steps: commands, waves, advance, node arrival, station acceptance, overflow, score/combo, win/time (product_spec.md:218-227). The contract substitutes (e) 'switch routing' — which is not a step, it is part of step 4 node-arrival resolution (product_spec.md:221) — and silently drops step 7 score/combo. So the list is not the cited order, and the mapping to CM-R02.2 ('one test per step boundary', PRD:112) is inaccurate. Criterion 13 is also the only criterion in the file with no '*Check:*' line, breaking the contract's own preamble ('each is independently checkable by the named command').",
+      "fix": "Relabel: 'Seven of the eight step boundaries of product_spec.md:218-227; step 7 (score/combo) is deferred with scoring (Q-C, pin NEW-Q5) and is asserted only as Score==0 in criterion 8.' Fold (e) into (d) as a sub-assertion of node arrival, or state explicitly that (e) is a sub-case of step 4, not a ninth boundary. Add '*Check:* eight NUnit cases named Step_<Boundary>_<Assertion>, all run by `dotnet test`.'"
+    },
+    {
+      "id": "D-03",
+      "severity": "major",
+      "rubric_items": [1, 2],
+      "where": "CM-C1 criterion 8",
+      "issue": "'writes exactly the declared fixed byte count' / '*Check:* one test asserting total length equals the declared constant'. No such constant exists in the cited source: docs/architecture/overview.md:312-320 lists SwitchRoutes:byte[], NodeQueues:short[][], OverloadTimers:short[], Trains:{...}[] — variable-length. ADR-0002:53-54 says 'fixed-layout byte image', not fixed-length. A stranger cannot determine whether an implementation's digest length is correct, and the implementer has to invent the sizing rule (an ADR-0002 gap that stop condition 6 anticipates but the criterion pre-empts).",
+      "fix": "Restate as: 'digest length is a pure function of the level graph, DigestLength(nSwitches, nNodes, nTrainsMax) = <formula written in the contract>; for the code-built fixture of A-C1-2 the constant is <N> bytes.' Assert (a) the formula against three fixture shapes and (b) per-field byte offsets for the golden fixture. If the formula cannot be derived from ADR-0002 §7, this is stop condition 6, not an agent decision — say so in the criterion."
+    },
+    {
+      "id": "D-04",
+      "severity": "major",
+      "rubric_items": [1, 2],
+      "where": "CM-C1 criterion 6",
+      "issue": "The negative check is 'bash scripts/check.sh ... exits non-zero when pointed (via its documented root argument or a fixture dir) at a file containing `double x;`'. scripts/check.sh takes no arguments — it hardcodes `cd $(git rev-parse --show-toplevel)` and `find scripts tests` (scripts/check.sh:8,17). The 'or a fixture dir' branch is self-contradictory: a fixture containing `double x;` under a scanned root would make the clean-tree positive half of the same criterion fail permanently. Two alternative mechanisms in one criterion also violates 'each is independently checkable by the named command'. Additionally the banned list includes bare tokens `float`/`double`/`DateTime`, with no match rule stated — a naive grep matches prose, comments and words like 'floating'.",
+      "fix": "Pick one mechanism and name it: 'scripts/check.sh accepts an optional `--root <dir>` (documented in its header comment); the negative check is `bash scripts/check.sh --root tests/fixtures/purity-bad` on a fixture directory outside the default scan roots, asserting exit != 0 and a message naming the banned symbol.' State the match rule: word-boundary regex over `*.cs` files only, comments and strings in scope by design, and list the exact regex."
+    },
+    {
+      "id": "D-05",
+      "severity": "major",
+      "rubric_items": [1, 2],
+      "where": "CM-C1 criterion 11(b)",
+      "issue": "'two separate `dotnet test` process invocations produce the identical string (the wrapper runs the suite twice and diffs the emitted hash)' — the emission contract is undefined. Nothing says how the hash leaves the test process, so the wrapper `tests/domain/determinism.test.sh` cannot be written from the contract alone and a stranger cannot tell whether the diff is real.",
+      "fix": "Specify the emission: 'the test prints exactly one line `REPLAY_HASH=<64 lowercase hex>` to stdout; the wrapper greps that line from two independent `dotnet test` runs and `diff`s them, failing if either line is missing or they differ.' Same contract applies to criterion 12's 'prints the computed hash and the exact JSON document to commit' — name the marker lines (e.g. `GOLDEN_JSON_BEGIN`/`GOLDEN_JSON_END`) so the human can copy them mechanically."
+    },
+    {
+      "id": "D-06",
+      "severity": "major",
+      "rubric_items": [1, 2],
+      "where": "CM-C2 criterion 3",
+      "issue": "Thresholds are named only as symbols with the source given as 'bounds from config/runtime_bounds.json' — that file does not exist (there is no config/ directory in the repo; ADR-0008:43 and ADR-0006:166 describe it as a future artifact). CM-C2 stop condition 6 correctly stops on its absence, but that makes criterion 3 unexecutable rather than testable, and the criterion states no numbers. The values do exist and are citable today: CONTENT_MAX_FILE_BYTES = 262144 and CONTENT_MAX_JSON_DEPTH = 16 (docs/adr/0006-save-format-purchase-ledger-and-runtime-bounds.md:190-191; ADR-0008:93 repeats 256 KiB / MaxDepth).",
+      "fix": "Inline the values with their citation in the criterion ('256 KiB / depth 16, ADR-0006:190-191'), and rewrite stop condition 6 as: 'config/runtime_bounds.json does not exist; CM-C2 hard-codes the ADR-0006:190-191 values behind a single constants class and does NOT author the file — ask the human whether CM-C2 or the save-format contract authors it.' Also name the numeric out-of-range boundaries for travelTicks/timeLimitTicks/queueCapacity/initialRoute (level_schema.json is the source) — 'out-of-range' with no bound is not independently testable."
+    },
+    {
+      "id": "D-07",
+      "severity": "minor",
+      "rubric_items": [2],
+      "where": "CM-C1 criteria 1 and 4",
+      "issue": "(a) Criterion 1's only check is 'PR report contains the verbatim output' — prose evidence, no exit code, no threshold beyond 'includes an 8.x row'. (b) Criterion 4 asserts scripts/test.sh 'reports it in its `found` count'; test.sh never prints a found count — it prints `PASS <path>` per test (scripts/test.sh:12) and one summary line `test: N/M passed` (scripts/test.sh:22). The stated observable does not exist.",
+      "fix": "(a) 'Check: `dotnet --list-sdks | grep -E \"^8\\.\" ` exits 0; the command and its verbatim output are pasted in the PR report.' (b) Drop the found-count clause; assert exactly: `bash scripts/test.sh` exits 0 and its stdout contains the line `PASS tests/domain/determinism.test.sh` and a summary `test: N/N passed`."
+    },
+    {
+      "id": "D-08",
+      "severity": "major",
+      "rubric_items": [10],
+      "where": "CM-C3 criteria 2 and 4",
+      "issue": "The 1500 ms cause-visible budget (roadmap acceptance, roadmap_56_days.csv:5) is measured only 'from the instrumented frame log' in a PlayMode test, i.e. in the editor. It is a device-dependent perceptual budget and is neither marked HUMAN-VERIFIED nor given a device repetition — unlike CM-C2 criterion 12 and CM-C3 criterion 7, which handle the same class correctly. CM-C2 stop condition 5 explicitly forbids claiming a device budget from an editor measurement; CM-C3 has no analogous guard. ux-flows.md:287 (A11Y-S03-1) requires the sibling retry measurement on mid AND low tier.",
+      "fix": "Mirror criterion 7: 'the editor measurement is the CI gate; the low/mid-tier device repetition of the same protocol is marked HUMAN-VERIFIED with the same artifact requirement (device model, build id, raw per-failure table, p95). The criterion fails if the artifact is absent.' Add CM-C3 stop condition: 'no device available to evidence criteria 2/4/7 -> hand them to the human as explicitly open; do not mark met from an editor measurement.'"
+    },
+    {
+      "id": "D-09",
+      "severity": "major",
+      "rubric_items": [4],
+      "where": "state/backlog.md 'Ownership disjointness' table",
+      "issue": "The table claims 'Each contract owns a disjoint set of file paths', which is false as written. CM-C2 owns `unity/Assets/Scripts/Presentation/Hud/**`; CM-C3 owns `unity/Assets/Scripts/Presentation/Hud/WavePreview/**` — a strict subset of CM-C2's glob. A path-ownership review test cannot adjudicate a WavePreview diff.",
+      "fix": "Write the exclusion explicitly: CM-C2 owns `unity/Assets/Scripts/Presentation/Hud/**` EXCEPT `Hud/WavePreview/**`; CM-C3 owns `Hud/WavePreview/**`. State the rule as an ordered longest-prefix match so a checker can implement it."
+    },
+    {
+      "id": "D-10",
+      "severity": "major",
+      "rubric_items": [4],
+      "where": "CM-C3 ownership row",
+      "issue": "'`unity/Assets/Resources/Strings/failure.csv` (or the string-table path C2 establishes)' — not file-path-explicit. The alternative is unresolvable at review time and can collide with a path CM-C2 owns (CM-C2 criterion 8 already reads the LOCKED win banner 'All cats home!' from an unnamed string table). CM-C3's non-goal 'No edits to ... CM-C2 importer' does not cover the string table.",
+      "fix": "Fix the path now in both contracts: name `unity/Assets/Resources/Strings/ui.csv` as a CM-C2 deliverable (add to CM-C2 criterion 8 and to CM-C2's ownership row), and give CM-C3 append-only rights to it via the enumerated registration-exception class (new rows only, never edits to existing rows)."
+    },
+    {
+      "id": "D-11",
+      "severity": "major",
+      "rubric_items": [4],
+      "where": "'Enumerated exception (registration-only edits)' block, and CM-C3 PlayMode test wrappers",
+      "issue": "(a) The exception permits later contracts to append a `Compile Include` line to `dotnet/CatMetro.Tests/CatMetro.Tests.csproj` 'for the new test folder'. That directly breaks CM-C1 criterion 2, which asserts the test csproj's Compile Include string EQUALS the glob `unity/Assets/Tests/EditMode/Pure/**/*.cs` (and ADR-0005:169-172 requires exactly that equality). The glob already covers `EditMode/Pure/Retry/**`, so the append is both forbidden and unnecessary. (b) CM-C3's PlayMode criteria need a harness wrapper under `tests/unity/**`, a path the table assigns to CM-C2, and `tests/unity/*.test.sh` is not in the registration-exception list.",
+      "fix": "(a) Delete 'Compile Include for the new test folder' from the exception class and add a sentence: 'CM-C1's Pure/** glob is deliberately open-ended; later contracts add test folders under it and MUST NOT edit the csproj.' (b) Add `tests/unity/*.test.sh` to the registration-only exception (append a wrapper invocation, never modify an existing one), or give CM-C3 its own wrapper path `tests/unity/failure.test.sh` in its ownership row."
+    },
+    {
+      "id": "D-12",
+      "severity": "minor",
+      "rubric_items": [9],
+      "where": "CM-C2 and CM-C3 'Explicit non-goals'",
+      "issue": "Only CM-C1 carries the immutable-path non-goal ('No writes to tests/contract/, docs/constitution.md, .claude/hooks/, scripts/git-hooks/, state/mode, evals/', AGENTS.md hard rule 1). CM-C3 criterion 9 asserts replay-hash equality after retry, which creates the same temptation to touch `tests/contract/replay-hash-golden.json` that CM-C1 guards against, with no guard.",
+      "fix": "Copy CM-C1's immutable-path non-goal bullet verbatim into CM-C2 and CM-C3, and add to CM-C3 stop conditions: 'the post-retry hash differs from the fresh-entry hash -> stop and report; never touch tests/contract/.'"
+    },
+    {
+      "id": "D-13",
+      "severity": "minor",
+      "rubric_items": [1, 8],
+      "where": "CM-C3 criterion 1 (TimeOut tie-break) and criteria 2/4/7 ('instrumented frame log')",
+      "issue": "(a) 'for TimeOut the target is the node with the largest queue at the fail tick, and that rule is asserted, not inferred' is analyst-authored (admitted in A-C3-2) but is written as a binding criterion and is absent from the human-questions table, unlike every other authored choice (Q-A..Q-I). It is also under-specified: no tie-break for equal queue lengths. (b) The 'instrumented frame log' with a 'single clock source' is load-bearing for CM-C2 criterion 7 and CM-C3 criteria 2, 4 and 7, but is not a named deliverable, path or record format in any contract's scope.",
+      "fix": "(a) Add Q-J to the questions table with the effect line 'if the human overrules, criterion 1's TimeOut case is re-cut at presentation cost only'; add a deterministic tie-break ('lowest node id among ties'). (b) Make the frame log a CM-C2 deliverable with a path and a record shape (e.g. `unity/Assets/Scripts/Presentation/Diagnostics/FrameLog.cs`, one record per frame: frameIndex, monotonic clock ms, simTick, screenState) and have CM-C3 cite it rather than assume it."
+    },
+    {
+      "id": "D-14",
+      "severity": "minor",
+      "rubric_items": [1, 3],
+      "where": ".github/ISSUE_TEMPLATE/agent-task.yml:19-20 (rubric/template defect, human fix) and backlog spec-path citations",
+      "issue": "(a) TEMPLATE DEFECT: 'Stop conditions' is declared `type: input` (single-line) while every contract supplies a 5-6 item list, and the field carries no `validations: required` although the constitution treats stop conditions as load-bearing. Contracts cannot be filed through the template as written. Reported as a template defect for the human; the contracts are scored as compliant since they supply the content. (b) Three citations are unresolvable from the repo root: 'specs/product_spec.md:216-227' (CM-C1 criterion 13), 'product_spec.md:251-256' (Q-H, A-C3-4) and 'monetization_spec.md:173' (Q-H). The actual paths are docs/plan/specs/product_spec.md and docs/plan/specs/monetization_spec.md. (The `specs/` prefix is inherited from PRD.md's own convention, so the defect is systemic, not a typo.)",
+      "fix": "(a) Human: change agent-task.yml's Stop conditions to `type: textarea` and add `validations: {required: true}` (.claude/hooks/ and CODEOWNERS gate this path). (b) Rewrite the three citations with the `docs/plan/` prefix; ADR-0002:63 already uses the correct form (`docs/plan/specs/product_spec.md:229-230`)."
+    }
+  ],
+  "verified_correct_spot_checks": [
+    "docs/architecture/overview.md:312-320 field list matches CM-C1 criterion 8's field order verbatim, including Rng{State,Inc} and the little-endian WriteDigest contract (overview.md:320).",
+    "docs/plan/data/example_levels.json L001 (lines 4-17) confirms initialRoute:1, minActionWindowTicks:16, win.deliveries:2, win.timeLimitTicks:160, 4 nodes / 3 edges / 1 switch / 2 stations / 1 wave — CM-C2 criterion 1 and Q-E are accurate; the roadmap's 'Win by routing 10 cats' (roadmap_56_days.csv:4) does conflict with the authored file, and deferring to the file with a human question is the correct call.",
+    "tests/contract/ is empty on disk; ADR-0005:95-101 confirms the golden is human-authored-only. CM-C1 criterion 12 and stop condition 2 are consistent with the hook-enforced rule (AGENTS.md hard rule 1).",
+    "ADR-0002:160-162 confirms NEW-Q35 changes the command-log format, which is what CM-C1 criteria 9-10 (FormatVersion=1, envelope excluded from the hash) are designed around — the pin-guard reasoning is sound.",
+    "ADR-0004:62-67 pins .NET SDK '8.x', netstandard2.1/net8.0, exact NUnit + NUnit3TestAdapter versions and requires config/pins.json to carry them — CM-C1 criterion 3 matches. ADR-0004's Newtonsoft row is correctly deferred to CM-C2 (A-C2-2).",
+    "ux-flows.md:43 confirms motion-off = cut + static highlight ring and 'never removes information' — CM-C3 criteria 3 and 5 match. ux-flows.md:188 confirms the LOCKED strings and the monetization_spec voice conflict (TG-5/Q-H)."
+  ],
+  "could_not_verify": [
+    "CM-C2 criteria 5, 6, 7, 9, 10, 11 and all CM-C3 criteria: no Unity project exists at unity/ (blocked on the human scaffold, Q-G), so the PlayMode/EditMode/manifest checks could not be executed, only read for testability.",
+    "CM-C2 criterion 12 and CM-C3 criterion 7's device leg: no device access in this session; scored on protocol quality only.",
+    "docs/prd/PRD.md line references beyond CM-R01..CM-R03 (e.g. :197, :208, :306, :810, :940) and ux-flows.md:148-198,258-270 were sampled, not exhaustively re-verified line by line."
+  ]
+}

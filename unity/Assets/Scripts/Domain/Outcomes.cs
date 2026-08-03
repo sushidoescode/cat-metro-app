@@ -1,0 +1,46 @@
+using System;
+
+namespace CatMetro.Domain
+{
+    // Exactly three members, contract-tested (CM-R03.1; ADR-0002 §10). Members are published
+    // in player-facing copy and the analytics taxonomy — adding one is an ADR change.
+    public enum FailReason : byte
+    {
+        QueueOverflow = 1,
+        PlatformOverflow = 2,
+        TimeOut = 3,
+    }
+
+    public enum OutcomeKind : byte
+    {
+        Running = 0,
+        Won = 1,
+        Failed = 2,
+    }
+
+    // Value type so it can live inside SimulationState and the digest (1-byte tag + 1-byte reason).
+    public readonly struct SimOutcome
+    {
+        public readonly OutcomeKind Kind;
+        public readonly FailReason Reason; // 0 when not Failed
+
+        private SimOutcome(OutcomeKind kind, FailReason reason)
+        {
+            Kind = kind;
+            Reason = reason;
+        }
+
+        public static SimOutcome Running => new SimOutcome(OutcomeKind.Running, 0);
+        public static SimOutcome Won => new SimOutcome(OutcomeKind.Won, 0);
+
+        public static SimOutcome MakeFailed(FailReason reason)
+        {
+            // Criterion-14 pin guard: the member exists so the digest layout and the enum test
+            // stay stable, but its only spec'd trigger (rejected cats) is pinned out.
+            if (reason == FailReason.PlatformOverflow)
+                throw new NotSupportedException(
+                    "pinned Q-J/NEW-Q4: nothing may raise Failed(PlatformOverflow) until the human answers Q-J (state/backlog.md, CM-C1 criterion 14)");
+            return new SimOutcome(OutcomeKind.Failed, reason);
+        }
+    }
+}
