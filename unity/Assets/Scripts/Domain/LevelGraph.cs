@@ -60,8 +60,12 @@ namespace CatMetro.Domain
             EdgeTo = edgeTo;
             EdgeTravelTicks = edgeTravelTicks;
             // Pin guards live at construction so pinned behaviour is impossible to reach by
-            // accident (contract criterion 14, stop condition 1). Not implemented yet: TDD red.
+            // accident (contract criterion 14, stop condition 1).
             SourceNode = sourceNodes.Length == 1 ? sourceNodes[0] : ThrowSecondSource();
+            for (int w = 0; w < waveColor.Length; w++)
+                if (waveColor[w] == CatColor.Wild)
+                    throw new NotSupportedException(
+                        "pinned NEW-Q35: the wild color is out of CM-C1 scope — the resolution boundary changes the command-log format (state/backlog.md Q-A, criterion 14)");
             SwitchRoutes = switchRoutes;
             SwitchNode = switchNode;
             SwitchInitialRoute = switchInitialRoute;
@@ -80,7 +84,8 @@ namespace CatMetro.Domain
 
         private static int ThrowSecondSource()
         {
-            throw new NotImplementedException("CM-C1: second-source guard not implemented yet (TDD red)");
+            throw new NotSupportedException(
+                "pinned: a second source node is out of CM-C1 scope (state/backlog.md, CM-C1 criterion 14 + non-goals)");
         }
     }
 }

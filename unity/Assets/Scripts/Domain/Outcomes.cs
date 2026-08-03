@@ -35,7 +35,12 @@ namespace CatMetro.Domain
 
         public static SimOutcome MakeFailed(FailReason reason)
         {
-            throw new NotImplementedException("CM-C1: MakeFailed not implemented yet (TDD red)");
+            // Criterion-14 pin guard: the member exists so the digest layout and the enum test
+            // stay stable, but its only spec'd trigger (rejected cats) is pinned out.
+            if (reason == FailReason.PlatformOverflow)
+                throw new NotSupportedException(
+                    "pinned Q-J/NEW-Q4: nothing may raise Failed(PlatformOverflow) until the human answers Q-J (state/backlog.md, CM-C1 criterion 14)");
+            return new SimOutcome(OutcomeKind.Failed, reason);
         }
     }
 }

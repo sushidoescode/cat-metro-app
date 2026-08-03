@@ -54,9 +54,27 @@ count 2 spacing 20; win deliveries 2, timeLimitTicks 160; seed 1001; qCap 8 (sch
 Command log (FormatVersion 1): `[Toggle(S1, tick 12)]` → applies tick 13 → route E2 → both cats
 delivered at RED (ticks 30, 50) → `Won`. Zero contention, zero rejection, zero overload on this path.
 
-## Evidence (filled as criteria complete)
+## Evidence (2026-08-03, per criterion)
 
-(pending)
+1. `dotnet --list-sdks | grep -E "^8\."` → exit 0; output: `8.0.419 [/usr/local/share/dotnet/sdk]`.
+2. `dotnet build dotnet/CatMetro.sln -c Release` → exit 0, 0 warnings; `CsprojParityTests` ×2 green (globs asserted exactly).
+3. `config/pins.json` committed; `dotnet restore --locked-mode` → exit 0 against committed `dotnet/packages.lock.json`; `NoFloatingPackageVersions` green (all pins `^\d+\.\d+\.\d+$`).
+4. `bash scripts/test.sh` DISCOVERS the wrapper (line `FAIL tests/domain/determinism.test.sh` pre-golden, `test: 1/2 passed`, exit 1). The green transition (`PASS` + `2/2`) lands with the HUMAN golden commit — by design (criterion 12, Q-I).
+5. 3 NUnit cases green (constants; Tick==N for N∈{1,8,100}).
+6. `bash scripts/check.sh` → exit 0 on clean tree; `bash scripts/check.sh --root tests/fixtures/purity-bad` → exit 1, output names `double` and `tests/fixtures/purity-bad/Banned.cs:8`.
+7. 2 NUnit green (2000-draw sequence identity; digest changes after one draw).
+8. 2 NUnit green (143/78/212 lengths on three shapes; full offset table on L001 shape).
+9. 3 NUnit green (FormatVersion==1; single-command next-boundary; same-tick receipt order).
+10. 1 NUnit green (FormatVersion 1 vs 2, identical Entries → identical hash).
+11. (a) in-process double replay identical, `^[0-9a-f]{64}$` green; (b) two independent `dotnet test` processes both emit exactly `REPLAY_HASH=d4818af81bb5c4d8161c1132264f2d7f3908f0038e121c664ad3f007134e35b9`; (c) one-entry-different log → different hash, green; (d) golden compare RED pending the human golden (below).
+12. `git diff forge/specify-prd...HEAD --name-only` contains zero `tests/contract/` paths; the failing test prints the `GOLDEN_JSON_BEGIN/END` block for mechanical extraction.
+13. 8 NUnit `Step_*` cases green (7 boundaries; step 4 ×2; step 7 deferred per Q-C).
+14. 5 NUnit green (3-member enum; 4 NotSupportedException pin guards naming NEW-Q4 ×2 paths, second source, NEW-Q35, Q-J).
+
+**Suite: 30 passed / 1 failed (the golden test, red by design) of 31.**
+**GOLDEN FOR THE HUMAN (criterion 12 hand-off):** commit this as `tests/contract/replay-hash-golden.json` on this branch (extraction: run `bash tests/domain/determinism.test.sh` and `sed -n '/^GOLDEN_JSON_BEGIN$/,/^GOLDEN_JSON_END$/p'` on a `dotnet test --logger "console;verbosity=detailed"` run, or copy from the PR description). Hash: `d4818af81bb5c4d8161c1132264f2d7f3908f0038e121c664ad3f007134e35b9`.
+
+**Deviations / noticed-but-not-done:** `.gitignore` gained dotnet bin/obj entries (out of ownership table; isolated commit `3e6a59a`, flagged for review) · `Microsoft.NET.Test.Sdk` 17.9.0 added per A-C1-9 (mechanical precondition of the contract's `dotnet test` check command) · Step_Commands test observation mapping had a red-phase off-by-one, repaired without changing the assertion set (twin test unchanged and green both sides) · zero-alloc (CM-R01.6) not measured — explicitly out of CM-C1 scope (criteria 3/4/6 of CM-R01 are device/perf contracts).
 
 ---
 

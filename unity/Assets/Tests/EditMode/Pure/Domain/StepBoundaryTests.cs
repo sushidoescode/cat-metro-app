@@ -22,16 +22,21 @@ namespace CatMetro.Tests.Domain
             Fixtures.RunThroughTick(graph, Fixtures.L001Seed, log, 7,
                 s => seen.Add((s.Tick, s.SwitchRoutes[0], s.SwitchesUsed)));
 
+            // Callback states carry the POST-increment tick: entry `tick` == processed tick + 1.
+            // Command enqueued during tick 5 applies at step 1 of processing tick 6, i.e. it is
+            // first visible in the tick==7 entry. (Same semantics as the passing twin test
+            // SingleCommand_AppliesAtNextTickBoundary; this mapping had an off-by-one in the red
+            // phase, repaired without changing the assertion set.)
             foreach (var (tick, route, used) in seen)
             {
-                if (tick <= 5) // after processing ticks 0..5 the command has not applied yet
+                if (tick <= 6) // states after processing ticks 0..5: not applied yet
                 {
-                    Assert.That(route, Is.EqualTo(1), $"route must still be initialRoute after tick {tick - 1}");
+                    Assert.That(route, Is.EqualTo(1), $"route must still be initialRoute after processing tick {tick - 1}");
                     Assert.That(used, Is.EqualTo(0));
                 }
-                else // the call with entry Tick 6 processed it at step 1
+                else // states after processing ticks 6..: applied at step 1 of tick 6
                 {
-                    Assert.That(route, Is.EqualTo(0), $"route must have flipped by end of tick {tick - 1}");
+                    Assert.That(route, Is.EqualTo(0), $"route must have flipped after processing tick {tick - 1}");
                     Assert.That(used, Is.EqualTo(1));
                 }
             }

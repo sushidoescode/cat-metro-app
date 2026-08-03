@@ -73,9 +73,49 @@ namespace CatMetro.Domain
         public int DigestLength() => DigestLength(SwitchRoutes.Length, Graph.NodeCount, Graph.TrainsMax, Graph.QCapBound);
 
         // Canonical little-endian fixed-layout byte image (ADR-0002 §7; overview.md:312-320).
+        // Field order and widths are the contract; the offset table lives in DigestTests.
         public void WriteDigest(Span<byte> destination)
         {
-            throw new NotImplementedException("CM-C1: WriteDigest not implemented yet (TDD red)");
+            int need = DigestLength();
+            if (destination.Length < need)
+                throw new ArgumentException($"digest needs {need} bytes, span has {destination.Length}");
+            int o = 0;
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(destination.Slice(o, 4), Tick); o += 4;
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(destination.Slice(o, 4), Score); o += 4;
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(destination.Slice(o, 4), Chain); o += 4;
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(destination.Slice(o, 4), Deliveries); o += 4;
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(destination.Slice(o, 4), Rejections); o += 4;
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(destination.Slice(o, 4), Overloads); o += 4;
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(destination.Slice(o, 4), SwitchesUsed); o += 4;
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(destination.Slice(o, 8), Rng.State); o += 8;
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(destination.Slice(o, 8), Rng.Inc); o += 8;
+            for (int i = 0; i < SwitchRoutes.Length; i++) { destination[o] = SwitchRoutes[i]; o += 1; }
+            for (int n = 0; n < Graph.NodeCount; n++)
+            {
+                destination[o] = NodeQueueCounts[n]; o += 1;
+                var slots = NodeQueueSlots[n];
+                for (int q = 0; q < Graph.QCapBound; q++)
+                {
+                    short v = q < slots.Length ? slots[q] : (short)0;
+                    System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(destination.Slice(o, 2), v); o += 2;
+                }
+            }
+            for (int n = 0; n < Graph.NodeCount; n++)
+            {
+                System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(destination.Slice(o, 2), OverloadTimers[n]); o += 2;
+            }
+            for (int t = 0; t < Graph.TrainsMax; t++)
+            {
+                var tr = Trains[t];
+                System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(destination.Slice(o, 2), tr.Id); o += 2;
+                destination[o] = tr.Color; o += 1;
+                System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(destination.Slice(o, 2), tr.EdgeId); o += 2;
+                System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(destination.Slice(o, 2), tr.ProgressTicks); o += 2;
+                System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(destination.Slice(o, 2), tr.NodeId); o += 2;
+                destination[o] = tr.State; o += 1;
+            }
+            destination[o] = (byte)Outcome.Kind; o += 1;
+            destination[o] = (byte)Outcome.Reason;
         }
     }
 }

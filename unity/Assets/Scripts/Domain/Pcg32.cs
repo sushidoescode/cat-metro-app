@@ -22,7 +22,11 @@ namespace CatMetro.Domain
 
         public uint Next()
         {
-            throw new System.NotImplementedException("CM-C1: Pcg32.Next not implemented yet (TDD red)");
+            ulong old = State;
+            State = old * 6364136223846793005UL + Inc;
+            uint xorshifted = (uint)(((old >> 18) ^ old) >> 27);
+            int rot = (int)(old >> 59);
+            return (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
         }
     }
 }
