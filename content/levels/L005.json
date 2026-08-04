@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 2,
+  "id": "L005",
+  "name": "Evening Rush",
+  "seed": 1005,
+  "meta": {
+    "band": "onboarding",
+    "difficultyTarget": 0.16,
+    "mechanics": [
+      "switch",
+      "queue"
+    ],
+    "newMechanic": null,
+    "teachingGoal": "Everything at once: a queued red rush, then the blue stragglers - two committed switches win it",
+    "minActionWindowTicks": 12,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      {
+        "id": "SRC",
+        "x": 3,
+        "y": 9,
+        "queueCapacity": 3
+      },
+      {
+        "id": "J1",
+        "x": 3,
+        "y": 6
+      },
+      {
+        "id": "RED",
+        "x": 1,
+        "y": 2
+      },
+      {
+        "id": "BLU",
+        "x": 5,
+        "y": 2
+      }
+    ],
+    "edges": [
+      {
+        "id": "E1",
+        "from": "SRC",
+        "to": "J1",
+        "travelTicks": 10
+      },
+      {
+        "id": "E2",
+        "from": "J1",
+        "to": "RED",
+        "travelTicks": 12
+      },
+      {
+        "id": "E3",
+        "from": "J1",
+        "to": "BLU",
+        "travelTicks": 12
+      }
+    ]
+  },
+  "sources": [
+    {
+      "nodeId": "SRC",
+      "allowedColors": [
+        "red",
+        "blue"
+      ]
+    }
+  ],
+  "stations": [
+    {
+      "nodeId": "RED",
+      "accepts": [
+        "red"
+      ],
+      "capacity": 6
+    },
+    {
+      "nodeId": "BLU",
+      "accepts": [
+        "blue"
+      ],
+      "capacity": 6
+    }
+  ],
+  "switches": [
+    {
+      "id": "S1",
+      "nodeId": "J1",
+      "routes": [
+        "E2",
+        "E3"
+      ],
+      "initialRoute": 1
+    }
+  ],
+  "waves": [
+    {
+      "tick": 8,
+      "sourceNode": "SRC",
+      "color": "red",
+      "count": 2,
+      "spacingTicks": 1
+    },
+    {
+      "tick": 8,
+      "sourceNode": "SRC",
+      "color": "red",
+      "count": 2,
+      "spacingTicks": 1
+    },
+    {
+      "tick": 90,
+      "sourceNode": "SRC",
+      "color": "blue",
+      "count": 2,
+      "spacingTicks": 20
+    }
+  ],
+  "win": {
+    "deliveries": 6,
+    "timeLimitTicks": 190,
+    "perfectMaxSwitches": 2,
+    "stars": {
+      "two": 200,
+      "three": 300
+    }
+  },
+  "economy": {
+    "baseTickets": 20,
+    "perfectBonus": 10
+  }
+}
