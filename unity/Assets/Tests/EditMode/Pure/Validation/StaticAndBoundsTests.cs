@@ -13,10 +13,13 @@ namespace CatMetro.Tests.Validation
             StaticAnalysisStage.Check(VFixtures.Import(level).Dto);
 
         [Test]
-        public void L001_Passes()
+        public void L001_WarnsOnItsDecoyOnly_NeverBlocks()
         {
+            // Review F6: the decoy carve-out is audible, not silent — L001's BLU warns.
             var v = Check(VFixtures.L001Bytes());
-            Assert.That(v.Code, Is.EqualTo(StageVerdictCode.Pass), v.Detail);
+            Assert.That(v.Code, Is.EqualTo(StageVerdictCode.Warn), v.Detail);
+            Assert.That(v.Blocks, Is.False);
+            Assert.That(v.Detail, Does.Contain("decoy").And.Contain("BLU"));
         }
 
         [Test]
@@ -36,12 +39,18 @@ namespace CatMetro.Tests.Validation
         }
 
         [Test]
-        public void DecoyStation_NoCompatibleSource_PassesVacuously()
+        public void DecoyStation_CannotFail_ButIsNamedInTheWarn()
         {
-            // L001's BLU accepts blue while the only source emits red: a deliberate decoy, not a
-            // reachability defect (A-C5-8 refinement — this is why L001 itself passes).
-            var v = Check(VFixtures.L001Bytes());
-            Assert.That(v.Code, Is.EqualTo(StageVerdictCode.Pass));
+            // A decoy is not a reachability defect (A-C5-8) — and not silence either (F6): the
+            // accepts-typo class ("yellow" for "green") surfaces here for a human to judge.
+            var v = Check(VFixtures.Level(o =>
+            {
+                ((JArray)o["board"]["nodes"]).Add(VFixtures.Node("BLU2", 5, 4));
+                ((JArray)o["stations"]).Add(VFixtures.Station("BLU2", 6, "yellow"));
+            }));
+            Assert.That(v.Code, Is.EqualTo(StageVerdictCode.Warn));
+            Assert.That(v.Blocks, Is.False);
+            Assert.That(v.Detail, Does.Contain("BLU2"));
         }
 
         [Test]
@@ -107,9 +116,10 @@ namespace CatMetro.Tests.Validation
         [Test]
         public void L001_ComputedBound_IsHandDerived44()
         {
-            // (E1 10 + E2 12) x 2 deliveries = 44 (handoff A-C5-9).
+            // (E1 10 + E2 12) x 2 deliveries = 44 (handoff A-C5-9) — the full equation asserted,
+            // not a substring (review's criterion-4 note).
             var v = LowerBoundStage.Check(VFixtures.Import(VFixtures.L001Bytes()).Dto, VFixtures.BareConfig());
-            Assert.That(v.Value, Does.Contain("44"), "the computed value is always printed");
+            Assert.That(v.Value, Is.EqualTo("lowerBound=44 (minTravelTicks=22 x deliveries=2)"));
         }
 
         [Test]

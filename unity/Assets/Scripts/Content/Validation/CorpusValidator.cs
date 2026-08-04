@@ -328,8 +328,11 @@ namespace CatMetro.Content.Validation
                             + row.lo.ToString("000") + "-L" + row.hi.ToString("000"));
                 }
                 if (lvl.Meta.DifficultyTarget < row.dLo - 1e-9 || lvl.Meta.DifficultyTarget > row.dHi + 1e-9)
-                    bandFails.Add(lvl.Id + ": difficultyTarget " + lvl.Meta.DifficultyTarget
-                        + " outside band range [" + row.dLo + "," + row.dHi + "]");
+                    bandFails.Add(lvl.Id + ": difficultyTarget "
+                        + lvl.Meta.DifficultyTarget.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)
+                        + " outside band range ["
+                        + row.dLo.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) + ","
+                        + row.dHi.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) + "]");
             }
             result.Add(bandFails.Count > 0
                 ? StageVerdict.Fail(Stage.NoveltyCheck,

@@ -141,6 +141,35 @@ namespace CatMetro.Tests.Validation
                 o["win"]["timeLimitTicks"] = 60;
             });
 
+        // Review F1: a board whose jitter LOSSES are timeouts, never pins — red-only, so no
+        // wrong-colour arrival exists. Direct path SRC->J1->J2->RED takes 8 ticks; either loop
+        // detour adds 17 and blows timeLimitTicks 20 (the schema floor). Both switches init to
+        // their loop route, so a win needs S1 toggled by entry tick 3 and S2 by entry tick 5 —
+        // the CRAFTED log [(0,3),(1,5)] sits on both window edges, where +1 jitter loses cleanly.
+        public static byte[] JitterLossLevel() =>
+            Level(o =>
+            {
+                o["meta"]["band"] = "alternation";
+                o["meta"]["minActionWindowTicks"] = 3;
+                o["meta"]["mechanics"] = new JArray("switch", "queue");
+                o["meta"]["newMechanic"] = null;
+                o["seed"] = 4242;
+                o["board"]["nodes"] = new JArray(
+                    Node("SRC", 3, 9), Node("J1", 3, 5), Node("J2", 3, 3),
+                    Node("RED", 1, 1), Node("LP1", 5, 5), Node("LP2", 5, 3));
+                o["board"]["edges"] = new JArray(
+                    Edge("E1", "SRC", "J1", 4),
+                    Edge("E2", "J1", "LP1", 15), Edge("E3", "J1", "J2", 2), Edge("E4", "LP1", "J1", 2),
+                    Edge("E5", "J2", "LP2", 15), Edge("E6", "J2", "RED", 2), Edge("E7", "LP2", "J2", 2));
+                o["stations"] = new JArray(Station("RED", 6, "red"));
+                o["switches"] = new JArray(
+                    Switch("S1", "J1", 0, "E2", "E3"),   // init -> loop
+                    Switch("S2", "J2", 0, "E5", "E6"));  // init -> loop
+                o["waves"] = new JArray(Wave(0, "red", 1, 1));
+                o["win"]["deliveries"] = 1;
+                o["win"]["timeLimitTicks"] = 20;
+            });
+
         public static JObject Node(string id, int x, int y) =>
             new JObject { ["id"] = id, ["x"] = x, ["y"] = y };
         public static JObject Edge(string id, string from, string to, int travel) =>

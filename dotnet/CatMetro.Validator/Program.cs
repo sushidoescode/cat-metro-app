@@ -56,10 +56,12 @@ namespace CatMetro.Validator
                 }
             }
 
+            // Review F8: the IContentSource seam IS the read path, not decoration.
             var source = new FileContentSource();
-            byte[] schemaBytes = File.ReadAllBytes(Path.Combine("docs", "plan", "data", "level_schema.json"));
+            byte[] Read(string path) => source.ReadAsync(path, CancellationToken.None).GetAwaiter().GetResult();
+            byte[] schemaBytes = Read(Path.Combine("docs", "plan", "data", "level_schema.json"));
             var configResult = ValidatorConfig.Parse(
-                File.ReadAllBytes(Path.Combine("config", "validator_thresholds.json")));
+                Read(Path.Combine("config", "validator_thresholds.json")));
             if (!configResult.Ok)
             {
                 Console.Error.WriteLine("validator: config unreadable — " + configResult.Error);
@@ -67,7 +69,10 @@ namespace CatMetro.Validator
             }
 
             // Members: default corpus = content/levels/** (campaign) + the stress boards (Q-P).
-            var campaignFiles = new List<string>();
+            // Review F4: campaign status comes from the PATH (criterion 14 scopes the campaign
+            // assertions to content/levels/**), not from how the corpus was passed — a fixture
+            // file is validated but never enters the campaign-order/band/count assertions.
+            var stampFiles = new List<string>();
             var members = new List<CorpusMember>();
             if (corpusArgs.Count == 0)
             {
@@ -80,13 +85,13 @@ namespace CatMetro.Validator
                 {
                     foreach (var f in Directory.GetFiles(arg, "*.json").OrderBy(f => f, StringComparer.Ordinal))
                     {
-                        members.Add(new CorpusMember(f, File.ReadAllBytes(f), isCampaign: true));
-                        campaignFiles.Add(f);
+                        members.Add(new CorpusMember(f, Read(f), IsCampaignPath(f)));
+                        stampFiles.Add(f);
                     }
                 }
                 else if (Path.GetFileName(arg) == "stress_boards.json")
                 {
-                    var wrapper = JObject.Parse(System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(arg)));
+                    var wrapper = JObject.Parse(System.Text.Encoding.UTF8.GetString(Read(arg)));
                     var levels = (JArray)wrapper["levels"];
                     for (int i = 0; i < levels.Count; i++)
                         members.Add(new CorpusMember(arg + "#" + i,
@@ -94,8 +99,8 @@ namespace CatMetro.Validator
                 }
                 else if (File.Exists(arg))
                 {
-                    members.Add(new CorpusMember(arg, File.ReadAllBytes(arg), isCampaign: true));
-                    campaignFiles.Add(arg);
+                    members.Add(new CorpusMember(arg, Read(arg), IsCampaignPath(arg)));
+                    stampFiles.Add(arg);
                 }
                 else
                 {
@@ -127,7 +132,7 @@ namespace CatMetro.Validator
                     return 1;
                 }
                 string ts = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'");
-                foreach (var f in campaignFiles)
+                foreach (var f in stampFiles)
                 {
                     StampFile(f, ts);
                     Console.WriteLine("stamped " + f + " validatedAt=" + ts);
@@ -135,6 +140,15 @@ namespace CatMetro.Validator
             }
 
             return report.ExitFailure ? 1 : 0;
+        }
+
+        private static string Normalize(string path) => path.Replace('\\', '/');
+
+        private static bool IsCampaignPath(string path)
+        {
+            var n = Normalize(path);
+            return n.StartsWith("content/levels/", StringComparison.Ordinal)
+                || n.Contains("/content/levels/");
         }
 
         // A-C5-4: the staleness reference = newest commit touching the sim or the schema. The
@@ -154,7 +168,13 @@ namespace CatMetro.Validator
                 using var p = System.Diagnostics.Process.Start(psi);
                 string output = p.StandardOutput.ReadToEnd().Trim();
                 p.WaitForExit(10000);
-                return p.ExitCode == 0 && output.Length > 0 ? output : null;
+                if (p.ExitCode != 0 || output.Length == 0) return null;
+                // Review F9: normalise to UTC "Z" so the library compares like against like even
+                // on its ordinal fallback (git emits local offsets, our stamps emit Z).
+                return DateTimeOffset.TryParse(output, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var instant)
+                    ? instant.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                    : output;
             }
             catch
             {
@@ -163,9 +183,13 @@ namespace CatMetro.Validator
         }
 
         // Byte-surgical upsert of meta.validatedAt: everything outside the touched key survives
-        // byte-for-byte (criterion 17b). Never called on the stress wrapper — campaign files only.
+        // byte-for-byte (criterion 17b). Never called on the stress wrapper; review F4: a
+        // docs/plan/** path is refused outright (contract non-goal: no write under docs/plan/**).
         internal static void StampFile(string path, string timestamp)
         {
+            if (Normalize(Path.GetFullPath(path)).Contains("/docs/plan/"))
+                throw new InvalidOperationException(
+                    "refusing to stamp under docs/plan/ (CM-C5 non-goal; Q-O)");
             string text = File.ReadAllText(path);
             var (metaOpen, metaClose) = FindMetaSpan(text);
             int existing = FindKeyInSpan(text, metaOpen, metaClose, "\"validatedAt\"");

@@ -40,10 +40,11 @@ behaviour without a code edit — the one-truth property the criterion wants.
 over the authored `x,y` between two junction centres; fail iff `< 1.2` (doubles are legal in
 Content). Reachability: station S is reachable iff a directed path exists from some source node
 whose `allowedColors ∩ S.accepts ≠ ∅`, over all edges (switches route dynamically, so every
-outbound edge is potentially takeable). **Refinement (forced by L001 itself):** a station whose
+outbound edge is potentially takeable). **Refinement (forced by L001 itself, narrowed by review F6):** a station whose
 accept set intersects NO source's colours is a deliberate decoy — L001's BLU teaches the wrong
-route — and passes vacuously; the rule fires only where a colour-compatible source exists but no
-path does. Orphan switch: its node has no inbound edge, OR some route
+route — and cannot FAIL, but it WARNS (non-blocking, named) rather than pass silently: the
+accepts-typo class stays audible. The fail rule fires only where a colour-compatible source
+exists but no path does. Orphan switch: its node has no inbound edge, OR some route
 is not an outbound edge of its node. Top-15% warning: board vertical extent from node `y` values;
 a switch node with `y ≥ maxY − 0.15·(maxY − minY)` warns (top of screen = high y, per the corpus
 convention SRC at y=9 above stations at y=1..2).
@@ -64,13 +65,19 @@ test-design number, set to 20) samples; per sample, each entry of the stage-4 wi
 independent offset drawn from {−1, 0, +1} via `Pcg32(level seed, 3)` (`Next() % 3 − 1`, entries
 in log order, samples sequentially — one generator stream, fully deterministic), ticks clamped to
 ≥ 0. Sample outcomes: `Solved` = win, `NotFound` = loss, `Indeterminate` (the NEW-Q4 guard fired)
-= **pinned — neither**. Retention = wins/(wins+losses), fail `< 70%`; when pinned samples exceed
-half the set, the retention limb reports **`PINNED(NEW-Q4)`**, non-blocking (stop condition 7:
-the figure would require resolving rejection semantics to mean anything). This ruling was forced
-by measurement, not convenience: on L701 every misroute ends at a wrong-colour station, 18/20
-jitter samples pin, and a pinned=lost rule would flunk the shipped corpus on an open question.
-The window and onboarding limbs are unaffected (a pinned shift is still not-a-win there, which is
-what makes the brittle fixture fail on its 2-tick window regardless).
+= **pinned — neither** (stop condition 7). Retention = wins/(wins+losses) whenever ANY unpinned
+sample exists — review F2 narrowed the original pin-majority hatch: wins and losses among the
+unpinned samples measure real brittleness and the ≥70% guard stays LIVE with pins present. Only a
+sample set with zero unpinned members reports **`PINNED(NEW-Q4)`** — a near-unreachable backstop,
+since a one-entry-changed jitter sample is also a window shift, so all-pinned jitters imply
+width-1 windows and the window limb fires first. Measured anatomy that shaped the rule: on L701
+every misroute ends at a wrong-colour station, 18/20 samples pin, and BOTH unpinned samples win —
+retention 100% over the unpinned set, pin counts printed; a pinned=lost rule would flunk the
+shipped corpus on an open question, and the original discard-the-ratio rule would have let a
+board with `pinned=11, wins=0, losses=9` ship (the reviewer's false-negative). The window and
+onboarding limbs are unaffected (a pinned shift is still not-a-win there, which is what makes the
+brittle fixture fail on its 2-tick window regardless); the retention rule itself is executed by
+the `JitterLossLevel` red-only loop board, whose jitter losses are timeouts, never pins.
 Action-window limb: per entry of the winning log, the window = the size of the maximal contiguous
 run of single-entry tick shifts (scanned over `±(minActionWindowTicks + 2)`, clamped at 0) that
 still win, **measured on the solver-optimal log** — a level fails when any entry's window <
@@ -193,9 +200,11 @@ surgery + shell-side checks (criterion 15/17). T9 full gates, evidence, PR.
 5. Unsolvable blocks; Indeterminate prints its count non-blocking; NotFound non-blocking
    (ADR-0008:117); Solved passes. All four on authored-JSON fixtures through the real importer.
 6. L001 zero-input → stage passes (Indeterminate via pin); initialRoute-0 board → stage FAILS.
-7. L001 robust (windows [17], retention 100%); brittle 2-tick-window fixture blocks; onboarding
-   12–16 limb blocks; byte-identical verdict across two runs (Pcg32 stream); no-log → SKIPPED;
-   pin-dominated retention → `PINNED(NEW-Q4)` (the stop-condition-7 ruling, measured 18/20 on L701).
+7. L001 robust (windows [18], retention 100% — review F10 corrected the stale [17]); brittle
+   2-tick-window fixture blocks on the WINDOW limb specifically; the ≥70% RETENTION limb is
+   executed by `JitterLossLevel` (crafted edge-log, losses are timeouts, `pinned=0` asserted);
+   onboarding 12–16 limb blocks; byte-identical verdict across two runs (Pcg32 stream); no-log →
+   SKIPPED; L701's stage-6 row asserted non-blocking with its pin counts printed (review F2 rule).
 8. `two >= three` blocks; row present → `PINNED(NEW-Q5)`; row absent → `UNCONFIGURED(starBandSlack)`.
 9. All six raw axes hand-derived on L001 (B=8, peak=2, entropy=0, C=1, T=0.3125, H=8, R=1/2);
    weighted sum equals the frozen formula under fixture caps; no caps → `UNCONFIGURED` with raw
@@ -221,6 +230,26 @@ surgery + shell-side checks (criterion 15/17). T9 full gates, evidence, PR.
     copy re-validates (regression belt on E-C2a-2); (c) `git diff --name-only` clean.
 
 **Suite: 167/167** (59 new) · `check.sh` 0 · `test.sh` **5/5** (`PASS tests/validation/validator.test.sh` discovered) · CM-C1 golden hash unchanged (`d4818af8…`).
+
+## Review round 1 (2026-08-04) — REQUEST CHANGES, all 14 findings applied
+
+Fresh-context reviewer re-ran everything (167/167, gates, live corpus + broken-fixture runs) and
+found: **F1** the ≥70% retention rule had no test that could fail (the "brittle" fixture failed
+on windows alone; the `Or` assertion couldn't tell) — fixed with `JitterLossLevel` + a
+limb-specific test; **F2** the pin-majority hatch discarded measured wins/losses — narrowed to
+retention-over-unpinned-samples (see the stage-6 freeze above); **F3** the wrapper's 15b greps
+were tautological (`Solver` appears in every table) — now greps the exact `BLOCKING: L999 stage 4
+Solver` line; **F4** any `--corpus` path was classified campaign AND stampable — campaign status
+now derives from the `content/levels/**` path, `StampFile` refuses `docs/plan/**` outright, and
+the wrapper asserts no campaign noise in the broken-fixture run; **F5** the schema keyword audit
+was data-dependent — now a schema-driven pre-pass (`AuditKeywords`) covering subschemas of absent
+optional properties, non-object `items`, and `items`+`prefixItems`; **F6** decoy stations warn
+instead of passing silently; **F7** the stress-board stage-8 assertion flipped to the positive
+form (Unconfigured + axes present); **F8** the `IContentSource` seam is now the host's actual
+read path; **F9** ISO instants compare as instants (mixed-offset test added; host normalises git
+output to Z); **F10** stale evidence figure corrected; **F11** three culture-sensitive format
+sites fixed; **F12** the stamp proof runs over a two-file corpus; **F13** the sln BOM reverted;
+**F14** the wrapper refuses an empty corpus glob.
 
 ---
 

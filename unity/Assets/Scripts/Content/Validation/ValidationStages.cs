@@ -40,6 +40,7 @@ namespace CatMetro.Content.Validation
             var errors = new List<string>();
             try
             {
+                AuditKeywords(schema); // review F5: audit is schema-driven, not data-driven
                 ValidateNode(schema, data, "$", errors);
             }
             catch (UnsupportedKeywordException ex)
@@ -69,6 +70,45 @@ namespace CatMetro.Content.Validation
             "items", "prefixItems", "minimum", "maximum", "minItems", "maxItems", "minLength",
             "maxLength",
         };
+
+        // Review F5: walk the SCHEMA (not the data) so a subschema for an absent optional
+        // property still fails closed on an unsupported keyword — the verdict may not depend on
+        // which optional keys a level happens to carry.
+        private static void AuditKeywords(Newtonsoft.Json.Linq.JObject schema)
+        {
+            foreach (var prop in schema.Properties())
+                if (!Annotations.Contains(prop.Name) && !Supported.Contains(prop.Name))
+                    throw new UnsupportedKeywordException(prop.Name);
+
+            var addl = schema["additionalProperties"];
+            if (addl != null && addl.Type != Newtonsoft.Json.Linq.JTokenType.Boolean)
+                throw new UnsupportedKeywordException("additionalProperties(schema-valued)");
+
+            if (schema["properties"] is Newtonsoft.Json.Linq.JObject props)
+                foreach (var p in props.Properties())
+                {
+                    if (!(p.Value is Newtonsoft.Json.Linq.JObject sub))
+                        throw new UnsupportedKeywordException("properties(non-object schema)");
+                    AuditKeywords(sub);
+                }
+
+            var items = schema["items"];
+            if (items != null)
+            {
+                if (schema["prefixItems"] != null)
+                    throw new UnsupportedKeywordException("items+prefixItems(tail semantics)");
+                if (!(items is Newtonsoft.Json.Linq.JObject itemsObj))
+                    throw new UnsupportedKeywordException("items(non-object schema)");
+                AuditKeywords(itemsObj);
+            }
+            if (schema["prefixItems"] is Newtonsoft.Json.Linq.JArray prefix)
+                foreach (var p in prefix)
+                {
+                    if (!(p is Newtonsoft.Json.Linq.JObject sub))
+                        throw new UnsupportedKeywordException("prefixItems(non-object schema)");
+                    AuditKeywords(sub);
+                }
+        }
 
         private static void ValidateNode(Newtonsoft.Json.Linq.JObject schema,
             Newtonsoft.Json.Linq.JToken data, string path, List<string> errors)
@@ -107,9 +147,11 @@ namespace CatMetro.Content.Validation
             {
                 double d = (double)n;
                 if (schema["minimum"] != null && d < (double)schema["minimum"])
-                    errors.Add(path + ": below minimum " + schema["minimum"]);
+                    errors.Add(path + ": below minimum "
+                        + schema["minimum"].ToString(Newtonsoft.Json.Formatting.None));
                 if (schema["maximum"] != null && d > (double)schema["maximum"])
-                    errors.Add(path + ": above maximum " + schema["maximum"]);
+                    errors.Add(path + ": above maximum "
+                        + schema["maximum"].ToString(Newtonsoft.Json.Formatting.None));
             }
 
             if (data is Newtonsoft.Json.Linq.JObject obj)
@@ -188,13 +230,19 @@ namespace CatMetro.Content.Validation
 
             // Reachability: BFS from each colour-compatible source. A station whose accept set
             // intersects NO source's colours is a deliberate decoy (L001's BLU teaches the wrong
-            // route) — no cat can ever need it, so it passes vacuously (A-C5-8 refinement).
+            // route) — no cat can ever need it, so it cannot FAIL — but review F6: silence hides
+            // the accepts-typo class, so it WARNS instead of passing vacuously.
             foreach (var station in dto.Stations.ToArray())
             {
                 var accepts = new HashSet<string>(station.Accepts.ToArray());
                 bool anyCompatibleSource = dto.Sources.ToArray()
                     .Any(s => s.AllowedColors.ToArray().Any(accepts.Contains));
-                if (!anyCompatibleSource) continue;
+                if (!anyCompatibleSource)
+                {
+                    warns.Add("station " + station.NodeId
+                        + " is a decoy: no source emits any colour it accepts");
+                    continue;
+                }
                 bool reachable = false;
                 foreach (var source in dto.Sources.ToArray())
                 {
@@ -390,12 +438,14 @@ namespace CatMetro.Content.Validation
 
             // Jitter retention: one Pcg32 stream over (samples x entries) draws — deterministic.
             // A jittered sample that hits the NEW-Q4 guard is neither a win nor a loss: rejection
-            // semantics are undecided, so the sample is INDETERMINATE (stop condition 7 — the
-            // stage reports PINNED rather than resolve the pin). Measured reality that forced the
-            // ruling: on the 3-colour stress board L701 every misroute ends at a wrong-colour
-            // station, so 18/20 jitters pin and a pinned=lost rule would flunk the shipped corpus
-            // on an open question. Wins and losses among the UNPINNED samples still measure real
-            // brittleness; a pin-dominated sample set yields no retention figure at all.
+            // semantics are undecided, so the sample is INDETERMINATE (stop condition 7).
+            // Review F2 narrowed the rule: retention is measured over the UNPINNED samples
+            // whenever any exist — wins and losses there measure real brittleness and the >= 70%
+            // guard stays live (measured on L701: 18/20 samples pin, and the 2 unpinned both win,
+            // so the shipped corpus passes at 100% over its unpinned set with the pin counts
+            // printed). Only a sample set with NO unpinned member reports PINNED(NEW-Q4) — a
+            // near-unreachable backstop, since a one-entry-changed jitter sample is also a window
+            // shift, so all-pinned jitters imply width-1 windows and the window limb fires first.
             var rng = new Pcg32(seed, 3);
             int wins = 0, losses = 0, pinnedSamples = 0;
             int samples = config.JitterSampleCount;
@@ -414,7 +464,8 @@ namespace CatMetro.Content.Validation
                     default: losses++; break;
                 }
             }
-            bool pinDominated = pinnedSamples > samples / 2;
+            int denom = wins + losses;
+            bool pinDominated = denom == 0 && pinnedSamples > 0;
             string retentionStr;
             if (pinDominated)
             {
@@ -422,11 +473,11 @@ namespace CatMetro.Content.Validation
             }
             else
             {
-                int denom = wins + losses;
                 int retention = denom == 0 ? 100 : wins * 100 / denom;
                 retentionStr = retention + "%";
                 if (retention < 70)
-                    fails.Add("jitter retention " + retention + "% < 70% (CM-R12.3)");
+                    fails.Add("jitter retention " + retention + "% < 70% over "
+                        + denom + " unpinned samples (CM-R12.3)");
             }
 
             // Action windows, measured on the solver-optimal log (recorded limitation: another
@@ -654,7 +705,8 @@ namespace CatMetro.Content.Validation
                 return StageVerdict.Fail(Stage.NoveltyCheck,
                     "feature distance to " + worst.Id + " = "
                     + worst.d.ToString("0.###", CultureInfo.InvariantCulture)
-                    + " < threshold " + config.NoveltyMinDistance.Value, value);
+                    + " < threshold "
+                    + config.NoveltyMinDistance.Value.ToString("0.###", CultureInfo.InvariantCulture), value);
             return StageVerdict.Pass(Stage.NoveltyCheck, value);
         }
     }
@@ -673,13 +725,26 @@ namespace CatMetro.Content.Validation
             if (!dto.Meta.HasValidatedAt)
                 return new StageVerdict(Stage.Staleness, StageVerdictCode.Stale,
                     "meta.validatedAt absent — treated as stale (ADR-0008:119-123)" + qo, "", false);
-            if (string.CompareOrdinal(dto.Meta.ValidatedAt, referenceTimestamp) < 0)
+            if (CompareIso(dto.Meta.ValidatedAt, referenceTimestamp) < 0)
                 return new StageVerdict(Stage.Staleness, StageVerdictCode.Stale,
                     "validatedAt " + dto.Meta.ValidatedAt + " predates the last sim/schema change "
                     + referenceTimestamp + qo, dto.Meta.ValidatedAt, false);
             return new StageVerdict(Stage.Staleness, StageVerdictCode.Fresh,
                 "validatedAt " + dto.Meta.ValidatedAt + " is newer than " + referenceTimestamp,
                 dto.Meta.ValidatedAt, false);
+        }
+
+        // Review F9: authors and this repo's own host write ISO-8601 with DIFFERENT offsets
+        // ("Z" stamps vs git's "-07:00"), so an ordinal compare inverts across offsets. Parse
+        // both instants when possible; ordinal only as the unparseable fallback.
+        private static int CompareIso(string a, string b)
+        {
+            if (DateTimeOffset.TryParse(a, CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var da)
+                && DateTimeOffset.TryParse(b, CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var db))
+                return da.CompareTo(db);
+            return string.CompareOrdinal(a, b);
         }
     }
 

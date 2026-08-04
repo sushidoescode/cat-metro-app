@@ -45,6 +45,17 @@ namespace CatMetro.Tests.Validation
             Assert.That(v.Code, Is.EqualTo(StageVerdictCode.Stale));
             Assert.That(v.Detail, Does.Contain("unavailable").IgnoreCase);
         }
+
+        [Test] // review F9 — mixed offsets compare as instants, not as strings
+        public void MixedOffsets_CompareAsInstants()
+        {
+            // Stamp 02:00Z vs reference 01:08:44-07:00 (= 08:08:44Z): ordinally "newer", actually
+            // six hours STALE — the reviewer's exact scenario.
+            var level = VFixtures.Level(o => o["meta"]["validatedAt"] = "2026-08-04T02:00:00Z");
+            var v = StalenessStage.Check(VFixtures.Import(level).Dto, "2026-08-04T01:08:44-07:00");
+            Assert.That(v.Code, Is.EqualTo(StageVerdictCode.Stale),
+                "an ordinal compare would call this FRESH");
+        }
     }
 
     // Criterion 12: stage 11 — checklist row per level; capstones need 3 testers; never blocks.
@@ -107,14 +118,25 @@ namespace CatMetro.Tests.Validation
 
             var l701 = report.Levels.Single(l => l.LevelId == "L701");
             var stage8 = l701.Verdicts.Single(v => v.Stage == Stage.DifficultyCheck);
-            Assert.That(stage8.Detail, Is.Not.EqualTo("SKIPPED(non-campaign)"),
-                "stage 8 is IN the stress-board stage set (Q-P): it may only skip for a missing "
-                + "solver trace, never for being non-campaign");
+            // Review F7: the POSITIVE form — stage 8 genuinely ran (raw axes computed, verdict is
+            // the Q-R Unconfigured), so a budget regression that skips it fails loudly here.
+            Assert.That(stage8.Code, Is.EqualTo(StageVerdictCode.Unconfigured),
+                "stage 8 RUNS for stress boards (Q-P): " + stage8.Detail);
+            Assert.That(stage8.Value, Does.Contain("B="), "raw axes were actually computed");
             var stage9 = l701.Verdicts.Single(v => v.Stage == Stage.NoveltyCheck);
             Assert.That(stage9.Detail, Is.EqualTo("SKIPPED(non-campaign)"));
 
-            Assert.That(l701.Checklist, Is.Not.Null, "stage 11 emits a row for stress boards");
-            Assert.That(report.Levels.Single(l => l.LevelId == "L702").Checklist, Is.Not.Null);
+            // Review F2: the stage-6 pin counts are visible and the verdict is non-blocking —
+            // retention is measured over the unpinned samples (both of L701's unpinned jitters win).
+            var stage6 = l701.Verdicts.Single(v => v.Stage == Stage.BrittlenessAccessibility);
+            Assert.That(stage6.Blocks, Is.False, stage6.Detail);
+            Assert.That(stage6.Value, Does.Contain("pinned=").And.Not.Contain("pinned=0"),
+                "the NEW-Q4 pin counts print for the human");
+
+            // Criterion 12: the checklist row set EQUALS the corpus set — every member, no extras.
+            Assert.That(report.Levels.Select(l => l.Checklist).All(c => c != null), Is.True);
+            Assert.That(report.Levels.Select(l => l.Checklist.LevelId),
+                Is.EquivalentTo(report.Levels.Select(l => l.LevelId)));
         }
 
         [Test]

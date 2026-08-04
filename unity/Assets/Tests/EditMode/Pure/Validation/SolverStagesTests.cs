@@ -3,6 +3,7 @@ using CatMetro.Content;
 using CatMetro.Content.Validation;
 using CatMetro.Domain;
 using CatMetro.Domain.Solver;
+using CatMetro.Tests.Solver;
 using Newtonsoft.Json.Linq;
 
 namespace CatMetro.Tests.Validation
@@ -107,7 +108,28 @@ namespace CatMetro.Tests.Validation
             var v = Run(VFixtures.BrittleLevel(), VFixtures.BareConfig());
             Assert.That(v.Code, Is.EqualTo(StageVerdictCode.Fail), v.Detail);
             Assert.That(v.Blocks, Is.True);
-            Assert.That(v.Detail, Does.Contain("window").IgnoreCase.Or.Contain("retention").IgnoreCase);
+            Assert.That(v.Detail, Does.Contain("window").IgnoreCase,
+                "this fixture fails the WINDOW limb specifically (review F1: no more Or)");
+        }
+
+        [Test] // review F1 — the >= 70% retention rule itself, on losses that are NOT pins
+        public void JitterRetention_BelowSeventy_FailsTheRetentionLimb()
+        {
+            var imported = VFixtures.Import(VFixtures.JitterLossLevel());
+            ulong seed = (ulong)imported.Dto.Seed;
+            // The crafted log sits on both window edges — deliberately NOT the solver optimum
+            // (which sits at the early edge where negative jitter clamps to safety).
+            var crafted = SolverFixtures.Log((0, 3), (1, 5));
+            Assert.That(SolverFixtures.RunsToWin(imported.Graph, seed, crafted, out _), Is.True,
+                "fixture sanity: the crafted log wins as written");
+
+            var v = BrittlenessStage.Check(imported.Dto, imported.Graph, crafted, VFixtures.BareConfig());
+            Assert.That(v.Code, Is.EqualTo(StageVerdictCode.Fail), v.Detail + " / " + v.Value);
+            Assert.That(v.Blocks, Is.True);
+            Assert.That(v.Detail, Does.Contain("retention"), "the RETENTION limb fired");
+            Assert.That(v.Detail, Does.Not.Contain("window"), "…and only the retention limb");
+            Assert.That(v.Value, Does.Contain("pinned=0"),
+                "every loss is a timeout on this red-only board — the pin rule is not involved");
         }
 
         [Test]

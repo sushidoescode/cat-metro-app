@@ -1,4 +1,4 @@
-﻿Microsoft Visual Studio Solution File, Format Version 12.00
+Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CatMetro.Domain", "CatMetro.Domain\CatMetro.Domain.csproj", "{A1B2C3D4-0001-4CM1-9000-C47ME7200001}"
 EndProject
