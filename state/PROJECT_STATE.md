@@ -16,7 +16,8 @@
 | CM-C2a | Content importer (bytes → LevelGraph) | session 2026-08-03 | DONE — merged (#8) after 9-finding review | (merged) |
 | CM-C4 | Solver (BFS ≤2-switch, beam beyond) | session 2026-08-03/04 | DONE — merged (#9) after review round | (merged) |
 | CM-C5 | 11-stage validator + validate-content leg | session 2026-08-04 | DONE — merged (#10) after 14-finding review round | (merged) |
-| CM-C6..C8, L002-L005 | phases 6–9 | fresh session (handoff) | QUEUED — see state/handoffs/SESSION-HANDOFF-phase6-10.md | — |
+| CM-C6 | Daily-seed pre-validation pipeline | session 2026-08-04 (Fable 5) | PR #14 GREEN, review round done (11 findings, 5 applied) — **WAITING-ON-HUMAN: ratify A-C6-9 (host stub vs criterion-8 prose, reviewer-flagged) then `gh pr merge 14 --squash --delete-branch`** | task/CM-C6-daily-seed-pipeline |
+| CM-C7/C8, L002-L005 | phases 7–9 | session 2026-08-04 (Fable 5) | IN PROGRESS — see state/handoffs/SESSION-HANDOFF-phase6-10.md | — |
 | CM-C2b/C3 | Greybox board + L001 in-engine | — | BLOCKED-ON human Unity scaffold (Q-G) | — |
 
 ## Recently done (last 7 days — one line each, PR links)
