@@ -10,7 +10,7 @@
       "switch"
     ],
     "newMechanic": null,
-    "teachingGoal": "The switch starts pointing the wrong way this time: read the wave order, commit twice",
+    "teachingGoal": "Blue rush first: three blue cats lead, two red follow - commit the switch each way once",
     "minActionWindowTicks": 14,
     "authoredBy": "llm+validator"
   },
@@ -99,7 +99,7 @@
       "tick": 8,
       "sourceNode": "SRC",
       "color": "blue",
-      "count": 2,
+      "count": 3,
       "spacingTicks": 20
     },
     {
@@ -111,12 +111,12 @@
     }
   ],
   "win": {
-    "deliveries": 4,
+    "deliveries": 5,
     "timeLimitTicks": 200,
     "perfectMaxSwitches": 2,
     "stars": {
-      "two": 250,
-      "three": 350
+      "two": 200,
+      "three": 300
     }
   },
   "economy": {

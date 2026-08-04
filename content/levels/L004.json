@@ -113,7 +113,7 @@
   ],
   "win": {
     "deliveries": 4,
-    "timeLimitTicks": 200,
+    "timeLimitTicks": 100,
     "perfectMaxSwitches": 1,
     "stars": {
       "two": 200,

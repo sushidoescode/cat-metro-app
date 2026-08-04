@@ -105,7 +105,7 @@
       "spacingTicks": 1
     },
     {
-      "tick": 12,
+      "tick": 8,
       "sourceNode": "SRC",
       "color": "red",
       "count": 2,
@@ -121,7 +121,7 @@
   ],
   "win": {
     "deliveries": 6,
-    "timeLimitTicks": 220,
+    "timeLimitTicks": 190,
     "perfectMaxSwitches": 2,
     "stars": {
       "two": 200,
