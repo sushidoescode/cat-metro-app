@@ -72,6 +72,14 @@
         "resolved": "1.6.0",
         "contentHash": "COC1aiAJjCoA5GBF+QKL2uLqEBew4JsCkQmoHKbN3TlOZKa2fKLz5CpiRQKDz0RsAOEGsVKqOD5bomsXq/4STQ=="
       },
+      "catmetro.application": {
+        "type": "Project",
+        "dependencies": {
+          "CatMetro.Content": "[1.0.0, )",
+          "CatMetro.Services": "[1.0.0, )",
+          "Newtonsoft.Json": "[13.0.2, )"
+        }
+      },
       "catmetro.content": {
         "type": "Project",
         "dependencies": {
@@ -84,7 +92,10 @@
         "type": "Project"
       },
       "catmetro.services": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "Newtonsoft.Json": "[13.0.2, )"
+        }
       }
     }
   }
