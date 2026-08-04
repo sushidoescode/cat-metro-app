@@ -135,6 +135,39 @@ namespace CatMetro.Tests.Solver
             winDeliveries: 1, timeLimitTicks: 40,
             qCapBound: 8, trainsMax: 1);
 
+        // Review H1 (the reviewer's crash-class board): on the authored line (init -> RED,
+        // spacing 4, travel 7) at most 2 trains are ever alive, so trainsMax=3 holds. An
+        // exploratory toggle sends trains around the J1->DET->J1 loop instead — never delivered,
+        // never freed — and the 4th spawn trips the Domain's TrainsMax envelope guard
+        // (InvalidOperationException, Simulation's AllocateTrain). The search must prune that
+        // branch, not crash, and must NOT count it as a pin (no wrong-colour arrival exists here).
+        public static LevelGraph EnvelopeTrap() => new LevelGraph(
+            "FX-ENV", 4,
+            new[] { 8, 8, 8, 8 },                          // SRC, J1, RED, DET(our loop node)
+            new[] { 0, 1, 1, 3 }, new[] { 1, 2, 3, 1 }, new[] { 2, 5, 5, 5 },
+            new[] { 0 },
+            new[] { new[] { 1, 2 } }, new[] { 1 }, new byte[] { 0 },  // S0@J1 [E1 RED, E2 DET], init -> RED (correct)
+            new[] { 2 }, new[] { new[] { CatColor.Red } }, new[] { 6 },
+            new[] { 0 }, new[] { CatColor.Red }, new[] { 6 }, new[] { 4 },
+            winDeliveries: 6, timeLimitTicks: 60,
+            qCapBound: 8, trainsMax: 3);
+
+        // Review M3: every line dies pinned — 1 switch, both routes end at blue-only stations,
+        // one red train. BFS exhausts with pins > 0 and must report Indeterminate, never
+        // Unsolvable.
+        public static LevelGraph AllPinned() => new LevelGraph(
+            "FX-PIN", 4,
+            new[] { 8, 8, 8, 8 },                          // SRC, J1, B1, B2
+            new[] { 0, 1, 1 }, new[] { 1, 2, 3 }, new[] { 3, 4, 4 },
+            new[] { 0 },
+            new[] { new[] { 1, 2 } }, new[] { 1 }, new byte[] { 0 },
+            new[] { 2, 3 },
+            new[] { new[] { CatColor.Blue }, new[] { CatColor.Blue } },
+            new[] { 6, 6 },
+            new[] { 0 }, new[] { CatColor.Red }, new[] { 1 }, new[] { 1 },
+            winDeliveries: 1, timeLimitTicks: 30,
+            qCapBound: 8, trainsMax: 1);
+
         // --- helpers ---
 
         public static CommandLog Log(params (int switchId, int tick)[] entries)
@@ -175,6 +208,10 @@ namespace CatMetro.Tests.Solver
             catch (NotSupportedException)
             {
                 return false;
+            }
+            catch (InvalidOperationException)
+            {
+                return false; // envelope-broken log: not-won, mirroring the solver (review H1)
             }
         }
 

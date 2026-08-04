@@ -54,7 +54,7 @@ write_file-shaped contract.
 ## Evidence (2026-08-03, per criterion)
 
 1. Placement/purity: solver under `Domain/Solver/**`, zero csproj/dotnet-dir changes, `check.sh` exit 0.
-2. One-Step + no tick-writes/score-reads: check.sh blocks green on tree, all three fire on `tests/fixtures/solver-bad` (exit 1).
+2. One-Step + no tick-writes/score-reads: check.sh blocks green on tree, all fire on `tests/fixtures/solver-bad` (exit 1), including the `+=` compound-write lines (review M2).
 3. BFS exactness: both brute-force comparators green (1-switch L001, 2-switch board), Unsolvable proof green.
 4. Beam: solved-at-first-width reports 1000; forced `{1,2500}` escalation observed (the escalation law held); miss → `NotFound(Beam, 5000)`, asserted ≠ Unsolvable.
 5. Q-N: L701-shape run completes with `PinnedPruned > 0` and a recorded pin message; win-despite-prunes green; zero-pin Unsolvable green.
@@ -62,15 +62,53 @@ write_file-shaped contract.
 7. Tie-break returns `[(0,0)]` on the two-solution board (required the within-layer comparator dedupe — see the bug note below); in-process double-run byte-identical incl. `NodesExpanded`; cross-process `SOLVER_LOG=000000000000010008000000` stable (wrapper exit 0) — decoding to `(S0,T0)+(S1,T8)`, the predicted optimum.
 8. No score-shaped member (reflection over both result types) + the check.sh grep.
 9. Hash equality ×2 + Won + Tick−1 equation green. `tests/contract/` untouched.
-10. Baseline both limbs: L001 empty-log does-not-win (Indeterminate via the NEW-Q4 pin, per the planner ruling); already-correct board wins with the empty log.
+10. Baseline both limbs via the `LevelSolver.EvaluateLog(graph, seed, log)` API (review M4 — the baseline is solver-computed, not a test-side replay): L001 empty-log → Indeterminate via the NEW-Q4 pin (asserted, with the pin message); already-correct board → Solved with the empty log, CompletionTicks agreeing with `Solve`.
 11. Budget: `NotFound(Budget)` at cap 5 with `NodesExpanded ∈ (0,6]`; default-arg == constant asserted for budget AND widths.
 12. `bash scripts/test.sh` → `test: 4/4 passed`, `PASS tests/solver/solver.test.sh`.
-13. Runtime-reference guard armed (roots conditional-scanned; fixture-proven).
+13. Runtime-reference guard: runtime roots scanned when present, `$solver_ref` also scans the
+    `--root` branch, and `tests/fixtures/solver-ref-bad/` proves it fires (review H2 — the earlier
+    "fixture-proven" claim here predated the fixture and was false as written; corrected).
 
-**Suite: 105/105.** Implementation bug found by the tests mid-build: insertion-order dedupe let the
+**Suite: 105/105 pre-review.** Implementation bug found by the tests mid-build: insertion-order dedupe let the
 untoggled-prefix branch claim every converged state, making the canonical log carry the LATEST
 toggle and inverting the tie-break — fixed with criterion-7-comparator collision resolution
 (the tie-break tests exist precisely for this).
+
+## Review round 1 (2026-08-04) — findings applied, plus rulings the fixes encode
+
+Fresh-context review returned REQUEST CHANGES (2 high / 6 medium / 6 low; reviewer re-ran the full
+suite and gates). All findings applied same-branch. Rulings frozen here:
+
+- **H1 (crash) — envelope-guard throws prune, uncounted.** The search invents command sequences; some
+  push a board past its digest envelope (`Simulation.cs:170,193` TrainsMax/QCapBound →
+  `InvalidOperationException`). Ruling: such a successor is a DEAD BRANCH — pruned silently, NOT
+  counted as a pin (`PinnedPruned` stays the Q-N counter only), because the authored line's envelope
+  validity is CM-C2a/CM-C5's gate, not a search verdict. `WinsQuietly`, `RunsToWin` and
+  `EvaluateLog` treat it the same way. Proven by `SolverFixtures.EnvelopeTrap()` (loop-parking
+  board): `Solve` completes, empty log wins, `PinnedPruned == 0`.
+- **M3 precedence ruling — beam miss beats pin.** A beam miss reports `NotFound(Beam)` even when
+  pins were pruned; `Indeterminate` is BFS-exhaustion's refinement ONLY, because only exhaustion
+  proves there was nothing else to find. The Indeterminate limb is now executed by
+  `SolverFixtures.AllPinned()`.
+- **M5** — C/H/R are asserted equal to an independent test-side reference walk on two solved boards,
+  replacing the vacuous `>= 0` coverage.
+- **M6** — the cross-layer `seen` set was provably inert (Tick occupies digest bytes 0–3; cross-layer
+  keys can never collide) and is deleted; the SolverBounds derivation comment now carries the
+  measured cost model (re-simulation ⇒ ~quadratic expansions, cubic time; 640-tick exhaustion
+  measured at 204,541 expansions / ~74 s) instead of the earlier optimistic claim.
+- **L1** — `maxNodesExpanded` caps TOTAL expansions across beam legs; `NodesExpanded` is cumulative.
+- **L2 ruling (for CM-C5)** — an empty-log win reports R as `0/0` (`SinglePerturbationsTried == 0`).
+  CM-C5's normalisation must treat 0/0 as robustness 1 (nothing to perturb ⇒ maximally robust), not
+  divide by zero. Recorded here so stage 8 lands with that rule.
+- **L3 wording corrections** — the escalation law's "least-toggled sorts first" holds because
+  `SwitchesUsed` occupies digest byte 24 with `Overloads` at bytes 20–23 BEFORE it: among
+  delivery-tied states equal on Overloads, least-toggled sorts first, and `SwitchesUsed` is a byte
+  (< 256) by schema bound. The truncated-wave fixtures keep both preconditions true.
+- **L4** — an EMPTY `beamWidths` array falls back to the authored defaults, same as null.
+- **L5** — the lane audit log `state/hybrid-runs/cm-c4-g2-bfs-exact-2026-08-03.jsonl` is committed
+  with this branch (it was untracked). The reviewer's stacked-branch concern was checked and is
+  NOT reproduced: `git log origin/main -1` = `9c4fecd` (the CM-C2a squash), and this branch is
+  based on it — the reviewer's local main was stale.
 
 ---
 

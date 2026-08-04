@@ -18,22 +18,62 @@ namespace CatMetro.Domain.Solver
             int maxNodesExpanded = SolverBounds.MAX_NODES_EXPANDED,
             int[] beamWidths = null)
         {
-            var widths = beamWidths ?? SolverBounds.BEAM_WIDTHS;
+            var widths = beamWidths == null || beamWidths.Length == 0 ? SolverBounds.BEAM_WIDTHS : beamWidths; // review L4
 
             if (graph.SwitchRoutes.Length <= 2)
-                return Search(graph, seed, maxNodesExpanded, int.MaxValue, 0, exhaustiveIsProof: true);
+                return Search(graph, seed, maxNodesExpanded, int.MaxValue, 0, exhaustiveIsProof: true, priorExpanded: 0);
 
+            // Review L1: the budget caps TOTAL expansions across all beam legs, and the reported
+            // NodesExpanded is cumulative.
             SolveResult last = null;
+            int expandedSoFar = 0;
             foreach (var w in widths)
             {
-                last = Search(graph, seed, maxNodesExpanded, w, w, exhaustiveIsProof: false);
+                last = Search(graph, seed, maxNodesExpanded, w, w, exhaustiveIsProof: false, priorExpanded: expandedSoFar);
                 if (last.Verdict == SolveVerdict.Solved || last.NotFoundReason == NotFoundReason.Budget)
                     return last;
+                expandedSoFar = last.NodesExpanded;
             }
             // Missed at every width: NotFound(Beam, last width) — never Unsolvable (ADR-0008:117).
+            // Precedence ruling (review M3, recorded in the handoff): a beam miss reports
+            // NotFound(Beam) even when pins were pruned — Indeterminate is BFS-exhaustion's
+            // refinement only, because only exhaustion proves there was nothing else to find.
             return new SolveResult(SolveVerdict.NotFound, NotFoundReason.Beam, new CommandLog(),
                 0, 0, widths[widths.Length - 1], last?.PinnedPruned ?? 0, last?.NodesExpanded ?? 0,
                 last?.FirstPinMessage ?? "", ZeroProxy(graph));
+        }
+
+        // Review M4 / criterion 10: the zero-input baseline entry point — SolveResult for a FIXED
+        // command log (CM-R12.2's stage-5 consumer). Won -> Solved; a pinned replay ->
+        // Indeterminate (the L001 empty-log baseline); ran-to-terminal-without-winning ->
+        // NotFound(None) — "this log is not a win" is proof of nothing about the board.
+        public static SolveResult EvaluateLog(LevelGraph graph, ulong seed, CommandLog log)
+        {
+            var fixedLog = log ?? new CommandLog();
+            try
+            {
+                var end = ReplayHasher.RunToEnd(graph, seed, fixedLog);
+                if (end.Outcome.Kind == OutcomeKind.Won)
+                {
+                    int t = end.Tick;
+                    return new SolveResult(SolveVerdict.Solved, NotFoundReason.None, fixedLog,
+                        t - 1, fixedLog.Entries.Count, 0, 0, 0, "",
+                        ComputeProxy(graph, seed, fixedLog, t - 1));
+                }
+                return new SolveResult(SolveVerdict.NotFound, NotFoundReason.None, fixedLog,
+                    0, fixedLog.Entries.Count, 0, 0, 0, "", ZeroProxy(graph));
+            }
+            catch (NotSupportedException e)
+            {
+                return new SolveResult(SolveVerdict.Indeterminate, NotFoundReason.None, fixedLog,
+                    0, fixedLog.Entries.Count, 0, 1, 0, e.Message, ZeroProxy(graph));
+            }
+            catch (InvalidOperationException e)
+            {
+                // Envelope guard tripped by this specific log (review H1's sibling case).
+                return new SolveResult(SolveVerdict.Indeterminate, NotFoundReason.None, fixedLog,
+                    0, fixedLog.Entries.Count, 0, 0, 0, e.Message, ZeroProxy(graph));
+            }
         }
 
         private static DifficultyProxy ZeroProxy(LevelGraph graph) =>
@@ -42,16 +82,17 @@ namespace CatMetro.Domain.Solver
         // One search core for both modes: width == int.MaxValue is BFS (exhaustion proves
         // Unsolvable/Indeterminate); a finite width is one beam leg (miss is only a miss).
         private static SolveResult Search(LevelGraph graph, ulong seed, int budget, int width,
-            int reportWidth, bool exhaustiveIsProof)
+            int reportWidth, bool exhaustiveIsProof, int priorExpanded)
         {
             int pinnedPruned = 0;
             string firstPin = "";
-            int nodesExpanded = 0;
+            int nodesExpanded = priorExpanded;
             int timeLimit = graph.TimeLimitTicks;
 
             // Layer L = logs whose replay has taken exactly L steps and is still Running.
+            // No cross-layer visited set: Tick occupies digest bytes 0-3, so states in different
+            // layers can never share a key — a set spanning layers is provably inert (review M6).
             var layer = new List<CommandLog> { new CommandLog() };
-            var seen = new HashSet<string>();
 
             for (int depth = 0; depth < timeLimit && layer.Count > 0; depth++)
             {
@@ -87,6 +128,16 @@ namespace CatMetro.Domain.Solver
                             if (firstPin.Length == 0) firstPin = e.Message;
                             continue;
                         }
+                        catch (InvalidOperationException)
+                        {
+                            // Review H1: the search can invent command sequences that push a board
+                            // past its digest envelope (TrainsMax/QCapBound guards). Such a
+                            // successor is un-simulatable by the Domain's own refusal — a dead
+                            // branch, pruned WITHOUT the pin counter (planner ruling in the
+                            // handoff): the authored line's envelope validity is CM-C2a/CM-C5's
+                            // gate, not a search verdict.
+                            continue;
+                        }
 
                         if (state.Outcome.Kind == OutcomeKind.Won)
                         {
@@ -96,12 +147,9 @@ namespace CatMetro.Domain.Solver
                         else if (state.Outcome.Kind == OutcomeKind.Running)
                         {
                             var key = DigestKey(state);
-                            if (!seen.Contains(key)) // earlier layers always win outright
-                            {
-                                if (!next.TryGetValue(key, out var incumbent)
-                                    || CompareWins((0, childLog), (0, incumbent.log)) < 0)
-                                    next[key] = (childLog, state);
-                            }
+                            if (!next.TryGetValue(key, out var incumbent)
+                                || CompareWins((0, childLog), (0, incumbent.log)) < 0)
+                                next[key] = (childLog, state);
                         }
                         // Failed states are dead branches.
                     }
@@ -119,10 +167,7 @@ namespace CatMetro.Domain.Solver
 
                 var survivors = new List<(CommandLog log, SimulationState state)>(next.Count);
                 foreach (var kv in next)
-                {
-                    seen.Add(kv.Key);
                     survivors.Add(kv.Value);
-                }
                 // Deterministic layer order regardless of dictionary iteration: beam order.
                 survivors.Sort(CompareBeam);
                 if (width != int.MaxValue && survivors.Count > width)
@@ -333,7 +378,11 @@ namespace CatMetro.Domain.Solver
             }
             catch (NotSupportedException)
             {
-                return false;
+                return false; // pinned perturbation counts as not-won (Q-N)
+            }
+            catch (InvalidOperationException)
+            {
+                return false; // envelope-broken perturbation likewise (review H1)
             }
         }
     }

@@ -5,15 +5,17 @@
      (agents propose the rotation; humans prune). A 2,000-line state file is a measured failure mode. -->
 
 ## Now
-2026-08-02 — phase: discovery → sprint prep (Shipaton 2026 plan landed in docs/plan/ — engine pinned to Unity 6000.3.16f1; no app code scaffolded yet; next: /forge-sprint on EXECUTION_PLAN.md). Mode: see `state/mode` (sprint). Monthly agent budget: $0 API — subscription capacity only (Claude Max + Codex Pro/Max + local model qwen3.6:35b-a3b-coding-nvfp4). Stop-and-rethink trigger: >40% of budget in any week.
+2026-08-04 — phase: build, Sprint 1 (PRD/ADR-0002..0009 ratified + merged; Domain CM-C1 + Content CM-C2a on main; CM-C4 solver in review; next: CM-C5 validator → CM-C6 daily seed → L002-L005 → CM-C7 save → CM-C8 analytics; CM-C2b/C3 re-decompose when the human Unity scaffold lands). Mode: see `state/mode` (sprint). Monthly agent budget: $0 API — subscription capacity only (Claude Max + Codex Pro/Max + local model qwen3.6:35b-a3b-coding-nvfp4). Stop-and-rethink trigger: >40% of budget in any week.
 
 **Graduation criterion (human decision, 2026-08-02):** flip `state/mode` to production via human-authored commit BEFORE any monetization code (billing/IAP/ads/payments) merges. Those path globs are already risky-path tripwires in AGENTS.md. At graduation: `git mv .github/workflows/claude-review.yml.disabled .github/workflows/claude-review.yml` and resolve TODO(review-auth) below.
 
 ## Active tasks
 | id | title | owner (human/session) | status | branch |
 |---|---|---|---|---|
-| CM-C1 | Domain skeleton + replay-hash test | session 2026-08-02/03 | DONE — golden human-committed, CI green, merged via #3; lands on main with #2 | (merged) |
-| CM-C2 | Greybox board + L001 | — | BLOCKED-ON human Unity scaffold (Q-G) | — |
+| CM-C1 | Domain skeleton + replay-hash test | session 2026-08-02/03 | DONE — golden human-committed, merged (#2/#3) | (merged) |
+| CM-C2a | Content importer (bytes → LevelGraph) | session 2026-08-03 | DONE — merged (#8) after 9-finding review | (merged) |
+| CM-C4 | Solver (BFS ≤2-switch, beam beyond) | session 2026-08-03/04 | IN REVIEW — round-1 findings (2H/6M/6L) applied, 108/108, PR open | task/cm-c4-solver |
+| CM-C2b/C3 | Greybox board + L001 in-engine | — | BLOCKED-ON human Unity scaffold (Q-G) | — |
 
 ## Recently done (last 7 days — one line each, PR links)
 - 2026-08-02 — forge-init: substrate installed (kit 3.4.1), mode=sprint, stack deferred pending specs.
@@ -21,6 +23,8 @@
 - 2026-08-02 — server-side wall LIVE (kit 3.5.0 solo posture, ADR-0001): forge-main-solo + forge-tags + forge-tag-creators applied, `--check` = 3 (match, declared residual); owner is the named tag-creation bypass actor; direct-push probe bounced (GH013). ALL main-bound work now goes branch → PR → green CI → squash self-merge (human).
 - 2026-08-02 — forge-specify complete (branch forge/specify-prd, 11-agent workflow): docs/prd/ PRD (58 reqs, 23 pinned branches §4.1) + risks (39 rows) + venture-critique (V-1: tester-clock evidence request; V-2: D7 gate power at n=12) + ux-flows (12 stories, TG-1..8 taste gates) + hypothesis. PENDING human: PRD sign-off, D-1..D-9, NEW-Q1..48, TG-1..8. Asset-gen resources recorded (Meshy key via Unity-MCP owner-only store at asset phase; Tripo pro+CLI; Marble parked).
 - 2026-08-02 — kit 3.6.0 upgrade (branch chore/forge-upgrade-3.6.0): stamp provenance repointed to released v3.4.1 (pre-release-stamp trust dead-end in forge-upgrade — upstream issue drafted), provenance-only apply clean, doctor 19 ok/0 fail; local setup-rulesets show_error fix kept (bug still ships in 3.6.0). Manual ports pending → see debt.
+- 2026-08-03 — merged: kit upgrade #4, PRD+ADRs+CM-C1 #2/#3, Phase-0 plan amendments #5, tranche-2 backlog #6, CM-C2a importer #8 (all human squash-merges; forge-policy green).
+- 2026-08-03 — hybrid lane validated end-to-end on CM-C4 cut g2: qwen draft failed on RunToEnd-vs-layer semantics + anchor drift → two-strike escalation fired correctly → frontier implemented; 4 forge-hybrid dogfood findings banked for upstream (exit-0 on unreachable Ollama; no cold-load retry; no write_file fallback on anchor drift; ask-rules default vs solo posture). Lane retries later on a write_file-shaped contract.
 
 ## Blocked / waiting-on-human
 - Repo-name drift: plan of record says `cat-metro`; actual repo/dir is `cat-metro-app`. Human call: rename or amend the plan line.

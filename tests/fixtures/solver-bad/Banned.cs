@@ -7,7 +7,9 @@ namespace SolverBad
     {
         public void TickWrite(object state) { /* state.Tick++ ; state.Tick = 5; Deliveries++ ; OverloadTimers[0] */ }
         public string tickWrite = "state.Tick++";
+        public string tickCompound = "state.Tick += 1";
         public string delivWrite = "state.Deliveries = 3";
+        public string delivCompound = "state.Deliveries += 2";
         public string timerWrite = "state.OverloadTimers[1] = 0";
         public string scoreRead = "var x = state.Score;";
         public string chainRead = "var y = state.Chain;";

@@ -93,21 +93,23 @@ fi
 # The solver may only reach state through the ONE Step symbol: no tick-advancing writes, no
 # score/chain reads (pins NEW-Q5/NEW-Q7), and no runtime tree may reference solver types
 # (CM-R01.6 guard — placement inside Domain removed the assembly boundary, Q-M cost c).
-solver_writes='(\.Tick[[:space:]]*(=[^=]|\+\+)|Deliveries[[:space:]]*(=[^=]|\+\+)|OverloadTimers\[)'
+# Review M2: compound assignments (+=, -=, *=, /=) are writes too; == stays excluded.
+solver_writes='(\.Tick[[:space:]]*(\+\+|[-+*/]?=[^=])|Deliveries[[:space:]]*(\+\+|[-+*/]?=[^=])|OverloadTimers\[)'
 solver_scores='\.(Score|Chain)\b'
 solver_ref='CatMetro\.Domain\.Solver'
 if [ -n "$purity_root" ]; then
   scan_banned "$purity_root" "$solver_writes" "--root override, solver tick-write ban"
   scan_banned "$purity_root" "$solver_scores" "--root override, solver score-read ban"
+  scan_banned "$purity_root" "$solver_ref" "--root override, runtime-reference guard (review H2)"
   if grep -rEnq --include='*.cs' 'static void Step\(ref SimulationState' "$purity_root" 2>/dev/null; then
     echo "check: FAIL — a second Step definition under $purity_root (ADR-0002 §2: exactly one)"
     fail=1
   fi
 else
-  if [ -d unity/Assets/Scripts/Domain/Solver ]; then
-    scan_banned unity/Assets/Scripts/Domain/Solver "$solver_writes" "solver reaches state only through Step, CM-R02.1"
-    scan_banned unity/Assets/Scripts/Domain/Solver "$solver_scores" "scoring pinned out of the solver, NEW-Q5/NEW-Q7"
-  fi
+  # Review M1: unconditional — scan_banned fails closed on a missing root, which is exactly
+  # what must happen if the solver directory is ever moved without updating this gate.
+  scan_banned unity/Assets/Scripts/Domain/Solver "$solver_writes" "solver reaches state only through Step, CM-R02.1"
+  scan_banned unity/Assets/Scripts/Domain/Solver "$solver_scores" "scoring pinned out of the solver, NEW-Q5/NEW-Q7"
   step_defs=$(grep -rEo --include='*.cs' 'static void Step\(ref SimulationState' unity/Assets/Scripts 2>/dev/null | wc -l | tr -d ' ')
   if [ "$step_defs" -ne 1 ]; then
     echo "check: FAIL — expected exactly 1 'static void Step(ref SimulationState' definition, found $step_defs (ADR-0002 §2)"
