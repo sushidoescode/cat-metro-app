@@ -12,3 +12,15 @@ state/gate-ledger/
 # dotnet build outputs (ADR-0005 dotnet leg; TODO(stack) engine entries land with the scaffold)
 dotnet/**/bin/
 dotnet/**/obj/
+
+# Unity scaffold (Q-G): generated/local state never enters the repo
+unity/Library/
+unity/Temp/
+unity/Logs/
+unity/UserSettings/
+unity/obj/
+unity/*.csproj
+unity/*.sln
+unity/*.slnx
+unity/.vsconfig
+unity/.vscode/

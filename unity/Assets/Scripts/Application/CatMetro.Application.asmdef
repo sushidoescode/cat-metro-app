@@ -1,0 +1,18 @@
+{
+    "name": "CatMetro.Application",
+    "rootNamespace": "CatMetro.Application",
+    "references": [
+        "CatMetro.Domain",
+        "CatMetro.Content",
+        "CatMetro.Services"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}
