@@ -68,10 +68,24 @@ namespace CatMetro.Tests.Analytics
             Assert.That(transport.Batches, Is.Empty,
                 "no elapsed-time path can flush — the trigger list is the whole surface");
             Assert.That(q.QueuedEventCount, Is.EqualTo(10));
-            // and the type exposes no time-shaped member for a future timer to hide behind
-            Assert.That(typeof(AnalyticsQueue).GetMethods()
-                .Count(m => m.Name.Contains("Tick") || m.Name.Contains("Update")
-                    || m.Name.Contains("Elapsed")), Is.Zero);
+
+            // Review S6: the structural half of the decidable negative — no member of ANY
+            // visibility, of any kind, is timer- or clock-typed or timer-named. A future timer
+            // cannot hide in a private field.
+            const System.Reflection.BindingFlags all =
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic
+                | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static;
+            foreach (var member in typeof(AnalyticsQueue).GetMembers(all))
+            {
+                Assert.That(member.Name, Does.Not.Contain("Tick").And.Not.Contain("Timer")
+                    .And.Not.Contain("Elapsed").And.Not.Contain("Poll").And.Not.Contain("Heartbeat"),
+                    "timer-shaped member name: " + member.Name);
+                var type = member is System.Reflection.FieldInfo fi ? fi.FieldType
+                    : member is System.Reflection.PropertyInfo pi ? pi.PropertyType : null;
+                if (type != null)
+                    Assert.That(type.FullName, Does.Not.Contain("Timer").And.Not.Contain("Stopwatch"),
+                        "time-typed member: " + member.Name + " : " + type.FullName);
+            }
         }
     }
 }

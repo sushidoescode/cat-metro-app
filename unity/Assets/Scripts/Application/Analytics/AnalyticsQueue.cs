@@ -33,9 +33,11 @@ namespace CatMetro.Application.Analytics
     }
 
     // CM-C8: bounded, ordered, crash-safe, lossy-but-VISIBLE, metrics-only offline queue.
-    // analytics_queue.dat sits beside save.dat, wears the same 16-byte header (magic "CMQU")
+    // analytics_queue.dat sits beside the save file, wears the same 16-byte header ("CMQU")
     // and rides the same temp+replace write helper — and is NEVER written in the same operation
     // as the save file (ADR-0006:280: a crash in the gap loses the EVENT, never the GRANT).
+    // THREAD AFFINITY (recorded): single-threaded by contract — the future adapter/composition
+    // root owns marshalling; no lock exists here by design.
     public sealed class AnalyticsQueue : IAnalytics
     {
         public const string MAGIC = "CMQU";
@@ -48,6 +50,7 @@ namespace CatMetro.Application.Analytics
         private readonly IAnalyticsTransport _transport;
         private readonly List<QueuedAnalyticsEvent> _events = new List<QueuedAnalyticsEvent>();
         private readonly List<QueueNote> _notes = new List<QueueNote>();
+        private const int NOTES_FIFO_CAP = 200; // review S4: bounded like CM-C7's audit list
         private long _nextOrdinal;
         private int _totalBytes;
 
@@ -57,6 +60,9 @@ namespace CatMetro.Application.Analytics
             if (root == null || fs == null || bounds == null)
                 throw new System.ArgumentException("root, fs and bounds are required");
             _root = root; _fs = fs; _bounds = bounds; _transport = transport;
+            // Review NIT4: load eagerly — a Log() before an explicit load would persist a
+            // one-element array OVER the previous session's queue (silent total loss).
+            LoadFromDisk();
         }
 
         public string QueuePath => System.IO.Path.Combine(_root.SaveDirectory, "analytics_queue.dat");
@@ -66,6 +72,8 @@ namespace CatMetro.Application.Analytics
         public int QueuedEventCount => _events.Count;
         public IReadOnlyList<QueueNote> Notes => _notes;
 
+        // Records are shared READ-ONLY views (review B2): Params is the queue's internal
+        // clone; consumers (tests, the transport seam) must not mutate it.
         public IReadOnlyList<QueuedAnalyticsEvent> Snapshot() => _events.ToArray();
 
         // Rebuilds the in-memory queue from disk; a corrupt file (bad magic/length/CRC/JSON)
@@ -83,14 +91,14 @@ namespace CatMetro.Application.Analytics
                     out var payload);
                 if (header == null)
                 {
-                    _notes.Add(new QueueNote("queue_dropped", "count=unknown(corrupt) — header/CRC reject, restart empty"));
+                    Note("queue_dropped", "count=unknown(corrupt) — header/CRC reject, restart empty");
                     return;
                 }
                 var token = CatMetro.Content.ContentJson.LoadToken(
                     new System.Text.UTF8Encoding(false, true).GetString(payload));
                 if (!(token is JArray arr))
                 {
-                    _notes.Add(new QueueNote("queue_dropped", "count=unknown(corrupt) — payload not an array, restart empty"));
+                    Note("queue_dropped", "count=unknown(corrupt) — payload not an array, restart empty");
                     return;
                 }
                 foreach (var t in arr)
@@ -109,8 +117,8 @@ namespace CatMetro.Application.Analytics
                 _events.Clear();
                 _totalBytes = 0;
                 _nextOrdinal = 0;
-                _notes.Add(new QueueNote("queue_dropped",
-                    "count=unknown(corrupt) — " + ex.GetType().Name + ", restart empty"));
+                Note("queue_dropped",
+                    "count=unknown(corrupt) — " + ex.GetType().Name + ", restart empty");
             }
         }
 
@@ -120,9 +128,9 @@ namespace CatMetro.Application.Analytics
             if (record.Bytes > _bounds.QueueEventMaxBytes)
             {
                 // Criterion 5: an oversize single event never enters (ADR-0006:239-241).
-                _notes.Add(new QueueNote("queue_dropped",
+                Note("queue_dropped",
                     "count=1 oversize event '" + record.Name + "' " + record.Bytes + " B > "
-                    + _bounds.QueueEventMaxBytes));
+                    + _bounds.QueueEventMaxBytes);
                 return;
             }
 
@@ -138,9 +146,9 @@ namespace CatMetro.Application.Analytics
                 dropped++;
             }
             if (dropped > 0)
-                _notes.Add(new QueueNote("queue_dropped", "count=" + dropped + " oldest-first overflow"));
+                Note("queue_dropped", "count=" + dropped + " oldest-first overflow");
 
-            Persist();
+            TryPersist();
 
             // Criterion 6: the high-water threshold routes through the trigger gate.
             if (_events.Count >= _bounds.QueueFlushHighWater)
@@ -150,7 +158,13 @@ namespace CatMetro.Application.Analytics
         // A-C8-8: recorded, not silently ignored — the tag flow is RK-30's open question and
         // the taxonomy contract owns the real sink.
         public void SetUserProperty(UserPropertyKey key, string value) =>
-            _notes.Add(new QueueNote("user_property", key + "=" + (value ?? "")));
+            Note("user_property", key + "=" + (value ?? ""));
+
+        private void Note(string name, string detail)
+        {
+            _notes.Add(new QueueNote(name, detail));
+            while (_notes.Count > NOTES_FIFO_CAP) _notes.RemoveAt(0);
+        }
 
         // Criterion 6: flush fires on EXACTLY the configured triggers — and on no timer; no
         // time source exists in this type, which is what makes the negative test decidable.
@@ -163,9 +177,18 @@ namespace CatMetro.Application.Analytics
             Flush();
         }
 
+        private bool _flushing;
+
         private void Flush()
         {
+            if (_flushing) return; // review S10: a transport that logs during Deliver must not recurse
             if (_events.Count == 0 || _transport == null) return;
+            _flushing = true;
+            try { FlushCore(); } finally { _flushing = false; }
+        }
+
+        private void FlushCore()
+        {
             var batch = _events.ToArray();
             // A-C8-3: true = acknowledged; false/exception = keep everything, same ids next time.
             bool acked;
@@ -180,13 +203,35 @@ namespace CatMetro.Application.Analytics
             if (!acked) return;
             _events.Clear();
             _totalBytes = 0;
-            Persist();
+            // A failed post-ack persist leaves the delivered batch on disk: the next boot
+            // re-hands it with the SAME ids and the consumer dedupes — at-least-once by design.
+            TryPersist();
+        }
+
+        // Review B1: an IO fault NEVER escapes Log()/OnTrigger() — ADR-0006 §5's posture is
+        // lossy-but-VISIBLE (a full disk on the app-pause flush must not crash the lifecycle
+        // path; that is the exact class CM-C7 review F4 closed for the save). The tail stays in
+        // memory for the next persist attempt; the risk is a recorded note, not an exception.
+        private void TryPersist()
+        {
+            try
+            {
+                Persist();
+            }
+            catch (System.Exception ex)
+            {
+                Note("queue_dropped", "count=" + _events.Count + " persist_failed("
+                    + ex.GetType().Name + ") — tail at risk until the next successful persist");
+            }
         }
 
         private QueuedAnalyticsEvent MakeRecord(in AnalyticsEvent e)
         {
             long ord = _nextOrdinal++;
-            var parameters = e.Params ?? new JObject();
+            // Review B2: the caller's JObject is CLONED — storing the live reference let a
+            // reused params buffer silently falsify already-queued records and break the
+            // id<->payload reproducibility the dedupe design rests on.
+            var parameters = e.Params == null ? new JObject() : (JObject)e.Params.DeepClone();
             string canonical = e.Name + "|" + parameters.ToString(Newtonsoft.Json.Formatting.None);
             string id = DeriveId(ord, canonical);
             var o = new JObject
@@ -217,7 +262,7 @@ namespace CatMetro.Application.Analytics
             }
         }
 
-        // Criterion 1: the SAME header and the SAME temp+replace helper as save.dat — no second
+        // Criterion 1: the SAME header and the SAME temp+replace helper as the save — no second
         // write-path implementation exists (the wrapper greps that this file names no
         // FileStream of its own). A-C8-10: persisted on every enqueue and every acked flush.
         private void Persist()
@@ -230,9 +275,15 @@ namespace CatMetro.Application.Analytics
                 });
             var payload = new System.Text.UTF8Encoding(false).GetBytes(
                 arr.ToString(Newtonsoft.Json.Formatting.None));
+            // formatVersion 1 is the QUEUE header layout's own version, deliberately not
+            // coupled to the save's (recorded decision — the two files evolve independently).
             var file = Save.SaveHeader.Write(MAGIC, 1, QUEUE_VERSION, payload);
             _fs.WriteTempDurable(TmpPath, file);
             _fs.Replace(TmpPath, QueuePath, BakPath);
+            // Review S9: the replace-produced .bak is never read (reject-and-restart-empty is
+            // the mandated recovery) and would silently double the on-disk footprint AND widen
+            // criterion 9's backup-exclusion set to a third filename — delete it.
+            if (_fs.Exists(BakPath)) _fs.Delete(BakPath);
         }
     }
 }

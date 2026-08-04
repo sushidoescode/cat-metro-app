@@ -45,8 +45,39 @@ non-transactional with the save BY DESIGN (grant durable, event lost — never i
   applies to the full persisted record.
 - **A-C8-10 (session): the queue file persists on every enqueue and every acked flush** — the
   crash-safety posture that makes criterion 8's restart test meaningful; no timer exists
-  anywhere (criterion 6's negative is structural).
+  anywhere (criterion 6's negative is structural). **COST, measured by review round 1 (S5):**
+  an offline fill to the cap = ~139 MB of fsync'd writes / ~6.8 ms per Log at the cap on
+  desktop NVMe — the cadence is a HUMAN decision to ratify or amend; changing it later changes
+  crash-loss semantics.
+- **A-C8-11 (session, from review S3): the metrics-only wall is TYPE-level.** The contract's
+  own check bans types; a caller can still place ledger-shaped VALUES inside AnalyticsEvent
+  Params and no static check can see it. The typed taxonomy wrapper (CM-R43.1-.3) is where
+  value-level enforcement becomes possible. Recorded, not silently accepted.
+- **A-C8-12 (session, from review S4): loss notes are bounded (FIFO 200) and NON-DURABLE** — a
+  restart clears them while the queue survives. A durable dropped-total would break ADR-0006
+  §5's bare-array payload pin; the durable counter lands with the taxonomy contract's
+  queue_dropped event. Recorded limitation.
+- **A-C8-13 (session, from review S8/NIT3): shipped-bounds facts.** The byte limb is
+  UNREACHABLE at shipped values (2000 x 512 = 1,024,000 < 1,048,576 — guaranteed by CM-C7's
+  drift-(d) inequality), which contradicts ADR-0006:238's claim of two reachable limbs —
+  an ADR errata is the HUMAN's call (stop condition 6). The queue header's formatVersion=1 is
+  its own layout version, deliberately not coupled to the save's.
 
 ## Status log
 
 - anchor: branch cut STACKED on task/CM-C7-save-v1 @ dc02d5e; contract frozen; this note committed.
+- red: 24 Analytics NUnit cases (20 failing on skeleton; 4 declaration-level pins).
+- green: queue implemented; 253/253 on the stacked base; gates check OK / test 7/7.
+- review round 1 (REQUEST-CHANGES, 3 blocking + 10 should-fix/nits): B1 fixed (IO faults never
+  escape Log/OnTrigger — recorded persist_failed note, ADR-0006 §5 posture; the criterion-11
+  test now asserts no-throw). B2 fixed (caller params DeEP-CLONED in; reuse-falsification
+  regression test reads back from disk). B3 fixed (three killers added: the review's own
+  python-computed id vector 7f36cdbd8178cbf3; acked-flush-persists-empty; ordinal continuation
+  past reloaded max). S1/S2/S3 wrapper greps fixed + proven live on the fixture. S4 notes
+  FIFO-capped (A-C8-12). S6 stronger all-member timer scan. S7 exact-count assertions. S9 .bak
+  deleted post-replace (exclusion set stays two names; criterion-9 note updated). S10 flush
+  reentrancy guard. NIT4 ctor auto-load (pre-load Log destroyed the prior file). Suite 257/257.
+  S5 (persist cadence cost) and S8 (ADR-0006:238 self-contradiction) are HUMAN decisions —
+  flagged in the PR disposition. Q-U/M-21 deviation: exclusion set = analytics_queue.dat + the
+  transient .tmp (the .bak never survives a persist as of S9's fix); manifest artifact stays
+  Q-G-era work with RK-17.

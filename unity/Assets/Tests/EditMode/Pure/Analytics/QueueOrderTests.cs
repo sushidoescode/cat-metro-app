@@ -60,6 +60,79 @@ namespace CatMetro.Tests.Analytics
             Assert.That(reborn.Snapshot().Select(e => e.Id).ToArray(), Is.EqualTo(before));
         }
 
+        // Review B3(a): the id DERIVATION is pinned against an independent implementation —
+        // python sha256("cm-queue-v1|0|level_started|{\"lvl\":7,\"mode\":\"classic\"}") first
+        // 8 bytes = 7f36cdbd8178cbf3 (computed by the CM-C8 review round from the persisted
+        // file alone). A Guid or altered preimage cannot reproduce this.
+        [Test]
+        public void IdDerivation_MatchesTheIndependentlyComputedVector()
+        {
+            using var root = new SFixtures.TempRoot();
+            var (q, _, _) = QFixtures.Queue(root);
+            var p = new Newtonsoft.Json.Linq.JObject { ["lvl"] = 7, ["mode"] = "classic" };
+            q.Log(new CatMetro.Services.AnalyticsEvent("level_started", p));
+            Assert.That(q.Snapshot()[0].Id, Is.EqualTo("7f36cdbd8178cbf3"));
+        }
+
+        // Review B3(b): an acked flush must persist the EMPTY queue — otherwise every launch
+        // re-uploads the same delivered batch forever.
+        [Test]
+        public void AckedFlush_PersistsTheEmptyQueue()
+        {
+            using var root = new SFixtures.TempRoot();
+            var (q, transport, _) = QFixtures.Queue(root);
+            q.Log(QFixtures.Ev("a"));
+            q.Log(QFixtures.Ev("b"));
+            q.OnTrigger("app_pause"); // acked (transport.Available = true)
+            Assert.That(q.QueuedEventCount, Is.Zero);
+
+            var (reborn, rebornTransport, _) = QFixtures.Queue(root);
+            Assert.That(reborn.QueuedEventCount, Is.Zero,
+                "the empty state is DURABLE — nothing re-delivers after a restart");
+            reborn.OnTrigger("network_reachable");
+            Assert.That(rebornTransport.Batches, Is.Empty);
+        }
+
+        // Review B3(c): ordinals continue past the reloaded maximum — a reset would let a
+        // repeated payload reproduce an old id and the consumer would DROP the newer event.
+        [Test]
+        public void Ordinals_ContinuePastTheReloadedMax()
+        {
+            using var root = new SFixtures.TempRoot();
+            var (q, transport, _) = QFixtures.Queue(root);
+            transport.Available = false;
+            q.Log(QFixtures.Ev("a"));
+            q.Log(QFixtures.Ev("b"));
+
+            var (reborn, _, _) = QFixtures.Queue(root);
+            reborn.Log(QFixtures.Ev("c"));
+
+            var ords = reborn.Snapshot().Select(e => e.Ord).ToArray();
+            Assert.That(ords, Is.EqualTo(new long[] { 0, 1, 2 }),
+                "the third event takes ordinal 2, never a reused 0");
+            Assert.That(reborn.Snapshot().Select(e => e.Id).Distinct().Count(), Is.EqualTo(3));
+        }
+
+        // Review B2: a caller reusing its params buffer must not falsify already-queued
+        // records — the queue clones on the way in, so record 0 keeps the bytes its id was
+        // derived from.
+        [Test]
+        public void ReusedCallerBuffer_CannotFalsifyQueuedRecords()
+        {
+            using var root = new SFixtures.TempRoot();
+            var (q, _, _) = QFixtures.Queue(root);
+            var buffer = new Newtonsoft.Json.Linq.JObject { ["lvl"] = 1 };
+            q.Log(new CatMetro.Services.AnalyticsEvent("level_started", buffer));
+            buffer["lvl"] = 2; // the caller reuses its object
+            q.Log(new CatMetro.Services.AnalyticsEvent("level_completed", buffer));
+
+            var (reborn, _, _) = QFixtures.Queue(root); // read back from DISK
+            var records = reborn.Snapshot();
+            Assert.That((int)records[0].Params["lvl"], Is.EqualTo(1),
+                "record 0 keeps the payload its id was derived from");
+            Assert.That((int)records[1].Params["lvl"], Is.EqualTo(2));
+        }
+
         // Criterion 8: an unacked flush re-hands the SAME batch with the SAME ids — the
         // consumer dedupes by id instead of inflating counts.
         [Test]

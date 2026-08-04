@@ -26,9 +26,14 @@ namespace CatMetro.Tests.Analytics
             int granted = ledger.TryGrant("txn-nt", "rewind_pack_small", 3, 0L);
             Assert.That(granted, Is.EqualTo(3));
 
-            // ...then the process dies before/while the event enqueue persists.
+            // ...then the disk fails while the event enqueue persists. Review B1: the queue is
+            // lossy-but-VISIBLE — the fault surfaces as a recorded note, NEVER as an exception
+            // into the purchase path or the app-pause flush (ADR-0006 §5 loss posture).
             fs.FaultPoint = SFixtures.Fault.InReplace;
-            Assert.Throws<IOException>(() => q.Log(QFixtures.Ev("purchase_completed")));
+            Assert.DoesNotThrow(() => q.Log(QFixtures.Ev("purchase_completed")));
+            Assert.That(q.Notes.Any(n =>
+                n.Name == "queue_dropped" && n.Detail.Contains("persist_failed")), Is.True,
+                "the at-risk tail is a visible note, not a crash");
             fs.FaultPoint = SFixtures.Fault.None;
 
             // Reboot: the grant is durable; the event is gone. Never the inverse.

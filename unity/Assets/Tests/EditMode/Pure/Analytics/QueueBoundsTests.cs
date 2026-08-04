@@ -37,7 +37,10 @@ namespace CatMetro.Tests.Analytics
                 "the survivors are the NEWEST N, in order");
             var drops = q.Notes.Where(n => n.Name == "queue_dropped").ToList();
             Assert.That(drops.Count, Is.EqualTo(2), "one note per overflow event");
-            Assert.That(drops.All(d => d.Detail.Contains("count=1")), Is.True);
+            // Review S7: EXACT equality — "count=10".Contains("count=1") is true, so a
+            // substring check could never prove exactness.
+            Assert.That(drops.Select(d => d.Detail),
+                Is.All.EqualTo("count=1 oldest-first overflow"));
         }
 
         // Criterion 4, byte limb (synthetic bounds — the shipped byte cap is a backstop that
@@ -52,9 +55,13 @@ namespace CatMetro.Tests.Analytics
             q.Log(QFixtures.Ev("big2", size: 200));
             q.Log(QFixtures.Ev("big3", size: 200)); // pushes total past 700
 
+            // Review S7: the contract's full byte-limb assertions — survivors are the newest N
+            // in order, the dropped count is exact, one note per overflow event.
             Assert.That(q.Snapshot().Select(e => e.Name).ToArray(),
-                Does.Not.Contain("big1"), "oldest dropped first on the byte limb");
-            Assert.That(q.Notes.Any(n => n.Name == "queue_dropped"), Is.True);
+                Is.EqualTo(new[] { "big2", "big3" }), "the survivors are the NEWEST N, in order");
+            var drops = q.Notes.Where(n => n.Name == "queue_dropped").ToList();
+            Assert.That(drops.Count, Is.EqualTo(1), "one note per overflow event");
+            Assert.That(drops[0].Detail, Is.EqualTo("count=1 oldest-first overflow"));
             Assert.That(q.Snapshot().Sum(e => e.Bytes), Is.LessThanOrEqualTo(700));
         }
 

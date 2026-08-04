@@ -23,18 +23,22 @@ fi
 # Criterion 1: ONE write-path implementation — the queue names no file stream of its own; all
 # disk access rides the CM-C7 seam. Comments stripped first (CM-C7 review F3 precedent).
 dec() { sed 's|//.*||' "$1"; }
+writepath='\bFileStream\b|\bStreamWriter\b|\bStreamReader\b|\bFile\.(Replace|Move|WriteAll|ReadAll|Copy|Open|Create|Append|Delete)'
 for f in "$an_root"/*.cs; do
-  if dec "$f" | grep -qE '\bFileStream\b|\bFile\.(Replace|Move|WriteAll|ReadAll|Delete)\b'; then
+  if dec "$f" | grep -qE "$writepath"; then
     fail "criterion 1: a second write-path implementation in $f"
   fi
 done
+# ...with the pattern proven LIVE (review S1: the old trailing-\b form missed WriteAllBytes).
+grep -rEq "$writepath" tests/fixtures/analytics-bad || fail "criterion 1: write-path pattern dead"
+
 
 # Criterion 2: the five bound literals are hard-coded in no Analytics source (config rows only).
 lit=$(grep -rEn --include='*.cs' '\b(2000|1048576|512|64)\b' "$an_root" 2>/dev/null || true)
 [ -z "$lit" ] || fail "criterion 2: hard-coded queue bound literal: $lit"
 
 # Criterion 7: metrics-only — no CM-C7 state type reachable from the queue sources...
-state_guard='\b(ConsumableLedger|SaveStore|SaveState|ISave)\b'
+state_guard='\b(ConsumableLedger|SaveStore|SaveState|ISave|SaveDefaults|SaveEventRecord|MigrationTable|RealSaveFileSystem|LoadResult)\b'
 hits=$(grep -rEn --include='*.cs' "$state_guard" "$an_root" 2>/dev/null || true)
 [ -z "$hits" ] || fail "criterion 7: CM-C7 state type referenced from the queue: $hits"
 
@@ -46,5 +50,11 @@ hits=$(grep -rEn "$sdk_guard" "$an_root" unity/Assets/Scripts/Services/Analytics
 grep -rEq "$state_guard" tests/fixtures/analytics-bad || fail "criterion 7: state pattern dead"
 grep -rEq "$sdk_guard" tests/fixtures/analytics-bad || fail "criterion 10: SDK pattern dead"
 
-echo "queue.test.sh: OK (1-shape, 2, 7, 10, 12)"
+# Criterion 11 (grep half, review S2): no code path under the queue names the save file —
+# the two writes can never be one operation if the queue cannot even address save.dat.
+hits=$(grep -rEn --include='*.cs' 'save\.dat|SavePath' "$an_root" 2>/dev/null || true)
+[ -z "$hits" ] || fail "criterion 11: the queue names the save file: $hits"
+grep -rEq 'save\.dat' tests/fixtures/analytics-bad || fail "criterion 11: save-file pattern dead"
+
+echo "queue.test.sh: OK (1-shape+fixture, 2, 7, 10, 11-grep, 12)"
 exit 0

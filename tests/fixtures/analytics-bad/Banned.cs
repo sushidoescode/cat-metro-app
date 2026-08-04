@@ -5,5 +5,7 @@
 class AnalyticsBanned
 {
     private object _sdk; // Firebase.Analytics + OneSignalSDK + GoogleMobileAds + RevenueCat
-    private object _state; // ConsumableLedger SaveStore SaveState ISave
+    private object _state; // ConsumableLedger SaveStore SaveState ISave SaveDefaults
+    private object _write; // File.WriteAllBytes FileStream StreamWriter — a second write path
+    private object _file;  // "save.dat" — the queue may never name the save file
 }
