@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
+using Newtonsoft.Json.Linq;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using NUnit.Framework;
@@ -101,8 +101,10 @@ namespace CatMetro.Tests.Domain
             string expected = null;
             if (File.Exists(goldenPath))
             {
-                using var doc = JsonDocument.Parse(File.ReadAllText(goldenPath));
-                expected = doc.RootElement.GetProperty("replayHash").GetString();
+                // Q-G scaffold port: Newtonsoft (the tree-wide pin, present in BOTH hosts) —
+                // Unity's scripting profile ships no System.Text JSON stack. Assertions
+                // untouched; the golden file is untouched.
+                expected = (string)JObject.Parse(File.ReadAllText(goldenPath))["replayHash"];
             }
 
             if (expected == hash)
@@ -111,15 +113,19 @@ namespace CatMetro.Tests.Domain
                 return;
             }
 
-            var goldenJson = JsonSerializer.Serialize(new
+            var goldenJson = new JObject
             {
-                levelId = "L001",
-                seed = Fixtures.L001Seed,
-                commandLog = new { formatVersion = 1, entries = new[] { new { switchId = 0, tick = 12 } } },
-                fixture = "in-code L001 shape per state/handoffs/CM-C1.md §Golden fixture (A-C1-2: construction is part of the golden's meaning)",
-                digestBytes = 143,
-                replayHash = hash,
-            }, new JsonSerializerOptions { WriteIndented = true });
+                ["levelId"] = "L001",
+                ["seed"] = Fixtures.L001Seed,
+                ["commandLog"] = new JObject
+                {
+                    ["formatVersion"] = 1,
+                    ["entries"] = new JArray(new JObject { ["switchId"] = 0, ["tick"] = 12 }),
+                },
+                ["fixture"] = "in-code L001 shape per state/handoffs/CM-C1.md §Golden fixture (A-C1-2: construction is part of the golden's meaning)",
+                ["digestBytes"] = 143,
+                ["replayHash"] = hash,
+            }.ToString(Newtonsoft.Json.Formatting.Indented);
 
             Console.Out.WriteLine("GOLDEN_JSON_BEGIN");
             Console.Out.WriteLine(goldenJson);

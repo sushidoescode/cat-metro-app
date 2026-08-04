@@ -147,19 +147,26 @@ namespace CatMetro.Tests.Domain
             return due.ToArray();
         }
 
-        // Walks up from the test assembly to the repo root (the directory holding dotnet/ and scripts/).
+        // Walks up to the repo root (the directory holding dotnet/ and scripts/). Dual-host
+        // (Q-G scaffold port): under `dotnet test` the assembly's base directory sits inside the
+        // repo; under the Unity test runner it sits inside the EDITOR INSTALL, so the working
+        // directory — the unity/ project root — is the anchor that works there. Try both.
         public static string RepoRoot()
         {
-            var dir = new DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null)
+            foreach (var start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
             {
-                if (Directory.Exists(Path.Combine(dir.FullName, "dotnet"))
-                    && Directory.Exists(Path.Combine(dir.FullName, "scripts"))
-                    && File.Exists(Path.Combine(dir.FullName, "AGENTS.md")))
-                    return dir.FullName;
-                dir = dir.Parent;
+                var dir = new DirectoryInfo(start);
+                while (dir != null)
+                {
+                    if (Directory.Exists(Path.Combine(dir.FullName, "dotnet"))
+                        && Directory.Exists(Path.Combine(dir.FullName, "scripts"))
+                        && File.Exists(Path.Combine(dir.FullName, "AGENTS.md")))
+                        return dir.FullName;
+                    dir = dir.Parent;
+                }
             }
-            throw new InvalidOperationException("repo root not found above " + AppContext.BaseDirectory);
+            throw new InvalidOperationException("repo root not found above "
+                + AppContext.BaseDirectory + " or " + Directory.GetCurrentDirectory());
         }
     }
 }
