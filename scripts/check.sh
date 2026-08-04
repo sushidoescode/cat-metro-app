@@ -125,5 +125,17 @@ else
   done
 fi
 
+# --- CM-C6: the Daily root is clock-free (criterion 2) ---
+# Date keys are INPUTS (yyyy-MM-dd strings) — never read from a clock. The two time types and
+# the clock-seam interface may not appear under the Daily root even in prose. Scoped to
+# Content/Daily ONLY: Content/Validation's staleness stage legally uses a time type OUTSIDE it
+# (CM-C5 A-C5-4), and the Domain block above already covers the sim tree.
+daily_banned='\b(DateTime|DateTimeOffset|IClock)\b'
+if [ -n "$purity_root" ]; then
+  scan_banned "$purity_root" "$daily_banned" "--root override, Daily clock ban (CM-C6)"
+else
+  scan_banned unity/Assets/Scripts/Content/Daily "$daily_banned" "Daily clock ban, CM-C6"
+fi
+
 [ "$fail" -eq 0 ] && echo "check: OK (interim harness — real lint+typecheck arrive with the stack)"
 exit "$fail"
