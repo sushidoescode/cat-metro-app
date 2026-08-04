@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 2,
+  "id": "L003",
+  "name": "Switch Back",
+  "seed": 1003,
+  "meta": {
+    "band": "onboarding",
+    "difficultyTarget": 0.12,
+    "mechanics": [
+      "switch"
+    ],
+    "newMechanic": null,
+    "teachingGoal": "The switch starts pointing the wrong way this time: read the wave order, commit twice",
+    "minActionWindowTicks": 14,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      {
+        "id": "SRC",
+        "x": 3,
+        "y": 9
+      },
+      {
+        "id": "J1",
+        "x": 3,
+        "y": 6
+      },
+      {
+        "id": "RED",
+        "x": 1,
+        "y": 2
+      },
+      {
+        "id": "BLU",
+        "x": 5,
+        "y": 2
+      }
+    ],
+    "edges": [
+      {
+        "id": "E1",
+        "from": "SRC",
+        "to": "J1",
+        "travelTicks": 12
+      },
+      {
+        "id": "E2",
+        "from": "J1",
+        "to": "RED",
+        "travelTicks": 14
+      },
+      {
+        "id": "E3",
+        "from": "J1",
+        "to": "BLU",
+        "travelTicks": 14
+      }
+    ]
+  },
+  "sources": [
+    {
+      "nodeId": "SRC",
+      "allowedColors": [
+        "red",
+        "blue"
+      ]
+    }
+  ],
+  "stations": [
+    {
+      "nodeId": "RED",
+      "accepts": [
+        "red"
+      ],
+      "capacity": 6
+    },
+    {
+      "nodeId": "BLU",
+      "accepts": [
+        "blue"
+      ],
+      "capacity": 6
+    }
+  ],
+  "switches": [
+    {
+      "id": "S1",
+      "nodeId": "J1",
+      "routes": [
+        "E2",
+        "E3"
+      ],
+      "initialRoute": 0
+    }
+  ],
+  "waves": [
+    {
+      "tick": 8,
+      "sourceNode": "SRC",
+      "color": "blue",
+      "count": 2,
+      "spacingTicks": 20
+    },
+    {
+      "tick": 84,
+      "sourceNode": "SRC",
+      "color": "red",
+      "count": 2,
+      "spacingTicks": 20
+    }
+  ],
+  "win": {
+    "deliveries": 4,
+    "timeLimitTicks": 200,
+    "perfectMaxSwitches": 2,
+    "stars": {
+      "two": 250,
+      "three": 350
+    }
+  },
+  "economy": {
+    "baseTickets": 20,
+    "perfectBonus": 10
+  }
+}
