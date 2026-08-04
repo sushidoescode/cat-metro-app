@@ -69,4 +69,13 @@ drift tests · `tests/save/save.test.sh` harness discovery.
 
 ## Status log
 
-- (filled per milestone)
+- anchor: branch cut off main (CM-C6 #14 / L002-L005 #15 both awaiting human merge — independent).
+- red: 56 Save NUnit cases (55 failing on skeleton; 1 declaration-level pin, the IStorageRoot
+  shape). Services gained the SaveState/ISave/LoadResult boundary types (A-C7-6).
+- green: implementation landed whole from the staged drafts; 56/56, suite 225/225 on this base
+  (169 prior + 56; the 67 Daily cases live on unmerged #14). CRC-32 check value and both ledger
+  key vectors reproduced the python pins exactly (A-C7-11).
+- harness: tests/save/save.test.sh + tests/fixtures/save-bad negative fixture. The wrapper's
+  criterion-13 grep caught its own first draft naming the engine path token in a comment —
+  reworded (comments are in scope BY DESIGN; the CM-C1 landmine class).
+- gates: check OK · test 6/6 · save.test.sh OK (4-shape, 13, 14, 15).
