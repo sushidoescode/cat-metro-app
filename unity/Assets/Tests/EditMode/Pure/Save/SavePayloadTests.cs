@@ -22,6 +22,29 @@ namespace CatMetro.Tests.Save
             Assert.That(keys, Is.EquivalentTo(TopLevel), "no more, no fewer (criterion 2)");
         }
 
+        // Review F5: criterion 2 says "the SERIALISED payload's top-level keys" — assert the
+        // bytes on disk, not the in-memory object, so a serializer-settings change (e.g. a
+        // future NullValueHandling tweak at the shared settings site) that silently drops the
+        // only null key (breadcrumbs.purchase) fails HERE before an irreversible v1 file ships.
+        [Test]
+        public void SerializedFile_CarriesExactlyTheKeySet_IncludingTheNullKey()
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            store.Load();
+            store.CommitAtomic();
+
+            var parsed = SaveHeader.TryParse(SFixtures.RawFile(store.SavePath),
+                SaveDefaults.MAGIC, out var payloadBytes);
+            Assert.That(parsed, Is.Not.Null);
+            var file = JObject.Parse(System.Text.Encoding.UTF8.GetString(payloadBytes));
+            Assert.That(file.Properties().Select(p => p.Name).ToArray(),
+                Is.EquivalentTo(TopLevel), "the FILE's key set, no more, no fewer");
+            Assert.That(((JObject)file["breadcrumbs"]).Property("purchase"), Is.Not.Null,
+                "the null-valued key must survive serialisation");
+            Assert.That(file["breadcrumbs"]["purchase"].Type, Is.EqualTo(JTokenType.Null));
+        }
+
         [Test]
         public void CapsCounters_ExactlyTheFiveLockedAdSurfaces()
         {

@@ -79,3 +79,20 @@ drift tests · `tests/save/save.test.sh` harness discovery.
   criterion-13 grep caught its own first draft naming the engine path token in a comment —
   reworded (comments are in scope BY DESIGN; the CM-C1 landmine class).
 - gates: check OK · test 6/6 · save.test.sh OK (4-shape, 13, 14, 15).
+- review round 1 (12 findings, REQUEST-CHANGES): F1 CONFIRMED-AND-FIXED (grant after refused
+  downgrade returned a grantable value with zero durability — TryGrant now refuses read-only up
+  front AND consumes the new TryCommitAtomic success channel; reviewer's double-grant probe
+  scenario closed, test added). F2 fixed (stale Content/Validator lock files from the Services
+  Newtonsoft edge — regenerated, --locked-mode restores again). F3 fixed (comment-satisfiable
+  flush grep — comments stripped; the reviewer's deletion mutation now FAILS the wrapper,
+  re-proven). F4 fixed (over-cap no longer throws: every refusal recorded, void signature
+  honoured, ledger uses the bool channel). F5 fixed (serialized-file key-set test incl. the null
+  key). F7 fixed as A-C7-13 (NEW session freeze: the v1 payload depth ceiling = the content load
+  bound, enforced LOUDLY at commit — was an unlisted assumption, now a listed, tested decision).
+  F8 fixed (engine grep covers the whole Scripts tree minus Bootstrap). F9 fixed (version-aware
+  payload spine check in TryRead — mangled shapes fall down the chain). F10 fixed (SI battery
+  runs with a .bak present — CommittedStore commits twice). F11 fixed (DriftB asserts all
+  content rows verbatim). F12: CS0675 casts cleaned; RuntimeBounds parses through the hardened
+  loader; sln BOM left (tooling-canonical). F6 documented as an INVARIANT on SaveState (no
+  subtree refs across a commit) — the structural recut option rides the A-C7-6 human
+  ratification. Suite 229/229 after the round.

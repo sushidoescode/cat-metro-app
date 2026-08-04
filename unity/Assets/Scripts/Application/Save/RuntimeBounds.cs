@@ -68,7 +68,13 @@ namespace CatMetro.Application.Save
                 if (bytes == null)
                     return CatMetro.Content.ContentResult<RuntimeBounds>.Failure(
                         CatMetro.Content.ContentErrorKind.MalformedJson, "null bounds payload");
-                var o = JObject.Parse(System.Text.Encoding.UTF8.GetString(bytes));
+                // Review F12: through the hardened one-truth loader (duplicate-key + depth
+                // guards), not a raw parse — this file is the single source every bound reads.
+                var token = CatMetro.Content.ContentJson.LoadToken(
+                    System.Text.Encoding.UTF8.GetString(bytes));
+                if (!(token is JObject o))
+                    return CatMetro.Content.ContentResult<RuntimeBounds>.Failure(
+                        CatMetro.Content.ContentErrorKind.MalformedJson, "bounds root must be an object");
                 var schema = o["schemaVersion"];
                 if (schema == null || schema.Type != JTokenType.Integer || (int)schema != 1)
                     return CatMetro.Content.ContentResult<RuntimeBounds>.Failure(

@@ -243,6 +243,26 @@ namespace CatMetro.Tests.Save
                 e.Name == "error_caught" && e.Detail.Contains("save_corrupt")), Is.True);
         }
 
+        // Review F9: a structurally-valid JSON object missing the v1 spine (a future migration
+        // bug's likeliest output) must fall down the chain, never load Ok and detonate later.
+        [Test]
+        public void MangledShape_FallsBackInsteadOfLoadingOk()
+        {
+            using var root = new SFixtures.TempRoot();
+            var (store, _) = SFixtures.CommittedStore(root);
+            var mangled = SaveDefaults.FreshPayload();
+            mangled.Remove("ledger");
+            SFixtures.WriteRaw(store.SavePath, SFixtures.FileWithVersion(1, mangled));
+
+            var reloaded = SFixtures.Store(root);
+            LoadResult result = default;
+            Assert.DoesNotThrow(() => result = reloaded.Load());
+            Assert.That(result, Is.Not.EqualTo(LoadResult.Ok),
+                "a spine-less payload is corrupt, not adoptable");
+            Assert.That(reloaded.State.Payload["ledger"], Is.Not.Null,
+                "whatever loaded carries a real ledger object");
+        }
+
         [Test]
         public void StaleTmp_IsDeletedOnBoot()
         {

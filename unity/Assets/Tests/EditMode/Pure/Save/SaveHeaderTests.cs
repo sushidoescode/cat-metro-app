@@ -36,12 +36,12 @@ namespace CatMetro.Tests.Save
             // offset 6, uint16 LE: saveVersion = 1
             Assert.That(file[6] | (file[7] << 8), Is.EqualTo(1));
             // offset 8, uint32 LE: payloadLength = file length - 16
-            uint length = (uint)(file[8] | (file[9] << 8) | (file[10] << 16) | ((uint)file[11] << 24));
+            uint length = (uint)file[8] | ((uint)file[9] << 8) | ((uint)file[10] << 16) | ((uint)file[11] << 24);
             Assert.That(length, Is.EqualTo((uint)(file.Length - SaveHeader.SIZE)));
             // offset 12, uint32 LE: CRC-32/IEEE over the payload bytes
             var payload = new byte[length];
             System.Array.Copy(file, SaveHeader.SIZE, payload, 0, (int)length);
-            uint crc = (uint)(file[12] | (file[13] << 8) | (file[14] << 16) | ((uint)file[15] << 24));
+            uint crc = (uint)file[12] | ((uint)file[13] << 8) | ((uint)file[14] << 16) | ((uint)file[15] << 24);
             Assert.That(crc, Is.EqualTo(Crc32.Compute(payload)));
         }
 

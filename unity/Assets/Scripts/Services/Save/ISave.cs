@@ -17,6 +17,10 @@ namespace CatMetro.Services
     // The mutable in-memory save: the payload JObject IS the state (unknown keys round-trip
     // untouched — ADR-0006:72 "a migration step never deletes a key it does not understand";
     // CM-C7 criterion 3), with typed views only where the ledger needs arithmetic.
+    // INVARIANT (review F6): a successful grant swaps Payload to a mutated clone by identity —
+    // callers must NOT hold JToken subtree references across a commit; re-read from Payload
+    // after every commit. The recut of this boundary (field vs guarded setter) rides the
+    // A-C7-6 human ratification.
     public sealed class SaveState
     {
         public JObject Payload;

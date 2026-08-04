@@ -93,18 +93,21 @@ namespace CatMetro.Tests.Save
             new SaveStore(root, fs ?? new RecordingFs(), bounds ?? RepoBounds(), migrations);
 
         // A store with recognisable state committed durably — the pre-interruption truth the SI
-        // invariants compare against.
+        // invariants compare against. COMMITS TWICE (review F10): the second commit takes the
+        // File.Replace path, so a .bak exists and the SI battery runs against the realistic
+        // main+bak disk state, not the first-commit File.Move special case.
         public static (SaveStore store, RecordingFs fs) CommittedStore(TempRoot root)
         {
             var fs = new RecordingFs();
             var store = Store(root, fs);
             store.Load();
+            store.CommitAtomic(); // first commit: the A-C7-12 Move path
             store.State.Tickets = 42;
             store.State.RewindBalance = 7;
             ((JArray)store.State.Payload["ledger"]["dedupe"]).Add("a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4");
             store.State.Payload["settings"]["equippedThemeId"] = "midnight";
             ((JArray)store.State.Payload["entitlements"]["active"]).Add("theme_pack");
-            store.CommitAtomic();
+            store.CommitAtomic(); // second commit: Replace — .bak now exists
             return (store, fs);
         }
 

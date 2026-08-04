@@ -20,12 +20,13 @@ if ! dotnet test dotnet/CatMetro.sln -c Release --nologo > "$tmp/test.out" 2>&1;
   fail "criterion 15: dotnet test not green"
 fi
 
-# Criterion 13: engine-free — zero UnityEngine / persistentDataPath outside Bootstrap (which
-# does not exist yet; the grep covers the whole Scripts tree minus that future root).
-eng=$(grep -rEn --include='*.cs' '\b(UnityEngine|persistentDataPath)\b' "$app_root" unity/Assets/Scripts/Services 2>/dev/null || true)
+# Criterion 13: engine-free — zero UnityEngine / persistentDataPath outside Bootstrap, over the
+# WHOLE Scripts tree minus that future root (review F8: scanning only two subtrees left Content
+# and Domain unguarded for the path token and the tree unguarded for conditional compilation).
+eng=$(grep -rEn --include='*.cs' --exclude-dir=Bootstrap '\b(UnityEngine|persistentDataPath)\b' unity/Assets/Scripts 2>/dev/null || true)
 [ -z "$eng" ] || fail "criterion 13: engine reference outside Bootstrap: $eng"
-if grep -rEnq --include='*.cs' '#if UNITY_ANDROID' "$app_root" 2>/dev/null; then
-  fail "criterion 13: conditional compilation under Application"
+if grep -rEnq --include='*.cs' --exclude-dir=Bootstrap '#if UNITY_ANDROID' unity/Assets/Scripts 2>/dev/null; then
+  fail "criterion 13: conditional compilation outside Bootstrap"
 fi
 
 # Criterion 14 (Q-T): the ledger is a data structure — zero monetization tokens under Save.
@@ -36,10 +37,13 @@ grep -rEq '/billing/|/iap/|/ads/|RevenueCat|Purchases\.|BillingClient|GoogleMobi
   || fail "criterion 14: monetization pattern failed to fire on the negative fixture"
 
 # Criterion 4's real-filesystem half: the durable-write shape lives in exactly one file.
-grep -q 'Flush(flushToDisk: true)' "$app_root/Save/ISaveFileSystem.cs" \
-  || fail "criterion 4: Flush(flushToDisk: true) missing from the real filesystem seam"
-grep -q 'File\.Replace' "$app_root/Save/ISaveFileSystem.cs" \
-  || fail "criterion 4: File.Replace missing from the real filesystem seam"
+# Review F3: comments are STRIPPED first — a comment naming the call must never satisfy the
+# guard for the single most load-bearing line in the contract (the inverted CM-C1 landmine).
+decommented=$(sed 's|//.*||' "$app_root/Save/ISaveFileSystem.cs")
+printf '%s\n' "$decommented" | grep -q 'Flush(flushToDisk: true)' \
+  || fail "criterion 4: Flush(flushToDisk: true) call missing from the real filesystem seam"
+printf '%s\n' "$decommented" | grep -q 'File\.Replace' \
+  || fail "criterion 4: File.Replace call missing from the real filesystem seam"
 
 echo "save.test.sh: OK (4-shape, 13, 14, 15)"
 exit 0

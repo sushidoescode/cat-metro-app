@@ -78,6 +78,6 @@ namespace CatMetro.Application.Save
             (ushort)(b[at] | (b[at + 1] << 8));
 
         private static uint ReadU32(byte[] b, int at) =>
-            (uint)(b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | ((uint)b[at + 3] << 24));
+            (uint)b[at] | ((uint)b[at + 1] << 8) | ((uint)b[at + 2] << 16) | ((uint)b[at + 3] << 24);
     }
 }

@@ -87,6 +87,32 @@ namespace CatMetro.Tests.Save
             Assert.That((int)payload["economy"]["rewindBalance"], Is.EqualTo(2));
         }
 
+        // Review F1 (the round's blocking find): after a refused downgrade the profile is
+        // read-only — a grant that "succeeds" with zero durability would let Play's redelivery
+        // of the unconsumed purchase double-grant on every launch.
+        [Test]
+        public void TryGrant_AfterRefusedDowngrade_GrantsZeroAndWritesNothing()
+        {
+            using var root = new SFixtures.TempRoot();
+            var fs = new SFixtures.RecordingFs();
+            var store = SFixtures.Store(root, fs);
+            var future = SFixtures.FileWithVersion(2);
+            SFixtures.WriteRaw(store.SavePath, future);
+            Assert.That(store.Load(), Is.EqualTo(CatMetro.Services.LoadResult.RefusedDowngrade));
+            fs.Calls.Clear();
+
+            var ledger = new ConsumableLedger(store, SFixtures.RepoBounds());
+            int granted = ledger.TryGrant("txn-downgrade", "rewind_pack_small", 5, 0L);
+
+            Assert.That(granted, Is.EqualTo(0), "a read-only profile can never grant");
+            Assert.That(store.State.RewindBalance, Is.EqualTo(0), "no in-memory phantom balance");
+            Assert.That(((JArray)store.State.Payload["ledger"]["dedupe"]).Count, Is.Zero);
+            Assert.That(fs.Calls, Is.Empty, "nothing was written");
+            Assert.That(SFixtures.RawFile(store.SavePath), Is.EqualTo(future),
+                "the newer file's bytes stay untouched");
+            Assert.That(store.ReportedEvents.Any(e => e.Detail.Contains("save_readonly")), Is.True);
+        }
+
         [Test]
         public void FaultBeforeTheWriteLands_ProducesNeitherBalanceNorEvent()
         {

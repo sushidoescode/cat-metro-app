@@ -101,6 +101,15 @@ namespace CatMetro.Application.Save
                 var token = CatMetro.Content.ContentJson.LoadToken(
                     new System.Text.UTF8Encoding(false, true).GetString(payloadBytes));
                 if (!(token is JObject o)) return null;
+                // Review F9: a structurally-valid-but-mangled payload (a future migration bug's
+                // likeliest shape) must fall to .bak, not load Ok and detonate two screens later.
+                // Version-aware: a FUTURE version's payload is never shape-judged here — the
+                // downgrade refusal in Adopt must see it first, untouched.
+                if (header.SaveVersion <= SaveDefaults.SAVE_VERSION)
+                {
+                    if (!(o["saveVersion"] is JValue sv) || sv.Type != JTokenType.Integer) return null;
+                    if (!(o["ledger"] is JObject) || !(o["economy"] is JObject)) return null;
+                }
                 return new ReadFile { Header = header, Payload = o };
             }
             catch
@@ -151,35 +160,39 @@ namespace CatMetro.Application.Save
         }
 
         // Criterion 4: serialise -> WriteTempDurable(save.dat.tmp) -> Replace(tmp, dat, bak).
-        // Never in place. Criterion 11: the size ceiling refuses BEFORE any write.
+        // Never in place. The pinned void signature (overview.md: "throws only on unrecoverable
+        // IO") stands: EVERY refusal is recorded, none throws (review F4 — an over-cap throw on
+        // the pause path would crash against the never-cut crash-free floor). Callers needing
+        // the outcome use TryCommitAtomic — the success channel review F1 demanded.
         public void CommitAtomic()
+        {
+            TryCommitAtomic();
+        }
+
+        // True iff bytes landed durably. False = a RECORDED refusal (read-only after downgrade,
+        // depth ceiling, size ceiling), each refused BEFORE any filesystem call. IO faults
+        // propagate — the ledger's rollback path depends on that distinction.
+        public bool TryCommitAtomic()
         {
             if (ReadOnlyMode)
             {
                 Report("error_caught", "domain=save_readonly detail=commit refused after downgrade");
-                return;
+                return false;
             }
-            var file = SerializeFile();
-            if (file.Length > _bounds.SaveMaxBytes)
+            string json = SerializePayload();
+            // Review F7 / A-C7-13: the load path parses through the shared settings site, whose
+            // depth bound would silently reject a deeper file at the NEXT boot and lose the save
+            // to the fresh-fallback. Enforce the same ceiling LOUDLY at write time instead.
+            int depth = JsonDepth(json);
+            if (depth > CatMetro.Content.ContentBounds.CONTENT_MAX_JSON_DEPTH)
             {
-                Report("error_caught", "domain=save_over_cap detail=" + file.Length + " > "
-                    + _bounds.SaveMaxBytes);
-                throw new System.InvalidOperationException(
-                    "save file " + file.Length + " bytes exceeds SAVE_MAX_BYTES "
-                    + _bounds.SaveMaxBytes + " (CM-R05.5) — refused before writing");
+                Report("error_caught", "domain=save_depth detail=payload depth " + depth
+                    + " exceeds the load ceiling (A-C7-13) — refused before writing");
+                return false;
             }
-            _fs.WriteTempDurable(TmpPath, file);
-            _fs.Replace(TmpPath, SavePath, BakPath);
-            LastCommittedBytes = file.Length;
-        }
-
-        // Criterion 11: a non-positive budget writes nothing; over-cap refuses before writing.
-        // Finer time estimation is device-tier work (recorded in the handoff note); the pause
-        // path's contract-checkable halves are exactly these two refusals.
-        public bool TryCommitWithin(int budgetMs)
-        {
-            if (ReadOnlyMode || budgetMs <= 0) return false;
-            var file = SerializeFile();
+            var payloadBytes = new System.Text.UTF8Encoding(false).GetBytes(json);
+            var file = SaveHeader.Write(SaveDefaults.MAGIC, SaveDefaults.FORMAT_VERSION,
+                SaveDefaults.SAVE_VERSION, payloadBytes);
             if (file.Length > _bounds.SaveMaxBytes)
             {
                 Report("error_caught", "domain=save_over_cap detail=" + file.Length + " > "
@@ -192,10 +205,18 @@ namespace CatMetro.Application.Save
             return true;
         }
 
+        // Criterion 11: a non-positive budget writes nothing; every TryCommitAtomic refusal
+        // reads as false here too. Finer time estimation is device-tier work (A-C7-8).
+        public bool TryCommitWithin(int budgetMs)
+        {
+            if (budgetMs <= 0) return false;
+            return TryCommitAtomic();
+        }
+
         // The OnApplicationPause entry: the default budget IS the config row (criterion 11).
         public bool TryCommitOnPause() => TryCommitWithin(_bounds.SavePauseBudgetMs);
 
-        private byte[] SerializeFile()
+        private string SerializePayload()
         {
             // A-C7-3: serialised through the ONE settings site (ContentJson.CreateSerializer);
             // no JsonSerializerSettings is constructed anywhere in this assembly. UTF-8, no BOM.
@@ -205,9 +226,29 @@ namespace CatMetro.Application.Save
             {
                 CatMetro.Content.ContentJson.CreateSerializer().Serialize(writer, State.Payload);
             }
-            var payloadBytes = new System.Text.UTF8Encoding(false).GetBytes(sb.ToString());
-            return SaveHeader.Write(SaveDefaults.MAGIC, SaveDefaults.FORMAT_VERSION,
-                SaveDefaults.SAVE_VERSION, payloadBytes);
+            return sb.ToString();
+        }
+
+        // Bracket depth outside string literals — the LevelImporter scan shape, over the
+        // serialised text the load path will actually face (A-C7-13).
+        private static int JsonDepth(string json)
+        {
+            int depth = 0, max = 0;
+            bool inString = false, escaped = false;
+            foreach (char c in json)
+            {
+                if (inString)
+                {
+                    if (escaped) escaped = false;
+                    else if (c == '\\') escaped = true;
+                    else if (c == '"') inString = false;
+                    continue;
+                }
+                if (c == '"') inString = true;
+                else if (c == '{' || c == '[') { depth++; if (depth > max) max = depth; }
+                else if (c == '}' || c == ']') depth--;
+            }
+            return max;
         }
     }
 }

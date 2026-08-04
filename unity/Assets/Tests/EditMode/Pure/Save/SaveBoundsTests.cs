@@ -24,12 +24,42 @@ namespace CatMetro.Tests.Save
             store.State.Payload["futurePadding"] = new string('x', 600000);
             fs.Calls.Clear();
 
-            Assert.Throws<System.InvalidOperationException>(store.CommitAtomic);
+            // Review F4: refusals are RECORDED, never thrown — the pinned void signature throws
+            // only on unrecoverable IO, and the pause path must never crash the lifecycle caller.
+            Assert.DoesNotThrow(store.CommitAtomic);
             Assert.That(fs.Calls, Is.Empty, "refused BEFORE any filesystem call");
             Assert.That(store.ReportedEvents.Any(e => e.Detail.Contains("save_over_cap")), Is.True);
-
+            Assert.That(store.TryCommitAtomic(), Is.False, "the success channel reads false");
             Assert.That(store.TryCommitWithin(50), Is.False, "the pause path refuses too");
             Assert.That(fs.Calls, Is.Empty);
+        }
+
+        // Review F7 / A-C7-13: a payload deeper than the load ceiling must refuse LOUDLY at
+        // commit — the alternative is a file the very next boot silently rejects as corrupt,
+        // falling Fresh and losing the save.
+        [Test]
+        public void DeepPayload_IsRefusedAtCommit_NotLostAtNextBoot()
+        {
+            using var root = new SFixtures.TempRoot();
+            var fs = new SFixtures.RecordingFs();
+            var store = SFixtures.Store(root, fs);
+            store.Load();
+            store.State.Tickets = 42;
+            store.CommitAtomic();
+
+            var deep = new JObject();
+            var at = deep;
+            for (int i = 0; i < 20; i++) { var next = new JObject(); at["d"] = next; at = next; }
+            store.State.Payload["futureExperiment"] = deep;
+            fs.Calls.Clear();
+
+            Assert.That(store.TryCommitAtomic(), Is.False);
+            Assert.That(fs.Calls, Is.Empty, "refused before any filesystem call");
+            Assert.That(store.ReportedEvents.Any(e => e.Detail.Contains("save_depth")), Is.True);
+
+            var reload = SFixtures.Store(root);
+            Assert.That(reload.Load(), Is.EqualTo(LoadResult.Ok), "the durable save is intact");
+            Assert.That(reload.State.Tickets, Is.EqualTo(42));
         }
 
         [Test]
@@ -103,6 +133,10 @@ namespace CatMetro.Tests.Save
             Assert.That(b.QueueFlushTrigger, Is.EqualTo(new[]
                 { "network_reachable", "app_foreground", "app_pause", "high_water" }));
             Assert.That(b.AttributionMaxResims, Is.EqualTo(24));
+            // Review F11: the two content rows verbatim too — (c) alone was only RELATIVE
+            // coupling, so file+ContentBounds could drift together unnoticed by this suite.
+            Assert.That(b.ContentMaxFileBytes, Is.EqualTo(262144));
+            Assert.That(b.ContentMaxJsonDepth, Is.EqualTo(16));
             Assert.That(b.ContentBoundsProfile, Is.EqualTo("level-schema-v2"));
         }
 

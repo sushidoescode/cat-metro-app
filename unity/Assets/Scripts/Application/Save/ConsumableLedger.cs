@@ -45,6 +45,16 @@ namespace CatMetro.Application.Save
         {
             if (quantity < 1)
                 throw new System.ArgumentException("quantity must be >= 1 (economy mapping is the caller's)");
+            // Review F1: a read-only profile (downgrade refusal) can never grant — without this,
+            // the silent commit refusal below would return a grantable value with ZERO
+            // durability, and Play's redelivery of the unconsumed purchase would double-grant on
+            // every launch (the exact class ADR-0006 §3 exists to close).
+            if (_store.ReadOnlyMode)
+            {
+                _store.Report("error_caught",
+                    "domain=save_readonly detail=grant refused after downgrade");
+                return 0;
+            }
             string key = DedupeKey(productId, transactionId);
 
             var payload = _store.State.Payload;
@@ -84,14 +94,23 @@ namespace CatMetro.Application.Save
             economy["rewindBalance"] = (int)economy["rewindBalance"] + quantity;
 
             _store.State.Payload = mutated;
+            bool committed;
             try
             {
-                _store.CommitAtomic();
+                // Review F1/F4: the success CHANNEL, not the void ceremony — a recorded refusal
+                // (read-only raced in, depth or size ceiling) must roll back and grant nothing,
+                // exactly like an IO fault, or the caller emits an event no durable write backs.
+                committed = _store.TryCommitAtomic();
             }
             catch
             {
                 _store.State.Payload = original;
                 throw;
+            }
+            if (!committed)
+            {
+                _store.State.Payload = original;
+                return 0;
             }
             return quantity;
         }
