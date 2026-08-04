@@ -89,5 +89,41 @@ else
   tnh_scan unity/Assets/Scripts
 fi
 
+# --- CM-C4: solver discipline (criteria 2, 8, 13) ---
+# The solver may only reach state through the ONE Step symbol: no tick-advancing writes, no
+# score/chain reads (pins NEW-Q5/NEW-Q7), and no runtime tree may reference solver types
+# (CM-R01.6 guard — placement inside Domain removed the assembly boundary, Q-M cost c).
+# Review M2: compound assignments (+=, -=, *=, /=) are writes too; == stays excluded.
+solver_writes='(\.Tick[[:space:]]*(\+\+|[-+*/]?=[^=])|Deliveries[[:space:]]*(\+\+|[-+*/]?=[^=])|OverloadTimers\[)'
+solver_scores='\.(Score|Chain)\b'
+solver_ref='CatMetro\.Domain\.Solver'
+if [ -n "$purity_root" ]; then
+  scan_banned "$purity_root" "$solver_writes" "--root override, solver tick-write ban"
+  scan_banned "$purity_root" "$solver_scores" "--root override, solver score-read ban"
+  scan_banned "$purity_root" "$solver_ref" "--root override, runtime-reference guard (review H2)"
+  if grep -rEnq --include='*.cs' 'static void Step\(ref SimulationState' "$purity_root" 2>/dev/null; then
+    echo "check: FAIL — a second Step definition under $purity_root (ADR-0002 §2: exactly one)"
+    fail=1
+  fi
+else
+  # Review M1: unconditional — scan_banned fails closed on a missing root, which is exactly
+  # what must happen if the solver directory is ever moved without updating this gate.
+  scan_banned unity/Assets/Scripts/Domain/Solver "$solver_writes" "solver reaches state only through Step, CM-R02.1"
+  scan_banned unity/Assets/Scripts/Domain/Solver "$solver_scores" "scoring pinned out of the solver, NEW-Q5/NEW-Q7"
+  step_defs=$(grep -rEo --include='*.cs' 'static void Step\(ref SimulationState' unity/Assets/Scripts 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$step_defs" -ne 1 ]; then
+    echo "check: FAIL — expected exactly 1 'static void Step(ref SimulationState' definition, found $step_defs (ADR-0002 §2)"
+    fail=1
+  fi
+  for runtime_root in unity/Assets/Scripts/Application unity/Assets/Scripts/Presentation unity/Assets/Scripts/Bootstrap; do
+    # These trees are empty today; the guard arms itself the day they exist (contract crit 13).
+    if [ -d "$runtime_root" ] && grep -rEnq --include='*.cs' "$solver_ref" "$runtime_root" 2>/dev/null; then
+      echo "check: FAIL — runtime tree $runtime_root references solver types (CM-R01.6 guard):"
+      grep -rEn --include='*.cs' "$solver_ref" "$runtime_root" | head -5
+      fail=1
+    fi
+  done
+fi
+
 [ "$fail" -eq 0 ] && echo "check: OK (interim harness — real lint+typecheck arrive with the stack)"
 exit "$fail"
