@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- CM-C6 criterion 6 / Q-X (A-C6-5): the console host owning ALL daily-pipeline file I/O —
+       the pipeline library under unity/Assets/Scripts/Content/Daily/** opens and writes nothing.
+       Same status and shape as CatMetro.Validator (CM-C5 A-C5-6): a dotnet-leg tool exe with no
+       Unity asmdef counterpart, deliberately NOT a row in ADR-0003's 13-assembly list.
+       Newtonsoft pin matches the tree-wide 13.0.2 (ADR-0004 pin hygiene). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>10.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <AssemblyName>CatMetro.DailyTools</AssemblyName>
+    <RootNamespace>CatMetro.DailyTools</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../CatMetro.Domain/CatMetro.Domain.csproj" />
+    <ProjectReference Include="../CatMetro.Content/CatMetro.Content.csproj" />
+    <ProjectReference Include="../CatMetro.Services/CatMetro.Services.csproj" />
+  </ItemGroup>
+
+</Project>

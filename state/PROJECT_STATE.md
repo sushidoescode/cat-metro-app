@@ -16,7 +16,8 @@
 | CM-C2a | Content importer (bytes → LevelGraph) | session 2026-08-03 | DONE — merged (#8) after 9-finding review | (merged) |
 | CM-C4 | Solver (BFS ≤2-switch, beam beyond) | session 2026-08-03/04 | DONE — merged (#9) after review round | (merged) |
 | CM-C5 | 11-stage validator + validate-content leg | session 2026-08-04 | DONE — merged (#10) after 14-finding review round | (merged) |
-| CM-C6..C8, L002-L005 | phases 6–9 | fresh session (handoff) | QUEUED — see state/handoffs/SESSION-HANDOFF-phase6-10.md | — |
+| CM-C6 | Daily-seed pre-validation pipeline | session 2026-08-04 (Fable 5) | PR #14 GREEN, review round done (11 findings, 5 applied) — **WAITING-ON-HUMAN: ratify A-C6-9 (host stub vs criterion-8 prose, reviewer-flagged) then `gh pr merge 14 --squash --delete-branch`** | task/CM-C6-daily-seed-pipeline |
+| CM-C7/C8, L002-L005 | phases 7–9 | session 2026-08-04 (Fable 5) | IN PROGRESS — see state/handoffs/SESSION-HANDOFF-phase6-10.md | — |
 | CM-C2b/C3 | Greybox board + L001 in-engine | — | BLOCKED-ON human Unity scaffold (Q-G) | — |
 
 ## Recently done (last 7 days — one line each, PR links)
@@ -46,3 +47,5 @@
 - Perf budgets: docs/perf/budgets.md rows are TBD (human) — required before /forge-release.
 - Kit 3.6.0 manual ports (human-authored commits; validated patches + upstream issue drafts in state/handoffs/kit-3.6.0-manual/): .github/workflows/forge-policy.yml content-based state-mode downgrade refusal; posture comment block for the mode file (values stay sprint/solo).
 - Upstream (forge-kit): show_error trailing-blank-line bug — a gh startup failure dies mid-diagnosis with exit 1 (reads as DRIFT) instead of UNVERIFIED 2; fixed locally in scripts/setup-rulesets.sh, issue filed.
+- Follow-up (from PR #15 review F5): no gate detects a declared-but-dead `newMechanic` — every blocking stage stays green whether L004's queue is alive or dead. Candidate: a corpus assertion that the declared mechanic is exercised in the solver-optimal trace. Needs a contract.
+- Risk trigger (PR #15 review F4): brittleness retention is measured over UNPINNED jitter samples; if Q-B/NEW-Q4 resolves misroute-at-station as a LOSS, L002/L003/L005 must re-run brittleness (would read 65%/75%/60% under that rule) and may need redesign. Re-check when Q-B lands.

@@ -1,0 +1,7 @@
+{
+  "_comment": "CM-C6 daily-seed pre-validation rows. DAILY_PREVALIDATION_DAYS is a corpus number: CM-R46's heading pins '90 dates pre-validated in CI' (docs/prd/PRD.md:727) and ADR-0009:35 runs validate-dailies 'over the next 90 dates' — copied, not chosen (A-C6-1; Q-Q guards only the DIFFERENT 30-board dated backup pool, ADR-0008:9-14, which this pipeline never touches). PIPELINE_ANCHOR_DATE is the host's default --from (A-C6-7): liveops_spec.md:53's '--from 2026-08-24' example, the public-1.0 window start; the CI workflow (human-authored, Q-V) passes a real --from computed outside the tool, so no clock is read anywhere in this contract.",
+  "_SALT_MAX_K_derivation": "A-C6-2 (the one analyst-authored number here; flagged in the CM-C6 PR): the device-side limb of CM-R46.3 bounds the SAME salt loop at 250 ms with the solver at beam width 1k; budgeting >= ~25 ms per solve attempt, a device can guarantee at most ~10 attempts inside that budget, and a CI ceiling above the device's reachable k would break liveops_spec.md:55-56's 'same algorithm => same k' guarantee. The loop attempts k = 0..SALT_MAX_K inclusive, then reports exhaustion.",
+  "DAILY_PREVALIDATION_DAYS": 90,
+  "SALT_MAX_K": 10,
+  "PIPELINE_ANCHOR_DATE": "2026-08-24"
+}
