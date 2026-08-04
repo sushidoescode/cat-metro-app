@@ -1,0 +1,83 @@
+using NUnit.Framework;
+using CatMetro.Content.Validation;
+using Newtonsoft.Json.Linq;
+
+namespace CatMetro.Tests.Validation
+{
+    // Criterion 2: stage 1 validates against the REAL docs/plan/data/level_schema.json bytes —
+    // one malformed fixture per named rule class (>= 6) plus the L001 pass.
+    [TestFixture]
+    public class SchemaStageTests
+    {
+        private static StageVerdict Check(byte[] level) =>
+            SchemaStage.Check(VFixtures.SchemaBytes(), level);
+
+        private static void AssertFails(byte[] level, string detailFragment)
+        {
+            var v = Check(level);
+            Assert.That(v.Code, Is.EqualTo(StageVerdictCode.Fail));
+            Assert.That(v.Blocks, Is.True, "schema failures block");
+            Assert.That(v.Detail, Does.Contain(detailFragment).IgnoreCase,
+                "the failing rule is named");
+        }
+
+        [Test]
+        public void L001_Passes()
+        {
+            var v = Check(VFixtures.L001Bytes());
+            Assert.That(v.Code, Is.EqualTo(StageVerdictCode.Pass), v.Detail);
+        }
+
+        [Test]
+        public void IdPattern_Violation_Fails() =>
+            AssertFails(VFixtures.Level(o => o["id"] = "X1"), "pattern");
+
+        [Test]
+        public void SchemaVersionConst_Violation_Fails() =>
+            AssertFails(VFixtures.Level(o => o["schemaVersion"] = 3), "const");
+
+        [Test]
+        public void BandEnum_Violation_Fails() =>
+            AssertFails(VFixtures.Level(o => o["meta"]["band"] = "impossible-band"), "enum");
+
+        [Test]
+        public void MechanicsEnum_Violation_Fails() =>
+            AssertFails(VFixtures.Level(o => o["meta"]["mechanics"] = new JArray("jetpack")), "enum");
+
+        [Test]
+        public void AdditionalProperty_AtRoot_Fails() =>
+            AssertFails(VFixtures.Level(o => o["surprise"] = 1), "additional");
+
+        [Test]
+        public void AdditionalProperty_Nested_Fails() =>
+            AssertFails(VFixtures.Level(o => o["win"]["cheatMode"] = true), "additional");
+
+        [Test]
+        public void MissingRequired_Fails() =>
+            AssertFails(VFixtures.Level(o => o.Remove("win")), "required");
+
+        [Test]
+        public void NumericMinimum_Violation_Fails() =>
+            AssertFails(VFixtures.Level(o => o["win"]["stars"]["two"] = 0), "minimum");
+
+        [Test]
+        public void UnparseableBytes_Fail()
+        {
+            var v = Check(System.Text.Encoding.UTF8.GetBytes("{nope"));
+            Assert.That(v.Code, Is.EqualTo(StageVerdictCode.Fail));
+            Assert.That(v.Blocks, Is.True);
+        }
+
+        [Test]
+        public void UnsupportedSchemaKeyword_FailsClosed()
+        {
+            // A schema using a keyword outside the implemented subset must fail the stage, never
+            // silently skip the rule (handoff §Stage-1).
+            var schema = System.Text.Encoding.UTF8.GetBytes(
+                "{ \"type\": \"object\", \"propertyNames\": { \"pattern\": \"^x\" } }");
+            var v = SchemaStage.Check(schema, VFixtures.L001Bytes());
+            Assert.That(v.Code, Is.EqualTo(StageVerdictCode.Fail));
+            Assert.That(v.Detail, Does.Contain("unsupported schema keyword"));
+        }
+    }
+}
