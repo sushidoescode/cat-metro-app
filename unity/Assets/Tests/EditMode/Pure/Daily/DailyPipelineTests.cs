@@ -53,6 +53,8 @@ namespace CatMetro.Tests.Daily
             Assert.That(rec.Blocks, Is.True);
             Assert.That(rec.Detail, Does.Contain("SALT_MAX_K"));
             Assert.That(report.ExitFailure, Is.True);
+            Assert.That(report.SeedLines(), Is.Empty,
+                "review F6: a blocked date resolved no seed — it must emit no truth-source line");
         }
 
         // Criterion 4c: two runs over the same date list produce the identical k for every date.

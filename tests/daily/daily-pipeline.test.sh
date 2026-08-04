@@ -13,11 +13,18 @@ fail() { echo "daily-pipeline.test.sh: FAIL — $1"; exit 1; }
 daily_root="unity/Assets/Scripts/Content/Daily"
 seed_rx='^DAILY_SEED [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]+ [0-9]+$'
 
-# Criterion 10: the Daily NUnit leg is green.
-if ! dotnet test dotnet/CatMetro.sln -c Release --nologo \
-    --filter "FullyQualifiedName~CatMetro.Tests.Daily" > "$tmp/test.out" 2>&1; then
+# Review F2: every grep below fails CLOSED — a moved scan root must fail this wrapper, not
+# silence it (the check.sh scan_banned posture; cf. commit ee637c9's fail-open removal).
+[ -d "$daily_root" ] || fail "scan root $daily_root does not exist (fail-closed)"
+[ -n "$(ls unity/Assets/Tests/EditMode/Pure/Daily/*.cs 2>/dev/null)" ] \
+  || fail "criterion 10: Daily NUnit sources missing (fail-closed)"
+
+# Criterion 10: the dotnet leg is green — full suite, UNFILTERED (review F1: a namespace filter
+# matching zero tests still exits 0, making the gate vacuous; the sibling wrappers set the
+# unfiltered precedent, and the source-presence guard above closes the dropped-folder hole).
+if ! dotnet test dotnet/CatMetro.sln -c Release --nologo > "$tmp/test.out" 2>&1; then
   tail -20 "$tmp/test.out"
-  fail "criterion 10: Daily dotnet-test leg not green"
+  fail "criterion 10: dotnet test not green"
 fi
 
 # Criteria 6b + 7 (+ the criterion-3 smoke instance): two 30-date runs through the host are
@@ -61,9 +68,17 @@ if grep -rEnq --include='*.cs' '\bSystem\.IO\b' "$daily_root"; then
 fi
 
 # Criterion 8b: no type under the Daily root implements IBoardFactory — the Q-S gap cannot be
-# silently filled.
-impl=$(grep -rEn --include='*.cs' '(class|struct)[^:{]*:[^{]*IBoardFactory' "$daily_root" || true)
-[ -z "$impl" ] || fail "criterion 8b: IBoardFactory implementation under the Daily root: $impl"
+# silently filled. Review F3: each candidate file is whitespace-FLATTENED first, so a base list
+# wrapped onto its own line cannot evade the declaration-shape grep; plain references (the
+# pipeline's Factory field, the interface's own file) stay legal.
+impl=""
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  if tr '\n\t' '  ' < "$f" | grep -qE '(class|struct)[^:{]*:[^{]*IBoardFactory'; then
+    impl="$impl $f"
+  fi
+done < <(grep -rl --include='*.cs' 'IBoardFactory' "$daily_root" 2>/dev/null || true)
+[ -z "$impl" ] || fail "criterion 8b: IBoardFactory implementation under the Daily root:$impl"
 
 # Criterion 11: scope guard over the Daily root + the entry script — no backend, no store, no
 # push, no analytics, no clock, no engine, no network...

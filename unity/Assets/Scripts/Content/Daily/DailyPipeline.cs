@@ -118,15 +118,21 @@ namespace CatMetro.Content.Daily
             return root.ToString(Newtonsoft.Json.Formatting.Indented);
         }
 
-        // One line per date, "DAILY_SEED <dateKey> <k> <seed>" (ADR-0009:35; CM-R43.8's truth
-        // source) — single-sourced here so the host and the tests agree on the format.
+        // One line per RESOLVED date, "DAILY_SEED <dateKey> <k> <seed>" (ADR-0009:35 prints "the
+        // RESOLVED seed per dateKey"; CM-R43.8's truth source) — single-sourced here so the host
+        // and the tests agree on the format. Review F6: a blocked date resolved nothing, so it
+        // emits NO line — otherwise a consumer grepping the markers out of a CI log could pin a
+        // seed the job actually rejected. Blocked dates surface as DAILY_BLOCKING + exit 1.
         public IReadOnlyList<string> SeedLines()
         {
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             var lines = new List<string>(Records.Count);
             foreach (var r in Records)
+            {
+                if (r.Blocks) continue;
                 lines.Add("DAILY_SEED " + r.DateKey + " " + r.K.ToString(inv)
                     + " " + r.Seed.ToString(inv));
+            }
             return lines;
         }
     }
