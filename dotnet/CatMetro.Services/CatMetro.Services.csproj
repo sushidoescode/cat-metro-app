@@ -16,4 +16,10 @@
     <Compile Include="../../unity/Assets/Scripts/Services/**/*.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- A-C7-6: SaveState (the boundary type ISave's pinned signature names) holds the payload
+         JObject; the tree-wide 13.0.2 pin, not a new dependency. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
+  </ItemGroup>
+
 </Project>

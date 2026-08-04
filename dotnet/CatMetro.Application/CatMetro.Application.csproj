@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- CM-C7 criterion 13: CatMetro.Application is engine-free under netstandard2.1 — the save
+       store runs identically under dotnet-leg tests (temp IStorageRoot) and on device
+       (Bootstrap's persistentDataPath), with no conditional compilation. ADR-0003 permits
+       Application -> Content (the single serializer-settings site) and Application -> Services
+       (the seams). Newtonsoft pin matches the tree-wide 13.0.2 (ADR-0004 pin hygiene). -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <AssemblyName>CatMetro.Application</AssemblyName>
+    <RootNamespace>CatMetro.Application</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../unity/Assets/Scripts/Application/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../CatMetro.Content/CatMetro.Content.csproj" />
+    <ProjectReference Include="../CatMetro.Services/CatMetro.Services.csproj" />
+  </ItemGroup>
+
+</Project>
