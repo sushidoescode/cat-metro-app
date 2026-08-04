@@ -47,3 +47,5 @@
 - Perf budgets: docs/perf/budgets.md rows are TBD (human) — required before /forge-release.
 - Kit 3.6.0 manual ports (human-authored commits; validated patches + upstream issue drafts in state/handoffs/kit-3.6.0-manual/): .github/workflows/forge-policy.yml content-based state-mode downgrade refusal; posture comment block for the mode file (values stay sprint/solo).
 - Upstream (forge-kit): show_error trailing-blank-line bug — a gh startup failure dies mid-diagnosis with exit 1 (reads as DRIFT) instead of UNVERIFIED 2; fixed locally in scripts/setup-rulesets.sh, issue filed.
+- Follow-up (from PR #15 review F5): no gate detects a declared-but-dead `newMechanic` — every blocking stage stays green whether L004's queue is alive or dead. Candidate: a corpus assertion that the declared mechanic is exercised in the solver-optimal trace. Needs a contract.
+- Risk trigger (PR #15 review F4): brittleness retention is measured over UNPINNED jitter samples; if Q-B/NEW-Q4 resolves misroute-at-station as a LOSS, L002/L003/L005 must re-run brittleness (would read 65%/75%/60% under that rule) and may need redesign. Re-check when Q-B lands.
