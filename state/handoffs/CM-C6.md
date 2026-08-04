@@ -73,3 +73,18 @@ Build a deterministic, clock-free, engine-free daily-seed pre-validation pipelin
 ## Status log
 
 - anchor: branch cut, contract frozen, this note committed.
+- red: 67 Daily NUnit cases (65 failing on skeleton; 2 declaration-level pins pass by
+  construction — the frozen constant and the reflection signature).
+- green: library implemented; 236/236 across the suite. The python-pinned seed vectors
+  reproduced exactly by the C# implementation (cross-tool verification of A-C6-6).
+- host+harness: DailyTools exe (sln member, lock file committed), validate-dailies.sh,
+  check.sh Daily clock-ban block (+ tests/fixtures/daily-bad negative fixture),
+  tests/daily/daily-pipeline.test.sh. Gates: check OK, test 6/6.
+- Salt-loop note: the weekday ramp check runs POST-resolution, outside the salt loop — a
+  configured-curve mismatch fails the date without salt retries (the loop iterates on CM-C5
+  blocking stages only, per liveops_spec.md:55-56's description). Today the curve is absent, so
+  the path is UNCONFIGURED(NEW-Q21) everywhere.
+- Stub-era note: the artifact's `seed` is the derived daily seed (the CM-R43.8 truth source);
+  the stub board's internal sim seed stays the authored corpus seed. These cohere only when a
+  real generator (Q-S) embeds the derived seed — recorded so nobody reads stub artifacts as
+  generated dailies (boardProvenance names the stub).
