@@ -36,9 +36,41 @@ G1 types+skeleton compile (feeds crit 1,6-shape) · G2 BFS exact (crit 3) · G3 
 - **Criterion-3 comparator bound:** the in-test brute force enumerates all command logs with ≤2 entries (fixtures designed so the true optimum uses ≤2 commands); comparator wraps pinned throws as not-won, mirroring Q-N.
 - **Baseline nuance:** L001's empty-log run hits the NEW-Q4 pin (reds ride to BLU) ⇒ baseline verdict is `Indeterminate`, which satisfies criterion 10's "does not win" as `Verdict != Solved`.
 
-## Evidence (filled as criteria complete)
+## Hybrid lane outcome (2026-08-03, recorded honestly per the lane rules)
 
-(pending — tests-first next)
+Cut g2 went to `qwen3.6:35b-a3b-coding-nvfp4` after the human glance. Three runs: (1) sandbox blocked
+localhost:11434 (kit note: forge-hybrid exited 0 on the unreachable diagnostic); (2) cold-load timed
+out the chat call with a raw traceback (kit note: no retry around load-time); (3) warm model ran the
+full 8-turn loop — ONE whole-file edit applied (435 lines, structurally plausible: digest dedupe,
+tie-break comparator, pin counters), 7 turns failed on search/replace anchor drift, check never
+passed, **two-strike escalation fired** (`state/hybrid-escalations/cm-c4-g2-bfs-exact.md`). Root
+cause of the draft's failure: it used `ReplayHasher.RunToEnd` (terminal-state semantics) where
+step-by-layer simulation was required — its frontier could never contain a Running state — plus an
+off-by-one in the command-tick schedule and a duplicated method. The planner-coder gap, measured
+live, exactly as the kit README predicts. **Frontier implemented per the escalation rule**; cuts
+g3–g6 retired to frontier with it (§9.0.3's proceed-frontier-only lever). Retry the lane later on a
+write_file-shaped contract.
+
+## Evidence (2026-08-03, per criterion)
+
+1. Placement/purity: solver under `Domain/Solver/**`, zero csproj/dotnet-dir changes, `check.sh` exit 0.
+2. One-Step + no tick-writes/score-reads: check.sh blocks green on tree, all three fire on `tests/fixtures/solver-bad` (exit 1).
+3. BFS exactness: both brute-force comparators green (1-switch L001, 2-switch board), Unsolvable proof green.
+4. Beam: solved-at-first-width reports 1000; forced `{1,2500}` escalation observed (the escalation law held); miss → `NotFound(Beam, 5000)`, asserted ≠ Unsolvable.
+5. Q-N: L701-shape run completes with `PinnedPruned > 0` and a recorded pin message; win-despite-prunes green; zero-pin Unsolvable green.
+6. Result record fully populated for L001; `CompletionTicks == 50` hand-computed; the `RunToEnd().Tick − 1` identity asserted.
+7. Tie-break returns `[(0,0)]` on the two-solution board (required the within-layer comparator dedupe — see the bug note below); in-process double-run byte-identical incl. `NodesExpanded`; cross-process `SOLVER_LOG=000000000000010008000000` stable (wrapper exit 0) — decoding to `(S0,T0)+(S1,T8)`, the predicted optimum.
+8. No score-shaped member (reflection over both result types) + the check.sh grep.
+9. Hash equality ×2 + Won + Tick−1 equation green. `tests/contract/` untouched.
+10. Baseline both limbs: L001 empty-log does-not-win (Indeterminate via the NEW-Q4 pin, per the planner ruling); already-correct board wins with the empty log.
+11. Budget: `NotFound(Budget)` at cap 5 with `NodesExpanded ∈ (0,6]`; default-arg == constant asserted for budget AND widths.
+12. `bash scripts/test.sh` → `test: 4/4 passed`, `PASS tests/solver/solver.test.sh`.
+13. Runtime-reference guard armed (roots conditional-scanned; fixture-proven).
+
+**Suite: 105/105.** Implementation bug found by the tests mid-build: insertion-order dedupe let the
+untoggled-prefix branch claim every converged state, making the canonical log carry the LATEST
+toggle and inverting the tie-break — fixed with criterion-7-comparator collision resolution
+(the tie-break tests exist precisely for this).
 
 ---
 

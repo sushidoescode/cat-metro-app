@@ -1,0 +1,75 @@
+# Escalation: cm-c4-g2-bfs-exact
+
+Executor (local: qwen3.6:35b-a3b-coding-nvfp4) did not converge.
+
+## Contract
+```json
+{
+  "task_id": "cm-c4-g2-bfs-exact",
+  "goal": "Implement exact BFS in LevelSolver.Solve for boards with <=2 switches: return the tick-minimal winning command log under the frozen tie-break, or a proven Unsolvable after exhausting the reachable space.",
+  "acceptance_criteria": [
+    "dotnet test --filter FullyQualifiedName~CatMetro.Tests.Solver.SolverBfsTests passes all 3 cases: 1-switch L001 matches the in-test brute force (verdict/ticks/log), 2-switch board matches brute force, pin-free unsolvable board returns Unsolvable with PinnedPruned==0 and an empty log",
+    "bash scripts/check.sh exits 0 (no tick-advancing write, no .Score/.Chain read, no second Step definition, integer-only under the Domain root)"
+  ],
+  "write_scope": [
+    "unity/Assets/Scripts/Domain/Solver/LevelSolver.cs"
+  ],
+  "forbidden_paths": [
+    "unity/Assets/Scripts/Domain/Simulation.cs",
+    "unity/Assets/Scripts/Domain/LevelGraph.cs",
+    "unity/Assets/Scripts/Domain/SimulationState.cs",
+    "unity/Assets/Tests/**",
+    "tests/**",
+    "dotnet/**",
+    "scripts/**",
+    "docs/**",
+    "state/backlog.md"
+  ],
+  "non_goals": [
+    "Beam search (a later cut) \u2014 for now, boards with >2 switches may return NotFound(Beam, widths[^1]) via a placeholder that never runs BFS on them",
+    "Verdict=Indeterminate wiring, FirstPinMessage, and the L701 pin test (cut g4) \u2014 but the MINIMAL pin handling below is required NOW because BFS on L001 explores pinned branches",
+    "DifficultyProxy population beyond zeros (cut g5) \u2014 construct with all-zero proxy except TimeLimitTicks",
+    "Tie-break across equal-command solutions beyond what the BFS tests already require (fully hardened in cut g5)"
+  ],
+  "check_cmd": "cd /Users/sushantsrikrish/cat-metro-app && dotnet test dotnet/CatMetro.sln -c Release --nologo --filter FullyQualifiedName~CatMetro.Tests.Solver.SolverBfsTests && bash scripts/check.sh",
+  "context_files": [
+    "state/handoffs/CM-C4.md",
+    "unity/Assets/Scripts/Domain/Solver/LevelSolver.cs",
+    "unity/Assets/Scripts/Domain/Solver/SolveResult.cs",
+    "unity/Assets/Scripts/Domain/Solver/SolverBounds.cs",
+    "unity/Assets/Scripts/Domain/Simulation.cs",
+    "unity/Assets/Scripts/Domain/LevelGraph.cs",
+    "unity/Assets/Scripts/Domain/SimulationState.cs",
+    "unity/Assets/Scripts/Domain/Commands.cs",
+    "unity/Assets/Scripts/Domain/Outcomes.cs",
+    "unity/Assets/Scripts/Domain/ReplayHasher.cs",
+    "unity/Assets/Tests/EditMode/Pure/Solver/SolverFixtures.cs",
+    "unity/Assets/Tests/EditMode/Pure/Solver/SolverBfsTests.cs"
+  ],
+  "risk_tags": [
+    "none"
+  ],
+  "required_gates": [
+    "frontier-review",
+    "human-merge"
+  ],
+  "budget": {
+    "turns": 12,
+    "wall_minutes": 30
+  },
+  "notes": "ALL semantics are decided \u2014 implement, never re-decide. (1) Search node = SimulationState AFTER a Step call; visited-set key = the exact WriteDigest byte image (byte[] compared by content; wrap in a string via Convert.ToBase64String or an EqualityComparer \u2014 your choice, it is internal). (2) Action space at each tick boundary: per switch, k=0..routeCount-1 toggles that tick, cartesian across switches; k toggles = k identical ToggleSwitchCommand((ushort)switchId, stepTick-1) entries appended in switch-id order; the runner schedule is entry.Tick == stepTick-1 (see ReplayHasher.Due and SolverFixtures.RunThroughTick's convention). (3) BFS expands strictly tick-layer by tick-layer (frontier queue per tick): the FIRST layer containing a Won state is tick-minimal; among Won states in that layer pick by: fewer log entries, then lexicographic over (Tick, SwitchId) pairs (SolverFixtures.Better is the reference ordering). (4) Clone states by re-simulation or by copying: SimulationState is a class with arrays \u2014 to branch, re-run from tick 0 with the candidate log via Simulation.Step in a loop (simplest, still fast for these boards) OR deep-copy arrays manually; NEVER mutate a parent state shared across branches. (5) PIN HANDLING (minimal, required now): wrap each Simulation.Step call in try/catch (NotSupportedException e) -> count pinnedPruned++, record e.Message if first, prune that branch. Verdict stays Solved/Unsolvable in this cut; if no win AND pinnedPruned>0 return Indeterminate (the enum exists; g4's tests harden it). (6) Budget: nodesExpanded++ per expanded node; if it exceeds maxNodesExpanded return NotFound with NotFoundReason.Budget and the count. (7) BANNED under the Domain root (scripts/check.sh will fail you): float/double/decimal/DateTime/Stopwatch/System.Random/UnityEngine/System.Numerics ANYWHERE including comments; the token '.Tick =' or '.Tick++' or 'Deliveries =' or 'OverloadTimers[' \u2014 READ state.Tick into a local int before comparing (e.g. int t = state.Tick; if (t >= limit)) and never write any state field. (8) CompletionTicks for the winner = finalState.Tick - 1. (9) SwitchesUsed = OptimalLog.Entries.Count. (10) BeamWidthUsed = 0 for BFS. Termination: stop expanding a branch when its post-step state is terminal (Outcome.Kind != Running) or tick reaches graph.TimeLimitTicks; the reachable space is finite, so BFS exhaustion without a win and without pins = Unsolvable."
+}
+```
+
+## Last check output
+```
+Determining projects to restore...
+  All projects are up-to-date for restore.
+  CatMetro.Services -> /Users/sushantsrikrish/cat-metro-app/dotnet/CatMetro.Services/bin/Release/netstandard2.1/CatMetro.Services.dll
+/Users/sushantsrikrish/cat-metro-app/unity/Assets/Scripts/Domain/Solver/LevelSolver.cs(191,36): error CS0111: Type 'LevelSolver' already defines a member called 'SolveBfs' with the same parameter types [/Users/sushantsrikrish/cat-metro-app/dotnet/CatMetro.Domain/CatMetro.Domain.csproj]
+```
+
+## Transcript
+/Users/sushantsrikrish/cat-metro-app/state/hybrid-runs/cm-c4-g2-bfs-exact-2026-08-03.jsonl
+
+Hand this to a frontier session (Claude Code / codex) or a human. The diff so far is in the working tree.
