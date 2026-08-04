@@ -14,7 +14,8 @@
 |---|---|---|---|---|
 | CM-C1 | Domain skeleton + replay-hash test | session 2026-08-02/03 | DONE — golden human-committed, merged (#2/#3) | (merged) |
 | CM-C2a | Content importer (bytes → LevelGraph) | session 2026-08-03 | DONE — merged (#8) after 9-finding review | (merged) |
-| CM-C4 | Solver (BFS ≤2-switch, beam beyond) | session 2026-08-03/04 | IN REVIEW — round-1 findings (2H/6M/6L) applied, 108/108, PR open | task/cm-c4-solver |
+| CM-C4 | Solver (BFS ≤2-switch, beam beyond) | session 2026-08-03/04 | DONE — merged (#9) after review round | (merged) |
+| CM-C5 | 11-stage validator + validate-content leg | session 2026-08-04 | BUILT — 167/167, gates 5/5, in review; 2 CM-C2a errata disclosed | task/cm-c5-validator |
 | CM-C2b/C3 | Greybox board + L001 in-engine | — | BLOCKED-ON human Unity scaffold (Q-G) | — |
 
 ## Recently done (last 7 days — one line each, PR links)

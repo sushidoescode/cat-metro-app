@@ -40,7 +40,10 @@ behaviour without a code edit — the one-truth property the criterion wants.
 over the authored `x,y` between two junction centres; fail iff `< 1.2` (doubles are legal in
 Content). Reachability: station S is reachable iff a directed path exists from some source node
 whose `allowedColors ∩ S.accepts ≠ ∅`, over all edges (switches route dynamically, so every
-outbound edge is potentially takeable). Orphan switch: its node has no inbound edge, OR some route
+outbound edge is potentially takeable). **Refinement (forced by L001 itself):** a station whose
+accept set intersects NO source's colours is a deliberate decoy — L001's BLU teaches the wrong
+route — and passes vacuously; the rule fires only where a colour-compatible source exists but no
+path does. Orphan switch: its node has no inbound edge, OR some route
 is not an outbound edge of its node. Top-15% warning: board vertical extent from node `y` values;
 a switch node with `y ≥ maxY − 0.15·(maxY − minY)` warns (top of screen = high y, per the corpus
 convention SRC at y=9 above stations at y=1..2).
@@ -58,9 +61,16 @@ shape from CM-C4 criterion 10).
 
 **Stage-6 freezes (A-C5-2 + A-C5-7).** Jitter: `jitterSampleCount` (an ordinary configured row —
 test-design number, set to 20) samples; per sample, each entry of the stage-4 winning log gets an
-independent offset drawn from {−1, 0, +1} via `Pcg32(level seed)` (`NextBounded(3) − 1`, entries
+independent offset drawn from {−1, 0, +1} via `Pcg32(level seed, 3)` (`Next() % 3 − 1`, entries
 in log order, samples sequentially — one generator stream, fully deterministic), ticks clamped to
-≥ 0; a sample wins iff `EvaluateLog` says `Solved`. Retention = wins/samples, fail `< 70%`.
+≥ 0. Sample outcomes: `Solved` = win, `NotFound` = loss, `Indeterminate` (the NEW-Q4 guard fired)
+= **pinned — neither**. Retention = wins/(wins+losses), fail `< 70%`; when pinned samples exceed
+half the set, the retention limb reports **`PINNED(NEW-Q4)`**, non-blocking (stop condition 7:
+the figure would require resolving rejection semantics to mean anything). This ruling was forced
+by measurement, not convenience: on L701 every misroute ends at a wrong-colour station, 18/20
+jitter samples pin, and a pinned=lost rule would flunk the shipped corpus on an open question.
+The window and onboarding limbs are unaffected (a pinned shift is still not-a-win there, which is
+what makes the brittle fixture fail on its 2-tick window regardless).
 Action-window limb: per entry of the winning log, the window = the size of the maximal contiguous
 run of single-entry tick shifts (scanned over `±(minActionWindowTicks + 2)`, clamped at 0) that
 still win, **measured on the solver-optimal log** — a level fails when any entry's window <
@@ -143,6 +153,25 @@ The one real risk — stage 6's blocking limbs on the live corpus (L701/L702 ret
 is empirical: measured during build; if a stress board fails the frozen rule, that is a surfaced
 finding about the board (stop-and-report), not a rule to soften silently.
 
+## CM-C2a errata surfaced by this build (cross-contract fixes, disclosed for review)
+
+Criterion 14 (stress boards are corpus members) is unsatisfiable against the importer as merged,
+and the defects are objective importer-vs-frozen-schema conflicts, so the minimal fixes ride this
+branch in their own labelled commit rather than blocking the contract on a round-trip:
+
+- **E-C2a-1** `LevelImporter` required `meta.newMechanic` to be a string; `level_schema.json:21`
+  types it `["string","null"]` and BOTH shipped stress boards author `null`. Fix: null maps to a
+  null `MetaDto.NewMechanic`; non-string-non-null still rejected.
+- **E-C2a-2** `ContentJson.LoadToken` returned pass 2's token (`JToken.Parse`), which does not
+  honour `Settings.DateParseHandling = None` — an ISO-dated string like `meta.validatedAt` came
+  back as a Date token and its string-typed import then failed, i.e. every `--stamp`ed level
+  would have been rejected on re-import. Fix: pass 1 (which honours Settings) yields the token;
+  pass 2 remains solely the duplicate-key belt.
+
+No CM-C2a test pinned either behaviour (verified before touching); the full CM-C2a suite is green
+after both fixes. The stress boards import cleanly and L701/L702 SOLVE under the shipped budget
+(146,942 / 16,839 expansions; completion ticks 182 / 126).
+
 ## Sub-plan (sprint, in-session, TDD)
 T1 Stage enum + verdict/report model tests → types. T2 schema-stage tests (≥6 malformed + L001
 passes) → mini interpreter. T3 stage-2/3 tests → static analysis + lower bound. T4 stage-4/5/6/7
@@ -151,6 +180,47 @@ hand-derived on L001, weighted sum under fixture config, novelty ordering). T6 s
 UNCONFIGURED-semantics tests (criterion 13's with/without-row pairs). T7 corpus/report tests
 (criterion 14 set, JSON shape, NEW-Q1 seconds). T8 host + wrapper + fixtures on disk + `--stamp`
 surgery + shell-side checks (criterion 15/17). T9 full gates, evidence, PR.
+
+## Evidence (2026-08-04, criterion → check)
+
+1. `StageModelTests.StageEnum_IsExactlyTheElevenAuthoredStagesInOrder` — names AND ordinals.
+2. 9 malformed fixtures (pattern/const/enum×2/additionalProperties×2/required/minimum/unparseable)
+   + L001 passes + `UnsupportedSchemaKeyword_FailsClosed` — all against the REAL schema bytes.
+3. Unreachable-station, orphan×2, spacing<1.2 fail; decoy passes vacuously; top-15% → `Warn`,
+   `Blocks == false`.
+4. L001 bound printed = 44 (hand-derived); no row → `UNCONFIGURED(lowerBoundSlack)`; fixture row
+   2 → L001 passes, timeLimit-40 fixture blocks.
+5. Unsolvable blocks; Indeterminate prints its count non-blocking; NotFound non-blocking
+   (ADR-0008:117); Solved passes. All four on authored-JSON fixtures through the real importer.
+6. L001 zero-input → stage passes (Indeterminate via pin); initialRoute-0 board → stage FAILS.
+7. L001 robust (windows [17], retention 100%); brittle 2-tick-window fixture blocks; onboarding
+   12–16 limb blocks; byte-identical verdict across two runs (Pcg32 stream); no-log → SKIPPED;
+   pin-dominated retention → `PINNED(NEW-Q4)` (the stop-condition-7 ruling, measured 18/20 on L701).
+8. `two >= three` blocks; row present → `PINNED(NEW-Q5)`; row absent → `UNCONFIGURED(starBandSlack)`.
+9. All six raw axes hand-derived on L001 (B=8, peak=2, entropy=0, C=1, T=0.3125, H=8, R=1/2);
+   weighted sum equals the frozen formula under fixture caps; no caps → `UNCONFIGURED` with raw
+   axes printed; H prints `PARTIAL(Q-J)`.
+10. near-identical < dissimilar distance; no row → `UNCONFIGURED(noveltyMinDistance)` with
+    distances printed; row 5.0 → recycled level blocks, no-priors passes.
+11. Absent key → `STALE` + "Q-O" verbatim + `Blocks false`; older → `STALE`; newer → `FRESH`;
+    null reference → `STALE (unavailable)`.
+12. L001 row (band, capstone false, 1 tester, `HUMAN-VERIFIED (pending)`); capstone → 3 testers.
+13. The 8 with/without-row cases across stages 3/7/8/9 (tests in criteria 4/8/9/10 above);
+    shipped config has jitterSampleCount only — `Config_ShippedFile_HasJitterRowAndNoQRRows`.
+14. Corpus run: L001+L701+L702 all reported; stage 9 = `SKIPPED(non-campaign)` for L701 while
+    stage 8 is not; stage-11 rows for both stress boards; campaign count `1/30` over campaign
+    only; two-new-mechanics fixture blocks the corpus.
+15. Wrapper: (a) full-corpus run exit 0 (L701 solves at 146,942 expansions, ticks 182; L702 at
+    16,839, ticks 126); (b) `broken-level.json` (schema-valid, Unsolvable) exits non-zero naming
+    L999 + Solver; (c) the entry-point grep is clean (it caught its own first comment); (d) zero
+    file-API refs under Validation (wrapper belt + the existing check.sh Content block).
+16. JSON: 11 stage rows/level, solve summary, `seconds == CompletionTicks/8`, `secondsVerdict ==
+    PINNED(NEW-Q1)`, `exitFailure false`; table carries `PARTIAL(Q-J)` + `UNCONFIGURED`.
+17. (a) SHA-256 of every input unchanged by the gate run; (b) `--stamp` on a corpus copy passes
+    `--assert-stamp-diff` (exactly the one key; ≤1 changed + ≤1 inserted line) AND the stamped
+    copy re-validates (regression belt on E-C2a-2); (c) `git diff --name-only` clean.
+
+**Suite: 167/167** (59 new) · `check.sh` 0 · `test.sh` **5/5** (`PASS tests/validation/validator.test.sh` discovered) · CM-C1 golden hash unchanged (`d4818af8…`).
 
 ---
 

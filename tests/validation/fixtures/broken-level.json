@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 2,
+  "id": "L999",
+  "name": "Deliberately Broken",
+  "seed": 999,
+  "meta": {
+    "band": "onboarding",
+    "difficultyTarget": 0.08,
+    "mechanics": ["switch"],
+    "newMechanic": "switch",
+    "teachingGoal": "CM-C5 criterion 15b fixture: schema-valid but UNSOLVABLE (win needs 2 deliveries from 1 cat) — roadmap D9's 'CI fails a deliberately broken level' verbatim",
+    "minActionWindowTicks": 16,
+    "authoredBy": "human"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 3, "y": 9 },
+      { "id": "J1", "x": 3, "y": 6 },
+      { "id": "RED", "x": 1, "y": 2 }
+    ],
+    "edges": [
+      { "id": "E1", "from": "SRC", "to": "J1", "travelTicks": 4 },
+      { "id": "E2", "from": "J1", "to": "RED", "travelTicks": 5 },
+      { "id": "E3", "from": "J1", "to": "RED", "travelTicks": 9 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 6 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E2", "E3"], "initialRoute": 0 }
+  ],
+  "waves": [
+    { "tick": 0, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 20 }
+  ],
+  "win": {
+    "deliveries": 2,
+    "timeLimitTicks": 40,
+    "perfectMaxSwitches": 1,
+    "stars": { "two": 200, "three": 300 }
+  },
+  "economy": {
+    "baseTickets": 20,
+    "perfectBonus": 10
+  }
+}
