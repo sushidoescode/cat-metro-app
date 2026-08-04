@@ -32,13 +32,17 @@ namespace CatMetro.Content
             DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error,
         };
 
-        // Two-pass load: pass 1 enforces Settings.MaxDepth (the parser-level depth belt that was
-        // previously unwired — review F1b); pass 2 enforces duplicate-key and comment rejection
-        // and yields the token. Both passes reject trailing content.
+        // Two-pass load: pass 1 enforces Settings.MaxDepth (review F1b) AND yields the token —
+        // it is the only pass that honours DateParseHandling.None, so returning pass 2's token
+        // (as this method originally did) silently converted ISO-dated strings like
+        // meta.validatedAt into Date tokens and broke their string-typed import (CM-C5 erratum
+        // E-C2a-2). Pass 2 remains solely the duplicate-key belt; its token is discarded. Both
+        // passes reject trailing content.
         public static JToken LoadToken(string json)
         {
-            JsonConvert.DeserializeObject<JToken>(json, Settings); // throws on depth > MaxDepth
-            return JToken.Parse(json, LoadSettings);
+            var token = JsonConvert.DeserializeObject<JToken>(json, Settings);
+            JToken.Parse(json, LoadSettings); // throws on duplicate keys; result discarded
+            return token;
         }
     }
 }

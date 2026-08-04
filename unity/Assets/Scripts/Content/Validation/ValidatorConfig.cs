@@ -42,7 +42,54 @@ namespace CatMetro.Content.Validation
 
         public static ContentResult<ValidatorConfig> Parse(byte[] bytes)
         {
-            throw new System.NotImplementedException("CM-C5");
+            try
+            {
+                if (bytes == null)
+                    return ContentResult<ValidatorConfig>.Failure(ContentErrorKind.MalformedJson, "null config payload");
+                var o = JObject.Parse(System.Text.Encoding.UTF8.GetString(bytes));
+
+                var jitter = o["jitterSampleCount"];
+                if (jitter == null || jitter.Type != JTokenType.Integer)
+                    return ContentResult<ValidatorConfig>.Failure(ContentErrorKind.MissingField,
+                        "jitterSampleCount (integer) is required — A-C5-2");
+                int samples = (int)jitter;
+                if (samples < 1)
+                    return ContentResult<ValidatorConfig>.Failure(ContentErrorKind.BoundViolation,
+                        "jitterSampleCount must be >= 1");
+
+                int? OptInt(string name)
+                {
+                    var t = o[name];
+                    return t == null ? (int?)null : (int)t;
+                }
+                double? OptNum(string name)
+                {
+                    var t = o[name];
+                    return t == null ? (double?)null : (double)t;
+                }
+
+                Dictionary<string, BandCapsRow> caps = null;
+                if (o["axisBBandCaps"] is JObject capsObj)
+                {
+                    caps = new Dictionary<string, BandCapsRow>();
+                    foreach (var p in capsObj.Properties())
+                    {
+                        var row = (JObject)p.Value;
+                        caps[p.Name] = new BandCapsRow(
+                            (int)row["maxComplexity"], (int)row["peakTrainsCap"],
+                            (int)row["maxConcurrency"], (int)row["maxHeadroom"]);
+                    }
+                }
+
+                return ContentResult<ValidatorConfig>.Success(new ValidatorConfig(
+                    samples, OptInt("lowerBoundSlack"), OptInt("starBandSlack"),
+                    OptNum("noveltyMinDistance"), caps));
+            }
+            catch (System.Exception ex)
+            {
+                return ContentResult<ValidatorConfig>.Failure(ContentErrorKind.MalformedJson,
+                    ex.GetType().Name + ": " + ex.Message);
+            }
         }
     }
 }

@@ -22,17 +22,26 @@ namespace CatMetro.Tests.Validation
         [Test]
         public void UnreachableStation_Fails()
         {
-            // GRN accepts green but the only source emits red: no colour-compatible path.
+            // The source CAN emit green and GRN accepts green — but no path leads to GRN.
             var level = VFixtures.Level(o =>
             {
+                o["sources"][0]["allowedColors"] = new JArray("red", "green");
                 ((JArray)o["board"]["nodes"]).Add(VFixtures.Node("GRN", 5, 5));
-                ((JArray)o["board"]["edges"]).Add(VFixtures.Edge("E9", "J1", "GRN", 5));
                 ((JArray)o["stations"]).Add(VFixtures.Station("GRN", 6, "green"));
             });
             var v = Check(level);
             Assert.That(v.Code, Is.EqualTo(StageVerdictCode.Fail));
             Assert.That(v.Blocks, Is.True);
             Assert.That(v.Detail, Does.Contain("GRN").And.Contain("reach").IgnoreCase);
+        }
+
+        [Test]
+        public void DecoyStation_NoCompatibleSource_PassesVacuously()
+        {
+            // L001's BLU accepts blue while the only source emits red: a deliberate decoy, not a
+            // reachability defect (A-C5-8 refinement — this is why L001 itself passes).
+            var v = Check(VFixtures.L001Bytes());
+            Assert.That(v.Code, Is.EqualTo(StageVerdictCode.Pass));
         }
 
         [Test]
