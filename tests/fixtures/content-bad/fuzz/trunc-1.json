@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 2,
+  "id": "L001",
+  "name": "First Switch",
+  "seed": 1001,
+  "meta": {
+    "band": "onboarding",
+    "difficultyTarget": 0.08,
+    "mechanics": [
+      "switch"
+    ],
+    "newMechanic": "switch",
+    "teachingGoal": "One tap changes the route; deliver two red cats to the red station",
+    "minActionWindowTicks": 16,
+    "authoredBy": "human"
+  },
+  "board": {
+    "nodes": [
+      {
+        "id": "SRC",
+        "x": 3,
+        "y": 9
+      },
+      {
+        "id": "J1",
+        "x": 3,
+        "y": 6
+      },
+      {
+        "

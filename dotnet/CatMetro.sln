@@ -4,6 +4,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CatMetro.Domain", "CatMetro
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CatMetro.Tests", "CatMetro.Tests\CatMetro.Tests.csproj", "{A1B2C3D4-0002-4CM1-9000-C47ME7200002}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CatMetro.Content", "CatMetro.Content\CatMetro.Content.csproj", "{A1B2C3D4-0003-4CM2-9000-C47ME7200003}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CatMetro.Services", "CatMetro.Services\CatMetro.Services.csproj", "{A1B2C3D4-0004-4CM2-9000-C47ME7200004}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,6 +22,14 @@ Global
 		{A1B2C3D4-0002-4CM1-9000-C47ME7200002}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A1B2C3D4-0002-4CM1-9000-C47ME7200002}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A1B2C3D4-0002-4CM1-9000-C47ME7200002}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A1B2C3D4-0003-4CM2-9000-C47ME7200003}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1B2C3D4-0003-4CM2-9000-C47ME7200003}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1B2C3D4-0003-4CM2-9000-C47ME7200003}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1B2C3D4-0003-4CM2-9000-C47ME7200003}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A1B2C3D4-0004-4CM2-9000-C47ME7200004}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1B2C3D4-0004-4CM2-9000-C47ME7200004}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1B2C3D4-0004-4CM2-9000-C47ME7200004}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1B2C3D4-0004-4CM2-9000-C47ME7200004}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ADR-0003: interfaces only. Created by CM-C2a (A-C2a-5); C7/C8 add files under the same
+       link glob with no csproj edit. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <AssemblyName>CatMetro.Services</AssemblyName>
+    <RootNamespace>CatMetro.Services</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../unity/Assets/Scripts/Services/**/*.cs" />
+  </ItemGroup>
+
+</Project>

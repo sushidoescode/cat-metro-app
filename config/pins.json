@@ -9,7 +9,9 @@
     "packages": {
       "NUnit": "3.14.0",
       "NUnit3TestAdapter": "4.5.0",
-      "Microsoft.NET.Test.Sdk": "17.9.0"
-    }
+      "Microsoft.NET.Test.Sdk": "17.9.0",
+      "Newtonsoft.Json": "13.0.2"
+    },
+    "_newtonsoft": "13.0.2 = the version inside com.unity.nuget.newtonsoft-json 3.2.x (ADR-0008:166-172; CM-C2a A-C2a-7, verified 2026-08-03). Unity leg consumes the UPM package; dotnet leg consumes the identical NuGet version."
   }
 }
