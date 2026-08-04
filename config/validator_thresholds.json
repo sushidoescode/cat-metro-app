@@ -1,0 +1,4 @@
+{
+  "_comment": "CM-C5 validator thresholds. jitterSampleCount is a test-design number (handoff A-C5-2). The four Q-R rows — lowerBoundSlack, starBandSlack, noveltyMinDistance, axisBBandCaps — are DELIBERATELY ABSENT: no number for them exists anywhere in the corpus, an absent row prints UNCONFIGURED(<row>) and contributes 0 to the exit code, and no agent may add one (state/backlog.md CM-C5 stop condition 3; Q-R). Adding a row here is a human decision.",
+  "jitterSampleCount": 20
+}

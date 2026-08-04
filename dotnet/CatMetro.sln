@@ -8,6 +8,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CatMetro.Content", "CatMetr
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CatMetro.Services", "CatMetro.Services\CatMetro.Services.csproj", "{A1B2C3D4-0004-4CM2-9000-C47ME7200004}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CatMetro.Validator", "CatMetro.Validator\CatMetro.Validator.csproj", "{74FE11B2-66D0-4969-935D-16D4A202B430}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -30,6 +32,10 @@ Global
 		{A1B2C3D4-0004-4CM2-9000-C47ME7200004}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A1B2C3D4-0004-4CM2-9000-C47ME7200004}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A1B2C3D4-0004-4CM2-9000-C47ME7200004}.Release|Any CPU.Build.0 = Release|Any CPU
+		{74FE11B2-66D0-4969-935D-16D4A202B430}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{74FE11B2-66D0-4969-935D-16D4A202B430}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{74FE11B2-66D0-4969-935D-16D4A202B430}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{74FE11B2-66D0-4969-935D-16D4A202B430}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

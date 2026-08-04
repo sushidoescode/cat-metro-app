@@ -265,11 +265,20 @@ namespace CatMetro.Content
                     validatedAt = (string)vaProp.Value;
                     hasValidatedAt = true;
                 }
+                // newMechanic is typed ["string","null"] by schema v2 (level_schema.json:21) and
+                // both shipped stress boards author null — requiring a string here rejected
+                // schema-valid corpus content (CM-C5 erratum E-C2a-1).
+                var nmTok = Req(metaObj, "newMechanic");
+                string newMechanic;
+                if (nmTok.Type == JTokenType.String) newMechanic = (string)nmTok;
+                else if (nmTok.Type == JTokenType.Null) newMechanic = null;
+                else throw new WalkException(ContentErrorKind.MalformedJson,
+                    "newMechanic must be a string or null (schema v2)");
                 var meta = new MetaDto(
                     ReqStr(metaObj, "band"),
                     (double)Req(metaObj, "difficultyTarget"),
                     mechanics,
-                    ReqStr(metaObj, "newMechanic"),
+                    newMechanic,
                     ReqStr(metaObj, "teachingGoal"),
                     ReqIntIn(metaObj, "minActionWindowTicks", ContentBounds.MIN_ACTION_WINDOW_TICKS_FLOOR, int.MaxValue),
                     ReqStr(metaObj, "authoredBy"),

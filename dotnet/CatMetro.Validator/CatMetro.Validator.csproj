@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- CM-C5 criterion 15 / Q-X (A-C5-6): the console host owning ALL validator file I/O — the
+       validation library under unity/Assets/Scripts/Content/Validation/** opens nothing. A
+       dotnet-leg tool exe with no Unity asmdef counterpart; deliberately NOT a row in ADR-0003's
+       13-assembly list. Newtonsoft pin matches the tree-wide 13.0.2 (ADR-0004 pin hygiene). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>10.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <AssemblyName>CatMetro.Validator</AssemblyName>
+    <RootNamespace>CatMetro.Validator</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../CatMetro.Domain/CatMetro.Domain.csproj" />
+    <ProjectReference Include="../CatMetro.Content/CatMetro.Content.csproj" />
+    <ProjectReference Include="../CatMetro.Services/CatMetro.Services.csproj" />
+  </ItemGroup>
+
+</Project>
