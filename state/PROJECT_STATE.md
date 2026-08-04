@@ -15,7 +15,8 @@
 | CM-C1 | Domain skeleton + replay-hash test | session 2026-08-02/03 | DONE — golden human-committed, merged (#2/#3) | (merged) |
 | CM-C2a | Content importer (bytes → LevelGraph) | session 2026-08-03 | DONE — merged (#8) after 9-finding review | (merged) |
 | CM-C4 | Solver (BFS ≤2-switch, beam beyond) | session 2026-08-03/04 | DONE — merged (#9) after review round | (merged) |
-| CM-C5 | 11-stage validator + validate-content leg | session 2026-08-04 | BUILT — 167/167, gates 5/5, in review; 2 CM-C2a errata disclosed | task/cm-c5-validator |
+| CM-C5 | 11-stage validator + validate-content leg | session 2026-08-04 | DONE — merged (#10) after 14-finding review round | (merged) |
+| CM-C6..C8, L002-L005 | phases 6–9 | fresh session (handoff) | QUEUED — see state/handoffs/SESSION-HANDOFF-phase6-10.md | — |
 | CM-C2b/C3 | Greybox board + L001 in-engine | — | BLOCKED-ON human Unity scaffold (Q-G) | — |
 
 ## Recently done (last 7 days — one line each, PR links)
@@ -32,6 +33,8 @@
 
 ## Decisions this week (promote to ADR if architectural)
 - 2026-08-02 — mode=sprint with a hard graduation criterion (see Now). Rationale: hackathon clock now, revenue later; monetization globs tripwire the switch.
+- 2026-08-04 — **Constitution Amendment 1 (human-authored, e9e9675 via #12/#13):** agent squash-merges to main delegated under conditions (green checks; sprint review pricing honoured; no immutable/risky/docs-plan paths; tags/releases/spend/state-mode/ADRs stay human). Bootstrap route: unsigned human commit → staging squash (web-flow signed) → main; SSH commit signing still on the debt list.
+- 2026-08-04 — phases 6–10 hand to a fresh session (new Max account, Fable 5) per state/handoffs/SESSION-HANDOFF-phase6-10.md; this session ends after the first delegated merge (#11).
 
 ## Metrics tags (append per completed task: intervention? rework? escape? cost-$)
 
