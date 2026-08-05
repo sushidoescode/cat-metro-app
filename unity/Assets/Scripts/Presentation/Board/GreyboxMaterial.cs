@@ -7,9 +7,22 @@ namespace CatMetro.Presentation.Board
     // RED STUB.
     public static class GreyboxMaterial
     {
+        private static UnityEngine.Material _shared;
+
         public static UnityEngine.Material Shared
         {
-            get { return null; } // red stub: no material committed yet
+            get
+            {
+                if (_shared == null)
+                {
+                    _shared = UnityEngine.Resources.Load<UnityEngine.Material>("Materials/Greybox");
+                    if (_shared == null)
+                        UnityEngine.Debug.LogError(
+                            "GreyboxMaterial: Materials/Greybox missing from Resources — " +
+                            "runtime primitives would fall back to the strippable engine default");
+                }
+                return _shared;
+            }
         }
     }
 }

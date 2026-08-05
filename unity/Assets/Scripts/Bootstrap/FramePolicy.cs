@@ -11,7 +11,9 @@ namespace CatMetro.Bootstrap
 
         public static void Apply()
         {
-            // red stub: no policy applied
+            if (UnityEngine.QualitySettings.vSyncCount != 0)
+                UnityEngine.QualitySettings.vSyncCount = 0;
+            UnityEngine.Application.targetFrameRate = TARGET_FPS;
         }
     }
 }
