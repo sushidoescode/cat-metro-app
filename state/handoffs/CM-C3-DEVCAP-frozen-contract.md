@@ -6,6 +6,10 @@ human-ordered; the omission is flagged to the human in-session). **A-DEVCAP-3 is
 unratified at freeze** — offered to the human this session, A-C3-2/Q-K precedent; overrule route is an
 amendment to CM-C3 criterion 7's device-leg definition, priced at criterion 5's reducer + criterion
 2's mark rule.
+**Ratifications (human, in-session 2026-08-04, pre-red):** A-DEVCAP-3 ACCEPTED (frame-anchored retry
+start is criterion 7's device-leg definition; ~17 ms worst-case bias noted in PR + artifact) ·
+handoff-only filing ACCEPTED (no backlog row) · criterion 4's release-APK `strings` scan is
+DEVICE-SESSION EVIDENCE, not a merge gate · single-flush (A-DEVCAP-7) KEPT.
 **Roadmap:** none of its own — this is tooling in service of D4 (`docs/plan/data/roadmap_56_days.csv:5`).
 **DEPENDS-ON:** CM-C2b merged (#21, the FrameLog) **and** CM-C3 merged (#22, the fail/retry loop).
 **Suggested branch:** `task/CM-C3-DEVCAP-frame-capture`.
