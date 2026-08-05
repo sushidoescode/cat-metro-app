@@ -5,7 +5,7 @@
      (agents propose the rotation; humans prune). A 2,000-line state file is a measured failure mode. -->
 
 ## Now
-2026-08-04 — phase: build, Sprint 1. ALL pure-dotnet contracts merged (CM-C1..C8, L001-L005; suite 257 tests, test.sh 8/8). Unity scaffold (Q-G) IN PROGRESS: human created the pinned 6000.3.16f1 shell + merged #14-#18; agent executing the mechanical scaffold on chore/qg-unity-scaffold. Next: scaffold PR → CM-C2b/C3 recut per state/handoffs/CM-C2b-C3-prep.md → tranche-3 decompose (taxonomy CM-R43.1-.3, L006-L010, dead-newMechanic gate, content shipping pipeline). Mode: see `state/mode` (sprint). Monthly agent budget: $0 API — subscription capacity only (Claude Max + Codex Pro/Max + local model qwen3.6:35b-a3b-coding-nvfp4). Stop-and-rethink trigger: >40% of budget in any week.
+2026-08-04 — phase: build, Sprint 1. ALL pure-dotnet contracts merged (CM-C1..C8, L001-L005; suite 324 tests (both hosts), test.sh 8/8). Unity scaffold (Q-G) IN PROGRESS: human created the pinned 6000.3.16f1 shell + merged #14-#18; agent executing the mechanical scaffold on chore/qg-unity-scaffold. Scaffold MERGED (#19; 324/324 both hosts, replay hash byte-identical in-engine). Next: CM-C2b build → CM-C3 → tranche-3 decompose (taxonomy CM-R43.1-.3, L006-L010, dead-newMechanic gate, content shipping pipeline). Mode: see `state/mode` (sprint). Monthly agent budget: $0 API — subscription capacity only (Claude Max + Codex Pro/Max + local model qwen3.6:35b-a3b-coding-nvfp4). Stop-and-rethink trigger: >40% of budget in any week.
 
 **Graduation criterion (human decision, 2026-08-02):** flip `state/mode` to production via human-authored commit BEFORE any monetization code (billing/IAP/ads/payments) merges. Those path globs are already risky-path tripwires in AGENTS.md. At graduation: `git mv .github/workflows/claude-review.yml.disabled .github/workflows/claude-review.yml` and resolve TODO(review-auth) below.
 
@@ -21,7 +21,8 @@
 | CM-C7 | Save v1 (header/atomic/SI/migration/ledger/bounds) | session 2026-08-04 (Fable 5) | DONE — merged (#16) after 12-finding round (read-only grant hole caught+fixed); human acked the 6 gates | (merged) |
 | CM-C8 | Analytics offline queue | session 2026-08-04 (Fable 5) | DONE — merged (#18, was stacked on #16) after 13-finding round | (merged) |
 | Q-G scaffold | Unity 6000.3.16f1 project shell in place | human shell + agent mechanics 2026-08-04 | IN PROGRESS | chore/qg-unity-scaffold |
-| CM-C2b/C3 | Greybox board + L001 in-engine | — | RECUT NEXT — prep note merged (#17); unblocks when the scaffold PR merges | — |
+| CM-C2b | Greybox board + Bootstrap seams + StreamingAssets (recut 2026-08-04, 11 criteria) | — | NEXT BUILD — recut in #20 | — |
+| CM-C3 | Fail/retry loop (recut-stamped, stands as written) | — | QUEUED after CM-C2b | — |
 
 ## Recently done (last 7 days — one line each, PR links)
 - 2026-08-04 — phases 6-10 session (Fable 5): CM-C6 #14 · L002-L005 #15 · CM-C7 #16 · CM-C8 #18 · prep note #17 all merged same-day. 4 fresh-context review rounds, 45 findings, 4 real blockers caught pre-merge (dead L005 queue; read-only double-grant; pause-path IOException; Guid-survivable id tests). Cross-tool pinned vectors (python↔C#) for seeds/ledger keys/queue ids. Suite 169→257 tests, wrappers 5→8.

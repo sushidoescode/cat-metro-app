@@ -22,7 +22,7 @@ pre-amendment caveat; it does not apply to citations in this file.
 |---|---|---|---|---|
 | **CM-C1** | D2 (`roadmap_56_days.csv:3`) | CM-R01, CM-R02 (pin-independent subset), CM-R03.1, CM-R07.3 | 0002, 0003, 0004, 0005 | **MERGED** |
 | **CM-C2a** | D3 content+importer (`:4`) | CM-R13.2, CM-R12 (schema/bounds subset), CM-R02.1 (mapping side) | 0003, 0005, 0006 (§4 bounds), 0008 | queued, **UNBLOCKED** |
-| **CM-C2b** | D3 engineering (`:4`) | CM-R07.1/.3, CM-R17 (partial), CM-R20.1, CM-R51.1, CM-R52 | 0003, 0005, 0007, 0008 | **BLOCKED-ON Q-G** |
+| **CM-C2b** | D3 engineering (`:4`) | CM-R07.1/.3, CM-R17 (partial), CM-R20.1, CM-R51.1, CM-R52 | 0003, 0005, 0007, 0008 | **READY — Q-G resolved (#19, recut 2026-08-04)** |
 | **CM-C3** | D4 (`:5`) | CM-R03.2, CM-R15 (D4 subset), CM-R16, CM-R17.1, CM-R22.3 | 0002, 0007 | queued |
 | **CM-C4** | D8 + D9 solver (`:10,11`) | CM-R02.1, CM-R12.2 (input), CM-R19.1 (input), CM-R04.2 (input) | 0002, 0003, 0005, 0008 | queued, **UNBLOCKED**, HYBRID-ELIGIBLE |
 | **CM-C5** | D9 (`:11`) | CM-R12.1–.6, CM-R06.1/.2, CM-R07.6, CM-R09.2, CM-R04.2 | 0002, 0005, 0008, 0009 | queued |
@@ -45,7 +45,7 @@ is `docs/prd/PRD.md` §0 and §5 (57 open items). **D-decisions and §4.1 pins a
 | **Q-D** | Does CM-C1 own all three `FailReason` members, or only `queue_overflow`? | settled by shipped code | `Outcomes.cs:7-12` ships all three; only `QueueOverflow`/`TimeOut` are raisable (`Outcomes.cs:40-42`). Unchanged. |
 | **Q-E** | Roadmap D3 says "Win by routing 10 cats"; authored L001 has `win.deliveries: 2` (`docs/plan/data/example_levels.json:15`). | CM-C2a, CM-C2b | CM-C2a asserts **the level file's own** `win.deliveries`. If the human wants 10, L001 is re-authored — content change, not code. |
 | **Q-F** | **A-19 / ADR-0008 §Open conflict** — no `district` field in schema v2 (`docs/adr/0008-content-pipeline-and-level-schema.md:131-149`). | CM-C2a (DTO shape), CM-C5 | CM-C2a imports schema v2 **exactly as it stands**; adding `meta.district` is a schema change → stop condition, not an agent edit. |
-| **Q-G** | **Unity project scaffold** (6000.3.16f1, IL2CPP/ARM64/URP/Input System, minSdk 25 / targetSdk 36, package `com.catmetro.game`, keystore) is human-only (`docs/adr/0005-dotnet-first-dual-test-harness.md:16-19`). Must be created **in place at `unity/`** without deleting `unity/Assets/Scripts/Domain/**`. | CM-C2b (BLOCKED-ON), CM-C8 (M-21 backup limb) | CM-C2b cannot start. **CM-C2a, CM-C4, CM-C5, CM-C6, CM-C7, CM-C8 are unaffected** — that is the whole point of ADR-0005. |
+| **Q-G** | **Unity project scaffold** (6000.3.16f1, IL2CPP/ARM64/URP/Input System, minSdk 25 / targetSdk 36, package `com.catmetro.game`, keystore) is human-only (`docs/adr/0005-dotnet-first-dual-test-harness.md:16-19`). Must be created **in place at `unity/`** without deleting `unity/Assets/Scripts/Domain/**`. | CM-C2b (was BLOCKED-ON), CM-C8 (M-21 backup limb) | **RESOLVED 2026-08-04: scaffold merged as #19 (`e586712`), every pin verified; keystore/Play App Signing remain open human items (release-era).** CM-C2b is READY. |
 | **Q-H** | **TG-5** — failure-screen copy voice (`docs/prd/ux-flows.md:188` vs `docs/plan/specs/monetization_spec.md:173`). | CM-C3 | CM-C3 renders the LOCKED set; a TG-5 flip is a string-table edit. |
 | **Q-I** | **Golden custody** — `tests/contract/replay-hash-golden.json` human-committed. | CM-C1 (**discharged**) | Discharged: golden human-committed, CI green, merged (`state/PROJECT_STATE.md:15`). The rule stands for every future golden. |
 | **Q-J** | **BLOCKING — what raises `platform_overflow` while NEW-Q4 pins rejection out?** (`docs/plan/specs/product_spec.md:225`; CM-R02.3 at `docs/prd/PRD.md:113`). | CM-C2b, CM-C3, CM-C4, CM-C5 | `PlatformOverflow` stays an enum member and is never raised (`Outcomes.cs:40-42`). Roadmap D3's "fail by platform overflow" (`roadmap_56_days.csv:4`) is **recorded as deferred, not met**. |
@@ -63,7 +63,7 @@ is `docs/prd/PRD.md` §0 and §5 (57 open items). **D-decisions and §4.1 pins a
 | **Q-V** | **The `validate-content` / `validate-dailies` workflow files live under `.github/**`** — a declared risky path requiring independent security review, hook- and CODEOWNERS-protected (AGENTS.md §Risky paths; RK-37 at `docs/adr/0009-...:18-20`). | CM-C5, CM-C6 | CM-C5 and CM-C6 deliver **entry-point scripts** (`scripts/validate-content.sh`, `scripts/validate-dailies.sh`) and fast-leg wrappers only. Wiring them into a workflow is a separate human-gated `.github/**` PR. Until then the jobs exist but nothing triggers them in CI. |
 | **Q-W** | **"Solver-optimal" is undefined beyond completion time.** CM-R19.1 and `docs/plan/specs/product_spec.md:389` say "solver-optimal completion time"; CM-R10.6 and CM-R04.2 also consume a solver-optimal *run*. Nothing defines the tie-break when two winning logs share a completion tick. | CM-C4, CM-C5 | **Analyst assumption A-C4-3 (unratified):** optimal = minimal completion ticks; ties broken by **fewer commands**, then by **lexicographic order of `(Tick, SwitchId)` pairs**. Deterministic and asserted (criterion 7). An overrule changes the reported log, not solvability. |
 | **Q-X** | **Two new `dotnet`-leg host executables, analyst-assigned.** CM-C5 and CM-C6 must do file I/O and **may not do it where their logic lives** (CM-C2a criterion 2 bans `System.IO` under `unity/Assets/Scripts/Content/**`; ADR-0008:53-56). So each owns a console host — `dotnet/CatMetro.Validator/**` and `dotnet/CatMetro.DailyTools/**`. These are **leg-only tool exes with no Unity asmdef counterpart**, so they are not rows in ADR-0003's 13-assembly list (§Locked in — assembly names are irreversible) — but a human should confirm that a `dotnet`-leg tool project sits **outside** that list rather than being a 14th and 15th row. | CM-C5, CM-C6 | Both contracts ship the host as specified and name it in the PR. If the architect rules it an ADR-0003 row, the remedy is an ADR amendment plus a rename — **no behaviour change, no criterion changes meaning.** Same shape as Q-M. |
-| **Q-Y** | **`config/runtime_bounds.json` ↔ `unity/Assets/StreamingAssets/config/runtime_bounds.json` byte-identity has no owner.** The required `ci` job asserts it (`docs/adr/0009-ci-topology-and-secret-custody.md:33`; ADR-0008 names the copy step). **CM-C7 authors the source file and owns no `StreamingAssets` path**; `.../StreamingAssets/content/**` is CM-C2b's and `.../StreamingAssets/config/**` is unowned by every contract in this queue. Making CM-C7 write it would mean creating a Unity asset folder (and its `.meta`) before the Q-G scaffold exists — no `.meta` file exists anywhere in `unity/` today. | CM-C7, and whoever takes the content-pipeline contract | **CM-C7 defers the copy step and says so** (non-goal + PR note): the `ci` byte-identity assertion is **unsatisfiable until a content-pipeline contract owns `unity/Assets/StreamingAssets/config/**`**, and CM-C7's PR names that follow-up. A human must either accept the deferral (and keep that `ci` clause off until the follow-up lands) or assign the path now. |
+| **Q-Y** | **`config/runtime_bounds.json` ↔ `unity/Assets/StreamingAssets/config/runtime_bounds.json` byte-identity has no owner.** The required `ci` job asserts it (`docs/adr/0009-ci-topology-and-secret-custody.md:33`; ADR-0008 names the copy step). **CM-C7 authors the source file and owns no `StreamingAssets` path**; `.../StreamingAssets/content/**` is CM-C2b's and `.../StreamingAssets/config/**` is unowned by every contract in this queue. Making CM-C7 write it would mean creating a Unity asset folder (and its `.meta`) before the Q-G scaffold exists — no `.meta` file exists anywhere in `unity/` today. | CM-C7, and whoever takes the content-pipeline contract | **CM-C7 defers the copy step and says so** (non-goal + PR note): the `ci` byte-identity assertion is **unsatisfiable until a content-pipeline contract owns `unity/Assets/StreamingAssets/config/**`**, and CM-C7's PR names that follow-up. A human must either accept the deferral (and keep that `ci` clause off until the follow-up lands) or assign the path now. **RESOLVED at the 2026-08-04 recut: CM-C2b criterion 10 owns the path (ownership row updated) and delivers the byte-identity gate.** |
 
 **Unverified / not checked in this session:** no external market or platform claim is made in this file.
 No user datapoints exist for Cat Metro as of 2026-08-03 (`docs/prd/PRD.md:64`); nothing here is derived
@@ -114,7 +114,7 @@ it is out of scope for every contract in this queue.
 |---|---|
 | **CM-C1** *(merged; frozen — edits here are a stop condition for everyone else)* | `unity/Assets/Scripts/Domain/**` **EXCEPT `unity/Assets/Scripts/Domain/Solver/**`** · `unity/Assets/Tests/EditMode/Pure/Domain/**` · `dotnet/CatMetro.Domain/**` · `dotnet/CatMetro.Tests/**` · `dotnet/CatMetro.sln` · `dotnet/packages.lock.json` · `tests/domain/**` · `tests/fixtures/purity-bad/**` · `config/pins.json` · `scripts/check.sh` |
 | **CM-C2a** | `unity/Assets/Scripts/Content/**` **EXCEPT `unity/Assets/Scripts/Content/Validation/**` and `unity/Assets/Scripts/Content/Daily/**`** · `unity/Assets/Scripts/Services/Content/**` · `unity/Assets/Tests/EditMode/Pure/Content/**` · `dotnet/CatMetro.Content/**` · `dotnet/CatMetro.Services/**` (project file created here; see the glob note) · `content/levels/**` · `tests/content/**` · `tests/fixtures/content-bad/**` |
-| **CM-C2b** | `unity/Assets/Scripts/Presentation/Board/**`, `/Input/**`, `/Diagnostics/**` · `unity/Assets/Scripts/Presentation/Hud/**` **EXCEPT `.../Hud/WavePreview/**`** · `unity/Assets/Scripts/Application/**` **EXCEPT `Application/Retry/**`, `Application/Save/**`, `Application/Analytics/**`** · `unity/Assets/Scripts/Bootstrap/**` · `unity/Assets/Scenes/Game*` · `unity/Assets/StreamingAssets/content/**` · `unity/Assets/Resources/Strings/ui.csv` (created here) · `unity/Assets/Tests/EditMode/Engine/**` · `unity/Assets/Tests/PlayMode/Board/**` · `tests/unity/**` **EXCEPT `tests/unity/failure.test.sh`** |
+| **CM-C2b** | `unity/Assets/Scripts/Presentation/Board/**`, `/Input/**`, `/Diagnostics/**` · `unity/Assets/Scripts/Presentation/Hud/**` **EXCEPT `.../Hud/WavePreview/**`** · `unity/Assets/Scripts/Application/**` **EXCEPT `Application/Retry/**`, `Application/Save/**`, `Application/Analytics/**`** · `unity/Assets/Scripts/Bootstrap/**` · `unity/Assets/Scenes/Game*` · `unity/Assets/StreamingAssets/content/**` · `unity/Assets/StreamingAssets/config/**` *(granted by the 2026-08-04 recut for criterion 10 — closes Q-Y)* · `unity/Assets/Resources/Strings/ui.csv` (created here) · `unity/Assets/Tests/EditMode/Engine/**` · `unity/Assets/Tests/PlayMode/Board/**` · `tests/unity/**` **EXCEPT `tests/unity/failure.test.sh`** |
 | **CM-C3** | `unity/Assets/Scripts/Presentation/Failure/**` · `.../Presentation/Hud/WavePreview/**` · `.../Presentation/Camera/**` · `unity/Assets/Scripts/Application/Retry/**` · `unity/Assets/Tests/PlayMode/Failure/**` · `unity/Assets/Tests/EditMode/Pure/Retry/**` · `tests/unity/failure.test.sh` · **append-only rows** in `unity/Assets/Resources/Strings/ui.csv` |
 | **CM-C4** | `unity/Assets/Scripts/Domain/Solver/**` · `unity/Assets/Tests/EditMode/Pure/Solver/**` · `tests/solver/**` |
 | **CM-C5** | `unity/Assets/Scripts/Content/Validation/**` · **`dotnet/CatMetro.Validator/**`** (the console host: file I/O + the on-disk `IContentSource`) · `unity/Assets/Tests/EditMode/Pure/Validation/**` · `tests/validation/**` · `scripts/validate-content.sh` · `config/validator_thresholds.json` |
@@ -198,7 +198,7 @@ rather than an assembly-boundary one — CM-C4 criterion 13 supplies it. If the 
 CM-C1  ── MERGED (golden human-committed, CI green; state/PROJECT_STATE.md:15)
    │
    ├─> CM-C2a  Content importer (dotnet)            UNBLOCKED — no Unity, no licence
-   │      ├─> CM-C2b  Greybox board (Unity)         BLOCKED-ON Q-G (human scaffold)
+   │      ├─> CM-C2b  Greybox board (Unity)         READY — Q-G resolved (#19; recut 2026-08-04)
    │      │      └─> CM-C3  Fail/retry loop         DEPENDS-ON CM-C2b merged
    │      ├─> CM-C7  Save v1 (dotnet subset)        DEPENDS-ON CM-C2a merged
    │      │      │                                  (dotnet/CatMetro.Services/ skeleton)
@@ -475,12 +475,13 @@ Defaults apply (schema change · new dependency · criteria conflict → stop an
 # CONTRACT CM-C2b — Greybox board: render, input, win/fail, manifest, 60 fps (Unity side)
 
 **Roadmap:** D3 engineering, `docs/plan/data/roadmap_56_days.csv:4`.
-**DEPENDS-ON:** CM-C2a merged (the importer and `LevelGraph` mapping must be green before anything
-renders them). **BLOCKED-ON:** *human* Unity 6000.3.16f1 scaffold — outside this queue (**Q-G**).
-Required before start: project created **in place at `unity/`** without removing
-`unity/Assets/Scripts/Domain/**` or `unity/Assets/Scripts/Content/**`; IL2CPP, ARM64, URP, Input System;
-**minSdk 25 / targetSdk 36**; package `com.catmetro.game`; keystore + Play App Signing
-(`docs/plan/EXECUTION_PLAN.md:439`; ADR-0004:36). **minSdk anywhere is 25** — the roadmap's 24 is
+**DEPENDS-ON:** CM-C2a merged ✓ (#8). **Q-G RESOLVED (recut 2026-08-04):** the scaffold merged as
+#19 (`e586712`) with every pin verified — 6000.3.16f1, IL2CPP, ARM64, URP, Input System, minSdk 25 /
+targetSdk 36, `com.catmetro.game`, created in place; asmdefs per ADR-0003/0005; the EditMode suite
+runs 324/324 in-engine with the replay hash byte-identical to the dotnet leg (the prep note's
+"replay-hash parity EditMode leg" is therefore DONE at scaffold; the `unity-editmode` CI job stays
+Q-V human). **Keystore + Play App Signing remain open human items** (`docs/plan/EXECUTION_PLAN.md:439`;
+ADR-0004:36) — release-era, not a greybox blocker. **minSdk anywhere is 25** — the roadmap's 24 is
 superseded by AMD-08 (`docs/plan/EXECUTION_PLAN.md:349-350`).
 
 ### Goal
@@ -496,7 +497,8 @@ interpolating.
 `docs/adr/0007-*` (UGUI+TMP, screen stack, Input System, no Addressables) ·
 `docs/architecture/overview.md` §3 (`:119-149` tap → command → Step → snapshot → interpolate), §7.
 
-### Acceptance criteria (8) — renumbered from tranche-1 CM-C2 criteria 5–12, unchanged in substance
+### Acceptance criteria (11) — 1–8 from tranche 1 unchanged in substance; 9–11 added by the
+### 2026-08-04 recut (state/handoffs/CM-C2b-C3-prep.md) to absorb what landed since tranche 2
 
 1. **Greybox render fidelity.** Loading L001 instantiates exactly one view object per authored board
    element (4 nodes incl. 1 source and 2 stations, 3 edges, 1 switch), each carrying the authored id
@@ -546,6 +548,53 @@ interpolating.
    framestats` or the Unity profiler. The run artifact (device model, build id, raw frametime table,
    both figures) is attached to the PR. **The criterion fails if the artifact is absent**, not merely
    if the numbers miss (`roadmap_56_days.csv:4`; CM-R52).
+9. **Bootstrap seams land (recut).** `CatMetro.Bootstrap` (asmdef per ADR-0003's added 10th row —
+   the ONLY assembly that may name the engine's persistent data path) implements **`IStorageRoot`**
+   (persistent + cache paths; CM-C7's `SaveStore` becomes constructible on device) and
+   **`IContentSource`** (StreamingAssets reads via an Android-capable engine API — ADR-0008:53-56:
+   the APK keeps StreamingAssets where plain file reads cannot reach on device; editor tests prove
+   the seam, the device leg rides criterion 8's session). *Check:* an EditMode/PlayMode test loads
+   L001 THROUGH the Bootstrap `IContentSource` into the importer and renders it (criterion 1 runs on
+   this path, not a test shim); one test constructs `SaveStore` AND `AnalyticsQueue` against the
+   Bootstrap `IStorageRoot` and commits+reloads each; `scripts/check.sh`'s runtime-tree guard stays
+   green (Bootstrap must not reference solver types); a STATIC assertion that the Bootstrap content
+   reader routes StreamingAssets through `UnityWebRequest` (zero plain-file reads of the
+   streamingAssets path outside an explicitly editor-only branch — evaluator D4: an editor-passing
+   `File.ReadAll` impl fails on device); and a grep over `unity/Assets/Scripts/**` EXCLUDING
+   `Bootstrap/**` asserting zero references to the engine's persistent/cache path APIs (evaluator
+   D5: Presentation is the first engine-referencing assembly where the ADR-0003 invariant becomes
+   violable — the grep is appended to a discovered wrapper or `scripts/check.sh`). Criterion 8's
+   device artifact additionally records that the played L001 was loaded through the Bootstrap seam
+   (one log line in the run artifact).
+10. **StreamingAssets ships the corpus + bounds, byte-identical (recut — closes Q-Y).**
+    the staged set is **exactly the merged corpus — ALL of `content/levels/*.json` (L001–L005
+    today)** — byte-identical file-for-file, and `unity/Assets/StreamingAssets/config/runtime_bounds.json`
+    is a byte-identical copy of `config/runtime_bounds.json` (ADR-0009:33's `ci` clause, deferred by
+    CM-C7's Q-Y note, becomes satisfiable HERE). The "no levels beyond L001" non-goal means no NEW
+    authored levels — staging the already-merged corpus is this criterion's copy, not authoring.
+    *Check:* a SET-EQUALITY assertion (filename sets equal in both directions — evaluator D8: pairwise
+    identity alone is omission-blind) plus per-file byte-identity, in a discovered wrapper that FAILS
+    on drift in either direction; the CI wiring of ADR-0009:33 itself stays Q-V (human `.github/**`).
+    **Deviation recorded (evaluator D9):** ADR-0008:57-62's `ContentSync` editor tooling (the
+    prevention half) needs a `CatMetro.Editor` assembly that does not exist; this criterion ships the
+    copies + the drift GATE, and `ContentSync` is the named follow-up riding the first CatMetro.Editor
+    contract.
+11. **RK-17 backup posture — implement the human's decision, or stop loudly (recut).** ADR-0006
+    §Open conflict (`:291-333`) leaves the posture open and `docs/prd/risks.md:80` (quoted at
+    ADR-0006:394-396) requires it to land WITH the save format; the save format merged (#16), so
+    **RK-17 is now PAST DUE — a human decision is required during this contract's window.** If decided:
+    the manifest/backup-rules artifact implements it, and `analytics_queue.dat` + its transient `.tmp`
+    are excluded UNCONDITIONALLY (ADR-0006 §5; Q-U/M-21's satisfied-by-exclusion deviation in
+    `state/handoffs/CM-C8.md`). If still undecided at build time: criterion 7 ships the SDK-version
+    assertions only, and the PR names RK-17 as the open release-gate blocker — never a silent default.
+    *Check (conditional — evaluator D6):* **decided branch** — the merged-manifest assertion covers
+    the chosen posture AND a grep asserts the queue file (+ its transient `.tmp`) is named in the
+    committed backup-rules XML. **Undecided branch** — a grep asserts NO `android:allowBackup`
+    attribute and NO backup-rules XML is committed anywhere, and the PR carries the named-blocker
+    note **stating plainly that criterion 8's device session then runs under Android's platform
+    default (backup-ON) — RK-17's exploit posture — as a knowingly-accepted, PR-named exposure
+    (evaluator D7). The human decides RK-17 either before the device session or by accepting that
+    named exposure; an agent never picks the posture.**
 
 ### Scope boundary
 
@@ -558,15 +607,22 @@ wrapper(s) under `tests/unity/` (e.g. `tests/unity/editmode.test.sh`, ADR-0005:9
 - **No fail/retry loop, no cause camera, no next-wave preview HUD, no results chrome** — CM-C3.
 - **No scoring/chain/star UI** (pin NEW-Q5). **No solver, no validator** (CM-C4/C5).
 - **No levels beyond L001**, no daily, no Night Harbor.
-- **No SDK, no commerce, no ads, no analytics, no save** — `**/billing/**`, `**/iap/**`, `**/ads/**`
+- **No SDK, no commerce, no ads, no analytics-taxonomy work** — `**/billing/**`, `**/iap/**`, `**/ads/**`
   are monetization tripwires requiring `state/mode=production` first (AGENTS.md; `state/PROJECT_STATE.md:10`).
+  (Recut note: constructing CM-C7's `SaveStore`/CM-C8's queue against Bootstrap seams is criterion 9's
+  wiring, not new save/analytics behaviour — neither type gains a line of code here.)
 - **No edits to CM-C1's Domain sources or CM-C2a's importer**; **no `Compile Include` append**.
+- **No daily DEVICE limbs (recut):** the 250 ms on-device salt loop, ≤200 ms boot validation, the
+  30-board backup pool (CM-R46.3/.4) **and CM-C6 criterion 7's handed-off two-device same-seed check
+  (roadmap D12; evaluator D10)** stay OUT — all gated on **Q-S** (no board generator exists; the
+  shipped `IBoardFactory` stub is fixed-board by design) plus a backup-pool content contract and a
+  two-device session. Recut them when Q-S lands; do not fake them against the stub.
 - **No writes to immutable paths** (AGENTS.md hard rule 1). **No schema change.**
 
 ### Assumptions
 
-- **A-C2b-1** The human scaffold landed exactly as Q-G specifies; if any of IL2CPP/ARM64/URP/Input
-  System/minSdk 25 differs, stop.
+- **A-C2b-1** SATISFIED at recut: #19's scaffold matches Q-G exactly (verified in the PR evidence);
+  the stop now guards regressions only.
 - **A-C2b-2** `IContentSource` (declared by CM-C2a) is implemented in `CatMetro.Bootstrap`
   (ADR-0003:71-74; overview.md:211). CM-C2b implements only what L001 loading needs.
 - **A-C2b-3** The greybox uses colour **plus symbol** placeholders from the start, because colour-alone
@@ -590,7 +646,12 @@ Defaults apply. Plus:
 **Roadmap:** D4, `docs/plan/data/roadmap_56_days.csv:5`.
 **DEPENDS-ON: CM-C2b merged** *(changed by the tranche-2 split — it was "CM-C2 merged"; the render,
 input and `FrameLog.cs` deliverables CM-C3 measures against all live in the CM-C2b half).*
-**Transitively BLOCKED-ON Q-G.**
+**Recut 2026-08-04: Q-G resolved (#19); reviewed against everything landed through CM-C8 — the
+contract stands as written. Notes: A-C3-3's motion source is unchanged (no settings screen exists;
+read the toggle stub + `ANIMATOR_DURATION_SCALE`); `ui.csv` ownership split (C2b creates, C3 appends)
+unchanged; criteria 2/4/7's device legs remain HUMAN-VERIFIED with artifacts. TG disposition
+(evaluator D11): greybox ships no palette, so TG-1 (board readability gates) does not bite until the
+art pass; TG-3/6/7/8 are post-greybox; TG-2/4/5 already appear as CM-C3 non-goals/stop conditions.**
 
 ### Goal
 
