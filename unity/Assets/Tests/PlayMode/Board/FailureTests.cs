@@ -73,22 +73,39 @@ namespace CatMetro.Tests.PlayMode
                 "A-C3-2 (Q-K): largest queue, ties to the lowest node id");
         }
 
-        // criterion 1's third limb + criterion 10's platform string: TEST-ONLY constructed
-        // outcome — the presentation surfaces driven directly; no shipped type carries it.
+        // criterion 1's third limb + criterion 10's platform string (review S1): the TEST-ONLY
+        // constructed presentation-level outcome type lives HERE, under the test tree — it may
+        // never become a shipped parallel outcome type — and it drives the SHIPPED reason→key
+        // mapping (GameRoot.FailKey's else branch), so the day Q-J unpins the reason, the
+        // correct LOCKED string renders and this test proves the path.
+        private sealed class ConstructedPresentationOutcome
+        {
+            public CatMetro.Domain.FailReason Reason;
+            public string CausalNodeId;
+        }
+
         [UnityTest]
-        public IEnumerator PlatformOverflow_ConstructedOutcome_FramesAndRendersTheLockedString()
+        public IEnumerator PlatformOverflow_ConstructedOutcome_DrivesTheShippedMapping()
         {
             _root = GameRoot.LaunchWith(Overflow());
             yield return null;
-            _root.CauseCam.FrameNode("BLU", _root.View.NodeWorldPos(3), motionOff: true);
-            _root.Banner.ShowKeySubstituted("fail.platformoverflow", "{station}", "BLU");
+            var constructed = new ConstructedPresentationOutcome
+            {
+                Reason = CatMetro.Domain.FailReason.PlatformOverflow,
+                CausalNodeId = "BLU",
+            };
+            var (key, token) = GameRoot.FailKey(constructed.Reason);
+            Assert.That(key, Is.EqualTo("fail.platformoverflow"),
+                "the SHIPPED mapping routes the pinned reason to the platform string");
+            Assert.That(token, Is.EqualTo("{station}"));
+            _root.CauseCam.FrameNode(constructed.CausalNodeId,
+                _root.View.NodeWorldPos(3), motionOff: true);
+            _root.Banner.ShowKeySubstituted(key, token, constructed.CausalNodeId);
             yield return null;
 
             Assert.That(_root.CauseCam.TargetNodeId, Is.EqualTo("BLU"));
             Assert.That(_root.Banner.CurrentText, Is.EqualTo("BLU platform overflowed"),
                 "the LOCKED string with the station substituted");
-            Assert.That(UiStrings.Get("fail.platformoverflow"),
-                Is.EqualTo("{station} platform overflowed"));
         }
 
         // --- criteria 3/5: motion-off is a one-frame cut + static ring; no information lost ---
@@ -109,6 +126,16 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.CauseCam.IsFramed, Is.True, "final transform in one frame");
             Assert.That(_root.CauseCam.RingVisible, Is.True);
             Assert.That(_root.CauseCam.RingAlpha, Is.GreaterThan(0f));
+            // review B1: the ring is ON the causal node — not riding the camera
+            var nodePos = _root.View.NodeWorldPos(0); // SRC raised the failure
+            Assert.That(Vector2.Distance(
+                new Vector2(_root.CauseCam.RingWorldPos.x, _root.CauseCam.RingWorldPos.y),
+                new Vector2(nodePos.x, nodePos.y)), Is.LessThan(0.01f),
+                "the blame ring sits on the causal node");
+            // review S8: the cut's framing geometry, kept for parity with the pan leg
+            Assert.That(new Vector2(_root.Cam.transform.position.x, _root.Cam.transform.position.y),
+                Is.EqualTo(new Vector2(nodePos.x, nodePos.y)).Within(0.01f),
+                "the camera centres the causal node");
             Assert.That(Object.FindObjectsByType<Animation>(FindObjectsSortMode.None).Length,
                 Is.Zero, "zero animation clips playing");
         }
@@ -128,13 +155,35 @@ namespace CatMetro.Tests.PlayMode
             while (!_root.CauseCam.IsFramed && Time.realtimeSinceStartup < deadline)
                 yield return null;
             Assert.That(_root.CauseCam.IsFramed, Is.True, "the pan converges");
+            // review S8: parity on GEOMETRY, not labels — the pan ends exactly where the cut
+            // ends, and the ring sat on the node the whole time (review B1).
+            var node = _root.View.NodeWorldPos(0);
+            Assert.That(new Vector2(_root.Cam.transform.position.x, _root.Cam.transform.position.y),
+                Is.EqualTo(new Vector2(node.x, node.y)).Within(0.01f));
+            Assert.That(Vector2.Distance(
+                new Vector2(_root.CauseCam.RingWorldPos.x, _root.CauseCam.RingWorldPos.y),
+                new Vector2(node.x, node.y)), Is.LessThan(0.01f));
         }
 
         // --- criteria 6/8/9: retry — one input from frame 1, no scene load, tick-0 state ---
         [UnityTest]
         public IEnumerator Retry_OneTapFromFrameOne_NoSceneLoad_RestoresTickZero()
         {
-            yield return RunToFail(Overflow(), motionOff: true);
+            _root = GameRoot.LaunchWith(Overflow());
+            _root.MotionOffToggle = true;
+            yield return null;
+            // review B2: contaminate the switch state BEFORE failing, so "restored to
+            // initialRoute" is distinguishable from "never changed".
+            _root.Input.HandleTapAtScreen(_root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0)));
+            var restPose = _root.Cam.transform.position;
+            Time.timeScale = 12f;
+            float dl = Time.realtimeSinceStartup + 40f;
+            while (_root.ScreenState == "Playing" && Time.realtimeSinceStartup < dl)
+                yield return null;
+            Time.timeScale = 1f;
+            Assert.That(_root.ScreenState, Is.EqualTo("FailureReview"));
+            Assert.That(_root.Cam.transform.position, Is.Not.EqualTo(restPose),
+                "the cause cut actually moved the camera (the restore below is meaningful)");
             int scenesBefore = SceneManager.sceneCount;
             var handleBefore = SceneManager.GetActiveScene().handle;
             int loadEvents = 0;
@@ -159,15 +208,25 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(loadEvents, Is.Zero, "no scene load on retry");
             Assert.That(SceneManager.sceneCount, Is.EqualTo(scenesBefore));
             Assert.That(SceneManager.GetActiveScene().handle, Is.EqualTo(handleBefore));
+            // review B5: the retried run plays on the S-02 rest framing, not the fail framing
+            Assert.That(_root.Cam.transform.position,
+                Is.EqualTo(new Vector3(3f, 5.5f, -10f)).Within(0.01f),
+                "retry restores the play camera");
+            // review N1: the factory paths never double-wire — exactly one of everything
+            Assert.That(Object.FindObjectsByType<Camera>(FindObjectsSortMode.None).Length,
+                Is.EqualTo(1), "one camera (the Awake/factory double-wire stays dead)");
         }
 
         // --- criteria 2 + 7: the p95 budgets over 20 scripted failures/retries, measured from
         // the FrameLog's single monotonic clock (editor CI leg; device legs are HUMAN) ---
         [UnityTest]
-        public IEnumerator Budgets_CauseVisible1500_RetryUnder1000_P95Over20()
+        public IEnumerator Budgets_CauseVisible1500_RetryUnder1000_P95Over20(
+            [Values(true, false)] bool motionOff)
         {
+            // review B3: BOTH legs (criterion 4 requires the budget to hold under motion-on;
+            // the pan is duration-bounded at PAN_DURATION_MS so distance cannot scale it).
             _root = GameRoot.LaunchWith(Overflow());
-            _root.MotionOffToggle = true;
+            _root.MotionOffToggle = motionOff;
             yield return null;
 
             var causeMs = new List<long>();
@@ -184,7 +243,10 @@ namespace CatMetro.Tests.PlayMode
                 // The cut framed+bannered within the SAME Update, so the next record bounds it.
                 var recs = _root.Log.Records;
                 long failFrameMs = recs[recs.Count - 1].MonotonicMs;
-                yield return null;
+                float frameDl = Time.realtimeSinceStartup + 5f;
+                while ((!_root.CauseCam.IsFramed || !_root.Banner.Visible)
+                    && Time.realtimeSinceStartup < frameDl)
+                    yield return null;
                 long framedMs = _root.Log.Records[_root.Log.Records.Count - 1].MonotonicMs;
                 Assert.That(_root.CauseCam.IsFramed && _root.Banner.Visible, Is.True);
                 causeMs.Add(framedMs - failFrameMs);
@@ -243,6 +305,16 @@ namespace CatMetro.Tests.PlayMode
             _root.Session.AdvanceMs(40 * CatMetro.Application.Session.TickInterpolator.TICK_MS);
             yield return null;
             Assert.That(_root.Preview.VisibleChipCount, Is.Zero, "consumed waves leave the strip");
+
+            // review S3: the TWO-chip headline proven on a multi-wave board
+            Object.Destroy(_root.gameObject);
+            _root = GameRoot.LaunchWith(Overflow());
+            yield return null;
+            Assert.That(_root.Preview.VisibleChipCount, Is.EqualTo(2),
+                "the NEXT TWO waves render as chips");
+            Assert.That(_root.Preview.ChipSummary, Is.EqualTo("red x6|red x6"));
+            Assert.That(_root.Preview.InTopBand(0), Is.True);
+            Assert.That(_root.Preview.InTopBand(1), Is.True);
         }
 
         private static string FixtureJson(int queueCapacity, bool floodWaves, int timeLimit)

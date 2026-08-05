@@ -9,12 +9,18 @@ namespace CatMetro.Presentation.Cameras
     // information set is IDENTICAL across the two states (criterion 5): target, framing, ring.
     public sealed class CauseCameraController : MonoBehaviour
     {
-        private const float PAN_SPEED = 3.5f; // world units/s toward the target frame
+        // Review B3: DURATION-bounded (never speed-bounded) — a speed-based pan scales with
+        // board size and provably busts the 1500 ms budget beyond 5.25 units. Any distance
+        // completes in PAN_DURATION_MS.
+        public const double PAN_DURATION_MS = 400.0;
 
         private UnityEngine.Camera _camera;
         private Vector3 _goal;
+        private Vector3 _panFrom;
+        private double _panElapsedMs;
         private bool _panning;
         private GameObject _ring;
+        private Vector3 _restPose; // review B5: retry returns the camera HERE
 
         public string TargetNodeId { get; private set; } = "";
         public bool IsFramed => !_panning;
@@ -22,7 +28,14 @@ namespace CatMetro.Presentation.Cameras
         public float RingAlpha => _ring != null
             ? _ring.GetComponent<Renderer>().material.color.a : 0f;
 
-        public void Wire(UnityEngine.Camera cam) => _camera = cam;
+        public void Wire(UnityEngine.Camera cam)
+        {
+            _camera = cam;
+            _restPose = cam.transform.position; // the S-02 play framing (review B5)
+        }
+
+        public Vector3 RingWorldPos => _ring != null ? _ring.transform.position : Vector3.zero;
+        public Vector3 GoalPosition => _goal;
 
         public void FrameNode(string nodeId, Vector3 worldPos, bool motionOff)
         {
@@ -37,7 +50,9 @@ namespace CatMetro.Presentation.Cameras
             }
             else
             {
-                _panning = true; // criterion 4: interpolate across frames
+                _panFrom = _camera.transform.position;
+                _panElapsedMs = 0.0;
+                _panning = true; // criterion 4: interpolate across frames, duration-bounded
             }
         }
 
@@ -46,15 +61,20 @@ namespace CatMetro.Presentation.Cameras
             TargetNodeId = "";
             _panning = false;
             if (_ring != null) _ring.SetActive(false);
+            // Review B5: the retried run plays on the S-02 framing, never on the fail framing
+            // or an interrupted pan position.
+            if (_camera != null) _camera.transform.position = _restPose;
         }
 
         private void Update()
         {
             if (!_panning) return;
-            var p = _camera.transform.position;
-            var next = Vector3.MoveTowards(p, _goal, PAN_SPEED * Time.deltaTime);
-            _camera.transform.position = next;
-            if ((next - _goal).sqrMagnitude < 0.0001f) _panning = false;
+            _panElapsedMs += Time.deltaTime * 1000.0;
+            float t = Mathf.Clamp01((float)(_panElapsedMs / PAN_DURATION_MS));
+            // smoothstep ease; endpoint exact at t == 1
+            float eased = t * t * (3f - 2f * t);
+            _camera.transform.position = Vector3.Lerp(_panFrom, _goal, eased);
+            if (t >= 1f) _panning = false;
         }
 
         private void ShowRing(Vector3 worldPos)
@@ -63,7 +83,9 @@ namespace CatMetro.Presentation.Cameras
             {
                 _ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
                 _ring.name = "CauseRing";
-                _ring.transform.SetParent(transform, false);
+                // Review B1: NEVER parented to the camera — the controller lives on the camera
+                // object, so a camera-parented ring rides the cut/pan and ends 3.5 units off
+                // the causal node. World-positioned, unparented: it stays ON the node.
                 _ring.transform.localScale = new Vector3(1.4f, 0.02f, 1.4f);
                 _ring.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
                 _ring.GetComponent<Renderer>().material.color = new Color(1f, 0.35f, 0.1f, 0.85f);

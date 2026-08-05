@@ -20,9 +20,13 @@ grep -q 'fail.platformoverflow,{station} platform overflowed' unity/Assets/Resou
   || fail "criterion 10: platform-overflow row missing"
 grep -q 'fail.banner.timeout,The last train left the depot' unity/Assets/Resources/Strings/ui.csv \
   || fail "criterion 10: timeout row missing"
-lit=$(grep -rEn --include='*.cs' 'platform overflowed|All cats home|last train left' \
+# review B4: case-INSENSITIVE — the LOCKED overflow string starts with a capital P and the
+# old case-sensitive pattern provably let it through (mutation-proven).
+lit=$(grep -riEn --include='*.cs' 'platform overflowed|all cats home|last train left' \
   unity/Assets/Scripts 2>/dev/null || true)
 [ -z "$lit" ] || fail "criterion 10: literal UI string in a component: $lit"
+grep -rEq 'Platform overflowed' tests/fixtures/retry-bad \
+  || fail "criterion 10: capital-P literal pattern dead"
 
 echo "failure.test.sh: OK (1-static+fixture, 10-static)"
 exit 0

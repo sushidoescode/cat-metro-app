@@ -4,4 +4,5 @@
 class RetryBanned
 {
     private object _r; // FailReason.PlatformOverflow
+    private object _s; // "Platform overflowed at SRC" — the capital-P literal the grep must catch
 }

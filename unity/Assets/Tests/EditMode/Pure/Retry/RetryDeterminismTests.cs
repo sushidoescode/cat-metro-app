@@ -14,35 +14,61 @@ namespace CatMetro.Tests.Retry
     {
         private static ImportedLevel L001() => VFixtures.Import(VFixtures.L001Bytes());
 
-        // Criterion 9's hash-equality law: the identical post-retry command sequence produces
-        // the identical replay hash as the same sequence from a fresh level entry. A mismatch
-        // is stop condition 7 — a retry-path defect, never a stale golden.
+        // Criterion 9's hash-equality law, ARMED (review B2: the first cut compared two
+        // identical pure calls — referentially transparent, could never fail). Now: a first
+        // run genuinely CONTAMINATES (different commands, advanced state), then the RETRIED
+        // session PLAYS sequence B and its full observable trajectory must equal a fresh
+        // session playing B — and both recorded logs must hash identically through the CM-C1
+        // hasher. A mismatch is stop condition 7 — a retry-path defect, never a stale golden.
         [Test]
-        public void PostRetry_ReplayHash_EqualsFreshEntryHash()
+        public void PostRetry_TrajectoryAndHash_EqualFreshEntry()
         {
             var level = L001();
-            var log = new CommandLog();
-            log.Append(new ToggleSwitchCommand(0, 12)); // the CM-C1 golden's own sequence shape
 
-            // "fresh entry"
-            string fresh = ReplayHasher.ComputeReplayHash(level.Graph, (ulong)level.Dto.Seed, log);
-
-            // "retry": a first run happened (arbitrary commands), then a NEW session over the
-            // SAME ImportedLevel replays the identical sequence.
+            // first run: DIFFERENT commands, state advanced well past tick 0
             var firstRun = new GameSession(level);
-            firstRun.EnqueueToggle(0);
-            firstRun.AdvanceMs(40 * TickInterpolator.TICK_MS);
+            firstRun.AdvanceMs(3 * TickInterpolator.TICK_MS);
+            firstRun.EnqueueToggle(0); // stamped at tick 3 — sequence A, not B
+            firstRun.AdvanceMs(37 * TickInterpolator.TICK_MS);
+            Assert.That(firstRun.State.Tick, Is.GreaterThan(0), "the first run really ran");
 
+            // the retried and the fresh session each play SEQUENCE B identically
             var retry = new GameSession(level);
             Assert.That(retry.State.Tick, Is.Zero, "retry starts at tick 0");
             Assert.That(retry.Log.Entries.Count, Is.Zero, "retry starts with an empty log");
-            for (int s = 0; s < retry.State.SwitchRoutes.Length; s++)
-                Assert.That(retry.State.SwitchRoutes[s],
-                    Is.EqualTo(level.Graph.SwitchInitialRoute[s]),
-                    "every switch equals its level initialRoute after retry");
 
-            string retried = ReplayHasher.ComputeReplayHash(level.Graph, (ulong)level.Dto.Seed, log);
-            Assert.That(retried, Is.EqualTo(fresh),
+            var fresh = new GameSession(level);
+            foreach (var s in new[] { retry, fresh })
+            {
+                s.AdvanceMs(5 * TickInterpolator.TICK_MS);
+                s.EnqueueToggle(0); // sequence B: one toggle stamped at tick 5
+                s.AdvanceMs(170 * TickInterpolator.TICK_MS);
+            }
+
+            // identical observable trajectory, field for field
+            Assert.That(retry.State.Tick, Is.EqualTo(fresh.State.Tick));
+            Assert.That(retry.State.Deliveries, Is.EqualTo(fresh.State.Deliveries));
+            Assert.That(retry.State.Outcome.Kind, Is.EqualTo(fresh.State.Outcome.Kind));
+            Assert.That(retry.State.SwitchRoutes, Is.EqualTo(fresh.State.SwitchRoutes));
+            Assert.That(retry.State.NodeQueueCounts, Is.EqualTo(fresh.State.NodeQueueCounts));
+            Assert.That(retry.State.OverloadTimers, Is.EqualTo(fresh.State.OverloadTimers));
+            for (int t = 0; t < retry.State.Trains.Length; t++)
+            {
+                Assert.That(retry.State.Trains[t].Id, Is.EqualTo(fresh.State.Trains[t].Id));
+                Assert.That(retry.State.Trains[t].State, Is.EqualTo(fresh.State.Trains[t].State));
+                Assert.That(retry.State.Trains[t].NodeId, Is.EqualTo(fresh.State.Trains[t].NodeId));
+            }
+
+            // identical recorded logs, identical replay hash through the CM-C1 law
+            Assert.That(retry.Log.Entries.Count, Is.EqualTo(fresh.Log.Entries.Count));
+            for (int i = 0; i < retry.Log.Entries.Count; i++)
+            {
+                Assert.That(retry.Log.Entries[i].SwitchId, Is.EqualTo(fresh.Log.Entries[i].SwitchId));
+                Assert.That(retry.Log.Entries[i].Tick, Is.EqualTo(fresh.Log.Entries[i].Tick));
+            }
+            string hRetry = ReplayHasher.ComputeReplayHash(level.Graph, (ulong)level.Dto.Seed, retry.Log);
+            string hFresh = ReplayHasher.ComputeReplayHash(level.Graph, (ulong)level.Dto.Seed, fresh.Log);
+            Assert.That(hRetry, Is.EqualTo(hFresh),
                 "stop condition 7: a mismatch here is a retry-path defect — STOP");
         }
 
@@ -60,24 +86,66 @@ namespace CatMetro.Tests.Retry
             Assert.That(causal, Is.EqualTo(0), "SRC (node 0) raised the failure");
         }
 
-        // Criterion 1's TimeOut rule (A-C3-2, Q-K): largest queue at the fail tick, ties to the
-        // lowest node id — asserted from the camera-facing attribution, not the outcome.
+        // Criterion 1's TimeOut rule (A-C3-2, Q-K), IN SUBSTANCE (review S2: the degenerate
+        // all-zero case alone let a `return 0` mutant pass). A dummy node sits at index 0 and
+        // the queued source at index 1: the rule must pick index 1 — largest queue wins, not
+        // lowest-index-by-default.
         [Test]
-        public void CausalNode_TimeOut_IsTheLargestQueue_TiesToLowestId()
+        public void CausalNode_TimeOut_PicksTheLargestQueue_NotIndexZero()
         {
-            var level = L001();
-            var session = new GameSession(level);
-            // no taps: cats route to the decoy; the pin halts stepping inside AdvanceMs — so
-            // drive a TimeOut on a board that cannot pin: zero waves before the limit.
+            var busy = VFixtures.Import(BusyTimeoutBytes());
+            var s = new GameSession(busy);
+            s.AdvanceMs(20 * TickInterpolator.TICK_MS);
+            Assert.That(s.State.Outcome.Kind, Is.EqualTo(OutcomeKind.Failed));
+            Assert.That(s.State.Outcome.Reason, Is.EqualTo(FailReason.TimeOut));
+            Assert.That(s.State.NodeQueueCounts[1], Is.GreaterThan(0),
+                "the source (index 1) holds a real queue at the fail tick");
+            Assert.That(CauseAttribution.CausalNode(s.State), Is.EqualTo(1),
+                "A-C3-2: the LARGEST queue wins — a return-0 mutant fails here");
+        }
+
+        // ...and the tie limb: all queues equal (zero) → the lowest node id.
+        [Test]
+        public void CausalNode_TimeOut_TiesBreakToLowestId()
+        {
             var quiet = VFixtures.Import(QuietTimeoutBytes());
             var s2 = new GameSession(quiet);
             s2.AdvanceMs(30 * TickInterpolator.TICK_MS);
             Assert.That(s2.State.Outcome.Kind, Is.EqualTo(OutcomeKind.Failed));
             Assert.That(s2.State.Outcome.Reason, Is.EqualTo(FailReason.TimeOut));
             Assert.That(CauseAttribution.CausalNode(s2.State), Is.EqualTo(0),
-                "all queues empty (0) — the tie breaks to the lowest node id");
-            Assert.That(level, Is.Not.Null); // keeps the fresh-entry fixture exercised
+                "all queues equal — the tie breaks to the lowest node id");
         }
+
+        private static byte[] BusyTimeoutBytes() =>
+            System.Text.Encoding.UTF8.GetBytes(@"{
+  ""schemaVersion"": 2, ""id"": ""T905"", ""name"": ""Busy Timeout"", ""seed"": 905,
+  ""meta"": { ""band"": ""onboarding"", ""difficultyTarget"": 0.1, ""mechanics"": [""switch"", ""queue""],
+    ""newMechanic"": null, ""teachingGoal"": ""test fixture"", ""minActionWindowTicks"": 12,
+    ""authoredBy"": ""llm+validator"" },
+  ""board"": { ""nodes"": [
+      { ""id"": ""AAA"", ""x"": 0, ""y"": 0 },
+      { ""id"": ""SRC"", ""x"": 3, ""y"": 9, ""queueCapacity"": 8 },
+      { ""id"": ""J1"", ""x"": 3, ""y"": 6 },
+      { ""id"": ""RED"", ""x"": 1, ""y"": 2 }, { ""id"": ""BLU"", ""x"": 5, ""y"": 2 } ],
+    ""edges"": [
+      { ""id"": ""E0"", ""from"": ""AAA"", ""to"": ""J1"", ""travelTicks"": 40 },
+      { ""id"": ""E1"", ""from"": ""SRC"", ""to"": ""J1"", ""travelTicks"": 10 },
+      { ""id"": ""E2"", ""from"": ""J1"", ""to"": ""RED"", ""travelTicks"": 12 },
+      { ""id"": ""E3"", ""from"": ""J1"", ""to"": ""BLU"", ""travelTicks"": 12 } ] },
+  ""sources"": [ { ""nodeId"": ""SRC"", ""allowedColors"": [""red""] } ],
+  ""stations"": [
+    { ""nodeId"": ""RED"", ""accepts"": [""red""], ""capacity"": 6 },
+    { ""nodeId"": ""BLU"", ""accepts"": [""blue""], ""capacity"": 6 } ],
+  ""switches"": [ { ""id"": ""S1"", ""nodeId"": ""J1"", ""routes"": [""E2"", ""E3""], ""initialRoute"": 0 } ],
+  ""waves"": [
+    { ""tick"": 8, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 6, ""spacingTicks"": 1 },
+    { ""tick"": 8, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 6, ""spacingTicks"": 1 },
+    { ""tick"": 14, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 6, ""spacingTicks"": 1 } ],
+  ""win"": { ""deliveries"": 9, ""timeLimitTicks"": 20, ""perfectMaxSwitches"": 1,
+    ""stars"": { ""two"": 200, ""three"": 300 } },
+  ""economy"": { ""baseTickets"": 20, ""perfectBonus"": 10 }
+}");
 
         [Test]
         public void CausalNode_NonFailed_IsAmbiguous()

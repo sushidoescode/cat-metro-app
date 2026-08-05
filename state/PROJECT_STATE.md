@@ -21,8 +21,8 @@
 | CM-C7 | Save v1 (header/atomic/SI/migration/ledger/bounds) | session 2026-08-04 (Fable 5) | DONE — merged (#16) after 12-finding round (read-only grant hole caught+fixed); human acked the 6 gates | (merged) |
 | CM-C8 | Analytics offline queue | session 2026-08-04 (Fable 5) | DONE — merged (#18, was stacked on #16) after 13-finding round | (merged) |
 | Q-G scaffold | Unity 6000.3.16f1 project shell in place | human shell + agent mechanics 2026-08-04 | IN PROGRESS | chore/qg-unity-scaffold |
-| CM-C2b | Greybox board + Bootstrap seams + StreamingAssets (recut 2026-08-04, 11 criteria) | — | NEXT BUILD — recut in #20 | — |
-| CM-C3 | Fail/retry loop (recut-stamped, stands as written) | — | QUEUED after CM-C2b | — |
+| CM-C2b | Greybox playable + Bootstrap seams + StreamingAssets | session 2026-08-04/05 (Fable 5) | DONE — merged (#21) after 13-finding round; criterion 8 device artifact OPEN (human) | (merged) |
+| CM-C3 | Fail/retry loop: cause camera, tick-0 retry, wave preview | session 2026-08-05 (Fable 5) | PR #22 — review round applied (5 blockers fixed), merging | task/CM-C3-fail-retry |
 
 ## Recently done (last 7 days — one line each, PR links)
 - 2026-08-04 — phases 6-10 session (Fable 5): CM-C6 #14 · L002-L005 #15 · CM-C7 #16 · CM-C8 #18 · prep note #17 all merged same-day. 4 fresh-context review rounds, 45 findings, 4 real blockers caught pre-merge (dead L005 queue; read-only double-grant; pause-path IOException; Guid-survivable id tests). Cross-tool pinned vectors (python↔C#) for seeds/ledger keys/queue ids. Suite 169→257 tests, wrappers 5→8.
