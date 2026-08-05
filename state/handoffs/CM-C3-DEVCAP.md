@@ -112,3 +112,5 @@ added CSV column, zero added `FrameRecord` fields.
 - Any use of `IStorageRoot` — pinned at two properties; the component takes an injectable
   `OutputDirectory` instead, which is also what makes criterion 3 testable without writing into the
   editor's real `persistentDataPath`.
+
+- 2026-08-05 red milestone: PlayMode tests (criteria 1/2/3 + wiring + default-dir) pin the API; guarded stubs keep the suite compiling; wrapper red at criterion-5 fail-closed (reducer unwritten); criterion-5 fixture derivation lives in the CSV header comments per contract. Scanner fixture proof fires (>=2 violations). Fixture generation asserted expected p95s independently (154/76).
