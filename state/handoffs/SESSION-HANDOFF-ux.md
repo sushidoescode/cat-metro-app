@@ -28,16 +28,25 @@ TDD per criterion — PlayMode/EditMode tests first. Never weaken an existing ga
 - YOURS: `docs/` UX decompose artifacts · new UX contracts in `state/handoffs/` ·
   `unity/Assets/Scripts/Presentation/**` chrome/screens (per contract) · **append-only** rows in
   `unity/Assets/Resources/Strings/ui.csv` · your own tests under `unity/Assets/Tests/**`.
-- NOT YOURS (the other session owns in-flight): `unity/Assets/Scripts/Bootstrap/**` (DEVCAP +
-  device-config fix landing there), `GameRoot.cs` (wait until CM-C3-DEVCAP and the device-fix
-  contract are MERGED — check `git log` — then coordinate edits via rebase), `Content/**`,
-  `Domain/**`, `scripts/`, `tests/` harness wrappers, L006–L010 content (tranche-3, other session).
+- NOT YOURS (the other session owns in-flight): `unity/Assets/Scripts/Bootstrap/**` — which
+  INCLUDES `GameRoot.cs` — is a flat deny until BOTH CM-C3-DEVCAP and the device-config fix
+  (CM-C2b-DEVFIX) are MERGED to main (check `git log`); after both merge, Bootstrap edits are
+  allowed only inside your own reviewed contracts, rebased on latest main. Also not yours:
+  `Content/**`, `Domain/**`, `scripts/`, L006–L010 content (tranche-3, other session), and
+  `tests/` harness wrappers — with ONE carve-out: `tests/unity/editmode.test.sh` may be edited
+  ONLY inside the explicit gate-evolution contract below, sequenced after CM-C3-DEVCAP merges,
+  rebased on latest main. (DEVCAP ships its own new wrapper `tests/unity/devcap.test.sh` and does
+  not edit editmode.test.sh, so after its merge the file has a single writer: you.)
 - Immutable (hooks enforce): `tests/contract/`, `docs/constitution.md`, `.claude/hooks/`,
-  `scripts/git-hooks/`, `state/mode`, `evals/` except `evals/results/`.
+  `scripts/git-hooks/`, `state/mode`, `state/trust.json`, `evals/` except `evals/results/` —
+  and within results, `evals/results/attested/` is HUMAN/CI-ONLY: only attested evidence can
+  raise the autonomy dial, so never write there.
 - Work in your own git worktree + `task/CM-UX-*` branches. `git add` by EXPLICIT PATH only
   (the human's `.claude/settings.json` is dirty and must never enter a PR). Update
-  `state/PROJECT_STATE.md` with single appended lines only (merge-conflict discipline); your
-  running log lives here and in your `CM-UX-*.md` handoffs.
+  `state/PROJECT_STATE.md` with ONE appended line per MERGED PR only (two sessions append in
+  parallel; the file has a hard ~150-line cap — if it nears the cap, propose rotation to
+  `state/archive/`, humans prune). Your running narrative lives here and in your `CM-UX-*.md`
+  handoffs, never in PROJECT_STATE.
 
 ## Known collision you must resolve BY CONTRACT, not silently
 `tests/unity/editmode.test.sh:72-75` enforces ONE input consumer and bans
