@@ -30,6 +30,7 @@ namespace CatMetro.Tests.PlayMode
         public void TearDown()
         {
             Time.timeScale = 1f;
+            QualitySettings.vSyncCount = 0; // undo the F-3 de-vacuum poke (runtime-only)
             if (_root != null) Object.Destroy(_root.gameObject);
             _root = null;
         }
@@ -67,6 +68,10 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(urp.supportsDynamicBatching, Is.False, "superseded by SRP Batcher");
             Assert.That(urp.useAdaptivePerformance, Is.False,
                 "F-DEV-1 interlock: no runtime governor may defeat the frame policy");
+            Assert.That(urp.mainLightRenderingMode,
+                Is.EqualTo(LightRenderingMode.PerPixel), "pinned, not the inherited default");
+            Assert.That(urp.colorGradingMode,
+                Is.EqualTo(ColorGradingMode.LowDynamicRange), "LDR matches HDR-off");
         }
 
         // --- criterion 3: boot frame-rate policy on every boot path ---
@@ -75,6 +80,10 @@ namespace CatMetro.Tests.PlayMode
         {
             Assert.That(UnityEngine.Application.targetFrameRate, Is.EqualTo(-1),
                 "SetUp reset holds before boot");
+            // review F-3: de-vacuum the vsync half — set it non-zero so the assertion below
+            // proves the POLICY drove it to 0, not the project default (runtime-only state;
+            // never serialized back to the committed asset)
+            QualitySettings.vSyncCount = 1;
             _root = GameRoot.Launch();
             yield return null;
             Assert.That(UnityEngine.Application.targetFrameRate, Is.EqualTo(FramePolicy.TARGET_FPS),
@@ -114,10 +123,19 @@ namespace CatMetro.Tests.PlayMode
                 FindObjectsSortMode.None))
                 if (el.Kind == "train") trainSeen = true;
             Assert.That(trainSeen, Is.True, "the train surface was exercised");
-            // cause ring (public entry, no failure needed)
+            // cause ring (public entry, no failure needed). Review F-2: the ring is DELIBERATELY
+            // unparented (CM-C3 review B1 — never rides the camera), so the root walk below
+            // cannot see it; it gets its own explicit assertion here.
             _root.CauseCam.FrameNode("SRC", _root.View.NodeWorldPos(0), motionOff: true);
             yield return null;
             Assert.That(_root.CauseCam.RingVisible, Is.True, "the ring surface was exercised");
+            var ringGo = GameObject.Find("CauseRing");
+            Assert.That(ringGo, Is.Not.Null, "the ring exists at scene root (unparented)");
+            Assert.That(ringGo.GetComponent<Renderer>().sharedMaterial, Is.Not.Null,
+                "the ring binds a material");
+            Assert.That(ringGo.GetComponent<Renderer>().sharedMaterial.shader,
+                Is.EqualTo(greybox.shader),
+                "the ring — the failure screen's primitive — binds the committed material");
             // wave preview chips
             Assert.That(_root.Preview.VisibleChipCount, Is.GreaterThanOrEqualTo(1),
                 "the chip surface was exercised");
@@ -138,7 +156,8 @@ namespace CatMetro.Tests.PlayMode
                 checkedRenderers++;
             }
             Assert.That(checkedRenderers, Is.GreaterThanOrEqualTo(10),
-                "board + trains + ring + chips were actually walked");
+                "board + trains + chips were actually walked (the unparented ring is asserted " +
+                "explicitly above — review F-2)");
         }
     }
 }

@@ -39,6 +39,12 @@ grep -q 'm_RendererFeatures: \[\]' "$URPR" \
   || fail "criterion 2: renderer-features list is not empty (no hidden passes)"
 grep -q 'm_DepthPrimingMode: 0' "$URPR" \
   || fail "criterion 2: depth priming is not disabled"
+grep -q 'm_IntermediateTextureMode: 0' "$URPR" \
+  || fail "criterion 2: intermediate texture mode is not Auto (review F-1 — the URP default Always forces an offscreen target the moment any renderer feature lands)"
+grep -q 'm_RenderingMode: 0' "$URPR" \
+  || fail "criterion 2: rendering path is not Forward"
+grep -q 'm_DefaultRendererIndex: 0' "$URPA" \
+  || fail "criterion 2: default renderer index drifted"
 
 # --- criterion 3: vsync posture pinned; no dev-guard in the shipped policy files ---
 vs_total=$(grep -c 'vSyncCount:' "$QS" || true)
