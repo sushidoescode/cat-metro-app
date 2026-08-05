@@ -11,6 +11,9 @@ CSV="$1"
 # Read CSV, skip comments and header, parse fields
 # Fields: frameIndex,monotonicMs,simTick,screenState,causeVisible
 # We need monotonicMs (field 1), screenState (field 3), causeVisible (field 4)
+# CSV-quoted screenState values are NOT parsed (no shipped state contains ',' or '"' —
+# GameRoot's four states are bare words); a quoted FailureReview would yield zero complete
+# cycles and a loud non-zero exit, never a silent wrong table (review round 1, L1).
 
 # Collect all data rows into arrays
 declare -a MONOTONIC=()
@@ -91,31 +94,31 @@ for (( ri=0; ri<${#FR_RUNS_START[@]}; ri++ )); do
     continue
   fi
 
-  # (b) at least one causeVisible==1 in the run
-  has_cause=0
+  # (b) at least one causeVisible==1 in the run; more than one is a criterion-2 violation in
+  # the capture itself — fail LOUD, never absorb (review round 1, L2)
+  mark_count=0
   first_cause_idx=-1
   for (( ci=fstart; ci<=fend; ci++ )); do
     if [ "${CAUSEVIS[$ci]}" = "1" ]; then
-      has_cause=1
+      mark_count=$((mark_count + 1))
       if [ $first_cause_idx -eq -1 ]; then
         first_cause_idx=$ci
       fi
     fi
   done
-  if [ $has_cause -eq 0 ]; then
+  if [ $mark_count -eq 0 ]; then
     continue
   fi
+  if [ $mark_count -gt 1 ]; then
+    echo "devcap-report: $mark_count causeVisible marks inside one FailureReview run — criterion 2 forbids duplicates; capture invalid" >&2
+    exit 1
+  fi
 
-  # (c) followed later by at least one Playing row
-  # Find first Playing row after the run
-  playing_idx=-1
-  for (( pi=fend+1; pi<NUM_ROWS; pi++ )); do
-    if [ "${STATES[$pi]}" = "Playing" ]; then
-      playing_idx=$pi
-      break
-    fi
-  done
-  if [ $playing_idx -eq -1 ]; then
+  # (c) the row IMMEDIATELY after the run must be Playing. A run interrupted by Won/Halted
+  # (or ending the file) is SKIPPED, not guessed — walking forward past non-Playing rows
+  # manufactures retry intervals that are not retries (contract criterion 5; review round 1, B1)
+  playing_idx=$((fend + 1))
+  if [ $playing_idx -ge "$NUM_ROWS" ] || [ "${STATES[$playing_idx]}" != "Playing" ]; then
     continue
   fi
 

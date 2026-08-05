@@ -1,12 +1,13 @@
-# CM-C3-DEVCAP criterion-5 golden fixture. HAND-COMPUTED expectations:
-# 20 complete fail->retry cycles, cycle c (0-based): cause interval = 100+3c ms (mark row minus
-# last row before the first FailureReview row), retry interval = 40+2c ms (first Playing row
-# after the run minus last FailureReview row). Sorted ascending: cause 100..157 step 3,
-# retry 40..78 step 2. p95 index = ceil(0.95*20)-1 = 18 -> CAUSE_P95 = 100+3*18 = 154,
-# RETRY_P95 = 40+2*18 = 76. Distractors that must be SKIPPED, not guessed: a Won segment after
-# cycle 9, a Halted segment after cycle 14, and a trailing incomplete FailureReview run with a
-# mark but no Playing row after it. '#'-prefixed lines are fixture commentary — the reducer
-# skips them (real captures never contain them).
+# CM-C3-DEVCAP criterion-5 golden fixture (rev 2 — review round 1 B2 fix). HAND-COMPUTED:
+# 20 complete fail->retry cycles, cycle c (0-based): cause = 100+3c ms (mark row minus last row
+# before the run), retry = 40+2c ms (first Playing row DIRECTLY after the run minus last FR row).
+# Ascending: cause 100..157 step 3, retry 40..78 step 2; p95 idx = ceil(0.95*20)-1 = 18 ->
+# CAUSE_P95 = 154, RETRY_P95 = 76. Distractors that must be SKIPPED, not guessed:
+# a Won segment after cycle 9 and a Halted segment after cycle 14 (both between Playing rows,
+# non-adjacent), an INTERRUPTED run after cycle 12 (an FR run WITH a mark followed DIRECTLY by
+# Won rows — a reducer that walks forward past non-Playing rows counts it and breaks the golden;
+# this is the live proof of the skip rule), and a trailing incomplete FR run.
+# '#'-prefixed lines are fixture commentary — the reducer skips them.
 frameIndex,monotonicMs,simTick,screenState,causeVisible
 1001,10000,1,Playing,0
 1002,10016,2,Playing,0
@@ -135,72 +136,80 @@ frameIndex,monotonicMs,simTick,screenState,causeVisible
 1125,13362,57,Playing,0
 1126,13378,58,Playing,0
 1127,13394,58,FailureReview,0
-1128,13428,58,FailureReview,0
-1129,13517,58,FailureReview,1
-1130,13533,58,FailureReview,0
-1131,13549,58,FailureReview,0
-1132,13615,59,Playing,0
-1133,13631,60,Playing,0
-1134,13647,61,Playing,0
-1135,13663,62,Playing,0
-1136,13679,62,FailureReview,0
-1137,13713,62,FailureReview,0
-1138,13805,62,FailureReview,1
-1139,13821,62,FailureReview,0
-1140,13837,62,FailureReview,0
-1141,13905,63,Playing,0
-1142,13921,64,Playing,0
-1143,13937,65,Playing,0
-1144,13953,66,Playing,0
-1145,13969,66,Halted,0
-1146,13985,66,Halted,0
-1147,14001,67,Playing,0
-1148,14017,68,Playing,0
-1149,14033,69,Playing,0
-1150,14049,69,FailureReview,0
-1151,14083,69,FailureReview,0
-1152,14178,69,FailureReview,1
-1153,14194,69,FailureReview,0
-1154,14210,69,FailureReview,0
-1155,14280,70,Playing,0
-1156,14296,71,Playing,0
-1157,14312,72,Playing,0
-1158,14328,73,Playing,0
-1159,14344,73,FailureReview,0
-1160,14378,73,FailureReview,0
-1161,14476,73,FailureReview,1
-1162,14492,73,FailureReview,0
-1163,14508,73,FailureReview,0
-1164,14580,74,Playing,0
-1165,14596,75,Playing,0
-1166,14612,76,Playing,0
-1167,14628,77,Playing,0
-1168,14644,77,FailureReview,0
-1169,14678,77,FailureReview,0
-1170,14779,77,FailureReview,1
-1171,14795,77,FailureReview,0
-1172,14811,77,FailureReview,0
-1173,14885,78,Playing,0
-1174,14901,79,Playing,0
-1175,14917,80,Playing,0
-1176,14933,81,Playing,0
-1177,14949,81,FailureReview,0
-1178,14983,81,FailureReview,0
-1179,15087,81,FailureReview,1
-1180,15103,81,FailureReview,0
-1181,15119,81,FailureReview,0
-1182,15195,82,Playing,0
-1183,15211,83,Playing,0
-1184,15227,84,Playing,0
-1185,15243,85,Playing,0
-1186,15259,85,FailureReview,0
-1187,15293,85,FailureReview,0
-1188,15400,85,FailureReview,1
-1189,15416,85,FailureReview,0
-1190,15432,85,FailureReview,0
-1191,15510,86,Playing,0
-1192,15526,87,Playing,0
-1193,15542,88,Playing,0
-1194,15558,89,Playing,0
-1195,15574,89,FailureReview,0
-1196,15678,89,FailureReview,1
+1128,13468,58,FailureReview,1
+1129,13488,58,FailureReview,0
+1130,13504,58,Won,0
+1131,13520,58,Won,0
+1132,13536,59,Playing,0
+1133,13552,60,Playing,0
+1134,13568,61,Playing,0
+1135,13584,61,FailureReview,0
+1136,13618,61,FailureReview,0
+1137,13707,61,FailureReview,1
+1138,13723,61,FailureReview,0
+1139,13739,61,FailureReview,0
+1140,13805,62,Playing,0
+1141,13821,63,Playing,0
+1142,13837,64,Playing,0
+1143,13853,65,Playing,0
+1144,13869,65,FailureReview,0
+1145,13903,65,FailureReview,0
+1146,13995,65,FailureReview,1
+1147,14011,65,FailureReview,0
+1148,14027,65,FailureReview,0
+1149,14095,66,Playing,0
+1150,14111,67,Playing,0
+1151,14127,68,Playing,0
+1152,14143,69,Playing,0
+1153,14159,69,Halted,0
+1154,14175,69,Halted,0
+1155,14191,70,Playing,0
+1156,14207,71,Playing,0
+1157,14223,72,Playing,0
+1158,14239,72,FailureReview,0
+1159,14273,72,FailureReview,0
+1160,14368,72,FailureReview,1
+1161,14384,72,FailureReview,0
+1162,14400,72,FailureReview,0
+1163,14470,73,Playing,0
+1164,14486,74,Playing,0
+1165,14502,75,Playing,0
+1166,14518,76,Playing,0
+1167,14534,76,FailureReview,0
+1168,14568,76,FailureReview,0
+1169,14666,76,FailureReview,1
+1170,14682,76,FailureReview,0
+1171,14698,76,FailureReview,0
+1172,14770,77,Playing,0
+1173,14786,78,Playing,0
+1174,14802,79,Playing,0
+1175,14818,80,Playing,0
+1176,14834,80,FailureReview,0
+1177,14868,80,FailureReview,0
+1178,14969,80,FailureReview,1
+1179,14985,80,FailureReview,0
+1180,15001,80,FailureReview,0
+1181,15075,81,Playing,0
+1182,15091,82,Playing,0
+1183,15107,83,Playing,0
+1184,15123,84,Playing,0
+1185,15139,84,FailureReview,0
+1186,15173,84,FailureReview,0
+1187,15277,84,FailureReview,1
+1188,15293,84,FailureReview,0
+1189,15309,84,FailureReview,0
+1190,15385,85,Playing,0
+1191,15401,86,Playing,0
+1192,15417,87,Playing,0
+1193,15433,88,Playing,0
+1194,15449,88,FailureReview,0
+1195,15483,88,FailureReview,0
+1196,15590,88,FailureReview,1
+1197,15606,88,FailureReview,0
+1198,15622,88,FailureReview,0
+1199,15700,89,Playing,0
+1200,15716,90,Playing,0
+1201,15732,91,Playing,0
+1202,15748,92,Playing,0
+1203,15764,92,FailureReview,0
+1204,15868,92,FailureReview,1

@@ -170,6 +170,20 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(File.Exists(file), Is.False, "pause(false) never writes");
         }
 
+        // --- the mark's read point is load-bearing: the capture's LateUpdate must run AFTER
+        // FrameLog's so records[^1] is THIS frame's record (review round 1, M1 — with the
+        // attribute gone, correctness rests on undefined same-object component ordering) ---
+        [Test]
+        public void Capture_LateUpdate_IsOrderedAfterFrameLog()
+        {
+            var attr = (DefaultExecutionOrder)System.Attribute.GetCustomAttribute(
+                typeof(DevFrameCapture), typeof(DefaultExecutionOrder));
+            Assert.That(attr, Is.Not.Null,
+                "the execution-order pin is what makes the marked index THIS frame's record");
+            Assert.That(attr.order, Is.GreaterThan(0),
+                "FrameLog runs at default order 0; the capture must run later");
+        }
+
         // --- criterion 3(d): the default location is the documented one ---
         [Test]
         public void DefaultOutputDirectory_IsPersistentDataPathDevcap()

@@ -46,10 +46,14 @@ for path in cs_files(capdir):
     if not sig or not GUARD.match(sig[0]) or sig[-1] != '#endif':
         viol += 1; print('unwrapped: ' + path)
     depth = 0; underflow = False
-    for l in lines:
+    for n, l in enumerate(lines, 1):
         s = l.strip()
         if s.startswith('#if'): depth += 1
         elif s.startswith('#endif'): depth -= 1
+        # a whole-file dev guard admits NO alternative arm — an #else/#elif is where release
+        # code hides from rule 1 (review round 1, L3)
+        if s.startswith('#else') or s.startswith('#elif'):
+            viol += 1; print('else-arm in capture file: %s:%d' % (path, n))
         if depth < 0: underflow = True
     if depth != 0 or underflow:
         viol += 1; print('unbalanced: ' + path)
@@ -62,7 +66,9 @@ for path in cs_files(refsroot):
         s = l.strip()
         if s.startswith('#if'):
             depth += 1
-            if 'DEVELOPMENT_BUILD' in s and 'UNITY_EDITOR' in s and guard_depth == 0:
+            # STRICT match only — '#if !DEVELOPMENT_BUILD && !UNITY_EDITOR' is release-only
+            # code wearing the tokens; substring presence is not a guard (review round 1, L4)
+            if GUARD.match(s) and guard_depth == 0:
                 guard_depth = depth
         elif s.startswith('#endif'):
             if guard_depth == depth: guard_depth = 0

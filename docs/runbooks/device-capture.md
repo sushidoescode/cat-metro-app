@@ -29,7 +29,12 @@ criteria 2/4/7 close only when a human attaches the device tables (low + mid tie
 ## Measurement definitions (ratified 2026-08-05, A-DEVCAP-3)
 - **Cause interval**: last frame before the first FailureReview frame → the causeVisible=1 frame
   (the first frame on which the causal node is framed AND the banner renders — the identical
-  predicate to the editor harness).
+  predicate to the editor harness). **Read-point bias (disclose beside every editor
+  comparison):** the editor harness samples the log from a coroutine resume, so both its
+  endpoints land on the PREVIOUS frame's record, while the device capture marks the frame
+  itself — a motion-off cut the editor reports as 0 ms reads as ≈ one frame (~17 ms at 60 Hz)
+  on device. ≤1.1% of the 1500 ms budget; a device-vs-editor delta of one frame is the read
+  point, not a regression.
 - **Retry interval**: last FailureReview frame → first Playing frame. Frame-anchored, not
   touch-anchored (an input timestamp would be a second clock; A-C3-6 forbids it). Worst-case
   under-report vs a touch anchor: ~one frame (~17 ms at 60 Hz) on a 1000 ms budget — noted in
