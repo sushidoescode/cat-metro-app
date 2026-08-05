@@ -175,6 +175,13 @@ count==1 and CM-UX-06's tree law are the structural tripwires) · gate-evolution
 needed anywhere in this tranche.
 
 ## 6. Open questions for the human (with recommended defaults)
+
+> **Answered in-session 2026-08-05 (recorded in `SESSION-HANDOFF-ux.md`):** Q-1 = land DRAFT
+> now, voice-pass at TG-5 · Q-2 = yes, restart escape (CM-UX-07's wiring line) · Q-3 = hold the
+> panel until LoadNext exists · **Q-6 = import TMP + UGUI now (recommendation overridden;
+> ADR-0007 honored directly — P-2's TextMesh posture is superseded; CM-UX-02 carries the
+> essentials import, sequenced AFTER CM-C2b-DEVFIX's URP restore per #29's ratified ordering).**
+> Q-4/Q-5 remain open ratifications, blocking nothing.
 - **Q-1 (blocks CM-UX-02 copy only):** approve DRAFT `halt.notice` — must stay semantics-neutral
   pending Q-B/NEW-Q4. Recommended: land DRAFT-flagged now (csv-swappable without code change),
   voice-pass at the TG-5 sitting.
