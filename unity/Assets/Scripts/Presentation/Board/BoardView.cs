@@ -24,7 +24,8 @@ namespace CatMetro.Presentation.Board
         private readonly Dictionary<int, GameObject> _trains = new Dictionary<int, GameObject>();
 
         public int SwitchCount => _switchNode.Length;
-        public Vector3 SwitchWorldPos(int switchIndex) => _nodePos[_switchNode[switchIndex]];
+        public Vector3 SwitchWorldPos(int switchIndex) =>
+            transform.TransformPoint(_nodePos[_switchNode[switchIndex]]); // F11: world, not local
 
         public static BoardView Build(ImportedLevel level, Transform parent, GameSession session)
         {
@@ -144,9 +145,10 @@ namespace CatMetro.Presentation.Board
         {
             for (int s = 0; s < _switchArm.Length; s++)
             {
-                var origin = _nodePos[_switchNode[s]] + new Vector3(0f, 0f, -0.4f);
-                var target = _nodePos[_switchRouteTargetNode[s][CommittedRoute(s)]];
-                var dir = (target - _nodePos[_switchNode[s]]).normalized;
+                var origin = transform.TransformPoint(
+                    _nodePos[_switchNode[s]] + new Vector3(0f, 0f, -0.4f)); // F11: world space
+                var target = transform.TransformPoint(_nodePos[_switchRouteTargetNode[s][CommittedRoute(s)]]);
+                var dir = (target - transform.TransformPoint(_nodePos[_switchNode[s]])).normalized;
                 _switchArm[s].position = origin + dir * 0.5f;
                 _switchArm[s].up = dir;
             }

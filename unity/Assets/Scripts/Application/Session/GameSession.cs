@@ -34,12 +34,15 @@ namespace CatMetro.Application.Session
             Log.Append(new ToggleSwitchCommand((ushort)switchId, State.Tick));
 
         // Toggles enqueued but not yet applied (the lever shows the COMMITTED route immediately;
-        // the sim applies it at the next boundary — ux-flows S-02).
+        // the sim applies it at the next boundary — ux-flows S-02). Review round F1: a command
+        // stamped X is applied by the Step that BEGINS at State.Tick == X+1, so "not yet
+        // applied" is Tick >= State.Tick - 1 — the >= State.Tick form made every lever REVERT
+        // for the full tick between stamp+1 and application ("the visual must not lie").
         public int PendingToggleCount(int switchId)
         {
             int n = 0;
             foreach (var e in Log.Entries)
-                if (e.SwitchId == switchId && e.Tick >= State.Tick) n++;
+                if (e.SwitchId == switchId && e.Tick >= State.Tick - 1) n++;
             return n;
         }
 

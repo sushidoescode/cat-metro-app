@@ -100,6 +100,75 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(lastTwo.All(e => e.Tick == t2), Is.True, "same tick, receipt order");
         }
 
+        // Review round F1: the committed lever must NEVER revert — observe CommittedRoute across
+        // EACH single-tick advance from stamp to application (the off-by-one made it flip back
+        // for the full tick between stamp+1 and application).
+        [UnityTest]
+        public IEnumerator CommittedLever_NeverRevertsAcrossTickBoundaries()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            int before = _root.View.CommittedRoute(0);
+            _root.Input.HandleTapAtScreen(_root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0)));
+            int committed = _root.View.CommittedRoute(0);
+            Assert.That(committed, Is.Not.EqualTo(before));
+
+            for (int i = 0; i < 4; i++)
+            {
+                _root.Session.AdvanceMs(CatMetro.Application.Session.TickInterpolator.TICK_MS);
+                Assert.That(_root.View.CommittedRoute(0), Is.EqualTo(committed),
+                    "the committed route holds at every single-tick boundary (advance " + i + ")");
+            }
+            Assert.That(_root.Session.State.SwitchRoutes[0], Is.EqualTo((byte)committed),
+                "the sim converged to the committed route");
+        }
+
+        // Review round F6: the 48dp claim bound BEHAVIOURALLY — a tap 23dp off-center hits the
+        // expanded rect, 25dp off-center misses (radius 24dp; headless dpi fallback 1px = 1dp).
+        [UnityTest]
+        public IEnumerator ExpandedHitRect_HitAt23dp_MissAt25dp()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            float pxPerDp = Screen.dpi > 0f ? Screen.dpi / 160f : 1f;
+            Vector2 center = _root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0));
+            int entries = _root.Session.Log.Entries.Count;
+
+            Assert.That(_root.Input.HandleTapAtScreen(center + new Vector2(23f * pxPerDp, 0f)),
+                Is.EqualTo(0), "23dp off-center is inside the expanded rect");
+            Assert.That(_root.Session.Log.Entries.Count, Is.EqualTo(entries + 1));
+            Assert.That(_root.Input.HandleTapAtScreen(center + new Vector2(25f * pxPerDp, 0f)),
+                Is.EqualTo(-1), "25dp off-center is outside");
+            Assert.That(_root.Session.Log.Entries.Count, Is.EqualTo(entries + 1), "no phantom command");
+        }
+
+        // Review round F2: the zero-tap L001 path hits the pinned NEW-Q4 boundary at ~t30 —
+        // the run must HALT loudly (no unhandled exception out of Update, no misleading
+        // banner, board intact), never limp to a wrong TimeOut fail.
+        [UnityTest]
+        public IEnumerator NoTapL001_HaltsAtThePinnedBoundary_NoUnhandledThrow()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex(
+                "run halted at a pinned/guarded Domain boundary"));
+
+            // REAL frames only — GameRoot.Update must be the code that meets the throw
+            // (a direct AdvanceMs here would detonate in the test instead of the halt path).
+            Time.timeScale = 8f;
+            float deadline = Time.realtimeSinceStartup + 30f;
+            while (_root.ScreenState == "Playing" && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Time.timeScale = 1f;
+
+            Assert.That(_root.ScreenState, Is.EqualTo("Halted"));
+            Assert.That(_root.Banner.Visible, Is.False, "no misleading outcome banner");
+            Assert.That(Object.FindObjectsByType<BoardElementId>(FindObjectsSortMode.None).Length,
+                Is.GreaterThan(0), "the board is still visible");
+        }
+
         private static double TickIfNeeded(int tapTick)
         {
             // enough ms to cross at least two boundaries from wherever alpha sits

@@ -35,8 +35,14 @@ namespace CatMetro.Tests.Engine
             Assert.That(bounds.Value.SaveMaxBytes, Is.EqualTo(524288));
         }
 
+        private static readonly string[] SaveFiles =
+        {
+            "save.dat", "save.dat.bak", "save.dat.tmp",
+            "analytics_queue.dat", "analytics_queue.dat.bak", "analytics_queue.dat.tmp",
+        };
+
         [Test]
-        public void SaveStore_CommitsAndReloads_AgainstTheEngineStorageRoot()
+        public void SaveStore_AndQueue_CommitAndReload_AgainstTheEngineStorageRoot()
         {
             var root = new EngineStorageRoot();
             Assert.That(root.SaveDirectory, Is.Not.Empty);
@@ -46,9 +52,21 @@ namespace CatMetro.Tests.Engine
                 .GetAwaiter().GetResult();
             var bounds = RuntimeBounds.Parse(boundsBytes).Value;
 
-            var store = new SaveStore(root, new RealSaveFileSystem(), bounds, new MigrationTable());
+            // Review F8: the contract wants the REAL root, so pre-existing developer files are
+            // snapshotted and restored — never destroyed, never allowed to skew the test.
+            var snapshot = new System.Collections.Generic.Dictionary<string, byte[]>();
+            foreach (var f in SaveFiles)
+            {
+                var p = System.IO.Path.Combine(root.SaveDirectory, f);
+                if (System.IO.File.Exists(p))
+                {
+                    snapshot[f] = System.IO.File.ReadAllBytes(p);
+                    System.IO.File.Delete(p);
+                }
+            }
             try
             {
+                var store = new SaveStore(root, new RealSaveFileSystem(), bounds, new MigrationTable());
                 store.Load();
                 store.State.Tickets = 21;
                 store.CommitAtomic();
@@ -61,14 +79,22 @@ namespace CatMetro.Tests.Engine
                 queue.Log(new CatMetro.Services.AnalyticsEvent("seam_probe",
                     new Newtonsoft.Json.Linq.JObject { ["ok"] = true }));
                 Assert.That(queue.QueuedEventCount, Is.EqualTo(1));
+
+                // Review F5: the RELOAD is the assertion — TryPersist swallows IO faults by
+                // design, so only a second instance reading the DISK proves durability here.
+                var rebornQueue = new AnalyticsQueue(root, new RealSaveFileSystem(), bounds, null);
+                Assert.That(rebornQueue.QueuedEventCount, Is.EqualTo(1),
+                    "the queued event survived through the engine storage root");
+                Assert.That(rebornQueue.Snapshot()[0].Name, Is.EqualTo("seam_probe"));
             }
             finally
             {
-                foreach (var f in new[] { "save.dat", "save.dat.bak", "save.dat.tmp",
-                    "analytics_queue.dat", "analytics_queue.dat.bak", "analytics_queue.dat.tmp" })
+                foreach (var f in SaveFiles)
                 {
                     var p = System.IO.Path.Combine(root.SaveDirectory, f);
                     if (System.IO.File.Exists(p)) System.IO.File.Delete(p);
+                    if (snapshot.TryGetValue(f, out var bytes))
+                        System.IO.File.WriteAllBytes(p, bytes);
                 }
             }
         }

@@ -26,10 +26,27 @@ cmp -s config/runtime_bounds.json "$sa/config/runtime_bounds.json" \
   || fail "criterion 10: runtime_bounds byte drift (Q-Y gate)"
 
 # --- criterion 11 (decided branch, backup OFF) ---
-grep -q 'android:allowBackup="false"' unity/Assets/Plugins/Android/LauncherManifest.xml \
-  || fail "criterion 11: allowBackup=false missing from the launcher manifest (RK-17 decided posture)"
-rules=$(find unity/Assets -name "*backup*rules*.xml" 2>/dev/null || true)
+# review F12: comments stripped so a commented-out attribute can never satisfy the gate
+if ! sed 's|<!--.*-->||g' unity/Assets/Plugins/Android/LauncherManifest.xml \
+    | grep -q 'android:allowBackup="false"'; then
+  fail "criterion 11: allowBackup=false missing from the launcher manifest (RK-17 decided posture)"
+fi
+rules=$(find unity/Assets \( -name "*backup*rules*.xml" -o -name "data_extraction_rules*.xml" \) 2>/dev/null || true)
 [ -z "$rules" ] || fail "criterion 11: backup-rules XML exists under backup-OFF posture: $rules"
+# review F4a: the committed launcher manifest must actually be WIRED into the build
+grep -q 'useCustomLauncherManifest: 1' unity/ProjectSettings/ProjectSettings.asset \
+  || fail "criterion 11: useCustomLauncherManifest is off — the posture never reaches the merged manifest"
+
+# --- criterion 7 (review F4b: the check the handoff claimed but nobody wrote) ---
+grep -q 'AndroidMinSdkVersion: 25' unity/ProjectSettings/ProjectSettings.asset \
+  || fail "criterion 7: minSdk != 25"
+grep -q 'AndroidTargetSdkVersion: 36' unity/ProjectSettings/ProjectSettings.asset \
+  || fail "criterion 7: targetSdk != 36"
+
+# --- review F4c: the device session needs a scene + build entry ---
+[ -f unity/Assets/Scenes/Game.unity ] || fail "F4c: Assets/Scenes/Game.unity missing"
+grep -q 'Assets/Scenes/Game.unity' unity/ProjectSettings/EditorBuildSettings.asset \
+  || fail "F4c: Game.unity not in EditorBuildSettings"
 
 # --- criterion 9 statics ---
 [ -d "$boot" ] || fail "criterion 9: Bootstrap root missing (fail-closed)"
@@ -46,13 +63,16 @@ if grep -rEn --include='*.cs' 'streamingAssetsPath' "$boot" 2>/dev/null | grep -
   fi
 fi
 
-# --- criterion 6 static: Presentation never simulates ---
-sim=$(grep -rEn --include='*.cs' 'Simulation\.Step' unity/Assets/Scripts/Presentation unity/Assets/Scripts/Bootstrap 2>/dev/null || true)
-[ -z "$sim" ] || fail "criterion 6: a render-side tree calls the sim step: $sim"
-# criterion 2's one-gesture-handler static half: exactly one Presentation file consumes the
-# input package (the runtime count is the PlayMode test's half)
+# --- criterion 6 static: Presentation never simulates (review F12: alias forms included) ---
+sim=$(grep -rEn --include='*.cs' 'Simulation\.Step|using static.*Simulation|=\s*CatMetro\.Domain\.Simulation' unity/Assets/Scripts/Presentation unity/Assets/Scripts/Bootstrap 2>/dev/null || true)
+[ -z "$sim" ] || fail "criterion 6: a render-side tree reaches the sim step: $sim"
+# criterion 2's static half (review F6): ONE file consumes the input package, and NO input
+# surface beyond it exists anywhere render-side — drag/pinch/long-press/UGUI pointer handlers
+# and the raw touch APIs are all banned tokens.
 consumers=$(grep -rEl --include='*.cs' 'UnityEngine\.InputSystem' unity/Assets/Scripts/Presentation 2>/dev/null | wc -l | tr -d ' ')
 [ "$consumers" = "1" ] || fail "criterion 2: expected exactly 1 input-consuming Presentation file, found $consumers"
+gestures=$(grep -rEn --include='*.cs' 'EventSystems|IPointerDownHandler|IDragHandler|IBeginDragHandler|Touchscreen|EnhancedTouch|OnMouse' unity/Assets/Scripts/Presentation unity/Assets/Scripts/Bootstrap 2>/dev/null || true)
+[ -z "$gestures" ] || fail "criterion 2: a second input surface exists: $gestures"
 
 # --- editor half ---
 ED="/Applications/Unity/Hub/Editor/6000.3.16f1/Unity.app/Contents/MacOS/Unity"
