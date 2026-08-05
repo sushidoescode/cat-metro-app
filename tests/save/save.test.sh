@@ -20,11 +20,14 @@ if ! dotnet test dotnet/CatMetro.sln -c Release --nologo > "$tmp/test.out" 2>&1;
   fail "criterion 15: dotnet test not green"
 fi
 
-# Criterion 13: engine-free — zero UnityEngine / persistentDataPath outside Bootstrap, over the
-# WHOLE Scripts tree minus that future root (review F8: scanning only two subtrees left Content
-# and Domain unguarded for the path token and the tree unguarded for conditional compilation).
-eng=$(grep -rEn --include='*.cs' --exclude-dir=Bootstrap '\b(UnityEngine|persistentDataPath)\b' unity/Assets/Scripts 2>/dev/null || true)
-[ -z "$eng" ] || fail "criterion 13: engine reference outside Bootstrap: $eng"
+# Criterion 13, kept in step with ADR-0003's table as engine rows land (CM-C2b armed the first
+# one): the ENGINE-FREE assemblies (Domain/Content/Services/Application) may never name
+# UnityEngine — the engine rows (Bootstrap, Presentation; later Integrations.*/Editor) may.
+# The storage-path APIs stay BOOTSTRAP-ONLY across the entire tree (ADR-0003:102-105).
+eng=$(grep -rEn --include='*.cs' --exclude-dir=Bootstrap --exclude-dir=Presentation '\bUnityEngine\b' unity/Assets/Scripts 2>/dev/null || true)
+[ -z "$eng" ] || fail "criterion 13: engine reference in an engine-free assembly: $eng"
+pathapi=$(grep -rEn --include='*.cs' --exclude-dir=Bootstrap '\b(persistentDataPath|temporaryCachePath)\b' unity/Assets/Scripts 2>/dev/null || true)
+[ -z "$pathapi" ] || fail "criterion 13: storage-path API outside Bootstrap: $pathapi"
 if grep -rEnq --include='*.cs' --exclude-dir=Bootstrap '#if UNITY_ANDROID' unity/Assets/Scripts 2>/dev/null; then
   fail "criterion 13: conditional compilation outside Bootstrap"
 fi

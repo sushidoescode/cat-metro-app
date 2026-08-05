@@ -1,12 +1,12 @@
 {
-    "name": "CatMetro.Bootstrap",
-    "rootNamespace": "CatMetro.Bootstrap",
+    "name": "CatMetro.Presentation",
+    "rootNamespace": "CatMetro.Presentation",
     "references": [
         "CatMetro.Domain",
         "CatMetro.Content",
         "CatMetro.Services",
         "CatMetro.Application",
-        "CatMetro.Presentation"
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

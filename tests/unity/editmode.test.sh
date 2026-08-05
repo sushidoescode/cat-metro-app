@@ -46,6 +46,14 @@ if grep -rEn --include='*.cs' 'streamingAssetsPath' "$boot" 2>/dev/null | grep -
   fi
 fi
 
+# --- criterion 6 static: Presentation never simulates ---
+sim=$(grep -rEn --include='*.cs' 'Simulation\.Step' unity/Assets/Scripts/Presentation unity/Assets/Scripts/Bootstrap 2>/dev/null || true)
+[ -z "$sim" ] || fail "criterion 6: a render-side tree calls the sim step: $sim"
+# criterion 2's one-gesture-handler static half: exactly one Presentation file consumes the
+# input package (the runtime count is the PlayMode test's half)
+consumers=$(grep -rEl --include='*.cs' 'UnityEngine\.InputSystem' unity/Assets/Scripts/Presentation 2>/dev/null | wc -l | tr -d ' ')
+[ "$consumers" = "1" ] || fail "criterion 2: expected exactly 1 input-consuming Presentation file, found $consumers"
+
 # --- editor half ---
 ED="/Applications/Unity/Hub/Editor/6000.3.16f1/Unity.app/Contents/MacOS/Unity"
 if [ -x "$ED" ]; then
@@ -64,8 +72,20 @@ print(r.get('total'), r.get('passed'), r.get('failed'))")
   total=$(echo "$summary" | cut -d' ' -f1); passed=$(echo "$summary" | cut -d' ' -f2); failed=$(echo "$summary" | cut -d' ' -f3)
   [ "$failed" = "0" ] && [ "$total" = "$passed" ] && [ "$total" != "0" ] \
     || fail "editor half: EditMode $passed/$total passed, $failed failed"
-  echo "editmode.test.sh: OK (10, 11, 9-static; editor half $passed/$total)"
+  if ! "$ED" -batchmode -projectPath "$(pwd)/unity" -runTests -testPlatform PlayMode \
+      -testResults "$tmp/pm.xml" -logFile "$tmp/pm.log" > /dev/null 2>&1; then
+    tail -5 "$tmp/pm.log" 2>/dev/null
+    fail "editor half: headless PlayMode run exited non-zero"
+  fi
+  pm=$(python3 -c "
+import xml.etree.ElementTree as ET
+r = ET.parse('$tmp/pm.xml').getroot()
+print(r.get('total'), r.get('passed'), r.get('failed'))")
+  pt=$(echo "$pm" | cut -d' ' -f1); pp=$(echo "$pm" | cut -d' ' -f2); pf=$(echo "$pm" | cut -d' ' -f3)
+  [ "$pf" = "0" ] && [ "$pt" = "$pp" ] && [ "$pt" != "0" ] \
+    || fail "editor half: PlayMode $pp/$pt passed, $pf failed"
+  echo "editmode.test.sh: OK (10, 11, 9-static, 6-static, 2-static; EditMode $passed/$total; PlayMode $pp/$pt)"
 else
-  echo "editmode.test.sh: OK (10, 11, 9-static; editor half DEFERRED — pinned editor absent, unity-editmode CI job is the remote enforcement, Q-V)"
+  echo "editmode.test.sh: OK (10, 11, 9-static, 6-static, 2-static; editor half DEFERRED — pinned editor absent, unity-editmode CI job is the remote enforcement, Q-V)"
 fi
 exit 0

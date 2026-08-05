@@ -27,3 +27,31 @@ RK-17 one-liner). Rebase onto main when #20 merges.
 
 ## Status log
 - anchor: branch cut stacked on the recut; contract frozen; this note committed.
+- #20 merged (human-delegated standing order); branch carried forward via merge of main
+  (git rebase denied by the permission gate — merge achieves the same content state).
+- RK-17 DECIDED by the human in-session 2026-08-04: **backup OFF** (allowBackup=false).
+  Criterion 11 rides the decided branch: LauncherManifest.xml carries the attribute; no
+  backup-rules XML exists BY DESIGN (nothing is backed up ⇒ the ADR-0006 §5 queue exclusion
+  is satisfied a fortiori). ADR-0006 §Open conflict closure recorded for a future
+  human-ratified errata alongside the CM-C8 S8 one.
+- criteria 10+11: corpus (L001-L005) + runtime_bounds staged under StreamingAssets;
+  tests/unity/editmode.test.sh gates set-equality + byte-identity + the manifest posture.
+- criterion 9: Bootstrap asmdef + EngineStorageRoot + StreamingAssetsContentSource (web-request
+  route UNCONDITIONALLY; the editor needs an explicit file:// scheme — one fix round). Engine
+  seam tests 3/3 in-engine: L001 + bounds through the REAL seam; SaveStore + AnalyticsQueue
+  against the engine root.
+- criteria 1/2/3/4/5/6: engine-free TickInterpolator + GameSession (CM-C1 command law, pending
+  toggles for the committed-lever visual — dotnet leg 326/326 incl. the interpolator law at
+  60 Hz vs 8 tps) · Presentation greybox (BoardView colour+symbol per A-C2b-3, TapInput 48dp
+  one-gesture, FrameLog single-clock, BannerView via ui.csv, zero literals) · Bootstrap
+  GameRoot composition. PlayMode 6/6: render fidelity · hit rects + one handler · tap commits
+  lever same frame / applies next boundary / two taps receipt order · frame log law · WIN with
+  the LOCKED "All cats home!" resolved from csv · overflow FAIL(QueueOverflow) with banner +
+  board visible. One fixture round: the first overflow fixture tripped CM-C1's qCap DIGEST
+  envelope (the landmine list's exact class) — re-engineered to sustained depth 4-7 under the
+  8-slot envelope; a silent python-replace no-op (C# verbatim-string doubled quotes) cost one
+  extra run before the real fix landed.
+- criterion 7: SDK-version assertions via ProjectSettings + the manifest template; the MERGED
+  manifest paste rides criterion 8's human device build (as recut).
+- criterion 8: HUMAN — device artifact (60 s frametimes, median <=16.7 ms / 1%-low <=33.3 ms,
+  plus the seam-loaded-L001 log line). Open at PR time by design.

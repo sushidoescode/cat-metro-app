@@ -26,8 +26,12 @@ namespace CatMetro.Bootstrap
 
         private static byte[] ReadBlocking(string relativePath, CancellationToken ct)
         {
-            string url = System.IO.Path.Combine(
+            string path = System.IO.Path.Combine(
                 UnityEngine.Application.streamingAssetsPath, relativePath ?? "");
+            // Android's streamingAssetsPath already carries a scheme (jar:file://...); the
+            // editor's is a bare filesystem path, which the web-request API refuses — add the
+            // scheme exactly when absent.
+            string url = path.Contains("://") ? path : "file://" + path;
             using (var request = UnityWebRequest.Get(url))
             {
                 var op = request.SendWebRequest();
