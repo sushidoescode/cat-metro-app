@@ -27,6 +27,13 @@ namespace CatMetro.Presentation.Input
         public System.Func<bool> RetryRegionActive;
         public System.Action RetryTapped;
 
+        // CM-UX-01: chrome hit routing + the board-input gate. Resolution order is law
+        // (criterion 1): legacy retry band first (pinned), registered regions next, board discs
+        // last. BoardInputActive gates ONLY the disc scan (null = active; the composition root
+        // binds it to the Playing state in CM-UX-07 — until then behavior is unchanged).
+        public readonly ChromeRegions Regions = new ChromeRegions();
+        public System.Func<bool> BoardInputActive;
+
         public void Wire(GameSession session, BoardView view, Camera cam)
         {
             _session = session; _view = view; _camera = cam;
