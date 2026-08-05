@@ -126,6 +126,10 @@ namespace CatMetro.Bootstrap
             Log = gameObject.AddComponent<FrameLog>();
             Log.SimTickSource = () => Session.State.Tick;
             Log.ScreenStateSource = () => ScreenState;
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            if (GetComponent<DevCapture.DevFrameCapture>() == null)
+                gameObject.AddComponent<DevCapture.DevFrameCapture>().Wire(this);
+#endif
         }
 
         // CM-C3 criterion 10's reason→key mapping, PURE and test-drivable (review S1): the
