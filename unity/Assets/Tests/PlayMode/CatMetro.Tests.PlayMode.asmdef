@@ -1,18 +1,17 @@
 {
-    "name": "CatMetro.Tests.EditMode",
-    "rootNamespace": "CatMetro.Tests",
+    "name": "CatMetro.Tests.PlayMode",
+    "rootNamespace": "CatMetro.Tests.PlayMode",
     "references": [
         "CatMetro.Domain",
         "CatMetro.Content",
         "CatMetro.Services",
         "CatMetro.Application",
+        "CatMetro.Presentation",
         "CatMetro.Bootstrap",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
-    "includePlatforms": [
-        "Editor"
-    ],
+    "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,

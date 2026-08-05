@@ -1,0 +1,20 @@
+{
+    "name": "CatMetro.Presentation",
+    "rootNamespace": "CatMetro.Presentation",
+    "references": [
+        "CatMetro.Domain",
+        "CatMetro.Content",
+        "CatMetro.Services",
+        "CatMetro.Application",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

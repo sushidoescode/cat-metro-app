@@ -1,0 +1,20 @@
+{
+    "name": "CatMetro.Bootstrap",
+    "rootNamespace": "CatMetro.Bootstrap",
+    "references": [
+        "CatMetro.Domain",
+        "CatMetro.Content",
+        "CatMetro.Services",
+        "CatMetro.Application",
+        "CatMetro.Presentation"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
