@@ -14,6 +14,7 @@ namespace CatMetro.Presentation.Board
     public sealed class BoardView : MonoBehaviour
     {
         private GameSession _session;
+        private string[] _nodeIds;
         private Vector3[] _nodePos;
         private int[] _edgeFrom;
         private int[] _edgeTo;
@@ -24,6 +25,8 @@ namespace CatMetro.Presentation.Board
         private readonly Dictionary<int, GameObject> _trains = new Dictionary<int, GameObject>();
 
         public int SwitchCount => _switchNode.Length;
+        public string NodeId(int nodeIndex) => _nodeIds[nodeIndex];
+        public Vector3 NodeWorldPos(int nodeIndex) => transform.TransformPoint(_nodePos[nodeIndex]);
         public Vector3 SwitchWorldPos(int switchIndex) =>
             transform.TransformPoint(_nodePos[_switchNode[switchIndex]]); // F11: world, not local
 
@@ -44,6 +47,7 @@ namespace CatMetro.Presentation.Board
             var edges = dto.Edges.ToArray();
             var nodeIndex = new Dictionary<string, int>();
             _nodePos = new Vector3[nodes.Length];
+            _nodeIds = new string[nodes.Length];
 
             var sourceIds = new HashSet<string>();
             foreach (var s in dto.Sources.ToArray()) sourceIds.Add(s.NodeId);
@@ -54,6 +58,7 @@ namespace CatMetro.Presentation.Board
             for (int i = 0; i < nodes.Length; i++)
             {
                 nodeIndex[nodes[i].Id] = i;
+                _nodeIds[i] = nodes[i].Id;
                 _nodePos[i] = new Vector3(nodes[i].X, nodes[i].Y, 0f);
                 string kind = sourceIds.Contains(nodes[i].Id) ? "source"
                     : stationAccept.ContainsKey(nodes[i].Id) ? "station" : "node";

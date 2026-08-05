@@ -21,6 +21,12 @@ namespace CatMetro.Presentation.Input
 
         public float EffectiveHitDiameterDp => HIT_DIAMETER_DP;
 
+        // CM-C3 criterion 6: Try again is a tap on the bottom thumb band during FailureReview,
+        // routed through THIS one handler (S-02's one-gesture discipline holds). Wired by the
+        // composition root; hit-testable from the first FailureReview frame by construction.
+        public System.Func<bool> RetryRegionActive;
+        public System.Action RetryTapped;
+
         public void Wire(GameSession session, BoardView view, Camera cam)
         {
             _session = session; _view = view; _camera = cam;
@@ -37,6 +43,12 @@ namespace CatMetro.Presentation.Input
         // visual flips before this frame renders (criterion 3a).
         public int HandleTapAtScreen(Vector2 screenPos)
         {
+            if (RetryRegionActive != null && RetryTapped != null && RetryRegionActive()
+                && screenPos.y < Screen.height * 0.25f)
+            {
+                RetryTapped();
+                return -2; // the retry verb consumed the tap
+            }
             if (_session == null || _view == null || _camera == null) return -1;
             float pxPerDp = Screen.dpi > 0f ? Screen.dpi / 160f : 1f;
             float radiusPx = HIT_DIAMETER_DP * pxPerDp * 0.5f;

@@ -1,3 +1,5 @@
 win.banner,All cats home!
 fail.banner,Overloaded!
 fail.banner.timeout,The last train left the depot
+fail.queueoverflow,Platform overflowed at {node}
+fail.platformoverflow,{station} platform overflowed

@@ -32,6 +32,14 @@ namespace CatMetro.Presentation.Hud
             _mesh.text = Strings.UiStrings.Get(key);
         }
 
+        // CM-C3 criterion 10: the LOCKED fail strings carry a {node}/{station} token — the
+        // component still receives only the KEY plus the substitution pair, never a literal.
+        public void ShowKeySubstituted(string key, string token, string value)
+        {
+            CurrentKey = key;
+            _mesh.text = Strings.UiStrings.Get(key).Replace(token, value ?? "?");
+        }
+
         public void Hide()
         {
             CurrentKey = "";
