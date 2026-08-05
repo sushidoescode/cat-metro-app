@@ -46,8 +46,10 @@ namespace CatMetro.Presentation.Input
                 HandleTapAtScreen(pointer.position.ReadValue());
         }
 
-        // Returns the switch index toggled, or -1 (miss). Synchronous: the committed lever
-        // visual flips before this frame renders (criterion 3a).
+        // Returns the switch index toggled, -2 (retry verb), -3 (chrome region), or -1 (miss).
+        // Synchronous: the committed lever visual flips before this frame renders (criterion 3a).
+        // CM-UX-01 resolution order is LAW: retry band (pinned, first claim) -> chrome regions ->
+        // board discs; BoardInputActive gates only the disc scan.
         public int HandleTapAtScreen(Vector2 screenPos)
         {
             if (RetryRegionActive != null && RetryTapped != null && RetryRegionActive()
@@ -56,6 +58,14 @@ namespace CatMetro.Presentation.Input
                 RetryTapped();
                 return -2; // the retry verb consumed the tap
             }
+            if (Regions.TryResolve(screenPos, out var onTap))
+            {
+                onTap();
+                return -3; // a chrome region consumed the tap — never falls through to a disc
+            }
+            // Regions resolve above this line: chrome exists on screens with no board wired
+            // (a later Home screen), and a closed gate must never darken chrome or retry.
+            if (BoardInputActive != null && !BoardInputActive()) return -1;
             if (_session == null || _view == null || _camera == null) return -1;
             float pxPerDp = Screen.dpi > 0f ? Screen.dpi / 160f : 1f;
             float radiusPx = HIT_DIAMETER_DP * pxPerDp * 0.5f;

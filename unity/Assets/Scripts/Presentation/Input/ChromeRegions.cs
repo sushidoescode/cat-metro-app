@@ -28,18 +28,54 @@ namespace CatMetro.Presentation.Input
 
         public void Register(string id, Func<Rect> screenRect, Action onTap, int priority)
         {
-            // skeleton (red phase): not implemented
+            if (string.IsNullOrEmpty(id)) throw new ArgumentException("region id is required");
+            if (screenRect == null) throw new ArgumentException("screenRect provider is required");
+            if (onTap == null) throw new ArgumentException("onTap action is required");
+            for (int i = 0; i < _entries.Count; i++)
+                if (_entries[i].Id == id)
+                    throw new ArgumentException(
+                        "duplicate region id '" + id + "' — a wiring defect, never a silent replace");
+            _entries.Add(new Entry
+            {
+                Id = id, ScreenRect = screenRect, OnTap = onTap, Priority = priority, Seq = _seq++
+            });
         }
 
         public bool Unregister(string id)
         {
-            return false; // skeleton (red phase)
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                if (_entries[i].Id == id)
+                {
+                    _entries.RemoveAt(i);
+                    return true;
+                }
+            }
+            return false;
         }
 
+        // Highest priority containing the point wins; ties go to the EARLIEST registration.
+        // The rect provider is consulted per call — regions track their live layout.
         public bool TryResolve(Vector2 screenPos, out Action onTap)
         {
-            onTap = null; // skeleton (red phase)
-            return false;
+            onTap = null;
+            int bestPriority = 0;
+            long bestSeq = 0;
+            bool found = false;
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                if (!_entries[i].ScreenRect().Contains(screenPos)) continue;
+                if (!found
+                    || _entries[i].Priority > bestPriority
+                    || (_entries[i].Priority == bestPriority && _entries[i].Seq < bestSeq))
+                {
+                    found = true;
+                    bestPriority = _entries[i].Priority;
+                    bestSeq = _entries[i].Seq;
+                    onTap = _entries[i].OnTap;
+                }
+            }
+            return found;
         }
     }
 }

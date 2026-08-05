@@ -14,24 +14,28 @@ namespace CatMetro.Presentation.Hud
         public const float MinTargetDp = 48f;
         public const float FallbackDpi = 160f;
 
+        // Matches TapInput.cs:53 — an unreadable dpi resolves to 1 px/dp, never 0.
         public static float PxPerDp(float dpi)
         {
-            return 0f; // skeleton (red phase)
+            return dpi > 0f ? dpi / FallbackDpi : 1f;
         }
 
         public static Rect ThumbBand(Rect safeArea)
         {
-            return default; // skeleton (red phase)
+            return new Rect(safeArea.x, safeArea.y,
+                safeArea.width, safeArea.height * ThumbBandFraction);
         }
 
         public static Rect StatusBand(Rect safeArea)
         {
-            return default; // skeleton (red phase)
+            float height = safeArea.height * StatusBandFraction;
+            return new Rect(safeArea.x, safeArea.yMax - height, safeArea.width, height);
         }
 
         public static bool MeetsMinTarget(Rect rectPx, float dpi)
         {
-            return false; // skeleton (red phase)
+            float minPx = MinTargetDp * PxPerDp(dpi);
+            return rectPx.width >= minPx && rectPx.height >= minPx;
         }
     }
 }
