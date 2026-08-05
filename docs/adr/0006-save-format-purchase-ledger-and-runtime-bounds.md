@@ -234,8 +234,13 @@ One-line rationales (each number is derived, not chosen):
   bounds rather than against the code. The byte cap now catches only the case the event cap cannot:
   events larger than expected in aggregate, on a device where disk, not count, is the scarce
   resource. 1 MiB remains negligible against the ≤50 MB free-space floor of the CM-R05.4 low-storage
-  soak, and CM-R43.4(b)'s overflow test still has two reachable limbs (exceed the count with normal
-  events; exceed the bytes with `QUEUE_EVENT_MAX_BYTES`-sized ones).
+  soak. **[ERRATUM 2026-08-05, from the CM-C8 review round (finding S8): the previous sentence
+  here claimed CM-R43.4(b) keeps "two reachable limbs (… exceed the bytes with
+  `QUEUE_EVENT_MAX_BYTES`-sized ones)" — which the paragraph's own arithmetic disproves: at
+  2000 × 512 = 1 024 000 ≤ 1 048 576 the COUNT cap always binds first, so the byte limb is
+  unreachable at shipped bounds by design. The byte-limb overflow test therefore runs under
+  SYNTHETIC bounds (as CM-C8's suite does), and the shipped byte cap remains exactly what the
+  bullet says it is: a backstop. ratified by the human in-session 2026-08-05; recorded by the phases-6-10 agent]**
 - **`QUEUE_EVENT_MAX_BYTES = 512`** — a single event that cannot be serialized under this is a bug
   (no free text is permitted in the taxonomy, RK-30); it is dropped with `queue_dropped` rather than
   poisoning the queue.
@@ -288,7 +293,17 @@ recorded on a *different* install after a reinstall, which is precisely what CM-
 `docs/prd/PRD.md:694`), and would inflate published numbers in violation of CM-R56.3/56.4. Since the
 queue carries no entitlement, ledger or cap state, excluding it costs nothing a player would notice.
 
-## Open conflict — requires a human decision (do not let an implementer resolve this)
+## Open conflict — RESOLVED 2026-08-04/05 (human decision: BACKUP OFF)
+
+**[RESOLUTION: the human decided "backup off" in-session 2026-08-04 (recorded in
+`state/handoffs/CM-C2b.md`; implemented by CM-C2b criterion 11 — `android:allowBackup="false"`
+in the custom launcher manifest, `useCustomLauncherManifest: 1`, no backup-rules XML). With
+auto-backup off entirely, the conflict below DISSOLVES: nothing is backed up, so the
+RK-17 exclusion set (entitlement cache, ledger, dedupe set — and ADR §5's unconditional
+`analytics_queue.dat` exclusion) holds a fortiori while CM-R27.4's one-atomic-write law is
+untouched. The merged-manifest proof rides the first device build's artifact. ratified by the human in-session 2026-08-05; recorded by the phases-6-10 agent]**
+
+The original conflict statement, kept for the record:
 
 **RK-17 (`docs/prd/risks.md:80`) says the entitlement cache, the consumable ledger and the dedupe set
 must be excluded from Play auto-backup. CM-R27.4 says the dedupe insert, audit entry and balance must
