@@ -38,6 +38,7 @@
 - Repo-name drift: plan of record says `cat-metro`; actual repo/dir is `cat-metro-app`. Human call: rename or amend the plan line.
 
 ## Decisions this week (promote to ADR if architectural)
+- 2026-08-05 — **Human approved the UX-layer build-out from the PRD** (ux-flows 12 stories; TG-1..8 stay in-build human gates; monetization surfaces stay out). Runs as a PARALLEL session per `state/handoffs/SESSION-HANDOFF-ux.md` (ownership boundaries + the one-input-surface gate collision are in that file). Device session same day: criterion-8 artifact captured — frame leg FAILED honestly (30 fps default cap) + shader-stripping magenta; fix contract next; evidence in `evals/results/device/c2b-crit8/`.
 - 2026-08-02 — mode=sprint with a hard graduation criterion (see Now). Rationale: hackathon clock now, revenue later; monetization globs tripwire the switch.
 - 2026-08-04 — **Constitution Amendment 1 (human-authored, e9e9675 via #12/#13):** agent squash-merges to main delegated under conditions (green checks; sprint review pricing honoured; no immutable/risky/docs-plan paths; tags/releases/spend/state-mode/ADRs stay human). Bootstrap route: unsigned human commit → staging squash (web-flow signed) → main; SSH commit signing still on the debt list.
 - 2026-08-04 — phases 6–10 hand to a fresh session (new Max account, Fable 5) per state/handoffs/SESSION-HANDOFF-phase6-10.md; this session ends after the first delegated merge (#11).
