@@ -45,6 +45,9 @@ grep -q 'm_RenderingMode: 0' "$URPR" \
   || fail "criterion 2: rendering path is not Forward"
 grep -q 'm_DefaultRendererIndex: 0' "$URPA" \
   || fail "criterion 2: default renderer index drifted"
+entries=$(awk '/m_RendererDataList:/{f=1;next} /m_DefaultRendererIndex:/{f=0} f' "$URPA" | grep -c 'fileID' || true)
+[ "$entries" = "1" ] \
+  || fail "criterion 2: renderer list must hold exactly one entry, found $entries (review N-2)"
 
 # --- criterion 3: vsync posture pinned; no dev-guard in the shipped policy files ---
 vs_total=$(grep -c 'vSyncCount:' "$QS" || true)

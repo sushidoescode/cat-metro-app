@@ -125,7 +125,11 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(trainSeen, Is.True, "the train surface was exercised");
             // cause ring (public entry, no failure needed). Review F-2: the ring is DELIBERATELY
             // unparented (CM-C3 review B1 — never rides the camera), so the root walk below
-            // cannot see it; it gets its own explicit assertion here.
+            // cannot see it; it gets its own explicit assertion here. Review N-1: an earlier
+            // test's ring may already sit at scene root (ShowRing never destroys it) — clear
+            // any stale one first so the assertion inspects the ring THIS test created.
+            var stale = GameObject.Find("CauseRing");
+            if (stale != null) Object.DestroyImmediate(stale);
             _root.CauseCam.FrameNode("SRC", _root.View.NodeWorldPos(0), motionOff: true);
             yield return null;
             Assert.That(_root.CauseCam.RingVisible, Is.True, "the ring surface was exercised");
