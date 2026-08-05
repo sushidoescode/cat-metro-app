@@ -45,7 +45,7 @@ default. That is the accepted price of the ownership boundary, stated here rathe
 | # | Posture |
 |---|---|
 | P-1 | **One-input-surface gate: untouched, everywhere.** Resolution (a) from the handoff: all chrome is render-only; every hit routes through `TapInput` via a chrome-region registry (pure rect math). No slice introduces `EventSystems`/pointer-handler/`Touchscreen`/`EnhancedTouch`/`OnMouse` tokens (source **or prose** — the greps scan comments), and `TapInput` stays the sole `UnityEngine.InputSystem` consumer. **No gate-evolution PR exists in this tranche**; if one ever becomes necessary its merge waits for explicit human OK. |
-| P-2 | **Chrome rendering technology: the human decides (§6 Q-6).** ADR-0007 ratifies UGUI+TMP chrome; TMP essentials are not imported today, and merged code already carries the same deferral (`BannerView.cs:5-7`: "ADR-0007's UGUI+TMP chrome arrives with CM-C3's screens" — greybox renders `TextMesh`). Deferring a ratified ADR is not an agent's call, so Q-6 asks the human: continue the TextMesh-greybox precedent through tranche 1 with a named TMP/UGUI migration contract at the art/chrome pass (recommended), or import TMP now. Until answered, slices render per the merged precedent; CM-UX-01 ships no view and is unaffected either way. (An earlier draft justified deferral via F-DEV-2 — that was wrong: the device shader strips because the built scene references NO material, `ARTIFACT.md:64-69`; TMP ships referenced assets, the opposite case.) |
+| P-2 | **Chrome rendering technology: TMP + UGUI, now — DECIDED by the human (§6 Q-6, answered 2026-08-05, recommendation overridden).** All chrome from CM-UX-02 onward renders on ADR-0007's UGUI+TMP stack (render-only: no EventSystem-family objects, hits through the TapInput registry — P-1 unchanged). CM-UX-02 carries the essentials import. The ONLY remaining TextMesh is the merged greybox (`BannerView`, board glyphs, preview badges); its back-migration to TMP is the §3 tranche-2 item. No slice may ship NEW TextMesh chrome. (History: an earlier draft deferred TMP on a wrong F-DEV-2 reading — the device shader strips because the built scene references NO material, `ARTIFACT.md:64-69`; TMP ships referenced assets, the opposite case.) |
 | P-3 | **Components now, wiring later.** No slice edits `Bootstrap/**` or `GameRoot.cs`. Slices marked NEEDS-WIRING land components + tests that prove behavior by direct construction (the repo's `LaunchWith`/drive-the-seam pattern); CM-UX-07 is the single enumerated composition-only wiring PR, sequence-blocked on the DEVCAP + device-config-fix merges (mechanical `git log` check). |
 | P-4 | **Strings:** ui.csv appends only, never edit an existing row; zero literals in components (`UiStrings` keys). The harness grep leg only covers the three locked fail phrases and the wrappers are not this lane's to extend — so **each slice ships its own EditMode literal guard** under `unity/Assets/Tests/**` covering its new keys. LOCKED copy lands verbatim; DRAFT copy is flagged in the slice contract and queued for the TG-5 voice sitting before any device exposure. |
 | P-5 | **A11y floor per slice:** every interactive target ≥48dp on the 360×640dp reference (band math from CM-UX-01); state never conveyed by color alone (greyscale criterion per chrome view); motion-off (`GameRoot.MotionOff`) removes easing only, never information; label/live-region **hooks** land per slice — the Unity accessibility-hierarchy build + TalkBack pass is deferred work (UX-OPEN-11), never claimed early. |
@@ -175,6 +175,15 @@ count==1 and CM-UX-06's tree law are the structural tripwires) · gate-evolution
 needed anywhere in this tranche.
 
 ## 6. Open questions for the human (with recommended defaults)
+
+> **Answered in-session 2026-08-05 — the human's answers, verbatim in substance (record:
+> `SESSION-HANDOFF-ux.md`):** Q-1 = "Land DRAFT now" · Q-2 = "Yes, restart escape" · Q-3 =
+> "Hold until LoadNext exists" · Q-6 = "Import TMP + UGUI now" (recommendation overridden).
+>
+> **Consequences derived by the LANE (not the human's words):** Q-2's escape becomes CM-UX-07's
+> wiring line; Q-6 supersedes P-2's TextMesh posture, CM-UX-02 carries the essentials import,
+> and the lane sequences that import AFTER CM-C2b-DEVFIX's URP restore per #29's ratified
+> ordering. Q-4/Q-5 remain open ratifications, blocking nothing.
 - **Q-1 (blocks CM-UX-02 copy only):** approve DRAFT `halt.notice` — must stay semantics-neutral
   pending Q-B/NEW-Q4. Recommended: land DRAFT-flagged now (csv-swappable without code change),
   voice-pass at the TG-5 sitting.
@@ -210,5 +219,12 @@ needed anywhere in this tranche.
   accepted; it is invisible until chrome makes the states legible anyway.
 - **G-4 Band-divergence zone (review R1-F15):** CM-UX-01's pin freezes the retry band's RAW
   bottom-25% consumption (`TapInput.cs:47`) while `HudBands` defines bands on the SAFE AREA
-  (`ux-flows.md:32`). On inset devices a tap can retry without hitting the rendered chip.
-  Owner: CM-UX-02 documents the zone; CM-UX-07 reconciles deliberately against the pin.
+  (`ux-flows.md:32`). On inset devices a tap can retry without hitting the rendered chip — AND
+  the inverse (#31 review R1-F1): rendered chip pixels can be inert, so CM-UX-02 asserts the
+  48dp floor on the INTERSECTION of chip and raw band. Owner: CM-UX-02 documents + pins the
+  zone numerically; CM-UX-07 reconciles deliberately against the pin.
+- **G-5 Queued for the next human ratification batch (#31 review R1-F8):** the lane merged
+  CM-UX-01 (184 Presentation lines, zero rendering code) before DEVFIX, reading #29's "DEVFIX's
+  7 Presentation lines precede UX-lane code" as scoped to RENDERING code. That narrowing is the
+  lane's interpretation, not the human's words — disclosed on #31; the human ratifies or
+  corrects the reading; it is not precedent either way.
