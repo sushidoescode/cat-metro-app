@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+
+  "SAVE_MAX_BYTES": 524288,
+  "SAVE_PAUSE_BUDGET_MS": 50,
+
+  "LEDGER_DEDUPE_MAX_ENTRIES": 5000,
+  "LEDGER_AUDIT_MAX_ENTRIES": 200,
+  "LEDGER_KEY_SCHEME": "cm-ledger-v1",
+
+  "QUEUE_MAX_EVENTS": 2000,
+  "QUEUE_MAX_BYTES": 1048576,
+  "QUEUE_EVENT_MAX_BYTES": 512,
+  "QUEUE_FLUSH_HIGH_WATER": 64,
+  "QUEUE_FLUSH_TRIGGER": ["network_reachable", "app_foreground", "app_pause", "high_water"],
+
+  "ATTRIBUTION_MAX_RESIMS": 24,
+
+  "CONTENT_MAX_FILE_BYTES": 262144,
+  "CONTENT_MAX_JSON_DEPTH": 16,
+  "CONTENT_BOUNDS_PROFILE": "level-schema-v2"
+}

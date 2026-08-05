@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 2,
+  "id": "L001",
+  "name": "First Switch",
+  "seed": 1001,
+  "meta": {
+    "band": "onboarding",
+    "difficultyTarget": 0.08,
+    "mechanics": [
+      "switch"
+    ],
+    "newMechanic": "switch",
+    "teachingGoal": "One tap changes the route; deliver two red cats to the red station",
+    "minActionWindowTicks": 16,
+    "authoredBy": "human"
+  },
+  "board": {
+    "nodes": [
+      {
+        "id": "SRC",
+        "x": 3,
+        "y": 9
+      },
+      {
+        "id": "J1",
+        "x": 3,
+        "y": 6
+      },
+      {
+        "id": "RED",
+        "x": 1,
+        "y": 2
+      },
+      {
+        "id": "BLU",
+        "x": 5,
+        "y": 2
+      }
+    ],
+    "edges": [
+      {
+        "id": "E1",
+        "from": "SRC",
+        "to": "J1",
+        "travelTicks": 10
+      },
+      {
+        "id": "E2",
+        "from": "J1",
+        "to": "RED",
+        "travelTicks": 12
+      },
+      {
+        "id": "E3",
+        "from": "J1",
+        "to": "BLU",
+        "travelTicks": 12
+      }
+    ]
+  },
+  "sources": [
+    {
+      "nodeId": "SRC",
+      "allowedColors": [
+        "red"
+      ]
+    }
+  ],
+  "stations": [
+    {
+      "nodeId": "RED",
+      "accepts": [
+        "red"
+      ],
+      "capacity": 6
+    },
+    {
+      "nodeId": "BLU",
+      "accepts": [
+        "blue"
+      ],
+      "capacity": 6
+    }
+  ],
+  "switches": [
+    {
+      "id": "S1",
+      "nodeId": "J1",
+      "routes": [
+        "E2",
+        "E3"
+      ],
+      "initialRoute": 1
+    }
+  ],
+  "waves": [
+    {
+      "tick": 8,
+      "sourceNode": "SRC",
+      "color": "red",
+      "count": 2,
+      "spacingTicks": 20
+    }
+  ],
+  "win": {
+    "deliveries": 2,
+    "timeLimitTicks": 160,
+    "perfectMaxSwitches": 1,
+    "stars": {
+      "two": 200,
+      "three": 300
+    }
+  },
+  "economy": {
+    "baseTickets": 20,
+    "perfectBonus": 10
+  }
+}
