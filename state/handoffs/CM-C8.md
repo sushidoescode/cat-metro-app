@@ -48,7 +48,7 @@ non-transactional with the save BY DESIGN (grant durable, event lost — never i
   anywhere (criterion 6's negative is structural). **COST, measured by review round 1 (S5):**
   an offline fill to the cap = ~139 MB of fsync'd writes / ~6.8 ms per Log at the cap on
   desktop NVMe — the cadence is a HUMAN decision to ratify or amend; changing it later changes
-  crash-loss semantics.
+  crash-loss semantics. **RATIFIED as shipped (ratified by the human in-session 2026-08-05; recorded by the phases-6-10 agent).**
 - **A-C8-11 (session, from review S3): the metrics-only wall is TYPE-level.** The contract's
   own check bans types; a caller can still place ledger-shaped VALUES inside AnalyticsEvent
   Params and no static check can see it. The typed taxonomy wrapper (CM-R43.1-.3) is where

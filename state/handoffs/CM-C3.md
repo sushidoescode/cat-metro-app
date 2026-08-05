@@ -63,4 +63,4 @@ Criterion order:
   PR). tests/unity/failure.test.sh statics green (PlatformOverflow construction ban + negative
   fixture; the three LOCKED rows; zero-literal grep).
 - OPEN (human, by design): criterion 2/4/7's low+mid-tier DEVICE tables — same session as
-  CM-C2b criterion 8's artifact. Q-K (A-C3-2 TimeOut rule) named as unratified.
+  CM-C2b criterion 8's artifact. Q-K (A-C3-2 TimeOut rule): ratified by the human in-session 2026-08-05; recorded by the phases-6-10 agent.

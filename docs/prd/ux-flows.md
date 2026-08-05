@@ -189,7 +189,7 @@ flowchart TD
 
 **Interaction behavior.**
 - **Tap** a junction → lever animates *immediately* (≤50 ms perceived), command applies at the next tick boundary. The visual must not lie: the arm shows the *committed* new route, and if two taps land inside one tick the last one wins in receipt order.
-- **Hit rect** = expanded disc, ≥48dp radius equivalent, expanded beyond the drawn lever. Overlapping zones resolve to nearest center, deterministically.
+- **Hit rect** = expanded disc, ≥48×48dp rect equivalent (per this document's own Tap targets law above; the earlier "radius" wording was an inconsistency — corrected 2026-08-05, ratified by the human in-session 2026-08-05; recorded by the phases-6-10 agent), expanded beyond the drawn lever. Overlapping zones resolve to nearest center, deterministically.
 - **Overload ring**: 2 s of real time. Non-color-coded redundancy required — the ring must also *sweep* (position encodes time) and the node must gain a distinct shape state (raised alarm collar), because Alarm Coral alone violates SC 1.4.1 [PC-7].
 - **Planning pause**: sim freezes, switches remain tappable, release resumes after a 3-2-1 quarter-second countdown. The countdown itself is a timing element — it must be visible and must not be the only signal that play has resumed (add a board-desaturation lift). See TG-2 for where the hold lives.
 - **Back gesture** → pause menu, never an exit [PC-3].
