@@ -54,16 +54,19 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void MeetsMinTarget_48dpFloor()
+        public void MeetsMinTargetPx_48dpFloor()
         {
-            // dpi 320: 48dp == 96px
-            Assert.That(HudBands.MeetsMinTarget(new Rect(0, 0, 96, 96), 320f), Is.True);
-            Assert.That(HudBands.MeetsMinTarget(new Rect(0, 0, 95, 96), 320f), Is.False,
+            // screen dpi 320: 48dp == 96px
+            Assert.That(HudBands.MeetsMinTargetPx(new Rect(0, 0, 96, 96), 320f), Is.True);
+            Assert.That(HudBands.MeetsMinTargetPx(new Rect(0, 0, 95, 96), 320f), Is.False,
                 "one px under the 48dp floor on either axis fails");
-            Assert.That(HudBands.MeetsMinTarget(new Rect(0, 0, 96, 95), 320f), Is.False);
+            Assert.That(HudBands.MeetsMinTargetPx(new Rect(0, 0, 96, 95), 320f), Is.False);
             // fallback dpi: 48dp == 48px
-            Assert.That(HudBands.MeetsMinTarget(new Rect(0, 0, 48, 48), 0f), Is.True);
-            Assert.That(HudBands.MeetsMinTarget(new Rect(0, 0, 47, 48), 0f), Is.False);
+            Assert.That(HudBands.MeetsMinTargetPx(new Rect(0, 0, 48, 48), 0f), Is.True);
+            Assert.That(HudBands.MeetsMinTargetPx(new Rect(0, 0, 47, 48), 0f), Is.False);
+            // R1-F2 note: the misuse defense is the SIGNATURE (screenDpi is unmistakably a
+            // screen density, so MinTargetDp cannot be mistaken for it) — at a genuine 48-dpi
+            // screen, 20px really is ~66dp and meeting the floor there is correct behavior.
         }
     }
 }

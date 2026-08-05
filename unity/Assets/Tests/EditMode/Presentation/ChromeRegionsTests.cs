@@ -108,6 +108,24 @@ namespace CatMetro.Tests.Presentation
                 "a duplicate id is a wiring defect, never a silent replace (A-UX1-3)");
         }
 
+        // R1-F5, labeled a PIN (P-7): Rect.Contains is min-inclusive / max-exclusive, so a tap
+        // exactly on the shared edge of two abutting chips resolves to exactly ONE of them —
+        // written down before an abutting thumb-band row (CM-UX-02) turns it into a bug report.
+        [Test]
+        public void PIN_SharedEdge_ResolvesToExactlyOneRegion()
+        {
+            var regions = new ChromeRegions();
+            string won = null;
+            regions.Register("left", () => new Rect(0, 0, 100, 100), () => won = "left", 0);
+            regions.Register("right", () => new Rect(100, 0, 100, 100), () => won = "right", 0);
+
+            Assert.That(regions.TryResolve(new Vector2(100f, 50f), out var onTap), Is.True,
+                "the shared edge belongs to exactly one region, never zero");
+            onTap();
+            Assert.That(won, Is.EqualTo("right"),
+                "min-inclusive/max-exclusive: the edge pixel is the right-hand region's xMin");
+        }
+
         [Test]
         public void NullArguments_Throw()
         {

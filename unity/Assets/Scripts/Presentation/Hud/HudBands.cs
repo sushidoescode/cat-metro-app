@@ -32,9 +32,12 @@ namespace CatMetro.Presentation.Hud
             return new Rect(safeArea.x, safeArea.yMax - height, safeArea.width, height);
         }
 
-        public static bool MeetsMinTarget(Rect rectPx, float dpi)
+        // R1-F2: the second parameter is the SCREEN dpi, never a dp value — the name and both
+        // parameter names exist so a caller cannot pass MinTargetDp into the dpi slot and turn
+        // the 48dp floor into a 14.4px one.
+        public static bool MeetsMinTargetPx(Rect rectPx, float screenDpi)
         {
-            float minPx = MinTargetDp * PxPerDp(dpi);
+            float minPx = MinTargetDp * PxPerDp(screenDpi);
             return rectPx.width >= minPx && rectPx.height >= minPx;
         }
     }

@@ -31,8 +31,19 @@ namespace CatMetro.Presentation.Input
         // (criterion 1): legacy retry band first (pinned), registered regions next, board discs
         // last. BoardInputActive gates ONLY the disc scan (null = active; the composition root
         // binds it to the Playing state in CM-UX-07 — until then behavior is unchanged).
+        // R1-F3: registrations OUTLIVE Retry()'s view rebuild — TapInput persists while views
+        // are destroyed and rebuilt, so every registering owner must Unregister in OnDestroy
+        // (a live provider over a destroyed view throws on the next tap otherwise).
         public readonly ChromeRegions Regions = new ChromeRegions();
         public System.Func<bool> BoardInputActive;
+
+        // R1-F1: the disc-resolution LAW as pure math, pinned resolution-independent in
+        // EditMode — nearest center wins, an exact tie goes to the LOWEST index, outside the
+        // radius is a miss. HandleTapAtScreen routes through this exact function.
+        public static int ResolveNearestDisc(Vector2 screenPos, Vector2[] centers, float radiusPx)
+        {
+            return -1; // skeleton (red phase, R1-F1)
+        }
 
         public void Wire(GameSession session, BoardView view, Camera cam)
         {
