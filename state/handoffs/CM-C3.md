@@ -49,3 +49,18 @@ Criterion order:
 
 ## Status log
 - anchor: branch cut off main @ 93a2f52; contract frozen; this note committed.
+- keystone: CauseAttribution (A-C3-1 state-derivation; A-C3-2 Q-K rule) + the criterion-9
+  hash-equality law + both attribution rules driven by REAL Domain runs — 330/330 dotnet,
+  first try.
+- presentation: CauseCameraController (motion-off = one-frame cut + static ring, zero clips
+  anywhere; motion-on = MoveTowards pan to the identical framing) · WavePreviewStrip (top-band,
+  collider-stripped, consumption = last-emission-passed) · reason-keyed banner with
+  ShowKeySubstituted ({node}/{station} tokens; components stay literal-free) · retry through
+  the ONE gesture handler (thumb-band region during FailureReview → fresh GameSession over the
+  same ImportedLevel; view/preview rebuilt; zero scene loads).
+- PlayMode 19/19 FIRST RUN (9 CM-C2b + 10 CM-C3 incl. the parameterised motion pair and the
+  20-iteration budget harness). Editor-leg budgets: CAUSE_P95=1ms, RETRY_P95=1ms (tables in the
+  PR). tests/unity/failure.test.sh statics green (PlatformOverflow construction ban + negative
+  fixture; the three LOCKED rows; zero-literal grep).
+- OPEN (human, by design): criterion 2/4/7's low+mid-tier DEVICE tables — same session as
+  CM-C2b criterion 8's artifact. Q-K (A-C3-2 TimeOut rule) named as unratified.
