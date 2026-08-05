@@ -23,6 +23,7 @@
 | Q-G scaffold | Unity 6000.3.16f1 project shell in place | human shell + agent mechanics 2026-08-04 | IN PROGRESS | chore/qg-unity-scaffold |
 | CM-C2b | Greybox playable + Bootstrap seams + StreamingAssets | session 2026-08-04/05 (Fable 5) | DONE — merged (#21) after 13-finding round; criterion 8 device artifact OPEN (human) | (merged) |
 | CM-C3 | Fail/retry loop: cause camera, tick-0 retry, wave preview | session 2026-08-05 (Fable 5) | DONE — merged (#22) after 19-finding round (5 blockers incl. camera-parented ring, tautological hash law) | (merged) |
+| CM-UX-00 | UX tranche-1 decompose: first-run chrome CM-UX-01..07 ranked + CM-UX-01 frozen contract (`docs/ux/ux-layer-decompose.md`) | session 2026-08-05 (UX lane, Fable 5) | DONE — merged (#27) after 2-round review (15+4 findings, 5 blocking fixed; TMP/ADR-0007 call routed to human as Q-6; 6 human Qs filed §6, none block slice 1) | (merged) |
 
 ## Recently done (last 7 days — one line each, PR links)
 - 2026-08-04 — phases 6-10 session (Fable 5): CM-C6 #14 · L002-L005 #15 · CM-C7 #16 · CM-C8 #18 · prep note #17 all merged same-day. 4 fresh-context review rounds, 45 findings, 4 real blockers caught pre-merge (dead L005 queue; read-only double-grant; pause-path IOException; Guid-survivable id tests). Cross-tool pinned vectors (python↔C#) for seeds/ledger keys/queue ids. Suite 169→257 tests, wrappers 5→8.
@@ -38,6 +39,7 @@
 - Repo-name drift: plan of record says `cat-metro`; actual repo/dir is `cat-metro-app`. Human call: rename or amend the plan line.
 
 ## Decisions this week (promote to ADR if architectural)
+- 2026-08-05 — **Human approved the UX-layer build-out from the PRD** (ux-flows 12 stories; TG-1..8 stay in-build human gates; monetization surfaces stay out). Runs as a PARALLEL session per `state/handoffs/SESSION-HANDOFF-ux.md` (ownership boundaries + the one-input-surface gate collision are in that file). Device session same day: criterion-8 artifact captured — frame leg FAILED honestly (30 fps default cap) + shader-stripping magenta; fix contract next; evidence in `evals/results/device/c2b-crit8/`.
 - 2026-08-02 — mode=sprint with a hard graduation criterion (see Now). Rationale: hackathon clock now, revenue later; monetization globs tripwire the switch.
 - 2026-08-04 — **Constitution Amendment 1 (human-authored, e9e9675 via #12/#13):** agent squash-merges to main delegated under conditions (green checks; sprint review pricing honoured; no immutable/risky/docs-plan paths; tags/releases/spend/state-mode/ADRs stay human). Bootstrap route: unsigned human commit → staging squash (web-flow signed) → main; SSH commit signing still on the debt list.
 - 2026-08-04 — phases 6–10 hand to a fresh session (new Max account, Fable 5) per state/handoffs/SESSION-HANDOFF-phase6-10.md; this session ends after the first delegated merge (#11).
