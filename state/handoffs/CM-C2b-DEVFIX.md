@@ -326,3 +326,5 @@ artifact is one screenshot pasted into the handoff.
   https://discussions.unity.com/t/urp-default-materials-are-magenta-pink-and-i-cant-convert-them/879231
 - "Unity Shader Graph pink material in player build — shader variant collection and stripping":
   https://gamineai.com/help/unity-shader-graph-pink-material-player-build-shader-variant-collection-stripping-fix
+
+- 2026-08-05 loop record: red 0/5 verified (wrapper fired on the dangling-override defect itself) -> URP assets editor-generated via disclosed shim (full text in PR; deleted at session end) -> green 5/5 + wrapper OK -> full suite 12/12 (EditMode+PlayMode survived the pipeline switch). ProjectSettings edits amended in after a near-miss (caught pre-push). L-3-style honesty: the criterion-2 typed asserts cover the public API; YAML greps cover renderer features + depth priming.
