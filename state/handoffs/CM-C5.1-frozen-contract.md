@@ -385,3 +385,6 @@ Defaults apply (AGENTS.md hard rules 1–7). Plus:
 | **HC-25** | **Merge-delegation re-confirmation for this lane this session** (`state/handoffs/SESSION-HANDOFF-device-testing.md:9-10`; Constitution Amendment 1). | Assume **not** delegated until the human re-confirms in-session. | Blocks **merge**, not work. |
 
 **Closed since the draft:** H4 (id + ownership inheritance) by **R4** + **R3**.
+
+---
+**Post-freeze ratification addendum (human, in-session 2026-08-05/06):** gate posture ratified BLOCKING (a declared-but-dead newMechanic reds the corpus; stop-and-report contingency stands if L001-L005 trip it first run); HC-10×HC-14 defaults CONFIRMED (newMechanic-only scope; widening later re-opens the CM-C11 L006 anchor — recorded in both contracts).
