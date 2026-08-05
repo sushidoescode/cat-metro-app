@@ -19,7 +19,7 @@ in this slice; the shipped game is pixel- and hash-identical.
 
 `docs/prd/PRD.md` CM-R07.1/.4 (one gesture handler; interactive chrome bottom 25%; ≥48dp) ·
 `docs/prd/ux-flows.md` §1.1 (band law), S-03 (retry stays hit-testable from frame 1) ·
-`docs/adr/0007-*` (Input System, one handler; UGUI arrives later — P-2 TextMesh posture) ·
+`docs/adr/0007-*` (Input System, one handler; chrome rendering tech pending decompose §6 Q-6) ·
 `state/handoffs/SESSION-HANDOFF-ux.md` (one-input-surface gate, resolution (a)) ·
 `tests/unity/editmode.test.sh:69-75` (criterion-2 static legs — must pass UNMODIFIED).
 
@@ -122,9 +122,11 @@ I/O; no monetization-adjacent anything (attempt-1 invariant, `PRD.md:208`).
   `Screen.dpi` binding is CM-UX-02's deliverable. **Accepted named debt (review R1-F15):** the
   pinned retry band consumes taps on the RAW bottom 25% (`TapInput.cs:47`) while `HudBands`
   defines the thumb band on the SAFE AREA — on inset devices the two rects diverge, and a tap in
-  the divergence zone retries without hitting the rendered chip. CM-UX-02 must document the zone;
-  reconciliation happens at the post-DEVCAP wiring/relocation (CM-UX-07), where changing the
-  band's consumption rect can be reviewed against the pin deliberately.
+  the divergence zone retries without hitting the rendered chip. CM-UX-02 must document the zone.
+  **Reconciliation is its OWN contract (or an explicitly enumerated, separately-reviewed CM-UX-07
+  line item) — never a composition-only edit** (review R2-N1): CM-UX-07's thinness criterion and
+  this contract's only-TapInput-edit law both forbid a casual `TapInput.cs:47` change; touching
+  the band's consumption rect must be reviewed against criterion 3's pin deliberately.
 
 ### Stop conditions
 
