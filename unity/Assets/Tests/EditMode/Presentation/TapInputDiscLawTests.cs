@@ -48,7 +48,9 @@ namespace CatMetro.Tests.Presentation
         [Test]
         public void RadiusBoundary_IsInclusive()
         {
-            Assert.That(TapInput.ResolveNearestDisc(new Vector2(124f, 100f), TwoCenters, 24f),
+            // (76,100) is exactly 24px from center 0 on the side AWAY from center 1 (64px) —
+            // the boundary case measured clean of the nearest-center rule.
+            Assert.That(TapInput.ResolveNearestDisc(new Vector2(76f, 100f), TwoCenters, 24f),
                 Is.EqualTo(0), "exactly radius away still hits (d <= radiusPx)");
             Assert.That(TapInput.ResolveNearestDisc(new Vector2(75.9f, 100f), TwoCenters, 24f),
                 Is.EqualTo(-1), "just past the radius misses");

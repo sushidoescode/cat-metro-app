@@ -42,12 +42,26 @@ namespace CatMetro.Presentation.Input
         // radius is a miss. HandleTapAtScreen routes through this exact function.
         public static int ResolveNearestDisc(Vector2 screenPos, Vector2[] centers, float radiusPx)
         {
-            return -1; // skeleton (red phase, R1-F1)
+            int best = -1;
+            float bestDist = float.MaxValue;
+            for (int s = 0; s < centers.Length; s++)
+            {
+                float d = Vector2.Distance(centers[s], screenPos);
+                if (d <= radiusPx && d < bestDist) // strict < keeps the lowest index on ties
+                {
+                    bestDist = d;
+                    best = s;
+                }
+            }
+            return best;
         }
+
+        private Vector2[] _discCentersScratch; // sized at Wire; refilled per tap — no tap alloc
 
         public void Wire(GameSession session, BoardView view, Camera cam)
         {
             _session = session; _view = view; _camera = cam;
+            _discCentersScratch = new Vector2[view != null ? view.SwitchCount : 0];
         }
 
         private void Update()
@@ -81,18 +95,9 @@ namespace CatMetro.Presentation.Input
             float pxPerDp = Screen.dpi > 0f ? Screen.dpi / 160f : 1f;
             float radiusPx = HIT_DIAMETER_DP * pxPerDp * 0.5f;
 
-            int best = -1;
-            float bestDist = float.MaxValue;
             for (int s = 0; s < _view.SwitchCount; s++)
-            {
-                Vector2 sp = _camera.WorldToScreenPoint(_view.SwitchWorldPos(s));
-                float d = Vector2.Distance(sp, screenPos);
-                if (d <= radiusPx && d < bestDist) // strict < keeps the lowest index on ties
-                {
-                    bestDist = d;
-                    best = s;
-                }
-            }
+                _discCentersScratch[s] = _camera.WorldToScreenPoint(_view.SwitchWorldPos(s));
+            int best = ResolveNearestDisc(screenPos, _discCentersScratch, radiusPx);
             if (best < 0) return -1;
             _session.EnqueueToggle(best);
             _view.RefreshSwitches(); // the lever shows the committed route THIS frame
