@@ -30,7 +30,21 @@ registered, gate unbound, no views, no strings. Zero edits outside Presentation 
 
 ## Evidence (criterion → check), filled at green
 
-(pending — see PR table)
+Red run (commit 22aedca): EditMode 348 total / 12 failed (ChromeRegions 8, HudBands 4; the 2
+labeled pins green by design) · PlayMode 27 total / 6 failed (region routing + gate; the labeled
+pin green). Every failure was for the right reason (skeleton behavior, importer-verified fixture).
+Green run (commit 6825315): **EditMode 348/348 · PlayMode 27/27**.
+
+| # | Criterion | Check → result |
+|---|---|---|
+| 1 | Resolution order law + deterministic registry | EditMode `ChromeRegionsTests` (8, red-first) + PlayMode `RegionOverDisc_ClaimsTheTap_NeverFallsThrough`, `RegionMissAndOverlapAndTie_ResolveDeterministically_LiveWired`, `InBandRegionDuringFailureReview_IsDeadCode_TheBandWins` (red-first, live-wired, positive controls) — green |
+| 2 | Board-input gate | PlayMode `GateFalse_NoCommandNoVisual_PositiveControlsInSameFixture` (control-first ordering), `GateFalse_BandAndRegionsStillResolve` (red-first) — green |
+| 3 | Pin + band preservation | PlayMode `PIN_MergedRouting_DiscToggleAndMissAndRetryBand_Unchanged` (labeled pin, green in red AND green runs) + `DecoyRegionOutsideBand_LeavesTheBandFullWidth` (red-first) — green |
+| 4 | Safe-area band math, injected inputs | EditMode `HudBandsTests` (4, red-first: zero-inset reference table + 48px-inset case + dpi fallback + 48dp floor) — green |
+| 5 | EditMode sees Presentation; Pure fence | asmdef gains `CatMetro.Presentation`; new tests live in `Tests/EditMode/Presentation/` (outside `Pure/**`); EditMode headless total 334→348 — green, no cycle, no UI/TMP refs anywhere |
+| 6 | Gate legs unmodified | `bash scripts/test.sh` on the committed tree (result recorded in PR) — zero edits to any harness wrapper |
+| 7 | Zero behavior drift | Base counts at ae2f36f: 334 EM + 20 PM — all passing inside 348/27; zero existing-test modifications (diff-verifiable); dotnet host via test.sh |
+| 8 | No view ships (pin) | EditMode `InputFoundationPinsTests` (2, labeled pins) + diff surface: no GameObject/AddComponent in slice code |
 
 ---
 
