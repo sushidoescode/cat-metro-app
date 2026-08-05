@@ -24,6 +24,7 @@
 | CM-C2b | Greybox playable + Bootstrap seams + StreamingAssets | session 2026-08-04/05 (Fable 5) | DONE — merged (#21) after 13-finding round; criterion 8 device artifact OPEN (human) | (merged) |
 | CM-C3 | Fail/retry loop: cause camera, tick-0 retry, wave preview | session 2026-08-05 (Fable 5) | DONE — merged (#22) after 19-finding round (5 blockers incl. camera-parented ring, tautological hash law) | (merged) |
 | CM-UX-00 | UX tranche-1 decompose: first-run chrome CM-UX-01..07 ranked + CM-UX-01 frozen contract (`docs/ux/ux-layer-decompose.md`) | session 2026-08-05 (UX lane, Fable 5) | DONE — merged (#27) after 2-round review (15+4 findings, 5 blocking fixed; TMP/ADR-0007 call routed to human as Q-6; 6 human Qs filed §6, none block slice 1) | (merged) |
+| CM-UX-01 | Input foundation: chrome-region registry, board-input gate, safe-area band math, EditMode-Presentation test fix | session 2026-08-05 (UX lane, Fable 5) | DONE — merged (#28) after 2-round review (6 findings, 3 blocking fixed incl. the unpinned nearest-center/tie law; EM 353/353, PM 27/27, test.sh 10/10) | (merged) |
 
 ## Recently done (last 7 days — one line each, PR links)
 - 2026-08-04 — phases 6-10 session (Fable 5): CM-C6 #14 · L002-L005 #15 · CM-C7 #16 · CM-C8 #18 · prep note #17 all merged same-day. 4 fresh-context review rounds, 45 findings, 4 real blockers caught pre-merge (dead L005 queue; read-only double-grant; pause-path IOException; Guid-survivable id tests). Cross-tool pinned vectors (python↔C#) for seeds/ledger keys/queue ids. Suite 169→257 tests, wrappers 5→8.
