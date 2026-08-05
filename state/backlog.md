@@ -148,9 +148,12 @@ contract that replaces the stub will claim the file with its own ownership row.
 rows, annotated above) are a **derived tree**: from CM-C10 onward their only author is
 `scripts/stage-content.sh`. A contract may commit that script's mechanical `--apply` output for
 (i) files it authors upstream in `content/levels/**` or `config/**`, and (ii) — CM-C10 only —
-staging mechanics with no upstream delta (folder `.meta` files, re-stages). A hand-written byte
-under the staged tree is in scope for **no** contract in this queue; the byte-identity gates in
-`tests/unity/editmode.test.sh` remain the verifier, never the author.
+staging mechanics with no upstream delta (folder `.meta` files, re-stages — including the two
+tracked companions `unity/Assets/StreamingAssets/content.meta` and `.../config.meta`, N-2). A
+hand-written byte under the staged tree is in scope for **no** contract in this queue. Verifier
+coverage, stated precisely (N-1): `tests/unity/editmode.test.sh` byte-gates the **content** tree
+both directions plus `runtime_bounds.json`; the config tree has no set-equality gate yet — that
+gate lands with CM-C10's staging wrapper before any second config file stages.
 
 **Why CM-C5 and CM-C6 each own a `dotnet/` console host.** Both contracts must open files — CM-C5's
 batch validator reads `content/levels/**` and `docs/plan/data/stress_boards.json`, CM-C6's job writes
