@@ -46,6 +46,32 @@ Green run (commit 6825315): **EditMode 348/348 · PlayMode 27/27**.
 | 7 | Zero behavior drift | Base counts at ae2f36f: 334 EM + 20 PM — all passing inside 348/27; zero existing-test modifications (diff-verifiable); dotnet host via test.sh |
 | 8 | No view ships (pin) | EditMode `InputFoundationPinsTests` (2, labeled pins) + diff surface: no GameObject/AddComponent in slice code |
 
+## Review round 1 disposition (6 findings; fixes at 8257ab3 red / d1e94bd green)
+
+- **F1 (blocking, FIXED):** criterion 3's nearest-center/lowest-index-tie law was unpinned
+  anywhere in the repo (every fixture single-switch — a tie-break regression had zero signal).
+  Fixed by extracting the law pure (`TapInput.ResolveNearestDisc`) and pinning it
+  resolution-independent in `TapInputDiscLawTests` (4 tests, red-first vs a skeleton: 353 total /
+  4 failed → 353/353). `HandleTapAtScreen` routes through the exact function via a Wire-sized
+  scratch array (no tap alloc). The PlayMode pin still guards the live integration.
+- **F2 (blocking, FIXED):** `MeetsMinTarget(Rect, float dpi)` invited `MinTargetDp` into the dpi
+  slot (48dp floor silently becomes 14.4px). Renamed `MeetsMinTargetPx(rectPx, screenDpi)`.
+- **F3 (advisory, FIXED):** registry-lifetime comment on `TapInput.Regions` — registrations
+  outlive `Retry()`'s view rebuild; **CM-UX-02's implementer: every registering owner must
+  `Unregister` in `OnDestroy`** or the next tap walks a destroyed view's rect provider.
+- **F4 (advisory, no change):** criterion 2's frozen *Check* is literally met (command count +
+  committed-route visual); the "no RefreshSwitches" prose is unobservable by design
+  (`BoardView.UpdateFrom` refreshes every frame) — recorded, not fixed.
+- **F5 (advisory, FIXED):** shared-edge semantics pinned (`PIN_SharedEdge_ResolvesToExactlyOneRegion`
+  — min-inclusive/max-exclusive; an abutting chip row resolves every edge pixel to exactly one).
+- **F6 (blocking, FIXED):** stray uncommitted `packages.lock.json` restore artifact reverted —
+  never entered any commit.
+- One test-case correction during the F1 green: the boundary probe at (124,100) sat 16px from
+  the OTHER center, so nearest-center correctly claims it — moved to (76,100), clean of the rule
+  under test. No assertion weakened; the law is unchanged.
+
+Post-fix: **EditMode 353/353 · PlayMode 27/27** (base 334+20 intact; slice adds 19 EM + 7 PM).
+
 ---
 
 ## Frozen contract (verbatim copy)
