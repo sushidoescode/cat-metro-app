@@ -34,12 +34,18 @@ and the evidence demands that:
 CTA first was **refuted** by its own verifier (the device build boots hardwired into L001, which
 cannot reach FailureReview at all — F-DEV-3), so slice 1 is the input foundation, not a view.
 
+**Honest aggregate (review R1-F12):** under this plan the only pre-DEVCAP device-visible first-run
+change is CM-UX-03 (teach pulse). CM-UX-02/04/05/06 are review-complete but activate at CM-UX-07,
+which is sequence-blocked on merges this lane doesn't control — and the win dead-end closes only
+after §6 Q-3 / a `LoadNext` contract, i.e. **not in tranche 1 at all** under Q-3's recommended
+default. That is the accepted price of the ownership boundary, stated here rather than implied.
+
 ## 1. Cross-cutting postures (bind every slice)
 
 | # | Posture |
 |---|---|
 | P-1 | **One-input-surface gate: untouched, everywhere.** Resolution (a) from the handoff: all chrome is render-only; every hit routes through `TapInput` via a chrome-region registry (pure rect math). No slice introduces `EventSystems`/pointer-handler/`Touchscreen`/`EnhancedTouch`/`OnMouse` tokens (source **or prose** — the greps scan comments), and `TapInput` stays the sole `UnityEngine.InputSystem` consumer. **No gate-evolution PR exists in this tranche**; if one ever becomes necessary its merge waits for explicit human OK. |
-| P-2 | **TextMesh greybox chrome.** TMP essentials are not imported and importing them now would dump TMP shaders into the device lane's live shader-stripping problem (F-DEV-2). All tranche chrome renders legacy `TextMesh` + quads (the merged `BannerView` pattern). The ADR-0007 UGUI+TMP mandate is honored by a **named follow-up migration contract** scheduled with the art/chrome pass, coordinated with the device lane after the shader fix. Recorded here so it is posture, not silent ADR drift. |
+| P-2 | **Chrome rendering technology: the human decides (§6 Q-6).** ADR-0007 ratifies UGUI+TMP chrome; TMP essentials are not imported today, and merged code already carries the same deferral (`BannerView.cs:5-7`: "ADR-0007's UGUI+TMP chrome arrives with CM-C3's screens" — greybox renders `TextMesh`). Deferring a ratified ADR is not an agent's call, so Q-6 asks the human: continue the TextMesh-greybox precedent through tranche 1 with a named TMP/UGUI migration contract at the art/chrome pass (recommended), or import TMP now. Until answered, slices render per the merged precedent; CM-UX-01 ships no view and is unaffected either way. (An earlier draft justified deferral via F-DEV-2 — that was wrong: the device shader strips because the built scene references NO material, `ARTIFACT.md:64-69`; TMP ships referenced assets, the opposite case.) |
 | P-3 | **Components now, wiring later.** No slice edits `Bootstrap/**` or `GameRoot.cs`. Slices marked NEEDS-WIRING land components + tests that prove behavior by direct construction (the repo's `LaunchWith`/drive-the-seam pattern); CM-UX-07 is the single enumerated composition-only wiring PR, sequence-blocked on the DEVCAP + device-config-fix merges (mechanical `git log` check). |
 | P-4 | **Strings:** ui.csv appends only, never edit an existing row; zero literals in components (`UiStrings` keys). The harness grep leg only covers the three locked fail phrases and the wrappers are not this lane's to extend — so **each slice ships its own EditMode literal guard** under `unity/Assets/Tests/**` covering its new keys. LOCKED copy lands verbatim; DRAFT copy is flagged in the slice contract and queued for the TG-5 voice sitting before any device exposure. |
 | P-5 | **A11y floor per slice:** every interactive target ≥48dp on the 360×640dp reference (band math from CM-UX-01); state never conveyed by color alone (greyscale criterion per chrome view); motion-off (`GameRoot.MotionOff`) removes easing only, never information; label/live-region **hooks** land per slice — the Unity accessibility-hierarchy build + TalkBack pass is deferred work (UX-OPEN-11), never claimed early. |
@@ -63,9 +69,13 @@ uncompilable today). Behavior-neutral until consumed; the tranche's only TapInpu
 
 ### CM-UX-02 — Fail/halt visibility (NEEDS-WIRING · gate-untouched)
 `ScreenChromeController` (bound to a `Func<string>` screen-state source), rendered **Try again**
-CTA (`retry.cta`, LOCKED "Try again", full-width thumb-band chip ≥48dp, registered through the
-CM-UX-01 registry, visible from the first FailureReview frame; the full band stays hit-testable —
-the chip narrows perception, not the target), and the **halt veil** (F-DEV-4): a visible
+CTA (`retry.cta`, LOCKED "Try again", full-width thumb-band chip ≥48dp, **render-only per
+CM-UX-01's resolution law** — inside the retry band the band's own `RetryTapped` IS the action;
+registering a competing region there is dead code by law — visible from the first FailureReview
+frame; the full band stays hit-testable, the chip narrows perception, not the target). This slice
+also binds `Screen.safeArea`/`Screen.dpi` into `HudBands` (A-UX1-5) and **documents the
+band-divergence zone** (pinned raw-screen retry band vs safe-area chip rect on inset devices;
+reconciliation at CM-UX-07). And the **halt veil** (F-DEV-4): a visible
 overlay + neutral DRAFT copy with **zero registered targets — absence tested** so the surface
 cannot be read as deciding Q-B/NEW-Q4 halt semantics. Greyscale + motion-off criteria per view.
 *Journey:* fail-visibility · *csv:* `retry.cta` (LOCKED), `halt.notice` (DRAFT, semantics-neutral,
@@ -76,15 +86,21 @@ The tutorial affordance inside `BoardView`, gated on `Meta.Band == "onboarding"`
 gating survives the Retry rebuild by construction and goes live via the existing
 `GameRoot.Wire → BoardView.Build` call the moment it merges: **the tranche's only pre-DEVCAP
 device-visible change**. Wrong-route switch pulses; motion-off renders the raised-ring shape twin
-(A11Y-S01-2 — the pulse is never the only affordance); cleared on first accepted toggle.
-Zero-instructional-text law asserted with an argued exemption list (station symbol glyphs, preview
-count badges, level name/score are legal; tutorial prose is not — CM-R13.1).
+(mute/volume-0 + motion-off legibility per A11Y-S01-3 and A11Y-S02-9's spirit; A11Y-S01-2 proper
+is the HOME pin's shape-state criterion and belongs to CM-UX-06 — review R1-F7); cleared on first
+accepted toggle. Zero-instructional-text law asserted with an argued exemption list (station
+symbol glyphs, preview count badges, level name/score are legal; tutorial prose is not —
+CM-R13.1), and **the exemption list carries CM-R13.5's hint chip from day one** so CM-UX-05's
+chip cannot turn this assertion red and tempt a weakening edit (review R1-F8, hard rule 5).
 *Journey:* teach · *csv:* none · *TG:* pulse feel queued for the batched eyeball.
 
 ### CM-UX-04 — Results panel v1 (NEEDS-WIRING · gate-untouched)
 `Won` → results panel with **exactly one primary CTA** `Next` (`results.next`, LOCKED) and a
 **structurally-empty footer** — the registry-count==1 invariant asserts CM-R19.3 + TG-4's
-empty-footer posture + A11Y-GLOBAL-14 in one test. `NextRequested` is a seam only (level advance
+empty-footer posture in one test. (A11Y-GLOBAL-14 is scoped to COMMERCE surfaces' rendered trees
+— timers, preselection, close affordance, decline copy — and stays untested until a commerce
+surface exists, which the embargo forbids; claiming it here would hand the first real commerce
+surface a checked-off criterion nobody tested — review R1-F6.) `NextRequested` is a seam only (level advance
 is Bootstrap-owned); **the panel is not attached by CM-UX-07 until level-advance exists or the
 human rules otherwise** — a rendered LOCKED `Next` that does nothing is a worse dead-end than
 today's banner (§6 Q-3). No score/star/ticket content: Domain score is Q-C-pinned at 0 and
@@ -172,6 +188,14 @@ needed anywhere in this tranche.
 - **Q-5 (ratification, blocks nothing):** confirm boot stays L001 post-wiring (device capture
   path unchanged) with Home behind a launch argument until the boot-flow contract. Recommended:
   yes.
+- **Q-6 (blocks CM-UX-02+ rendering tech; CM-UX-01 unaffected):** ADR-0007 ratifies UGUI+TMP
+  chrome; merged greybox code defers it (`BannerView.cs:5-7`) and TMP essentials are not
+  imported. Continue the TextMesh-greybox precedent through tranche 1 with a named TMP/UGUI
+  migration contract at the art/chrome pass, or import TMP now? Deferring a ratified ADR is your
+  call, not the lane's (constitution: ADR approval is human). Recommended: continue TextMesh
+  greybox — the migration rides the art pass where TG-1 already forces a board-rendering sitting;
+  the known cost is that band-math/48dp tests written now get re-verified against RectTransforms
+  at migration.
 
 ## 7. Known gaps with owners (recorded, not silently absorbed)
 - **G-1 Motion-off is unreachable on any real device today:** `GameRoot.MotionOff` ORs a toggle
@@ -184,3 +208,7 @@ needed anywhere in this tranche.
 - **G-3 Input desync in non-Playing states:** structural fix lands in CM-UX-01 but only activates
   at CM-UX-07 (`BoardInputActive` binding). Between those merges the desync remains on device —
   accepted; it is invisible until chrome makes the states legible anyway.
+- **G-4 Band-divergence zone (review R1-F15):** CM-UX-01's pin freezes the retry band's RAW
+  bottom-25% consumption (`TapInput.cs:47`) while `HudBands` defines bands on the SAFE AREA
+  (`ux-flows.md:32`). On inset devices a tap can retry without hitting the rendered chip.
+  Owner: CM-UX-02 documents the zone; CM-UX-07 reconciles deliberately against the pin.

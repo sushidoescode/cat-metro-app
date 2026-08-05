@@ -23,7 +23,6 @@
 | Q-G scaffold | Unity 6000.3.16f1 project shell in place | human shell + agent mechanics 2026-08-04 | IN PROGRESS | chore/qg-unity-scaffold |
 | CM-C2b | Greybox playable + Bootstrap seams + StreamingAssets | session 2026-08-04/05 (Fable 5) | DONE — merged (#21) after 13-finding round; criterion 8 device artifact OPEN (human) | (merged) |
 | CM-C3 | Fail/retry loop: cause camera, tick-0 retry, wave preview | session 2026-08-05 (Fable 5) | DONE — merged (#22) after 19-finding round (5 blockers incl. camera-parented ring, tautological hash law) | (merged) |
-| CM-UX tranche-1 | UX layer decompose: first-run chrome CM-UX-01..07 (`docs/ux/ux-layer-decompose.md`) | session 2026-08-05 (UX lane, Fable 5) | decompose PR open; CM-UX-01 contract frozen | task/CM-UX-00-decompose |
 
 ## Recently done (last 7 days — one line each, PR links)
 - 2026-08-04 — phases 6-10 session (Fable 5): CM-C6 #14 · L002-L005 #15 · CM-C7 #16 · CM-C8 #18 · prep note #17 all merged same-day. 4 fresh-context review rounds, 45 findings, 4 real blockers caught pre-merge (dead L005 queue; read-only double-grant; pause-path IOException; Guid-survivable id tests). Cross-tool pinned vectors (python↔C#) for seeds/ledger keys/queue ids. Suite 169→257 tests, wrappers 5→8.
