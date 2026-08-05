@@ -66,3 +66,4 @@ row). Run `bash scripts/test.sh` only on a committed tree.
 
 ## Status log (append below)
 - 2026-08-05 — lane opened; awaiting first decompose.
+- 2026-08-05 — decompose complete (3-lens panel + adversarial verify + completeness critic, 8 agents): tranche-1 = CM-UX-01..07 ranked in `docs/ux/ux-layer-decompose.md`; CM-UX-01 frozen contract cut; gate posture (a) everywhere — no gate-evolution PR needed in tranche 1; 5 human questions filed (decompose §6), none blocking slice 1.
