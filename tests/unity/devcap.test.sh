@@ -93,10 +93,13 @@ grep -rEq '/billing/|/iap/|/ads/|RevenueCat|Purchases\.|BillingClient|GoogleMobi
   && [ -f "$goodfx/sample-short.csv" ] || fail "criterion 5: golden fixtures missing (fail-closed)"
 out=$(bash scripts/devcap-report.sh "$goodfx/sample-framelog.csv") \
   || fail "criterion 5: reducer exited non-zero on the golden fixture"
-if ! diff <(printf '%s\n' "$out") "$goodfx/sample-expected.txt" > /dev/null; then
-  diff <(printf '%s\n' "$out") "$goodfx/sample-expected.txt" | head -10
+tmp="${TMPDIR:-/tmp}/devcap-out-$$.txt"
+printf '%s\n' "$out" > "$tmp"
+if ! diff "$tmp" "$goodfx/sample-expected.txt"; then
+  rm -f "$tmp"
   fail "criterion 5: reducer output drifts from the hand-computed golden"
 fi
+rm -f "$tmp"
 if shortout=$(bash scripts/devcap-report.sh "$goodfx/sample-short.csv" 2>&1); then
   fail "criterion 5: a 19-cycle capture must exit non-zero (p95 is over 20)"
 fi

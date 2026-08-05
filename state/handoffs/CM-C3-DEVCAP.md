@@ -114,3 +114,5 @@ added CSV column, zero added `FrameRecord` fields.
   editor's real `persistentDataPath`.
 
 - 2026-08-05 red milestone: PlayMode tests (criteria 1/2/3 + wiring + default-dir) pin the API; guarded stubs keep the suite compiling; wrapper red at criterion-5 fail-closed (reducer unwritten); criterion-5 fixture derivation lives in the CSV header comments per contract. Scanner fixture proof fires (>=2 violations). Fixture generation asserted expected p95s independently (154/76).
+
+- 2026-08-05 green milestone: reducer via local-executor lane (1 turn, check-verified); C# capture in-session ([DefaultExecutionOrder(1000)] pins the mark after the log record; UnityEngine.Application qualified — bare Application resolves to CatMetro.Application in this namespace). Wrapper OK (1-static,4,5); filtered PlayMode 5/5. Wrapper diff switched to temp-file (process substitution breaks under sandboxed shells; no gate weakened). Full-suite run next.
