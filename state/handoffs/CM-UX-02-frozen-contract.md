@@ -1,15 +1,16 @@
 # CONTRACT CM-UX-02 — Fail/halt visibility: chrome controller, rendered Try-again CTA, halt veil, TMP/UGUI foundation
 
-**Tranche:** UX tranche-1 slice 2 (`docs/ux/ux-layer-decompose.md` §2).
-**DEPENDS-ON (both hard):** (1) CM-UX-01 merged (#28 — registry, gate delegate, `HudBands`,
-EditMode-Presentation test access); (2) **CM-C2b-DEVFIX merged** — the 2026-08-05 ratification
-batch (#29) sequences DEVFIX's 7 Presentation lines BEFORE UX-lane code, and this slice's TMP
-shader assets belong on the restored-URP baseline, not before it. **Red phase does not start
-until `git log` shows DEVFIX on main.** Contract freeze itself is docs-only and gate-free.
-**Human decisions incorporated (in-session 2026-08-05, recorded in `SESSION-HANDOFF-ux.md`):**
-Q-6 = **import TMP + UGUI now** (overriding the TextMesh recommendation; ADR-0007 honored
-directly); Q-1 = land the DRAFT halt copy now, voice-pass at the TG-5 sitting; Q-2 = the halt
-restart escape is **CM-UX-07's wiring line**, not this slice's; Q-3 does not touch this slice.
+**Tranche:** UX tranche-1 slice 2 (`docs/ux/ux-layer-decompose.md` §2). **Revised per review
+round 1 (20 findings, 4 blocking — R1-F1..F20 below refer to that round).**
+**DEPENDS-ON (both hard):** (1) CM-UX-01 merged (#28); (2) **CM-C2b-DEVFIX merged (#30 in
+flight)** — #29's ratification sequences DEVFIX's Presentation lines before UX-lane code, and
+TMP's URP shadergraph variants import cleaner on the restored-URP tree. **Red phase does not
+start until `git log` shows DEVFIX on main** (mechanical check). The freeze itself is docs-only.
+**Human decisions incorporated (in-session 2026-08-05, verbatim record in
+`SESSION-HANDOFF-ux.md`):** Q-6 = **import TMP + UGUI now** (ADR-0007 honored directly);
+Q-1 = land the DRAFT halt copy now, voice-pass at TG-5; Q-2 = **answered YES** — the halt
+restart escape lands as CM-UX-07's wiring line (no longer an open gate; this slice still ships
+no affordance); Q-3 does not touch this slice.
 
 ### Goal
 
@@ -17,130 +18,175 @@ The two measured fail-visibility gaps close at the component level: FailureRevie
 LOCKED **Try again** CTA in the thumb band (CM-C3 review-N2 debt), and Halted renders a visible,
 semantics-neutral veil instead of nothing (F-DEV-4) — driven by a screen-state-bound chrome
 controller, on ADR-0007's UGUI+TMP stack, with zero new input surfaces and zero registered
-regions. Composition-root attachment is CM-UX-07's; every behavior is proven here by direct
-construction over `GameRoot.LaunchWith`.
+regions. Composition-root attachment is CM-UX-07's; behaviors are proven by direct construction
+over `GameRoot.Launch()`/`GameRoot.LaunchWith(fixture)` as each check names (R1-F20).
+
+### Live-wiring & anti-vacuity rule (binds every criterion — R1-F2, inherited from CM-UX-01)
+
+Any test asserting on live objects drives REAL wiring (`GameRoot.Launch`/`LaunchWith`), never a
+bare component. **Every negative or absence assertion carries a positive control in the same
+fixture that demonstrates the assertion is able to fail** (a decoy registration, a decoy banned
+component, a pre-transition state check). A criterion whose check cannot fail is a defect.
 
 ### Spec reference
 
-`docs/prd/ux-flows.md` S-03 (layout intent, `Try again` **[LOCKED]**, hit-testable from frame 1),
-§1.1 (band law, 48dp) · `docs/prd/PRD.md` CM-R16.2, CM-R07.4, CM-R03.2 (zero literal strings) ·
-`docs/adr/0007-*` (UGUI+TMP — honored per Q-6) · `docs/ux/ux-layer-decompose.md` P-1..P-7,
-G-3/G-4, §6 Q-1/Q-2/Q-6 · CM-UX-01 laws: resolution order (band → regions → discs; an in-band
-region during FailureReview is dead code), `HudBands` safe-area math, R1-F3 (registering owners
-must `Unregister` in `OnDestroy`), R2-N2 (first `MeetsMinTargetPx` call site gets review
-attention) · Q-B/NEW-Q4 OPEN — nothing in this slice may decide halt semantics.
+`docs/prd/ux-flows.md` S-03 (layout intent; `Try again` **[LOCKED]**; *hit-testable from frame
+1* — satisfied by TapInput's band, independent of rendering), §1.1 (band law, 48dp) ·
+`docs/prd/PRD.md` CM-R16.2, CM-R07.4 (interactive rect defined on the SAFE AREA), CM-R03.2 ·
+`docs/adr/0007-*` (UGUI+TMP per Q-6) · `docs/ux/ux-layer-decompose.md` P-1..P-7, G-3/G-4, §6 ·
+CM-UX-01 laws: resolution order (band → regions → discs; in-band FailureReview regions are dead
+code), `HudBands` safe-area math, R1-F3 (registrars `Unregister` in `OnDestroy`), R2-N2 (first
+`MeetsMinTargetPx` call site gets review attention) · Q-B/NEW-Q4 OPEN — nothing here decides
+halt semantics · the real-halt recipe: `unity/Assets/Tests/PlayMode/Board/GreyboxTests.cs:151-170`.
 
 ### Acceptance criteria (9)
 
-1. **TMP/UGUI foundation, render-only by construction.** TMP essentials (settings asset +
-   default font) are imported; chrome renders on a screen-space `Canvas` whose full component
+1. **TMP/UGUI foundation, render-only by construction.** TMP Essential Resources imported
+   **as shipped inside the built-in `com.unity.ugui` of the pinned editor** (R1-F14: ~45 assets
+   under `Assets/TextMesh Pro/**` — SDF shaders + cginc/hlsl includes, URP AND HDRP
+   shadergraph variants, LiberationSans font + SDF asset, default style sheet, EmojiOne sprite
+   atlas, line-breaking tables; **kept as-imported, no pruning** — unreferenced variants do not
+   enter the Android build by Unity's dependency rules, and the AAB-size proof stays with the
+   device lane's build legs). Chrome renders on a screen-space `Canvas` whose full component
    tree contains ONLY render-side types — no `EventSystem`-family object, no `Selectable`
-   subclass, no raycaster-driven interactivity anywhere under the chrome root; the criterion-2
-   harness statics stay green UNMODIFIED (one input-package consumer; zero banned tokens,
-   prose included). *Check:* one EditMode tree-walk test over the instantiated chrome root
-   asserting a component whitelist; the harness leg on the committed tree.
-2. **`ScreenChromeController` renders by state, exhaustively.** A Presentation MonoBehaviour
-   bound via `Attach(Func<string> screenState, ...)` (composition root binds in CM-UX-07; tests
-   bind directly): `FailureReview` → CTA visible, veil hidden · `Halted` → veil visible, CTA
-   hidden · `Playing` → neither · `Won` → neither (**declared supersession:** CM-UX-04 extends
-   `Won` to the results panel and MUST amend this state-map test — recorded here so that edit is
-   contract evolution, not weakening). State transitions render **within one pumped frame** of
-   the state source changing (execution-order-safe language — P-6). *Check:* one parameterised
-   PlayMode test over the four states via `LaunchWith` + direct `Attach`.
-3. **The CTA is the LOCKED string, in the band, at the floor, render-only.** `retry.cta`
-   resolves "Try again" via `UiStrings` (key-only — zero literals in components); the chip is
-   full-width inside `HudBands.ThumbBand(safeArea)` with the **live** `Screen.safeArea` +
-   `Screen.dpi` binding (A-UX1-5 lands here); its rect passes `MeetsMinTargetPx(rect,
-   Screen.dpi)` — **R2-N2: this is the first real call site; the reviewer verifies the dpi
-   argument is a screen density, never a dp constant**; and it registers **NOTHING** with
-   `ChromeRegions` — the CM-UX-01 law makes an in-band FailureReview region dead code; the
-   band's own `RetryTapped` IS the CTA's action. *Check:* PlayMode — CTA visible on the first
-   FailureReview frame; `Regions.Count` unchanged by CTA show/hide; a band tap during
-   FailureReview retries exactly as before (existing pin untouched); band-rect assertions
-   EditMode over injected safe areas including one inset case.
-4. **The veil is visible, neutral, and inert.** On `Halted`: a full-board scrim + `halt.notice`
-   DRAFT text ("Signal fault — the line stopped" — Q-1: lands DRAFT-flagged, voice-passed at
-   the TG-5 sitting; **no loss/fail vocabulary may enter this string or this slice** — Q-B/NEW-Q4
-   stay undecided) render above the frozen board; the veil registers **zero** regions
-   (`Regions.Count` unchanged — absence-tested) and offers **no** affordance (Q-2's restart
-   escape is CM-UX-07's single human-gated wiring line). *Check:* PlayMode via a halted
-   `LaunchWith` fixture (drive the state source to `Halted` directly); one EditMode string test
-   asserting the csv value contains none of: fail/fault-of-player/lost/lose/game over (list in
-   the test, extensible).
-5. **Greyscale + motion-off legibility.** CTA and veil each carry text + shape (never
-   color-only state — A11Y-GLOBAL-2); with `MotionOff` true (toggle OR animator scale 0), both
-   appear with zero animation clips playing and no information loss (motion removes easing
-   only). *Check:* two PlayMode tests (motion on/off) asserting visibility + zero playing
-   animation state; a greyscale-invariant structural assert (text non-empty + scrim shape
-   present, no color-conditional branch in the component — code-level).
-6. **Strings discipline.** `ui.csv` gains exactly `retry.cta,Try again` (LOCKED,
-   `monetization_spec.md:173` via ux-flows S-03) and `halt.notice,<DRAFT>` — appends only;
-   every pre-existing row byte-identical. *Check:* EditMode test comparing the 5 base rows
-   against their frozen values + the per-slice literal guard (P-4): neither new value appears
-   as a string literal in any Presentation component source.
-7. **Registry lifetime law honored trivially.** This slice registers no regions, so no
-   `Unregister` obligations exist — asserted (`Regions.Count == 0` throughout the slice's
-   tests) and recorded: **the first registrar is CM-UX-06 (LevelIntro Play CTA / Home pin),
-   which inherits R1-F3's Unregister-in-OnDestroy law.** *Check:* the Count asserts in
-   criteria 3/4.
-8. **Band-divergence zone documented (G-4 duty).** The slice's handoff records the measured
-   divergence between the pinned raw-screen retry band and the safe-area chip rect for one
-   inset example (numbers, not prose) — reconciliation stays CM-UX-07/own-contract per R2-N1
-   of #27's review. *Check:* handoff section exists with the worked example.
-9. **Zero behavior drift + combined-tree green.** Full suites green at the rebase base's
-   re-derived counts (353 EditMode + 33 PlayMode at #28's merge into main — re-derive if the
-   device session merges first; delta = this slice's tests only); zero existing-test edits
-   except criterion 2's declared supersession target (none this slice); `bash scripts/test.sh`
-   10/10 on the committed tree; no GameRoot/Bootstrap/Content/Domain/scripts/wrapper edits.
-   *Check:* headless runs + harness; diff surface.
+   subclass, no raycaster-driven interactivity under the chrome root; harness criterion-2
+   statics stay green UNMODIFIED. *Check:* one **PlayMode** tree-walk whitelist test over the
+   instantiated chrome root (R1-F13: EditMode instantiation of render objects fails on
+   material-leak log noise — the CM-UX-01 A-UX2 precedent), **with a positive control: a decoy
+   banned component added to a throwaway tree makes the walk fail**; plus the harness leg.
+2. **`ScreenChromeController` renders by state — proven on TRANSITIONS (R1-F4).**
+   `Attach(Func<string> screenState, ...)`; state map: `FailureReview` → CTA visible, veil
+   hidden · `Halted` → veil visible, CTA hidden · `Playing`/`Won` → neither. **Declared
+   supersession, bounded (R1-F19):** CM-UX-04 MAY amend the `Won` row to assert its results
+   panel and may NOT remove or relax the other three rows. *Check:* PlayMode TRANSITION tests —
+   attach while `Playing`, assert nothing renders (the pre-flip positive control), flip the
+   state source, pump one frame, assert the mapped render; cover Playing→FailureReview,
+   Playing→Halted (via criterion 4's REAL halt), and back-to-Playing hides. Renders appear
+   **within one pumped frame** of the source changing (P-6 language; no same-frame claim).
+3. **The CTA is the LOCKED string, at the floor ON ITS TAPPABLE RECT, render-only.**
+   `retry.cta` resolves "Try again" via `UiStrings` (key-only). The chip is full-width inside
+   `HudBands.ThumbBand(safeArea)` with the live `Screen.safeArea`/`Screen.dpi` binding
+   (A-UX1-5 lands here). **The 48dp floor is asserted on the EFFECTIVE tappable rect (R1-F1):**
+   `MeetsMinTargetPx(Rect.Intersect(chipRect, rawRetryBand), Screen.dpi)` — where
+   `rawRetryBand` is the merged band (`bottom 0.25 * raw height`, `TapInput.cs:81`) — over an
+   EditMode injected-inset table including the zero-inset AND a gesture-nav+cutout case
+   (R2-N2: first real `MeetsMinTargetPx` call site — reviewer attention on the dpi argument).
+   The chip registers NOTHING with `ChromeRegions` (CM-UX-01 law: the band's own `RetryTapped`
+   IS the action). CTA rendering appears within one pumped frame of FailureReview;
+   **hit-testability from frame 1 is TapInput's merged band behavior, already pinned — not a
+   render claim (R1-F11)**. *Check:* the EditMode intersection table; PlayMode — CTA renders on
+   the frame after FailureReview begins, band tap retries exactly as pinned; the decoy-region
+   positive control from the binding rule.
+4. **The veil renders on the REAL halt, neutrally, inertly (R1-F3).** The PlayMode check drives
+   the merged halt for real: `GameRoot.Launch()` on L001, tap nothing, accelerated timescale,
+   until `ScreenState == "Halted"` (the `GreyboxTests.cs:151-170` recipe), with the controller
+   attached as `() => root.ScreenState` — the SAME delegate shape CM-UX-07 will bind, so a
+   vocabulary mismatch fails HERE, not on device. On halt: full-board scrim + `halt.notice`
+   ("Signal fault — the line stopped", DRAFT, Q-1) render; the veil registers zero regions
+   (absence assert made live by the decoy control) and offers no affordance (Q-2's escape is
+   CM-UX-07's). **Vocabulary guard (R1-F5):** an EditMode test asserts the csv value AND every
+   new source file in this slice (component + test sources, identifiers included) contain none
+   of the tokens `fail`, `lost`, `lose`, `loss`, `game over`, `crash` (case-insensitive;
+   extensible). `fault` is deliberately NOT in the list: the approved copy attributes fault to
+   the SYSTEM ("Signal fault"), which is the Q-B-neutral posture — recorded here so no later
+   slice re-adds the token and breaks the approved string.
+5. **Greyscale + motion-off legibility, mechanisms named (R1-F12).** Both views carry text +
+   shape (never color-only state). *Checks:* (a) PlayMode motion-OFF: views render with zero
+   `Animator`/`Animation`/tween components under the chrome root — **positive control: a decoy
+   Animator added to a throwaway child makes the assert fail**; (b) motion-ON renders the same
+   information set (visibility parity assert between the two runs); (c) the greyscale claim is
+   a STRUCTURAL PROXY ONLY — an EditMode assert that each view exposes non-empty text plus a
+   shape element; **the reviewer-signed greyscale checklist (A11Y-GLOBAL-2's actual evidence
+   form) stays with the batched TG sitting and is NOT claimed by this slice** (P-5 discipline).
+6. **Strings discipline, byte-pinned (R1-F16).** `ui.csv` gains exactly two rows:
+   `retry.cta,Try again` (LOCKED) and `halt.notice,Signal fault — the line stopped` (DRAFT,
+   pinned as these bytes — the em dash is U+2014, the FIRST non-ASCII byte in the table).
+   *Check:* EditMode — the 5 base rows byte-identical to their frozen values; the two new
+   values resolve through `UiStrings.Get` round-trip byte-exact (guards a BOM/re-encode); the
+   P-4 literal guard (neither value appears as a literal in any Presentation component source).
+7. **Registry lifetime law honored — and the absence assert can fail (R1-F2).** This slice
+   registers no regions; the first registrar is CM-UX-06 (inherits R1-F3's
+   Unregister-in-OnDestroy law). *Check:* in the same live fixture, a decoy registration moves
+   `Regions.Count` 0 → 1 → 0 around the assertion window, proving the counter observes the
+   registry the chrome actually shares.
+8. **Band-divergence zone: a computed pin, not prose (R1-F17).** An EditMode test computes,
+   for the criterion-3 inset table, the divergence rect between `HudBands.ThumbBand(safeArea)`
+   and the raw band, asserts its expected numeric height per row (`0.75*bottomInset −
+   0.25*topInset` clamped at 0), and asserts the criterion-3 containment/intersection
+   invariant holds for the shipped chip layout at every row. The slice handoff records the
+   Pixel-9-Pro worked example (numbers). Reconciliation stays its own reviewed contract/line
+   (R2-N1 of #27), never a composition-only edit.
+9. **Zero behavior drift + combined-tree green.** Suites green at the rebase base's
+   **re-derived** counts — **the re-derive is CERTAIN, not conditional (R1-F15): stop
+   condition 1 guarantees DEVFIX (+5 PlayMode tests) merges first**; delta over the derived
+   base = this slice's tests only; zero existing-test edits; `bash scripts/test.sh` 10/10 on
+   the committed tree; no GameRoot/Bootstrap/Content/Domain/scripts/wrapper edits; **no
+   `unity/Packages/**` change of ANY kind — manifest or lock (R1-F10): an incidental
+   `packages-lock.json` rewrite during the TMP import is a dependency-shaped diff and reverts
+   before commit** (the CM-UX-01 F6 lesson, now a criterion). *Check:* headless runs + harness
+   + diff surface.
+
+### Forward obligations (recorded here so implementers inherit them)
+
+- **CM-UX-07 MUST bind `BoardInputActive = () => ScreenState == "Playing"` in the SAME PR that
+  attaches this controller (R1-F9).** G-3's acceptance rationale ("the desync is invisible
+  until chrome makes the states legible") EXPIRES with this slice: a wired build that attaches
+  the veil without binding the gate shows a halt veil over a board that still flips levers.
+  The veil is inert by construction and blocks nothing — the gate is the blocker.
+- **Interim two-stack note for the TG sitting (R1 angle-3):** until the BannerView
+  back-migration (tranche-2), FailureReview renders BOTH the legacy TextMesh fail banner and
+  the TMP chrome — the human will see two text stacks at the TG-1/TG-5 sitting; owner: the
+  tranche-2 migration contract.
 
 ### Scope boundary
 
 **In scope:** `unity/Assets/Scripts/Presentation/Hud/ScreenChromeController.cs` ·
 `unity/Assets/Scripts/Presentation/Hud/RetryCtaView.cs` ·
-`unity/Assets/Scripts/Presentation/Hud/HaltVeilView.cs` (names indicative) · TMP essentials
-assets (`unity/Assets/TextMesh Pro/**` or package-prescribed location) + any required
-`CatMetro.Presentation` asmdef reference additions for UGUI/TMP · **append-only** `ui.csv`
-rows · new tests under `unity/Assets/Tests/EditMode/Presentation/**` and
-`unity/Assets/Tests/PlayMode/**` · `state/handoffs/CM-UX-02.md`.
+`unity/Assets/Scripts/Presentation/Hud/HaltVeilView.cs` (names indicative) ·
+`unity/Assets/TextMesh Pro/**` (the as-shipped essentials import) · reference additions to
+`CatMetro.Presentation`, `CatMetro.Tests.EditMode`, AND `CatMetro.Tests.PlayMode` asmdefs for
+`UnityEngine.UI`/`Unity.TextMeshPro` as compilation requires (R1-F18) · **append-only**
+`ui.csv` rows · new tests under `unity/Assets/Tests/EditMode/Presentation/**` and
+`unity/Assets/Tests/PlayMode/**` · `state/handoffs/CM-UX-02.md` · the single
+`state/PROJECT_STATE.md` merged-PR row (R1-F18).
 
 **Explicit non-goals:** no GameRoot/Bootstrap edit, no controller attachment (CM-UX-07); no
-restart escape or any Halted affordance (Q-2 → CM-UX-07's human-gated line); no results panel
-(CM-UX-04); no region registrations; no TapInput/ChromeRegions/HudBands edits (CM-UX-01 is the
-tranche's only TapInput edit; `HudBands` is consumed, not modified); no blame chip, ghost
-replay, rewind chip, or any commerce surface (attempt-1 invariant, `PRD.md:208`); no edits to
-existing ui.csv rows; no Halted semantics of any kind (Q-B/NEW-Q4); no gate-wrapper edits.
+restart escape or any Halted affordance; no results panel (CM-UX-04); no region registrations;
+no TapInput/ChromeRegions/HudBands edits; no `unity/Packages/**` change of any kind (R1-F10);
+no blame chip, ghost replay, rewind chip, or commerce surface (`PRD.md:208`); no edits to
+existing ui.csv rows; no Halted semantics (Q-B/NEW-Q4); no gate-wrapper edits; no scene edits
+(`Game.unity` untouched — A-UX2-3).
 
 ### Assumptions
 
-- **A-UX2-1** TMP ships inside the pinned `com.unity.ugui` for Unity 6 — the essentials import
-  adds ASSETS, not a package: no new dependency, no ADR (verify at red; if a package add turns
-  out to be required, that is stop condition 3).
-- **A-UX2-2** TMP's SDF UI shaders render on the DEVFIX-restored URP baseline for screen-space
-  canvas text (standard behavior). A PlayMode renderability proxy (generated mesh vertex count
-  > 0) stands in for device proof; device magenta-checks remain the device lane's.
-- **A-UX2-3** The chrome canvas is created by the controller itself (no scene edit — Game.unity
-  stays untouched; the controller is test-attached now, root-attached in CM-UX-07).
-- **A-UX2-4** `Screen.safeArea`/`Screen.dpi` reads live in the VIEW layer (binding into the pure
-  `HudBands` at call sites), per A-UX1-5. In batchmode tests the safe area equals the raw screen
-  — the inset behavior is covered by EditMode injection, not by faking `Screen`.
-- **A-UX2-5** The Halted fixture drives the controller's state source directly (the real
-  GameRoot Halted transition needs a pinned-boundary throw, which no importable fixture can
-  produce deterministically — same constructed-state precedent as CM-C3's PlatformOverflow leg).
+- **A-UX2-1** TMP Essential Resources ship inside the BUILT-IN `com.unity.ugui` of editor
+  6000.3.16f1 (manifest pins 2.5.0; the resolved builtin reports 2.0.0 — R1-F10 wording note):
+  the import adds ~45 ASSETS, zero `.cs`, zero package adds. **Verified empirically by the
+  round-1 reviewer against the pinned editor.** If red discovers otherwise → stop condition 3.
+- **A-UX2-2** TMP's SDF UI shaders render screen-space canvas text on the DEVFIX-restored URP
+  baseline; a PlayMode renderability proxy (generated mesh vertex count > 0) stands in for
+  device proof; device magenta-checks remain the device lane's.
+- **A-UX2-3** The chrome canvas is created by the controller itself; no scene edit.
+- **A-UX2-4** `Screen.safeArea`/`Screen.dpi` reads live in the VIEW layer, injected into pure
+  `HudBands` at call sites (A-UX1-5). Batchmode safe area equals the raw screen; inset behavior
+  is covered by EditMode injection.
+- **A-UX2-5 (rewritten per R1-F3):** the REAL Halted transition is deterministically reachable
+  in PlayMode today — `GameRoot.Launch()` on L001, no taps, accelerated timescale
+  (`GreyboxTests.cs:151-170`, merged and green). Criterion 4 uses it; no constructed state.
 
 ### Stop conditions
 
 Defaults (AGENTS.md) plus:
-1. DEVFIX has not merged when red would start → **stop and wait** (ratified sequencing; do not
-   reorder).
+1. DEVFIX (#30) not on main when red would start → **stop and wait** (ratified sequencing).
 2. Any criterion appears to require an `EventSystem`, `Selectable`, raycaster interactivity, or
-   a second input-package consumer → stop; the gate-evolution path needs the human.
-3. TMP essentials turn out to require a NEW package/manifest pin → stop (dependency = ADR = human).
-4. The veil cannot be made legible without loss/fail vocabulary or a Halted affordance → stop
-   (Q-B/TG-5 territory).
-5. The criterion-2 harness statics fail for any reason other than this slice's own prose → stop;
+   a second input-package consumer → stop; gate evolution needs the human.
+3. TMP essentials require a NEW package/manifest pin, or ANY `unity/Packages/**` file changes
+   for any reason → stop (dependency = ADR = human).
+4. The veil cannot be made legible without banned vocabulary or a Halted affordance → stop.
+5. Criterion-2 harness statics fail for any reason other than this slice's own prose → stop;
    never edit the wrapper.
 6. The device session merges a Presentation edit mid-slice → stop, rebase, re-verify the
-   CM-UX-01 pins against the new base before continuing.
-7. Build-size or import weight of TMP essentials visibly breaches the ≤60 MB AAB posture
-   (gross, not marginal) → stop and report with numbers.
+   CM-UX-01 pins before continuing.
+7. The TMP import measurably adds **> 5 MB** to the built Android artifact (measured, not
+   guessed, when the device lane next builds) → stop and report numbers (R1-F14 tightening of
+   the old "gross, not marginal" wording).
