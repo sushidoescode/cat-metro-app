@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 2,
+  "id": "D001",
+  "name": "Rush Hour (demo)",
+  "seed": 2001,
+  "meta": {
+    "band": "demo",
+    "difficultyTarget": 0.35,
+    "mechanics": ["switch", "queue"],
+    "newMechanic": null,
+    "teachingGoal": "Alternate the junction so neither platform clogs; a clogged line backs up to the depot",
+    "minActionWindowTicks": 16,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 3, "y": 9, "queueCapacity": 5 },
+      { "id": "J1", "x": 3, "y": 6 },
+      { "id": "RDL", "x": 1, "y": 2 },
+      { "id": "RDR", "x": 5, "y": 2 }
+    ],
+    "edges": [
+      { "id": "E1", "from": "SRC", "to": "J1", "travelTicks": 8 },
+      { "id": "E2", "from": "J1", "to": "RDL", "travelTicks": 10 },
+      { "id": "E3", "from": "J1", "to": "RDR", "travelTicks": 10 }
+    ]
+  },
+  "sources": [ { "nodeId": "SRC", "allowedColors": ["red"] } ],
+  "stations": [
+    { "nodeId": "RDL", "accepts": ["red"], "capacity": 3 },
+    { "nodeId": "RDR", "accepts": ["red"], "capacity": 3 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E2", "E3"], "initialRoute": 0 }
+  ],
+  "waves": [
+    { "tick": 8, "sourceNode": "SRC", "color": "red", "count": 6, "spacingTicks": 2 },
+    { "tick": 26, "sourceNode": "SRC", "color": "red", "count": 6, "spacingTicks": 2 },
+    { "tick": 44, "sourceNode": "SRC", "color": "red", "count": 8, "spacingTicks": 1 }
+  ],
+  "win": {
+    "deliveries": 14,
+    "timeLimitTicks": 200,
+    "perfectMaxSwitches": 6,
+    "stars": { "two": 200, "three": 300 }
+  },
+  "economy": { "baseTickets": 20, "perfectBonus": 10 }
+}
