@@ -13,6 +13,20 @@ namespace CatMetro.Presentation.Board
     // is visible on its first rendered frame while the sim applies it at the boundary.
     public sealed class BoardView : MonoBehaviour
     {
+        // CM-UX-03: the onboarding teach affordance — a static raised ring behind every switch
+        // disc plus a scale pulse, band-gated INSIDE Build (survives Retry's rebuild by
+        // construction; live via the existing composition call). The affordance marks the
+        // VERB SURFACE, never the answer (deriving route correctness is solver territory —
+        // contract A-UX3-1). Clears per switch on its first command in the session log; the
+        // ring is ALWAYS static (shape carries the information; motion is removable — the
+        // MotionOffSource binding is CM-UX-07's, tests bind directly).
+        public System.Func<bool> MotionOffSource;
+
+        public bool TeachAffordancePresent(int switchIndex)
+        {
+            return false; // skeleton (red phase)
+        }
+
         private GameSession _session;
         private string[] _nodeIds;
         private Vector3[] _nodePos;
