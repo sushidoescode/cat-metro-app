@@ -8,6 +8,9 @@
         "CatMetro.Application",
         "CatMetro.Presentation",
         "CatMetro.Bootstrap",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "UnityEngine.UI",
+        "Unity.TextMeshPro",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

@@ -70,6 +70,7 @@ namespace CatMetro.Presentation.Board
                 var id = prim.AddComponent<BoardElementId>();
                 id.Id = nodes[i].Id; id.Kind = kind;
                 var renderer = prim.GetComponent<Renderer>();
+                renderer.sharedMaterial = GreyboxMaterial.Shared;
                 if (kind == "station")
                 {
                     renderer.material.color = ColorFor(stationAccept[nodes[i].Id]);
@@ -99,6 +100,7 @@ namespace CatMetro.Presentation.Board
                 var a = _nodePos[_edgeFrom[i]];
                 var b = _nodePos[_edgeTo[i]];
                 var prim = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                prim.GetComponent<Renderer>().sharedMaterial = GreyboxMaterial.Shared;
                 prim.name = "edge:" + edges[i].Id;
                 prim.transform.SetParent(transform, false);
                 prim.transform.localPosition = (a + b) * 0.5f + new Vector3(0f, 0f, 0.2f);
@@ -121,6 +123,7 @@ namespace CatMetro.Presentation.Board
                     _switchRouteTargetNode[s][r] = _edgeTo[edgeIndex[routes[r]]];
 
                 var disc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                disc.GetComponent<Renderer>().sharedMaterial = GreyboxMaterial.Shared;
                 disc.name = "switch:" + switches[s].Id;
                 disc.transform.SetParent(transform, false);
                 disc.transform.localPosition = _nodePos[_switchNode[s]] + new Vector3(0f, 0f, -0.4f);
@@ -130,6 +133,7 @@ namespace CatMetro.Presentation.Board
                 id.Id = switches[s].Id; id.Kind = "switch";
 
                 var arm = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                arm.GetComponent<Renderer>().sharedMaterial = GreyboxMaterial.Shared;
                 arm.name = "arm";
                 arm.transform.SetParent(disc.transform.parent, false);
                 arm.transform.localScale = new Vector3(0.1f, 0.9f, 0.1f);
@@ -175,6 +179,7 @@ namespace CatMetro.Presentation.Board
                 if (!_trains.TryGetValue(t, out var go) || go == null)
                 {
                     go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                    go.GetComponent<Renderer>().sharedMaterial = GreyboxMaterial.Shared;
                     go.name = "train:" + t;
                     go.transform.SetParent(transform, false);
                     go.transform.localScale = Vector3.one * 0.35f;
