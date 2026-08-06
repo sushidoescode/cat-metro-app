@@ -29,20 +29,22 @@ namespace CatMetro.Application.EventTaxonomy
             return default;
         }
 
-        public static AnalyticsEvent TutorialStarted(string variant = null)
+        public static AnalyticsEvent TutorialStarted(string variant)
         {
+            // review B2: `variant` is REQUIRED (csv:4) — never an optional arg
             var p = new JObject();
-            if (variant != null) p["variant"] = variant;
+            p["variant"] = variant;
             if (Taxonomy.TryBuild("tutorial_started", p, out var e, out var err)) return e;
             return default;
         }
 
-        public static AnalyticsEvent TutorialStep(string stepId, int durationS, int retries = 0)
+        public static AnalyticsEvent TutorialStep(string stepId, int durationS, int? retries = null)
         {
+            // review B6: nullable optional — retries=0 (first-try clear) is expressible
             var p = new JObject();
             p["step_id"] = stepId;
             p["duration_s"] = durationS;
-            if (retries > 0) p["retries"] = retries;
+            if (retries.HasValue) p["retries"] = retries.Value;
             if (Taxonomy.TryBuild("tutorial_step", p, out var e, out var err)) return e;
             return default;
         }
@@ -131,20 +133,22 @@ namespace CatMetro.Application.EventTaxonomy
             return default;
         }
 
-        public static AnalyticsEvent DailyUnlocked(string highestLevel = null)
+        public static AnalyticsEvent DailyUnlocked(string highestLevel)
         {
+            // review B2: `highest_level` is REQUIRED (csv:13) — never an optional arg
             var p = new JObject();
-            if (highestLevel != null) p["highest_level"] = highestLevel;
+            p["highest_level"] = highestLevel;
             if (Taxonomy.TryBuild("daily_unlocked", p, out var e, out var err)) return e;
             return default;
         }
 
-        public static AnalyticsEvent DailyStarted(long seed, string localDate, int streakDays = 0)
+        public static AnalyticsEvent DailyStarted(long seed, string localDate, int? streakDays = null)
         {
+            // review B6: nullable optional — a 0-day streak is expressible (csv:14 optional)
             var p = new JObject();
             p["seed"] = seed;
             p["local_date"] = localDate;
-            if (streakDays > 0) p["streak_days"] = streakDays;
+            if (streakDays.HasValue) p["streak_days"] = streakDays.Value;
             if (Taxonomy.TryBuild("daily_started", p, out var e, out var err)) return e;
             return default;
         }
@@ -160,13 +164,14 @@ namespace CatMetro.Application.EventTaxonomy
             return default;
         }
 
-        public static AnalyticsEvent StreakChanged(int newStreak, string change, string saverSource = null, int streakDays = 0)
+        public static AnalyticsEvent StreakChanged(int newStreak, string change, string saverSource = null)
         {
+            // review B1: `streak_days` is a USER PROPERTY on this row (csv:16 column 6), not a
+            // param — emitting it tripped the closed-set wall and silently killed the event
             var p = new JObject();
             p["new_streak"] = newStreak;
             p["change"] = change;
             if (saverSource != null) p["saver_source"] = saverSource;
-            if (streakDays > 0) p["streak_days"] = streakDays;
             if (Taxonomy.TryBuild("streak_changed", p, out var e, out var err)) return e;
             return default;
         }
@@ -255,14 +260,15 @@ namespace CatMetro.Application.EventTaxonomy
             return default;
         }
 
-        public static AnalyticsEvent RewardedAdCompleted(string placement, string network, string rewardType, int rewardAmount, long revenueMicros = 0)
+        public static AnalyticsEvent RewardedAdCompleted(string placement, string network, string rewardType, int rewardAmount, long? revenueMicros = null)
         {
+            // review B6: nullable optional — zero-revenue fills are expressible
             var p = new JObject();
             p["placement"] = placement;
             p["network"] = network;
             p["reward_type"] = rewardType;
             p["reward_amount"] = rewardAmount;
-            if (revenueMicros > 0) p["revenue_micros"] = revenueMicros;
+            if (revenueMicros.HasValue) p["revenue_micros"] = revenueMicros.Value;
             if (Taxonomy.TryBuild("rewarded_ad_completed", p, out var e, out var err)) return e;
             return default;
         }
@@ -348,13 +354,13 @@ namespace CatMetro.Application.EventTaxonomy
             return default;
         }
 
-        public static AnalyticsEvent EntitlementChanged(string entitlementId, string change, string source = null, string payerStatus = null)
+        public static AnalyticsEvent EntitlementChanged(string entitlementId, string change, string source = null)
         {
+            // review B1: `payer_status` is a USER PROPERTY (csv:35 column 6), not a param
             var p = new JObject();
             p["entitlement_id"] = entitlementId;
             p["change"] = change;
             if (source != null) p["source"] = source;
-            if (payerStatus != null) p["payer_status"] = payerStatus;
             if (Taxonomy.TryBuild("entitlement_changed", p, out var e, out var err)) return e;
             return default;
         }
@@ -396,14 +402,15 @@ namespace CatMetro.Application.EventTaxonomy
             return default;
         }
 
-        public static AnalyticsEvent ScorecardShared(string mode, string seedOrLevel, string channelIfKnown, int score = 0, int sharesCount = 0)
+        public static AnalyticsEvent ScorecardShared(string mode, string seedOrLevel, string channelIfKnown, int? score = null)
         {
+            // review B1: `shares_count` is a USER PROPERTY (csv:40 column 6), not a param.
+            // review B6: nullable optional so score=0 is expressible (absence != zero).
             var p = new JObject();
             p["mode"] = mode;
             p["seed_or_level"] = seedOrLevel;
             p["channel_if_known"] = channelIfKnown;
-            if (score > 0) p["score"] = score;
-            if (sharesCount > 0) p["shares_count"] = sharesCount;
+            if (score.HasValue) p["score"] = score.Value;
             if (Taxonomy.TryBuild("scorecard_shared", p, out var e, out var err)) return e;
             return default;
         }

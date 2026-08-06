@@ -38,9 +38,12 @@ namespace CatMetro.Tests.EventTaxonomy
 
         private static int RecordBytesTheWayCmC8ComputesThem(AnalyticsEvent e, long ord)
         {
-            // AnalyticsQueue.cs:247-248 (A-C8-9): UTF8 byte count of the compact record object
+            // The REAL persisted record shape is {id, ord, name, params} (AnalyticsQueue.cs
+            // MakeRecord + DeriveId's 32-hex id) — review L2 corrected an earlier 3-field
+            // computation that under-counted by the id's ~26 bytes
             var record = new JObject
             {
+                ["id"] = "0123456789abcdef0123456789abcdef",
                 ["ord"] = ord,
                 ["name"] = e.Name ?? "",
                 ["params"] = e.Params ?? new JObject(),
@@ -85,16 +88,18 @@ namespace CatMetro.Tests.EventTaxonomy
         // --- criterion 12 ---
         private static object[] CanonicalArgsFor(MethodInfo factory)
         {
+            // review B4: resolve value domains within THIS factory's own row — a cross-row
+            // first-match handed ticket_earned a rewind_used value and hid real defects
+            var rowName = TaxonomyTableTests.SnakeCase(factory.Name);
+            var row = TaxonomyFixtures.ParseRows().Single(r => r.Name == rowName);
             var args = factory.GetParameters().Select(p =>
             {
-                var t = p.ParameterType;
+                var t = Nullable.GetUnderlyingType(p.ParameterType) ?? p.ParameterType;
                 if (t == typeof(bool)) return (object)true;
                 if (t == typeof(int)) return 3;
                 if (t == typeof(long)) return 3L;
                 if (t == typeof(double)) return 3.5;
-                // enumerated params must use a listed value: match by normalized name
                 string bare = p.Name.Replace("_", "").ToLowerInvariant();
-                foreach (var row in TaxonomyFixtures.ParseRows())
                 foreach (var kv in row.ValueDomains)
                     if (kv.Key.Replace("_", "").ToLowerInvariant() == bare)
                         return kv.Value[0];
@@ -115,6 +120,10 @@ namespace CatMetro.Tests.EventTaxonomy
                 foreach (var f in factories)
                 {
                     var e = (AnalyticsEvent)f.Invoke(null, CanonicalArgsFor(f));
+                    // review B3: a default(AnalyticsEvent) slipping through would Log as a
+                    // nameless record and still count — assert identity BEFORE Log
+                    Assert.That(e.Name, Is.EqualTo(TaxonomyTableTests.SnakeCase(f.Name)),
+                        f.Name + " produced no event (validation failed inside the factory)");
                     q.Log(e);
                 }
                 Assert.That(q.QueuedEventCount, Is.EqualTo(45));

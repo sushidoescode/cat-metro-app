@@ -353,7 +353,8 @@ namespace CatMetro.Application.EventTaxonomy
                // (c) each required param present
             foreach (var req in row.RequiredParams)
                {
-                if (parameters.Property(req) == null)
+                var reqProp = parameters.Property(req);
+                if (reqProp == null || reqProp.Value.Type == JTokenType.Null) // review B7: an explicit JSON null is MISSING
                    {
                     error = "missing required param: " + req;
                     return false;
@@ -390,7 +391,9 @@ namespace CatMetro.Application.EventTaxonomy
                }
 
                // (f) success
-            e = new AnalyticsEvent(name, parameters);
+            // review B5: clone at construction — the validated shape is frozen; later caller
+            // mutations of their own JObject can never smuggle undeclared keys past the wall
+            e = new AnalyticsEvent(name, (JObject)parameters.DeepClone());
             return true;
            }
        }

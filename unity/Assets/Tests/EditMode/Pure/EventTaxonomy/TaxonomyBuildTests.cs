@@ -51,6 +51,19 @@ namespace CatMetro.Tests.EventTaxonomy
             Assert.That(ok, Is.True, "the zero-required-params case is asserted, not skipped: " + error);
         }
 
+        [Test]
+        public void RequiredKey_WithExplicitJsonNull_IsMissing()
+        {
+            // review B7: reachable from the shipped facade (a null string arg becomes a null
+            // JSON token) — presence of the KEY is not presence of a VALUE
+            var row = TaxonomyFixtures.ParseRows().Single(r => r.Name == "app_open");
+            var p = TaxonomyFixtures.CanonicalParams(row, includeOptional: false);
+            p["session_id"] = JValue.CreateNull();
+            bool ok = Taxonomy.TryBuild("app_open", p, out _, out var error);
+            Assert.That(ok, Is.False, "a null-valued required key passed the wall");
+            Assert.That(error, Does.Contain("session_id"));
+        }
+
         // --- criterion 4: closed param set ---
         [Test, TestCaseSource(typeof(TaxonomyFixtures), nameof(TaxonomyFixtures.RowNames))]
         public void UndeclaredKey_IsRejected(string name)
