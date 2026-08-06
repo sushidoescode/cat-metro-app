@@ -48,20 +48,26 @@ namespace CatMetro.Tests.Presentation
 
         // --- criterion 3: the 48dp floor holds on the TAPPABLE rect over the inset table ---
 
-        [TestCase(0f, 0f, TestName = "Floor_ZeroInset")]
-        [TestCase(48f, 0f, TestName = "Floor_GestureNavInset")]
-        [TestCase(48f, 32f, TestName = "Floor_GestureNavPlusCutout")]
-        public void ChipTappableRect_MeetsFloor_PerInsetRow(float bottom, float top)
+        // R1-M4: dpi varies PER ROW (R2-N2's actual demand) and one row is a realistic
+        // device-class frame — a fixed 160 tested the floor only at 1 px/dp forever.
+        [TestCase(640f, 360f, 0f, 0f, 160f, TestName = "Floor_ZeroInset_Ref")]
+        [TestCase(640f, 360f, 48f, 0f, 160f, TestName = "Floor_GestureNavInset_Ref")]
+        [TestCase(640f, 360f, 48f, 32f, 160f, TestName = "Floor_GestureNavPlusCutout_Ref")]
+        [TestCase(2856f, 1280f, 146f, 146f, 486f, TestName = "Floor_Pixel9ProClass")]
+        public void ChipTappableRect_MeetsFloor_PerInsetRow(
+            float rawH, float rawW, float bottom, float top, float dpi)
         {
+            var safe = new Rect(0f, bottom, rawW, rawH - bottom - top);
+            var raw = new Rect(0f, 0f, rawW, rawH * 0.25f);
             // the shipped chip layout law: full-width, anchored to the SAFE thumb band
-            var chip = HudBands.ThumbBand(Safe(bottom, top));
-            var tappable = ChromeGeometry.TappableRect(chip, RawBand());
-            Assert.That(HudBands.MeetsMinTargetPx(tappable, 160f), Is.True,
-                "the chip's TAPPABLE height must clear 48dp at this inset row");
+            var chip = HudBands.ThumbBand(safe);
+            var tappable = ChromeGeometry.TappableRect(chip, raw);
+            Assert.That(HudBands.MeetsMinTargetPx(tappable, dpi), Is.True,
+                "the chip's TAPPABLE height must clear 48dp at this row's dpi");
             // painted-overhang bound: painted may exceed tappable ONLY by the pinned
             // divergence height for this row
             float overhang = chip.height - tappable.height;
-            float pinned = ChromeGeometry.InertOverhangHeight(Safe(bottom, top), RawH);
+            float pinned = ChromeGeometry.InertOverhangHeight(safe, rawH);
             Assert.That(overhang, Is.EqualTo(pinned).Within(Tol),
                 "painted overhang equals the pinned divergence height — bounded, not silent");
         }
@@ -77,6 +83,16 @@ namespace CatMetro.Tests.Presentation
             Assert.That(ChromeGeometry.InertOverhangHeight(Safe(bottom, top), RawH),
                 Is.EqualTo(expected).Within(Tol),
                 "max(0, 0.75*bottomInset - 0.25*topInset)");
+        }
+
+        // R1-L5: the G-4 worked example is ASSERTED, not just written in the handoff —
+        // Pixel-9-Pro-class frame: 0.75*146 - 0.25*146 = 73 px inert overhang.
+        [Test]
+        public void InertOverhang_Pixel9ProClass_Is73()
+        {
+            var safe = new Rect(0f, 146f, 1280f, 2856f - 146f - 146f);
+            Assert.That(ChromeGeometry.InertOverhangHeight(safe, 2856f),
+                Is.EqualTo(73f).Within(Tol));
         }
 
         [TestCase(0f, 0f, TestName = "OverConsume_ZeroInset")]

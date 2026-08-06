@@ -23,6 +23,7 @@ namespace CatMetro.Tests.Presentation
             "Assets/Scripts/Presentation/Hud/RetryCtaView.cs",
             "Assets/Scripts/Presentation/Hud/HaltVeilView.cs",
             "Assets/Scripts/Presentation/Hud/UiChromeMaterial.cs",
+            "Assets/Tests/EditMode/Presentation/UiChromeMaterialTests.cs",
             "Assets/Tests/EditMode/Presentation/ChromeGeometryTests.cs",
             "Assets/Tests/PlayMode/Hud/ChromeStateTests.cs",
             // exemption (c): HaltVocabularyGuardTests.cs and UiCsvDisciplineTests.cs are
@@ -36,8 +37,11 @@ namespace CatMetro.Tests.Presentation
 
         private static string Sanitize(string text)
         {
-            // exemptions (a) + (b): strip before scanning so the required literals never trip
+            // exemptions (a) + (b): strip before scanning so the required literals never trip.
+            // R1-L8: the NUnit negative-verdict call is stripped as a WHOLE token BEFORE the
+            // generic prefix — stripping "Assert." first would leave its verb behind and trip.
             return text.Replace("FailureReview", "")
+                       .Replace("Assert.Fail", "")
                        .Replace("Assert.", "")
                        .Replace("LogAssert", "");
         }

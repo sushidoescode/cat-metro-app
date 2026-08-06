@@ -17,6 +17,9 @@ namespace CatMetro.Presentation.Hud
         public RetryCtaView Cta { get; private set; }
         public HaltVeilView Veil { get; private set; }
 
+        // R1-H2: the whole chrome tree hangs off this root — tests walk IT, never a subtree.
+        public GameObject ChromeRoot => _canvas != null ? _canvas.gameObject : null;
+
         public void Attach(System.Func<string> screenState)
         {
             _screenState = screenState;

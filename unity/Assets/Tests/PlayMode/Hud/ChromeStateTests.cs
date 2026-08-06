@@ -71,13 +71,42 @@ namespace CatMetro.Tests.PlayMode
         public IEnumerator Transition_WonRendersNeither()
         {
             // CM-UX-04 MAY extend this row to its results panel and may NOT relax the others
-            // (bounded supersession, contract criterion 2).
+            // (bounded supersession, contract criterion 2). R1-M2: the positive control proves
+            // this chrome CAN render before the Won row asserts that it doesn't.
             var chrome = AttachControlled("Playing");
             yield return null;
+            _state = "FailureReview";
+            yield return null;
+            Assert.That(chrome.Cta != null && chrome.Cta.IsVisible, Is.True,
+                "positive control: the chrome demonstrably renders");
             _state = "Won";
             yield return null;
-            Assert.That(chrome.Cta == null || !chrome.Cta.IsVisible, Is.True);
-            Assert.That(chrome.Veil == null || !chrome.Veil.IsVisible, Is.True);
+            Assert.That(chrome.Cta.IsVisible, Is.False, "Won renders no CTA");
+            Assert.That(chrome.Veil == null || !chrome.Veil.IsVisible, Is.True,
+                "Won renders no veil");
+        }
+
+        // R1-H1: the shipped layout and the criterion-3 geometry table are JOINED here — the
+        // painted rect the component actually applied equals the safe-area thumb band, and the
+        // 48dp floor holds on its live tappable intersection with the raw band.
+        [UnityTest]
+        public IEnumerator Cta_PaintedRect_IsTheSafeAreaThumbBand_AndTappableFloorHolds()
+        {
+            var chrome = AttachControlled("Playing");
+            yield return null;
+            _state = "FailureReview";
+            yield return null;
+
+            var expected = CatMetro.Presentation.Hud.HudBands.ThumbBand(Screen.safeArea);
+            var painted = chrome.Cta.PaintedRectPx;
+            Assert.That(painted, Is.EqualTo(expected),
+                "the component's applied rect IS the safe-area thumb band — no drift possible");
+
+            var rawBand = new Rect(0f, 0f, Screen.width, Screen.height * 0.25f);
+            var tappable = CatMetro.Presentation.Hud.ChromeGeometry.TappableRect(painted, rawBand);
+            float dpi = Screen.dpi > 0f ? Screen.dpi : 160f;
+            Assert.That(CatMetro.Presentation.Hud.HudBands.MeetsMinTargetPx(tappable, dpi),
+                Is.True, "the live tappable rect clears the 48dp floor on this host");
         }
 
         // --- criterion 4: the REAL halt renders the veil (F-DEV-4 ends here) ---
@@ -185,12 +214,23 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator ChromeTree_IsRenderOnly_ByWhitelist()
         {
+            // R1-H2: walk the WHOLE chrome root (canvas + CTA + veil + labels), never a
+            // subtree — a raycaster on the canvas or an affordance on the veil must go red.
             var chrome = AttachControlled("FailureReview");
             yield return null;
-            Assert.That(chrome.Cta, Is.Not.Null);
-            var off = FirstOffWhitelist(chrome.Cta.gameObject);
+            Assert.That(chrome.ChromeRoot, Is.Not.Null);
+            var off = FirstOffWhitelist(chrome.ChromeRoot);
             Assert.That(off, Is.Null,
                 "chrome carries render-side types only; found: " + (off ? off.GetType().FullName : ""));
+
+            // R1-H2: explicit detection of the interactivity classes the criterion names —
+            // belt on top of the whitelist braces.
+            Assert.That(chrome.ChromeRoot
+                .GetComponentsInChildren<UnityEngine.UI.Selectable>(true).Length, Is.EqualTo(0),
+                "no Selectable anywhere under chrome");
+            Assert.That(chrome.ChromeRoot
+                .GetComponentsInChildren<UnityEngine.UI.GraphicRaycaster>(true).Length,
+                Is.EqualTo(0), "no raycaster-driven interactivity under chrome");
 
             // positive control: the walk DOES flag an interactive component elsewhere
             var decoyGo = new GameObject("decoy-tree");
@@ -199,6 +239,8 @@ namespace CatMetro.Tests.PlayMode
                 decoyGo.AddComponent<UnityEngine.UI.Button>();
                 Assert.That(FirstOffWhitelist(decoyGo), Is.Not.Null,
                     "the whitelist walk can detect a non-render component");
+                Assert.That(decoyGo.GetComponentsInChildren<UnityEngine.UI.Selectable>(true)
+                    .Length, Is.GreaterThan(0), "the Selectable scan can detect one too");
             }
             finally { Object.Destroy(decoyGo); }
         }
@@ -212,17 +254,21 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator MotionOffAndOn_RenderTheSameInformation_NoAnimators()
+        public IEnumerator MotionOff_RendersEverything_ZeroAnimationComponents()
         {
+            // R1-M5: scanned over the WHOLE chrome root, and stated honestly — this chrome
+            // ships no motion at all, so the guarantee is structural (zero animation
+            // components), not a behavioral A/B: a motion-on-vs-off comparison over a
+            // motionless tree would compare a branch to itself and guard nothing.
             var chrome = AttachControlled("Playing");
             _root.MotionOffToggle = true;
             yield return null;
             _state = "FailureReview";
             yield return null;
-            bool visibleOff = chrome.Cta != null && chrome.Cta.IsVisible;
-            Assert.That(visibleOff, Is.True, "motion-off renders the full information set");
-            Assert.That(MotionComponentCount(chrome.Cta.gameObject), Is.EqualTo(0),
-                "no animation components under chrome — motion never carries information");
+            Assert.That(chrome.Cta != null && chrome.Cta.IsVisible, Is.True,
+                "motion-off renders the full information set");
+            Assert.That(MotionComponentCount(chrome.ChromeRoot), Is.EqualTo(0),
+                "no animation components anywhere under chrome");
 
             // positive control: the counter counts when one exists
             var decoy = new GameObject("decoy-anim");
@@ -232,15 +278,6 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(MotionComponentCount(decoy), Is.EqualTo(1));
             }
             finally { Object.Destroy(decoy); }
-
-            // parity: motion ON renders the same visibility set
-            _root.MotionOffToggle = false;
-            _state = "Playing";
-            yield return null;
-            _state = "FailureReview";
-            yield return null;
-            Assert.That(chrome.Cta.IsVisible, Is.EqualTo(visibleOff),
-                "motion changes easing only, never the information set");
         }
 
         // --- the #33 standing rule: rendered-frame captures as visual evidence ---
@@ -269,7 +306,11 @@ namespace CatMetro.Tests.PlayMode
 
         private void Capture(string dir, string name)
         {
-            var rt = new RenderTexture(720, 1280, 24);
+            // R1-M1: the RT MUST match Screen — the ScreenSpaceCamera canvas sizes from the
+            // camera's pixel rect while the view lays out from Screen.*; a mismatched RT
+            // (the original 720x1280) renders the chip displaced and the evidence stops being
+            // probative for layout. Screen-matched, canvas and view agree by construction.
+            var rt = new RenderTexture(Screen.width, Screen.height, 24);
             _root.Cam.targetTexture = rt;
             _root.Cam.Render();
             RenderTexture.active = rt;

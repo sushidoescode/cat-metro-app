@@ -12,17 +12,27 @@ the #29 ratified ordering). Post-DEVFIX baseline verified first: EditMode 353/35
 
 ## TDD evidence
 
-- **Red (02c0e2e):** EditMode 372 total / 16 red (geometry 12, csv 2, vocab guard 2 — one
-  catching 'lose' inside 'closes' in this slice's own prose, reworded); PlayMode 46 / 6 red
-  (skeleton chrome renders nothing; the real-halt leg needed the merged GreyboxTests LogAssert
-  recipe). All right-reason.
-- **Green (ace6c09):** EditMode **372/372** · PlayMode **46 (45 passed + the env-gated capture
-  leg, Ignored by design)**.
-- **Visual verification (#33 standing rule):** rendered-frame captures of the REAL scene over
-  the DEVFIX URP baseline, committed at `evals/results/ux/cm-ux-02/cm-ux-02-cta.png` (Try-again
-  chip, full-width, bottom band, over the live board) and `cm-ux-02-veil.png` (scrim visibly
-  darkening the frozen board + the neutral notice). Eyeballed by the session before commit;
-  queued for the human's TG-5 sitting.
+- **Red (02c0e2e):** EditMode 372 total / **15** red at the committed tree (the 16th — the
+  vocab guard catching 'lose' inside 'closes' in this slice's own prose — was red in the
+  pre-reword run `ux02-red-em.xml` and fixed before commit; R1-L10 correction); PlayMode 46 /
+  6 red — 5 for the criterion's own reason, and the real-halt leg red on the halt's loud log
+  rather than the missing-veil assert (R1-L10: recorded honestly, not "all right-reason").
+- **Green (ace6c09):** EditMode **372/372** · PlayMode **46 (45 live + the env-gated capture
+  rig)**. Post-R1 fixes: **EM 375/375 · PM 47/47** (adds the UiChrome pairing test, the P9P
+  inert pin, a fourth realistic-dpi floor row, and the H1 painted-rect joint test). The
+  re-captured CTA frame is full-width in a Screen-matched frame; the batch host's landscape
+  aspect (640x496) makes the board overlap the band compositionally — an artifact of the host
+  aspect, not the layout law; the device-aspect eyeball stays with the TG sitting.
+- **Visual verification (#33 standing rule, RE-EVIDENCED per R1-M1):** the first CTA capture
+  was NON-PROBATIVE — the 720x1280 RT disagreed with batchmode Screen (~640x496), so the
+  ScreenSpaceCamera canvas rendered at RT size while the view laid out from Screen: the chip
+  measured 88.9% width / 9.7% height in-frame. Root cause fixed (Screen-matched RT), frames
+  re-captured and re-eyeballed. The veil frame was probative in both rounds (relative anchors);
+  neither frame shows magenta — genuine proof the UiChrome.mat binding + TMP SDF path render
+  on the URP baseline. Queued for the human's TG-5 sitting.
+- **TMP import footprint (criterion-1 honesty number, R1 measurement):** 4.1 MB on disk total,
+  **2.3 MB under `Assets/TextMesh Pro/Resources/**`** (force-included in builds); the AAB
+  impact measurement stays with the device lane (stop condition 7, >5 MB threshold).
 
 ## Criterion → check map
 
