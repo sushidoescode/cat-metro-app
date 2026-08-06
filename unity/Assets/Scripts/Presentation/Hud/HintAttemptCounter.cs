@@ -14,12 +14,21 @@ namespace CatMetro.Presentation.Hud
 
         public int Count { get; private set; }
 
+        private string _previous;
+
+        // Edge-triggered: an ENTRY is a transition into the counted state, so consecutive
+        // polled frames inside one review count once. A first observation that is already
+        // the counted state is an entry (attaching mid-review must never read as zero).
         public void Observe(string state)
         {
+            if (state == CountedState && _previous != CountedState) Count++;
+            _previous = state;
         }
 
         public void Reset()
         {
+            Count = 0;
+            _previous = null;
         }
     }
 }

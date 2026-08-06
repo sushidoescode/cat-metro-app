@@ -27,16 +27,56 @@ namespace CatMetro.Presentation.Hud
 
         public void Attach(System.Func<string> screenState)
         {
+            _screenState = screenState;
+            EnsureViews();
+            Apply();
         }
 
         // The per-level attempt-run seam: CM-UX-07/level-advance calls this when a new level
         // loads; retries of the same level never reset (that accumulation is the mechanic).
         public void ResetForNewLevel()
         {
+            _attempts.Reset();
+            if (Chip != null) Chip.SetVisible(false);
         }
 
         private void Update()
         {
+            if (_screenState != null) Apply();
+        }
+
+        private void EnsureViews()
+        {
+            if (_canvas != null) return;
+            var go = new GameObject("HintChipCanvas");
+            go.transform.SetParent(transform, false);
+            _canvas = go.AddComponent<Canvas>();
+            // Screen Space - Camera when the wired camera exists (renders into capture RTs —
+            // the #33 visual-verification rule needs real frames); overlay as the fallback.
+            var cam = GetComponentInChildren<Camera>();
+            if (cam != null)
+            {
+                _canvas.renderMode = RenderMode.ScreenSpaceCamera;
+                _canvas.worldCamera = cam;
+                _canvas.planeDistance = 1f;
+            }
+            else
+            {
+                _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            }
+            // A-UX5-3: below the CM-UX-02 chrome canvas (100) — the halt veil overlays the
+            // chip if they are ever co-visible; the visibility law hides it on Halted anyway.
+            _canvas.sortingOrder = 90;
+            Chip = HintChipView.Create(_canvas.transform);
+        }
+
+        private void Apply()
+        {
+            var state = _screenState();
+            _attempts.Observe(state);
+            bool visible = _attempts.Count >= ChipVisibleAfterEntries
+                && (state == "Playing" || state == HintAttemptCounter.CountedState);
+            if (Chip != null) Chip.SetVisible(visible);
         }
     }
 }

@@ -31,7 +31,9 @@ namespace CatMetro.Presentation.Hud
         // dpi. Pure math — no Screen reads in here (the CM-UX-01 injected-inputs law).
         public static Rect ChipRect(Rect safeArea, float dpi)
         {
-            return default;
+            float height = HudBands.MinTargetDp * HudBands.PxPerDp(dpi);
+            return new Rect(safeArea.x, HudBands.ThumbBand(safeArea).yMax,
+                safeArea.width, height);
         }
 
         public static HintChipView Create(Transform canvasParent)
@@ -40,12 +42,55 @@ namespace CatMetro.Presentation.Hud
             go.transform.SetParent(canvasParent, false);
             var view = go.AddComponent<HintChipView>();
             view._rect = go.AddComponent<RectTransform>();
+
+            var bg = go.AddComponent<Image>();
+            var mat = UiChromeMaterial.Shared;
+            if (mat != null) bg.material = mat;
+            // DRAFT chip look for the eyeball sitting: dark spruce, distinct from the
+            // ink-navy retry chip — the TEXT carries the meaning, never the color (P-5).
+            bg.color = new Color(0.10f, 0.22f, 0.19f, 0.92f);
+
+            var textGo = new GameObject("Label");
+            textGo.transform.SetParent(go.transform, false);
+            var trect = textGo.AddComponent<RectTransform>();
+            trect.anchorMin = Vector2.zero;
+            trect.anchorMax = Vector2.one;
+            trect.offsetMin = Vector2.zero;
+            trect.offsetMax = Vector2.zero;
+            view._text = textGo.AddComponent<TextMeshProUGUI>();
+            view._text.text = Strings.UiStrings.Get("hint.tutorial"); // key-only, never a literal
+            view._text.alignment = TextAlignmentOptions.Center;
+            view._text.fontSize = 30f;
+            view._text.color = Color.white;
+
             go.SetActive(false);
             return view;
         }
 
         public void SetVisible(bool visible)
         {
+            if (visible) Layout();
+            if (gameObject.activeSelf != visible) gameObject.SetActive(visible);
+        }
+
+        // The live binding site: Screen.safeArea/dpi are read HERE and handed to pure math.
+        // R1-L7 (inherited): re-layout only when an INPUT of the rect law changes — the law
+        // takes safeArea AND dpi, so the cache keys on both.
+        private Rect _lastSafeArea = new Rect(-1f, -1f, -1f, -1f);
+        private float _lastDpi = -1f;
+
+        private void Layout()
+        {
+            if (Screen.safeArea == _lastSafeArea && Screen.dpi == _lastDpi) return;
+            _lastSafeArea = Screen.safeArea;
+            _lastDpi = Screen.dpi;
+            var rect = ChipRect(Screen.safeArea, Screen.dpi);
+            _paintedPx = rect;
+            _rect.anchorMin = Vector2.zero;
+            _rect.anchorMax = Vector2.zero;
+            _rect.pivot = Vector2.zero;
+            _rect.anchoredPosition = new Vector2(rect.x, rect.y);
+            _rect.sizeDelta = new Vector2(rect.width, rect.height);
         }
     }
 }

@@ -5,3 +5,4 @@ fail.queueoverflow,Platform overflowed at {node}
 fail.platformoverflow,{station} platform overflowed
 retry.cta,Try again
 halt.notice,Signal fault — the line stopped
+hint.tutorial,Tap the flashing switch
