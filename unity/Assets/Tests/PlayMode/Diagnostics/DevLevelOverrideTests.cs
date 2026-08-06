@@ -125,22 +125,21 @@ namespace CatMetro.Tests.PlayMode
             var imported = LevelImporter.Import(Encoding.UTF8.GetBytes(DemoJson()));
             Assert.That(imported.Ok, Is.True);
             var solve = CatMetro.Domain.Solver.LevelSolver.Solve(
-                imported.Value.Graph, CatMetro.Domain.Solver.SolverBounds.Default);
-            Assert.That(solve.Verdict, Is.EqualTo(CatMetro.Domain.Solver.Verdict.Solved),
+                imported.Value.Graph, (ulong)imported.Value.Dto.Seed);
+            Assert.That(solve.Verdict,
+                Is.EqualTo(CatMetro.Domain.Solver.SolveVerdict.Solved),
                 "the demo must be WINNABLE by active play — retune the level, never this test");
 
             _root = GameRoot.LaunchWith(imported.Value);
             yield return null;
-            // replay the solver's optimal command log through the real session
+            // replay the solver's optimal command log through the real session (no yields
+            // inside the loop — GameRoot.Update must not advance ticks between entries)
             foreach (var e in solve.OptimalLog.Entries)
             {
-                while (_root.Session.State.Tick <= e.Tick &&
+                while (_root.Session.State.Tick < e.Tick &&
                        _root.Session.State.Outcome.Kind == CatMetro.Domain.OutcomeKind.Running)
-                {
-                    if (_root.Session.State.Tick == e.Tick) break;
                     _root.Session.AdvanceMs(
                         CatMetro.Application.Session.TickInterpolator.TICK_MS);
-                }
                 _root.Session.EnqueueToggle(e.SwitchId);
             }
             _root.Session.AdvanceMs(400 * CatMetro.Application.Session.TickInterpolator.TICK_MS);
