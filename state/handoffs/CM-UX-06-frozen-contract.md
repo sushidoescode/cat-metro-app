@@ -152,3 +152,15 @@ Defaults (AGENTS.md) plus:
 ### Status log
 
 - 2026-08-06 — contract frozen at anchor ca13801; N=12 wrappers recorded; red next.
+- 2026-08-06 — RED efae0a7: 19 red-first tests + API stubs; EM 11/15 new failing right
+  (anchor re-derived EM 375, PM 52 existing), PM 8/10 failing right; the four green-at-red
+  are labeled pins / decoy-controlled absence guards (P-7).
+- 2026-08-06 — GREEN 9fadb9a: EM 390/390, PM 62/62; check.sh OK; token sweep clean
+  (zero banned input-surface tokens, zero storage-path APIs, zero quoted csv literals,
+  input consumers still exactly 1).
+- 2026-08-06 — visual verification (#33 rule) discharged: uncommitted probe rendered
+  Home (motion-on/off) + LevelIntro through a ScreenSpaceCamera canvas into Screen-matched
+  RTs; frames EYEBALLED and byte-measured (cream-ring bbox x250-389, y350-479 on the
+  640x480@~254dpi batch host — PxPerDp 1.59 confirms the dp math; the ring's bottom 8dp
+  margin clips on this tiny host, phone-class thumb bands have ~6x slack; pin itself fits);
+  probe deleted; frames committed to evals/results/ux/cm-ux-06/.
