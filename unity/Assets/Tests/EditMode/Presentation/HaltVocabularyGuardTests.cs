@@ -22,6 +22,7 @@ namespace CatMetro.Tests.Presentation
             "Assets/Scripts/Presentation/Hud/ScreenChromeController.cs",
             "Assets/Scripts/Presentation/Hud/RetryCtaView.cs",
             "Assets/Scripts/Presentation/Hud/HaltVeilView.cs",
+            "Assets/Scripts/Presentation/Hud/UiChromeMaterial.cs",
             "Assets/Tests/EditMode/Presentation/ChromeGeometryTests.cs",
             "Assets/Tests/PlayMode/Hud/ChromeStateTests.cs",
             // exemption (c): HaltVocabularyGuardTests.cs and UiCsvDisciplineTests.cs are
