@@ -59,13 +59,23 @@ namespace CatMetro.Tests.PlayMode
             _root = GameRoot.LaunchWith(Import(TwoSwitchJson("alternation")));
             yield return null;
             Assert.That(_root.View.TeachAffordancePresent(0), Is.False);
-            Assert.That(RingCount(_root.View.gameObject), Is.EqualTo(0),
-                "a non-onboarding board is component-identical to today's");
-            // positive control: the SAME probe reports presence on the onboarding fixture
+            Assert.That(RingCount(_root.View.gameObject), Is.EqualTo(0));
+            // R1-F3 of #36: "component-identical" asserted as counts, not just ring names —
+            // a non-onboarding board carries exactly as many transforms and renderers as the
+            // onboarding board MINUS its two rings.
+            int altTransforms = _root.View.gameObject
+                .GetComponentsInChildren<Transform>(true).Length;
+            int altRenderers = _root.View.gameObject
+                .GetComponentsInChildren<Renderer>(true).Length;
+            // positive control: the SAME probes on the onboarding fixture
             Object.Destroy(_root.gameObject);
             _root = GameRoot.LaunchWith(Import(TwoSwitchJson("onboarding")));
             yield return null;
             Assert.That(_root.View.TeachAffordancePresent(0), Is.True);
+            Assert.That(_root.View.gameObject.GetComponentsInChildren<Transform>(true).Length,
+                Is.EqualTo(altTransforms + 2), "the ONLY structural delta is the two rings");
+            Assert.That(_root.View.gameObject.GetComponentsInChildren<Renderer>(true).Length,
+                Is.EqualTo(altRenderers + 2));
         }
 
         // --- criterion 2: per-switch clear on first toggle; toggle-back stays cleared ---
@@ -141,15 +151,31 @@ namespace CatMetro.Tests.PlayMode
             _root.View.MotionOffSource = () => true;
             yield return null; // let one frame settle to the base scale
             scales.Clear();
+            var ringPos = new List<Vector3>();
+            var ringScalesOff = new List<Vector3>();
             for (int i = 0; i < 10; i++)
             {
                 scales.Add(disc.localScale);
+                ringPos.Add(ring.localPosition);
+                ringScalesOff.Add(ring.localScale);
                 yield return null;
             }
             Assert.That(Distinct(scales), Is.EqualTo(1), "motion-off removes the oscillation");
+            // R1-F6 of #36: the ring's FULL transform is static in BOTH states — position
+            // sampled here (off) and scale in both windows; a bobbing ring would carry motion.
+            Assert.That(Distinct(ringPos), Is.EqualTo(1), "ring position never animates");
+            Assert.That(Distinct(ringScalesOff), Is.EqualTo(1));
             Assert.That(ring.gameObject.activeSelf, Is.True,
                 "the ring carries the information in both motion states");
             Assert.That(ring.GetComponent<Animator>(), Is.Null);
+            Assert.That(ring.GetComponent<Animation>(), Is.Null, "legacy animation too");
+            // Human ruling 2026-08-06: the ring reads as a ring — its material is the tinted
+            // instance, never the disc's white (same shader; distinct color).
+            var ringMat = ring.GetComponent<Renderer>().sharedMaterial;
+            var discMat = disc.GetComponent<Renderer>().sharedMaterial;
+            Assert.That(ringMat, Is.Not.EqualTo(discMat), "ring is visually differentiated");
+            Assert.That(ringMat.shader, Is.EqualTo(discMat.shader),
+                "same pipeline shader — no stripping surface added");
         }
 
         // --- criterion 5: the zero-instructional-text law, inventoried ---
@@ -171,7 +197,11 @@ namespace CatMetro.Tests.PlayMode
             return false;
         }
 
-        private static List<string> IllegalTexts(GameObject sceneRootHost)
+        // Scene-global by design (the law covers board + HUD together); R1-F7 of #36: the
+        // former host parameter was unused and is dropped — if another suite ever leaks an
+        // active prose TextMesh into the scene, this test fails loudly and the leak is the
+        // defect to fix, not this scan.
+        private static List<string> IllegalTexts()
         {
             var offenders = new List<string>();
             foreach (var tm in Object.FindObjectsByType<TextMesh>(FindObjectsSortMode.None))
@@ -187,7 +217,7 @@ namespace CatMetro.Tests.PlayMode
         {
             _root = GameRoot.LaunchWith(Import(TwoSwitchJson("onboarding")));
             yield return null;
-            Assert.That(IllegalTexts(_root.gameObject), Is.Empty,
+            Assert.That(IllegalTexts(), Is.Empty,
                 "CM-R13.1: no tutorial text, no icons-as-text, no modals during Playing");
 
             // anti-vacuity decoy: a stray instruction is detected by the same inventory
@@ -196,7 +226,7 @@ namespace CatMetro.Tests.PlayMode
             {
                 var tm = decoy.AddComponent<TextMesh>();
                 tm.text = "tap the switch now";
-                Assert.That(IllegalTexts(_root.gameObject), Is.Not.Empty,
+                Assert.That(IllegalTexts(), Is.Not.Empty,
                     "the inventory can detect an instructional string");
             }
             finally { Object.Destroy(decoy); }

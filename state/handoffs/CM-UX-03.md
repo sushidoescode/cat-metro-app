@@ -11,13 +11,18 @@ commit order and that this file never changes across the PR. Copied VERBATIM bel
   carrier); 2 of the 7 new tests are law-pins green-at-red BY DESIGN with fail-capable decoys
   (zero-text inventory + no-object-churn — each carries an in-fixture decoy control proven able
   to fail; P-7 labeling).
-- **Green:** PlayMode **59/59** on the first implementation pass — every merged inventory
-  (render-fidelity BoardElementId set, halt tests, chrome suite) survived the rings because
-  they carry no BoardElementId by design. EditMode **375/375** (no EditMode surface in-slice).
-- **#33 visual evidence:** `evals/results/ux/cm-ux-03/cm-ux-03-teach.png` — Screen-matched
-  capture (the CM-UX-02 M1 lesson applied from the start): both junction switches carry the
-  visible ring halo, clearly distinct from plain nodes and stations; the still shows the
-  SHAPE twin, which is exactly the motion-off information story. Session-eyeballed.
+- **Green:** PlayMode **60/60 on the committed tree** (59 behavior tests + the disarmed
+  capture rig; the earlier 59/59 figure predated the rig — #36 review F4 correction) — every
+  merged inventory (render-fidelity BoardElementId set, halt tests, chrome suite) survived the
+  rings because they carry no BoardElementId by design. EditMode **375/375**; `scripts/test.sh`
+  **12/12** (the contract's "13 wrappers" was a drafting slip — 12 exist, re-derived per the
+  contract's own protocol; #36 review F8).
+- **#33 visual evidence (claim corrected per #36 review F2, then re-evidenced):** the FIRST
+  frame proved ring GEOMETRY only (27-28px composite vs 17px disc-only — the reviewer's pixel
+  measurement) but NOT a visible annulus: ring and disc shared the greybox white, so a
+  motion-off player saw a widened blob. **Human ruling 2026-08-06: differentiate now** — the
+  ring binds a darker ink-navy tinted instance of the greybox shader (same pipeline, no new
+  Resources entry). Re-captured Screen-matched and re-eyeballed: the annulus is legible.
 
 ## Criterion → check map
 
@@ -34,7 +39,12 @@ commit order and that this file never changes across the PR. Copied VERBATIM bel
 ## Forward obligations
 
 - CM-UX-07 binds `BoardView.MotionOffSource = () => root.MotionOff` in the SAME PR that
-  attaches the chrome controller (appended to the existing CM-UX-07 obligation list).
+  attaches the chrome controller — **AND must rebind it inside `Retry()`** (#36 review F1/F5:
+  `Retry()` destroys and rebuilds the view, so a Wire-time-only binding silently dies after
+  the first retry; the rebind site is beside the existing `Input.Wire` call there). This
+  obligation lives HERE because the decompose's CM-UX-07 enumeration is outside this slice's
+  scope — CM-UX-07's implementer must read both (the contract-internal tension is recorded,
+  not hidden).
 - CM-UX-05 amends the criterion-5 exemption list when the hint chip lands (pre-registered).
 
 ---

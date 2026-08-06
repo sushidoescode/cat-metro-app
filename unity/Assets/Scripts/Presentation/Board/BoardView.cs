@@ -173,7 +173,11 @@ namespace CatMetro.Presentation.Board
                         _teachDiscBaseScale = disc.transform.localScale;
                     }
                     var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-                    ring.GetComponent<Renderer>().sharedMaterial = GreyboxMaterial.Shared;
+                    // Human ruling 2026-08-06 (#36 review finding 2): the ring carries the
+                    // motion-off information, so it must READ as a ring — a distinct darker
+                    // tint (the chrome ink-navy), one static cached instance of the greybox
+                    // shader (same pipeline, no new Resources entry, no per-retry leak).
+                    ring.GetComponent<Renderer>().sharedMaterial = TeachRingMaterial();
                     ring.name = "teachring:" + switches[s].Id;
                     ring.transform.SetParent(transform, false);
                     ring.transform.localPosition =
@@ -187,14 +191,28 @@ namespace CatMetro.Presentation.Board
             RefreshSwitches();
         }
 
+        private static Material _teachRingMat; // one cached tinted instance per domain
+
+        private static Material TeachRingMaterial()
+        {
+            if (_teachRingMat == null && GreyboxMaterial.Shared != null)
+            {
+                _teachRingMat = new Material(GreyboxMaterial.Shared);
+                _teachRingMat.color = new Color(0.13f, 0.19f, 0.29f); // the chrome ink-navy
+            }
+            return _teachRingMat != null ? _teachRingMat : GreyboxMaterial.Shared;
+        }
+
         // The teach tick: clear keys on ANY command for the switch in the session log (a
         // toggle-back never re-teaches); the pulse reads render-side time only and mutates
-        // the cached transform — zero allocation, zero sim contact.
-        private void UpdateTeach()
+        // the cached transform — zero allocation, zero sim contact. Reads the CALLER's
+        // session (review F9) so a future multi-session caller cannot key teach state to a
+        // stale log.
+        private void UpdateTeach(GameSession session)
         {
             if (_teachRing == null) return;
             bool motionOff = MotionOffSource != null && MotionOffSource();
-            var entries = _session.Log.Entries;
+            var entries = session.Log.Entries;
             for (int s = 0; s < _teachRing.Length; s++)
             {
                 if (_teachCleared[s]) continue;
@@ -238,7 +256,7 @@ namespace CatMetro.Presentation.Board
         public void UpdateFrom(GameSession session)
         {
             RefreshSwitches();
-            UpdateTeach();
+            UpdateTeach(session);
             float alpha = (float)session.Alpha;
             var trains = session.State.Trains;
             for (int t = 0; t < trains.Length; t++)
