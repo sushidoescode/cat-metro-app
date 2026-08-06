@@ -39,11 +39,11 @@ namespace CatMetro.Tests.EventTaxonomy
         private static int RecordBytesTheWayCmC8ComputesThem(AnalyticsEvent e, long ord)
         {
             // The REAL persisted record shape is {id, ord, name, params} (AnalyticsQueue.cs
-            // MakeRecord + DeriveId's 32-hex id) — review L2 corrected an earlier 3-field
-            // computation that under-counted by the id's ~26 bytes
+            // MakeRecord; DeriveId's id is 16 hex chars) — review L2 corrected an earlier
+            // 3-field computation; round 2 corrected the id width
             var record = new JObject
             {
-                ["id"] = "0123456789abcdef0123456789abcdef",
+                ["id"] = "0123456789abcdef", // DeriveId emits 8 bytes as x2 = 16 hex chars (review L2 round 2)
                 ["ord"] = ord,
                 ["name"] = e.Name ?? "",
                 ["params"] = e.Params ?? new JObject(),

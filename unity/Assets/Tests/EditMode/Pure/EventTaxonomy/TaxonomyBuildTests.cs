@@ -54,11 +54,13 @@ namespace CatMetro.Tests.EventTaxonomy
         [Test]
         public void RequiredKey_WithExplicitJsonNull_IsMissing()
         {
-            // review B7: reachable from the shipped facade (a null string arg becomes a null
-            // JSON token) — presence of the KEY is not presence of a VALUE
+            // review B7 round 2: use the EXACT token the shipped facade produces — Newtonsoft's
+            // implicit (string)null assignment yields a JValue typed STRING whose Value is null
+            // (it serializes as null but never has JTokenType.Null); JValue.CreateNull() was a
+            // different token and let the real case through
             var row = TaxonomyFixtures.ParseRows().Single(r => r.Name == "app_open");
             var p = TaxonomyFixtures.CanonicalParams(row, includeOptional: false);
-            p["session_id"] = JValue.CreateNull();
+            p["session_id"] = (string)null;
             bool ok = Taxonomy.TryBuild("app_open", p, out _, out var error);
             Assert.That(ok, Is.False, "a null-valued required key passed the wall");
             Assert.That(error, Does.Contain("session_id"));

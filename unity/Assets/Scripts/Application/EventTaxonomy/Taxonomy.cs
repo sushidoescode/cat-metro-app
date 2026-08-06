@@ -354,7 +354,11 @@ namespace CatMetro.Application.EventTaxonomy
             foreach (var req in row.RequiredParams)
                {
                 var reqProp = parameters.Property(req);
-                if (reqProp == null || reqProp.Value.Type == JTokenType.Null) // review B7: an explicit JSON null is MISSING
+                // review B7 (round 2): three null shapes are all MISSING — absent key, an
+                // explicit JTokenType.Null, AND Newtonsoft's (string)null assignment, which
+                // yields a String-typed JValue whose .Value is null (serializes as null)
+                if (reqProp == null || reqProp.Value.Type == JTokenType.Null
+                    || (reqProp.Value is JValue jv && jv.Value == null))
                    {
                     error = "missing required param: " + req;
                     return false;
