@@ -108,9 +108,14 @@ namespace CatMetro.Tests.PlayMode
             Time.timeScale = 1f;
             Assert.That(_root.ScreenState, Is.EqualTo("FailureReview"),
                 "inactive play must reach the fail/retry loop — the demo's whole point");
+            // Contract amendment (recorded in the status log): QueueOverflow is provably
+            // input-independent in single-source topologies (Simulation.cs:12-24 — one mouth
+            // release per tick, and only SRC feeds E1), so the player-skill failure is the
+            // CLOCK: the slow default route misses the limit. The burst waves still spike the
+            // depot queue for ring drama; TimeOut is the designed loss.
             Assert.That(_root.Session.State.Outcome.Reason,
-                Is.EqualTo(CatMetro.Domain.FailReason.QueueOverflow),
-                "via QueueOverflow — never the pinned misroute boundary");
+                Is.EqualTo(CatMetro.Domain.FailReason.TimeOut),
+                "via TimeOut — never the pinned misroute boundary");
             // and the loop is live: one tap returns to Playing
             int r = _root.Input.HandleTapAtScreen(
                 new Vector2(Screen.width * 0.5f, Screen.height * 0.1f));

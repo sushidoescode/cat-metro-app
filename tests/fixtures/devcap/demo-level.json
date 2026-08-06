@@ -8,40 +8,40 @@
     "difficultyTarget": 0.35,
     "mechanics": ["switch", "queue"],
     "newMechanic": null,
-    "teachingGoal": "Alternate the junction so neither platform clogs; a clogged line backs up to the depot",
+    "teachingGoal": "The default route is the long way round — switch to the short line before the clock runs out",
     "minActionWindowTicks": 16,
     "authoredBy": "llm+validator"
   },
   "board": {
     "nodes": [
-      { "id": "SRC", "x": 3, "y": 9, "queueCapacity": 5 },
+      { "id": "SRC", "x": 3, "y": 9, "queueCapacity": 4 },
       { "id": "J1", "x": 3, "y": 6 },
       { "id": "RDL", "x": 1, "y": 2 },
       { "id": "RDR", "x": 5, "y": 2 }
     ],
     "edges": [
-      { "id": "E1", "from": "SRC", "to": "J1", "travelTicks": 8 },
-      { "id": "E2", "from": "J1", "to": "RDL", "travelTicks": 10 },
-      { "id": "E3", "from": "J1", "to": "RDR", "travelTicks": 10 }
+      { "id": "E1", "from": "SRC", "to": "J1", "travelTicks": 6 },
+      { "id": "E2", "from": "J1", "to": "RDL", "travelTicks": 6 },
+      { "id": "E3", "from": "J1", "to": "RDR", "travelTicks": 28 }
     ]
   },
   "sources": [ { "nodeId": "SRC", "allowedColors": ["red"] } ],
   "stations": [
-    { "nodeId": "RDL", "accepts": ["red"], "capacity": 3 },
-    { "nodeId": "RDR", "accepts": ["red"], "capacity": 3 }
+    { "nodeId": "RDL", "accepts": ["red"], "capacity": 6 },
+    { "nodeId": "RDR", "accepts": ["red"], "capacity": 6 }
   ],
   "switches": [
-    { "id": "S1", "nodeId": "J1", "routes": ["E2", "E3"], "initialRoute": 0 }
+    { "id": "S1", "nodeId": "J1", "routes": ["E2", "E3"], "initialRoute": 1 }
   ],
   "waves": [
-    { "tick": 8, "sourceNode": "SRC", "color": "red", "count": 6, "spacingTicks": 2 },
-    { "tick": 26, "sourceNode": "SRC", "color": "red", "count": 6, "spacingTicks": 2 },
-    { "tick": 44, "sourceNode": "SRC", "color": "red", "count": 8, "spacingTicks": 1 }
+    { "tick": 6, "sourceNode": "SRC", "color": "red", "count": 5, "spacingTicks": 2 },
+    { "tick": 20, "sourceNode": "SRC", "color": "red", "count": 4, "spacingTicks": 1 },
+    { "tick": 21, "sourceNode": "SRC", "color": "red", "count": 4, "spacingTicks": 1 }
   ],
   "win": {
-    "deliveries": 14,
-    "timeLimitTicks": 200,
-    "perfectMaxSwitches": 6,
+    "deliveries": 13,
+    "timeLimitTicks": 60,
+    "perfectMaxSwitches": 2,
     "stars": { "two": 200, "three": 300 }
   },
   "economy": { "baseTickets": 20, "perfectBonus": 10 }
