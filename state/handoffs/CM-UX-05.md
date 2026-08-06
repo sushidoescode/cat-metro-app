@@ -53,6 +53,20 @@ first commit on the branch). Wrapper baseline at anchor: N = 12; this slice adds
   chip, or the chip ride elsewhere, is exactly the placement eyeball's call — recorded, not
   silently absorbed.
 
+## Full-suite run — 2026-08-06 (PR-prep session, committed tree at 59a2104)
+
+`bash scripts/check.sh && bash scripts/test.sh`, exit 0. Summary lines verbatim:
+
+```
+check: OK (interim harness — real lint+typecheck arrive with the stack)
+editmode.test.sh: OK (10, 11, 9-static, 6-static, 2-static; EditMode 393/393; PlayMode 60/60)
+PASS tests/unity/editmode.test.sh
+test: 12/12 passed
+```
+
+All 12 wrappers PASS (N = 12 at anchor ca13801; this slice adds no wrapper — N unchanged).
+Golden hash stable (`determinism: OK — d4818af8… stable across two dotnet test processes`).
+
 ## Forward obligations (CM-UX-07 inherits)
 
 - Attach line: `hint = root.AddComponent<HintChipController>(); hint.Attach(() => root.ScreenState);`
