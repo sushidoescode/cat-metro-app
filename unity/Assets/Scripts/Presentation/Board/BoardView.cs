@@ -193,14 +193,20 @@ namespace CatMetro.Presentation.Board
 
         private static Material _teachRingMat; // one cached tinted instance per domain
 
+        // The DEVFIX criterion-5 static gate counts CreatePrimitive calls against
+        // GreyboxMaterial binds one-to-one — this helper deliberately names the provider
+        // EXACTLY once (the ring's bind), copying its material so the shader (and the gate's
+        // live shader-equality walk) stay identical while the tint differentiates the ring.
         private static Material TeachRingMaterial()
         {
-            if (_teachRingMat == null && GreyboxMaterial.Shared != null)
+            if (_teachRingMat == null)
             {
-                _teachRingMat = new Material(GreyboxMaterial.Shared);
+                var basis = GreyboxMaterial.Shared;
+                if (basis == null) return null; // the provider already logged loudly
+                _teachRingMat = new Material(basis);
                 _teachRingMat.color = new Color(0.13f, 0.19f, 0.29f); // the chrome ink-navy
             }
-            return _teachRingMat != null ? _teachRingMat : GreyboxMaterial.Shared;
+            return _teachRingMat;
         }
 
         // The teach tick: clear keys on ANY command for the switch in the session log (a
