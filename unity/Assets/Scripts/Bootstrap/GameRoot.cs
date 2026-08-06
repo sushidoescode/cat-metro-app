@@ -92,6 +92,10 @@ namespace CatMetro.Bootstrap
         private void InitializeFromSeam(string levelPath)
         {
             if (Session != null) return;
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            var devLevel = DevCapture.DevLevelOverride.TryImport();
+            if (devLevel != null) { Wire(devLevel); return; }
+#endif
             var source = new StreamingAssetsContentSource();
             var bytes = source.ReadAsync(levelPath, CancellationToken.None).GetAwaiter().GetResult();
             var imported = LevelImporter.Import(bytes);

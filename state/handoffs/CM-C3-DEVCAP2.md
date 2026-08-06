@@ -7,3 +7,5 @@
   fixtures, or unreachable). VISIBLE contract amendment: criterion 5(a) loss = TimeOut (slow
   default route vs the clock); burst waves keep the overload-ring tension, recoverable by design.
   Demo v2: fast route 6 ticks vs slow default 28; timeLimit 60; win.deliveries 13.
+
+- 2026-08-06 green: override + boot hook implemented; 5/5 filtered + devcap scanner green over the new file. VISUAL LEG (criterion 5): five demo beats captured from the real scene camera (early/burst/crawl/FailureReview/post-retry, PNGs in session scratchpad; fail + retry frames coordinator-verified by eye — orange cause ring on the depot, LOCKED TimeOut banner "The last train left the depot", post-retry board pristine at rest pose). Probe deleted before commit. Full suite next, then PR + review round.
