@@ -10,3 +10,5 @@
   7 domains, bijection-helper negative), independently confirming the contract's counts.
   Green next: the 45-row table + TryBuild + 45 factories (local-executor lane, red tests as
   check_cmd; frontier review follows).
+
+- 2026-08-06 green: local-executor lane delivered the transcription in 7 turns (328/328 filtered; check_cmd-verified). Wrapper OK (7, 8-static, 9, 11-static, 13 — one construction site confirmed in Taxonomy.cs, dark set locked, bound literals absent). Hybrid run log committed as provenance. Meta generation + full N+1 suite + fresh-context review next.
