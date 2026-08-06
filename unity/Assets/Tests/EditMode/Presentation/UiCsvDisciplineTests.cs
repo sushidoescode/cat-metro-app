@@ -41,17 +41,21 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void NewRows_ExactlyTheTwoPinned_Appended()
+        public void NewRows_ExactlyTheThreePinned_Appended()
         {
             var rows = Rows();
-            // R1-L6: the exact count is SLICE-SCOPED evidence for CM-UX-02's "gains exactly
-            // two rows" criterion. A later append-slice amends this bound as declared contract
-            // evolution (raise the count + pin its own rows); it may never touch rows 0-6.
-            Assert.That(rows.Length, Is.EqualTo(FrozenBaseRows.Length + 2),
-                "this slice appends exactly two rows");
+            // R1-L6: the exact count is SLICE-SCOPED evidence for the append-only law. A later
+            // append-slice amends this bound as declared contract evolution (raise the count +
+            // pin its own rows); it may never touch the earlier rows. CM-UX-04 exercises
+            // exactly that clause: count 7 → 8, one new pinned row — recorded in its frozen
+            // contract (criterion 8), never silent.
+            Assert.That(rows.Length, Is.EqualTo(FrozenBaseRows.Length + 3),
+                "CM-UX-02 appended two rows; CM-UX-04 appends exactly one more");
             Assert.That(rows[5], Is.EqualTo("retry.cta,Try again"), "LOCKED");
             Assert.That(rows[6], Is.EqualTo("halt.notice,Signal fault — the line stopped"),
                 "DRAFT, byte-pinned including U+2014");
+            Assert.That(rows[7], Is.EqualTo("results.next,Next"),
+                "LOCKED (CM-UX-04's declared append)");
         }
 
         [Test]
