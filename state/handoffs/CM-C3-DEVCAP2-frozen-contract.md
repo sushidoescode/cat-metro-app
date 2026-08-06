@@ -3,7 +3,9 @@
 **Status: FROZEN 2026-08-06 at branch anchor (origin/main), branch
 `task/CM-C3-DEVCAP2-level-override`.** The mechanism was human-ratified in-session 2026-08-05
 ("dev-only level override" chosen over shipping a failable level or waiting for UX replay), and
-re-prioritized by the human 2026-08-06: the demo build is the point — "I'm looking for the
+re-prioritized by the human 2026-08-06: the demo build is the point. **Criterion-5(a)
+amendment (TimeOut loss) RATIFIED by the human in-session 2026-08-06** — informed by the
+reviewer's independent confirmation of the input-independence proof and the F7 thinness note — "I'm looking for the
 meatier build and testing an actual level so we can iterate on feedback."
 
 **DEPENDS-ON:** CM-C3-DEVCAP merged (#26 — the guarded `Bootstrap/DevCapture/**` tree, its

@@ -19,3 +19,4 @@
   the one-line ratification per the 4fbc57c pattern. Reviewer independently CONFIRMED the
   amendment's engineering core (1/tick drain, input-independent) by source read + a Domain trace
   (no-input: TimeOut at t60, 11/13 deliveries — margin is 2 ticks, knife-edge by design note F7).
+- 2026-08-06 amendment RATIFIED (human, in-session, one line per the 4fbc57c pattern): TimeOut is criterion 5(a)'s loss. F1/F2 doc corrections landed pre-ratification. Merging.
