@@ -196,7 +196,8 @@ namespace CatMetro.Tests.PlayMode
             typeof(Transform), typeof(RectTransform), typeof(Canvas),
             typeof(CanvasRenderer), typeof(UnityEngine.UI.CanvasScaler),
             typeof(UnityEngine.UI.Image), typeof(TMPro.TextMeshProUGUI),
-            typeof(ScreenChromeController), typeof(RetryCtaView), typeof(HaltVeilView),
+            typeof(RetryCtaView), typeof(HaltVeilView),
+            // (the controller sits on GameRoot's object, never under ChromeRoot — R2 nit)
         };
 
         private static Component FirstOffWhitelist(GameObject root)

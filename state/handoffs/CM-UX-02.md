@@ -21,10 +21,10 @@ the #29 ratified ordering). Post-DEVFIX baseline verified first: EditMode 353/35
   rig)**. Post-R1 fixes: **EM 375/375 · PM 47/47** (adds the UiChrome pairing test, the P9P
   inert pin, a fourth realistic-dpi floor row, and the H1 painted-rect joint test). The
   re-captured CTA frame is full-width in a Screen-matched frame; the batch host's landscape
-  aspect (640x496) makes the board overlap the band compositionally — an artifact of the host
+  aspect (640x480, measured) makes the board overlap the band compositionally — an artifact of the host
   aspect, not the layout law; the device-aspect eyeball stays with the TG sitting.
 - **Visual verification (#33 standing rule, RE-EVIDENCED per R1-M1):** the first CTA capture
-  was NON-PROBATIVE — the 720x1280 RT disagreed with batchmode Screen (~640x496), so the
+  was NON-PROBATIVE — the 720x1280 RT disagreed with batchmode Screen (640x480, measured in R2), so the
   ScreenSpaceCamera canvas rendered at RT size while the view laid out from Screen: the chip
   measured 88.9% width / 9.7% height in-frame. Root cause fixed (Screen-matched RT), frames
   re-captured and re-eyeballed. The veil frame was probative in both rounds (relative anchors);
@@ -39,11 +39,17 @@ the #29 ratified ordering). Post-DEVFIX baseline verified first: EditMode 353/35
 1 TMP/UGUI render-only → PlayMode whitelist walk + decoy Button control; harness statics
   unmodified · 2 transitions → Playing→FailureReview→Playing + Won rows, pre-flip controls ·
 3 CTA → LOCKED copy via key; safe-area thumb band live-bound at the view; EditMode
-  tappable-rect table (injected dpi; zero-inset + 48px-nav + nav+cutout rows); render-only
+  tappable-rect table (dpi INJECTED PER ROW: zero-inset + 48px-nav + nav+cutout at 160 dpi +
+  a Pixel-9-Pro-class row at 486 dpi) **plus the R1-H1 joint test — the live PaintedRectPx
+  equals ThumbBand(safeArea) and the live tappable rect clears the floor**; render-only
   (Regions.Count with decoy 0→+1→0) · 4 REAL halt via GameRoot.Launch()+timescale (the
   GreyboxTests recipe) with the exact CM-UX-07 delegate shape; vocab guard over csv value +
-  slice sources (exemptions argued in the guard header) · 5 motion parity + decoy Animator;
-  TMP glyph-geometry proxy · 6 csv byte-pins incl. U+2014 round-trip; P-4 literal guard ·
+  slice sources (exemptions argued in the guard header) · 5 motion-off structural guarantee
+  ONLY (zero animation components over the whole ChromeRoot + decoy Animator; **the frozen
+  contract's 5(b) parity assert was REMOVED in the R1 fixes as provably tautological — nothing
+  in this chrome reads MotionOff and there is no motion to toggle; a named-check removal under
+  hard rule 5, carried as a human line on the PR**); TMP glyph-geometry proxy · 6 csv
+  byte-pins incl. U+2014 round-trip; P-4 literal guard ·
 7 zero registrations (decoy-proven counter) · 8 both divergence zones pinned numerically ·
 9 zero existing-test edits; suites green; Packages untouched (verified each commit).
 
@@ -102,7 +108,10 @@ removal deleted the TRACKED `Assets/Editor.meta`; restored via `git checkout` wi
   merged LOCKED keys).
 - Forward obligations restated: CM-UX-07 binds `BoardInputActive` in the SAME PR that attaches
   the controller; first registrar is CM-UX-06 (R1-F3 law); two-text-stacks interim recorded
-  for the TG sitting.
+  for the TG sitting; **R2-NEW-4: `PaintedRectPx` is self-reported by the view — when
+  CM-UX-07 takes the band-reconciliation line, add a RectTransform world-corners read-back
+  assert so a sizeDelta drift cannot hide behind the reported rect** (bounded today by the
+  measured capture).
 
 ---
 

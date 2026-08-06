@@ -58,7 +58,8 @@ namespace CatMetro.Presentation.Hud
 
         // The live binding site: Screen.safeArea/dpi are read HERE and handed to pure math.
         // R1-L7: re-layout only when the safe area actually changes — a static screen must not
-        // dirty the RectTransform every frame (DEVFIX's frame-rate policy).
+        // dirty the RectTransform every frame (DEVFIX's frame-rate policy). The cache key is
+        // the safe area ALONE: if the band formula ever gains another input, key on it too.
         private Rect _lastSafeArea = new Rect(-1f, -1f, -1f, -1f);
 
         private void LayoutInThumbBand()
