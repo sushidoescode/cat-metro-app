@@ -47,10 +47,10 @@ footprint, loud provenance, loud fallback.
 5. **A human-playable DEMO level exists in the test tree, solver-witnessed, never shipped.**
    `tests/fixtures/devcap/demo-level.json`: all-red cats, TWO red-accepting stations (the
    misroute/halt boundary is unreachable by construction — every route is color-legal), waves
-   tuned so that (a) inactive play fails via `QueueOverflow` (the fail/retry loop demonstrably
+   tuned so that (a) inactive play fails **[AMENDED at red, 2026-08-06 — see status log: via `TimeOut`; the sim's one-release-per-mouth-per-tick semantics (`Simulation.cs:12-24`) make QueueOverflow input-independent in single-source topologies, so the clock is the player-skill loss; burst waves keep the recoverable overload-ring drama]** (the fail/retry loop demonstrably
    fires — cause camera, banner, one-tap retry), and (b) active switching can win.
    *Check (both halves mechanical):* one PlayMode test boots it via the override seam and runs
-   TWO legs — no-input to `Failed(QueueOverflow)`/`FailureReview`, and a scripted switching
+   TWO legs — no-input to `Failed(TimeOut)`/`FailureReview` **[same amendment]**, and a scripted switching
    sequence to `Won` (the sequence may come from the solver's optimal log; if the solver deems
    it unsolvable, re-tune the level, never the test). Plus a wrapper leg asserting the demo file
    imports clean through the validator's runtime importer path. **Visual leg (standing user
