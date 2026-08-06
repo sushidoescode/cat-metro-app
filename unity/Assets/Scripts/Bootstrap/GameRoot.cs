@@ -104,6 +104,7 @@ namespace CatMetro.Bootstrap
 
         private void Wire(ImportedLevel level)
         {
+            FramePolicy.Apply(); // CM-C2b-DEVFIX criterion 3: every boot path passes through here
             _level = level;
             Session = new GameSession(level);
 
