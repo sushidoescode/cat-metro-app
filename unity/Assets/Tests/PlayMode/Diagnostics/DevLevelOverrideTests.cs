@@ -111,8 +111,9 @@ namespace CatMetro.Tests.PlayMode
             // Contract amendment (recorded in the status log): QueueOverflow is provably
             // input-independent in single-source topologies (Simulation.cs:12-24 — one mouth
             // release per tick, and only SRC feeds E1), so the player-skill failure is the
-            // CLOCK: the slow default route misses the limit. The burst waves still spike the
-            // depot queue for ring drama; TimeOut is the designed loss.
+            // CLOCK: the slow default route misses the limit. TimeOut is the designed loss.
+            // (Review F1: burst waves add pressure but never arm the overload state here, and
+            // no overload ring is rendered anywhere yet — CM-R02.5 is a follow-up.)
             Assert.That(_root.Session.State.Outcome.Reason,
                 Is.EqualTo(CatMetro.Domain.FailReason.TimeOut),
                 "via TimeOut — never the pinned misroute boundary");

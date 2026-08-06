@@ -39,8 +39,9 @@ footprint, loud provenance, loud fallback.
    (whole-file dev guard — the EXISTING `tests/unity/devcap.test.sh` scanner already enforces
    wrap + reference-guarding + clock-token ban over that tree with fixture-proven gates; this
    contract adds NO new scanner). GameRoot gains ≤5 added lines, all inside the existing
-   `#if DEVELOPMENT_BUILD || UNITY_EDITOR` discipline, references at guard depth ≥1 (scanner
-   rule 2 covers them). The release strings scan (`DEVCAP_LEVEL_OVERRIDE` count 0 vs a dev-build
+   `#if DEVELOPMENT_BUILD || UNITY_EDITOR` discipline, references at guard depth ≥1 — guarded BY CONSTRUCTION; the merged scanner's
+   reference rule does not yet name `DevLevelOverride` (review F2; SYM extension filed as a
+   follow-up in the status log — the wrapper is frozen by #26 and may not be edited here). The release strings scan (`DEVCAP_LEVEL_OVERRIDE` count 0 vs a dev-build
    positive control) rides the next release-APK scan alongside the deferred `DEVCAP_WRITTEN` leg.
    *Check:* `bash tests/unity/devcap.test.sh` green (the scanner sweeps the new file
    automatically); `git diff --name-only` in the PR proves the file table.
