@@ -63,6 +63,25 @@ namespace CatMetro.Tests.EventTaxonomy
                 "oversize event is a bug; no free text is permitted in the taxonomy");
         }
 
+        // --- criterion 9's lockstep case: the wrapper's hard-coded dark list cannot drift
+        // from the table's area ∈ {economy, ads, monetization} set ---
+        [Test]
+        public void WrapperDarkList_EqualsTheTablesDarkSet()
+        {
+            string wrapper = System.IO.File.ReadAllText(System.IO.Path.Combine(
+                TaxonomyFixtures.RepoRoot(), "tests", "taxonomy", "taxonomy.test.sh"));
+            var m = System.Text.RegularExpressions.Regex.Match(wrapper, "\nDARK='([^']+)'");
+            Assert.That(m.Success, Is.True, "the wrapper's DARK= line is missing");
+            var wrapperNames = m.Groups[1].Value.Split('|').OrderBy(x => x).ToList();
+            var darkFromCsv = TaxonomyFixtures.DarkRowNames()
+                .Select(n => string.Concat(n.Split('_')
+                    .Select(p => char.ToUpperInvariant(p[0]) + p.Substring(1))))
+                .OrderBy(x => x).ToList();
+            Assert.That(darkFromCsv.Count, Is.EqualTo(15), "2 economy + 5 ads + 8 monetization");
+            Assert.That(wrapperNames, Is.EqualTo(darkFromCsv),
+                "edit the shell list and the CSV together or not at all");
+        }
+
         // --- criterion 12 ---
         private static object[] CanonicalArgsFor(MethodInfo factory)
         {
