@@ -22,9 +22,15 @@ namespace CatMetro.Presentation.Board
         // MotionOffSource binding is CM-UX-07's, tests bind directly).
         public System.Func<bool> MotionOffSource;
 
+        private Transform[] _teachRing;   // static shape twin — never animated
+        private Transform[] _teachDisc;   // the pulsing disc transforms
+        private Vector3 _teachDiscBaseScale;
+        private bool[] _teachCleared;
+
         public bool TeachAffordancePresent(int switchIndex)
         {
-            return false; // skeleton (red phase)
+            return _teachRing != null && _teachRing[switchIndex] != null
+                && _teachRing[switchIndex].gameObject.activeSelf;
         }
 
         private GameSession _session;
@@ -152,8 +158,60 @@ namespace CatMetro.Presentation.Board
                 arm.transform.SetParent(disc.transform.parent, false);
                 arm.transform.localScale = new Vector3(0.1f, 0.9f, 0.1f);
                 _switchArm[s] = arm.transform;
+
+                // CM-UX-03: onboarding-band teach affordance — a STATIC raised ring behind
+                // the disc (shape carries the information; no BoardElementId, so the merged
+                // render-fidelity inventory is untouched) plus the disc pulse driven in
+                // UpdateFrom. Band-gated HERE so Retry's rebuild re-teaches by construction.
+                if (level.Dto.Meta.Band == "onboarding")
+                {
+                    if (_teachRing == null)
+                    {
+                        _teachRing = new Transform[switches.Length];
+                        _teachDisc = new Transform[switches.Length];
+                        _teachCleared = new bool[switches.Length];
+                        _teachDiscBaseScale = disc.transform.localScale;
+                    }
+                    var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                    ring.GetComponent<Renderer>().sharedMaterial = GreyboxMaterial.Shared;
+                    ring.name = "teachring:" + switches[s].Id;
+                    ring.transform.SetParent(transform, false);
+                    ring.transform.localPosition =
+                        _nodePos[_switchNode[s]] + new Vector3(0f, 0f, -0.35f);
+                    ring.transform.localScale = new Vector3(0.8f, 0.04f, 0.8f);
+                    ring.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                    _teachRing[s] = ring.transform;
+                    _teachDisc[s] = disc.transform;
+                }
             }
             RefreshSwitches();
+        }
+
+        // The teach tick: clear keys on ANY command for the switch in the session log (a
+        // toggle-back never re-teaches); the pulse reads render-side time only and mutates
+        // the cached transform — zero allocation, zero sim contact.
+        private void UpdateTeach()
+        {
+            if (_teachRing == null) return;
+            bool motionOff = MotionOffSource != null && MotionOffSource();
+            var entries = _session.Log.Entries;
+            for (int s = 0; s < _teachRing.Length; s++)
+            {
+                if (_teachCleared[s]) continue;
+                bool commanded = false;
+                for (int i = 0; i < entries.Count; i++)
+                    if (entries[i].SwitchId == s) { commanded = true; break; }
+                if (commanded)
+                {
+                    _teachCleared[s] = true;
+                    _teachRing[s].gameObject.SetActive(false);
+                    _teachDisc[s].localScale = _teachDiscBaseScale;
+                    continue;
+                }
+                _teachDisc[s].localScale = motionOff
+                    ? _teachDiscBaseScale
+                    : _teachDiscBaseScale * (1f + 0.12f * Mathf.Sin(Time.time * 4f + s));
+            }
         }
 
         // The COMMITTED route: authoritative state plus not-yet-applied toggles (criterion 3a).
@@ -180,6 +238,7 @@ namespace CatMetro.Presentation.Board
         public void UpdateFrom(GameSession session)
         {
             RefreshSwitches();
+            UpdateTeach();
             float alpha = (float)session.Alpha;
             var trains = session.State.Trains;
             for (int t = 0; t < trains.Length; t++)

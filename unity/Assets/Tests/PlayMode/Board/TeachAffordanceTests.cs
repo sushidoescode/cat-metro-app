@@ -217,6 +217,35 @@ namespace CatMetro.Tests.PlayMode
                 "the pulse mutates cached transforms — it never allocates objects per frame");
         }
 
+        // The #33 evidence rig (disarmed path PASSES explicitly — the CM-UX-02 wrapper lesson).
+        [UnityTest]
+        public IEnumerator CaptureEvidence_TeachAffordanceFrame_WhenRequested()
+        {
+            var dir = System.Environment.GetEnvironmentVariable("CM_UX03_CAPTURE_DIR");
+            if (string.IsNullOrEmpty(dir))
+            {
+                Assert.Pass("capture rig disarmed — set CM_UX03_CAPTURE_DIR to emit the frame");
+                yield break;
+            }
+            _root = GameRoot.LaunchWith(Import(TwoSwitchJson("onboarding")));
+            yield return null;
+            yield return null;
+            var rt = new RenderTexture(Screen.width, Screen.height, 24); // Screen-matched (M1)
+            _root.Cam.targetTexture = rt;
+            _root.Cam.Render();
+            RenderTexture.active = rt;
+            var tex = new Texture2D(rt.width, rt.height, TextureFormat.RGB24, false);
+            tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+            tex.Apply();
+            _root.Cam.targetTexture = null;
+            RenderTexture.active = null;
+            System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.WriteAllBytes(
+                System.IO.Path.Combine(dir, "cm-ux-03-teach.png"), tex.EncodeToPNG());
+            Object.Destroy(tex);
+            Object.Destroy(rt);
+        }
+
         private static Transform FindByName(GameObject root, string name)
         {
             foreach (var t in root.GetComponentsInChildren<Transform>(true))
