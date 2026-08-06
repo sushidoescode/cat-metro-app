@@ -1,4 +1,7 @@
 using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Input;
 
 namespace CatMetro.Presentation.Screens
@@ -15,34 +18,178 @@ namespace CatMetro.Presentation.Screens
     // renders in BOTH modes — motion never carries the information.
     public sealed class HomeScreenView : MonoBehaviour
     {
+        private const string PinRegionId = "home.pin.l001";
+        private const int PinRegionPriority = 0; // explicit per A-UX1-3
+
         public System.Action LevelSelected;
 
-        public Rect PinPaintedRectPx => default; // RED stub
-        public bool RingVisible => false; // RED stub
-        public float PinScale => 1f; // RED stub
+        private ChromeRegions _regions;
+        private System.Func<bool> _motionOff;
+        private bool _registered;
+        private TMP_Text _title;
+        private RectTransform _pin;
+        private RectTransform _ring;
+        private Rect _pinRectPx;
+        private float _phase;
+
+        public Rect PinPaintedRectPx => _pinRectPx;
+        public bool RingVisible => _ring != null && _ring.gameObject.activeInHierarchy;
+        public float PinScale => _pin != null ? _pin.localScale.x : 1f;
         public bool IsVisible => gameObject.activeSelf;
-        public string TitleText => ""; // RED stub
+        public string TitleText => _title != null ? _title.text : "";
 
         public static HomeScreenView Create(Transform canvasParent)
         {
             var go = new GameObject("HomeScreen");
             go.transform.SetParent(canvasParent, false);
-            return go.AddComponent<HomeScreenView>(); // RED stub
+            var view = go.AddComponent<HomeScreenView>();
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            view._title = MakeText(go.transform, "Title",
+                new Vector2(0.08f, 0.87f), new Vector2(0.92f, 0.97f),
+                Strings.UiStrings.Get("home.title"), 48f); // key-only, never a literal
+
+            // Parked-district silhouettes: scenery, not buttons (S-01 — curiosity, no locks).
+            MakeSilhouette(go.transform, "ParkedDistrictA",
+                new Vector2(0.08f, 0.55f), new Vector2(0.46f, 0.72f));
+            MakeSilhouette(go.transform, "ParkedDistrictB",
+                new Vector2(0.54f, 0.60f), new Vector2(0.92f, 0.78f));
+            MakeSilhouette(go.transform, "ParkedDistrictC",
+                new Vector2(0.16f, 0.32f), new Vector2(0.62f, 0.48f));
+
+            // The raised-ring shape twin sits BEHIND the pin (sibling order = draw order).
+            view._ring = MakeChip(go.transform, "PinRingL001",
+                new Color(0.95f, 0.92f, 0.85f, 0.85f));
+            view._pin = MakeChip(go.transform, "PinL001",
+                new Color(0.13f, 0.19f, 0.29f, 0.95f));
+
+            go.SetActive(false);
+            return view;
+        }
+
+        private static TMP_Text MakeText(Transform parent, string name,
+            Vector2 anchorMin, Vector2 anchorMax, string text, float size)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            var tmp = go.AddComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.fontSize = size;
+            tmp.color = Color.white;
+            return tmp;
+        }
+
+        private static void MakeSilhouette(Transform parent, string name,
+            Vector2 anchorMin, Vector2 anchorMax)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            var img = go.AddComponent<Image>();
+            var mat = UiChromeMaterial.Shared;
+            if (mat != null) img.material = mat;
+            img.color = new Color(0.35f, 0.38f, 0.42f, 0.55f); // muted parked scenery
+        }
+
+        private static RectTransform MakeChip(Transform parent, string name, Color color)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            var rect = go.AddComponent<RectTransform>();
+            var img = go.AddComponent<Image>();
+            var mat = UiChromeMaterial.Shared;
+            if (mat != null) img.material = mat;
+            img.color = color;
+            return rect;
         }
 
         public void Attach(ChromeRegions regions, System.Func<bool> motionOff)
         {
-            // RED stub
+            _regions = regions;
+            _motionOff = motionOff; // GameRoot.MotionOff binding is CM-UX-07's (P-3)
         }
 
         public void Show()
         {
-            // RED stub
+            gameObject.SetActive(true);
+            LayoutPin();
+            if (_regions != null && !_registered)
+            {
+                _regions.Register(PinRegionId, () => _pinRectPx,
+                    () => LevelSelected?.Invoke(), PinRegionPriority);
+                _registered = true;
+            }
         }
 
         public void Hide()
         {
-            // RED stub
+            UnregisterPin();
+            gameObject.SetActive(false);
+        }
+
+        private void OnDestroy()
+        {
+            UnregisterPin(); // R1-F3 lifetime law
+        }
+
+        private void UnregisterPin()
+        {
+            if (_regions != null && _registered)
+            {
+                _regions.Unregister(PinRegionId);
+                _registered = false;
+            }
+        }
+
+        // The live binding site (A-UX1-5 law): Screen.safeArea/dpi are read HERE and handed
+        // to pure math; px placement via bottom-left anchoring, the RetryCtaView pattern.
+        private void LayoutPin()
+        {
+            var safeArea = Screen.safeArea;
+            float dpi = Screen.dpi;
+            _pinRectPx = HomeLayout.PinRect(safeArea, dpi);
+            ApplyPx(_pin, _pinRectPx);
+            ApplyPx(_ring, HomeLayout.RingRect(safeArea, dpi));
+        }
+
+        private static void ApplyPx(RectTransform rect, Rect px)
+        {
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.zero;
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = new Vector2(px.center.x, px.center.y);
+            rect.sizeDelta = new Vector2(px.width, px.height);
+        }
+
+        // The pulse: code-driven easing only (zero Animator components — the whitelist walk
+        // proves it). Motion-off locks the rest pose exactly; the ring twin carries the
+        // "available" information in both modes. Time is presentation-only (A-UX6-3) and
+        // never enters the sim (P-6).
+        private void Update()
+        {
+            if (_pin == null) return;
+            float scale = 1f;
+            bool off = _motionOff != null && _motionOff();
+            if (!off)
+            {
+                _phase += Time.unscaledDeltaTime * 5f;
+                scale = 1f + 0.08f * Mathf.Sin(_phase);
+            }
+            _pin.localScale = new Vector3(scale, scale, 1f);
         }
     }
 }
