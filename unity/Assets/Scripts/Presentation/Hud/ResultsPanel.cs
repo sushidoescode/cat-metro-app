@@ -37,7 +37,9 @@ namespace CatMetro.Presentation.Hud
         // R1-L7 lesson: re-layout only when the safe area actually changes (frame-rate policy).
         private Rect _lastSafeArea = new Rect(-1f, -1f, -1f, -1f);
 
-        public bool IsVisible => _panelRoot != null && _panelRoot.activeSelf;
+        // #39 review F6: activeInHierarchy, not activeSelf — a deactivated host must never
+        // report a visible panel to a future wiring test.
+        public bool IsVisible => _panelRoot != null && _panelRoot.activeInHierarchy;
         public GameObject PanelRoot => _canvas != null ? _canvas.gameObject : null;
         public Transform FooterRoot => _footer;
         public Rect ChipPaintedRectPx => _chipPaintedPx;

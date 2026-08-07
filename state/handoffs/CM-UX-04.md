@@ -33,9 +33,10 @@ adoption triage).
 ## Evidence
 
 Resolved adoption tree (main @ c510e57 merged in): **EditMode 730/730 · PlayMode 70/70**
-(the EM jump is CM-C9's 329 taxonomy tests — verified unique, zero duplicates). Their green
-evidence at anchor: their commit trail. Final combined tree (over #36's rings) re-runs before
-the adoption review round; the chip/panel/rings interplay is that run's subject.
+(the EM jump is CM-C9's 329 taxonomy tests — verified unique, zero duplicates). **Final
+combined tree over #36's rings (993b96f): EditMode 730/730 · PlayMode 78/78** — the
+chip/panel/rings interplay run; the adoption reviewer independently reconciled every count
+delta to exactly this slice's tests (F10 correction: the earlier 70/70 was the pre-#36 point).
 
 ## Forward obligations (accumulated, restated for CM-UX-07 / LoadNext)
 
@@ -43,4 +44,14 @@ the adoption review round; the chip/panel/rings interplay is that run's subject.
 - CM-UX-07: `BoardInputActive` bind · `MotionOffSource` bind + Retry() rebind ·
   `ScreenChromeController` attach · the human-approved halt escape · the batched TG sitting
   (now also: results-panel weight per TG-4, the CM-UX-05 chip copy + placement, the tinted
-  teach ring feel).
+  teach ring feel, and #39 review F13: the footer container sits ABOVE the primary CTA —
+  the sitting must not inherit that inversion unexamined).
+- **Lane-wide pattern debts from the #39 adoption review (owners: CM-UX-07 / the TMP
+  migration contract):** F4 — every chrome view's `PaintedRectPx` is self-reported (cached
+  layout input, never a RectTransform read-back); a `CanvasScaler` would silently divorce
+  painted from registered; CM-UX-07 adds world-corners read-back asserts. F5 — the TMP
+  renderability proxy (`textInfo.characterCount > 0`) proves parsing, not glyph geometry;
+  upgrade to `isVisible`/vertex-count asserts lane-wide. F11 — the CM-UX-02 vocabulary
+  guard's fixed file list is three slices behind `Hud/`; a lane decision on enrolment is due.
+  F15 — the panel's full-screen scrim does not block board taps until `BoardInputActive`
+  binds; the attach and the bind MUST land together (already the standing CM-UX-07 law).

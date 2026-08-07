@@ -195,7 +195,11 @@ namespace CatMetro.Tests.PlayMode
         public IEnumerator RegistryLifetime_HideReshowDestroy_NeverLeaksARegion()
         {
             _root = GameRoot.LaunchWith(Fixture(QuietFixtureJson()));
+            // #39 review F7: the host must die with the test on ANY exit path — a leaked live
+            // host polls a stale registry for the rest of the session and cascades failures.
             var host = new GameObject("panel-host");
+            try
+            {
             var panel = host.AddComponent<ResultsPanel>();
             _state = "Won";
             panel.Attach(() => _state, _root.Input.Regions);
@@ -216,6 +220,11 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Input.Regions.Count, Is.EqualTo(0),
                 "destroy mid-show → the OnDestroy law unregisters (a live provider over a "
                 + "destroyed view would throw on the next tap otherwise)");
+            }
+            finally
+            {
+                if (host != null) Object.Destroy(host); // F7: no live host past this test
+            }
         }
 
         // --- criterion 7: render-only tree, whitelist-walked ---
