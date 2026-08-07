@@ -41,19 +41,23 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void NewRows_ExactlyTheTwoPinned_Appended()
+        public void NewRows_ExactlyTheFourPinned_Appended()
         {
             var rows = Rows();
-            // R1-L6: the exact count is SLICE-SCOPED evidence for CM-UX-02's "gains exactly
-            // two rows" criterion. A later append-slice amends this bound as declared contract
-            // evolution (raise the count + pin its own rows); it may never touch rows 0-6.
-            // + 1 — CM-UX-05's declared append (this comment's own sanctioned path): its row
-            // is pinned in HintStringsDisciplineTests; rows 0-6 stay untouched.
-            Assert.That(rows.Length, Is.EqualTo(FrozenBaseRows.Length + 3),
-                "CM-UX-02's two rows + CM-UX-05's one — each append-slice pins its own");
+            // R1-L6: the exact count is SLICE-SCOPED evidence, amended only by declared
+            // contract evolution (raise the count + pin your own rows; rows 0-6 untouchable).
+            // Adoption-merge resolution (2026-08-06, #39): CM-UX-05 merged to main FIRST, so
+            // csv append order follows MERGE order — hint.tutorial is row 7, results.next is
+            // row 8. Row 7 is pinned TRANSITIVELY (this file's length==9 + rows[0..6] + rows[8]
+            // together force it; HintStringsDisciplineTests pins its key at index >= 7 by
+            // design, #39 review F9). CM-UX-04's rows[7] pin shifts to rows[8]; count = 5 + 4.
+            Assert.That(rows.Length, Is.EqualTo(FrozenBaseRows.Length + 4),
+                "CM-UX-02's two + CM-UX-05's one + CM-UX-04's one — each append-slice pins its own");
             Assert.That(rows[5], Is.EqualTo("retry.cta,Try again"), "LOCKED");
             Assert.That(rows[6], Is.EqualTo("halt.notice,Signal fault — the line stopped"),
                 "DRAFT, byte-pinned including U+2014");
+            Assert.That(rows[8], Is.EqualTo("results.next,Next"),
+                "LOCKED (CM-UX-04's declared append, row 8 after the CM-UX-05 merge-order shift)");
         }
 
         [Test]
