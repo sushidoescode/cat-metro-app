@@ -164,3 +164,7 @@ Defaults (AGENTS.md) plus:
   640x480@~254dpi batch host — PxPerDp 1.59 confirms the dp math; the ring's bottom 8dp
   margin clips on this tiny host, phone-class thumb bands have ~6x slack; pin itself fits);
   probe deleted; frames committed to evals/results/ux/cm-ux-06/.
+- 2026-08-06 — full committed-tree suite at 9b24cba (post-restart, serial finisher):
+  `scripts/check.sh` OK; `scripts/test.sh` 12/12 wrappers passed, EXIT:0 (background run
+  bzh2m1xrd tail: `PASS tests/validation/validator.test.sh · test: 12/12 passed`); N=12
+  unchanged. Push + PR follow this entry.
