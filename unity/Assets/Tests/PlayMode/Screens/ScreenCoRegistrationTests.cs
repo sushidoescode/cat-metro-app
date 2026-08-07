@@ -115,12 +115,14 @@ namespace CatMetro.Tests.PlayMode
             sheet.Hide();
             yield return null;
             Assert.That(regions.Count, Is.EqualTo(1), "sheet unregistered on hide");
-            if (home.PinPaintedRectPx.Contains(chipCenter))
-            {
-                Assert.That(regions.TryResolve(chipCenter, out var pinTap), Is.True);
-                pinTap();
-                Assert.That(levelSelected, Is.EqualTo(1), "the pin fires once the modal is gone");
-            }
+            // #44 review F-1: the containment is this test's PRECONDITION — asserted, never
+            // an if: a layout change that moves the pin out of the overlap would otherwise
+            // silently drain the red-power of the priority assertions above.
+            Assert.That(home.PinPaintedRectPx.Contains(chipCenter), Is.True,
+                "precondition: the pin is in the overlap — otherwise this test proves nothing");
+            Assert.That(regions.TryResolve(chipCenter, out var pinTap), Is.True);
+            pinTap();
+            Assert.That(levelSelected, Is.EqualTo(1), "the pin fires once the modal is gone");
         }
     }
 }

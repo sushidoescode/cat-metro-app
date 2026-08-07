@@ -20,8 +20,8 @@ namespace CatMetro.Presentation.Screens
         private const string PlayRegionId = "intro.play";
         // #42 review F3, the modal-over-parent law: a sheet shown OVER a screen registers
         // STRICTLY above it — at equal priority the registry's earliest-registration tie-break
-        // hands the modal's dead-center tap to the parent's pin and the game cannot be started
-        // from the sheet. Explicit per A-UX1-3; parents register at 0, modals at 10.
+        // hands the modal's dead-center tap to the parent's pin — the game could not have been
+        // started from the sheet once CM-UX-07 attached these views (latent, caught pre-wiring). Explicit per A-UX1-3; parents register at 0, modals at 10.
         private const int PlayRegionPriority = 10;
 
         public System.Action PlayRequested;
