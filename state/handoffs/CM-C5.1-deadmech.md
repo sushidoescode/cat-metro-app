@@ -73,3 +73,7 @@ unchanged (tests/domain/determinism.test.sh PASS).
 - HC-25 merge delegation: NOT delegated this session — the merge is the human's, and the
   `state/PROJECT_STATE.md` edit (append one line + strike the `:58` debt row) is scoped
   "on merge only", so it is deliberately NOT in this diff.
+
+- 2026-08-06 — full committed-tree suite at 6da6580 (serial finisher): `scripts/check.sh` OK;
+  `scripts/test.sh` 11/11 wrappers passed, EXIT:0 — validator wrapper's CM-C5.1 block OK
+  (DM-1c, DM-7a, DM-7b), 15a-d/16/17a-c intact. Push + PR follow this entry.
