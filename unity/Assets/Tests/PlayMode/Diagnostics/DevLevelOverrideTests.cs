@@ -26,6 +26,12 @@ namespace CatMetro.Tests.PlayMode
             _tmpDir = Path.Combine(Path.GetTempPath(), "cm-devcap2-test", "devcap");
             Directory.CreateDirectory(_tmpDir);
             DevLevelOverride.DirectoryOverride = _tmpDir;
+            // PR #52 F4: this fixture's SceneBoot tests reach InitializeFromSeam, which now
+            // ALSO reads DevBootOverride's file (CM-DEVCAP3) — isolate it to the same empty temp
+            // dir so a real devcap/boot.json on the developer's machine can never leak an
+            // unexpected DEVCAP_BOOT_OVERRIDE log into Override_Honored_Announced_
+            // SeamLineSuppressed's LogAssert.NoUnexpectedReceived() below.
+            DevBootOverride.DirectoryOverride = _tmpDir;
         }
 
         [TearDown]
@@ -33,6 +39,7 @@ namespace CatMetro.Tests.PlayMode
         {
             Time.timeScale = 1f;
             DevLevelOverride.DirectoryOverride = null;
+            DevBootOverride.DirectoryOverride = null; // PR #52 F4
             if (_root != null) Object.Destroy(_root.gameObject);
             _root = null;
             var parent = Path.GetDirectoryName(_tmpDir);
