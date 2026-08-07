@@ -184,5 +184,18 @@ namespace CatMetro.Presentation.Hud
                 _registered = false;
             }
         }
+
+        // CM-UX-07 W-3 (R2-3, audit M-3; the panel stays UNATTACHED per Q-3 — this is the
+        // component-local half only): mirrors OnDestroy — a deactivated-but-not-destroyed host
+        // must drop the registration too, or a live rect provider survives over a host that
+        // stopped posting frames.
+        private void OnDisable()
+        {
+            if (_registered && _regions != null)
+            {
+                _regions.Unregister(RegionId);
+                _registered = false;
+            }
+        }
     }
 }
