@@ -43,3 +43,7 @@ time, never a pinned commit). The UX contract must be told the criterion-10 bloc
 - RIDES-WITH-PR table (H2, H3(ii)/(iii), H4, H5-residual, H6, HC-25) — defaults shipped,
   recorded in the PR description for human ratification at review/merge.
 - Merge NOT delegated (HC-25) — human call.
+
+- 2026-08-06 — full committed-tree suite at 7675f11 (serial finisher): `scripts/check.sh` OK;
+  `scripts/test.sh` 13/13 wrappers passed, EXIT:0 — N+1 = 13 exactly as the C6-rule capture
+  predicted (baseline N=12 + this contract's one wrapper). Push + PR follow this entry.
