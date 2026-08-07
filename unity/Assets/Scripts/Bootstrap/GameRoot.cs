@@ -51,6 +51,13 @@ namespace CatMetro.Bootstrap
         // is unchanged when this is false). Default false.
         public static bool BootToHome;
 
+        // CM-DEVCAP3: the device-side companion to BootToHome — set from DevBootOverride's file
+        // read inside InitializeFromSeam (the real device/Launch()/Awake() path only; LaunchWith
+        // never touches it, exactly like DevLevelOverride never applies there). OR'd with the
+        // static flag at Wire-end (criterion 5: the two seams are independent — neither can
+        // suppress the other; see DevBootOverrideTests.Precedence_*).
+        private bool _bootToHomeFileOverride;
+
         public CatMetro.Presentation.Screens.HomeScreenView Home { get; private set; }
         public CatMetro.Presentation.Screens.LevelIntroSheet Intro { get; private set; }
         public CatMetro.Presentation.Screens.ScreenStack Stack { get; private set; }
@@ -119,6 +126,11 @@ namespace CatMetro.Bootstrap
         {
             if (Session != null) return;
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
+            // CM-DEVCAP3: evaluated BEFORE the level-override early-return so the boot-to-home
+            // file takes effect on either sub-path (dev level override OR the shipped level) —
+            // the two file seams are independent (one picks WHICH level, the other picks
+            // WHETHER the dev screen flow composes over it, Q-5 law).
+            _bootToHomeFileOverride = DevCapture.DevBootOverride.ShouldBootToHome();
             var devLevel = DevCapture.DevLevelOverride.TryImport();
             if (devLevel != null) { Wire(devLevel); return; }
 #endif
@@ -192,7 +204,12 @@ namespace CatMetro.Bootstrap
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             if (GetComponent<DevCapture.DevFrameCapture>() == null)
                 gameObject.AddComponent<DevCapture.DevFrameCapture>().Wire(this);
-            if (BootToHome) ComposeDevScreenFlow();
+            // CM-DEVCAP3 criterion 5 (precedence): OR'd, never AND'd — the static test flag's
+            // own power to compose is never gated by the file (it composes even when the file
+            // is absent/malformed), and the file's power to compose is never gated by the flag
+            // (it composes even when BootToHome is left at its default false, the only case
+            // that matters on a real device where the static flag is never touched).
+            if (BootToHome || _bootToHomeFileOverride) ComposeDevScreenFlow();
 #endif
         }
 

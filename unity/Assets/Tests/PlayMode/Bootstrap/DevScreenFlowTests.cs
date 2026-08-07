@@ -1,9 +1,11 @@
 using System.Collections;
+using System.IO;
 using System.Text;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using CatMetro.Bootstrap;
+using CatMetro.Bootstrap.DevCapture;
 using CatMetro.Content;
 
 namespace CatMetro.Tests.PlayMode
@@ -12,22 +14,35 @@ namespace CatMetro.Tests.PlayMode
     // resolution). Static-field hygiene: BootToHome is reset in SetUp AND TearDown so a failed
     // test never bleeds the dev flag into an unrelated fixture (the flag defaults false —
     // shipped boot, Q-5 honored).
+    //
+    // CM-DEVCAP3 addendum: DevBootOverride.DirectoryOverride is ALSO reset in SetUp/TearDown to
+    // an isolated empty temp dir, so this whole file (which boots via LaunchWith — a path the
+    // file seam never touches by design, see DevBootOverrideTests) stays immune to a stray real
+    // devcap/boot.json on the developer's machine either way, and so the criterion-2 extension
+    // test below has a guaranteed-absent file to boot against.
     public sealed class DevScreenFlowTests
     {
         private GameRoot _root;
+        private string _tmpDir;
 
         [SetUp]
         public void SetUp()
         {
             GameRoot.BootToHome = false;
+            _tmpDir = Path.Combine(Path.GetTempPath(), "cm-devcap3-devscreenflow-test", "devcap");
+            Directory.CreateDirectory(_tmpDir);
+            DevBootOverride.DirectoryOverride = _tmpDir;
         }
 
         [TearDown]
         public void TearDown()
         {
             GameRoot.BootToHome = false;
+            DevBootOverride.DirectoryOverride = null;
             if (_root != null) Object.Destroy(_root.gameObject);
             _root = null;
+            var parent = Path.GetDirectoryName(_tmpDir);
+            if (parent != null && Directory.Exists(parent)) Directory.Delete(parent, true);
         }
 
         private static ImportedLevel Fixture()
@@ -68,6 +83,41 @@ namespace CatMetro.Tests.PlayMode
             // board input is unaffected (positive control: the merged behavior still holds)
             var discPos = _root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0));
             Assert.That(_root.Input.HandleTapAtScreen(discPos), Is.EqualTo(0));
+        }
+
+        // --- CM-DEVCAP3 criterion 2 (additive extension — the existing pin above is untouched):
+        // the SAME shipped-boot pin, reusing the exact same assertion shape (Home/Intro/Stack
+        // null, no ScreensCanvas, disc tap live), but proving the OTHER seam's absence case —
+        // booted via the REAL GameRoot.Launch() path (the only path the file seam ever reaches)
+        // with DevBootOverride.DirectoryOverride pointed at a guaranteed-empty temp dir, so no
+        // boot.json exists. This is the CM-DEVCAP3 sibling of the flag-false pin above. ---
+
+        [UnityTest]
+        public IEnumerator BootOverrideFileAbsent_ZeroScreenObjectsConstructed_ShippedBootPin_ViaRealLaunch()
+        {
+            Assert.That(File.Exists(Path.Combine(_tmpDir, "boot.json")), Is.False,
+                "precondition: no boot.json exists in the injected devcap dir — otherwise this "
+                + "test proves nothing about the file-absent case");
+            _root = GameRoot.Launch();
+            yield return null;
+
+            Assert.That(_root.Session.Level.Dto.Id, Is.EqualTo("L001"), "shipped L001 board");
+            Assert.That(_root.Home, Is.Null);
+            Assert.That(_root.Intro, Is.Null);
+            Assert.That(_root.Stack, Is.Null);
+            Assert.That(_root.ScreensVisible, Is.False);
+            Assert.That(FindByName(_root.gameObject, "ScreensCanvas"), Is.Null,
+                "no ScreensCanvas exists in shipped boot");
+            Assert.That(
+                _root.gameObject.GetComponentInChildren<CatMetro.Presentation.Screens.HomeScreenView>(true),
+                Is.Null, "zero Home objects constructed");
+            Assert.That(
+                _root.gameObject.GetComponentInChildren<CatMetro.Presentation.Screens.LevelIntroSheet>(true),
+                Is.Null, "zero Intro objects constructed");
+
+            // board input is unaffected (positive control: the merged behavior still holds)
+            var discPos2 = _root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0));
+            Assert.That(_root.Input.HandleTapAtScreen(discPos2), Is.EqualTo(0));
         }
 
         // --- the flag ON flow: Home -> pin tap -> Intro -> Play tap -> Playing, full round-trip ---
