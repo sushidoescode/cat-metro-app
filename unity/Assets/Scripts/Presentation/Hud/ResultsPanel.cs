@@ -97,8 +97,17 @@ namespace CatMetro.Presentation.Hud
             rootRect.offsetMax = Vector2.zero;
             var scrim = _panelRoot.AddComponent<Image>();
             if (mat != null) scrim.material = mat;
-            // Light staging scrim: dims the finished board, keeps the merged win banner
-            // legible above it; the shape+text pair carries state, never color alone.
+            // Light staging scrim: dims the finished board — the world-space win banner is
+            // dimmed right along with it, NOT legible above it (L-4 comment-truth fix, #39
+            // post-merge audit): this canvas's plane sits at distance 1 from Cam while the
+            // banner (and the rest of the board) sits much farther out, so the scrim draws in
+            // front of/over it. Measured directly, not asserted: sampled sky/board/marker
+            // pixels in evals/results/ux/cm-ux-04/cm-ux-04-results.png read ~25% darker than
+            // the same coordinates in the undimmed CM-UX-02/03 baselines (e.g. srgb(91,107,119)
+            // vs srgb(68,81,92)); the banner's own win-csv text glyphs read visibly dimmed too. Any
+            // rearrangement to keep the banner legible above this scrim is TG-4's call, not
+            // this slice's — the shape+text pair on the CTA still carries state, never color
+            // alone.
             scrim.color = new Color(0f, 0.05f, 0.10f, 0.45f);
 
             // Exactly ONE primary CTA (CM-R19.3) — painted here, hit through the region.

@@ -140,6 +140,34 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(panel.FooterRoot.childCount, Is.EqualTo(0));
         }
 
+        // #39 post-merge audit L-1 fix: the count==1 invariant above proves ONE region
+        // registers, never that it is exactly "results.next" — a renamed or copy-pasted id
+        // would still pass every assert in this file. ChromeRegions.Register throws on a
+        // literal duplicate id (the same law ChromeRegionsTests.DuplicateId_Throws pins) —
+        // attempting to register that EXACT string while the panel is shown is a live proof,
+        // through the real registry seam, of the id the panel actually used.
+        [UnityTest]
+        public IEnumerator RegisteredRegion_IdIsExactlyResultsNext()
+        {
+            var panel = AttachControlled("Won");
+            yield return null;
+            Assert.That(_root.Input.Regions.Count, Is.EqualTo(1),
+                "precondition: exactly one region is live before the identity probe");
+
+            Assert.Throws<System.ArgumentException>(() => _root.Input.Regions.Register(
+                    "results.next", () => new Rect(0, 0, 1, 1), () => { }, 0),
+                "the panel's own registration already claims the literal id 'results.next' — "
+                + "a renamed region id (or a divergent RegionId constant) would let this decoy "
+                + "register clean instead of throwing");
+
+            // positive control: an id the panel never used registers without incident in the
+            // same fixture — proving the throw above is about THIS id, not Register() always
+            // rejecting a second call
+            Assert.DoesNotThrow(() => _root.Input.Regions.Register(
+                    "decoy.unclaimed", () => new Rect(0, 0, 1, 1), () => { }, 0));
+            Assert.That(_root.Input.Regions.Unregister("decoy.unclaimed"), Is.True);
+        }
+
         // --- criteria 4 + 5: registry-routed tap; the seam is a seam ONLY ---
 
         [UnityTest]
@@ -187,6 +215,38 @@ namespace CatMetro.Tests.PlayMode
             float dpi = Screen.dpi > 0f ? Screen.dpi : 160f;
             Assert.That(HudBands.MeetsMinTargetPx(panel.ChipPaintedRectPx, dpi), Is.True,
                 "the live painted (== registered) rect clears the 48dp floor on this host");
+
+            // #39 post-merge audit M-1 fix: the EditMode law's TappableRect(chip, chip)==chip
+            // assert is an algebraic tautology (both args are the SAME local variable) — it
+            // cannot detect a real painted/registered split. Prove no-divergence for real here,
+            // reading BOTH sides from the SUT's own seams: painted via the public getter above,
+            // registered via the ACTUAL production tap-routing path (TapInput.HandleTapAtScreen
+            // -> ChromeRegions.TryResolve consulting the exact Func<Rect> ResultsPanel.cs:148
+            // registered — never a value re-derived here). A registered rect offset from the
+            // painted rect by even a few px flips one of the four inside probes to a miss.
+            var painted = panel.ChipPaintedRectPx;
+            Assert.That(_root.Input.HandleTapAtScreen(
+                    new Vector2(painted.xMin + 1f, painted.center.y)),
+                Is.EqualTo(-3), "the registered rect covers the painted rect's left edge");
+            Assert.That(_root.Input.HandleTapAtScreen(
+                    new Vector2(painted.xMax - 1f, painted.center.y)),
+                Is.EqualTo(-3), "the registered rect covers the painted rect's right edge");
+            Assert.That(_root.Input.HandleTapAtScreen(
+                    new Vector2(painted.center.x, painted.yMin + 1f)),
+                Is.EqualTo(-3), "the registered rect covers the painted rect's bottom edge");
+            Assert.That(_root.Input.HandleTapAtScreen(
+                    new Vector2(painted.center.x, painted.yMax - 1f)),
+                Is.EqualTo(-3), "the registered rect covers the painted rect's top edge");
+
+            // positive control: a point just OUTSIDE each edge misses — proving the four probes
+            // above are discriminating (bounded to the painted rect), not a region that would
+            // swallow the whole screen regardless of what actually got registered
+            Assert.That(_root.Input.HandleTapAtScreen(
+                    new Vector2(painted.xMin - 4f, painted.center.y)),
+                Is.Not.EqualTo(-3), "just outside the left edge misses the region");
+            Assert.That(_root.Input.HandleTapAtScreen(
+                    new Vector2(painted.xMax + 4f, painted.center.y)),
+                Is.Not.EqualTo(-3), "just outside the right edge misses the region");
         }
 
         // --- criterion 6: registry lifetime law (CM-UX-01 R1-F3) ---
@@ -289,7 +349,19 @@ namespace CatMetro.Tests.PlayMode
         public IEnumerator ContentSet_IsExactlyTheLockedCta_TextPlusShape_NoMotion()
         {
             var panel = AttachControlled("Won");
+            // LABELED PIN (P-7, #39 post-merge audit L-2 fix): unlike BoardView's live
+            // MotionOffSource rebind seam (GameRootWiringTests's #36 F1/F5 test), ResultsPanel
+            // wires NO motion-off source at all — v1 ships zero panel motion by construction
+            // (same honest posture as HintChip's "nothing moves" note), so this toggle cannot
+            // change the outcome below. Green on arrival, by design. The decoy control right
+            // after it proves the ASSIGNMENT itself is live at the GameRoot seam — this leg's
+            // own instrumentation isn't silently dead, even though ResultsPanel reads none of
+            // it.
             _root.MotionOffToggle = true; // motion-off removes nothing because nothing moves
+            Assert.That(_root.MotionOff, Is.True,
+                "decoy control: the toggle assignment IS observable at the GameRoot seam this "
+                + "pin relies on — a mutated GameRoot.MotionOff (e.g. ignoring the toggle) "
+                + "would read False here");
             yield return null;
 
             Assert.That(panel.IsVisible, Is.True,
@@ -343,10 +415,21 @@ namespace CatMetro.Tests.PlayMode
             _root.Session.AdvanceMs(200 * CatMetro.Application.Session.TickInterpolator.TICK_MS);
             yield return null;
             yield return null; // panel applies + TMP layout settles
-            Capture(dir, "cm-ux-04-results.png");
+
+            // #39 post-merge audit M-2 fix: assert the state we are about to photograph,
+            // unconditionally, before writing a single byte — a stalled, never-advanced
+            // Playing frame must never silently pass as Won evidence.
+            Assert.That(_root.ScreenState, Is.EqualTo("Won"),
+                "capture precondition: the sim must have actually reached Won before we "
+                + "photograph it");
+            Assert.That(panel.IsVisible, Is.True,
+                "capture precondition: the panel itself must be showing before we photograph "
+                + "it");
+
+            Capture(dir, "cm-ux-04-results.png", panel.ChipPaintedRectPx);
         }
 
-        private void Capture(string dir, string name)
+        private void Capture(string dir, string name, Rect chipAreaPx)
         {
             // Screen-matched RT (the CM-UX-02 R1-M1 lesson): canvas and view must agree on
             // the frame geometry or the evidence stops being probative for layout.
@@ -359,6 +442,23 @@ namespace CatMetro.Tests.PlayMode
             tex.Apply();
             _root.Cam.targetTexture = null;
             RenderTexture.active = null;
+
+            // #39 post-merge audit M-2 fix, capture-probe half: the frame must carry
+            // differentiated content at the CTA chip vs a background corner — a blank RT, a
+            // uniformly-stripped-shader frame, or a frame captured over the wrong camera
+            // entirely cannot silently pass as probative evidence alongside the state asserts
+            // above.
+            var chipPixel = tex.GetPixel(
+                Mathf.Clamp(Mathf.RoundToInt(chipAreaPx.center.x), 0, tex.width - 1),
+                Mathf.Clamp(Mathf.RoundToInt(chipAreaPx.center.y), 0, tex.height - 1));
+            // top-left, not bottom-left: the chip is a BOTTOM safe-area thumb band, so a
+            // corner near y=0 can sit inside its own painted rect on a small/insetless host —
+            // the top corner is always clear of it.
+            var cornerPixel = tex.GetPixel(2, tex.height - 3);
+            Assert.That(chipPixel, Is.Not.EqualTo(cornerPixel),
+                "the captured frame has differentiated content at the chip vs the corner — a "
+                + "blank or uniformly-stripped frame cannot pass this probe");
+
             System.IO.Directory.CreateDirectory(dir);
             System.IO.File.WriteAllBytes(System.IO.Path.Combine(dir, name), tex.EncodeToPNG());
             Object.Destroy(tex);
