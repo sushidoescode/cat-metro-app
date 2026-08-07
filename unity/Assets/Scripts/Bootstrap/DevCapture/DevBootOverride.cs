@@ -26,24 +26,48 @@ namespace CatMetro.Bootstrap.DevCapture
             if (!File.Exists(path)) return false;
             try
             {
+                // F8 (PR #52 round-1 review, disclosed): a raw JObject.Parse over the file's
+                // full text — Newtonsoft's default MaxDepth (64) is the only depth guard, and
+                // there is no byte-size cap, unlike LevelImporter's hardened import pipeline
+                // (CM-C2a: size cap, BOM-tolerant decode, pre-scan depth check). Accepted here
+                // because this file is dev-only and human-pushed via `adb push` (never shipped,
+                // never remote-supplied) — a much smaller trust boundary than shipped content.
+                // Deeper hardening (matching LevelImporter's belt) is tracked as follow-up debt,
+                // not required for this seam's actual threat model.
                 var root = JObject.Parse(File.ReadAllText(path));
                 var flag = root["bootToHome"];
-                // criterion 3: a missing/renamed key (flag == null) and an explicit `false`
-                // value both fall through to `return false` below WITHOUT logging — neither is
-                // an error, both are the well-formed shape of "no override requested" (the same
-                // shape as the file being absent entirely). Only a genuine parse exception
-                // (caught below) is loud.
-                if (flag != null && flag.Type == JTokenType.Boolean && (bool)flag)
+                // criterion 3(b): a missing/renamed key (flag == null) falls through to `return
+                // false` below WITHOUT logging — not an error, the well-formed shape of "no
+                // override requested" (the same shape as the file being absent entirely).
+                if (flag == null) return false;
+                // F2 (PR #52 round-1 review): a PRESENT key with a non-boolean value ("true" the
+                // string, 1 the int, etc.) is a genuinely unusable file — the same loud-fallback
+                // discipline as a JSON syntax error, naming the actual type so a human who wrote
+                // the file via a quoted shell one-liner gets a diagnosable message instead of
+                // silence.
+                if (flag.Type != JTokenType.Boolean)
                 {
-                    UnityEngine.Debug.Log("DEVCAP_BOOT_OVERRIDE " + path);
-                    return true;
+                    UnityEngine.Debug.LogError("DEVCAP_BOOT_OVERRIDE_INVALID " + path
+                        + " — bootToHome must be a boolean, found " + flag.Type
+                        + " — booting the shipped path");
+                    return false;
                 }
-                return false;
+                // criterion 3(c): a well-formed, explicit `false` is ALSO not an error — same
+                // silent "no override requested" shape.
+                if (!(bool)flag) return false;
+                UnityEngine.Debug.Log("DEVCAP_BOOT_OVERRIDE " + path);
+                return true;
             }
             catch (System.Exception ex)
             {
+                // security S2 (PR #52 round-1 review): sanitize before concatenating into a log
+                // line — strip newlines (no multi-line log injection / spoofed extra lines) and
+                // cap length (an adversarial/corrupt file can't blow up the log with a giant
+                // exception message).
+                string safeMsg = ex.Message.Replace('\n', ' ').Replace('\r', ' ');
+                if (safeMsg.Length > 200) safeMsg = safeMsg.Substring(0, 200) + "…";
                 UnityEngine.Debug.LogError("DEVCAP_BOOT_OVERRIDE_INVALID " + path
-                    + " — " + ex.Message + " — booting the shipped path");
+                    + " — " + safeMsg + " — booting the shipped path");
                 return false;
             }
         }

@@ -32,7 +32,10 @@ import os, re, sys
 capdir, refsroot = os.path.abspath(sys.argv[1]), os.path.abspath(sys.argv[2])
 fixture_mode = capdir == refsroot
 GUARD = re.compile(r'^#if\s+DEVELOPMENT_BUILD\s*\|\|\s*UNITY_EDITOR\s*$')
-SYM = re.compile(r'DevFrameCapture|FrameLogCsv')
+# PR #52 F6 (round-1 review): the override seams (CM-C3-DEVCAP2's DevLevelOverride and
+# CM-DEVCAP3's DevBootOverride) were unguarded-reference blind spots — an unfenced reference
+# to either would pass every gate (CI compiles no C#). Extended, never narrowed.
+SYM = re.compile(r'DevFrameCapture|FrameLogCsv|DevBootOverride|DevLevelOverride')
 viol = 0
 def cs_files(root):
     for r, _, fs in os.walk(root):

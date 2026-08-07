@@ -16,10 +16,12 @@ namespace CatMetro.Tests.PlayMode
     // shipped boot, Q-5 honored).
     //
     // CM-DEVCAP3 addendum: DevBootOverride.DirectoryOverride is ALSO reset in SetUp/TearDown to
-    // an isolated empty temp dir, so this whole file (which boots via LaunchWith — a path the
-    // file seam never touches by design, see DevBootOverrideTests) stays immune to a stray real
-    // devcap/boot.json on the developer's machine either way, and so the criterion-2 extension
-    // test below has a guaranteed-absent file to boot against.
+    // an isolated empty temp dir (PR #52 F7 correction: most tests below boot via LaunchWith — a
+    // path the file seam never touches by design, see DevBootOverrideTests — but the
+    // criterion-2 extension test boots via the REAL GameRoot.Launch() seam, which DOES read the
+    // file; the isolation keeps this whole file immune to a stray real devcap/boot.json on the
+    // developer's machine either way, and gives that one test a guaranteed-absent file to boot
+    // against).
     public sealed class DevScreenFlowTests
     {
         private GameRoot _root;
