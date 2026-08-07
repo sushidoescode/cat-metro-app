@@ -168,3 +168,9 @@ Defaults (AGENTS.md) plus:
   `scripts/check.sh` OK; `scripts/test.sh` 12/12 wrappers passed, EXIT:0 (background run
   bzh2m1xrd tail: `PASS tests/validation/validator.test.sh · test: 12/12 passed`); N=12
   unchanged. Push + PR follow this entry.
+- 2026-08-06 — serial-merge stacking (coordinator): main moved under the branch (#36 teach
+  pulse, #38 hint chip). ui.csv conflict resolved by stacking (hint.tutorial at row 7, this
+  slice's trio at 8-10); UiCsvDisciplineTests bound resolved +3/+5 → +6 (the same R1-L6
+  clause, now naming all three append-slices); UiCsvUx06Tests reindexed (11 rows, pins at
+  8/9/10, frozen-keys guard Take(8)). Proof: EditMode CatMetro.Tests.Presentation 74/74 on
+  merge commit 9ddf58c.
