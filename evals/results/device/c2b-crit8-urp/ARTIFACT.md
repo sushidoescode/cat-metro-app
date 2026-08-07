@@ -12,12 +12,12 @@ Captured 2026-08-06 ~01:15 local by the pre-crash device session on the Pixel 9 
 |---|---|
 | `timestats.txt` | `dumpsys SurfaceFlinger --timestats` dump. Contains BOTH the display-global "Legacy stats" block AND per-layer blocks — including the game's surface layer (`SurfaceView[com.catmetro.game/...UnityPlayerGameActivity]`, three display-config sections) with per-layer `present2present`, `present2presentDelta`, and companion histograms. **The game-layer sections are the protocol's instrument** (original artifact: "presented-frame intervals for the game's surface layer"). |
 | `latency-header-only-FAILED-CAPTURE.txt` | The `--latency` per-frame table — **capture FAILED**: vsync-period header only (16666664 ns), zero frame rows (layer-name mismatch, most likely). Kept as the honest record. Note: its absence does NOT leave the per-layer question unanswerable — see the `present2presentDelta` row below. |
-| `urp-frame.png` | Device screencap from the same sitting: the URP greybox board mid-run — sky gradient, source square, red cat capsule on the line, switch node, R/B station squares, x2 wave chip. Zero magenta pixels (checked programmatically). **The "x2"/"R"/"B" labels are legible in real pixels — this closes R-1 (TextMesh-under-URP legibility, the DEVFIX register's worst risk) for this frame**, per DEVFIX step-2's "coloured greybox and legible labels" gate. A single still cannot evidence frame rate; no rate claim is made from it. |
+| `urp-frame.png` | Device screencap from the same sitting: the URP greybox board mid-run — sky gradient, source square, red cat capsule on the line, switch node, R/B station squares, x2 wave chip. Zero magenta pixels (checked programmatically). The "x2"/"R"/"B" labels are legible in real pixels — **this satisfies DEVFIX §4 step-2's device-screenshot gate for this frame**; the R-1 register row (TextMesh-under-URP, the register's worst risk) also names a human-carried editor Play-Mode screenshot as its second proof leg, which is NOT in this PR — closing R-1 is the human's call with both legs in hand. A single still cannot evidence frame rate; no rate claim is made from it. |
 | `screencap1-black-artifact.png` | First screencap attempt, uniformly black (screen-off / protected-surface artifact). Deviation record, not evidence. |
 
 ## Derivation (reproducible from `timestats.txt`)
 
-Bucket model: histogram labels are truncated integer milliseconds (proven by the dump's own identities: `totalP2PTime = 107607` = Σ label×count exactly; `averageFrameDuration = 2.760` = 18691/6773 exactly), so a bucket labeled `k` holds values in [k, k+1) ms and the three >100 ms global intervals are pinned at 106/118/134 ms with zero residual.
+Bucket model: histogram labels are truncated integer milliseconds (proven by the dump's own identities: `totalP2PTime = 107607` = Σ label×count exactly; `averageFrameDuration = 2.760` = 18691/6773 exactly). In the 1 ms-grid region a bucket labeled `k` therefore holds values in [k, k+1) ms; and regardless of bucket-edge model in the wide region, the zero residual in the totalP2PTime identity pins the three >100 ms global intervals at 106/118/134 ms exactly.
 
 ### Game surface layer — the protocol's population (three `SurfaceView[com.catmetro.game...]` sections summed)
 
@@ -26,33 +26,38 @@ N = 6,673 present-to-present intervals · 106.7 s presented
 median bucket = 16 ms
 mean-of-worst-1%: k=66 (⌊1%⌋) → [19.17, 20.17) ms ; k=67 → [19.12, 20.12) ms
 intervals >100 ms: 2 (one 106 ms, one 134 ms)
-sub-16 ms intervals: 32 — 29 of them inside the 130-frame 120 Hz display-config
-  section (presents on that config's 8.33 ms grid), only 3 in the 60 Hz section
+sub-16 ms intervals: 32 — 29 in the 30-frame 120 Hz-display/120 Hz-render section
+  (presents on that config's 8.33 ms grid), 3 in the 130-frame 120 Hz-display/
+  60 Hz-render section, and ZERO in the 6,513-interval 60 Hz section
 present2presentDelta (the dump's own pacing-jitter measure):
   main 60 Hz section: 6,511 of 6,513 intervals at 0 ms delta, 2 at 1 ms
   all sections combined: 6,665 at 0 ms + 2 at 1 ms of 6,672
 ```
 
-The delta histogram is **measured** evidence of a stable present grid — it replaces rev 1's vsync-quantization inference for the pacing question, and it directly answers Q-DEVFIX-3's alternating-8.3/25 ms concern for this run: the 60 Hz section shows 3 sub-16 ms intervals out of 6,513, not an alternating pattern.
+The delta histogram is **measured** evidence of a stable present grid — it replaces rev 1's vsync-quantization inference for the pacing question, and it directly answers Q-DEVFIX-3's alternating-8.3/25 ms concern for this run: the 60 Hz section shows **zero** sub-16 ms intervals of 6,513 (6,512×16 ms + 1×17 ms), and the game layer has no entries in the 24, 25, or 33 ms buckets anywhere — the alternating pattern is absent, not merely rare.
 
 ### Display-global "Legacy stats" — kept for reconciliation only (includes launcher, splash, taskbar, status bar)
 
 ```
 6,771 intervals · 112 s · median bucket 16 ms
 mean-of-worst-1% (k=67): [20.64, 21.64) ms
-intervals >100 ms: 3 (the extra 118 ms lives in system layers, not the game's)
-8 ms bucket: 130 — decomposition: launcher 53 + splash 41 + taskbar 13 + game 32
-  (predominantly launch-time system chrome, NOT game pacing; rev 1 wrongly
+intervals >100 ms: 3 — the extra 118 ms appears in NO layer's present2present
+  histogram; it is an unattributed display-level gap (the only per-layer 118 ms
+  trace is in the game's own present2presentDelta, 120/60 section)
+8 ms bucket: 130 (display-level accounting) — per-layer sub-16 ms presents total
+  140 across all layers (launcher 53, splash 41, taskbar 13, game 32, window
+  layer 1) under a DIFFERENT accounting; the two are not required to sum.
+  Predominantly launch-time system chrome, NOT game pacing (rev 1 wrongly
   attributed all 130 to "the 120 Hz stretch")
 ```
 
-Frame-count reconciliation: global `totalFrames = 6773` vs 6,771 histogram intervals (intervals = frames − boundary presents); game SurfaceView sections' `totalFrames` sum to 6,673.
+Frame-count reconciliation: global `totalFrames = 6773` vs 6,771 histogram intervals (the dump does not explain the 2-frame gap); game SurfaceView sections' `totalFrames` sum to 6,673; the combined game delta histogram holds 6,672 entries (the 120/120 section records 29 deltas for 30 presents).
 
 ## Reading against the criterion-8 budgets — with the reserved calls named
 
 - **1%-low** (the one convention the human HAS pinned: mean-of-worst-1%, 2026-08-05 ratification): game layer [19.17, 20.17) ms; display-global [20.64, 21.64) ms — inside the ≤33.3 ms budget at either bound of either population.
 - **Median — the convention is UNPINNED.** Q-DEVFIX-4 (`CM-C2b-DEVFIX.md`): "Pin the median definition before the re-measure runs" — a 60 fps cap yields ~16.67 ms against a ≤16.7 ms budget, ~0.03 ms of margin, so any aggregation that bins upward flips the result. The median bucket is 16 ms in both populations and the delta histogram measures a stable grid, but **which aggregation the budget uses is a pin the human has not made; this artifact does not make it.**
-- **Window — presents ≠ play; the composition call is the human's and open.** Game-layer presented time is 106.7 s ≥ 60 s of *presents*, but the dump cannot distinguish active simulation from a static banner hold, and L001 as shipped offers **6.25 s of active sim** and cannot loop (F-DEV-3); the original artifact called the short-sim window a **CONTRACT MISS**, and DEVFIX re-measure item 4 explicitly reserves the composition call for the human. Nothing in this artifact settles it.
+- **Window — presents ≠ play; the composition call is the human's and open.** Game-layer presented time is 106.7 s ≥ 60 s of *presents*, but the dump cannot distinguish active simulation from a static banner hold, and L001 as shipped offers **6.25 s of active sim** and cannot loop (F-DEV-3); the original artifact called its 43.8 s window length a **CONTRACT MISS**, and the active-sim composition question is the separate call DEVFIX re-measure item 4 explicitly reserves for the human. Nothing in this artifact settles it.
 
 ## Corrections (rev 2 supersedes)
 
