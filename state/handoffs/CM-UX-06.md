@@ -30,14 +30,14 @@ never drafted a competing contract for this slice — no comparison verdict need
 
 Six-slice combined tree (rings + chip + panel + stack/Home/LevelIntro over main @ 7176cf9):
 **EditMode 745/745 · PlayMode 88/88** (their slice adds 15 EM + 10 PM; every count delta
-reconciles). Full harness on the committed tree: recorded in the PR (14-wrapper era check —
-count re-derived per the standing law).
+reconciles). Full harness on the committed tree: recorded in the PR (13 wrappers, re-derived per the standing law — #42 review F12; and the
+contract wording precision: criteria byte-frozen + status log append-only, not byte-unchanged).
 
 ## Forward obligations (the CM-UX-07 ledger, final form)
 
 `BoardInputActive` bind · `MotionOffSource` bind + Retry() rebind · `ScreenChromeController`
 attach · the human-approved halt escape · `OnDisable` unregister law (R2-3) · F4 world-corners
 read-backs · F5 TMP proxy upgrade · F11 vocabulary-guard enrolment decision · the Home/stack
-mount behind a launch argument (boot stays L001 — human Q-5 default) · the batched TG sitting
+mount behind a launch argument (boot stays L001 — human Q-5 default) · the zero-text inventory amendment for home.title/intro.play/intro.goal (#42 review F4 — the LegalTexts list must gain these BEFORE any flow renders them during Playing) · the batched TG sitting
 (three DRAFT strings + home.title/intro.play/intro.goal now added, the tinted ring, chip
 placement, results-panel weight, the F13 footer inversion, the two-text-stacks interim).
