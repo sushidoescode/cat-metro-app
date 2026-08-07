@@ -139,6 +139,21 @@ stage_rule() { # $1 = source dir (root-relative); $2 = filename glob; $3 = dest 
 stage_rule "content/levels" "*.json" "content/levels"
 stage_rule "config" "runtime_bounds.json" "config"
 
+# Apply-mode post-verify: this script runs under `set -uo pipefail` WITHOUT -e, so a failed
+# mkdir/cp/redirect (read-only destination, full disk) would otherwise fall through to the
+# OK line with exit 0. When the apply pass claims success, re-walk both rules read-only and
+# require zero drift before believing it.
+if [ "$apply" -eq 1 ] && [ "$drift" -eq 0 ]; then
+  apply=0
+  stage_rule "content/levels" "*.json" "content/levels"
+  stage_rule "config" "runtime_bounds.json" "config"
+  apply=1
+  if [ "$drift" -ne 0 ]; then
+    echo "stage-content: FAILED — post-apply verify found drift (a write did not land)"
+    exit 1
+  fi
+fi
+
 if [ "$drift" -ne 0 ]; then
   if [ "$mode" = check ]; then
     echo "stage-content: DRIFT detected — check mode wrote nothing"

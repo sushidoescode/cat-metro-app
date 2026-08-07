@@ -11,6 +11,15 @@
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 fail() { echo "stage-content.test.sh: FAIL — $1"; exit 1; }
+# Dirt is judged against a START snapshot, not against a pristine repo: earlier wrappers in
+# scripts/test.sh legitimately rewrite tracked files on a cold checkout (dotnet restore vs
+# packages.lock.json), and an uncommitted stager edit must not mask the criterion under test.
+# Only dirt that APPEARS during this wrapper's run fails, and the offending paths are printed.
+PORCELAIN_START="$(git status --porcelain)"
+new_dirt() {
+  comm -13 <(printf '%s\n' "$PORCELAIN_START" | LC_ALL=C sort) \
+           <(git status --porcelain | LC_ALL=C sort)
+}
 STAGER=scripts/stage-content.sh
 FIX="${CM_C10_FIXTURES:-tests/fixtures/staging}"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/cm-c10-XXXXXX")
@@ -30,7 +39,8 @@ echo "$out" | grep -q "dest=$(pwd)/unity/Assets/StreamingAssets" \
   || fail "A-2: default destination not printed"
 echo "$out" | grep -q "rule 1: content/levels/\*.json" || fail "criterion 1: rule 1 line missing"
 echo "$out" | grep -q "rule 2: config/runtime_bounds.json" || fail "criterion 1: rule 2 line missing"
-[ -z "$(git status --porcelain)" ] || fail "criterion 1a: check mode dirtied the tree"
+nd="$(new_dirt)"
+[ -z "$nd" ] || fail "criterion 1a: check mode dirtied the tree — new dirt: $nd"
 
 # --- criterion 1b: drift fixture — named, non-zero, NOT repaired (check runs in place, read-only) ---
 if out=$(check_of "$FIX/drift-bytes" 2>&1); then
@@ -61,7 +71,19 @@ cfgset=$(cd "$esa/config" && ls | grep -v '\.meta$')
 mkdir -p "$TMP/real/content/levels" "$TMP/real/config"
 cp content/levels/*.json "$TMP/real/content/levels/"
 cp config/runtime_bounds.json "$TMP/real/config/"
+# N1 grant census (both escape classes): snapshot the whole temp root and the source SHAs
+# BEFORE the write-mode run — afterwards every ADDED path must live under the staged tree
+# and no SOURCE byte may change. Criterion 4 alone cannot see a stager that rewrites its own
+# inputs (it compares source vs staged copy, which stay equal), so the source-sha leg is load-bearing.
+pre_paths=$(cd "$TMP/real" && find . -type f | LC_ALL=C sort)
+pre_src=$(cd "$TMP/real" && find content config -type f -print0 | xargs -0 shasum -a 256 | LC_ALL=C sort)
 apply_to "$TMP/real" >/dev/null 2>&1 || fail "criterion 3: write mode failed on the real-source copy"
+post_paths=$(cd "$TMP/real" && find . -type f | LC_ALL=C sort)
+post_src=$(cd "$TMP/real" && find content config -type f -print0 | xargs -0 shasum -a 256 | LC_ALL=C sort)
+escapes=$(comm -13 <(printf '%s\n' "$pre_paths") <(printf '%s\n' "$post_paths") \
+  | grep -v '^\./unity/Assets/StreamingAssets/' || true)
+[ -z "$escapes" ] || fail "N1 grant: write mode escaped unity/Assets/StreamingAssets/: $escapes"
+[ "$pre_src" = "$post_src" ] || fail "N1 grant: write mode modified source files under content/ or config/"
 gen="$TMP/real/unity/Assets/StreamingAssets"
 real=unity/Assets/StreamingAssets
 genset=$(cd "$gen" && find content/levels config -type f ! -name '*.meta' | sort)
@@ -140,9 +162,28 @@ dupes=$(find unity/Assets -name '*.meta' -exec grep -h '^guid:' {} + | sort | un
 [ -z "$dupes" ] || fail "criterion 6d: duplicate guids under unity/Assets: $dupes"
 
 # --- criterion 8: the verifier is untouched and never calls the author ---
-mb=$(git merge-base HEAD main)
-git diff --quiet "$mb" -- tests/unity/editmode.test.sh \
-  || fail "criterion 8: tests/unity/editmode.test.sh differs from merge-base $mb"
+# Resolve the base ref in freshness order: origin/main (a clone may carry a stale local
+# main), then main, then a shallow fetch (CI checks out a detached PR head with NO main
+# ref at all — actions/checkout default). Never skip silently: no base is a hard fail.
+base=$(git rev-parse -q --verify origin/main 2>/dev/null \
+  || git rev-parse -q --verify main 2>/dev/null || true)
+if [ -z "$base" ]; then
+  git fetch --quiet --depth=1 origin main 2>/dev/null \
+    || fail "criterion 8: no origin/main, no main, and 'git fetch origin main' failed — base unresolvable"
+  base=$(git rev-parse -q --verify FETCH_HEAD) \
+    || fail "criterion 8: FETCH_HEAD unresolvable after fetching origin main"
+fi
+if mb=$(git merge-base HEAD "$base" 2>/dev/null); then
+  git diff --quiet "$mb" -- tests/unity/editmode.test.sh \
+    || fail "criterion 8: tests/unity/editmode.test.sh differs from merge-base $mb"
+else
+  # Shallow CI clone: the base tip resolved but shares no fetched history, so no merge-base
+  # exists. Compare the verifier blob at the two tips directly — strictly STRONGER (also
+  # goes red if main itself moved the verifier since the branch's last rebase, which the
+  # serial update-branch-before-merge protocol resolves).
+  git diff --quiet HEAD "$base" -- tests/unity/editmode.test.sh \
+    || fail "criterion 8: tests/unity/editmode.test.sh differs from the base tip $base (shallow clone — rebase over main or deepen history)"
+fi
 c1=$(grep -c 'stage-content' tests/unity/editmode.test.sh || true)
 c2=$(grep -c 'stage-content' scripts/check.sh || true)
 [ "$c1" = "0" ] && [ "$c2" = "0" ] \
@@ -170,6 +211,7 @@ if [ -z "${CM_C10_SELFTEST:-}" ]; then
   fi
 fi
 
-[ -z "$(git status --porcelain)" ] || fail "criterion 7: wrapper left the tree dirty"
+nd="$(new_dirt)"
+[ -z "$nd" ] || fail "criterion 7: wrapper left the tree dirty — new dirt: $nd"
 echo "stage-content.test.sh: OK (criteria 1-6 fixture legs, 3 anti-tautology + N-1 config set, 7 self-test, 8 verifier-untouched, 9 build gate; tree clean)"
 exit 0
