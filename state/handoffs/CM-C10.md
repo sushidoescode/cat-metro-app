@@ -47,3 +47,21 @@ time, never a pinned commit). The UX contract must be told the criterion-10 bloc
 - 2026-08-06 — full committed-tree suite at 7675f11 (serial finisher): `scripts/check.sh` OK;
   `scripts/test.sh` 13/13 wrappers passed, EXIT:0 — N+1 = 13 exactly as the C6-rule capture
   predicted (baseline N=12 + this contract's one wrapper). Push + PR follow this entry.
+
+- 2026-08-07 — review round 1 (completion review, PR #43): NOT MERGEABLE — F1 (whole-repo
+  porcelain assert red on cold checkout: earlier dotnet wrappers rewrite packages.lock.json;
+  the PR's ci job was red), F2 (criterion-8 merge-base unresolvable in CI's detached
+  no-main checkout), F3 (no census proving write mode stays inside the N1 grant), F4 (stager
+  could report OK after a failed write — no -e, no rc checks). Stager itself verified clean
+  by the reviewer (independent SHA census; zero escapes).
+- 2026-08-07 — fixes at f76dcf4: F1→start-snapshot dirt diff with offending paths printed
+  (F6, F7 ride along); F2→base resolves origin/main→main→fetch, with a shallow-history
+  fallback comparing the verifier blob at the two tips directly; F3→temp-root census: every
+  added path must be under the staged tree AND source SHAs unchanged; F4→post-apply verify
+  re-walks both rules read-only before claiming OK. Proofs: seeded escape RED (named);
+  neutralized-cp stager RED via post-verify; pre-existing lock-file dirt GREEN; CI-shaped
+  shallow single-branch detached clone GREEN; clean tree GREEN.
+- 2026-08-07 — merged main (9527a75): UX wave + taxonomy landed; baseline re-captured
+  N=13 → target 14. Full committed-tree suite: `scripts/check.sh` OK; `scripts/test.sh`
+  14/14 wrappers passed, EXIT:0. ERRATA (F8, frozen text stays frozen): contract line 18
+  says branch task/CM-C10-stage-content; the real branch is task/CM-C10-content-stager.
