@@ -38,7 +38,19 @@ namespace CatMetro.Tests.PlayMode
         {
             _root = GameRoot.LaunchWith(Fixture());
             _state = initial;
-            var hint = _root.gameObject.AddComponent<HintChipController>();
+            // CM-TESTFIX: resolve the Wire-attached instance instead of stacking a second
+            // controller on the GameObject (the debt this contract fixes — #50's Wire-time
+            // guard means AddComponent here would either throw duplicate-id on registration or
+            // silently run two controllers side by side, doubling the HintAttemptCounter).
+            var hint = _root.GetComponent<HintChipController>();
+            Assert.That(hint, Is.Not.Null,
+                "precondition: GameRoot.Wire must have attached a HintChipController — "
+                + "otherwise the fixture has nothing to resolve and every assert below proves "
+                + "nothing");
+            Assert.That(_root.gameObject.GetComponents<HintChipController>().Length,
+                Is.EqualTo(1),
+                "exactly one controller on the GameObject — pins single-controller composition "
+                + "forever (would have been RED before #50's Wire-time guard)");
             hint.Attach(() => _state);
             return hint;
         }
@@ -267,6 +279,10 @@ namespace CatMetro.Tests.PlayMode
             // because nothing moves, and the full information set still renders.
             var hint = AttachControlled("Playing");
             _root.MotionOffToggle = true;
+            Assert.That(_root.MotionOff, Is.True,
+                "decoy control: the toggle assignment IS observable at the GameRoot seam this "
+                + "pin relies on — a mutated GameRoot.MotionOff (e.g. ignoring the toggle) "
+                + "would read False here");
             yield return null;
             _state = "FailureReview";
             yield return null;
