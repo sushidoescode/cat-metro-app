@@ -55,3 +55,17 @@ delta to exactly this slice's tests (F10 correction: the earlier 70/70 was the p
   guard's fixed file list is three slices behind `Hud/`; a lane decision on enrolment is due.
   F15 — the panel's full-screen scrim does not block board taps until `BoardInputActive`
   binds; the attach and the bind MUST land together (already the standing CM-UX-07 law).
+  R2-3 — host DEACTIVATION (vs destruction) leaves the region registered while IsVisible
+  honestly reads false; `OnDisable` unregister joins the CM-UX-07 obligations.
+
+## F2 provenance record (R2-5 — state lives in the repo, constitution principle 7)
+
+The #39 review flagged the worktree's modified `.claude/settings.json` (its ask-array emptied,
+removing the `gh pr merge`/`git push`/`git checkout`/`git restore`/`gh repo` ask-gates). The UX
+lane's session record: the deletion was performed by the HUMAN via the `/permissions` command
+in-session on 2026-08-06 (the command output enumerated exactly those five deleted rules); no
+agent touched the file, and it appears in no commit (verified across the full PR range by the
+round-2 reviewer). **PENDING: the human's own one-line confirmation, which also releases the
+#39 merge** — the reviewer correctly held that an agent-relayed report cannot unflag a
+review-flagged human judgment. If the human instead wants the ask-gates restored, `/permissions`
+is the tool.
