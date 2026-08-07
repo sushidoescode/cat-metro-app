@@ -96,6 +96,11 @@ namespace CatMetro.Tests.PlayMode
             // board input is gated while Home is shown (criterion 2c re-confirmed through the
             // composed flow, not a test-side override)
             var discPos = _root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0));
+            // #44 review F-1 (D-2): if the disc drifted UNDER Home's pin, the tap would resolve
+            // as -3 (a chrome region claiming it) rather than -1 (the gate closing it).
+            Assert.That(_root.Home.PinPaintedRectPx.Contains(discPos), Is.False,
+                "precondition: the disc sits outside the Home pin's rect — otherwise this test "
+                + "cannot tell the board gate apart from the pin's chrome region claiming the tap");
             Assert.That(_root.Input.HandleTapAtScreen(discPos), Is.EqualTo(-1));
 
             // tap the pin: Intro shows with the substituted goal count from the loaded level
@@ -109,6 +114,16 @@ namespace CatMetro.Tests.PlayMode
                 "no new I/O — the count is substituted from the already-loaded level");
             CollectionAssert.AreEqual(new[] { "home", "intro" }, _root.Stack.ToBreadcrumb());
             Assert.That(_root.ScreensVisible, Is.True, "still up — the stack is non-empty");
+
+            // #44 (D-2): Home's pin and Intro's Play chip both center in the thumb band — the
+            // IDENTICAL point (the #44 finding this composer's Home.Hide()-on-push fix closes,
+            // belt-and-suspenders under the #44 modal-priority law too). Asserted explicitly so
+            // this test actually exercises that fix instead of accidentally tapping two things
+            // that never overlapped in the first place.
+            Assert.That(_root.Intro.PlayChipRectPx.Contains(_root.Home.PinPaintedRectPx.center),
+                Is.True,
+                "precondition: the Play chip's rect contains the (hidden) Home pin's center — "
+                + "otherwise this test doesn't exercise the #44 modal-priority/Home.Hide() fix");
 
             // tap Play: both hide, stack empties, board input returns
             int playResult = _root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center);

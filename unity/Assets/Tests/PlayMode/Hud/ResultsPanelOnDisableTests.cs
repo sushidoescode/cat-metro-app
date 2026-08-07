@@ -43,8 +43,12 @@ namespace CatMetro.Tests.PlayMode
         {
             var panel = AttachControlled("Won");
             yield return null;
-            Assert.That(panel.IsVisible, Is.True, "pre-condition: Won shows the panel");
-            Assert.That(_regions.Count, Is.EqualTo(1), "the CTA region registers with the panel");
+            // #44 review F-1 (D-2): the precondition message format, applied here too.
+            Assert.That(panel.IsVisible, Is.True,
+                "precondition: Won shows the panel — otherwise this test proves nothing");
+            Assert.That(_regions.Count, Is.EqualTo(1),
+                "precondition: the CTA region registers with the panel — otherwise this test "
+                + "proves nothing");
 
             // SetActive(false) directly on the host — NOT a state flip — the W-3 law under audit
             _hostGo.SetActive(false);

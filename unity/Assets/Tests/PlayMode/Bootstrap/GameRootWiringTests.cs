@@ -104,6 +104,12 @@ namespace CatMetro.Tests.PlayMode
             yield return RunToFail(OverflowFixture());
 
             var discPos = _root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0));
+            // #44 review F-1 (D-2): the retry band claims FIRST on any tap with y below 25% of
+            // Screen.height — asserted explicitly so a future layout change that drops the disc
+            // into the band can't silently turn this into a band-vs-gate test instead.
+            Assert.That(discPos.y, Is.GreaterThanOrEqualTo(Screen.height * 0.25f),
+                "precondition: the disc sits above the retry band — otherwise this test proves "
+                + "nothing about the board gate (the band would claim the tap first)");
             Assert.That(_root.Input.HandleTapAtScreen(discPos), Is.EqualTo(-1),
                 "criterion 2: the gate closes off Playing — Wire's own binding, not a test override");
 
@@ -124,6 +130,12 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.ScreensVisible, Is.True, "Home mounted — the stack is non-empty");
 
             var discPos = _root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0));
+            // #44 review F-1 (D-2): if the disc drifted UNDER Home's pin, the tap would resolve
+            // as -3 (a chrome region claiming it) rather than -1 (the gate closing it) — asserted
+            // explicitly so that specific confusion can never hide behind a passing/failing -1.
+            Assert.That(_root.Home.PinPaintedRectPx.Contains(discPos), Is.False,
+                "precondition: the disc sits outside the Home pin's rect — otherwise this test "
+                + "cannot tell the board gate apart from the pin's chrome region claiming the tap");
             Assert.That(_root.Input.HandleTapAtScreen(discPos), Is.EqualTo(-1),
                 "the S2 conflict pin: Home showing gates the board even while Playing");
         }
@@ -205,6 +217,12 @@ namespace CatMetro.Tests.PlayMode
 
             // tap dead center — the escape is FULL-SCREEN, priority 5
             var center = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+            // #44 review F-1 (D-2): asserted explicitly even though it is geometrically
+            // invariant here — the escape rect IS the screen, so containment can never drift —
+            // for consistency with the law and as documentation of the assumption under test.
+            Assert.That(new Rect(0f, 0f, Screen.width, Screen.height).Contains(center), Is.True,
+                "precondition: the tap point sits inside the full-screen escape rect — "
+                + "otherwise this test proves nothing about the escape consuming the tap");
             int result = _root.Input.HandleTapAtScreen(center);
             Assert.That(result, Is.EqualTo(-3), "a chrome region (the escape) consumed the tap");
             Assert.That(_root.ScreenState, Is.EqualTo("Playing"), "Retry restores Playing");
@@ -252,6 +270,10 @@ namespace CatMetro.Tests.PlayMode
         public IEnumerator HaltEscape_ReHaltAfterEscape_ReRegisters_NoDuplicateIdThrow()
         {
             _root = GameRoot.Launch();
+            // #44 review F-1 (D-2): "region counts assumed at a baseline" — captured explicitly
+            // (never assumed to be a bare 0) so the later +1/back-to-baseline asserts stay
+            // meaningful even if some other future wiring adds a region at boot.
+            int baseline = _root.Input.Regions.Count;
             LogAssert.Expect(LogType.Error, new Regex("run halted at a pinned/guarded Domain boundary"));
             Time.timeScale = 8f;
             float deadline = Time.realtimeSinceStartup + 60f;
@@ -259,8 +281,14 @@ namespace CatMetro.Tests.PlayMode
                 yield return null;
             Time.timeScale = 1f;
             Assert.That(_root.ScreenState, Is.EqualTo("Halted"), "first halt reached");
+            Assert.That(_root.Input.Regions.Count, Is.EqualTo(baseline + 1),
+                "precondition: the halt escape registered — otherwise the re-halt check below "
+                + "proves nothing about re-registration");
 
             var center = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+            Assert.That(new Rect(0f, 0f, Screen.width, Screen.height).Contains(center), Is.True,
+                "precondition: the tap point sits inside the full-screen escape rect — "
+                + "otherwise this test proves nothing about the escape consuming the tap");
             Assert.That(_root.Input.HandleTapAtScreen(center), Is.EqualTo(-3), "escape consumed");
             Assert.That(_root.ScreenState, Is.EqualTo("Playing"));
 
@@ -274,7 +302,8 @@ namespace CatMetro.Tests.PlayMode
                 yield return null;
             Time.timeScale = 1f;
             Assert.That(_root.ScreenState, Is.EqualTo("Halted"), "L001 re-halts identically after retry");
-            Assert.That(_root.Input.Regions.Count, Is.GreaterThan(0), "the escape re-registered");
+            Assert.That(_root.Input.Regions.Count, Is.EqualTo(baseline + 1),
+                "the escape re-registered — against the SAME baseline, not just any positive count");
         }
 
         // --- criterion 7: Retry does NOT reset the hint attempt count (the CM-UX-05 law) ---

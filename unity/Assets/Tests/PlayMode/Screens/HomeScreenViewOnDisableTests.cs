@@ -41,7 +41,9 @@ namespace CatMetro.Tests.PlayMode
         {
             CreateShown();
             yield return null;
-            Assert.That(_regions.Count, Is.EqualTo(1), "pre-condition: the pin is registered");
+            // #44 review F-1 (D-2): the precondition message format, applied here too.
+            Assert.That(_regions.Count, Is.EqualTo(1),
+                "precondition: the pin is registered — otherwise this test proves nothing");
 
             // SetActive(false) directly on the host — NOT Hide() — the W-1 law under audit
             _home.gameObject.SetActive(false);

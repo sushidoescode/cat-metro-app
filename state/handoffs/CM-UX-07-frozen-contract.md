@@ -156,3 +156,34 @@ contract.
   (3) Playing (post-Play) — both screens gone entirely; the raw L001 board (source, switch with its
   onboarding teach ring, red/blue stations, wave-preview chip) renders with no overlay chrome.
   Frames committed to `evals/results/ux/cm-ux-07/`; probe deleted before commit (never staged).
+- 2026-08-07 — coordinator follow-up: merged main @ `5c87c19` (#44 "CM-UX-06 follow-up: modal-
+  over-parent priority law + world-corners read-backs") into this branch (merge commit `0b6ab63`,
+  clean, no conflicts). #44 raises `LevelIntroSheet.PlayRegionPriority` 0→10 (parents register at
+  0, modals at 10) and adds `ScreenCoRegistrationTests` — an independent second layer over the
+  same Home-pin/Intro-chip tie-break defect this PR's `Home.Hide()`-on-`LevelSelected` fix already
+  closes; the two fixes are now belt-and-suspenders, confirmed non-conflicting (both green).
+  D-2 (the delta audit's #45 precondition-assert law, #44 review F-1): audited all 14 new tests for
+  implicit spatial/setup preconditions and added explicit `"precondition: ... — otherwise this test
+  proves nothing"` asserts where a later assertion depended on an unstated geometric/count fact.
+  Gains, by file (no existing test or non-test file touched):
+  - `GameRootWiringTests.cs`: `BoardInputGate_OffPlaying_DiscMisses_RetryBandStillWorks` — disc
+    position asserted above the retry band before relying on the gate (not the band) closing it;
+    `BoardInputGate_HomeShownUnderDevFlag_DiscScanMisses` — disc position asserted outside Home's
+    pin rect before relying on the gate (not the pin's chrome region) closing it;
+    `HaltEscape_RealHalt_TapAnywhereRetries_RegionUnregisters` and
+    `HaltEscape_ReHaltAfterEscape_ReRegisters_NoDuplicateIdThrow` — the tap point asserted inside
+    the full-screen escape rect (geometrically invariant here, asserted anyway for consistency
+    with the law); the re-halt test's region-count check was also strengthened from a loose
+    `Is.GreaterThan(0)` to an explicit captured `baseline` + `Is.EqualTo(baseline + 1)` in three
+    places (the "region counts assumed at a baseline" category).
+  - `DevScreenFlowTests.cs`: the round-trip test — disc position asserted outside Home's pin rect
+    (same shape as above); and, before the Play tap, an explicit assert that Intro's Play chip
+    rect CONTAINS Home's pin center — the precondition that proves this test actually exercises
+    the #44 modal-priority/`Home.Hide()` fix rather than tapping two things that never overlapped.
+  - `HomeScreenViewOnDisableTests.cs`, `LevelIntroSheetOnDisableTests.cs`,
+    `ResultsPanelOnDisableTests.cs` — each already had a "pre-condition:" style assert (registered
+    count == 1 before disabling); reworded to the exact F-1 message format. No new assert needed
+    beyond that (each fixture has exactly one registrant — no cross-region overlap risk to pin).
+  Filtered re-run on the merged tree (PlayMode): `ChromeStateTests` 9/9, `DevScreenFlowTests` 2/2,
+  `GameRootWiringTests` 9/9, `HomeScreenViewOnDisableTests` 1/1, `LevelIntroSheetOnDisableTests` 1/1,
+  `ResultsPanelOnDisableTests` 1/1, `ScreenCoRegistrationTests` 2/2 — 25/25 total.

@@ -41,7 +41,9 @@ namespace CatMetro.Tests.PlayMode
         {
             CreateShown();
             yield return null;
-            Assert.That(_regions.Count, Is.EqualTo(1), "pre-condition: the Play chip is registered");
+            // #44 review F-1 (D-2): the precondition message format, applied here too.
+            Assert.That(_regions.Count, Is.EqualTo(1),
+                "precondition: the Play chip is registered — otherwise this test proves nothing");
 
             // SetActive(false) directly on the host — NOT Hide() — the W-2 law under audit
             _sheet.gameObject.SetActive(false);
