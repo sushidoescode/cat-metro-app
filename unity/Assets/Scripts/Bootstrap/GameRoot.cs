@@ -174,9 +174,17 @@ namespace CatMetro.Bootstrap
             // GameObject named "Camera" (built above at GameRoot.cs:141-143); each controller
             // resolves it via GetComponentInChildren<Camera>() (the self-resolve pattern).
             // Regression pin: sortingOrder 100/90 unchanged.
-            var chrome = gameObject.AddComponent<ScreenChromeController>();
+            // #46 review F5: guarded the same way the dev-only capture attach below is guarded
+            // (existence-checked before AddComponent) — a pre-existing controller (e.g. attached
+            // before Wire runs, the scene-boot path) survives as the single instance instead of
+            // stacking a duplicate under it.
+            if (GetComponent<ScreenChromeController>() == null)
+                gameObject.AddComponent<ScreenChromeController>();
+            var chrome = GetComponent<ScreenChromeController>();
             chrome.Attach(() => ScreenState);
-            var hint = gameObject.AddComponent<HintChipController>();
+            if (GetComponent<HintChipController>() == null)
+                gameObject.AddComponent<HintChipController>();
+            var hint = GetComponent<HintChipController>();
             hint.Attach(() => ScreenState);
             // Criterion 7: ResetForNewLevel() has no call site yet — discharged as a documented
             // no-op until LoadNext exists; Retry() below never calls it (same-level law).

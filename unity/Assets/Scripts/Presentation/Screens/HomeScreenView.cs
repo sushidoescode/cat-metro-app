@@ -26,6 +26,7 @@ namespace CatMetro.Presentation.Screens
         private ChromeRegions _regions;
         private System.Func<bool> _motionOff;
         private bool _registered;
+        private bool _shown; // #46 review F4: Show()-left-shown intent, survives OnDisable/OnEnable
         private TMP_Text _title;
         private RectTransform _pin;
         private RectTransform _ring;
@@ -128,18 +129,15 @@ namespace CatMetro.Presentation.Screens
 
         public void Show()
         {
+            _shown = true;
             gameObject.SetActive(true);
             LayoutPin();
-            if (_regions != null && !_registered)
-            {
-                _regions.Register(PinRegionId, () => _pinRectPx,
-                    () => LevelSelected?.Invoke(), PinRegionPriority);
-                _registered = true;
-            }
+            RegisterPin();
         }
 
         public void Hide()
         {
+            _shown = false;
             UnregisterPin();
             gameObject.SetActive(false);
         }
@@ -156,6 +154,29 @@ namespace CatMetro.Presentation.Screens
         private void OnDisable()
         {
             UnregisterPin();
+        }
+
+        // #46 review F4: mirrors OnDisable — a host reactivated directly (SetActive(true), not
+        // through Show()) must re-register, or a visible-but-pulsing pin sits inert over an
+        // unstartable game (the ghost-affordance asymmetry). Gated on _shown, not on _regions
+        // alone: Create()'s AddComponent fires OnEnable transiently (the GameObject starts
+        // active by default before Create() parks it inactive) BEFORE Attach()/Show() ever run,
+        // and a composed-but-never-shown component must register nothing — boot semantics stay
+        // unchanged. Hide() clears _shown, so a bare re-activation after Hide() also registers
+        // nothing (Hide()'s "not shown" intent survives OnEnable too).
+        private void OnEnable()
+        {
+            if (_shown) RegisterPin();
+        }
+
+        private void RegisterPin()
+        {
+            if (_regions != null && !_registered)
+            {
+                _regions.Register(PinRegionId, () => _pinRectPx,
+                    () => LevelSelected?.Invoke(), PinRegionPriority);
+                _registered = true;
+            }
         }
 
         private void UnregisterPin()
