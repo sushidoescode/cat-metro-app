@@ -38,7 +38,19 @@ namespace CatMetro.Tests.PlayMode
         {
             _root = GameRoot.LaunchWith(Fixture());
             _state = initial;
-            var chrome = _root.gameObject.AddComponent<ScreenChromeController>();
+            // CM-TESTFIX: resolve the Wire-attached instance instead of stacking a second
+            // controller on the GameObject (the debt this contract fixes — #50's Wire-time
+            // guard means AddComponent here would either throw duplicate-id on registration or
+            // silently run two controllers side by side).
+            var chrome = _root.GetComponent<ScreenChromeController>();
+            Assert.That(chrome, Is.Not.Null,
+                "precondition: GameRoot.Wire must have attached a ScreenChromeController — "
+                + "otherwise the fixture has nothing to resolve and every assert below proves "
+                + "nothing");
+            Assert.That(_root.gameObject.GetComponents<ScreenChromeController>().Length,
+                Is.EqualTo(1),
+                "exactly one controller on the GameObject — pins single-controller composition "
+                + "forever (would have been RED before #50's Wire-time guard)");
             chrome.Attach(() => _state);
             return chrome;
         }
@@ -115,7 +127,18 @@ namespace CatMetro.Tests.PlayMode
         public IEnumerator RealHalt_RendersTheVeil_WithTheWiringDelegateShape()
         {
             _root = GameRoot.Launch(); // L001 through the real seam
-            var chrome = _root.gameObject.AddComponent<ScreenChromeController>();
+            // E-1 (CM-TESTFIX, declared over this test's 112-145 range): resolve the
+            // Wire-attached instance instead of stacking a second controller (the same
+            // duplicate-composition debt as AttachControlled above).
+            var chrome = _root.GetComponent<ScreenChromeController>();
+            Assert.That(chrome, Is.Not.Null,
+                "precondition: GameRoot.Wire must have attached a ScreenChromeController — "
+                + "otherwise the fixture has nothing to resolve and every assert below proves "
+                + "nothing");
+            Assert.That(_root.gameObject.GetComponents<ScreenChromeController>().Length,
+                Is.EqualTo(1),
+                "exactly one controller on the GameObject — pins single-controller composition "
+                + "forever (would have been RED before #50's Wire-time guard)");
             chrome.Attach(() => _root.ScreenState); // the EXACT shape CM-UX-07 binds
             // the merged recipe expects the halt's by-design loud error (GreyboxTests:155)
             LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex(
@@ -263,6 +286,10 @@ namespace CatMetro.Tests.PlayMode
             // motionless tree would compare a branch to itself and guard nothing.
             var chrome = AttachControlled("Playing");
             _root.MotionOffToggle = true;
+            Assert.That(_root.MotionOff, Is.True,
+                "decoy control: the toggle assignment IS observable at the GameRoot seam this "
+                + "pin relies on — a mutated GameRoot.MotionOff (e.g. ignoring the toggle) "
+                + "would read False here");
             yield return null;
             _state = "FailureReview";
             yield return null;
