@@ -65,7 +65,8 @@ removing the `gh pr merge`/`git push`/`git checkout`/`git restore`/`gh repo` ask
 lane's session record: the deletion was performed by the HUMAN via the `/permissions` command
 in-session on 2026-08-06 (the command output enumerated exactly those five deleted rules); no
 agent touched the file, and it appears in no commit (verified across the full PR range by the
-round-2 reviewer). **PENDING: the human's own one-line confirmation, which also releases the
-#39 merge** — the reviewer correctly held that an agent-relayed report cannot unflag a
-review-flagged human judgment. If the human instead wants the ask-gates restored, `/permissions`
-is the tool.
+round-2 reviewer). **DISCHARGED 2026-08-06: the human's own directive, in their own voice, given after full
+disclosure of the flag and both options** — "keep going — merge #39 on MERGE verdict, then
+CM-UX-06." The one-look human gate Amendment 1 contemplates was exercised; the merge proceeds
+under the standing delegation. (Standing note: if the human ever wants the five ask-gates
+restored, `/permissions` is the tool.)
