@@ -25,8 +25,11 @@ namespace CatMetro.Tests.Presentation
         public void ThisSlice_AppendsExactlyThreeRows_BytePinned()
         {
             var rows = Rows();
-            Assert.That(rows.Length, Is.EqualTo(10),
-                "7 merged rows + this slice's 3 — append-only, never edits");
+            // Adoption shift (2026-08-06): anchored at 7 merged rows; main gained
+            // hint.tutorial + results.next before this slice merged, so 9 merged + 3 = 12
+            // and this slice's pins sit at rows 9-11 (merge order governs; the #39 law).
+            Assert.That(rows.Length, Is.EqualTo(12),
+                "9 merged rows + this slice's 3 — append-only, never edits");
             Assert.That(rows[9], Is.EqualTo("home.title,Cat Metro"), "DRAFT");
             Assert.That(rows[10], Is.EqualTo("intro.play,Play"), "DRAFT");
             Assert.That(rows[11], Is.EqualTo("intro.goal,Deliver {count} cats"), "DRAFT");
