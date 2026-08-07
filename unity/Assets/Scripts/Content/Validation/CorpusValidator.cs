@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using CatMetro.Domain;
 using CatMetro.Domain.Solver;
 
 namespace CatMetro.Content.Validation
@@ -145,6 +146,7 @@ namespace CatMetro.Content.Validation
                 {
                     ["code"] = v.Code.ToString(),
                     ["detail"] = v.Detail,
+                    ["value"] = v.Value, // CM-C5.1 criterion 8: the measurement always prints (H6)
                     ["blocks"] = v.Blocks,
                 });
             root["campaign"] = campaign;
@@ -169,7 +171,8 @@ namespace CatMetro.Content.Validation
                 }
             }
             foreach (var v in CampaignVerdicts)
-                sb.AppendLine("campaign  " + v.Code + "  " + v.Detail);
+                sb.AppendLine("campaign  " + v.Code + "  " + v.Detail
+                    + (v.Value.Length > 0 ? "  [" + v.Value + "]" : ""));
             sb.AppendLine(ExitFailure
                 ? "RESULT: FAIL — a blocking stage failed"
                 : "RESULT: OK — no blocking stage failed");
@@ -200,6 +203,9 @@ namespace CatMetro.Content.Validation
                 .ToList();
 
             var reports = new List<LevelReport>();
+            // CM-C5.1: the campaign runs (dto, graph, solve) feed the liveness limb — collected
+            // in the loop so the assertions judge the SAME solve the per-level stages saw.
+            var campaignRuns = new List<(LevelDto Dto, LevelGraph Graph, SolveResult Solve)>();
             foreach (var (member, schemaVerdict, imported, error) in parsed)
             {
                 var verdicts = new List<StageVerdict> { schemaVerdict };
@@ -221,6 +227,7 @@ namespace CatMetro.Content.Validation
                 verdicts.Add(LowerBoundStage.Check(dto, request.Config));
 
                 var solve = LevelSolver.Solve(graph, seed, request.MaxNodesExpanded);
+                if (member.IsCampaign) campaignRuns.Add((dto, graph, solve));
                 verdicts.Add(SolverStage.Verdict(solve));
                 verdicts.Add(TrivialityStage.Check(graph, seed));
                 verdicts.Add(BrittlenessStage.Check(dto, graph,
@@ -253,7 +260,9 @@ namespace CatMetro.Content.Validation
                     verdicts, solve, axes, row, distances));
             }
 
-            var campaignVerdicts = CampaignAssertions(campaignDtos);
+            var campaignVerdicts = CampaignAssertions(campaignRuns
+                .OrderBy(c => c.Dto.Id, System.StringComparer.Ordinal)
+                .ToList());
             bool exitFailure = reports.SelectMany(r => r.Verdicts).Any(v => v.Blocks)
                 || campaignVerdicts.Any(v => v.Blocks);
             return new CorpusReport(reports, campaignVerdicts, exitFailure);
@@ -272,14 +281,18 @@ namespace CatMetro.Content.Validation
             ("capstone", 30, 30, 0.55, 0.55),
         };
 
-        private static List<StageVerdict> CampaignAssertions(List<LevelDto> campaign)
+        // CM-C5.1: campaign assertions receive the full (dto, graph, solve) runs so the liveness
+        // limb can replay the solver-optimal log; the tag prefixes on Value are the criterion-6
+        // machine selectors (H6 — a deliberate report-shape change, flagged in the PR).
+        private static List<StageVerdict> CampaignAssertions(
+            List<(LevelDto Dto, LevelGraph Graph, SolveResult Solve)> campaign)
         {
             var result = new List<StageVerdict>();
 
             // CM-R06.2: one new mechanic at a time, in play order. Blocking.
             var seen = new HashSet<string>();
             var orderFails = new List<string>();
-            foreach (var lvl in campaign)
+            foreach (var (lvl, _, _) in campaign)
             {
                 var mechanics = new HashSet<string>(lvl.Meta.Mechanics.ToArray());
                 var fresh = mechanics.Where(m => !seen.Contains(m)).ToList();
@@ -294,26 +307,28 @@ namespace CatMetro.Content.Validation
             }
             result.Add(orderFails.Count > 0
                 ? StageVerdict.Fail(Stage.NoveltyCheck,
-                    "mechanic-order violation (CM-R06.2): " + string.Join("; ", orderFails))
+                    "mechanic-order violation (CM-R06.2): " + string.Join("; ", orderFails),
+                    "tag=CM-R06.2")
                 : new StageVerdict(Stage.NoveltyCheck, StageVerdictCode.Pass,
-                    "mechanic order OK (CM-R06.2)", "", false));
+                    "mechanic order OK (CM-R06.2)", "tag=CM-R06.2", false));
 
             // CM-R09.1: 30 campaign levels. PENDING while the corpus grows; a hard count only at 30+.
             int n = campaign.Count;
             if (n < 30)
                 result.Add(new StageVerdict(Stage.NoveltyCheck, StageVerdictCode.Pending,
                     "campaign corpus " + n + "/30 — PENDING until the corpus reaches 30 (CM-R09.1)",
-                    "", false));
+                    "tag=CM-R09.1", false));
             else if (n == 30)
                 result.Add(new StageVerdict(Stage.NoveltyCheck, StageVerdictCode.Pass,
-                    "campaign corpus 30/30 (CM-R09.1)", "", false));
+                    "campaign corpus 30/30 (CM-R09.1)", "tag=CM-R09.1", false));
             else
                 result.Add(StageVerdict.Fail(Stage.NoveltyCheck,
-                    "campaign corpus " + n + "/30 exceeds the locked 30 (CM-R09.1)"));
+                    "campaign corpus " + n + "/30 exceeds the locked 30 (CM-R09.1)",
+                    "tag=CM-R09.1"));
 
             // CM-R09.3: band table conformance (id range + difficultyTarget range). Blocking.
             var bandFails = new List<string>();
-            foreach (var lvl in campaign)
+            foreach (var (lvl, _, _) in campaign)
             {
                 var row = BandTable.FirstOrDefault(b => b.band == lvl.Meta.Band);
                 if (row.band == null)
@@ -336,9 +351,20 @@ namespace CatMetro.Content.Validation
             }
             result.Add(bandFails.Count > 0
                 ? StageVerdict.Fail(Stage.NoveltyCheck,
-                    "band-table violation (CM-R09.3): " + string.Join("; ", bandFails))
+                    "band-table violation (CM-R09.3): " + string.Join("; ", bandFails),
+                    "tag=CM-R09.3")
                 : new StageVerdict(Stage.NoveltyCheck, StageVerdictCode.Pass,
-                    "band table OK (CM-R09.3)", "", false));
+                    "band table OK (CM-R09.3)", "tag=CM-R09.3", false));
+
+            // CM-C5.1 (CM-R06.2 liveness limb, ratified BLOCKING): the declared newMechanic must
+            // be exercised by the solver-optimal trace — one row per campaign level, evidence
+            // always printed; zero campaign members skip loudly (criterion 5).
+            if (campaign.Count == 0)
+                result.Add(new StageVerdict(Stage.NoveltyCheck, StageVerdictCode.Skipped,
+                    "SKIPPED(no campaign members)", "tag=CM-R06.2-liveness", false));
+            else
+                foreach (var (dto, graph, solve) in campaign)
+                    result.Add(MechanicExercise.Liveness(dto, graph, solve));
 
             return result;
         }
