@@ -46,13 +46,12 @@ namespace CatMetro.Tests.Presentation
             var rows = Rows();
             // R1-L6: the exact count is SLICE-SCOPED evidence, amended only by declared
             // contract evolution (raise the count + pin your own rows; rows 0-6 untouchable).
-            // Adoption-merge resolution (2026-08-06, #39): CM-UX-05 merged to main FIRST, so
-            // csv append order follows MERGE order — hint.tutorial is row 7, results.next is
-            // row 8. Row 7 is pinned TRANSITIVELY (this file's length==9 + rows[0..6] + rows[8]
-            // together force it; HintStringsDisciplineTests pins its key at index >= 7 by
-            // design, #39 review F9). CM-UX-04's rows[7] pin shifts to rows[8]; count = 5 + 4.
-            Assert.That(rows.Length, Is.EqualTo(FrozenBaseRows.Length + 4),
-                "CM-UX-02's two + CM-UX-05's one + CM-UX-04's one — each append-slice pins its own");
+            // Adoption-merge resolutions (2026-08-06, #39 and CM-UX-06): append order follows
+            // MERGE order — hint.tutorial row 7 (transitively pinned, #39 F9), results.next
+            // row 8, then CM-UX-06's three (home.title/intro.play/intro.goal) at rows 9-11,
+            // byte-pinned in UiCsvUx06Tests (indices shifted at adoption). Count = 5 + 7.
+            Assert.That(rows.Length, Is.EqualTo(FrozenBaseRows.Length + 7),
+                "CM-UX-02's two + CM-UX-05's one + CM-UX-04's one + CM-UX-06's three");
             Assert.That(rows[5], Is.EqualTo("retry.cta,Try again"), "LOCKED");
             Assert.That(rows[6], Is.EqualTo("halt.notice,Signal fault — the line stopped"),
                 "DRAFT, byte-pinned including U+2014");

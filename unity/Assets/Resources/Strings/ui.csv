@@ -7,3 +7,6 @@ retry.cta,Try again
 halt.notice,Signal fault — the line stopped
 hint.tutorial,Tap the flashing switch
 results.next,Next
+home.title,Cat Metro
+intro.play,Play
+intro.goal,Deliver {count} cats
