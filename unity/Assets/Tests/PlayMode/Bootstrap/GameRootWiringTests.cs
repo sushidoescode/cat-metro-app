@@ -339,6 +339,39 @@ namespace CatMetro.Tests.PlayMode
                 + "(retry is the SAME level, the CM-UX-05 law)");
         }
 
+        // --- F5 (PR #46 review): AddComponent guard against duplicate controllers ---
+
+        [UnityTest]
+        public IEnumerator PreAttachedControllers_SurviveWireAsExactlyOne_NoDuplicate()
+        {
+            // The DevLevelOverrideTests scene-boot pattern: a bare AddComponent<GameRoot>()
+            // outside the factory paths triggers Awake -> InitializeFromSeam -> Wire through the
+            // real seam. Attaching the controllers FIRST, then letting Wire run over them, proves
+            // the guard survives a pre-existing instance instead of stacking a second one on top
+            // (F5: GameRoot.cs's AddComponent calls were unguarded, unlike DevFrameCapture's).
+            var go = new GameObject("GameRoot-f5-preattached");
+            var preChrome = go.AddComponent<ScreenChromeController>();
+            var preHint = go.AddComponent<HintChipController>();
+            _root = go.AddComponent<GameRoot>();
+            yield return null;
+
+            Assert.That(_root.Session, Is.Not.Null,
+                "precondition: Wire actually ran (booted through the real seam) — otherwise the "
+                + "component counts below prove nothing about the guard");
+
+            var chromes = go.GetComponents<ScreenChromeController>();
+            var hints = go.GetComponents<HintChipController>();
+            Assert.That(chromes.Length, Is.EqualTo(1),
+                "GameRoot.Wire's AddComponent<ScreenChromeController> must guard a pre-existing "
+                + "instance (F5), mirroring the DevFrameCapture guard");
+            Assert.That(hints.Length, Is.EqualTo(1),
+                "GameRoot.Wire's AddComponent<HintChipController> must guard a pre-existing "
+                + "instance (F5), mirroring the DevFrameCapture guard");
+            Assert.That(chromes[0], Is.SameAs(preChrome),
+                "the guard keeps the pre-existing instance — it never destroys and replaces it");
+            Assert.That(hints[0], Is.SameAs(preHint));
+        }
+
         // --- fixtures ---
 
         private static string QuietFixtureJson()

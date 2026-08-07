@@ -28,6 +28,7 @@ namespace CatMetro.Presentation.Screens
 
         private ChromeRegions _regions;
         private bool _registered;
+        private bool _shown; // #46 review F4: Show()-left-shown intent, survives OnDisable/OnEnable
         private TMP_Text _name;
         private TMP_Text _goal;
         private TMP_Text _playLabel;
@@ -120,18 +121,15 @@ namespace CatMetro.Presentation.Screens
             _name.text = levelName; // injected level data, not UI copy
             _goal.text = Strings.UiStrings.Get("intro.goal")
                 .Replace("{count}", deliveries.ToString());
+            _shown = true;
             gameObject.SetActive(true);
             LayoutChip();
-            if (_regions != null && !_registered)
-            {
-                _regions.Register(PlayRegionId, () => _chipRectPx,
-                    () => PlayRequested?.Invoke(), PlayRegionPriority);
-                _registered = true;
-            }
+            RegisterChip();
         }
 
         public void Hide()
         {
+            _shown = false;
             UnregisterChip();
             gameObject.SetActive(false);
         }
@@ -148,6 +146,29 @@ namespace CatMetro.Presentation.Screens
         private void OnDisable()
         {
             UnregisterChip();
+        }
+
+        // #46 review F4: mirrors OnDisable — a host reactivated directly (SetActive(true), not
+        // through Show()) must re-register, or a visible Play chip sits inert over an
+        // unstartable game (the ghost-affordance asymmetry). Gated on _shown, not on _regions
+        // alone: Create()'s AddComponent fires OnEnable transiently (the GameObject starts
+        // active by default before Create() parks it inactive) BEFORE Attach()/Show() ever run,
+        // and a composed-but-never-shown component must register nothing — boot semantics stay
+        // unchanged. Hide() clears _shown, so a bare re-activation after Hide() also registers
+        // nothing (Hide()'s "not shown" intent survives OnEnable too).
+        private void OnEnable()
+        {
+            if (_shown) RegisterChip();
+        }
+
+        private void RegisterChip()
+        {
+            if (_regions != null && !_registered)
+            {
+                _regions.Register(PlayRegionId, () => _chipRectPx,
+                    () => PlayRequested?.Invoke(), PlayRegionPriority);
+                _registered = true;
+            }
         }
 
         private void UnregisterChip()
