@@ -187,3 +187,66 @@ contract.
   Filtered re-run on the merged tree (PlayMode): `ChromeStateTests` 9/9, `DevScreenFlowTests` 2/2,
   `GameRootWiringTests` 9/9, `HomeScreenViewOnDisableTests` 1/1, `LevelIntroSheetOnDisableTests` 1/1,
   `ResultsPanelOnDisableTests` 1/1, `ScreenCoRegistrationTests` 2/2 — 25/25 total.
+- 2026-08-06 — round-1 review verdict: NOT MERGEABLE (findings F1–F9). Fixed F1/F2 (interlocking)
+  + F3 (blocking/med) and the F7/F8 prose ride-alongs; dispositions recorded below for the rest.
+  Zero behavior changes to shipped code — test-evidence repair only, three files touched
+  (`DevScreenFlowTests.cs`, `GameRootWiringTests.cs`, `GameRoot.cs` comments-only).
+  - **F1+F2 fix** (`DevScreenFlowTests.cs`, `BootToHome_ComposesHomeIntroFlow_..._StackRoundTrips`):
+    the line-123 precondition `Assert.That(_root.Intro.PlayChipRectPx.Contains(
+    _root.Home.PinPaintedRectPx.center), Is.True, ...)` was a mathematical tautology
+    (`LayoutChip` sets the chip rect to `HudBands.ThumbBand(Screen.safeArea)`, `HomeLayout.PinRect`
+    centers the pin in that IDENTICAL band, so it reduces to `band.Contains(band.center)`) and its
+    rationale was false (`Home.Hide()` at GameRoot.cs:210 already unregisters the pin before that
+    line runs, so no tie-break occurs there) — meaning GameRoot.cs:210's `Home.Hide()`, the PR's
+    headline in-slice fix, was untested. Replaced with two SUT-state asserts placed immediately
+    after the `LevelSelected` navigation step, BEFORE the Play tap: (a) `_root.Home.IsVisible` is
+    `False`; (b) `_root.Input.Regions.Count` equals a captured boot-time `regionBaseline` (Home's
+    pin unregisters, Intro's chip registers, net zero — under the mutation both stay registered,
+    reading `baseline + 1`).
+  - **F3 fix** (`GameRootWiringTests.cs`, `HaltEscape_RealHalt_TapAnywhereRetries_RegionUnregisters`
+    and `HaltEscape_ReHaltAfterEscape_ReRegisters_NoDuplicateIdThrow`): both preconditions were
+    `new Rect(0f,0f,Screen.width,Screen.height).Contains(new Vector2(Screen.width*0.5f,
+    Screen.height*0.5f))` — literal vs literal, zero red-power — and both tests only ever tapped
+    dead center. Replaced with a corner-coverage proof split across the two tests (so no extra
+    halt cycle is needed): the first test now taps the bottom-left extreme corner `(1, 1)`, the
+    second taps the top-right extreme corner `(Screen.width-1, Screen.height-1)`; both must
+    resolve to the escape (`-3`) and restore `Playing`.
+  - **F7/F8 ride-alongs** (`GameRoot.cs`, comments only): F7 — the board-input-gate comment's claim
+    that the predicate "is behavior-unchanged" in shipped boot was false (previously
+    `BoardInputActive` was null, and TapInput treats null as always-active, so discs resolved
+    during Won/FailureReview/Halted too; the new `ScreenState == "Playing"` term newly closes
+    them — only the `!ScreensVisible` term is behavior-neutral there); corrected to say exactly
+    that. F8 — the chrome/hint-attach comment's "root.gameObject (the camera's host)" was wrong;
+    the camera lives on a child GameObject `"Camera"` (GameRoot.cs:141-143) resolved via each
+    controller's own `GetComponentInChildren<Camera>()`; corrected.
+  - **Mutation-proof trail** (Unity 6000.3.16f1, filtered PlayMode `-testFilter` over
+    `ChromeStateTests;DevScreenFlowTests;GameRootWiringTests;HomeScreenViewOnDisableTests;
+    LevelIntroSheetOnDisableTests;ResultsPanelOnDisableTests;ScreenCoRegistrationTests`, run
+    with the sandbox disabled per the recorded Unity-batchmode-licensing-daemon precedent):
+    1. Deleted `Home.Hide();` at GameRoot.cs:210 (`Home.LevelSelected`) → RED, 24/25:
+       `DevScreenFlowTests.BootToHome_ComposesHomeIntroFlow_PinTapToIntro_PlayTapToPlaying_
+       StackRoundTrips` — "F2 discriminator: LevelSelected must call Home.Hide() — otherwise
+       Home (and its title) is still visible bleeding through the Intro sheet right now.
+       Expected: False / But was: True". Reverted; `git diff` against the pre-mutation snapshot
+       matched byte-for-byte.
+    2. Inset the halt-escape rect at GameRoot.cs:283 to `new Rect(0f, Screen.height*0.1f,
+       Screen.width, Screen.height*0.8f)` → RED, 23/25, both F3 corner asserts:
+       `GameRootWiringTests.HaltEscape_RealHalt_TapAnywhereRetries_RegionUnregisters` — "the
+       escape resolves a tap at the extreme bottom-left corner — proving the region is
+       genuinely full-screen, not just center-covering (an inset would miss here and this would
+       read -1 instead). Expected: -3 / But was: -1"; and
+       `GameRootWiringTests.HaltEscape_ReHaltAfterEscape_ReRegisters_NoDuplicateIdThrow` —
+       "escape consumed. Expected: -3 / But was: -1". Reverted; `git diff` matched byte-for-byte.
+    3. Final clean run on the committed tree: 25/25 GREEN (`ChromeStateTests` 9/9,
+       `DevScreenFlowTests` 2/2, `GameRootWiringTests` 9/9, `HomeScreenViewOnDisableTests` 1/1,
+       `LevelIntroSheetOnDisableTests` 1/1, `ResultsPanelOnDisableTests` 1/1,
+       `ScreenCoRegistrationTests` 2/2). Test count stays 25 (asserts were added INTO the
+       existing F1/F2/F3 tests per the amended contract's fix shape, not as new test methods).
+  - **Dispositions for the rest (not fixed here — out of this amended contract's scope):**
+    F4 (OnDisable asymmetry — ghost-affordance hazard) → follow-up in the test-hardening lane.
+    F5 (unguarded `AddComponent` duplication in pre-existing fixtures) → follow-up.
+    F6 (`Home.Hide()` is an undeclared addition to the frozen criterion-6 flow) → judged
+    in-scope and disclosed by the original implementer; flagged to the human; the
+    stack/breadcrumb inconsistency it raises is owned by the future Back contract.
+    F9 (priority-5 literal for `halt.escape`) → absorbed by D-1's ordering-ladder obligation in
+    the future LoadNext contract.

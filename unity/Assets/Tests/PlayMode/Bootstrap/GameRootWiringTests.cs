@@ -215,16 +215,21 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(chrome.Veil != null && chrome.Veil.IsVisible, Is.True,
                 "the F-DEV-4 veil still renders — untouched by the escape (no CTA/veil edit)");
 
-            // tap dead center — the escape is FULL-SCREEN, priority 5
-            var center = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
-            // #44 review F-1 (D-2): asserted explicitly even though it is geometrically
-            // invariant here — the escape rect IS the screen, so containment can never drift —
-            // for consistency with the law and as documentation of the assumption under test.
-            Assert.That(new Rect(0f, 0f, Screen.width, Screen.height).Contains(center), Is.True,
-                "precondition: the tap point sits inside the full-screen escape rect — "
-                + "otherwise this test proves nothing about the escape consuming the tap");
-            int result = _root.Input.HandleTapAtScreen(center);
-            Assert.That(result, Is.EqualTo(-3), "a chrome region (the escape) consumed the tap");
+            // F3 fix (round-1 review): the old precondition compared the SAME literal rect to
+            // itself (new Rect(0,0,Screen.width,Screen.height).Contains(center)) — zero
+            // red-power, and a dead-center tap never exercises whether the escape is truly
+            // full-screen. A plausible device-hardening inset (e.g. narrowing GameRoot.cs:283
+            // to Rect(0, Screen.height*0.1f, Screen.width, Screen.height*0.8f)) would keep this
+            // test green while soft-locking a player who taps the top/bottom 10%. Replaced with
+            // a corner-coverage proof: an extreme corner tap must itself resolve to the escape.
+            var corner = new Vector2(1f, 1f); // bottom-left extreme — the top-right sibling
+                                               // corner is pinned by HaltEscape_ReHaltAfterEscape_
+                                               // ReRegisters_NoDuplicateIdThrow below
+            int result = _root.Input.HandleTapAtScreen(corner);
+            Assert.That(result, Is.EqualTo(-3),
+                "the escape resolves a tap at the extreme bottom-left corner — proving the "
+                + "region is genuinely full-screen, not just center-covering (an inset would "
+                + "miss here and this would read -1 instead)");
             Assert.That(_root.ScreenState, Is.EqualTo("Playing"), "Retry restores Playing");
             Assert.That(_root.Session.State.Tick, Is.Zero, "tick 0 (re-simulation, ADR-0002 §9)");
 
@@ -285,11 +290,12 @@ namespace CatMetro.Tests.PlayMode
                 "precondition: the halt escape registered — otherwise the re-halt check below "
                 + "proves nothing about re-registration");
 
-            var center = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
-            Assert.That(new Rect(0f, 0f, Screen.width, Screen.height).Contains(center), Is.True,
-                "precondition: the tap point sits inside the full-screen escape rect — "
-                + "otherwise this test proves nothing about the escape consuming the tap");
-            Assert.That(_root.Input.HandleTapAtScreen(center), Is.EqualTo(-3), "escape consumed");
+            // F3 fix (round-1 review): sibling corner to HaltEscape_RealHalt_TapAnywhereRetries_
+            // RegionUnregisters's bottom-left tap — together the two tests pin BOTH extreme
+            // corners, proving the escape region is genuinely full-screen (a device-hardening
+            // inset at GameRoot.cs:283 would miss here and this read would go -1, not -3).
+            var corner = new Vector2(Screen.width - 1f, Screen.height - 1f); // top-right extreme
+            Assert.That(_root.Input.HandleTapAtScreen(corner), Is.EqualTo(-3), "escape consumed");
             Assert.That(_root.ScreenState, Is.EqualTo("Playing"));
 
             // re-halt: L001 re-simulates identically from tick 0 (deterministic replay) and

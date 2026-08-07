@@ -155,8 +155,13 @@ namespace CatMetro.Bootstrap
             Input.Wire(Session, View, Cam);
             Input.RetryRegionActive = () => ScreenState == "FailureReview";
             Input.RetryTapped = Retry;
-            // CM-UX-07 criterion 2: the board-input gate. ScreensVisible degenerates to false in
-            // shipped boot (criterion 6 never mounts), so this is behavior-unchanged there.
+            // CM-UX-07 criterion 2: the board-input gate. F7 (round-1 review) correction: this
+            // is NOT behavior-unchanged in shipped boot as a whole — previously BoardInputActive
+            // was null (TapInput treats null as always-active), so discs resolved even during
+            // Won/FailureReview/Halted; the "ScreenState == Playing" term newly closes them
+            // there (that is criterion 2's point). Only the "!ScreensVisible" term is
+            // behavior-neutral in shipped boot, since ScreensVisible degenerates to false there
+            // (criterion 6 never mounts).
             Input.BoardInputActive = () => ScreenState == "Playing" && !ScreensVisible;
             Banner = BannerView.Create(transform);
             Preview = WavePreviewStrip.Create(transform, Session, Cam);
@@ -164,8 +169,11 @@ namespace CatMetro.Bootstrap
             Log.SimTickSource = () => Session.State.Tick;
             Log.ScreenStateSource = () => ScreenState;
 
-            // CM-UX-07 criterion 1: chrome + hint attach to root.gameObject (the camera's host —
-            // the self-resolve pattern finds it). Regression pin: sortingOrder 100/90 unchanged.
+            // CM-UX-07 criterion 1: chrome + hint attach to root.gameObject. F8 (round-1 review)
+            // correction: the camera is NOT on root.gameObject itself — it lives on a child
+            // GameObject named "Camera" (built above at GameRoot.cs:141-143); each controller
+            // resolves it via GetComponentInChildren<Camera>() (the self-resolve pattern).
+            // Regression pin: sortingOrder 100/90 unchanged.
             var chrome = gameObject.AddComponent<ScreenChromeController>();
             chrome.Attach(() => ScreenState);
             var hint = gameObject.AddComponent<HintChipController>();

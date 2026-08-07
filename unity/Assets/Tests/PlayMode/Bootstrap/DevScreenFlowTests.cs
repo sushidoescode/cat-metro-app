@@ -86,6 +86,10 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Intro, Is.Not.Null);
             Assert.That(_root.Intro.IsVisible, Is.False, "Intro not shown yet");
             CollectionAssert.AreEqual(new[] { "home" }, _root.Stack.ToBreadcrumb());
+            // F1/F2 fix (round-1 review): baseline region count while only Home's pin is
+            // registered — used below to prove the pin's region is genuinely gone (not just
+            // visually hidden) once LevelSelected fires, without hardcoding a literal count.
+            int regionBaseline = _root.Input.Regions.Count;
 
             var canvasGo = FindByName(_root.gameObject, "ScreensCanvas");
             Assert.That(canvasGo, Is.Not.Null);
@@ -115,15 +119,24 @@ namespace CatMetro.Tests.PlayMode
             CollectionAssert.AreEqual(new[] { "home", "intro" }, _root.Stack.ToBreadcrumb());
             Assert.That(_root.ScreensVisible, Is.True, "still up — the stack is non-empty");
 
-            // #44 (D-2): Home's pin and Intro's Play chip both center in the thumb band — the
-            // IDENTICAL point (the #44 finding this composer's Home.Hide()-on-push fix closes,
-            // belt-and-suspenders under the #44 modal-priority law too). Asserted explicitly so
-            // this test actually exercises that fix instead of accidentally tapping two things
-            // that never overlapped in the first place.
-            Assert.That(_root.Intro.PlayChipRectPx.Contains(_root.Home.PinPaintedRectPx.center),
-                Is.True,
-                "precondition: the Play chip's rect contains the (hidden) Home pin's center — "
-                + "otherwise this test doesn't exercise the #44 modal-priority/Home.Hide() fix");
+            // F1/F2 fix (round-1 review): the old precondition here compared the SAME rect
+            // computation to itself — LevelIntroSheet.LayoutChip sets the chip rect to
+            // HudBands.ThumbBand(Screen.safeArea) and HomeLayout.PinRect centers the pin in
+            // that IDENTICAL band, so "chip.Contains(pin.center)" reduces to
+            // "band.Contains(band.center)": true by construction for any dpi/safe-area/device,
+            // and its rationale was false besides — Home.Hide() (GameRoot.cs:210) has already
+            // unregistered the pin by this point, so no tie-break ever occurs here. Replaced
+            // with asserts that read SUT state and can fail under the plausible mutation of
+            // deleting `Home.Hide();` at GameRoot.cs:210 (the PR's headline in-slice fix).
+            Assert.That(_root.Home.IsVisible, Is.False,
+                "F2 discriminator: LevelSelected must call Home.Hide() — otherwise Home (and "
+                + "its title) is still visible bleeding through the Intro sheet right now");
+            Assert.That(_root.Input.Regions.Count, Is.EqualTo(regionBaseline),
+                "F1 discriminator: the pin's region is genuinely gone, not just visually "
+                + "hidden — Home's pin unregisters (-1) while Intro's chip registers (+1), "
+                + "netting back to the boot baseline; under the delete-Home.Hide mutation this "
+                + "reads baseline + 1 (both regions live — the tie-break geometry this test "
+                + "must actually exercise)");
 
             // tap Play: both hide, stack empties, board input returns
             int playResult = _root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center);
