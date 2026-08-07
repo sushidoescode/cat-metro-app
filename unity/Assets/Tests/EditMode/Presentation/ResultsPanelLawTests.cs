@@ -26,11 +26,24 @@ namespace CatMetro.Tests.Presentation
             Assert.That(HudBands.MeetsMinTargetPx(chip, dpi), Is.True,
                 "the one CTA clears the 48dp floor at this row's dpi");
             // Criterion 4's no-divergence statement, made assertable: during Won the retry
-            // band predicate is false (GameRoot.cs:127 — FailureReview-only), so the
-            // REGISTERED rect equals the PAINTED rect and its self-overlap is itself. If the
-            // law ever splits painted from registered, this row is where it must go red.
+            // band predicate is false (GameRoot.cs — FailureReview-only), so the REGISTERED
+            // rect equals the PAINTED rect and its self-overlap is itself.
+            // #39 post-merge audit M-1: this identity is a pure-math sanity check ONLY — it
+            // computes both TappableRect args from the SAME local `chip`, so it is true for
+            // EVERY input regardless of whether the live ResultsPanel component actually keeps
+            // its registered and painted rects in sync (a real split cannot make this line red
+            // — it never touches the component). Left in place as a harmless documentation of
+            // the algebraic claim; the REAL, mutation-provable no-divergence proof — reading
+            // the painted rect from the live `ResultsPanel.ChipPaintedRectPx` getter and the
+            // registered rect from the ACTUAL production tap-routing path (TapInput ->
+            // ChromeRegions.TryResolve consulting the exact Func<Rect> ResultsPanel.cs:148
+            // registered) — lives in ResultsPanelTests.cs's
+            // ChipPaintedRect_IsTheSafeAreaThumbBand_AndFloorHoldsLive (PlayMode; EditMode
+            // cannot exercise this without a live-attached component reading Screen.safeArea,
+            // which breaks this file's per-row dpi/inset injection discipline).
             Assert.That(ChromeGeometry.TappableRect(chip, chip), Is.EqualTo(chip),
-                "registered == painted == tappable on the Won surface");
+                "registered == painted == tappable on the Won surface (algebraic identity only "
+                + "— see ResultsPanelTests.cs for the live-wiring proof)");
         }
 
         [Test]
