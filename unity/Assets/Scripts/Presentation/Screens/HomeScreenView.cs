@@ -146,6 +146,15 @@ namespace CatMetro.Presentation.Screens
             UnregisterPin(); // R1-F3 lifetime law
         }
 
+        // CM-UX-07 W-1 (R2-3, audit M-3): mirrors OnDestroy — a deactivated-but-not-destroyed
+        // Home (SetActive(false) directly on the host, not through Hide()) must drop its
+        // registration too, or a live rect provider survives over a host that stopped posting
+        // frames.
+        private void OnDisable()
+        {
+            UnregisterPin();
+        }
+
         private void UnregisterPin()
         {
             if (_regions != null && _registered)

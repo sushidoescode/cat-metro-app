@@ -102,3 +102,57 @@ contract.
 ## Status log
 
 - 2026-08-07 — contract frozen at anchor 32dbecb; red next.
+- 2026-08-07 — restatement (implementing session): turn the UX tranche ON by composing
+  GameRoot.Wire/Retry over already-shipped components (ScreenChromeController, HintChipController,
+  BoardView.MotionOffSource, ChromeRegions, HomeScreenView, LevelIntroSheet, ScreenStack) — no
+  component behavior changes beyond the declared W-1/W-2/W-3 OnDisable mirrors. Assumptions (none
+  load-bearing enough to stop on, all resolvable from the seam facts/contract text): (a) the halt
+  escape rect is a literal full-screen `Rect(0,0,Screen.width,Screen.height)` — no pure-math helper
+  needed since it is not safe-area-scoped; (b) `ScreensVisible` is DERIVED from `Stack.Count > 0`
+  (single source of truth) rather than a separately-toggled bool, satisfying "true iff stack
+  non-empty" literally; (c) no `.meta` files are needed for the evals/results PNGs since that path
+  is outside `unity/Assets/` (confirmed: zero `.meta` siblings for any prior cm-ux-0X evidence
+  PNG) — the task brief's "+.meta via a -quit import pass" is boilerplate that doesn't apply here,
+  followed precedent instead.
+- 2026-08-07 — RED: 14 new PlayMode tests written across
+  `Tests/PlayMode/Bootstrap/{GameRootWiringTests,DevScreenFlowTests}.cs` (criteria 1,2,3,4,6,7) and
+  three new `*OnDisableTests.cs` files (criterion 5, W-1/W-2/W-3). Captured against a temporary
+  GameRoot "skeleton" (new properties/fields declared — `BootToHome`, `ScreensVisible` hardcoded
+  false, `Home`/`Intro`/`Stack` — but Wire/Retry left unwired) plus the 3 component files reverted
+  to their pre-contract HEAD state, so every new test compiled and failed on an ASSERTION, never a
+  compile error: 11/14 failed for the right reason (chrome/hint absent, gate absent, MotionOffSource
+  never bound, halt.escape never registered, OnDisable absent — see per-test messages in the PR);
+  3/14 passed at red as documented P-7-style pins (unchanged merged behavior / vacuous absence
+  controls with their own decoy positive-control asserts): `BoardInputGate_RealBoot_...`,
+  `HaltEscapeRegion_AbsentDuringPlayingWonAndFailureReview`, `FlagFalse_ZeroScreenObjects...`.
+- 2026-08-07 — GREEN: full composition landed in GameRoot.Wire/Retry/Update plus the dev-fenced
+  `ComposeDevScreenFlow` (criterion 6) and the 3 component OnDisable mirrors (W-1/W-2/W-3). All 14
+  new tests green (`GameRootWiringTests` 9/9, `DevScreenFlowTests` 2/2, the 3 OnDisable tests 1/1
+  each). One real defect caught by the criterion-6 round-trip test and FIXED within the same
+  composer (GameRoot-only, no component edit): `HomeScreenView`'s pin rect and `LevelIntroSheet`'s
+  Play chip rect are both centered in the safe-area thumb band — the IDENTICAL point — so with Home
+  still registered while Intro showed, `ChromeRegions`' earliest-registration tie-break routed the
+  "Play" tap back to Home's pin (re-firing `LevelSelected`) instead of `PlayRequested`. Fixed by
+  calling `Home.Hide()` at the `LevelSelected` step (a stack push navigates OFF Home — ScreenStack's
+  own top-of-stack law), unregistering the pin before Intro's chip is the only thing in that spot;
+  `PlayRequested`'s own `Home.Hide()` is now idempotent. Full committed-tree suite:
+  `check.sh` OK; `test.sh` 13/13; `editmode.test.sh` EditMode 745/745 (unchanged), PlayMode 102/102
+  (88 baseline + 14 new).
+- 2026-08-07 — visual verification (#33 rule) discharged: uncommitted probe
+  (`CmUx07VisualProbeTests.cs`, never staged) booted `GameRoot.Launch()` with `BootToHome=true`
+  (real L001 seam) and rendered three ScreenSpaceCamera frames to Screen-matched RTs (640x480 batch
+  host). Environment note: capturing under `-batchmode -nographics` produces a blank/uniform-gray
+  frame — reproduced identically on the PRE-EXISTING CM-UX-02 capture rig run in isolation, so this
+  is a host/flag artifact, not a defect; dropping `-nographics` (keeping `-batchmode`) restored real
+  rendering, matching how the committed cm-ux-02..06 evidence must have been produced. Eyeballed:
+  (1) Home — "Cat Metro" title top (a small red wave-preview chip overlaps the leading "C"), three
+  grey parked-district silhouette rectangles, the L001 board visible behind/through Home (no
+  backdrop panel — HomeScreenView ships none; a pre-existing CM-UX-06 component characteristic, not
+  something this thin-wiring PR adds), and the navy pin + cream ring at the bottom, oversized/
+  clipped on this tiny 640x480 host exactly as CM-UX-06's own evidence noted for the same reason.
+  (2) LevelIntro — "First Switch" (L001's real name) + "Deliver 2 cats" (L001's real win.deliveries
+  substituted) over a translucent navy sheet with the board visible through it, and a full-width
+  "Play" chip in the thumb band; Home's title/pin are gone (the Home.Hide() fix confirmed visually).
+  (3) Playing (post-Play) — both screens gone entirely; the raw L001 board (source, switch with its
+  onboarding teach ring, red/blue stations, wave-preview chip) renders with no overlay chrome.
+  Frames committed to `evals/results/ux/cm-ux-07/`; probe deleted before commit (never staged).
