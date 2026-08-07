@@ -13,6 +13,26 @@ namespace CatMetro.Presentation.Board
     // is visible on its first rendered frame while the sim applies it at the boundary.
     public sealed class BoardView : MonoBehaviour
     {
+        // CM-UX-03: the onboarding teach affordance — a static raised ring behind every switch
+        // disc plus a scale pulse, band-gated INSIDE Build (survives Retry's rebuild by
+        // construction; live via the existing composition call). The affordance marks the
+        // VERB SURFACE, never the answer (deriving route correctness is solver territory —
+        // contract A-UX3-1). Clears per switch on its first command in the session log; the
+        // ring is ALWAYS static (shape carries the information; motion is removable — the
+        // MotionOffSource binding is CM-UX-07's, tests bind directly).
+        public System.Func<bool> MotionOffSource;
+
+        private Transform[] _teachRing;   // static shape twin — never animated
+        private Transform[] _teachDisc;   // the pulsing disc transforms
+        private Vector3 _teachDiscBaseScale;
+        private bool[] _teachCleared;
+
+        public bool TeachAffordancePresent(int switchIndex)
+        {
+            return _teachRing != null && _teachRing[switchIndex] != null
+                && _teachRing[switchIndex].gameObject.activeSelf;
+        }
+
         private GameSession _session;
         private string[] _nodeIds;
         private Vector3[] _nodePos;
@@ -138,8 +158,84 @@ namespace CatMetro.Presentation.Board
                 arm.transform.SetParent(disc.transform.parent, false);
                 arm.transform.localScale = new Vector3(0.1f, 0.9f, 0.1f);
                 _switchArm[s] = arm.transform;
+
+                // CM-UX-03: onboarding-band teach affordance — a STATIC raised ring behind
+                // the disc (shape carries the information; no BoardElementId, so the merged
+                // render-fidelity inventory is untouched) plus the disc pulse driven in
+                // UpdateFrom. Band-gated HERE so Retry's rebuild re-teaches by construction.
+                if (level.Dto.Meta.Band == "onboarding")
+                {
+                    if (_teachRing == null)
+                    {
+                        _teachRing = new Transform[switches.Length];
+                        _teachDisc = new Transform[switches.Length];
+                        _teachCleared = new bool[switches.Length];
+                        _teachDiscBaseScale = disc.transform.localScale;
+                    }
+                    var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                    // Human ruling 2026-08-06 (#36 review finding 2): the ring carries the
+                    // motion-off information, so it must READ as a ring — a distinct darker
+                    // tint (the chrome ink-navy), one static cached instance of the greybox
+                    // shader (same pipeline, no new Resources entry, no per-retry leak).
+                    ring.GetComponent<Renderer>().sharedMaterial = TeachRingMaterial();
+                    ring.name = "teachring:" + switches[s].Id;
+                    ring.transform.SetParent(transform, false);
+                    ring.transform.localPosition =
+                        _nodePos[_switchNode[s]] + new Vector3(0f, 0f, -0.35f);
+                    ring.transform.localScale = new Vector3(0.8f, 0.04f, 0.8f);
+                    ring.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                    _teachRing[s] = ring.transform;
+                    _teachDisc[s] = disc.transform;
+                }
             }
             RefreshSwitches();
+        }
+
+        private static Material _teachRingMat; // one cached tinted instance per domain
+
+        // The DEVFIX criterion-5 static gate counts CreatePrimitive calls against
+        // GreyboxMaterial binds one-to-one — this helper deliberately names the provider
+        // EXACTLY once (the ring's bind), copying its material so the shader (and the gate's
+        // live shader-equality walk) stay identical while the tint differentiates the ring.
+        private static Material TeachRingMaterial()
+        {
+            if (_teachRingMat == null)
+            {
+                var basis = GreyboxMaterial.Shared;
+                if (basis == null) return null; // the provider already logged loudly
+                _teachRingMat = new Material(basis);
+                _teachRingMat.color = new Color(0.13f, 0.19f, 0.29f); // the chrome ink-navy
+            }
+            return _teachRingMat;
+        }
+
+        // The teach tick: clear keys on ANY command for the switch in the session log (a
+        // toggle-back never re-teaches); the pulse reads render-side time only and mutates
+        // the cached transform — zero allocation, zero sim contact. Reads the CALLER's
+        // session (review F9) so a future multi-session caller cannot key teach state to a
+        // stale log.
+        private void UpdateTeach(GameSession session)
+        {
+            if (_teachRing == null) return;
+            bool motionOff = MotionOffSource != null && MotionOffSource();
+            var entries = session.Log.Entries;
+            for (int s = 0; s < _teachRing.Length; s++)
+            {
+                if (_teachCleared[s]) continue;
+                bool commanded = false;
+                for (int i = 0; i < entries.Count; i++)
+                    if (entries[i].SwitchId == s) { commanded = true; break; }
+                if (commanded)
+                {
+                    _teachCleared[s] = true;
+                    _teachRing[s].gameObject.SetActive(false);
+                    _teachDisc[s].localScale = _teachDiscBaseScale;
+                    continue;
+                }
+                _teachDisc[s].localScale = motionOff
+                    ? _teachDiscBaseScale
+                    : _teachDiscBaseScale * (1f + 0.12f * Mathf.Sin(Time.time * 4f + s));
+            }
         }
 
         // The COMMITTED route: authoritative state plus not-yet-applied toggles (criterion 3a).
@@ -166,6 +262,7 @@ namespace CatMetro.Presentation.Board
         public void UpdateFrom(GameSession session)
         {
             RefreshSwitches();
+            UpdateTeach(session);
             float alpha = (float)session.Alpha;
             var trains = session.State.Trains;
             for (int t = 0; t < trains.Length; t++)

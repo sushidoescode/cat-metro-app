@@ -25,23 +25,23 @@ namespace CatMetro.Tests.Presentation
         public void ThisSlice_AppendsExactlyThreeRows_BytePinned()
         {
             var rows = Rows();
-            Assert.That(rows.Length, Is.EqualTo(10),
-                "7 merged rows + this slice's 3 — append-only, never edits");
-            Assert.That(rows[7], Is.EqualTo("home.title,Cat Metro"), "DRAFT");
-            Assert.That(rows[8], Is.EqualTo("intro.play,Play"), "DRAFT");
-            Assert.That(rows[9], Is.EqualTo("intro.goal,Deliver {count} cats"), "DRAFT");
+            Assert.That(rows.Length, Is.EqualTo(11),
+                "8 merged rows (incl. CM-UX-05's hint.tutorial) + this slice's 3 — append-only, never edits");
+            Assert.That(rows[8], Is.EqualTo("home.title,Cat Metro"), "DRAFT");
+            Assert.That(rows[9], Is.EqualTo("intro.play,Play"), "DRAFT");
+            Assert.That(rows[10], Is.EqualTo("intro.goal,Deliver {count} cats"), "DRAFT");
         }
 
         [Test]
         public void MergedRows_StayUntouched_AppendOnlyLaw()
         {
             // The slice's own guard on the rows it must NOT touch (belt on top of the merged
-            // pins): the first seven rows still start with the frozen keys, in order.
-            var keys = Rows().Take(7).Select(r => r.Substring(0, r.IndexOf(','))).ToArray();
+            // pins): the first eight rows still start with the frozen keys, in order.
+            var keys = Rows().Take(8).Select(r => r.Substring(0, r.IndexOf(','))).ToArray();
             Assert.That(keys, Is.EqualTo(new[]
             {
                 "win.banner", "fail.banner", "fail.banner.timeout", "fail.queueoverflow",
-                "fail.platformoverflow", "retry.cta", "halt.notice",
+                "fail.platformoverflow", "retry.cta", "halt.notice", "hint.tutorial",
             }));
         }
 

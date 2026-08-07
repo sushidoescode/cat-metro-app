@@ -47,10 +47,12 @@ namespace CatMetro.Tests.Presentation
             // R1-L6: the exact count is SLICE-SCOPED evidence for CM-UX-02's "gains exactly
             // two rows" criterion. A later append-slice amends this bound as declared contract
             // evolution (raise the count + pin its own rows); it may never touch rows 0-6.
+            // + 1 — CM-UX-05's declared append (this comment's own sanctioned path): its row
+            // is pinned in HintStringsDisciplineTests; rows 0-6 stay untouched.
             // AMENDED by CM-UX-06 under exactly this clause: +3 appended rows (home.title,
-            // intro.play, intro.goal), byte-pinned in UiCsvUx06Tests; rows 0-6 untouched.
-            Assert.That(rows.Length, Is.EqualTo(FrozenBaseRows.Length + 5),
-                "CM-UX-02's two rows + CM-UX-06's three — the declared R1-L6 evolution");
+            // intro.play, intro.goal), byte-pinned in UiCsvUx06Tests; rows 0-7 untouched.
+            Assert.That(rows.Length, Is.EqualTo(FrozenBaseRows.Length + 6),
+                "CM-UX-02's two rows + CM-UX-05's one + CM-UX-06's three — each append-slice pins its own");
             Assert.That(rows[5], Is.EqualTo("retry.cta,Try again"), "LOCKED");
             Assert.That(rows[6], Is.EqualTo("halt.notice,Signal fault — the line stopped"),
                 "DRAFT, byte-pinned including U+2014");
