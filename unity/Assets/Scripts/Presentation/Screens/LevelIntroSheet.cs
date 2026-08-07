@@ -18,7 +18,11 @@ namespace CatMetro.Presentation.Screens
     public sealed class LevelIntroSheet : MonoBehaviour
     {
         private const string PlayRegionId = "intro.play";
-        private const int PlayRegionPriority = 0; // explicit per A-UX1-3
+        // #42 review F3, the modal-over-parent law: a sheet shown OVER a screen registers
+        // STRICTLY above it — at equal priority the registry's earliest-registration tie-break
+        // hands the modal's dead-center tap to the parent's pin — the game could not have been
+        // started from the sheet once CM-UX-07 attached these views (latent, caught pre-wiring). Explicit per A-UX1-3; parents register at 0, modals at 10.
+        private const int PlayRegionPriority = 10;
 
         public System.Action PlayRequested;
 
@@ -34,6 +38,7 @@ namespace CatMetro.Presentation.Screens
         public string GoalText => _goal != null ? _goal.text : "";
         public string PlayText => _playLabel != null ? _playLabel.text : "";
         public Rect PlayChipRectPx => _chipRectPx;
+        public RectTransform ChipTransform => _chip; // #42 F1 read-back seam
         public bool IsVisible => gameObject.activeSelf;
 
         public static LevelIntroSheet Create(Transform canvasParent)

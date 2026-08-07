@@ -41,7 +41,7 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void NewRows_ExactlyTheFourPinned_Appended()
+        public void NewRows_ExactlyTheSevenPinned_Appended()
         {
             var rows = Rows();
             // R1-L6: the exact count is SLICE-SCOPED evidence, amended only by declared

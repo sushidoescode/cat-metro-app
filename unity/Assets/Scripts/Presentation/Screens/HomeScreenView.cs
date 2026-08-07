@@ -33,6 +33,9 @@ namespace CatMetro.Presentation.Screens
         private float _phase;
 
         public Rect PinPaintedRectPx => _pinRectPx;
+        // #42 review F1: the world-corners read-back seam — tests measure the REAL transform
+        // against the painted claim instead of comparing the claim to itself.
+        public RectTransform PinTransform => _pin;
         public bool RingVisible => _ring != null && _ring.gameObject.activeInHierarchy;
         public float PinScale => _pin != null ? _pin.localScale.x : 1f;
         public bool IsVisible => gameObject.activeSelf;
