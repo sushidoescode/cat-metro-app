@@ -92,6 +92,10 @@ namespace CatMetro.Bootstrap
         private void InitializeFromSeam(string levelPath)
         {
             if (Session != null) return;
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            var devLevel = DevCapture.DevLevelOverride.TryImport();
+            if (devLevel != null) { Wire(devLevel); return; }
+#endif
             var source = new StreamingAssetsContentSource();
             var bytes = source.ReadAsync(levelPath, CancellationToken.None).GetAwaiter().GetResult();
             var imported = LevelImporter.Import(bytes);
@@ -104,6 +108,7 @@ namespace CatMetro.Bootstrap
 
         private void Wire(ImportedLevel level)
         {
+            FramePolicy.Apply(); // CM-C2b-DEVFIX criterion 3: every boot path passes through here
             _level = level;
             Session = new GameSession(level);
 

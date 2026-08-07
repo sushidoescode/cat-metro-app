@@ -31,6 +31,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
             for (int i = 0; i < 2; i++)
             {
                 var chip = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                chip.GetComponent<Renderer>().sharedMaterial = Board.GreyboxMaterial.Shared;
                 Object.Destroy(chip.GetComponent<Collider>()); // ZERO interactive elements
                 chip.name = "chip" + i;
                 chip.transform.SetParent(go.transform, false);

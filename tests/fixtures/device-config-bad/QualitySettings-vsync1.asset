@@ -1,0 +1,4 @@
+# NEGATIVE FIXTURE — a quality-settings-shaped file with one non-zero vsync level.
+# Proves criterion 3's vsync gate fires (vsync 1 on a 120 Hz panel presents 120 fps).
+    vSyncCount: 0
+    vSyncCount: 1

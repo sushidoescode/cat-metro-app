@@ -3,3 +3,10 @@ fail.banner,Overloaded!
 fail.banner.timeout,The last train left the depot
 fail.queueoverflow,Platform overflowed at {node}
 fail.platformoverflow,{station} platform overflowed
+retry.cta,Try again
+halt.notice,Signal fault — the line stopped
+hint.tutorial,Tap the flashing switch
+results.next,Next
+home.title,Cat Metro
+intro.play,Play
+intro.goal,Deliver {count} cats

@@ -6,7 +6,10 @@
         "CatMetro.Content",
         "CatMetro.Services",
         "CatMetro.Application",
+        "CatMetro.Presentation",
         "CatMetro.Bootstrap",
+        "UnityEngine.UI",
+        "Unity.TextMeshPro",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
