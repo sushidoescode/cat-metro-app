@@ -65,3 +65,17 @@ time, never a pinned commit). The UX contract must be told the criterion-10 bloc
   N=13 → target 14. Full committed-tree suite: `scripts/check.sh` OK; `scripts/test.sh`
   14/14 wrappers passed, EXIT:0. ERRATA (F8, frozen text stays frozen): contract line 18
   says branch task/CM-C10-stage-content; the real branch is task/CM-C10-content-stager.
+
+- 2026-08-07 — review round 2 (same reviewer, fix verification by seeded defect): MERGEABLE,
+  no new HIGH. F1-F4 confirmed closed (six seeded defects; CI-shaped clone; read-only-dest
+  probe with control); real CI green on 6d044d9 (run 31145961972, 14/14). Non-blocking
+  carried to the hardening follow-up: census covers only the empty-dest leg (prune/rm path
+  and in-tree non-goal writes uncensused — hoist census into apply_to + narrow whitelist to
+  the two rule dirs); new_dirt() is additive-only (same-path writes invisible outside CI).
+- 2026-08-07 — errata completion (round-2 finding 3): F5 — criterion-3 comparison excludes
+  ALL *.meta; the three FOLDER metas (StreamingAssets/config.meta, content.meta,
+  content/levels.meta) are neither authored nor verified by the stager; CM-C11 inherits
+  this gap KNOWINGLY (state/backlog.md:146-152 assigns folder metas to this class). F9 —
+  f86ec39 landed stager+wrapper+fixtures in one commit (no failing-test-first commit);
+  sprint mode prices this, recorded not hidden. Pointer correction (finding 4): the fix
+  commit reachable from this branch is 5ff8956 (f76dcf4 was orphaned by an amend).
