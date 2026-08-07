@@ -1,0 +1,96 @@
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+
+namespace CatMetro.Presentation.Hud
+{
+    // CM-UX-05 criterion 4: the hint chip view — the only sanctioned tutorial text
+    // (CM-R13.5; hint.tutorial via UiStrings, key-only, DRAFT copy queued for TG-5).
+    // Render-only by law (P-1): no registered region, no input target in v1 — A11Y-S01-4 is
+    // honored DIMENSIONALLY (board-edge above the thumb band, exactly 48dp high at the live
+    // dpi). Live Screen.safeArea/Screen.dpi reads exist only here, injected into the pure
+    // rect law (A-UX1-5); background binds the Resources-loaded UI material (the
+    // GreyboxMaterial F-DEV-2 lesson). Placement is DRAFT for the batched eyeball sitting.
+    public sealed class HintChipView : MonoBehaviour
+    {
+        private RectTransform _rect;
+        private TMP_Text _text;
+        private Rect _paintedPx;
+
+        public bool IsVisible => gameObject.activeSelf;
+        public Rect PaintedRectPx => _paintedPx;
+        public string RenderedText => _text != null ? _text.text : "";
+
+        // A11Y-S01-5 HOOKS only: the Unity accessibility-hierarchy build + TalkBack pass is
+        // deferred work (UX-OPEN-11) — these carry the metadata a wiring pass will consume.
+        public const string LiveRegionPoliteness = "polite";
+        public string AccessibilityLabel => RenderedText;
+
+        // The pure placement law: full safe-area width, bottom edge exactly the safe-area
+        // thumb band's top (board-edge above the band), height exactly 48dp at the injected
+        // dpi. Pure math — no Screen reads in here (the CM-UX-01 injected-inputs law).
+        public static Rect ChipRect(Rect safeArea, float dpi)
+        {
+            float height = HudBands.MinTargetDp * HudBands.PxPerDp(dpi);
+            return new Rect(safeArea.x, HudBands.ThumbBand(safeArea).yMax,
+                safeArea.width, height);
+        }
+
+        public static HintChipView Create(Transform canvasParent)
+        {
+            var go = new GameObject("HintChip");
+            go.transform.SetParent(canvasParent, false);
+            var view = go.AddComponent<HintChipView>();
+            view._rect = go.AddComponent<RectTransform>();
+
+            var bg = go.AddComponent<Image>();
+            var mat = UiChromeMaterial.Shared;
+            if (mat != null) bg.material = mat;
+            // DRAFT chip look for the eyeball sitting: dark spruce, distinct from the
+            // ink-navy retry chip — the TEXT carries the meaning, never the color (P-5).
+            bg.color = new Color(0.10f, 0.22f, 0.19f, 0.92f);
+
+            var textGo = new GameObject("Label");
+            textGo.transform.SetParent(go.transform, false);
+            var trect = textGo.AddComponent<RectTransform>();
+            trect.anchorMin = Vector2.zero;
+            trect.anchorMax = Vector2.one;
+            trect.offsetMin = Vector2.zero;
+            trect.offsetMax = Vector2.zero;
+            view._text = textGo.AddComponent<TextMeshProUGUI>();
+            view._text.text = Strings.UiStrings.Get("hint.tutorial"); // key-only, never a literal
+            view._text.alignment = TextAlignmentOptions.Center;
+            view._text.fontSize = 30f;
+            view._text.color = Color.white;
+
+            go.SetActive(false);
+            return view;
+        }
+
+        public void SetVisible(bool visible)
+        {
+            if (visible) Layout();
+            if (gameObject.activeSelf != visible) gameObject.SetActive(visible);
+        }
+
+        // The live binding site: Screen.safeArea/dpi are read HERE and handed to pure math.
+        // R1-L7 (inherited): re-layout only when an INPUT of the rect law changes — the law
+        // takes safeArea AND dpi, so the cache keys on both.
+        private Rect _lastSafeArea = new Rect(-1f, -1f, -1f, -1f);
+        private float _lastDpi = -1f;
+
+        private void Layout()
+        {
+            if (Screen.safeArea == _lastSafeArea && Screen.dpi == _lastDpi) return;
+            _lastSafeArea = Screen.safeArea;
+            _lastDpi = Screen.dpi;
+            var rect = ChipRect(Screen.safeArea, Screen.dpi);
+            _paintedPx = rect;
+            _rect.anchorMin = Vector2.zero;
+            _rect.anchorMax = Vector2.zero;
+            _rect.pivot = Vector2.zero;
+            _rect.anchoredPosition = new Vector2(rect.x, rect.y);
+            _rect.sizeDelta = new Vector2(rect.width, rect.height);
+        }
+    }
+}

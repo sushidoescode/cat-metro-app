@@ -27,9 +27,9 @@ namespace CatMetro.Tests.Presentation
             var rows = Rows();
             Assert.That(rows.Length, Is.EqualTo(10),
                 "7 merged rows + this slice's 3 — append-only, never edits");
-            Assert.That(rows[7], Is.EqualTo("home.title,Cat Metro"), "DRAFT");
-            Assert.That(rows[8], Is.EqualTo("intro.play,Play"), "DRAFT");
-            Assert.That(rows[9], Is.EqualTo("intro.goal,Deliver {count} cats"), "DRAFT");
+            Assert.That(rows[9], Is.EqualTo("home.title,Cat Metro"), "DRAFT");
+            Assert.That(rows[10], Is.EqualTo("intro.play,Play"), "DRAFT");
+            Assert.That(rows[11], Is.EqualTo("intro.goal,Deliver {count} cats"), "DRAFT");
         }
 
         [Test]

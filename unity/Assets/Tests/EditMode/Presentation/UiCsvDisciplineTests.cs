@@ -41,19 +41,22 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void NewRows_ExactlyTheTwoPinned_Appended()
+        public void NewRows_ExactlyTheFourPinned_Appended()
         {
             var rows = Rows();
-            // R1-L6: the exact count is SLICE-SCOPED evidence for CM-UX-02's "gains exactly
-            // two rows" criterion. A later append-slice amends this bound as declared contract
-            // evolution (raise the count + pin its own rows); it may never touch rows 0-6.
-            // AMENDED by CM-UX-06 under exactly this clause: +3 appended rows (home.title,
-            // intro.play, intro.goal), byte-pinned in UiCsvUx06Tests; rows 0-6 untouched.
-            Assert.That(rows.Length, Is.EqualTo(FrozenBaseRows.Length + 5),
-                "CM-UX-02's two rows + CM-UX-06's three — the declared R1-L6 evolution");
+            // R1-L6: the exact count is SLICE-SCOPED evidence, amended only by declared
+            // contract evolution (raise the count + pin your own rows; rows 0-6 untouchable).
+            // Adoption-merge resolutions (2026-08-06, #39 and CM-UX-06): append order follows
+            // MERGE order — hint.tutorial row 7 (transitively pinned, #39 F9), results.next
+            // row 8, then CM-UX-06's three (home.title/intro.play/intro.goal) at rows 9-11,
+            // byte-pinned in UiCsvUx06Tests (indices shifted at adoption). Count = 5 + 7.
+            Assert.That(rows.Length, Is.EqualTo(FrozenBaseRows.Length + 7),
+                "CM-UX-02's two + CM-UX-05's one + CM-UX-04's one + CM-UX-06's three");
             Assert.That(rows[5], Is.EqualTo("retry.cta,Try again"), "LOCKED");
             Assert.That(rows[6], Is.EqualTo("halt.notice,Signal fault — the line stopped"),
                 "DRAFT, byte-pinned including U+2014");
+            Assert.That(rows[8], Is.EqualTo("results.next,Next"),
+                "LOCKED (CM-UX-04's declared append, row 8 after the CM-UX-05 merge-order shift)");
         }
 
         [Test]
