@@ -300,3 +300,63 @@ Defaults (AGENTS.md) plus:
   `dotnet test`/`restore` during `scripts/test.sh` runs (an unrelated dependency-graph
   regeneration, `catmetro.services`'s `Newtonsoft.Json` transitive dep annotation) — reverted via
   `git checkout --`, out of this contract's scope, never staged.
+
+## PR #57 round-1 review fixup (sanctioned, F1–F3 + two record corrections; F4/F7/F8/F9 deferred as debt)
+
+- 2026-08-08 — **F1 (behavior) FIXED.** `LoadLevel` now unregisters `ResultsPanel.RegionId`
+  ("results.next") itself (mirroring the existing `"halt.escape"` treatment), instead of relying
+  on `ResultsPanel`'s own next `Update()`/`Apply()` poll to notice the state left `Won`.
+  Component `Update()` order is undefined, and `LoadNext`'s synchronous, main-thread
+  `ReadBlocking` widens the real-world window further: without the fix, a same-frame second tap
+  (no yield between) re-resolves the STALE region and re-invokes `NextRequested`, skipping a
+  band level (observed L001→Won→tap→L002→immediate-second-tap→**L003**, no yield). NEW pin:
+  `LoadNextTests.DoubleTap_SameFrame_NoYieldBetween_DoesNotSkipALevel` — deliberately does NOT
+  yield between the two taps (the flagship test's own yield at the old line ~81 is exactly the
+  gap that hid this). RED-first (mutation: fix line removed) — `Expected: "L002" / But was:
+  "L003"`, the exact failure this bug predicts. Reverted the mutation, re-ran filtered
+  (`GameRootWiringTests;ResultsPanelTests;ResultsPanelVsIntroOrderingTests;LoadNextTests`) →
+  34/34 green (33 prior + 1 new pin).
+- 2026-08-08 — **F2 (comment truth) FIXED.** `ResultsPanel.cs`'s class-header comment and the
+  `OnDisable` comment both still said NEEDS-WIRING/UNATTACHED — false since this contract's own
+  attach line. Both now state ATTACHED, pointing at `GameRoot.Wire` criterion 1 and this
+  contract file; the `OnDisable` comment now notes the W-3 law applies to the real Wire path
+  too, not only direct-construction tests.
+- 2026-08-08 — **F3 (comment truth, new code) FIXED.** `ChromeRegions.cs`'s priority-ladder
+  comment claimed "the tap law matches the paint law" universally — false for
+  `HomeScreenView`'s own pin (its `ScreensCanvas`, 120, paints above `ResultsPanel`'s canvas,
+  110, exactly like a modal, yet the pin registers at the LOWER `ParentPriority` by the separate
+  modal-over-parent law, so `ResultsPanel` can outrank a visually-on-top Home pin). Added a
+  "KNOWN EXCEPTION" line naming this and pointing at this file's own Known-debt entry (the
+  Results-vs-Home collision was already disclosed there; this closes the comment/doc
+  inconsistency the reviewer caught, not a new finding).
+- 2026-08-08 — **F5 (record correction, append-only — the entry three sections up, dated
+  2026-08-08 "MUTATION PROOF 1", is NOT edited).** Reviewer-derived count: 17. Actual XML-derived
+  count at that run: 16 failed / 15 passed (31 total, filtered
+  `GameRootWiringTests;ResultsPanelTests;LoadNextTests`). Re-inspected the 15 PASSED test names
+  from that exact run's results file: `GameRootWiringTests.
+  PreAttachedResultsPanel_SurvivesWireAsExactlyOne_NoDuplicate` is the one that stayed GREEN
+  under the attach-line-removed mutation for a STRUCTURAL reason, not luck — its only assertions
+  are `GetComponents<ResultsPanel>().Length == 1` and identity-equals-the-pre-attached-instance,
+  both of which hold whether `Wire` (a) correctly guards a pre-existing instance, or (b) never
+  touches `ResultsPanel` at all (either way exactly one instance — the pre-attached one — ends
+  up on the GameObject). The test has real discriminating power against a DIFFERENT mutation
+  (attach-present-but-unguarded, which would stack a second instance) but none against
+  attach-line-deletion. So: 16 is the correct count of what actually turned red in that run; 17
+  is the correct count of tests whose behavior COULD be affected by the attach line across the
+  three touched files, of which this one test is vacuous under this specific mutation. Neither
+  number is wrong once the distinction is named — the prior entry's "16" stands as an accurate
+  RED count and is not itself in error; this note supplies the reconciliation the review asked
+  for. (F7/F8/F9-style generalization of this test's own discriminating power is out of this
+  fixup's sanctioned scope — left as-is.)
+- 2026-08-08 — **F6 (record correction, append-only — the visual-evidence entry above, dated
+  2026-08-08, is NOT edited).** That entry's phrase "not a repeat of the same 4-node fixture" is
+  FALSE: checked `content/levels/L002.json` directly — its `board.nodes` are exactly
+  `["SRC","J1","RED","BLU"]`, the SAME four ids and the same 3-edge topology as
+  `LoadNextTests.WinnableFixtureTemplate`. The topology claim does not hold and should not have
+  been used as evidence. The TRUE discriminator, verified against the same file: `L002.waves`
+  has TWO entries (red count 2 at tick 8, blue count 2 at tick 80) versus the probe fixture's
+  ONE (red count 1 at tick 3) — the two-colour wave-preview strip visible in
+  `02-post-next-level.png` (both a red and a blue "≈?" chip) is something a single-red-wave
+  fixture cannot produce under any circumstance. The frame's conclusion (real L002 loaded, not a
+  same-level no-op) survives on this discriminator; the topology sentence in the prior entry is
+  corrected here, not there.

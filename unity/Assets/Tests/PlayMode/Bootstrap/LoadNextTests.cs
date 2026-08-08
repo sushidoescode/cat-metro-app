@@ -85,6 +85,45 @@ namespace CatMetro.Tests.PlayMode
                 Is.False, "results.next unregisters — no ghost region over the new level");
         }
 
+        // --- PR #57 round-1 review F1: a same-frame double tap must not skip a level ---
+
+        [UnityTest]
+        public IEnumerator DoubleTap_SameFrame_NoYieldBetween_DoesNotSkipALevel()
+        {
+            // The flagship test above yields once (line ~81) BEFORE its own final region-gone
+            // check — giving ResultsPanel's own Update()/Apply() poll a free frame to self-heal
+            // and unregister naturally. That yield is exactly the gap this pin closes: NO yield
+            // between the two taps below, so this exercises the SAME frame the first tap's
+            // onTap() ran in, before any component's Update() runs again. Component Update
+            // order across the GameObject is undefined, and LoadNext's synchronous, main-thread
+            // ReadBlocking (StreamingAssetsContentSource) widens the real-world window further.
+            _root = GameRoot.LaunchWith(Import(WinnableFixtureJson("L001")));
+            yield return null;
+            _root.Session.AdvanceMs(200 * CatMetro.Application.Session.TickInterpolator.TICK_MS);
+            yield return null;
+            Assert.That(_root.ScreenState, Is.EqualTo("Won"));
+            yield return null;
+
+            var panel = _root.GetComponent<ResultsPanel>();
+            Assert.That(panel.IsVisible, Is.True, "precondition: the panel is showing");
+            var center = panel.ChipPaintedRectPx.center;
+
+            int first = _root.Input.HandleTapAtScreen(center);
+            Assert.That(first, Is.EqualTo(-3), "precondition: the first tap hit the region");
+            Assert.That(_root.CurrentLevelId, Is.EqualTo("L002"),
+                "precondition: the first tap advanced exactly once — otherwise the double-tap "
+                + "assert below proves nothing about skipping");
+
+            // NO yield here — the race window this pin exists to close.
+            _root.Input.HandleTapAtScreen(center);
+
+            Assert.That(_root.CurrentLevelId, Is.EqualTo("L002"),
+                "a same-frame double tap must not skip a band level (must stay L002, never "
+                + "L003) — the stale \"results.next\" region must not survive the level it just "
+                + "advanced past (LoadLevel unregisters it proactively, not left to the panel's "
+                + "own next Update() poll)");
+        }
+
         // --- the WRAP assumption (A-LN-1), through the real seam ---
 
         [UnityTest]

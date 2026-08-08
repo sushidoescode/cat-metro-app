@@ -6,11 +6,14 @@ using CatMetro.Presentation.Input;
 namespace CatMetro.Presentation.Hud
 {
     // CM-UX-04: the Won-state results panel — the win dead-end's component-level closure.
-    // Contract: state/handoffs/CM-UX-04-frozen-contract.md. NEEDS-WIRING: nothing attaches
-    // this panel; CM-UX-07 holds the attach until LoadNext exists (human answer Q-3 — a
-    // rendered LOCKED Next that does nothing is a worse dead-end than today's banner).
-    // Standalone by design (A-UX4-1): riding ScreenChromeController's Won row would attach
-    // the panel the moment CM-UX-07 attaches the controller, violating the hold.
+    // Contract: state/handoffs/CM-UX-04-frozen-contract.md. ATTACHED: GameRoot.Wire composes
+    // this panel unconditionally (CM-LOADNEXT, state/handoffs/CM-LOADNEXT-frozen-contract.md,
+    // criterion 1) — the NEEDS-WIRING hold CM-UX-07 kept per Q-3 ("a rendered LOCKED Next that
+    // does nothing is a worse dead-end than today's banner") is DISCHARGED; Next now has a
+    // real advance target.
+    // Standalone by design (A-UX4-1): riding ScreenChromeController's Won row would have
+    // attached the panel the moment CM-UX-07 attached the controller, before LoadNext existed
+    // — the standalone construction stays even now that the hold is discharged.
     // Render-only chrome (P-1/P-2): the CTA is painted here and HIT elsewhere — the one
     // registered chrome region routes the tap through TapInput; NextRequested is a seam ONLY
     // (level advance is Bootstrap-owned). Exactly one primary CTA (CM-R19.3) and a
@@ -196,10 +199,11 @@ namespace CatMetro.Presentation.Hud
             }
         }
 
-        // CM-UX-07 W-3 (R2-3, audit M-3; the panel stays UNATTACHED per Q-3 — this is the
-        // component-local half only): mirrors OnDestroy — a deactivated-but-not-destroyed host
-        // must drop the registration too, or a live rect provider survives over a host that
-        // stopped posting frames.
+        // CM-UX-07 W-3 (R2-3, audit M-3; written while the panel was still UNATTACHED per
+        // Q-3 — CM-LOADNEXT has since attached it, so this law now applies to the real Wire
+        // path too, not only direct-construction tests): mirrors OnDestroy — a
+        // deactivated-but-not-destroyed host must drop the registration too, or a live rect
+        // provider survives over a host that stopped posting frames.
         private void OnDisable()
         {
             if (_registered && _regions != null)

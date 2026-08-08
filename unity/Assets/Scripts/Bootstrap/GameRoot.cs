@@ -323,6 +323,14 @@ namespace CatMetro.Bootstrap
             // there (Unregister returns false without throwing); a halt-escape retry clears the
             // region it just consumed.
             Input.Regions.Unregister("halt.escape");
+            // PR #57 round-1 review F1: the SAME idempotent treatment for "results.next" —
+            // proactively unregistered HERE rather than left to ResultsPanel's own next
+            // Update()/Apply() poll. Component Update order is undefined, and LoadNext's
+            // synchronous, main-thread ReadBlocking widens the window further: without this
+            // line, a same-frame second tap (no yield between the two — see
+            // LoadNextTests.DoubleTap_SameFrame_NoYieldBetween_DoesNotSkipALevel) can re-resolve
+            // the STALE region and invoke NextRequested again, skipping a band level.
+            Input.Regions.Unregister(ResultsPanel.RegionId);
             _level = level;
             Session = new GameSession(level);
             if (View != null) Destroy(View.gameObject);

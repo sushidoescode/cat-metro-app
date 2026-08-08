@@ -21,6 +21,12 @@ namespace CatMetro.Presentation.Input
         // canvas (sortingOrder 120 vs 110, GameRoot.cs): the tap law matches the paint law, so
         // whichever modal is visually on top also wins the tap, by priority, never by which one
         // happened to register first (state/handoffs/CM-UX-07-delta-audit.md D-1).
+        // KNOWN EXCEPTION (NOT fixed by this ladder): "the tap law matches the paint law" is
+        // false for HomeScreenView's own pin — its ScreensCanvas (120) paints ABOVE
+        // ResultsPanel's canvas (110) exactly like a modal would, yet the pin registers at the
+        // LOWER ParentPriority (0) by the separate modal-over-parent law, so ResultsPanel (10)
+        // can outrank a visually-on-top Home pin. Reachable only in the dev BootToHome flow;
+        // flagged, not fixed — state/handoffs/CM-LOADNEXT-frozen-contract.md's Known-debt entry.
         public const int ParentPriority = 0;
         public const int HaltEscapePriority = 5;
         public const int ModalPriority = 10;
