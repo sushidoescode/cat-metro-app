@@ -248,8 +248,12 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Assert.That(_root.Input.Regions.Count, Is.EqualTo(0), "Playing: no halt.escape region");
 
-            // Won (the real sim outcome — ResultsPanel stays unattached per Q-3, so nothing
-            // else registers here either)
+            // Won (the real sim outcome). CM-LOADNEXT declared amendment (DE-1): ResultsPanel
+            // now attaches (Q-3 discharged), so Won DOES register a region now —
+            // "results.next" (ChromeRegions.ModalPriority) — this test's own point stays
+            // exactly what it was: "halt.escape" specifically never registers outside Halted.
+            // Sharpened rather than weakened: Register("halt.escape", ...) succeeding without a
+            // duplicate-id throw is itself live proof the id is not already claimed.
             Object.Destroy(_root.gameObject);
             _root = GameRoot.LaunchWith(WinnableFixture());
             yield return null;
@@ -257,7 +261,12 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Assert.That(_root.ScreenState, Is.EqualTo("Won"));
             yield return null;
-            Assert.That(_root.Input.Regions.Count, Is.EqualTo(0), "Won: no halt.escape region");
+            Assert.That(_root.Input.Regions.Count, Is.EqualTo(1),
+                "Won: exactly the results panel's own region, never the halt escape");
+            Assert.DoesNotThrow(() => _root.Input.Regions.Register(
+                    "halt.escape", () => new Rect(0, 0, 1, 1), () => { }, 0),
+                "halt.escape is not already registered during Won — a live duplicate-id proof");
+            Assert.That(_root.Input.Regions.Unregister("halt.escape"), Is.True); // tidy the probe
 
             // FailureReview
             Object.Destroy(_root.gameObject);
@@ -370,6 +379,57 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(chromes[0], Is.SameAs(preChrome),
                 "the guard keeps the pre-existing instance — it never destroys and replaces it");
             Assert.That(hints[0], Is.SameAs(preHint));
+        }
+
+        // --- CM-LOADNEXT criterion 1: the ResultsPanel attach line ---
+
+        [UnityTest]
+        public IEnumerator Wire_AttachesResultsPanel_ToRootGameObject_ScreenSpaceCamera()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            var results = _root.GetComponent<ResultsPanel>();
+            Assert.That(results, Is.Not.Null, "Wire attaches ResultsPanel to root.gameObject");
+            Assert.That(results.PanelRoot, Is.Not.Null);
+            var resultsCanvas = results.PanelRoot.GetComponent<Canvas>();
+            Assert.That(resultsCanvas.renderMode, Is.EqualTo(RenderMode.ScreenSpaceCamera),
+                "the M-4-style regression pin: the self-resolve pattern finds the camera child");
+            Assert.That(resultsCanvas.sortingOrder, Is.EqualTo(110), "unchanged (above chrome/hint)");
+        }
+
+        [UnityTest]
+        public IEnumerator PreAttachedResultsPanel_SurvivesWireAsExactlyOne_NoDuplicate()
+        {
+            // The #46 F5 guard style, extended to ResultsPanel: a pre-existing instance (e.g.
+            // the scene-boot path) survives Wire as the single instance instead of stacking a
+            // second one on top.
+            var go = new GameObject("GameRoot-loadnext-preattached");
+            var preResults = go.AddComponent<ResultsPanel>();
+            _root = go.AddComponent<GameRoot>();
+            yield return null;
+
+            Assert.That(_root.Session, Is.Not.Null,
+                "precondition: Wire actually ran (booted through the real seam) — otherwise the "
+                + "component counts below prove nothing about the guard");
+            var panels = go.GetComponents<ResultsPanel>();
+            Assert.That(panels.Length, Is.EqualTo(1),
+                "GameRoot.Wire's AddComponent<ResultsPanel> must guard a pre-existing instance, "
+                + "mirroring the DevFrameCapture/#46-F5 guard");
+            Assert.That(panels[0], Is.SameAs(preResults),
+                "the guard keeps the pre-existing instance — it never destroys and replaces it");
+        }
+
+        // --- CM-LOADNEXT criterion 6 (Q-5): shipped boot stays L001 ---
+
+        [UnityTest]
+        public IEnumerator Launch_ShippedBoot_StartsAtL001_RegardlessOfLoadNext()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+            Assert.That(_root.CurrentLevelId, Is.EqualTo("L001"),
+                "Q-5 law: shipped boot stays L001 — LoadNext only ever runs post-win, never at "
+                + "boot, even though the band-progression seam now exists");
         }
 
         // --- fixtures ---

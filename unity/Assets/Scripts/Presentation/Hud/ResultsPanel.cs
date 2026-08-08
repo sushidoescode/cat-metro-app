@@ -19,7 +19,9 @@ namespace CatMetro.Presentation.Hud
     public sealed class ResultsPanel : MonoBehaviour
     {
         public const string RegionId = "results.next";
-        public const int RegionPriority = 10; // explicit per A-UX1-3, never order-reliant
+        // CM-LOADNEXT D-1: sourced from the shared priority ladder (ChromeRegions) — value
+        // unchanged (10), still explicit per A-UX1-3, never order-reliant.
+        public const int RegionPriority = ChromeRegions.ModalPriority;
 
         // The seam: invoked when the registry routes a tap to the CTA region. Null-safe no-op
         // with no subscriber; the panel itself never advances anything.

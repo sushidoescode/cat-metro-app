@@ -36,6 +36,11 @@ namespace CatMetro.Bootstrap
         public Camera Cam { get; private set; }
         public string ScreenState { get; private set; } = "Playing";
 
+        // CM-LOADNEXT: read-only so tests/UI can observe progression without a second source of
+        // truth for "what level is this." Null only before the first Wire() (never observable
+        // through Launch/LaunchWith, which always Wire synchronously before returning).
+        public string CurrentLevelId => _level?.Dto.Id;
+
         // CM-C3 A-C3-3: motion state = toggle OR OS animation scale zero. No save field; the
         // device wiring of the OS scale arrives with the settings screen (reads-only here).
         public bool MotionOffToggle;
@@ -198,8 +203,21 @@ namespace CatMetro.Bootstrap
                 gameObject.AddComponent<HintChipController>();
             var hint = GetComponent<HintChipController>();
             hint.Attach(() => ScreenState);
-            // Criterion 7: ResetForNewLevel() has no call site yet — discharged as a documented
-            // no-op until LoadNext exists; Retry() below never calls it (same-level law).
+            // Criterion 7 (CM-UX-07): Retry() never calls hint.ResetForNewLevel() (the
+            // same-level law) — LoadNext() (CM-LOADNEXT, below) is the call site the CM-UX-05
+            // handoff named ("wherever a NEW level loads", state/handoffs/CM-UX-05.md).
+
+            // CM-LOADNEXT criterion 1 (Q-3 discharged): the single attach line — ResultsPanel
+            // was NEEDS-WIRING until progression existed to give its Next CTA somewhere to go
+            // (CM-UX-07 held this per the human's Q-3 ruling, state/handoffs/CM-UX-04.md:43).
+            // Guarded like chrome/hint (#46 review F5 guard style) so a pre-attached instance
+            // (the scene-boot precedent) survives Wire as the single instance, never a stacked
+            // duplicate.
+            if (GetComponent<ResultsPanel>() == null)
+                gameObject.AddComponent<ResultsPanel>();
+            var results = GetComponent<ResultsPanel>();
+            results.Attach(() => ScreenState, Input.Regions);
+            results.NextRequested = LoadNext;
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             if (GetComponent<DevCapture.DevFrameCapture>() == null)
@@ -269,18 +287,46 @@ namespace CatMetro.Bootstrap
             return ("fail.platformoverflow", "{station}");
         }
 
-        // CM-C3 criteria 8/9: retry = a fresh session over the SAME imported level; zero scene
-        // loads; the board view rebuilds; every switch back at initialRoute by construction.
-        public void Retry()
+        // CM-LOADNEXT: the campaign band, in play order — the level-progression POLICY (save-
+        // backed unlocks, campaign gating) is explicitly deferred beyond this contract
+        // (docs/ux/ux-layer-decompose.md §5), so this stays a plain ordered list, not a graph.
+        // ASSUMPTION under human review (state/handoffs/CM-LOADNEXT-frozen-contract.md, A-LN-1):
+        // the band WRAPS at the end back to L001 (a demo-friendly infinite loop) rather than
+        // stopping — WrapAtEndOfBand is the one seam to flip if that assumption is overridden.
+        public static readonly string[] LevelBand = { "L001", "L002", "L003", "L004", "L005" };
+        private const bool WrapAtEndOfBand = true;
+
+        // Pure and test-drivable (the FailKey precedent, above) — no Unity object needed. An id
+        // outside the band (a dev-override or test-fixture id, A-LN-2) restarts the band at its
+        // first level rather than crashing progression.
+        public static string NextLevelId(string currentId)
         {
-            if (Session == null) return;
-            // CM-UX-07 criterion 4 (Q-2): idempotent — a normal FailureReview retry never
-            // registered "halt.escape", so this is a harmless no-op there (Unregister returns
-            // false without throwing); a halt-escape retry clears the region it just consumed.
+            int idx = System.Array.IndexOf(LevelBand, currentId);
+            if (idx < 0) return LevelBand[0];
+            int next = idx + 1;
+            if (next >= LevelBand.Length)
+                return WrapAtEndOfBand ? LevelBand[0] : LevelBand[LevelBand.Length - 1];
+            return LevelBand[next];
+        }
+
+        public static string LevelPath(string levelId) => "content/levels/" + levelId + ".json";
+
+        // CM-C3 criteria 8/9 (Retry) + CM-LOADNEXT (LoadNext): the shared rebuild both callers
+        // use — fresh session over the GIVEN level (SAME level for Retry, a NEWLY IMPORTED one
+        // for LoadNext); zero scene loads; the board view rebuilds; every switch back at
+        // initialRoute by construction (ADR-0002 §9's "no scene load, no snapshot" holds either
+        // way — only the DATA behind Session/View changes, never the Unity scene).
+        private void LoadLevel(ImportedLevel level)
+        {
+            // CM-UX-07 criterion 4 (Q-2): idempotent — a normal FailureReview retry (or a fresh
+            // LoadNext from Won) never registered "halt.escape", so this is a harmless no-op
+            // there (Unregister returns false without throwing); a halt-escape retry clears the
+            // region it just consumed.
             Input.Regions.Unregister("halt.escape");
-            Session = new GameSession(_level);
+            _level = level;
+            Session = new GameSession(level);
             if (View != null) Destroy(View.gameObject);
-            View = BoardView.Build(_level, transform, Session);
+            View = BoardView.Build(level, transform, Session);
             View.MotionOffSource = () => MotionOff; // criterion 3: rebind on the REBUILT view
             Input.Wire(Session, View, Cam);
             if (Preview != null) Destroy(Preview.gameObject);
@@ -289,6 +335,41 @@ namespace CatMetro.Bootstrap
             CauseCam.Reset(); // clears the ring AND restores the rest pose (review B5)
             _halted = false;
             ScreenState = "Playing";
+        }
+
+        public void Retry()
+        {
+            if (Session == null) return;
+            LoadLevel(_level);
+        }
+
+        // CM-LOADNEXT: the NextRequested seam's Bootstrap-owned half (CM-UX-04 criterion 5 —
+        // "level advance is Bootstrap-owned... does not exist yet"; it exists now). Reads the
+        // NEXT level through the real StreamingAssets seam (the InitializeFromSeam pattern,
+        // without the dev-only override branches — progression is a runtime gameplay action,
+        // never a boot decision, Q-5) and rebuilds through the SAME LoadLevel() Retry() uses, so
+        // a new level plays exactly like a freshly booted one. A-LN-3: no ScreenState guard of
+        // its own (only Session != null, Retry's own shape) — gating which UI can reach this
+        // lives at the registration layer (ResultsPanel), not inside the action method.
+        public void LoadNext()
+        {
+            if (Session == null) return;
+            string nextPath = LevelPath(NextLevelId(_level.Dto.Id));
+            var source = new StreamingAssetsContentSource();
+            var bytes = source.ReadAsync(nextPath, CancellationToken.None).GetAwaiter().GetResult();
+            var imported = LevelImporter.Import(bytes);
+            if (!imported.Ok)
+                throw new System.InvalidOperationException("level unusable: " + imported.Error);
+            // The SEAM_LOADED artifact line: proves the played level came through the seam
+            // (InitializeFromSeam's own precedent, GameRoot.cs above).
+            Debug.Log("SEAM_LOADED " + nextPath);
+            LoadLevel(imported.Value);
+            // CM-UX-05 forward obligation (state/handoffs/CM-UX-05.md): a NEW level resets the
+            // per-level hint attempt-run; Retry() of the SAME level must not (that accumulation
+            // is the mechanic) — LoadLevel() stays silent on this by design so Retry() keeps its
+            // pinned behavior; LoadNext is the one caller that speaks.
+            var hint = GetComponent<HintChipController>();
+            if (hint != null) hint.ResetForNewLevel();
         }
 
         private void Update()
@@ -310,10 +391,12 @@ namespace CatMetro.Bootstrap
                     ScreenState = "Halted";
                     // CM-UX-07 criterion 4 (Q-2, human-approved): the halt escape is a chrome
                     // REGION, never a CTA/veil component edit — the F-DEV-4 "no Try-again on
-                    // halt" assert stays true untouched. Full-screen, priority 5; Retry (above)
-                    // unregisters it, so a re-halt after escaping re-registers cleanly.
+                    // halt" assert stays true untouched. Full-screen, HaltEscapePriority (5,
+                    // CM-LOADNEXT D-1's named ladder — was an inline literal, #46-F9); Retry
+                    // (above) unregisters it, so a re-halt after escaping re-registers cleanly.
                     Input.Regions.Register("halt.escape",
-                        () => new Rect(0f, 0f, Screen.width, Screen.height), Retry, 5);
+                        () => new Rect(0f, 0f, Screen.width, Screen.height), Retry,
+                        Presentation.Input.ChromeRegions.HaltEscapePriority);
                     Debug.LogError("run halted at a pinned/guarded Domain boundary: " + ex.Message);
                     return;
                 }

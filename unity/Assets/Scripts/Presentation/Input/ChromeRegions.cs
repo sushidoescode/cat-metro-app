@@ -12,6 +12,20 @@ namespace CatMetro.Presentation.Input
     // cross-component registration order is a tie-break, not an API).
     public sealed class ChromeRegions
     {
+        // CM-LOADNEXT D-1 + #46-F9 absorption: the documented registration-priority ladder —
+        // explicit values are the law (A-UX1-3), never a registration-order accident. A parent
+        // screen (e.g. HomeScreenView's pin) registers at ParentPriority; an urgent full-screen
+        // escape (the halt region) at HaltEscapePriority; a standalone modal (ResultsPanel) at
+        // ModalPriority; a ScreenStack-hosted modal (LevelIntroSheet) at StackedModalPriority —
+        // one tier above ModalPriority because its ScreensCanvas paints ABOVE ResultsPanel's
+        // canvas (sortingOrder 120 vs 110, GameRoot.cs): the tap law matches the paint law, so
+        // whichever modal is visually on top also wins the tap, by priority, never by which one
+        // happened to register first (state/handoffs/CM-UX-07-delta-audit.md D-1).
+        public const int ParentPriority = 0;
+        public const int HaltEscapePriority = 5;
+        public const int ModalPriority = 10;
+        public const int StackedModalPriority = 11;
+
         private struct Entry
         {
             public string Id;
