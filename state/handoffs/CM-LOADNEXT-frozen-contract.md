@@ -241,3 +241,62 @@ Defaults (AGENTS.md) plus:
 ## Status log
 
 - 2026-08-08 — contract frozen at anchor `03b6de2`; red next.
+- 2026-08-08 — SEQUENCING NOTE (deviation from a literal pre-green natural red phase, disclosed):
+  because the attach line, `LoadLevel`/`LoadNext` refactor, the priority-ladder consts, and the
+  `LevelIntroSheet` priority bump are tightly interdependent (tests for one reference symbols the
+  others introduce), I implemented all production code in one pass rather than staging it behind
+  a compiling-but-stubbed skeleton (the CM-UX-07 precedent). I then performed the three named
+  MUTATION PROOFS as explicit, isolated red→green→revert cycles instead — which is what
+  criterion 9 asks for as its own deliverable regardless of sequencing. Each is below.
+- 2026-08-08 — GREEN (first full pass, before mutation proofs): filtered PlayMode
+  (`GameRootWiringTests`, `ResultsPanelTests`, `ResultsPanelVsIntroOrderingTests`,
+  `LoadNextTests`) 33/33; filtered EditMode (`LoadNextBandTests`) 9/9 — all passed on the first
+  run, confirming the design was correct end-to-end before any mutation testing.
+- 2026-08-08 — MUTATION PROOF 1 (criterion 1, the single attach line): removed the
+  `ResultsPanel` attach block from `GameRoot.Wire` → RED, 16 tests failed across
+  `GameRootWiringTests`/`ResultsPanelTests`/`LoadNextTests` (filtered run, 31 total), every
+  failure an assertion (`panel != null` etc.), never a compile error. Reverted; re-ran filtered
+  → 33/33 green again; `git diff` confirmed no stray artifact of the mutation remained
+  (`grep -n "MUTATION PROOF" GameRoot.cs` → no matches).
+- 2026-08-08 — MUTATION PROOF 2 (criterion 4, the D-1 ordering law): reverted
+  `LevelIntroSheet.PlayRegionPriority` to `ChromeRegions.ModalPriority` (the tied value, 10) →
+  RED on exactly the discriminating test, `IntroWins_OverResults_EvenWhenResultsRegisteredFirst`
+  (Expected 1, was 0 — Results won the tie by registering first); the consistency-check test
+  (`...WhenIntroRegisteredFirst`) stayed GREEN, confirming it alone could not have caught this
+  and the discriminating test is the real red-power proof. Reverted; re-ran → 2/2 green.
+- 2026-08-08 — MUTATION PROOF 3 (criterion 3, progression): changed `NextLevelId` to
+  `return currentId;` (same-level bug) → RED: 3/6 `LoadNextTests` failed (the ones asserting a
+  landing-level change — `RealWin_TapNext_...`, `RealWin_AtEndOfBand_...`,
+  `LoadNext_CalledDirectly_DuringFailureReview_...`; the SEAM_LOADED log for the new file never
+  appeared) while the 3 that don't check the landing id stayed green, as expected; ALL 9
+  `LoadNextBandTests` (EditMode) also went RED (band/wrap/unknown-id logic is now vacuous).
+  Reverted; re-ran → PlayMode 6/6, EditMode 9/9 green.
+- 2026-08-08 — GREEN, full suite (post-mutation-proofs, final tree): EditMode 777/777, PlayMode
+  131/131 (`bash scripts/test.sh` run twice at this point — once with the uncommitted visual
+  probe present, 132/132, once after its deletion, 131/131, both `test: 14/14 passed`);
+  `bash scripts/check.sh` OK. Unity run unsandboxed per the recorded licensing-daemon precedent
+  (sandboxed batchmode fails with "attempt to write a readonly database").
+- 2026-08-08 — visual verification (#33 rule) discharged: uncommitted probe
+  (`CmLoadNextVisualProbeTests.cs`, never staged, deleted before commit along with its `.meta`)
+  drove a controlled winnable fixture (id `"L001"`) through `GameRoot.LaunchWith` to a real Won,
+  captured the panel frame, tapped `Next`, captured the post-progression frame. Both rendered
+  (ScreenSpaceCamera, `-batchmode` without `-nographics`, the CM-UX-07 precedent) and eyeballed:
+  (1) `01-won-with-panel.png` — the merged "All cats home!" banner (world-space, visibly dimmed
+  by the panel's scrim per the documented ~25% darkening), the greybox board (source, switch
+  ring, red/blue stations) behind it, and a full-width dark-green "Next" chip in the bottom
+  thumb band — exactly CM-UX-04's documented shape, now with the CTA finally live. (2)
+  `02-post-next-level.png` — no banner, no panel, no chip; a freshly-built board with TWO
+  wave-preview chips (red and blue, both showing the "≈?" unknown-color glyph) at the top —
+  visually confirms REAL L002 content loaded (a colour-split level, not a repeat of the same
+  4-node fixture), i.e. progression genuinely advanced through the real seam, not a same-level
+  no-op. Frames live at the session scratchpad
+  (`/private/tmp/claude-501/.../scratchpad/loadnext-visual/`), not committed — land via a
+  follow-up evidence PR at review time per the CM-UX-05/CM-UX-07 precedent. Methodology note:
+  the Won frame uses a controlled fixture (not the real shipped L001 content) because L001's own
+  zero-tap winnability was not verified within this contract's time budget; the post-Next frame
+  IS the real shipped L002 content, read through the real StreamingAssets seam — the SAME
+  progression path the flagship PlayMode test (`RealWin_TapNext_...`) proves with assertions.
+- 2026-08-08 — scope hygiene: `dotnet/CatMetro.DailyTools/packages.lock.json` was touched by
+  `dotnet test`/`restore` during `scripts/test.sh` runs (an unrelated dependency-graph
+  regeneration, `catmetro.services`'s `Newtonsoft.Json` transitive dep annotation) — reverted via
+  `git checkout --`, out of this contract's scope, never staged.
