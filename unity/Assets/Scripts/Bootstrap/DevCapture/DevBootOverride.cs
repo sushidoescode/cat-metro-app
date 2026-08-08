@@ -1,6 +1,8 @@
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
 using System.IO;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using CatMetro.Content;
 
 namespace CatMetro.Bootstrap.DevCapture
 {
@@ -26,15 +28,34 @@ namespace CatMetro.Bootstrap.DevCapture
             if (!File.Exists(path)) return false;
             try
             {
-                // F8 (PR #52 round-1 review, disclosed): a raw JObject.Parse over the file's
-                // full text — Newtonsoft's default MaxDepth (64) is the only depth guard, and
-                // there is no byte-size cap, unlike LevelImporter's hardened import pipeline
-                // (CM-C2a: size cap, BOM-tolerant decode, pre-scan depth check). Accepted here
-                // because this file is dev-only and human-pushed via `adb push` (never shipped,
-                // never remote-supplied) — a much smaller trust boundary than shipped content.
-                // Deeper hardening (matching LevelImporter's belt) is tracked as follow-up debt,
-                // not required for this seam's actual threat model.
-                var root = JObject.Parse(File.ReadAllText(path));
+                // CM-SEAMS (closes the F8/security-S1 debt row, PR #52 round-1 review): a
+                // pre-read size cap (ContentBounds.CONTENT_MAX_FILE_BYTES, mirrors LevelImporter's
+                // belt) rejects an oversize file before it is ever read into memory, and the
+                // parse itself is depth-bounded via JsonTextReader.MaxDepth = ContentBounds.
+                // CONTENT_MAX_JSON_DEPTH — the same constant, the same guard shape as
+                // ContentJson.Settings.MaxDepth (the pattern used everywhere else content-shaped
+                // bytes are parsed in this tree). A bare JObject.Parse has no MaxDepth parameter,
+                // so an equivalent JsonTextReader construction is the way to reach the same
+                // guard for a JObject-shaped read. Still narrower than the full LevelImporter
+                // belt — no BOM-tolerant decode, no comment/duplicate-key rejection, no pre-scan
+                // — because this file's schema is one flat boolean key and this seam is dev-only,
+                // human-pushed via `adb push` (never shipped, never remote-supplied): a
+                // materially smaller trust boundary than shipped content.
+                var info = new FileInfo(path);
+                if (info.Length > ContentBounds.CONTENT_MAX_FILE_BYTES)
+                {
+                    UnityEngine.Debug.LogError("DEVCAP_BOOT_OVERRIDE_INVALID " + path
+                        + " — payload " + info.Length + " bytes exceeds CONTENT_MAX_FILE_BYTES"
+                        + " — booting the shipped path");
+                    return false;
+                }
+                JObject root;
+                using (var stringReader = new StringReader(File.ReadAllText(path)))
+                using (var jsonReader = new JsonTextReader(stringReader)
+                    { MaxDepth = ContentBounds.CONTENT_MAX_JSON_DEPTH })
+                {
+                    root = JObject.Load(jsonReader);
+                }
                 var flag = root["bootToHome"];
                 // criterion 3(b): a missing/renamed key (flag == null) falls through to `return
                 // false` below WITHOUT logging — not an error, the well-formed shape of "no

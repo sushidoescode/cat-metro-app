@@ -76,6 +76,13 @@ for path in cs_files(refsroot):
         elif s.startswith('#endif'):
             if guard_depth == depth: guard_depth = 0
             depth -= 1
+        # security-S4 (round-2 review): an #else/#elif AT the guard's own depth swaps to the
+        # guard's alternate (non-dev) arm — clear guard_depth the same way #endif does, or a
+        # reference planted in the else-arm reads as still-guarded (rule 1's whole-file check
+        # bans #else/#elif outright; this mirrors that same "#else means release code" logic
+        # for rule 2's narrower, non-whole-file case).
+        elif s.startswith('#else') or s.startswith('#elif'):
+            if guard_depth == depth: guard_depth = 0
         if SYM.search(l) and guard_depth == 0:
             viol += 1; print('unguarded reference: %s:%d' % (path, n))
 print('VIOLATIONS=%d' % viol)
@@ -89,6 +96,36 @@ fx_out=$(scan "$badfx" "$badfx") || fail "criterion 4: scanner errored on the fi
 fx_viol=$(echo "$fx_out" | sed -n 's/^VIOLATIONS=//p')
 [ -n "$fx_viol" ] && [ "$fx_viol" -ge 2 ] \
   || fail "criterion 4: the scan must report >=2 planted violations, got '$fx_viol'"
+
+# --- security-S4 regression: rule 2's #else/#elif-arm blind spot. Before the fix, guard_depth
+# stayed set across an #else at the guard's own depth, so a SYM reference planted in the
+# RELEASE arm of a dev guard read as still-guarded and was silently missed. Scratch copy (never
+# a permanent fixture — this exact shape, a real #if/#else/#endif with a SYM ref in the #else
+# arm, exists nowhere else in the repo): proves the scanner now flags it, without touching the
+# real tree's own already-proven-clean scan above or the badfx negative fixture's count.
+elsescratch="$(mktemp -d "${TMPDIR:-/tmp}/devcap-elsearm-XXXXXX")"
+cat > "$elsescratch/ElseArmShim.cs" <<'EOF'
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+public sealed class ElseArmShimDev { }
+#else
+public sealed class ElseArmShimRelease
+{
+    public object Make() { return new DevBootOverride(); } // ships in RELEASE — must be flagged
+}
+#endif
+EOF
+else_out=$(scan "$cap" "$elsescratch") || { rm -rf "$elsescratch"; fail "security-S4: scanner errored on the else-arm scratch copy"; }
+else_viol=$(echo "$else_out" | sed -n 's/^VIOLATIONS=//p')
+[ -n "$else_viol" ] && [ "$else_viol" -ge 1 ] \
+  || { rm -rf "$elsescratch"; fail "security-S4: rule 2 failed to flag a SYM reference planted in a dev-guard's #else arm (blind spot regressed)"; }
+# path-normalization-agnostic: the scanner's os.path.abspath() may collapse a "//" that mktemp
+# preserved literally (TMPDIR trailing-slash + our own "/" join — observed on macOS, where
+# TMPDIR itself already ends in "/"), so match on the file's basename + line number, never the
+# raw $elsescratch string.
+echo "$else_out" | grep -qE 'unguarded reference: .*/ElseArmShim\.cs:[0-9]+$' \
+  || { rm -rf "$elsescratch"; fail "security-S4: violation reported but not attributed to the else-arm scratch file"; }
+rm -rf "$elsescratch"
+
 # monetization tokens: zero under the capture tree, pattern proven live against save-bad
 MON='/billing/|/iap/|/ads/|RevenueCat|Purchases\.|BillingClient|GoogleMobileAds|AnalyticsQueue'
 mon=$(grep -rEn --include='*.cs' "$MON" "$cap" 2>/dev/null || true)
