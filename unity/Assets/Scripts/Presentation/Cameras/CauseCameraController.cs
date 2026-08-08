@@ -82,6 +82,7 @@ namespace CatMetro.Presentation.Cameras
             if (_ring == null)
             {
                 _ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                _ring.GetComponent<Renderer>().sharedMaterial = Board.GreyboxMaterial.Shared;
                 _ring.name = "CauseRing";
                 // Review B1: NEVER parented to the camera — the controller lives on the camera
                 // object, so a camera-parented ring rides the cut/pan and ends 3.5 units off

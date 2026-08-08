@@ -45,6 +45,39 @@ namespace CatMetro.Bootstrap
         private ImportedLevel _level;
         private bool _halted;
 
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+        // CM-UX-07 criterion 6: the dev-only screen flow's launch seam — the DevLevelOverride
+        // precedent (a dev build's boot path, never shipped boot: Q-5 honored, InitializeFromSeam
+        // is unchanged when this is false). Default false.
+        public static bool BootToHome;
+
+        // CM-DEVCAP3: the device-side companion to BootToHome — set from DevBootOverride's file
+        // read inside InitializeFromSeam (the real device/Launch()/Awake() path only; LaunchWith
+        // never touches it, exactly like DevLevelOverride never applies there). OR'd with the
+        // static flag at Wire-end (criterion 5: the two seams are independent — neither can
+        // suppress the other; see DevBootOverrideTests.Precedence_*).
+        private bool _bootToHomeFileOverride;
+
+        public CatMetro.Presentation.Screens.HomeScreenView Home { get; private set; }
+        public CatMetro.Presentation.Screens.LevelIntroSheet Intro { get; private set; }
+        public CatMetro.Presentation.Screens.ScreenStack Stack { get; private set; }
+#endif
+
+        // CM-UX-07 criterion 2: true iff the dev screen flow (criterion 6) currently shows a
+        // screen (Home or LevelIntro) — derived from the stack so there is one source of truth.
+        // Always false in shipped boot: the predicate degenerates to the decompose's exact line.
+        public bool ScreensVisible
+        {
+            get
+            {
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+                return Stack != null && Stack.Count > 0;
+#else
+                return false;
+#endif
+            }
+        }
+
         public static GameRoot Launch(string levelPath = "content/levels/L001.json")
         {
             _factoryConstructing = true;
@@ -92,6 +125,15 @@ namespace CatMetro.Bootstrap
         private void InitializeFromSeam(string levelPath)
         {
             if (Session != null) return;
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            // CM-DEVCAP3: evaluated BEFORE the level-override early-return so the boot-to-home
+            // file takes effect on either sub-path (dev level override OR the shipped level) —
+            // the two file seams are independent (one picks WHICH level, the other picks
+            // WHETHER the dev screen flow composes over it, Q-5 law).
+            _bootToHomeFileOverride = DevCapture.DevBootOverride.ShouldBootToHome();
+            var devLevel = DevCapture.DevLevelOverride.TryImport();
+            if (devLevel != null) { Wire(devLevel); return; }
+#endif
             var source = new StreamingAssetsContentSource();
             var bytes = source.ReadAsync(levelPath, CancellationToken.None).GetAwaiter().GetResult();
             var imported = LevelImporter.Import(bytes);
@@ -104,6 +146,7 @@ namespace CatMetro.Bootstrap
 
         private void Wire(ImportedLevel level)
         {
+            FramePolicy.Apply(); // CM-C2b-DEVFIX criterion 3: every boot path passes through here
             _level = level;
             Session = new GameSession(level);
 
@@ -117,20 +160,101 @@ namespace CatMetro.Bootstrap
             CauseCam.Wire(Cam); // captures the S-02 rest pose (review B5)
 
             View = BoardView.Build(level, transform, Session);
+            // CM-UX-07 criterion 3 (#36 F1/F5): a Wire-only binding dies at first Retry, since
+            // Retry rebuilds View — bound again there too.
+            View.MotionOffSource = () => MotionOff;
             Input = gameObject.AddComponent<Presentation.Input.TapInput>();
             Input.Wire(Session, View, Cam);
             Input.RetryRegionActive = () => ScreenState == "FailureReview";
             Input.RetryTapped = Retry;
+            // CM-UX-07 criterion 2: the board-input gate. F7 (round-1 review) correction: this
+            // is NOT behavior-unchanged in shipped boot as a whole — previously BoardInputActive
+            // was null (TapInput treats null as always-active), so discs resolved even during
+            // Won/FailureReview/Halted; the "ScreenState == Playing" term newly closes them
+            // there (that is criterion 2's point). Only the "!ScreensVisible" term is
+            // behavior-neutral in shipped boot, since ScreensVisible degenerates to false there
+            // (criterion 6 never mounts).
+            Input.BoardInputActive = () => ScreenState == "Playing" && !ScreensVisible;
             Banner = BannerView.Create(transform);
             Preview = WavePreviewStrip.Create(transform, Session, Cam);
             Log = gameObject.AddComponent<FrameLog>();
             Log.SimTickSource = () => Session.State.Tick;
             Log.ScreenStateSource = () => ScreenState;
+
+            // CM-UX-07 criterion 1: chrome + hint attach to root.gameObject. F8 (round-1 review)
+            // correction: the camera is NOT on root.gameObject itself — it lives on a child
+            // GameObject named "Camera" (built above at GameRoot.cs:141-143); each controller
+            // resolves it via GetComponentInChildren<Camera>() (the self-resolve pattern).
+            // Regression pin: sortingOrder 100/90 unchanged.
+            // #46 review F5: guarded the same way the dev-only capture attach below is guarded
+            // (existence-checked before AddComponent) — a pre-existing controller (e.g. attached
+            // before Wire runs, the scene-boot path) survives as the single instance instead of
+            // stacking a duplicate under it.
+            if (GetComponent<ScreenChromeController>() == null)
+                gameObject.AddComponent<ScreenChromeController>();
+            var chrome = GetComponent<ScreenChromeController>();
+            chrome.Attach(() => ScreenState);
+            if (GetComponent<HintChipController>() == null)
+                gameObject.AddComponent<HintChipController>();
+            var hint = GetComponent<HintChipController>();
+            hint.Attach(() => ScreenState);
+            // Criterion 7: ResetForNewLevel() has no call site yet — discharged as a documented
+            // no-op until LoadNext exists; Retry() below never calls it (same-level law).
+
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             if (GetComponent<DevCapture.DevFrameCapture>() == null)
                 gameObject.AddComponent<DevCapture.DevFrameCapture>().Wire(this);
+            // CM-DEVCAP3 criterion 5 (precedence): OR'd, never AND'd — the static test flag's
+            // own power to compose is never gated by the file (it composes even when the file
+            // is absent/malformed), and the file's power to compose is never gated by the flag
+            // (it composes even when BootToHome is left at its default false, the only case
+            // that matters on a real device where the static flag is never touched).
+            if (BootToHome || _bootToHomeFileOverride) ComposeDevScreenFlow();
 #endif
         }
+
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+        // CM-UX-07 criterion 6: ONE ScreensCanvas (ScreenSpaceCamera on Cam, sortingOrder 120 —
+        // above the CM-UX-04 results canvas at 110) hosting Home + LevelIntro. Deliveries/name
+        // come from the already-loaded level — no new I/O. ScreensVisible reads the stack, so
+        // there is exactly one source of truth for "a screen is up".
+        private void ComposeDevScreenFlow()
+        {
+            var canvasGo = new GameObject("ScreensCanvas");
+            canvasGo.transform.SetParent(transform, false);
+            var canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceCamera;
+            canvas.worldCamera = Cam;
+            canvas.planeDistance = 1f;
+            canvas.sortingOrder = 120;
+
+            Stack = new CatMetro.Presentation.Screens.ScreenStack();
+            Home = CatMetro.Presentation.Screens.HomeScreenView.Create(canvasGo.transform);
+            Home.Attach(Input.Regions, () => MotionOff);
+            Intro = CatMetro.Presentation.Screens.LevelIntroSheet.Create(canvasGo.transform);
+            Intro.Attach(Input.Regions);
+
+            Home.LevelSelected = () =>
+            {
+                // A stack push navigates OFF Home (ScreenStack's own navigation law — only the
+                // top of the stack is current): Home.Hide() also unregisters its pin, which
+                // would otherwise tie-break ahead of Intro's Play chip (both center in the
+                // thumb band at the identical point — the earliest registration wins ties).
+                Home.Hide();
+                Intro.Show(_level.Dto.Name, _level.Dto.Win.Deliveries);
+                Stack.Push("intro");
+            };
+            Intro.PlayRequested = () =>
+            {
+                Intro.Hide();
+                Home.Hide(); // idempotent — already hidden by the push above
+                while (Stack.TryPop(out _)) { }
+            };
+
+            Home.Show();
+            Stack.Push("home");
+        }
+#endif
 
         // CM-C3 criterion 10's reason→key mapping, PURE and test-drivable (review S1): the
         // PlatformOverflow branch is the ELSE — no shipped code names the pinned enum member
@@ -150,9 +274,14 @@ namespace CatMetro.Bootstrap
         public void Retry()
         {
             if (Session == null) return;
+            // CM-UX-07 criterion 4 (Q-2): idempotent — a normal FailureReview retry never
+            // registered "halt.escape", so this is a harmless no-op there (Unregister returns
+            // false without throwing); a halt-escape retry clears the region it just consumed.
+            Input.Regions.Unregister("halt.escape");
             Session = new GameSession(_level);
             if (View != null) Destroy(View.gameObject);
             View = BoardView.Build(_level, transform, Session);
+            View.MotionOffSource = () => MotionOff; // criterion 3: rebind on the REBUILT view
             Input.Wire(Session, View, Cam);
             if (Preview != null) Destroy(Preview.gameObject);
             Preview = WavePreviewStrip.Create(transform, Session, Cam);
@@ -179,6 +308,12 @@ namespace CatMetro.Bootstrap
                     // partially-stepped tick every frame or masquerade as a game outcome.
                     _halted = true;
                     ScreenState = "Halted";
+                    // CM-UX-07 criterion 4 (Q-2, human-approved): the halt escape is a chrome
+                    // REGION, never a CTA/veil component edit — the F-DEV-4 "no Try-again on
+                    // halt" assert stays true untouched. Full-screen, priority 5; Retry (above)
+                    // unregisters it, so a re-halt after escaping re-registers cleanly.
+                    Input.Regions.Register("halt.escape",
+                        () => new Rect(0f, 0f, Screen.width, Screen.height), Retry, 5);
                     Debug.LogError("run halted at a pinned/guarded Domain boundary: " + ex.Message);
                     return;
                 }

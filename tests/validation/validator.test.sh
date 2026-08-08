@@ -77,5 +77,34 @@ if ! bash scripts/validate-content.sh --corpus "$tmp/stamp-corpus" > "$tmp/resta
   fail "criterion 17b: the stamped level no longer validates"
 fi
 
+# --- CM-C5.1 appended block (sanctioned by the CM-C5 inheritance ack): dead-newMechanic gate ---
+# DM-1c: the Content tree reaches the sim only through LevelSolver/ReplayHasher — zero
+# step-symbol references (the observer replays, it never re-implements the scheduler).
+if grep -rEnq --include='*.cs' 'Simulation\.Step' unity/Assets/Scripts/Content; then
+  fail "CM-C5.1 DM-1c: a step-symbol reference exists under unity/Assets/Scripts/Content"
+fi
+# DM-7a: the dead-queue fixture FAILS through the real CLI from a temp campaign tree (campaign
+# classification is path-derived), with a BLOCKING line naming the level AND the mechanic, and
+# exactly one BLOCKING line overall (review-F3 discipline: liveness, not band/order/count).
+mkdir -p "$tmp/dm/content/levels"
+cp content/levels/L001.json "$tmp/dm/content/levels/L001.json"
+cp tests/validation/fixtures/dead-mechanic/L004-dead-queue.json "$tmp/dm/content/levels/L004.json"
+if bash scripts/validate-content.sh --corpus "$tmp/dm/content/levels" > "$tmp/dm-dead.out" 2>&1; then
+  cat "$tmp/dm-dead.out"
+  fail "CM-C5.1 DM-7a: the dead-queue corpus did not fail the gate"
+fi
+grep -q "BLOCKING: campaign — .*L004.*queue" "$tmp/dm-dead.out" \
+  || fail "CM-C5.1 DM-7a: no BLOCKING campaign line naming L004 + queue"
+[ "$(grep -c '^BLOCKING:' "$tmp/dm-dead.out")" = "1" ] \
+  || fail "CM-C5.1 DM-7a: expected exactly one BLOCKING line, got $(grep -c '^BLOCKING:' "$tmp/dm-dead.out")"
+# DM-7b: the live twin (same board, second wave restored) is the positive control — exit 0
+# proves DM-7a fired for liveness and not for the band/order/count limbs. No --stamp here.
+cp tests/validation/fixtures/dead-mechanic/L004-live-queue.json "$tmp/dm/content/levels/L004.json"
+if ! bash scripts/validate-content.sh --corpus "$tmp/dm/content/levels" > "$tmp/dm-live.out" 2>&1; then
+  cat "$tmp/dm-live.out"
+  fail "CM-C5.1 DM-7b: the live-queue positive control did not exit 0"
+fi
+echo "validator.test.sh: CM-C5.1 block OK (DM-1c, DM-7a, DM-7b)"
+
 echo "validator.test.sh: OK (15a-d, 16, 17a-c)"
 exit 0

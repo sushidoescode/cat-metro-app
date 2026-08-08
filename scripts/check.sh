@@ -27,10 +27,13 @@ while IFS= read -r f; do
 done < <(find scripts tests -name '*.sh' -type f 2>/dev/null)
 
 # Token pattern assembled by concatenation so this file never matches itself (same trick as forge-doctor).
+# -I skips binary files: init tokens are template TEXT; compressed bytes (e.g. committed evidence
+# PNGs under evals/results/) can coincidentally contain token-shaped sequences and must not fail
+# the gate. Text files everywhere — including evals/ — remain in scope.
 tok='[A-Z][A-Z0-9_]*'
-if grep -rEq '\{\{'"$tok" --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=Library . 2>/dev/null; then
+if grep -rEqI '\{\{'"$tok" --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=Library . 2>/dev/null; then
   echo "check: FAIL — unresolved init tokens remain:"
-  grep -rEn '\{\{'"$tok" --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=Library .
+  grep -rEnI '\{\{'"$tok" --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=Library .
   fail=1
 fi
 

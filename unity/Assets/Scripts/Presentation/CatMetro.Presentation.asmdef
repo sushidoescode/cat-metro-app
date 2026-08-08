@@ -6,7 +6,9 @@
         "CatMetro.Content",
         "CatMetro.Services",
         "CatMetro.Application",
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "UnityEngine.UI",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

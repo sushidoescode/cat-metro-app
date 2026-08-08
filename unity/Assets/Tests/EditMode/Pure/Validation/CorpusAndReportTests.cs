@@ -143,7 +143,7 @@ namespace CatMetro.Tests.Validation
         public void CampaignAssertions_ComputeOverCampaignLevelsOnly()
         {
             var report = FullRun();
-            var count = report.CampaignVerdicts.Single(v => v.Detail.Contains("corpus"));
+            var count = report.CampaignVerdicts.Single(v => v.Value == "tag=CM-R09.1");
             Assert.That(count.Detail, Does.Contain("1/30"),
                 "the 30-level count sees content/levels/** only — never the stress boards");
             Assert.That(count.Blocks, Is.False, "PENDING while the corpus grows");
@@ -167,7 +167,7 @@ namespace CatMetro.Tests.Validation
             };
             var report = CorpusValidator.Validate(new ValidationRequest(
                 VFixtures.SchemaBytes(), VFixtures.BareConfig(), null, members, maxNodesExpanded: 200000));
-            var order = report.CampaignVerdicts.Single(v => v.Detail.Contains("mechanic"));
+            var order = report.CampaignVerdicts.Single(v => v.Value == "tag=CM-R06.2");
             Assert.That(order.Code, Is.EqualTo(StageVerdictCode.Fail));
             Assert.That(order.Blocks, Is.True, "CM-R06.2 violations are authoring defects now");
             Assert.That(report.ExitFailure, Is.True);
