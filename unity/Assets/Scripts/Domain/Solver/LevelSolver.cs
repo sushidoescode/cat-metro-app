@@ -217,45 +217,22 @@ namespace CatMetro.Domain.Solver
 
             var entries = new ToggleSwitchCommand[winningLog.Entries.Count];
             for (int i = 0; i < entries.Length; i++) entries[i] = winningLog.Entries[i];
-
-            int passLimit = Math.Max(1, entries.Length * 4);
-            for (int pass = 0; pass < passLimit; pass++)
-            {
-                bool changed = false;
-                for (int i = 0; i < entries.Length; i++)
-                {
-                    int current = entries[i].Tick;
-                    int lower = current;
-                    while (lower > 0
-                        && IsSameCompletionWin(graph, seed, entries, i, lower - 1, completionTicks))
-                        lower--;
-
-                    int upper = current;
-                    while (upper < graph.TimeLimitTicks - 1
-                        && IsSameCompletionWin(graph, seed, entries, i, upper + 1, completionTicks))
-                        upper++;
-
-                    int middle = lower + (upper - lower) / 2;
-                    if (middle == current) continue;
-                    entries[i] = new ToggleSwitchCommand(entries[i].SwitchId, middle);
-                    changed = true;
-                }
-
-                if (!changed) return LogFrom(entries, winningLog.FormatVersion);
-            }
-
+            var seedTicks = new int[entries.Length];
+            for (int i = 0; i < entries.Length; i++) seedTicks[i] = entries[i].Tick;
+            MidWindowNormalizer.TryCenter(seedTicks, graph.TimeLimitTicks,
+                ticks => IsSameCompletionWin(graph, seed, entries, ticks, completionTicks),
+                out var centeredTicks);
+            for (int i = 0; i < entries.Length; i++)
+                entries[i] = new ToggleSwitchCommand(entries[i].SwitchId, centeredTicks[i]);
             return LogFrom(entries, winningLog.FormatVersion);
         }
 
         private static bool IsSameCompletionWin(LevelGraph graph, ulong seed,
-            ToggleSwitchCommand[] entries, int index, int tick, int completionTicks)
+            ToggleSwitchCommand[] entries, int[] ticks, int completionTicks)
         {
             var candidate = new CommandLog();
             for (int i = 0; i < entries.Length; i++)
-            {
-                var e = entries[i];
-                candidate.Append(i == index ? new ToggleSwitchCommand(e.SwitchId, tick) : e);
-            }
+                candidate.Append(new ToggleSwitchCommand(entries[i].SwitchId, ticks[i]));
 
             try
             {
