@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using CatMetro.Presentation.Board;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -182,13 +183,31 @@ namespace CatMetro.Editor
             var image = new Texture2D(width, height, TextureFormat.RGB24, false);
             image.ReadPixels(new Rect(0, 0, width, height), 0, 0);
             image.Apply();
-            const string output = "/tmp/catmetro-polyfork-orientations.png";
-            System.IO.File.WriteAllBytes(output, image.EncodeToPNG());
+            string output = WritePrivateOrientationSheet(image.EncodeToPNG());
             RenderTexture.active = null;
             camera.targetTexture = null;
             UnityEngine.Object.DestroyImmediate(image);
             UnityEngine.Object.DestroyImmediate(textureTarget);
             Debug.Log("CAT_METRO_ORIENTATION_SHEET " + output);
+        }
+
+        private static string WritePrivateOrientationSheet(byte[] png)
+        {
+            if (png == null) throw new ArgumentNullException(nameof(png));
+            string directory = Path.Combine(Path.GetTempPath(),
+                "catmetro-polyfork-orientations-" + Guid.NewGuid().ToString("N"));
+            if (Directory.Exists(directory) || File.Exists(directory))
+                throw new IOException("Orientation-sheet temp path already exists");
+
+            var directoryInfo = Directory.CreateDirectory(directory);
+            if ((directoryInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new IOException("Orientation-sheet temp directory is a reparse point");
+
+            string output = Path.Combine(directory, "orientations.png");
+            using (var stream = new FileStream(
+                output, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                stream.Write(png, 0, png.Length);
+            return output;
         }
 
         private static void ConfigureImporter(string path)

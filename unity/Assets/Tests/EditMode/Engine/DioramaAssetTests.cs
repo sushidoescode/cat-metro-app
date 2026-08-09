@@ -225,6 +225,21 @@ namespace CatMetro.Tests.EditMode
             Assert.That(settings, Does.Contain("useOSAutorotation: 0"));
         }
 
+        [Test]
+        public void PolyforkOrientationSheet_UsesUniqueCreateNewTempOutput()
+        {
+            string authoringPath = Path.GetFullPath(Path.Combine(
+                UnityEngine.Application.dataPath, "Art/Polyfork/Editor/CatMetroDioramaAuthoring.cs"));
+            string authoring = File.ReadAllText(authoringPath);
+
+            Assert.That(authoring,
+                Does.Not.Contain("/tmp/catmetro-polyfork-orientations.png"));
+            Assert.That(authoring, Does.Contain("Guid.NewGuid().ToString(\"N\")"));
+            Assert.That(authoring, Does.Contain("FileAttributes.ReparsePoint"));
+            Assert.That(authoring, Does.Contain("FileMode.CreateNew"));
+            Assert.That(authoring, Does.Contain("FileShare.None"));
+        }
+
         private static string Html(Color color) => ColorUtility.ToHtmlStringRGB(color);
         private static string Html(Color32 color) => ColorUtility.ToHtmlStringRGB(color);
 
