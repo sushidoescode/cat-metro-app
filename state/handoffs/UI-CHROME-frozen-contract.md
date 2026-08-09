@@ -237,3 +237,8 @@ Bootstrap, packages, immutable paths, and every other lane's state row.
   call failed `ScreenStateEdges_PlayWarningOnce_ThenTapOnRetryReturn`. All four mutations
   were reverted byte-clean; the identical selection is 11/11 green at
   `/tmp/cm-ui-mutations-restored.T1weY1/results.xml`.
+- 2026-08-09 — sprint classifier: RISKY/fail-closed because the committed
+  `CatMetroSans SDF.asset` exceeds its hard 1 MiB inspected-blob cap; independent review is
+  therefore mandatory. Lane 1A exists locally at `e61bd08` with its criterion-5 gate
+  re-author committed, but has no remote branch/PR and is not on main; WavePreview remains
+  untouched until that prerequisite lands, per the ground-truth merge order.
