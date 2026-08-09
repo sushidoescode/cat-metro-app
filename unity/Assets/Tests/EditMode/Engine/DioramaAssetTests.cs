@@ -216,7 +216,8 @@ namespace CatMetro.Tests.EditMode
                 UnityEngine.Application.dataPath, "..", "ProjectSettings/ProjectSettings.asset"));
             string settings = File.ReadAllText(settingsPath);
 
-            Assert.That(settings, Does.Contain("defaultScreenOrientation: 1"));
+            Assert.That(PlayerSettings.defaultInterfaceOrientation,
+                Is.EqualTo(UIOrientation.Portrait));
             Assert.That(settings, Does.Contain("allowedAutorotateToPortrait: 1"));
             Assert.That(settings, Does.Contain("allowedAutorotateToPortraitUpsideDown: 0"));
             Assert.That(settings, Does.Contain("allowedAutorotateToLandscapeRight: 0"));
