@@ -6,20 +6,45 @@ using CatMetro.Tests.Domain;
 
 namespace CatMetro.Tests.Solver
 {
-    // Criterion 7 (Q-W): optimality is defined and deterministic — minimal CompletionTicks, then
-    // fewer commands, then lexicographic (Tick, SwitchId).
+    // SOLVER-TIEBREAK: optimality stays minimal CompletionTicks then fewer commands. Equal-primary
+    // wins use the middle of each same-completion action window before the final lexicographic
+    // (Tick, SwitchId) fallback.
     [TestFixture]
     public class SolverDeterminismTests
     {
-        [Test] // 7a — the tie-break picks the specified solution
-        public void TieBreak_PicksEarliestLexicographicLog()
+        [Test]
+        public void TieBreak_PicksTheMiddleOfTheSameCompletionWindow()
         {
             // Any single toggle at entry.Tick 0..4 wins at the same completion tick on this
-            // board; the tie-break must return exactly [(SwitchId 0, Tick 0)].
+            // board. The lower-middle rule has one answer: [(SwitchId 0, Tick 2)].
             var graph = SolverFixtures.TieBreakBoard();
             var r = LevelSolver.Solve(graph, 11);
             Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.Solved));
-            SolverFixtures.AssertSameLog(SolverFixtures.Log((0, 0)), r.OptimalLog, "tie-break");
+            SolverFixtures.AssertSameLog(SolverFixtures.Log((0, 2)), r.OptimalLog,
+                "mid-window tie-break (safe interval 0..4)");
+            AssertNeighborIsSameCompletionWin(graph, 11, r, 0, -1);
+            AssertNeighborIsSameCompletionWin(graph, 11, r, 0, +1);
+        }
+
+        [Test]
+        public void TwoCommandTieBreak_KeepsOneTickOfMarginOnBothSidesOfEveryDecision()
+        {
+            var graph = SolverFixtures.TwoSwitchTwoCmd();
+            var r = LevelSolver.Solve(graph, 7);
+            var reference = SolverFixtures.BruteForceBest(graph, 7);
+
+            Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.Solved));
+            Assert.That(reference, Is.Not.Null);
+            SolverFixtures.AssertSameLog(reference.Value.log, r.OptimalLog,
+                "independent brute-force mid-window oracle");
+
+            for (int i = 0; i < r.OptimalLog.Entries.Count; i++)
+            {
+                Assert.That(r.OptimalLog.Entries[i].Tick, Is.GreaterThan(0),
+                    "this fixture gives every necessary command a real lower-side margin");
+                AssertNeighborIsSameCompletionWin(graph, 7, r, i, -1);
+                AssertNeighborIsSameCompletionWin(graph, 7, r, i, +1);
+            }
         }
 
         [Test] // 7b — in-process determinism
@@ -39,6 +64,24 @@ namespace CatMetro.Tests.Solver
             var r = LevelSolver.Solve(graph, 7);
             Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.Solved));
             Console.Out.WriteLine($"SOLVER_LOG={SolverFixtures.LogHex(r.OptimalLog)}");
+        }
+
+        private static void AssertNeighborIsSameCompletionWin(
+            LevelGraph graph, ulong seed, SolveResult solved, int entryIndex, int delta)
+        {
+            var shifted = new CommandLog(solved.OptimalLog.FormatVersion);
+            for (int i = 0; i < solved.OptimalLog.Entries.Count; i++)
+            {
+                var e = solved.OptimalLog.Entries[i];
+                shifted.Append(i == entryIndex
+                    ? new ToggleSwitchCommand(e.SwitchId, e.Tick + delta)
+                    : e);
+            }
+
+            Assert.That(SolverFixtures.RunsToWin(graph, seed, shifted, out int completionTicks),
+                Is.True, $"entry {entryIndex} shift {delta:+#;-#;0} must still win");
+            Assert.That(completionTicks, Is.EqualTo(solved.CompletionTicks),
+                $"entry {entryIndex} shift {delta:+#;-#;0} may not trade margin for a slower win");
         }
     }
 }

@@ -108,8 +108,8 @@ namespace CatMetro.Tests.Solver
             qCapBound: 8, trainsMax: 1);
 
         // One switch whose init route is a blue-accepting dead end for the red train: any single
-        // toggle tick from 0..(arrival-2) wins at the same completion tick — the tie-break must
-        // pick entry (Tick=0, SwitchId=0).
+        // toggle tick from 0..(arrival-2) wins at the same completion tick. The interval is
+        // exactly 0..4, so the mid-window tie-break must pick Tick=2.
         public static LevelGraph TieBreakBoard() => new LevelGraph(
             "FX-TIE", 4,
             new[] { 8, 8, 8, 8 },                          // SRC, J1, BLUdead, RED
@@ -216,8 +216,9 @@ namespace CatMetro.Tests.Solver
         }
 
         // Criterion 3's independent comparator: exhaustive over all command logs with <=2 entries
-        // (fixtures are designed so the true optimum needs <=2 commands). Returns the optimal
-        // (completionTicks, log) under the criterion-7 ordering, or null if none wins.
+        // (fixtures are designed so the true optimum needs <=2 commands). The exhaustive pass finds
+        // the earliest representative of the minimal-tick/minimal-command class, then the
+        // test-side ReplayHasher oracle centers each command's contiguous same-completion window.
         public static (int ticks, CommandLog log)? BruteForceBest(LevelGraph graph, ulong seed)
         {
             int switches = graph.SwitchRoutes.Length;
@@ -244,11 +245,14 @@ namespace CatMetro.Tests.Solver
                             if (t2 < t1 || (t2 == t1 && s2 < s1)) continue;
                             Consider(Log((s1, t1), (s2, t2)));
                         }
-            return best;
+            if (best == null) return null;
+            return (best.Value.ticks,
+                CenterSameCompletionWindowsReference(graph, seed, best.Value.log, best.Value.ticks));
         }
 
-        // The criterion-7 total order: fewer completion ticks, then fewer commands, then
-        // lexicographic over (Tick, SwitchId) pairs.
+        // Seed order for the independent reference: fewer completion ticks, then fewer commands,
+        // then the pre-change lexicographic order. CenterSameCompletionWindowsReference refines
+        // only the final equal-primary class.
         public static bool Better(int ticksA, CommandLog a, int ticksB, CommandLog b)
         {
             if (ticksA != ticksB) return ticksA < ticksB;
@@ -260,6 +264,62 @@ namespace CatMetro.Tests.Solver
                 if (ea.SwitchId != eb.SwitchId) return ea.SwitchId < eb.SwitchId;
             }
             return false;
+        }
+
+        public static CommandLog CenterSameCompletionWindowsReference(
+            LevelGraph graph, ulong seed, CommandLog winningLog, int completionTicks)
+        {
+            var entries = winningLog.Entries.ToArray();
+            if (entries.Length == 0) return new CommandLog(winningLog.FormatVersion);
+
+            int passLimit = Math.Max(1, entries.Length * 4);
+            for (int pass = 0; pass < passLimit; pass++)
+            {
+                bool changed = false;
+                for (int i = 0; i < entries.Length; i++)
+                {
+                    int current = entries[i].Tick;
+                    int lower = current;
+                    while (lower > 0
+                        && IsSameCompletionWin(graph, seed, entries, i, lower - 1, completionTicks))
+                        lower--;
+
+                    int upper = current;
+                    while (upper < graph.TimeLimitTicks - 1
+                        && IsSameCompletionWin(graph, seed, entries, i, upper + 1, completionTicks))
+                        upper++;
+
+                    int middle = lower + (upper - lower) / 2;
+                    if (middle == current) continue;
+                    entries[i] = new ToggleSwitchCommand(entries[i].SwitchId, middle);
+                    changed = true;
+                }
+
+                if (!changed) return LogFrom(entries, winningLog.FormatVersion);
+            }
+
+            throw new InvalidOperationException(
+                "independent mid-window reference did not converge within its bounded passes");
+        }
+
+        private static bool IsSameCompletionWin(LevelGraph graph, ulong seed,
+            ToggleSwitchCommand[] entries, int index, int tick, int completionTicks)
+        {
+            var candidate = new CommandLog();
+            for (int i = 0; i < entries.Length; i++)
+            {
+                var e = entries[i];
+                candidate.Append(i == index ? new ToggleSwitchCommand(e.SwitchId, tick) : e);
+            }
+            return RunsToWin(graph, seed, candidate, out int candidateTicks)
+                && candidateTicks == completionTicks;
+        }
+
+        private static CommandLog LogFrom(IEnumerable<ToggleSwitchCommand> entries, int formatVersion)
+        {
+            var log = new CommandLog(formatVersion);
+            foreach (var entry in entries) log.Append(entry);
+            return log;
         }
 
         public static void AssertSameLog(CommandLog expected, CommandLog actual, string context)

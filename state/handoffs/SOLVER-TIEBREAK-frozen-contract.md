@@ -156,4 +156,21 @@ path; no dependency manifest.
 
 ## Evidence/status log (append-only after the frozen first commit)
 
-Pending.
+### RED — 2026-08-09
+
+Command:
+`dotnet test dotnet/CatMetro.sln -c Release --no-restore --nologo --filter
+'FullyQualifiedName~CatMetro.Tests.Solver.SolverDeterminismTests|FullyQualifiedName~CatMetro.Tests.Solver.SolverBfsTests'
+--logger 'console;verbosity=normal'`
+
+Result: 3 passed / 4 failed / 7 total, exit 1. All four failures are the intended old-order
+discriminator:
+
+- `TieBreak_PicksTheMiddleOfTheSameCompletionWindow`: expected tick 2, got tick 0.
+- `OneSwitch_L001_MatchesBruteForce`: independent centered oracle expected tick 8, got tick 0.
+- `TwoSwitch_MatchesBruteForce`: independent centered oracle expected first tick 6, got tick 0.
+- `TwoCommandTieBreak_KeepsOneTickOfMarginOnBothSidesOfEveryDecision`: the same independent oracle
+  expected first tick 6, got tick 0.
+
+Controls stayed green: the one-switch Unsolvable proof, two in-process runs, and the cross-process
+emission case. Production source was byte-unchanged for this run.
