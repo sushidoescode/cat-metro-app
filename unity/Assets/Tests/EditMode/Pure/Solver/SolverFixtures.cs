@@ -123,6 +123,26 @@ namespace CatMetro.Tests.Solver
             winDeliveries: 1, timeLimitTicks: 40,
             qCapBound: 8, trainsMax: 1);
 
+        // Two equal-primary one-command wins. Switch id 0 is downstream, so its raw Tick=0 log
+        // wins the OLD lex comparison but centers later. Switch id 1 is upstream and centers
+        // earlier; lex applied after normalization must therefore select S1.
+        public static LevelGraph FinalLexAfterCenterBoard() => new LevelGraph(
+            "FX-POST-LEX", 5,
+            new[] { 8, 8, 8, 8, 8 },                        // SRC, J1(S1), J2(S0), RED, BLUdead
+            new[] { 0, 1, 1, 2, 2 },                        // SRC->J1; J1->J2/RED; J2->BLU/RED
+            new[] { 1, 2, 3, 4, 3 },
+            new[] { 4, 4, 8, 4, 4 },
+            new[] { 0 },
+            new[] { new[] { 3, 4 }, new[] { 1, 2 } },       // S0 downstream, S1 upstream
+            new[] { 2, 1 },
+            new byte[] { 0, 0 },
+            new[] { 3, 4 },
+            new[] { new[] { CatColor.Red }, new[] { CatColor.Blue } },
+            new[] { 6, 6 },
+            new[] { 0 }, new[] { CatColor.Red }, new[] { 1 }, new[] { 1 },
+            winDeliveries: 1, timeLimitTicks: 40,
+            qCapBound: 8, trainsMax: 1);
+
         // Init route already correct: the empty command log wins (criterion 10's second limb).
         public static LevelGraph AlreadyCorrect() => new LevelGraph(
             "FX-OK", 3,
@@ -215,21 +235,20 @@ namespace CatMetro.Tests.Solver
             }
         }
 
-        // Criterion 3's independent comparator: exhaustive over all command logs with <=2 entries
-        // (fixtures are designed so the true optimum needs <=2 commands). The exhaustive pass finds
-        // the earliest representative of the minimal-tick/minimal-command class, then the
-        // test-side ReplayHasher oracle centers each command's contiguous same-completion window.
+        // Criterion 3's independent comparator: exhaust every command log with <=2 entries,
+        // identify the minimal-tick/minimal-command class, retain only logs that ALREADY satisfy
+        // the executable mid-window fixed-point definition, then apply final lex. It never runs
+        // production's coordinate-normalization procedure and therefore detects ordering/cycle bugs.
         public static (int ticks, CommandLog log)? BruteForceBest(LevelGraph graph, ulong seed)
         {
             int switches = graph.SwitchRoutes.Length;
             int horizon = graph.TimeLimitTicks;
-            (int ticks, CommandLog log)? best = null;
+            var wins = new List<(int ticks, CommandLog log)>();
 
             void Consider(CommandLog log)
             {
                 if (!RunsToWin(graph, seed, log, out int t)) return;
-                if (best == null || Better(t, log, best.Value.ticks, best.Value.log))
-                    best = (t, log);
+                wins.Add((t, log));
             }
 
             Consider(Log()); // zero commands
@@ -245,9 +264,20 @@ namespace CatMetro.Tests.Solver
                             if (t2 < t1 || (t2 == t1 && s2 < s1)) continue;
                             Consider(Log((s1, t1), (s2, t2)));
                         }
-            if (best == null) return null;
-            return (best.Value.ticks,
-                CenterSameCompletionWindowsReference(graph, seed, best.Value.log, best.Value.ticks));
+            if (wins.Count == 0) return null;
+
+            int bestTicks = wins.Min(w => w.ticks);
+            int bestCommands = wins.Where(w => w.ticks == bestTicks)
+                .Min(w => w.log.Entries.Count);
+            var canonical = wins.Where(w => w.ticks == bestTicks
+                    && w.log.Entries.Count == bestCommands
+                    && IsMidWindowFixedPoint(graph, seed, w.log, bestTicks))
+                .OrderBy(w => w.log, Comparer<CommandLog>.Create(CompareLex))
+                .ToList();
+            if (canonical.Count == 0)
+                throw new InvalidOperationException(
+                    "equal-primary winning class has no mid-window fixed point");
+            return canonical[0];
         }
 
         // Seed order for the independent reference: fewer completion ticks, then fewer commands,
@@ -266,60 +296,48 @@ namespace CatMetro.Tests.Solver
             return false;
         }
 
-        public static CommandLog CenterSameCompletionWindowsReference(
-            LevelGraph graph, ulong seed, CommandLog winningLog, int completionTicks)
+        private static bool IsMidWindowFixedPoint(
+            LevelGraph graph, ulong seed, CommandLog log, int completionTicks)
         {
-            var entries = winningLog.Entries.ToArray();
-            if (entries.Length == 0) return new CommandLog(winningLog.FormatVersion);
-
-            int passLimit = Math.Max(1, entries.Length * 4);
-            for (int pass = 0; pass < passLimit; pass++)
+            for (int i = 0; i < log.Entries.Count; i++)
             {
-                bool changed = false;
-                for (int i = 0; i < entries.Length; i++)
-                {
-                    int current = entries[i].Tick;
-                    int lower = current;
-                    while (lower > 0
-                        && IsSameCompletionWin(graph, seed, entries, i, lower - 1, completionTicks))
-                        lower--;
-
-                    int upper = current;
-                    while (upper < graph.TimeLimitTicks - 1
-                        && IsSameCompletionWin(graph, seed, entries, i, upper + 1, completionTicks))
-                        upper++;
-
-                    int middle = lower + (upper - lower) / 2;
-                    if (middle == current) continue;
-                    entries[i] = new ToggleSwitchCommand(entries[i].SwitchId, middle);
-                    changed = true;
-                }
-
-                if (!changed) return LogFrom(entries, winningLog.FormatVersion);
+                int current = log.Entries[i].Tick;
+                int lower = current;
+                while (lower > 0
+                    && ShiftIsSameCompletionWin(graph, seed, log, i, lower - 1, completionTicks))
+                    lower--;
+                int upper = current;
+                while (upper < graph.TimeLimitTicks - 1
+                    && ShiftIsSameCompletionWin(graph, seed, log, i, upper + 1, completionTicks))
+                    upper++;
+                if (current != lower + (upper - lower) / 2) return false;
             }
-
-            throw new InvalidOperationException(
-                "independent mid-window reference did not converge within its bounded passes");
+            return true;
         }
 
-        private static bool IsSameCompletionWin(LevelGraph graph, ulong seed,
-            ToggleSwitchCommand[] entries, int index, int tick, int completionTicks)
+        private static bool ShiftIsSameCompletionWin(LevelGraph graph, ulong seed,
+            CommandLog log, int index, int tick, int completionTicks)
         {
             var candidate = new CommandLog();
-            for (int i = 0; i < entries.Length; i++)
+            for (int i = 0; i < log.Entries.Count; i++)
             {
-                var e = entries[i];
+                var e = log.Entries[i];
                 candidate.Append(i == index ? new ToggleSwitchCommand(e.SwitchId, tick) : e);
             }
             return RunsToWin(graph, seed, candidate, out int candidateTicks)
                 && candidateTicks == completionTicks;
         }
 
-        private static CommandLog LogFrom(IEnumerable<ToggleSwitchCommand> entries, int formatVersion)
+        private static int CompareLex(CommandLog a, CommandLog b)
         {
-            var log = new CommandLog(formatVersion);
-            foreach (var entry in entries) log.Append(entry);
-            return log;
+            for (int i = 0; i < a.Entries.Count; i++)
+            {
+                var ea = a.Entries[i];
+                var eb = b.Entries[i];
+                if (ea.Tick != eb.Tick) return ea.Tick.CompareTo(eb.Tick);
+                if (ea.SwitchId != eb.SwitchId) return ea.SwitchId.CompareTo(eb.SwitchId);
+            }
+            return 0;
         }
 
         public static void AssertSameLog(CommandLog expected, CommandLog actual, string context)
