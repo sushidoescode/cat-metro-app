@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace CatMetro.Domain.Solver
 {
@@ -6,6 +7,10 @@ namespace CatMetro.Domain.Solver
     // without constructing a level whose train routes happen to encode a particular relation.
     internal static class MidWindowNormalizer
     {
+        // Constant work envelope: one centering sweep plus at most two repair/verification
+        // sweeps. Unlike the rejected 4*C cap, refinement passes never scale with command count.
+        private const int MaxSweeps = 3;
+
         internal static bool TryCenter(
             int[] seedTicks,
             int upperExclusive,
@@ -15,35 +20,59 @@ namespace CatMetro.Domain.Solver
             centeredTicks = (int[])seedTicks.Clone();
             if (centeredTicks.Length == 0) return true;
 
-            // Behavior-neutral extraction of the first implementation. Review round 1 pins this
-            // arbitrary cap as the defect: it reports success even when its final pass changed.
-            int passLimit = Math.Max(1, centeredTicks.Length * 4);
-            for (int pass = 0; pass < passLimit; pass++)
+            var seen = new HashSet<string> { Key(centeredTicks) };
+            for (int sweep = 0; sweep < MaxSweeps; sweep++)
             {
-                bool changed = false;
-                for (int i = 0; i < centeredTicks.Length; i++)
-                {
-                    int current = centeredTicks[i];
-                    int lower = current;
-                    while (lower > 0
-                        && WinsWithTick(centeredTicks, i, lower - 1, sameCompletionWin))
-                        lower--;
-
-                    int upper = current;
-                    while (upper < upperExclusive - 1
-                        && WinsWithTick(centeredTicks, i, upper + 1, sameCompletionWin))
-                        upper++;
-
-                    int middle = lower + (upper - lower) / 2;
-                    if (middle == current) continue;
-                    centeredTicks[i] = middle;
-                    changed = true;
-                }
-
-                if (!changed) return true;
+                var before = (int[])centeredTicks.Clone();
+                CenterOneSweep(centeredTicks, upperExclusive, sameCompletionWin);
+                if (Equal(before, centeredTicks)) return true;
+                if (!seen.Add(Key(centeredTicks))) break;
             }
 
+            // Interacting windows either cycled or did not reach a fixed point inside the constant
+            // work envelope. Stop deterministically; never present a changing boundary as centered.
+            centeredTicks = (int[])seedTicks.Clone();
+            return false;
+        }
+
+        private static void CenterOneSweep(
+            int[] ticks,
+            int upperExclusive,
+            Func<int[], bool> sameCompletionWin)
+        {
+            for (int i = 0; i < ticks.Length; i++)
+            {
+                ticks[i] = FindMiddle(ticks, i, upperExclusive, sameCompletionWin);
+            }
+        }
+
+        private static bool Equal(int[] a, int[] b)
+        {
+            for (int i = 0; i < a.Length; i++)
+                if (a[i] != b[i]) return false;
             return true;
+        }
+
+        private static string Key(int[] ticks) => string.Join(",", ticks);
+
+        private static int FindMiddle(
+            int[] ticks,
+            int index,
+            int upperExclusive,
+            Func<int[], bool> sameCompletionWin)
+        {
+            int current = ticks[index];
+            int lower = current;
+            while (lower > 0
+                && WinsWithTick(ticks, index, lower - 1, sameCompletionWin))
+                lower--;
+
+            int upper = current;
+            while (upper < upperExclusive - 1
+                && WinsWithTick(ticks, index, upper + 1, sameCompletionWin))
+                upper++;
+
+            return lower + (upper - lower) / 2;
         }
 
         private static bool WinsWithTick(

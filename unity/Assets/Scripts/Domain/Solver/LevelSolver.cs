@@ -158,12 +158,29 @@ namespace CatMetro.Domain.Solver
                 if (wins.Count > 0)
                 {
                     wins.Sort(CompareWins);
-                    var best = wins[0];
-                    var centeredLog = CenterSameCompletionWindows(graph, seed, best.log, best.ticks);
+                    int bestTicks = wins[0].ticks;
+                    int bestCommands = wins[0].log.Entries.Count;
+                    CommandLog centeredLog = null;
+                    foreach (var win in wins)
+                    {
+                        if (win.ticks != bestTicks || win.log.Entries.Count != bestCommands)
+                            continue;
+                        if (!TryCenterSameCompletionWindows(
+                            graph, seed, win.log, bestTicks, out var candidate))
+                            continue;
+                        if (centeredLog == null || CompareLogsLex(candidate, centeredLog) < 0)
+                            centeredLog = candidate;
+                    }
+
+                    if (centeredLog == null)
+                        return new SolveResult(SolveVerdict.Indeterminate, NotFoundReason.None,
+                            new CommandLog(), 0, 0, reportWidth, pinnedPruned, nodesExpanded,
+                            "mid-window tie-break did not reach a fixed point", ZeroProxy(graph));
+
                     return new SolveResult(SolveVerdict.Solved, NotFoundReason.None, centeredLog,
-                        best.ticks, centeredLog.Entries.Count, reportWidth, pinnedPruned,
+                        bestTicks, centeredLog.Entries.Count, reportWidth, pinnedPruned,
                         nodesExpanded, firstPin,
-                        ComputeProxy(graph, seed, centeredLog, best.ticks));
+                        ComputeProxy(graph, seed, centeredLog, bestTicks));
                 }
 
                 var survivors = new List<(CommandLog log, SimulationState state)>(next.Count);
@@ -210,21 +227,31 @@ namespace CatMetro.Domain.Solver
         // move is independently replayed through the shipped Domain, so completion optimality and
         // command count cannot change. Repeated passes handle interacting windows; the bounded
         // fallback is still the last independently-proven same-completion win.
-        private static CommandLog CenterSameCompletionWindows(
-            LevelGraph graph, ulong seed, CommandLog winningLog, int completionTicks)
+        private static bool TryCenterSameCompletionWindows(
+            LevelGraph graph, ulong seed, CommandLog winningLog, int completionTicks,
+            out CommandLog centeredLog)
         {
-            if (winningLog.Entries.Count == 0) return winningLog;
+            if (winningLog.Entries.Count == 0)
+            {
+                centeredLog = winningLog;
+                return true;
+            }
 
             var entries = new ToggleSwitchCommand[winningLog.Entries.Count];
             for (int i = 0; i < entries.Length; i++) entries[i] = winningLog.Entries[i];
             var seedTicks = new int[entries.Length];
             for (int i = 0; i < entries.Length; i++) seedTicks[i] = entries[i].Tick;
-            MidWindowNormalizer.TryCenter(seedTicks, graph.TimeLimitTicks,
+            if (!MidWindowNormalizer.TryCenter(seedTicks, graph.TimeLimitTicks,
                 ticks => IsSameCompletionWin(graph, seed, entries, ticks, completionTicks),
-                out var centeredTicks);
+                out var centeredTicks))
+            {
+                centeredLog = null;
+                return false;
+            }
             for (int i = 0; i < entries.Length; i++)
                 entries[i] = new ToggleSwitchCommand(entries[i].SwitchId, centeredTicks[i]);
-            return LogFrom(entries, winningLog.FormatVersion);
+            centeredLog = LogFrom(entries, winningLog.FormatVersion);
+            return true;
         }
 
         private static bool IsSameCompletionWin(LevelGraph graph, ulong seed,
@@ -254,6 +281,18 @@ namespace CatMetro.Domain.Solver
             var log = new CommandLog(formatVersion);
             foreach (var entry in entries) log.Append(entry);
             return log;
+        }
+
+        private static int CompareLogsLex(CommandLog a, CommandLog b)
+        {
+            for (int i = 0; i < a.Entries.Count; i++)
+            {
+                var ea = a.Entries[i];
+                var eb = b.Entries[i];
+                if (ea.Tick != eb.Tick) return ea.Tick.CompareTo(eb.Tick);
+                if (ea.SwitchId != eb.SwitchId) return ea.SwitchId.CompareTo(eb.SwitchId);
+            }
+            return 0;
         }
 
         private static int CompareBeam((CommandLog log, SimulationState state) a, (CommandLog log, SimulationState state) b)
