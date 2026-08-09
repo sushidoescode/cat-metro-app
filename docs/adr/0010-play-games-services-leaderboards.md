@@ -391,7 +391,7 @@ leaderboard contract and clear all of these gates:
 - **Signature statement:** “MERGE. I SIGN §8.10 AND ADR-0010.”
 - **Signed at (absolute date/time):** 2026-08-09 15:40:29 PDT (-0700), recording time
 - **Signed proposal head:** `bbbe79325b9ee14474e2ba1b76218d0b53021ac8`
-- **Signature record commit:** _filled by the immediate metadata-only successor after this record lands_
+- **Signature record commit:** `122b6e0d07ce49d1f63b95026c0e1b02205d03e0`
 
 ## Official sources checked 2026-08-09
 
