@@ -88,6 +88,25 @@ the timed gate improved from cold-baseline real 55.45 s to 51.30 s on the same h
 remains an open semantics question, but both optimistic and treat-pins-as-losses readings now clear
 70% for the four F4 levels without a content or threshold change.
 
+## RULING (human, in-session 2026-08-09 — L701 stress-board re-pin)
+
+The first post-ruling full-suite run exposed one additional stale characterization outside the
+two named L006 enforcement points: `StressBoards_AreValidated_WithTheQPStageSet` required L701's
+printed NEW-Q4 pin count to be nonzero, while the centered solver now reports exactly
+`retention=100% (wins=20 losses=0 pinned=0) windows=[20,20,24,25,20]`. The lane reported that this
+was not a wall-clock or node-budget regression and recommended extending its ownership to this one
+validation pin, re-recording the exact result, mutation-proving it, and recording the ruling. The
+human replied verbatim: **"I will go with your recommendation here."** Channel: in-conversation
+directive, agent-relayed (H-1-class confirmability caveat). This scoped extension is pin authority
+only; it is not HC-25 merge authority.
+
+**Semantics executed:** the validation assertion now requires the complete L701 stage-6 report
+above, preserving rather than weakening its drift sensitivity. The targeted test is green. Changing
+only the expected `pinned=0` to `pinned=1` makes it red against the actual `pinned=0`, then restoring
+the authorized expectation returns the file byte-exact (SHA-256
+`caa0e4c8438bc0042880e5c316220cc1eb92b212e111e9b017bc179575d6f77c`) and green. Stress-board
+verdicts and expansion budgets remain unchanged; only the stale test characterization moved.
+
 ## Merge (STEP 1)
 
 `git fetch origin main && git merge origin/main` — clean, no conflicts (24 commits: CM-C10

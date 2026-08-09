@@ -241,3 +241,26 @@ The ruling, replacement semantics, F4 table, unchanged node counts, and timing c
 recorded in `CM-C11.md` under a new §RULING-style subsection. `state/PROJECT_STATE.md` changes only
 this lane's task row and its explicitly named F4-trigger row; the historical CM-C11 finding remains
 untouched as required by the lane ownership boundary.
+
+### Full-suite RED + human-authorized L701 re-pin — 2026-08-09
+
+The first post-ruling `bash scripts/test.sh` run reached 727/728 dotnet tests before the first
+wrapper failed on `StressBoards_AreValidated_WithTheQPStageSet`. Its pre-existing assertion required
+`pinned=` but rejected `pinned=0`; the centered solver produced
+`retention=100% (wins=20 losses=0 pinned=0) windows=[20,20,24,25,20]`. This is an additional stale
+characterization, not a stress verdict, node-budget, or wall-clock regression. The test lies outside
+the contract's initially enumerated test files, so the lane stopped without editing it and requested
+an explicit ownership extension.
+
+The lane recommended extending ownership to this single validation pin, re-recording the complete
+result, mutation-proving it, and recording the ruling. The human replied verbatim: **"I will go with
+your recommendation here."** This is an in-conversation, agent-relayed ruling with the H-1-class
+confirmability caveat. It authorizes only this exact validation-pin edit and is not HC-25 merge
+authority.
+
+The exact replacement assertion is green. Mutation `pinned=0` → `pinned=1` produces the intended
+RED in the same named test: expected `pinned=1`, actual `pinned=0`, differing at index 40. Reverting
+the mutation returns SHA-256
+`caa0e4c8438bc0042880e5c316220cc1eb92b212e111e9b017bc179575d6f77c` and the targeted test passes
+1/1 again. Because the assertion pins the complete report rather than only requiring a nonzero
+substring, drift sensitivity is retained.
