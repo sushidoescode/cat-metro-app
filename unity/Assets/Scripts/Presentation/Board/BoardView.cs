@@ -366,7 +366,7 @@ namespace CatMetro.Presentation.Board
                 new Vector3(0f, 0.55f, -0.12f), new Vector3(1.2f, 0.78f, 0.8f));
             var ears = new GameObject("cat:ears");
             ears.transform.SetParent(cat.transform, false);
-            ears.transform.localPosition = new Vector3(0f, 1.32f, -0.16f);
+            ears.transform.localPosition = new Vector3(0f, 1.75f, -0.16f);
             var leftEar = Shape(ears.transform, "ear:left", DioramaMeshKind.Cube,
                 DioramaPalette.Material("cat-ear", line.Color),
                 new Vector3(-0.38f, 0f, -2f), new Vector3(0.38f, 0.62f, 0.16f));
@@ -376,6 +376,14 @@ namespace CatMetro.Presentation.Board
                 DioramaPalette.Material("cat-ear", line.Color),
                 new Vector3(0.38f, 0f, -2f), new Vector3(0.38f, 0.62f, 0.16f));
             rightEar.transform.localRotation = Quaternion.Euler(0f, 0f, 18f);
+            var leftInner = Shape(ears.transform, "ear:left-inner", DioramaMeshKind.Cube,
+                DioramaPalette.Material("cat-inner-ear", DioramaPalette.CreamCard),
+                new Vector3(-0.38f, 0.02f, -2.4f), new Vector3(0.16f, 0.34f, 0.1f));
+            leftInner.transform.localRotation = leftEar.transform.localRotation;
+            var rightInner = Shape(ears.transform, "ear:right-inner", DioramaMeshKind.Cube,
+                DioramaPalette.Material("cat-inner-ear", DioramaPalette.CreamCard),
+                new Vector3(0.38f, 0.02f, -2.4f), new Vector3(0.16f, 0.34f, 0.1f));
+            rightInner.transform.localRotation = rightEar.transform.localRotation;
 
             var tail = Shape(cat.transform, "cat:tail", DioramaMeshKind.Capsule,
                 DioramaPalette.Material("cat-tail", line.Color),

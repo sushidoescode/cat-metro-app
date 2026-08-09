@@ -72,7 +72,9 @@ namespace CatMetro.Tests.PlayMode
             foreach (var commuter in commuters)
             {
                 AssertTripleCoded(commuter);
-                AssertNamed(commuter.transform, "cat:ears");
+                var ears = AssertNamed(commuter.transform, "cat:ears");
+                Assert.That(ears.GetComponentsInChildren<Renderer>(true).Length,
+                    Is.EqualTo(4), "outer and contrasting inner ears carry the cat silhouette");
                 AssertNamed(commuter.transform, "cat:face");
                 AssertNamed(commuter.transform, "contact-shadow");
             }
