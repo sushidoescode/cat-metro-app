@@ -37,9 +37,9 @@ All four channel notes: in-conversation directives, agent-relayed here (H-1-clas
 - **HC-25**: no lane arms or completes any merge without the human's fresh in-session word
   in ITS chat. Every merge outcome is census material (next append records it).
 - **`state/PROJECT_STATE.md`**: append/update EXACTLY ONE row (your lane's) at merge —
-  PLUS any Known-debt bullet your FROZEN CONTRACT explicitly names at freeze (Lane 1A: the
-  collider-spam bullet; Lane 2: the F4-trigger numbers row; list yours or you may not touch
-  it). Whoever lands second takes the update-branch merge. Never touch another lane's row.
+  PLUS any Known-debt bullet your FROZEN CONTRACT explicitly names at freeze (Lanes 1A AND
+  1B: the collider-spam bullet, each recording its own half; Lane 2: the F4-trigger numbers
+  row; list yours or you may not touch it). Whoever lands second takes the update-branch merge. Never touch another lane's row.
 - **`unity/Assets/Scenes/Game.unity`, `unity/ProjectSettings/**`, URP/lighting assets:
   Lane 1A EXCLUSIVE.** No other lane may touch them for any reason.
 - The build shim `unity/Assets/Editor/CatMetroCliBuild.cs` is untracked on every ref —
@@ -49,7 +49,7 @@ All four channel notes: in-conversation directives, agent-relayed here (H-1-clas
 
 | Lane | Branch | Owns (exclusive) | Must not touch |
 |---|---|---|---|
-| **1A ART-DIORAMA** | `art/diorama-pass` | `unity/Assets/Art/**` (new), `unity/Assets/Resources/Materials/Greybox.mat`, `unity/Assets/Prefabs/**` (new), `unity/Assets/Scripts/Presentation/Board/**`, `unity/Assets/Scripts/Presentation/Cameras/**`, `Game.unity`, `ProjectSettings/**`, URP assets, `unity/Assets/Editor/CatMetroCliBuild.cs`, + the DECLARED gate exception: re-authoring the criterion-5 primitive/material invariant in `tests/unity/device-config.test.sh:84-88` for prefab-based construction (it counts `CreatePrimitive`/`GreyboxMaterial.Shared` across ALL of Presentation and fails closed at zero primitives — an E-1-style declared edit, never silent) | `Scripts/Domain|Content|Bootstrap/**`, `Presentation/Hud|Screens|Input|Strings|Diagnostics/**`, `content/**`, other tests it doesn't add |
+| **1A ART-DIORAMA** | `art/diorama-pass` | `unity/Assets/Art/**` (new), `unity/Assets/Resources/Materials/Greybox.mat`, `unity/Assets/Prefabs/**` (new), `unity/Assets/Scripts/Presentation/Board/**`, `unity/Assets/Scripts/Presentation/Cameras/**`, `Game.unity`, `ProjectSettings/**`, URP assets, `unity/Assets/Editor/CatMetroCliBuild.cs`, + the DECLARED gate exception: re-authoring the criterion-5 primitive/material invariant in `tests/unity/device-config.test.sh:84-88` for prefab-based construction (it counts `CreatePrimitive`/`GreyboxMaterial.Shared` across ALL of Presentation and fails closed at zero primitives — an E-1-style declared edit, never silent) | `Scripts/Domain|Content|Bootstrap/**`, `Presentation/Hud|Screens|Input|Strings|Diagnostics/**`, `Resources/Materials/UiChrome.mat`, `unity/Assets/UI/**`, `content/**`, other tests it doesn't add |
 | **1B UI-CHROME** | `art/ui-chrome-pass` | `unity/Assets/Scripts/Presentation/Hud/**` (incl. the WavePreviewStrip collider fix), `Presentation/Screens/**`, `Presentation/Strings/**`, `unity/Assets/Resources/Strings/ui.csv` (append-only), `unity/Assets/Resources/Materials/UiChrome.mat`, `unity/Assets/UI/**` (new — TMP fonts, style assets, audio clips), tiny `Presentation/Audio/` stinger manager (new) | Scene, ProjectSettings, `Presentation/Board|Cameras|Input|Diagnostics/**`, `Resources/Materials/Greybox.mat`, Domain/Content/Bootstrap |
 | **2 SOLVER** | `task/solver-tiebreak-fix` | `unity/Assets/Scripts/Domain/Solver/**`, solver/domain test files, the corpus pins it must re-record | `Presentation/**`, `content/**` except updating recorded expectations, ValidationStages thresholds (human-ratified) |
 | **3 BAND-L011** | `task/CM-C12-queue-reading-band` | `content/levels/L011..L017.json` + staged copies via the stager, new `Pure/Corpus/` test file(s), `tests/corpus/queue-reading-band.test.sh`, + TWO declared exceptions: the band-wiring lines in `unity/Assets/Scripts/Bootstrap/GameRoot.cs:296-297` (`LevelBand`/`WrapAtEndOfBand`) and the band pins in `unity/Assets/Tests/EditMode/Engine/LoadNextBandTests.cs` (extending the pinned band set turns them red BY DESIGN — re-pin to the new band; the #61-ratified WRAP behavior stays intact: last band level wraps to L001) | Everything else beyond the two declared exceptions; MERGES AFTER Lane 2 (declared dependency) |
@@ -123,8 +123,11 @@ human-signed; note the mode-flip tripwire before any monetization code anywhere.
 
 - The census fourth append (in the same PR as this file) records #61/#62's outcomes; each
   lane's merge is the census's next entry — ask, record, append.
-- Device findings recorded in Known debt: collider-strip spam (Lane 1A fixes),
-  persistentDataPath-is-EXTERNAL (threat-model premise falsified on-device; runbook
-  command wrong — unassigned, do not silently fix in a lane that doesn't own Bootstrap).
+- Device findings recorded in Known debt: collider-strip spam (SPLIT — 1A fixes BoardView
+  + CauseCameraController, 1B fixes WavePreviewStrip after 1A's criterion-5 gate
+  re-author), and persistentDataPath-is-EXTERNAL (the CM-SEAMS premise's CONCLUSION
+  falsified for this BUILD — `ForceSDCardPermission: 0` itself is unchanged, the broken
+  link is setting⇒path; cause unidentified, a build property not a device property;
+  runbook command wrong — unassigned, cross-lane coordination required, no silent fix).
 - The venture-critic's clock: Play closed-test start by ~Aug 15 (human act — testers).
 - Mode flip to production (human-authored commit) before monetization code lands anywhere.
