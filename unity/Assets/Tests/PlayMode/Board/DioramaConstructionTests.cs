@@ -137,6 +137,36 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator Camera_ReappliesAutoFitWhenTheDisplayAspectChanges()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            var before = _root.Cam.projectionMatrix;
+            float rotatedAspect = _root.Cam.aspect < 1f ? 2f : 0.5f;
+            _root.Cam.aspect = rotatedAspect;
+            yield return null;
+
+            Assert.That(_root.Cam.projectionMatrix.m00,
+                Is.Not.EqualTo(before.m00).Within(0.0001f),
+                "rotation/multi-window resize must refresh the custom projection");
+            var corners = new[]
+            {
+                new Vector3(-0.5f, -0.5f, 0f),
+                new Vector3(-0.5f, 10.5f, 0f),
+                new Vector3(6.5f, -0.5f, 0f),
+                new Vector3(6.5f, 10.5f, 0f),
+            };
+            foreach (var corner in corners)
+            {
+                var viewport = _root.Cam.WorldToViewportPoint(corner);
+                Assert.That(viewport.z, Is.GreaterThan(0f));
+                Assert.That(viewport.x, Is.InRange(-0.001f, 1.001f));
+                Assert.That(viewport.y, Is.InRange(-0.001f, 1.001f));
+            }
+        }
+
+        [UnityTest]
         public IEnumerator GameplayPlatformsTracksAndLever_HaveNoSharpCubeExteriorMesh()
         {
             _root = GameRoot.Launch();

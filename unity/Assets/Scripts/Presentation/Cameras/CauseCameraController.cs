@@ -21,6 +21,8 @@ namespace CatMetro.Presentation.Cameras
         private bool _panning;
         private GameObject _ring;
         private Vector3 _restPose; // review B5: retry returns the camera HERE
+        private float _framingAspect = -1f;
+        private Rect _framingSafeViewport;
 
         public string TargetNodeId { get; private set; } = "";
         public bool IsFramed => !_panning;
@@ -86,6 +88,8 @@ namespace CatMetro.Presentation.Cameras
                 centerX - halfWidth, centerX + halfWidth,
                 centerY - halfHeight, centerY + halfHeight,
                 _camera.nearClipPlane, _camera.farClipPlane);
+            _framingAspect = aspect;
+            _framingSafeViewport = safeViewport;
         }
 
         private static Rect SafeViewport()
@@ -130,6 +134,7 @@ namespace CatMetro.Presentation.Cameras
 
         private void Update()
         {
+            RefreshDioramaFramingIfDisplayChanged();
             if (!_panning) return;
             _panElapsedMs += Time.deltaTime * 1000.0;
             float t = Mathf.Clamp01((float)(_panElapsedMs / PAN_DURATION_MS));
@@ -137,6 +142,24 @@ namespace CatMetro.Presentation.Cameras
             float eased = t * t * (3f - 2f * t);
             _camera.transform.position = Vector3.Lerp(_panFrom, _goal, eased);
             if (t >= 1f) _panning = false;
+        }
+
+        private void RefreshDioramaFramingIfDisplayChanged()
+        {
+            if (_camera == null) return;
+            float aspect = Mathf.Max(0.01f, _camera.aspect);
+            Rect safeViewport = SafeViewport();
+            if (Mathf.Abs(aspect - _framingAspect) <= 0.0001f
+                && Approximately(safeViewport, _framingSafeViewport)) return;
+            ApplyDioramaFraming(aspect, safeViewport);
+        }
+
+        private static bool Approximately(Rect a, Rect b)
+        {
+            return Mathf.Abs(a.x - b.x) <= 0.0001f
+                && Mathf.Abs(a.y - b.y) <= 0.0001f
+                && Mathf.Abs(a.width - b.width) <= 0.0001f
+                && Mathf.Abs(a.height - b.height) <= 0.0001f;
         }
 
         private void ShowRing(Vector3 worldPos)
