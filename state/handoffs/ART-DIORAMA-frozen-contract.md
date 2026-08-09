@@ -203,5 +203,12 @@ and the persistentDataPath device finding. Lane 1B owns WavePreviewStrip's primi
   RED first; the corrected focused suites are EditMode 6/6 and PlayMode 8/8. Render inspection
   rejected the first capsule-based rounding attempt and drove the `RoundedBox12` bevel.
   Corrected full suites are EditMode 827/827 and PlayMode 145/145. Golden, colour-vision,
-  grayscale, and five-at-64px sheets are inspected. Corrected APK, Pixel, exact-head review,
-  Polyfork ADR, human rater, and HC-25 legs remain open.
+  grayscale, and five-at-64px sheets are inspected. Corrected `fa77af8` dev APK built
+  successfully (`4e465e…`, debuggable, development seams present).
+- 2026-08-09 — same-round review caught display-resize projection staleness, remaining sharp
+  depot/cat exterior cubes, and an initially misread Unity portrait enum. Each received a named
+  RED then GREEN test; implementation head `4e1af6b` is independently code-clean. Final gates:
+  EditMode 828/828, PlayMode 146/146, shell test 16/16, check/build PASS. Rounded frames were
+  regenerated and inspected. Final `4e1af6b` dev APK built (`b59c82…`, debuggable, arm64,
+  development seams present). Pixel, evidence-only exact-head review, Polyfork ADR, human rater,
+  and HC-25 legs remain open.
