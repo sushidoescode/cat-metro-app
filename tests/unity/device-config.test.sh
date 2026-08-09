@@ -80,11 +80,14 @@ if grep -q 'm_Shader: {fileID: 0}' "$MAT"; then
   fail "criterion 4: null shader reference — that is silent magenta"
 fi
 
-# --- criterion 5 static: primitive count == bind count, proven live ---
+# --- criterion 5 static: device-owned board/camera construction is primitive-free ---
+owned_prim=$(grep -ro 'GameObject.CreatePrimitive' unity/Assets/Scripts/Presentation/Board unity/Assets/Scripts/Presentation/Cameras --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
+[ "$owned_prim" = "0" ] || fail "criterion 5: Board/Cameras still create $owned_prim stripped-component primitives"
 prim=$(grep -ro 'GameObject.CreatePrimitive' unity/Assets/Scripts/Presentation --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-bind=$(grep -ro 'GreyboxMaterial.Shared' unity/Assets/Scripts/Presentation --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-[ "$prim" = "$bind" ] && [ "$prim" != "0" ] \
-  || fail "criterion 5: unbound runtime primitives ($prim CreatePrimitive vs $bind binds)"
+wave_prim=$(grep -o 'GameObject.CreatePrimitive' unity/Assets/Scripts/Presentation/Hud/WavePreview/WavePreviewStrip.cs 2>/dev/null | wc -l | tr -d ' ')
+[ "$prim" = "$wave_prim" ] || fail "criterion 5: primitive exists outside the separately owned WavePreviewStrip ($prim total vs $wave_prim allowed)"
+[ "$wave_prim" = "0" ] || grep -q 'GreyboxMaterial.Shared' unity/Assets/Scripts/Presentation/Hud/WavePreview/WavePreviewStrip.cs \
+  || fail "criterion 5: remaining WavePreview primitive has no explicit material bind"
 fp=$(grep -ro 'GameObject.CreatePrimitive' "$FIX" --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
 fb=$(grep -ro 'GreyboxMaterial.Shared' "$FIX" --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
 [ "$fp" != "$fb" ] || fail "criterion 5: the counting gate failed to fire on the fixture"

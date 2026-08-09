@@ -189,3 +189,10 @@ and the persistentDataPath device finding. Lane 1B owns WavePreviewStrip's primi
   plus up to 2,000 Meshy and 2,000 Tripo credits. Public/authenticated Polyfork API verified the
   account plan as `founders`; no key material entered output.
 - 2026-08-09 — contract frozen at `1a1bf09`; implementation RED is next.
+- 2026-08-09 — implementation milestone: Board/Cameras primitive-free gate RED→GREEN; five
+  focused diorama PlayMode tests and five asset/palette EditMode tests green. Nine Polyfork GLBs
+  were hash-recorded, palette-remapped offline, converted to collider-free FBX/prefab wrappers,
+  and wired into the real Game scene. Editor frames inspected. Full EditMode 826/826; first full
+  PlayMode 141/142 exposed the existing URP shader-namespace pin, then focused DeviceConfig 5/5
+  green after the custom shader retained its implementation under that namespace. APK/device,
+  mutation, full rerun, and independent-review legs remain.

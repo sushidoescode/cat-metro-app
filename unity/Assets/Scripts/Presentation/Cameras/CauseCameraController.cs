@@ -31,6 +31,8 @@ namespace CatMetro.Presentation.Cameras
         public void Wire(UnityEngine.Camera cam)
         {
             _camera = cam;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = Board.DioramaPalette.WarmPaper;
             _restPose = cam.transform.position; // the S-02 play framing (review B5)
         }
 
@@ -81,15 +83,18 @@ namespace CatMetro.Presentation.Cameras
         {
             if (_ring == null)
             {
-                _ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-                _ring.GetComponent<Renderer>().sharedMaterial = Board.GreyboxMaterial.Shared;
+                _ring = new GameObject("CauseRing");
+                Board.DioramaMeshFactory.Attach(_ring, Board.DioramaMeshKind.Cylinder,
+                    Board.DioramaPalette.Material("cause-ring", Board.DioramaPalette.TicketOrange));
                 _ring.name = "CauseRing";
                 // Review B1: NEVER parented to the camera — the controller lives on the camera
                 // object, so a camera-parented ring rides the cut/pan and ends 3.5 units off
                 // the causal node. World-positioned, unparented: it stays ON the node.
                 _ring.transform.localScale = new Vector3(1.4f, 0.02f, 1.4f);
                 _ring.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-                _ring.GetComponent<Renderer>().material.color = new Color(1f, 0.35f, 0.1f, 0.85f);
+                var color = Board.DioramaPalette.TicketOrange;
+                color.a = 0.85f;
+                _ring.GetComponent<Renderer>().material.color = color;
             }
             _ring.transform.position = worldPos + new Vector3(0f, 0f, -0.6f);
             _ring.SetActive(true);
