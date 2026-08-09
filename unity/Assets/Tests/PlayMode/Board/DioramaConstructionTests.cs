@@ -167,16 +167,20 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator GameplayPlatformsTracksAndLever_HaveNoSharpCubeExteriorMesh()
+        public IEnumerator GameplayDiorama_HasNoSharpCubeExteriorMesh()
         {
             _root = GameRoot.Launch();
             yield return null;
 
-            var candidates = _root.View.GetComponentsInChildren<MeshFilter>(true)
+            var allMeshes = _root.View.GetComponentsInChildren<MeshFilter>(true);
+            var candidates = allMeshes
                 .Where(x => x.name == "arm"
                     || x.name.StartsWith("trackbed:")
                     || x.name.StartsWith("rail-")
                     || x.name.StartsWith("tie:")
+                    || x.name.StartsWith("depot:") && x.name != "depot:shadow"
+                    || x.name.StartsWith("ear:")
+                    || x.name.StartsWith("whisker:")
                     || x.name.StartsWith("station:") &&
                         x.GetComponent<LineSymbolMesh>() == null)
                 .ToArray();
@@ -185,6 +189,8 @@ namespace CatMetro.Tests.PlayMode
             foreach (var candidate in candidates)
                 Assert.That(candidate.sharedMesh.name, Is.EqualTo("RoundedBox12"),
                     candidate.name + " must use the 12%-plus beveled box, not a sharp cube/pill");
+            Assert.That(allMeshes.Where(x => x.sharedMesh != null && x.sharedMesh.name == "Cube"),
+                Is.Empty, "the complete procedural diorama must not retain a sharp cube mesh");
         }
 
         [UnityTest]

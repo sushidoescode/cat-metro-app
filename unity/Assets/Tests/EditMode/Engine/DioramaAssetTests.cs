@@ -209,6 +209,21 @@ namespace CatMetro.Tests.EditMode
             }
         }
 
+        [Test]
+        public void AndroidPlayerSettings_PinPortraitOnly()
+        {
+            string settingsPath = Path.GetFullPath(Path.Combine(
+                UnityEngine.Application.dataPath, "..", "ProjectSettings/ProjectSettings.asset"));
+            string settings = File.ReadAllText(settingsPath);
+
+            Assert.That(settings, Does.Contain("defaultScreenOrientation: 1"));
+            Assert.That(settings, Does.Contain("allowedAutorotateToPortrait: 1"));
+            Assert.That(settings, Does.Contain("allowedAutorotateToPortraitUpsideDown: 0"));
+            Assert.That(settings, Does.Contain("allowedAutorotateToLandscapeRight: 0"));
+            Assert.That(settings, Does.Contain("allowedAutorotateToLandscapeLeft: 0"));
+            Assert.That(settings, Does.Contain("useOSAutorotation: 0"));
+        }
+
         private static string Html(Color color) => ColorUtility.ToHtmlStringRGB(color);
         private static string Html(Color32 color) => ColorUtility.ToHtmlStringRGB(color);
 
