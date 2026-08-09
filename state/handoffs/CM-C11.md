@@ -6,6 +6,30 @@ frozen at anchor 971a79a). Branch `task/CM-C11-levels-band` (the contract text s
 freeze's byte-frozen text; the frozen contract itself notes precedent for this kind of drift, see
 CM-C10's own F8 errata).
 
+## Authority note (reconciliation, 2026-08-08 — appended by the successor session)
+
+Earlier revisions of this log called CONFLICT-1 option A "the ratified default" four times —
+including as the stated reason for declining options B/C. That framing overstated one of two
+conflicting records; per the handoff reviews (#59 security round-1 HIGH + round-2 R1) the
+anchor's status is CONTESTED, and weighing the records is the human's call
+(`SESSION-HANDOFF-2026-08-08.md`, human-queue item 1):
+
+- *Pointing to "open":* the frozen contract's CONFLICT-1 section reads "human call, default A",
+  "the human picks; the contract does not", and calls option A "DEFAULT for execution, and the
+  default that stands at freeze". CONFLICT-1 appears in neither the contract's Ratifications
+  table nor PROJECT_STATE's 2026-08-05 ratification batch.
+- *Pointing to "settled":* the same contract carries a "Freeze-time ratification addendum
+  (human, in-session 2026-08-05/06)" (`CM-C11-frozen-contract.md:508`) reading "HC-10×HC-14
+  defaults CONFIRMED … the L006 anchor stands as authored" — an agent-transcribed record, the
+  same evidentiary class as every relayed grant in the HC-25 census.
+- Either way the call is JOINT with CM-C5.1/HC-14 per the frozen JOINT NOTE — neither contract
+  may resolve it alone.
+
+The technical content below (the tie-break mechanism, the 35% pessimistic reading, the
+reproduction) stands unchanged. The wording below is reconciled to "execution default"; the
+decline-to-redesign in the FINDING section rests on the stop conditions and the absence of a
+human ruling — not on a settled ratification.
+
 ## Merge (STEP 1)
 
 `git fetch origin main && git merge origin/main` — clean, no conflicts (24 commits: CM-C10
@@ -40,7 +64,7 @@ clause.
 ## Content authoring (STEP 2)
 
 **L006** — byte-faithful copy of `docs/plan/data/example_levels.json:19-36` (CONFLICT-1 option A,
-the ratified default; criterion 2). `L006AnchorFidelityTests.L006_MatchesTheAnchorFieldForField`
+the execution default — ratification CONTESTED, see the Authority note; criterion 2). `L006AnchorFidelityTests.L006_MatchesTheAnchorFieldForField`
 diffs the parsed JSON trees (`JToken.DeepEquals`) — pretty-printing differs, values are identical.
 
 **L007–L010** — authored fresh. Two real engineering problems surfaced and were fixed in-contract
@@ -98,14 +122,17 @@ consequence of the tie-break property above applied to L006's **three** non-zero
 ≈35% survive all three).
 
 **Why this cannot be resolved in-contract:**
-- **Criterion 2 / CONFLICT-1 option A** (the ratified default, freeze-time addendum: *"HC-10×HC-14
-  defaults CONFIRMED... the L006 anchor stands as authored"*) requires L006 to ship
+- **Criterion 2 / CONFLICT-1 option A** (the execution default; the freeze-time addendum reads
+  *"HC-10×HC-14 defaults CONFIRMED... the L006 anchor stands as authored"* while the CONFLICT-1
+  section itself reads "human call, default A" — the records CONFLICT, see the Authority note)
+  requires L006 to ship
   **byte-faithful** to `example_levels.json:19-36`. I have no authority to change its wave
   timing, switch count, or toggle ticks — that is CONFLICT-1 option B/C, a **human call**
   (`RIDES-WITH-PR` row OPEN-2/HC-10), and the joint note ties it to CM-C5.1's HC-14 scope too.
 - **Stop condition 5** is explicit: *"A level cannot pass criterion 4's pessimistic reading
   without a redesign → redesign the board. Do not weaken criterion 4..."* — but L006's board is
-  not mine to redesign under the current ratified default.
+  not mine to redesign under the standing execution default: choosing option B/C is exactly the
+  contested human call (see the Authority note).
 - **Criterion 4's own text** names L006 explicitly ("For each of L006–L010") with no carve-out,
   unlike criteria 6/7 which the contract explicitly re-scopes to L007–L010 under CONFLICT-1.
   This reads as deliberate (not an editing oversight): criteria 6/7 measure the dead-`queue`
@@ -118,7 +145,7 @@ consequence of the tie-break property above applied to L006's **three** non-zero
 **This is a genuine, previously-undiscovered conflict between an immutable Domain/Solver property
 (the tie-break, off-limits per stop conditions 2/6) and two criteria of this same contract
 (criterion 2's byte-faithful mandate vs. criterion 4(b)'s bar), surfaced only by actually running
-the ratified default board through the actual jitter check.** Per AGENTS.md hard rule 3 and the
+the default-A board through the actual jitter check.** Per AGENTS.md hard rule 3 and the
 task's escalation clause ("acceptance criteria conflict with each other"), this session stops
 short of a green corpus gate and reports the finding rather than picking a resolution.
 
