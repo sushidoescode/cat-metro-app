@@ -3,7 +3,7 @@
 - **Status:** Reference-only documentation; not a shipping asset, art acceptance, dependency, or
   permission to modify another lane's files
 - **Date:** 2026-08-09
-- **Relates:** `docs/plan/specs/product_spec.md` §§3 and 17,
+- **Relates:** `docs/plan/specs/product_spec.md` §§7 and 17,
   `docs/plan/specs/monetization_spec.md` §8, `docs/prd/leaderboards-contract.md`, and the 2026-08-09
   parallel-push handoff
 - **Authority order:** product specification → human-reviewed rendered-frame evidence → these concept
@@ -112,18 +112,25 @@ more legible than the default, improve the default rather than selling the fix.
 
 ## 5. Required visual evidence for later art/catalog work
 
-Each implemented theme/skin/livery supplies, under its owning task contract:
+Each implemented theme/skin/livery and each paid district supplies, under its owning task contract:
 
 1. the same golden-frame board with all five lines/symbols/cat silhouettes at the gameplay camera;
 2. default versus cosmetic captures on the 720p/low-tier floor and the Pixel target;
 3. deutan, protan, tritan, grayscale, and bright-ambient/sunlight review frames;
 4. cat-silhouette crops at 64 px, plus switch/queue/wave-preview crops at actual HUD size;
-5. a profiler capture against the same board with the default look (cosmetics keep the same performance
-   budget); and
-6. purchase-preview versus owned/equipped frames proving the preview matches the delivered item.
+5. for Night Harbor and every later signed DLC district, a representative frame from every new visual
+   grammar plus its authored max-wave route, compared with a free-district route on both devices;
+6. profiler captures against the same board with the default look: mid-tier frame time stays at
+   ≤16.6 ms p50 / ≤22 ms p95; low-tier stays at ≤33.3 ms p50 / ≤40 ms p95 with no frame >66 ms; and
+   both retain zero Playing-state GC allocations after warm-up, per CM-R52/product-spec §29; and
+7. purchase-preview versus owned/equipped frames proving the preview matches the delivered item.
 
-The human applies the existing TG visual rubric to rendered frames. This note cannot declare a visual
-pass, and its two source images are not evidence that an implemented frame matches the target.
+The human applies the existing TG visual rubric and CM-R21 protocol to rendered frames. For every
+default/cosmetic/DLC asset under test, five raters who did not author it see the five line renders one
+at a time in randomized order, unprompted, for 25 pooled trials; the gate is ≥23/25 correct. A failure
+is re-topologized or cut and recorded with asset ID, raw results, remedy, date, and signer. This note
+cannot declare a visual pass, and its two source images are not evidence that an implemented frame
+matches the target.
 
 ## 6. Lane boundary
 

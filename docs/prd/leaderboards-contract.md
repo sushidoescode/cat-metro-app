@@ -1,7 +1,8 @@
 # Cat Metro global leaderboards — frozen Lane 4 contract draft
 
-- **Status:** Draft; frozen as the first commit on `docs/monetization-amendment`. No dependency or
-  implementation is approved until the human approves ADR-0010.
+- **Status:** Draft; frozen as the first commit on `docs/monetization-amendment`, then corrected in a
+  visibly named review-fixes commit. No dependency or implementation is approved until the human
+  approves ADR-0010.
 - **Date:** 2026-08-09
 - **Decision owner:** human
 - **Implementation owner:** unassigned; this lane is documentation only
@@ -34,7 +35,8 @@ blob remains the review anchor.
 1. The monetization amendment specifies cat skins, train liveries, seasonal themes, one-time DLC
    district packs following the Night Harbor pattern, expanded rewarded placements, and a
    RevenueCat Experiments plan. It preserves the fair core: no energy, loot boxes, subscriptions,
-   premium currency, forced ads, or paid gameplay power.
+   premium currency, forced ads, paid Gold, or paid global rank; the existing named local rewind and
+   economy-reward exceptions remain bounded exactly as specified.
 2. Every proposed product ID and every proposed reference price is visibly marked **PENDING HUMAN
    SIGNATURE**. The amendment does not silently overwrite the locked v1 catalog.
 3. ADR-0010 names the exact proposed PGS Unity dependency/version, license, isolation boundary,
@@ -63,8 +65,9 @@ The leaderboard feature adds comparison; it does not redefine either game mode.
   is a separate, rewardless display and works with either eventual local medal ruling.
 - **No-backend meaning:** Cat Metro operates no account, score, or content server. PGS is the sole
   remote score store and identity surface. RevenueCat never stores or resolves leaderboard scores.
-- **Feature posture:** `leaderboard` remains OFF until ADR-0010 is human-approved and the future
-  implementation passes its dependency, device, privacy, and failure-mode gates.
+- **Feature posture:** no build may contain PGS until ADR-0010 is human-approved and the dependency,
+  Console, privacy, and Data Safety gates are complete. A PGS-capable build then has a separate local
+  `leaderboard` switch for dark UI/calls; that player-writable switch is not an approval boundary.
 
 ## 3. Non-negotiable invariants
 
@@ -76,7 +79,9 @@ The leaderboard feature adds comparison; it does not redefine either game mode.
 4. A leaderboard call never blocks Boot, Home, a level start, a result, save load, or local reward
    grant. Failure degrades to local results plus a passive retry affordance.
 5. Only a completed run reproduced by the shipped deterministic Domain may enter the submission
-   outbox. The replay check detects ordinary corruption; it is not claimed as anti-cheat.
+   outbox. Bounded canonical replay evidence is retained and revalidated from an untrusted save
+   immediately before every network attempt. This catches ordinary corruption/save edits; it is not
+   claimed as authoritative anti-cheat.
 6. PGS player identity, display names, and ranks never enter analytics, crash reports, OneSignal,
    RevenueCat, the save, or share-card images.
 7. No custom rank service, Cloud Function, Firebase score table, server OAuth exchange, or admin
@@ -95,22 +100,37 @@ dated Daily and every Cup round, and reads its **all-time** view.
 | Daily Line | `daily_YYYYMMDD` for the exact local `dateKey` | the existing scoring play's final integer score | larger is better | immutable historical board for that date |
 | District Cup | `cup_<round_id>` | sum of the three eligible per-route personal bests | larger is better | immutable historical board for that round |
 
-The Play Console generates the actual resource IDs. Human-created IDs are copied into a baked,
-reviewed manifest; game code never guesses or constructs an ID from player input. A missing manifest
-entry removes the Global Board affordance for that date/round and has no effect on play.
+The Play Console generates the actual resource IDs. `CatMetro.Application` owns only the logical
+`BoardKey` and eligibility. Human-created IDs live in a baked, reviewed provider manifest owned by
+`CatMetro.Integrations.PlayGames`, which maps `(BoardKey, destinationRevision)` to the exact resource.
+No resource ID enters an application DTO, and no code guesses or constructs one from player input. A
+missing manifest entry removes the Global Board affordance for that date/round and has no effect on
+play.
 
 ### Season-1 inventory
 
-PGS documents a maximum of 70 leaderboards per game. Season 1 therefore reserves **56 consecutive
-Daily resources + 8 Cup resources = 64**, leaving six slots for correction resources. The exact
-Season-1 start date is the first production date on which `leaderboard` ships ON. Before Season 2,
-the human must verify in Play Console whether retiring/deleting Season-1 resources releases quota.
-If it does not, dated Daily global boards end at the inventory boundary; the no-own-backend ruling
-wins over silent resource reuse or mixed-board rankings.
+PGS documents a maximum of 70 leaderboards per game. The candidate Season-1 envelope is **56
+consecutive Daily resources + 8 Cup resources = 64**, leaving six slots for corrections. It is an
+envelope, not permission to create resources. Before creation, the human signs one exact manifest
+containing:
+
+- a Monday local-date start and the 56 exact Daily `dateKey` values through the eighth Sunday;
+- the eight exact Monday-through-Sunday Cup round IDs intersecting that epoch;
+- one frozen scoring, simulation, Daily-generator, Cup-content, and tag-format revision; and
+- every logical key, opaque `destinationRevision`, generated resource ID, ordering, unit, score bound,
+  localization, and publication state.
+
+If launch cannot align to that Monday boundary, global boards wait for the next signed epoch; local
+Daily/Cup play does not wait. A ruleset or content change during the epoch requires a new physical
+resource/destination revision and explicit old-client behavior; incompatible clients fail local-only.
+Before Season 2, the human must verify in Play Console whether retiring/deleting Season-1 resources
+releases quota. If it does not, dated Daily global boards end at the inventory boundary; the
+no-own-backend ruling wins over silent resource reuse or mixed-board rankings.
 
 Published resources are never repurposed for another date or round, because PGS scores cannot be
-reset after publication. A correction uses one of the six reserve resources and a manifest update;
-the old resource is hidden, never relabeled.
+reset after publication. A correction uses one of the six reserve resources and a new opaque
+`destinationRevision`; the old resource is hidden, never relabeled. The new destination starts a new
+delivery state and requeues the retained eligible result after replay validation.
 
 ## 5. Eligibility and score contracts
 
@@ -154,17 +174,28 @@ maximum-score derivation remains open.
 
 ## 6. Authentication, UI, and privacy
 
-- The PGS Unity plugin's automatic connection may run only behind the `leaderboard` flag, but it
-  must not block gameplay. The implementation sets
-  `com.google.android.gms.games.SUPPRESS_GAME_PROFILE_CREATION=true` so a player without a Games
-  profile reaches Home without a profile-creation interruption.
-- The first explicit **Join global boards** tap invokes manual PGS authentication/profile creation.
+- Two gates are mandatory. Immutable build capability `pgs_leaderboards_compiled=false` excludes the
+  Unity plugin, its Maven artifacts, generated manifest/resources, initialization, authentication,
+  and network flow. Only a build that has cleared the signed dependency, exact Console-manifest,
+  credential, privacy, and Data Safety **first-inclusion** gates may set it true. That enables the
+  internal device evidence required before any production-capable release. Inside such a
+  capable build, the player-writable runtime flag `leaderboard=false` removes Cat Metro board UI,
+  adapter construction/calls, and outbox writes, but cannot promise that the included PGS v2 platform
+  layer makes no launch authentication attempt. Editing the save can never enable an absent build
+  capability.
+- PGS v2 performs platform authentication at game launch when included. The implementation sets
+  `com.google.android.gms.games.SUPPRESS_GAME_PROFILE_CREATION=true` only to suppress automatic
+  profile-creation UI; it is not described as suppressing authentication or network access and must
+  not block gameplay.
+- The first explicit **Join global boards** tap requests any needed authentication/profile creation.
   Dismissal is final for that session; no nag, commerce substitution, or lost local result follows.
 - Authenticated players see **Global board** on eligible Daily/Cup results and in the mode's history
   view. Unauthenticated, offline, missing-resource, or flag-OFF states show no rank.
-- The app opens the native PGS UI for the exact resource and its all-time/public view. It does not
-  download or render player names in Cat Metro UI. This keeps Unicode name rendering and identity
-  retention inside Google's surface.
+- Cat Metro requests the exact resource and all-time span. Its own coarse rank read uses PGS's public
+  collection. The pinned Unity native-UI bridge does not force a public default, so Google's UI owns
+  and may expose its collection selector; Cat Metro does not promise which collection opens first.
+  Cat Metro does not download or render other players' names in its UI. This keeps Unicode name
+  rendering and identity retention inside Google's surface.
 - Only the platform-auth scopes needed by PGS leaderboards are allowed. Email, profile, contacts,
   friends, Saved Games, achievements, Events, Recall, and server-side access codes are out of scope.
 - Store/Data Safety copy must disclose the PGS identity and leaderboard data flow before the first
@@ -173,30 +204,65 @@ maximum-score derivation remains open.
 ## 7. Submission outbox and failure behavior
 
 Global comparison is network-optional, not online-only play. A future ADR-0006 amendment must add a
-bounded `leaderboards` object to the versioned save before implementation:
+byte-bounded `leaderboards` object to the versioned save before implementation. Conceptually:
 
 ```text
 leaderboards
-  pending[boardKey] = { score, scoreTag, createdAtUtc, attempts }
-  submittedBest[boardKey] = score
+  eligible[boardKey] = { score, scoreTag, rulesetRevision, replayEvidence }
+  delivery[boardKey] = {
+    destinationRevision, pendingScore, confirmedBest,
+    attemptId, attemptState, attempts, createdAtUtc
+  }
 ```
 
 Rules:
 
-1. One pending row per board key; a higher eligible Cup total replaces a lower pending total.
-2. Daily has one scoring result, so its row is immutable after creation.
-3. Retry only on authenticated app foreground or an explicit result-screen retry; no timer and no
-   retry loop on Boot.
-4. A successful callback moves the value to `submittedBest`. A failure leaves it pending and shows
-   at most one passive status line per session.
-5. The outbox is capped at the 64 Season-1 resources. Reaching the cap refuses new global
-   submissions loudly but never touches local results or rewards.
-6. No separate file is introduced: ADR-0006's durable-file inventory remains closed. No code lands
-   until the save migration and tests are approved.
+1. `eligible` retains the bounded canonical initial state/seed, signed board/content hashes, simulation
+   and generator revisions, and complete bounded command log needed to reproduce the score. Cup
+   evidence contains all three contributing clean routes. The future ADR-0006 amendment signs exact
+   byte/count bounds; until then implementation is blocked.
+2. Treat every deserialized row as hostile. Immediately before every adapter call, resolve the current
+   signed manifest revision, reproduce the result, and re-check board/date/round, zero rewinds, score
+   bounds, content/ruleset revision, and tag grammar. Invalid or obsolete evidence never reaches PGS.
+   A client-held checksum or HMAC is not an authority claim.
+3. One delivery row exists per logical board. A higher eligible Cup total replaces a lower pending
+   total. Daily's eligible value is immutable. A manifest correction changes `destinationRevision`,
+   resets `confirmedBest` for that destination, and requeues from retained eligible evidence.
+4. The stock v2.2.0 Unity `SubmitScore` path is prohibited for durable delivery because it wraps
+   fire-and-forget Android `submitScore`, can immediately callback true, and can emit false then true
+   while unauthenticated. ADR-0010 instead approves one project-owned, security-reviewed Android bridge
+   whose only PGS operation is `LeaderboardsClient.submitScoreImmediate(resourceId, score, scoreTag)`.
+5. The bridge returns `Accepted` only when its Android `Task<ScoreSubmissionData>` completes
+   successfully, the result is non-null/parseable, its leaderboard ID equals the requested exact
+   resource, and its all-time `ScoreSubmissionResult` is present. This covers either a newly stored
+   best or a previously stored better score. Task failure/cancel, auth loss, malformed/mismatched data,
+   process death, timeout, or no callback is **not accepted** and leaves the row pending; none is
+   converted into a permanent drop. No cached wrapper read is used as acknowledgement.
+6. Every attempt has an immutable `(boardKey, destinationRevision, score, attemptId)` token. On
+   immediate-task acceptance, set `confirmedBest=max(existing, attemptedScore)` and clear pending only with a
+   compare-and-swap proving the current row still matches that token or is not newer. Duplicate,
+   contradictory, and late callbacks cannot clear or downgrade newer state.
+7. Retry runs only on authenticated foreground or an explicit result-screen retry: at most
+   four destinations per foreground cycle and one in-flight attempt per destination. There is no
+   timer, Boot retry loop, or unbounded batch. One passive status line per session may say a score is
+   waiting; it never claims upload success before immediate-task acceptance.
+8. The outbox/evidence set is capped at the 64 signed Season-1 logical boards. Reaching the cap refuses
+   new global submissions loudly but never touches local results or rewards. No separate file is
+   introduced; ADR-0006's durable-file inventory remains closed.
 
-The `scoreTag` is diagnostic metadata only: mode, exact date/round id, sim/generator version, and a
-short replay-hash prefix, with no player identifier. PGS score tags are not treated as a filtering
-or authorization mechanism.
+The diagnostic `scoreTag` has one canonical ASCII grammar:
+
+```text
+Daily: v1-d-{YYYYMMDD}-{simToken}-{generatorToken}-{replayHash16}
+Cup:   v1-c-{roundToken}-{simToken}-{generatorToken}-{replayHash16}
+```
+
+`YYYYMMDD` is eight digits; `roundToken` is the signed manifest alias at 1–16 characters;
+`simToken` and `generatorToken` are signed 1–8-character tokens; and `replayHash16` is exactly 16
+lowercase hex characters. Variable tokens use only the delimiter-free RFC 3986 unreserved subset
+`[A-Za-z0-9._~]`; `-` is the delimiter. The generated maximum is 56 characters, and the adapter
+independently rejects any tag over PGS's 64-character limit. Tags contain no player identifier and
+are never a filtering, authorization, or verification mechanism.
 
 ## 8. Rank display and `rank_bucket`
 
@@ -228,8 +294,12 @@ dependency; the taxonomy change itself is outside this lane.
 
 ## 10. Future implementation acceptance criteria
 
-1. **Flag absence:** with `leaderboard=false`, no board UI, auth attempt, PGS API call, outbox write,
-   or `rank_bucket` exists; L001, Daily, and Cup still complete normally.
+1. **Two-gate absence:** with `pgs_leaderboards_compiled=false`, the built artifact contains no PGS
+   plugin/Maven/manifest/resource surface and device proxy capture shows no PGS auth/network. In an
+   approved capable build with `leaderboard=false`, Cat Metro constructs no adapter, board UI, PGS API
+   call, outbox write, or `rank_bucket`; platform-level authentication remains disclosed. A hostile
+   save that sets `leaderboard=true` cannot enable a capability-OFF build. L001, Daily, and Cup still
+   complete normally in both cases.
 2. **Boot independence:** auth pending/failure/exception cannot delay Home or throw on Boot.
 3. **Exact-board mapping:** two adjacent `dateKey` values and two Cup round ids resolve to four
    distinct baked resource IDs; missing keys fail closed to local-only.
@@ -237,28 +307,43 @@ dependency; the taxonomy change itself is outside this lane.
    produce zero submissions; one clean scoring completion produces exactly one.
 5. **Cup anti-P2W:** a purchased-, rewarded-, and free-rewind fixture each remains locally valid but
    contributes zero to global total; three clean personal bests submit their exact sum.
-6. **Outbox durability:** process death before/after the save commit and before/after the PGS
-   callback yields no duplicate local reward and eventually at most one best score per board.
+6. **Outbox/immediate-submit durability:** the stock wrapper is statically unreachable; offline task
+   failure, unauthenticated/malformed/duplicate bridge callbacks, process death around every
+   save/submit/task-completion boundary, a lower attempt
+   completing after a higher Cup best, and a destination correction preserve the newest row and no
+   duplicate local reward. Only validated `submitScoreImmediate` Task success confirms delivery;
+   retries obey the four-destination/one-in-flight bounds.
 7. **Identity isolation:** static checks find PGS SDK namespaces only in
    `CatMetro.Integrations.PlayGames`/Bootstrap and no player id/name in analytics, save, diagnostics,
    messaging, purchases, or share-card DTOs.
-8. **Dependency gate:** exact plugin pin, license/SCA inventory, one EDM4U resolution, minSdk/targetSdk,
-   16-KB page-size audit, R8-minified build, and install/auth/submit/open-board smoke all pass on a
-   Play-distributed test build signed with the configured certificate.
-9. **Console gate (human evidence):** 64 Season-1 resources + six reserves or a smaller explicitly
-   signed inventory; correct ordering/units/limits; tamper protection ON; test accounts removed before
-   publication; game-service project published alongside the app.
+8. **Hostile-save/tag tests:** forged score/evidence/destination rows fail before the adapter; canonical
+   maximum tags pass and illegal characters fail. Independent raw SDK-bound fixtures pass the length
+   guard at 63 and 64 URI-safe characters and fail at 65; noncanonical tags still fail the application
+   grammar before dispatch.
+9. **Dependency/bridge gate:** exact wrapper artifact/hash/full commit, direct Games v2 and Nearby
+   Maven pins, terms/license/SCA and Nearby manifest/Data Safety audit, one EDM4U resolution,
+   minSdk/targetSdk, 16-KB page-size audit, and R8-minified build all pass. The project-owned bridge's
+   reviewed source/hash exposes only immediate submit; Play-distributed auth, offline/failure,
+   immediate-task success, existing-better-score, process-death, and open-board smokes pass.
+10. **Console gate (human evidence):** exact Monday-aligned 56-Daily/eight-Cup manifest + six reserves,
+    or a smaller explicitly signed epoch; one frozen ruleset; correct ordering/units/limits; tamper
+    protection ON; test accounts removed before publication; game-service project published alongside
+    the app.
 
 ## 11. Implementation blockers retained intentionally
 
 - Human approval of ADR-0010 and its dependency pin.
+- A security-reviewed implementation spike of ADR-0010's exact project-owned
+  `submitScoreImmediate` bridge, with its source hash and generated Android diff recorded. Any extra
+  PGS operation, wrapper/fork, or failure to prove Task semantics keeps the build capability OFF and
+  requires an ADR amendment.
 - Human resolution/implementation of the scoring constants and maximum-score derivation.
-- ADR-0006 amendment for the save migration/outbox, plus expansion of ad-cap counters from the
-  separate monetization amendment.
+- ADR-0006 amendment for canonical replay evidence, destination-aware delivery/CAS state, and the
+  exact byte bound, plus expansion of ad-cap counters from the separate monetization amendment.
 - Analytics taxonomy amendment for any leaderboard events or `rank_bucket` producer.
 - Data Safety/store-copy review for PGS identity and public score display.
 - A human-created Play Games Services project, credentials, leaderboard resources, translations,
-  icons, score limits, test accounts, and publication.
+  icons, score limits, test accounts, exact signed epoch manifest, and publication.
 
 No blocker above weakens the local Daily Line or District Cup. If any remains open, the feature flag
 stays OFF and the game ships without global rank.
@@ -271,4 +356,6 @@ Official Google documentation checked 2026-08-09:
 - [PGS leaderboard concepts and limits](https://developer.android.com/games/pgs/leaderboards)
 - [Leaderboards in Unity games](https://developer.android.com/games/pgs/unity/leaderboards)
 - [Unity setup and authentication](https://developer.android.com/games/pgs/unity/unity-start)
+- [Android `LeaderboardsClient` submission/read APIs and score-tag bound](https://developers.google.com/android/reference/com/google/android/gms/games/LeaderboardsClient)
+- [Pinned v2.2.0 `SubmitScore` implementation](https://github.com/playgameservices/play-games-plugin-for-unity/blob/c6f19addceb9a87489c5f1fb0d50bb4bef1e9c7a/Assets/Public/GooglePlayGames/com.google.play.games/Runtime/Scripts/Platforms/Android/AndroidClient.cs#L1054-L1080)
 - [Official plugin releases](https://github.com/playgameservices/play-games-plugin-for-unity/releases)
