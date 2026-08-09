@@ -56,6 +56,38 @@ triggered (no CM-C5.1 change). The F4 risk trigger for L002/L005 stays open in
 lands. Stop condition 5's redesign path was not taken; the ruling supersedes its application
 to L006 for this contract.
 
+## RULING (human, in-session 2026-08-09 — L006 re-pin + F4 acknowledgement)
+
+After the solver lane presented the designed two-pin RED and one table containing the new L006
+characteristic plus the L002/L003/L005/L006 F4 measurements, it asked: *"may I re-pin L006 at both
+enforcement points to `(20,0,0)` / pessimistic `100`, and record your acknowledgement of these F4
+measurements?"* The human replied verbatim: **"Yes"**. Channel: in-conversation directive,
+agent-relayed (H-1-class confirmability caveat, matching the record class of the 2026-08-08 ruling).
+This is measurement/pin authority only; it is not HC-25 merge authority.
+
+**Semantics executed:** the NUnit pin and `tests/corpus/alternation-band.test.sh` wrapper pin now
+both require L006 `(wins,losses,pinned) == (20,0,0)` and pessimistic `100`. The centered canonical
+log is ticks `[43,83,123]`, and stage 6 reports windows `[24,24,24]`. The old `(7,0,13)` / `35`
+expectation went red at both enforcement points before either was edited, exactly as its two-sided
+characterization intended. Each replacement pin was then mutation-proved independently and
+restored byte-clean. The 2026-08-08 Option-1 ruling remains historical authority for the unchanged
+L006 anchor; this ruling neither edits content nor reopens CONFLICT-1/JOINT/HC-14.
+
+**F4 measurements acknowledged:** one post-change corpus run measured every listed level at
+`(wins,losses,pinned) == (20,0,0)`, optimistic `100%`, pessimistic `100%`:
+
+| level | selected ticks | action windows | nodesExpanded |
+|---|---:|---:|---:|
+| L002 | `[8,63]` | `[18,37]` | 10,228 |
+| L003 | `[9,77]` | `[20,33]` | 12,860 |
+| L005 | `[8,60]` | `[18,29]` | 13,820 |
+| L006 | `[43,83,123]` | `[24,24,24]` | 20,829 |
+
+All 12 campaign/stress rows retained identical `NodesExpanded` values before/after the solver fix;
+the timed gate improved from cold-baseline real 55.45 s to 51.30 s on the same host. Q-B/NEW-Q4
+remains an open semantics question, but both optimistic and treat-pins-as-losses readings now clear
+70% for the four F4 levels without a content or threshold change.
+
 ## Merge (STEP 1)
 
 `git fetch origin main && git merge origin/main` — clean, no conflicts (24 commits: CM-C10

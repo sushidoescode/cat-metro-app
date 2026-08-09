@@ -109,16 +109,13 @@ for lid in band:
     if optimistic < 70:
         fail(lid + " optimistic retention %d%% < 70%% — %s" % (optimistic, value))
     if lid == "L006":
-        # Human criterion-4(b) ruling, 2026-08-08 (CM-C11.md, RULING section — option 1):
-        # the pessimistic bar applies to L007-L010; L006's reading is pinned as the
-        # recorded characteristic of the authored anchor (mirrors the NUnit pin in
-        # AlternationBandTests) so drift cannot pass silently. The pin is TWO-SIDED on
-        # purpose: an IMPROVEMENT in L006's retention also turns it red — the recorded
-        # characteristic changed, so the ruling record must be revisited, not the content.
-        if (w, l, p) != (7, 0, 13):
-            fail(lid + " anchor characteristic drifted (expected wins=7 losses=0 pinned=13): " + value)
-        if pessimistic != 35:
-            fail(lid + " pessimistic characteristic drifted (expected 35): " + value)
+        # Human re-pin ruling, 2026-08-09 (CM-C11.md, second RULING section): centered
+        # solver ticks 43/83/123 make every jitter sample a win. This mirrors the NUnit
+        # pin and remains TWO-SIDED: any improvement or regression requires a new ruling.
+        if (w, l, p) != (20, 0, 0):
+            fail(lid + " anchor characteristic drifted (expected wins=20 losses=0 pinned=0): " + value)
+        if pessimistic != 100:
+            fail(lid + " pessimistic characteristic drifted (expected 100): " + value)
     elif pessimistic < 70:
         fail(lid + " pessimistic retention %d%% < 70%% — %s" % (pessimistic, value))
     print(lid + ": retention optimistic=%d%% pessimistic=%d%% (%s)" % (optimistic, pessimistic, value))

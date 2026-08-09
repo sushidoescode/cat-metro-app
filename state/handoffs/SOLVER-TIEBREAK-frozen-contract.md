@@ -216,3 +216,28 @@ versus cold baseline real 55.45 s / user 47.47 s / sys 3.08 s. Every one of the 
 an identical before/after `NodesExpanded` value (delta 0); stress rows remain L701 146,942 and L702
 16,839. Their retention also improves to `(20,0,0)` without a budget increase. This lane is now at
 the contract's explicit human gate: no pin, CM-C11 ruling record, or PROJECT_STATE F4 row has moved.
+
+### Human ruling + replacement-pin enforcement — 2026-08-09
+
+The lane presented the designed two-pin RED and the F4 table above, then asked: *"may I re-pin L006
+at both enforcement points to `(20,0,0)` / pessimistic `100`, and record your acknowledgement of
+these F4 measurements?"* The human replied verbatim: **"Yes"**. This is an in-conversation,
+agent-relayed ruling with the H-1-class confirmability caveat. It authorizes only the L006 re-pin and
+F4 acknowledgement; it is explicitly not the separate HC-25 merge word.
+
+Both authorized expectations now require `(wins,losses,pinned) == (20,0,0)` and pessimistic
+retention `100`:
+
+- Filtered NUnit retention tests: 5/5 green. Mutating only the L006 tuple to `(20,0,1)` makes the
+  L006 case red: expected `(20,0,1)`, observed `(20,0,0)`; 4/5 remain green. The desired re-pinned
+  test file was restored exactly (SHA-256
+  `b481a2d2ec6c992b911030248a9d6abddaa548ec3d0238ab20fb4fe65493bba4`).
+- `bash tests/corpus/alternation-band.test.sh`: green. Mutating only its L006 pessimistic
+  expectation from `100` to `99` makes the wrapper red: expected `99`, observed `100`. The desired
+  re-pinned wrapper was restored exactly (SHA-256
+  `9ee2ec0327957cb15ef99e5ee38cf5695043a6d064b90d127e9d61b1c1c529e7`).
+
+The ruling, replacement semantics, F4 table, unchanged node counts, and timing comparison are
+recorded in `CM-C11.md` under a new §RULING-style subsection. `state/PROJECT_STATE.md` changes only
+this lane's task row and its explicitly named F4-trigger row; the historical CM-C11 finding remains
+untouched as required by the lane ownership boundary.
