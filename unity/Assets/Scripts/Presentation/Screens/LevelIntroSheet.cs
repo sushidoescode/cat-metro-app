@@ -64,18 +64,18 @@ namespace CatMetro.Presentation.Screens
             Color scrim = CatMetroUiTheme.InkNavy;
             scrim.a = 0.78f;
             CatMetroUiTheme.MakeImage(go.transform, "IntroScrim",
-                Vector2.zero, Vector2.one, scrim);
+                Vector2.zero, Vector2.one, scrim, rounded: false);
             CatMetroUiTheme.MakeImage(go.transform, "SheetPanel",
                 new Vector2(0.06f, 0.38f), new Vector2(0.94f, 0.78f),
                 CatMetroUiTheme.WarmPaper);
             CatMetroUiTheme.MakeImage(go.transform, "RouteAccent",
-                new Vector2(0.12f, 0.685f), new Vector2(0.88f, 0.705f),
+                new Vector2(0.13f, 0.735f), new Vector2(0.87f, 0.747f),
                 CatMetroUiTheme.MetroTeal);
             CatMetroUiTheme.MakeImage(go.transform, "RouteDot",
-                new Vector2(0.45f, 0.665f), new Vector2(0.55f, 0.725f),
+                new Vector2(0.11f, 0.720f), new Vector2(0.15f, 0.762f),
                 CatMetroUiTheme.TicketOrange);
             view._name = CatMetroUiTheme.MakeText(go.transform, "LevelName",
-                new Vector2(0.10f, 0.59f), new Vector2(0.90f, 0.73f), "",
+                new Vector2(0.10f, 0.575f), new Vector2(0.90f, 0.710f), "",
                 CatMetroTextRole.Heading);
             view._goal = CatMetroUiTheme.MakeText(go.transform, "GoalLine",
                 new Vector2(0.12f, 0.44f), new Vector2(0.88f, 0.57f), "",

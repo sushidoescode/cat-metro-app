@@ -209,3 +209,9 @@ Bootstrap, packages, immutable paths, and every other lane's state row.
   corners, and Home used Cream Card rather than the contract's Warm Paper. Visual-regression
   RED is 0/3 at `/tmp/cm-ui-visual-red.q15KY8/results.xml`; the three named failures are
   `HomePaper`, `full-screen staging scrim`, and `teal route rail`.
+- 2026-08-09 — visual-regression GREEN is 3/3 at
+  `/tmp/cm-ui-visual-green.Fn1PLb/results.xml`. Recapture at
+  `/tmp/cm-ui-screen-recapture.sPaUFf/` was opened at original 640x480: Home shows the
+  navy tracked title/cat-rail mark, three distinct layered parked districts, and the sole
+  orange/navy pin; LevelIntro shows a clear top route band, separated name/goal hierarchy,
+  rounded paper card, flat navy staging field, and full-width orange Play chip.

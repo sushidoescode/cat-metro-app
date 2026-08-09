@@ -55,7 +55,7 @@ namespace CatMetro.Presentation.Screens
             rect.offsetMax = Vector2.zero;
 
             CatMetroUiTheme.MakeImage(go.transform, "HomePaper",
-                Vector2.zero, Vector2.one, CatMetroUiTheme.CreamCard);
+                Vector2.zero, Vector2.one, CatMetroUiTheme.WarmPaper);
 
             var brand = new GameObject("BrandMark");
             CatMetroUiTheme.Stretch(brand, go.transform,
