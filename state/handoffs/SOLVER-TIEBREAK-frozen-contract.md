@@ -285,3 +285,46 @@ substring, drift sensitivity is retained.
 The final close-record commit changes only this contract and the already-authorized solver task row;
 the classifier is re-run on that tip before review. HC-25 remains unasked and ungranted until the PR
 is green and reviewable.
+
+### Independent review round 1 — 2026-08-09 — NOT MERGEABLE / PERF FAIL
+
+Draft PR #66 was classified from the GitHub-attested base/head by the protected-base probe as
+`RISKY / risk.test-semantic`; `security_review_required=false`. One fresh code-review round and the
+perf-budget leg inspected the PR-description copy of the frozen contract and exact
+`11a3335...48a87b1` diff without rerunning the suite. Both legs failed the implementation:
+
+- **F1 HIGH — final lex runs too early.** `wins.Sort(CompareWins)` selects the raw earliest log and
+  discards equal-primary alternatives before centering. A later centered tick can reverse the final
+  lex order, violating executable-order step 4.
+- **F2 HIGH — non-convergence is silently accepted.** The arbitrary `4 * entryCount` pass cap
+  returns the last feasible log even when the final pass changed it. The review supplied a
+  two-coordinate winning relation whose midpoint sweeps cycle `(1,1) -> (2,2) -> (1,1)`; the
+  returned boundary lacks the required margin.
+- **F3 HIGH — the reference is structurally the SUT.** The test oracle selects the same raw winner,
+  then copies the production scan order, midpoint formula, and pass cap. It can affirm F1/F2 rather
+  than independently specifying canonical order.
+- **P1 HIGH — refinement work escapes the declared work budget.** The cap permits `O(C^2*T)` full
+  replays, each itself scanning a `C`-entry log over up to `T` ticks; the schema permits `T=4000`
+  and has no solver-log command cap. Unchanged `NodesExpanded` is honest search accounting but not a
+  bound on this new work. Current L701/L702 timing proves only the shipped corpus.
+
+Re-pin/scope audit passed: no assertions were deleted; the L006 pins remain exact/two-sided; the
+human-authorized L701 edit strengthens a partial assertion to an exact full report; forbidden paths
+and the frozen contract prefix are untouched. Contract-drift verdict nevertheless fails on behavior.
+The findings are durably relayed in PR #66's conversation; the PR remains draft and no HC-25 word
+has been requested.
+
+**Amended review-fix contract:** preserve the frozen requirements and resolve only F1–F3/P1. First
+extract the current coordinate normalizer without behavioral change. Then prove RED with (a) an
+equal-primary board whose raw and post-normalization lex winners differ, (b) the reviewer's cycling
+relation, and (c) a truly exhaustive oracle that independently identifies fixed mid-window logs
+before final lex. Production must normalize every relevant equal-primary candidate before final
+lex, accept only a fixed-point result, and stop rather than return a changing fallback. Remove the
+command-count-multiplied pass loop: at most one centering sweep plus one independent fixed-point
+verification per candidate. Re-run the exact stress/timing/node evidence and the full gates, then
+return the resolution to the existing independent reviewers. No unrelated edits.
+
+Lessons audit found no matching recurrence. The review workflow calls for three new `observed` rows
+(final tie-break applied before normalization; unverified bounded-iteration fallback; reference
+oracle duplicates the SUT), but `docs/lessons.md` is outside Lane 2's exclusive ownership. It stays
+untouched unless the human explicitly extends scope; this is disclosed, not silently waived.
