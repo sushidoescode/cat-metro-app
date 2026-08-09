@@ -194,3 +194,8 @@ Bootstrap, packages, immutable paths, and every other lane's state row.
 - 2026-08-09 — contract frozen at `b528bd3`; `origin/main` re-fetched at `1a1bf09`;
   N=15; clean-anchor `check.sh` green; clean-anchor full suite green: EditMode 821/821,
   PlayMode 137/137, wrappers 15/15.
+- 2026-08-09 — RED verified for the right reasons after one test-only compile correction:
+  focused EditMode 0/3 (missing theme, font/shape assets, stingers) and focused PlayMode
+  0/16 (missing manager/styles/symbol map, legacy TextMesh/primitive preview). Raw NUnit
+  results: `/tmp/cm-ui-red-edit.SXvPxI/results.xml` and
+  `/tmp/cm-ui-red-play.FWp9bP/results.xml`.
