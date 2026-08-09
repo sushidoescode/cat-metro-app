@@ -32,7 +32,7 @@ namespace CatMetro.Tests.PlayMode
             home.Show();
             yield return null;
 
-            AssertImage(home.transform, "HomePaper", "F2EAD9");
+            AssertImage(home.transform, "HomePaper", "FAF6EC");
             var title = Find(home.transform, "Title").GetComponent<TMP_Text>();
             AssertThemeFont(title);
             Assert.That((Color32)title.color, Is.EqualTo(Hex("22304A")));
@@ -68,7 +68,10 @@ namespace CatMetro.Tests.PlayMode
             sheet.Show("First Switch", 3);
             yield return null;
 
-            AssertImage(sheet.transform, "IntroScrim", "22304A", 0.70f, 0.90f);
+            AssertImage(sheet.transform, "IntroScrim", "22304A", 0.70f, 0.90f,
+                requireRoundedSprite: false);
+            Assert.That(Find(sheet.transform, "IntroScrim").GetComponent<Image>().sprite,
+                Is.Null, "the full-screen staging scrim has no rounded-card corners");
             AssertImage(sheet.transform, "SheetPanel", "FAF6EC");
             AssertImage(sheet.transform, "RouteAccent", "3BAFA8");
             AssertImage(sheet.transform, "PlayChip", "F08A3C");
@@ -89,6 +92,24 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(play.fontSizeMin, Is.GreaterThanOrEqualTo(24f));
         }
 
+        [UnityTest]
+        public IEnumerator Intro_RouteMotifStaysInItsOwnBand_AboveTheLevelTitle()
+        {
+            var canvas = NewCanvas();
+            var sheet = LevelIntroSheet.Create(canvas.transform);
+            sheet.Attach(new ChromeRegions());
+            sheet.Show("First Switch", 3);
+            yield return null;
+
+            var title = Find(sheet.transform, "LevelName").GetComponent<RectTransform>();
+            var rail = Find(sheet.transform, "RouteAccent").GetComponent<RectTransform>();
+            var marker = Find(sheet.transform, "RouteDot").GetComponent<RectTransform>();
+            Assert.That(rail.anchorMin.y, Is.GreaterThan(title.anchorMax.y),
+                "the teal route rail must not cross the level title glyph band");
+            Assert.That(marker.anchorMin.y, Is.GreaterThan(title.anchorMax.y),
+                "the orange route marker must not cross the level title glyph band");
+        }
+
         private Canvas NewCanvas()
         {
             _host = new GameObject("UiChromeScreenStyleHost");
@@ -106,7 +127,8 @@ namespace CatMetro.Tests.PlayMode
         }
 
         private static void AssertImage(Transform root, string name, string hex,
-            float minAlpha = 0.99f, float maxAlpha = 1.01f)
+            float minAlpha = 0.99f, float maxAlpha = 1.01f,
+            bool requireRoundedSprite = true)
         {
             var image = Find(root, name).GetComponent<Image>();
             Assert.That(image, Is.Not.Null, name + " must be an Image");
@@ -116,7 +138,9 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(actual.g, Is.EqualTo(expected.g), name);
             Assert.That(actual.b, Is.EqualTo(expected.b), name);
             Assert.That(image.color.a, Is.InRange(minAlpha, maxAlpha), name);
-            Assert.That(image.sprite, Is.Not.Null, name + " uses the shared rounded sprite");
+            if (requireRoundedSprite)
+                Assert.That(image.sprite, Is.Not.Null,
+                    name + " uses the shared rounded sprite");
         }
 
         private static void AssertThemeFont(TMP_Text text)

@@ -203,4 +203,9 @@ Bootstrap, packages, immutable paths, and every other lane's state row.
   3/3 and Home/intro/outcome/results/audio PlayMode 9/9; `check.sh`, raw-copy static,
   and the halt-vocabulary source sweep green. WavePreview remains red and untouched while
   its Lane 1A gate-re-author prerequisite is unavailable. PR #63 landed on main as
-  `11a3335`; rebase onto that squash is next.
+  `11a3335`; the three contract-first lane commits were rebased onto that squash.
+- 2026-08-09 — first Screen-matched 640x480 inspection caught a live composition defect:
+  the intro route rail/marker crossed the title, the full-screen scrim inherited card
+  corners, and Home used Cream Card rather than the contract's Warm Paper. Visual-regression
+  RED is 0/3 at `/tmp/cm-ui-visual-red.q15KY8/results.xml`; the three named failures are
+  `HomePaper`, `full-screen staging scrim`, and `teal route rail`.
