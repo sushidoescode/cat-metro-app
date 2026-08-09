@@ -230,3 +230,10 @@ Bootstrap, packages, immutable paths, and every other lane's state row.
   colored confetti pieces are visible beside the completion card, the navy cat ears read
   above the head/route motif, the CSV win banner remains the sole outcome copy, and the
   full-width orange Next CTA remains unobscured.
+- 2026-08-09 — four load-bearing mutations failed by name at
+  `/tmp/cm-ui-mutations-red.aemX58/results.xml` (7/11 pass, 4 fail): Ticket Orange→Signal
+  Red failed `PlayChip`; renaming `BannerKeyline` failed its mandatory-node assert;
+  renaming `CompletionCard` failed its mandatory-node assert; removing the warning cue
+  call failed `ScreenStateEdges_PlayWarningOnce_ThenTapOnRetryReturn`. All four mutations
+  were reverted byte-clean; the identical selection is 11/11 green at
+  `/tmp/cm-ui-mutations-restored.T1weY1/results.xml`.
