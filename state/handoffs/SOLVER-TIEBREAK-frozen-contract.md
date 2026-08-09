@@ -186,3 +186,33 @@ emission case. Production source was byte-unchanged for this run.
   SHA-256 before and after is
   `810a37ceac2980f9c04a06d5cbe64fb476d9fdf792810c31d0bfbbff15fce620`; the named test is green
   again after the revert.
+
+### Designed characterization RED + re-measure — 2026-08-09
+
+The old L006 expectations remain byte-unchanged pending the human ruling, and both enforcement
+points fired independently:
+
+- NUnit retention filter: 4/5 green, L006 red with
+  `anchor characteristic drifted — retention=100% (wins=20 losses=0 pinned=0)
+  windows=[24,24,24]`; expected `(7,0,13)`, observed `(20,0,0)`.
+- `bash tests/corpus/alternation-band.test.sh`: exit 1 with
+  `L006 anchor characteristic drifted (expected wins=7 losses=0 pinned=13):
+  retention=100% (wins=20 losses=0 pinned=0) windows=[24,24,24]`.
+
+The same post-change in-process corpus run measured the F4 set:
+
+| level | selected ticks | wins/losses/pinned | optimistic / pessimistic | windows | nodes |
+|---|---:|---:|---:|---:|---:|
+| L002 | `[8,63]` | `20/0/0` | `100% / 100%` | `[18,37]` | 10,228 |
+| L003 | `[9,77]` | `20/0/0` | `100% / 100%` | `[20,33]` | 12,860 |
+| L005 | `[8,60]` | `20/0/0` | `100% / 100%` | `[18,29]` | 13,820 |
+| L006 | `[43,83,123]` | `20/0/0` | `100% / 100%` | `[24,24,24]` | 20,829 |
+
+Temporary measurement output in the corpus test was reverted byte-clean (file SHA-256 before and
+after `37bfd6add6ddfde965c5e94cab06c4333908c1df1bad53e2bd4183f9c72b465c`).
+
+Timed `validate-content.sh` post-change: `RESULT: OK`, real 51.30 s / user 45.39 s / sys 2.61 s,
+versus cold baseline real 55.45 s / user 47.47 s / sys 3.08 s. Every one of the 12 level rows has
+an identical before/after `NodesExpanded` value (delta 0); stress rows remain L701 146,942 and L702
+16,839. Their retention also improves to `(20,0,0)` without a budget increase. This lane is now at
+the contract's explicit human gate: no pin, CM-C11 ruling record, or PROJECT_STATE F4 row has moved.
