@@ -42,12 +42,14 @@ claimed here.
 
 ## Test and mutation evidence
 
-- Focused EditMode diorama asset tests: 7/7.
+- Focused EditMode diorama asset tests: 8/8.
 - Focused PlayMode diorama construction tests: 9/9.
-- Full Unity EditMode: 828/828, zero failures.
-- Full Unity PlayMode: 146/146, zero failures.
+- Full Unity EditMode: 829/829, zero failures (268.30 seconds).
+- Full Unity PlayMode: 146/146, zero failures (120.00 seconds).
 - Final `bash scripts/check.sh`: PASS.
-- Final `bash scripts/test.sh`: PASS, 16/16 discovered shell tests.
+- `bash scripts/test.sh`: PASS, 16/16 discovered shell tests at the player/art evidence head;
+  the later editor-only temp-output hardening has exact-head full Unity suites plus focused
+  check/build/device/CLI gates green.
 - Final `bash scripts/build.sh`: PASS.
 - `tests/unity/device-config.test.sh`: PASS.
 - `tests/unity/cli-build-shim.test.sh`: PASS.
@@ -58,7 +60,8 @@ WavePreviewStrip's remaining primitive is Lane 1B's explicitly owned debt.
 
 ## Development APK
 
-- Code/art commit: `4e1af6b` (rebased onto `origin/main` `11a3335`).
+- Player/art commit: `4e1af6b` (rebased onto `origin/main` `11a3335`). Final source head adds
+  only editor-side authoring-output hardening and evidence bookkeeping, neither shipped in APK.
 - Artifact (not committed):
   `/Users/sushantsrikrish/Downloads/CatMetro-art-diorama-4e1af6b-dev.apk`.
 - SHA-256:
@@ -85,11 +88,14 @@ the scoped Unity logcat verdict before this lane is merge-ready.
   `evals/results`; independent code and security reviews are required.
 - The first independent code review returned NOT MERGEABLE. Its concrete runtime, gate,
   camera, rounding, portrait, shader, evidence, and provenance findings were repaired. The same
-  independent round reports no remaining code finding at `4e1af6b`; final evidence-only
-  exact-head closure remains pending.
+  independent round reports no remaining code finding through the editor-hardening delta; final
+  evidence-only exact-head closure remains pending.
 - Independent security reassessment found no leaked secret, runtime importer/networking,
-  package drift, or unresolved provenance defect. It retains the external ADR blocker below and
-  records a low-risk trusted-caller APK-output containment debt for a future production workflow.
+  package drift, or unresolved provenance defect. Its predictable-temp-output LOW was repaired
+  with unique/reparse/CreateNew safeguards. It retains the external ADR blocker below and records
+  a low-risk trusted-caller APK-output containment debt for a future production workflow.
+- Draft PR #65 is open. Both GitHub Actions jobs were rejected before runner assignment because
+  the account has failed payments or needs a higher Actions spending limit; no CI step executed.
 - The human-approved Polyfork license/source-custody ADR remains an external pre-merge gate.
 - HC-25 remains closed: no merge may be armed without a fresh in-chat merge word after the
   evidence and review legs are complete.

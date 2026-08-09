@@ -212,3 +212,9 @@ and the persistentDataPath device finding. Lane 1B owns WavePreviewStrip's primi
   regenerated and inspected. Final `4e1af6b` dev APK built (`b59c82…`, debuggable, arm64,
   development seams present). Pixel, evidence-only exact-head review, Polyfork ADR, human rater,
   and HC-25 legs remain open.
+- 2026-08-09 — exact-head security review found a LOW predictable `/tmp` output in the manual
+  Polyfork orientation-sheet tool. A named test went RED, then unique UUID directory, collision
+  and reparse rejection, and create-new/exclusive output made it GREEN. Full exact-head suites:
+  EditMode 829/829 and PlayMode 146/146. Draft PR #65 is open; GitHub rejected both workflows
+  before runner assignment because of account billing/spending-limit state. Pixel, Actions,
+  Polyfork ADR, human rater, evidence-only review, and HC-25 remain open.
