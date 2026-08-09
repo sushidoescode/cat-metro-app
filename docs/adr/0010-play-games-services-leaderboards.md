@@ -1,7 +1,7 @@
 # ADR-0010: Google Play Games Services for rewardless global leaderboards
 
-- **Status:** Proposed — human sponsorship recorded 2026-08-09; exact dependency and architecture
-  decision remain **PENDING HUMAN SIGNATURE** below
+- **Status:** Accepted — human signature recorded 2026-08-09 against reviewed proposal
+  `bbbe79325b9ee14474e2ba1b76218d0b53021ac8`
 - **Date:** 2026-08-09
 - **Relates:** ADR-0002 (deterministic replay), ADR-0003 (assembly isolation), ADR-0004 (dependency
   pins), ADR-0006 (durable save), ADR-0007 (feature flags), ADR-0009 (CI),
@@ -48,7 +48,7 @@ clean-import SCA, manifest, permission, terms/license, and Data Safety audit tha
 acceptable. Removing or changing Nearby requires a separately pinned, reviewed artifact rather than
 an ad-hoc post-import edit. Exactly one EDM4U 1.2.188 copy must remain.
 
-Once approved, this ADR explicitly amends ADR-0004's “exactly these versions” set. The future
+This accepted ADR explicitly amends ADR-0004's “exactly these versions” set. The future
 implementation PR must add the wrapper artifact/hash/full commit and both direct Maven coordinates to
 ADR-0004 and its machine-readable `config/pins.json` source before any production build contains PGS.
 The Apache-2.0 claim applies only to the Unity wrapper; resolved Google Play services binaries remain
@@ -56,7 +56,7 @@ subject to their applicable Google Android SDK/API terms and recorded third-part
 
 ### 1. Architecture amendment and isolation boundary
 
-ADR-0003 is amended, once this ADR is approved, by one SDK-specific assembly and one engine-free
+ADR-0003 is amended by one SDK-specific assembly and one engine-free
 service interface:
 
 | Assembly/interface | Owns | May reference |
@@ -77,8 +77,11 @@ The addition explicitly changes ADR-0003's effectively permanent assembly list. 
 ADR-0007's hand-written Android interop posture: the haptics JNI helper is no longer the only approved
 project-owned bridge; this one PGS immediate-submit bridge is the sole additional exception. That cost
 is accepted because merging PGS into Analytics, Ads, or a generic integration assembly would enlarge
-the trust and failure blast radius. No code may create the assembly or bridge until this ADR is
-approved.
+the trust and failure blast radius. Approval is now recorded. Assembly/bridge code may be authored
+only under the frozen contract on a dedicated implementation or security-spike branch; it may not
+merge to main or enter any artifact other than the explicitly controlled evidence builds required by
+gates 6 and 8 until every applicable gate below is satisfied. No production inclusion or distribution
+is authorized by this approval.
 
 The bridge contract is closed and intentionally narrow:
 
@@ -253,10 +256,10 @@ blocklist.
 | Item | Decision |
 |---|---|
 | Package | official Google Play Games plugin for Unity |
-| Pin | **v2.2.0**, full release commit **`c6f19addceb9a87489c5f1fb0d50bb4bef1e9c7a`** — **PENDING HUMAN SIGNATURE** |
-| Artifact | `GooglePlayGamesPlugin-2.2.0.unitypackage`, expected SHA-256 `72b79902fc19647dea38eb9b5a150aead33826fb8720363ac14c4fbb71e3c273` — **PENDING HUMAN SIGNATURE** |
-| Direct Maven pins | `play-services-games-v2:22.0.0` + `play-services-nearby:18.5.0` — **PENDING HUMAN SIGNATURE**; Nearby use is forbidden and its shipped surface must pass audit |
-| Project-owned bridge | one reviewed `submitScoreImmediate`-only Java/C# bridge under §1; no added artifact; implementation source hashes become part of the pin — **PENDING HUMAN SIGNATURE** |
+| Pin | **v2.2.0**, full release commit **`c6f19addceb9a87489c5f1fb0d50bb4bef1e9c7a`** — **HUMAN-APPROVED 2026-08-09** |
+| Artifact | `GooglePlayGamesPlugin-2.2.0.unitypackage`, expected SHA-256 `72b79902fc19647dea38eb9b5a150aead33826fb8720363ac14c4fbb71e3c273` — **HUMAN-APPROVED 2026-08-09** |
+| Direct Maven pins | `play-services-games-v2:22.0.0` + `play-services-nearby:18.5.0` — **HUMAN-APPROVED 2026-08-09**; Nearby use is forbidden and its shipped surface must pass audit |
+| Project-owned bridge | one reviewed `submitScoreImmediate`-only Java/C# bridge under §1; no added artifact; implementation source hashes become part of the pin — **HUMAN-APPROVED 2026-08-09** |
 | License/terms | Unity wrapper: Apache License 2.0 and notice retention. Google Play services binaries: applicable Google Android SDK/API terms and third-party notices; do not label them Apache-2.0. |
 | Direct package fee | none; Google Play/PGS program terms and operational lock-in still apply |
 | Android compatibility | plugin minSdk 24; project minSdk 25 / targetSdk 36 remain authoritative |
@@ -371,22 +374,24 @@ leaderboard contract and clear all of these gates:
 
 ### Human signature
 
-- [ ] I approve PGS as the sole remote leaderboard/identity surface, with no Cat Metro backend.
-- [ ] I approve wrapper **v2.2.0**, full commit/artifact/SHA above, its two direct Maven pins including
+- [x] I approve PGS as the sole remote leaderboard/identity surface, with no Cat Metro backend.
+- [x] I approve wrapper **v2.2.0**, full commit/artifact/SHA above, its two direct Maven pins including
       audited-but-unused Nearby, the scoped license/terms posture, and the named unpin trigger.
-- [ ] I approve the new `CatMetro.Integrations.PlayGames` assembly, `ILeaderboards` boundary, and sole
+- [x] I approve the new `CatMetro.Integrations.PlayGames` assembly, `ILeaderboards` boundary, and sole
       project-owned `submitScoreImmediate` bridge exception amending ADR-0007.
-- [ ] I approve the two-gate build/runtime posture and acknowledge that PGS inclusion may authenticate
+- [x] I approve the two-gate build/runtime posture and acknowledge that PGS inclusion may authenticate
       at launch even while Cat Metro's runtime surface is dark.
-- [ ] I approve the Monday-aligned 64-resource envelope; exact dates, Cup IDs, revisions, and Console
+- [x] I approve the Monday-aligned 64-resource envelope; exact dates, Cup IDs, revisions, and Console
       IDs still require a separate signed manifest before creation.
-- [ ] I approve validated successful `submitScoreImmediate` Task completion as acknowledgement; the
+- [x] I approve validated successful `submitScoreImmediate` Task completion as acknowledgement; the
       stock wrapper callback and cached reads never acknowledge delivery.
-- [ ] I accept rewardless, best-effort client integrity; PGS rank will never award value.
+- [x] I accept rewardless, best-effort client integrity; PGS rank will never award value.
 
-- **Signed by:** _PENDING HUMAN SIGNATURE_
-- **Signed at (absolute date/time):** _PENDING HUMAN SIGNATURE_
-- **Signing commit:** _PENDING HUMAN SIGNATURE_
+- **Signed by:** Cat Metro product owner (human, in-session; agent-recorded)
+- **Signature statement:** “MERGE. I SIGN §8.10 AND ADR-0010.”
+- **Signed at (absolute date/time):** 2026-08-09 15:40:29 PDT (-0700), recording time
+- **Signed proposal head:** `bbbe79325b9ee14474e2ba1b76218d0b53021ac8`
+- **Signature record commit:** _filled by the immediate metadata-only successor after this record lands_
 
 ## Official sources checked 2026-08-09
 

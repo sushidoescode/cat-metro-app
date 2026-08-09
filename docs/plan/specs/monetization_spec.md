@@ -558,9 +558,9 @@ Approach: **store-templated prices, locally round numbers, zero hard-coded strin
 ## 8. Amendment draft — deep catalog, DLC districts, rewarded expansion, and Experiments
 
 - **Drafted:** 2026-08-09
-- **Status:** Direction accepted by the human; exact product identifiers, prices, inventory, caps, and
-packaging below are **PENDING HUMAN SIGNATURE**. A signature records approval of candidate commercial
-values but is deliberately **non-executable**: the v1 catalog and five rewarded placements above
+- **Status:** Direction and the exact product identifiers, prices, inventory, caps, and packaging
+below were **HUMAN-SIGNED 2026-08-09** at §8.10. That signature approves candidate commercial values
+but is deliberately **non-executable**: the v1 catalog and five rewarded placements above
 remain authoritative until one later coordinated supersession commit satisfies §8.7 after the
 human-authored production-mode tripwire.
 - **Frozen contract:** `docs/prd/leaderboards-contract.md`
@@ -606,7 +606,7 @@ The accepted direction changes catalog depth, not the game's bargain with the pl
    refunded/revoked, the existing 30-day transition applies and `post_level_5` never rearms. Owners
    browse unowned items only through player-initiated Shop/preview taps.
 
-### 8.2 Candidate catalog requiring signature
+### 8.2 Human-signed candidate catalog — not activated
 
 Every identifier and US reference price in the following tables is a proposal, not permission to
 create a Play Console or RevenueCat object. The client always renders Play's localized store price,
@@ -614,15 +614,15 @@ never the literals below. Product IDs are lowercase, permanent, and never recycl
 
 #### Carry-forward and playable-content products
 
-| Candidate product ID — **PENDING HUMAN SIGNATURE** | Type | Candidate US reference — **PENDING HUMAN SIGNATURE** | Durable grant | Packaging ruling |
+| Candidate product ID — **HUMAN-SIGNED 2026-08-09** | Type | Candidate US reference — **HUMAN-SIGNED 2026-08-09** | Durable grant | Packaging ruling |
 |---|---|---|---|---|
-| `cm_all_access` — **PENDING HUMAN SIGNATURE** | non-consumable | **$6.99 — PENDING HUMAN SIGNATURE** | `all_access`; every signed `district_<slug>`; `theme_sakura`; `theme_neon` | Every paid **playable district**, current and future; Sakura + Neon; doubled daily free rewind; gold badge; existing ad-removal promise. It does not silently include later standalone cosmetics. Each new district entitlement is dashboard-attached to this product before that district ships. |
-| `cm_supporter_pack` — **PENDING HUMAN SIGNATURE** | non-consumable | **$9.99 — PENDING HUMAN SIGNATURE** | `supporter` plus every grant attached to `cm_all_access` | Existing Founder extras + All Access. Shop-only tip jar; no new gameplay value. |
-| `cm_district_night_harbor` — **PENDING HUMAN SIGNATURE** | non-consumable | **$2.99 — PENDING HUMAN SIGNATURE** | `district_night_harbor` | Night Harbor L901–L910 à la carte; RevenueCat also attaches this same entitlement to every All Access product. Existing progress survives revocation/restore. |
-| `cm_district_<signed_slug>` pattern — **PENDING HUMAN SIGNATURE** | non-consumable | **$2.99 per 10-level pack — PENDING HUMAN SIGNATURE** | `district_<signed_slug>` | Template for a separately specified optional district. This string is not a creatable placeholder SKU; each concrete slug/content contract returns for its own human signature. |
-| `cm_rewind_5` — **PENDING HUMAN SIGNATURE** | consumable | **$1.99 — PENDING HUMAN SIGNATURE** | existing local ledger +5 | Carry-forward convenience; never required and globally rank-ineligible if used. |
-| `cm_rewind_20` — **PENDING HUMAN SIGNATURE** | consumable | **$4.99 — PENDING HUMAN SIGNATURE** | existing local ledger +20 | Carry-forward convenience; never required and globally rank-ineligible if used. |
-| `cm_all_access_499` — **PENDING HUMAN SIGNATURE** | inactive experiment-only non-consumable | **$4.99 — PENDING HUMAN SIGNATURE** | exact same entitlement attachments as `cm_all_access` | Identical grant to `cm_all_access`; absent from Shop except while signed experiment PW01 is live. |
+| `cm_all_access` — **HUMAN-SIGNED 2026-08-09** | non-consumable | **$6.99 — HUMAN-SIGNED 2026-08-09** | `all_access`; every signed `district_<slug>`; `theme_sakura`; `theme_neon` | Every paid **playable district**, current and future; Sakura + Neon; doubled daily free rewind; gold badge; existing ad-removal promise. It does not silently include later standalone cosmetics. Each new district entitlement is dashboard-attached to this product before that district ships. |
+| `cm_supporter_pack` — **HUMAN-SIGNED 2026-08-09** | non-consumable | **$9.99 — HUMAN-SIGNED 2026-08-09** | `supporter` plus every grant attached to `cm_all_access` | Existing Founder extras + All Access. Shop-only tip jar; no new gameplay value. |
+| `cm_district_night_harbor` — **HUMAN-SIGNED 2026-08-09** | non-consumable | **$2.99 — HUMAN-SIGNED 2026-08-09** | `district_night_harbor` | Night Harbor L901–L910 à la carte; RevenueCat also attaches this same entitlement to every All Access product. Existing progress survives revocation/restore. |
+| `cm_district_<signed_slug>` pattern — **HUMAN-SIGNED 2026-08-09** | non-consumable | **$2.99 per 10-level pack — HUMAN-SIGNED 2026-08-09** | `district_<signed_slug>` | Template for a separately specified optional district. This string is not a creatable placeholder SKU; each concrete slug/content contract returns for its own human signature. |
+| `cm_rewind_5` — **HUMAN-SIGNED 2026-08-09** | consumable | **$1.99 — HUMAN-SIGNED 2026-08-09** | existing local ledger +5 | Carry-forward convenience; never required and globally rank-ineligible if used. |
+| `cm_rewind_20` — **HUMAN-SIGNED 2026-08-09** | consumable | **$4.99 — HUMAN-SIGNED 2026-08-09** | existing local ledger +20 | Carry-forward convenience; never required and globally rank-ineligible if used. |
+| `cm_all_access_499` — **HUMAN-SIGNED 2026-08-09** | inactive experiment-only non-consumable | **$4.99 — HUMAN-SIGNED 2026-08-09** | exact same entitlement attachments as `cm_all_access` | Identical grant to `cm_all_access`; absent from Shop except while signed experiment PW01 is live. |
 
 “All Access” now means **every playable line**, not every decorative item. Before this amendment can
 activate, §4.1 copy must replace “the complete Cat Metro” with “every playable line in Cat Metro” and
@@ -634,26 +634,26 @@ release from making an earlier purchase claim false.
 Each skin is a material/accessory overlay on the existing destination-readable cat. A skin can add
 clothing, texture, and secondary motion; it cannot cover the line symbol or replace the silhouette.
 
-| Candidate product ID — **PENDING HUMAN SIGNATURE** | Candidate display name | Candidate US reference — **PENDING HUMAN SIGNATURE** | Durable grant |
+| Candidate product ID — **HUMAN-SIGNED 2026-08-09** | Candidate display name | Candidate US reference — **HUMAN-SIGNED 2026-08-09** | Durable grant |
 |---|---|---|---|
-| `cm_cat_skin_raincoat` — **PENDING HUMAN SIGNATURE** | Rainy-Day Rider | **$0.99 — PENDING HUMAN SIGNATURE** | `cat_skin_raincoat` |
-| `cm_cat_skin_stationmaster` — **PENDING HUMAN SIGNATURE** | Stationmaster | **$0.99 — PENDING HUMAN SIGNATURE** | `cat_skin_stationmaster` |
-| `cm_cat_skin_sailor` — **PENDING HUMAN SIGNATURE** | Harbor Sailor | **$0.99 — PENDING HUMAN SIGNATURE** | `cat_skin_sailor` |
-| `cm_cat_skin_gardener` — **PENDING HUMAN SIGNATURE** | Garden Helper | **$0.99 — PENDING HUMAN SIGNATURE** | `cat_skin_gardener` |
-| `cm_cat_skin_night_shift` — **PENDING HUMAN SIGNATURE** | Night-Shift Knit | **$0.99 — PENDING HUMAN SIGNATURE** | `cat_skin_night_shift` |
-| `cm_cat_skin_festival` — **PENDING HUMAN SIGNATURE** | Festival Bells | **$0.99 — PENDING HUMAN SIGNATURE** | `cat_skin_festival` |
+| `cm_cat_skin_raincoat` — **HUMAN-SIGNED 2026-08-09** | Rainy-Day Rider | **$0.99 — HUMAN-SIGNED 2026-08-09** | `cat_skin_raincoat` |
+| `cm_cat_skin_stationmaster` — **HUMAN-SIGNED 2026-08-09** | Stationmaster | **$0.99 — HUMAN-SIGNED 2026-08-09** | `cat_skin_stationmaster` |
+| `cm_cat_skin_sailor` — **HUMAN-SIGNED 2026-08-09** | Harbor Sailor | **$0.99 — HUMAN-SIGNED 2026-08-09** | `cat_skin_sailor` |
+| `cm_cat_skin_gardener` — **HUMAN-SIGNED 2026-08-09** | Garden Helper | **$0.99 — HUMAN-SIGNED 2026-08-09** | `cat_skin_gardener` |
+| `cm_cat_skin_night_shift` — **HUMAN-SIGNED 2026-08-09** | Night-Shift Knit | **$0.99 — HUMAN-SIGNED 2026-08-09** | `cat_skin_night_shift` |
+| `cm_cat_skin_festival` — **HUMAN-SIGNED 2026-08-09** | Festival Bells | **$0.99 — HUMAN-SIGNED 2026-08-09** | `cat_skin_festival` |
 
 #### Train-livery wave 1
 
 These are standalone train paint/decal treatments. They do not include the existing Founder or
 earned Cup liveries and cannot imitate their badges or trim.
 
-| Candidate product ID — **PENDING HUMAN SIGNATURE** | Candidate display name | Candidate US reference — **PENDING HUMAN SIGNATURE** | Durable grant |
+| Candidate product ID — **HUMAN-SIGNED 2026-08-09** | Candidate display name | Candidate US reference — **HUMAN-SIGNED 2026-08-09** | Durable grant |
 |---|---|---|---|
-| `cm_livery_brass_line` — **PENDING HUMAN SIGNATURE** | Brass Line | **$1.99 — PENDING HUMAN SIGNATURE** | `livery_brass_line` |
-| `cm_livery_harbor_fog` — **PENDING HUMAN SIGNATURE** | Harbor Fog | **$1.99 — PENDING HUMAN SIGNATURE** | `livery_harbor_fog` |
-| `cm_livery_garden_party` — **PENDING HUMAN SIGNATURE** | Garden Party | **$1.99 — PENDING HUMAN SIGNATURE** | `livery_garden_party` |
-| `cm_livery_midnight_express` — **PENDING HUMAN SIGNATURE** | Midnight Express | **$1.99 — PENDING HUMAN SIGNATURE** | `livery_midnight_express` |
+| `cm_livery_brass_line` — **HUMAN-SIGNED 2026-08-09** | Brass Line | **$1.99 — HUMAN-SIGNED 2026-08-09** | `livery_brass_line` |
+| `cm_livery_harbor_fog` — **HUMAN-SIGNED 2026-08-09** | Harbor Fog | **$1.99 — HUMAN-SIGNED 2026-08-09** | `livery_harbor_fog` |
+| `cm_livery_garden_party` — **HUMAN-SIGNED 2026-08-09** | Garden Party | **$1.99 — HUMAN-SIGNED 2026-08-09** | `livery_garden_party` |
+| `cm_livery_midnight_express` — **HUMAN-SIGNED 2026-08-09** | Midnight Express | **$1.99 — HUMAN-SIGNED 2026-08-09** | `livery_midnight_express` |
 
 #### Permanent seasonal-theme wave
 
@@ -661,19 +661,19 @@ Sakura and Neon carry forward. Harvest and Snowbell are proposed additions; neit
 date until a separate art/content contract passes. Seasonal shop featuring may end, but ownership and
 use do not.
 
-| Candidate product ID — **PENDING HUMAN SIGNATURE** | Candidate display name | Candidate US reference — **PENDING HUMAN SIGNATURE** | Durable grant |
+| Candidate product ID — **HUMAN-SIGNED 2026-08-09** | Candidate display name | Candidate US reference — **HUMAN-SIGNED 2026-08-09** | Durable grant |
 |---|---|---|---|
-| `cm_theme_sakura` — **PENDING HUMAN SIGNATURE** | Sakura Line | **$2.99 — PENDING HUMAN SIGNATURE** | `theme_sakura`; included in `all_access` |
-| `cm_theme_neon` — **PENDING HUMAN SIGNATURE** | Neon Line | **$2.99 — PENDING HUMAN SIGNATURE** | `theme_neon`; included in `all_access` |
-| `cm_theme_harvest` — **PENDING HUMAN SIGNATURE** | Harvest Line | **$2.99 — PENDING HUMAN SIGNATURE** | `theme_harvest` |
-| `cm_theme_snowbell` — **PENDING HUMAN SIGNATURE** | Snowbell Line | **$2.99 — PENDING HUMAN SIGNATURE** | `theme_snowbell` |
+| `cm_theme_sakura` — **HUMAN-SIGNED 2026-08-09** | Sakura Line | **$2.99 — HUMAN-SIGNED 2026-08-09** | `theme_sakura`; included in `all_access` |
+| `cm_theme_neon` — **HUMAN-SIGNED 2026-08-09** | Neon Line | **$2.99 — HUMAN-SIGNED 2026-08-09** | `theme_neon`; included in `all_access` |
+| `cm_theme_harvest` — **HUMAN-SIGNED 2026-08-09** | Harvest Line | **$2.99 — HUMAN-SIGNED 2026-08-09** | `theme_harvest` |
+| `cm_theme_snowbell` — **HUMAN-SIGNED 2026-08-09** | Snowbell Line | **$2.99 — HUMAN-SIGNED 2026-08-09** | `theme_snowbell` |
 
 There is no random “mystery skin,” premium-currency price, rotating ownership deadline, starter pack,
 cosmetic club, theme bundle, season pass, or bulk bundle. A curated visual collection may be an RC
 Offering, but every contained product keeps its own exact store price and purchase button.
 
 The six `$0.99` candidates require a new Play pricing template
-`tpl_cm_099` — **PENDING HUMAN SIGNATURE**. It follows §7's localization/store-truth rules exactly;
+`tpl_cm_099` — **HUMAN-SIGNED 2026-08-09**. It follows §7's localization/store-truth rules exactly;
 its ID and every linked regional price remain non-executable until the coordinated supersession. The
 existing `$1.99/$2.99/$4.99/$6.99/$9.99` templates remain candidates for their matching rows.
 
@@ -725,11 +725,11 @@ Access product. Before that district activates, sandbox/device evidence must pro
 receives the new `district_<slug>` attachment after CustomerInfo refresh/Restore and that refunding
 either overlapping product cannot revoke the other source.
 
-#### Judge-access promo matrix — **PENDING HUMAN SIGNATURE**
+#### Judge-access promo matrix — **HUMAN-SIGNED 2026-08-09**
 
 No hidden universal entitlement or bargain-price master SKU is introduced. Instead, the candidate
-judge mechanism is a private packet of **15 Play one-time-product promo codes per recipient — PENDING
-HUMAN SIGNATURE**:
+judge mechanism is a private packet of **15 Play one-time-product promo codes per recipient —
+HUMAN-SIGNED 2026-08-09**:
 
 - one `cm_supporter_pack` code (which covers All Access, every signed district, Sakura, Neon, and
   Founder extras);
@@ -738,8 +738,8 @@ HUMAN SIGNATURE**:
 - one each for `cm_rewind_5` and `cm_rewind_20`, subject to Play Console proof that promo redemption
   supports those consumable one-time products and grants each exactly once.
 
-The candidate issue count is **25 private packets / 375 codes — PENDING HUMAN SIGNATURE and Play
-Console quota/expiry verification** (15 judge, five press, five spare). If quota or consumable promo
+The candidate issue count is **25 private packets / 375 codes — HUMAN-SIGNED 2026-08-09; Play
+Console quota/expiry verification still required** (15 judge, five press, five spare). If quota or consumable promo
 behavior cannot be proven, the matrix returns for human re-scope; the submission must not claim full
 premium access. Codes and redemption URLs live only in the human-controlled secret store and the
 judge-only Devpost field—never in this repository, screenshots, logs, analytics, or build-in-public
@@ -751,7 +751,7 @@ replaces CM-R31's obsolete “one `cm_all_access` code unlocks everything” and
 ### 8.4 Expanded opt-in rewarded placements
 
 The five v1 placements stay intact. Three cosmetic/content trials deepen the opt-in ladder without
-creating power. Exact new limits below are **PENDING HUMAN SIGNATURE** and do not amend ADR-0006's
+creating power. Exact new limits below are **HUMAN-SIGNED 2026-08-09** and do not amend ADR-0006's
 closed five-counter save schema by themselves.
 
 | AdTracker placement | Status | Reward | Per-placement cap | Absence / expiry law |
@@ -761,15 +761,15 @@ closed five-counter save schema by themselves.
 | `daily_gift_double` | existing | existing gift double | existing 1/day | never required for streak |
 | `streak_saver` | existing | existing free/rewarded streak repair | existing 1/day | never sold for money |
 | `theme_rental` | existing | selected paid theme for 3 completed levels | existing 1/theme/day | silent revert + at most one passive toast/day |
-| `cat_skin_trial` | **new** | selected paid cat skin for 3 completed campaign/practice levels | **1 total earned skin lease per local date across all skins — PENDING HUMAN SIGNATURE** | no Daily/Cup/share-card/global-rank use; silent revert |
-| `livery_trial` | **new** | selected paid livery for 3 completed campaign/practice levels | **1 total earned livery lease per local date across all liveries — PENDING HUMAN SIGNATURE** | no Daily/Cup/share-card/global-rank use; silent revert |
-| `district_guest_route` | **new** | one designated practice-only showcase route in a locked paid district | **1 district/day and 1/session — PENDING HUMAN SIGNATURE** | zero tickets, stars, progress, medal, Daily/Cup result, or global rank; full retry always free |
+| `cat_skin_trial` | **new** | selected paid cat skin for 3 completed campaign/practice levels | **1 total earned skin lease per local date across all skins — HUMAN-SIGNED 2026-08-09** | no Daily/Cup/share-card/global-rank use; silent revert |
+| `livery_trial` | **new** | selected paid livery for 3 completed campaign/practice levels | **1 total earned livery lease per local date across all liveries — HUMAN-SIGNED 2026-08-09** | no Daily/Cup/share-card/global-rank use; silent revert |
+| `district_guest_route` | **new** | one designated practice-only showcase route in a locked paid district | **1 district/day and 1/session — HUMAN-SIGNED 2026-08-09** | zero tickets, stars, progress, medal, Daily/Cup result, or global rank; full retry always free |
 
 The new rows appear only inside a player-opened preview. There is no automatic “watch now” modal, ad
 wall, timer, pulsing badge, failure substitution, or ad prompt before L7. Three consecutive declines
 still mute every ad row for 24 hours. Trial expiry never interrupts a level.
 
-The cap/state proposal is exact enough to review but remains **PENDING HUMAN SIGNATURE**:
+The cap/state proposal is exact enough to review and was **HUMAN-SIGNED 2026-08-09**:
 
 1. Daily state is keyed by local `dateKey`. Exact scalar keys are `rewind_failure`, `double_tickets`,
    `daily_gift_double`, `streak_saver`, `cat_skin_trial`, `livery_trial`, and
@@ -824,9 +824,11 @@ placement-specific variants, and is currently a Pro/Enterprise feature. The huma
 Metro project plan and the pinned Unity SDK behavior before enrollment. If unavailable, the declared
 fallback is a sequential Offering swap by install-week cohort, explicitly labeled non-randomized.
 
-Run only one experiment at a time for this traffic level. The signed enrollment mode is **new and
-existing eligible production users at activation**, using 2 variants for these tests; the chosen
-RevenueCat setup is exported/screenshot before launch. Assignment is sticky only per RC App User ID:
+Run only one experiment at a time for this traffic level. The candidate enrollment mode is **new and
+existing eligible production users at activation**, using 2 variants for these tests; §8.10 does not
+sign that enrollment scope. It requires a later human activation signature alongside the numeric stop
+thresholds and sample/decision rule before launch, and the chosen RevenueCat setup is exported/
+screenshot before launch. Assignment is sticky only per RC App User ID:
 Cat Metro's anonymous IDs are not person-level, and reset/reinstall may create a new ID and assignment.
 Reports and player copy make no cross-device/person-stickiness claim.
 
@@ -859,7 +861,7 @@ confidence/uncertainty; an underpowered result is called directional, never “a
 
 | Order | Experiment | Placement | Control | Treatment | Primary question |
 |---|---|---|---|---|---|
-| 1 | `PW01` | `post_level_5` | `cm_all_access` at **$6.99 — PENDING HUMAN SIGNATURE** | identical grant via `cm_all_access_499` at **$4.99 — PENDING HUMAN SIGNATURE** | Does higher conversion at the lower price outweigh lower proceeds per purchase? Night Harbor-only remains the same visible secondary choice in both arms. |
+| 1 | `PW01` | `post_level_5` | `cm_all_access` at **$6.99 — HUMAN-SIGNED 2026-08-09** | identical grant via `cm_all_access_499` at **$4.99 — HUMAN-SIGNED 2026-08-09** | Does higher conversion at the lower price outweigh lower proceeds per purchase? Night Harbor-only remains the same visible secondary choice in both arms. |
 | 2 | `DLC01` | `bonus_district` | All Access hero, Night Harbor à-la-carte secondary | Night Harbor à-la-carte hero, All Access comparison secondary | Which honest packaging best serves high-intent district taps without hiding either choice? |
 | 3 | `CAT01` | `cat_preview` | selected skin only above the fold | selected skin + two fixed related skins, identical prices | Does a small curated choice improve purchase rate without choice overload? |
 | 4 | `SHOP01` | `shop` | category grid | one signed seasonal collection first, same products/prices | Does visual curation improve durable-cosmetic revenue without increasing dismissals? |
@@ -1015,24 +1017,28 @@ all eligible players to the signed control Offering.
 
 ### 8.10 Human signature gate
 
-The direction in §8 is accepted; these exact commercial values are not active until signed:
+The direction and exact commercial values in §8 are human-signed but remain non-executable until
+§8.7's later activation gates are satisfied:
 
-- [ ] I approve every concrete product ID and US reference price in §8.2.
-- [ ] I approve `tpl_cm_099` and its separately reviewed localized-price set.
-- [ ] I approve the `cm_district_<signed_slug>` naming/$2.99 pattern and the All Access packaging rule.
-- [ ] I approve the three new placement identifiers, rewards, and candidate caps in §8.4.
-- [ ] I approve the experiment identifiers/order/variants in §8.5, including PW01's second Play SKU.
-- [ ] I approve the 15-code-per-recipient / 25-packet judge-access proposal in §8.3, subject to exact
+- [x] I approve every concrete product ID and US reference price in §8.2.
+- [x] I approve `tpl_cm_099` and the `$0.99` US reference; every linked regional price remains deferred
+      to a separately reviewed, human-signed activation manifest.
+- [x] I approve the `cm_district_<signed_slug>` naming/$2.99 pattern and the All Access packaging rule.
+- [x] I approve the three new placement identifiers, rewards, and candidate caps in §8.4.
+- [x] I approve the experiment identifiers/order/variants in §8.5, including PW01's second Play SKU.
+- [x] I approve the 15-code-per-recipient / 25-packet judge-access proposal in §8.3, subject to exact
       Play quota/expiry and consumable-redemption proof; no code secret may enter the repository.
-- [ ] I confirm no energy, loot boxes, subscriptions, premium currency, forced ads, paid Gold, or paid
+- [x] I confirm no energy, loot boxes, subscriptions, premium currency, forced ads, paid Gold, or paid
       global rank; I accept only the named existing local rewind/economy exceptions in §8.1.
-- [ ] I acknowledge that a separate human-authored `state/mode=production` commit is required before
+- [x] I acknowledge that a separate human-authored `state/mode=production` commit is required before
       any monetization implementation can merge, and that this signature alone activates nothing;
       §8.7's coordinated supersession is also mandatory.
 
-- **Signed by:** _PENDING HUMAN SIGNATURE_
-- **Signed at (absolute date/time):** _PENDING HUMAN SIGNATURE_
-- **Signing commit:** _PENDING HUMAN SIGNATURE_
+- **Signed by:** Cat Metro product owner (human, in-session; agent-recorded)
+- **Signature statement:** “MERGE. I SIGN §8.10 AND ADR-0010.”
+- **Signed at (absolute date/time):** 2026-08-09 15:40:29 PDT (-0700), recording time
+- **Signed proposal head:** `bbbe79325b9ee14474e2ba1b76218d0b53021ac8`
+- **Signature record commit:** _filled by the immediate metadata-only successor after this record lands_
 
 ### 8.11 Sources checked for this amendment
 
