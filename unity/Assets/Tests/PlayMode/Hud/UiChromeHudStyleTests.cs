@@ -63,10 +63,15 @@ namespace CatMetro.Tests.PlayMode
             var hintMarker = Find(hint.transform, "CatEarMarker");
             Assert.That(hintMarker, Is.Not.Null,
                 "the hint has a non-color shape marker");
-            Assert.That(Find(hintMarker, "MarkerEarLeft").GetComponent<Image>().sprite.name,
+            var hintEarLeft = Find(hintMarker, "MarkerEarLeft").GetComponent<Image>();
+            var hintEarRight = Find(hintMarker, "MarkerEarRight").GetComponent<Image>();
+            Assert.That(hintEarLeft.sprite.name,
                 Is.EqualTo("SymbolTriangle"), "the hint marker reads as cat ears");
-            Assert.That(Find(hintMarker, "MarkerEarRight").GetComponent<Image>().sprite.name,
-                Is.EqualTo("SymbolTriangle"));
+            Assert.That(hintEarRight.sprite.name, Is.EqualTo("SymbolTriangle"));
+            Assert.That(hintEarLeft.rectTransform.anchorMax.y,
+                Is.GreaterThanOrEqualTo(1.25f), "the ear protrudes above the marker head");
+            Assert.That(hintEarRight.rectTransform.anchorMax.y,
+                Is.GreaterThanOrEqualTo(1.25f));
             Assert.That((Color32)hint.GetComponentInChildren<TMP_Text>(true).color,
                 Is.EqualTo(Hex("FAF6EC")));
 
@@ -97,10 +102,15 @@ namespace CatMetro.Tests.PlayMode
                 requireRoundedSprite: false);
             AssertImage(panel.PanelRoot.transform, "PrimaryCta", "F08A3C");
             var cat = Find(panel.PanelRoot.transform, "CompletionCat");
-            Assert.That(Find(cat, "CompletionEarLeft").GetComponent<Image>().sprite.name,
+            var completionEarLeft = Find(cat, "CompletionEarLeft").GetComponent<Image>();
+            var completionEarRight = Find(cat, "CompletionEarRight").GetComponent<Image>();
+            Assert.That(completionEarLeft.sprite.name,
                 Is.EqualTo("SymbolTriangle"), "the completion motif reads as a cat");
-            Assert.That(Find(cat, "CompletionEarRight").GetComponent<Image>().sprite.name,
-                Is.EqualTo("SymbolTriangle"));
+            Assert.That(completionEarRight.sprite.name, Is.EqualTo("SymbolTriangle"));
+            Assert.That(completionEarLeft.rectTransform.anchorMax.y,
+                Is.GreaterThanOrEqualTo(1.25f), "the ear protrudes above the cat head");
+            Assert.That(completionEarRight.rectTransform.anchorMax.y,
+                Is.GreaterThanOrEqualTo(1.25f));
             var cta = Find(panel.PanelRoot.transform, "CtaLabel").GetComponent<TMP_Text>();
             AssertThemeFont(cta);
             Assert.That((Color32)cta.color, Is.EqualTo(Hex("22304A")));
