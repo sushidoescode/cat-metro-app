@@ -222,3 +222,11 @@ Bootstrap, packages, immutable paths, and every other lane's state row.
   banner. Motif/composition RED is 3/7 with four named failures at
   `/tmp/cm-ui-motif-red.pKeywj/results.xml` (Home cat mark, hint cat marker, completion cat,
   and confetti/banner separation).
+- 2026-08-09 — shared triangle silhouettes plus banner-clear confetti are green 7/7 at
+  `/tmp/cm-ui-motif-green.lIkVEE/results.xml`; protruding-ear regression went RED 2/4 at
+  `/tmp/cm-ui-ears-red.nxe8JG/results.xml` and GREEN 4/4 at
+  `/tmp/cm-ui-ears-green.gX56nU/results.xml`. The Results recapture at
+  `/tmp/cm-ui-results-ears.lugDOO/cm-ux-04-results.png` was opened at original size: both
+  colored confetti pieces are visible beside the completion card, the navy cat ears read
+  above the head/route motif, the CSV win banner remains the sole outcome copy, and the
+  full-width orange Next CTA remains unobscured.

@@ -49,13 +49,13 @@ namespace CatMetro.Presentation.Hud
             var marker = CatMetroUiTheme.MakeImage(go.transform, "CatEarMarker",
                 new Vector2(0.035f, 0.20f), new Vector2(0.115f, 0.76f),
                 CatMetroUiTheme.WarmPaper).rectTransform;
-            var leftEar = CatMetroUiTheme.MakeImage(marker, "MarkerEarLeft",
-                new Vector2(0.02f, 0.64f), new Vector2(0.46f, 1.02f),
-                CatMetroUiTheme.WarmPaper).rectTransform;
+            var leftEar = CatMetroUiTheme.MakeSymbol(marker, "MarkerEarLeft",
+                new Vector2(-0.02f, 0.76f), new Vector2(0.48f, 1.30f),
+                CatMetroUiTheme.WarmPaper, "SymbolTriangle").rectTransform;
             leftEar.localRotation = Quaternion.Euler(0f, 0f, 18f);
-            var rightEar = CatMetroUiTheme.MakeImage(marker, "MarkerEarRight",
-                new Vector2(0.54f, 0.64f), new Vector2(0.98f, 1.02f),
-                CatMetroUiTheme.WarmPaper).rectTransform;
+            var rightEar = CatMetroUiTheme.MakeSymbol(marker, "MarkerEarRight",
+                new Vector2(0.52f, 0.76f), new Vector2(1.02f, 1.30f),
+                CatMetroUiTheme.WarmPaper, "SymbolTriangle").rectTransform;
 
             var textGo = new GameObject("Label");
             textGo.transform.SetParent(go.transform, false);

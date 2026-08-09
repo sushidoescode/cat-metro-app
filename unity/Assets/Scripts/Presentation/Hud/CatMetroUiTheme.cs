@@ -137,6 +137,17 @@ namespace CatMetro.Presentation.Hud
             return StyleImage(go.AddComponent<Image>(), color, rounded);
         }
 
+        public static Image MakeSymbol(Transform parent, string name,
+            Vector2 anchorMin, Vector2 anchorMax, Color color, string resourceName)
+        {
+            var image = MakeImage(parent, name, anchorMin, anchorMax, color,
+                rounded: false);
+            image.sprite = SymbolSprite(resourceName);
+            image.type = Image.Type.Simple;
+            image.preserveAspect = true;
+            return image;
+        }
+
         public static TMP_Text MakeText(Transform parent, string name,
             Vector2 anchorMin, Vector2 anchorMax, string value,
             CatMetroTextRole role, Color? color = null)

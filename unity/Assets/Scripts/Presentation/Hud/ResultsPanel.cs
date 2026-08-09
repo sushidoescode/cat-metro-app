@@ -135,19 +135,19 @@ namespace CatMetro.Presentation.Hud
             var cat = CatMetroUiTheme.MakeImage(card.transform, "CompletionCat",
                 new Vector2(0.42f, 0.29f), new Vector2(0.58f, 0.71f),
                 CatMetroUiTheme.InkNavy).rectTransform;
-            var earLeft = CatMetroUiTheme.MakeImage(cat, "CompletionEarLeft",
-                new Vector2(0.02f, 0.62f), new Vector2(0.42f, 1.02f),
-                CatMetroUiTheme.InkNavy).rectTransform;
+            var earLeft = CatMetroUiTheme.MakeSymbol(cat, "CompletionEarLeft",
+                new Vector2(-0.02f, 0.76f), new Vector2(0.48f, 1.34f),
+                CatMetroUiTheme.InkNavy, "SymbolTriangle").rectTransform;
             earLeft.localRotation = Quaternion.Euler(0f, 0f, 18f);
-            var earRight = CatMetroUiTheme.MakeImage(cat, "CompletionEarRight",
-                new Vector2(0.58f, 0.62f), new Vector2(0.98f, 1.02f),
-                CatMetroUiTheme.InkNavy).rectTransform;
+            var earRight = CatMetroUiTheme.MakeSymbol(cat, "CompletionEarRight",
+                new Vector2(0.52f, 0.76f), new Vector2(1.02f, 1.34f),
+                CatMetroUiTheme.InkNavy, "SymbolTriangle").rectTransform;
             CatMetroUiTheme.MakeImage(_panelRoot.transform, "ConfettiTeal",
-                new Vector2(0.15f, 0.74f), new Vector2(0.19f, 0.79f),
+                new Vector2(0.035f, 0.51f), new Vector2(0.065f, 0.58f),
                 CatMetroUiTheme.MetroTeal, rounded: false).rectTransform.localRotation =
                 Quaternion.Euler(0f, 0f, 24f);
             CatMetroUiTheme.MakeImage(_panelRoot.transform, "ConfettiOrange",
-                new Vector2(0.80f, 0.76f), new Vector2(0.84f, 0.81f),
+                new Vector2(0.935f, 0.56f), new Vector2(0.965f, 0.63f),
                 CatMetroUiTheme.TicketOrange, rounded: false).rectTransform.localRotation =
                 Quaternion.Euler(0f, 0f, -20f);
 

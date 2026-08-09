@@ -63,13 +63,13 @@ namespace CatMetro.Presentation.Screens
             CatMetroUiTheme.MakeImage(brand.transform, "CatHead",
                 new Vector2(0.21f, 0.20f), new Vector2(0.79f, 0.76f),
                 CatMetroUiTheme.InkNavy);
-            var leftEar = CatMetroUiTheme.MakeImage(brand.transform, "LeftEar",
+            var leftEar = CatMetroUiTheme.MakeSymbol(brand.transform, "LeftEar",
                 new Vector2(0.20f, 0.62f), new Vector2(0.46f, 0.91f),
-                CatMetroUiTheme.InkNavy).rectTransform;
+                CatMetroUiTheme.InkNavy, "SymbolTriangle").rectTransform;
             leftEar.localRotation = Quaternion.Euler(0f, 0f, 18f);
-            var rightEar = CatMetroUiTheme.MakeImage(brand.transform, "RightEar",
+            var rightEar = CatMetroUiTheme.MakeSymbol(brand.transform, "RightEar",
                 new Vector2(0.54f, 0.62f), new Vector2(0.80f, 0.91f),
-                CatMetroUiTheme.InkNavy).rectTransform;
+                CatMetroUiTheme.InkNavy, "SymbolTriangle").rectTransform;
             rightEar.localRotation = Quaternion.Euler(0f, 0f, -18f);
             CatMetroUiTheme.MakeImage(brand.transform, "RailLineTeal",
                 new Vector2(0.04f, 0.05f), new Vector2(0.96f, 0.15f),
