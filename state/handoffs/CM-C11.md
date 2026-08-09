@@ -201,9 +201,43 @@ ship at their contract defaults, per the frozen text. **OPEN-2/HC-10 is now load
 default (A, byte-faithful) is the direct cause of the criterion-4 finding above, and the JOINT
 NOTE with CM-C5.1 (HC-14) still applies: neither may be resolved unilaterally.
 
-## Not done — blocked on the finding above
+## Not done — blocked on the finding above (SUPERSEDED by the Certification section below)
 
 Criteria 3 (whole-corpus gate exit 0 — the SHIPPED gate is green, but this contract's own stronger
 pessimistic check is red for L006), 4 (L006 pessimistic reading), 11 (both `scripts/test.sh`
 wrapper counts — pending the full run), 12 (final `git diff` file-table review) are not certified
 green. No merge delegation is claimed or assumed (HC-25 default: not delegated).
+
+## Certification (post-ruling, 2026-08-08/09 — the certifying run on the merged tree)
+
+Tree: `16dde99` = ruling execution `6fa44cf` + suite fixes `a90d084` + merge of #60's main.
+Merge-resolution disclosure: `state/PROJECT_STATE.md` took main's version wholesale, then the
+branch's two Known-debt records were restored through the resolution (the CM-C10-F5
+re-disposition and the tie-break finding — an initial `--theirs` had silently dropped them; the
+amend restored both); the branch's own stale BLOCKED row and queue bullet are superseded by
+main's #60 row (updated to RULED by the #61 state PR).
+
+- **Criterion 3** (whole-corpus gate exit 0): `bash scripts/validate-content.sh` RESULT: OK. ✓
+- **Criterion 4 as ruled**: optimistic ≥70% all five (L006 reads 100%); pessimistic ≥70%
+  L007–L010 (all 100%); L006's characteristic pinned at BOTH enforcement points —
+  `(wins,losses,pinned) == (7,0,13)`, pessimistic == 35 — each pin mutation-proved
+  ((7,0,13)→(7,0,12) turns the NUnit case and the wrapper red with the exact captured
+  messages in the `6fa44cf`/`a90d084` commit bodies), reverted byte-clean. ✓
+- **Criterion 11** (gate hygiene): `check.sh` OK; **`scripts/test.sh` 15/15** on the merged
+  tree — N=14 captured at the rebase baseline (pre-work section above), N+1=15, never a
+  literal; **EditMode 821/821** (main's 777 + the 44 corpus tests compiling under Unity for
+  the FIRST time — the +44 delta is the compile-fix's own cross-check), **PlayMode 137/137**;
+  `new JsonSerializerSettings` count still 1; validator + staging wrappers green. ✓
+- **Criterion 12** (subset + no frozen-surface edit): `git diff --name-only origin/main...HEAD`
+  = 24 paths, every one inside the frozen file table (the `state/PROJECT_STATE.md` delta is
+  exactly the two carried-through Known-debt records, per the disclosure above); zero
+  `unity/Assets/Scripts/**` edits, zero `.csproj`/`packages.lock.json` edits. ✓
+
+Suite-caught defects (both fixed + mutation-proved in `a90d084`, recorded in the state refresh's
+Known debt): the wrapper's own python check independently enforced the un-amended 70% bar (went
+red on L006 exactly as designed), and the `Is.AnyOf` Unity-compile error (Unity's bundled NUnit
+predates it; the whole EditMode suite never compiled with the corpus tests until the fix — the
+dotnet leg's newer NUnit masked it).
+
+**All 12 criteria now certified as ruled.** Merge: HC-25 — no delegation claimed; the PR waits
+for a fresh in-session HUMAN re-confirmation or a HUMAN-performed merge.
