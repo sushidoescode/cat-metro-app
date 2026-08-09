@@ -174,3 +174,15 @@ discriminator:
 
 Controls stayed green: the one-switch Unsolvable proof, two in-process runs, and the cross-process
 emission case. Production source was byte-unchanged for this run.
+
+### Focused GREEN + mutation — 2026-08-09
+
+- The same 7-test slice is 7/7 green; the full `CatMetro.Tests.Solver` filter is 25/25 green.
+- The independent oracle and production agree on centered L001 tick 8 and two-command log
+  `(S0,T6)+(S1,T6)`; emitted bytes are `000006000000010006000000`.
+- `bash scripts/check.sh` exits 0.
+- Mutation: bypass `CenterSameCompletionWindows` and return `best.log` directly. The named
+  one-command test goes red with `Expected: 2 / But was: 0`. Reverted byte-clean; production-file
+  SHA-256 before and after is
+  `810a37ceac2980f9c04a06d5cbe64fb476d9fdf792810c31d0bfbbff15fce620`; the named test is green
+  again after the revert.

@@ -159,10 +159,11 @@ namespace CatMetro.Domain.Solver
                 {
                     wins.Sort(CompareWins);
                     var best = wins[0];
-                    return new SolveResult(SolveVerdict.Solved, NotFoundReason.None, best.log,
-                        best.ticks, best.log.Entries.Count, reportWidth, pinnedPruned,
+                    var centeredLog = CenterSameCompletionWindows(graph, seed, best.log, best.ticks);
+                    return new SolveResult(SolveVerdict.Solved, NotFoundReason.None, centeredLog,
+                        best.ticks, centeredLog.Entries.Count, reportWidth, pinnedPruned,
                         nodesExpanded, firstPin,
-                        ComputeProxy(graph, seed, best.log, best.ticks));
+                        ComputeProxy(graph, seed, centeredLog, best.ticks));
                 }
 
                 var survivors = new List<(CommandLog log, SimulationState state)>(next.Count);
@@ -187,8 +188,9 @@ namespace CatMetro.Domain.Solver
                 0, 0, reportWidth, pinnedPruned, nodesExpanded, firstPin, ZeroProxy(graph));
         }
 
-        // The criterion-7 total order: fewer completion ticks, then fewer commands, then
-        // lexicographic over (Tick, SwitchId) pairs.
+        // The primary order: fewer completion ticks, then fewer commands. Lexicographic order
+        // selects a deterministic representative for search-state dedupe and seeds the final
+        // mid-window refinement below; it is no longer the returned log's earliest-boundary rule.
         private static int CompareWins((int ticks, CommandLog log) a, (int ticks, CommandLog log) b)
         {
             if (a.ticks != b.ticks) return a.ticks.CompareTo(b.ticks);
@@ -201,6 +203,80 @@ namespace CatMetro.Domain.Solver
                 if (ea.SwitchId != eb.SwitchId) return ea.SwitchId.CompareTo(eb.SwitchId);
             }
             return 0;
+        }
+
+        // SOLVER-TIEBREAK: starting from CompareWins' earliest representative, move each command
+        // to the lower middle of its contiguous same-completion winning interval. Every accepted
+        // move is independently replayed through the shipped Domain, so completion optimality and
+        // command count cannot change. Repeated passes handle interacting windows; the bounded
+        // fallback is still the last independently-proven same-completion win.
+        private static CommandLog CenterSameCompletionWindows(
+            LevelGraph graph, ulong seed, CommandLog winningLog, int completionTicks)
+        {
+            if (winningLog.Entries.Count == 0) return winningLog;
+
+            var entries = new ToggleSwitchCommand[winningLog.Entries.Count];
+            for (int i = 0; i < entries.Length; i++) entries[i] = winningLog.Entries[i];
+
+            int passLimit = Math.Max(1, entries.Length * 4);
+            for (int pass = 0; pass < passLimit; pass++)
+            {
+                bool changed = false;
+                for (int i = 0; i < entries.Length; i++)
+                {
+                    int current = entries[i].Tick;
+                    int lower = current;
+                    while (lower > 0
+                        && IsSameCompletionWin(graph, seed, entries, i, lower - 1, completionTicks))
+                        lower--;
+
+                    int upper = current;
+                    while (upper < graph.TimeLimitTicks - 1
+                        && IsSameCompletionWin(graph, seed, entries, i, upper + 1, completionTicks))
+                        upper++;
+
+                    int middle = lower + (upper - lower) / 2;
+                    if (middle == current) continue;
+                    entries[i] = new ToggleSwitchCommand(entries[i].SwitchId, middle);
+                    changed = true;
+                }
+
+                if (!changed) return LogFrom(entries, winningLog.FormatVersion);
+            }
+
+            return LogFrom(entries, winningLog.FormatVersion);
+        }
+
+        private static bool IsSameCompletionWin(LevelGraph graph, ulong seed,
+            ToggleSwitchCommand[] entries, int index, int tick, int completionTicks)
+        {
+            var candidate = new CommandLog();
+            for (int i = 0; i < entries.Length; i++)
+            {
+                var e = entries[i];
+                candidate.Append(i == index ? new ToggleSwitchCommand(e.SwitchId, tick) : e);
+            }
+
+            try
+            {
+                var end = ReplayHasher.RunToEnd(graph, seed, candidate);
+                return end.Outcome.Kind == OutcomeKind.Won && end.Tick - 1 == completionTicks;
+            }
+            catch (NotSupportedException)
+            {
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+        }
+
+        private static CommandLog LogFrom(ToggleSwitchCommand[] entries, int formatVersion)
+        {
+            var log = new CommandLog(formatVersion);
+            foreach (var entry in entries) log.Append(entry);
+            return log;
         }
 
         private static int CompareBeam((CommandLog log, SimulationState state) a, (CommandLog log, SimulationState state) b)
