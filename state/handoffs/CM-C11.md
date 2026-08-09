@@ -30,6 +30,27 @@ reproduction) stands unchanged. The wording below is reconciled to "execution de
 decline-to-redesign in the FINDING section rests on the stop conditions and the absence of a
 human ruling — not on a settled ratification.
 
+## RULING (human, in-session 2026-08-08 — resolves the criterion-4 finding)
+
+The human ruled, in direct reply to the successor session's neutral both-records brief,
+verbatim: **"Option 1 for CM-C11; you set up auto merge and merge #60 yourself; ratify the
+wrap"** — the first clause is this contract's ruling. Channel: in-conversation directive,
+agent-relayed (H-1-class confirmability caveat, per the HC-25 census's standard for this
+record class). The brief presented both authority records above plus the costs the handoff
+had under-stated (under the same pessimistic rule the F4-trigger numbers put L002 at 65% and
+L005 at 60%, both below a 70% bar).
+
+**Option 1 semantics as executed:** criterion 4(b)'s ≥70% pessimistic bar is re-scoped to
+L007–L010; L006's pessimistic reading is recorded as a characteristic of the authored anchor
+— pinned live in `Level_RetentionHolds_UnderBothNEWQ4Readings` (`(w,l,p) == (7,0,13)`,
+pessimistic == 35) so solver/jitter/anchor drift cannot silently change what the ruling
+recorded. The optimistic ≥70% bar still applies to all five levels (L006 reads 100%). Anchor
+bytes stay as authored — CONFLICT-1 is NOT reopened, so the JOINT/HC-14 coupling is not
+triggered (no CM-C5.1 change). The F4 risk trigger for L002/L005 stays open in
+`state/PROJECT_STATE.md` §Known debt, unresolved by this ruling, re-checked when Q-B/NEW-Q4
+lands. Stop condition 5's redesign path was not taken; the ruling supersedes its application
+to L006 for this contract.
+
 ## Merge (STEP 1)
 
 `git fetch origin main && git merge origin/main` — clean, no conflicts (24 commits: CM-C10

@@ -194,8 +194,12 @@ namespace CatMetro.Tests.Corpus
             }
         }
 
-        // Criterion 4: BOTH readings of NEW-Q4 must clear 70%, parsed from the stage-6 value
-        // string `retention=<x> (wins=W losses=L pinned=P) windows=[...]`
+        // Criterion 4: BOTH readings of NEW-Q4 must clear 70% — as amended by the human's
+        // criterion-4(b) ruling (2026-08-08, in-session, agent-relayed; recorded verbatim in
+        // CM-C11.md §Ruling): the pessimistic bar applies to L007-L010; L006's pessimistic
+        // reading is pinned below as a recorded characteristic of the authored anchor
+        // (ruling option 1 — re-scope; anchor bytes stay as authored). Parsed from the
+        // stage-6 value string `retention=<x> (wins=W losses=L pinned=P) windows=[...]`
         // (ValidationStages.cs:507-508 format).
         [TestCaseSource(typeof(BandFixtures), nameof(BandFixtures.Ids))]
         public void Level_RetentionHolds_UnderBothNEWQ4Readings(string id)
@@ -209,6 +213,17 @@ namespace CatMetro.Tests.Corpus
             Assert.That(optimistic, Is.GreaterThanOrEqualTo(70),
                 id + " optimistic reading " + optimistic + "% — " + britt.Value);
             int pessimistic = w * 100 / (w + l + p);
+            if (id == "L006")
+            {
+                // The characteristic the ruling recorded, kept as a live pin so solver,
+                // jitter, or anchor drift cannot silently change it: three non-tick-0
+                // toggles (ticks 32/72/112) against the tie-break's zero early-side margin.
+                Assert.That((w, l, p), Is.EqualTo((7, 0, 13)),
+                    id + " anchor characteristic drifted — " + britt.Value);
+                Assert.That(pessimistic, Is.EqualTo(35),
+                    id + " pessimistic characteristic drifted — " + britt.Value);
+                return;
+            }
             Assert.That(pessimistic, Is.GreaterThanOrEqualTo(70),
                 id + " pessimistic reading " + pessimistic + "% — " + britt.Value);
         }
