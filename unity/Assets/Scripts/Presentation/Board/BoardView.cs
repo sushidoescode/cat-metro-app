@@ -43,6 +43,8 @@ namespace CatMetro.Presentation.Board
         private int[] _switchNode;
         private Transform[] _switchArm;
         private readonly Dictionary<int, GameObject> _trains = new Dictionary<int, GameObject>();
+        private readonly Dictionary<int, byte> _trainVisualColors =
+            new Dictionary<int, byte>();
 
         public int SwitchCount => _switchNode.Length;
         public string NodeId(int nodeIndex) => _nodeIds[nodeIndex];
@@ -154,7 +156,7 @@ namespace CatMetro.Presentation.Board
                 keyline.transform.localScale = new Vector3(1.16f, 0.22f, 1.16f);
 
                 var arm = new GameObject("arm");
-                DioramaMeshFactory.Attach(arm, DioramaMeshKind.Cube,
+                DioramaMeshFactory.Attach(arm, DioramaMeshKind.RoundedBox,
                     DioramaPalette.Material("lever-arm", DioramaPalette.TicketOrange));
                 arm.name = "arm";
                 arm.transform.SetParent(disc.transform.parent, false);
@@ -294,16 +296,16 @@ namespace CatMetro.Presentation.Board
 
         private static void BuildStation(GameObject root, LineIdentity line)
         {
-            DioramaMeshFactory.Attach(root, DioramaMeshKind.Cube,
+            DioramaMeshFactory.Attach(root, DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("station-paper", DioramaPalette.WarmPaper));
             root.transform.localScale = new Vector3(1.28f, 0.62f, 0.15f);
             var tag = root.AddComponent<LineVisualTag>();
             tag.Apply(line, LineVisualRole.Station);
 
-            Shape(root.transform, "station:keyline", DioramaMeshKind.Cube,
+            Shape(root.transform, "station:keyline", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("station-keyline", DioramaPalette.InkNavy),
                 new Vector3(0f, -0.62f, 0.2f), new Vector3(1.16f, 0.16f, 0.12f));
-            Shape(root.transform, "station:plate", DioramaMeshKind.Cube,
+            Shape(root.transform, "station:plate", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("line-" + line.SymbolId, line.Color),
                 new Vector3(0f, 0f, -0.58f), new Vector3(0.62f, 0.6f, 0.08f));
             var symbol = DioramaMeshFactory.CreateSymbol(root.transform,
@@ -312,7 +314,7 @@ namespace CatMetro.Presentation.Board
             symbol.transform.localPosition = new Vector3(0f, 0f, -0.7f);
             symbol.transform.localScale = new Vector3(0.2f, 0.38f, 1f);
 
-            var canopy = Shape(root.transform, "station:canopy", DioramaMeshKind.Cube,
+            var canopy = Shape(root.transform, "station:canopy", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("station-canopy", DioramaPalette.CreamCard),
                 new Vector3(0f, 0.7f, 0f), new Vector3(1.28f, 0.18f, 0.2f));
             canopy.transform.localRotation = Quaternion.Euler(0f, 0f, -4f);
@@ -320,13 +322,13 @@ namespace CatMetro.Presentation.Board
 
         private static void BuildTrack(Transform root, string id, float length)
         {
-            Shape(root, "trackbed:" + id, DioramaMeshKind.Cube,
+            Shape(root, "trackbed:" + id, DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("track-cream", DioramaPalette.CreamCard),
                 Vector3.zero, new Vector3(0.72f, length, 0.13f));
-            Shape(root, "rail-left:" + id, DioramaMeshKind.Cube,
+            Shape(root, "rail-left:" + id, DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("rail-navy", DioramaPalette.InkNavy),
                 new Vector3(-0.23f, 0f, -0.12f), new Vector3(0.08f, length, 0.08f));
-            Shape(root, "rail-right:" + id, DioramaMeshKind.Cube,
+            Shape(root, "rail-right:" + id, DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("rail-navy", DioramaPalette.InkNavy),
                 new Vector3(0.23f, 0f, -0.12f), new Vector3(0.08f, length, 0.08f));
             int tieCount = Mathf.Max(2, Mathf.CeilToInt(length / 0.55f));
@@ -334,7 +336,7 @@ namespace CatMetro.Presentation.Board
             {
                 float y = tieCount == 1 ? 0f : Mathf.Lerp(-length * 0.45f,
                     length * 0.45f, i / (float)(tieCount - 1));
-                Shape(root, "tie:" + id + ":" + i, DioramaMeshKind.Cube,
+                Shape(root, "tie:" + id + ":" + i, DioramaMeshKind.RoundedBox,
                     DioramaPalette.Material("rail-navy", DioramaPalette.InkNavy),
                     new Vector3(0f, y, -0.08f), new Vector3(0.58f, 0.08f, 0.07f));
             }
@@ -530,12 +532,22 @@ namespace CatMetro.Presentation.Board
                     if (_trains.TryGetValue(t, out var dead)) dead.SetActive(false);
                     continue;
                 }
-                if (!_trains.TryGetValue(t, out var go) || go == null)
+                bool hasVisual = _trains.TryGetValue(t, out var go) && go != null;
+                bool identityChanged = hasVisual &&
+                    (!_trainVisualColors.TryGetValue(t, out byte visualColor)
+                        || visualColor != trains[t].Color);
+                if (!hasVisual || identityChanged)
                 {
+                    if (go != null)
+                    {
+                        go.SetActive(false);
+                        Object.Destroy(go);
+                    }
                     go = BuildCommuter(t, trains[t].Color);
                     var id = go.AddComponent<BoardElementId>();
                     id.Id = "train-" + t; id.Kind = "train";
                     _trains[t] = go;
+                    _trainVisualColors[t] = trains[t].Color;
                 }
                 go.SetActive(true);
                 if (trains[t].State == CatMetro.Domain.TrainState.OnEdge)

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using CatMetro.Domain;
 using CatMetro.Presentation.Board;
 using NUnit.Framework;
@@ -120,6 +121,46 @@ namespace CatMetro.Tests.EditMode
         }
 
         [Test]
+        public void PolyforkManifest_CryptographicallyPinsEveryDerivativeAndTriangleCount()
+        {
+            const string manifestPath = "Assets/Art/Polyfork/PROVENANCE.md";
+            string fullManifest = Path.GetFullPath(Path.Combine(
+                UnityEngine.Application.dataPath, "..", manifestPath));
+            string manifest = File.ReadAllText(fullManifest);
+            Assert.That(manifest, Does.Contain("blender --background --python"),
+                "the provenance receipt must include the exact offline conversion shape");
+            Assert.That(manifest, Does.Contain("GET https://polyfork.dev/dl/<asset-id>.glb"),
+                "the authenticated source acquisition receipt must be explicit");
+
+            var rows = manifest.Split('\n')
+                .Where(x => x.StartsWith("| [") && x.Contains(".fbx`"))
+                .ToArray();
+            string[] models = AssetDatabase.FindAssets("t:Model",
+                    new[] { "Assets/Art/Polyfork/Models" })
+                .Select(AssetDatabase.GUIDToAssetPath).OrderBy(x => x).ToArray();
+            Assert.That(rows.Length, Is.EqualTo(models.Length));
+            foreach (string row in rows)
+            {
+                string[] columns = row.Split('|');
+                int triangles = int.Parse(columns[2].Trim().Replace(",", ""));
+                string modelName = BetweenBackticks(columns[4]);
+                string expectedHash = BetweenBackticks(columns[5]);
+                string modelPath = "Assets/Art/Polyfork/Models/" + modelName;
+                Assert.That(models, Does.Contain(modelPath));
+
+                string absolute = Path.GetFullPath(Path.Combine(
+                    UnityEngine.Application.dataPath, "..", modelPath));
+                using (var stream = File.OpenRead(absolute))
+                using (var sha = SHA256.Create())
+                    Assert.That(ToHex(sha.ComputeHash(stream)), Is.EqualTo(expectedHash), modelName);
+
+                int importedTriangles = AssetDatabase.LoadAllAssetsAtPath(modelPath)
+                    .OfType<Mesh>().Sum(x => x.triangles.Length / 3);
+                Assert.That(importedTriangles, Is.EqualTo(triangles), modelName);
+            }
+        }
+
+        [Test]
         public void PolyforkVertexColors_AreRemappedToTheAuthoritativeDecorPalette()
         {
             var allowed = new HashSet<string>
@@ -151,6 +192,10 @@ namespace CatMetro.Tests.EditMode
                 Is.EqualTo("Universal Render Pipeline/Cat Metro Diorama Lit"));
             Assert.That(greybox.HasProperty("_VertexColorWeight"), Is.True);
             Assert.That(greybox.GetFloat("_VertexColorWeight"), Is.Zero);
+            Assert.That(greybox.HasProperty("_RampThresholds"), Is.True,
+                "the shared shader must expose its three-step toon ramp");
+            Assert.That(greybox.HasProperty("_RimStrength"), Is.True,
+                "the shared shader must expose its view-dependent rim");
 
             string[] materials = AssetDatabase.FindAssets("t:Material",
                     new[] { "Assets/Art/Materials" })
@@ -166,5 +211,17 @@ namespace CatMetro.Tests.EditMode
 
         private static string Html(Color color) => ColorUtility.ToHtmlStringRGB(color);
         private static string Html(Color32 color) => ColorUtility.ToHtmlStringRGB(color);
+
+        private static string BetweenBackticks(string value)
+        {
+            int first = value.IndexOf('`');
+            int last = value.LastIndexOf('`');
+            Assert.That(first, Is.GreaterThanOrEqualTo(0), value);
+            Assert.That(last, Is.GreaterThan(first), value);
+            return value.Substring(first + 1, last - first - 1);
+        }
+
+        private static string ToHex(byte[] bytes) =>
+            string.Concat(bytes.Select(x => x.ToString("x2")));
     }
 }

@@ -33,7 +33,67 @@ namespace CatMetro.Presentation.Cameras
             _camera = cam;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = Board.DioramaPalette.WarmPaper;
+            cam.transform.rotation = Quaternion.Euler(-30f, 0f, 0f);
+            ApplyDioramaFraming(cam.aspect, SafeViewport());
             _restPose = cam.transform.position; // the S-02 play framing (review B5)
+        }
+
+        public void ApplyDioramaFraming(float aspect)
+        {
+            ApplyDioramaFraming(aspect, new Rect(0f, 0f, 1f, 1f));
+        }
+
+        private void ApplyDioramaFraming(float aspect, Rect safeViewport)
+        {
+            if (_camera == null) return;
+            aspect = Mathf.Max(0.01f, aspect);
+
+            // The gameplay grid is x=[0,6], y=[0,10]. Transform its required half-unit
+            // margin into the pitched camera plane, then expand symmetrically about the
+            // point directly in front of the camera. Keeping that projection centre stable
+            // also keeps FrameNode's existing x/y pan semantics exact.
+            var corners = new[]
+            {
+                new Vector3(-0.5f, -0.5f, 0f),
+                new Vector3(-0.5f, 10.5f, 0f),
+                new Vector3(6.5f, -0.5f, 0f),
+                new Vector3(6.5f, 10.5f, 0f),
+            };
+            var projectionCenter = _camera.worldToCameraMatrix.MultiplyPoint3x4(
+                new Vector3(_camera.transform.position.x, _camera.transform.position.y, 0f));
+            float requiredX = 0f;
+            float requiredY = 0f;
+            foreach (var corner in corners)
+            {
+                var cameraPoint = _camera.worldToCameraMatrix.MultiplyPoint3x4(corner);
+                requiredX = Mathf.Max(requiredX, Mathf.Abs(cameraPoint.x - projectionCenter.x));
+                requiredY = Mathf.Max(requiredY, Mathf.Abs(cameraPoint.y - projectionCenter.y));
+            }
+
+            float safeWidth = Mathf.Max(0.01f, safeViewport.width);
+            float safeHeight = Mathf.Max(0.01f, safeViewport.height);
+            float halfHeight = Mathf.Max(requiredY / safeHeight,
+                requiredX / (aspect * safeWidth));
+            halfHeight *= 1.01f; // numeric breathing room at safe/retry-band boundaries
+            float halfWidth = halfHeight * aspect;
+            float safeCenterX = safeViewport.x + safeViewport.width * 0.5f;
+            float safeCenterY = safeViewport.y + safeViewport.height * 0.5f;
+            float centerX = projectionCenter.x - (safeCenterX - 0.5f) * 2f * halfWidth;
+            float centerY = projectionCenter.y - (safeCenterY - 0.5f) * 2f * halfHeight;
+
+            _camera.orthographicSize = halfHeight;
+            _camera.projectionMatrix = Matrix4x4.Ortho(
+                centerX - halfWidth, centerX + halfWidth,
+                centerY - halfHeight, centerY + halfHeight,
+                _camera.nearClipPlane, _camera.farClipPlane);
+        }
+
+        private static Rect SafeViewport()
+        {
+            if (Screen.width <= 0 || Screen.height <= 0) return new Rect(0f, 0f, 1f, 1f);
+            Rect safe = Screen.safeArea;
+            return new Rect(safe.x / Screen.width, safe.y / Screen.height,
+                safe.width / Screen.width, safe.height / Screen.height);
         }
 
         public Vector3 RingWorldPos => _ring != null ? _ring.transform.position : Vector3.zero;

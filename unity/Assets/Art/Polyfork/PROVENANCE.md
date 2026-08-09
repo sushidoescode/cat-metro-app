@@ -9,6 +9,21 @@ Source GLBs are intentionally not retained. Each committed FBX is an offline der
 with Blender 5.1.2 and `Tools/convert_glb_to_fbx.py`; it is for Cat Metro production use only,
 not standalone redistribution. SHA-256 values make the import reproducible and auditable.
 
+Acquisition receipt: on 2026-08-09 each table id was fetched with an authenticated Founders
+entitlement using `GET https://polyfork.dev/dl/<asset-id>.glb`. The bearer key came only from
+the gitignored root `.env`; it was never placed in a URL, log, source file, or Unity asset.
+The recorded source SHA-256 is the response body receipt.
+
+Conversion receipt (run once per table row from the repository root; `<asset-id>.glb` names the
+downloaded response and `<derivative.fbx>` is the exact table filename):
+
+```sh
+/opt/homebrew/bin/blender --background --python unity/Assets/Art/Polyfork/Tools/convert_glb_to_fbx.py -- /tmp/catmetro-polyfork-glb/<asset-id>.glb unity/Assets/Art/Polyfork/Models/<derivative.fbx>
+```
+
+Blender reported `5.1.2` (`ec6e62d40fa9`, built 2026-05-19). The EditMode provenance gate
+recomputes every committed FBX hash and imported triangle count against the table below.
+
 | Polyfork source | Tris | Source GLB SHA-256 | Unity derivative | FBX SHA-256 |
 |---|---:|---|---|---|
 | [Tram Track Tile](https://polyfork.dev/asset/tram-track-tile-f3c69a) (`tram-track-tile-f3c69a`) | 170 | `ce8b0743d558f93b642de960430adf44766c623f076c8d10a326ee154da29f0b` | `polyfork_tram_track_tile_f3c69a.fbx` | `7c97c3d0b170aa940edce47c2f3c9dbcf14f67da6f9174515ee857aab541d987` |

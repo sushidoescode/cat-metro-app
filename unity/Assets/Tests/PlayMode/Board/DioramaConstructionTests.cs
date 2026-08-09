@@ -1,5 +1,7 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using CatMetro.Application.Session;
 using CatMetro.Bootstrap;
 using CatMetro.Domain;
@@ -78,6 +80,81 @@ namespace CatMetro.Tests.PlayMode
                 AssertNamed(commuter.transform, "cat:face");
                 AssertNamed(commuter.transform, "contact-shadow");
             }
+        }
+
+        [UnityTest]
+        public IEnumerator ReusedSimulationSlot_RebuildsTheCommuterForItsNewLineIdentity()
+        {
+            _root = GameRoot.Launch("content/levels/L002.json");
+            yield return null;
+
+            // L002 starts on blue. Route its two red cats home, wait until both slots are
+            // released, then route the later blue wave home. The first blue cat reuses slot 0.
+            _root.Input.HandleTapAtScreen(
+                _root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0)));
+            _root.Session.AdvanceMs(12 * TickInterpolator.TICK_MS);
+            _root.View.UpdateFrom(_root.Session);
+            Assert.That(AssertNamed(_root.View.transform, "train:0")
+                .GetComponent<LineVisualTag>().ColorCode, Is.EqualTo(CatColor.Red),
+                "positive control: slot 0 first acquired the red visual identity");
+            _root.Session.AdvanceMs(48 * TickInterpolator.TICK_MS);
+            _root.View.UpdateFrom(_root.Session);
+            _root.Input.HandleTapAtScreen(
+                _root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0)));
+            _root.Session.AdvanceMs(25 * TickInterpolator.TICK_MS);
+            _root.View.UpdateFrom(_root.Session);
+            yield return null;
+
+            var reused = AssertNamed(_root.View.transform, "train:0")
+                .GetComponent<LineVisualTag>();
+            Assert.That(reused.gameObject.activeSelf, Is.True,
+                "positive control: L002's first blue cat is live in reused slot 0");
+            Assert.That(reused.ColorCode, Is.EqualTo(CatColor.Blue));
+            Assert.That(reused.SymbolId, Is.EqualTo("square"));
+            Assert.That(reused.SilhouetteId, Is.EqualTo("slim-siamese"));
+            AssertTripleCoded(reused);
+        }
+
+        [UnityTest]
+        public IEnumerator Camera_IsPitchedThirtyDegreesAndAutoFitsTheBoardMargin()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            Assert.That(Mathf.Abs(Mathf.Abs(Mathf.DeltaAngle(
+                _root.Cam.transform.eulerAngles.x, 0f)) - 30f), Is.LessThan(0.1f));
+            Assert.That(Mathf.Abs(Mathf.DeltaAngle(_root.Cam.transform.eulerAngles.y, 0f)),
+                Is.LessThan(0.1f));
+
+            var lowerLeft = _root.Cam.WorldToViewportPoint(new Vector3(-0.5f, -0.5f, 0f));
+            var upperRight = _root.Cam.WorldToViewportPoint(new Vector3(6.5f, 10.5f, 0f));
+            Assert.That(lowerLeft.z, Is.GreaterThan(0f));
+            Assert.That(upperRight.z, Is.GreaterThan(0f));
+            Assert.That(lowerLeft.x, Is.InRange(-0.001f, 1.001f));
+            Assert.That(lowerLeft.y, Is.InRange(-0.001f, 1.001f));
+            Assert.That(upperRight.x, Is.InRange(-0.001f, 1.001f));
+            Assert.That(upperRight.y, Is.InRange(-0.001f, 1.001f));
+        }
+
+        [UnityTest]
+        public IEnumerator GameplayPlatformsTracksAndLever_HaveNoSharpCubeExteriorMesh()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            var candidates = _root.View.GetComponentsInChildren<MeshFilter>(true)
+                .Where(x => x.name == "arm"
+                    || x.name.StartsWith("trackbed:")
+                    || x.name.StartsWith("rail-")
+                    || x.name.StartsWith("tie:")
+                    || x.name.StartsWith("station:") &&
+                        x.GetComponent<LineSymbolMesh>() == null)
+                .ToArray();
+            Assert.That(candidates.Length, Is.GreaterThan(10),
+                "positive control: gameplay platform/track/lever meshes were inventoried");
+            foreach (var candidate in candidates)
+                Assert.That(candidate.sharedMesh.name, Is.EqualTo("RoundedBox12"),
+                    candidate.name + " must use the 12%-plus beveled box, not a sharp cube/pill");
         }
 
         [UnityTest]
@@ -160,6 +237,10 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Capture(_root.Cam, System.IO.Path.Combine(directory, "editor-diorama-commuter.png"));
 
+            var accessibilityRoots = CaptureAccessibilityEvidence(directory);
+            foreach (var evidenceRoot in accessibilityRoots) Object.Destroy(evidenceRoot);
+            yield return null;
+
             if (loadedHere)
             {
                 _root = null;
@@ -174,8 +255,138 @@ namespace CatMetro.Tests.PlayMode
             var rt = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
             var previous = RenderTexture.active;
             camera.targetTexture = rt;
+            var causeCamera =
+                camera.GetComponent<CatMetro.Presentation.Cameras.CauseCameraController>();
+            if (causeCamera != null) causeCamera.ApplyDioramaFraming(width / (float)height);
             // Prime the target once: Metal/URP may compile the newly referenced variant on
             // the first manual render, which is not evidence of a presented editor frame.
+            camera.Render();
+            camera.Render();
+            RenderTexture.active = rt;
+            var texture = new Texture2D(width, height, TextureFormat.RGB24, false);
+            texture.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+            texture.Apply();
+            System.IO.File.WriteAllBytes(path, texture.EncodeToPNG());
+            camera.targetTexture = null;
+            RenderTexture.active = previous;
+            Object.Destroy(texture);
+            Object.Destroy(rt);
+        }
+
+        private GameObject[] CaptureAccessibilityEvidence(string directory)
+        {
+            var golden = new GameObject("DioramaGoldenFrame");
+            golden.transform.SetParent(_root.transform, false);
+            var method = typeof(BoardView).GetMethod("BuildCommuter",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            byte[] codes =
+            {
+                CatColor.Red, CatColor.Blue, CatColor.Yellow, CatColor.Green, CatColor.Wild,
+            };
+            var cats = new List<GameObject>();
+            for (int i = 0; i < codes.Length; i++)
+            {
+                var cat = (GameObject)method.Invoke(_root.View, new object[] { 100 + i, codes[i] });
+                cat.name = "golden-cat:" + LineIdentity.For(codes[i]).SilhouetteId;
+                cat.transform.SetParent(golden.transform, false);
+                cat.transform.localPosition = new Vector3((i - 2) * 1.1f, 0f, 0f);
+                cats.Add(cat);
+            }
+            SetLayer(golden.transform, 31);
+
+            var cameraObject = new GameObject("DioramaGoldenCamera");
+            cameraObject.transform.SetParent(_root.transform, false);
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.enabled = false;
+            camera.orthographic = true;
+            camera.orthographicSize = 1.6f;
+            camera.transform.position = new Vector3(0f, 0.4f, -10f);
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = DioramaPalette.WarmPaper;
+            camera.cullingMask = 1 << 31;
+
+            var originals = cats.SelectMany(x => x.GetComponentsInChildren<Renderer>(true))
+                .ToDictionary(x => x, x => x.material.color);
+            Capture(camera, System.IO.Path.Combine(directory, "golden-frame-five-lines.png"),
+                1600, 900);
+            CaptureSimulation(camera, originals, "deutan", SimulateDeutan, directory);
+            CaptureSimulation(camera, originals, "protan", SimulateProtan, directory);
+            CaptureSimulation(camera, originals, "tritan", SimulateTritan, directory);
+            CaptureSimulation(camera, originals, "grayscale", SimulateGrayscale, directory);
+
+            foreach (var pair in originals)
+            {
+                pair.Key.material.color = DioramaPalette.InkNavy;
+                if (pair.Key.name == "contact-shadow") pair.Key.gameObject.SetActive(false);
+            }
+            foreach (var symbol in cats.SelectMany(
+                x => x.GetComponentsInChildren<LineSymbolMesh>(true)))
+                symbol.gameObject.SetActive(false);
+            for (int i = 0; i < cats.Count; i++)
+                cats[i].transform.localPosition = new Vector3((i - 2) * 2f, 0f, 0f);
+            camera.orthographicSize = 1.2f;
+            Capture(camera, System.IO.Path.Combine(directory, "silhouettes-five-at-64px.png"),
+                320, 64);
+
+            return new[] { golden, cameraObject };
+        }
+
+        private static void CaptureSimulation(
+            Camera camera,
+            Dictionary<Renderer, Color> originals,
+            string name,
+            System.Func<Color, Color> transform,
+            string directory)
+        {
+            foreach (var pair in originals) pair.Key.material.color = transform(pair.Value);
+            Capture(camera, System.IO.Path.Combine(directory, "golden-frame-" + name + ".png"),
+                1600, 900);
+        }
+
+        private static Color SimulateDeutan(Color color) => MatrixColor(color,
+            0.367322f, 0.860646f, -0.227968f,
+            0.280085f, 0.672501f, 0.047413f,
+            -0.011820f, 0.042940f, 0.968881f);
+
+        private static Color SimulateProtan(Color color) => MatrixColor(color,
+            0.152286f, 1.052583f, -0.204868f,
+            0.114503f, 0.786281f, 0.099216f,
+            -0.003882f, -0.048116f, 1.051998f);
+
+        private static Color SimulateTritan(Color color) => MatrixColor(color,
+            1.255528f, -0.076749f, -0.178779f,
+            -0.078411f, 0.930809f, 0.147602f,
+            0.004733f, 0.691367f, 0.303900f);
+
+        private static Color SimulateGrayscale(Color color)
+        {
+            float value = color.r * 0.2126f + color.g * 0.7152f + color.b * 0.0722f;
+            return new Color(value, value, value, color.a);
+        }
+
+        private static Color MatrixColor(Color color,
+            float rr, float rg, float rb,
+            float gr, float gg, float gb,
+            float br, float bg, float bb)
+        {
+            return new Color(
+                Mathf.Clamp01(rr * color.r + rg * color.g + rb * color.b),
+                Mathf.Clamp01(gr * color.r + gg * color.g + gb * color.b),
+                Mathf.Clamp01(br * color.r + bg * color.g + bb * color.b), color.a);
+        }
+
+        private static void SetLayer(Transform root, int layer)
+        {
+            foreach (var child in root.GetComponentsInChildren<Transform>(true))
+                child.gameObject.layer = layer;
+        }
+
+        private static void Capture(Camera camera, string path, int width, int height)
+        {
+            var rt = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
+            var previous = RenderTexture.active;
+            camera.targetTexture = rt;
             camera.Render();
             camera.Render();
             RenderTexture.active = rt;

@@ -9,6 +9,7 @@ namespace CatMetro.Presentation.Board
         Sphere,
         Cylinder,
         Capsule,
+        RoundedBox,
         Quad,
     }
 
@@ -70,6 +71,10 @@ namespace CatMetro.Presentation.Board
                 case DioramaMeshKind.Sphere: resource = "Sphere.fbx"; break;
                 case DioramaMeshKind.Cylinder: resource = "Cylinder.fbx"; break;
                 case DioramaMeshKind.Capsule: resource = "Capsule.fbx"; break;
+                case DioramaMeshKind.RoundedBox:
+                    mesh = MakeRoundedBox();
+                    BuiltinMeshes[kind] = mesh;
+                    return mesh;
                 case DioramaMeshKind.Quad: resource = "Quad.fbx"; break;
                 default: throw new System.ArgumentOutOfRangeException(nameof(kind), kind, null);
             }
@@ -78,6 +83,80 @@ namespace CatMetro.Presentation.Board
                 throw new System.InvalidOperationException("Missing built-in mesh " + resource);
             BuiltinMeshes[kind] = mesh;
             return mesh;
+        }
+
+        private static Mesh MakeRoundedBox()
+        {
+            const float half = 0.5f;
+            const float radius = 0.12f;
+            const float core = half - radius;
+            float[] grid = { -half, -core, core, half };
+            var vertices = new List<Vector3>(96);
+            var normals = new List<Vector3>(96);
+            var triangles = new List<int>(324);
+
+            AddRoundedFace(Vector3.forward, Vector3.right, Vector3.up,
+                grid, core, radius, vertices, normals, triangles);
+            AddRoundedFace(Vector3.back, Vector3.left, Vector3.up,
+                grid, core, radius, vertices, normals, triangles);
+            AddRoundedFace(Vector3.right, Vector3.back, Vector3.up,
+                grid, core, radius, vertices, normals, triangles);
+            AddRoundedFace(Vector3.left, Vector3.forward, Vector3.up,
+                grid, core, radius, vertices, normals, triangles);
+            AddRoundedFace(Vector3.up, Vector3.right, Vector3.back,
+                grid, core, radius, vertices, normals, triangles);
+            AddRoundedFace(Vector3.down, Vector3.right, Vector3.forward,
+                grid, core, radius, vertices, normals, triangles);
+
+            var mesh = new Mesh
+            {
+                name = "RoundedBox12",
+                vertices = vertices.ToArray(),
+                normals = normals.ToArray(),
+                triangles = triangles.ToArray(),
+            };
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static void AddRoundedFace(
+            Vector3 outward,
+            Vector3 across,
+            Vector3 upward,
+            float[] grid,
+            float core,
+            float radius,
+            List<Vector3> vertices,
+            List<Vector3> normals,
+            List<int> triangles)
+        {
+            int start = vertices.Count;
+            for (int y = 0; y < grid.Length; y++)
+            {
+                for (int x = 0; x < grid.Length; x++)
+                {
+                    Vector3 outer = outward * 0.5f + across * grid[x] + upward * grid[y];
+                    Vector3 inner = new Vector3(
+                        Mathf.Clamp(outer.x, -core, core),
+                        Mathf.Clamp(outer.y, -core, core),
+                        Mathf.Clamp(outer.z, -core, core));
+                    Vector3 normal = (outer - inner).normalized;
+                    vertices.Add(inner + normal * radius);
+                    normals.Add(normal);
+                }
+            }
+            for (int y = 0; y < grid.Length - 1; y++)
+            {
+                for (int x = 0; x < grid.Length - 1; x++)
+                {
+                    int a = start + y * grid.Length + x;
+                    int b = a + 1;
+                    int d = a + grid.Length;
+                    int c = d + 1;
+                    triangles.Add(a); triangles.Add(b); triangles.Add(c);
+                    triangles.Add(a); triangles.Add(c); triangles.Add(d);
+                }
+            }
         }
 
         private static Mesh SymbolMesh(string symbolId)

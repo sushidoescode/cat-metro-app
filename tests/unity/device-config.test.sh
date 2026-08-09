@@ -85,12 +85,16 @@ owned_prim=$(grep -ro 'GameObject.CreatePrimitive' unity/Assets/Scripts/Presenta
 [ "$owned_prim" = "0" ] || fail "criterion 5: Board/Cameras still create $owned_prim stripped-component primitives"
 prim=$(grep -ro 'GameObject.CreatePrimitive' unity/Assets/Scripts/Presentation --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
 wave_prim=$(grep -o 'GameObject.CreatePrimitive' unity/Assets/Scripts/Presentation/Hud/WavePreview/WavePreviewStrip.cs 2>/dev/null | wc -l | tr -d ' ')
+wave_bind=$(grep -o 'GreyboxMaterial.Shared' unity/Assets/Scripts/Presentation/Hud/WavePreview/WavePreviewStrip.cs 2>/dev/null | wc -l | tr -d ' ')
 [ "$prim" = "$wave_prim" ] || fail "criterion 5: primitive exists outside the separately owned WavePreviewStrip ($prim total vs $wave_prim allowed)"
-[ "$wave_prim" = "0" ] || grep -q 'GreyboxMaterial.Shared' unity/Assets/Scripts/Presentation/Hud/WavePreview/WavePreviewStrip.cs \
-  || fail "criterion 5: remaining WavePreview primitive has no explicit material bind"
+primitive_bind_counts_match() { [ "$1" = "$2" ]; }
+primitive_bind_counts_match "$wave_prim" "$wave_bind" \
+  || fail "criterion 5: remaining WavePreview primitives are not one-to-one material-bound ($wave_prim primitives vs $wave_bind binds)"
 fp=$(grep -ro 'GameObject.CreatePrimitive' "$FIX" --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
 fb=$(grep -ro 'GreyboxMaterial.Shared' "$FIX" --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-[ "$fp" != "$fb" ] || fail "criterion 5: the counting gate failed to fire on the fixture"
+if primitive_bind_counts_match "$fp" "$fb"; then
+  fail "criterion 5: the counting gate failed to fire on the fixture"
+fi
 
 echo "device-config.test.sh: OK (1, 2-yaml, 3, 4, 5-static)"
 exit 0
