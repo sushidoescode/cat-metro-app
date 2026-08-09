@@ -4,11 +4,11 @@ Written at the end of a long session for whoever picks the work up next. **Read 
 
 ## Where main stands
 
-`main` at handoff is `d1550f2` (#58, CM-SEAMS). It carries the complete wired UX tranche, hardened dev seams, and a merge-authority census awaiting ratification. **22 PRs merged this session: #35–#39, #41–#56, #58** (#40 superseded; #57 and #59 were still open at handoff — check `gh pr list` for their real state before trusting any claim below).
+`main` at handoff is `ddb8be1` (#57, CM-LOADNEXT). It carries the complete wired UX tranche, the closed gameplay loop, hardened dev seams, and a merge-authority census awaiting ratification. **23 PRs merged this session: #35–#39, #41–#58** (#40 superseded; #59 — this document — was the only PR open at handoff).
 
-**Verify before trusting:** this file was written while #57 was in CI. If `git log --oneline main | grep CM-LOADNEXT` finds nothing, the loop below is NOT on main.
+**Verify before trusting** any claim below: `git log --oneline -30 main`. This file was written across the final hours and its early drafts were wrong about what had landed.
 
-**The game today:** boot → L001 board (shipped) or, in a dev build with a `boot.json` file-drop, Home → LevelIntro → Play. Fail shows a cause banner + Try-again, with a hint chip on the second failure. **Win → results panel with a live Next chip that loads the next band level — ships with CM-LOADNEXT (#57), which was mid-CI at handoff, not yet in `main`'s ancestry.** Greybox art, no audio, no level select.
+**The game today:** boot → L001 board (shipped) or, in a dev build with a `boot.json` file-drop, Home → LevelIntro → Play. Fail shows a cause banner + Try-again, with a hint chip on the second failure. **Win → results panel with a live Next chip that loads the next band level** (CM-LOADNEXT, merged). Greybox art, no audio, no level select.
 
 **`state/PROJECT_STATE.md` is stale at this commit** — it predates #58 and still lists the CM-SEAMS row as unmerged and `main` as `6f5fed5`. It remains the mandatory read; reconcile it against `git log` and expect the next session's first bookkeeping PR to refresh it.
 
@@ -29,7 +29,7 @@ Written at the end of a long session for whoever picks the work up next. **Read 
 
 ## In flight at handoff
 
-- **#57 CM-LOADNEXT** — armed for auto-merge with CI running at handoff. Its round-1 verdict (MERGEABLE conditional on a fixup, applied within what the reviewer described as an explicit no-second-round sanction) is an **agent-recorded** disposition living in the PR's comments — re-read it there rather than taking this line's word. **If it did not land, completing that merge is a merge act: HC-25 requires a fresh in-session human re-confirmation before a new session arms or completes it.** Note also that the sanctioned-fixup route is not the repo's documented way to price down a review leg — sprint pricing via `scripts/forge-risk.sh` is (see #48/#50/#53/#58) — so treat it as a one-off to be re-examined, not precedent.
+- **#57 CM-LOADNEXT — MERGED 2026-08-09.** Its round-1 verdict (MERGEABLE conditional on a fixup, applied within what the reviewer described as an explicit no-second-round sanction) is an **agent-recorded** disposition living in the PR's comments — re-read it there rather than taking this line's word, and note the sanctioned-fixup route is not the repo's documented way to price down a review leg (sprint pricing via `scripts/forge-risk.sh` is — see #48/#50/#53/#58). Treat it as a one-off to be re-examined, not precedent. **General rule for whoever reads this: arming or completing any merge is a merge act, and HC-25 requires a fresh in-session human re-confirmation for your session — you do not inherit the last session's.**
 - **`task/CM-C11-levels-band`** — pushed (commit `96657d8`), blocked on item 1 above.
 - **#59** — this handoff document itself.
 
