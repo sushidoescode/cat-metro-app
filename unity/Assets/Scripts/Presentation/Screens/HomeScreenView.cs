@@ -7,7 +7,7 @@ using CatMetro.Presentation.Audio;
 
 namespace CatMetro.Presentation.Screens
 {
-    // CM-UX-06 criteria 3/4/5/6: the greybox session-1 Home. One pulsing L001 pin (72dp,
+    // CM-UX-06 criteria 3/4/5/6: the branded paper session-1 Home. One pulsing L001 pin (72dp,
     // thumb-band-centered via pure HomeLayout math; live Screen reads only here, the
     // RetryCtaView precedent), parked-district silhouettes, csv-keyed title — and NOTHING
     // else: no shop, no daily, no badges (S-01 layout intent; the tree test is the

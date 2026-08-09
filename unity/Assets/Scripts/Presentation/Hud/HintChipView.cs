@@ -10,7 +10,7 @@ namespace CatMetro.Presentation.Hud
     // honored DIMENSIONALLY (board-edge above the thumb band, exactly 48dp high at the live
     // dpi). Live Screen.safeArea/Screen.dpi reads exist only here, injected into the pure
     // rect law (A-UX1-5); background binds the Resources-loaded UI material (the
-    // GreyboxMaterial F-DEV-2 lesson). Placement is DRAFT for the batched eyeball sitting.
+    // GreyboxMaterial F-DEV-2 lesson). Its marker and type use the shared chrome vocabulary.
     public sealed class HintChipView : MonoBehaviour
     {
         private RectTransform _rect;

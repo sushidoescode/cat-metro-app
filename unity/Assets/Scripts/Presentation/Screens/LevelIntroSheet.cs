@@ -7,7 +7,7 @@ using CatMetro.Presentation.Audio;
 
 namespace CatMetro.Presentation.Screens
 {
-    // CM-UX-06 criteria 6/7: the minimal LevelIntro sheet — the piece that makes the game
+    // CM-UX-06 criteria 6/7: the paper route-card LevelIntro sheet — the piece that makes the game
     // explain itself before play. Level name + goal line (intro.goal template with {count}
     // substituted — the component receives the KEY plus injected data, never a literal:
     // the BannerView substitution precedent) + an explicit full-width Play CTA in the
