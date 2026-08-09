@@ -264,3 +264,24 @@ the mutation returns SHA-256
 `caa0e4c8438bc0042880e5c316220cc1eb92b212e111e9b017bc179575d6f77c` and the targeted test passes
 1/1 again. Because the assertion pins the complete report rather than only requiring a nonzero
 substring, drift sensitivity is retained.
+
+### Full local gates + risk route — 2026-08-09
+
+- `bash scripts/check.sh`: green.
+- Focused `CatMetro.Tests.Solver`: 25/25; emitted canonical bytes
+  `000006000000010006000000`.
+- Correctly selected NUnit retention slice (`Name~Level_RetentionHolds_UnderBothNEWQ4Readings`):
+  5/5; `bash tests/corpus/alternation-band.test.sh`: green with L006 100%/100%, `(20,0,0)`,
+  windows `[24,24,24]`.
+- Human-authorized L701 exact-pin slice: 1/1 after the mutation/revert proof above.
+- Final `bash scripts/test.sh`: 15/15 wrappers; Unity EditMode 822/822 and PlayMode 137/137. This
+  complete rerun passed the wrapper that had stopped the first post-ruling run at 727/728.
+- `bash scripts/build.sh`: staged-content check green; interim harness reports no assembly target.
+- Worktree audit after the gates: clean; no generated lockfile or staged-content drift.
+- Mechanical classifier against `origin/main` (`11a3335`) on committed product/pin tip `6c7d7d7`:
+  `RISKY`, rule `risk.test-semantic`, 9 files / 575 changed lines, production reach true,
+  `security_review_required=false`. Sprint policy routes the PR to one fresh code-review round.
+
+The final close-record commit changes only this contract and the already-authorized solver task row;
+the classifier is re-run on that tip before review. HC-25 remains unasked and ungranted until the PR
+is green and reviewable.
