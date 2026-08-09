@@ -552,3 +552,290 @@ Approach: **store-templated prices, locally round numbers, zero hard-coded strin
 **Action:** D1–D2 create templates + link SKUs during Play Console product setup; add the CI regex gate with the first shop UI PR; review top-10 market rounding before the D24–26 production submission.
 **Risk:** Hand-rounding across markets drifts tier relationships (a rounded ₹549 All Access vs rounded ₹149 rewind pack can distort the ladder's perceived gaps).
 **Fallback:** If drift is detected in any market, revert that market to Play's auto-converted template price — correctness of the ladder beats prettiness of any single price point.
+
+---
+
+## 8. Amendment draft — deep catalog, DLC districts, rewarded expansion, and Experiments
+
+- **Drafted:** 2026-08-09
+- **Status:** Direction accepted by the human; exact product identifiers, prices, inventory, caps, and
+packaging below are **PENDING HUMAN SIGNATURE**. Until the signature block in §8.10 is completed in a
+human-authored commit, the v1 catalog and five rewarded placements above remain the executable source
+of truth.
+- **Frozen contract:** `docs/prd/leaderboards-contract.md`
+- **Award intent:** deepen the HAMM evidence from one flagship paywall into an honest
+catalog → placement → experiment loop while keeping the Catvertising promise literal.
+
+> **Production tripwire — no exception:** before any billing, IAP, ad, payment, catalog adapter,
+> purchase UI, reward-grant, or equivalent monetization code merges anywhere, a human-authored commit
+> must change `state/mode` to `production`. This documentation amendment does not flip, satisfy, or
+> bypass that gate.
+
+### 8.1 Fair-core law survives the expansion
+
+The accepted direction changes catalog depth, not the game's bargain with the player:
+
+1. The 30-level campaign, Daily Line, District Cup, progression, every mechanic, and every required
+   route remain free. Paid districts are optional side content, never a bridge between free districts.
+2. There is no energy, loot box, randomized paid reward, subscription, premium currency, ticket pack,
+   paid streak saver, forced ad, banner, interstitial, app-open ad, or paid gameplay stat.
+3. Every durable item is a one-time, permanently restorable non-consumable. “Seasonal” describes its
+   art and merchandising window, not ownership expiry; an owned seasonal item remains usable forever.
+4. Paid cat skins cannot alter the destination color, symbol tag, silhouette class, hitbox, animation
+   timing, queue footprint, or any other gameplay channel. Paid liveries/themes cannot change track,
+   signal, queue, switch, hazard, or preview legibility. The §17 color-plus-symbol rule is byte-for-byte
+   invariant under every cosmetic.
+5. Marmalade, Slate Night, Mint Line, star-milestone badges, streak badges/liveries, every District Cup
+   participation/gold-trim livery, and the Founder livery keep their existing earned/exclusive sources.
+   A paid look may share a mood; it may not duplicate or replace an earned reward.
+6. Purchases, trials, and ad watches never affect Daily/Cup score, medal, leaderboard eligibility,
+   rewards, matchmaking, difficulty, generator seeds, offer eligibility, or ad eligibility. Global
+   boards are rewardless and accept only zero-rewind runs per the frozen leaderboard contract.
+7. System-initiated commerce stays capped at one surface per session and remains suppressed for
+   `all_access`/`supporter` owners. Those owners may browse separately sold cosmetics only by opening
+   Shop or tapping an unowned preview themselves; the game never chases them with a cosmetic upsell.
+
+### 8.2 Candidate catalog requiring signature
+
+Every identifier and US reference price in the following tables is a proposal, not permission to
+create a Play Console or RevenueCat object. The client always renders Play's localized store price,
+never the literals below. Product IDs are lowercase, permanent, and never recycled once created.
+
+#### Carry-forward and playable-content products
+
+| Candidate product ID — **PENDING HUMAN SIGNATURE** | Type | Candidate US reference — **PENDING HUMAN SIGNATURE** | Durable grant | Packaging ruling |
+|---|---|---|---|---|
+| `cm_all_access` — **PENDING HUMAN SIGNATURE** | non-consumable | **$6.99 — PENDING HUMAN SIGNATURE** | `all_access` | Every paid **playable district**, current and future; Sakura + Neon; doubled daily free rewind; gold badge; existing ad-removal promise. It does not silently include later standalone cosmetics. |
+| `cm_supporter_pack` — **PENDING HUMAN SIGNATURE** | non-consumable | **$9.99 — PENDING HUMAN SIGNATURE** | `supporter` + `all_access` | Existing Founder extras + All Access. Shop-only tip jar; no new gameplay value. |
+| `cm_district_night_harbor` — **PENDING HUMAN SIGNATURE** | non-consumable | **$2.99 — PENDING HUMAN SIGNATURE** | `district_night_harbor` | Night Harbor L901–L910 à la carte; also unlocked by `all_access`. Existing progress survives revocation/restore. |
+| `cm_district_<signed_slug>` pattern — **PENDING HUMAN SIGNATURE** | non-consumable | **$2.99 per 10-level pack — PENDING HUMAN SIGNATURE** | `district_<signed_slug>` | Template for a separately specified optional district. This string is not a creatable placeholder SKU; each concrete slug/content contract returns for its own human signature. |
+| `cm_rewind_5` — **PENDING HUMAN SIGNATURE** | consumable | **$1.99 — PENDING HUMAN SIGNATURE** | existing local ledger +5 | Carry-forward convenience; never required and globally rank-ineligible if used. |
+| `cm_rewind_20` — **PENDING HUMAN SIGNATURE** | consumable | **$4.99 — PENDING HUMAN SIGNATURE** | existing local ledger +20 | Carry-forward convenience; never required and globally rank-ineligible if used. |
+| `cm_all_access_499` — **PENDING HUMAN SIGNATURE** | inactive experiment-only non-consumable | **$4.99 — PENDING HUMAN SIGNATURE** | `all_access` | Identical grant to `cm_all_access`; absent from Shop except while signed experiment PW01 is live. |
+
+“All Access” now means **every playable line**, not every decorative item. Before this amendment can
+activate, §4.1 copy must replace “the complete Cat Metro” with “every playable line in Cat Metro” and
+must name Sakura + Neon as the included cosmetic pair. That copy correction prevents a later cosmetic
+release from making an earlier purchase claim false.
+
+#### Cat-skin wave 1
+
+Each skin is a material/accessory overlay on the existing destination-readable cat. A skin can add
+clothing, texture, and secondary motion; it cannot cover the line symbol or replace the silhouette.
+
+| Candidate product ID — **PENDING HUMAN SIGNATURE** | Candidate display name | Candidate US reference — **PENDING HUMAN SIGNATURE** | Durable grant |
+|---|---|---|---|
+| `cm_cat_skin_raincoat` — **PENDING HUMAN SIGNATURE** | Rainy-Day Rider | **$0.99 — PENDING HUMAN SIGNATURE** | `cat_skin_raincoat` |
+| `cm_cat_skin_stationmaster` — **PENDING HUMAN SIGNATURE** | Stationmaster | **$0.99 — PENDING HUMAN SIGNATURE** | `cat_skin_stationmaster` |
+| `cm_cat_skin_sailor` — **PENDING HUMAN SIGNATURE** | Harbor Sailor | **$0.99 — PENDING HUMAN SIGNATURE** | `cat_skin_sailor` |
+| `cm_cat_skin_gardener` — **PENDING HUMAN SIGNATURE** | Garden Helper | **$0.99 — PENDING HUMAN SIGNATURE** | `cat_skin_gardener` |
+| `cm_cat_skin_night_shift` — **PENDING HUMAN SIGNATURE** | Night-Shift Knit | **$0.99 — PENDING HUMAN SIGNATURE** | `cat_skin_night_shift` |
+| `cm_cat_skin_festival` — **PENDING HUMAN SIGNATURE** | Festival Bells | **$0.99 — PENDING HUMAN SIGNATURE** | `cat_skin_festival` |
+
+#### Train-livery wave 1
+
+These are standalone train paint/decal treatments. They do not include the existing Founder or
+earned Cup liveries and cannot imitate their badges or trim.
+
+| Candidate product ID — **PENDING HUMAN SIGNATURE** | Candidate display name | Candidate US reference — **PENDING HUMAN SIGNATURE** | Durable grant |
+|---|---|---|---|
+| `cm_livery_brass_line` — **PENDING HUMAN SIGNATURE** | Brass Line | **$1.99 — PENDING HUMAN SIGNATURE** | `livery_brass_line` |
+| `cm_livery_harbor_fog` — **PENDING HUMAN SIGNATURE** | Harbor Fog | **$1.99 — PENDING HUMAN SIGNATURE** | `livery_harbor_fog` |
+| `cm_livery_garden_party` — **PENDING HUMAN SIGNATURE** | Garden Party | **$1.99 — PENDING HUMAN SIGNATURE** | `livery_garden_party` |
+| `cm_livery_midnight_express` — **PENDING HUMAN SIGNATURE** | Midnight Express | **$1.99 — PENDING HUMAN SIGNATURE** | `livery_midnight_express` |
+
+#### Permanent seasonal-theme wave
+
+Sakura and Neon carry forward. Harvest and Snowbell are proposed additions; neither is promised for a
+date until a separate art/content contract passes. Seasonal shop featuring may end, but ownership and
+use do not.
+
+| Candidate product ID — **PENDING HUMAN SIGNATURE** | Candidate display name | Candidate US reference — **PENDING HUMAN SIGNATURE** | Durable grant |
+|---|---|---|---|
+| `cm_theme_sakura` — **PENDING HUMAN SIGNATURE** | Sakura Line | **$2.99 — PENDING HUMAN SIGNATURE** | `theme_sakura`; included in `all_access` |
+| `cm_theme_neon` — **PENDING HUMAN SIGNATURE** | Neon Line | **$2.99 — PENDING HUMAN SIGNATURE** | `theme_neon`; included in `all_access` |
+| `cm_theme_harvest` — **PENDING HUMAN SIGNATURE** | Harvest Line | **$2.99 — PENDING HUMAN SIGNATURE** | `theme_harvest` |
+| `cm_theme_snowbell` — **PENDING HUMAN SIGNATURE** | Snowbell Line | **$2.99 — PENDING HUMAN SIGNATURE** | `theme_snowbell` |
+
+There is no random “mystery skin,” premium-currency price, rotating ownership deadline, starter pack,
+cosmetic club, theme bundle, season pass, or bulk bundle. A curated visual collection may be an RC
+Offering, but every contained product keeps its own exact store price and purchase button.
+
+### 8.3 RevenueCat catalog and commerce-placement map
+
+RevenueCat CustomerInfo remains the durable access truth; a local cache supports offline use and
+Restore. The expanded dashboard shape is:
+
+| Commerce placement | Default offering | Contents | Trigger law |
+|---|---|---|---|
+| existing `post_level_5` | existing `ofr_core` | All Access only | unchanged, once/install, system-initiated |
+| existing `bonus_district` | `ofr_districts` | Night Harbor à la carte + All Access comparison | player taps a locked district |
+| existing `theme_preview` | `ofr_themes` | selected theme + other permanent themes + honest All Access inclusion line | player taps an unowned theme |
+| new `cat_preview` | `ofr_cat_skins` | selected cat skin first, then the wave | player taps an unowned skin |
+| new `livery_preview` | `ofr_liveries` | selected train livery first, then the wave | player taps an unowned livery |
+| existing `shop` | `ofr_shop` plus the signed catalog manifest | every active item, grouped by playable content / cats / trains / themes / rewinds / Supporter | player opens Shop |
+| existing `rewind_failure` | existing `ofr_rewind` | rewind packs only | unchanged attempt-2+ player tap |
+
+The app resolves the current Offering for the exact Placement and handles “No Offering” as no UI.
+Dashboard ordering may change merchandising, never entitlements or eligibility. A signed catalog
+manifest is the allowlist: a dashboard product absent from that manifest cannot render or grant.
+Likewise, a manifest item missing from the returned Offering shows “Unavailable,” not a hard-coded
+fallback price or an alternate product.
+
+The purchase resolver checks `all_access || district_<slug>` for a paid district. It checks the exact
+item entitlement for each cosmetic; ownership is never inferred from display name, package position,
+theme season, or another cosmetic. Restore and refund rules in §§3.13–3.14 apply item-by-item.
+
+### 8.4 Expanded opt-in rewarded placements
+
+The five v1 placements stay intact. Three cosmetic/content trials deepen the opt-in ladder without
+creating power. Exact new limits below are **PENDING HUMAN SIGNATURE** and do not amend ADR-0006's
+closed five-counter save schema by themselves.
+
+| AdTracker placement | Status | Reward | Per-placement cap | Absence / expiry law |
+|---|---|---|---|---|
+| `rewind_failure` | existing | one rewind at eligible attempt-2+ failure | existing 2/session, 5/day | unchanged; the resulting run is globally rank-ineligible |
+| `double_tickets` | existing | existing ticket double | existing 3/day | never changes score or unlock requirement |
+| `daily_gift_double` | existing | existing gift double | existing 1/day | never required for streak |
+| `streak_saver` | existing | existing free/rewarded streak repair | existing 1/day | never sold for money |
+| `theme_rental` | existing | selected paid theme for 3 completed levels | existing 1/theme/day | silent revert + at most one passive toast/day |
+| `cat_skin_trial` | **new** | selected paid cat skin for 3 completed campaign/practice levels | **1 selected skin/day — PENDING HUMAN SIGNATURE** | no Daily/Cup/share-card/global-rank use; silent revert |
+| `livery_trial` | **new** | selected paid livery for 3 completed campaign/practice levels | **1 selected livery/day — PENDING HUMAN SIGNATURE** | no Daily/Cup/share-card/global-rank use; silent revert |
+| `district_guest_route` | **new** | one designated practice-only showcase route in a locked paid district | **1 district/day and 1/session — PENDING HUMAN SIGNATURE** | zero tickets, stars, progress, medal, Daily/Cup result, or global rank; full retry always free |
+
+The new rows appear only inside a player-opened preview. There is no automatic “watch now” modal, ad
+wall, timer, pulsing badge, failure substitution, or ad prompt before L7. Three consecutive declines
+still mute every ad row for 24 hours. No-fill hides the row for the session and never replaces it with
+a purchase prompt. Trial expiry never interrupts a level.
+
+AdMob remains the locked provider. RevenueCat AdTracker receives the SDK callback sequence (loaded,
+displayed, opened, impression-level revenue, and failed-to-load) with the exact placement above. The
+game's existing completion callback remains the reward authority; an AdTracker revenue event is never
+treated as proof that a reward was earned. RevenueCat's ad monetization API is currently beta and
+experimental, so beta access, the exact pinned purchases-unity API, AdMob impression-level revenue,
+event parity, and dashboard/chart arrival all remain on-device spike gates. RevenueCat's separate
+server-verified ad-reward beta is not adopted by this amendment.
+
+Implementation of the three new counters requires a human-approved ADR-0006 save-schema amendment,
+migration fixtures from v1, cap rollback/process-death tests, and an updated exact-placement contract.
+Until those land, the three new placements fail closed OFF even if dashboard configuration exists.
+
+### 8.5 RevenueCat Experiments plan
+
+RevenueCat Experiments is based on Offerings, can vary price/product mix/paywall presentation, supports
+placement-specific variants, and is currently a Pro/Enterprise feature. The human verifies the Cat
+Metro project plan and the pinned Unity SDK behavior before enrollment. If unavailable, the declared
+fallback is a sequential Offering swap by install-week cohort, explicitly labeled non-randomized.
+
+Run only one experiment at a time for this traffic level. Assignment is sticky per RC App User ID;
+internal/license testers and anyone already owning either tested grant are excluded. Each experiment
+runs at least 14 complete days and two weekends unless a pre-registered safety stop fires. The readout
+always publishes exposures, purchases, gross proceeds, refunds, realized revenue per eligible viewer,
+and confidence/uncertainty; an underpowered result is called directional, never “a winner.”
+
+| Order | Experiment | Placement | Control | Treatment | Primary question |
+|---|---|---|---|---|---|
+| 1 | `PW01` | `post_level_5` | `cm_all_access` at **$6.99 — PENDING HUMAN SIGNATURE** | identical grant via `cm_all_access_499` at **$4.99 — PENDING HUMAN SIGNATURE** | Does higher conversion at the lower price outweigh lower proceeds per purchase? |
+| 2 | `DLC01` | `bonus_district` | All Access hero, Night Harbor à-la-carte secondary | Night Harbor à-la-carte hero, All Access comparison secondary | Which honest packaging best serves high-intent district taps without hiding either choice? |
+| 3 | `CAT01` | `cat_preview` | selected skin only above the fold | selected skin + two fixed related skins, identical prices | Does a small curated choice improve purchase rate without choice overload? |
+| 4 | `SHOP01` | `shop` | category grid | one signed seasonal collection first, same products/prices | Does visual curation improve durable-cosmetic revenue without increasing dismissals? |
+
+Each test changes one named variable. It may not change close-button prominence, free-content copy,
+first-failure embargo, system frequency, ad caps, reward size, rank eligibility, ownership duration,
+refund/restore access, or any fair-core invariant. Ad-placement expansion is evaluated observationally
+by placement-level opt-in, completion, no-fill, revenue, next-session retention, and decline-mute rates;
+RC Experiments does not become permission to test more ad pressure.
+
+Safety guardrails are purchase failures, refund/revocation rate, entitlement mismatch, paywall
+dismissal, D1/D7 retention, support complaints, and the hard zero counts for suppressed payer surfaces
+and attempt-1 commerce. Before activation, the human records numeric stop thresholds and the minimum
+sample/decision rule in the dashboard notes or experiment ledger. A wrong price, wrong entitlement,
+missing disclosure, or payer-suppression breach stops the arm immediately regardless of sample size.
+
+### 8.6 Award evidence contract
+
+This amendment targets two Shipaton award stories without changing product truth:
+
+- **HAMM:** show the signed catalog/entitlement map, each Placement's Offering, the remote paywall,
+  restored purchase, AdTracker placement revenue, and the pre-registered experiment plus honest
+  result. “Strong conversion” is demonstrated with denominators and realized revenue, never a lone
+  percentage or significance claim the sample cannot support.
+- **Catvertising:** show a player deliberately selecting a rewarded trial, the immediate benefit, the
+  visible daily cap, and a clean no-fill/decline path. “Ads only when the player asks” remains literal;
+  banners, interstitials, app-open ads, and forced ads must have zero configured units and zero events.
+
+Screenshots/video can be judged alone, so every dashboard capture must include the project/app name,
+placement or experiment identifier, state/date, and variant labels. Revenue figures use RevenueCat for
+near-real-time unified analysis but reconcile final ad revenue against AdMob because network
+post-processing can differ. Test transactions and internal testers are visibly excluded.
+
+### 8.7 Required downstream amendments before implementation
+
+This docs-only lane intentionally does not edit the current executable contracts. After signature and
+after the production-mode flip, separate task contracts must update them with failing tests first:
+
+1. `docs/prd/PRD.md` CM-R23/CM-R25/CM-R35, whose exact six-product/five-placement assertions currently
+   reject this proposal;
+2. the catalog, entitlement, Offering/Placement, paywall-experiment, ad-placement, economy, analytics,
+   localization, and Data Safety source files under `docs/plan/data/` and `config/`;
+3. ADR-0006's irreversible save shape for item ownership caches and the three added ad-cap counters;
+4. ADR-0003/ADR-0004 if the existing RevenueCat/Ads dependency surface or exact pins change; and
+5. store copy, test matrix, restore/refund matrix, accessibility captures, and Play Console products.
+
+No dashboard object should be activated ahead of the matching signed manifest. No product may be sold
+before its asset/content is in the same production build or has a truthful dated-delivery disclosure.
+Every durable item gets purchase, pending, cancel, offline cache, restore, refund/revoke, duplicate
+callback, account mismatch, and reinstall tests. Every cosmetic gets silhouette-at-64px and
+deutan/protan/tritan checks on the low-tier device.
+
+### 8.8 Dependency and privacy boundary
+
+This amendment adds no dependency. It continues to use the pinned RevenueCat + RevenueCatUI and AdMob
+paths already governed by ADR-0003/ADR-0004. Any SDK update needed for current AdTracker behavior is a
+new dependency-pin amendment, not an implementation convenience.
+
+Product ID, entitlement, Offering, Placement, ad-unit, impression, purchase, and coarse revenue data
+stay inside their declared adapters and vendor dashboards. No cosmetic selection, cat name, PGS player
+identity, leaderboard score/rank, or free-form text is attached to RevenueCat/AdMob events. The Play
+Data Safety form, privacy policy, consent/age treatment, and deletion disclosure must be re-reviewed
+against the exact production SDK data flows before ads or commerce turn ON.
+
+### 8.9 Rollout and rollback
+
+1. Human signs §8.10 and separately flips `state/mode` to `production` in a human-authored commit.
+2. Contract amendments and migrations land before implementation; exact Play/RC objects remain draft.
+3. Ship the signed catalog manifest with all new products inactive and all new ad placements OFF.
+4. License-test one product per type, then the full restore/refund matrix; device-test every rewarded
+   placement including no-fill, decline, cap, task-kill, offline, and expired-trial branches.
+5. Activate one cosmetic collection at a time through signed dashboard evidence. District content
+   activates only with its validated routes. Start an Experiment only after the baseline is stable.
+
+Rollback is remote deactivation plus client fail-closed behavior. Deactivation never revokes an owned
+durable item. A broken product is hidden from new purchase while existing owners retain access and
+Restore. A broken ad placement is disabled without substituting commerce. A failed experiment returns
+all eligible players to the signed control Offering.
+
+### 8.10 Human signature gate
+
+The direction in §8 is accepted; these exact commercial values are not active until signed:
+
+- [ ] I approve every concrete product ID and US reference price in §8.2.
+- [ ] I approve the `cm_district_<signed_slug>` naming/$2.99 pattern and the All Access packaging rule.
+- [ ] I approve the three new placement identifiers, rewards, and candidate caps in §8.4.
+- [ ] I approve the experiment identifiers/order/variants in §8.5, including PW01's second Play SKU.
+- [ ] I confirm no energy, loot boxes, subscriptions, premium currency, forced ads, or paid power.
+- [ ] I acknowledge that a separate human-authored `state/mode=production` commit is required before
+      any monetization implementation can merge.
+
+- **Signed by:** _PENDING HUMAN SIGNATURE_
+- **Signed at (absolute date/time):** _PENDING HUMAN SIGNATURE_
+- **Signing commit:** _PENDING HUMAN SIGNATURE_
+
+### 8.11 Sources checked for this amendment
+
+- [RevenueCat Offerings](https://www.revenuecat.com/docs/offerings/overview)
+- [RevenueCat Experiments overview](https://www.revenuecat.com/docs/tools/experiments-v1/experiments-overview-v1)
+- [RevenueCat Experiments by Placement](https://www.revenuecat.com/docs/tools/targeting/placements)
+- [RevenueCat ad monetization](https://www.revenuecat.com/docs/getting-started/ad-monetization)
+- [RevenueCat Unity/manual AdTracker integration](https://www.revenuecat.com/docs/ad-monetization/manual-integration)
+- [RevenueCat Ads charts and reconciliation caveat](https://www.revenuecat.com/docs/dashboard-and-metrics/charts/ads)
