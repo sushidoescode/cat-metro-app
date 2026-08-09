@@ -11,9 +11,12 @@ namespace CatMetro.Tests.PlayMode
 {
     // CM-UX-04 criteria 1-9 under the inherited live-wiring + anti-vacuity rule: every test
     // drives a panel over GameRoot.LaunchWith (real session/view/camera/registry), and every
-    // negative or absence assert carries a positive control in the same fixture. The panel is
-    // a NEEDS-WIRING component — attached here by direct construction only; CM-UX-07 does NOT
-    // attach it until LoadNext exists (human answer Q-3).
+    // negative or absence assert carries a positive control in the same fixture.
+    // CM-LOADNEXT UPDATE: GameRoot.Wire now attaches ResultsPanel itself (Q-3 discharged) —
+    // AttachControlled resolves that Wire-attached instance and rebinds its state source to a
+    // test-controlled string (never constructing a second instance, which Wire's own attach
+    // would collide with), clearing the Wire-installed NextRequested = LoadNext binding so this
+    // file's chip-mechanics tests stay decoupled from real progression (LoadNextTests.cs's job).
     public sealed class ResultsPanelTests
     {
         private GameRoot _root;
@@ -38,9 +41,42 @@ namespace CatMetro.Tests.PlayMode
         {
             _root = GameRoot.LaunchWith(Fixture(QuietFixtureJson()));
             _state = initial;
-            var panel = _root.gameObject.AddComponent<ResultsPanel>();
+            // CM-LOADNEXT declared amendment (DE-2): GameRoot.Wire now attaches ResultsPanel
+            // itself (Q-3 discharged) — resolve THAT instance and rebind its state source to
+            // this test's own _state, instead of stacking a second panel on the GameObject (the
+            // CM-TESTFIX / ChromeStateTests.AttachControlled precedent, extended here). A second
+            // instance would throw a duplicate-id ArgumentException the moment both panels'
+            // state sources ever independently read "Won" at once.
+            var panel = _root.GetComponent<ResultsPanel>();
+            Assert.That(panel, Is.Not.Null,
+                "precondition: GameRoot.Wire must have attached a ResultsPanel — otherwise "
+                + "every assert below proves nothing");
+            Assert.That(_root.gameObject.GetComponents<ResultsPanel>().Length, Is.EqualTo(1),
+                "exactly one panel on the GameObject — pins single-controller composition");
             panel.Attach(() => _state, _root.Input.Regions);
+            // Wire() also binds NextRequested = LoadNext on this SAME instance — clear it here
+            // so this file's chip-mechanics tests stay decoupled from REAL progression (file
+            // I/O, a session swap). Without this, any test below that taps the chip while
+            // _state is test-controlled would silently trigger real LoadNext as a hidden side
+            // effect. Restores the ORIGINAL default: a fresh ResultsPanel's NextRequested is
+            // null until a test opts in (e.g. ChipTap_RoutesThroughTheRegistry_... below sets
+            // its own decoy).
+            panel.NextRequested = null;
             return panel;
+        }
+
+        // --- CM-LOADNEXT declared amendment (DE-2), pinned explicitly ---
+
+        [UnityTest]
+        public IEnumerator AttachControlled_IsIsolatedFromRealProgression_NextRequestedStartsNull()
+        {
+            var panel = AttachControlled("Won");
+            yield return null;
+            Assert.That(panel.NextRequested, Is.Null,
+                "CM-LOADNEXT declared amendment: AttachControlled must clear the Wire-installed "
+                + "LoadNext binding, or every chip-tap test in this file would silently trigger "
+                + "REAL progression (file I/O, a session swap) as a hidden side effect of "
+                + "tapping the chip while state is test-controlled");
         }
 
         // --- criterion 1: state map proven on TRANSITIONS ---
@@ -92,8 +128,15 @@ namespace CatMetro.Tests.PlayMode
         public IEnumerator RealWin_ShowsPanel_WithTheWiringDelegateShape()
         {
             _root = GameRoot.LaunchWith(Fixture(WinnableFixtureJson()));
-            var panel = _root.gameObject.AddComponent<ResultsPanel>();
-            panel.Attach(() => _root.ScreenState, _root.Input.Regions); // the wiring shape
+            // CM-LOADNEXT declared amendment (DE-3): GameRoot.Wire now attaches ResultsPanel
+            // itself with exactly this delegate shape (() => ScreenState, Input.Regions) — the
+            // rehearsal this test used to perform by hand (CM-UX-04, before the attach existed)
+            // is now the REAL composition. Resolve the Wire-attached instance instead of
+            // stacking a second one — a second instance would throw duplicate-id the moment
+            // BOTH panels' state sources read "Won" (they now WOULD, since both would be
+            // () => ScreenState on the SAME real root).
+            var panel = _root.GetComponent<ResultsPanel>();
+            Assert.That(panel, Is.Not.Null, "precondition: Wire attached the panel");
             yield return null;
             Assert.That(panel.IsVisible, Is.False, "pre-win positive control: hidden in play");
 
@@ -410,8 +453,10 @@ namespace CatMetro.Tests.PlayMode
                 yield break;
             }
             _root = GameRoot.LaunchWith(Fixture(WinnableFixtureJson()));
-            var panel = _root.gameObject.AddComponent<ResultsPanel>();
-            panel.Attach(() => _root.ScreenState, _root.Input.Regions);
+            // CM-LOADNEXT declared amendment (DE-3): same single-controller fix as
+            // RealWin_ShowsPanel_WithTheWiringDelegateShape above.
+            var panel = _root.GetComponent<ResultsPanel>();
+            Assert.That(panel, Is.Not.Null, "precondition: Wire attached the panel");
             _root.Session.AdvanceMs(200 * CatMetro.Application.Session.TickInterpolator.TICK_MS);
             yield return null;
             yield return null; // panel applies + TMP layout settles

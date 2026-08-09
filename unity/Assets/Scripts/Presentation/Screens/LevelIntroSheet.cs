@@ -21,8 +21,15 @@ namespace CatMetro.Presentation.Screens
         // #42 review F3, the modal-over-parent law: a sheet shown OVER a screen registers
         // STRICTLY above it — at equal priority the registry's earliest-registration tie-break
         // hands the modal's dead-center tap to the parent's pin — the game could not have been
-        // started from the sheet once CM-UX-07 attached these views (latent, caught pre-wiring). Explicit per A-UX1-3; parents register at 0, modals at 10.
-        private const int PlayRegionPriority = 10;
+        // started from the sheet once CM-UX-07 attached these views (latent, caught pre-wiring).
+        // Explicit per A-UX1-3; parents register at ChromeRegions.ParentPriority.
+        // CM-LOADNEXT D-1: sourced from ChromeRegions.StackedModalPriority (11), ONE tier above
+        // ResultsPanel's ChromeRegions.ModalPriority (10) — this sheet is hosted on the
+        // ScreenStack's ScreensCanvas, which paints ABOVE ResultsPanel's canvas (sortingOrder
+        // 120 vs 110, GameRoot.cs); the tap law now matches the paint law, so co-registration
+        // with ResultsPanel resolves to whichever is visually on top, by priority, never by
+        // which one happened to register first (state/handoffs/CM-UX-07-delta-audit.md D-1).
+        private const int PlayRegionPriority = ChromeRegions.StackedModalPriority;
 
         public System.Action PlayRequested;
 
