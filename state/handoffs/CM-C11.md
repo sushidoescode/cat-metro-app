@@ -38,7 +38,10 @@ wrap"** — the first clause is this contract's ruling. Channel: in-conversation
 agent-relayed (H-1-class confirmability caveat, per the HC-25 census's standard for this
 record class). The brief presented both authority records above plus the costs the handoff
 had under-stated (under the same pessimistic rule the F4-trigger numbers put L002 at 65% and
-L005 at 60%, both below a 70% bar).
+L005 at 60%, both below a 70% bar). Record boundary (#62 review code-L3): the menu the ruling
+selects from is on the merged record (`SESSION-HANDOFF-2026-08-08.md:24`); this description of
+the brief's fuller content is in-conversation only and is itself an agent assertion on no
+record.
 
 **Option 1 semantics as executed:** criterion 4(b)'s ≥70% pessimistic bar is re-scoped to
 L007–L010; L006's pessimistic reading is recorded as a characteristic of the authored anchor
@@ -210,7 +213,10 @@ green. No merge delegation is claimed or assumed (HC-25 default: not delegated).
 
 ## Certification (post-ruling, 2026-08-08/09 — the certifying run on the merged tree)
 
-Tree: `16dde99` = ruling execution `6fa44cf` + suite fixes `a90d084` + merge of #60's main.
+Trees (#62 review code-L6 asked for precision here): the FIRST certifying run's numbers below
+were captured on `16dde99` (= ruling execution `6fa44cf` + suite fixes `a90d084` + merge of
+#60's main); the later commits are docs/meta + the #62 review-round fixes, and a full
+`scripts/test.sh` RE-RUN on the review-fix tip is attached to the PR (its log names its tree).
 Merge-resolution disclosure: `state/PROJECT_STATE.md` took main's version wholesale, then the
 branch's two Known-debt records were restored through the resolution (the CM-C10-F5
 re-disposition and the tie-break finding — an initial `--theirs` had silently dropped them; the
@@ -228,10 +234,41 @@ main's #60 row (updated to RULED by the #61 state PR).
   literal; **EditMode 821/821** (main's 777 + the 44 corpus tests compiling under Unity for
   the FIRST time — the +44 delta is the compile-fix's own cross-check), **PlayMode 137/137**;
   `new JsonSerializerSettings` count still 1; validator + staging wrappers green. ✓
+- **Criterion 10** (machine-derived evidence table — added per #62 review code-M1, which
+  caught the PR pasting the criterion's *Check* clause instead of its deliverable). From
+  `scripts/validate-content.sh --out` (gate wall-clock 39.7 s, rc=0), seconds carry the
+  PINNED(NEW-Q1) 8-ticks/s convention:
+
+  | id | ticks | sec (PINNED NEW-Q1) | sw | beam | pinnedPruned | nodes | retention opt/pess | windows | max queue depth | witness |
+  |---|---|---|---|---|---|---|---|---|---|---|
+  | L006 | 164 | 20.5 | 3 | 0 | 1,480 | 20,829 | 100% / 35% (pinned char.) | [15,15,15] | J1 = 0 (negative control, asserted) | pinned halt (F-DEV-3 shape, pre-ruling record) |
+  | L007 | 32 | 4.0 | 1 | 0 | 81,776 | 140,114 | 100% / 100% | [15] | SRC ≥ 2 (asserted) | QueueOverflow |
+  | L008 | 34 | 4.25 | 1 | 0 | 75,024 | 107,398 | 100% / 100% | [15] | SRC ≥ 2 (asserted) | QueueOverflow |
+  | L009 | 30 | 3.75 | 1 | 0 | 65,136 | 127,494 | 100% / 100% | [15] | SRC ≥ 2 (asserted) | QueueOverflow |
+  | L010 | 96 | 12.0 | 1 | 0 | 11,824 | 82,498 | 100% / 100% | [15] | SRC ≥ 2 (asserted) | TimeOut |
+
+  Depth values are asserted bounds from `QueueLivenessTests` (the report does not surface
+  per-node depths); witness reasons are the `TestCase` declarations + the L010 TimeOut assert. ✓
+- **Criterion-4/5 honesty note** (#62 review security-L4): L007–L010's 100% retention and
+  `windows=[15]` are consequences of the tick-0 board shape — the jitter clamp
+  (`Math.Max(0, tick+offset)`) makes the −1 draw a no-op at tick 0, and the window
+  measurement's backward limb never executes there. They are by-construction properties,
+  not measured player slack; the F4-trigger discharge for these four rests on that shape.
+- **Criterion-6 honesty note** (#62 review security-L5): the SRC-depth liveness assertion is
+  satisfied by the wave-table shape (five tick-8 waves) and holds regardless of the command
+  log — the L005 precedent's class; it is not a routing-dependent property.
+- **Criterion-8 errata** (#62 review, both legs): the frozen contract's prescribed bare
+  `git diff --stat` compares worktree-vs-index — always empty in a committed state, zero red
+  power at merge time. The wrapper now diffs against the merge-base with main (errata recorded
+  in the wrapper itself); mutation-proved — an appended byte on L003 turns it red with
+  `criterion 8: a shipped L001-L005 level moved`, reverted byte-clean.
 - **Criterion 12** (subset + no frozen-surface edit): `git diff --name-only origin/main...HEAD`
-  = 24 paths, every one inside the frozen file table (the `state/PROJECT_STATE.md` delta is
-  exactly the two carried-through Known-debt records, per the disclosure above); zero
-  `unity/Assets/Scripts/**` edits, zero `.csproj`/`packages.lock.json` edits. ✓
+  = 24 paths, every one inside the frozen file table's PATH set; zero `unity/Assets/Scripts/**`
+  edits, zero `.csproj`/`packages.lock.json` edits. DECLARED DEVIATION from the table's ACTION
+  column (#62 review code-L5): the `state/PROJECT_STATE.md` action reads "append ONE line at
+  merge" — the actual delta is two records, one of them an in-place extension of CM-C10's F5
+  row (the mandatory re-disposition this contract's own task clause requires); disclosed, not
+  silent. ✓
 
 Suite-caught defects (both fixed + mutation-proved in `a90d084`, recorded in the state refresh's
 Known debt): the wrapper's own python check independently enforced the un-amended 70% bar (went

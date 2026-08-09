@@ -221,6 +221,8 @@ namespace CatMetro.Tests.Corpus
                 // The characteristic the ruling recorded, kept as a live pin so solver,
                 // jitter, or anchor drift cannot silently change it: three non-tick-0
                 // toggles (ticks 32/72/112) against the tie-break's zero early-side margin.
+                // Two-sided on purpose: an IMPROVEMENT in L006's retention also turns this
+                // red — the recorded characteristic changed, revisit the ruling record.
                 Assert.That((w, l, p), Is.EqualTo((7, 0, 13)),
                     id + " anchor characteristic drifted — " + britt.Value);
                 Assert.That(pessimistic, Is.EqualTo(35),

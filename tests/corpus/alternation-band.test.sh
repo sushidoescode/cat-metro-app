@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # CM-C11 wrapper — the alternation band (L006-L010) gate: criteria 3, 4, 5, 8, 9(a)/9(c), 10 as
 # one tool-invocation-level proof over `bash scripts/validate-content.sh`'s machine report, plus
-# the staged derived tree's check-mode leg. Criteria 1, 2, 6 and 7 are NUnit cases in
+# the staged derived tree's check-mode leg. This wrapper DOES re-run the ~40s gate that
+# tests/validation/validator.test.sh also runs in the same scripts/test.sh pass — deliberate:
+# an independently produced report, independently parsed, is the point of this wrapper
+# (#62 review, security-L6 — the cost is accepted and recorded here). Criteria 1, 2, 6 and 7 are NUnit cases in
 # unity/Assets/Tests/EditMode/Pure/Corpus/*.cs, exercised by the `dotnet test` legs that already
 # run elsewhere in this suite (tests/content/importer.test.sh and others invoke the whole
 # solution) — this wrapper does not re-run `dotnet test` itself (would be a second full pass for
@@ -14,8 +17,7 @@
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 fail() { echo "alternation-band.test.sh: FAIL — $1"; exit 1; }
-tmp="${TMPDIR:-/tmp}/cm-c11-wrapper-$$"
-mkdir -p "$tmp"
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/cm-c11-wrapper-XXXXXX") || fail "mktemp failed"
 trap 'rm -rf "$tmp"' EXIT
 
 # Dirt is judged against a START snapshot, not an absolute-clean tree (CM-C10's own wrapper
@@ -33,7 +35,7 @@ BAND="L006 L007 L008 L009 L010"
 
 # --- criterion 5a: minActionWindowTicks == 12 declared in all five authored files ---
 for id in $BAND; do
-  grep -q '"minActionWindowTicks": 12' "content/levels/$id.json" \
+  grep -qE '"minActionWindowTicks": 12([^0-9]|$)' "content/levels/$id.json" \
     || fail "criterion 5: content/levels/$id.json does not declare minActionWindowTicks: 12"
 done
 
@@ -110,7 +112,9 @@ for lid in band:
         # Human criterion-4(b) ruling, 2026-08-08 (CM-C11.md, RULING section — option 1):
         # the pessimistic bar applies to L007-L010; L006's reading is pinned as the
         # recorded characteristic of the authored anchor (mirrors the NUnit pin in
-        # AlternationBandTests) so drift cannot pass silently.
+        # AlternationBandTests) so drift cannot pass silently. The pin is TWO-SIDED on
+        # purpose: an IMPROVEMENT in L006's retention also turns it red — the recorded
+        # characteristic changed, so the ruling record must be revisited, not the content.
         if (w, l, p) != (7, 0, 13):
             fail(lid + " anchor characteristic drifted (expected wins=7 losses=0 pinned=13): " + value)
         if pessimistic != 35:
@@ -157,8 +161,13 @@ py_rc=$?
 [ "$py_rc" -eq 0 ] || fail "python report checks failed (rc=$py_rc, see FAIL line(s) above)"
 
 # --- criterion 8: L001-L005 byte-unchanged by this band ---
-dirty=$(git diff --stat -- content/levels/L001.json content/levels/L002.json content/levels/L003.json \
-  content/levels/L004.json content/levels/L005.json)
+# Contract errata (#62 review, code-M2): the frozen text prescribes a bare `git diff --stat`,
+# which compares worktree-vs-index and is ALWAYS empty in a committed state — zero red power
+# at merge time or in CI. Compared against the merge-base with main instead, which catches
+# both committed and uncommitted movement of the shipped five. Errata recorded, not silent.
+c8_base=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main)
+dirty=$(git diff --stat "$c8_base" -- content/levels/L001.json content/levels/L002.json \
+  content/levels/L003.json content/levels/L004.json content/levels/L005.json)
 [ -z "$dirty" ] || fail "criterion 8: a shipped L001-L005 level moved: $dirty"
 
 # --- criterion 9(a): the stager's check mode already equals the committed staged tree ---
