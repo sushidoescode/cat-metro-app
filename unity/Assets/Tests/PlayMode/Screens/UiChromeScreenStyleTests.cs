@@ -44,6 +44,10 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(mark.Find("CatHead"), Is.Not.Null);
             Assert.That(mark.Find("LeftEar"), Is.Not.Null);
             Assert.That(mark.Find("RightEar"), Is.Not.Null);
+            Assert.That(mark.Find("LeftEar").GetComponent<Image>().sprite.name,
+                Is.EqualTo("SymbolTriangle"), "the brand mark reads as a cat silhouette");
+            Assert.That(mark.Find("RightEar").GetComponent<Image>().sprite.name,
+                Is.EqualTo("SymbolTriangle"), "both ears carry the cat shape");
             AssertImage(mark, "RailLineTeal", "3BAFA8");
             AssertImage(mark, "RailDotOrange", "F08A3C");
 

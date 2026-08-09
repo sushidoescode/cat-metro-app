@@ -215,3 +215,10 @@ Bootstrap, packages, immutable paths, and every other lane's state row.
   navy tracked title/cat-rail mark, three distinct layered parked districts, and the sole
   orange/navy pin; LevelIntro shows a clear top route band, separated name/goal hierarchy,
   rounded paper card, flat navy staging field, and full-width orange Play chip.
+- 2026-08-09 — post-rebase breadth: full EditMode 824/824 at
+  `/tmp/cm-ui-editmode-all.wSLz9B/results.xml`; 101/101 affected PlayMode interactions at
+  `/tmp/cm-ui-related-play.PkLOvq/results.xml`. Results-frame inspection then found rounded
+  ear blocks reading ambiguously and both confetti pieces hidden under the foreground win
+  banner. Motif/composition RED is 3/7 with four named failures at
+  `/tmp/cm-ui-motif-red.pKeywj/results.xml` (Home cat mark, hint cat marker, completion cat,
+  and confetti/banner separation).

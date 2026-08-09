@@ -60,8 +60,13 @@ namespace CatMetro.Tests.PlayMode
                 Is.EqualTo(Hex("22304A")));
 
             AssertImage(hint.transform, "HintChip", "3BAFA8");
-            Assert.That(Find(hint.transform, "CatEarMarker"), Is.Not.Null,
+            var hintMarker = Find(hint.transform, "CatEarMarker");
+            Assert.That(hintMarker, Is.Not.Null,
                 "the hint has a non-color shape marker");
+            Assert.That(Find(hintMarker, "MarkerEarLeft").GetComponent<Image>().sprite.name,
+                Is.EqualTo("SymbolTriangle"), "the hint marker reads as cat ears");
+            Assert.That(Find(hintMarker, "MarkerEarRight").GetComponent<Image>().sprite.name,
+                Is.EqualTo("SymbolTriangle"));
             Assert.That((Color32)hint.GetComponentInChildren<TMP_Text>(true).color,
                 Is.EqualTo(Hex("FAF6EC")));
 
@@ -91,6 +96,11 @@ namespace CatMetro.Tests.PlayMode
             AssertImage(panel.PanelRoot.transform, "ConfettiOrange", "F08A3C",
                 requireRoundedSprite: false);
             AssertImage(panel.PanelRoot.transform, "PrimaryCta", "F08A3C");
+            var cat = Find(panel.PanelRoot.transform, "CompletionCat");
+            Assert.That(Find(cat, "CompletionEarLeft").GetComponent<Image>().sprite.name,
+                Is.EqualTo("SymbolTriangle"), "the completion motif reads as a cat");
+            Assert.That(Find(cat, "CompletionEarRight").GetComponent<Image>().sprite.name,
+                Is.EqualTo("SymbolTriangle"));
             var cta = Find(panel.PanelRoot.transform, "CtaLabel").GetComponent<TMP_Text>();
             AssertThemeFont(cta);
             Assert.That((Color32)cta.color, Is.EqualTo(Hex("22304A")));
@@ -100,6 +110,28 @@ namespace CatMetro.Tests.PlayMode
                 "polish does not invent footer content");
             Assert.That(Find(panel.PanelRoot.transform, "CompletionCard"), Is.Not.Null,
                 "mutation target: removing the completion card must turn this red");
+        }
+
+        [UnityTest]
+        public IEnumerator Results_ConfettiClearsTheForegroundWinBannerBand()
+        {
+            _host = new GameObject("ResultsConfettiHost");
+            var panel = _host.AddComponent<ResultsPanel>();
+            panel.Attach(() => "Won", new ChromeRegions());
+            yield return null;
+
+            var teal = Find(panel.PanelRoot.transform, "ConfettiTeal")
+                .GetComponent<RectTransform>();
+            var orange = Find(panel.PanelRoot.transform, "ConfettiOrange")
+                .GetComponent<RectTransform>();
+            Assert.That(teal.anchorMax.y, Is.LessThan(0.67f),
+                "teal confetti must sit below the foreground banner's lower edge");
+            Assert.That(orange.anchorMax.y, Is.LessThan(0.67f),
+                "orange confetti must sit below the foreground banner's lower edge");
+            Assert.That(teal.anchorMax.x, Is.LessThanOrEqualTo(0.09f),
+                "teal confetti stays visible beside the completion card");
+            Assert.That(orange.anchorMin.x, Is.GreaterThanOrEqualTo(0.91f),
+                "orange confetti stays visible beside the completion card");
         }
 
         private Canvas NewCanvas()
