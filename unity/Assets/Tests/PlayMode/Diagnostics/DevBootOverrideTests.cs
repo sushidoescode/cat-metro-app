@@ -1,10 +1,12 @@
 using System.Collections;
 using System.IO;
+using System.Text;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using CatMetro.Bootstrap;
 using CatMetro.Bootstrap.DevCapture;
+using CatMetro.Content;
 
 namespace CatMetro.Tests.PlayMode
 {
@@ -61,6 +63,24 @@ namespace CatMetro.Tests.PlayMode
             // (identical shape to DevLevelOverrideTests.SceneBoot() — PR #52 F1)
             var go = new GameObject("GameRoot-scene-boot");
             return go.AddComponent<GameRoot>();
+        }
+
+        // CM-SEAMS: N nested `{"<key>": ...}` wraps around an innermost `true` — depth is N
+        // regardless of key content, so key length is a free knob for controlling how long the
+        // resulting JsonReaderException's Path string gets once MaxDepth throws.
+        private static string DeepNestedJson(int levels, string key)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < levels; i++) sb.Append('{').Append('"').Append(key).Append("\":");
+            sb.Append("true");
+            for (int i = 0; i < levels; i++) sb.Append('}');
+            return sb.ToString();
+        }
+
+        private string _capturedInvalidLog;
+        private void CaptureInvalidLog(string condition, string stackTrace, LogType type)
+        {
+            if (condition.StartsWith("DEVCAP_BOOT_OVERRIDE_INVALID")) _capturedInvalidLog = condition;
         }
 
         private static string DemoJson() =>
@@ -235,6 +255,92 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.ScreensVisible, Is.True,
                 "precedence: the static flag composes regardless of file validity — the file "
                 + "check is independent and never gates the flag's own composition path");
+        }
+
+        // --- CM-SEAMS (security-S1): pre-read size cap. An oversize but otherwise WELL-FORMED
+        // file (bootToHome:true, padded past CONTENT_MAX_FILE_BYTES) must be rejected BEFORE
+        // parsing — never honored, even though its content alone would request the override.
+        // This is what makes the assertion mutation-provable: a size check that fires too late
+        // (or not at all) does not just change the log wording, it lets the override THROUGH. ---
+        [UnityTest]
+        public IEnumerator OversizeFile_ExceedsContentMaxFileBytes_LoudFallback_NeverHonored()
+        {
+            string prefix = "{\"bootToHome\": true, \"pad\": \"";
+            string suffix = "\"}";
+            int padLen = ContentBounds.CONTENT_MAX_FILE_BYTES + 1000 - prefix.Length - suffix.Length;
+            File.WriteAllText(Path.Combine(_tmpDir, "boot.json"),
+                prefix + new string('x', padLen) + suffix);
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex(
+                @"^DEVCAP_BOOT_OVERRIDE_INVALID .+ — payload \d+ bytes exceeds CONTENT_MAX_FILE_BYTES — booting the shipped path$"));
+            _root = SceneBoot();
+            yield return null;
+            Assert.That(_root.Session, Is.Not.Null, "still boots — never a crash or hang");
+            Assert.That(_root.ScreensVisible, Is.False,
+                "the oversize file's own bootToHome:true content must NEVER be honored — the "
+                + "size cap must fire before the content is even looked at");
+            Assert.That(_root.Home, Is.Null);
+            Assert.That(_root.Intro, Is.Null);
+            Assert.That(_root.Stack, Is.Null);
+        }
+
+        // --- CM-SEAMS (security-S1): the parse itself is depth-bounded at
+        // ContentBounds.CONTENT_MAX_JSON_DEPTH (16) — Newtonsoft's own default is 64, so a
+        // 20-level-deep file is accepted by the OLD unguarded JObject.Parse (it would then read
+        // the nested JObject as the "bootToHome" value and reject it as non-boolean — a
+        // DIFFERENT, MaxDepth-unrelated message) and rejected by the NEW depth-bounded parse
+        // with a message naming MaxDepth. The regex pins the CAUSE, not just "some error". ---
+        [UnityTest]
+        public IEnumerator DeeplyNestedFile_ExceedsContentMaxJsonDepth_LoudFallback_NamesMaxDepth()
+        {
+            File.WriteAllText(Path.Combine(_tmpDir, "boot.json"), DeepNestedJson(20, "bootToHome"));
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex(
+                $@"^DEVCAP_BOOT_OVERRIDE_INVALID .+MaxDepth of {ContentBounds.CONTENT_MAX_JSON_DEPTH} has been exceeded"));
+            _root = GameRoot.Launch();
+            yield return null;
+            Assert.That(_root.Session, Is.Not.Null, "still boots — never a crash or hang");
+            Assert.That(_root.Session.Level.Dto.Id, Is.EqualTo("L001"), "the NORMAL shipped level booted");
+            Assert.That(_root.ScreensVisible, Is.False);
+        }
+
+        // --- CM-SEAMS (pins the security-S2 sanitization landed in PR #52 — code-R1: it was
+        // unpinned): a deeply-nested file under a deliberately long key name blows the resulting
+        // JsonReaderException's Path string well past 200 characters. Deleting Sanitize's
+        // truncation (or the ellipsis append) makes `sanitized.Length` diverge from exactly 201
+        // (200 chars + the ellipsis marker) — this assertion is RED the moment either half of
+        // Sanitize's truncation is removed. ---
+        [UnityTest]
+        public IEnumerator Sanitization_OversizeExceptionMessage_LogLineTruncatedTo200PlusEllipsis()
+        {
+            string longKey = new string('k', 60);
+            File.WriteAllText(Path.Combine(_tmpDir, "boot.json"), DeepNestedJson(20, longKey));
+            _capturedInvalidLog = null;
+            UnityEngine.Application.logMessageReceived += CaptureInvalidLog;
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex(
+                "^DEVCAP_BOOT_OVERRIDE_INVALID "));
+            try
+            {
+                _root = GameRoot.Launch();
+                yield return null;
+            }
+            finally
+            {
+                UnityEngine.Application.logMessageReceived -= CaptureInvalidLog;
+            }
+            Assert.That(_capturedInvalidLog, Is.Not.Null, "the INVALID line must have fired");
+            string path = Path.Combine(_tmpDir, "boot.json");
+            string prefix = "DEVCAP_BOOT_OVERRIDE_INVALID " + path + " — ";
+            string suffix = " — booting the shipped path";
+            Assert.That(_capturedInvalidLog.StartsWith(prefix), Is.True,
+                "unexpected log shape: " + _capturedInvalidLog);
+            Assert.That(_capturedInvalidLog.EndsWith(suffix), Is.True,
+                "unexpected log shape: " + _capturedInvalidLog);
+            string sanitized = _capturedInvalidLog.Substring(
+                prefix.Length, _capturedInvalidLog.Length - prefix.Length - suffix.Length);
+            Assert.That(sanitized, Does.Contain("…"),
+                "security-S2 pin: an oversize exception message must be TRUNCATED, not logged whole");
+            Assert.That(sanitized.Length, Is.EqualTo(201),
+                "200-char cap + the ellipsis marker — the exact length a mutation that deletes "
+                + "or shortens the truncation would diverge from");
         }
     }
 }
