@@ -1,49 +1,90 @@
+using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace CatMetro.Presentation.Hud
 {
-    // Greybox banner: a world-space TextMesh carrying ONLY csv-resolved strings (criterion 4's
-    // zero-literals rule — callers pass the KEY). ADR-0007's UGUI+TMP chrome arrives with
-    // CM-C3's screens; greybox renders the text primitively and exposes it for assertion.
+    // Outcome copy remains csv-keyed, while the runtime-built card supplies the visual
+    // state: paper + text, with a separate colored keyline as a redundant accent.
     public sealed class BannerView : MonoBehaviour
     {
-        private TextMesh _mesh;
+        private TMP_Text _text;
+        private GameObject _card;
+        private Image _keyline;
 
         public string CurrentKey { get; private set; } = "";
-        public string CurrentText => _mesh != null ? _mesh.text : "";
-        public bool Visible => _mesh != null && gameObject.activeSelf && _mesh.text.Length > 0;
+        public string CurrentText => _text != null ? _text.text : "";
+        public bool Visible => _card != null && _card.activeInHierarchy
+            && _text != null && _text.text.Length > 0;
 
         public static BannerView Create(Transform parent)
         {
             var go = new GameObject("Banner");
             go.transform.SetParent(parent, false);
-            go.transform.localPosition = new Vector3(3f, 11f, -1f);
             var view = go.AddComponent<BannerView>();
-            view._mesh = go.AddComponent<TextMesh>();
-            view._mesh.characterSize = 0.5f;
-            view._mesh.anchor = TextAnchor.MiddleCenter;
-            view._mesh.text = "";
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            var canvas = go.AddComponent<Canvas>();
+            var camera = parent.root.GetComponentInChildren<Camera>();
+            if (camera != null)
+            {
+                canvas.renderMode = RenderMode.ScreenSpaceCamera;
+                canvas.worldCamera = camera;
+                canvas.planeDistance = 1f;
+            }
+            else
+            {
+                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            }
+            canvas.sortingOrder = 115;
+
+            var card = CatMetroUiTheme.MakeImage(go.transform, "BannerCard",
+                new Vector2(0.07f, 0.67f), new Vector2(0.93f, 0.82f),
+                CatMetroUiTheme.WarmPaper);
+            view._card = card.gameObject;
+            view._keyline = CatMetroUiTheme.MakeImage(card.transform, "BannerKeyline",
+                new Vector2(0.018f, 0.14f), new Vector2(0.045f, 0.86f),
+                CatMetroUiTheme.AlarmCoral);
+            view._text = CatMetroUiTheme.MakeText(card.transform, "BannerText",
+                new Vector2(0.08f, 0.12f), new Vector2(0.96f, 0.88f), "",
+                CatMetroTextRole.Body);
+            view._text.fontStyle = FontStyles.Bold;
+            view._card.SetActive(false);
             return view;
         }
 
         public void ShowKey(string key)
         {
             CurrentKey = key;
-            _mesh.text = Strings.UiStrings.Get(key);
+            _text.text = Strings.UiStrings.Get(key);
+            ApplyKeyline(key);
+            _card.SetActive(true);
         }
 
-        // CM-C3 criterion 10: the LOCKED fail strings carry a {node}/{station} token — the
-        // component still receives only the KEY plus the substitution pair, never a literal.
         public void ShowKeySubstituted(string key, string token, string value)
         {
             CurrentKey = key;
-            _mesh.text = Strings.UiStrings.Get(key).Replace(token, value ?? "?");
+            _text.text = Strings.UiStrings.Get(key).Replace(token, value ?? "?");
+            ApplyKeyline(key);
+            _card.SetActive(true);
         }
 
         public void Hide()
         {
             CurrentKey = "";
-            _mesh.text = "";
+            _text.text = "";
+            _card.SetActive(false);
+        }
+
+        private void ApplyKeyline(string key)
+        {
+            _keyline.color = key != null && key.StartsWith("win.")
+                ? CatMetroUiTheme.MetroTeal
+                : CatMetroUiTheme.AlarmCoral;
         }
     }
 }

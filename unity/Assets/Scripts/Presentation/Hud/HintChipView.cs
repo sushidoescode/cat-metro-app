@@ -44,24 +44,31 @@ namespace CatMetro.Presentation.Hud
             view._rect = go.AddComponent<RectTransform>();
 
             var bg = go.AddComponent<Image>();
-            var mat = UiChromeMaterial.Shared;
-            if (mat != null) bg.material = mat;
-            // DRAFT chip look for the eyeball sitting: dark spruce, distinct from the
-            // ink-navy retry chip — the TEXT carries the meaning, never the color (P-5).
-            bg.color = new Color(0.10f, 0.22f, 0.19f, 0.92f);
+            CatMetroUiTheme.StyleImage(bg, CatMetroUiTheme.MetroTeal);
+
+            var marker = CatMetroUiTheme.MakeImage(go.transform, "CatEarMarker",
+                new Vector2(0.035f, 0.20f), new Vector2(0.115f, 0.76f),
+                CatMetroUiTheme.WarmPaper).rectTransform;
+            var leftEar = CatMetroUiTheme.MakeImage(marker, "MarkerEarLeft",
+                new Vector2(0.02f, 0.64f), new Vector2(0.46f, 1.02f),
+                CatMetroUiTheme.WarmPaper).rectTransform;
+            leftEar.localRotation = Quaternion.Euler(0f, 0f, 18f);
+            var rightEar = CatMetroUiTheme.MakeImage(marker, "MarkerEarRight",
+                new Vector2(0.54f, 0.64f), new Vector2(0.98f, 1.02f),
+                CatMetroUiTheme.WarmPaper).rectTransform;
 
             var textGo = new GameObject("Label");
             textGo.transform.SetParent(go.transform, false);
             var trect = textGo.AddComponent<RectTransform>();
-            trect.anchorMin = Vector2.zero;
-            trect.anchorMax = Vector2.one;
+            trect.anchorMin = new Vector2(0.13f, 0f);
+            trect.anchorMax = new Vector2(0.97f, 1f);
             trect.offsetMin = Vector2.zero;
             trect.offsetMax = Vector2.zero;
             view._text = textGo.AddComponent<TextMeshProUGUI>();
             view._text.text = Strings.UiStrings.Get("hint.tutorial"); // key-only, never a literal
             view._text.alignment = TextAlignmentOptions.Center;
-            view._text.fontSize = 30f;
-            view._text.color = Color.white;
+            CatMetroUiTheme.StyleText(view._text, CatMetroTextRole.Body,
+                CatMetroUiTheme.WarmPaper);
 
             go.SetActive(false);
             return view;

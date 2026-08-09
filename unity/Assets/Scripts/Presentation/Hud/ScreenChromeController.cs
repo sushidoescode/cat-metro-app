@@ -1,4 +1,5 @@
 using UnityEngine;
+using CatMetro.Presentation.Audio;
 
 namespace CatMetro.Presentation.Hud
 {
@@ -13,6 +14,8 @@ namespace CatMetro.Presentation.Hud
     {
         private System.Func<string> _screenState;
         private Canvas _canvas;
+        private UiAudioManager _audio;
+        private string _previousState;
 
         public RetryCtaView Cta { get; private set; }
         public HaltVeilView Veil { get; private set; }
@@ -24,6 +27,7 @@ namespace CatMetro.Presentation.Hud
         {
             _screenState = screenState;
             EnsureViews();
+            _previousState = _screenState();
             Apply();
         }
 
@@ -54,13 +58,21 @@ namespace CatMetro.Presentation.Hud
             _canvas.sortingOrder = 100;
             Cta = RetryCtaView.Create(_canvas.transform);
             Veil = HaltVeilView.Create(_canvas.transform);
+            _audio = UiAudioManager.Ensure(transform);
         }
 
         private void Apply()
         {
             var state = _screenState();
+            if (_previousState != null && state != _previousState)
+            {
+                if (state == "FailureReview") _audio?.PlayWarning();
+                else if (_previousState == "FailureReview" && state == "Playing")
+                    _audio?.PlayTap();
+            }
             if (Cta != null) Cta.SetVisible(state == "FailureReview");
             if (Veil != null) Veil.SetVisible(state == "Halted");
+            _previousState = state;
         }
     }
 }

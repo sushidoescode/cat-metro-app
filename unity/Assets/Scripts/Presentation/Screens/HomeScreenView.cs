@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Input;
+using CatMetro.Presentation.Audio;
 
 namespace CatMetro.Presentation.Screens
 {
@@ -53,60 +54,87 @@ namespace CatMetro.Presentation.Screens
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
 
-            view._title = MakeText(go.transform, "Title",
-                new Vector2(0.08f, 0.87f), new Vector2(0.92f, 0.97f),
-                Strings.UiStrings.Get("home.title"), 48f); // key-only, never a literal
+            CatMetroUiTheme.MakeImage(go.transform, "HomePaper",
+                Vector2.zero, Vector2.one, CatMetroUiTheme.CreamCard);
+
+            var brand = new GameObject("BrandMark");
+            CatMetroUiTheme.Stretch(brand, go.transform,
+                new Vector2(0.07f, 0.83f), new Vector2(0.24f, 0.97f));
+            CatMetroUiTheme.MakeImage(brand.transform, "CatHead",
+                new Vector2(0.21f, 0.20f), new Vector2(0.79f, 0.76f),
+                CatMetroUiTheme.InkNavy);
+            var leftEar = CatMetroUiTheme.MakeImage(brand.transform, "LeftEar",
+                new Vector2(0.20f, 0.62f), new Vector2(0.46f, 0.91f),
+                CatMetroUiTheme.InkNavy).rectTransform;
+            leftEar.localRotation = Quaternion.Euler(0f, 0f, 18f);
+            var rightEar = CatMetroUiTheme.MakeImage(brand.transform, "RightEar",
+                new Vector2(0.54f, 0.62f), new Vector2(0.80f, 0.91f),
+                CatMetroUiTheme.InkNavy).rectTransform;
+            rightEar.localRotation = Quaternion.Euler(0f, 0f, -18f);
+            CatMetroUiTheme.MakeImage(brand.transform, "RailLineTeal",
+                new Vector2(0.04f, 0.05f), new Vector2(0.96f, 0.15f),
+                CatMetroUiTheme.MetroTeal);
+            CatMetroUiTheme.MakeImage(brand.transform, "RailDotOrange",
+                new Vector2(0.69f, 0.00f), new Vector2(0.85f, 0.20f),
+                CatMetroUiTheme.TicketOrange);
+
+            view._title = CatMetroUiTheme.MakeText(go.transform, "Title",
+                new Vector2(0.23f, 0.83f), new Vector2(0.93f, 0.97f),
+                Strings.UiStrings.Get("home.title"), CatMetroTextRole.Display);
 
             // Parked-district silhouettes: scenery, not buttons (S-01 — curiosity, no locks).
             MakeSilhouette(go.transform, "ParkedDistrictA",
-                new Vector2(0.08f, 0.55f), new Vector2(0.46f, 0.72f));
+                new Vector2(0.07f, 0.56f), new Vector2(0.45f, 0.74f), 0);
             MakeSilhouette(go.transform, "ParkedDistrictB",
-                new Vector2(0.54f, 0.60f), new Vector2(0.92f, 0.78f));
+                new Vector2(0.55f, 0.58f), new Vector2(0.93f, 0.78f), 1);
             MakeSilhouette(go.transform, "ParkedDistrictC",
-                new Vector2(0.16f, 0.32f), new Vector2(0.62f, 0.48f));
+                new Vector2(0.13f, 0.31f), new Vector2(0.67f, 0.51f), 2);
 
             // The raised-ring shape twin sits BEHIND the pin (sibling order = draw order).
             view._ring = MakeChip(go.transform, "PinRingL001",
-                new Color(0.95f, 0.92f, 0.85f, 0.85f));
+                CatMetroUiTheme.WarmPaper);
             view._pin = MakeChip(go.transform, "PinL001",
-                new Color(0.13f, 0.19f, 0.29f, 0.95f));
+                CatMetroUiTheme.TicketOrange);
+            CatMetroUiTheme.MakeImage(view._pin, "PinCore",
+                new Vector2(0.22f, 0.22f), new Vector2(0.78f, 0.78f),
+                CatMetroUiTheme.InkNavy);
 
             go.SetActive(false);
             return view;
         }
 
-        private static TMP_Text MakeText(Transform parent, string name,
-            Vector2 anchorMin, Vector2 anchorMax, string text, float size)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-            var rect = go.AddComponent<RectTransform>();
-            rect.anchorMin = anchorMin;
-            rect.anchorMax = anchorMax;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-            var tmp = go.AddComponent<TextMeshProUGUI>();
-            tmp.text = text;
-            tmp.alignment = TextAlignmentOptions.Center;
-            tmp.fontSize = size;
-            tmp.color = Color.white;
-            return tmp;
-        }
-
         private static void MakeSilhouette(Transform parent, string name,
-            Vector2 anchorMin, Vector2 anchorMax)
+            Vector2 anchorMin, Vector2 anchorMax, int variant)
         {
             var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-            var rect = go.AddComponent<RectTransform>();
-            rect.anchorMin = anchorMin;
-            rect.anchorMax = anchorMax;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-            var img = go.AddComponent<Image>();
-            var mat = UiChromeMaterial.Shared;
-            if (mat != null) img.material = mat;
-            img.color = new Color(0.35f, 0.38f, 0.42f, 0.55f); // muted parked scenery
+            CatMetroUiTheme.Stretch(go, parent, anchorMin, anchorMax);
+            var baseColor = CatMetroUiTheme.DepotNavy;
+            baseColor.a = 0.14f;
+            CatMetroUiTheme.StyleImage(go.AddComponent<Image>(), baseColor);
+
+            Color ink = CatMetroUiTheme.InkNavy;
+            ink.a = 0.42f;
+            Color teal = CatMetroUiTheme.MetroTeal;
+            teal.a = 0.34f;
+            CatMetroUiTheme.MakeImage(go.transform, "DepotBody",
+                new Vector2(0.12f, 0.16f), new Vector2(0.74f, 0.60f), ink);
+            var roof = CatMetroUiTheme.MakeImage(go.transform, "DepotRoof",
+                new Vector2(0.18f, 0.56f), new Vector2(0.70f, 0.84f), ink).rectTransform;
+            roof.localRotation = Quaternion.Euler(0f, 0f, variant == 1 ? -8f : 7f);
+            CatMetroUiTheme.MakeImage(go.transform, "RailBed",
+                new Vector2(0.05f, 0.08f), new Vector2(0.95f, 0.15f), teal);
+            CatMetroUiTheme.MakeImage(go.transform, "SignalPost",
+                new Vector2(0.79f, 0.22f), new Vector2(0.86f, 0.78f), ink);
+            if (variant >= 1)
+            {
+                CatMetroUiTheme.MakeImage(go.transform, "WaterTower",
+                    new Vector2(0.72f, 0.48f), new Vector2(0.94f, 0.82f), teal);
+            }
+            if (variant >= 2)
+            {
+                CatMetroUiTheme.MakeImage(go.transform, "ShedAnnex",
+                    new Vector2(0.58f, 0.20f), new Vector2(0.88f, 0.48f), ink);
+            }
         }
 
         private static RectTransform MakeChip(Transform parent, string name, Color color)
@@ -114,10 +142,7 @@ namespace CatMetro.Presentation.Screens
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             var rect = go.AddComponent<RectTransform>();
-            var img = go.AddComponent<Image>();
-            var mat = UiChromeMaterial.Shared;
-            if (mat != null) img.material = mat;
-            img.color = color;
+            CatMetroUiTheme.StyleImage(go.AddComponent<Image>(), color);
             return rect;
         }
 
@@ -174,9 +199,15 @@ namespace CatMetro.Presentation.Screens
             if (_regions != null && !_registered)
             {
                 _regions.Register(PinRegionId, () => _pinRectPx,
-                    () => LevelSelected?.Invoke(), PinRegionPriority);
+                    InvokeLevelSelected, PinRegionPriority);
                 _registered = true;
             }
+        }
+
+        private void InvokeLevelSelected()
+        {
+            UiAudioManager.Ensure(transform)?.PlayTap();
+            LevelSelected?.Invoke();
         }
 
         private void UnregisterPin()

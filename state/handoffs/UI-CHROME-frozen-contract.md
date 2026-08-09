@@ -199,3 +199,8 @@ Bootstrap, packages, immutable paths, and every other lane's state row.
   0/16 (missing manager/styles/symbol map, legacy TextMesh/primitive preview). Raw NUnit
   results: `/tmp/cm-ui-red-edit.SXvPxI/results.xml` and
   `/tmp/cm-ui-red-play.FWp9bP/results.xml`.
+- 2026-08-09 — independent core milestone green: palette/font/sprite/stinger resources
+  3/3 and Home/intro/outcome/results/audio PlayMode 9/9; `check.sh`, raw-copy static,
+  and the halt-vocabulary source sweep green. WavePreview remains red and untouched while
+  its Lane 1A gate-re-author prerequisite is unavailable. PR #63 landed on main as
+  `11a3335`; rebase onto that squash is next.
