@@ -42,9 +42,11 @@ L005 at 60%, both below a 70% bar).
 
 **Option 1 semantics as executed:** criterion 4(b)'s ≥70% pessimistic bar is re-scoped to
 L007–L010; L006's pessimistic reading is recorded as a characteristic of the authored anchor
-— pinned live in `Level_RetentionHolds_UnderBothNEWQ4Readings` (`(w,l,p) == (7,0,13)`,
-pessimistic == 35) so solver/jitter/anchor drift cannot silently change what the ruling
-recorded. The optimistic ≥70% bar still applies to all five levels (L006 reads 100%). Anchor
+— pinned live at BOTH enforcement points (`Level_RetentionHolds_UnderBothNEWQ4Readings` and
+the wrapper `tests/corpus/alternation-band.test.sh`'s python report check, which independently
+enforced the 70% bar and went red on the same cause in the first full-suite run): `(w,l,p) ==
+(7,0,13)`, pessimistic == 35, so solver/jitter/anchor drift cannot silently change what the
+ruling recorded. The optimistic ≥70% bar still applies to all five levels (L006 reads 100%). Anchor
 bytes stay as authored — CONFLICT-1 is NOT reopened, so the JOINT/HC-14 coupling is not
 triggered (no CM-C5.1 change). The F4 risk trigger for L002/L005 stays open in
 `state/PROJECT_STATE.md` §Known debt, unresolved by this ruling, re-checked when Q-B/NEW-Q4

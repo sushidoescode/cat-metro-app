@@ -168,8 +168,11 @@ namespace CatMetro.Tests.Corpus
             Assert.That(schema.Code, Is.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Pass), id + " " + schema.Detail);
 
             var stat = l.Verdicts.Single(v => v.Stage == CatMetro.Content.Validation.Stage.StaticAnalysis);
-            Assert.That(stat.Code, Is.AnyOf(CatMetro.Content.Validation.StageVerdictCode.Pass,
-                CatMetro.Content.Validation.StageVerdictCode.Warn), id + " " + stat.Detail);
+            // Is.EqualTo(..).Or.EqualTo(..) rather than Is.AnyOf: Unity's bundled NUnit
+            // predates AnyOf (CS0117 under the editor compile; the dotnet leg's newer NUnit
+            // masked it — caught by the first completed full-suite run, 2026-08-08).
+            Assert.That(stat.Code, Is.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Pass)
+                .Or.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Warn), id + " " + stat.Detail);
 
             Assert.That(l.Solve, Is.Not.Null, id + ": stage 4 never ran");
             Assert.That(l.Solve.Verdict, Is.EqualTo(CatMetro.Domain.Solver.SolveVerdict.Solved), id);

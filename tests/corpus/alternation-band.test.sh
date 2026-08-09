@@ -106,7 +106,16 @@ for lid in band:
     pessimistic = w * 100 // (w + l + p)
     if optimistic < 70:
         fail(lid + " optimistic retention %d%% < 70%% — %s" % (optimistic, value))
-    if pessimistic < 70:
+    if lid == "L006":
+        # Human criterion-4(b) ruling, 2026-08-08 (CM-C11.md, RULING section — option 1):
+        # the pessimistic bar applies to L007-L010; L006's reading is pinned as the
+        # recorded characteristic of the authored anchor (mirrors the NUnit pin in
+        # AlternationBandTests) so drift cannot pass silently.
+        if (w, l, p) != (7, 0, 13):
+            fail(lid + " anchor characteristic drifted (expected wins=7 losses=0 pinned=13): " + value)
+        if pessimistic != 35:
+            fail(lid + " pessimistic characteristic drifted (expected 35): " + value)
+    elif pessimistic < 70:
         fail(lid + " pessimistic retention %d%% < 70%% — %s" % (pessimistic, value))
     print(lid + ": retention optimistic=%d%% pessimistic=%d%% (%s)" % (optimistic, pessimistic, value))
 
