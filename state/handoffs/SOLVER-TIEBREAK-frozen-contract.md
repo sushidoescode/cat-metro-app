@@ -328,3 +328,30 @@ Lessons audit found no matching recurrence. The review workflow calls for three 
 (final tie-break applied before normalization; unverified bounded-iteration fallback; reference
 oracle duplicates the SUT), but `docs/lessons.md` is outside Lane 2's exclusive ownership. It stays
 untouched unless the human explicitly extends scope; this is disclosed, not silently waived.
+
+### Review-resolution RED 2 + receipt-order ruling gate — 2026-08-09
+
+The existing reviewers inspected local implementation tip `b73f73f` without rerunning the suite.
+They confirmed that cycle/non-convergence now fails closed and the exhaustive fixed-point oracle no
+longer copies production, but returned `NOT MERGEABLE / PERF FAIL` on four remaining properties:
+raw-lex state dedupe can discard histories before terminal normalization; normalization failure is
+misreported as pin-only `Indeterminate` and does not stop beam escalation; a centered result can
+reverse receipt chronology; and all-candidate replay refinement still has no total work ceiling.
+The performance ruling accepts one Solve-wide work meter using the existing `maxNodesExpanded`
+value, with `NotFound(Budget)` on exhaustion and search-only `NodesExpanded` reporting.
+
+Strict RED commit `2064a06` adds the reviewer's exact one-switch converged-state board plus the
+abstract receipt relation. The focused slice is 0/2 for the intended reasons: exhaustive reference
+expects `S0@(0,0)+(0,1)`, production returns reversed `S0@(0,1)+(0,0)`; the receipt relation expects
+`[1,2]`, production returns `[3,1]`. Production source is unchanged in that commit.
+
+The smallest neighbor-clipped-window experiment makes both new tests green, but exposes an
+irreconcilable reading inside the current tests/contract: the previously supplied cycling relation
+then becomes a fixed `[1,1]` instead of stopping, and the established two-command canonical log
+moves from `(6,6)` to `(4,8)` (7/9 `SolverDeterminismTests` green). That movement would also require
+fresh corpus/F4 measurement authority rather than silently superseding the human-acknowledged table.
+The experiment was reverted byte-clean; worktree production remains at `b73f73f`. Human ruling is
+required between (A) unrestricted same-completion windows with any chronology-reversing result
+treated as an explicit stop, preserving the existing cycle semantics and acknowledged outputs, or
+(B) receipt-clipped windows, accepting the changed cycle definition and a full re-measure/re-pin
+gate. No production fix, pin, or acknowledged measurement moves before that ruling.
