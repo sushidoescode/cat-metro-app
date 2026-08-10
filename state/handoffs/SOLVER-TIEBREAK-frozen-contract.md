@@ -549,3 +549,37 @@ before any win: one node plus two successor-attempt charges consume the 2,000,00
 canonical work. Independent fixed-log replay proves one-toggle ticks `0..11` all win at completion
 `39`; the lower midpoint is uniquely tick `5`. Neither the PlayMode assertion nor the authored
 2,000,000 bound may move; production must recover this existing active-play witness exactly.
+
+### D001 exact command-count dominance implementation — 2026-08-10
+
+The minimal production correction uses a behavioral convergence key only for statically pin-free
+exact-BFS boards. `Simulation.Step` increments `SwitchesUsed` but never reads it; therefore, when
+two histories share every other digest byte, the lower-command history produces byte-identical
+future behavior for every suffix and permanently dominates the higher-command history. Equal-count
+collisions still merge every predecessor history. The replacement path updates State, replay log,
+and provenance together.
+
+The optimization is deliberately scoped to boards where every station accepts every emitted wave
+color, which makes Simulation's only pinned `NotSupportedException` path unreachable and keeps
+`PinnedPruned=0` by construction. It is also BFS-only, so beam selection is untouched. The
+convergence key clears only the copied digest's seventh 32-bit field (`SwitchesUsed`, bytes 24..27);
+the canonical Simulation digest itself never moves. D001 is the only member of the audited
+D001/L001–L010/L701/L702 set that satisfies this classifier, so all pinned corpus boards continue
+through the original full-digest path.
+
+Results at the unchanged 2,000,000 shared ceiling: D001 falls from `666,668` nodes/`NotFound` to
+`98,706` nodes and `412,099` complete shared-work units; it returns `Solved`, completion `39`, one
+command, no pins, canonical `S0@5`. The focused pure test is green in 2 seconds, and the original
+PlayMode witness is independently 1/1 green in 6.07 seconds. The complete solver slice is 38/38.
+
+Mutation: replace only `DigestKey(state, commandCountDominance)` with the full
+`DigestKey(state)`. The focused D001 test returns the exact RED discriminator `Expected: Solved /
+But was: NotFound` (1 failed, exit 1, 23 seconds). Restoring the dominance call returns the test to
+green and production to desired `LevelSolver.cs` SHA-256
+`593980a37653fc9f1accc6e20e82930c69551eb6b90cdd8e075aec376328132f`.
+
+Fresh corpus validation after the fix is `RESULT: OK` in 57.51 seconds (max RSS 207,814,656 bytes,
+peak footprint 161,924,032 bytes). Every protected public count and result is unchanged, including
+L006 `20,829` with `(20,0,0)`/`[24,24,24]`, L701 `146,942` with
+`[20,20,24,25,20]`, and L702 `16,839`. Thus the newly recorded L701 shared-work total
+`1,176,578` also stays authoritative: its pinned-color graph does not enter this optimization.

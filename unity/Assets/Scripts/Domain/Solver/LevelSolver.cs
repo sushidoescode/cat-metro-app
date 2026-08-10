@@ -94,6 +94,11 @@ namespace CatMetro.Domain.Solver
             string firstPin = "";
             int nodesExpanded = priorExpanded;
             int timeLimit = graph.TimeLimitTicks;
+            // SwitchesUsed is write-only during Simulation.Step, so a lower-command history that
+            // reaches the same remaining state dominates a higher-command one for every suffix.
+            // Apply that convergence only where pinned-prune diagnostics are statically zero;
+            // pin-bearing corpus boards retain their established full-digest counts verbatim.
+            bool commandCountDominance = exhaustiveIsProof && IsStaticallyPinFree(graph);
 
             // Layer L = distinct running states whose replay has taken exactly L steps. A state
             // is simulated once, while its minimum-command receipt histories travel as a compact
@@ -170,7 +175,7 @@ namespace CatMetro.Domain.Solver
                         }
                         else if (state.Outcome.Kind == OutcomeKind.Running)
                         {
-                            var key = DigestKey(state);
+                            var key = DigestKey(state, commandCountDominance);
                             if (!next.TryGetValue(key, out var incumbent))
                             {
                                 incumbent = new SearchFrontier(state, childLog);
@@ -182,6 +187,7 @@ namespace CatMetro.Domain.Solver
                             }
                             else if (childLog.Entries.Count < incumbent.CommandCount)
                             {
+                                incumbent.State = state;
                                 incumbent.ReplayLog = childLog;
                                 if (!incumbent.ReplaceFrom(frontier, combo, work))
                                     return CanonicalStop(NotFoundReason.Budget, graph, reportWidth,
@@ -914,7 +920,7 @@ namespace CatMetro.Domain.Solver
 
         private sealed class SearchFrontier
         {
-            internal readonly SimulationState State;
+            internal SimulationState State;
             internal readonly ProvenanceNode Provenance;
             internal CommandLog ReplayLog;
             internal int CommandCount => ReplayLog.Entries.Count;
@@ -1325,7 +1331,37 @@ namespace CatMetro.Domain.Solver
             return d;
         }
 
-        private static string DigestKey(SimulationState state) => Convert.ToBase64String(Digest(state));
+        private static string DigestKey(SimulationState state, bool omitSwitchesUsed = false)
+        {
+            var digest = Digest(state);
+            if (omitSwitchesUsed)
+            {
+                const int switchesUsedOffset = 6 * 4; // seventh int in WriteDigest's frozen layout
+                Array.Clear(digest, switchesUsedOffset, 4);
+            }
+            return Convert.ToBase64String(digest);
+        }
+
+        private static bool IsStaticallyPinFree(LevelGraph graph)
+        {
+            for (int w = 0; w < graph.WaveColor.Length; w++)
+            {
+                byte color = graph.WaveColor[w];
+                for (int station = 0; station < graph.StationAccepts.Length; station++)
+                {
+                    bool accepts = false;
+                    var colors = graph.StationAccepts[station];
+                    for (int i = 0; i < colors.Length; i++)
+                    {
+                        if (colors[i] != color) continue;
+                        accepts = true;
+                        break;
+                    }
+                    if (!accepts) return false;
+                }
+            }
+            return true;
+        }
 
         // Difficulty proxy per the handoff rulings — populated only for a Solved verdict.
         private static DifficultyProxy ComputeProxy(LevelGraph graph, ulong seed, CommandLog log, int completionTicks)
