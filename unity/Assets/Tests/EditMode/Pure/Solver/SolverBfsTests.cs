@@ -83,7 +83,7 @@ namespace CatMetro.Tests.Solver
             // run widths 2,500/5,000 or manufacture a Q-N pin beyond the real search counter.
             var control = LevelSolver.Solve(SolverFixtures.ThreeSwitchEscalation(), 5);
             var r = LevelSolver.Solve(
-                SolverFixtures.ThreeSwitchEscalation(), 5, maxNodesExpanded: 1200);
+                SolverFixtures.ThreeSwitchEscalation(), 5, maxNodesExpanded: 20000);
 
             Assert.That(control.Verdict, Is.EqualTo(SolveVerdict.Solved));
             Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.NotFound));
@@ -92,6 +92,20 @@ namespace CatMetro.Tests.Solver
             Assert.That(r.NodesExpanded, Is.EqualTo(1138));
             Assert.That(r.PinnedPruned, Is.EqualTo(control.PinnedPruned));
             Assert.That(r.FirstPinMessage, Is.EqualTo(control.FirstPinMessage));
+        }
+
+        [Test]
+        public void SuccessorWorkStop_IsPromptAndDoesNotEscalate()
+        {
+            var r = LevelSolver.Solve(
+                SolverFixtures.ThreeSwitchEscalation(), 5, maxNodesExpanded: 1200);
+
+            Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.NotFound));
+            Assert.That(r.NotFoundReason, Is.EqualTo(NotFoundReason.Budget));
+            Assert.That(r.BeamWidthUsed, Is.EqualTo(SolverBounds.BEAM_WIDTHS[0]));
+            Assert.That(r.NodesExpanded, Is.EqualTo(87),
+                "the first failed successor-work charge stops the current beam immediately");
+            Assert.That(r.OptimalLog.Entries.Count, Is.EqualTo(0));
         }
 
         [Test]

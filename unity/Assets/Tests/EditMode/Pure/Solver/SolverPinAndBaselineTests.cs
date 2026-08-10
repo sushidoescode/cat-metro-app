@@ -113,13 +113,26 @@ namespace CatMetro.Tests.Solver
         }
 
         [Test]
-        public void CanonicalRefinement_UsesTheSameTotalWorkCeiling()
+        public void SuccessorAttempts_StopPromptlyAtTheSharedWorkCeiling()
         {
-            // Search itself completes in 97 expansions. The remaining three work units are not
-            // enough to compare the five equal-primary winners on this broad safe-window board.
-            var control = LevelSolver.Solve(SolverFixtures.TieBreakBoard(), 11);
             var r = LevelSolver.Solve(
                 SolverFixtures.TieBreakBoard(), 11, maxNodesExpanded: 100);
+
+            Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.NotFound));
+            Assert.That(r.NotFoundReason, Is.EqualTo(NotFoundReason.Budget));
+            Assert.That(r.NodesExpanded, Is.EqualTo(34),
+                "the search stops on the first rejected successor-work charge");
+            Assert.That(r.OptimalLog.Entries.Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void CanonicalRefinement_UsesTheSameTotalWorkCeiling()
+        {
+            // Search reaches the raw win in 97 expansions. After successor work is charged, the
+            // remainder still cannot certify and compare the equal-primary winning histories.
+            var control = LevelSolver.Solve(SolverFixtures.TieBreakBoard(), 11);
+            var r = LevelSolver.Solve(
+                SolverFixtures.TieBreakBoard(), 11, maxNodesExpanded: 400);
 
             Assert.That(control.Verdict, Is.EqualTo(SolveVerdict.Solved));
             Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.NotFound));
