@@ -355,3 +355,18 @@ required between (A) unrestricted same-completion windows with any chronology-re
 treated as an explicit stop, preserving the existing cycle semantics and acknowledged outputs, or
 (B) receipt-clipped windows, accepting the changed cycle definition and a full re-measure/re-pin
 gate. No production fix, pin, or acknowledged measurement moves before that ruling.
+
+### Human ruling — Option A window semantics — 2026-08-09
+
+The human ruled verbatim: **"Ruling: option A — keep maximal windows unrestricted as frozen, fail
+closed if normalization would reverse receipt chronology."** Channel: direct in-conversation
+directive, agent-relayed with the usual H-1-class confirmability caveat. The human's stated basis is
+that A preserves the freshly acknowledged F4/L006 measurements and cycle-stop semantics, while B
+would force a third measurement/re-pin cycle without player-visible gain; the fail-closed guard is
+the conservative repository posture.
+
+Scope is explicit and verbatim: **"this approval is window-semantics authority only — not the HC-25
+merge word, which you'll ask for separately when the PR is ready."** The ruling additionally orders
+the fail-closed path's own RED-first test and a mutation proof that deletes the guard, captures the
+exact failure, and restores the desired bytes exactly. Lane 3's dependency is live; once #66 is
+green and reviewable, this lane asks promptly for the separate HC-25 word.
