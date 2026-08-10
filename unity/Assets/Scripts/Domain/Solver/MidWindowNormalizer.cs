@@ -25,6 +25,11 @@ namespace CatMetro.Domain.Solver
             {
                 var before = (int[])centeredTicks.Clone();
                 CenterOneSweep(centeredTicks, upperExclusive, sameCompletionWin);
+                if (!ReceiptOrderPreserved(centeredTicks))
+                {
+                    centeredTicks = (int[])seedTicks.Clone();
+                    return false;
+                }
                 if (Equal(before, centeredTicks)) return true;
                 if (!seen.Add(Key(centeredTicks))) break;
             }
@@ -33,6 +38,13 @@ namespace CatMetro.Domain.Solver
             // work envelope. Stop deterministically; never present a changing boundary as centered.
             centeredTicks = (int[])seedTicks.Clone();
             return false;
+        }
+
+        private static bool ReceiptOrderPreserved(int[] ticks)
+        {
+            for (int i = 1; i < ticks.Length; i++)
+                if (ticks[i] < ticks[i - 1]) return false;
+            return true;
         }
 
         private static void CenterOneSweep(
