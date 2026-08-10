@@ -13,7 +13,7 @@ namespace CatMetro.Presentation.Cameras
         // board size and provably busts the 1500 ms budget beyond 5.25 units. Any distance
         // completes in PAN_DURATION_MS.
         public const double PAN_DURATION_MS = 400.0;
-        private const float TabletopPitchDegrees = 58f;
+        private const float TabletopPitchDegrees = 60f;
         private const float VirtualCameraDepth = 14f;
 
         private UnityEngine.Camera _camera;
@@ -39,8 +39,8 @@ namespace CatMetro.Presentation.Cameras
             _camera = cam;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = Board.DioramaPalette.WarmPaper;
-            // The gameplay plane is XY with +Z as its normal. Fifty-eight degrees away from
-            // that normal reads as 32 degrees above the tabletop horizon — the low, premium
+            // The gameplay plane is XY with +Z as its normal. Sixty degrees away from that
+            // normal reads as 30 degrees above the tabletop horizon — the low, premium
             // three-quarter view in the signed-off Gemini target — while retaining the
             // orthographic interaction/framing contract constructed by GameRoot.
             cam.transform.rotation = Quaternion.Euler(-TabletopPitchDegrees, 0f, 0f);
@@ -241,14 +241,14 @@ namespace CatMetro.Presentation.Cameras
             if (_ring == null)
             {
                 _ring = new GameObject("CauseRing");
-                Board.DioramaMeshFactory.Attach(_ring, Board.DioramaMeshKind.Cylinder,
+                Board.DioramaMeshFactory.Attach(_ring, Board.DioramaMeshKind.Ring,
                     Board.DioramaPalette.Material("cause-ring", Board.DioramaPalette.TicketOrange));
                 _ring.name = "CauseRing";
                 // Review B1: NEVER parented to the camera — the controller lives on the camera
                 // object, so a camera-parented ring rides the cut/pan and ends 3.5 units off
                 // the causal node. World-positioned, unparented: it stays ON the node.
-                _ring.transform.localScale = new Vector3(1.4f, 0.02f, 1.4f);
-                _ring.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                _ring.transform.localScale = new Vector3(1.4f, 1.4f, 1f);
+                _ring.transform.localRotation = Quaternion.identity;
                 var color = Board.DioramaPalette.TicketOrange;
                 color.a = 0.85f;
                 _ring.GetComponent<Renderer>().material.color = color;

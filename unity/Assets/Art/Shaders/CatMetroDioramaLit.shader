@@ -7,6 +7,7 @@ Shader "Universal Render Pipeline/Cat Metro Diorama Lit"
         _VertexAlphaWeight("Vertex Alpha Weight", Range(0, 1)) = 0
         _RampThresholds("Three-Step Ramp Thresholds", Vector) = (0.34, 0.68, 0, 0)
         _RimStrength("Rim Strength", Range(0, 0.35)) = 0.14
+        [HideInInspector] _ZWrite("Depth Write", Float) = 1
     }
 
     SubShader
@@ -23,7 +24,7 @@ Shader "Universal Render Pipeline/Cat Metro Diorama Lit"
             Name "DioramaForward"
             Tags { "LightMode" = "UniversalForward" }
             Cull Back
-            ZWrite On
+            ZWrite [_ZWrite]
             Blend SrcAlpha OneMinusSrcAlpha
 
             HLSLPROGRAM
@@ -96,7 +97,14 @@ Shader "Universal Render Pipeline/Cat Metro Diorama Lit"
                 half3 vertexColor = lerp(half3(1.0h, 1.0h, 1.0h),
                     input.color.rgb, _VertexColorWeight);
                 half alpha = _BaseColor.a * lerp(1.0h, input.color.a, _VertexAlphaWeight);
-                return half4(_BaseColor.rgb * vertexColor * lightMix, alpha);
+                half3 litColor = _BaseColor.rgb * vertexColor * lightMix;
+                // Vertex-alpha materials are exclusively the authored contact-shadow discs.
+                // Keep their ink value independent of the warm key/rim ramp: lighting a
+                // translucent blob can turn the low-alpha blend into a pale halo, which is
+                // the inverse of the baked-AO cue this zero-cost mobile path represents.
+                half isContactShadow = step(0.5h, _VertexAlphaWeight);
+                half3 contactInk = half3(0.0745098h, 0.1098039h, 0.1882353h);
+                return half4(lerp(litColor, contactInk, isContactShadow), alpha);
             }
             ENDHLSL
         }

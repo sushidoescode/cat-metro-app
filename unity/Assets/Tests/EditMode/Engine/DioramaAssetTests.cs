@@ -210,6 +210,12 @@ namespace CatMetro.Tests.EditMode
                     Assert.That(material.GetFloat("_VertexColorWeight"), Is.Zero, path);
                     Assert.That(material.GetFloat("_VertexAlphaWeight"), Is.EqualTo(1f), path);
                     Assert.That(material.color.a, Is.InRange(0.08f, 0.35f), path);
+                    Assert.That(material.HasProperty("_ZWrite"), Is.True, path);
+                    Assert.That(material.GetFloat("_ZWrite"), Is.Zero,
+                        "a blended contact disc must never punch an opaque depth hole");
+                    Assert.That(material.renderQueue,
+                        Is.GreaterThanOrEqualTo((int)UnityEngine.Rendering.RenderQueue.Transparent));
+                    Assert.That(material.GetTag("RenderType", false), Is.EqualTo("Transparent"));
                 }
                 else
                 {

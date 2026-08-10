@@ -10,6 +10,7 @@ namespace CatMetro.Presentation.Board
         Cylinder,
         Capsule,
         RoundedBox,
+        Ring,
         SoftShadow,
         Quad,
     }
@@ -76,6 +77,10 @@ namespace CatMetro.Presentation.Board
                     mesh = MakeRoundedBox();
                     BuiltinMeshes[kind] = mesh;
                     return mesh;
+                case DioramaMeshKind.Ring:
+                    mesh = MakeRing();
+                    BuiltinMeshes[kind] = mesh;
+                    return mesh;
                 case DioramaMeshKind.SoftShadow:
                     mesh = MakeSoftShadowDisc();
                     BuiltinMeshes[kind] = mesh;
@@ -133,6 +138,44 @@ namespace CatMetro.Presentation.Board
                 vertices = vertices,
                 normals = normals,
                 colors32 = colors,
+                triangles = triangles,
+            };
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static Mesh MakeRing()
+        {
+            const int segments = 32;
+            const float innerRadius = 0.36f;
+            const float outerRadius = 0.5f;
+            var vertices = new Vector3[segments * 2];
+            var normals = new Vector3[vertices.Length];
+            var triangles = new int[segments * 6];
+            for (int i = 0; i < segments; i++)
+            {
+                float angle = (90f - i * 360f / segments) * Mathf.Deg2Rad;
+                Vector3 radial = new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f);
+                vertices[i * 2] = radial * innerRadius;
+                vertices[i * 2 + 1] = radial * outerRadius;
+                normals[i * 2] = Vector3.back;
+                normals[i * 2 + 1] = Vector3.back;
+
+                int next = (i + 1) % segments;
+                int index = i * 6;
+                triangles[index] = i * 2;
+                triangles[index + 1] = i * 2 + 1;
+                triangles[index + 2] = next * 2 + 1;
+                triangles[index + 3] = i * 2;
+                triangles[index + 4] = next * 2 + 1;
+                triangles[index + 5] = next * 2;
+            }
+
+            var mesh = new Mesh
+            {
+                name = "DioramaRing",
+                vertices = vertices,
+                normals = normals,
                 triangles = triangles,
             };
             mesh.RecalculateBounds();

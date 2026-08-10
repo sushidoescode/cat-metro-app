@@ -35,12 +35,19 @@ namespace CatMetro.Presentation.Board
                 name = "Diorama/" + name,
                 color = color,
             };
+            if (material.HasProperty("_BaseColor"))
+                material.SetColor("_BaseColor", color);
             material.enableInstancing = true;
+            if (color.a < 0.999f)
+            {
+                if (material.HasProperty("_ZWrite")) material.SetFloat("_ZWrite", 0f);
+                material.SetOverrideTag("RenderType", "Transparent");
+                material.renderQueue = 3000;
+            }
             if (name.StartsWith("contact-shadow"))
             {
                 if (material.HasProperty("_VertexAlphaWeight"))
                     material.SetFloat("_VertexAlphaWeight", 1f);
-                material.renderQueue = 2001;
             }
             Materials[key] = material;
             return material;

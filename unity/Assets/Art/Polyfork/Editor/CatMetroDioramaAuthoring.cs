@@ -62,31 +62,31 @@ namespace CatMetro.Editor
             {
                 new Dressing("polyfork_log_cabin_4fac3b.fbx", "Polyfork_DepotShed",
                     "CreamCard", DioramaPalette.CreamCard,
-                    new Vector3(3f, 10.2f, 0.28f), new Vector3(90f, 0f, 0f), 0.2f),
+                    new Vector3(0.9f, 8.55f, 0.4f), new Vector3(180f, 0f, 0f), 0.18f),
                 new Dressing("polyfork_train_engine_180979.fbx", "Polyfork_ToyEngine",
                     "MetroTeal", DioramaPalette.MetroTeal,
-                    new Vector3(4.72f, 9.15f, 0.28f), Vector3.zero, 0.24f),
+                    new Vector3(5.0f, 8.35f, 0.4f), new Vector3(180f, 0f, -12f), 0.2f),
                 new Dressing("polyfork_young_pine_0d7695.fbx", "Polyfork_Pine",
                     "MetroTeal", DioramaPalette.MetroTeal,
-                    new Vector3(0.38f, 10.25f, 0.42f), new Vector3(90f, 0f, 0f), 0.52f),
+                    new Vector3(0.55f, 6.65f, 0.4f), new Vector3(180f, 0f, 0f), 0.46f),
                 new Dressing("polyfork_wooden_fence_section_5f04b7.fbx", "Polyfork_Fence",
                     "CreamCard", DioramaPalette.CreamCard,
-                    new Vector3(5.38f, 10.75f, 0.42f), new Vector3(90f, 0f, 0f), 0.58f),
+                    new Vector3(3.0f, 2.9f, 0.4f), new Vector3(180f, 0f, -8f), 0.5f),
                 new Dressing("polyfork_wooden_bench_661da4.fbx", "Polyfork_Bench",
                     "InkNavy", DioramaPalette.InkNavy,
-                    new Vector3(0.45f, 0.85f, 0.38f), Vector3.zero, 0.68f),
+                    new Vector3(2.0f, 2.3f, 0.4f), new Vector3(180f, 0f, 10f), 0.56f),
                 new Dressing("polyfork_sandwich_board_sign_cb5e7c.fbx", "Polyfork_StationSign",
                     "TicketOrange", DioramaPalette.TicketOrange,
-                    new Vector3(5.35f, 3.15f, 0.22f), new Vector3(90f, 0f, 0f), 0.9f),
+                    new Vector3(5.65f, 2.55f, 0.4f), new Vector3(180f, 0f, 0f), 0.62f),
                 new Dressing("polyfork_street_lamp_29f365.fbx", "Polyfork_StreetLamp",
                     "DepotNavy", DioramaPalette.DepotNavy,
-                    new Vector3(5.42f, 6.7f, 0.25f), new Vector3(90f, 0f, 0f), 0.56f),
+                    new Vector3(5.5f, 5.25f, 0.4f), new Vector3(180f, 0f, 0f), 0.42f),
                 new Dressing("polyfork_coffee_cup_90be67.fbx", "Polyfork_CoffeeCup",
                     "WarmPaper", DioramaPalette.WarmPaper,
-                    new Vector3(0.48f, -0.35f, 0.28f), new Vector3(90f, 0f, 0f), 4.6f),
+                    new Vector3(0.5f, -1.05f, 0.4f), new Vector3(180f, 0f, 0f), 3.8f),
                 new Dressing("polyfork_tram_track_tile_f3c69a.fbx", "Polyfork_TrackTile",
                     "CreamCard", DioramaPalette.CreamCard,
-                    new Vector3(0.12f, 6.25f, 0.55f), Vector3.zero, 0.16f),
+                    new Vector3(5.75f, 6.9f, 0.5f), new Vector3(0f, 0f, 18f), 0.13f),
             };
 
             var prefabPaths = new Dictionary<string, string>();
@@ -218,7 +218,7 @@ namespace CatMetro.Editor
                 AssetDatabase.CreateAsset(material, path);
             }
             Color tint = DioramaPalette.DepotNavy;
-            tint.a = 0.3f;
+            tint.a = 0.2f;
             material.shader = basis.shader;
             material.color = tint;
             if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", tint);
@@ -226,8 +226,10 @@ namespace CatMetro.Editor
                 material.SetFloat("_VertexColorWeight", 0f);
             if (material.HasProperty("_VertexAlphaWeight"))
                 material.SetFloat("_VertexAlphaWeight", 1f);
+            if (material.HasProperty("_ZWrite")) material.SetFloat("_ZWrite", 0f);
             material.enableInstancing = true;
-            material.renderQueue = 2001;
+            material.SetOverrideTag("RenderType", "Transparent");
+            material.renderQueue = (int)RenderQueue.Transparent;
             EditorUtility.SetDirty(material);
             return material;
         }
@@ -248,8 +250,8 @@ namespace CatMetro.Editor
             shadow.transform.position = new Vector3(bounds.center.x, bounds.center.y, 0.245f);
             shadow.transform.rotation = Quaternion.identity;
             shadow.transform.localScale = new Vector3(
-                Mathf.Clamp(bounds.size.x * 1.08f, 0.28f, 1.5f),
-                Mathf.Clamp(bounds.size.y * 0.72f, 0.22f, 1.35f), 1f);
+                Mathf.Clamp(bounds.size.x * 0.9f, 0.24f, 1.2f),
+                Mathf.Clamp(bounds.size.y * 0.48f, 0.18f, 0.9f), 1f);
             shadow.transform.SetParent(instance.transform, true);
         }
 

@@ -291,3 +291,22 @@ and the persistentDataPath device finding. Lane 1B owns WavePreviewStrip's primi
   15/16: every shell/validator gate including unchanged criterion 2 is
   green; only the full PlayMode wrapper remains red on the already-recorded Lane 1B WavePreview
   integration debt. The disposable merge is diagnostic only and carries no final evidence claim.
+- 2026-08-10 — the no-SSAO TG composition candidate now has physically correct layer ordering and
+  rendered-pixel depth evidence. Foreshortening/desk-layer tests were RED 14/16 at
+  `/tmp/catmetro-tg-depth-red.qfL0ip/`; symbol/track/grounding tests were RED 11/16 at
+  `/tmp/catmetro-tg-symbol-track-red.ZfuaGc/`; and the transparent depth-write contract was RED at
+  `/tmp/catmetro-tg-shadow-depth-red.jwIRIQ/`. The corrected 30-degree orthographic tabletop uses
+  a foreshortened dressing plane, curved Warm Paper/Ink Navy toy track, upright unscaled station
+  dressing with readable colour+symbol plates, open cars with a visible passenger badge, a raised
+  Cream Card board over warm segmented desk grain, and feature-free Ink Navy blob shadows. The
+  shadow material is Transparent with depth writes off; an actual real-board render comparison
+  proves the contact patch darkens instead of haloing. Exact candidate focus is DioramaAsset 9/9,
+  DioramaConstruction 17/17, DeviceConfig 5/5, TeachAffordance 8/8, Greybox 9/9, and input 7/7 at
+  `/tmp/catmetro-tg-candidate-regressions.0n1LbX/`; the final deterministic portrait construction
+  rerun is 17/17 at `/tmp/catmetro-tg-candidate-final-construction.EvoYEl/`. The 900x2000 editor
+  candidate is at
+  `/tmp/catmetro-tg-editor-candidate.ZhNOZY/`. Failure review remains 10/11 solely on Lane 1B's
+  off-frame WavePreview at `/tmp/catmetro-tg-candidate-failure-suite.EFiM4H/`; exact 900x2000
+  diagnostics and the overlay fix path are recorded on PR #68. These editor frames remain
+  iteration evidence only: integrated preview, APK/Pixel, TG, CM-R21, exact-head reviews, CI, and
+  HC-25 are still open.
