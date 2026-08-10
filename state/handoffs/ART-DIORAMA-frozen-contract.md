@@ -278,3 +278,14 @@ and the persistentDataPath device finding. Lane 1B owns WavePreviewStrip's primi
   `/tmp/catmetro-tg-no-ssao-green.71DP20/edit.xml`. The inspected no-SSAO 900x2000 render at
   `/tmp/catmetro-tg-no-ssao-frame.cMzf9q/` retains the authored contact depth. Pixel reconnection
   is intentionally deferred until the integrated editor-frame iteration reaches device evidence.
+- 2026-08-10 — a disposable read-only merge of Lane 1B `bd13d6c` onto the feature-free art head
+  proved the old 900x2000 RenderTexture rig displaced screen-space HUD because its Game View was
+  still 640x480. The new armed assertion went RED at
+  `/tmp/catmetro-capture-screen-red.amZc35/play.xml` (actual width 640). A lane-owned editor setup
+  now selects a fixed 900x2000 Android Game View before the armed PlayMode capture; combined
+  `-executeMethod` + capture is GREEN at `/tmp/catmetro-capture-screen-combined.u8d0OD/play.xml`.
+  Unarmed DioramaConstruction remains 12/12 at `/tmp/catmetro-capture-rig-green.MwYc7s/play.xml`
+  and DioramaAsset remains 9/9 at `/tmp/catmetro-capture-rig-assets.Eb1NAp/edit.xml`. Exact-head
+  `scripts/test.sh` reached 15/16: every shell/validator gate including unchanged criterion 2 is
+  green; only the full PlayMode wrapper remains red on the already-recorded Lane 1B WavePreview
+  integration debt. The disposable merge is diagnostic only and carries no final evidence claim.

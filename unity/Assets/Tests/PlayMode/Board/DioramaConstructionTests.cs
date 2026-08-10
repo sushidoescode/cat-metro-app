@@ -470,6 +470,9 @@ namespace CatMetro.Tests.PlayMode
                 yield break;
             }
 
+            Screen.SetResolution(900, 2000, FullScreenMode.Windowed);
+            yield return null;
+            yield return null;
             Scene scene = SceneManager.GetSceneByName("Game");
             bool loadedHere = !scene.isLoaded;
             if (loadedHere)
@@ -482,6 +485,10 @@ namespace CatMetro.Tests.PlayMode
             _root = scene.GetRootGameObjects().Select(x => x.GetComponent<GameRoot>())
                 .First(x => x != null);
 
+            Assert.That(Screen.width, Is.EqualTo(900),
+                "portrait evidence must match the screen-space HUD layout width");
+            Assert.That(Screen.height, Is.EqualTo(2000),
+                "portrait evidence must match the screen-space HUD layout height");
             System.IO.Directory.CreateDirectory(directory);
             Capture(_root.Cam, System.IO.Path.Combine(directory, "editor-diorama-board.png"));
 

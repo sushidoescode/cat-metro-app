@@ -253,6 +253,70 @@ namespace CatMetro.Editor
             shadow.transform.SetParent(instance.transform, true);
         }
 
+        [MenuItem("Cat Metro/Configure 900x2000 Evidence Game View")]
+        public static void ConfigurePortraitEvidenceGameView()
+        {
+            const int width = 900;
+            const int height = 2000;
+            const string label = "Cat Metro Evidence 900x2000";
+            const System.Reflection.BindingFlags all =
+                System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.Static
+                | System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic;
+
+            var editorAssembly = typeof(UnityEditor.Editor).Assembly;
+            Type sizesType = editorAssembly.GetType("UnityEditor.GameViewSizes", true);
+            Type sizeType = editorAssembly.GetType("UnityEditor.GameViewSize", true);
+            Type sizeKindType = editorAssembly.GetType("UnityEditor.GameViewSizeType", true);
+            Type groupKindType = editorAssembly.GetType(
+                "UnityEditor.GameViewSizeGroupType", true);
+            Type gameViewType = editorAssembly.GetType("UnityEditor.GameView", true);
+
+            Type singletonType = typeof(ScriptableSingleton<>).MakeGenericType(sizesType);
+            object sizes = singletonType.GetProperty("instance", all).GetValue(null, null);
+            object androidGroup = Enum.Parse(groupKindType, "Android");
+            object group = sizesType.GetMethod("GetGroup", all)
+                .Invoke(sizes, new[] { androidGroup });
+            Type groupType = group.GetType();
+            int builtinCount = (int)groupType.GetMethod("GetBuiltinCount", all)
+                .Invoke(group, null);
+            int customCount = (int)groupType.GetMethod("GetCustomCount", all)
+                .Invoke(group, null);
+            var getSize = groupType.GetMethod("GetGameViewSize", all);
+
+            int selectedIndex = -1;
+            for (int i = 0; i < builtinCount + customCount; i++)
+            {
+                object size = getSize.Invoke(group, new object[] { i });
+                int candidateWidth = (int)sizeType.GetProperty("width", all)
+                    .GetValue(size, null);
+                int candidateHeight = (int)sizeType.GetProperty("height", all)
+                    .GetValue(size, null);
+                if (candidateWidth == width && candidateHeight == height)
+                {
+                    selectedIndex = i;
+                    break;
+                }
+            }
+
+            if (selectedIndex < 0)
+            {
+                object fixedResolution = Enum.Parse(sizeKindType, "FixedResolution");
+                object newSize = Activator.CreateInstance(sizeType,
+                    new[] { fixedResolution, (object)width, height, label });
+                groupType.GetMethod("AddCustomSize", all)
+                    .Invoke(group, new[] { newSize });
+                selectedIndex = builtinCount + customCount;
+            }
+
+            var gameView = EditorWindow.GetWindow(gameViewType);
+            gameViewType.GetProperty("selectedSizeIndex", all)
+                .SetValue(gameView, selectedIndex, null);
+            gameView.Repaint();
+            Debug.Log("CAT_METRO_EVIDENCE_GAME_VIEW 900x2000 index=" + selectedIndex);
+        }
+
         [MenuItem("Cat Metro/Capture Diorama Orientation Sheet")]
         public static void CaptureOrientationSheet()
         {
