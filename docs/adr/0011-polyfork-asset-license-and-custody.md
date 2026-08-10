@@ -1,6 +1,7 @@
 # ADR-0011: Polyfork asset license and source custody
 
-- **Status:** Proposed — PENDING HUMAN SIGNATURE
+- **Status:** Accepted — human signature recorded 2026-08-10 against reviewed proposal
+  `feb78a12f49fe0207ac61da2f5a363c5fd213b53`
 - **Date:** 2026-08-09
 - **Relates:** ADR-0007 (presentation/runtime baseline), ADR-0009 (credential custody),
   `state/handoffs/ART-DIORAMA-frozen-contract.md`, and
@@ -211,26 +212,28 @@ new asset acquisition, or spend. Before Lane 1A merges:
 
 ### Human signature
 
-- [ ] I approve the July 2026 Polyfork license pin and its commercial-use, modification,
+- [x] I approve the July 2026 Polyfork license pin and its commercial-use, modification,
       no-attribution, permanent-download, game-embedding, and no-standalone-redistribution terms.
-- [ ] I attest that I own the Founders entitlement and accept responsibility for its per-person or
+- [x] I attest that I own the Founders entitlement and accept responsibility for its per-person or
       per-team-seat coverage.
-- [ ] I approve shipping the nine provenance-recorded GLB-derived meshes inside Cat Metro's
+- [x] I approve shipping the nine provenance-recorded GLB-derived meshes inside Cat Metro's
       commercial Google Play binary, but not as standalone source or modified assets.
-- [ ] I approve keeping the modified FBXs in the private repository only while every source
+- [x] I approve keeping the modified FBXs in the private repository only while every source
       recipient is licensed, and I accept the stop gate before public source or broader access.
-- [ ] I accept my root `.env` placement as a narrow deviation from the owner-only-store decision,
+- [x] I accept my root `.env` placement as a narrow deviation from the owner-only-store decision,
       subject to mode `0600`, gitignore/untracked status, header-only acquisition use, no CI/runtime
       dependency, no disclosure, and rotation on suspicion.
-- [ ] I approve transient source GLB custody, committed hash-pinned FBX derivatives, and the recorded
+- [x] I approve transient source GLB custody, committed hash-pinned FBX derivatives, and the recorded
       offline Blender/Unity import controls.
-- [ ] I understand that this ADR signature is not HC-25 merge authorization and does not authorize a
+- [x] I understand that this ADR signature is not HC-25 merge authorization and does not authorize a
       Play upload, release, new dependency, new asset family, or further spend.
 
-- **Signed by:** PENDING — Cat Metro product owner
-- **Signature statement:** PENDING
-- **Signed at (absolute date/time):** PENDING
-- **Signed proposal head:** PENDING
+- **Signed by:** Cat Metro product owner (human, in-session; agent-recorded)
+- **Signature statement:** “I SIGN ADR-0011 AT
+  feb78a12f49fe0207ac61da2f5a363c5fd213b53 AND APPROVE ALL SEVEN HUMAN-SIGNATURE ITEMS. THIS IS
+  NOT HC-25.”
+- **Signed at (absolute date/time):** 2026-08-10 00:11:30 PDT (-0700), recording time
+- **Signed proposal head:** `feb78a12f49fe0207ac61da2f5a363c5fd213b53`
 - **Signature record commit:** PENDING
 
 ## Official source checked 2026-08-09
