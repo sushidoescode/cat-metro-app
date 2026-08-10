@@ -395,3 +395,81 @@ cycle detection and fixed-point acceptance; the probe-count test is renamed
 `InteractingWindowProbe_IsBoundedToAConstantThreeSweepEnvelope` without changing its `<= 12`
 assertion. This append corrects the evidence narrative only; the frozen executable definition,
 human Option A ruling, cycle-stop semantics, and accepted F4/L006 measurements do not move.
+
+### Review-resolution implementation 2 — exact converged histories + prompt work stop — 2026-08-10
+
+Strict RED commit `da664e5` pins the review's prompt-stop defect at both search shapes. Against the
+prior production snapshot, `SuccessorAttempts_StopPromptlyAtTheSharedWorkCeiling` expected 34
+completed expansions but observed 97, and `SuccessorWorkStop_IsPromptAndDoesNotEscalate` expected
+87 but observed 1,138. The older canonical-refinement checks remain separate: with ceilings that
+actually reach the raw win, they still report 97 and 1,138 search expansions and then stop during
+canonical work. This corrects, rather than relaxes, the old low-budget evidence that had allowed
+successor replay/allocation to continue after the shared meter latched.
+
+Production tip `5cafcff` replaces the duplicate post-search history replay with one compact
+predecessor DAG attached to the existing state buckets. Digest collisions retain every
+equal-minimum-command incoming history arc while replaying/expanding the state only once. Terminal
+wins are summarized in deterministic creation order; every failed work charge returns
+`NotFound(Budget)` immediately. The shared meter now covers search nodes, successor attempts,
+history/certificate work, replay probes, and the solved-result proxy reservation while public
+`NodesExpanded` remains search-only. No partial canonical answer is returned on exhaustion.
+
+For the BFS path, each complete chronological switch-sequence box is independently certified by
+dynamic-programming cardinality. A second exact certificate recognizes a union that fills a full
+product of strictly separated per-switch kth-occurrence envelopes. The proof is subset plus equal
+cardinality: canonical histories map injectively to occurrence vectors; distinct sequence boxes are
+disjoint under `(Tick, SwitchId)` receipt order; strict same-switch separation makes every product
+vector internally ordered; and count equality therefore proves no holes. Each unrestricted maximal
+fiber is then exactly its occurrence envelope, so the lower midpoint vector is the family's unique
+fixed point. L701's 10,368,000 histories collapse to the exact sorted log
+`S0@37,S1@75,S0@105,S1@126,S0@137` without enumerating them. An independent audit brute-checked
+1,819 random small certified unions without a counterexample.
+
+The incomplete-product discriminator contains two individually complete groups but only 3 of the
+6 vectors in global envelopes `S0:[0..2] x S1:[0..1]`. Deleting only the product-cardinality guard
+makes the named test red with `Expected: Incomplete / But was: Complete`; restoring
+`OrderedTickBox.cs` returns SHA-256
+`f29909299f5c5a6290c6a4356d04f2058aabeb82fcfff6180fa81062874366ed`. The older endpoint-only
+box mutation (force complete) independently makes
+`OrderedBoxCertificate_RejectsEndpointOnlyHistoryCompression` red with the same exact status
+discriminator, then restores the same bytes.
+
+Additional mutation proofs, each restored byte-clean:
+
+- Delete equal-history arc retention at a state collision:
+  `TieBreak_RetainsCanonicalHistoryAcrossStateConvergence` becomes `Expected: Solved / But was:
+  NotFound`. Desired `LevelSolver.cs` SHA-256:
+  `68c68126fce645b35f5c7e56f9ee9ecfbdf5197ff378eed58ff796229d019ef5`.
+- Disable accumulation of non-node work: the two prompt-stop tests revert exactly to the old leaked
+  counts (`Expected 34 / But was 97`; `Expected 87 / But was 1138`). Restoring returns the same
+  desired `LevelSolver.cs` hash.
+- Delete only the equal-tick SwitchId limb of receipt-order fail-close:
+  `MidWindowNormalizer_StopsWhenCenteringWouldReverseEqualTickSwitchOrder` becomes
+  `Expected: False / But was: True`. Restoring returns `MidWindowNormalizer.cs` SHA-256
+  `b44aa61c5d4ba2c5783fb4fa959e0aad6f28d9e2cc308955bcd2bcce11133f71` and green. This is not a
+  new window-semantics choice: the frozen executable definition already preserves receipt order and
+  applies `(Tick, SwitchId)` ordering; it closes the equal-tick half of that existing rule.
+
+### Final corpus remeasurement on implementation tip — 2026-08-10
+
+`bash scripts/validate-content.sh --out /tmp/catmetro-solver-final-measure.json`: `RESULT: OK`.
+Timed wall clock `57.42 s` (cold pre-change comparator `55.45 s`), max RSS `209,764,352` bytes,
+peak footprint `163,415,000` bytes. The stress-only invocation is `32.60 s`, with L701/L702 both
+Solved and their exact authorized stage-6 reports intact. All public BFS counts are unchanged:
+L002 10,228; L003 12,860; L005 13,820; L006 20,829; L701 146,942; L702 16,839.
+
+The human-acknowledged F4 table remeasures byte-for-byte unchanged on the final implementation:
+
+| level | selected ticks | action windows | retention (w,l,p) | nodesExpanded |
+|---|---:|---:|---:|---:|
+| L002 | `[8,63]` | `[18,37]` | `(20,0,0)` | 10,228 |
+| L003 | `[9,77]` | `[20,33]` | `(20,0,0)` | 12,860 |
+| L005 | `[8,60]` | `[18,29]` | `(20,0,0)` | 13,820 |
+| L006 | `[43,83,123]` | `[24,24,24]` | `(20,0,0)` | 20,829 |
+
+One test-harness correction remains awaiting explicit human scope authority: the validation shared
+fixture still passes `maxNodesExpanded: 200000`, a nodes-only-era value. Under the approved shared
+meter, L701's unchanged 146,942 nodes plus even one successor attempt per node require at least
+293,884 units before canonical work. The recommended correction is to use the unchanged authored
+2,000,000 default in that fixture while preserving every exact L701 result assertion; no result
+pin, production ceiling, content, or HC-25 authority moves until that separate acknowledgement.
