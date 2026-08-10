@@ -28,6 +28,21 @@ namespace CatMetro.Tests.Solver
         }
 
         [Test]
+        public void DevCaptureDemo_DefaultBudget_PreservesTheActivePlayWitness()
+        {
+            var r = LevelSolver.Solve(SolverFixtures.DevCaptureDemo(), 2001);
+
+            Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.Solved));
+            Assert.That(r.NotFoundReason, Is.EqualTo(NotFoundReason.None));
+            Assert.That(r.CompletionTicks, Is.EqualTo(39));
+            Assert.That(r.SwitchesUsed, Is.EqualTo(1));
+            Assert.That(r.PinnedPruned, Is.EqualTo(0));
+            Assert.That(r.FirstPinMessage, Is.Empty);
+            SolverFixtures.AssertSameLog(SolverFixtures.Log((0, 5)), r.OptimalLog,
+                "the dev-capture active-play witness stays inside the authored default ceiling");
+        }
+
+        [Test]
         public void TwoCommandTieBreak_KeepsOneTickOfMarginOnBothSidesOfEveryDecision()
         {
             var graph = SolverFixtures.TwoSwitchTwoCmd();

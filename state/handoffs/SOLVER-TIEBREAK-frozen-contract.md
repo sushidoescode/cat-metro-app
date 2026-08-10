@@ -528,3 +528,24 @@ oracle portable. The exact Unity named-test filter is then 1/1 green (`testcasec
 did not move. The Unity editor also materialized the previously missing
 `OrderedTickBox.cs.meta` for this branch's new solver asset; that generated solver-owned metadata is
 included so the asset GUID is stable in the committed project.
+
+### Full-gate PlayMode/default-budget RED — 2026-08-10
+
+The post-compatibility full-suite rerun again completed 14/15 after 1,315.78 seconds: its EditMode
+half cleared the prior 834-test blocker, but PlayMode exited non-zero. A preserved standalone
+PlayMode run at `/tmp/catmetro-playmode.93U2rr` executed 137 tests, 136 passed, and exactly
+`DevLevelOverrideTests.Demo_SolverWitnessed_ActivePlayWins` failed after 50.19 seconds. Its existing
+contract message is load-bearing: `the demo must be WINNABLE by active play — retune the level,
+never this test`; expected `Solved`, actual `NotFound`.
+
+A new pure solver fixture copies `tests/fixtures/devcap/demo-level.json` exactly, and the focused
+`DevCaptureDemo_DefaultBudget_PreservesTheActivePlayWitness` test requires the independent known
+answer: `Solved`, completion tick `39`, one command, no pins, canonical `S0@5` (bytes
+`000005000000`). It is strict RED before production changes: `Expected: Solved / But was:
+NotFound` (1 failed, exit 1, 21 seconds). Diagnostic facts at the unchanged default ceiling are
+`NotFound(Budget)`, `NodesExpanded=666,668`, no pins, and an empty log. The stop is during exact BFS
+before any win: one node plus two successor-attempt charges consume the 2,000,000 shared units. A
+4,000,000 control reaches the raw win at `1,166,638` nodes, then exhausts during provenance/
+canonical work. Independent fixed-log replay proves one-toggle ticks `0..11` all win at completion
+`39`; the lower midpoint is uniquely tick `5`. Neither the PlayMode assertion nor the authored
+2,000,000 bound may move; production must recover this existing active-play witness exactly.

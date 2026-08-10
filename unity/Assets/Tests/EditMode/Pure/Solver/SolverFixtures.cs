@@ -33,6 +33,29 @@ namespace CatMetro.Tests.Solver
             winDeliveries: 4, timeLimitTicks: 100,
             qCapBound: 8, trainsMax: 4);
 
+        // Exact graph from tests/fixtures/devcap/demo-level.json. The default route is the long
+        // edge; active play toggles once to the short edge. The PlayMode dev-capture contract
+        // requires the default solver ceiling to retain this witness.
+        public static LevelGraph DevCaptureDemo() => new LevelGraph(
+            "D001", 4,
+            new[] { 4, 8, 8, 8 },
+            new[] { 0, 1, 1 },
+            new[] { 1, 2, 3 },
+            new[] { 6, 6, 28 },
+            new[] { 0 },
+            new[] { new[] { 1, 2 } },
+            new[] { 1 },
+            new byte[] { 1 },
+            new[] { 2, 3 },
+            new[] { new[] { CatColor.Red }, new[] { CatColor.Red } },
+            new[] { 6, 6 },
+            new[] { 6, 20, 21 },
+            new[] { CatColor.Red, CatColor.Red, CatColor.Red },
+            new[] { 5, 4, 4 },
+            new[] { 2, 1, 1 },
+            winDeliveries: 13, timeLimitTicks: 60,
+            qCapBound: 8, trainsMax: 13);
+
         // Two switches, optimum needs exactly 2 commands (S1 then S2); GRN decoy station makes a
         // wrong second route a pinned branch. Red: spawn t0 -> J1 t4 -> RED t9 on init. Blue:
         // spawn t6 -> J1 t10 (needs S1 toggled) -> J2 t14 (needs S2 toggled) -> BLU t19.
