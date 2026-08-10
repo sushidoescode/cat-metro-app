@@ -7,6 +7,12 @@ camera into a Screen-matched `640x480` RenderTexture. The probe asserted the aut
 `red x2|blue x2` and differentiated strip/board pixels before writing the PNG; it and its meta
 were deleted before the product commit.
 
+> **Editor-host scale caveat:** this frame is the repository's recorded 640x480 batch-editor
+> host, regardless of requested command-line screen dimensions. It verifies that the specific
+> host-scale illegibility observation is repaired; it is not device-resolution, device-DPI,
+> or in-hand evidence. Final device-resolution evidence is explicitly owed from the combined
+> post-#65 build after Lane 1A lands and Lane 1B rebases.
+
 Reference input: the human-provided Gemini target at
 `/Users/sushantsrikrish/Downloads/Gemini_Generated_Image_seqsafseqsafseqs.png`. The reference
 was inspected directly and was not copied into this lane. Lane 1A owns its own copy and art
@@ -44,4 +50,7 @@ SHA-256: `03f7c78201cfc1aecc4a68b2f3bb4d287b1d3fa6ea79c8141aacb146403c474b`
 
 This visual increment retains exactly one `GameObject.CreatePrimitive` source site in
 `WavePreviewStrip.cs`; its legacy renderer is disabled and never painted. Removing that path
-is a separate future commit after Lane 1A's criterion-5 gate re-author reaches `main`.
+is a separate future commit after Lane 1A's criterion-5 gate re-author reaches `main`. The two
+corresponding PlayMode assertions remain enabled and intentionally RED during this ordered
+window. They are not skipped, ignored, disabled, or softened; the post-#65 removal commit must
+turn those same assertions green.
