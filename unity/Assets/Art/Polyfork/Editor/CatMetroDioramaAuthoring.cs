@@ -272,12 +272,30 @@ namespace CatMetro.Editor
             Type groupKindType = editorAssembly.GetType(
                 "UnityEditor.GameViewSizeGroupType", true);
             Type gameViewType = editorAssembly.GetType("UnityEditor.GameView", true);
+            var gameView = EditorWindow.GetWindow(gameViewType);
 
             Type singletonType = typeof(ScriptableSingleton<>).MakeGenericType(sizesType);
             object sizes = singletonType.GetProperty("instance", all).GetValue(null, null);
-            object androidGroup = Enum.Parse(groupKindType, "Android");
+            object currentGroupKind = null;
+            foreach (string propertyName in new[]
+            {
+                "GameViewSizeGroupType", "currentSizeGroupType", "sizeGroupType",
+            })
+            {
+                var property = gameViewType.GetProperty(propertyName, all);
+                if (property == null) continue;
+                currentGroupKind = property.GetValue(
+                    property.GetMethod.IsStatic ? null : gameView, null);
+                if (currentGroupKind != null) break;
+            }
+            if (currentGroupKind == null)
+            {
+                string fallback = EditorUserBuildSettings.activeBuildTarget == BuildTarget.Android
+                    ? "Android" : "Standalone";
+                currentGroupKind = Enum.Parse(groupKindType, fallback);
+            }
             object group = sizesType.GetMethod("GetGroup", all)
-                .Invoke(sizes, new[] { androidGroup });
+                .Invoke(sizes, new[] { currentGroupKind });
             Type groupType = group.GetType();
             int builtinCount = (int)groupType.GetMethod("GetBuiltinCount", all)
                 .Invoke(group, null);
@@ -310,11 +328,11 @@ namespace CatMetro.Editor
                 selectedIndex = builtinCount + customCount;
             }
 
-            var gameView = EditorWindow.GetWindow(gameViewType);
             gameViewType.GetProperty("selectedSizeIndex", all)
                 .SetValue(gameView, selectedIndex, null);
             gameView.Repaint();
-            Debug.Log("CAT_METRO_EVIDENCE_GAME_VIEW 900x2000 index=" + selectedIndex);
+            Debug.Log("CAT_METRO_EVIDENCE_GAME_VIEW 900x2000 group=" + currentGroupKind
+                + " index=" + selectedIndex);
         }
 
         [MenuItem("Cat Metro/Capture Diorama Orientation Sheet")]

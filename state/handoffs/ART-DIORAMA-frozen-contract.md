@@ -285,7 +285,9 @@ and the persistentDataPath device finding. Lane 1B owns WavePreviewStrip's primi
   now selects a fixed 900x2000 Android Game View before the armed PlayMode capture; combined
   `-executeMethod` + capture is GREEN at `/tmp/catmetro-capture-screen-combined.u8d0OD/play.xml`.
   Unarmed DioramaConstruction remains 12/12 at `/tmp/catmetro-capture-rig-green.MwYc7s/play.xml`
-  and DioramaAsset remains 9/9 at `/tmp/catmetro-capture-rig-assets.Eb1NAp/edit.xml`. Exact-head
-  `scripts/test.sh` reached 15/16: every shell/validator gate including unchanged criterion 2 is
+  and DioramaAsset remains 9/9 at `/tmp/catmetro-capture-rig-assets.Eb1NAp/edit.xml`. Capture
+  setup resolves the active Game View group (Android or Standalone); the Android rerun is GREEN
+  at `/tmp/catmetro-capture-group-green.8P7p4P/play.xml`. Exact-head `scripts/test.sh` reached
+  15/16: every shell/validator gate including unchanged criterion 2 is
   green; only the full PlayMode wrapper remains red on the already-recorded Lane 1B WavePreview
   integration debt. The disposable merge is diagnostic only and carries no final evidence claim.
