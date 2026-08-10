@@ -242,3 +242,18 @@ Bootstrap, packages, immutable paths, and every other lane's state row.
   therefore mandatory. Lane 1A exists locally at `e61bd08` with its criterion-5 gate
   re-author committed, but has no remote branch/PR and is not on main; WavePreview remains
   untouched until that prerequisite lands, per the ground-truth merge order.
+- 2026-08-10 — the human issued a new in-chat sequencing directive after #65 received a TG
+  FAIL: the WavePreview visual restyle may proceed now provided its existing
+  `GameObject.CreatePrimitive` site remains; deleting that legacy primitive path is still a
+  separate post-1A commit. Reference-style RED was 0/1 at
+  `/tmp/cm-ui-wave-ref-red.lVjCoY/results.xml`; test-only commit `e969762` and visual-only
+  commit `1e394de` are pushed. The final 640x480 L002 frame was opened at original size and
+  committed with capture/test provenance at `95fe079` under
+  `evals/results/ux/ui-chrome-pass/playing-wave-preview/`: one rounded paper tray, red-circle
+  and blue-square cat faces, and integrated navy counts are visible over the live board.
+  Permanent visual+behavior tests are 2/2; failure/device breadth is 17/17; symbol-delete and
+  23dp-count mutations each failed the named test and reverted byte-clean. Intermediate full
+  suite is EditMode 824/824 and PlayMode 154/156; the only two failures are the intentionally
+  deferred legacy Renderer and source-primitive assertions. Lane 1A iterated to `e0845da`
+  while #65 remains open/draft/behind; monitoring is rearmed on that head and collider-path
+  removal remains forbidden until its gate re-author reaches `main`.
