@@ -178,8 +178,10 @@ namespace CatMetro.Tests.Solver
             status = OccurrenceTickProduct.Classify(2, 2, complete, _ => true, out var midpoint);
             Assert.That(status, Is.EqualTo(OrderedTickBoxStatus.Complete));
             Assert.That(midpoint.Length, Is.EqualTo(2));
-            Assert.That((midpoint[0].SwitchId, midpoint[0].Tick), Is.EqualTo((0, 0)));
-            Assert.That((midpoint[1].SwitchId, midpoint[1].Tick), Is.EqualTo((1, 0)));
+            Assert.That(midpoint[0].SwitchId, Is.EqualTo((ushort)0));
+            Assert.That(midpoint[0].Tick, Is.EqualTo(0));
+            Assert.That(midpoint[1].SwitchId, Is.EqualTo((ushort)1));
+            Assert.That(midpoint[1].Tick, Is.EqualTo(0));
         }
 
         [Test]

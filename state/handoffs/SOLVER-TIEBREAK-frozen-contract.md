@@ -507,3 +507,24 @@ does not move search behavior or that pin. The temporary production diagnostic w
 `LevelSolver.cs` restored byte-clean to SHA-256
 `68c68126fce645b35f5c7e56f9ee9ecfbdf5197ff378eed58ff796229d019ef5` before any commit. The PR
 body must carry L701's exact `1,176,578` shared-work count.
+
+### Full-gate Unity NUnit compatibility RED — 2026-08-10
+
+The first post-correction `bash scripts/test.sh` run finished 14/15 after 1,221.06 seconds. Every
+non-Unity wrapper passed, including the solver determinism and alternation-band pins; the EditMode
+wrapper exited non-zero. Because its trap deletes the detailed log, the same editor command was
+rerun with artifacts preserved at `/tmp/catmetro-editmode.JxGwVw`: Unity executed 834 tests, 833
+passed, and exactly one failed. The failure was the new occurrence-product positive control at
+`SolverDeterminismTests.cs:181`:
+
+`OccurrenceProductCertificate_RejectsAnIncompleteInterleavingUnion` — `Expected: (0, 0) / But
+was: (0, 0)`.
+
+This is Unity's bundled NUnit tuple-comparison incompatibility; the newer .NET NUnit leg had passed
+the same value-tuple assertion. The minimal test-only correction replaces the two tuple comparisons
+with four scalar `SwitchId`/`Tick` comparisons, preserving the exact witness while making the
+oracle portable. The exact Unity named-test filter is then 1/1 green (`testcasecount=1`,
+`passed=1`, `failed=0`), and the matching .NET filter is independently 1/1 green. Production bytes
+did not move. The Unity editor also materialized the previously missing
+`OrderedTickBox.cs.meta` for this branch's new solver asset; that generated solver-owned metadata is
+included so the asset GUID is stable in the committed project.
