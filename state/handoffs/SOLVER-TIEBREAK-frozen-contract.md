@@ -583,3 +583,38 @@ peak footprint 161,924,032 bytes). Every protected public count and result is un
 L006 `20,829` with `(20,0,0)`/`[24,24,24]`, L701 `146,942` with
 `[20,20,24,25,20]`, and L702 `16,839`. Thus the newly recorded L701 shared-work total
 `1,176,578` also stays authoritative: its pinned-color graph does not enter this optimization.
+
+### Final review and full gates — 2026-08-10
+
+Independent stable-tip source review found no correctness blocker and returned **MERGEABLE**. The
+separate performance review returned **PERF PASS**: every shared-meter rejection site stops
+promptly, post-win provenance/certificate work and solved-result proxy work are reserved, and
+persistent memory remains bounded by the shared logical-work ceiling. A final read-only audit of
+the D001 range `21cd557..32fd9c0` independently re-proved the command-count dominance argument,
+pin-free/BFS-only scope, unchanged corpus path, and exact D001 result, and returned
+**MERGEABLE / PERF PASS**. Reviewers did not author this diff and did not substitute their review
+for the executable gates.
+
+The first final aggregate attempt was 14/15 because Unity's EditMode process exited non-zero
+without an assertion record; the wrapper's cleanup removed that transient log. The identical
+EditMode command rerun with retained artifacts completed `835/835`, zero failed and zero skipped.
+The repository Unity wrapper then completed cleanly with EditMode `835/835` and PlayMode `137/137`,
+classifying the earlier launcher exit as transient infrastructure rather than a product failure.
+
+A fresh, unmodified single invocation of `/usr/bin/time -lp bash scripts/test.sh` then completed
+**15/15** with EditMode `835/835`, PlayMode `137/137`, and the validator green. Exact timing was
+real `1306.65 s`, user `373.66 s`, sys `109.80 s`; reported maximum resident set size was
+`1,794,457,600` bytes and peak memory footprint `1,442,080`. The same invocation kept the solver
+bytes `000006000000010006000000` and replay hash
+`d4818af81bb5c4d8161c1132264f2d7f3908f0038e121c664ad3f007134e35b9` stable across two .NET
+processes, and the L006 wrapper reported `(20,0,0)` with `[24,24,24]`.
+
+Final local gates at the reviewed implementation tip also include `bash scripts/check.sh` green,
+`bash scripts/build.sh` green, the focused solver slice `38/38`, and corpus validation `RESULT: OK`
+in 57.51 seconds. The mechanical classifier against actual base `origin/main` (`9be8f95`) reports
+`RISKY / risk.test-semantic`: 17 changed files, 2,708 changed lines, production reach true, and
+security review not required; the priced independent review above is complete. GitHub `ci` and
+`forge-policy` were green on pushed reviewed code tip `32fd9c0`.
+The final evidence/state commit is non-production bookkeeping; it will be pushed and its current-head
+checks verified before the lane asks for merge authority. HC-25 remains explicitly ungranted: the
+PR must not be armed or merged until the human supplies the separate in-session word.
