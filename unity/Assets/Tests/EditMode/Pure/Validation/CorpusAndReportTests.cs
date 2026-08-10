@@ -103,7 +103,8 @@ namespace CatMetro.Tests.Validation
             // Test-speed budget: a stress-board search may hit it and report NotFound(Budget),
             // which is non-blocking by design — the shipped harness uses the authored default.
             var request = new ValidationRequest(VFixtures.SchemaBytes(), VFixtures.BareConfig(),
-                "2026-08-01T00:00:00+00:00", members, maxNodesExpanded: 200000);
+                "2026-08-01T00:00:00+00:00", members,
+                maxNodesExpanded: CatMetro.Domain.Solver.SolverBounds.MAX_NODES_EXPANDED);
             return CorpusValidator.Validate(request);
         });
 

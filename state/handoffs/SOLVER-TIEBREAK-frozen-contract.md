@@ -473,3 +473,37 @@ meter, L701's unchanged 146,942 nodes plus even one successor attempt per node r
 293,884 units before canonical work. The recommended correction is to use the unchanged authored
 2,000,000 default in that fixture while preserving every exact L701 result assertion; no result
 pin, production ceiling, content, or HC-25 authority moves until that separate acknowledgement.
+
+### Human-granted validation fixture correction — 2026-08-10
+
+The human granted exactly the recommended test-harness correction in direct conversation:
+**"edit only the validation fixture's obsolete maxNodesExpanded: 200000 override
+(CorpusAndReportTests.cs:106) so the shared fixture uses the unchanged authored default
+SolverBounds.MAX_NODES_EXPANDED (2,000,000). Preserve every exact L701 result assertion"** and
+**"No other fixture, production bound, result pin, or content is opened by this."** This is an
+agent-relayed record with the usual H-1-class channel/confirmability caveat. It is correction
+authority only, not the separate HC-25 merge word.
+
+Strict RED/GREEN and mutation evidence, using only
+`CorpusAndReportTests.StressBoards_AreValidated_WithTheQPStageSet`:
+
+- At `maxNodesExpanded: 200000`, L701 exhausts the shared meter before producing a solver trace.
+  The test fails exactly at stage 8 with `SKIPPED(no solver trace)`, `Expected: Unconfigured / But
+  was: Skipped` (1 failed, exit 1, 3 seconds).
+- Replacing only that override with the unchanged authored
+  `CatMetro.Domain.Solver.SolverBounds.MAX_NODES_EXPANDED` makes the named test pass (1/1, 30
+  seconds), with every exact L701 result assertion byte-intact.
+- Mutation: replace only the constant reference with `200000`. The same named test returns the
+  exact stage-8 failure above. Restoring the constant returns
+  `CorpusAndReportTests.cs` byte-for-byte to desired SHA-256
+  `82bff2aa0199acfbff9724ead8109b64d5457c841f1ab5e4c0a2fe9c5514225a`, and the named test passes
+  again (1/1, 30 seconds).
+
+Temporary read-only metering at the successful-return boundary measured the complete shared
+logical-work totals, including the conservative solved-result proxy reservation: L001 `9,402`,
+L701 **`1,176,578`**, and L702 `105,356`. L701 is therefore the only member of this shared fixture
+that exceeds 200,000. Its public BFS count remains exactly `146,942`; the accounting correction
+does not move search behavior or that pin. The temporary production diagnostic was removed and
+`LevelSolver.cs` restored byte-clean to SHA-256
+`68c68126fce645b35f5c7e56f9ee9ecfbdf5197ff378eed58ff796229d019ef5` before any commit. The PR
+body must carry L701's exact `1,176,578` shared-work count.
