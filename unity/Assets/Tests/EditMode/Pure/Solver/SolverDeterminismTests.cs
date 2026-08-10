@@ -103,6 +103,35 @@ namespace CatMetro.Tests.Solver
         }
 
         [Test]
+        public void OrderedBoxCertificate_RejectsEndpointOnlyHistoryCompression()
+        {
+            // Three chronological histories share the endpoint box [(0,0)..(2,2)], but that
+            // ordered box contains six histories. Treating only min/max/count as a complete box
+            // would erase the interior fixed point (0,2), which lex-beats the max endpoint (2,2).
+            var status = OrderedTickBox.Classify(
+                new ushort[] { 0, 0 }, new[] { 0, 0 }, new[] { 2, 2 },
+                observedCount: 3, charge: () => true);
+            Assert.That(status, Is.EqualTo(OrderedTickBoxStatus.Incomplete));
+
+            var wins = new HashSet<string>
+            {
+                "0,0", "0,2", "1,0", "2,0", "2,2"
+            };
+            Assert.That(MidWindowNormalizer.TryCenter(
+                new[] { 0, 0 }, 3,
+                ticks => wins.Contains(ticks[0] + "," + ticks[1]), out _), Is.False,
+                "the min endpoint crosses receipt chronology and fails closed");
+            Assert.That(MidWindowNormalizer.TryCenter(
+                new[] { 0, 2 }, 3,
+                ticks => wins.Contains(ticks[0] + "," + ticks[1]), out var interior), Is.True);
+            Assert.That(MidWindowNormalizer.TryCenter(
+                new[] { 2, 2 }, 3,
+                ticks => wins.Contains(ticks[0] + "," + ticks[1]), out var maximum), Is.True);
+            Assert.That(interior, Is.EqualTo(new[] { 0, 2 }));
+            Assert.That(maximum, Is.EqualTo(new[] { 2, 2 }));
+        }
+
+        [Test]
         public void InteractingWindowCycle_StopsInsteadOfReturningAChangingBoundary()
         {
             var wins = new HashSet<string>
