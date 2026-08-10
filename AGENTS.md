@@ -35,6 +35,7 @@ Stakes posture: `state/mode` (human-set — sprint/standard/production; policy i
 - `.github/**` — CI/review/deploy rules (also hook- and CODEOWNERS-protected)
 - `infra/**` — infrastructure-as-code
 - `**/billing/**`, `**/iap/**`, `**/ads/**` — monetization tripwires: before code lands here, a human flips the stakes mode to production (see state/PROJECT_STATE.md)
+- `unity/Assets/Scripts/Integrations/RevenueCat/**`, `unity/Assets/Resources/Monetization/**`, `unity/Packages/**`, `unity/Assets/Plugins/Android/**` — RevenueCat/billing integration surfaces (wave-2 Lane 5): same monetization tripwire posture; human-merge-only during the wave. Landed as its own PR BEFORE any Lane 5 diff exists because the risk classifier reads this file at the base ref.
 
 ## Layout
 
