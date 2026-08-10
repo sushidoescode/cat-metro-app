@@ -15,6 +15,16 @@ namespace CatMetro.Domain.Solver
             int[] seedTicks,
             int upperExclusive,
             Func<int[], bool> sameCompletionWin,
+            out int[] centeredTicks) =>
+            TryCenter(null, seedTicks, upperExclusive, sameCompletionWin, out centeredTicks);
+
+        // The overload carries immutable receipt switch ids into the policy seam; tick-only
+        // callers retain the prior behavior while solver integration supplies the ids.
+        internal static bool TryCenter(
+            ushort[] receiptSwitches,
+            int[] seedTicks,
+            int upperExclusive,
+            Func<int[], bool> sameCompletionWin,
             out int[] centeredTicks)
         {
             centeredTicks = (int[])seedTicks.Clone();
@@ -38,6 +48,26 @@ namespace CatMetro.Domain.Solver
             // work envelope. Stop deterministically; never present a changing boundary as centered.
             centeredTicks = (int[])seedTicks.Clone();
             return false;
+        }
+
+        // Exact-history selection can prove a complete winning relation symbolically. These two
+        // read-only queries reuse the same maximal-window definition without copying its scan.
+        internal static int MiddleFor(
+            int[] ticks,
+            int index,
+            int upperExclusive,
+            Func<int[], bool> sameCompletionWin) =>
+            FindMiddle(ticks, index, upperExclusive, sameCompletionWin);
+
+        internal static bool IsFixedPoint(
+            int[] ticks,
+            int upperExclusive,
+            Func<int[], bool> sameCompletionWin)
+        {
+            for (int i = 0; i < ticks.Length; i++)
+                if (FindMiddle(ticks, i, upperExclusive, sameCompletionWin) != ticks[i])
+                    return false;
+            return true;
         }
 
         private static bool ReceiptOrderPreserved(int[] ticks)
@@ -93,9 +123,18 @@ namespace CatMetro.Domain.Solver
             int tick,
             Func<int[], bool> sameCompletionWin)
         {
-            var candidate = (int[])ticks.Clone();
-            candidate[index] = tick;
-            return sameCompletionWin(candidate);
+            // The predicate is synchronous and read-only. Mutate/restore one coordinate so a
+            // maximal-window scan does not allocate a full command vector for every probe.
+            int original = ticks[index];
+            ticks[index] = tick;
+            try
+            {
+                return sameCompletionWin(ticks);
+            }
+            finally
+            {
+                ticks[index] = original;
+            }
         }
     }
 }
