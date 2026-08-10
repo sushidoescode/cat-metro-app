@@ -13,7 +13,7 @@ namespace CatMetro.Presentation.Cameras
         // board size and provably busts the 1500 ms budget beyond 5.25 units. Any distance
         // completes in PAN_DURATION_MS.
         public const double PAN_DURATION_MS = 400.0;
-        private const float TabletopPitchDegrees = 52f;
+        private const float TabletopPitchDegrees = 58f;
         private const float VirtualCameraDepth = 14f;
 
         private UnityEngine.Camera _camera;
@@ -39,8 +39,8 @@ namespace CatMetro.Presentation.Cameras
             _camera = cam;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = Board.DioramaPalette.WarmPaper;
-            // The gameplay plane is XY with +Z as its normal. Fifty-two degrees away from
-            // that normal reads as 38 degrees above the tabletop horizon — the low, premium
+            // The gameplay plane is XY with +Z as its normal. Fifty-eight degrees away from
+            // that normal reads as 32 degrees above the tabletop horizon — the low, premium
             // three-quarter view in the signed-off Gemini target — while retaining the
             // orthographic interaction/framing contract constructed by GameRoot.
             cam.transform.rotation = Quaternion.Euler(-TabletopPitchDegrees, 0f, 0f);

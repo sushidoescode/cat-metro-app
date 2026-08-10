@@ -232,7 +232,7 @@ namespace CatMetro.Presentation.Board
         {
             var table = Shape(transform, "desk:table", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("desk-cream-card", DioramaPalette.CreamCard),
-                new Vector3(3f, 5f, 0.73f), new Vector3(12f, 38f, 0.28f));
+                new Vector3(3f, 5f, 0.73f), new Vector3(12f, 30f, 0.28f));
             table.transform.localRotation = Quaternion.Euler(0f, 0f, -0.8f);
 
             Shape(transform, "desk:front-edge", DioramaMeshKind.RoundedBox,
@@ -241,20 +241,20 @@ namespace CatMetro.Presentation.Board
                 new Vector3(6.7f, 0.48f, 0.55f));
 
             var surface = Shape(transform, "desk:surface", DioramaMeshKind.RoundedBox,
-                DioramaPalette.Material("board-warm-paper", DioramaPalette.WarmPaper),
+                DioramaPalette.Material("board-cream-wood", DioramaPalette.CreamCard),
                 DioramaPoint(new Vector3(3f, 5.6f, 0.43f)),
                 new Vector3(6.55f, 11.3f * DioramaVerticalScale, 0.34f));
             surface.transform.localRotation = Quaternion.Euler(0f, 0f, -0.55f);
 
             Shape(transform, "desk:bevel", DioramaMeshKind.RoundedBox,
-                DioramaPalette.Material("desk-bevel", DioramaPalette.DepotNavy),
+                DioramaPalette.Material("desk-bevel", DioramaPalette.CreamCard),
                 DioramaPoint(new Vector3(3f, 11.25f, 0.22f)),
                 new Vector3(6.72f, 0.18f, 0.24f));
 
             // Restrained, semi-transparent navy inlays read as grain only in the exposed desk
             // margin: the closer Cream Card game board naturally depth-occludes their centre.
             Color grain = DioramaPalette.InkNavy;
-            grain.a = 0.22f;
+            grain.a = 0.12f;
             for (int i = 0; i < 15; i++)
             {
                 for (int segment = 0; segment < 3; segment++)
@@ -265,7 +265,7 @@ namespace CatMetro.Presentation.Board
                     var inlay = Shape(transform,
                         "desk:grain-" + i + ":" + segment, DioramaMeshKind.RoundedBox,
                         DioramaPalette.Material("desk-grain", grain),
-                        new Vector3(x, -9f + i * 2f + segment * 0.18f, 0.57f),
+                        new Vector3(x, -2.6f + i * 1.24f + segment * 0.18f, 0.18f),
                         new Vector3(width, 0.035f, 0.025f));
                     inlay.transform.localRotation = Quaternion.Euler(0f, 0f,
                         ((i + segment) % 3 - 1) * 2.5f);
@@ -275,7 +275,7 @@ namespace CatMetro.Presentation.Board
                     var knot = Shape(transform, "desk:grain-knot-" + i,
                         DioramaMeshKind.Cylinder,
                         DioramaPalette.Material("desk-grain", grain),
-                        new Vector3(0.4f + (i % 3) * 2.7f, -8.8f + i * 2f, 0.555f),
+                        new Vector3(0.4f + (i % 3) * 2.7f, -2.45f + i * 1.24f, 0.17f),
                         new Vector3(0.18f, 0.018f, 0.3f));
                     knot.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
                 }
@@ -285,7 +285,7 @@ namespace CatMetro.Presentation.Board
                 var foregroundKnot = Shape(transform, "desk:grain-knot-foreground-" + knot,
                     DioramaMeshKind.Cylinder,
                     DioramaPalette.Material("desk-grain", grain),
-                    new Vector3(2.15f + knot * 2.35f, -4.45f, 0.555f),
+                new Vector3(2.15f + knot * 2.35f, -2.3f, 0.17f),
                     new Vector3(0.16f, 0.018f, 0.28f));
                 foregroundKnot.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
             }
@@ -294,31 +294,32 @@ namespace CatMetro.Presentation.Board
             tree.transform.SetParent(transform, false);
             tree.transform.localPosition = DioramaPoint(new Vector3(0.15f, 8.35f, 0.28f));
             ContactShadow(tree.transform, tree.transform.TransformPoint(
-                new Vector3(0.1f, -0.54f, -0.03f)), new Vector2(0.82f, 0.34f));
+                new Vector3(0.1f, -0.08f, 0.12f)), new Vector2(0.82f, 0.48f));
             Shape(tree.transform, "tree:trunk", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("tree-trunk", DioramaPalette.DepotNavy),
-                new Vector3(0f, -0.38f, 0f), new Vector3(0.22f, 0.72f, 0.35f));
+                new Vector3(0f, 0f, -0.23f), new Vector3(0.18f, 0.18f, 0.64f));
             Shape(tree.transform, "tree:crown-low", DioramaMeshKind.Sphere,
                 DioramaPalette.Material("tree-teal", DioramaPalette.MetroTeal),
-                new Vector3(0f, 0.12f, -0.12f), new Vector3(0.95f, 1.12f, 0.62f));
+                new Vector3(0f, 0.04f, -0.7f), new Vector3(0.7f, 0.58f, 0.72f));
             Shape(tree.transform, "tree:crown-high", DioramaMeshKind.Sphere,
                 DioramaPalette.Material("tree-teal", DioramaPalette.MetroTeal),
-                new Vector3(0.1f, 0.72f, -0.18f), new Vector3(0.68f, 0.9f, 0.52f));
+                new Vector3(0.08f, 0.08f, -1.13f), new Vector3(0.5f, 0.44f, 0.62f));
 
             var fence = new GameObject("prop:fence");
             fence.transform.SetParent(transform, false);
             fence.transform.localPosition = DioramaPoint(new Vector3(5.75f, 8.9f, 0.28f));
             ContactShadow(fence.transform, fence.transform.TransformPoint(
-                new Vector3(0.08f, -0.24f, -0.03f)), new Vector2(1.35f, 0.4f));
+                new Vector3(0.08f, -0.04f, 0.12f)), new Vector2(1.35f, 0.4f));
             for (int i = 0; i < 3; i++)
                 Shape(fence.transform, "fence:post-" + i, DioramaMeshKind.RoundedBox,
                     DioramaPalette.Material("fence-cream", DioramaPalette.CreamCard),
-                    new Vector3((i - 1) * 0.48f, 0f, -0.05f), new Vector3(0.1f, 1.15f, 0.22f));
+                    new Vector3((i - 1) * 0.48f, 0f, -0.34f),
+                    new Vector3(0.1f, 0.14f, 0.82f));
             for (int i = 0; i < 2; i++)
                 Shape(fence.transform, "fence:rail-" + i, DioramaMeshKind.RoundedBox,
                     DioramaPalette.Material("fence-navy", DioramaPalette.InkNavy),
-                    new Vector3(0f, -0.3f + i * 0.58f, -0.02f),
-                    new Vector3(1.15f, 0.09f, 0.22f));
+                    new Vector3(0f, -0.02f, -0.2f - i * 0.38f),
+                    new Vector3(1.15f, 0.1f, 0.1f));
 
             var cup = new GameObject("prop:desk-cup");
             cup.transform.SetParent(transform, false);
@@ -328,14 +329,14 @@ namespace CatMetro.Presentation.Board
                 new Vector3(0.05f, -0.08f, -0.03f)), new Vector2(1.08f, 0.58f));
             var cupBody = Shape(cup.transform, "cup:body", DioramaMeshKind.Cylinder,
                 DioramaPalette.Material("cup-cream", DioramaPalette.WarmPaper),
-                Vector3.zero, new Vector3(0.52f, 0.12f, 0.52f));
+                new Vector3(0f, 0f, -0.28f), new Vector3(0.44f, 0.56f, 0.44f));
             cupBody.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
             Shape(cup.transform, "cup:coffee", DioramaMeshKind.Sphere,
                 DioramaPalette.Material("cup-coffee", DioramaPalette.DepotNavy),
-                new Vector3(0f, 0f, -0.09f), new Vector3(0.38f, 0.38f, 0.04f));
+                new Vector3(0f, -0.04f, -0.58f), new Vector3(0.34f, 0.3f, 0.04f));
             Shape(cup.transform, "cup:handle", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("cup-cream", DioramaPalette.WarmPaper),
-                new Vector3(0.38f, 0f, 0f), new Vector3(0.24f, 0.12f, 0.12f));
+                new Vector3(0.4f, 0f, -0.28f), new Vector3(0.24f, 0.12f, 0.34f));
         }
 
         private static void BuildJunction(GameObject root, Vector3 visualOffset)
@@ -354,22 +355,22 @@ namespace CatMetro.Presentation.Board
             string id = root.name.Substring(root.name.IndexOf(':') + 1);
             var depot = new GameObject("depot:" + id);
             depot.transform.SetParent(root.transform, false);
-            depot.transform.localPosition = visualOffset + new Vector3(0f, 0.2f, 0f);
+            depot.transform.localPosition = visualOffset + new Vector3(0f, 0.2f, 0.12f);
             ContactShadow(depot.transform, depot.transform.TransformPoint(
-                new Vector3(0.1f, -0.3f, 0.24f)), new Vector2(1.42f, 0.46f));
+                new Vector3(0.1f, -0.1f, 0.2f)), new Vector2(1.42f, 0.62f));
             Shape(depot.transform, "depot:body", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("depot-body", DioramaPalette.CreamCard),
-                Vector3.zero, new Vector3(1.25f, 0.82f, 0.42f));
+                new Vector3(0f, 0f, -0.43f), new Vector3(1.25f, 0.78f, 1.05f));
             var roof = Shape(depot.transform, "depot:roof", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("depot-roof", DioramaPalette.DepotNavy),
-                new Vector3(0f, 0.53f, -0.1f), new Vector3(1.42f, 0.24f, 0.46f));
-            roof.transform.localRotation = Quaternion.Euler(0f, 0f, 8f);
+                new Vector3(0f, 0f, -1.02f), new Vector3(1.48f, 0.94f, 0.22f));
+            roof.transform.localRotation = Quaternion.Euler(0f, 0f, -2f);
             Shape(depot.transform, "depot:door", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("depot-door", DioramaPalette.MetroTeal),
-                new Vector3(0f, -0.18f, -0.26f), new Vector3(0.45f, 0.42f, 0.1f));
+                new Vector3(0f, -0.42f, -0.45f), new Vector3(0.45f, 0.08f, 0.58f));
             Shape(depot.transform, "depot:lintel", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("depot-lintel", DioramaPalette.TicketOrange),
-                new Vector3(0f, 0.11f, -0.3f), new Vector3(0.68f, 0.1f, 0.07f));
+                new Vector3(0f, -0.46f, -0.8f), new Vector3(0.68f, 0.08f, 0.1f));
         }
 
         private static void BuildStation(GameObject root, Vector3 visualOffset, LineIdentity line)
@@ -379,29 +380,35 @@ namespace CatMetro.Presentation.Board
             visual.transform.localPosition = visualOffset;
             DioramaMeshFactory.Attach(visual, DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("station-paper", DioramaPalette.WarmPaper));
-            visual.transform.localScale = new Vector3(1.28f, 0.62f, 0.34f);
+            visual.transform.localScale = new Vector3(1.34f, 0.74f, 0.24f);
             ContactShadow(visual.transform,
-                visual.transform.position + new Vector3(0f, -0.18f, 0.25f),
+                visual.transform.position + new Vector3(0f, -0.06f, 0.2f),
                 new Vector2(1.5f, 0.72f));
             var tag = root.AddComponent<LineVisualTag>();
             tag.Apply(line, LineVisualRole.Station);
 
             Shape(visual.transform, "station:keyline", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("station-keyline", DioramaPalette.InkNavy),
-                new Vector3(0f, -0.62f, 0.2f), new Vector3(1.16f, 0.16f, 0.12f));
+                new Vector3(0f, -0.42f, -0.08f), new Vector3(1.16f, 0.14f, 0.14f));
             Shape(visual.transform, "station:plate", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("line-" + line.SymbolId, line.Color),
-                new Vector3(0f, 0f, -0.58f), new Vector3(0.62f, 0.6f, 0.08f));
+                new Vector3(0f, -0.12f, -0.82f), new Vector3(0.62f, 0.5f, 0.08f));
             var symbol = DioramaMeshFactory.CreateSymbol(visual.transform,
                 "station:symbol-" + line.SymbolId, line,
                 DioramaPalette.Material("station-symbol", DioramaPalette.WarmPaper));
-            symbol.transform.localPosition = new Vector3(0f, 0f, -0.7f);
-            symbol.transform.localScale = new Vector3(0.2f, 0.38f, 1f);
+            symbol.transform.localPosition = new Vector3(0f, -0.12f, -0.88f);
+            symbol.transform.localScale = new Vector3(0.2f, 0.3f, 1f);
 
+            Shape(visual.transform, "station:post-left", DioramaMeshKind.RoundedBox,
+                DioramaPalette.Material("station-post", DioramaPalette.CreamCard),
+                new Vector3(-0.5f, 0.12f, -0.44f), new Vector3(0.1f, 0.1f, 0.72f));
+            Shape(visual.transform, "station:post-right", DioramaMeshKind.RoundedBox,
+                DioramaPalette.Material("station-post", DioramaPalette.CreamCard),
+                new Vector3(0.5f, 0.12f, -0.44f), new Vector3(0.1f, 0.1f, 0.72f));
             var canopy = Shape(visual.transform, "station:canopy", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("station-canopy", DioramaPalette.CreamCard),
-                new Vector3(0f, 0.7f, -0.08f), new Vector3(1.28f, 0.18f, 0.34f));
-            canopy.transform.localRotation = Quaternion.Euler(0f, 0f, -4f);
+                new Vector3(0f, 0.12f, -0.86f), new Vector3(1.28f, 0.72f, 0.16f));
+            canopy.transform.localRotation = Quaternion.Euler(0f, 0f, -2f);
         }
 
         private static void BuildTrack(Transform root, string id, float length)
@@ -436,19 +443,19 @@ namespace CatMetro.Presentation.Board
 
             Shape(train.transform, "train:car-floor", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("car-floor", DioramaPalette.WarmPaper),
-                new Vector3(0f, 0f, -0.18f), new Vector3(0.62f, 0.78f, 0.12f));
+                new Vector3(0f, 0f, -0.12f), new Vector3(0.62f, 0.78f, 0.12f));
             Shape(train.transform, "train:car-side-left", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("car-cream", DioramaPalette.CreamCard),
-                new Vector3(-0.31f, 0f, -0.35f), new Vector3(0.1f, 0.78f, 0.3f));
+                new Vector3(-0.31f, 0f, -0.31f), new Vector3(0.1f, 0.78f, 0.42f));
             Shape(train.transform, "train:car-side-right", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("car-cream", DioramaPalette.CreamCard),
-                new Vector3(0.31f, 0f, -0.35f), new Vector3(0.1f, 0.78f, 0.3f));
+                new Vector3(0.31f, 0f, -0.31f), new Vector3(0.1f, 0.78f, 0.42f));
             Shape(train.transform, "train:car-end-front", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("car-cream", DioramaPalette.CreamCard),
-                new Vector3(0f, -0.4f, -0.35f), new Vector3(0.72f, 0.1f, 0.3f));
+                new Vector3(0f, -0.4f, -0.31f), new Vector3(0.72f, 0.1f, 0.42f));
             Shape(train.transform, "train:car-end-back", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("car-navy-trim", DioramaPalette.InkNavy),
-                new Vector3(0f, 0.4f, -0.35f), new Vector3(0.72f, 0.1f, 0.3f));
+                new Vector3(0f, 0.4f, -0.31f), new Vector3(0.72f, 0.1f, 0.42f));
 
             for (int x = -1; x <= 1; x += 2)
             for (int y = -1; y <= 1; y += 2)
@@ -482,38 +489,38 @@ namespace CatMetro.Presentation.Board
 
             Shape(train.transform, "cat:chest", DioramaMeshKind.Sphere,
                 DioramaPalette.Material("cat-" + line.SymbolId, line.Color),
-                new Vector3(0f, -0.06f, -0.48f), new Vector3(0.18f, 0.2f, 0.18f));
+                new Vector3(0f, -0.04f, -0.54f), new Vector3(0.18f, 0.18f, 0.28f));
             Shape(train.transform, "cat:head", DioramaMeshKind.Sphere,
                 DioramaPalette.Material("cat-" + line.SymbolId, line.Color),
-                new Vector3(0f, 0.04f, -0.62f),
-                new Vector3(headWidth, headHeight, 0.22f));
+                new Vector3(0f, -0.03f, -0.76f),
+                new Vector3(headWidth, headHeight * 0.82f, 0.24f));
             var ears = new GameObject("cat:ears");
             ears.transform.SetParent(train.transform, false);
             var leftEar = Shape(ears.transform, "ear:left", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("cat-ear", line.Color),
-                new Vector3(-earSpread, 0.18f, -0.91f),
-                new Vector3(0.075f, earHeight, 0.07f));
-            leftEar.transform.localRotation = Quaternion.Euler(0f, 0f,
-                line.SilhouetteId == "bent-ear-scruffy" ? 42f : -18f);
+                new Vector3(-earSpread, -0.02f, -0.94f),
+                new Vector3(0.075f, 0.075f, earHeight));
+            leftEar.transform.localRotation = Quaternion.Euler(0f,
+                line.SilhouetteId == "bent-ear-scruffy" ? 42f : -18f, 0f);
             var rightEar = Shape(ears.transform, "ear:right", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("cat-ear", line.Color),
-                new Vector3(earSpread, 0.18f, -0.91f),
-                new Vector3(0.075f, earHeight, 0.07f));
-            rightEar.transform.localRotation = Quaternion.Euler(0f, 0f, 18f);
+                new Vector3(earSpread, -0.02f, -0.94f),
+                new Vector3(0.075f, 0.075f, earHeight));
+            rightEar.transform.localRotation = Quaternion.Euler(0f, 18f, 0f);
             var leftInner = Shape(ears.transform, "ear:left-inner", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("cat-inner-ear", DioramaPalette.CreamCard),
-                new Vector3(-earSpread, 0.18f, -0.97f),
-                new Vector3(0.035f, earHeight * 0.55f, 0.025f));
+                new Vector3(-earSpread, -0.055f, -0.965f),
+                new Vector3(0.035f, 0.025f, earHeight * 0.55f));
             leftInner.transform.localRotation = leftEar.transform.localRotation;
             var rightInner = Shape(ears.transform, "ear:right-inner", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("cat-inner-ear", DioramaPalette.CreamCard),
-                new Vector3(earSpread, 0.18f, -0.97f),
-                new Vector3(0.035f, earHeight * 0.55f, 0.025f));
+                new Vector3(earSpread, -0.055f, -0.965f),
+                new Vector3(0.035f, 0.025f, earHeight * 0.55f));
             rightInner.transform.localRotation = rightEar.transform.localRotation;
 
             var face = new GameObject("cat:face");
             face.transform.SetParent(train.transform, false);
-            face.transform.localPosition = new Vector3(0f, 0.02f, -0.88f);
+            face.transform.localPosition = new Vector3(0f, -0.13f, -1.08f);
             Shape(face.transform, "eye:left", DioramaMeshKind.Sphere,
                 DioramaPalette.Material("cat-face", DioramaPalette.InkNavy),
                 new Vector3(-headWidth * 0.3f, 0.035f, 0f), new Vector3(0.032f, 0.04f, 0.025f));

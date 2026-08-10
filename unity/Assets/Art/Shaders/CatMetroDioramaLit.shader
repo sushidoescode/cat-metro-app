@@ -90,9 +90,9 @@ Shader "Universal Render Pipeline/Cat Metro Diorama Lit"
                 half3 viewDirection = GetWorldSpaceNormalizeViewDir(input.positionWS);
                 half rim = pow(1.0h - saturate(dot(normalWS, viewDirection)), 3.0h)
                     * _RimStrength;
-                half3 lightMix = half3(0.72h, 0.76h, 0.84h)
-                    + keyColor * (0.18h + 0.26h * toonRamp)
-                    + half3(1.0h, 0.94h, 0.82h) * rim;
+                half3 lightMix = half3(0.50h, 0.54h, 0.62h)
+                    + keyColor * (0.16h + 0.20h * toonRamp)
+                    + half3(1.0h, 0.94h, 0.82h) * (rim * 0.7h);
                 half3 vertexColor = lerp(half3(1.0h, 1.0h, 1.0h),
                     input.color.rgb, _VertexColorWeight);
                 half alpha = _BaseColor.a * lerp(1.0h, input.color.a, _VertexAlphaWeight);

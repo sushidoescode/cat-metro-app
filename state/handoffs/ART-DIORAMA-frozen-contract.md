@@ -253,3 +253,17 @@ and the persistentDataPath device finding. Lane 1B owns WavePreviewStrip's primi
   The inspected 900x2000 iteration visibly places Lane 1B's red preview chip near the lower
   station, so no editor frame, APK, Pixel capture, TG verdict, or CM-R21 rerating is claimed final
   until Lane 1B supplies the rounded top strip and camera-safe placement. HC-25 remains closed.
+- 2026-08-10 — side-by-side inspection rejected the first TG iteration before final evidence:
+  despite its numeric pitch, flat XY prop silhouettes and a near-white sheet still read top-down.
+  A new structural test went RED 10/12 at
+  `/tmp/catmetro-tg-depth-red2.860mOg/play.xml`, pinning a Cream Card wood surface, visible grain
+  above it, and depot/tree/station geometry rising on the tabletop depth axis. The corrected
+  strongly pitched orthographic camera now reads 32 degrees above the horizon; the depot,
+  station canopy/posts, trees, fence, cup, open car, and passenger use physical tabletop height;
+  restrained Ink Navy grain crosses the warm cream surface; and the toon ramp no longer clips
+  cream into white. Focused GREEN is DioramaConstruction 12/12 at
+  `/tmp/catmetro-tg-depth-final.Chxt1i/play.xml` plus DioramaAsset 9/9 at
+  `/tmp/catmetro-tg-depth-assets.flypWN/edit.xml`. The inspected 900x2000 iteration at
+  `/tmp/catmetro-tg-depth-frame2.Akn4hb/` has the preview-safe top margin and visible front desk
+  apron, but remains iteration-only. Lane 1B's stacked preview/primitive removal, exact integrated
+  tests, new APK/Pixel capture, TG verdict, CM-R21 rerating, reviews, CI, and HC-25 remain open.

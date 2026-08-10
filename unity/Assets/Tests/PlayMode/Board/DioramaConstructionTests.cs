@@ -330,7 +330,8 @@ namespace CatMetro.Tests.PlayMode
 
             var board = _root.View.transform;
             Assert.That(Html(AssertNamed(board, "desk:surface").GetComponent<Renderer>()
-                .sharedMaterial.color), Is.EqualTo("FAF6EC"));
+                .sharedMaterial.color), Is.EqualTo("F2EAD9"),
+                "the playable board is cream/warm wood, never a white digital sheet");
             Assert.That(Html(AssertNamed(board, "desk:table").GetComponent<Renderer>()
                 .sharedMaterial.color), Is.EqualTo("F2EAD9"));
             AssertNamed(board, "desk:front-edge");
@@ -348,10 +349,14 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(grain.Length, Is.GreaterThanOrEqualTo(7));
             Assert.That(grain.All(x => Html(x.sharedMaterial.color) == "22304A"), Is.True,
                 "wood grain is low-alpha ink shading; orange stays an accent");
-            Assert.That(grain.All(x => x.sharedMaterial.color.a >= 0.18f), Is.True,
-                "the palette-safe grain must remain visible at phone scale");
+            Assert.That(grain.All(x => x.sharedMaterial.color.a >= 0.08f
+                && x.sharedMaterial.color.a <= 0.16f), Is.True,
+                "the palette-safe grain stays visible but subtle at phone scale");
             Assert.That(grain.All(x => x.transform.localScale.y < 5f), Is.True,
                 "wood grain stays irregular and segmented, never a full-frame grid line");
+            float surfaceZ = AssertNamed(board, "desk:surface").localPosition.z;
+            Assert.That(grain.All(x => x.transform.position.z < surfaceZ - 0.05f), Is.True,
+                "wood grain must sit visibly above the cream board toward the camera");
 
             var shadowRoots = board.Cast<Transform>().Where(x =>
                 x.name.StartsWith("prop:") || x.name.StartsWith("source:")
@@ -368,6 +373,29 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(shadow.GetComponent<Renderer>().sharedMaterial.color.a,
                     Is.InRange(0.08f, 0.35f), root.name);
             }
+        }
+
+        [UnityTest]
+        public IEnumerator ThreeQuarterProps_RiseOffTheTabletopInsteadOfReadingAsFlatCutouts()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            var board = _root.View.transform;
+            var trunk = AssertNamed(board, "tree:trunk");
+            Assert.That(trunk.localScale.z, Is.GreaterThan(trunk.localScale.y * 2f),
+                "a tabletop tree rises along depth; it is not a tall icon painted on XY");
+
+            var depot = AssertNamed(board, "depot:body");
+            Assert.That(depot.localScale.z, Is.GreaterThan(depot.localScale.y),
+                "the depot needs a real facade height in the three-quarter view");
+
+            var station = AssertNamed(board, "station:visual");
+            var roof = AssertNamed(station, "station:canopy");
+            Assert.That(roof.localPosition.z, Is.LessThan(station.localPosition.z - 0.4f),
+                "the station canopy must stand above its platform toward the camera");
+            AssertNamed(station, "station:post-left");
+            AssertNamed(station, "station:post-right");
         }
 
         [UnityTest]
