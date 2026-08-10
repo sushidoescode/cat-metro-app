@@ -218,3 +218,7 @@ and the persistentDataPath device finding. Lane 1B owns WavePreviewStrip's primi
   EditMode 829/829 and PlayMode 146/146. Draft PR #65 is open; GitHub rejected both workflows
   before runner assignment because of account billing/spending-limit state. Pixel, Actions,
   Polyfork ADR, human rater, evidence-only review, and HC-25 remain open.
+- 2026-08-09 — human explicitly reassigned the Polyfork license/source-custody ADR draft to
+  Lane 1A and requested an ADR-0010-shaped proposal for in-chat signature. This ruling is the
+  narrow `docs/adr/**` ownership exception required by external gate 1; ADR approval and HC-25
+  remain separate human gates.
