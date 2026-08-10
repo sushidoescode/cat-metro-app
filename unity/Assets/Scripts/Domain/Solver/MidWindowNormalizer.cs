@@ -35,7 +35,7 @@ namespace CatMetro.Domain.Solver
             {
                 var before = (int[])centeredTicks.Clone();
                 CenterOneSweep(centeredTicks, upperExclusive, sameCompletionWin);
-                if (!ReceiptOrderPreserved(centeredTicks))
+                if (!ReceiptOrderPreserved(receiptSwitches, centeredTicks))
                 {
                     centeredTicks = (int[])seedTicks.Clone();
                     return false;
@@ -70,10 +70,14 @@ namespace CatMetro.Domain.Solver
             return true;
         }
 
-        private static bool ReceiptOrderPreserved(int[] ticks)
+        private static bool ReceiptOrderPreserved(ushort[] switches, int[] ticks)
         {
+            if (switches != null && switches.Length != ticks.Length) return false;
             for (int i = 1; i < ticks.Length; i++)
-                if (ticks[i] < ticks[i - 1]) return false;
+                if (ticks[i] < ticks[i - 1]
+                    || (switches != null && ticks[i] == ticks[i - 1]
+                        && switches[i] < switches[i - 1]))
+                    return false;
             return true;
         }
 

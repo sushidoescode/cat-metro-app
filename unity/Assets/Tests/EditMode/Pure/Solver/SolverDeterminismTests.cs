@@ -149,6 +149,40 @@ namespace CatMetro.Tests.Solver
         }
 
         [Test]
+        public void OccurrenceProductCertificate_RejectsAnIncompleteInterleavingUnion()
+        {
+            // Both groups are individually complete chronological boxes. Together they contain
+            // only 3 of the 6 combinations in their global S0:[0..2] x S1:[0..1] envelopes.
+            // Its midpoint happens to be a valid fixed point, so only the cardinality proof keeps
+            // the fast path from erasing the lex-earlier fixed point S0@0,S1@1.
+            var incomplete = new[]
+            {
+                new OccurrenceTickBoxGroup(
+                    new ushort[] { 0, 1 }, new[] { 0, 1 }, new[] { 0, 1 }, 1),
+                new OccurrenceTickBoxGroup(
+                    new ushort[] { 1, 0 }, new[] { 0, 0 }, new[] { 0, 2 }, 2),
+            };
+            var status = OccurrenceTickProduct.Classify(
+                2, 3, incomplete, _ => true, out _);
+            Assert.That(status, Is.EqualTo(OrderedTickBoxStatus.Incomplete));
+
+            // Positive control: the two boxes below partition all four combinations in
+            // S0:[0..1] x S1:[0..1], so their unique fixed point is the sorted lower midpoint.
+            var complete = new[]
+            {
+                new OccurrenceTickBoxGroup(
+                    new ushort[] { 0, 1 }, new[] { 0, 0 }, new[] { 1, 1 }, 3),
+                new OccurrenceTickBoxGroup(
+                    new ushort[] { 1, 0 }, new[] { 0, 1 }, new[] { 0, 1 }, 1),
+            };
+            status = OccurrenceTickProduct.Classify(2, 2, complete, _ => true, out var midpoint);
+            Assert.That(status, Is.EqualTo(OrderedTickBoxStatus.Complete));
+            Assert.That(midpoint.Length, Is.EqualTo(2));
+            Assert.That((midpoint[0].SwitchId, midpoint[0].Tick), Is.EqualTo((0, 0)));
+            Assert.That((midpoint[1].SwitchId, midpoint[1].Tick), Is.EqualTo((1, 0)));
+        }
+
+        [Test]
         public void InteractingWindowCycle_StopsInsteadOfReturningAChangingBoundary()
         {
             var wins = new HashSet<string>

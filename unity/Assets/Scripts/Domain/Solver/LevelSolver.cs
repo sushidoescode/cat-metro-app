@@ -95,34 +95,45 @@ namespace CatMetro.Domain.Solver
             int nodesExpanded = priorExpanded;
             int timeLimit = graph.TimeLimitTicks;
 
-            // Layer L = logs whose replay has taken exactly L steps and is still Running.
+            // Layer L = distinct running states whose replay has taken exactly L steps. A state
+            // is simulated once, while its minimum-command receipt histories travel as a compact
+            // predecessor DAG so state convergence cannot erase the eventual canonical win.
             // No cross-layer visited set: Tick occupies digest bytes 0-3, so states in different
             // layers can never share a key — a set spanning layers is provably inert (review M6).
-            var layer = new List<CommandLog> { new CommandLog() };
+            var initial = new SearchFrontier(
+                SimulationState.CreateInitial(graph, seed), new CommandLog());
+            initial.AddRootHistory();
+            var layer = new List<SearchFrontier> { initial };
+            var provenanceOrder = new List<ProvenanceNode> { initial.Provenance };
 
             for (int depth = 0; depth < timeLimit && layer.Count > 0; depth++)
             {
-                var wins = new List<(int ticks, CommandLog log)>();
+                WinningFrontier wins = null;
                 // Within-layer dedupe resolves collisions by the criterion-7 comparator, NOT by
                 // expansion order — otherwise the untoggled-prefix branch (always expanded first)
                 // claims every converged state and the canonical log carries the LATEST possible
                 // toggle, inverting the tie-break.
-                var next = new Dictionary<string, (CommandLog log, SimulationState state)>();
+                var next = new Dictionary<string, SearchFrontier>();
 
-                foreach (var log in layer)
+                foreach (var frontier in layer)
                 {
+                    var log = frontier.ReplayLog;
                     nodesExpanded++;
-                    work.SetNodesExpanded(nodesExpanded);
-                    if (nodesExpanded > budget)
-                        return new SolveResult(SolveVerdict.NotFound, NotFoundReason.Budget,
-                            new CommandLog(), 0, 0, reportWidth, pinnedPruned, nodesExpanded,
-                            firstPin, ZeroProxy(graph));
+                    if (!work.SetNodesExpanded(nodesExpanded))
+                        return CanonicalStop(NotFoundReason.Budget, graph, reportWidth,
+                            pinnedPruned, nodesExpanded, firstPin);
 
                     // Transition depth -> depth+1: the (depth+1)th Step call has entry tick
                     // == depth, so its due commands carry entry.Tick == depth - 1. The very
                     // first step is uncommandable by Domain design.
                     foreach (var combo in Combos(graph, depth - 1, depth == 0))
                     {
+                        // A high-route-count board may spend most of its time generating and
+                        // digesting successor attempts rather than retaining states. Charge every
+                        // attempt so branching work cannot escape the Solve-wide ceiling.
+                        if (!work.TryCharge(1))
+                            return CanonicalStop(NotFoundReason.Budget, graph, reportWidth,
+                                pinnedPruned, nodesExpanded, firstPin);
                         var childLog = Extend(log, combo);
                         SimulationState state;
                         try
@@ -148,58 +159,72 @@ namespace CatMetro.Domain.Solver
 
                         if (state.Outcome.Kind == OutcomeKind.Won)
                         {
-                            int t = state.Tick; // never write state fields; read once
-                            wins.Add((t - 1, childLog));
+                            int completionTicks = state.Tick - 1;
+                            int commandCount = childLog.Entries.Count;
+                            if (wins == null || commandCount < wins.CommandCount)
+                                wins = new WinningFrontier(completionTicks, commandCount);
+                            if (commandCount == wins.CommandCount)
+                                if (!wins.MergeFrom(frontier, combo, work))
+                                    return CanonicalStop(NotFoundReason.Budget, graph, reportWidth,
+                                        pinnedPruned, nodesExpanded, firstPin);
                         }
                         else if (state.Outcome.Kind == OutcomeKind.Running)
                         {
                             var key = DigestKey(state);
-                            if (!next.TryGetValue(key, out var incumbent)
-                                || CompareWins((0, childLog), (0, incumbent.log)) < 0)
-                                next[key] = (childLog, state);
+                            if (!next.TryGetValue(key, out var incumbent))
+                            {
+                                incumbent = new SearchFrontier(state, childLog);
+                                if (!incumbent.ReplaceFrom(frontier, combo, work))
+                                    return CanonicalStop(NotFoundReason.Budget, graph, reportWidth,
+                                        pinnedPruned, nodesExpanded, firstPin);
+                                next[key] = incumbent;
+                                provenanceOrder.Add(incumbent.Provenance);
+                            }
+                            else if (childLog.Entries.Count < incumbent.CommandCount)
+                            {
+                                incumbent.ReplayLog = childLog;
+                                if (!incumbent.ReplaceFrom(frontier, combo, work))
+                                    return CanonicalStop(NotFoundReason.Budget, graph, reportWidth,
+                                        pinnedPruned, nodesExpanded, firstPin);
+                            }
+                            else if (childLog.Entries.Count == incumbent.CommandCount)
+                            {
+                                if (CompareWins((0, childLog), (0, incumbent.ReplayLog)) < 0)
+                                    incumbent.ReplayLog = childLog;
+                                if (!incumbent.MergeFrom(frontier, combo, work))
+                                    return CanonicalStop(NotFoundReason.Budget, graph, reportWidth,
+                                        pinnedPruned, nodesExpanded, firstPin);
+                            }
                         }
                         // Failed states are dead branches.
                     }
                 }
 
-                if (wins.Count > 0)
+                if (wins != null)
                 {
-                    wins.Sort(CompareWins);
-                    int bestTicks = wins[0].ticks;
-                    int bestCommands = wins[0].log.Entries.Count;
-                    if (!CollectEqualPrimaryHistories(
-                        graph, seed, bestTicks, bestCommands, width, work,
-                        out var canonicalWins))
+                    var status = TrySelectCanonicalWin(
+                        graph, seed, wins, provenanceOrder, work, out var centeredLog);
+                    if (status == CenterStatus.Budget)
                         return CanonicalStop(NotFoundReason.Budget, graph, reportWidth,
                             pinnedPruned, nodesExpanded, firstPin);
-                    CommandLog centeredLog = null;
-                    foreach (var win in canonicalWins)
-                    {
-                        if (!work.TryCharge(1))
-                            return CanonicalStop(NotFoundReason.Budget, graph, reportWidth,
-                                pinnedPruned, nodesExpanded, firstPin);
-                        var status = TryCenterSameCompletionWindows(
-                            graph, seed, win, bestTicks, work, out var candidate);
-                        if (status == CenterStatus.Budget)
-                            return CanonicalStop(NotFoundReason.Budget, graph, reportWidth,
-                                pinnedPruned, nodesExpanded, firstPin);
-                        if (status == CenterStatus.Unresolved)
-                            continue;
-                        if (centeredLog == null || CompareLogsLex(candidate, centeredLog) < 0)
-                            centeredLog = candidate;
-                    }
 
                     if (centeredLog == null)
                         return CanonicalStop(NotFoundReason.None, graph, reportWidth,
                             pinnedPruned, nodesExpanded, firstPin);
 
+                    if (!work.TryChargeProxy(
+                        centeredLog.Entries.Count, wins.CompletionTicks + 1,
+                        graph.TimeLimitTicks))
+                        return CanonicalStop(NotFoundReason.Budget, graph, reportWidth,
+                            pinnedPruned, nodesExpanded, firstPin);
+
                     return new SolveResult(SolveVerdict.Solved, NotFoundReason.None, centeredLog,
-                        bestTicks, centeredLog.Entries.Count, reportWidth, pinnedPruned,
+                        wins.CompletionTicks, centeredLog.Entries.Count, reportWidth, pinnedPruned,
                         nodesExpanded, firstPin,
-                        ComputeProxy(graph, seed, centeredLog, bestTicks));
+                        ComputeProxy(graph, seed, centeredLog, wins.CompletionTicks));
                 }
 
-                var survivors = new List<(CommandLog log, SimulationState state)>(next.Count);
+                var survivors = new List<SearchFrontier>(next.Count);
                 foreach (var kv in next)
                     survivors.Add(kv.Value);
                 // Deterministic layer order regardless of dictionary iteration: beam order.
@@ -207,10 +232,12 @@ namespace CatMetro.Domain.Solver
                 if (width != int.MaxValue && survivors.Count > width)
                     survivors.RemoveRange(width, survivors.Count - width);
 
-                layer = new List<CommandLog>(survivors.Count);
-                foreach (var (log, _) in survivors) layer.Add(log);
+                layer = survivors;
             }
 
+            if (work.Exceeded)
+                return CanonicalStop(NotFoundReason.Budget, graph, reportWidth,
+                    pinnedPruned, nodesExpanded, firstPin);
             if (!exhaustiveIsProof)
                 return new SolveResult(SolveVerdict.NotFound, NotFoundReason.Beam, new CommandLog(),
                     0, 0, reportWidth, pinnedPruned, nodesExpanded, firstPin, ZeroProxy(graph));
@@ -222,8 +249,8 @@ namespace CatMetro.Domain.Solver
         }
 
         // The primary order: fewer completion ticks, then fewer commands. Lexicographic order
-        // selects a deterministic representative for search-state dedupe and seeds the final
-        // mid-window refinement below; it is no longer the returned log's earliest-boundary rule.
+        // selects only the replay representative for a deduped state. Equal-state histories remain
+        // in the predecessor DAG, so this raw order is no longer the returned-log tie-break.
         private static int CompareWins((int ticks, CommandLog log) a, (int ticks, CommandLog log) b)
         {
             if (a.ticks != b.ticks) return a.ticks.CompareTo(b.ticks);
@@ -238,14 +265,14 @@ namespace CatMetro.Domain.Solver
             return 0;
         }
 
-        // SOLVER-TIEBREAK: starting from CompareWins' earliest representative, move each command
-        // to the lower middle of its contiguous same-completion winning interval. Every accepted
-        // move is independently replayed through the shipped Domain, so completion optimality and
-        // command count cannot change. Repeated passes handle interacting windows; the bounded
-        // fallback is still the last independently-proven same-completion win.
+        // SOLVER-TIEBREAK: move each command to the lower middle of its unrestricted contiguous
+        // same-completion winning interval. Every probe replays the shipped Domain through the
+        // target completion boundary. MidWindowNormalizer returns only a fixed point; cycles,
+        // non-convergence, work exhaustion, and receipt-order reversal all fail closed.
         private static CenterStatus TryCenterSameCompletionWindows(
             LevelGraph graph, ulong seed, CommandLog winningLog, int completionTicks,
-            SolverWorkMeter work, out CommandLog centeredLog)
+            SolverWorkMeter work, Dictionary<string, bool> probeCache,
+            out CommandLog centeredLog)
         {
             if (winningLog.Entries.Count == 0)
             {
@@ -253,13 +280,24 @@ namespace CatMetro.Domain.Solver
                 return CenterStatus.Centered;
             }
 
+            int commandCount = winningLog.Entries.Count;
+            if (!work.TryCharge(Math.Max(1L, (long)commandCount * 3)))
+            {
+                centeredLog = null;
+                return CenterStatus.Budget;
+            }
             var entries = new ToggleSwitchCommand[winningLog.Entries.Count];
             for (int i = 0; i < entries.Length; i++) entries[i] = winningLog.Entries[i];
+            var receiptSwitches = new ushort[entries.Length];
             var seedTicks = new int[entries.Length];
-            for (int i = 0; i < entries.Length; i++) seedTicks[i] = entries[i].Tick;
-            if (!MidWindowNormalizer.TryCenter(seedTicks, graph.TimeLimitTicks,
+            for (int i = 0; i < entries.Length; i++)
+            {
+                receiptSwitches[i] = entries[i].SwitchId;
+                seedTicks[i] = entries[i].Tick;
+            }
+            if (!MidWindowNormalizer.TryCenter(receiptSwitches, seedTicks, graph.TimeLimitTicks,
                 ticks => IsSameCompletionWin(
-                    graph, seed, entries, ticks, completionTicks, work),
+                    graph, seed, entries, ticks, completionTicks, work, probeCache),
                 out var centeredTicks))
             {
                 centeredLog = null;
@@ -278,26 +316,46 @@ namespace CatMetro.Domain.Solver
 
         private static bool IsSameCompletionWin(LevelGraph graph, ulong seed,
             ToggleSwitchCommand[] entries, int[] ticks, int completionTicks,
-            SolverWorkMeter work)
+            SolverWorkMeter work, Dictionary<string, bool> probeCache)
         {
-            if (!work.TryChargeReplay(entries.Length, graph.TimeLimitTicks)) return false;
+            // Reserve the linear key construction before allocating it. A cache hit pays only
+            // this lookup/key cost; a miss additionally reserves the full replay below.
+            if (!work.TryCharge(Math.Max(1, entries.Length))) return false;
+            string key = ProbeKey(entries, ticks);
+            if (probeCache.TryGetValue(key, out bool cached)) return cached;
+
+            int replayTicks = Math.Min(graph.TimeLimitTicks, completionTicks + 1);
+            if (!work.TryChargeReplay(entries.Length, replayTicks)) return false;
             var candidate = new CommandLog();
             for (int i = 0; i < entries.Length; i++)
                 candidate.Append(new ToggleSwitchCommand(entries[i].SwitchId, ticks[i]));
 
             try
             {
-                var end = ReplayHasher.RunToEnd(graph, seed, candidate);
-                return end.Outcome.Kind == OutcomeKind.Won && end.Tick - 1 == completionTicks;
+                var end = ReplayTo(graph, seed, candidate, replayTicks);
+                bool result = end.Outcome.Kind == OutcomeKind.Won
+                    && end.Tick - 1 == completionTicks;
+                probeCache.Add(key, result);
+                return result;
             }
             catch (NotSupportedException)
             {
+                probeCache.Add(key, false);
                 return false;
             }
             catch (InvalidOperationException)
             {
+                probeCache.Add(key, false);
                 return false;
             }
+        }
+
+        private static string ProbeKey(ToggleSwitchCommand[] entries, int[] ticks)
+        {
+            var parts = new string[entries.Length];
+            for (int i = 0; i < entries.Length; i++)
+                parts[i] = entries[i].SwitchId + ":" + ticks[i];
+            return string.Join(";", parts);
         }
 
         private static CommandLog LogFrom(ToggleSwitchCommand[] entries, int formatVersion)
@@ -319,139 +377,774 @@ namespace CatMetro.Domain.Solver
             return 0;
         }
 
-        private static bool CollectEqualPrimaryHistories(
-            LevelGraph graph, ulong seed, int completionTicks, int commandCount, int width,
-            SolverWorkMeter work, out List<CommandLog> result)
+        private static CenterStatus TrySelectCanonicalWin(
+            LevelGraph graph, ulong seed, WinningFrontier wins,
+            List<ProvenanceNode> provenanceOrder, SolverWorkMeter work,
+            out CommandLog centeredLog)
         {
-            result = null;
-            var layer = new List<CanonicalFrontier>
+            centeredLog = null;
+            if (!TryBuildWinningHistories(
+                wins, provenanceOrder, work, out var histories))
+                return CenterStatus.Budget;
+            if (!wins.ProvenanceComplete || work.Exceeded) return CenterStatus.Budget;
+            if (graph.SwitchRoutes.Length <= 2)
             {
-                new CanonicalFrontier(SimulationState.CreateInitial(graph, seed), new CommandLog())
-            };
-            if (!layer[0].TryAddHistory(new CommandLog(), work)) return false;
-
-            for (int depth = 0; depth <= completionTicks && layer.Count > 0; depth++)
-            {
-                var wins = new List<CommandLog>();
-                var winKeys = new HashSet<string>();
-                var next = new Dictionary<string, CanonicalFrontier>();
-
-                foreach (var frontier in layer)
+                var certificate = TryCreateCertifiedRelation(histories, work, out var relation);
+                if (certificate == CertificateStatus.Budget) return CenterStatus.Budget;
+                if (certificate == CertificateStatus.Certified)
                 {
-                    if (!work.TryCharge(1)) return false;
-                    foreach (var combo in Combos(graph, depth - 1, depth == 0))
+                    var occurrenceCertificate = TrySelectIndependentOccurrenceFixedPoints(
+                        graph, histories, relation, work, out centeredLog);
+                    if (occurrenceCertificate == CertificateStatus.Budget)
+                        return CenterStatus.Budget;
+
+                    var status = occurrenceCertificate == CertificateStatus.Certified
+                        ? CenterStatus.Centered
+                        : SelectCertifiedFixedPoint(
+                            graph, histories, relation, work, out centeredLog);
+                    if (status != CenterStatus.Centered) return status;
+
+                    // The compact relation proves which fixed point is lex-first. Re-run that one
+                    // selected log through the shipped Domain normalizer as a defensive witness:
+                    // it must be the same-completion win and already be the same fixed point.
+                    var verificationCache = new Dictionary<string, bool>();
+                    var verification = TryCenterSameCompletionWindows(
+                        graph, seed, centeredLog, wins.CompletionTicks, work,
+                        verificationCache, out var verifiedLog);
+                    if (verification != CenterStatus.Centered) return verification;
+                    if (CompareLogsLex(centeredLog, verifiedLog) != 0)
                     {
-                        var replayLog = Extend(frontier.ReplayLog, combo);
-                        SimulationState state;
-                        try
-                        {
-                            state = ReplayTo(graph, seed, replayLog, depth + 1);
-                        }
-                        catch (NotSupportedException)
-                        {
-                            continue;
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            continue;
-                        }
+                        centeredLog = null;
+                        return CenterStatus.Unresolved;
+                    }
+                    return CenterStatus.Centered;
+                }
+            }
 
-                        if (state.Outcome.Kind == OutcomeKind.Won)
-                        {
-                            if (state.Tick - 1 != completionTicks) continue;
-                            foreach (var history in frontier.Histories)
-                            {
-                                if (!work.TryCharge(1)) return false;
-                                var child = Extend(history, combo);
-                                if (child.Entries.Count != commandCount) continue;
-                                var key = HistoryKey(child);
-                                if (winKeys.Add(key)) wins.Add(child);
-                            }
-                            continue;
-                        }
-                        if (state.Outcome.Kind != OutcomeKind.Running) continue;
+            var probeCache = new Dictionary<string, bool>();
 
-                        var digest = DigestKey(state);
-                        if (!next.TryGetValue(digest, out var incumbent))
-                        {
-                            incumbent = new CanonicalFrontier(state, replayLog);
-                            next[digest] = incumbent;
-                        }
-                        else if (CompareWins((0, replayLog), (0, incumbent.ReplayLog)) < 0)
-                        {
-                            incumbent.ReplayLog = replayLog;
-                        }
+            foreach (var group in histories.Values)
+            {
+                var status = CenterEveryHistory(
+                    graph, seed, wins.CompletionTicks, group, work, probeCache,
+                    ref centeredLog);
+                if (status == CenterStatus.Budget) return CenterStatus.Budget;
+            }
 
-                        foreach (var history in frontier.Histories)
-                        {
-                            if (!work.TryCharge(1)) return false;
-                            var child = Extend(history, combo);
-                            if (child.Entries.Count <= commandCount)
-                                if (!incumbent.TryAddHistory(child, work)) return false;
-                        }
+            return centeredLog == null ? CenterStatus.Unresolved : CenterStatus.Centered;
+        }
+
+        private static CertificateStatus TryCreateCertifiedRelation(
+            Dictionary<string, HistoryGroup> histories,
+            SolverWorkMeter work,
+            out CertifiedWinRelation relation)
+        {
+            relation = null;
+            // A group contains unique chronological tick vectors for one switch-id sequence:
+            // deterministic replay gives each CommandLog exactly one path through the DAG. Its
+            // observed count therefore proves the entire ordered integer box when it equals the
+            // independently counted box cardinality. Any hole, duplicate/overflow uncertainty,
+            // or work stop rejects the certificate and falls back to exact path enumeration.
+            foreach (var group in histories.Values)
+            {
+                var status = IsFullOrderedBox(group, work);
+                if (status != CertificateStatus.Certified) return status;
+            }
+            relation = new CertifiedWinRelation(histories, work);
+            return CertificateStatus.Certified;
+        }
+
+        private static CertificateStatus IsFullOrderedBox(
+            HistoryGroup group, SolverWorkMeter work)
+        {
+            if (group.CountOverflow) return CertificateStatus.NotCertified;
+            var status = OrderedTickBox.Classify(
+                group.Switches, group.MinTicks, group.MaxTicks, group.Count,
+                () => work.TryCharge(1));
+            if (status == OrderedTickBoxStatus.WorkLimit) return CertificateStatus.Budget;
+            return status == OrderedTickBoxStatus.Complete
+                ? CertificateStatus.Certified : CertificateStatus.NotCertified;
+        }
+
+        // A second independent cardinality certificate recognizes a common exact shape without
+        // enumerating every chronological interleaving. Label the kth command received for each
+        // switch as that switch's kth occurrence. Every chronological history maps injectively to
+        // one vector of per-occurrence ticks. If the observed union has the same cardinality as the
+        // product of its occurrence envelopes, it is that full product. Strictly separated
+        // same-switch envelopes then make every command's maximal connected interval independent,
+        // so the lower midpoint of each envelope is the unique fixed point for that switch-count
+        // family. Families cannot interact because moving ticks never changes switch counts.
+        private static CertificateStatus TrySelectIndependentOccurrenceFixedPoints(
+            LevelGraph graph,
+            Dictionary<string, HistoryGroup> histories,
+            CertifiedWinRelation relation,
+            SolverWorkMeter work,
+            out CommandLog centeredLog)
+        {
+            centeredLog = null;
+            int switchCount = graph.SwitchRoutes.Length;
+            if (!work.TryCharge(Math.Max(1, histories.Count)))
+                return CertificateStatus.Budget;
+            var families = new Dictionary<string, List<HistoryGroup>>();
+            foreach (var group in histories.Values)
+            {
+                if (!work.TryCharge(Math.Max(1, group.Switches.Length)))
+                    return CertificateStatus.Budget;
+                var counts = new int[switchCount];
+                foreach (ushort switchId in group.Switches)
+                {
+                    if (switchId >= switchCount) return CertificateStatus.NotCertified;
+                    counts[switchId]++;
+                }
+                string key = string.Join(",", counts);
+                if (!families.TryGetValue(key, out var family))
+                    families.Add(key, family = new List<HistoryGroup>());
+                family.Add(group);
+            }
+
+            foreach (var family in families.Values)
+            {
+                var status = TrySelectIndependentOccurrenceFixedPoint(
+                    graph, family, relation, work, out var candidate);
+                if (status != CertificateStatus.Certified) return status;
+                if (centeredLog == null || CompareLogsLex(candidate, centeredLog) < 0)
+                    centeredLog = candidate;
+            }
+            return centeredLog == null
+                ? CertificateStatus.NotCertified : CertificateStatus.Certified;
+        }
+
+        private static CertificateStatus TrySelectIndependentOccurrenceFixedPoint(
+            LevelGraph graph,
+            List<HistoryGroup> family,
+            CertifiedWinRelation relation,
+            SolverWorkMeter work,
+            out CommandLog candidateLog)
+        {
+            candidateLog = null;
+            if (family.Count == 0) return CertificateStatus.NotCertified;
+            if (!work.TryCharge(Math.Max(1, family.Count)))
+                return CertificateStatus.Budget;
+            var boxes = new OccurrenceTickBoxGroup[family.Count];
+            for (int i = 0; i < family.Count; i++)
+            {
+                var group = family[i];
+                boxes[i] = new OccurrenceTickBoxGroup(
+                    group.Switches, group.MinTicks, group.MaxTicks,
+                    group.Count, group.CountOverflow);
+            }
+            var productStatus = OccurrenceTickProduct.Classify(
+                graph.SwitchRoutes.Length, graph.TimeLimitTicks, boxes,
+                units => work.TryCharge(units), out var entries);
+            if (productStatus == OrderedTickBoxStatus.WorkLimit)
+                return CertificateStatus.Budget;
+            if (productStatus != OrderedTickBoxStatus.Complete)
+                return CertificateStatus.NotCertified;
+
+            int commandCount = entries.Length;
+            var switches = new ushort[commandCount];
+            var ticks = new int[commandCount];
+            for (int i = 0; i < commandCount; i++)
+            {
+                switches[i] = entries[i].SwitchId;
+                ticks[i] = entries[i].Tick;
+            }
+            if (!relation.Contains(switches, ticks))
+                return work.Exceeded
+                    ? CertificateStatus.Budget : CertificateStatus.NotCertified;
+            if (!MidWindowNormalizer.IsFixedPoint(
+                    ticks, graph.TimeLimitTicks,
+                    probe => relation.Contains(switches, probe)))
+                return work.Exceeded
+                    ? CertificateStatus.Budget : CertificateStatus.NotCertified;
+
+            candidateLog = LogFrom(entries, CommandLog.CurrentFormatVersion);
+            return CertificateStatus.Certified;
+        }
+
+        private static CenterStatus SelectCertifiedFixedPoint(
+            LevelGraph graph,
+            Dictionary<string, HistoryGroup> histories,
+            CertifiedWinRelation relation,
+            SolverWorkMeter work,
+            out CommandLog centeredLog)
+        {
+            centeredLog = null;
+            foreach (var group in histories.Values)
+            {
+                var status = EnumerateCertifiedFixedPoints(
+                    graph, group, relation, work, ref centeredLog);
+                if (status == CenterStatus.Budget) return CenterStatus.Budget;
+            }
+            return centeredLog == null ? CenterStatus.Unresolved : CenterStatus.Centered;
+        }
+
+        private static CenterStatus EnumerateCertifiedFixedPoints(
+            LevelGraph graph,
+            HistoryGroup group,
+            CertifiedWinRelation relation,
+            SolverWorkMeter work,
+            ref CommandLog centeredLog)
+        {
+            int count = group.Switches.Length;
+            if (count == 0)
+            {
+                if (!work.TryCharge(1)) return CenterStatus.Budget;
+                centeredLog = new CommandLog();
+                return CenterStatus.Centered;
+            }
+
+            // Reserve the component scans and their linear scratch before allocating it.
+            if (!work.TryCharge(Math.Max(1L, (long)count * 3)))
+                return CenterStatus.Budget;
+
+            var componentStarts = new List<int> { 0 };
+            // A gap leaves the first tick immediately outside either interval in the same receipt
+            // order. Because the certified box contains every winner in that order, that outside
+            // tick is a loss and the isolated interval's middle is forced. Inside the one chosen
+            // overlapping component, enumerate all but its first coordinate; every fixed point is
+            // represented by exactly one such assignment, and MiddleFor reconstructs the omitted
+            // coordinate. Other overlapping components remain fully enumerated, avoiding any
+            // independence assumption between them.
+            for (int i = 1; i < count; i++)
+                if ((long)group.MaxTicks[i - 1] + 1 < group.MinTicks[i])
+                    componentStarts.Add(i);
+
+            var componentEnds = new List<int>(componentStarts.Count);
+            for (int i = 0; i < componentStarts.Count; i++)
+                componentEnds.Add(i + 1 < componentStarts.Count
+                    ? componentStarts[i + 1] - 1 : count - 1);
+
+            var free = new List<int>();
+            var ticks = new int[count];
+            int computedStart = -1;
+            for (int component = 0; component < componentStarts.Count; component++)
+            {
+                int start = componentStarts[component];
+                int end = componentEnds[component];
+                if (start == end)
+                {
+                    ticks[start] = group.MinTicks[start]
+                        + (group.MaxTicks[start] - group.MinTicks[start]) / 2;
+                }
+                else
+                {
+                    if (computedStart < 0)
+                    {
+                        computedStart = start;
+                        ticks[start] = group.MinTicks[start];
+                    }
+                    else
+                    {
+                        ticks[start] = group.MinTicks[start];
+                        free.Add(start);
+                    }
+                    for (int i = start + 1; i <= end; i++)
+                    {
+                        ticks[i] = group.MinTicks[i];
+                        free.Add(i);
+                    }
+                }
+            }
+
+            bool more = true;
+            while (more)
+            {
+                // Bounds/order checks, coordinate reset, and vector increment are each linear.
+                if (!work.TryCharge(Math.Max(1L, (long)count * 3)))
+                    return CenterStatus.Budget;
+
+                if (computedStart >= 0) ticks[computedStart] = group.MinTicks[computedStart];
+
+                if (MatchesOrderedBox(group, ticks))
+                {
+                    bool viable = true;
+                    if (computedStart >= 0)
+                    {
+                        ticks[computedStart] = MidWindowNormalizer.MiddleFor(
+                            ticks, computedStart, graph.TimeLimitTicks,
+                            candidate => relation.Contains(group.Switches, candidate));
+                        if (work.Exceeded)
+                            return CenterStatus.Budget;
+                        if (!MatchesOrderedBox(group, ticks))
+                            viable = false;
+                    }
+
+                    if (viable
+                        && MidWindowNormalizer.IsFixedPoint(
+                            ticks, graph.TimeLimitTicks,
+                            candidate => relation.Contains(group.Switches, candidate)))
+                    {
+                        if (work.Exceeded) return CenterStatus.Budget;
+                        if (!work.TryCharge(Math.Max(1, count)))
+                            return CenterStatus.Budget;
+                        var entries = new ToggleSwitchCommand[count];
+                        for (int i = 0; i < count; i++)
+                            entries[i] = new ToggleSwitchCommand(group.Switches[i], ticks[i]);
+                        var candidate = LogFrom(entries, CommandLog.CurrentFormatVersion);
+                        if (centeredLog == null || CompareLogsLex(candidate, centeredLog) < 0)
+                            centeredLog = candidate;
+                    }
+                    else if (work.Exceeded)
+                    {
+                        return CenterStatus.Budget;
                     }
                 }
 
-                if (wins.Count > 0)
-                {
-                    wins.Sort(CompareLogsLex);
-                    result = wins;
-                    return true;
-                }
-
-                var survivors = new List<CanonicalFrontier>(next.Values);
-                survivors.Sort(CompareCanonicalBeam);
-                if (width != int.MaxValue && survivors.Count > width)
-                    survivors.RemoveRange(width, survivors.Count - width);
-                layer = survivors;
+                more = IncrementTicks(free, ticks, group.MinTicks, group.MaxTicks);
             }
 
-            result = new List<CommandLog>();
+            return centeredLog == null ? CenterStatus.Unresolved : CenterStatus.Centered;
+        }
+
+        private static bool IncrementTicks(
+            List<int> indices, int[] ticks, int[] minTicks, int[] maxTicks)
+        {
+            for (int i = indices.Count - 1; i >= 0; i--)
+            {
+                int index = indices[i];
+                if (ticks[index] < maxTicks[index])
+                {
+                    ticks[index]++;
+                    for (int j = i + 1; j < indices.Count; j++)
+                        ticks[indices[j]] = minTicks[indices[j]];
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool MatchesOrderedBox(HistoryGroup group, int[] ticks)
+        {
+            for (int i = 0; i < ticks.Length; i++)
+            {
+                if (ticks[i] < group.MinTicks[i] || ticks[i] > group.MaxTicks[i])
+                    return false;
+                if (i > 0 && (ticks[i] < ticks[i - 1]
+                    || (ticks[i] == ticks[i - 1]
+                        && group.Switches[i] < group.Switches[i - 1])))
+                    return false;
+            }
             return true;
         }
 
-        private static int CompareCanonicalBeam(CanonicalFrontier a, CanonicalFrontier b)
+        private sealed class CertifiedWinRelation
         {
-            if (a.State.Deliveries != b.State.Deliveries)
-                return b.State.Deliveries.CompareTo(a.State.Deliveries);
-            var da = Digest(a.State);
-            var db = Digest(b.State);
-            for (int i = 0; i < da.Length && i < db.Length; i++)
-                if (da[i] != db[i]) return da[i].CompareTo(db[i]);
-            return da.Length.CompareTo(db.Length);
+            private readonly Dictionary<string, HistoryGroup> _groups;
+            private readonly SolverWorkMeter _work;
+
+            internal CertifiedWinRelation(
+                Dictionary<string, HistoryGroup> groups, SolverWorkMeter work)
+            {
+                _groups = groups;
+                _work = work;
+            }
+
+            internal bool Contains(ushort[] switches, int[] ticks)
+            {
+                // A shifted coordinate may cross a neighbor even though the returned log may not.
+                // Canonicalize the probe back to receipt chronology before consulting the proven
+                // boxes. Same-tick toggles commute: Simulation.Step only increments the addressed
+                // route byte (and SwitchesUsed), so switch-id sorting is behavior-preserving.
+                int count = switches.Length;
+                long linear = Math.Max(1, count);
+                int sortLevels = 1;
+                for (int width = count; width > 1; width = (width + 1) / 2)
+                    sortLevels++;
+                // Array.Sort plus three arrays/key/range scans. Reserve before any allocation.
+                if (!_work.TryCharge(linear * (sortLevels + 4L))) return false;
+                var order = new int[count];
+                for (int i = 0; i < count; i++) order[i] = i;
+                Array.Sort(order, (a, b) =>
+                {
+                    int byTick = ticks[a].CompareTo(ticks[b]);
+                    return byTick != 0 ? byTick : switches[a].CompareTo(switches[b]);
+                });
+
+                var orderedSwitches = new ushort[count];
+                var orderedTicks = new int[count];
+                for (int i = 0; i < count; i++)
+                {
+                    orderedSwitches[i] = switches[order[i]];
+                    orderedTicks[i] = ticks[order[i]];
+                }
+
+                if (!_groups.TryGetValue(SwitchKey(orderedSwitches), out var group))
+                    return false;
+                return MatchesOrderedBox(group, orderedTicks);
+            }
         }
 
-        private sealed class CanonicalFrontier
+        private static string SwitchKey(ushort[] switches)
         {
-            private readonly HashSet<string> _historyKeys = new HashSet<string>();
+            if (switches.Length == 0) return "empty";
+            var parts = new string[switches.Length];
+            for (int i = 0; i < switches.Length; i++) parts[i] = switches[i].ToString();
+            return string.Join(";", parts);
+        }
 
+        private static CenterStatus CenterEveryHistory(
+            LevelGraph graph, ulong seed, int completionTicks, HistoryGroup group,
+            SolverWorkMeter work, Dictionary<string, bool> probeCache,
+            ref CommandLog centeredLog)
+        {
+            var stack = new List<HistoryFrame> { new HistoryFrame(group, false) };
+            var reverseCombos = new List<ToggleSwitchCommand[]>();
+
+            while (stack.Count > 0)
+            {
+                var frame = stack[stack.Count - 1];
+                if (frame.Group.Switches.Length == 0)
+                {
+                    if (!work.TryCharge(Math.Max(1, group.Switches.Length)))
+                        return CenterStatus.Budget;
+                    var log = MaterializeHistory(reverseCombos);
+                    var status = TryCenterSameCompletionWindows(
+                        graph, seed, log, completionTicks, work, probeCache,
+                        out var candidate);
+                    if (status == CenterStatus.Budget) return CenterStatus.Budget;
+                    if (status == CenterStatus.Centered
+                        && (centeredLog == null || CompareLogsLex(candidate, centeredLog) < 0))
+                        centeredLog = candidate;
+                    stack.RemoveAt(stack.Count - 1);
+                    if (frame.RemoveComboOnPop)
+                        reverseCombos.RemoveAt(reverseCombos.Count - 1);
+                    continue;
+                }
+
+                if (frame.NextContribution >= frame.Group.Contributions.Count)
+                {
+                    stack.RemoveAt(stack.Count - 1);
+                    if (frame.RemoveComboOnPop)
+                        reverseCombos.RemoveAt(reverseCombos.Count - 1);
+                    continue;
+                }
+
+                if (!work.TryCharge(1)) return CenterStatus.Budget;
+                var contribution = frame.Group.Contributions[frame.NextContribution++];
+                reverseCombos.Add(contribution.Combo);
+                stack.Add(new HistoryFrame(contribution.Source, true));
+            }
+
+            return centeredLog == null ? CenterStatus.Unresolved : CenterStatus.Centered;
+        }
+
+        private static CommandLog MaterializeHistory(List<ToggleSwitchCommand[]> reverseCombos)
+        {
+            var result = new CommandLog();
+            for (int i = reverseCombos.Count - 1; i >= 0; i--)
+                foreach (var command in reverseCombos[i]) result.Append(command);
+            return result;
+        }
+
+        private sealed class HistoryFrame
+        {
+            internal readonly HistoryGroup Group;
+            internal readonly bool RemoveComboOnPop;
+            internal int NextContribution;
+
+            internal HistoryFrame(HistoryGroup group, bool removeComboOnPop)
+            {
+                Group = group;
+                RemoveComboOnPop = removeComboOnPop;
+            }
+        }
+
+        private static bool TryBuildWinningHistories(
+            WinningFrontier wins, List<ProvenanceNode> provenanceOrder,
+            SolverWorkMeter work,
+            out Dictionary<string, HistoryGroup> result)
+        {
+            result = null;
+            if (!wins.ProvenanceComplete || work.Exceeded) return false;
+
+            var reachable = new HashSet<ProvenanceNode>();
+            var pending = new Stack<ProvenanceNode>();
+            foreach (var arc in wins.Incoming)
+            {
+                if (!work.TryCharge(1)) return false;
+                pending.Push(arc.Source);
+            }
+            while (pending.Count > 0)
+            {
+                var frontier = pending.Pop();
+                if (!reachable.Add(frontier)) continue;
+                if (!frontier.Complete) return false;
+                foreach (var arc in frontier.Incoming)
+                {
+                    if (!work.TryCharge(1)) return false;
+                    pending.Push(arc.Source);
+                }
+            }
+
+            // Nodes are appended when first created, so every incoming arc points backward in
+            // this deterministic creation order. It is already a topological order and avoids
+            // an unmetered O(V log V) depth sort after a win.
+            var built = new Dictionary<ProvenanceNode, Dictionary<string, HistoryGroup>>();
+            foreach (var frontier in provenanceOrder)
+            {
+                if (!work.TryCharge(1)) return false;
+                if (!reachable.Contains(frontier)) continue;
+
+                var histories = new Dictionary<string, HistoryGroup>();
+                if (frontier.IsRoot)
+                {
+                    histories.Add("empty", HistoryGroup.Root());
+                }
+                else
+                {
+                    foreach (var arc in frontier.Incoming)
+                    {
+                        if (!built.TryGetValue(arc.Source, out var source)) return false;
+                        if (!AddDerivedHistories(histories, source, arc.Combo, work))
+                            return false;
+                    }
+                }
+                built.Add(frontier, histories);
+            }
+
+            result = new Dictionary<string, HistoryGroup>();
+            foreach (var arc in wins.Incoming)
+            {
+                if (!built.TryGetValue(arc.Source, out var source)) return false;
+                if (!AddDerivedHistories(result, source, arc.Combo, work)) return false;
+            }
+            return true;
+        }
+
+        private sealed class SearchFrontier
+        {
             internal readonly SimulationState State;
+            internal readonly ProvenanceNode Provenance;
             internal CommandLog ReplayLog;
-            internal readonly List<CommandLog> Histories = new List<CommandLog>();
+            internal int CommandCount => ReplayLog.Entries.Count;
+            internal bool ProvenanceComplete => Provenance.Complete;
 
-            internal CanonicalFrontier(SimulationState state, CommandLog replayLog)
+            internal SearchFrontier(SimulationState state, CommandLog replayLog)
             {
                 State = state;
                 ReplayLog = replayLog;
+                Provenance = new ProvenanceNode();
             }
 
-            internal bool TryAddHistory(CommandLog history, SolverWorkMeter work)
+            internal void AddRootHistory()
             {
-                if (!work.TryCharge(1)) return false;
-                if (_historyKeys.Add(HistoryKey(history))) Histories.Add(history);
+                Provenance.IsRoot = true;
+            }
+
+            internal bool ReplaceFrom(
+                SearchFrontier source, ToggleSwitchCommand[] combo, SolverWorkMeter work)
+            {
+                return Provenance.ReplaceFrom(source.Provenance, combo, work);
+            }
+
+            internal bool MergeFrom(
+                SearchFrontier source, ToggleSwitchCommand[] combo, SolverWorkMeter work)
+            {
+                return Provenance.MergeFrom(source.Provenance, combo, work);
+            }
+        }
+
+        // Persistent history-only nodes deliberately exclude SimulationState and ReplayLog. Old
+        // layer states can be collected while descendants retain just immutable parent arcs.
+        // A lower-count collision replaces arcs; an equal-count collision unions them. Appending
+        // the same future suffix to an equal state preserves that dominance relation.
+        private sealed class ProvenanceNode
+        {
+            internal readonly List<HistoryArc> Incoming = new List<HistoryArc>();
+            internal bool Complete = true;
+            internal bool IsRoot;
+
+            internal bool ReplaceFrom(
+                ProvenanceNode source, ToggleSwitchCommand[] combo, SolverWorkMeter work)
+            {
+                Incoming.Clear();
+                Complete = source.Complete;
+                if (!Complete) return false;
+                return AddArc(source, combo, work);
+            }
+
+            internal bool MergeFrom(
+                ProvenanceNode source, ToggleSwitchCommand[] combo, SolverWorkMeter work)
+            {
+                Complete &= source.Complete;
+                if (!Complete) return false;
+                return AddArc(source, combo, work);
+            }
+
+            private bool AddArc(
+                ProvenanceNode source, ToggleSwitchCommand[] combo, SolverWorkMeter work)
+            {
+                // The enclosing successor-attempt unit covers the O(1) arc insertion. Only the
+                // additional commands in a multi-switch combo need extra units here.
+                if (combo.Length > 1 && !work.TryCharge(combo.Length - 1))
+                {
+                    Complete = false;
+                    return false;
+                }
+                Incoming.Add(new HistoryArc(source, combo));
                 return true;
             }
         }
 
-        private static string HistoryKey(CommandLog log)
+        private sealed class WinningFrontier
         {
-            if (log.Entries.Count == 0) return "empty";
-            var parts = new string[log.Entries.Count];
-            for (int i = 0; i < log.Entries.Count; i++)
+            internal readonly int CompletionTicks;
+            internal readonly int CommandCount;
+            internal readonly List<HistoryArc> Incoming = new List<HistoryArc>();
+            internal bool ProvenanceComplete = true;
+
+            internal WinningFrontier(int completionTicks, int commandCount)
             {
-                var entry = log.Entries[i];
-                parts[i] = entry.Tick + ":" + entry.SwitchId;
+                CompletionTicks = completionTicks;
+                CommandCount = commandCount;
             }
+
+            internal bool MergeFrom(
+                SearchFrontier source, ToggleSwitchCommand[] combo, SolverWorkMeter work)
+            {
+                ProvenanceComplete &= source.ProvenanceComplete;
+                if (!ProvenanceComplete) return false;
+                // The enclosing successor-attempt unit covers the O(1) arc insertion. Only the
+                // additional commands in a multi-switch combo need extra units here.
+                if (combo.Length > 1 && !work.TryCharge(combo.Length - 1))
+                {
+                    ProvenanceComplete = false;
+                    return false;
+                }
+                Incoming.Add(new HistoryArc(source.Provenance, combo));
+                return true;
+            }
+        }
+
+        private readonly struct HistoryArc
+        {
+            internal readonly ProvenanceNode Source;
+            internal readonly ToggleSwitchCommand[] Combo;
+
+            internal HistoryArc(ProvenanceNode source, ToggleSwitchCommand[] combo)
+            {
+                Source = source;
+                Combo = combo;
+            }
+        }
+
+        private sealed class HistoryGroup
+        {
+            internal readonly ushort[] Switches;
+            internal readonly int[] MinTicks;
+            internal readonly int[] MaxTicks;
+            internal long Count;
+            internal bool CountOverflow;
+            internal readonly List<HistoryContribution> Contributions =
+                new List<HistoryContribution>();
+
+            private HistoryGroup(ushort[] switches, int[] minTicks, int[] maxTicks,
+                long count, bool countOverflow)
+            {
+                Switches = switches;
+                MinTicks = minTicks;
+                MaxTicks = maxTicks;
+                Count = count;
+                CountOverflow = countOverflow;
+            }
+
+            internal static HistoryGroup Root() =>
+                new HistoryGroup(Array.Empty<ushort>(), Array.Empty<int>(), Array.Empty<int>(),
+                    1, false);
+
+            internal static HistoryGroup Derive(
+                HistoryGroup source, ToggleSwitchCommand[] combo)
+            {
+                int oldLength = source.Switches.Length;
+                int length = oldLength + combo.Length;
+                var switches = new ushort[length];
+                var minTicks = new int[length];
+                var maxTicks = new int[length];
+                Array.Copy(source.Switches, switches, oldLength);
+                Array.Copy(source.MinTicks, minTicks, oldLength);
+                Array.Copy(source.MaxTicks, maxTicks, oldLength);
+                for (int i = 0; i < combo.Length; i++)
+                {
+                    switches[oldLength + i] = combo[i].SwitchId;
+                    minTicks[oldLength + i] = combo[i].Tick;
+                    maxTicks[oldLength + i] = combo[i].Tick;
+                }
+
+                var result = new HistoryGroup(
+                    switches, minTicks, maxTicks, source.Count, source.CountOverflow);
+                result.Contributions.Add(new HistoryContribution(source, combo));
+                return result;
+            }
+
+            internal void Merge(HistoryGroup source, ToggleSwitchCommand[] combo)
+            {
+                int oldLength = source.Switches.Length;
+                for (int i = 0; i < oldLength; i++)
+                {
+                    if (source.MinTicks[i] < MinTicks[i]) MinTicks[i] = source.MinTicks[i];
+                    if (source.MaxTicks[i] > MaxTicks[i]) MaxTicks[i] = source.MaxTicks[i];
+                }
+                for (int i = 0; i < combo.Length; i++)
+                {
+                    int index = oldLength + i;
+                    if (combo[i].Tick < MinTicks[index]) MinTicks[index] = combo[i].Tick;
+                    if (combo[i].Tick > MaxTicks[index]) MaxTicks[index] = combo[i].Tick;
+                }
+
+                if (CountOverflow || source.CountOverflow || Count > long.MaxValue - source.Count)
+                {
+                    CountOverflow = true;
+                    Count = long.MaxValue;
+                }
+                else
+                {
+                    Count += source.Count;
+                }
+                Contributions.Add(new HistoryContribution(source, combo));
+            }
+        }
+
+        private readonly struct HistoryContribution
+        {
+            internal readonly HistoryGroup Source;
+            internal readonly ToggleSwitchCommand[] Combo;
+
+            internal HistoryContribution(HistoryGroup source, ToggleSwitchCommand[] combo)
+            {
+                Source = source;
+                Combo = combo;
+            }
+        }
+
+        private static bool AddDerivedHistories(
+            Dictionary<string, HistoryGroup> target,
+            Dictionary<string, HistoryGroup> source,
+            ToggleSwitchCommand[] combo,
+            SolverWorkMeter work)
+        {
+            foreach (var sourceGroup in source.Values)
+            {
+                long units = Math.Max(1, sourceGroup.Switches.Length + combo.Length);
+                if (!work.TryCharge(units)) return false;
+
+                string key = ExtendedSwitchKey(sourceGroup.Switches, combo);
+                if (target.TryGetValue(key, out var incumbent))
+                    incumbent.Merge(sourceGroup, combo);
+                else
+                    target.Add(key, HistoryGroup.Derive(sourceGroup, combo));
+            }
+            return true;
+        }
+
+        private static string ExtendedSwitchKey(
+            ushort[] prefix, ToggleSwitchCommand[] combo)
+        {
+            if (prefix.Length + combo.Length == 0) return "empty";
+            var parts = new string[prefix.Length + combo.Length];
+            for (int i = 0; i < prefix.Length; i++) parts[i] = prefix[i].ToString();
+            for (int i = 0; i < combo.Length; i++)
+                parts[prefix.Length + i] = combo[i].SwitchId.ToString();
             return string.Join(";", parts);
         }
 
@@ -467,13 +1160,20 @@ namespace CatMetro.Domain.Solver
             Budget = 3,
         }
 
+        private enum CertificateStatus : byte
+        {
+            Certified = 1,
+            NotCertified = 2,
+            Budget = 3,
+        }
+
         // One Solve-wide ceiling. NodesExpanded remains the public search-only count; this meter
         // prevents canonical provenance/candidate/replay work from escaping the same numeric cap.
         private sealed class SolverWorkMeter
         {
             private readonly long _limit;
             private long _nodesExpanded;
-            private long _canonicalWork;
+            private long _extraWork;
 
             internal bool Exceeded { get; private set; }
 
@@ -482,9 +1182,12 @@ namespace CatMetro.Domain.Solver
                 _limit = Math.Max(0, limit);
             }
 
-            internal void SetNodesExpanded(int nodesExpanded)
+            internal bool SetNodesExpanded(int nodesExpanded)
             {
                 if (nodesExpanded > _nodesExpanded) _nodesExpanded = nodesExpanded;
+                if (_nodesExpanded > _limit || _extraWork > _limit - _nodesExpanded)
+                    return Reject();
+                return true;
             }
 
             internal bool TryChargeReplay(int commandCount, int timeLimitTicks)
@@ -495,14 +1198,36 @@ namespace CatMetro.Domain.Solver
                 return TryCharge(commands * ticks);
             }
 
+            internal bool TryChargeProxy(
+                int commandCount, int completionHorizon, int timeLimitTicks)
+            {
+                long commands = Math.Max(0, commandCount);
+                long primaryCommands = Math.Max(1, commands);
+                long completion = Math.Max(1, completionHorizon);
+                long timeLimit = Math.Max(1, timeLimitTicks);
+                if (primaryCommands > long.MaxValue / completion) return Reject();
+                long units = primaryCommands * completion;
+                if (commands == 0) return TryCharge(units);
+
+                if (commands > long.MaxValue / commands) return Reject();
+                long squared = commands * commands;
+                if (squared > long.MaxValue / timeLimit) return Reject();
+                long perturbation = squared * timeLimit;
+                if (perturbation > long.MaxValue / 2) return Reject();
+                perturbation *= 2;
+                if (units > long.MaxValue - perturbation) return Reject();
+                return TryCharge(units + perturbation);
+            }
+
             internal bool TryCharge(long units)
             {
+                if (Exceeded) return false;
                 if (units < 0) return Reject();
-                if (_nodesExpanded > _limit || _canonicalWork > _limit - _nodesExpanded)
+                if (_nodesExpanded > _limit || _extraWork > _limit - _nodesExpanded)
                     return Reject();
-                long remaining = _limit - _nodesExpanded - _canonicalWork;
+                long remaining = _limit - _nodesExpanded - _extraWork;
                 if (units > remaining) return Reject();
-                _canonicalWork += units;
+                _extraWork += units;
                 return true;
             }
 
@@ -513,11 +1238,12 @@ namespace CatMetro.Domain.Solver
             }
         }
 
-        private static int CompareBeam((CommandLog log, SimulationState state) a, (CommandLog log, SimulationState state) b)
+        private static int CompareBeam(SearchFrontier a, SearchFrontier b)
         {
-            if (a.state.Deliveries != b.state.Deliveries) return b.state.Deliveries.CompareTo(a.state.Deliveries);
-            var da = Digest(a.state);
-            var db = Digest(b.state);
+            if (a.State.Deliveries != b.State.Deliveries)
+                return b.State.Deliveries.CompareTo(a.State.Deliveries);
+            var da = Digest(a.State);
+            var db = Digest(b.State);
             for (int i = 0; i < da.Length && i < db.Length; i++)
                 if (da[i] != db[i]) return da[i].CompareTo(db[i]);
             return da.Length.CompareTo(db.Length);
