@@ -160,13 +160,13 @@ namespace CatMetro.Domain.Solver
                     wins.Sort(CompareWins);
                     int bestTicks = wins[0].ticks;
                     int bestCommands = wins[0].log.Entries.Count;
+                    var canonicalWins = CollectEqualPrimaryHistories(
+                        graph, seed, bestTicks, bestCommands, width);
                     CommandLog centeredLog = null;
-                    foreach (var win in wins)
+                    foreach (var win in canonicalWins)
                     {
-                        if (win.ticks != bestTicks || win.log.Entries.Count != bestCommands)
-                            continue;
                         if (!TryCenterSameCompletionWindows(
-                            graph, seed, win.log, bestTicks, out var candidate))
+                            graph, seed, win, bestTicks, out var candidate))
                             continue;
                         if (centeredLog == null || CompareLogsLex(candidate, centeredLog) < 0)
                             centeredLog = candidate;
@@ -293,6 +293,135 @@ namespace CatMetro.Domain.Solver
                 if (ea.SwitchId != eb.SwitchId) return ea.SwitchId.CompareTo(eb.SwitchId);
             }
             return 0;
+        }
+
+        private static List<CommandLog> CollectEqualPrimaryHistories(
+            LevelGraph graph, ulong seed, int completionTicks, int commandCount, int width)
+        {
+            var layer = new List<CanonicalFrontier>
+            {
+                new CanonicalFrontier(
+                    SimulationState.CreateInitial(graph, seed), new CommandLog(), new CommandLog())
+            };
+
+            for (int depth = 0; depth <= completionTicks && layer.Count > 0; depth++)
+            {
+                var wins = new List<CommandLog>();
+                var winKeys = new HashSet<string>();
+                var next = new Dictionary<string, CanonicalFrontier>();
+
+                foreach (var frontier in layer)
+                {
+                    foreach (var combo in Combos(graph, depth - 1, depth == 0))
+                    {
+                        var replayLog = Extend(frontier.ReplayLog, combo);
+                        SimulationState state;
+                        try
+                        {
+                            state = ReplayTo(graph, seed, replayLog, depth + 1);
+                        }
+                        catch (NotSupportedException)
+                        {
+                            continue;
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            continue;
+                        }
+
+                        if (state.Outcome.Kind == OutcomeKind.Won)
+                        {
+                            if (state.Tick - 1 != completionTicks) continue;
+                            foreach (var history in frontier.Histories)
+                            {
+                                var child = Extend(history, combo);
+                                if (child.Entries.Count != commandCount) continue;
+                                var key = HistoryKey(child);
+                                if (winKeys.Add(key)) wins.Add(child);
+                            }
+                            continue;
+                        }
+                        if (state.Outcome.Kind != OutcomeKind.Running) continue;
+
+                        var digest = DigestKey(state);
+                        if (!next.TryGetValue(digest, out var incumbent))
+                        {
+                            incumbent = new CanonicalFrontier(state, replayLog);
+                            next[digest] = incumbent;
+                        }
+                        else if (CompareWins((0, replayLog), (0, incumbent.ReplayLog)) < 0)
+                        {
+                            incumbent.ReplayLog = replayLog;
+                        }
+
+                        foreach (var history in frontier.Histories)
+                        {
+                            var child = Extend(history, combo);
+                            if (child.Entries.Count <= commandCount)
+                                incumbent.TryAddHistory(child);
+                        }
+                    }
+                }
+
+                if (wins.Count > 0)
+                {
+                    wins.Sort(CompareLogsLex);
+                    return wins;
+                }
+
+                var survivors = new List<CanonicalFrontier>(next.Values);
+                survivors.Sort(CompareCanonicalBeam);
+                if (width != int.MaxValue && survivors.Count > width)
+                    survivors.RemoveRange(width, survivors.Count - width);
+                layer = survivors;
+            }
+
+            return new List<CommandLog>();
+        }
+
+        private static int CompareCanonicalBeam(CanonicalFrontier a, CanonicalFrontier b)
+        {
+            if (a.State.Deliveries != b.State.Deliveries)
+                return b.State.Deliveries.CompareTo(a.State.Deliveries);
+            var da = Digest(a.State);
+            var db = Digest(b.State);
+            for (int i = 0; i < da.Length && i < db.Length; i++)
+                if (da[i] != db[i]) return da[i].CompareTo(db[i]);
+            return da.Length.CompareTo(db.Length);
+        }
+
+        private sealed class CanonicalFrontier
+        {
+            private readonly HashSet<string> _historyKeys = new HashSet<string>();
+
+            internal readonly SimulationState State;
+            internal CommandLog ReplayLog;
+            internal readonly List<CommandLog> Histories = new List<CommandLog>();
+
+            internal CanonicalFrontier(
+                SimulationState state, CommandLog replayLog, CommandLog firstHistory = null)
+            {
+                State = state;
+                ReplayLog = replayLog;
+                if (firstHistory != null) TryAddHistory(firstHistory);
+            }
+
+            internal void TryAddHistory(CommandLog history)
+            {
+                if (_historyKeys.Add(HistoryKey(history))) Histories.Add(history);
+            }
+        }
+
+        private static string HistoryKey(CommandLog log)
+        {
+            if (log.Entries.Count == 0) return "empty";
+            var parts = new string[log.Entries.Count];
+            for (int i = 0; i < log.Entries.Count; i++)
+            {
+                var entry = log.Entries[i];
+                parts[i] = entry.Tick + ":" + entry.SwitchId;
+            }
+            return string.Join(";", parts);
         }
 
         private static int CompareBeam((CommandLog log, SimulationState state) a, (CommandLog log, SimulationState state) b)
