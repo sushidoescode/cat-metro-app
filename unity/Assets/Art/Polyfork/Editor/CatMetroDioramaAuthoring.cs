@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using CatMetro.Presentation.Board;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -154,48 +153,14 @@ namespace CatMetro.Editor
         {
             var renderer = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(RendererPath);
             if (renderer == null) throw new InvalidOperationException("Missing " + RendererPath);
-
-            var ssao = renderer.rendererFeatures.OfType<ScreenSpaceAmbientOcclusion>()
-                .FirstOrDefault();
-            if (ssao == null)
-            {
-                ssao = ScriptableObject.CreateInstance<ScreenSpaceAmbientOcclusion>();
-                ssao.name = "CatMetro_Tabletop_SSAO";
-                ssao.SetActive(true);
-                AssetDatabase.AddObjectToAsset(ssao, renderer);
-                renderer.rendererFeatures.Add(ssao);
-            }
-            ssao.name = "CatMetro_Tabletop_SSAO";
-            ssao.SetActive(true);
-            var serialized = new SerializedObject(ssao);
-            var settings = serialized.FindProperty("m_Settings");
-            settings.FindPropertyRelative("AOMethod").enumValueIndex = 1;
-            settings.FindPropertyRelative("Downsample").boolValue = true;
-            settings.FindPropertyRelative("AfterOpaque").boolValue = true;
-            settings.FindPropertyRelative("Source").enumValueIndex = 0;
-            settings.FindPropertyRelative("NormalSamples").enumValueIndex = 1;
-            settings.FindPropertyRelative("Intensity").floatValue = 1.15f;
-            settings.FindPropertyRelative("DirectLightingStrength").floatValue = 0.15f;
-            settings.FindPropertyRelative("Radius").floatValue = 0.035f;
-            settings.FindPropertyRelative("Samples").enumValueIndex = 2;
-            settings.FindPropertyRelative("BlurQuality").enumValueIndex = 1;
-            settings.FindPropertyRelative("Falloff").floatValue = 100f;
-            settings.FindPropertyRelative("SampleCount").intValue = -1;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-            ssao.Create();
+            if (renderer.rendererFeatures.Count != 0)
+                throw new InvalidOperationException(
+                    "Mobile renderer must remain feature-free; use authored blob/baked AO");
 
             renderer.postProcessData = AssetDatabase.LoadAssetAtPath<PostProcessData>(
                 "Packages/com.unity.render-pipelines.universal/Runtime/Data/PostProcessData.asset");
             if (renderer.postProcessData == null)
                 throw new InvalidOperationException("URP PostProcessData is unavailable");
-            EditorUtility.SetDirty(ssao);
-            EditorUtility.SetDirty(renderer);
-            AssetDatabase.SaveAssets();
-            var validate = typeof(ScriptableRendererData).GetMethod(
-                "ValidateRendererFeatures",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            if (validate == null || !(bool)validate.Invoke(renderer, null))
-                throw new InvalidOperationException("Could not serialize the SSAO feature map");
             renderer.SetDirty();
             EditorUtility.SetDirty(renderer);
 

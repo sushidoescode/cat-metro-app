@@ -219,31 +219,28 @@ namespace CatMetro.Tests.EditMode
         }
 
         [Test]
-        public void RendererAndProfile_EnableTabletopSsaoAndSubtleVignette()
+        public void RendererStaysFeatureFreeWhileProfileKeepsSubtleVignette()
         {
             Object[] rendererAssets = AssetDatabase.LoadAllAssetsAtPath(
                 "Assets/Settings/CatMetro_Renderer.asset");
             Object ssao = rendererAssets.SingleOrDefault(x => x != null
                 && x.GetType().Name == "ScreenSpaceAmbientOcclusion");
-            Assert.That(ssao, Is.Not.Null,
-                "the owned URP renderer must carry an enabled SSAO feature");
-            Assert.That(((ScriptableObject)ssao).name, Is.EqualTo("CatMetro_Tabletop_SSAO"));
-            var ssaoSerialized = new SerializedObject(ssao);
-            Assert.That(ssaoSerialized.FindProperty("m_Active").boolValue, Is.True);
-            var settings = ssaoSerialized.FindProperty("m_Settings");
-            Assert.That(settings.FindPropertyRelative("Intensity").floatValue,
-                Is.InRange(0.8f, 1.6f));
-            Assert.That(settings.FindPropertyRelative("Radius").floatValue,
-                Is.InRange(0.015f, 0.08f));
+            Assert.That(ssao, Is.Null,
+                "the mobile renderer stays feature-free; depth comes from authored blobs/AO");
             Object rendererData = rendererAssets.Single(x => x != null
                 && x.name == "CatMetro_Renderer");
             var rendererSerialized = new SerializedObject(rendererData);
             var features = rendererSerialized.FindProperty("m_RendererFeatures");
             var featureMap = rendererSerialized.FindProperty("m_RendererFeatureMap");
-            Assert.That(features.arraySize, Is.EqualTo(1));
-            Assert.That(featureMap.arraySize, Is.EqualTo(features.arraySize),
-                "the serialized feature-id map must retain SSAO through import/build repair");
-            Assert.That(featureMap.GetArrayElementAtIndex(0).longValue, Is.Not.Zero);
+            Assert.That(features.arraySize, Is.Zero,
+                "criterion 2 forbids hidden renderer passes on the mobile baseline");
+            Assert.That(featureMap.arraySize, Is.Zero);
+
+            string authoring = File.ReadAllText(
+                "Assets/Art/Polyfork/Editor/CatMetroDioramaAuthoring.cs");
+            Assert.That(authoring, Does.Not.Contain("ScreenSpaceAmbientOcclusion"),
+                "re-authoring the scene must never silently restore SSAO");
+            Assert.That(authoring, Does.Not.Contain("rendererFeatures.Add"));
 
             Object[] profileAssets = AssetDatabase.LoadAllAssetsAtPath(
                 "Assets/Art/Settings/CatMetro_TabletopPost.asset");

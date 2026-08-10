@@ -267,3 +267,14 @@ and the persistentDataPath device finding. Lane 1B owns WavePreviewStrip's primi
   `/tmp/catmetro-tg-depth-frame2.Akn4hb/` has the preview-safe top margin and visible front desk
   apron, but remains iteration-only. Lane 1B's stacked preview/primitive removal, exact integrated
   tests, new APK/Pixel capture, TG verdict, CM-R21 rerating, reviews, CI, and HC-25 remain open.
+- 2026-08-10 — human ruling supersedes the earlier SSAO direction: preserve the criterion-2
+  empty-renderer-features mobile frametime guard and remove SSAO from this contract. Miniature
+  depth is authored blob/contact shadows plus baked-style toon shading at zero added runtime
+  pass cost. SSAO may only be re-raised as its own contract with a device frametime re-measure if
+  the final light-rig frames still lack contact depth. The unchanged shell gate was RED on the
+  SSAO asset; the new feature-free asset/source regression was independently RED at
+  `/tmp/catmetro-tg-no-ssao-red.ZALa41/edit.xml`. After removing the serialized subasset and
+  authoring path, `device-config.test.sh` is GREEN and DioramaAsset is 9/9 at
+  `/tmp/catmetro-tg-no-ssao-green.71DP20/edit.xml`. The inspected no-SSAO 900x2000 render at
+  `/tmp/catmetro-tg-no-ssao-frame.cMzf9q/` retains the authored contact depth. Pixel reconnection
+  is intentionally deferred until the integrated editor-frame iteration reaches device evidence.
