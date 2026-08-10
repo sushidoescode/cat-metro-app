@@ -210,6 +210,36 @@ namespace CatMetro.Tests.EditMode
         }
 
         [Test]
+        public void RendererAndProfile_EnableTabletopSsaoAndSubtleVignette()
+        {
+            Object[] rendererAssets = AssetDatabase.LoadAllAssetsAtPath(
+                "Assets/Settings/CatMetro_Renderer.asset");
+            Object ssao = rendererAssets.SingleOrDefault(x => x != null
+                && x.GetType().Name == "ScreenSpaceAmbientOcclusion");
+            Assert.That(ssao, Is.Not.Null,
+                "the owned URP renderer must carry an enabled SSAO feature");
+            Assert.That(((ScriptableObject)ssao).name, Is.EqualTo("CatMetro_Tabletop_SSAO"));
+            var ssaoSerialized = new SerializedObject(ssao);
+            Assert.That(ssaoSerialized.FindProperty("m_Active").boolValue, Is.True);
+            var settings = ssaoSerialized.FindProperty("m_Settings");
+            Assert.That(settings.FindPropertyRelative("Intensity").floatValue,
+                Is.InRange(0.8f, 1.6f));
+            Assert.That(settings.FindPropertyRelative("Radius").floatValue,
+                Is.InRange(0.015f, 0.08f));
+
+            Object[] profileAssets = AssetDatabase.LoadAllAssetsAtPath(
+                "Assets/Art/Settings/CatMetro_TabletopPost.asset");
+            Object vignette = profileAssets.SingleOrDefault(x => x != null
+                && x.GetType().Name == "Vignette");
+            Assert.That(vignette, Is.Not.Null, "the tabletop profile must contain Vignette");
+            var vignetteSerialized = new SerializedObject(vignette);
+            var intensity = vignetteSerialized.FindProperty("intensity.m_Value");
+            Assert.That(intensity, Is.Not.Null);
+            Assert.That(intensity.floatValue, Is.InRange(0.08f, 0.2f),
+                "the vignette stays subtle rather than crushing the board edges");
+        }
+
+        [Test]
         public void AndroidPlayerSettings_PinPortraitOnly()
         {
             string settingsPath = Path.GetFullPath(Path.Combine(

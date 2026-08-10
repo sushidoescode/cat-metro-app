@@ -83,6 +83,47 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator LiveCommuter_RidesInOpenCarAtToyTrackScale()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+            _root.Session.AdvanceMs(12 * TickInterpolator.TICK_MS);
+            _root.View.UpdateFrom(_root.Session);
+            yield return null;
+
+            var commuter = _root.View.GetComponentsInChildren<LineVisualTag>(true)
+                .Single(x => x.Role == LineVisualRole.Commuter).transform;
+            var floor = AssertNamed(commuter, "train:car-floor");
+            var left = AssertNamed(commuter, "train:car-side-left");
+            AssertNamed(commuter, "train:car-side-right");
+            AssertNamed(commuter, "train:car-end-front");
+            AssertNamed(commuter, "train:car-end-back");
+            Assert.That(commuter.GetComponentsInChildren<Transform>(true)
+                    .Any(x => x.name == "train:car-roof"), Is.False,
+                "the reference train is open-top, not a closed carriage");
+
+            Bounds visual = RenderBounds(commuter);
+            const float trackWidth = 0.72f;
+            Assert.That(visual.size.y, Is.InRange(trackWidth, trackWidth * 1.5f),
+                "the complete car/cat toy must be about 1.5 track widths tall");
+            Assert.That(visual.size.x, Is.LessThanOrEqualTo(trackWidth * 1.15f));
+
+            var head = AssertNamed(commuter, "cat:head").GetComponent<Renderer>();
+            var wall = left.GetComponent<Renderer>();
+            Assert.That(head.bounds.min.z, Is.LessThan(wall.bounds.min.z),
+                "the cat head must protrude toward the camera above the open car wall");
+            Assert.That(Mathf.Abs(head.transform.localPosition.x), Is.LessThan(0.1f));
+            Assert.That(Mathf.Abs(head.transform.localPosition.y), Is.LessThan(0.3f));
+            Assert.That(floor.GetComponent<Renderer>(), Is.Not.Null);
+
+            var shadow = AssertNamed(commuter, "contact-shadow");
+            Assert.That(shadow.GetComponent<MeshFilter>().sharedMesh.name,
+                Is.EqualTo("SoftShadowDisc"));
+            Assert.That(shadow.GetComponent<Renderer>().sharedMaterial.color.a,
+                Is.InRange(0.08f, 0.35f));
+        }
+
+        [UnityTest]
         public IEnumerator ReusedSimulationSlot_RebuildsTheCommuterForItsNewLineIdentity()
         {
             _root = GameRoot.Launch("content/levels/L002.json");
@@ -116,15 +157,20 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator Camera_IsPitchedThirtyDegreesAndAutoFitsTheBoardMargin()
+        public IEnumerator Camera_UsesLowThreeQuarterFramingAndShowsTheDeskEdge()
         {
             _root = GameRoot.Launch();
             yield return null;
 
-            Assert.That(Mathf.Abs(Mathf.Abs(Mathf.DeltaAngle(
-                _root.Cam.transform.eulerAngles.x, 0f)) - 30f), Is.LessThan(0.1f));
+            float pitchFromTopDown = Mathf.Abs(Mathf.DeltaAngle(
+                _root.Cam.transform.eulerAngles.x, 0f));
+            float elevationAboveHorizon = 90f - pitchFromTopDown;
+            Assert.That(elevationAboveHorizon, Is.InRange(30f, 40f),
+                "the board must read from a low three-quarter tabletop view");
             Assert.That(Mathf.Abs(Mathf.DeltaAngle(_root.Cam.transform.eulerAngles.y, 0f)),
                 Is.LessThan(0.1f));
+            Assert.That(_root.Cam.orthographic, Is.True,
+                "the owned camera keeps the orthographic gameplay lock, but pitches strongly");
 
             var lowerLeft = _root.Cam.WorldToViewportPoint(new Vector3(-0.5f, -0.5f, 0f));
             var upperRight = _root.Cam.WorldToViewportPoint(new Vector3(6.5f, 10.5f, 0f));
@@ -134,6 +180,16 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(lowerLeft.y, Is.InRange(-0.001f, 1.001f));
             Assert.That(upperRight.x, Is.InRange(-0.001f, 1.001f));
             Assert.That(upperRight.y, Is.InRange(-0.001f, 1.001f));
+            Assert.That(lowerLeft.x, Is.LessThan(0.08f), "board fills the portrait width");
+            Assert.That(upperRight.x, Is.GreaterThan(0.92f), "board fills the portrait width");
+
+            AssertNamed(_root.View.transform, "desk:front-edge");
+            Vector3 deskEdge = _root.View.transform.TransformPoint(new Vector3(3f, -1.5f, 0.65f));
+            var deskViewport = _root.Cam.WorldToViewportPoint(deskEdge);
+            Assert.That(deskViewport.z, Is.GreaterThan(0f));
+            Assert.That(deskViewport.x, Is.InRange(0f, 1f));
+            Assert.That(deskViewport.y, Is.InRange(0.05f, 0.35f),
+                "the desk apron belongs visibly at the bottom of the frame");
         }
 
         [UnityTest]
@@ -214,6 +270,45 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator DeskPaletteAndSoftContactShadows_MatchTheGoldenHierarchy()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            var board = _root.View.transform;
+            Assert.That(Html(AssertNamed(board, "desk:surface").GetComponent<Renderer>()
+                .sharedMaterial.color), Is.EqualTo("F2EAD9"));
+            Assert.That(Html(AssertNamed(board, "desk:table").GetComponent<Renderer>()
+                .sharedMaterial.color), Is.EqualTo("FAF6EC"));
+            AssertNamed(board, "desk:front-edge");
+            Assert.That(board.GetComponentsInChildren<Transform>(true)
+                .Count(x => x.name.StartsWith("desk:grain-")), Is.GreaterThanOrEqualTo(7),
+                "the desktop needs enough restrained inlay to read as wood on a phone");
+
+            var orange = board.GetComponentsInChildren<Renderer>(true)
+                .Where(x => Html(x.sharedMaterial.color) == "F08A3C")
+                .Select(x => x.name).Distinct().OrderBy(x => x).ToArray();
+            Assert.That(orange, Is.SubsetOf(new[] { "arm", "depot:lintel" }),
+                "Ticket Orange is reserved for switch/station trim, never a large surface");
+
+            var shadowRoots = board.Cast<Transform>().Where(x =>
+                x.name.StartsWith("prop:") || x.name.StartsWith("source:")
+                || x.name.StartsWith("station:") || x.name.StartsWith("switch:"))
+                .ToArray();
+            Assert.That(shadowRoots.Length, Is.GreaterThanOrEqualTo(7));
+            foreach (var root in shadowRoots)
+            {
+                var shadow = root.GetComponentsInChildren<Transform>(true)
+                    .SingleOrDefault(x => x.name == "contact-shadow");
+                Assert.That(shadow, Is.Not.Null, root.name + " has no authored contact shadow");
+                Assert.That(shadow.GetComponent<MeshFilter>().sharedMesh.name,
+                    Is.EqualTo("SoftShadowDisc"), root.name);
+                Assert.That(shadow.GetComponent<Renderer>().sharedMaterial.color.a,
+                    Is.InRange(0.08f, 0.35f), root.name);
+            }
+        }
+
+        [UnityTest]
         public IEnumerator RealGameScene_WiresVisiblePolyforkDressingAndShadowlessWarmKey()
         {
             Scene scene = SceneManager.GetSceneByName("Game");
@@ -239,6 +334,27 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(key.type, Is.EqualTo(LightType.Directional));
             Assert.That(key.shadows, Is.EqualTo(LightShadows.None),
                 "contact shadows are authored blob geometry, never realtime shadow maps");
+            float keyElevation = Mathf.Asin(Mathf.Abs(Vector3.Dot(
+                key.transform.forward.normalized, Vector3.forward))) * Mathf.Rad2Deg;
+            Assert.That(keyElevation, Is.InRange(25f, 40f),
+                "the warm key must rake across the tabletop from a low afternoon angle");
+
+            var post = roots.SingleOrDefault(x => x.name == "DioramaPost");
+            Assert.That(post, Is.Not.Null, "the real Game scene carries the subtle vignette");
+            Assert.That(post.GetComponents<Component>()
+                .Any(x => x != null && x.GetType().Name == "Volume"), Is.True);
+
+            var sceneRoot = roots.Select(x => x.GetComponent<GameRoot>())
+                .Single(x => x != null);
+            var cameraData = sceneRoot.Cam.GetComponents<Component>()
+                .SingleOrDefault(x => x != null
+                    && x.GetType().Name == "UniversalAdditionalCameraData");
+            Assert.That(cameraData, Is.Not.Null,
+                "the dynamically constructed gameplay camera needs URP post-processing data");
+            var property = cameraData.GetType().GetProperty("renderPostProcessing");
+            Assert.That(property, Is.Not.Null);
+            Assert.That((bool)property.GetValue(cameraData), Is.True,
+                "the dynamically constructed gameplay camera must render the vignette");
 
             if (loadedHere) yield return SceneManager.UnloadSceneAsync(scene);
         }
@@ -455,6 +571,15 @@ namespace CatMetro.Tests.PlayMode
                 if (child.name == name) return child;
             Assert.Fail("required diorama object missing: " + name);
             return null;
+        }
+
+        private static Bounds RenderBounds(Transform root)
+        {
+            var renderers = root.GetComponentsInChildren<Renderer>(true);
+            Assert.That(renderers.Length, Is.GreaterThan(0), root.name);
+            Bounds bounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++) bounds.Encapsulate(renderers[i].bounds);
+            return bounds;
         }
 
         private static string Html(Color color) => ColorUtility.ToHtmlStringRGB(color);
