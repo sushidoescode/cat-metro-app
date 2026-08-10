@@ -370,3 +370,28 @@ merge word, which you'll ask for separately when the PR is ready."** The ruling 
 the fail-closed path's own RED-first test and a mutation proof that deletes the guard, captures the
 exact failure, and restores the desired bytes exactly. Lane 3's dependency is live; once #66 is
 green and reviewable, this lane asks promptly for the separate HC-25 word.
+
+### Option A guard RED + mutation proof — 2026-08-09
+
+The ruling-specific test was committed RED before the guard implementation. On the unrestricted
+relation `{(1,2),(2,2),(3,2),(4,2),(5,2),(3,1)}`, production returned the crossed `[3,1]` result;
+the new assertion requires a failed normalization and the original chronological `[1,2]` seed.
+The minimal guard made that named test green without clipping either maximal window.
+
+Mutation: delete only the post-sweep `ReceiptOrderPreserved(centeredTicks)` guard. The named test
+failed with the exact discriminator:
+`Option A: unrestricted windows remain authoritative, but a reversed receipt order stops` —
+`Expected: False / But was: True`. Restoring the guard returned the then-desired
+`MidWindowNormalizer.cs` bytes exactly (SHA-256
+`eafca6a0af8d02362c23e5f65ea8caeb45cef075de5dd93999066ce147df0eef`) and the test passed again.
+
+### Review-resolution evidence correction — 2026-08-10
+
+The round-1 amended prose said "one centering sweep plus one independent fixed-point verification."
+That wording was not the implemented or tested constant envelope: the already-established
+two-command fixture needs up to three transformation sweeps to settle, while the review's cycle
+must still stop. The correction is **at most three sweeps, independent of command count**, with
+cycle detection and fixed-point acceptance; the probe-count test is renamed
+`InteractingWindowProbe_IsBoundedToAConstantThreeSweepEnvelope` without changing its `<= 12`
+assertion. This append corrects the evidence narrative only; the frozen executable definition,
+human Option A ruling, cycle-stop semantics, and accepted F4/L006 measurements do not move.

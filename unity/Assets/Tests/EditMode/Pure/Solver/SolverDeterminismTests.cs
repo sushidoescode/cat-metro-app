@@ -122,7 +122,7 @@ namespace CatMetro.Tests.Solver
         }
 
         [Test]
-        public void InteractingWindowProbe_IsBoundedToOneCenterSweepPlusVerification()
+        public void InteractingWindowProbe_IsBoundedToAConstantThreeSweepEnvelope()
         {
             var wins = new HashSet<string>
             {
