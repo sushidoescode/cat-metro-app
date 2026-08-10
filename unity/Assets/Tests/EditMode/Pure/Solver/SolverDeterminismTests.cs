@@ -103,6 +103,23 @@ namespace CatMetro.Tests.Solver
         }
 
         [Test]
+        public void MidWindowNormalizer_StopsWhenCenteringWouldReverseEqualTickSwitchOrder()
+        {
+            // Receipt sequence S1@0,S0@1 is chronological. Centering the first command to tick 1
+            // would create S1@1,S0@1, reversing the canonical same-tick SwitchId order.
+            var wins = new HashSet<string> { "0,1", "1,1", "2,1" };
+
+            bool converged = MidWindowNormalizer.TryCenter(
+                new ushort[] { 1, 0 }, new[] { 0, 1 }, 3,
+                ticks => wins.Contains(ticks[0] + "," + ticks[1]), out var result);
+
+            Assert.That(converged, Is.False,
+                "receipt chronology compares (Tick, SwitchId), including equal ticks");
+            Assert.That(result, Is.EqualTo(new[] { 0, 1 }),
+                "the failed normalization restores the original receipt chronology");
+        }
+
+        [Test]
         public void OrderedBoxCertificate_RejectsEndpointOnlyHistoryCompression()
         {
             // Three chronological histories share the endpoint box [(0,0)..(2,2)], but that
