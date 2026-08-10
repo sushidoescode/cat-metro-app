@@ -91,8 +91,11 @@ Shader "Universal Render Pipeline/Cat Metro Diorama Lit"
                 half3 viewDirection = GetWorldSpaceNormalizeViewDir(input.positionWS);
                 half rim = pow(1.0h - saturate(dot(normalWS, viewDirection)), 3.0h)
                     * _RimStrength;
-                half3 lightMix = half3(0.50h, 0.54h, 0.62h)
-                    + keyColor * (0.16h + 0.20h * toonRamp)
+                // Keep the low band distinctly darker than the afternoon-facing planes.
+                // This authored toon contrast is the baked-AO-style depth path on low tier;
+                // it costs no renderer feature or realtime shadow sample.
+                half3 lightMix = half3(0.44h, 0.48h, 0.56h)
+                    + keyColor * (0.12h + 0.30h * toonRamp)
                     + half3(1.0h, 0.94h, 0.82h) * (rim * 0.7h);
                 half3 vertexColor = lerp(half3(1.0h, 1.0h, 1.0h),
                     input.color.rgb, _VertexColorWeight);

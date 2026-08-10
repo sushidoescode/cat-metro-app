@@ -127,6 +127,7 @@ namespace CatMetro.Tests.PlayMode
             var floor = AssertNamed(commuter, "train:car-floor");
             var left = AssertNamed(commuter, "train:car-side-left");
             AssertNamed(commuter, "train:car-side-right");
+            var cavity = AssertNamed(commuter, "train:car-cavity");
             AssertNamed(commuter, "train:car-end-front");
             AssertNamed(commuter, "train:car-end-back");
             Assert.That(commuter.GetComponentsInChildren<Transform>(true)
@@ -159,6 +160,12 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(Mathf.Abs(head.transform.localPosition.x), Is.LessThan(0.1f));
             Assert.That(Mathf.Abs(head.transform.localPosition.y), Is.LessThan(0.3f));
             Assert.That(floor.GetComponent<Renderer>(), Is.Not.Null);
+            Assert.That(Html(cavity.GetComponent<Renderer>().sharedMaterial.color),
+                Is.EqualTo("131C30"),
+                "a navy inset makes the open carriage read as a cavity behind the passenger");
+            Assert.That(cavity.localScale.x,
+                Is.LessThan(Mathf.Abs(left.localPosition.x) * 2f),
+                "the cavity must remain visibly contained by the cream side walls");
             Rect headRect = ViewportRect(_root.Cam, head.bounds);
             foreach (var featureName in new[] { "eye:left", "eye:right", "nose" })
             {
@@ -277,6 +284,17 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(lowerLeft.x, Is.LessThan(0.08f), "board fills the portrait width");
             Assert.That(upperRight.x, Is.GreaterThan(0.92f), "board fills the portrait width");
 
+            Rect surfaceRect = ViewportRect(_root.Cam, AssertNamed(_root.View.transform,
+                "desk:surface").GetComponent<Renderer>().bounds);
+            Assert.That(surfaceRect.width, Is.GreaterThanOrEqualTo(0.9f));
+            Assert.That(surfaceRect.height, Is.GreaterThanOrEqualTo(0.65f),
+                "the raised game board must fill the portrait like the tabletop reference; " +
+                "rect=" + surfaceRect);
+            Assert.That(surfaceRect.yMin, Is.InRange(0.15f, 0.21f),
+                "the board must leave the foreground desk/apron visible");
+            Assert.That(surfaceRect.yMax, Is.InRange(0.83f, 0.89f),
+                "the board must extend behind the preview-safe top composition");
+
             var sourceAnchor = _root.View.NodeWorldPos(0);
             var redAnchor = _root.View.NodeWorldPos(2);
             Assert.That(AssertNamed(_root.View.transform, "source:SRC").position.y,
@@ -287,8 +305,9 @@ namespace CatMetro.Tests.PlayMode
             float occupiedViewportHeight = Mathf.Abs(
                 _root.Cam.WorldToViewportPoint(sourceAnchor).y
                 - _root.Cam.WorldToViewportPoint(redAnchor).y);
-            Assert.That(occupiedViewportHeight, Is.GreaterThan(0.38f),
-                "the playable route must occupy the portrait composition, not its middle third");
+            Assert.That(occupiedViewportHeight, Is.GreaterThan(0.46f),
+                "the playable route must fill roughly half the portrait composition, not its " +
+                "middle third; occupied=" + occupiedViewportHeight);
 
             var deskEdge = AssertNamed(_root.View.transform, "desk:front-edge");
             var deskViewport = _root.Cam.WorldToViewportPoint(deskEdge.position);
@@ -321,6 +340,36 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(cupViewport.x, Is.InRange(0.72f, 1f),
                 "the procedural cup stays opposite the imported foreground cup");
             Assert.That(cupViewport.y, Is.InRange(0.04f, 0.22f));
+        }
+
+        [UnityTest]
+        public IEnumerator EveryShippedRouteVisual_RemainsOnTheRaisedBoard()
+        {
+            for (int level = 1; level <= 10; level++)
+            {
+                string path = "content/levels/L" + level.ToString("000") + ".json";
+                _root = GameRoot.Launch(path);
+                yield return null;
+
+                Bounds surface = AssertNamed(_root.View.transform, "desk:surface")
+                    .GetComponent<Renderer>().bounds;
+                var routeVisuals = _root.View.GetComponentsInChildren<Transform>(true)
+                    .Where(x => x.name.StartsWith("trackbed:")
+                        || x.name == "station:visual"
+                        || x.name.StartsWith("depot:") && x.parent != null
+                            && x.parent.name.StartsWith("source:")
+                        || x.name.StartsWith("switch:"))
+                    .ToArray();
+                Assert.That(routeVisuals.Length, Is.GreaterThan(3), path);
+                foreach (var visual in routeVisuals)
+                    Assert.That(visual.position.y,
+                        Is.InRange(surface.min.y - 0.01f, surface.max.y + 0.01f),
+                        path + " places " + visual.name + " off the raised board");
+
+                Object.Destroy(_root.gameObject);
+                _root = null;
+                yield return null;
+            }
         }
 
         [UnityTest]
@@ -409,6 +458,23 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(beds.All(x => Html(x.GetComponent<Renderer>()
                     .sharedMaterial.color) == "FAF6EC"), Is.True,
                     edgeId + " needs Warm Paper beds to separate from the Cream Card board");
+                Assert.That(beds.All(x => x.localScale.x >= 1f), Is.True,
+                    edgeId + " cream ribbon must dominate the navy railway details");
+                Assert.That(edges.All(x => x.sharedMaterial.color.a <= 0.2f), Is.True,
+                    edgeId + " under-keyline must stay subordinate to the cream ribbon");
+                var rails = visual.GetComponentsInChildren<Transform>(true)
+                    .Where(x => x.name.StartsWith("rail-left:" + edgeId)
+                        || x.name.StartsWith("rail-right:" + edgeId))
+                    .ToArray();
+                Assert.That(rails.Length, Is.EqualTo(beds.Length * 2));
+                Assert.That(rails.All(x => x.localScale.x <= 0.06f), Is.True,
+                    edgeId + " rails must read as fine ink lines, not a navy ladder");
+                var ties = visual.GetComponentsInChildren<Transform>(true)
+                    .Where(x => x.name.StartsWith("tie:" + edgeId + ":"))
+                    .ToArray();
+                Assert.That(ties.Length, Is.InRange(beds.Length / 3, (beds.Length + 1) / 2),
+                    edgeId + " needs sparse toy-track ties so the cream bed remains visible");
+                Assert.That(ties.All(x => x.localScale.x <= 0.58f), Is.True);
             }
         }
 
@@ -492,6 +558,10 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(Html(ringRenderer.material.color), Is.EqualTo("22304A"));
             Assert.That(switchRoot.GetComponent<MeshFilter>().sharedMesh.name,
                 Is.EqualTo("RoundedBox12"));
+            Assert.That(switchRoot.localScale.x, Is.GreaterThanOrEqualTo(1.05f),
+                "the switch housing must read as the chunky reference-scale hero control");
+            Assert.That(armRenderer.transform.localScale.y, Is.GreaterThanOrEqualTo(1.15f),
+                "the thrown orange handle must remain legible at phone scale");
             Assert.That(AssertNamed(_root.View.transform, "teachring:S1")
                 .GetComponent<MeshFilter>().sharedMesh.name, Is.EqualTo("DioramaRing"),
                 "the teach affordance is a ring, not a solid navy puck over the lever");
@@ -600,6 +670,17 @@ namespace CatMetro.Tests.PlayMode
             var depot = AssertNamed(board, "depot:body");
             Assert.That(depot.localScale.z, Is.GreaterThan(depot.localScale.y),
                 "the depot needs a real facade height in the three-quarter view");
+            Assert.That(Html(depot.GetComponent<Renderer>().sharedMaterial.color),
+                Is.EqualTo("FAF6EC"),
+                "the source shed facade must contrast with the Cream Card board");
+            Assert.That(Html(AssertNamed(board, "depot:outline")
+                .GetComponent<Renderer>().sharedMaterial.color), Is.EqualTo("22304A"));
+            Assert.That(Html(AssertNamed(board, "depot:portal")
+                .GetComponent<Renderer>().sharedMaterial.color), Is.EqualTo("131C30"));
+
+            var cluster = AssertNamed(board, "prop:tree-cluster");
+            Assert.That(cluster.localScale.x, Is.InRange(0.68f, 0.8f),
+                "the centre dressing must not occlude both playable branch rails");
 
             var station = AssertNamed(board, "station:visual");
             var roof = AssertNamed(station, "station:canopy");

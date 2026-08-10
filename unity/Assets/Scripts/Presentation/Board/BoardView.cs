@@ -50,7 +50,7 @@ namespace CatMetro.Presentation.Board
 
         public const float DioramaVerticalScale = 1.4f;
         public const float DioramaVerticalCenter = 5f;
-        private const float RouteVerticalScale = 1.72f;
+        private const float RouteVerticalScale = 2.08f;
         private const float ContactPlaneZ = 0.245f;
 
         public int SwitchCount => _switchNode.Length;
@@ -182,7 +182,7 @@ namespace CatMetro.Presentation.Board
                 disc.transform.SetParent(transform, false);
                 disc.transform.localPosition =
                     _visualNodePos[_switchNode[s]] + new Vector3(0f, 0f, -0.4f);
-                disc.transform.localScale = new Vector3(0.76f, 0.52f, 0.3f);
+                disc.transform.localScale = new Vector3(1.2f, 0.78f, 0.36f);
                 disc.transform.localRotation = Quaternion.identity;
                 var id = disc.AddComponent<BoardElementId>();
                 id.Id = switches[s].Id; id.Kind = "switch";
@@ -204,14 +204,14 @@ namespace CatMetro.Presentation.Board
                 slot.transform.localScale = new Vector3(0.18f, 0.72f, 0.14f);
                 ContactShadow(disc.transform, transform.TransformPoint(
                     _visualNodePos[_switchNode[s]] + new Vector3(0.04f, -0.05f, 0.25f)),
-                    new Vector2(0.78f, 0.56f));
+                    new Vector2(1.16f, 0.76f));
 
                 var arm = new GameObject("arm");
                 DioramaMeshFactory.Attach(arm, DioramaMeshKind.RoundedBox,
                     DioramaPalette.Material("lever-arm", DioramaPalette.TicketOrange));
                 arm.name = "arm";
                 arm.transform.SetParent(disc.transform.parent, false);
-                arm.transform.localScale = new Vector3(0.1f, 0.9f, 0.1f);
+                arm.transform.localScale = new Vector3(0.14f, 1.25f, 0.14f);
                 _switchArm[s] = arm.transform;
 
                 // CM-UX-03: onboarding-band teach affordance — a STATIC raised ring behind
@@ -239,7 +239,7 @@ namespace CatMetro.Presentation.Board
                     ring.transform.SetParent(transform, false);
                     ring.transform.localPosition =
                         _visualNodePos[_switchNode[s]] + new Vector3(0f, 0f, -0.35f);
-                    ring.transform.localScale = new Vector3(1.05f, 0.85f, 1f);
+                    ring.transform.localScale = new Vector3(1.48f, 1.12f, 1f);
                     ring.transform.localRotation = Quaternion.identity;
                     _teachRing[s] = ring.transform;
                     _teachDisc[s] = disc.transform;
@@ -264,32 +264,32 @@ namespace CatMetro.Presentation.Board
 
             Shape(transform, "desk:front-edge", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("desk-front-edge", DioramaPalette.CreamCard),
-                DioramaPoint(new Vector3(3f, -0.1f, 0.48f)),
+                new Vector3(3f, -3.74f, 0.48f),
                 new Vector3(6.7f, 0.48f, 0.55f));
             Color frontShade = DioramaPalette.InkNavy;
             frontShade.a = 0.3f;
             Shape(transform, "desk:front-edge-shadow", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("desk-front-edge-shadow", frontShade),
-                DioramaPoint(new Vector3(3f, -0.22f, 0.44f)),
+                new Vector3(3f, -3.88f, 0.44f),
                 new Vector3(6.58f, 0.16f, 0.34f));
 
             Color rimColor = DioramaPalette.InkNavy;
             rimColor.a = 0.34f;
             var rim = Shape(transform, "desk:board-rim", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("desk-board-rim", rimColor),
-                DioramaPoint(new Vector3(3f, 5.6f, 0.47f)),
-                new Vector3(6.78f, 11.52f * DioramaVerticalScale, 0.2f));
+                new Vector3(3f, 6.685f, 0.47f),
+                new Vector3(6.78f, 21.29f, 0.2f));
             rim.transform.localRotation = Quaternion.Euler(0f, 0f, -0.55f);
 
             var surface = Shape(transform, "desk:surface", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("board-cream-wood", DioramaPalette.CreamCard),
-                DioramaPoint(new Vector3(3f, 5.6f, 0.43f)),
-                new Vector3(6.55f, 11.3f * DioramaVerticalScale, 0.34f));
+                new Vector3(3f, 6.665f, 0.43f),
+                new Vector3(6.55f, 20.93f, 0.34f));
             surface.transform.localRotation = Quaternion.Euler(0f, 0f, -0.55f);
 
             Shape(transform, "desk:bevel", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("desk-bevel", DioramaPalette.CreamCard),
-                DioramaPoint(new Vector3(3f, 11.25f, 0.22f)),
+                new Vector3(3f, 17.13f, 0.22f),
                 new Vector3(6.72f, 0.18f, 0.24f));
 
             // Restrained, semi-transparent navy inlays read as grain only in the exposed desk
@@ -326,7 +326,7 @@ namespace CatMetro.Presentation.Board
                 var foregroundKnot = Shape(transform, "desk:grain-knot-foreground-" + knot,
                     DioramaMeshKind.Cylinder,
                     DioramaPalette.Material("desk-grain", grain),
-                    new Vector3(2.15f + knot * 2.35f, -2.3f, 0.5f),
+                    new Vector3(2.15f + knot * 2.35f, -4.25f, 0.5f),
                     new Vector3(0.16f, 0.018f, 0.28f));
                 foregroundKnot.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
             }
@@ -334,7 +334,7 @@ namespace CatMetro.Presentation.Board
             for (int segment = 0; segment < 3; segment++)
             {
                 float x = -0.55f + segment * 3.45f + ((row + segment) % 2) * 0.18f;
-                float y = -3.15f - row * 0.62f + segment * 0.07f;
+                float y = -4.05f - row * 0.52f + segment * 0.07f;
                 float width = 1.8f + ((row * 2 + segment) % 3) * 0.38f;
                 var foreground = Shape(transform,
                     "desk:grain-foreground-line-" + row + ":" + segment,
@@ -402,9 +402,10 @@ namespace CatMetro.Presentation.Board
         {
             var cluster = new GameObject("prop:tree-cluster");
             cluster.transform.SetParent(parent, false);
-            cluster.transform.localPosition = DioramaPoint(new Vector3(3.05f, 3.95f, 0.28f));
+            cluster.transform.localPosition = DioramaPoint(new Vector3(3.05f, 3.25f, 0.28f));
+            cluster.transform.localScale = Vector3.one * 0.74f;
             ContactShadow(cluster.transform, cluster.transform.TransformPoint(
-                new Vector3(0.05f, -0.05f, 0.12f)), new Vector2(1.65f, 0.82f));
+                new Vector3(0.05f, -0.05f, 0.12f)), new Vector2(1.02f, 0.52f));
 
             Vector3[] offsets =
             {
@@ -487,9 +488,12 @@ namespace CatMetro.Presentation.Board
             depot.transform.localPosition = visualOffset + new Vector3(0f, 0.2f, 0.12f);
             ContactShadow(depot.transform, depot.transform.TransformPoint(
                 new Vector3(0.1f, -0.1f, 0.2f)), new Vector2(1.42f, 0.62f));
+            Shape(depot.transform, "depot:outline", DioramaMeshKind.RoundedBox,
+                DioramaPalette.Material("depot-outline", DioramaPalette.InkNavy),
+                new Vector3(0f, 0.02f, -0.36f), new Vector3(1.16f, 0.78f, 0.98f));
             Shape(depot.transform, "depot:body", DioramaMeshKind.RoundedBox,
-                DioramaPalette.Material("depot-body", DioramaPalette.CreamCard),
-                new Vector3(0f, 0f, -0.38f), new Vector3(1.02f, 0.7f, 0.9f));
+                DioramaPalette.Material("depot-body", DioramaPalette.WarmPaper),
+                new Vector3(0f, -0.025f, -0.4f), new Vector3(1.02f, 0.7f, 0.9f));
             var roof = Shape(depot.transform, "depot:roof", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("depot-roof", DioramaPalette.DepotNavy),
                 new Vector3(-0.24f, 0f, -0.93f), new Vector3(0.72f, 0.82f, 0.16f));
@@ -499,12 +503,15 @@ namespace CatMetro.Presentation.Board
                 DioramaPalette.Material("depot-roof", DioramaPalette.DepotNavy),
                 new Vector3(0.24f, 0f, -0.93f), new Vector3(0.72f, 0.82f, 0.16f));
             roofRight.transform.localRotation = Quaternion.Euler(0f, -24f, 2f);
+            Shape(depot.transform, "depot:portal", DioramaMeshKind.RoundedBox,
+                DioramaPalette.Material("depot-portal", DioramaPalette.DepotNavy),
+                new Vector3(0f, -0.41f, -0.48f), new Vector3(0.58f, 0.08f, 0.58f));
             Shape(depot.transform, "depot:door", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("depot-door", DioramaPalette.MetroTeal),
-                new Vector3(0f, -0.38f, -0.4f), new Vector3(0.38f, 0.08f, 0.5f));
+                new Vector3(0f, -0.46f, -0.48f), new Vector3(0.32f, 0.04f, 0.34f));
             Shape(depot.transform, "depot:lintel", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("depot-lintel", DioramaPalette.TicketOrange),
-                new Vector3(0f, -0.42f, -0.72f), new Vector3(0.56f, 0.08f, 0.1f));
+                new Vector3(0f, -0.47f, -0.8f), new Vector3(0.62f, 0.06f, 0.1f));
         }
 
         private static void BuildStation(GameObject root, Vector3 visualOffset, LineIdentity line)
@@ -555,7 +562,7 @@ namespace CatMetro.Presentation.Board
             var cream = DioramaPalette.Material("track-warm-paper", DioramaPalette.WarmPaper);
             var navy = DioramaPalette.Material("rail-navy", DioramaPalette.InkNavy);
             Color edgeTint = DioramaPalette.InkNavy;
-            edgeTint.a = 0.34f;
+            edgeTint.a = 0.16f;
             var edgeMaterial = DioramaPalette.Material("track-edge", edgeTint);
             for (int i = 0; i < segments; i++)
             {
@@ -572,30 +579,33 @@ namespace CatMetro.Presentation.Board
                 var edge = Shape(root, "track-edge:" + id + suffix,
                     DioramaMeshKind.RoundedBox, edgeMaterial,
                     (a + b) * 0.5f + new Vector3(0f, 0f, 0.1f),
-                    new Vector3(1.02f, length + 0.04f, 0.2f));
+                    new Vector3(1.12f, length + 0.04f, 0.2f));
                 edge.transform.localRotation = rotation;
 
                 var bed = Shape(root, "trackbed:" + id + suffix,
                     DioramaMeshKind.RoundedBox, cream, (a + b) * 0.5f,
-                    new Vector3(0.86f, length, 0.24f));
+                    new Vector3(1.06f, length, 0.24f));
                 bed.transform.localRotation = rotation;
 
                 var left = Shape(root, "rail-left:" + id + suffix,
                     DioramaMeshKind.RoundedBox, navy,
-                    (a + b) * 0.5f + normal * 0.28f + new Vector3(0f, 0f, -0.17f),
-                    new Vector3(0.075f, length, 0.15f));
+                    (a + b) * 0.5f + normal * 0.32f + new Vector3(0f, 0f, -0.17f),
+                    new Vector3(0.055f, length, 0.15f));
                 left.transform.localRotation = rotation;
                 var right = Shape(root, "rail-right:" + id + suffix,
                     DioramaMeshKind.RoundedBox, navy,
-                    (a + b) * 0.5f - normal * 0.28f + new Vector3(0f, 0f, -0.17f),
-                    new Vector3(0.075f, length, 0.15f));
+                    (a + b) * 0.5f - normal * 0.32f + new Vector3(0f, 0f, -0.17f),
+                    new Vector3(0.055f, length, 0.15f));
                 right.transform.localRotation = rotation;
 
-                var tie = Shape(root, "tie:" + id + ":" + i,
-                    DioramaMeshKind.RoundedBox, navy,
-                    (a + b) * 0.5f + new Vector3(0f, 0f, -0.14f),
-                    new Vector3(0.68f, 0.09f, 0.11f));
-                tie.transform.localRotation = rotation;
+                if ((i & 1) == 0)
+                {
+                    var tie = Shape(root, "tie:" + id + ":" + i,
+                        DioramaMeshKind.RoundedBox, navy,
+                        (a + b) * 0.5f + new Vector3(0f, 0f, -0.14f),
+                        new Vector3(0.56f, 0.07f, 0.11f));
+                    tie.transform.localRotation = rotation;
+                }
             }
         }
 
@@ -637,6 +647,9 @@ namespace CatMetro.Presentation.Board
             Shape(train.transform, "train:car-floor", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("car-floor", DioramaPalette.WarmPaper),
                 new Vector3(0f, 0f, -0.12f), new Vector3(0.6f, 0.75f, 0.12f));
+            Shape(train.transform, "train:car-cavity", DioramaMeshKind.RoundedBox,
+                DioramaPalette.Material("car-cavity", DioramaPalette.DepotNavy),
+                new Vector3(0f, 0f, -0.3f), new Vector3(0.46f, 0.58f, 0.12f));
             Shape(train.transform, "train:car-side-left", DioramaMeshKind.RoundedBox,
                 DioramaPalette.Material("car-cream", DioramaPalette.CreamCard),
                 new Vector3(-0.3f, 0f, -0.31f), new Vector3(0.1f, 0.75f, 0.42f));

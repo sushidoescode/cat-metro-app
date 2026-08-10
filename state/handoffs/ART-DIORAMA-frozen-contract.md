@@ -310,3 +310,39 @@ and the persistentDataPath device finding. Lane 1B owns WavePreviewStrip's primi
   diagnostics and the overlay fix path are recorded on PR #68. These editor frames remain
   iteration evidence only: integrated preview, APK/Pixel, TG, CM-R21, exact-head reviews, CI, and
   HC-25 are still open.
+- 2026-08-10 — a fresh side-by-side TG audit rejected treating the first feature-free frame as
+  final and drove one more owned, RED-first composition tightening. Track/switch/depot/route tests
+  were RED 13/17 at `/tmp/catmetro-composition-red.vJHSjh/`; the open-car cavity was separately RED
+  at `/tmp/catmetro-car-cavity-red.EAkXnb/`; and an actual raised-board viewport bound was RED
+  16/17 at `/tmp/catmetro-board-fill-red.nCjicp/` (only 52.4% of portrait height). The corrected
+  candidate makes Warm Paper the dominant toy-track ribbon with sparse fine navy rails/ties,
+  expands the visual route while preserving every DTO root and the exact camera/tap contract,
+  gives the teal/orange switch reference-scale weight, exposes a Warm Paper/Ink Navy depot portal,
+  shrinks the central tree occluder, adds a navy open-car cavity behind the track-scale cat, and
+  extends only the rear of the raised board so the foreground desk/apron remains visible. The
+  existing three-step shader's low band is deeper for zero-pass baked-style depth; renderer
+  features remain empty and SSAO/realtime shadows remain absent. Construction is 17/17 at
+  `/tmp/catmetro-board-fill-green.tsCkNf/`; DioramaAsset is 9/9 at
+  `/tmp/catmetro-toon-green.NqXS9k/`; focused Construction/Device/Teach is 30/30 at
+  `/tmp/catmetro-composition-regressions.keuwKs/`; Greybox/input is 16/16 at
+  `/tmp/catmetro-composition-regressions2.iY6xnz/`; and unchanged shell device/check/build gates
+  pass. The exact iteration frame directory is `/tmp/catmetro-composition-frame4.Bj11KC/`
+  (`editor-diorama-board.png` SHA-256 `598787bb2392ea917dd66b4be2f6ccad050e2e3694672eff7975fcacf330c6e6`,
+  commuter `7e5b4a3effa35f1b1d61c261ff7e9784a3353e337db1fd851213d06fd9b70b23`).
+  It remains deliberately non-final until Lane 1B's safe-area preview integrates; APK/Pixel, TG,
+  CM-R21 rerating, exact integrated review/CI, and HC-25 remain open.
+- 2026-08-10 — corpus-fit review caught the strengthened route scale placing L007–L010's y=1
+  stations beyond the raised board, a defect the L001 frame alone could not reveal. The new
+  all-ten-level invariant and stronger 65%-height board bound were RED 0/2 at
+  `/tmp/catmetro-board-corpus-red.vyLDbu/` (L007 station y=-3.32 versus board min=-2.10).
+  The raised board now extends forward as well as rearward, keeps a 15–21% foreground desk band,
+  contains every shipped route visual, and moves the imported foreground cup and grain with the
+  apron rather than covering them. The focused correction is GREEN 2/2 at
+  `/tmp/catmetro-board-corpus-green.yNY7nU/`; final owned PlayMode focus is 47/47 (Construction
+  18, Device 5, Greybox 9, input 7, Teach 8) at
+  `/tmp/catmetro-composition-final-regressions.uHXHOt/`; DioramaAsset is 9/9 at
+  `/tmp/catmetro-composition-final-assets.iTBLQK/`; and shell device/check/build gates pass. The
+  latest exact iteration frame is `/tmp/catmetro-composition-frame5.wLJlzn/` (board SHA-256
+  `3f8e69197ff38e4dca45f8a9b7ee8973888b0c89494b2a43f70d1a9ba38b9861`, commuter
+  `b19084b177bd144ecd5765a27e8fb690e5132af94de89bd4a2727973bee07ff5`). It still cannot be called
+  final evidence without Lane 1B's preview overlay; device/CM-R21/TG/HC-25 remain closed.

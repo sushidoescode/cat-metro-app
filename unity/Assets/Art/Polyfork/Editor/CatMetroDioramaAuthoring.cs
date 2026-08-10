@@ -83,7 +83,7 @@ namespace CatMetro.Editor
                     new Vector3(5.5f, 5.25f, 0.4f), new Vector3(180f, 0f, 0f), 0.42f),
                 new Dressing("polyfork_coffee_cup_90be67.fbx", "Polyfork_CoffeeCup",
                     "WarmPaper", DioramaPalette.WarmPaper,
-                    new Vector3(0.5f, -1.05f, 0.4f), new Vector3(180f, 0f, 0f), 3.8f),
+                    new Vector3(0.5f, -2.2f, 0.4f), new Vector3(180f, 0f, 0f), 3.8f),
                 new Dressing("polyfork_tram_track_tile_f3c69a.fbx", "Polyfork_TrackTile",
                     "CreamCard", DioramaPalette.CreamCard,
                     new Vector3(5.75f, 6.9f, 0.5f), new Vector3(0f, 0f, 18f), 0.13f),
