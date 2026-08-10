@@ -222,3 +222,20 @@ and the persistentDataPath device finding. Lane 1B owns WavePreviewStrip's primi
   Lane 1A and requested an ADR-0010-shaped proposal for in-chat signature. This ruling is the
   narrow `docs/adr/**` ownership exception required by external gate 1; ADR approval and HC-25
   remain separate human gates.
+- 2026-08-10 — human signed all seven ADR-0011 propositions against proposal `feb78a1`, explicitly
+  excluding HC-25; signature record `33a8d6c` is pinned. Root `.env` custody is mode `0600`,
+  ignored, and untracked. The recorded APK installed and cold-launched successfully on Pixel 9 Pro
+  `48121FDAP006X4`; two console-free 960x2142 live-cat frames were inspected and recorded. Scoped
+  logcat has zero fatal/crash events and zero Board/Cameras collider stacks; its two `MeshCollider`
+  errors both resolve exclusively to Lane 1B's frozen `WavePreviewStrip` debt. Pixel and Polyfork
+  ADR gates are closed; CM-R21 ruling/evidence, exact-head reviews, post-push CI, and HC-25 remain.
+- 2026-08-10 — human TG review rejected the installed composition while affirming the asset
+  selection. The committed Gemini image is now the golden target. Required correction: a low
+  30–40-degree-above-horizon three-quarter board camera with visible desk edge; cats scaled to
+  roughly 1.5 track widths and seated head-up in open train cars; Cream Card/Warm Paper board and
+  wood treatment with Ticket Orange restricted to accents; warm low-angle key, soft authored
+  contact shadows, SSAO and subtle vignette; then a new APK and Pixel evidence. The prior editor,
+  accessibility, and Pixel renders are baseline-only and cannot close TG or CM-R21. The cream
+  rounded preview strip with cat faces plus symbols is routed to Lane 1B because `Hud/**` remains
+  forbidden to Lane 1A. HC-25 remains deliberately closed until all corrected evidence and review
+  gates close.
