@@ -13,6 +13,8 @@ namespace CatMetro.Presentation.Cameras
         // board size and provably busts the 1500 ms budget beyond 5.25 units. Any distance
         // completes in PAN_DURATION_MS.
         public const double PAN_DURATION_MS = 400.0;
+        private const float TabletopPitchDegrees = 52f;
+        private const float VirtualCameraDepth = 14f;
 
         private UnityEngine.Camera _camera;
         private Vector3 _goal;
@@ -23,6 +25,8 @@ namespace CatMetro.Presentation.Cameras
         private Vector3 _restPose; // review B5: retry returns the camera HERE
         private float _framingAspect = -1f;
         private Rect _framingSafeViewport;
+        private float _failureViewportLift;
+        private float _appliedViewportLift;
 
         public string TargetNodeId { get; private set; } = "";
         public bool IsFramed => !_panning;
@@ -35,7 +39,12 @@ namespace CatMetro.Presentation.Cameras
             _camera = cam;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = Board.DioramaPalette.WarmPaper;
-            cam.transform.rotation = Quaternion.Euler(-30f, 0f, 0f);
+            // The gameplay plane is XY with +Z as its normal. Fifty-two degrees away from
+            // that normal reads as 38 degrees above the tabletop horizon — the low, premium
+            // three-quarter view in the signed-off Gemini target — while retaining the
+            // orthographic interaction/framing contract constructed by GameRoot.
+            cam.transform.rotation = Quaternion.Euler(-TabletopPitchDegrees, 0f, 0f);
+            EnableUrpPostProcessing(cam);
             ApplyDioramaFraming(cam.aspect, SafeViewport());
             _restPose = cam.transform.position; // the S-02 play framing (review B5)
         }
@@ -48,6 +57,7 @@ namespace CatMetro.Presentation.Cameras
         private void ApplyDioramaFraming(float aspect, Rect safeViewport)
         {
             if (_camera == null) return;
+            ApplyVirtualTabletopView();
             aspect = Mathf.Max(0.01f, aspect);
 
             // The gameplay grid is x=[0,6], y=[0,10]. Transform its required half-unit
@@ -56,10 +66,10 @@ namespace CatMetro.Presentation.Cameras
             // also keeps FrameNode's existing x/y pan semantics exact.
             var corners = new[]
             {
-                new Vector3(-0.5f, -0.5f, 0f),
-                new Vector3(-0.5f, 10.5f, 0f),
-                new Vector3(6.5f, -0.5f, 0f),
-                new Vector3(6.5f, 10.5f, 0f),
+                Board.BoardView.DioramaPoint(new Vector3(-0.5f, -0.5f, 0f)),
+                Board.BoardView.DioramaPoint(new Vector3(-0.5f, 10.5f, 0f)),
+                Board.BoardView.DioramaPoint(new Vector3(6.5f, -0.5f, 0f)),
+                Board.BoardView.DioramaPoint(new Vector3(6.5f, 10.5f, 0f)),
             };
             var projectionCenter = _camera.worldToCameraMatrix.MultiplyPoint3x4(
                 new Vector3(_camera.transform.position.x, _camera.transform.position.y, 0f));
@@ -88,6 +98,8 @@ namespace CatMetro.Presentation.Cameras
                 centerX - halfWidth, centerX + halfWidth,
                 centerY - halfHeight, centerY + halfHeight,
                 _camera.nearClipPlane, _camera.farClipPlane);
+            _appliedViewportLift = 0f;
+            SetViewportLift(_failureViewportLift);
             _framingAspect = aspect;
             _framingSafeViewport = safeViewport;
         }
@@ -107,11 +119,17 @@ namespace CatMetro.Presentation.Cameras
         {
             TargetNodeId = nodeId ?? "";
             _goal = new Vector3(worldPos.x, worldPos.y, _camera.transform.position.z);
+            // Failure review reserves the bottom quarter for Retry. Lift the rendered board a
+            // few percent while keeping the tested target transform exact, so a low switch can
+            // never drift into that thumb-band claim after the cause-camera pan.
+            _failureViewportLift = 0.03f;
+            SetViewportLift(_failureViewportLift);
             ShowRing(worldPos);
             if (motionOff)
             {
                 // criterion 3: a CUT — final transform this frame, static ring, no clips.
                 _camera.transform.position = _goal;
+                ApplyVirtualTabletopView();
                 _panning = false;
             }
             else
@@ -126,10 +144,16 @@ namespace CatMetro.Presentation.Cameras
         {
             TargetNodeId = "";
             _panning = false;
+            _failureViewportLift = 0f;
+            SetViewportLift(0f);
             if (_ring != null) _ring.SetActive(false);
             // Review B5: the retried run plays on the S-02 framing, never on the fail framing
             // or an interrupted pan position.
-            if (_camera != null) _camera.transform.position = _restPose;
+            if (_camera != null)
+            {
+                _camera.transform.position = _restPose;
+                ApplyVirtualTabletopView();
+            }
         }
 
         private void Update()
@@ -141,6 +165,7 @@ namespace CatMetro.Presentation.Cameras
             // smoothstep ease; endpoint exact at t == 1
             float eased = t * t * (3f - 2f * t);
             _camera.transform.position = Vector3.Lerp(_panFrom, _goal, eased);
+            ApplyVirtualTabletopView();
             if (t >= 1f) _panning = false;
         }
 
@@ -160,6 +185,55 @@ namespace CatMetro.Presentation.Cameras
                 && Mathf.Abs(a.y - b.y) <= 0.0001f
                 && Mathf.Abs(a.width - b.width) <= 0.0001f
                 && Mathf.Abs(a.height - b.height) <= 0.0001f;
+        }
+
+        private void ApplyVirtualTabletopView()
+        {
+            if (_camera == null) return;
+
+            // GameRoot's tested transform is the logical framing pivot, not a physically valid
+            // low-angle camera position: pitching in place puts the near desk behind the lens.
+            // Build the view matrix from a virtual camera pulled toward the player, centred on
+            // that same pivot. FrameNode/Reset still mutate the public transform exactly as the
+            // causal-camera contract requires; this view follows those x/y deltas one-for-one.
+            Vector3 pivot = _camera.transform.position;
+            Vector3 savedPosition = pivot;
+            Quaternion savedRotation = _camera.transform.rotation;
+            float run = Mathf.Tan(TabletopPitchDegrees * Mathf.Deg2Rad)
+                * VirtualCameraDepth;
+            Vector3 virtualPosition = new Vector3(
+                pivot.x, pivot.y - run, -VirtualCameraDepth);
+            Quaternion virtualRotation = Quaternion.Euler(-TabletopPitchDegrees, 0f, 0f);
+
+            _camera.transform.SetPositionAndRotation(virtualPosition, virtualRotation);
+            _camera.ResetWorldToCameraMatrix();
+            Matrix4x4 virtualView = _camera.worldToCameraMatrix;
+            _camera.transform.SetPositionAndRotation(savedPosition, savedRotation);
+            _camera.worldToCameraMatrix = virtualView;
+        }
+
+        private void SetViewportLift(float lift)
+        {
+            if (_camera == null || Mathf.Abs(lift - _appliedViewportLift) <= 0.00001f) return;
+            Matrix4x4 projection = _camera.projectionMatrix;
+            projection.m13 += (lift - _appliedViewportLift) * 2f;
+            _camera.projectionMatrix = projection;
+            _appliedViewportLift = lift;
+        }
+
+        private static void EnableUrpPostProcessing(UnityEngine.Camera cam)
+        {
+            // Presentation's assembly intentionally stays pipeline-agnostic. The project already
+            // pins URP, so bridge its optional camera-data component without widening the asmdef
+            // dependency surface owned by another lane. The type is also retained by the
+            // serialized URP renderer/profile assets.
+            var type = System.Type.GetType(
+                "UnityEngine.Rendering.Universal.UniversalAdditionalCameraData, " +
+                "Unity.RenderPipelines.Universal.Runtime");
+            if (type == null) return;
+            var data = cam.GetComponent(type) ?? cam.gameObject.AddComponent(type);
+            var property = type.GetProperty("renderPostProcessing");
+            if (property != null) property.SetValue(data, true, null);
         }
 
         private void ShowRing(Vector3 worldPos)

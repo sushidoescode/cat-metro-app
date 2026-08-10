@@ -106,15 +106,29 @@ namespace CatMetro.Tests.PlayMode
             const float trackWidth = 0.72f;
             Assert.That(visual.size.y, Is.InRange(trackWidth, trackWidth * 1.5f),
                 "the complete car/cat toy must be about 1.5 track widths tall");
-            Assert.That(visual.size.x, Is.LessThanOrEqualTo(trackWidth * 1.15f));
+            Assert.That(visual.size.x, Is.LessThanOrEqualTo(trackWidth * 1.3f),
+                "a diagonal car's world AABB stays near one track gauge");
 
             var head = AssertNamed(commuter, "cat:head").GetComponent<Renderer>();
             var wall = left.GetComponent<Renderer>();
-            Assert.That(head.bounds.min.z, Is.LessThan(wall.bounds.min.z),
-                "the cat head must protrude toward the camera above the open car wall");
+            float carWidth = floor.GetComponent<Renderer>().bounds.size.x;
+            Assert.That(head.bounds.size.x, Is.InRange(carWidth * 0.4f, carWidth * 0.8f),
+                "the cat is a passenger peeking from the car, never larger than the car");
+            Assert.That(head.transform.localPosition.z,
+                Is.LessThan(wall.transform.localPosition.z - 0.15f),
+                "the cat head must physically protrude toward the camera above the open wall");
+            Assert.That(_root.Cam.WorldToViewportPoint(head.bounds.center).y,
+                Is.GreaterThan(_root.Cam.WorldToViewportPoint(wall.bounds.center).y),
+                "the protruding head must read above the wall in the shipped camera");
             Assert.That(Mathf.Abs(head.transform.localPosition.x), Is.LessThan(0.1f));
             Assert.That(Mathf.Abs(head.transform.localPosition.y), Is.LessThan(0.3f));
             Assert.That(floor.GetComponent<Renderer>(), Is.Not.Null);
+            foreach (var featureName in new[] { "eye:left", "eye:right", "nose" })
+            {
+                var feature = AssertNamed(commuter, featureName).GetComponent<Renderer>();
+                Assert.That(feature.bounds.center.z, Is.LessThan(head.bounds.min.z),
+                    featureName + " must sit in front of the head surface and remain visible");
+            }
 
             var shadow = AssertNamed(commuter, "contact-shadow");
             Assert.That(shadow.GetComponent<MeshFilter>().sharedMesh.name,
@@ -161,6 +175,8 @@ namespace CatMetro.Tests.PlayMode
         {
             _root = GameRoot.Launch();
             yield return null;
+            _root.Cam.aspect = 900f / 2000f;
+            _root.CauseCam.ApplyDioramaFraming(_root.Cam.aspect);
 
             float pitchFromTopDown = Mathf.Abs(Mathf.DeltaAngle(
                 _root.Cam.transform.eulerAngles.x, 0f));
@@ -183,13 +199,50 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(lowerLeft.x, Is.LessThan(0.08f), "board fills the portrait width");
             Assert.That(upperRight.x, Is.GreaterThan(0.92f), "board fills the portrait width");
 
-            AssertNamed(_root.View.transform, "desk:front-edge");
-            Vector3 deskEdge = _root.View.transform.TransformPoint(new Vector3(3f, -1.5f, 0.65f));
-            var deskViewport = _root.Cam.WorldToViewportPoint(deskEdge);
-            Assert.That(deskViewport.z, Is.GreaterThan(0f));
+            var sourceAnchor = _root.View.NodeWorldPos(0);
+            var redAnchor = _root.View.NodeWorldPos(2);
+            Assert.That(AssertNamed(_root.View.transform, "source:SRC").position.y,
+                Is.EqualTo(9f).Within(0.001f),
+                "the authored node root remains at its exact DTO coordinate");
+            Assert.That(sourceAnchor.y - redAnchor.y, Is.GreaterThan(10.5f),
+                "visual anchors expand the sparse tutorial topology along the tabletop");
+            float occupiedViewportHeight = Mathf.Abs(
+                _root.Cam.WorldToViewportPoint(sourceAnchor).y
+                - _root.Cam.WorldToViewportPoint(redAnchor).y);
+            Assert.That(occupiedViewportHeight, Is.GreaterThan(0.38f),
+                "the playable route must occupy the portrait composition, not its middle third");
+
+            var deskEdge = AssertNamed(_root.View.transform, "desk:front-edge");
+            var deskViewport = _root.Cam.WorldToViewportPoint(deskEdge.position);
+            Assert.That(deskViewport.z, Is.GreaterThan(_root.Cam.nearClipPlane),
+                "the foreground desk is physically in front of the virtual tabletop camera");
+            Assert.That(GeometryUtility.TestPlanesAABB(
+                    GeometryUtility.CalculateFrustumPlanes(_root.Cam),
+                    new Bounds(deskEdge.position, Vector3.one * 0.1f)), Is.True,
+                "the off-axis tabletop clip retains the near desk apron");
             Assert.That(deskViewport.x, Is.InRange(0f, 1f));
             Assert.That(deskViewport.y, Is.InRange(0.05f, 0.35f),
                 "the desk apron belongs visibly at the bottom of the frame");
+            Vector3 foregroundPoint = _root.View.transform.TransformPoint(
+                new Vector3(3f, -4f, 0.65f));
+            var foregroundDesk = _root.Cam.WorldToViewportPoint(foregroundPoint);
+            Assert.That(GeometryUtility.TestPlanesAABB(
+                    GeometryUtility.CalculateFrustumPlanes(_root.Cam),
+                    new Bounds(foregroundPoint, Vector3.one * 0.1f)), Is.True,
+                "the virtual tabletop view must retain the foreground desk");
+            Assert.That(foregroundDesk.z, Is.GreaterThan(_root.Cam.nearClipPlane));
+            Assert.That(foregroundDesk.y, Is.InRange(0f, 0.3f));
+
+            var cup = AssertNamed(_root.View.transform, "prop:desk-cup");
+            var cupViewport = _root.Cam.WorldToViewportPoint(cup.position);
+            Assert.That(cupViewport.z, Is.GreaterThan(_root.Cam.nearClipPlane));
+            Assert.That(GeometryUtility.TestPlanesAABB(
+                    GeometryUtility.CalculateFrustumPlanes(_root.Cam),
+                    new Bounds(cup.position, Vector3.one * 0.2f)), Is.True,
+                "the foreground cup must remain in the shipped frame like the reference");
+            Assert.That(cupViewport.x, Is.InRange(0.72f, 1f),
+                "the procedural cup stays opposite the imported foreground cup");
+            Assert.That(cupViewport.y, Is.InRange(0.04f, 0.22f));
         }
 
         [UnityTest]
@@ -277,9 +330,9 @@ namespace CatMetro.Tests.PlayMode
 
             var board = _root.View.transform;
             Assert.That(Html(AssertNamed(board, "desk:surface").GetComponent<Renderer>()
-                .sharedMaterial.color), Is.EqualTo("F2EAD9"));
-            Assert.That(Html(AssertNamed(board, "desk:table").GetComponent<Renderer>()
                 .sharedMaterial.color), Is.EqualTo("FAF6EC"));
+            Assert.That(Html(AssertNamed(board, "desk:table").GetComponent<Renderer>()
+                .sharedMaterial.color), Is.EqualTo("F2EAD9"));
             AssertNamed(board, "desk:front-edge");
             Assert.That(board.GetComponentsInChildren<Transform>(true)
                 .Count(x => x.name.StartsWith("desk:grain-")), Is.GreaterThanOrEqualTo(7),
@@ -288,8 +341,17 @@ namespace CatMetro.Tests.PlayMode
             var orange = board.GetComponentsInChildren<Renderer>(true)
                 .Where(x => Html(x.sharedMaterial.color) == "F08A3C")
                 .Select(x => x.name).Distinct().OrderBy(x => x).ToArray();
-            Assert.That(orange, Is.SubsetOf(new[] { "arm", "depot:lintel" }),
+            Assert.That(orange.All(x => x == "arm" || x == "depot:lintel"), Is.True,
                 "Ticket Orange is reserved for switch/station trim, never a large surface");
+            var grain = board.GetComponentsInChildren<Renderer>(true)
+                .Where(x => x.name.StartsWith("desk:grain-")).ToArray();
+            Assert.That(grain.Length, Is.GreaterThanOrEqualTo(7));
+            Assert.That(grain.All(x => Html(x.sharedMaterial.color) == "22304A"), Is.True,
+                "wood grain is low-alpha ink shading; orange stays an accent");
+            Assert.That(grain.All(x => x.sharedMaterial.color.a >= 0.18f), Is.True,
+                "the palette-safe grain must remain visible at phone scale");
+            Assert.That(grain.All(x => x.transform.localScale.y < 5f), Is.True,
+                "wood grain stays irregular and segmented, never a full-frame grid line");
 
             var shadowRoots = board.Cast<Transform>().Where(x =>
                 x.name.StartsWith("prop:") || x.name.StartsWith("source:")
@@ -328,6 +390,17 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(set.GetComponentsInChildren<Collider>(true), Is.Empty);
             foreach (Transform child in set.transform)
                 Assert.That(child.name, Does.StartWith("Polyfork_"));
+            var dressingShadows = set.GetComponentsInChildren<Transform>(true)
+                .Where(x => x.name == "contact-shadow").ToArray();
+            Assert.That(dressingShadows.Length, Is.EqualTo(9),
+                "every visible Polyfork dressing receives its own soft contact shadow");
+            foreach (var shadow in dressingShadows)
+            {
+                Assert.That(shadow.GetComponent<MeshFilter>().sharedMesh.name,
+                    Is.EqualTo("SoftShadowDisc"));
+                Assert.That(shadow.GetComponent<Renderer>().sharedMaterial.color.a,
+                    Is.InRange(0.08f, 0.35f));
+            }
 
             var key = roots.Single(x => x.name == "WarmKey").GetComponent<Light>();
             Assert.That(key, Is.Not.Null);

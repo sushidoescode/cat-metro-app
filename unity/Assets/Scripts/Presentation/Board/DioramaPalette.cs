@@ -36,6 +36,12 @@ namespace CatMetro.Presentation.Board
                 color = color,
             };
             material.enableInstancing = true;
+            if (name.StartsWith("contact-shadow"))
+            {
+                if (material.HasProperty("_VertexAlphaWeight"))
+                    material.SetFloat("_VertexAlphaWeight", 1f);
+                material.renderQueue = 2001;
+            }
             Materials[key] = material;
             return material;
         }

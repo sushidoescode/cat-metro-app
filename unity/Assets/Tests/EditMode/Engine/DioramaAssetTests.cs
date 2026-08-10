@@ -205,7 +205,16 @@ namespace CatMetro.Tests.EditMode
             {
                 var material = AssetDatabase.LoadAssetAtPath<Material>(path);
                 Assert.That(material.shader, Is.EqualTo(greybox.shader), path);
-                Assert.That(material.GetFloat("_VertexColorWeight"), Is.EqualTo(1f), path);
+                if (path.EndsWith("ContactShadow.mat"))
+                {
+                    Assert.That(material.GetFloat("_VertexColorWeight"), Is.Zero, path);
+                    Assert.That(material.GetFloat("_VertexAlphaWeight"), Is.EqualTo(1f), path);
+                    Assert.That(material.color.a, Is.InRange(0.08f, 0.35f), path);
+                }
+                else
+                {
+                    Assert.That(material.GetFloat("_VertexColorWeight"), Is.EqualTo(1f), path);
+                }
             }
         }
 
@@ -226,6 +235,15 @@ namespace CatMetro.Tests.EditMode
                 Is.InRange(0.8f, 1.6f));
             Assert.That(settings.FindPropertyRelative("Radius").floatValue,
                 Is.InRange(0.015f, 0.08f));
+            Object rendererData = rendererAssets.Single(x => x != null
+                && x.name == "CatMetro_Renderer");
+            var rendererSerialized = new SerializedObject(rendererData);
+            var features = rendererSerialized.FindProperty("m_RendererFeatures");
+            var featureMap = rendererSerialized.FindProperty("m_RendererFeatureMap");
+            Assert.That(features.arraySize, Is.EqualTo(1));
+            Assert.That(featureMap.arraySize, Is.EqualTo(features.arraySize),
+                "the serialized feature-id map must retain SSAO through import/build repair");
+            Assert.That(featureMap.GetArrayElementAtIndex(0).longValue, Is.Not.Zero);
 
             Object[] profileAssets = AssetDatabase.LoadAllAssetsAtPath(
                 "Assets/Art/Settings/CatMetro_TabletopPost.asset");

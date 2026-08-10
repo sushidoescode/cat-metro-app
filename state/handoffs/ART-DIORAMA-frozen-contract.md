@@ -239,3 +239,17 @@ and the persistentDataPath device finding. Lane 1B owns WavePreviewStrip's primi
   rounded preview strip with cat faces plus symbols is routed to Lane 1B because `Hud/**` remains
   forbidden to Lane 1A. HC-25 remains deliberately closed until all corrected evidence and review
   gates close.
+- 2026-08-10 — owned TG correction is implemented but not final-evidenced: a 38-degree-above-
+  horizon virtual orthographic view preserves the tested camera pivot/pan contract while keeping
+  the near desk physically in front; presentation-only visual anchors lengthen the sparse L001
+  route while every `BoardElementId` root remains at its exact DTO coordinate; Cream Card desk,
+  Warm Paper board, segmented low-alpha Ink Navy grain, open cars with track-scale cats, one warm
+  key, radial contact-shadow meshes, a vignette profile, and renderer-local SSAO are wired. The
+  human's explicit `SSAO on` correction is the narrow authority for that renderer feature's local
+  depth request; the pipeline-wide depth/opaque switches remain OFF and DeviceConfig stays 5/5.
+  Focused suites are DioramaAsset 9/9, DioramaConstruction 11/11, and DeviceConfig 5/5. A broad
+  PlayMode run reached 146/148; its owned 3.2-pixel failure-review/thumb-band regression is now
+  independently GREEN, leaving only `WavePreview_NextTwoWaves_TopBand_NonInteractive_Updates`.
+  The inspected 900x2000 iteration visibly places Lane 1B's red preview chip near the lower
+  station, so no editor frame, APK, Pixel capture, TG verdict, or CM-R21 rerating is claimed final
+  until Lane 1B supplies the rounded top strip and camera-safe placement. HC-25 remains closed.

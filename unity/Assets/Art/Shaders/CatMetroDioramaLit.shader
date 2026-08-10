@@ -4,6 +4,7 @@ Shader "Universal Render Pipeline/Cat Metro Diorama Lit"
     {
         [MainColor] _BaseColor("Base Color", Color) = (1, 1, 1, 1)
         _VertexColorWeight("Vertex Color Weight", Range(0, 1)) = 0
+        _VertexAlphaWeight("Vertex Alpha Weight", Range(0, 1)) = 0
         _RampThresholds("Three-Step Ramp Thresholds", Vector) = (0.34, 0.68, 0, 0)
         _RimStrength("Rim Strength", Range(0, 0.35)) = 0.14
     }
@@ -23,6 +24,7 @@ Shader "Universal Render Pipeline/Cat Metro Diorama Lit"
             Tags { "LightMode" = "UniversalForward" }
             Cull Back
             ZWrite On
+            Blend SrcAlpha OneMinusSrcAlpha
 
             HLSLPROGRAM
             #pragma target 2.0
@@ -36,6 +38,7 @@ Shader "Universal Render Pipeline/Cat Metro Diorama Lit"
             CBUFFER_START(UnityPerMaterial)
                 half4 _BaseColor;
                 half _VertexColorWeight;
+                half _VertexAlphaWeight;
                 half4 _RampThresholds;
                 half _RimStrength;
             CBUFFER_END
@@ -92,7 +95,8 @@ Shader "Universal Render Pipeline/Cat Metro Diorama Lit"
                     + half3(1.0h, 0.94h, 0.82h) * rim;
                 half3 vertexColor = lerp(half3(1.0h, 1.0h, 1.0h),
                     input.color.rgb, _VertexColorWeight);
-                return half4(_BaseColor.rgb * vertexColor * lightMix, _BaseColor.a);
+                half alpha = _BaseColor.a * lerp(1.0h, input.color.a, _VertexAlphaWeight);
+                return half4(_BaseColor.rgb * vertexColor * lightMix, alpha);
             }
             ENDHLSL
         }

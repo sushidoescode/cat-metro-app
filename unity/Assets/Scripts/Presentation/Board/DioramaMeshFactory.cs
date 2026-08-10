@@ -10,6 +10,7 @@ namespace CatMetro.Presentation.Board
         Cylinder,
         Capsule,
         RoundedBox,
+        SoftShadow,
         Quad,
     }
 
@@ -75,6 +76,10 @@ namespace CatMetro.Presentation.Board
                     mesh = MakeRoundedBox();
                     BuiltinMeshes[kind] = mesh;
                     return mesh;
+                case DioramaMeshKind.SoftShadow:
+                    mesh = MakeSoftShadowDisc();
+                    BuiltinMeshes[kind] = mesh;
+                    return mesh;
                 case DioramaMeshKind.Quad: resource = "Quad.fbx"; break;
                 default: throw new System.ArgumentOutOfRangeException(nameof(kind), kind, null);
             }
@@ -82,6 +87,55 @@ namespace CatMetro.Presentation.Board
             if (mesh == null)
                 throw new System.InvalidOperationException("Missing built-in mesh " + resource);
             BuiltinMeshes[kind] = mesh;
+            return mesh;
+        }
+
+        private static Mesh MakeSoftShadowDisc()
+        {
+            const int segments = 32;
+            const float innerRadius = 0.28f;
+            const float outerRadius = 0.5f;
+            var vertices = new Vector3[1 + segments * 2];
+            var normals = new Vector3[vertices.Length];
+            var colors = new Color32[vertices.Length];
+            var triangles = new int[segments * 9];
+
+            vertices[0] = Vector3.zero;
+            normals[0] = Vector3.back;
+            colors[0] = new Color32(255, 255, 255, 230);
+            for (int i = 0; i < segments; i++)
+            {
+                float angle = (90f - i * 360f / segments) * Mathf.Deg2Rad;
+                Vector3 radial = new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f);
+                vertices[1 + i] = radial * innerRadius;
+                vertices[1 + segments + i] = radial * outerRadius;
+                normals[1 + i] = Vector3.back;
+                normals[1 + segments + i] = Vector3.back;
+                colors[1 + i] = new Color32(255, 255, 255, 120);
+                colors[1 + segments + i] = new Color32(255, 255, 255, 0);
+
+                int next = (i + 1) % segments;
+                int index = i * 9;
+                triangles[index] = 0;
+                triangles[index + 1] = 1 + i;
+                triangles[index + 2] = 1 + next;
+                triangles[index + 3] = 1 + i;
+                triangles[index + 4] = 1 + segments + i;
+                triangles[index + 5] = 1 + segments + next;
+                triangles[index + 6] = 1 + i;
+                triangles[index + 7] = 1 + segments + next;
+                triangles[index + 8] = 1 + next;
+            }
+
+            var mesh = new Mesh
+            {
+                name = "SoftShadowDisc",
+                vertices = vertices,
+                normals = normals,
+                colors32 = colors,
+                triangles = triangles,
+            };
+            mesh.RecalculateBounds();
             return mesh;
         }
 

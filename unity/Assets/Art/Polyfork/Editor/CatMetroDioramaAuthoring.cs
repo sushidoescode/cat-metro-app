@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using CatMetro.Presentation.Board;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 
 namespace CatMetro.Editor
@@ -16,6 +18,9 @@ namespace CatMetro.Editor
         private const string MaterialRoot = "Assets/Art/Materials/";
         private const string PrefabRoot = "Assets/Prefabs/Diorama/";
         private const string ScenePath = "Assets/Scenes/Game.unity";
+        private const string RendererPath = "Assets/Settings/CatMetro_Renderer.asset";
+        private const string ShadowMeshPath = "Assets/Art/Meshes/SoftShadowDisc.asset";
+        private const string PostProfilePath = "Assets/Art/Settings/CatMetro_TabletopPost.asset";
 
         private readonly struct Dressing
         {
@@ -44,9 +49,15 @@ namespace CatMetro.Editor
         public static void Build()
         {
             EnsureFolder("Assets/Art", "Materials");
+            EnsureFolder("Assets/Art", "Meshes");
+            EnsureFolder("Assets/Art", "Settings");
             EnsureFolder("Assets", "Prefabs");
             EnsureFolder("Assets/Prefabs", "Diorama");
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+
+            Mesh shadowMesh = SoftShadowMeshAsset();
+            Material shadowMaterial = ContactShadowMaterialAsset();
+            VolumeProfile postProfile = ConfigureTabletopRendering();
 
             var entries = new[]
             {
@@ -73,7 +84,7 @@ namespace CatMetro.Editor
                     new Vector3(5.42f, 6.7f, 0.25f), new Vector3(90f, 0f, 0f), 0.56f),
                 new Dressing("polyfork_coffee_cup_90be67.fbx", "Polyfork_CoffeeCup",
                     "WarmPaper", DioramaPalette.WarmPaper,
-                    new Vector3(0.48f, 3.85f, 0.28f), new Vector3(90f, 0f, 0f), 4.6f),
+                    new Vector3(0.48f, -0.35f, 0.28f), new Vector3(90f, 0f, 0f), 4.6f),
                 new Dressing("polyfork_tram_track_tile_f3c69a.fbx", "Polyfork_TrackTile",
                     "CreamCard", DioramaPalette.CreamCard,
                     new Vector3(0.12f, 6.25f, 0.55f), Vector3.zero, 0.16f),
@@ -95,6 +106,7 @@ namespace CatMetro.Editor
             Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
             ReplaceRoot(scene, "DioramaSet");
             ReplaceRoot(scene, "WarmKey");
+            ReplaceRoot(scene, "DioramaPost");
 
             var set = new GameObject("DioramaSet");
             foreach (Dressing entry in entries)
@@ -102,9 +114,10 @@ namespace CatMetro.Editor
                 var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPaths[entry.Name]);
                 var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
                 instance.transform.SetParent(set.transform, false);
-                instance.transform.localPosition = entry.Position;
+                instance.transform.localPosition = BoardView.DioramaPoint(entry.Position);
                 instance.transform.localEulerAngles = entry.Rotation;
                 instance.transform.localScale = Vector3.one * entry.Scale;
+                AddDressingShadow(instance, shadowMesh, shadowMaterial);
             }
 
             var key = new GameObject("WarmKey");
@@ -114,7 +127,13 @@ namespace CatMetro.Editor
             light.intensity = 1.18f;
             light.shadows = LightShadows.None;
             light.renderMode = LightRenderMode.ForcePixel;
-            key.transform.rotation = Quaternion.Euler(18f, -24f, 0f);
+            key.transform.rotation = Quaternion.Euler(58f, -24f, 0f);
+
+            var post = new GameObject("DioramaPost");
+            var volume = post.AddComponent<Volume>();
+            volume.isGlobal = true;
+            volume.priority = 10f;
+            volume.sharedProfile = postProfile;
 
             RenderSettings.skybox = null;
             RenderSettings.ambientMode = AmbientMode.Trilight;
@@ -129,6 +148,144 @@ namespace CatMetro.Editor
                 throw new InvalidOperationException("Could not save " + ScenePath);
             AssetDatabase.SaveAssets();
             Debug.Log("CAT_METRO_DIORAMA_AUTHORED prefabs=" + entries.Length);
+        }
+
+        private static VolumeProfile ConfigureTabletopRendering()
+        {
+            var renderer = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(RendererPath);
+            if (renderer == null) throw new InvalidOperationException("Missing " + RendererPath);
+
+            var ssao = renderer.rendererFeatures.OfType<ScreenSpaceAmbientOcclusion>()
+                .FirstOrDefault();
+            if (ssao == null)
+            {
+                ssao = ScriptableObject.CreateInstance<ScreenSpaceAmbientOcclusion>();
+                ssao.name = "CatMetro_Tabletop_SSAO";
+                ssao.SetActive(true);
+                AssetDatabase.AddObjectToAsset(ssao, renderer);
+                renderer.rendererFeatures.Add(ssao);
+            }
+            ssao.name = "CatMetro_Tabletop_SSAO";
+            ssao.SetActive(true);
+            var serialized = new SerializedObject(ssao);
+            var settings = serialized.FindProperty("m_Settings");
+            settings.FindPropertyRelative("AOMethod").enumValueIndex = 1;
+            settings.FindPropertyRelative("Downsample").boolValue = true;
+            settings.FindPropertyRelative("AfterOpaque").boolValue = true;
+            settings.FindPropertyRelative("Source").enumValueIndex = 0;
+            settings.FindPropertyRelative("NormalSamples").enumValueIndex = 1;
+            settings.FindPropertyRelative("Intensity").floatValue = 1.15f;
+            settings.FindPropertyRelative("DirectLightingStrength").floatValue = 0.15f;
+            settings.FindPropertyRelative("Radius").floatValue = 0.035f;
+            settings.FindPropertyRelative("Samples").enumValueIndex = 2;
+            settings.FindPropertyRelative("BlurQuality").enumValueIndex = 1;
+            settings.FindPropertyRelative("Falloff").floatValue = 100f;
+            settings.FindPropertyRelative("SampleCount").intValue = -1;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            ssao.Create();
+
+            renderer.postProcessData = AssetDatabase.LoadAssetAtPath<PostProcessData>(
+                "Packages/com.unity.render-pipelines.universal/Runtime/Data/PostProcessData.asset");
+            if (renderer.postProcessData == null)
+                throw new InvalidOperationException("URP PostProcessData is unavailable");
+            EditorUtility.SetDirty(ssao);
+            EditorUtility.SetDirty(renderer);
+            AssetDatabase.SaveAssets();
+            var validate = typeof(ScriptableRendererData).GetMethod(
+                "ValidateRendererFeatures",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            if (validate == null || !(bool)validate.Invoke(renderer, null))
+                throw new InvalidOperationException("Could not serialize the SSAO feature map");
+            renderer.SetDirty();
+            EditorUtility.SetDirty(renderer);
+
+            var profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(PostProfilePath);
+            if (profile == null)
+            {
+                profile = ScriptableObject.CreateInstance<VolumeProfile>();
+                profile.name = "CatMetro_TabletopPost";
+                AssetDatabase.CreateAsset(profile, PostProfilePath);
+            }
+            if (!profile.TryGet(out Vignette vignette))
+            {
+                vignette = profile.Add<Vignette>(true);
+                AssetDatabase.AddObjectToAsset(vignette, profile);
+            }
+            vignette.active = true;
+            vignette.color.Override(new Color(0.035f, 0.045f, 0.07f, 1f));
+            vignette.center.Override(new Vector2(0.5f, 0.48f));
+            vignette.intensity.Override(0.12f);
+            vignette.smoothness.Override(0.44f);
+            vignette.rounded.Override(false);
+            EditorUtility.SetDirty(vignette);
+            EditorUtility.SetDirty(profile);
+            AssetDatabase.SaveAssets();
+            return profile;
+        }
+
+        private static Mesh SoftShadowMeshAsset()
+        {
+            var mesh = AssetDatabase.LoadAssetAtPath<Mesh>(ShadowMeshPath);
+            if (mesh != null) return mesh;
+
+            var sourceObject = new GameObject("SoftShadowMeshSource");
+            DioramaMeshFactory.Attach(sourceObject, DioramaMeshKind.SoftShadow,
+                AssetDatabase.LoadAssetAtPath<Material>(
+                    "Assets/Resources/Materials/Greybox.mat"));
+            mesh = UnityEngine.Object.Instantiate(
+                sourceObject.GetComponent<MeshFilter>().sharedMesh);
+            mesh.name = "SoftShadowDisc";
+            UnityEngine.Object.DestroyImmediate(sourceObject);
+            AssetDatabase.CreateAsset(mesh, ShadowMeshPath);
+            return mesh;
+        }
+
+        private static Material ContactShadowMaterialAsset()
+        {
+            const string path = MaterialRoot + "ContactShadow.mat";
+            var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            var basis = AssetDatabase.LoadAssetAtPath<Material>(
+                "Assets/Resources/Materials/Greybox.mat");
+            if (basis == null) throw new InvalidOperationException("Greybox material missing");
+            if (material == null)
+            {
+                material = new Material(basis) { name = "ContactShadow" };
+                AssetDatabase.CreateAsset(material, path);
+            }
+            Color tint = DioramaPalette.DepotNavy;
+            tint.a = 0.3f;
+            material.shader = basis.shader;
+            material.color = tint;
+            if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", tint);
+            if (material.HasProperty("_VertexColorWeight"))
+                material.SetFloat("_VertexColorWeight", 0f);
+            if (material.HasProperty("_VertexAlphaWeight"))
+                material.SetFloat("_VertexAlphaWeight", 1f);
+            material.enableInstancing = true;
+            material.renderQueue = 2001;
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static void AddDressingShadow(
+            GameObject instance, Mesh mesh, Material material)
+        {
+            Bounds bounds = WorldBounds(instance);
+            var shadow = new GameObject("contact-shadow");
+            shadow.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = shadow.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            renderer.lightProbeUsage = LightProbeUsage.Off;
+            renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+            renderer.sortingOrder = -10;
+            shadow.transform.position = new Vector3(bounds.center.x, bounds.center.y, 0.245f);
+            shadow.transform.rotation = Quaternion.identity;
+            shadow.transform.localScale = new Vector3(
+                Mathf.Clamp(bounds.size.x * 1.08f, 0.28f, 1.5f),
+                Mathf.Clamp(bounds.size.y * 0.72f, 0.22f, 1.35f), 1f);
+            shadow.transform.SetParent(instance.transform, true);
         }
 
         [MenuItem("Cat Metro/Capture Diorama Orientation Sheet")]
