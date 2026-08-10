@@ -143,6 +143,30 @@ namespace CatMetro.Tests.Solver
             winDeliveries: 1, timeLimitTicks: 40,
             qCapBound: 8, trainsMax: 1);
 
+        // Review round 1 resolution: three routes on one switch. Red reaches J1 first; blue
+        // reaches it two ticks later. The three equal-primary two-toggle wins are S0@(0,0),
+        // S0@(0,1), and S0@(0,2). The first two histories converge to the same running digest
+        // before the blue delivery, so raw-lex state dedupe used to discard the canonical (0,1).
+        public static LevelGraph DedupeCanonicalBoard() => new LevelGraph(
+            "FX-DEDUPE-CANON", 5,
+            new[] { 2, 2, 2, 2, 2 },                       // SRC, J1, dead, RED, RED+BLU
+            new[] { 0, 1, 1, 1 },
+            new[] { 1, 2, 3, 4 },
+            new[] { 1, 1, 1, 1 },
+            new[] { 0 },
+            new[] { new[] { 1, 2, 3 } },
+            new[] { 1 },
+            new byte[] { 0 },
+            new[] { 3, 4 },
+            new[] { new[] { CatColor.Red }, new[] { CatColor.Red, CatColor.Blue } },
+            new[] { 2, 2 },
+            new[] { 0, 2 },
+            new[] { CatColor.Red, CatColor.Blue },
+            new[] { 1, 1 },
+            new[] { 1, 1 },
+            winDeliveries: 2, timeLimitTicks: 6,
+            qCapBound: 2, trainsMax: 2);
+
         // Init route already correct: the empty command log wins (criterion 10's second limb).
         public static LevelGraph AlreadyCorrect() => new LevelGraph(
             "FX-OK", 3,

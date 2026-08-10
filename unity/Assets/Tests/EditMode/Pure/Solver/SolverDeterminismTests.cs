@@ -66,6 +66,42 @@ namespace CatMetro.Tests.Solver
         }
 
         [Test]
+        public void TieBreak_RetainsCanonicalHistoryAcrossStateConvergence()
+        {
+            var graph = SolverFixtures.DedupeCanonicalBoard();
+            var reference = SolverFixtures.BruteForceBest(graph, 17);
+            var r = LevelSolver.Solve(graph, 17);
+
+            Assert.That(reference, Is.Not.Null);
+            SolverFixtures.AssertSameLog(SolverFixtures.Log((0, 0), (0, 1)), reference.Value.log,
+                "exhaustive chronological fixed-point discriminator");
+            Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.Solved));
+            Assert.That(r.CompletionTicks, Is.EqualTo(4));
+            SolverFixtures.AssertSameLog(reference.Value.log, r.OptimalLog,
+                "state dedupe may not discard the eventual centered canonical history");
+        }
+
+        [Test]
+        public void MidWindowNormalizer_PreservesReceiptChronology()
+        {
+            var wins = new HashSet<string>
+            {
+                "1,2", "2,2", "3,2", "4,2", "5,2", "3,1"
+            };
+
+            bool converged = MidWindowNormalizer.TryCenter(
+                new[] { 1, 2 }, 6,
+                ticks => wins.Contains(ticks[0] + "," + ticks[1]),
+                out var result);
+
+            Assert.That(converged, Is.True);
+            Assert.That(result, Is.EqualTo(new[] { 1, 2 }),
+                "centering may not move a later-received entry before an earlier one");
+            Assert.That(result[0], Is.LessThanOrEqualTo(result[1]),
+                "the original receipt chronology remains representable by command ticks");
+        }
+
+        [Test]
         public void InteractingWindowCycle_StopsInsteadOfReturningAChangingBoundary()
         {
             var wins = new HashSet<string>
