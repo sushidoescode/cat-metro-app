@@ -234,7 +234,7 @@ new asset acquisition, or spend. Before Lane 1A merges:
   NOT HC-25.”
 - **Signed at (absolute date/time):** 2026-08-10 00:11:30 PDT (-0700), recording time
 - **Signed proposal head:** `feb78a12f49fe0207ac61da2f5a363c5fd213b53`
-- **Signature record commit:** PENDING
+- **Signature record commit:** `33a8d6cfc62461607a0bce0dadfc926e62ec3724`
 
 ## Official source checked 2026-08-09
 
