@@ -82,7 +82,7 @@ namespace CatMetro.Tests.Solver
         }
 
         [Test]
-        public void MidWindowNormalizer_PreservesReceiptChronology()
+        public void MidWindowNormalizer_StopsWhenCenteringWouldReverseReceiptChronology()
         {
             var wins = new HashSet<string>
             {
@@ -94,9 +94,10 @@ namespace CatMetro.Tests.Solver
                 ticks => wins.Contains(ticks[0] + "," + ticks[1]),
                 out var result);
 
-            Assert.That(converged, Is.True);
+            Assert.That(converged, Is.False,
+                "Option A: unrestricted windows remain authoritative, but a reversed receipt order stops");
             Assert.That(result, Is.EqualTo(new[] { 1, 2 }),
-                "centering may not move a later-received entry before an earlier one");
+                "a failed normalization returns the original receipt chronology, never a crossed log");
             Assert.That(result[0], Is.LessThanOrEqualTo(result[1]),
                 "the original receipt chronology remains representable by command ticks");
         }
