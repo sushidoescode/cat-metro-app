@@ -19,9 +19,11 @@ namespace CatMetro.Domain.Solver
             int[] beamWidths = null)
         {
             var widths = beamWidths == null || beamWidths.Length == 0 ? SolverBounds.BEAM_WIDTHS : beamWidths; // review L4
+            var work = new SolverWorkMeter(maxNodesExpanded);
 
             if (graph.SwitchRoutes.Length <= 2)
-                return Search(graph, seed, maxNodesExpanded, int.MaxValue, 0, exhaustiveIsProof: true, priorExpanded: 0);
+                return Search(graph, seed, maxNodesExpanded, int.MaxValue, 0,
+                    exhaustiveIsProof: true, priorExpanded: 0, work);
 
             // Review L1: the budget caps TOTAL expansions across all beam legs, and the reported
             // NodesExpanded is cumulative.
@@ -29,8 +31,12 @@ namespace CatMetro.Domain.Solver
             int expandedSoFar = 0;
             foreach (var w in widths)
             {
-                last = Search(graph, seed, maxNodesExpanded, w, w, exhaustiveIsProof: false, priorExpanded: expandedSoFar);
-                if (last.Verdict == SolveVerdict.Solved || last.NotFoundReason == NotFoundReason.Budget)
+                last = Search(graph, seed, maxNodesExpanded, w, w,
+                    exhaustiveIsProof: false, priorExpanded: expandedSoFar, work);
+                if (last.Verdict == SolveVerdict.Solved
+                    || last.NotFoundReason == NotFoundReason.Budget
+                    || (last.Verdict == SolveVerdict.NotFound
+                        && last.NotFoundReason == NotFoundReason.None))
                     return last;
                 expandedSoFar = last.NodesExpanded;
             }
@@ -82,7 +88,7 @@ namespace CatMetro.Domain.Solver
         // One search core for both modes: width == int.MaxValue is BFS (exhaustion proves
         // Unsolvable/Indeterminate); a finite width is one beam leg (miss is only a miss).
         private static SolveResult Search(LevelGraph graph, ulong seed, int budget, int width,
-            int reportWidth, bool exhaustiveIsProof, int priorExpanded)
+            int reportWidth, bool exhaustiveIsProof, int priorExpanded, SolverWorkMeter work)
         {
             int pinnedPruned = 0;
             string firstPin = "";
@@ -106,6 +112,7 @@ namespace CatMetro.Domain.Solver
                 foreach (var log in layer)
                 {
                     nodesExpanded++;
+                    work.SetNodesExpanded(nodesExpanded);
                     if (nodesExpanded > budget)
                         return new SolveResult(SolveVerdict.NotFound, NotFoundReason.Budget,
                             new CommandLog(), 0, 0, reportWidth, pinnedPruned, nodesExpanded,
@@ -160,22 +167,31 @@ namespace CatMetro.Domain.Solver
                     wins.Sort(CompareWins);
                     int bestTicks = wins[0].ticks;
                     int bestCommands = wins[0].log.Entries.Count;
-                    var canonicalWins = CollectEqualPrimaryHistories(
-                        graph, seed, bestTicks, bestCommands, width);
+                    if (!CollectEqualPrimaryHistories(
+                        graph, seed, bestTicks, bestCommands, width, work,
+                        out var canonicalWins))
+                        return CanonicalStop(NotFoundReason.Budget, graph, reportWidth,
+                            pinnedPruned, nodesExpanded, firstPin);
                     CommandLog centeredLog = null;
                     foreach (var win in canonicalWins)
                     {
-                        if (!TryCenterSameCompletionWindows(
-                            graph, seed, win, bestTicks, out var candidate))
+                        if (!work.TryCharge(1))
+                            return CanonicalStop(NotFoundReason.Budget, graph, reportWidth,
+                                pinnedPruned, nodesExpanded, firstPin);
+                        var status = TryCenterSameCompletionWindows(
+                            graph, seed, win, bestTicks, work, out var candidate);
+                        if (status == CenterStatus.Budget)
+                            return CanonicalStop(NotFoundReason.Budget, graph, reportWidth,
+                                pinnedPruned, nodesExpanded, firstPin);
+                        if (status == CenterStatus.Unresolved)
                             continue;
                         if (centeredLog == null || CompareLogsLex(candidate, centeredLog) < 0)
                             centeredLog = candidate;
                     }
 
                     if (centeredLog == null)
-                        return new SolveResult(SolveVerdict.Indeterminate, NotFoundReason.None,
-                            new CommandLog(), 0, 0, reportWidth, pinnedPruned, nodesExpanded,
-                            "mid-window tie-break did not reach a fixed point", ZeroProxy(graph));
+                        return CanonicalStop(NotFoundReason.None, graph, reportWidth,
+                            pinnedPruned, nodesExpanded, firstPin);
 
                     return new SolveResult(SolveVerdict.Solved, NotFoundReason.None, centeredLog,
                         bestTicks, centeredLog.Entries.Count, reportWidth, pinnedPruned,
@@ -227,14 +243,14 @@ namespace CatMetro.Domain.Solver
         // move is independently replayed through the shipped Domain, so completion optimality and
         // command count cannot change. Repeated passes handle interacting windows; the bounded
         // fallback is still the last independently-proven same-completion win.
-        private static bool TryCenterSameCompletionWindows(
+        private static CenterStatus TryCenterSameCompletionWindows(
             LevelGraph graph, ulong seed, CommandLog winningLog, int completionTicks,
-            out CommandLog centeredLog)
+            SolverWorkMeter work, out CommandLog centeredLog)
         {
             if (winningLog.Entries.Count == 0)
             {
                 centeredLog = winningLog;
-                return true;
+                return CenterStatus.Centered;
             }
 
             var entries = new ToggleSwitchCommand[winningLog.Entries.Count];
@@ -242,21 +258,29 @@ namespace CatMetro.Domain.Solver
             var seedTicks = new int[entries.Length];
             for (int i = 0; i < entries.Length; i++) seedTicks[i] = entries[i].Tick;
             if (!MidWindowNormalizer.TryCenter(seedTicks, graph.TimeLimitTicks,
-                ticks => IsSameCompletionWin(graph, seed, entries, ticks, completionTicks),
+                ticks => IsSameCompletionWin(
+                    graph, seed, entries, ticks, completionTicks, work),
                 out var centeredTicks))
             {
                 centeredLog = null;
-                return false;
+                return work.Exceeded ? CenterStatus.Budget : CenterStatus.Unresolved;
+            }
+            if (work.Exceeded)
+            {
+                centeredLog = null;
+                return CenterStatus.Budget;
             }
             for (int i = 0; i < entries.Length; i++)
                 entries[i] = new ToggleSwitchCommand(entries[i].SwitchId, centeredTicks[i]);
             centeredLog = LogFrom(entries, winningLog.FormatVersion);
-            return true;
+            return CenterStatus.Centered;
         }
 
         private static bool IsSameCompletionWin(LevelGraph graph, ulong seed,
-            ToggleSwitchCommand[] entries, int[] ticks, int completionTicks)
+            ToggleSwitchCommand[] entries, int[] ticks, int completionTicks,
+            SolverWorkMeter work)
         {
+            if (!work.TryChargeReplay(entries.Length, graph.TimeLimitTicks)) return false;
             var candidate = new CommandLog();
             for (int i = 0; i < entries.Length; i++)
                 candidate.Append(new ToggleSwitchCommand(entries[i].SwitchId, ticks[i]));
@@ -295,14 +319,16 @@ namespace CatMetro.Domain.Solver
             return 0;
         }
 
-        private static List<CommandLog> CollectEqualPrimaryHistories(
-            LevelGraph graph, ulong seed, int completionTicks, int commandCount, int width)
+        private static bool CollectEqualPrimaryHistories(
+            LevelGraph graph, ulong seed, int completionTicks, int commandCount, int width,
+            SolverWorkMeter work, out List<CommandLog> result)
         {
+            result = null;
             var layer = new List<CanonicalFrontier>
             {
-                new CanonicalFrontier(
-                    SimulationState.CreateInitial(graph, seed), new CommandLog(), new CommandLog())
+                new CanonicalFrontier(SimulationState.CreateInitial(graph, seed), new CommandLog())
             };
+            if (!layer[0].TryAddHistory(new CommandLog(), work)) return false;
 
             for (int depth = 0; depth <= completionTicks && layer.Count > 0; depth++)
             {
@@ -312,6 +338,7 @@ namespace CatMetro.Domain.Solver
 
                 foreach (var frontier in layer)
                 {
+                    if (!work.TryCharge(1)) return false;
                     foreach (var combo in Combos(graph, depth - 1, depth == 0))
                     {
                         var replayLog = Extend(frontier.ReplayLog, combo);
@@ -334,6 +361,7 @@ namespace CatMetro.Domain.Solver
                             if (state.Tick - 1 != completionTicks) continue;
                             foreach (var history in frontier.Histories)
                             {
+                                if (!work.TryCharge(1)) return false;
                                 var child = Extend(history, combo);
                                 if (child.Entries.Count != commandCount) continue;
                                 var key = HistoryKey(child);
@@ -356,9 +384,10 @@ namespace CatMetro.Domain.Solver
 
                         foreach (var history in frontier.Histories)
                         {
+                            if (!work.TryCharge(1)) return false;
                             var child = Extend(history, combo);
                             if (child.Entries.Count <= commandCount)
-                                incumbent.TryAddHistory(child);
+                                if (!incumbent.TryAddHistory(child, work)) return false;
                         }
                     }
                 }
@@ -366,7 +395,8 @@ namespace CatMetro.Domain.Solver
                 if (wins.Count > 0)
                 {
                     wins.Sort(CompareLogsLex);
-                    return wins;
+                    result = wins;
+                    return true;
                 }
 
                 var survivors = new List<CanonicalFrontier>(next.Values);
@@ -376,7 +406,8 @@ namespace CatMetro.Domain.Solver
                 layer = survivors;
             }
 
-            return new List<CommandLog>();
+            result = new List<CommandLog>();
+            return true;
         }
 
         private static int CompareCanonicalBeam(CanonicalFrontier a, CanonicalFrontier b)
@@ -398,17 +429,17 @@ namespace CatMetro.Domain.Solver
             internal CommandLog ReplayLog;
             internal readonly List<CommandLog> Histories = new List<CommandLog>();
 
-            internal CanonicalFrontier(
-                SimulationState state, CommandLog replayLog, CommandLog firstHistory = null)
+            internal CanonicalFrontier(SimulationState state, CommandLog replayLog)
             {
                 State = state;
                 ReplayLog = replayLog;
-                if (firstHistory != null) TryAddHistory(firstHistory);
             }
 
-            internal void TryAddHistory(CommandLog history)
+            internal bool TryAddHistory(CommandLog history, SolverWorkMeter work)
             {
+                if (!work.TryCharge(1)) return false;
                 if (_historyKeys.Add(HistoryKey(history))) Histories.Add(history);
+                return true;
             }
         }
 
@@ -422,6 +453,64 @@ namespace CatMetro.Domain.Solver
                 parts[i] = entry.Tick + ":" + entry.SwitchId;
             }
             return string.Join(";", parts);
+        }
+
+        private static SolveResult CanonicalStop(NotFoundReason reason, LevelGraph graph,
+            int reportWidth, int pinnedPruned, int nodesExpanded, string firstPin) =>
+            new SolveResult(SolveVerdict.NotFound, reason, new CommandLog(),
+                0, 0, reportWidth, pinnedPruned, nodesExpanded, firstPin, ZeroProxy(graph));
+
+        private enum CenterStatus : byte
+        {
+            Centered = 1,
+            Unresolved = 2,
+            Budget = 3,
+        }
+
+        // One Solve-wide ceiling. NodesExpanded remains the public search-only count; this meter
+        // prevents canonical provenance/candidate/replay work from escaping the same numeric cap.
+        private sealed class SolverWorkMeter
+        {
+            private readonly long _limit;
+            private long _nodesExpanded;
+            private long _canonicalWork;
+
+            internal bool Exceeded { get; private set; }
+
+            internal SolverWorkMeter(int limit)
+            {
+                _limit = Math.Max(0, limit);
+            }
+
+            internal void SetNodesExpanded(int nodesExpanded)
+            {
+                if (nodesExpanded > _nodesExpanded) _nodesExpanded = nodesExpanded;
+            }
+
+            internal bool TryChargeReplay(int commandCount, int timeLimitTicks)
+            {
+                long commands = Math.Max(1, commandCount);
+                long ticks = Math.Max(1, timeLimitTicks);
+                if (commands > long.MaxValue / ticks) return Reject();
+                return TryCharge(commands * ticks);
+            }
+
+            internal bool TryCharge(long units)
+            {
+                if (units < 0) return Reject();
+                if (_nodesExpanded > _limit || _canonicalWork > _limit - _nodesExpanded)
+                    return Reject();
+                long remaining = _limit - _nodesExpanded - _canonicalWork;
+                if (units > remaining) return Reject();
+                _canonicalWork += units;
+                return true;
+            }
+
+            private bool Reject()
+            {
+                Exceeded = true;
+                return false;
+            }
         }
 
         private static int CompareBeam((CommandLog log, SimulationState state) a, (CommandLog log, SimulationState state) b)

@@ -117,16 +117,19 @@ namespace CatMetro.Tests.Solver
         {
             // Search itself completes in 97 expansions. The remaining three work units are not
             // enough to compare the five equal-primary winners on this broad safe-window board.
+            var control = LevelSolver.Solve(SolverFixtures.TieBreakBoard(), 11);
             var r = LevelSolver.Solve(
                 SolverFixtures.TieBreakBoard(), 11, maxNodesExpanded: 100);
 
+            Assert.That(control.Verdict, Is.EqualTo(SolveVerdict.Solved));
             Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.NotFound));
             Assert.That(r.NotFoundReason, Is.EqualTo(NotFoundReason.Budget));
             Assert.That(r.NodesExpanded, Is.EqualTo(97),
                 "NodesExpanded remains honest search accounting; refinement is separately metered");
             Assert.That(r.OptimalLog.Entries.Count, Is.EqualTo(0));
-            Assert.That(r.PinnedPruned, Is.EqualTo(0));
-            Assert.That(r.FirstPinMessage, Is.Empty);
+            Assert.That(r.PinnedPruned, Is.EqualTo(control.PinnedPruned),
+                "the budget stop preserves genuine search pins but may not fabricate one");
+            Assert.That(r.FirstPinMessage, Is.EqualTo(control.FirstPinMessage));
         }
 
         [Test]

@@ -80,16 +80,18 @@ namespace CatMetro.Tests.Solver
         {
             // The first authored beam width finds the raw win in 1,138 search expansions. The
             // deliberately tight total-work ceiling then stops canonical refinement. It must not
-            // run widths 2,500/5,000 or report a fake Q-N pin.
+            // run widths 2,500/5,000 or manufacture a Q-N pin beyond the real search counter.
+            var control = LevelSolver.Solve(SolverFixtures.ThreeSwitchEscalation(), 5);
             var r = LevelSolver.Solve(
                 SolverFixtures.ThreeSwitchEscalation(), 5, maxNodesExpanded: 1200);
 
+            Assert.That(control.Verdict, Is.EqualTo(SolveVerdict.Solved));
             Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.NotFound));
             Assert.That(r.NotFoundReason, Is.EqualTo(NotFoundReason.Budget));
             Assert.That(r.BeamWidthUsed, Is.EqualTo(SolverBounds.BEAM_WIDTHS[0]));
             Assert.That(r.NodesExpanded, Is.EqualTo(1138));
-            Assert.That(r.PinnedPruned, Is.EqualTo(0));
-            Assert.That(r.FirstPinMessage, Is.Empty);
+            Assert.That(r.PinnedPruned, Is.EqualTo(control.PinnedPruned));
+            Assert.That(r.FirstPinMessage, Is.EqualTo(control.FirstPinMessage));
         }
 
         [Test]
