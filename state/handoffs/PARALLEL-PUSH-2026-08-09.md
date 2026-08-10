@@ -131,3 +131,28 @@ human-signed; note the mode-flip tripwire before any monetization code anywhere.
   runbook command wrong — unassigned, cross-lane coordination required, no silent fix).
 - The venture-critic's clock: Play closed-test start by ~Aug 15 (human act — testers).
 - Mode flip to production (human-authored commit) before monetization code lands anywhere.
+
+---
+
+# WAVE 2 ADDENDUM — 2026-08-10 (human directive: completion target Aug 20)
+
+Human ruling, verbatim: "Timeline for completion should be moved up to Aug 20th, because
+we need time for marketing and attracting users … I need more no merge conflict chats in
+parallel." (in-conversation, agent-relayed, H-1-class). Three new lanes open in disjoint
+territory; one queues. All global rules above apply unchanged (worktree, frozen contract
+first, TDD, gates, reviews, HC-25 per-lane word, one state row + contract-named bullets).
+
+| Lane | Branch | Owns (exclusive) | Key gates |
+|---|---|---|---|
+| **5 MONETIZATION-CODE** | `feat/revenuecat-integration` | `unity/Assets/Scripts/Monetization/**` (new), `unity/Assets/Resources/Monetization/**` (new), its own tests, + ONE declared exception: the package-manifest parity gate re-author for the RevenueCat package pin (`unity/Packages/manifest.json` + lock) — an E-1-style declared edit, named in its frozen contract | Billing tripwire: independent SECURITY review mandatory; MERGE FORBIDDEN until the human's own mode-file→production commit lands (authoring on the branch is allowed now); SKUs/placements exactly per the signed monetization_spec amendment — no price/SKU invention |
+| **6 DAILY-LINE** | `feat/daily-line` | `unity/Assets/Scripts/Domain/Daily/**` (new), its own tests, `content/daily/**` (new) if needed | Pure-Domain phase NOW (the CM-C6 daily-seed pipeline from #14 is the substrate); the GameRoot/Bootstrap wiring is a DEFERRED declared exception that may only be taken AFTER Lane 3's GameRoot exception lands (same file — strict ordering); the Home surface/chip belongs to Lane 8, not this lane |
+| **7 STORE-PACK** | `docs/store-pack` | `docs/store/**` (new), `docs/plan/marketing/**` (new) | Docs only; store copy + ASO per growth_aso_plan, screenshot/trailer shot lists keyed to the diorama golden frame, Devpost + #BuildInPublic drafts; no code, no claims of unbuilt features as existing |
+| **8 LEVEL-SELECT + BACK** (QUEUED — fires only after #65 AND Lane 1B's PR land) | `feat/level-select` | inherits `Presentation/Screens/**` from Lane 1B at that point, ScreenStack Back consumer, level-select screen + district navigation, `ui.csv` appends | Do not open this lane while 1B's branch is unmerged; visual evidence per the standing rule; band data read-only (Lane 3's territory) |
+
+**New ordering edges:** 5 merges after the human mode flip (flip timed to when 5's PR is
+review-converged — production stakes then bind repo-wide, accepted). 6's Bootstrap
+exception after 3's lands. 8 starts after 1B lands. 7 independent.
+
+**Timeline of record:** feature-complete Aug 20 · submit live ~Sep 15 · freeze Sep 26-30.
+The Play closed-test clock (14 days/tester) and Console setup are HUMAN critical path and
+are NOT satisfiable by any lane.
