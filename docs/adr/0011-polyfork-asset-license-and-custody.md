@@ -2,6 +2,8 @@
 
 - **Status:** Accepted — human signature recorded 2026-08-10 against reviewed proposal
   `feb78a12f49fe0207ac61da2f5a363c5fd213b53`
+- **Amendment status:** Proposed 2026-08-11 — the public-repository ruling is binding now;
+  Amendment A requires a fresh human signature before Lane 1A may merge
 - **Date:** 2026-08-09
 - **Relates:** ADR-0007 (presentation/runtime baseline), ADR-0009 (credential custody),
   `state/handoffs/ART-DIORAMA-frozen-contract.md`, and
@@ -239,3 +241,264 @@ new asset acquisition, or spend. Before Lane 1A merges:
 ## Official source checked 2026-08-09
 
 - [Polyfork licensing — stated last update July 2026](https://polyfork.dev/licensing)
+
+## Amendment A — permanently public repository custody (proposed 2026-08-11)
+
+### Trigger, ruling, and supersession
+
+The human ruling is: **the repository stays PUBLIC.** Before that ruling was recorded, unmerged PR
+#65 exposed the nine modified FBXs and their nine Unity `.meta` files through its public branch.
+That state violated the original licensed-product boundary and the original §2 condition that
+derivatives could remain committed only while the repository was private.
+
+On 2026-08-11 the lane-owned branch was rewritten from the former public head
+`e4b787af8bdc8341da807d1b2d243d54ccda345d`. The 18 licensed paths were removed from every
+rewritten PR-only commit, the shared main ancestry was preserved, and the branch was force-pushed.
+The first contained head was `52763289cb758f607e16dd1b1dfae85932adae32`; subsequent commits add
+custody enforcement, verification, and documentation without reintroducing a licensed model
+payload.
+
+This amendment supersedes only the original custody choice and its private-repository-dependent
+text: the Decision section's “private, auditable provenance” phrase (the receipt is public; the
+model pack is private), §2's permission to commit FBXs, the “chosen private-repository boundary” in
+the alternatives analysis, the corresponding consequences, security note 2's private-source
+control, approval gate 3, and original signature items 4 and 6 insofar as they approve committed
+derivatives. The July 2026 license pin, embedded-game distribution decision, rendered-media
+allowance, entitlement/key controls, and no-standalone-redistribution boundary remain in force.
+
+The original signature remains an honest historical record of the then-reviewed proposal. It does
+not approve this public-repository posture, and its proposal/record commits were themselves
+rewritten during containment. Amendment A requires a new exact-proposal signature; no old signature
+or merge word carries forward.
+
+### A1. Derivative-free public tree
+
+The public repository and every public source, PR, CI, release, support, contest, cache seed, and
+artifact path must contain **none** of the following:
+
+- a Polyfork source GLB, modified FBX, corresponding `.fbx.meta`, extracted mesh, recovery archive,
+  Git LFS object/pointer that delivers one, or any equivalent standalone model payload;
+- a mesh-bearing prefab, sample, template, mod kit, or tool output intended to expose or deliver a
+  standalone model outside the compiled Cat Metro product boundary; or
+- an automated link, hook, package restore, or build step that delivers a licensed model to a
+  public or unlicensed recipient.
+
+Cat-Metro-authored source, shaders, materials, scenes, and prefabs may remain. The current prefabs
+reference ignored local model GUIDs and contain no embedded Unity mesh payload. Rendered frames,
+videos, store art, and compiled Cat Metro APKs/AABs remain inside the licensed product boundary;
+ordinary reverse engineering of an allowed compiled APK/AAB remains the accepted residual in §1.
+
+The automated custody gate checks history reachable from the candidate and every fetched
+remote/tag ref plus the current index. It rejects the nine exact source/derivative/meta hashes at
+any path; conservatively rejects all Git LFS pointers and unallowlisted standalone model/archive
+suffixes or recognized payload bytes; and
+token-checks the current nine authored Polyfork prefab YAML files for embedded Unity mesh data.
+The gate rejects inherited Git repository/index/object/configuration redirects before its first Git
+query, plus on-disk alternates, grafts, and replacement refs, so it cannot silently inspect a
+substitute object boundary.
+This deliberately broad source-tree gate currently has no payload allowlist. A future Cat-Metro-
+owned standalone model/archive needs a reviewed content-hash allowlist and a new custody
+disposition. Independent security review owns renamed, obfuscated, encrypted, externally cached,
+and public-artifact equivalents that static repository inspection cannot prove absent.
+
+### A2. Local custody and access
+
+The owner's authorized post-remediation copies of the exact nine FBX/meta pairs are held under the
+ignored local path `unity/Assets/Art/Polyfork/Models/` in an owner-controlled worktree. They are
+untracked, and no committed workflow copies them into another worktree, clone, CI job, artifact, or
+support bundle. The owner must keep the pack, its Unity caches, and any Git object store retaining
+stale licensed objects excluded from Time Machine and any other backup/synchronization service.
+The automated gate verifies the current macOS Time Machine exclusions; other backup products are
+an owner operational obligation, not a proposition the repository can prove. This authorized-
+custody statement does not deny the stale hosted or third-party copies recorded in A6. Access is
+limited to the product owner or another person covered by the applicable Polyfork person/team-seat
+entitlement.
+
+The licensed-local profile is supported only on the ACL-checked macOS owner host. The custody
+directory is mode `0700`, each FBX/meta is mode `0600`, and symlink/reparse custody paths are
+rejected. Unity may create imported/build derivatives only in owner-private local project
+`Library`, `Temp`, `Logs`, and `.utmp` caches and the owner-private global Unity cache root under
+`~/Library/Caches/com.unity3d.UnityEditor`; present roots are mode `0700`, may not be symlinks, and
+may never be shared, uploaded, cached by CI, or attached as an artifact. The worktree/cache parents
+are Time-Machine-excluded so a missing cache created later inherits the exclusion. The canonical
+build and custody-aware Unity test driver run under `umask 077`, and project settings disable Unity
+Accelerator download/upload rather than inheriting global preferences.
+
+The rewritten objects can remain in this worktree's shared Git common object database. When the
+gate finds any of the exact source/derivative/meta hashes in the local object inventory, it requires
+that common Git directory to be current-user-owned, mode `0700`, free of extended ACL access, and
+Time-Machine-excluded. This contains the local stale-object residual; it does not erase it. A future
+non-macOS host needs an owner/ACL-enforcement amendment before it may run the licensed-local
+profile.
+
+`PROVENANCE.md` is a public receipt, not an asset-delivery mechanism. It pins the nine source IDs,
+source hashes, derivative filenames/hashes, triangle counts, Unity GUIDs, `.meta` hashes, Blender
+version, and conversion command. `PolyforkLocalCustody` is the compiled mirror used before Unity
+authoring/build output mutation; the shell gate enforces exact receipt equality. The product owner
+is responsible for protecting the local FBX/meta pack or explicitly enabling reacquisition. A hash
+proves identity; it cannot recover lost bytes.
+
+### A3. Owner-enabled reacquisition and metadata repair
+
+Reacquisition is a deliberate human-run operation outside automated checkout, CI, test, build,
+Unity-import, and runtime workflows. Source downloads stay in a freshly created owner-private
+temporary directory outside the worktree; only a verified derivative/meta pair is hydrated into
+the ignored local-custody path:
+
+1. the owner explicitly enables use of the licensed account and credential;
+2. fetch each recorded asset ID through the authenticated endpoint and verify the source SHA-256
+   before conversion; mismatch fails closed and the response is deleted;
+3. convert only with the pinned Blender 5.1.2 and committed conversion script, then verify the
+   derivative SHA-256 and triangle count; mismatch fails closed and the unverified derivative is
+   deleted;
+4. restore the recorded `.meta` where available and verify its hash/GUID/import restrictions;
+   metadata mismatch fails closed; or, if metadata was lost, update authoritative PROVENANCE and
+   the compiled `PolyforkLocalCustody` receipt mirror together in one reviewed commit before
+   re-authoring; then rerun `Cat Metro/Build Diorama Assets` to regenerate Cat-Metro-authored
+   prefab/scene references and all visual evidence; and
+5. install success/failure cleanup before acquisition and delete every source GLB, private
+   temporary directory, and unverified output after successful or failed conversion.
+
+No normal command may prompt for, discover, or fetch the credential. The original `.env` mode,
+header-only request, no-logging, no-copy, and rotation controls remain unchanged.
+
+### A4. Two explicit verification profiles
+
+The permanently public tree has two non-interchangeable verification profiles:
+
+1. **Clean-public profile.** A fresh checkout receives no local pack or owner cache. Required CI
+   fetches and scans history reachable from the candidate and every fetched remote/tag ref. The
+   custody gate validates exactly nine receipts, checks the history/index boundary described in
+   A1, verifies gitignore coverage and current prefab payload tokens, and reports no local pack.
+   `scripts/test.sh` routes the immutable CM-C2b verifier through
+   `scripts/run-unity-editmode.sh`; on an editor-equipped clean checkout the driver runs its exact
+   static prefix and loudly defers the editor half. The credential-free shell/static/domain suite
+   may pass. This profile does **not** prove external-object erasure or that Unity can import,
+   render, or build the Polyfork composition.
+2. **Licensed-local profile.** All nine exact FBX/meta pairs exist on the ACL-checked macOS owner
+   host. Set `CM_REQUIRE_POLYFORK_LOCAL=1` on the canonical test/build command; the shell gate
+   recomputes derivative/meta hashes and GUIDs, rejects extra or partial inventory, and enforces
+   local file/cache privacy. The test driver also selects this profile whenever any local pack
+   entry exists. Unity EditMode tests enumerate
+   exactly nine models and verify derivative hashes, triangle counts, palette, semantic
+   `ModelImporter` restrictions, collider/material outcomes, prefab/scene construction, and visual
+   behavior. Diorama authoring calls the compiled exact verifier before asset/scene mutation. The
+   build wrapper, test harness, and test driver reject inherited acquisition credentials and
+   `CM_UNITY_EDITOR` overrides. The licensed wrappers authenticate the fixed Unity 6000.3.16f1
+   bundle's Apple-anchored Developer ID signature, application identifier, team identifier, and
+   bundle version before the editor receives the project path. The CLI build validates the
+   build-flow token and exact local pack
+   before output-directory mutation; an Android build preprocessor consumes that token and
+   revalidates the pack before `BuildPipeline` proceeds.
+
+The owner-private, one-use build-flow token prevents accidental GUI/direct build entry and
+sequences the reviewed shell path. It is **not authentication** and does not independently prove
+that `scripts/build.sh` or the full shell custody gate ran: any process executing as the licensed
+owner can forge its own path/nonce pair. The trust boundary is the owner plus the reviewed checkout.
+GUI/direct `BuildPipeline` invocation remains unsupported, and release evidence must pair the
+shell-gate transcript with the build record from the same final commit.
+
+Direct execution of the frozen `tests/unity/editmode.test.sh` is likewise an unsupported
+same-owner bypass of the custody-aware test driver and cannot count as licensed-local evidence.
+The immutable file remains callable only so the canonical driver can execute its exact full body
+after preflight or project its exact static prefix for the clean-public profile.
+
+Missing local assets never count as passing asset-integrity evidence. Every merge candidate that
+changes this art path, and every Play-bound build, must run the licensed-local profile immediately
+before full Unity tests, Android build, rendered-frame inspection, and device evidence. Green
+credential-free CI alone cannot close those legs.
+
+This means a clean public clone is not visually self-contained: it cannot import or render the
+Polyfork-dressed scene until a licensed owner hydrates it. The canonical `scripts/build.sh` default
+is therefore verification-only; its explicit licensed-local profile is the deployable Android
+path. Accepting that consequence is a human decision in the signature below. Project-owned
+replacement art is the current route to a visually complete public clone.
+
+### A5. Alternatives re-decided under the fixed public constraint
+
+| Mechanism | Decision | Reason under a permanently public repository |
+|---|---|---|
+| Regular Git commits | Forbidden | Makes modified assets publicly downloadable as standalone files. |
+| Git LFS | Forbidden | A public LFS object still delivers the file; a private endpoint becomes a private asset store. |
+| Fetch during build, test, CI, or package restore | Rejected | Puts vendor availability and a credential on the reproducible/public build path and can deliver to an unlicensed runner. |
+| Separate private asset store | Rejected for these nine | Adds a credential, access list, backup/fetch dependency, and delivery path; reconsider only through a signed amendment if team scale justifies it. |
+| Ignored local custody + explicit owner reacquisition | Accepted | Smallest delivery boundary; no public payload and no vendor/runtime/CI dependency. |
+| Private repository | Rejected by human ruling | Cat Metro remains public. |
+| Project-owned/procedural replacement | Retained escape hatch | Current route to a visually complete public clone without licensed local custody; requires art rebuild, provenance, rendered evidence, and taste review. |
+| Ship greybox / remove external models | Rejected for Lane 1A | Satisfies public custody but fails the tabletop-diorama requirement and human art ruling; retained as an emergency withdrawal fallback. |
+
+### A6. Containment residual and response
+
+History rewriting removed the paths from the branch's reachable PR-only history; it did not recall
+bytes already disclosed. Former object IDs, generated pull-request merge refs, GitHub caches,
+clones, forks, browser downloads, or other third-party copies may retain the blobs until garbage
+collection or indefinitely outside GitHub. A complete hosted-object scrub may require a GitHub
+Support request. Contacting GitHub or Polyfork is a separate human-authorized external action; this
+amendment records the need but does not authorize that contact or claim erasure.
+
+Before this amendment, project cache-server mode inherited the user's global Unity preferences and
+allowed upload/download. The project now pins Accelerator disabled, but any Accelerator that may
+have been configured and reached before that pin is a possible prior recipient; repository evidence
+cannot prove whether an upload occurred or recall a remote cache. Any discovered remote cache is a
+containment residual requiring an owner/security disposition before merge.
+
+The old licensed blobs also remain in this machine's shared Git common object database, and Unity
+has created project/global import caches while the local pack was hydrated. Those owner-local copies
+are now protected by the owner/mode/ACL and Time Machine boundary in A2. They are intentionally not
+claimed erased. At review time no Time Machine destination or configured Unity Accelerator endpoint
+was found; that narrows current local evidence but cannot prove that no historical backup, cache,
+clone, or remote upload exists. A newly enabled backup/synchronization service must exclude these
+paths before the licensed-local workflow runs.
+
+Old clones must not push or merge the former history. Collaborators must discard it or reconcile
+onto the rewritten head without reintroducing any forbidden object. Suspected re-exposure fails
+closed and blocks merge, build distribution, and release until a human security/license
+disposition.
+
+### Amendment A implementation and merge gates
+
+Before Lane 1A merges:
+
+1. the human signs all nine amendment propositions against the exact proposed commit;
+2. GitHub and fresh-clone inspection find none of the 18 paths in #65's reachable head history, and
+   the force-push/residual record remains visible in the PR and PROVENANCE trail;
+3. the clean-public custody gate and credential-free required checks are green;
+4. the owner-controlled worktree holds all nine exact FBX/meta pairs and
+   `CM_REQUIRE_POLYFORK_LOCAL=1` passes without printing asset or credential content;
+5. full licensed-local EditMode, PlayMode, Android build, rendered-frame, Pixel, logcat, CM-R21, and
+   taste-gate evidence close on the final integrated head;
+6. an independent RISKY code/security review finds no tracked/delivered model payload, broken
+   custody preflight, credential path, public/shared cache, or undispositioned finding; and
+7. HC-25 is asked fresh only after all preceding gates close; no earlier merge word applies.
+
+### Amendment A human signature — pending
+
+- [ ] I rule that Cat Metro's repository remains permanently public and reject the original
+      private-repository custody choice.
+- [ ] I acknowledge the prior public exposure and accept the recorded residual without treating
+      history rewriting as recall or proof of erasure.
+- [ ] I approve the derivative-free Git/LFS/PR/CI/artifact boundary, while retaining compiled-game
+      and rendered-media use under the pinned July 2026 license.
+- [ ] I approve owner-controlled, ignored local custody of the exact nine FBX/meta pairs and the
+      licensed-recipient access limit, including the ACL-checked macOS owner-mode/cache/common-Git
+      boundary, Time Machine exclusions, and the operational duty to exclude other backup services.
+- [ ] I approve only explicit owner-enabled reacquisition with source/derivative verification,
+      transient GLBs, no automated fetch, and the existing credential controls.
+- [ ] I approve the GUID/meta receipt and repair path plus the clean-public and licensed-local
+      verification profiles, including the canonical custody-aware Unity test route, fixed
+      signed-Unity authentication, and the disclosed fact that direct raw Unity/test entry is
+      unsupported and the one-use build-flow token prevents accidents but is not shell-origin
+      authentication; missing assets do not count as asset-integrity success.
+- [ ] I approve the re-decided alternatives matrix, including rejection of regular Git, public
+      LFS, fetch-at-build, the current private-store option, a private repository, and shipping the
+      greybox for Lane 1A.
+- [ ] I accept that a clean public clone is not visually self-contained and that deployable art
+      builds require a licensed-local checkout unless Cat Metro replaces the models.
+- [ ] I understand this signature is not HC-25, release/deploy authority, vendor/Support contact,
+      spend approval, a new dependency, a new asset family, or a Play upload.
+
+- **Signed by:** pending human signature
+- **Signature statement:** pending human signature against the exact proposal commit
+- **Signed at (absolute date/time):** pending
+- **Signed proposal head:** pending
+- **Signature record commit:** pending

@@ -5,20 +5,33 @@ Founders entitlement. Polyfork's commercial license allows use and modification 
 with no attribution requirement and no redistribution of the asset files themselves:
 <https://polyfork.dev/licensing>.
 
-Source GLBs are intentionally not retained. Each locally held FBX is an offline derivative made
-with Blender 5.1.2 and `Tools/convert_glb_to_fbx.py`; it is for Cat Metro production use only,
-not standalone redistribution. The public repository contains the receipt, authoring code,
-Cat-Metro-authored prefabs/materials, and rendered evidence, but never an FBX derivative or its
-Unity `.meta` file. SHA-256 values make an authorized local import reproducible and auditable.
+Source GLBs are intentionally not retained in authorized post-remediation custody. Each authorized
+local FBX is an offline derivative made with Blender 5.1.2 and
+`Tools/convert_glb_to_fbx.py`; it is for Cat Metro production use only, not standalone
+redistribution. The current branch's reachable history contains the public receipt, authoring code,
+Cat-Metro-authored prefabs/materials, and rendered evidence, but no licensed standalone model
+payload or matching Unity `.meta` file. The prior public exposure and its residual are recorded
+below. SHA-256 values make an authorized local import reproducible and auditable.
 
-The product owner keeps the nine FBXs and their matching Unity `.meta` files only in the ignored
-`unity/Assets/Art/Polyfork/Models/` local-custody path. A clean public checkout intentionally lacks
-those licensed inputs. Only the owner may enable reacquisition: fetch the recorded asset ID with
-the licensed account, verify the source hash, run the recorded offline conversion, verify the
-derivative hash, and restore the local metadata. If the metadata is unavailable or Unity assigns
-different GUIDs, run `Cat Metro/Build Diorama Assets` after import to regenerate the Cat-Metro
-prefabs and scene references before any test, build, or evidence run. No CI or ordinary build may
-fetch from Polyfork or receive the credential.
+The owner's authorized post-remediation copies of the nine FBXs and their matching Unity `.meta`
+files are held in the ignored `unity/Assets/Art/Polyfork/Models/` local-custody path. That statement
+does not deny stale hosted objects, clones, or downloads from the prior exposure. A fresh public
+checkout intentionally receives no licensed inputs. Only the owner may enable reacquisition:
+download the recorded asset ID with the licensed account into a freshly created owner-only
+temporary directory outside the worktree, verify the source hash, run the recorded offline
+conversion into the ignored local-custody path, verify the derivative hash and triangle count,
+restore and verify local metadata, and delete the source plus any unverified output on success or
+failure. If metadata is unavailable or Unity assigns different GUIDs, a reviewed commit must update
+this authoritative receipt and the compiled `PolyforkLocalCustody` receipt mirror together before
+`Cat Metro/Build Diorama Assets` regenerates Cat-Metro-authored prefab/scene references and visual
+evidence. No CI or ordinary build may fetch from Polyfork or receive the credential.
+
+The supported licensed-local host keeps the pack at mode `0700`/`0600`, project (`Library`, `Temp`,
+`Logs`, and `.utmp`) and global Unity cache roots at mode `0700`, and any shared Git common object
+database retaining an exact stale licensed hash at mode `0700`, all current-user-owned and free of
+extended ACL grants. The gate also
+requires their macOS Time Machine parent/path exclusions. Other backup or synchronization products
+remain an owner operational exclusion duty; the repository cannot prove their configuration.
 
 Public-history remediation (2026-08-11): the lane-owned `art/diorama-pass` history was rewritten
 from pre-remediation head `e4b787af8bdc8341da807d1b2d243d54ccda345d` to remove all nine FBXs
@@ -26,24 +39,58 @@ and all nine matching `.meta` files from every PR-only commit. The force-push re
 from the branch's reachable history; the old object IDs may nevertheless remain fetchable by SHA
 from GitHub until server-side garbage collection. Cached forks, clones, or downloads cannot be
 recalled. A complete hosted-object scrub may require a GitHub Support request. This receipt records
-that residual rather than claiming the prior public exposure was reversed.
+that residual rather than claiming the prior public exposure was reversed. Before remediation the
+project inherited global Unity cache-server preferences with upload/download enabled; the project
+now pins Unity Accelerator disabled, but repository evidence cannot prove whether an earlier remote
+cache received imported derivatives. Any discovered Accelerator copy is an additional containment
+residual requiring owner/security disposition.
+
+The old licensed blobs remain in the owner's local shared Git common object database and Unity has
+created owner-local project/global caches while this pack was hydrated. Those copies are retained
+only inside the access, mode, ACL, and backup-exclusion boundary above; they are not claimed erased.
+At review time no configured Time Machine destination or Unity Accelerator endpoint was found, but
+that does not prove no earlier backup, clone, cache, or upload exists.
 
 Acquisition receipt: on 2026-08-09 each table id was fetched with an authenticated Founders
 entitlement using `GET https://polyfork.dev/dl/<asset-id>.glb`. The bearer key came only from
 the gitignored root `.env`; it was never placed in a URL, log, source file, or Unity asset.
 The recorded source SHA-256 is the response body receipt.
 
-Conversion receipt (run once per table row from the repository root; `<asset-id>.glb` names the
-downloaded response and `<derivative.fbx>` is the exact table filename):
+Conversion receipt (run once per table row from the repository root;
+`$OWNER_PRIVATE_TEMP/<asset-id>.glb` is an already source-hash-verified response in a mode-`0700`
+owner temporary directory and `<derivative.fbx>` is the exact table filename):
 
 ```sh
-/opt/homebrew/bin/blender --background --python unity/Assets/Art/Polyfork/Tools/convert_glb_to_fbx.py -- /tmp/catmetro-polyfork-glb/<asset-id>.glb unity/Assets/Art/Polyfork/Models/<derivative.fbx>
+/opt/homebrew/bin/blender --background --python unity/Assets/Art/Polyfork/Tools/convert_glb_to_fbx.py -- "$OWNER_PRIVATE_TEMP/<asset-id>.glb" "unity/Assets/Art/Polyfork/Models/<derivative.fbx>"
 ```
+
+This is the conversion step, not an automated acquisition command. Before download, the owner-run
+procedure must install success/failure cleanup that removes the private temporary directory and any
+output whose derivative verification has not succeeded. The ignored output and metadata are mode
+`0600`; the custody directory, protected common Git database, and owner-local project/global Unity
+caches are mode `0700`. No reusable credential fetch path is part of checkout, CI, test, build,
+Unity import, or runtime.
+
+The canonical Unity test route is `scripts/test.sh` → `scripts/run-unity-editmode.sh` → the
+immutable `tests/unity/editmode.test.sh`. The harness rejects inherited acquisition credentials
+before any test subprocess. With local custody hydrated, the driver authenticates the fixed
+editor, runs strict custody, secures local caches, and only then executes the full verifier. A
+clean public checkout runs the verifier's exact static prefix and explicitly defers its editor
+half. Directly running the raw immutable verifier bypasses that preflight, is unsupported, and
+cannot count as licensed-local evidence.
 
 Blender reported `5.1.2` (`ec6e62d40fa9`, built 2026-05-19). With authorized local custody
 hydrated, the EditMode provenance gate recomputes every FBX hash and imported triangle count
-against the table below. The always-on shell gate separately proves that no FBX or matching
-metadata is tracked and verifies every locally present derivative hash without printing content.
+against the table below. The always-on shell gate scans history reachable from the candidate and
+every fetched remote/tag ref plus the current index, rejects the exact nine source/derivative/meta
+hashes at any path, rejects unallowlisted standalone model/archive suffixes or recognized payload
+bytes and all Git LFS
+pointers, token-checks the current nine authored prefabs, enforces private local files/caches, and
+verifies every locally present FBX/meta pair without printing content. When exact stale licensed
+hashes remain in the local Git object inventory, it enforces the private common-Git boundary too.
+Inherited Git repository/index/object/configuration redirects and on-disk alternates are rejected
+before those claims are evaluated.
+It does not claim erasure of unreachable hosted objects, public artifacts, or third-party copies.
 
 | Polyfork source | Tris | Source GLB SHA-256 | Unity derivative | FBX SHA-256 | Unity GUID | `.meta` SHA-256 |
 |---|---:|---|---|---|---|---|

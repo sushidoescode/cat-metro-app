@@ -15,6 +15,7 @@ namespace CatMetro.Presentation.Cameras
         public const double PAN_DURATION_MS = 400.0;
         private const float TabletopPitchDegrees = 60f;
         private const float VirtualCameraDepth = 14f;
+        private const float FailureViewportLift = 0.14f;
 
         private UnityEngine.Camera _camera;
         private Vector3 _goal;
@@ -119,10 +120,10 @@ namespace CatMetro.Presentation.Cameras
         {
             TargetNodeId = nodeId ?? "";
             _goal = new Vector3(worldPos.x, worldPos.y, _camera.transform.position.z);
-            // Failure review reserves the bottom quarter for Retry. Lift the rendered board a
-            // few percent while keeping the tested target transform exact, so a low switch can
-            // never drift into that thumb-band claim after the cause-camera pan.
-            _failureViewportLift = 0.03f;
+            // Failure review reserves the bottom quarter for Retry. Keep the current route's
+            // lowest switch above that band after the cause-camera pan while leaving the tested
+            // logical target transform exact.
+            _failureViewportLift = FailureViewportLift;
             SetViewportLift(_failureViewportLift);
             ShowRing(worldPos);
             if (motionOff)

@@ -8,19 +8,6 @@ using UnityEngine;
 // player and deliberately fails closed when its one output seam is malformed.
 public static class CatMetroCliBuild
 {
-    private static readonly string[] PolyforkModels =
-    {
-        "polyfork_tram_track_tile_f3c69a.fbx",
-        "polyfork_train_engine_180979.fbx",
-        "polyfork_log_cabin_4fac3b.fbx",
-        "polyfork_young_pine_0d7695.fbx",
-        "polyfork_wooden_fence_section_5f04b7.fbx",
-        "polyfork_wooden_bench_661da4.fbx",
-        "polyfork_sandwich_board_sign_cb5e7c.fbx",
-        "polyfork_street_lamp_29f365.fbx",
-        "polyfork_coffee_cup_90be67.fbx",
-    };
-
     public static void BuildAndroid()
     {
         string requestedPath = Environment.GetEnvironmentVariable("CM_APK_OUT");
@@ -55,9 +42,23 @@ public static class CatMetroCliBuild
             Fail("output-parent-missing");
             return;
         }
-        if (!RequirePolyforkLocalCustody())
+        try
         {
-            Fail("polyfork-local-custody-missing");
+            CatMetro.Editor.PolyforkCustodyBuildPreprocessor
+                .RequireCanonicalBuildFlowTokenPresent();
+        }
+        catch (Exception exception)
+        {
+            Fail("build-flow-token-" + exception.GetType().Name);
+            return;
+        }
+        try
+        {
+            CatMetro.Editor.PolyforkLocalCustody.RequireExact();
+        }
+        catch (Exception exception)
+        {
+            Fail("polyfork-local-custody-" + exception.GetType().Name);
             return;
         }
         Directory.CreateDirectory(parent);
@@ -78,17 +79,6 @@ public static class CatMetroCliBuild
             + " errors=" + report.summary.totalErrors
             + " out=" + outputPath);
         EditorApplication.Exit(report.summary.result == BuildResult.Succeeded ? 0 : 1);
-    }
-
-    private static bool RequirePolyforkLocalCustody()
-    {
-        string modelRoot = Path.Combine(Application.dataPath, "Art", "Polyfork", "Models");
-        foreach (string model in PolyforkModels)
-        {
-            string fbx = Path.Combine(modelRoot, model);
-            if (!File.Exists(fbx) || !File.Exists(fbx + ".meta")) return false;
-        }
-        return true;
     }
 
     private static void Fail(string reason)

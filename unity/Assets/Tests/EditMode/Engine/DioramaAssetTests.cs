@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Security.Cryptography;
 using CatMetro.Domain;
 using CatMetro.Presentation.Board;
@@ -77,7 +78,7 @@ namespace CatMetro.Tests.EditMode
         }
 
         [Test]
-        public void PolyforkManifest_ReferencesSixImportedModelsAndColliderFreePrefabs()
+        public void PolyforkManifest_ReferencesExactlyNineImportedModelsAndColliderFreePrefabs()
         {
             const string manifestPath = "Assets/Art/Polyfork/PROVENANCE.md";
             string fullManifest = Path.GetFullPath(Path.Combine(
@@ -87,8 +88,8 @@ namespace CatMetro.Tests.EditMode
 
             string[] models = AssetDatabase.FindAssets("t:Model", new[] { "Assets/Art/Polyfork/Models" })
                 .Select(AssetDatabase.GUIDToAssetPath).OrderBy(x => x).ToArray();
-            Assert.That(models.Length, Is.GreaterThanOrEqualTo(6),
-                "at least six visible Polyfork GLB derivatives must import as Unity models");
+            Assert.That(models.Length, Is.EqualTo(9),
+                "the licensed-local profile must import exactly the nine receipt models");
 
             foreach (string modelPath in models)
             {
@@ -100,11 +101,23 @@ namespace CatMetro.Tests.EditMode
                     modelPath + " imported an unwanted collider");
                 Assert.That(manifest, Does.Contain(Path.GetFileName(modelPath)),
                     modelPath + " is absent from the provenance record");
+
+                var importer = AssetImporter.GetAtPath(modelPath) as ModelImporter;
+                Assert.That(importer, Is.Not.Null, modelPath + " has no ModelImporter");
+                Assert.That(importer.addCollider, Is.False, modelPath);
+                Assert.That(importer.importAnimation, Is.False, modelPath);
+                Assert.That(importer.importBlendShapes, Is.False, modelPath);
+                Assert.That(importer.importCameras, Is.False, modelPath);
+                Assert.That(importer.importLights, Is.False, modelPath);
+                Assert.That(importer.importVisibility, Is.False, modelPath);
+                Assert.That(importer.isReadable, Is.False, modelPath);
+                Assert.That(importer.materialImportMode,
+                    Is.EqualTo(ModelImporterMaterialImportMode.None), modelPath);
             }
 
             string[] prefabs = AssetDatabase.FindAssets("t:Prefab", new[] { "Assets/Prefabs/Diorama" })
                 .Select(AssetDatabase.GUIDToAssetPath).OrderBy(x => x).ToArray();
-            Assert.That(prefabs.Length, Is.GreaterThanOrEqualTo(6));
+            Assert.That(prefabs.Length, Is.EqualTo(9));
             var greybox = AssetDatabase.LoadAssetAtPath<Material>(
                 "Assets/Resources/Materials/Greybox.mat");
             Assert.That(greybox, Is.Not.Null);
@@ -135,6 +148,7 @@ namespace CatMetro.Tests.EditMode
             var rows = manifest.Split('\n')
                 .Where(x => x.StartsWith("| [") && x.Contains(".fbx`"))
                 .ToArray();
+            Assert.That(rows.Length, Is.EqualTo(9));
             string[] models = AssetDatabase.FindAssets("t:Model",
                     new[] { "Assets/Art/Polyfork/Models" })
                 .Select(AssetDatabase.GUIDToAssetPath).OrderBy(x => x).ToArray();
@@ -170,7 +184,7 @@ namespace CatMetro.Tests.EditMode
             string[] models = AssetDatabase.FindAssets("t:Model",
                     new[] { "Assets/Art/Polyfork/Models" })
                 .Select(AssetDatabase.GUIDToAssetPath).OrderBy(x => x).ToArray();
-            Assert.That(models.Length, Is.GreaterThanOrEqualTo(6));
+            Assert.That(models.Length, Is.EqualTo(9));
             foreach (string path in models)
             {
                 var colors = AssetDatabase.LoadAllAssetsAtPath(path).OfType<Mesh>()
@@ -291,6 +305,103 @@ namespace CatMetro.Tests.EditMode
             Assert.That(authoring, Does.Contain("FileShare.None"));
         }
 
+        [Test]
+        public void PolyforkLocalCustodyVerifier_AcceptsExactPackAndRejectsMissingOrTamperedPack()
+        {
+            System.Type verifierType = System.Type.GetType(
+                "CatMetro.Editor.PolyforkLocalCustody, Assembly-CSharp-Editor");
+            Assert.That(verifierType, Is.Not.Null,
+                "the editor-only cryptographic custody verifier must compile");
+            MethodInfo verify = verifierType.GetMethod("RequireExactAt",
+                BindingFlags.Public | BindingFlags.Static);
+            Assert.That(verify, Is.Not.Null);
+
+            string actualRoot = Path.Combine(UnityEngine.Application.dataPath,
+                "Art", "Polyfork", "Models");
+            Assert.That(() => verify.Invoke(null, new object[] { actualRoot }), Throws.Nothing,
+                "the exact owner-local receipt pack must pass");
+
+            string scratch = Path.Combine(Path.GetTempPath(),
+                "catmetro-polyfork-custody-test-" + System.Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(scratch);
+            try
+            {
+                AssertVerifierRejects(verify, scratch);
+
+                string manifest = File.ReadAllText(Path.Combine(UnityEngine.Application.dataPath,
+                    "Art", "Polyfork", "PROVENANCE.md"));
+                foreach (string row in manifest.Split('\n')
+                    .Where(x => x.StartsWith("| [") && x.Contains(".fbx`")))
+                {
+                    string modelName = BetweenBackticks(row.Split('|')[4]);
+                    File.WriteAllText(Path.Combine(scratch, modelName), "not licensed model bytes\n");
+                    File.WriteAllText(Path.Combine(scratch, modelName + ".meta"),
+                        "fileFormatVersion: 2\nguid: 00000000000000000000000000000000\n");
+                }
+                AssertVerifierRejects(verify, scratch);
+            }
+            finally
+            {
+                Directory.Delete(scratch, true);
+            }
+        }
+
+        [Test]
+        public void AndroidBuildFlowToken_RejectsMissing_ValidatesWithoutMutation_ConsumesOnce()
+        {
+            System.Type guardType = System.Type.GetType(
+                "CatMetro.Editor.PolyforkCustodyBuildPreprocessor, Assembly-CSharp-Editor");
+            Assert.That(guardType, Is.Not.Null);
+            MethodInfo validate = guardType.GetMethod("RequireCanonicalBuildFlowTokenPresent",
+                BindingFlags.Public | BindingFlags.Static);
+            MethodInfo consume = guardType.GetMethod("ConsumeCanonicalBuildFlowToken",
+                BindingFlags.Public | BindingFlags.Static);
+            Assert.That(validate, Is.Not.Null,
+                "the CLI entry must validate flow sequencing before output mutation");
+            Assert.That(consume, Is.Not.Null,
+                "the Android preprocessor must consume its one-use flow token");
+
+            const string pathKey = "CM_POLYFORK_BUILD_FLOW_TOKEN";
+            const string nonceKey = "CM_POLYFORK_BUILD_FLOW_NONCE";
+            string previousPath = System.Environment.GetEnvironmentVariable(pathKey);
+            string previousNonce = System.Environment.GetEnvironmentVariable(nonceKey);
+            string scratch = Path.Combine(Path.GetTempPath(),
+                "catmetro-build-flow-token-test-" + System.Guid.NewGuid().ToString("N"));
+            string token = Path.Combine(scratch, "token");
+            Directory.CreateDirectory(scratch);
+            try
+            {
+                System.Environment.SetEnvironmentVariable(pathKey, null);
+                System.Environment.SetEnvironmentVariable(nonceKey, null);
+                var missing = Assert.Throws<TargetInvocationException>(() =>
+                    validate.Invoke(null, null));
+                Assert.That(missing.InnerException.GetType().Name,
+                    Is.EqualTo("BuildFailedException"));
+
+                const string nonce = "one-use-test-nonce";
+                File.WriteAllText(token, nonce + "\n");
+                System.Environment.SetEnvironmentVariable(pathKey, token);
+                System.Environment.SetEnvironmentVariable(nonceKey, nonce);
+                Assert.That(() => validate.Invoke(null, null), Throws.Nothing);
+                Assert.That(File.Exists(token), Is.True,
+                    "pre-output validation must not consume the token");
+                Assert.That(() => consume.Invoke(null, null), Throws.Nothing);
+                Assert.That(File.Exists(token), Is.False,
+                    "the accepted flow token must be consumed before build work");
+                var replay = Assert.Throws<TargetInvocationException>(() =>
+                    consume.Invoke(null, null));
+                Assert.That(replay.InnerException.GetType().Name,
+                    Is.EqualTo("BuildFailedException"));
+            }
+            finally
+            {
+                System.Environment.SetEnvironmentVariable(pathKey, previousPath);
+                System.Environment.SetEnvironmentVariable(nonceKey, previousNonce);
+                if (File.Exists(token)) File.Delete(token);
+                Directory.Delete(scratch, true);
+            }
+        }
+
         private static string Html(Color color) => ColorUtility.ToHtmlStringRGB(color);
         private static string Html(Color32 color) => ColorUtility.ToHtmlStringRGB(color);
 
@@ -301,6 +412,14 @@ namespace CatMetro.Tests.EditMode
             Assert.That(first, Is.GreaterThanOrEqualTo(0), value);
             Assert.That(last, Is.GreaterThan(first), value);
             return value.Substring(first + 1, last - first - 1);
+        }
+
+        private static void AssertVerifierRejects(MethodInfo verify, string path)
+        {
+            var exception = Assert.Throws<TargetInvocationException>(() =>
+                verify.Invoke(null, new object[] { path }));
+            Assert.That(exception.InnerException,
+                Is.TypeOf<System.InvalidOperationException>());
         }
 
         private static string ToHex(byte[] bytes) =>

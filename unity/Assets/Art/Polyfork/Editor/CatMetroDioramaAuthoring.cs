@@ -47,7 +47,7 @@ namespace CatMetro.Editor
         [MenuItem("Cat Metro/Build Diorama Assets")]
         public static void Build()
         {
-            RequirePolyforkLocalCustody();
+            PolyforkLocalCustody.RequireExact();
             EnsureFolder("Assets/Art", "Materials");
             EnsureFolder("Assets/Art", "Meshes");
             EnsureFolder("Assets/Art", "Settings");
@@ -148,31 +148,6 @@ namespace CatMetro.Editor
                 throw new InvalidOperationException("Could not save " + ScenePath);
             AssetDatabase.SaveAssets();
             Debug.Log("CAT_METRO_DIORAMA_AUTHORED prefabs=" + entries.Length);
-        }
-
-        private static void RequirePolyforkLocalCustody()
-        {
-            string localModelRoot = Path.Combine(
-                Application.dataPath, "Art", "Polyfork", "Models");
-            string[] models =
-            {
-                "polyfork_tram_track_tile_f3c69a.fbx",
-                "polyfork_train_engine_180979.fbx",
-                "polyfork_log_cabin_4fac3b.fbx",
-                "polyfork_young_pine_0d7695.fbx",
-                "polyfork_wooden_fence_section_5f04b7.fbx",
-                "polyfork_wooden_bench_661da4.fbx",
-                "polyfork_sandwich_board_sign_cb5e7c.fbx",
-                "polyfork_street_lamp_29f365.fbx",
-                "polyfork_coffee_cup_90be67.fbx",
-            };
-            foreach (string model in models)
-            {
-                string fbx = Path.Combine(localModelRoot, model);
-                if (!File.Exists(fbx) || !File.Exists(fbx + ".meta"))
-                    throw new InvalidOperationException(
-                        "Licensed local Polyfork custody is incomplete: " + model);
-            }
         }
 
         private static VolumeProfile ConfigureTabletopRendering()
@@ -366,6 +341,7 @@ namespace CatMetro.Editor
         [MenuItem("Cat Metro/Capture Diorama Orientation Sheet")]
         public static void CaptureOrientationSheet()
         {
+            PolyforkLocalCustody.RequireExact();
             string[] names =
             {
                 "Polyfork_DepotShed", "Polyfork_ToyEngine", "Polyfork_Pine",
@@ -378,14 +354,21 @@ namespace CatMetro.Editor
                 new Vector3(90f, 0f, 0f), new Vector3(0f, 0f, 90f),
             };
 
+            var prefabs = new GameObject[names.Length];
+            for (int row = 0; row < names.Length; row++)
+            {
+                string prefabPath = PrefabRoot + names[row] + ".prefab";
+                prefabs[row] = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+                if (prefabs[row] == null)
+                    throw new InvalidOperationException("Missing prefab " + prefabPath);
+            }
+
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             for (int row = 0; row < names.Length; row++)
             {
-                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
-                    PrefabRoot + names[row] + ".prefab");
                 for (int column = 0; column < rotations.Length; column++)
                 {
-                    var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+                    var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefabs[row]);
                     instance.transform.eulerAngles = rotations[column];
                     Bounds bounds = WorldBounds(instance);
                     float fit = Mathf.Min(1.65f / Mathf.Max(0.01f, bounds.size.x),

@@ -17,6 +17,7 @@ dotnet/**/obj/
 unity/Library/
 unity/Temp/
 unity/Logs/
+unity/.utmp/
 unity/UserSettings/
 unity/obj/
 unity/*.csproj
