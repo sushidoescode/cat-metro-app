@@ -5,9 +5,28 @@ Founders entitlement. Polyfork's commercial license allows use and modification 
 with no attribution requirement and no redistribution of the asset files themselves:
 <https://polyfork.dev/licensing>.
 
-Source GLBs are intentionally not retained. Each committed FBX is an offline derivative made
+Source GLBs are intentionally not retained. Each locally held FBX is an offline derivative made
 with Blender 5.1.2 and `Tools/convert_glb_to_fbx.py`; it is for Cat Metro production use only,
-not standalone redistribution. SHA-256 values make the import reproducible and auditable.
+not standalone redistribution. The public repository contains the receipt, authoring code,
+Cat-Metro-authored prefabs/materials, and rendered evidence, but never an FBX derivative or its
+Unity `.meta` file. SHA-256 values make an authorized local import reproducible and auditable.
+
+The product owner keeps the nine FBXs and their matching Unity `.meta` files only in the ignored
+`unity/Assets/Art/Polyfork/Models/` local-custody path. A clean public checkout intentionally lacks
+those licensed inputs. Only the owner may enable reacquisition: fetch the recorded asset ID with
+the licensed account, verify the source hash, run the recorded offline conversion, verify the
+derivative hash, and restore the local metadata. If the metadata is unavailable or Unity assigns
+different GUIDs, run `Cat Metro/Build Diorama Assets` after import to regenerate the Cat-Metro
+prefabs and scene references before any test, build, or evidence run. No CI or ordinary build may
+fetch from Polyfork or receive the credential.
+
+Public-history remediation (2026-08-11): the lane-owned `art/diorama-pass` history was rewritten
+from pre-remediation head `e4b787af8bdc8341da807d1b2d243d54ccda345d` to remove all nine FBXs
+and all nine matching `.meta` files from every PR-only commit. The force-push removes those paths
+from the branch's reachable history; the old object IDs may nevertheless remain fetchable by SHA
+from GitHub until server-side garbage collection. Cached forks, clones, or downloads cannot be
+recalled. A complete hosted-object scrub may require a GitHub Support request. This receipt records
+that residual rather than claiming the prior public exposure was reversed.
 
 Acquisition receipt: on 2026-08-09 each table id was fetched with an authenticated Founders
 entitlement using `GET https://polyfork.dev/dl/<asset-id>.glb`. The bearer key came only from
@@ -21,8 +40,10 @@ downloaded response and `<derivative.fbx>` is the exact table filename):
 /opt/homebrew/bin/blender --background --python unity/Assets/Art/Polyfork/Tools/convert_glb_to_fbx.py -- /tmp/catmetro-polyfork-glb/<asset-id>.glb unity/Assets/Art/Polyfork/Models/<derivative.fbx>
 ```
 
-Blender reported `5.1.2` (`ec6e62d40fa9`, built 2026-05-19). The EditMode provenance gate
-recomputes every committed FBX hash and imported triangle count against the table below.
+Blender reported `5.1.2` (`ec6e62d40fa9`, built 2026-05-19). With authorized local custody
+hydrated, the EditMode provenance gate recomputes every FBX hash and imported triangle count
+against the table below. The always-on shell gate separately proves that no FBX or matching
+metadata is tracked and verifies every locally present derivative hash without printing content.
 
 | Polyfork source | Tris | Source GLB SHA-256 | Unity derivative | FBX SHA-256 |
 |---|---:|---|---|---|
