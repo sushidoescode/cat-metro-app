@@ -67,18 +67,37 @@ if grep -rEnq --include='*.cs' '\bSystem\.IO\b' "$daily_root"; then
   fail "criterion 6c: file API reference under the Daily root"
 fi
 
-# Criterion 8b: no type under the Daily root implements IBoardFactory — the Q-S gap cannot be
-# silently filled. Review F3: each candidate file is whitespace-FLATTENED first, so a base list
-# wrapped onto its own line cannot evade the declaration-shape grep; plain references (the
-# pipeline's Factory field, the interface's own file) stay legal.
-impl=""
+# Criterion 8b: Q3 authorizes exactly one shipped IBoardFactory implementation, owned by
+# DailyBoardFactory.cs. Keep Review F3's whitespace-flattening so a wrapped base list cannot
+# evade the declaration scan, count declarations rather than files, and fail closed on every
+# scan/read error. Plain references and the interface declaration remain legal.
+if ! find "$daily_root" -type f -name '*.cs' -print > "$tmp/daily-cs.list"; then
+  fail "criterion 8b: could not enumerate Daily C# sources (fail-closed)"
+fi
+impl_count=0
+impl_path=""
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  if tr '\n\t' '  ' < "$f" | grep -qE '(class|struct)[^:{]*:[^{]*IBoardFactory'; then
-    impl="$impl $f"
+  flat=$(tr '\n\t' '  ' < "$f") \
+    || fail "criterion 8b: could not flatten $f (fail-closed)"
+  matches=$(printf '%s\n' "$flat" \
+    | grep -oE '(class|struct)[^:{]*:[^{]*IBoardFactory')
+  scan_status=$?
+  [ "$scan_status" -le 1 ] \
+    || fail "criterion 8b: declaration scan failed for $f (fail-closed)"
+  if [ "$scan_status" -eq 0 ]; then
+    match_count=$(printf '%s\n' "$matches" | awk 'NF { n++ } END { print n + 0 }') \
+      || fail "criterion 8b: could not count declarations in $f (fail-closed)"
+    impl_count=$((impl_count + match_count))
+    impl_path="$f"
   fi
-done < <(grep -rl --include='*.cs' 'IBoardFactory' "$daily_root" 2>/dev/null || true)
-[ -z "$impl" ] || fail "criterion 8b: IBoardFactory implementation under the Daily root:$impl"
+done < "$tmp/daily-cs.list"
+[ "$impl_count" -eq 1 ] \
+  || fail "criterion 8b: expected exactly one IBoardFactory implementation, found $impl_count"
+case "$impl_path" in
+  */DailyBoardFactory.cs) ;;
+  *) fail "criterion 8b: sole IBoardFactory implementation is not DailyBoardFactory.cs: $impl_path" ;;
+esac
 
 # Criterion 11: scope guard over the Daily root + the entry script — no backend, no store, no
 # push, no analytics, no clock, no engine, no network...
