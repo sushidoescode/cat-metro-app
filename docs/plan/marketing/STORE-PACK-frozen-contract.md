@@ -3,9 +3,10 @@
 Frozen on 2026-08-10 at `origin/main` `9be8f95`, after fetching `origin/main`, as the
 first commit on `docs/store-pack`.
 
-The Wave 2 addendum was not on main at freeze. Its controlling Lane 7 text was read from
-`origin/session/wave2-addendum` at `c1d78cc` (PR #69), including the unchanged global
-parallel-lane rules.
+The Wave 2 addendum was not on main at freeze. Its Lane 7 text was first read from
+`origin/session/wave2-addendum` at `c1d78cc` before the first commit. After that branch advanced,
+the complete reviewed v3.1 handoff was re-read at `7b9a125` (PR #69); v3.1 is controlling and makes
+this `docs/plan/**` lane human-button-merge by construction.
 
 ## Restated contract
 
@@ -18,8 +19,9 @@ prescreener can trust without installing the app:
    committed tabletop-diorama golden frame. Every screenshot row names the scene, level, game
    state, HUD state, framing, action, caption, and evidence gate.
 3. A Devpost video script that stays below two minutes, opens on real on-device gameplay, names
-   the targeted categories inside the runtime, uses only original game audio, and never substitutes
-   a mockup for a build claim.
+   the targeted categories inside the runtime, defaults to original narration plus silence, uses
+   only evidenced original in-game audio if any exists later, and never substitutes a mockup for a
+   build claim.
 4. A Devpost description draft and a #BuildInPublic post-series plan built around the project's
    actual evidence, including failures and denominators.
 
@@ -44,22 +46,28 @@ The positioning spine is exact and must appear verbatim wherever the full promis
 
 These are the only positive product claims available without a later named evidence gate:
 
-- The current tree contains ten handcrafted campaign levels, L001–L010. Each is run through the
-  repository's content validation and solver gates.
-- The implemented loop covers Home, LevelIntro, Playing, failure/retry, Won/Results, and Next;
-  the first two levels have been won on a Pixel 9 Pro through the real next-level seam.
-- Gameplay is one-thumb switch routing with color-and-symbol-coded cat commuters, a next-wave
-  preview, queue/overflow behavior, cause-focused failure presentation, and immediate retry.
+- The current tree contains ten authored and staged level files, L001–L010. Each is run through the
+  repository's content validation and solver gates. Normal player progression exposes L001–L005;
+  L006–L010 require the development override until a later lane wires them into player flow.
+- Shipped boot opens L001 directly; the ordinary player loop covers Playing, Won/Results, and Next.
+  Home and LevelIntro are development-build-only. The first two levels have been won on a Pixel 9
+  Pro through the real next-level seam.
+- Gameplay is one-thumb switch routing with color-coded cat commuters, color-plus-symbol stations,
+  and a next-wave preview.
 - The app currently contains no forced-ad, energy, or loot-box system. No monetization code may be
   described as present merely because its specification or an active lane exists.
 - The golden frame is a committed visual target. Lane 1A's evidence explicitly says final corrected
   on-device art evidence is still open, so player-facing copy may describe the tabletop premise but
   must not say that an uncaptured frame is what the current public build looks like.
 
-Not built on the frozen anchor and therefore forbidden as present-tense product claims: 30 launch
-levels, Daily Line, Daily streaks, District Cup, level select, shop, IAP, RevenueCat paywalls or
-placements, rewarded ads, premium themes, share cards, challenge links, OneSignal journeys, public
-Google Play availability, published launch metrics, or a completed 56-day public-post corpus.
+Not built or not player-reachable on the frozen anchor and therefore forbidden as present-tense
+product claims: readable queue management without an accepted device receipt; a campaign failure →
+cause → retry experience (its UI is synthetic-fixture-tested, but no normal L001–L010 path is
+proven); 30 launch levels; Daily Line or a playable daily surface; level select or district
+navigation; shop, IAP, paywalls, prices, purchases, restores, RevenueCat,
+rewarded ads, themes, DLC, or promo codes; share cards or challenge links; OneSignal journeys;
+public Google Play availability; installs, retention, revenue, conversion, ratings, press results,
+or a 56-day published build-log corpus.
 
 ## Deliverable map
 
@@ -83,8 +91,9 @@ Google Play availability, published launch metrics, or a completed 56-day public
    vintage. Future listing experiments are plans, never reported results.
 3. **Creative can be produced on demand.** The icon is specified at 1024×1024 with a 512-safe crop,
    48 px legibility check, no text, no child-directed treatment, and palette values from product
-   spec §7. Each screenshot is an exact 1179×2556 frameless render, never an upscale, with scene,
-   level, HUD state, capture moment, safe text region, and a fallback take.
+   spec §7. Each screenshot is an exact 1179×2556 frameless composition from an exact-size raw
+   render, never upscaled or stretched, with scene, level, HUD state, capture moment, safe text
+   region, and a fallback take.
 4. **The golden frame governs the look.** Shot direction calls for the low three-quarter tabletop
    view, visible warm wood desk edge, Cream Card/Warm Paper board, Ink Navy rail detail, restrained
    Ticket Orange, track-scale cats seated in open cars, color plus symbol, soft authored contact
@@ -117,9 +126,10 @@ Google Play availability, published launch metrics, or a completed 56-day public
   the same truthful capture can serve the frameless Devpost requirement and be downsampled for other
   placements. No upscaling is allowed.
 - **A-SP-4 — no invented district art.** L006 `Alternating Line` is the preferred hero because it is
-  built and has red/blue alternation, eight commuters, a live switch, queues, and preview activity.
-  If the merged art/UI build cannot stage a clean L006 frame, use L005 or L002 and adjust the caption;
-  do not fake Harbor scenery or a second mechanic.
+  authored and has red/blue alternation, eight commuters, a live switch, queues, and preview
+  activity. It remains gated on ordinary player reachability in the merged capture build; a
+  development override is not marketing evidence. If that gate or the art/UI gate fails, use L005
+  or L002 and adjust the caption; do not fake Harbor scenery or a second mechanic.
 - **A-SP-5 — no publication side effects.** This lane drafts posts and submission fields only. It
   does not publish, upload, contact communities, create store experiments, or submit to Devpost.
 - **A-SP-6 — state update timing.** Per the Wave 2 global rule, the one Lane 7 state row is a merge
@@ -145,3 +155,8 @@ human-only.
 ## Status log
 
 - 2026-08-10 — contract frozen; drafting and evidence audit are next.
+- 2026-08-10 — post-freeze evidence correction from independent review: split ten authored/staged
+  files from the five-level normal player band; marked L006–L010 and Home/LevelIntro as development-
+  only on the frozen anchor; narrowed color-plus-symbol to stations; removed campaign failure/retry
+  and queue-readability claims pending real-level/device receipts. This corrects the truth baseline
+  without broadening Lane 7 scope.

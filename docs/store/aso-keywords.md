@@ -44,7 +44,7 @@ Google Play's tokenization or ranking behavior.
 | Share, challenge-link, or social-loop terms | Hold | No current player-facing share flow is evidenced |
 | `best`, `top`, award, rating, install, retention, revenue, or conversion claims | Exclude from current listing | No published result exists; later rates require a dated source, denominator, and window |
 | `kids`, `for children`, `for all ages` | Exclude | The product targets 13+ and must not be framed as child-directed |
-| Public-launch or `available now` language | Hold | Re-enter only after an official Play publication receipt for the named version and track |
+| Public-launch or `available now` language | Hold | Re-enter only after a USA-visible public production listing is checked logged out and the matching package/build is installed from Play |
 
 ## Internal competitive rationale — NOT PUBLIC COPY
 

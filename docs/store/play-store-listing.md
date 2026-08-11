@@ -35,32 +35,32 @@ Route cat commuters with one thumb. A tabletop train puzzle with no forced ads.
 ### Full description
 
 - Google Play limit: 4,000 characters
-- Exact count: 1,422 characters, including 21 line feeds
-- Headroom: 2,578 characters
+- Exact count: 1,132 characters, including 21 line feeds
+- Headroom: 2,868 characters
 
 ```text
-Cat Metro is a one-thumb train puzzle about routing cat commuters through a tiny tabletop metro. Tap a junction, throw the switch, and guide each color-and-symbol-coded cat to the matching station before the platform overflows.
+Cat Metro is a one-thumb train puzzle about routing cat commuters through a tiny tabletop metro. Tap a junction, throw the switch, and guide each cat to the matching color-and-symbol station.
 
 Fair by design: no forced ads, no energy, no loot boxes, every level solvable free.
 
 HOW IT PLAYS
 - Tap junctions to change each route
 - Read the next-wave preview and plan ahead
-- Use queues carefully before they overflow
-- See where a jam began, then retry immediately
+- Follow color-and-symbol station signs
+- Match every cat to the right station
 
-TEN HANDCRAFTED LEVELS
-Play ten campaign puzzles. Every level passes the project's content validation and solver gates. Each cat puzzle grows from clear first routes into tighter switching challenges. Learn from each attempt, adjust the route, and try the same board again.
+FIVE HANDCRAFTED LEVELS
+Play five campaign puzzles. Every level passes the project's content validation and solver gates. Each cat puzzle grows from clear first routes into tighter switching challenges.
 
 BUILT TO BE READ
-Color is never the only signal. Cat commuters use color plus symbols, making busy moments easier to follow. Cause-focused failure presentation points back to where the route broke down, and the compact retry loop keeps you close to the puzzle.
+Stations pair color with a symbol. The next-wave preview shows what is coming before the next routing decision.
 
 A TABLETOP METRO PUZZLE
-Cat Metro brings the warmth of a small model railway to a focused route puzzle. Switch the line, watch the next wave, manage the queue, and help every cat reach the right station.
+Cat Metro pairs a focused route puzzle with a small tabletop-railway premise. Switch the line, watch the next wave, follow each route, and help every cat reach the right station.
 
-Retry immediately after a failed route. No energy timer stands between attempts. Learn the route, throw the switch, and try again.
+No energy timer limits play. Read the next wave, throw the switch, and guide every cat home.
 
-One thumb. Small railway. Ten solvable puzzles.
+One thumb. Small railway. Five solvable puzzles.
 ```
 
 ## Current claim gates
@@ -70,11 +70,11 @@ Only `VERIFIED` claims appear in the paste-ready fields.
 | Claim used in the listing | Status | Evidence at the 2026-08-10 freeze | Publication rule |
 |---|---|---|---|
 | One-thumb junction switching routes cat commuters to matching stations | `VERIFIED` | Implemented gameplay loop and truth baseline | May remain in current copy |
-| Next-wave preview, queues, overflow, cause-focused failure, and immediate retry | `VERIFIED` | Implemented gameplay loop and truth baseline | May remain in current copy |
-| Ten handcrafted campaign levels | `VERIFIED` | L001–L010 exist on the frozen main anchor | Keep the number at ten until a later build is evidenced |
-| Every level passes content validation and solver gates | `VERIFIED` | Repository validation and solver gates cover L001–L010 | Do not generalize beyond the listed current levels |
+| Next-wave preview | `VERIFIED` | Implemented gameplay loop and truth baseline | May remain in current copy; queue readability and overflow/failure need separate real-level receipts |
+| Five handcrafted campaign levels in normal player progression | `VERIFIED` | `GameRoot.LevelBand` exposes L001–L005 on the frozen anchor | Recount the normal player path on the exact release candidate |
+| Every listed level passes content validation and solver gates | `VERIFIED` | Repository validation and solver gates cover L001–L005 | Do not generalize the listing count to authored but unreachable files |
 | No forced ads, energy, or loot-box system; every current level is solvable free | `VERIFIED` | Frozen-tree feature census and solver evidence | Keep the positioning line verbatim |
-| Color plus symbol coding for cat commuters | `VERIFIED` | Implemented gameplay and truth baseline | Describe the encoding; do not claim a completed accessibility audit |
+| Color plus symbol coding for stations | `VERIFIED` | Implemented gameplay and truth baseline | Describe the encoding; do not claim a completed accessibility audit |
 | Tabletop metro and model-railway premise | `VERIFIED` | Approved product premise | Describe the premise only; do not claim the current build matches an uncaptured art target |
 
 ## Gated future revisions — NOT PASTE-READY
@@ -84,11 +84,13 @@ reclassified as `VERIFIED` in the cross-pack claim ledger.
 
 | Blocked or future claim | Status | Minimum re-entry gate |
 |---|---|---|
-| 30 launch levels or six named districts | `BLOCKED` | All claimed levels merged, staged, validated, solver-gated, and present in the release candidate |
-| Daily Line, daily streaks, District Cup, or level select | `BLOCKED` | Player-facing implementation merged and exercised in a named release-candidate build |
-| Shop, IAP, RevenueCat surfaces, rewarded ads, or premium themes | `BLOCKED` | Production-mode prerequisite satisfied, implementation merged, policy review complete, and UI evidenced on the release candidate |
+| 30 launch levels | `BLOCKED` | All 30 pass exact-candidate validation/solver gates and are reachable through ordinary player flow; confirm with on-device Play-installed traversal evidence |
+| Six named districts | `BLOCKED` | Exact-candidate district inventory plus ordinary-flow on-device navigation across all six from the Play-installed build |
+| Daily Line, daily streaks, District Cup, or level select | `BLOCKED` | Promote only the specifically implemented limb after its own exact-candidate state tests and end-to-end on-device player-flow receipt |
+| Shop, IAP, RevenueCat surfaces, rewarded ads, or premium themes | `BLOCKED` | Production-mode prerequisite satisfied and security review complete; promote each limb only after its own signed configuration and on-device exact-candidate receipt |
+| Optional reminders | `BLOCKED` | Exact-candidate enable/disable UI, delivery/config receipt, and on-device opt-in/opt-out behavior; then insert the truthful phrase “optional reminders” and never promise “no notifications” |
 | Share cards, challenge links, or public social loops | `BLOCKED` | End-to-end share flow merged and verified from a release-candidate build |
-| Public Google Play availability | `BLOCKED` | Official Play Console publication receipt for the named track and version |
+| Public Google Play availability | `BLOCKED` | USA-visible public production listing checked logged out, with the matching package/build installed from Play |
 | Install, retention, revenue, conversion, rating, or posting-corpus results | `FUTURE COPY` | Dated source export; every rate includes its denominator and measurement window |
 | A claim that the public build matches the committed golden frame | `BLOCKED` | Corrected on-device art capture from the merged release-candidate build |
 
