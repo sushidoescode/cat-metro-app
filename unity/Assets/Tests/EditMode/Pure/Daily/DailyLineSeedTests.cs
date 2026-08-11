@@ -22,8 +22,15 @@ namespace CatMetro.Tests.Daily
         [TestCase(1835395200L, "2028-02-29")]
         [TestCase(1835481599L, "2028-02-29")]
         [TestCase(1835481600L, "2028-03-01")]
+        [TestCase(1801439999L, "2027-01-31")]
+        [TestCase(1801440000L, "2027-02-01")]
+        [TestCase(1803859199L, "2027-02-28")]
+        [TestCase(1803859200L, "2027-03-01")]
         [TestCase(-62135596800L, "0001-01-01")]
         [TestCase(253402300799L, "9999-12-31")]
+        [TestCase(-86401L, "1969-12-30")]
+        [TestCase(-86400L, "1969-12-31")]
+        [TestCase(-86399L, "1969-12-31")]
         [TestCase(-1L, "1969-12-31")]
         public void DateKeyFromUnixSeconds_UsesUtcMidnight(long instant, string expected) =>
             Assert.That(DailyLineSeed.DateKeyFromUnixSeconds(instant), Is.EqualTo(expected));

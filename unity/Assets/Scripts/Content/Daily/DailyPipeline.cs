@@ -91,6 +91,12 @@ namespace CatMetro.Content.Daily
         public readonly string BoardProvenance;
         public readonly bool ExitFailure;
 
+        public DailyRunReport(IReadOnlyList<DailyDateRecord> records,
+            string boardProvenance, bool exitFailure)
+            : this(DailySeed.GENERATOR_CONSTANT, records, boardProvenance, exitFailure)
+        {
+        }
+
         public DailyRunReport(string generator, IReadOnlyList<DailyDateRecord> records,
             string boardProvenance, bool exitFailure)
         {

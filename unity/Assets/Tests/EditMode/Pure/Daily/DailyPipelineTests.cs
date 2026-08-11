@@ -40,6 +40,24 @@ namespace CatMetro.Tests.Daily
         }
 
         [Test]
+        public void DailyRunReport_LegacyConstructorRemainsSourceCompatible()
+        {
+            var records = new List<DailyDateRecord>();
+            var constructor = typeof(DailyRunReport).GetConstructor(new[]
+            {
+                typeof(IReadOnlyList<DailyDateRecord>), typeof(string), typeof(bool),
+            });
+            var report = new DailyRunReport(records, "legacy-board", exitFailure: true);
+
+            Assert.That(constructor, Is.Not.Null,
+                "the runtime generator label must not remove CM-C6's public constructor");
+            Assert.That(report.Generator, Is.EqualTo(DailySeed.GENERATOR_CONSTANT));
+            Assert.That(report.Records, Is.SameAs(records));
+            Assert.That(report.BoardProvenance, Is.EqualTo("legacy-board"));
+            Assert.That(report.ExitFailure, Is.True);
+        }
+
+        [Test]
         public void RuntimeRequest_UsesItsSchemeForThePipelineAttempt()
         {
             var historical = DFixtures.Request(new[] { "2026-08-24" },

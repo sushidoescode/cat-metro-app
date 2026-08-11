@@ -27,6 +27,31 @@ if ! dotnet test dotnet/CatMetro.sln -c Release --nologo > "$tmp/test.out" 2>&1;
   fail "criterion 10: dotnet test not green"
 fi
 
+# Daily Line's two dated 90x2 proofs are intentionally absent from ordinary solution and Unity
+# discovery. Compile them behind their dedicated symbol and execute the exact fixture once here,
+# where the real-validator cost belongs. Exit 0 is insufficient: pin non-zero exact discovery and
+# result counts so a renamed filter or missing fixture fails closed.
+if ! dotnet test dotnet/CatMetro.Tests/CatMetro.Tests.csproj -c Release --nologo \
+    -p:DefineConstants=CATMETRO_DAILY_LONG_TESTS \
+    --filter FullyQualifiedName~CatMetro.Tests.Daily.DailyLongHorizonTests \
+    --logger 'console;verbosity=normal' > "$tmp/long-test.out" 2>&1; then
+  tail -40 "$tmp/long-test.out"
+  fail "criterion 10: Daily long horizon fixture not green"
+fi
+discovered=$(sed -nE \
+  's/.*NUnit3TestExecutor discovered ([0-9]+) of ([0-9]+) NUnit test cases.*/\1 \2/p' \
+  "$tmp/long-test.out" | tail -1)
+[ "$discovered" = "2 2" ] \
+  || fail "criterion 10: expected long discovery 2 of 2, found '${discovered:-none}'"
+total=$(sed -nE 's/^Total tests: ([0-9]+)$/\1/p' "$tmp/long-test.out" | tail -1)
+passed=$(sed -nE 's/^[[:space:]]*Passed: ([0-9]+)$/\1/p' "$tmp/long-test.out" | tail -1)
+[ "$total" = "2" ] && [ "$passed" = "2" ] \
+  || fail "criterion 10: expected long result 2 passed of 2, found passed=${passed:-none} total=${total:-none}"
+grep -q 'Passed ShippedNinetyDateHorizon_IsSolvedNonBlockingAndByteDeterministic' \
+  "$tmp/long-test.out" || fail "criterion 10: shipped candidate horizon result missing"
+grep -q 'Passed ShippedFallbackNinetyDateHorizon_ExhaustsThenAdmitsFreshDeterministicBoards' \
+  "$tmp/long-test.out" || fail "criterion 10: shipped fallback horizon result missing"
+
 # Criteria 6b + 7 (+ the criterion-3 smoke instance): two 30-date runs through the host are
 # byte-identical, and each prints exactly one anchored DAILY_SEED line per date with nothing
 # else DAILY_SEED-shaped.
@@ -114,5 +139,5 @@ lit=$(grep -rEn --include='*.cs' --exclude-dir=obj --exclude-dir=bin '\b90\b' \
   "$daily_root" dotnet/CatMetro.DailyTools || true)
 [ -z "$lit" ] || fail "criterion 3c: hard-coded horizon literal: $lit"
 
-echo "daily-pipeline.test.sh: OK (2, 3c-d smoke, 5, 6a-c, 7, 8b, 9-file, 10, 11)"
+echo "daily-pipeline.test.sh: OK (2, 3c-d smoke, 5, 6a-c, 7, 8b, 9-file, 10 long=2, 11)"
 exit 0

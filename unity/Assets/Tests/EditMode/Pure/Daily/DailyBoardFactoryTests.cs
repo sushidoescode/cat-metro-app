@@ -10,6 +10,20 @@ namespace CatMetro.Tests.Daily
 {
     public sealed class DailyBoardFactoryTests
     {
+        [Test]
+        public void ContentAssembly_HasExactlyOneConcreteDailyBoardFactory()
+        {
+            var implementations = typeof(DailyBoardFactory).Assembly.GetTypes()
+                .Where(type => type.Namespace == typeof(DailyBoardFactory).Namespace
+                    && type.IsClass
+                    && !type.IsAbstract
+                    && typeof(IBoardFactory).IsAssignableFrom(type))
+                .ToArray();
+
+            Assert.That(implementations, Is.EqualTo(new[] { typeof(DailyBoardFactory) }),
+                "direct and inherited IBoardFactory implementations are both production owners");
+        }
+
         [TestCase("2026-08-24", 0.30)]
         [TestCase("2026-08-25", 0.35)]
         [TestCase("2026-08-26", 0.38)]
