@@ -40,6 +40,17 @@ namespace CatMetro.Tests.Daily
 
         public static LevelDto UnsolvableDto() => VFixtures.Import(VFixtures.UnsolvableLevel()).Dto;
 
+        public static LevelDto TrivialWinDto() => VFixtures.Import(VFixtures.TrivialWinLevel()).Dto;
+
+        public static LevelDto NullMetaDto()
+        {
+            var dto = L001Dto();
+            return new LevelDto(dto.SchemaVersion, dto.Id, dto.Name, dto.Seed, meta: null,
+                dto.Nodes.Span.ToArray(), dto.Edges.Span.ToArray(), dto.Sources.Span.ToArray(),
+                dto.Stations.Span.ToArray(), dto.Switches.Span.ToArray(), dto.Waves.Span.ToArray(),
+                dto.Win, dto.Economy);
+        }
+
         // Always the same imported corpus board — the shape the host's Q-S harness stub has.
         public sealed class FixedFactory : IBoardFactory
         {
@@ -85,6 +96,37 @@ namespace CatMetro.Tests.Daily
                 throw new System.InvalidOperationException("factory detonated (totality probe)");
         }
 
+        // Task 4's controlled seam: candidate/fallback DTO selection and call capture only.
+        // Admission remains the production pipeline's real CorpusValidator responsibility.
+        public sealed class ExhaustingFallbackFactory : IBoardFactory, IDailyFallbackBoardFactory
+        {
+            private readonly LevelDto _candidate;
+            private readonly LevelDto _fallback;
+
+            public readonly List<(uint seed, string dateKey, int k)> CandidateCalls =
+                new List<(uint, string, int)>();
+            public readonly List<(uint seed, string dateKey)> FallbackCalls =
+                new List<(uint, string)>();
+
+            public ExhaustingFallbackFactory(LevelDto candidate, LevelDto fallback)
+            {
+                _candidate = candidate;
+                _fallback = fallback;
+            }
+
+            public LevelDto Build(uint seed, string dateKey, int k)
+            {
+                CandidateCalls.Add((seed, dateKey, k));
+                return _candidate;
+            }
+
+            public LevelDto BuildFallback(uint seed, string dateKey)
+            {
+                FallbackCalls.Add((seed, dateKey));
+                return _fallback;
+            }
+        }
+
         public static DailyRunRequest Request(IReadOnlyList<string> dateKeys, IBoardFactory factory,
             DailyPipelineConfig config = null, byte[] curveBytes = null)
         {
@@ -97,6 +139,24 @@ namespace CatMetro.Tests.Daily
                 factory,
                 referenceTimestamp: null,
                 boardProvenance: "test-stub");
+        }
+
+        public static DailyRunRequest RuntimeRequest(IReadOnlyList<string> dateKeys,
+            IBoardFactory factory, DailyPipelineConfig config = null,
+            byte[] curveBytes = null,
+            int maxNodesExpanded = CatMetro.Domain.Solver.SolverBounds.MAX_NODES_EXPANDED)
+        {
+            return new DailyRunRequest(
+                VFixtures.SchemaBytes(),
+                VFixtures.BareConfig(),
+                config ?? TinyConfig(),
+                curveBytes,
+                dateKeys,
+                factory,
+                referenceTimestamp: null,
+                boardProvenance: "runtime-test",
+                DailyLineSeedScheme.Instance,
+                maxNodesExpanded);
         }
 
         public static DailyRunReport Run(DailyRunRequest request)

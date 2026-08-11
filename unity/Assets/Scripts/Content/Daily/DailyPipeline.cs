@@ -51,7 +51,7 @@ namespace CatMetro.Content.Daily
     public sealed class DailyDateRecord
     {
         public readonly string DateKey;
-        public readonly int K;          // resolved salt, or the last attempted salt on failure
+        public readonly int K;          // resolved salt; fallback uses its base variation 0
         public readonly uint Seed;      // seed at K
         public readonly string Verdict; // "Pass" | "Fail"
         public readonly string Detail;  // on Fail: names the stage and the reason (criterion 5)
@@ -59,14 +59,28 @@ namespace CatMetro.Content.Daily
         public readonly RampVerdict Ramp;
         public readonly int SolverCompletionTicks; // -1 when stage 4 did not solve
         public readonly bool Blocks;
+        public readonly LevelDto Board;   // retained only after runtime admission
+        public readonly string BoardJson; // the admitted board's one canonical serialization
+        public readonly bool UsedFallback;
 
         public DailyDateRecord(string dateKey, int k, uint seed, string verdict, string detail,
             IReadOnlyList<StageVerdict> stageVerdicts, RampVerdict ramp,
             int solverCompletionTicks, bool blocks)
+            : this(dateKey, k, seed, verdict, detail, stageVerdicts, ramp,
+                solverCompletionTicks, blocks, board: null, boardJson: null,
+                usedFallback: false)
+        {
+        }
+
+        public DailyDateRecord(string dateKey, int k, uint seed, string verdict, string detail,
+            IReadOnlyList<StageVerdict> stageVerdicts, RampVerdict ramp,
+            int solverCompletionTicks, bool blocks, LevelDto board, string boardJson,
+            bool usedFallback)
         {
             DateKey = dateKey; K = k; Seed = seed; Verdict = verdict; Detail = detail;
             StageVerdicts = stageVerdicts; Ramp = ramp;
             SolverCompletionTicks = solverCompletionTicks; Blocks = blocks;
+            Board = board; BoardJson = boardJson; UsedFallback = usedFallback;
         }
     }
 
@@ -202,13 +216,11 @@ namespace CatMetro.Content.Daily
             int saltMaxK, IReadOnlyList<double> curve)
         {
             var inv = System.Globalization.CultureInfo.InvariantCulture;
-            IReadOnlyList<StageVerdict> lastVerdicts = System.Array.Empty<StageVerdict>();
-            CatMetro.Domain.Solver.SolveResult lastSolve = null;
-            LevelDto lastDto = null;
-            string lastFailure = "no attempt ran";
+            AdmissionResult lastAdmission = AdmissionResult.Rejected("no attempt ran");
+            AdmissionResult admitted = null;
             uint seed = 0;
             int k = 0;
-            bool resolved = false;
+            bool usedFallback = false;
 
             // Criterion 4: bounded, deterministic — k = 0..SALT_MAX_K inclusive, then exhaustion.
             for (k = 0; k <= saltMaxK; k++)
@@ -222,70 +234,168 @@ namespace CatMetro.Content.Daily
                 }
                 catch (System.Exception ex)
                 {
-                    lastFailure = "board factory threw " + ex.GetType().Name + ": " + ex.Message;
-                    lastVerdicts = System.Array.Empty<StageVerdict>();
-                    lastSolve = null; lastDto = null;
+                    lastAdmission = AdmissionResult.Rejected(
+                        "board factory threw " + ex.GetType().Name + ": " + ex.Message);
                     continue;
                 }
                 if (dto == null)
                 {
-                    lastFailure = "board factory returned null";
-                    lastVerdicts = System.Array.Empty<StageVerdict>();
-                    lastSolve = null; lastDto = null;
+                    lastAdmission = AdmissionResult.Rejected("board factory returned null");
                     continue;
                 }
 
-                string json;
-                try
-                {
-                    json = DailyBoardJson.Serialize(dto);
-                }
-                catch (System.Exception ex)
-                {
-                    lastFailure = "board serialisation threw " + ex.GetType().Name + ": " + ex.Message;
-                    lastVerdicts = System.Array.Empty<StageVerdict>();
-                    lastSolve = null; lastDto = dto;
-                    continue;
-                }
-
-                // Criterion 5: CM-C5's ACTUAL stages over the candidate, as a single-member
-                // non-campaign corpus — identical blocking semantics by construction.
-                var member = new CorpusMember(
-                    dateKey + "#k" + k.ToString(inv),
-                    System.Text.Encoding.UTF8.GetBytes(json),
-                    isCampaign: false);
-                var report = CorpusValidator.Validate(new ValidationRequest(
-                    request.SchemaBytes, request.ValidatorConfig, request.ReferenceTimestamp,
-                    new[] { member }, request.MaxNodesExpanded));
-                var level = report.Levels[0];
-                lastVerdicts = level.Verdicts;
-                lastSolve = level.Solve;
-                lastDto = dto;
-
-                if (!report.ExitFailure) { resolved = true; break; }
-                lastFailure = BlockingSummary(level.Verdicts);
+                lastAdmission = Admit(request, dateKey + "#k" + k.ToString(inv), dto);
+                if (!lastAdmission.Accepted) continue;
+                admitted = lastAdmission;
+                break;
             }
-            if (!resolved) k = saltMaxK; // the last attempted salt
 
-            RampVerdict ramp = lastDto != null
-                ? WeekdayRamp.Check(curve, dateKey, lastDto.Meta.DifficultyTarget)
+            if (admitted == null)
+            {
+                k = saltMaxK; // the last attempted candidate salt
+                if (request.Factory is IDailyFallbackBoardFactory fallbackFactory)
+                {
+                    k = 0;
+                    seed = request.SeedScheme.Derive(dateKey, 0);
+                    LevelDto fallback = null;
+                    try
+                    {
+                        fallback = fallbackFactory.BuildFallback(seed, dateKey);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        lastAdmission = AdmissionResult.Rejected(
+                            "fallback factory threw " + ex.GetType().Name + ": " + ex.Message);
+                    }
+
+                    if (fallback == null)
+                    {
+                        if (!lastAdmission.Failure.StartsWith("fallback factory threw",
+                            System.StringComparison.Ordinal))
+                            lastAdmission = AdmissionResult.Rejected("fallback factory returned null");
+                    }
+                    else
+                    {
+                        lastAdmission = Admit(request, dateKey + "#fallback", fallback);
+                        if (lastAdmission.Accepted)
+                        {
+                            admitted = lastAdmission;
+                            usedFallback = true;
+                        }
+                    }
+                }
+            }
+
+            LevelDto rampDto = admitted != null ? admitted.Board : null;
+            RampVerdict ramp = rampDto != null
+                ? WeekdayRamp.Check(curve, dateKey, rampDto.Meta.DifficultyTarget)
                 : new RampVerdict(StageVerdictCode.Skipped, "SKIPPED(no board)", "", false);
 
-            int solverTicks = lastSolve != null
-                && lastSolve.Verdict == CatMetro.Domain.Solver.SolveVerdict.Solved
-                ? lastSolve.CompletionTicks : -1;
+            int solverTicks = lastAdmission.Solve != null
+                && lastAdmission.Solve.Verdict == CatMetro.Domain.Solver.SolveVerdict.Solved
+                ? lastAdmission.Solve.CompletionTicks : -1;
 
-            if (!resolved)
+            if (admitted == null)
                 return new DailyDateRecord(dateKey, k, seed, "Fail",
-                    "SALT_MAX_K exhausted (k=0.." + saltMaxK.ToString(inv) + ", A-C6-2) — last attempt: "
-                    + lastFailure, lastVerdicts, ramp, solverTicks, blocks: true);
+                    "SALT_MAX_K exhausted (k=0.." + saltMaxK.ToString(inv)
+                    + ", A-C6-2) — "
+                    + (request.Factory is IDailyFallbackBoardFactory
+                        ? "fallback admission failed: " : "last attempt: ")
+                    + lastAdmission.Failure, lastAdmission.Verdicts, ramp, solverTicks,
+                    blocks: true, board: null, boardJson: null, usedFallback: false);
 
             if (ramp.Blocks)
                 return new DailyDateRecord(dateKey, k, seed, "Fail",
-                    "WeekdayRamp — " + ramp.Detail, lastVerdicts, ramp, solverTicks, blocks: true);
+                    "WeekdayRamp — " + ramp.Detail, admitted.Verdicts, ramp, solverTicks,
+                    blocks: true, admitted.Board, admitted.BoardJson, usedFallback);
 
             return new DailyDateRecord(dateKey, k, seed, "Pass", "",
-                lastVerdicts, ramp, solverTicks, blocks: false);
+                admitted.Verdicts, ramp, solverTicks, blocks: false,
+                admitted.Board, admitted.BoardJson, usedFallback);
+        }
+
+        // Candidate and fallback admission have one implementation: one canonical serialization,
+        // one real CM-C5 validator call, exactly the eleven ordered level rows, no blocking
+        // verdict, and an actual solver proof. Rejected board bytes never leave this helper.
+        private static AdmissionResult Admit(DailyRunRequest request, string sourceName, LevelDto dto)
+        {
+            try
+            {
+                string json = DailyBoardJson.Serialize(dto);
+                var member = new CorpusMember(sourceName,
+                    System.Text.Encoding.UTF8.GetBytes(json), isCampaign: false);
+                var report = CorpusValidator.Validate(new ValidationRequest(
+                    request.SchemaBytes, request.ValidatorConfig, request.ReferenceTimestamp,
+                    new[] { member }, request.MaxNodesExpanded));
+
+                if (report.Levels.Count != 1)
+                    return AdmissionResult.Rejected(
+                        "validator returned " + report.Levels.Count + " levels; expected exactly one");
+
+                var level = report.Levels[0];
+                if (!HasElevenOrderedStages(level.Verdicts))
+                    return AdmissionResult.Rejected("validator did not return stages 1..11 in order",
+                        level.Verdicts, level.Solve);
+                if (report.ExitFailure || HasBlockingVerdict(level.Verdicts))
+                    return AdmissionResult.Rejected(BlockingSummary(level.Verdicts),
+                        level.Verdicts, level.Solve);
+                if (level.Solve == null
+                    || level.Solve.Verdict != CatMetro.Domain.Solver.SolveVerdict.Solved)
+                    return AdmissionResult.Rejected("Solver — "
+                        + (level.Solve == null ? "missing solve result" : level.Solve.Verdict.ToString()),
+                        level.Verdicts, level.Solve);
+
+                return AdmissionResult.Admitted(dto, json, level.Verdicts, level.Solve);
+            }
+            catch (System.Exception ex)
+            {
+                return AdmissionResult.Rejected(
+                    "board admission threw " + ex.GetType().Name + ": " + ex.Message);
+            }
+        }
+
+        private static bool HasElevenOrderedStages(IReadOnlyList<StageVerdict> verdicts)
+        {
+            if (verdicts == null || verdicts.Count != 11) return false;
+            for (int i = 0; i < verdicts.Count; i++)
+                if ((int)verdicts[i].Stage != i + 1) return false;
+            return true;
+        }
+
+        private static bool HasBlockingVerdict(IReadOnlyList<StageVerdict> verdicts)
+        {
+            foreach (var verdict in verdicts)
+                if (verdict.Blocks) return true;
+            return false;
+        }
+
+        private sealed class AdmissionResult
+        {
+            public readonly bool Accepted;
+            public readonly LevelDto Board;
+            public readonly string BoardJson;
+            public readonly IReadOnlyList<StageVerdict> Verdicts;
+            public readonly CatMetro.Domain.Solver.SolveResult Solve;
+            public readonly string Failure;
+
+            private AdmissionResult(bool accepted, LevelDto board, string boardJson,
+                IReadOnlyList<StageVerdict> verdicts,
+                CatMetro.Domain.Solver.SolveResult solve, string failure)
+            {
+                Accepted = accepted; Board = board; BoardJson = boardJson;
+                Verdicts = verdicts; Solve = solve; Failure = failure;
+            }
+
+            public static AdmissionResult Admitted(LevelDto board, string boardJson,
+                IReadOnlyList<StageVerdict> verdicts,
+                CatMetro.Domain.Solver.SolveResult solve) =>
+                new AdmissionResult(true, board, boardJson, verdicts, solve, "");
+
+            public static AdmissionResult Rejected(string failure,
+                IReadOnlyList<StageVerdict> verdicts = null,
+                CatMetro.Domain.Solver.SolveResult solve = null) =>
+                new AdmissionResult(false, null, null,
+                    verdicts ?? System.Array.Empty<StageVerdict>(), solve, failure);
         }
 
         private static string BlockingSummary(IReadOnlyList<StageVerdict> verdicts)
