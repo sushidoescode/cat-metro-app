@@ -19,6 +19,7 @@ namespace CatMetro.Content.Daily
         public readonly IBoardFactory Factory;
         public readonly string ReferenceTimestamp;      // host-computed or null (CM-C5 A-C5-4)
         public readonly string BoardProvenance;         // artifact honesty: names the Q-S stub
+        public readonly IDailySeedScheme SeedScheme;
         public readonly int MaxNodesExpanded;
 
         public DailyRunRequest(byte[] schemaBytes, ValidatorConfig validatorConfig,
@@ -26,11 +27,23 @@ namespace CatMetro.Content.Daily
             IReadOnlyList<string> dateKeys, IBoardFactory factory,
             string referenceTimestamp, string boardProvenance,
             int maxNodesExpanded = CatMetro.Domain.Solver.SolverBounds.MAX_NODES_EXPANDED)
+            : this(schemaBytes, validatorConfig, pipelineConfig, weekdayCurveBytes, dateKeys,
+                factory, referenceTimestamp, boardProvenance, HistoricalDailySeedScheme.Instance,
+                maxNodesExpanded)
+        {
+        }
+
+        public DailyRunRequest(byte[] schemaBytes, ValidatorConfig validatorConfig,
+            DailyPipelineConfig pipelineConfig, byte[] weekdayCurveBytes,
+            IReadOnlyList<string> dateKeys, IBoardFactory factory,
+            string referenceTimestamp, string boardProvenance, IDailySeedScheme seedScheme,
+            int maxNodesExpanded = CatMetro.Domain.Solver.SolverBounds.MAX_NODES_EXPANDED)
         {
             SchemaBytes = schemaBytes; ValidatorConfig = validatorConfig;
             PipelineConfig = pipelineConfig; WeekdayCurveBytes = weekdayCurveBytes;
             DateKeys = dateKeys; Factory = factory;
             ReferenceTimestamp = referenceTimestamp; BoardProvenance = boardProvenance;
+            SeedScheme = seedScheme;
             MaxNodesExpanded = maxNodesExpanded;
         }
     }
@@ -59,14 +72,16 @@ namespace CatMetro.Content.Daily
 
     public sealed class DailyRunReport
     {
+        public readonly string Generator;
         public readonly IReadOnlyList<DailyDateRecord> Records;
         public readonly string BoardProvenance;
         public readonly bool ExitFailure;
 
-        public DailyRunReport(IReadOnlyList<DailyDateRecord> records, string boardProvenance,
-            bool exitFailure)
+        public DailyRunReport(string generator, IReadOnlyList<DailyDateRecord> records,
+            string boardProvenance, bool exitFailure)
         {
-            Records = records; BoardProvenance = boardProvenance; ExitFailure = exitFailure;
+            Generator = generator; Records = records;
+            BoardProvenance = boardProvenance; ExitFailure = exitFailure;
         }
 
         // The artifact, serialised in-memory and handed to the host (criterion 6): one record per
@@ -77,7 +92,7 @@ namespace CatMetro.Content.Daily
         {
             var root = new Newtonsoft.Json.Linq.JObject
             {
-                ["generator"] = DailySeed.GENERATOR_CONSTANT,
+                ["generator"] = Generator,
                 ["boardProvenance"] = BoardProvenance,
             };
             var dates = new Newtonsoft.Json.Linq.JArray();
@@ -145,9 +160,9 @@ namespace CatMetro.Content.Daily
                 return Fail(ContentErrorKind.MalformedJson, "null request");
             if (request.SchemaBytes == null || request.ValidatorConfig == null
                 || request.PipelineConfig == null || request.DateKeys == null
-                || request.Factory == null)
+                || request.Factory == null || request.SeedScheme == null)
                 return Fail(ContentErrorKind.MissingField,
-                    "request needs schema bytes, validator config, pipeline config, date keys and a factory");
+                    "request needs schema bytes, validator config, pipeline config, date keys, a factory and a seed scheme");
 
             // A-C6-4: every key validated up front; one malformed key rejects the run — deriving
             // from a malformed key would silently fork the shared board.
@@ -179,7 +194,8 @@ namespace CatMetro.Content.Daily
             bool exitFailure = false;
             foreach (var r in records) exitFailure |= r.Blocks;
             return ContentResult<DailyRunReport>.Success(
-                new DailyRunReport(records, request.BoardProvenance, exitFailure));
+                new DailyRunReport(request.SeedScheme.ArtifactLabel, records,
+                    request.BoardProvenance, exitFailure));
         }
 
         private static DailyDateRecord RunDate(DailyRunRequest request, string dateKey,
@@ -197,7 +213,7 @@ namespace CatMetro.Content.Daily
             // Criterion 4: bounded, deterministic — k = 0..SALT_MAX_K inclusive, then exhaustion.
             for (k = 0; k <= saltMaxK; k++)
             {
-                seed = DailySeed.Derive(dateKey, k);
+                seed = request.SeedScheme.Derive(dateKey, k);
 
                 LevelDto dto;
                 try

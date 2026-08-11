@@ -49,6 +49,30 @@ namespace CatMetro.Tests.Daily
             Assert.That(ThreeDateReport().ToJson(), Is.EqualTo(ThreeDateReport().ToJson()));
         }
 
+        [Test]
+        public void ToJson_RuntimeSchemeStartsWithItsGeneratorLabel()
+        {
+            var historical = DFixtures.Request(new[] { "2026-08-24" },
+                new DFixtures.FixedFactory(DFixtures.L001Dto()));
+            var runtime = new DailyRunRequest(
+                historical.SchemaBytes,
+                historical.ValidatorConfig,
+                historical.PipelineConfig,
+                historical.WeekdayCurveBytes,
+                historical.DateKeys,
+                historical.Factory,
+                historical.ReferenceTimestamp,
+                historical.BoardProvenance,
+                DailyLineSeedScheme.Instance,
+                historical.MaxNodesExpanded);
+
+            Assert.That(DFixtures.Run(runtime).ToJson(),
+                Does.StartWith("{\n  \"generator\": \"CM-DAILY-\""));
+            Assert.That(ThreeDateReport().ToJson(),
+                Does.StartWith("{\n  \"generator\": \"CM-DAILY-1\""),
+                "the historical artifact prefix must remain byte-identical");
+        }
+
         // Criterion 6b (format half): one anchored line per date, nothing else DAILY_SEED-shaped.
         [Test]
         public void SeedLines_OnePerDate_AnchoredFormat()
