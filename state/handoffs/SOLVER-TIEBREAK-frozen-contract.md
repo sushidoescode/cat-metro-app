@@ -618,3 +618,17 @@ security review not required; the priced independent review above is complete. G
 The final evidence/state commit is non-production bookkeeping; it will be pushed and its current-head
 checks verified before the lane asks for merge authority. HC-25 remains explicitly ungranted: the
 PR must not be armed or merged until the human supplies the separate in-session word.
+
+### Human contract amendment — 2026-08-11
+
+The human supplied the following in-conversation contract ruling verbatim:
+
+> AMEND — accept the implemented shared-work accounting and pin-free exact-BFS dominance.
+
+This is an agent-relayed record with the H-1-class confirmability caveat. It amends the frozen
+contract only to accept the implementation already present at reviewed code tip `32fd9c0`: the
+shared-work accounting described above and the statically pin-free exact-BFS command-count
+dominance described above. It does not authorize any further semantic change. The human expressly
+stated that this ruling is **not HC-25 and arms nothing**. A current-head independent review must be
+posted on PR #66 before the PR is undrafted; the separate fresh HC-25 word remains required before
+arming or merging.
