@@ -47,6 +47,7 @@ namespace CatMetro.Editor
         [MenuItem("Cat Metro/Build Diorama Assets")]
         public static void Build()
         {
+            RequirePolyforkLocalCustody();
             EnsureFolder("Assets/Art", "Materials");
             EnsureFolder("Assets/Art", "Meshes");
             EnsureFolder("Assets/Art", "Settings");
@@ -147,6 +148,31 @@ namespace CatMetro.Editor
                 throw new InvalidOperationException("Could not save " + ScenePath);
             AssetDatabase.SaveAssets();
             Debug.Log("CAT_METRO_DIORAMA_AUTHORED prefabs=" + entries.Length);
+        }
+
+        private static void RequirePolyforkLocalCustody()
+        {
+            string localModelRoot = Path.Combine(
+                Application.dataPath, "Art", "Polyfork", "Models");
+            string[] models =
+            {
+                "polyfork_tram_track_tile_f3c69a.fbx",
+                "polyfork_train_engine_180979.fbx",
+                "polyfork_log_cabin_4fac3b.fbx",
+                "polyfork_young_pine_0d7695.fbx",
+                "polyfork_wooden_fence_section_5f04b7.fbx",
+                "polyfork_wooden_bench_661da4.fbx",
+                "polyfork_sandwich_board_sign_cb5e7c.fbx",
+                "polyfork_street_lamp_29f365.fbx",
+                "polyfork_coffee_cup_90be67.fbx",
+            };
+            foreach (string model in models)
+            {
+                string fbx = Path.Combine(localModelRoot, model);
+                if (!File.Exists(fbx) || !File.Exists(fbx + ".meta"))
+                    throw new InvalidOperationException(
+                        "Licensed local Polyfork custody is incomplete: " + model);
+            }
         }
 
         private static VolumeProfile ConfigureTabletopRendering()

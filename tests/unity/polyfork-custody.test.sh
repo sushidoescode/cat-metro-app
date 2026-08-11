@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ADR-0011 public-repository custody gate. The licensed derivatives may exist only as
+# ADR-0011 public-repository custody gate. Licensed derivatives may exist only as
 # ignored local inputs; this test never prints their contents.
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -10,44 +10,117 @@ model_root="unity/Assets/Art/Polyfork/Models"
 tracked=$(git ls-files "$model_root/*.fbx" "$model_root/*.fbx.meta")
 [ -z "$tracked" ] || fail "licensed FBX derivatives or metadata are tracked"
 
-names=(
-  polyfork_tram_track_tile_f3c69a.fbx
-  polyfork_train_engine_180979.fbx
-  polyfork_log_cabin_4fac3b.fbx
-  polyfork_young_pine_0d7695.fbx
-  polyfork_wooden_fence_section_5f04b7.fbx
-  polyfork_wooden_bench_661da4.fbx
-  polyfork_sandwich_board_sign_cb5e7c.fbx
-  polyfork_street_lamp_29f365.fbx
-  polyfork_coffee_cup_90be67.fbx
+python3 - "$model_root" "${CM_REQUIRE_POLYFORK_LOCAL:-0}" <<'PY'
+from __future__ import annotations
+
+import hashlib
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+
+def fail(message: str) -> None:
+    print(f"polyfork-custody.test.sh: FAIL — {message}")
+    raise SystemExit(1)
+
+
+root = Path.cwd()
+model_root = root / sys.argv[1]
+require_local = sys.argv[2] == "1"
+provenance = root / "unity/Assets/Art/Polyfork/PROVENANCE.md"
+authoring = root / "unity/Assets/Art/Polyfork/Editor/CatMetroDioramaAuthoring.cs"
+prefab_root = root / "unity/Assets/Prefabs/Diorama"
+
+row_pattern = re.compile(
+    r"^\| \[[^]]+\]\([^)]+\) \(`(?P<asset_id>[^`]+)`\)"
+    r" \| (?P<tris>[0-9,]+)"
+    r" \| `(?P<source>[0-9a-f]{64})`"
+    r" \| `(?P<name>[^`]+\.fbx)`"
+    r" \| `(?P<derivative>[0-9a-f]{64})`"
+    r" \| `(?P<guid>[0-9a-f]{32})`"
+    r" \| `(?P<meta>[0-9a-f]{64})` \|$"
 )
-hashes=(
-  7c97c3d0b170aa940edce47c2f3c9dbcf14f67da6f9174515ee857aab541d987
-  e505020cd12effebdfd4f0d632bf7d46b2ed8c976e9847defdc12e3ce256e418
-  1339fabc925e6832d0617d25631ca95315e4906baada5554e0ef90378691a7fc
-  e7887354371ecbce519e81e2dce68a05aa1e6b9f573d381dffb17db231735fde
-  a0dd008200317da8dbd46cb37cf4043d558e64be2983e78bd50eaec5cf4aba88
-  8629dabcafac68d8a610bd5eb60e515dbda0dcb1980ae56fca1bd908f22eb7f9
-  498223ca9062bba616ff83df73a17954e8ec2c34dc2153bbe2687cc38183eb3a
-  1ec680dd882c9df00b45b9d7526d09157b2a3513e9c578591c0409eb7b7ba5e6
-  df64b866c0a2e116b3308f08467004eed599f956c4bf65cf34cccdb6abe664e2
-)
+rows = []
+for line in provenance.read_text(encoding="utf-8").splitlines():
+    match = row_pattern.match(line)
+    if match:
+        rows.append(match.groupdict())
 
-for index in "${!names[@]}"; do
-  fbx="$model_root/${names[$index]}"
-  meta="$fbx.meta"
-  git check-ignore --no-index --quiet "$fbx" \
-    || fail "$fbx is not protected by gitignore"
-  git check-ignore --no-index --quiet "$meta" \
-    || fail "$meta is not protected by gitignore"
+if len(rows) != 9:
+    fail(f"PROVENANCE must contain exactly 9 complete receipt rows, found {len(rows)}")
+for key in ("asset_id", "source", "name", "derivative", "guid", "meta"):
+    values = [row[key] for row in rows]
+    if len(set(values)) != 9:
+        fail(f"PROVENANCE {key} values must be unique")
 
-  if [ -e "$fbx" ] || [ -e "$meta" ]; then
-    [ -f "$fbx" ] && [ -f "$meta" ] \
-      || fail "local custody must keep ${names[$index]} and its metadata together"
-    actual=$(shasum -a 256 "$fbx" | awk '{print $1}')
-    [ "$actual" = "${hashes[$index]}" ] \
-      || fail "local derivative hash mismatch for ${names[$index]}"
-  fi
-done
+authoring_text = authoring.read_text(encoding="utf-8")
+preflight_token = "RequirePolyforkLocalCustody();"
+first_mutation_token = 'EnsureFolder("Assets/Art", "Materials");'
+if preflight_token not in authoring_text:
+    fail("diorama authoring does not preflight the licensed local asset pack")
+if authoring_text.index(preflight_token) > authoring_text.index(first_mutation_token):
+    fail("diorama authoring preflight must run before asset mutation")
+for row in rows:
+    if authoring_text.count(f'new Dressing("{row["name"]}"') != 1:
+        fail(f"authoring manifest must name {row['name']} exactly once")
 
-echo "polyfork-custody.test.sh: OK (public tree clean; ignored local custody verified when present)"
+prefabs = sorted(prefab_root.glob("Polyfork_*.prefab"))
+if len(prefabs) != 9:
+    fail(f"expected 9 Cat-Metro Polyfork prefabs, found {len(prefabs)}")
+prefab_contents = {path: path.read_text(encoding="utf-8") for path in prefabs}
+prefab_text = "\n".join(prefab_contents.values())
+for forbidden in ("Mesh:", "m_VertexData:", "m_IndexBuffer:", "m_CompressedMesh:", "_typelessdata:"):
+    if forbidden in prefab_text:
+        fail(f"Cat-Metro prefabs embed mesh payload token {forbidden}")
+for row in rows:
+    referencing_prefabs = [
+        path for path, contents in prefab_contents.items()
+        if re.search(rf"guid: {re.escape(row['guid'])}\b", contents)
+    ]
+    if len(referencing_prefabs) != 1:
+        fail(
+            f"receipt GUID {row['guid']} must belong to exactly one Cat-Metro prefab, "
+            f"found {len(referencing_prefabs)}"
+        )
+
+expected_fbx = {model_root / row["name"] for row in rows}
+expected_meta = {Path(str(path) + ".meta") for path in expected_fbx}
+actual_fbx = set(model_root.glob("*.fbx")) if model_root.is_dir() else set()
+actual_meta = set(model_root.glob("*.fbx.meta")) if model_root.is_dir() else set()
+
+unexpected = (actual_fbx - expected_fbx) | (actual_meta - expected_meta)
+if unexpected:
+    fail("unexpected local FBX or metadata exists in the custody directory")
+present = actual_fbx | actual_meta
+expected = expected_fbx | expected_meta
+if present and present != expected:
+    fail("local custody must contain either zero files or all 9 FBX/meta pairs")
+if require_local and present != expected:
+    fail("CM_REQUIRE_POLYFORK_LOCAL=1 requires all 9 FBX/meta pairs")
+
+for row in rows:
+    fbx = model_root / row["name"]
+    meta = Path(str(fbx) + ".meta")
+    for path in (fbx, meta):
+        result = subprocess.run(
+            ["git", "check-ignore", "--no-index", "--quiet", str(path.relative_to(root))],
+            cwd=root,
+            check=False,
+        )
+        if result.returncode != 0:
+            fail(f"{path.relative_to(root)} is not protected by gitignore")
+    if not present:
+        continue
+    if hashlib.sha256(fbx.read_bytes()).hexdigest() != row["derivative"]:
+        fail(f"local derivative hash mismatch for {row['name']}")
+    if hashlib.sha256(meta.read_bytes()).hexdigest() != row["meta"]:
+        fail(f"local metadata hash mismatch for {row['name']}")
+    guid_match = re.search(r"^guid: ([0-9a-f]{32})$", meta.read_text(encoding="utf-8"), re.MULTILINE)
+    if guid_match is None or guid_match.group(1) != row["guid"]:
+        fail(f"local metadata GUID mismatch for {row['name']}")
+
+profile = "hydrated-local" if present else "clean-public"
+print(f"polyfork-custody.test.sh: OK ({profile}; 9 receipts; no tracked derivatives)")
+PY

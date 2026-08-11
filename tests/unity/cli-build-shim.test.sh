@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# ART-DIORAMA criterion 10: a clean clone can deterministically produce an APK.
+# ART-DIORAMA criterion 10: a licensed, locally hydrated clone can produce the APK;
+# a clean public clone must fail before mutating build output or Editor state.
 set -eu
 cd "$(git rev-parse --show-toplevel)"
 
@@ -12,6 +13,8 @@ grep -q 'CM_APK_OUT' "$shim" || fail "output seam is missing"
 grep -q 'CM_DEV_BUILD' "$shim" || fail "development-build seam is missing"
 grep -q 'Path.GetFullPath' "$shim" || fail "output path is not normalized"
 grep -q 'Path.GetExtension' "$shim" || fail "APK extension is not fail-closed"
+grep -q 'RequirePolyforkLocalCustody' "$shim" \
+  || fail "build does not require the licensed local asset pack"
 grep -q 'Directory.CreateDirectory' "$shim" || fail "output parent is not created"
 grep -q 'EditorUserBuildSettings.buildAppBundle = false' "$shim" \
   || fail "inherited editor state can still select AAB"
@@ -21,5 +24,12 @@ grep -Eq '^guid: [0-9a-f]{32}$' "$meta" || fail "stable Unity meta GUID is missi
 if grep -Eq 'UNTRACKED|deleted after the session' "$shim"; then
   fail "committed shim still claims to be disposable"
 fi
+
+preflight_line=$(grep -n 'if (!RequirePolyforkLocalCustody())' "$shim" | cut -d: -f1)
+mkdir_line=$(grep -n 'Directory.CreateDirectory' "$shim" | cut -d: -f1)
+build_line=$(grep -n 'BuildPipeline.BuildPlayer' "$shim" | cut -d: -f1)
+[ -n "$preflight_line" ] && [ "$preflight_line" -lt "$mkdir_line" ] \
+  && [ "$preflight_line" -lt "$build_line" ] \
+  || fail "licensed-pack preflight must run before output mutation and BuildPlayer"
 
 echo "cli-build-shim.test.sh: OK"
