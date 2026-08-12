@@ -75,8 +75,10 @@ for lid in band:
         fail(lid + " schema stage not Pass: " + sch["detail"])
 
     st = stage(lvl, "StaticAnalysis")
-    if st["code"] not in ("Pass", "Warn"):
-        fail(lid + " static-analysis stage: " + st["detail"])
+    # Tightened from Pass-or-Warn to Pass-only (PR #75 review Important-3): band levels are
+    # Warn-free post-CM-C13; a decoy-style Warn reintroduced into L006-L010 must go red here.
+    if st["code"] != "Pass":
+        fail(lid + " static-analysis stage not Pass: " + st["detail"])
 
     solve = lvl.get("solve")
     if solve is None:
