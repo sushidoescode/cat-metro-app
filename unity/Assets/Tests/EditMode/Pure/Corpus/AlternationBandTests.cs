@@ -16,9 +16,9 @@ namespace CatMetro.Tests.Corpus
     // shared GATE/HOLD/J1/RED/BLU shape (the #62 review's flagged anti-pattern) with a single
     // real switch decision each — the fixed tie-break solver (SOLVER-TIEBREAK) removed the reason
     // that shape existed (it dodged the old earliest-tick brittleness trap). This file's L007-L010
-    // sections are re-recorded two-sided against four distinct new topologies (see
-    // DESIGN-REPORT-LANE9.md at the worktree root for the per-level rationale and novelty
-    // evidence). L006's sections (locked anchor) are untouched.
+    // sections are re-recorded two-sided against four distinct new topologies (per-level
+    // rationale and novelty evidence recorded on PR #75). L006's sections (locked anchor)
+    // are untouched.
     [TestFixture]
     public class AlternationBandFieldTests
     {
@@ -176,11 +176,14 @@ namespace CatMetro.Tests.Corpus
             Assert.That(schema.Code, Is.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Pass), id + " " + schema.Detail);
 
             var stat = l.Verdicts.Single(v => v.Stage == CatMetro.Content.Validation.Stage.StaticAnalysis);
-            // Is.EqualTo(..).Or.EqualTo(..) rather than Is.AnyOf: Unity's bundled NUnit
-            // predates AnyOf (CS0117 under the editor compile; the dotnet leg's newer NUnit
-            // masked it — caught by the first completed full-suite run, 2026-08-08).
-            Assert.That(stat.Code, Is.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Pass)
-                .Or.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Warn), id + " " + stat.Detail);
+            // Tightened from Pass-or-Warn to Pass-only at the PR #75 review's Important-3:
+            // the shipped gate accepted the #62 decoy anti-pattern (old L007's "BLU is a decoy"
+            // Warn still yielded RESULT: OK), so Warn-tolerance here made this band's headline
+            // claim a one-time run instead of a pin. Band levels L006-L010 are all Warn-free
+            // post-CM-C13; a reintroduced decoy now goes RED here (proven both directions:
+            // 20/20 green at this tip, old L007 fails this assertion).
+            Assert.That(stat.Code, Is.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Pass),
+                id + " " + stat.Detail);
 
             Assert.That(l.Solve, Is.Not.Null, id + ": stage 4 never ran");
             Assert.That(l.Solve.Verdict, Is.EqualTo(CatMetro.Domain.Solver.SolveVerdict.Solved), id);
@@ -392,8 +395,11 @@ namespace CatMetro.Tests.Corpus
             // every cat that reaches J2 funnels straight into the dead end. This exercises BOTH
             // switches' un-set state at once — the level's own "the berth switch must be set
             // before the rush arrives" teaching point, inverted into a failure witness.
-            var end = ReplayHasher.RunToEnd(imported.Graph, (ulong)imported.Dto.Seed,
-                BandFixtures.TrapWitness(0, 1));
+            SimulationState end = null;
+            Assert.DoesNotThrow(() =>
+                end = ReplayHasher.RunToEnd(imported.Graph, (ulong)imported.Dto.Seed,
+                    BandFixtures.TrapWitness(0, 1)),
+                "L008: the witness must never mismatch a cat at a real station");
             Assert.That(end.Outcome.Kind, Is.EqualTo(OutcomeKind.Failed));
             Assert.That(end.Outcome.Reason, Is.EqualTo(FailReason.QueueOverflow));
         }
