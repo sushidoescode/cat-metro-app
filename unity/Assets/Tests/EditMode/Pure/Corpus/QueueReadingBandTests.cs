@@ -183,13 +183,17 @@ namespace CatMetro.Tests.Corpus
     // leg): the class-shared `Shared` Lazy<CorpusReport> pays its one-time cost (17 BFS-exact
     // solves) on whichever test happens to run first — Unity's NUnit runs fixture methods
     // alphabetically, so that landed on Campaign_CorpusCount_Is17Of30Pending, which measured
-    // 422s and exceeded NUnit's 180000ms default per-test timeout while every other test in this
-    // class (reading the already-memoized value) passed in microseconds. AlternationBandGateTests
-    // (L001-L010, 10 levels) stays under the default; this band's 17 levels do not. A class-level
-    // Timeout raises the wall-clock budget only — it asserts nothing new and weakens no existing
-    // assertion.
+    // 422s in one run and 519.8s in the round-1 reviewer's own independent run (87% of the
+    // original 600000ms cap) and exceeded NUnit's 180000ms default per-test timeout while every
+    // other test in this class (reading the already-memoized value) passed in microseconds.
+    // AlternationBandGateTests (L001-L010, 10 levels) stays under the default; this band's 17
+    // levels do not. Resized 600000->900000 at the round-1 review's Minor-4 (the 422s/519.8s
+    // spread shows real cross-run variance; 900000 keeps generous margin without hoisting the
+    // solve to OneTimeSetUp, which would be a larger structural change for a timing-only finding).
+    // A class-level Timeout raises the wall-clock budget only — it asserts nothing new and
+    // weakens no existing assertion.
     [TestFixture]
-    [Timeout(600000)]
+    [Timeout(900000)]
     public class QueueReadingBandGateTests
     {
         private static readonly System.Lazy<CatMetro.Content.Validation.CorpusReport> Shared =
@@ -233,11 +237,12 @@ namespace CatMetro.Tests.Corpus
             Assert.That(schema.Code, Is.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Pass), id + " " + schema.Detail);
 
             var stat = l.Verdicts.Single(v => v.Stage == CatMetro.Content.Validation.Stage.StaticAnalysis);
-            // Is.EqualTo(..).Or.EqualTo(..) rather than Is.AnyOf: Unity's bundled NUnit predates
-            // AnyOf (CM-C11's compile-error finding, 2026-08-08 — the dotnet leg's newer NUnit
-            // masks it, so this must be pinned here too even though it never fired locally).
-            Assert.That(stat.Code, Is.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Pass)
-                .Or.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Warn), id + " " + stat.Detail);
+            // Tightened from Pass-or-Warn to Pass-only at the round-1 review's Minor-5 (propagating
+            // the PR #75/CM-C13 review's Important-3 tightening, which this wrapper had missed):
+            // all seven L011-L017 levels are Warn-free, so a reintroduced Warn (e.g. a decoy
+            // station) must go red here, not slide through on the Warn-tolerant reading.
+            Assert.That(stat.Code, Is.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Pass),
+                id + " " + stat.Detail);
 
             Assert.That(l.Solve, Is.Not.Null, id + ": stage 4 never ran");
             Assert.That(l.Solve.Verdict, Is.EqualTo(CatMetro.Domain.Solver.SolveVerdict.Solved), id);
@@ -313,8 +318,16 @@ namespace CatMetro.Tests.Corpus
         }
 
         [Test]
-        public void ShippedLevels_L001ThroughL010_AreUnchangedByThisBand()
+        public void ShippedLevels_L001ThroughL010_StillParseToTheirDeclaredIds()
         {
+            // Renamed at the round-1 review's Minor-6: the ORIGINAL name claimed byte-unchanged,
+            // which this test cannot detect and cannot fail for (live proof: PR #75/CM-C13
+            // rewrote L007-L010 wholesale inside this very tip and this assertion still passes,
+            // since re-import round-tripping to the same declared id says nothing about content
+            // drift). The real byte-unchanged guard is tests/corpus/queue-reading-band.test.sh's
+            // git-diff check against L001-L010; this test only proves the sibling band's ten
+            // files still parse (schema-valid, non-empty) and still carry the id their filename
+            // promises — a much narrower, honestly-named claim.
             foreach (var id in new[]
                      { "L001", "L002", "L003", "L004", "L005", "L006", "L007", "L008", "L009", "L010" })
             {
@@ -331,11 +344,26 @@ namespace CatMetro.Tests.Corpus
         }
     }
 
-    // Criterion 6-shaped positive evidence: "queue as buffer" (L011), "chained queues" (L012)
-    // and "burst wave" (L013) are provably exercised by the solver-optimal winning log — a real
-    // multi-cat backlog forms at the buffering node(s), not just a decorative queueCapacity
-    // declaration. This band has no CONFLICT-1-style byte-locked anchor, so there is no negative
-    // control analogous to L006's "queue never holds a cat" case.
+    // Criterion 6-shaped positive evidence, narrowed at the round-1 review's Important-1/-2 (the
+    // CONTRACT-AUTHOR RULING: "covered" means EXERCISED, not just structurally declared): SRC's
+    // own "queue as buffer" behavior is provably exercised by the solver-optimal winning log for
+    // L011, L012 and L013 — a real multi-cat backlog forms AT THE SOURCE, not just a decorative
+    // queueCapacity declaration there. This does NOT prove the downstream chain nodes (L012's
+    // Q1/Q2, L013's PLAT) ever buffer — the round-1 reviewer's own probe showed they don't, and a
+    // from-first-principles trace of Simulation.cs confirms why: step 4a releases at most one
+    // queued head per node per tick, so any single incoming edge feeds a downstream node at most
+    // 1 arrival/tick, which that node's own 1-per-tick release always keeps pace with — genuine
+    // depth >= 2 at a non-source node requires >= 3 simultaneous arrivals from >= 3 distinct
+    // incoming edges (proven: 2 converging edges cap out at depth 1, since the first arrival
+    // always zero-dwell passes through). A single `sources` entry is enforced (LevelImporter.cs,
+    // "second source is pinned out of CM-C1 scope"), so multi-edge convergence into one node is
+    // achievable only via an extra switch — attempted for L012 this round (a 3-route SPLIT switch
+    // feeding Q1 via three travelTicks-staggered edges, engineered to converge three solo cats on
+    // one tick): schema-valid and statically clean, but the solver returned
+    // NotFound(Budget, width=1000) at nodes=77344 even at a non-exact beam width, empirically
+    // confirming the design report's own pre-existing budget-risk finding for added decision
+    // surface in this band. Reverted rather than shipped broken. See the PR body's mechanics
+    // coverage map for the corrected, honest per-level claims (L012/L013/L014/L015).
     [TestFixture]
     public class QueueReadingLivenessTests
     {

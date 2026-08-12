@@ -11,7 +11,7 @@
       "queue"
     ],
     "newMechanic": null,
-    "teachingGoal": "Both colors cross through the same junction -- read ahead so the shared queue never backs up",
+    "teachingGoal": "Both colors cross through the same junction on the way to the switch -- read each arrival correctly before it reaches the fork",
     "minActionWindowTicks": 12,
     "authoredBy": "llm+validator"
   },

@@ -11,7 +11,7 @@
       "queue"
     ],
     "newMechanic": null,
-    "teachingGoal": "Cats can wait at more than one stall before the switch -- trust the chain of platforms to hold them",
+    "teachingGoal": "Cats can wait at the platform before the switch -- trust the queue to hold them, even with more stalls still ahead",
     "minActionWindowTicks": 12,
     "authoredBy": "llm+validator"
   },
