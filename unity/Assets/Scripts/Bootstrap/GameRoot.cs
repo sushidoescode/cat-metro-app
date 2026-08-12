@@ -293,7 +293,11 @@ namespace CatMetro.Bootstrap
         // ASSUMPTION under human review (state/handoffs/CM-LOADNEXT-frozen-contract.md, A-LN-1):
         // the band WRAPS at the end back to L001 (a demo-friendly infinite loop) rather than
         // stopping — WrapAtEndOfBand is the one seam to flip if that assumption is overridden.
-        public static readonly string[] LevelBand = { "L001", "L002", "L003", "L004", "L005" };
+        public static readonly string[] LevelBand = {
+            "L001", "L002", "L003", "L004", "L005",
+            "L006", "L007", "L008", "L009", "L010",
+            "L011", "L012", "L013", "L014", "L015", "L016", "L017",
+        };
         private const bool WrapAtEndOfBand = true;
 
         // Pure and test-drivable (the FailKey precedent, above) — no Unity object needed. An id
