@@ -36,6 +36,8 @@ All four channel notes: in-conversation directives, agent-relayed here (H-1-clas
   rendered-frame evidence for anything visual (standing rule).
 - **HC-25**: no lane arms or completes any merge without the human's fresh in-session word
   in ITS chat. Every merge outcome is census material (next append records it).
+  **[Superseded 2026-08-12: the fresh-word half is retired by ADDENDUM v2.3 below; the
+  census half stands in full.]**
 - **`state/PROJECT_STATE.md`**: append/update EXACTLY ONE row (your lane's) at merge —
   PLUS any Known-debt bullet your FROZEN CONTRACT explicitly names at freeze (Lanes 1A AND
   1B: the collider-spam bullet, each recording its own half; Lane 2: the F4-trigger numbers
@@ -223,7 +225,7 @@ evidentiary class) in their PR records.
 
 For docs-only lanes the truthfulness standard + both review legs stand in for
 TDD/mutation proofs; everything else (worktree, frozen contract, one row, census
-facts, H-1 caveat) applies verbatim.
+facts, H-1 caveat) applies verbatim. Merge authority per ADDENDUM v2.3 below.
 
 ## Merge order / funnel
 
@@ -231,7 +233,8 @@ Lane 9: gated behind Lane 2 (#66) by its start gate; the count-block carve-out i
 only 9↔3 touchpoint visible on origin/main today (trivial rebase, second-lander) — if
 Lane 3's new Corpus tests adopt BandFixtures helpers, that becomes a second declared
 touchpoint, and Lane 9's STOP-and-surface rule covers it. Lane 10: independent once
-its start gate opens. The GameRoot funnel is UNCHANGED by v2.1: 3 → 6 → 8 → 5.
+its start gate opens. The GameRoot funnel is UNCHANGED by v2.1: 3 → 6 → 8 → 5 —
+neither v2.1 lane enters it.
 
 ## Bookkeeping (human act, flagged)
 
@@ -250,9 +253,16 @@ after four fresh-context review rounds (22 → 6 → 2 → 0 findings; converged
 
 | Lane | Branch(es) | Owns (exclusive) | Must not touch |
 |---|---|---|---|
-| **11 CM-C14 (TWO SEQUENTIAL CONTRACTS)** | A: `task/CM-C14a-mechanics-enablement` → B: `task/CM-C14b-twosource-combo-band` | **A (enablement):** `Scripts/Content/LevelImporter.cs` pin sites, `Scripts/Domain/**` (post-#66 only), the CM-C5.1 MechanicExercise/dispositions surface, own NEW tests, + DECLARED EXCEPTIONS: pin-expectation re-records (post-enablement truth, #66 re-pin precedent, nothing else in those files) in `MechanicExerciseTests.cs`, `ContentMappingTests.cs`, `GuardTests.cs`. Acceptance: the L018 anchor imports/validates/solves (own repo-root helper — never BandFixtures). REQUIRED pre-freeze HUMAN RULING in-chat: NEW-Q35 wild-color semantics. Lane 11 writes ONE PROJECT_STATE row per merged contract — two total (the 1B sequential-contract precedent). **B (band):** `content/levels/L018.json` (anchor copy in the L001/L006 sense — standalone indent-2 serialization of the example_levels.json entry + DeepEquals fidelity test; **L018 is a LOCKED anchor**, AMD-02) and `L019..L025.json` + staged copies · own NEW Pure/Corpus test file(s) + `tests/corpus/twosource-combo.test.sh` · declared exceptions: GameRoot band-wiring at FUNNEL TAIL (definition below), `LoadNextBandTests` re-pin, CM-R09.1 count BLOCK re-record at its merge | Everything else. No `L001..L017` content, no `AlternationBandTests.cs`/`BandFixtures.cs` (Lane 9), no Lane 3 files, no `docs/plan/**`, no `unity/Packages/**`, no Scene/ProjectSettings/URP, no `Presentation/**`, no ValidationStages thresholds. GATES — A: v2.2 on main + #66 MERGED (mechanical). B: A merged + CM-C12 fully on main (counted L011–L017 loop + DISCRIMINATING wiring check: `grep -o '"L01[1-7]"' \| sort -u \| wc -l` on origin/main's GameRoot.cs prints 7 — unique-id count, format-independent; a bare LevelBand grep matches today's array and proves nothing) |
+| **11 CM-C14 (TWO SEQUENTIAL CONTRACTS)** | A: `task/CM-C14a-mechanics-enablement` → B: `task/CM-C14b-twosource-combo-band` | **A (enablement):** `Scripts/Content/LevelImporter.cs` pin sites, `Scripts/Domain/**` (post-#66 only), the CM-C5.1 MechanicExercise/dispositions surface, own NEW tests, + DECLARED EXCEPTIONS: pin-expectation re-records (post-enablement truth, #66 re-pin precedent, nothing else in those files) in `MechanicExerciseTests.cs`, `ContentMappingTests.cs`, `GuardTests.cs`. Acceptance: the L018 anchor imports/validates/solves (own repo-root helper — never BandFixtures). REQUIRED pre-freeze HUMAN RULING in-chat: NEW-Q35 wild-color semantics. Lane 11 writes ONE PROJECT_STATE row per merged contract — two total (the 1B sequential-contract precedent). **B (band):** `content/levels/L018.json` (anchor copy in the L001/L006 sense — standalone indent-2 serialization of the example_levels.json entry + DeepEquals fidelity test; **L018 is a LOCKED anchor**, AMD-02) and `L019..L025.json` + staged copies · own NEW Pure/Corpus test file(s) + `tests/corpus/twosource-combo.test.sh` · declared exceptions: GameRoot band-wiring at FUNNEL TAIL (definition below), `LoadNextBandTests` re-pin, CM-R09.1 count BLOCK re-record at its merge | Everything else. No `L001..L017` content, no `AlternationBandTests.cs`/`BandFixtures.cs` (Lane 9), no Lane 3 files, no `docs/plan/**`, no `unity/Packages/**`, no Scene/ProjectSettings/URP, no `Presentation/**`, no ValidationStages thresholds. GATES — A: v2.2 on main + #66 MERGED (mechanical). B: A merged + CM-C12 fully on main (counted L011–L017 loop + DISCRIMINATING wiring check — the fenced command below this table must print 7; unique-id count, format-independent; a bare LevelBand grep matches today's array and proves nothing) |
 | **12 MUSIC-AMBIENT** | `audio/music-pass` | `unity/Assets/UI/Audio/Music/**` + folder meta `Music.meta` (tracks, nested `Resources/`, PROVENANCE at the 1B receipt depth) · `Scripts/Presentation/Audio/MusicDirector.cs` (+meta, NEW file; `[RuntimeInitializeOnLoadMethod]` self-boot is the RECORDED sanctioned deviation from the UiAudioManager consumer-Ensure pattern) · own NEW tests | Everything else — every EXISTING Presentation file incl. `UiAudioManager.cs`, `unity/Assets/UI/**` outside Music/** (+meta), ui.csv, Scene/ProjectSettings, GameRoot (NO funnel slot — any such need is surfaced, not taken), Domain/Content, `content/**`, `unity/Packages/**`. GATE: v2.2 on main + ON-MAIN CONTENT PROOF (`ls-tree origin/main` non-empty for `Presentation/Audio/UiAudioManager.cs` AND `UI/Audio/PROVENANCE.md` — PR states prove nothing; #68 targets a branch). Budget rule: every audio blob < 1 MiB (this IS a machine gate — forge-risk's hard per-blob cap applies to binaries and trips fail-closed/exit 2 above it; under it, binaries classify risk.binary/exit 1, one round), total music ~< 8 MiB (self-enforced; the 16 MiB aggregate hard cap backstops it) |
 | **13 DLC-DESIGN** | `docs/dlc-design` | `docs/design/dlc/**` (new) — ALL deliverables incl. production checklists live here | Everything else — `docs/plan/**` (read-only), `docs/store/**`, `docs/release/**` + `docs/runbooks/**` (Lane 10), `docs/prd/**`, `docs/adr/**` + `docs/architecture/**` (read-only), all code, `unity/**`, `content/**`, `state/mode`. Prices/SKUs PROPOSED only — human-signed. Docs-lane review rule: BOTH legs contract-mandated ON the PR (machine flag is not the authority). GATE: v2.2 on main |
+
+Lane 11-B wiring-gate command, raw form (the table cell above cannot carry unescaped
+pipes; this fenced block is the copy-paste source):
+
+```
+git show origin/main:unity/Assets/Scripts/Bootstrap/GameRoot.cs | grep -o '"L01[1-7]"' | sort -u | wc -l   # must print 7
+```
 
 ## AMENDMENT — GameRoot funnel extended, tail DEFINED
 
@@ -273,7 +283,9 @@ to the post-merge count at its merge, touching nothing else in that file (curren
 Lanes 3 and 11-B; later-lander takes the trivial rebase). The wrapper's owner (Lane 2 →
 Lane 9 at #66's merge) never re-records the count itself. ROUTING: this change is a
 contract amendment for Lane 9 (whose brief names Lane 3 as sole block-writer) and
-Lane 3 — delivered per the Lane 2 amendment precedent.
+Lane 3 — delivered to each lane's chat per the Lane 2 amendment precedent; the
+coordination session drafts both amendment pastes when those lanes are live (for
+coordination-ADOPTED lanes, the amendment is baked into the frozen contract instead).
 
 ## AMENDMENT — State bookkeeping tripwire (ALL lanes)
 
@@ -293,7 +305,7 @@ reading for Lane 13. Merge authority per ADDENDUM v2.3 below.
 
 # ADDENDUM v2.3 — merge authority (2026-08-12)
 
-## The human's directive (verbatim, 2026-08-12 ~00:30 local, coordination chat)
+## The human's directive (verbatim, 2026-08-12 ~00:30 local, coordination chat — in-conversation, agent-relayed, H-1-class caveat)
 
 "I'm getting tired of these permissions to PR merge every single time. I don't need to
 do that, and you are capable of doing that yourself by now. For that matter any agent
@@ -302,7 +314,7 @@ settings or constitution that will enable you and other agents to just power thr
 and I can just be the main Pixel tester and QA and give feedback based on what I see.
 This is what I want."
 
-## Effect, all lanes, immediately
+## AMENDMENT — Effect, all lanes, immediately
 
 1. **HC-25's per-merge fresh-word requirement is RETIRED** by the human's own
    directive. The stricter-direction-only supersession rule constrained AGENT
@@ -313,18 +325,32 @@ This is what I want."
 2. **Every lane executes its own merges per constitution Amendment 1, verbatim and
    unchanged**: required checks green; the forge-risk-priced review round completed
    with every finding dispositioned ON the PR record (LOW-RISK: green CI); none of
-   Amendment 1's excluded paths in the diff; no un-ADR'd dependency.
+   Amendment 1's excluded paths in the diff; no un-ADR'd dependency. A standing
+   REQUEST CHANGES with unapplied findings blocks delegation (Amendment 1 condition 2,
+   in full — "deferred" is not "applied").
 3. **Amendment 1's human-only floors are NOT changed by this section** (they are
    constitution, and cheap): diffs touching `.github/**`, `infra/**`,
    `**/billing|iap|ads/**`, `docs/plan/**`, `tests/contract/**`, or immutable paths
    stay human-button; tags/releases/deploys/spend, `state/mode` (the monetization
    tripwire flip), ADR approval, and anything a review explicitly flags for human
-   judgment stay human.
+   judgment stay human. Per-lane human-merge floors named in prior sections ALSO
+   survive this section: **Lane 5 is HUMAN-MERGE-ONLY regardless of the risk gate's
+   verdict** (the v2 Lane 5 row) — its integration paths
+   (`unity/Assets/Scripts/Integrations/RevenueCat/**`,
+   `unity/Assets/Resources/Monetization/**`) do not match the glob list above because
+   the taxonomy gate bans the literal billing/iap/ads directory names, so the floor is
+   named here explicitly. Any per-lane human-merge floor declared in any lane row
+   binds over this section.
 4. **The human's chosen role — Pixel tester / QA**: taste gates (TG), device-evidence
    verdicts, difficulty/feel judgments, and store-facing/legal signatures remain the
    human's. A contract that names a taste gate still holds for it; nothing else waits.
-5. The coordination session may execute a merge on behalf of a CLOSED or absent lane
-   when Amendment-1 conditions hold, recording the stewardship in the census facts.
+5. Amendment 1's grant covers an agent's OWN PR only, and this section does not widen
+   it. For a CLOSED or absent lane's already-open PR, the human is asked to press the
+   button. Separately, the coordination session may ADOPT an unstarted or unpublished
+   lane wholesale (the Lanes 3/9 precedent, human-directed): the adopted contract's
+   PRs are then authored, owned, and — under Amendment 1 — merged by the coordination
+   session as its own, with the adoption recorded in the frozen contract and census
+   facts.
 6. This section supersedes the per-lane "HC-25 — fresh in-session word" clauses in
    every lane brief and every prior addendum section. Lane briefs' gate checks,
    ownership boundaries, review obligations, and census-fact obligations are untouched.
