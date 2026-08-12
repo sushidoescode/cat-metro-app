@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 2,
+  "id": "L012",
+  "name": "Stall Rows",
+  "seed": 1012,
+  "meta": {
+    "band": "queue-reading",
+    "difficultyTarget": 0.3,
+    "mechanics": [
+      "switch",
+      "queue"
+    ],
+    "newMechanic": null,
+    "teachingGoal": "Cats can wait at more than one stall before the switch -- trust the chain of platforms to hold them",
+    "minActionWindowTicks": 12,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      {
+        "id": "SRC",
+        "x": 3,
+        "y": 11,
+        "queueCapacity": 3
+      },
+      {
+        "id": "Q1",
+        "x": 3,
+        "y": 9,
+        "queueCapacity": 4
+      },
+      {
+        "id": "Q2",
+        "x": 3,
+        "y": 7,
+        "queueCapacity": 4
+      },
+      {
+        "id": "GATE",
+        "x": 3,
+        "y": 5
+      },
+      {
+        "id": "HOLD",
+        "x": 5,
+        "y": 5,
+        "queueCapacity": 1
+      },
+      {
+        "id": "J1",
+        "x": 3,
+        "y": 3
+      },
+      {
+        "id": "RED",
+        "x": 1,
+        "y": 1
+      },
+      {
+        "id": "BLU",
+        "x": 5,
+        "y": 1
+      }
+    ],
+    "edges": [
+      {
+        "id": "E1",
+        "from": "SRC",
+        "to": "Q1",
+        "travelTicks": 5
+      },
+      {
+        "id": "E2",
+        "from": "Q1",
+        "to": "Q2",
+        "travelTicks": 5
+      },
+      {
+        "id": "E3",
+        "from": "Q2",
+        "to": "GATE",
+        "travelTicks": 5
+      },
+      {
+        "id": "E4",
+        "from": "GATE",
+        "to": "J1",
+        "travelTicks": 6
+      },
+      {
+        "id": "E5",
+        "from": "GATE",
+        "to": "HOLD",
+        "travelTicks": 20
+      },
+      {
+        "id": "E6",
+        "from": "J1",
+        "to": "RED",
+        "travelTicks": 7
+      },
+      {
+        "id": "E7",
+        "from": "J1",
+        "to": "BLU",
+        "travelTicks": 7
+      }
+    ]
+  },
+  "sources": [
+    {
+      "nodeId": "SRC",
+      "allowedColors": [
+        "red",
+        "blue"
+      ]
+    }
+  ],
+  "stations": [
+    {
+      "nodeId": "RED",
+      "accepts": [
+        "red"
+      ],
+      "capacity": 10
+    },
+    {
+      "nodeId": "BLU",
+      "accepts": [
+        "blue"
+      ],
+      "capacity": 10
+    }
+  ],
+  "switches": [
+    {
+      "id": "S1",
+      "nodeId": "GATE",
+      "routes": [
+        "E4",
+        "E5"
+      ],
+      "initialRoute": 0
+    },
+    {
+      "id": "S2",
+      "nodeId": "J1",
+      "routes": [
+        "E6",
+        "E7"
+      ],
+      "initialRoute": 0
+    }
+  ],
+  "waves": [
+    {
+      "tick": 8,
+      "sourceNode": "SRC",
+      "color": "red",
+      "count": 2,
+      "spacingTicks": 1
+    },
+    {
+      "tick": 8,
+      "sourceNode": "SRC",
+      "color": "red",
+      "count": 2,
+      "spacingTicks": 1
+    },
+    {
+      "tick": 60,
+      "sourceNode": "SRC",
+      "color": "blue",
+      "count": 2,
+      "spacingTicks": 12
+    },
+    {
+      "tick": 95,
+      "sourceNode": "SRC",
+      "color": "red",
+      "count": 2,
+      "spacingTicks": 12
+    }
+  ],
+  "win": {
+    "deliveries": 8,
+    "timeLimitTicks": 150,
+    "perfectMaxSwitches": 2,
+    "stars": {
+      "two": 650,
+      "three": 900
+    }
+  },
+  "economy": {
+    "baseTickets": 32,
+    "perfectBonus": 18
+  }
+}
