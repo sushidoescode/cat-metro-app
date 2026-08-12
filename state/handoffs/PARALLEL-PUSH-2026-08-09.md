@@ -131,3 +131,52 @@ human-signed; note the mode-flip tripwire before any monetization code anywhere.
   runbook command wrong — unassigned, cross-lane coordination required, no silent fix).
 - The venture-critic's clock: Play closed-test start by ~Aug 15 (human act — testers).
 - Mode flip to production (human-authored commit) before monetization code lands anywhere.
+
+---
+
+# WAVE 2 ADDENDUM v2 — 2026-08-10 (Aug 20 target; v1 NOT MERGEABLE — 15-finding review applied)
+
+Human ruling, verbatim IN FULL: "We need to move faster. Timeline for completion should be
+moved up to Aug 20th, because we need time for marketing and attracting users, and at this
+pace, we are falling behind. We need to open up more chats and keep pushing through this.
+I need more no merge conflict chats in parallel. Let's push harder and keep going."
+(in-conversation, agent-relayed, H-1-class). READING, flagged as an assumption for the
+human to confirm: "completion" = feature-complete build by Aug 20; the pre-existing plan
+dates (submit live ~Sep 15, freeze Sep 26-30 — EXECUTION_PLAN.md:164,462) stand unchanged.
+
+**TWO OPEN HUMAN QUESTIONS gate Lane 5** (answers recorded verbatim before it opens):
+- **Q1 (tripwire reading):** the recorded tripwire says monetization CODE waits for the
+  mode-file→production flip ("BEFORE any monetization code" / "before code lands here").
+  May Lane 5 AUTHOR on an unmerged spike branch pre-flip, with MERGE hard-gated on the
+  flip? An agent may not narrow this wording; v1 did and the review reverted it.
+- **Q2 (flip timing):** the flip is never-delegated and REPO-WIDE — production pricing
+  removes the sprint LOW-RISK review skip for EVERY lane the moment it lands (all lanes
+  are hereby notified). The human picks the moment.
+- **Q3 (the Q-S gap — gates Lane 6's playable half):** a PLAYABLE daily line requires an
+  `IBoardFactory` implementation that the CM-C6 gate deliberately forbids under the Daily
+  root (`tests/daily/daily-pipeline.test.sh:70-83` — "the Q-S gap cannot be silently
+  filled"). Authorize the factory with a declared gate re-author, or defer the playable
+  half past Aug 20; until answered, Lane 6's scope is generation+validation ONLY, and
+  implementing the interface outside the scanned root to evade the gate is FORBIDDEN.
+
+**Parallelism ceiling, flagged for the human:** GameRoot.cs serializes FOUR lanes
+(3 → 6 → 8 → 5) through one file. That is the wave's structural bottleneck; no additional
+lane should be given a GameRoot exception without extending this order explicitly.
+
+| Lane | Branch | Owns (exclusive) | Key gates + declared exceptions |
+|---|---|---|---|
+| **5 MONETIZATION-CODE** (opens only after Q1+Q2 answered) | `feat/revenuecat-integration` | `unity/Assets/Scripts/Integrations/RevenueCat/**` (new — the ADR-0003:39 LOCKED assembly name `CatMetro.Integrations.RevenueCat`; never `Scripts/Monetization`, never a dir named billing/iap/ads — the taxonomy gate bans those dir names), `unity/Assets/Resources/Monetization/**` (new), `unity/Packages/manifest.json` + `packages-lock.json`, `unity/Assets/Plugins/Android/**` + the EDM4U/ExternalDependencyManager tree, its own tests under `unity/Assets/Tests/EditMode/Integrations/**` (new), the `Scripts/Services/**` seam for the `IPurchases` row (ADR-0003), the GameRoot.cs wiring line (order: after 3 → 6 → 8), and `unity/Assets/Tests/EditMode/CatMetro.Tests.EditMode.asmdef` (declared exception: `overrideReferences: true` means the new Integrations assembly must be added to its explicit reference list or both editor suites fail to compile) | FOUR named gate re-authors as E-1-style declared edits: (a) `tests/taxonomy/taxonomy.test.sh:23-24` SDK-token scan → RevenueCat tokens legal ONLY under the Integrations root (ADR-0003 rule-4 shape); (b) `tests/save/save.test.sh:27` engine-free scan → exclude the Integrations dir; (c) `tests/save/save.test.sh:31` `#if UNITY_ANDROID` scan → same exclusion; (d) `tests/unity/editmode.test.sh:30-38` launcher-manifest/backup-rules gate → re-author for the SDK payload keeping the single-`BillingClient` assert (ADR-0004:48). **HUMAN-MERGE-ONLY regardless of the risk gate's verdict**, independent security review mandatory — and because `forge-risk` reads AGENTS.md at the BASE ref, the §Risky-paths glob addition CANNOT ride Lane 5's own diff (the classifier would be blind for exactly that PR): it lands as a SEPARATE, human-merged, security-reviewed PR BEFORE Lane 5 opens (cut as PR #70 by the coordinator). Android player-settings edge (NEW-B) — an explicit AMENDMENT to the base doc's "no other lane may touch them for any reason" rule, not a reading of it: the gradle-template/proguard toggles Lane 5's EDM4U/Billing payload needs live in `ProjectSettings.asset`, Lane 1A EXCLUSIVE while 1A is unmerged; that Android player-settings block TRANSFERS to Lane 5 only AFTER 1A's merge (expected sufficient, since Lane 5 merges last); any pre-transfer need is a 1A-applied joint declared edit, never a Lane 5 touch. The wave-scoping and base-ref rationale for PR #70's AGENTS.md globs live HERE, deliberately not in AGENTS.md (which stays terse): the globs are permanent; "human-merge-only" for Lane 5 is this wave's rule; #70 landed pre-Lane-5 because the classifier reads AGENTS.md at the base ref. ADR OBLIGATIONS: draft the RevenueCat dependency ADR (pin surfaces per ADR-0004:88 — manifest + EDM4U resolved-deps + merged-manifest single BillingClient) for the human's signature before merge; ADR-0006's purchase-breadcrumb enum is OPEN — it lands as a human-signed ADR-0006 amendment BEFORE any ledger/entitlement code, so sequence that ask FIRST; RK-39: read the shipped purchases-unity source before entitlement code, never invent an SDK API. NO dark-factory references — taxonomy/analytics wiring is a later contract. SKUs/placements exactly per the signed spec. |
+| **6 DAILY-LINE** | `feat/daily-line` | `unity/Assets/Scripts/Content/Daily/**` — EXTENDING the existing CM-C6 pipeline in place (v1's `Domain/Daily` was unbuildable: Domain references nothing per ADR-0003 and the dotnet mirror has no Content reference; extending Content/Daily keeps the CM-C6 clock-ban and guard gates covering the new code automatically) + its own tests under `unity/Assets/Tests/EditMode/Pure/Content/Daily/**` (new — NOT the Domain test dirs, which are Lane 2's) | Runtime seed-generation only — NO staged daily content, no stager edit, no StreamingAssets touch; SCOPE until Q3 is answered: generation + validation ONLY — the playable `IBoardFactory` half is gated by the Q-S guard (see Q3), and evading that gate by implementing the interface outside the scanned root is forbidden; the GameRoot/Bootstrap wiring is a DEFERRED declared exception taken only after Lane 3's GameRoot exception lands (funnel order: 3 → 6 → 8 → 5); the Home chip/surface is Lane 8's |
+| **7 STORE-PACK** | `docs/store-pack` | `docs/store/**` (new), `docs/plan/marketing/**` (new) | Docs only. NOTE: `docs/plan/**` voids agent squash-merge per Amendment 1 condition 3 — this lane is human-button-merge by construction, not "independent" of process. Honesty rule: never present unbuilt features as existing (the judges' prescreen reads text/video only). |
+| **8 LEVEL-SELECT + BACK** (QUEUED) | `feat/level-select` | Fires only when BOTH art PRs are merged — this repo SQUASH-merges, so `git branch --merged` never shows lane branches; verify instead via `gh pr view 65 --json state` = MERGED AND `gh pr list --search "head:art/ui-chrome-pass" --state merged` non-empty; if gh is unavailable, ask the human — never guess. Inherits `Presentation/Screens/**` from Lane 1B at that point; `ui.csv` appends; + TWO declared exceptions named now: the `Presentation/Input/**` seam — the one-input-consumer gate (`tests/unity/editmode.test.sh:72-74`) pins exactly one input-consuming Presentation file and bans pointer-handler tokens, so level-select taps route through the existing TapInput/chrome-region seam, and any pin move is a declared gate re-author; and the GameRoot.cs ScreenStack/Back wiring line (funnel order: 3 → 6 → 8 → 5) | Visual evidence per the standing rule; band data read-only (Lane 3's) |
+
+**Cross-lane rules added by v2:** `unity/Packages/**` is in EVERY lane's must-not-touch
+except Lane 5; any lane whose editor session regenerates `packages-lock.json` reverts it
+before committing (`git checkout -- unity/Packages/packages-lock.json`). GameRoot.cs is a
+single-file funnel with strict order 3 → 6 → 8 → 5. The v1 claim "disjoint territory" is
+withdrawn and replaced by this reviewed collision analysis (15 findings, PR #69 record).
+
+**Timeline of record:** feature-complete Aug 20 (READING flagged above, human to confirm)
+· submit live ~Sep 15 · freeze Sep 26-30 (pre-existing plan dates, unchanged by this
+directive). The Play closed-test clock (14 days/tester) and Console setup are HUMAN
+critical path and are NOT satisfiable by any lane.
