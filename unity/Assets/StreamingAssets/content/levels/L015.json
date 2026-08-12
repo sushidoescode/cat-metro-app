@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 2,
+  "id": "L015",
+  "name": "Market Capstone",
+  "seed": 1015,
+  "meta": {
+    "band": "queue-reading",
+    "difficultyTarget": 0.34,
+    "mechanics": [
+      "switch",
+      "queue"
+    ],
+    "newMechanic": null,
+    "teachingGoal": "Everything the Market taught: hold, rush, and read -- before the last cat comes home",
+    "minActionWindowTicks": 12,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      {
+        "id": "SRC",
+        "x": 3,
+        "y": 12,
+        "queueCapacity": 3
+      },
+      {
+        "id": "BUF1",
+        "x": 3,
+        "y": 10,
+        "queueCapacity": 3
+      },
+      {
+        "id": "BUF2",
+        "x": 3,
+        "y": 8,
+        "queueCapacity": 3
+      },
+      {
+        "id": "GATE",
+        "x": 3,
+        "y": 6
+      },
+      {
+        "id": "HOLD",
+        "x": 5,
+        "y": 6,
+        "queueCapacity": 1
+      },
+      {
+        "id": "J1",
+        "x": 3,
+        "y": 4
+      },
+      {
+        "id": "RED",
+        "x": 1,
+        "y": 2
+      },
+      {
+        "id": "BLU",
+        "x": 5,
+        "y": 2
+      }
+    ],
+    "edges": [
+      {
+        "id": "E1",
+        "from": "SRC",
+        "to": "BUF1",
+        "travelTicks": 5
+      },
+      {
+        "id": "E2",
+        "from": "BUF1",
+        "to": "BUF2",
+        "travelTicks": 5
+      },
+      {
+        "id": "E3",
+        "from": "BUF2",
+        "to": "GATE",
+        "travelTicks": 5
+      },
+      {
+        "id": "E4",
+        "from": "GATE",
+        "to": "J1",
+        "travelTicks": 6
+      },
+      {
+        "id": "E5",
+        "from": "GATE",
+        "to": "HOLD",
+        "travelTicks": 20
+      },
+      {
+        "id": "E6",
+        "from": "J1",
+        "to": "RED",
+        "travelTicks": 7
+      },
+      {
+        "id": "E7",
+        "from": "J1",
+        "to": "BLU",
+        "travelTicks": 7
+      }
+    ]
+  },
+  "sources": [
+    {
+      "nodeId": "SRC",
+      "allowedColors": [
+        "red",
+        "blue"
+      ]
+    }
+  ],
+  "stations": [
+    {
+      "nodeId": "RED",
+      "accepts": [
+        "red"
+      ],
+      "capacity": 10
+    },
+    {
+      "nodeId": "BLU",
+      "accepts": [
+        "blue"
+      ],
+      "capacity": 10
+    }
+  ],
+  "switches": [
+    {
+      "id": "S1",
+      "nodeId": "GATE",
+      "routes": [
+        "E4",
+        "E5"
+      ],
+      "initialRoute": 0
+    },
+    {
+      "id": "S2",
+      "nodeId": "J1",
+      "routes": [
+        "E6",
+        "E7"
+      ],
+      "initialRoute": 0
+    }
+  ],
+  "waves": [
+    {
+      "tick": 8,
+      "sourceNode": "SRC",
+      "color": "red",
+      "count": 3,
+      "spacingTicks": 1
+    },
+    {
+      "tick": 50,
+      "sourceNode": "SRC",
+      "color": "blue",
+      "count": 2,
+      "spacingTicks": 10
+    },
+    {
+      "tick": 80,
+      "sourceNode": "SRC",
+      "color": "red",
+      "count": 2,
+      "spacingTicks": 1
+    },
+    {
+      "tick": 110,
+      "sourceNode": "SRC",
+      "color": "blue",
+      "count": 2,
+      "spacingTicks": 10
+    }
+  ],
+  "win": {
+    "deliveries": 9,
+    "timeLimitTicks": 190,
+    "perfectMaxSwitches": 3,
+    "stars": {
+      "two": 750,
+      "three": 1050
+    }
+  },
+  "economy": {
+    "baseTickets": 34,
+    "perfectBonus": 20
+  }
+}
