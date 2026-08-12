@@ -33,6 +33,29 @@ namespace CatMetro.Tests.Solver
             winDeliveries: 4, timeLimitTicks: 100,
             qCapBound: 8, trainsMax: 4);
 
+        // Exact graph from tests/fixtures/devcap/demo-level.json. The default route is the long
+        // edge; active play toggles once to the short edge. The PlayMode dev-capture contract
+        // requires the default solver ceiling to retain this witness.
+        public static LevelGraph DevCaptureDemo() => new LevelGraph(
+            "D001", 4,
+            new[] { 4, 8, 8, 8 },
+            new[] { 0, 1, 1 },
+            new[] { 1, 2, 3 },
+            new[] { 6, 6, 28 },
+            new[] { 0 },
+            new[] { new[] { 1, 2 } },
+            new[] { 1 },
+            new byte[] { 1 },
+            new[] { 2, 3 },
+            new[] { new[] { CatColor.Red }, new[] { CatColor.Red } },
+            new[] { 6, 6 },
+            new[] { 6, 20, 21 },
+            new[] { CatColor.Red, CatColor.Red, CatColor.Red },
+            new[] { 5, 4, 4 },
+            new[] { 2, 1, 1 },
+            winDeliveries: 13, timeLimitTicks: 60,
+            qCapBound: 8, trainsMax: 13);
+
         // Two switches, optimum needs exactly 2 commands (S1 then S2); GRN decoy station makes a
         // wrong second route a pinned branch. Red: spawn t0 -> J1 t4 -> RED t9 on init. Blue:
         // spawn t6 -> J1 t10 (needs S1 toggled) -> J2 t14 (needs S2 toggled) -> BLU t19.
@@ -108,8 +131,8 @@ namespace CatMetro.Tests.Solver
             qCapBound: 8, trainsMax: 1);
 
         // One switch whose init route is a blue-accepting dead end for the red train: any single
-        // toggle tick from 0..(arrival-2) wins at the same completion tick — the tie-break must
-        // pick entry (Tick=0, SwitchId=0).
+        // toggle tick from 0..(arrival-2) wins at the same completion tick. The interval is
+        // exactly 0..4, so the mid-window tie-break must pick Tick=2.
         public static LevelGraph TieBreakBoard() => new LevelGraph(
             "FX-TIE", 4,
             new[] { 8, 8, 8, 8 },                          // SRC, J1, BLUdead, RED
@@ -122,6 +145,50 @@ namespace CatMetro.Tests.Solver
             new[] { 0 }, new[] { CatColor.Red }, new[] { 1 }, new[] { 1 },
             winDeliveries: 1, timeLimitTicks: 40,
             qCapBound: 8, trainsMax: 1);
+
+        // Two equal-primary one-command wins. Switch id 0 is downstream, so its raw Tick=0 log
+        // wins the OLD lex comparison but centers later. Switch id 1 is upstream and centers
+        // earlier; lex applied after normalization must therefore select S1.
+        public static LevelGraph FinalLexAfterCenterBoard() => new LevelGraph(
+            "FX-POST-LEX", 5,
+            new[] { 8, 8, 8, 8, 8 },                        // SRC, J1(S1), J2(S0), RED, BLUdead
+            new[] { 0, 1, 1, 2, 2 },                        // SRC->J1; J1->J2/RED; J2->BLU/RED
+            new[] { 1, 2, 3, 4, 3 },
+            new[] { 4, 4, 8, 4, 4 },
+            new[] { 0 },
+            new[] { new[] { 3, 4 }, new[] { 1, 2 } },       // S0 downstream, S1 upstream
+            new[] { 2, 1 },
+            new byte[] { 0, 0 },
+            new[] { 3, 4 },
+            new[] { new[] { CatColor.Red }, new[] { CatColor.Blue } },
+            new[] { 6, 6 },
+            new[] { 0 }, new[] { CatColor.Red }, new[] { 1 }, new[] { 1 },
+            winDeliveries: 1, timeLimitTicks: 40,
+            qCapBound: 8, trainsMax: 1);
+
+        // Review round 1 resolution: three routes on one switch. Red reaches J1 first; blue
+        // reaches it two ticks later. The three equal-primary two-toggle wins are S0@(0,0),
+        // S0@(0,1), and S0@(0,2). The first two histories converge to the same running digest
+        // before the blue delivery, so raw-lex state dedupe used to discard the canonical (0,1).
+        public static LevelGraph DedupeCanonicalBoard() => new LevelGraph(
+            "FX-DEDUPE-CANON", 5,
+            new[] { 2, 2, 2, 2, 2 },                       // SRC, J1, dead, RED, RED+BLU
+            new[] { 0, 1, 1, 1 },
+            new[] { 1, 2, 3, 4 },
+            new[] { 1, 1, 1, 1 },
+            new[] { 0 },
+            new[] { new[] { 1, 2, 3 } },
+            new[] { 1 },
+            new byte[] { 0 },
+            new[] { 3, 4 },
+            new[] { new[] { CatColor.Red }, new[] { CatColor.Red, CatColor.Blue } },
+            new[] { 2, 2 },
+            new[] { 0, 2 },
+            new[] { CatColor.Red, CatColor.Blue },
+            new[] { 1, 1 },
+            new[] { 1, 1 },
+            winDeliveries: 2, timeLimitTicks: 6,
+            qCapBound: 2, trainsMax: 2);
 
         // Init route already correct: the empty command log wins (criterion 10's second limb).
         public static LevelGraph AlreadyCorrect() => new LevelGraph(
@@ -215,20 +282,20 @@ namespace CatMetro.Tests.Solver
             }
         }
 
-        // Criterion 3's independent comparator: exhaustive over all command logs with <=2 entries
-        // (fixtures are designed so the true optimum needs <=2 commands). Returns the optimal
-        // (completionTicks, log) under the criterion-7 ordering, or null if none wins.
+        // Criterion 3's independent comparator: exhaust every command log with <=2 entries,
+        // identify the minimal-tick/minimal-command class, retain only logs that ALREADY satisfy
+        // the executable mid-window fixed-point definition, then apply final lex. It never runs
+        // production's coordinate-normalization procedure and therefore detects ordering/cycle bugs.
         public static (int ticks, CommandLog log)? BruteForceBest(LevelGraph graph, ulong seed)
         {
             int switches = graph.SwitchRoutes.Length;
             int horizon = graph.TimeLimitTicks;
-            (int ticks, CommandLog log)? best = null;
+            var wins = new List<(int ticks, CommandLog log)>();
 
             void Consider(CommandLog log)
             {
                 if (!RunsToWin(graph, seed, log, out int t)) return;
-                if (best == null || Better(t, log, best.Value.ticks, best.Value.log))
-                    best = (t, log);
+                wins.Add((t, log));
             }
 
             Consider(Log()); // zero commands
@@ -244,11 +311,25 @@ namespace CatMetro.Tests.Solver
                             if (t2 < t1 || (t2 == t1 && s2 < s1)) continue;
                             Consider(Log((s1, t1), (s2, t2)));
                         }
-            return best;
+            if (wins.Count == 0) return null;
+
+            int bestTicks = wins.Min(w => w.ticks);
+            int bestCommands = wins.Where(w => w.ticks == bestTicks)
+                .Min(w => w.log.Entries.Count);
+            var canonical = wins.Where(w => w.ticks == bestTicks
+                    && w.log.Entries.Count == bestCommands
+                    && IsMidWindowFixedPoint(graph, seed, w.log, bestTicks))
+                .OrderBy(w => w.log, Comparer<CommandLog>.Create(CompareLex))
+                .ToList();
+            if (canonical.Count == 0)
+                throw new InvalidOperationException(
+                    "equal-primary winning class has no mid-window fixed point");
+            return canonical[0];
         }
 
-        // The criterion-7 total order: fewer completion ticks, then fewer commands, then
-        // lexicographic over (Tick, SwitchId) pairs.
+        // Seed order for the independent reference: fewer completion ticks, then fewer commands,
+        // then the pre-change lexicographic order. CenterSameCompletionWindowsReference refines
+        // only the final equal-primary class.
         public static bool Better(int ticksA, CommandLog a, int ticksB, CommandLog b)
         {
             if (ticksA != ticksB) return ticksA < ticksB;
@@ -260,6 +341,50 @@ namespace CatMetro.Tests.Solver
                 if (ea.SwitchId != eb.SwitchId) return ea.SwitchId < eb.SwitchId;
             }
             return false;
+        }
+
+        private static bool IsMidWindowFixedPoint(
+            LevelGraph graph, ulong seed, CommandLog log, int completionTicks)
+        {
+            for (int i = 0; i < log.Entries.Count; i++)
+            {
+                int current = log.Entries[i].Tick;
+                int lower = current;
+                while (lower > 0
+                    && ShiftIsSameCompletionWin(graph, seed, log, i, lower - 1, completionTicks))
+                    lower--;
+                int upper = current;
+                while (upper < graph.TimeLimitTicks - 1
+                    && ShiftIsSameCompletionWin(graph, seed, log, i, upper + 1, completionTicks))
+                    upper++;
+                if (current != lower + (upper - lower) / 2) return false;
+            }
+            return true;
+        }
+
+        private static bool ShiftIsSameCompletionWin(LevelGraph graph, ulong seed,
+            CommandLog log, int index, int tick, int completionTicks)
+        {
+            var candidate = new CommandLog();
+            for (int i = 0; i < log.Entries.Count; i++)
+            {
+                var e = log.Entries[i];
+                candidate.Append(i == index ? new ToggleSwitchCommand(e.SwitchId, tick) : e);
+            }
+            return RunsToWin(graph, seed, candidate, out int candidateTicks)
+                && candidateTicks == completionTicks;
+        }
+
+        private static int CompareLex(CommandLog a, CommandLog b)
+        {
+            for (int i = 0; i < a.Entries.Count; i++)
+            {
+                var ea = a.Entries[i];
+                var eb = b.Entries[i];
+                if (ea.Tick != eb.Tick) return ea.Tick.CompareTo(eb.Tick);
+                if (ea.SwitchId != eb.SwitchId) return ea.SwitchId.CompareTo(eb.SwitchId);
+            }
+            return 0;
         }
 
         public static void AssertSameLog(CommandLog expected, CommandLog actual, string context)

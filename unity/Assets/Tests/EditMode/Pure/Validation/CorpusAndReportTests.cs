@@ -103,7 +103,8 @@ namespace CatMetro.Tests.Validation
             // Test-speed budget: a stress-board search may hit it and report NotFound(Budget),
             // which is non-blocking by design — the shipped harness uses the authored default.
             var request = new ValidationRequest(VFixtures.SchemaBytes(), VFixtures.BareConfig(),
-                "2026-08-01T00:00:00+00:00", members, maxNodesExpanded: 200000);
+                "2026-08-01T00:00:00+00:00", members,
+                maxNodesExpanded: CatMetro.Domain.Solver.SolverBounds.MAX_NODES_EXPANDED);
             return CorpusValidator.Validate(request);
         });
 
@@ -126,12 +127,14 @@ namespace CatMetro.Tests.Validation
             var stage9 = l701.Verdicts.Single(v => v.Stage == Stage.NoveltyCheck);
             Assert.That(stage9.Detail, Is.EqualTo("SKIPPED(non-campaign)"));
 
-            // Review F2: the stage-6 pin counts are visible and the verdict is non-blocking —
-            // retention is measured over the unpinned samples (both of L701's unpinned jitters win).
+            // Review F2: the stage-6 counts remain visible and the verdict is non-blocking.
+            // Human re-pin ruling, 2026-08-09: the centered solver makes every L701 jitter
+            // sample a win; pin the complete report so either robustness or window drift is loud.
             var stage6 = l701.Verdicts.Single(v => v.Stage == Stage.BrittlenessAccessibility);
             Assert.That(stage6.Blocks, Is.False, stage6.Detail);
-            Assert.That(stage6.Value, Does.Contain("pinned=").And.Not.Contain("pinned=0"),
-                "the NEW-Q4 pin counts print for the human");
+            Assert.That(stage6.Value, Is.EqualTo(
+                "retention=100% (wins=20 losses=0 pinned=0) windows=[20,20,24,25,20]"),
+                "the centered L701 NEW-Q4 characteristic stays exact");
 
             // Criterion 12: the checklist row set EQUALS the corpus set — every member, no extras.
             Assert.That(report.Levels.Select(l => l.Checklist).All(c => c != null), Is.True);

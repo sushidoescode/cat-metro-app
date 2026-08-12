@@ -218,14 +218,13 @@ namespace CatMetro.Tests.Corpus
             int pessimistic = w * 100 / (w + l + p);
             if (id == "L006")
             {
-                // The characteristic the ruling recorded, kept as a live pin so solver,
-                // jitter, or anchor drift cannot silently change it: three non-tick-0
-                // toggles (ticks 32/72/112) against the tie-break's zero early-side margin.
-                // Two-sided on purpose: an IMPROVEMENT in L006's retention also turns this
-                // red — the recorded characteristic changed, revisit the ruling record.
-                Assert.That((w, l, p), Is.EqualTo((7, 0, 13)),
+                // The 2026-08-09 re-pin ruling records the fixed solver's live characteristic:
+                // centered ticks 43/83/123 keep a margin on both sides of all three decisions.
+                // Two-sided on purpose: any future improvement OR regression turns this red and
+                // sends the changed measurement back through the ruling gate.
+                Assert.That((w, l, p), Is.EqualTo((20, 0, 0)),
                     id + " anchor characteristic drifted — " + britt.Value);
-                Assert.That(pessimistic, Is.EqualTo(35),
+                Assert.That(pessimistic, Is.EqualTo(100),
                     id + " pessimistic characteristic drifted — " + britt.Value);
                 return;
             }
