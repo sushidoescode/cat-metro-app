@@ -11,7 +11,7 @@
       "queue"
     ],
     "newMechanic": null,
-    "teachingGoal": "Two switches share one line: the gate never needs a touch, and the berth switch is set before the rush arrives",
+    "teachingGoal": "Two switches share one line: the gate opens for the red rush at once, and the berth switch is set before the blue rush",
     "minActionWindowTicks": 12,
     "authoredBy": "llm+validator"
   },
@@ -21,7 +21,7 @@
         "id": "SRC",
         "x": 3,
         "y": 9,
-        "queueCapacity": 5
+        "queueCapacity": 4
       },
       {
         "id": "GATE",
@@ -29,25 +29,25 @@
         "y": 7
       },
       {
-        "id": "HOLD",
-        "x": 5,
-        "y": 7,
-        "queueCapacity": 1
-      },
-      {
-        "id": "J1",
-        "x": 3,
-        "y": 5
-      },
-      {
         "id": "RED",
         "x": 1,
-        "y": 1
+        "y": 3
+      },
+      {
+        "id": "J2",
+        "x": 5,
+        "y": 7
       },
       {
         "id": "BLU",
         "x": 5,
-        "y": 1
+        "y": 3
+      },
+      {
+        "id": "TRAP",
+        "x": 7,
+        "y": 7,
+        "queueCapacity": 1
       }
     ],
     "edges": [
@@ -60,26 +60,26 @@
       {
         "id": "E2",
         "from": "GATE",
-        "to": "J1",
-        "travelTicks": 6
-      },
-      {
-        "id": "E3",
-        "from": "GATE",
-        "to": "HOLD",
-        "travelTicks": 20
-      },
-      {
-        "id": "E4",
-        "from": "J1",
         "to": "RED",
         "travelTicks": 10
       },
       {
-        "id": "E5",
-        "from": "J1",
-        "to": "BLU",
+        "id": "E3",
+        "from": "GATE",
+        "to": "J2",
         "travelTicks": 6
+      },
+      {
+        "id": "E4",
+        "from": "J2",
+        "to": "BLU",
+        "travelTicks": 8
+      },
+      {
+        "id": "E5",
+        "from": "J2",
+        "to": "TRAP",
+        "travelTicks": 4
       }
     ]
   },
@@ -87,7 +87,8 @@
     {
       "nodeId": "SRC",
       "allowedColors": [
-        "red"
+        "red",
+        "blue"
       ]
     }
   ],
@@ -119,7 +120,7 @@
     },
     {
       "id": "S2",
-      "nodeId": "J1",
+      "nodeId": "J2",
       "routes": [
         "E4",
         "E5"
@@ -150,31 +151,31 @@
       "spacingTicks": 1
     },
     {
-      "tick": 8,
+      "tick": 70,
       "sourceNode": "SRC",
-      "color": "red",
-      "count": 1,
-      "spacingTicks": 1
+      "color": "blue",
+      "count": 3,
+      "spacingTicks": 12
     },
     {
-      "tick": 8,
+      "tick": 150,
       "sourceNode": "SRC",
       "color": "red",
-      "count": 1,
-      "spacingTicks": 1
+      "count": 2,
+      "spacingTicks": 16
     }
   ],
   "win": {
-    "deliveries": 5,
-    "timeLimitTicks": 65,
-    "perfectMaxSwitches": 1,
+    "deliveries": 8,
+    "timeLimitTicks": 230,
+    "perfectMaxSwitches": 4,
     "stars": {
-      "two": 350,
-      "three": 500
+      "two": 520,
+      "three": 760
     }
   },
   "economy": {
-    "baseTickets": 15,
-    "perfectBonus": 10
+    "baseTickets": 20,
+    "perfectBonus": 12
   }
 }

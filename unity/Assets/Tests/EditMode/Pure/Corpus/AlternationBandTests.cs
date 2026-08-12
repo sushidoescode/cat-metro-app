@@ -11,6 +11,14 @@ namespace CatMetro.Tests.Corpus
     // CM-C11: L006-L010, the alternation band. Criterion 1: one case per field family per level,
     // asserted from a raw-JSON key walk (parser bugs can't mask content bugs — CM-C2a criterion
     // 1 / L002-L005 pattern). Tests may use file APIs; the shipped Content assembly may not.
+    //
+    // CM-C13 (lane 9, design-phase re-author): L007-L010's boards were near-duplicates of one
+    // shared GATE/HOLD/J1/RED/BLU shape (the #62 review's flagged anti-pattern) with a single
+    // real switch decision each — the fixed tie-break solver (SOLVER-TIEBREAK) removed the reason
+    // that shape existed (it dodged the old earliest-tick brittleness trap). This file's L007-L010
+    // sections are re-recorded two-sided against four distinct new topologies (per-level
+    // rationale and novelty evidence recorded on PR #75). L006's sections (locked anchor)
+    // are untouched.
     [TestFixture]
     public class AlternationBandFieldTests
     {
@@ -168,11 +176,14 @@ namespace CatMetro.Tests.Corpus
             Assert.That(schema.Code, Is.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Pass), id + " " + schema.Detail);
 
             var stat = l.Verdicts.Single(v => v.Stage == CatMetro.Content.Validation.Stage.StaticAnalysis);
-            // Is.EqualTo(..).Or.EqualTo(..) rather than Is.AnyOf: Unity's bundled NUnit
-            // predates AnyOf (CS0117 under the editor compile; the dotnet leg's newer NUnit
-            // masked it — caught by the first completed full-suite run, 2026-08-08).
-            Assert.That(stat.Code, Is.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Pass)
-                .Or.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Warn), id + " " + stat.Detail);
+            // Tightened from Pass-or-Warn to Pass-only at the PR #75 review's Important-3:
+            // the shipped gate accepted the #62 decoy anti-pattern (old L007's "BLU is a decoy"
+            // Warn still yielded RESULT: OK), so Warn-tolerance here made this band's headline
+            // claim a one-time run instead of a pin. Band levels L006-L010 are all Warn-free
+            // post-CM-C13; a reintroduced decoy now goes RED here (proven both directions:
+            // 20/20 green at this tip, old L007 fails this assertion).
+            Assert.That(stat.Code, Is.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Pass),
+                id + " " + stat.Detail);
 
             Assert.That(l.Solve, Is.Not.Null, id + ": stage 4 never ran");
             Assert.That(l.Solve.Verdict, Is.EqualTo(CatMetro.Domain.Solver.SolveVerdict.Solved), id);
@@ -307,9 +318,9 @@ namespace CatMetro.Tests.Corpus
         }
     }
 
-    // Criterion 6: the declared queue mechanic is provably alive on L007-L010 (SRC's burst
-    // arrival), with the authored L006 anchor as the negative control (max depth 0 at J1 — the
-    // CONFLICT-1 evidence).
+    // Criterion 6: the declared queue mechanic is provably alive on L007-L010 (SRC's simultaneous
+    // 3-cat burst — every re-authored level's opening wave), with the authored L006 anchor as the
+    // negative control (max depth 0 at J1 — the CONFLICT-1 evidence).
     [TestFixture]
     public class QueueLivenessTests
     {
@@ -348,73 +359,71 @@ namespace CatMetro.Tests.Corpus
     // Criterion 7: each of L007-L010 has a reachable failure that is NOT the pinned halt, driven
     // by a committed witness command log (<=6 entries) through ReplayHasher.RunToEnd, throwing
     // nothing. L006 is exempt (CONFLICT-1 option A, F-DEV-3 class — Win or the pinned Halt only).
+    //
+    // CM-C13 re-author: L007-L010 no longer share one topology, so each witness names its own
+    // switch index and toggle count (BandFixtures.TrapWitness) rather than one hardcoded
+    // GateToHoldWitness(). L007/L009/L010 each have a single 3-route switch (index 0) whose last
+    // route (index 2) is the dead-end TRAP node — two toggles from the authored initialRoute (0)
+    // reach it. L008 has two switches: S1 (index 0, GATE) toggled once sends every cat toward the
+    // J2 wing; S2 (index 1, the berth switch) is left at its own authored initialRoute (1 — the
+    // TRAP route), so the single S1 toggle alone is enough to divert everything into the trap.
     [TestFixture]
     public class ReachableFailureTests
     {
-        [TestCase("L007", FailReason.QueueOverflow)]
-        [TestCase("L008", FailReason.QueueOverflow)]
-        [TestCase("L009", FailReason.QueueOverflow)]
-        public void PermanentGateDiversion_OverflowsTheHoldingNode(string id, FailReason expected)
+        [TestCase("L007", 0, 2)]
+        [TestCase("L009", 0, 2)]
+        [TestCase("L010", 0, 2)]
+        public void PermanentTrapDiversion_OverflowsTheDeadEndNode(string id, int switchIndex, int toggles)
         {
             var imported = BandFixtures.Import(id);
             SimulationState end = null;
             Assert.DoesNotThrow(() =>
-                end = ReplayHasher.RunToEnd(imported.Graph, (ulong)imported.Dto.Seed, BandFixtures.GateToHoldWitness()),
+                end = ReplayHasher.RunToEnd(imported.Graph, (ulong)imported.Dto.Seed,
+                    BandFixtures.TrapWitness(switchIndex, toggles)),
                 id + ": the witness must never mismatch a cat at a real station");
             Assert.That(end.Outcome.Kind, Is.EqualTo(OutcomeKind.Failed), id);
-            Assert.That(end.Outcome.Reason, Is.EqualTo(expected), id);
+            Assert.That(end.Outcome.Reason, Is.EqualTo(FailReason.QueueOverflow), id);
         }
 
         [Test]
-        public void L010_LateSingleCatDiversion_TimesOutWithoutOverflow()
+        public void L008_GateDiversion_OverflowsTheBerthTrap_WithoutTouchingTheBerthSwitch()
         {
-            var imported = BandFixtures.Import("L010");
-            // Two entries: (i) S2 (index 1) at tick 0 — the same correcting toggle the optimal
-            // solve uses (initialRoute points at the decoy BLU edge; every red cat needs this to
-            // reach RED, clamped-safe per L001's own pattern). (ii) S1 (index 0, GATE) at tick
-            // 70 (applies at step 1 of tick 71) — after the tick-60 red cat has already cleared
-            // GATE (~tick 66), before the tick-76 red cat arrives at GATE (~tick 82). Diverts
-            // only that last cat into HOLD (E3 travelTicks 20, queueCapacity 1): it arrives HOLD
-            // at tick 76+6+20=102 and the 16-tick overflow countdown would complete at 118 —
-            // well after this level's timeLimitTicks (105), so TimeOut fires first. With 1 of 5
-            // deliveries missing, Deliveries stays below win.deliveries when Tick reaches 105.
-            var log = new CommandLog();
-            log.Append(new ToggleSwitchCommand(1, 0));
-            log.Append(new ToggleSwitchCommand(0, 70));
-
+            var imported = BandFixtures.Import("L008");
+            // S1 (GATE, index 0) toggled once at tick 0 sends every cat — regardless of colour —
+            // down the J2 wing instead of the direct RED route. S2 (the berth switch, index 1) is
+            // never touched, so it stays at its own authored initialRoute (1 == the TRAP route):
+            // every cat that reaches J2 funnels straight into the dead end. This exercises BOTH
+            // switches' un-set state at once — the level's own "the berth switch must be set
+            // before the rush arrives" teaching point, inverted into a failure witness.
             SimulationState end = null;
             Assert.DoesNotThrow(() =>
-                end = ReplayHasher.RunToEnd(imported.Graph, (ulong)imported.Dto.Seed, log),
-                "L010: the witness must never mismatch a cat at a real station");
+                end = ReplayHasher.RunToEnd(imported.Graph, (ulong)imported.Dto.Seed,
+                    BandFixtures.TrapWitness(0, 1)),
+                "L008: the witness must never mismatch a cat at a real station");
             Assert.That(end.Outcome.Kind, Is.EqualTo(OutcomeKind.Failed));
-            Assert.That(end.Outcome.Reason, Is.EqualTo(FailReason.TimeOut));
-            Assert.That(end.Deliveries, Is.LessThan(imported.Dto.Win.Deliveries));
+            Assert.That(end.Outcome.Reason, Is.EqualTo(FailReason.QueueOverflow));
         }
 
         [Test]
-        public void BandCoverage_AtLeastTwoOverflow_AtLeastOneTimeOut()
+        public void BandCoverage_AllFourReAuthoredLevels_ReachAGenuineQueueOverflow()
         {
             var reasons = new System.Collections.Generic.List<FailReason>();
 
-            foreach (var id in new[] { "L007", "L008", "L009" })
+            foreach (var (id, switchIndex, toggles) in new[] { ("L007", 0, 2), ("L009", 0, 2), ("L010", 0, 2) })
             {
                 var imported = BandFixtures.Import(id);
-                var end = ReplayHasher.RunToEnd(imported.Graph, (ulong)imported.Dto.Seed, BandFixtures.GateToHoldWitness());
+                var end = ReplayHasher.RunToEnd(imported.Graph, (ulong)imported.Dto.Seed,
+                    BandFixtures.TrapWitness(switchIndex, toggles));
                 reasons.Add(end.Outcome.Reason);
             }
             {
-                var imported = BandFixtures.Import("L010");
-                var log = new CommandLog();
-                log.Append(new ToggleSwitchCommand(1, 0));
-                log.Append(new ToggleSwitchCommand(0, 70));
-                var end = ReplayHasher.RunToEnd(imported.Graph, (ulong)imported.Dto.Seed, log);
+                var imported = BandFixtures.Import("L008");
+                var end = ReplayHasher.RunToEnd(imported.Graph, (ulong)imported.Dto.Seed,
+                    BandFixtures.TrapWitness(0, 1));
                 reasons.Add(end.Outcome.Reason);
             }
 
-            Assert.That(reasons.Count(r => r == FailReason.QueueOverflow), Is.GreaterThanOrEqualTo(2),
-                string.Join(",", reasons));
-            Assert.That(reasons.Count(r => r == FailReason.TimeOut), Is.GreaterThanOrEqualTo(1),
-                string.Join(",", reasons));
+            Assert.That(reasons, Is.All.EqualTo(FailReason.QueueOverflow), string.Join(",", reasons));
         }
     }
 }

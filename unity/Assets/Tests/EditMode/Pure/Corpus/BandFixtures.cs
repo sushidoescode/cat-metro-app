@@ -37,14 +37,23 @@ namespace CatMetro.Tests.Corpus
             return max;
         }
 
-        // Criterion 7's witness: toggle the GATE switch (S1, index 0) once at tick 0 — applies at
-        // step 1 of tick 1, before any wave emits — permanently diverting every cat from GATE's
-        // real route (index 0, -> J1) onto the trap route (index 1, -> HOLD). HOLD is never a
-        // station, so no cat this log ever produces can mismatch-throw.
-        public static CommandLog GateToHoldWitness()
+        // Criterion 7's witness (CM-C13 re-author): `toggles` toggles of `switchIndex` at tick 0
+        // — all applying at step 1 of tick 1, before any wave emits — permanently diverting every
+        // cat that reaches that switch onto its trap route. Every L007-L010 switch's LAST route
+        // is a dead-end TRAP node (never a station), so no cat any resulting log produces can
+        // mismatch-throw; the trap's declared `queueCapacity: 1` guarantees the diversion
+        // overflows quickly rather than lingering (CM-C11's stop-condition-7 lesson: an
+        // uncapacitated dead end makes solver-exploratory branches immortal). `toggles` is the
+        // number of single-step route advances needed from the switch's authored `initialRoute`
+        // to reach the trap index — generic across the four re-authored topologies rather than
+        // hardcoded to one board's shape (the prior GateToHoldWitness() assumed a single
+        // 2-route switch at index 0; L007-L010 now mix 2- and 3-route switches at different
+        // indices).
+        public static CommandLog TrapWitness(int switchIndex, int toggles)
         {
             var log = new CommandLog();
-            log.Append(new ToggleSwitchCommand(0, 0));
+            for (int i = 0; i < toggles; i++)
+                log.Append(new ToggleSwitchCommand((ushort)switchIndex, 0));
             return log;
         }
     }
