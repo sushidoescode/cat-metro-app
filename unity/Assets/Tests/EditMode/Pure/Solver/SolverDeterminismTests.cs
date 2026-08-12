@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using NUnit.Framework;
 using CatMetro.Domain;
 using CatMetro.Domain.Solver;
@@ -6,20 +7,234 @@ using CatMetro.Tests.Domain;
 
 namespace CatMetro.Tests.Solver
 {
-    // Criterion 7 (Q-W): optimality is defined and deterministic — minimal CompletionTicks, then
-    // fewer commands, then lexicographic (Tick, SwitchId).
+    // SOLVER-TIEBREAK: optimality stays minimal CompletionTicks then fewer commands. Equal-primary
+    // wins use the middle of each same-completion action window before the final lexicographic
+    // (Tick, SwitchId) fallback.
     [TestFixture]
     public class SolverDeterminismTests
     {
-        [Test] // 7a — the tie-break picks the specified solution
-        public void TieBreak_PicksEarliestLexicographicLog()
+        [Test]
+        public void TieBreak_PicksTheMiddleOfTheSameCompletionWindow()
         {
             // Any single toggle at entry.Tick 0..4 wins at the same completion tick on this
-            // board; the tie-break must return exactly [(SwitchId 0, Tick 0)].
+            // board. The lower-middle rule has one answer: [(SwitchId 0, Tick 2)].
             var graph = SolverFixtures.TieBreakBoard();
             var r = LevelSolver.Solve(graph, 11);
             Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.Solved));
-            SolverFixtures.AssertSameLog(SolverFixtures.Log((0, 0)), r.OptimalLog, "tie-break");
+            SolverFixtures.AssertSameLog(SolverFixtures.Log((0, 2)), r.OptimalLog,
+                "mid-window tie-break (safe interval 0..4)");
+            AssertNeighborIsSameCompletionWin(graph, 11, r, 0, -1);
+            AssertNeighborIsSameCompletionWin(graph, 11, r, 0, +1);
+        }
+
+        [Test]
+        public void DevCaptureDemo_DefaultBudget_PreservesTheActivePlayWitness()
+        {
+            var r = LevelSolver.Solve(SolverFixtures.DevCaptureDemo(), 2001);
+
+            Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.Solved));
+            Assert.That(r.NotFoundReason, Is.EqualTo(NotFoundReason.None));
+            Assert.That(r.CompletionTicks, Is.EqualTo(39));
+            Assert.That(r.SwitchesUsed, Is.EqualTo(1));
+            Assert.That(r.PinnedPruned, Is.EqualTo(0));
+            Assert.That(r.FirstPinMessage, Is.Empty);
+            SolverFixtures.AssertSameLog(SolverFixtures.Log((0, 5)), r.OptimalLog,
+                "the dev-capture active-play witness stays inside the authored default ceiling");
+        }
+
+        [Test]
+        public void TwoCommandTieBreak_KeepsOneTickOfMarginOnBothSidesOfEveryDecision()
+        {
+            var graph = SolverFixtures.TwoSwitchTwoCmd();
+            var r = LevelSolver.Solve(graph, 7);
+            var reference = SolverFixtures.BruteForceBest(graph, 7);
+
+            Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.Solved));
+            Assert.That(reference, Is.Not.Null);
+            SolverFixtures.AssertSameLog(reference.Value.log, r.OptimalLog,
+                "independent brute-force mid-window oracle");
+
+            for (int i = 0; i < r.OptimalLog.Entries.Count; i++)
+            {
+                Assert.That(r.OptimalLog.Entries[i].Tick, Is.GreaterThan(0),
+                    "this fixture gives every necessary command a real lower-side margin");
+                AssertNeighborIsSameCompletionWin(graph, 7, r, i, -1);
+                AssertNeighborIsSameCompletionWin(graph, 7, r, i, +1);
+            }
+        }
+
+        [Test]
+        public void TieBreak_AppliesFinalLexOnlyAfterEveryEqualPrimaryWinnerIsCentered()
+        {
+            // S0 is downstream: raw S0@0 beats raw S1@0, but its wide window centers later.
+            // S1 is upstream: after both equal-primary alternatives are normalized, S1 wins
+            // the FINAL (Tick, SwitchId) comparison. Selecting the raw winner first is wrong.
+            var graph = SolverFixtures.FinalLexAfterCenterBoard();
+            var r = LevelSolver.Solve(graph, 17);
+            var reference = SolverFixtures.BruteForceBest(graph, 17);
+
+            Assert.That(reference, Is.Not.Null);
+            SolverFixtures.AssertSameLog(SolverFixtures.Log((1, 1)), reference.Value.log,
+                "exhaustive fixed-point oracle discriminator");
+            SolverFixtures.AssertSameLog(reference.Value.log, r.OptimalLog,
+                "final lex must run after normalization");
+        }
+
+        [Test]
+        public void TieBreak_RetainsCanonicalHistoryAcrossStateConvergence()
+        {
+            var graph = SolverFixtures.DedupeCanonicalBoard();
+            var reference = SolverFixtures.BruteForceBest(graph, 17);
+            var r = LevelSolver.Solve(graph, 17);
+
+            Assert.That(reference, Is.Not.Null);
+            SolverFixtures.AssertSameLog(SolverFixtures.Log((0, 0), (0, 1)), reference.Value.log,
+                "exhaustive chronological fixed-point discriminator");
+            Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.Solved));
+            Assert.That(r.CompletionTicks, Is.EqualTo(4));
+            SolverFixtures.AssertSameLog(reference.Value.log, r.OptimalLog,
+                "state dedupe may not discard the eventual centered canonical history");
+        }
+
+        [Test]
+        public void MidWindowNormalizer_StopsWhenCenteringWouldReverseReceiptChronology()
+        {
+            var wins = new HashSet<string>
+            {
+                "1,2", "2,2", "3,2", "4,2", "5,2", "3,1"
+            };
+
+            bool converged = MidWindowNormalizer.TryCenter(
+                new[] { 1, 2 }, 6,
+                ticks => wins.Contains(ticks[0] + "," + ticks[1]),
+                out var result);
+
+            Assert.That(converged, Is.False,
+                "Option A: unrestricted windows remain authoritative, but a reversed receipt order stops");
+            Assert.That(result, Is.EqualTo(new[] { 1, 2 }),
+                "a failed normalization returns the original receipt chronology, never a crossed log");
+            Assert.That(result[0], Is.LessThanOrEqualTo(result[1]),
+                "the original receipt chronology remains representable by command ticks");
+        }
+
+        [Test]
+        public void MidWindowNormalizer_StopsWhenCenteringWouldReverseEqualTickSwitchOrder()
+        {
+            // Receipt sequence S1@0,S0@1 is chronological. Centering the first command to tick 1
+            // would create S1@1,S0@1, reversing the canonical same-tick SwitchId order.
+            var wins = new HashSet<string> { "0,1", "1,1", "2,1" };
+
+            bool converged = MidWindowNormalizer.TryCenter(
+                new ushort[] { 1, 0 }, new[] { 0, 1 }, 3,
+                ticks => wins.Contains(ticks[0] + "," + ticks[1]), out var result);
+
+            Assert.That(converged, Is.False,
+                "receipt chronology compares (Tick, SwitchId), including equal ticks");
+            Assert.That(result, Is.EqualTo(new[] { 0, 1 }),
+                "the failed normalization restores the original receipt chronology");
+        }
+
+        [Test]
+        public void OrderedBoxCertificate_RejectsEndpointOnlyHistoryCompression()
+        {
+            // Three chronological histories share the endpoint box [(0,0)..(2,2)], but that
+            // ordered box contains six histories. Treating only min/max/count as a complete box
+            // would erase the interior fixed point (0,2), which lex-beats the max endpoint (2,2).
+            var status = OrderedTickBox.Classify(
+                new ushort[] { 0, 0 }, new[] { 0, 0 }, new[] { 2, 2 },
+                observedCount: 3, charge: () => true);
+            Assert.That(status, Is.EqualTo(OrderedTickBoxStatus.Incomplete));
+
+            var wins = new HashSet<string>
+            {
+                "0,0", "0,2", "1,0", "2,0", "2,2"
+            };
+            Assert.That(MidWindowNormalizer.TryCenter(
+                new[] { 0, 0 }, 3,
+                ticks => wins.Contains(ticks[0] + "," + ticks[1]), out _), Is.False,
+                "the min endpoint crosses receipt chronology and fails closed");
+            Assert.That(MidWindowNormalizer.TryCenter(
+                new[] { 0, 2 }, 3,
+                ticks => wins.Contains(ticks[0] + "," + ticks[1]), out var interior), Is.True);
+            Assert.That(MidWindowNormalizer.TryCenter(
+                new[] { 2, 2 }, 3,
+                ticks => wins.Contains(ticks[0] + "," + ticks[1]), out var maximum), Is.True);
+            Assert.That(interior, Is.EqualTo(new[] { 0, 2 }));
+            Assert.That(maximum, Is.EqualTo(new[] { 2, 2 }));
+        }
+
+        [Test]
+        public void OccurrenceProductCertificate_RejectsAnIncompleteInterleavingUnion()
+        {
+            // Both groups are individually complete chronological boxes. Together they contain
+            // only 3 of the 6 combinations in their global S0:[0..2] x S1:[0..1] envelopes.
+            // Its midpoint happens to be a valid fixed point, so only the cardinality proof keeps
+            // the fast path from erasing the lex-earlier fixed point S0@0,S1@1.
+            var incomplete = new[]
+            {
+                new OccurrenceTickBoxGroup(
+                    new ushort[] { 0, 1 }, new[] { 0, 1 }, new[] { 0, 1 }, 1),
+                new OccurrenceTickBoxGroup(
+                    new ushort[] { 1, 0 }, new[] { 0, 0 }, new[] { 0, 2 }, 2),
+            };
+            var status = OccurrenceTickProduct.Classify(
+                2, 3, incomplete, _ => true, out _);
+            Assert.That(status, Is.EqualTo(OrderedTickBoxStatus.Incomplete));
+
+            // Positive control: the two boxes below partition all four combinations in
+            // S0:[0..1] x S1:[0..1], so their unique fixed point is the sorted lower midpoint.
+            var complete = new[]
+            {
+                new OccurrenceTickBoxGroup(
+                    new ushort[] { 0, 1 }, new[] { 0, 0 }, new[] { 1, 1 }, 3),
+                new OccurrenceTickBoxGroup(
+                    new ushort[] { 1, 0 }, new[] { 0, 1 }, new[] { 0, 1 }, 1),
+            };
+            status = OccurrenceTickProduct.Classify(2, 2, complete, _ => true, out var midpoint);
+            Assert.That(status, Is.EqualTo(OrderedTickBoxStatus.Complete));
+            Assert.That(midpoint.Length, Is.EqualTo(2));
+            Assert.That(midpoint[0].SwitchId, Is.EqualTo((ushort)0));
+            Assert.That(midpoint[0].Tick, Is.EqualTo(0));
+            Assert.That(midpoint[1].SwitchId, Is.EqualTo((ushort)1));
+            Assert.That(midpoint[1].Tick, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void InteractingWindowCycle_StopsInsteadOfReturningAChangingBoundary()
+        {
+            var wins = new HashSet<string>
+            {
+                "1,1", "2,1", "3,1", "1,2", "2,2", "2,3", "3,3"
+            };
+
+            bool converged = MidWindowNormalizer.TryCenter(
+                new[] { 1, 1 }, 4,
+                ticks => wins.Contains(ticks[0] + "," + ticks[1]),
+                out var result);
+
+            Assert.That(converged, Is.False,
+                "the midpoint sweeps cycle (1,1) -> (2,2) -> (1,1); no boundary is canonical");
+            Assert.That(result, Is.EqualTo(new[] { 1, 1 }),
+                "the stop result is deterministic and never presented as a centered success");
+        }
+
+        [Test]
+        public void InteractingWindowProbe_IsBoundedToAConstantThreeSweepEnvelope()
+        {
+            var wins = new HashSet<string>
+            {
+                "1,1", "2,1", "3,1", "1,2", "2,2", "2,3", "3,3"
+            };
+            int probes = 0;
+
+            MidWindowNormalizer.TryCenter(new[] { 1, 1 }, 4, ticks =>
+            {
+                probes++;
+                return wins.Contains(ticks[0] + "," + ticks[1]);
+            }, out _);
+
+            Assert.That(probes, Is.LessThanOrEqualTo(12),
+                "refinement work may not multiply by an arbitrary command-count pass cap");
         }
 
         [Test] // 7b — in-process determinism
@@ -39,6 +254,24 @@ namespace CatMetro.Tests.Solver
             var r = LevelSolver.Solve(graph, 7);
             Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.Solved));
             Console.Out.WriteLine($"SOLVER_LOG={SolverFixtures.LogHex(r.OptimalLog)}");
+        }
+
+        private static void AssertNeighborIsSameCompletionWin(
+            LevelGraph graph, ulong seed, SolveResult solved, int entryIndex, int delta)
+        {
+            var shifted = new CommandLog(solved.OptimalLog.FormatVersion);
+            for (int i = 0; i < solved.OptimalLog.Entries.Count; i++)
+            {
+                var e = solved.OptimalLog.Entries[i];
+                shifted.Append(i == entryIndex
+                    ? new ToggleSwitchCommand(e.SwitchId, e.Tick + delta)
+                    : e);
+            }
+
+            Assert.That(SolverFixtures.RunsToWin(graph, seed, shifted, out int completionTicks),
+                Is.True, $"entry {entryIndex} shift {delta:+#;-#;0} must still win");
+            Assert.That(completionTicks, Is.EqualTo(solved.CompletionTicks),
+                $"entry {entryIndex} shift {delta:+#;-#;0} may not trade margin for a slower win");
         }
     }
 }
