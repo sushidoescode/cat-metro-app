@@ -18,6 +18,11 @@ Sending these is a **[HUMAN]** act. Nothing here is sent automatically.
    verbatim". Do not reword it, and do not add a second claim beside it.
 4. Keep the tester roster (names + Gmail addresses) **out of this repository**: personal data, and
    the repo has no secret-scanning gate today (`state/PROJECT_STATE.md:92`, `.github/workflows/ci.yml:17`).
+5. **Q0-1 gate on the 12/14 wording:** messages A0 and A state Google's 12-testers/14-days
+   requirement as fact. That requirement binds only personal developer accounts created on/after
+   2023-11-13 (runbook §0 Q0-1, §1 — currently UNKNOWN for this account). Answer Q0-1 BEFORE
+   sending; if the account predates the cutoff, reword "Google requires…" to "I want a real
+   two-week test group" — never hand external people a requirement-shaped reason that does not bind.
 
 ---
 
