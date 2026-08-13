@@ -48,9 +48,12 @@ has 'useCustomKeystore' || fail "signing state is not surfaced"
 has 'CM_ALLOW_DEBUG_SIGNING' \
   || fail "debug signing must be an explicit opt-in, not a warning"
 has 'signing=' || fail "machine-readable signing marker is missing"
-hasE '\b(keystoreName|keyaliasName|keystorePass|keyaliasPass)\b|CM_KEYSTORE|KEYSTORE_PASS' \
+# The two SECURITY denylists run on the RAW source (R-1): a string literal carrying a
+# '//' would vanish from the stripped view and could smuggle a violation past it, and
+# for a denylist a prose false-positive is the desirable failure direction.
+grep -Eq '\b(keystoreName|keyaliasName|keystorePass|keyaliasPass)\b|CM_KEYSTORE|KEYSTORE_PASS' "$src" \
   && fail "the builder must never touch keystore material"
-hasE 'PlayerSettings\.[A-Za-z0-9_.]+[[:space:]]*=[^=]' \
+grep -Eq 'PlayerSettings\.[A-Za-z0-9_.]+[[:space:]]*=[^=]' "$src" \
   && fail "the builder must never WRITE Player Settings"
 
 ext_line=$(first_line 'Path.GetExtension')
