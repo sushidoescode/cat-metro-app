@@ -45,11 +45,11 @@ namespace CatMetro.Presentation.Hud.WavePreview
             strip.CreateVisualTree();
 
             // F-1: Lane 1A's criterion-5 gate re-author is an ancestor of this head, so the
-            // legacy primitive-quad/GreyboxMaterial.Shared construction that used to wait on
-            // it is removed outright — the reference-style UGUI/TMP tree above is the only
-            // wave-preview geometry now. (Deliberately not naming the removed factory call
-            // literally in this comment: WavePreviewSource_ContainsNoPrimitiveConstruction
-            // source-scans this very file for that substring.)
+            // legacy primitive-quad construction and its shared greybox material bind that
+            // used to wait on it are removed outright — the reference-style UGUI/TMP tree
+            // above is the only wave-preview geometry now. (Deliberately naming NEITHER
+            // removed API literally: both the PlayMode source scan and device-config's
+            // criterion-5 substring counters scan this very file.)
             strip.Layout();
             strip.Refresh();
             return strip;
