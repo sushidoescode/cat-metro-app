@@ -60,6 +60,24 @@ namespace CatMetro.Tests.PlayMode
                 "playback allocates no additional source");
         }
 
+        [Test]
+        public void Play_WithNullClipSource_DoesNotAdvancePlayCountOrLastCue()
+        {
+            // F-5 (round-1 review): an unloaded/out-of-range cue path leaves its prewarmed
+            // source with a null clip (the existing seam shape already exercised by
+            // Ensure_IsOneManagerWithExactlyThreePrewarmedSources' sources array above) —
+            // playback must not silently advance the observable seam.
+            _host = new GameObject("AudioNullClipHost");
+            var manager = Ensure(_host.transform);
+            var sources = manager.GetComponents<AudioSource>();
+            sources[0].clip = null; // the tap source's unloaded cue path
+
+            Invoke(manager, "PlayTap");
+
+            AssertCue(manager, "None", 0,
+                "a null-clip source must not advance PlayCount or LastCueName");
+        }
+
         [UnityTest]
         public IEnumerator ScreenStateEdges_PlayWarningOnce_ThenTapOnRetryReturn()
         {

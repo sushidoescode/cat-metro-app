@@ -89,9 +89,12 @@ namespace CatMetro.Presentation.Audio
             {
                 source.Stop();
                 source.Play();
+                // F-5 (round-1 review): these seams must observe only real playback. A
+                // null-clip source (an out-of-range/unloaded cue path) must not advance the
+                // count or edge, or a caller could believe a cue fired when nothing played.
+                LastCueName = cue.ToString();
+                PlayCount++;
             }
-            LastCueName = cue.ToString();
-            PlayCount++;
         }
     }
 }
