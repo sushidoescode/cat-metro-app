@@ -66,8 +66,10 @@ SKUs own the "`<X>` Line" form (Sakura Line, Neon Line, Harvest Line, Snowbell L
 **theme** with a $2.99 **district**. The retired name "Rooftop Line" is not reused (CM-R10.1 keeps a CI
 grep gate at zero occurrences). **The same anti-confusion duty runs in the copy direction (PROPOSED):**
 because "All playable lines" is deliberately narrower than "everything," any district-led sheet that
-shows the All Access row must also name what that row does **not** contain — the standalone `<X>` Line
-themes and the standalone cat-skin/livery waves — in the same sheet. §8.2 already makes this the
+shows the All Access row must also name what that row does **not** contain — Harvest Line and Snowbell
+Line, the cat-skin wave, and the standalone livery wave — **while naming Sakura + Neon as the included
+cosmetic pair** (`monetization_spec.md:619` grants them under `all_access`; `:628-629` REQUIRES naming
+them as included) — in the same sheet. §8.2 already makes this the
 substance of All Access ("every playable line," not "the complete Cat Metro," and it "does not silently
 include later standalone cosmetics" — `monetization_spec.md:619`, `:627-630`); this rule is what keeps
 that true at the surface a player actually reads. Q-S4's generalization of the two-price no-scroll law is
@@ -177,7 +179,7 @@ the board palette. Purchase copy must not imply a theme is included.
 ### BLOCKED · D-3 · Signal Works — no SKU proposed, not shippable under §8.1 law 1
 
 - **Theme:** signal box and repair shed; Day preset.
-- **Why conditional:** its intended remix vocabulary is `cooldown` and `gate`. Both exist **only** as
+- **Why blocked:** its intended remix vocabulary is `cooldown` and `gate`. Both exist **only** as
   schema enum values (`level_schema.json:20`) and as a post-launch plan for free bands 31–60
   (`product_spec.md:603-607`). **Neither mechanic is built, authored, or shipped anywhere today.** Under
   §8.1 law 1 a paid district may not be the first place a mechanic appears, so Signal Works is

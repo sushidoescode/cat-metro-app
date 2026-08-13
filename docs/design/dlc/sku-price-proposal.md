@@ -113,8 +113,10 @@ Rules this design does not get to bend, restated so the implementer inherits the
   (`:712`). No district-led sheet may imply a district is obtainable only through All Access.
   **Conditional (see `districts.md` §2.3):** this generalization is proposed *together with* the
   exclusion line — a sheet showing the "All playable lines" row must also name what that row does not
-  contain (standalone `<X>` Line themes, cat-skin and livery waves), because "every playable line" is
-  deliberately narrower than "everything" (`monetization_spec.md:619`, `:627-630`). Generalizing the
+  contain (Harvest Line, Snowbell Line, the cat-skin wave, the standalone livery wave) while naming
+  Sakura + Neon as the **included** pair (`monetization_spec.md:619` grants them under `all_access`;
+  `:628-629` requires naming them), because "every playable line" is
+  deliberately narrower than "everything" (`:627-630`). Generalizing the
   two-price row **without** the exclusion line is not what this document proposes.
 - **Unchanged, and not touched by this lane:** `post_level_5` is the one scripted exposure, **once per
   install ever**, with dismissal available on frame 1 (CM-R26; `monetization_spec.md:919`); three
