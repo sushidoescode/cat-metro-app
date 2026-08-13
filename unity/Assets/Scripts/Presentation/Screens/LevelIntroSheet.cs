@@ -157,7 +157,10 @@ namespace CatMetro.Presentation.Screens
 
         private void InvokePlay()
         {
-            UiAudioManager.Ensure(transform)?.PlayTap();
+            // F-6 (round-1 review): explicit null check, not `?.` — see HomeScreenView for the
+            // Unity fake-null rationale.
+            var audio = UiAudioManager.Ensure(transform);
+            if (audio != null) audio.PlayTap();
             PlayRequested?.Invoke();
         }
 

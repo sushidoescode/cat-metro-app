@@ -206,7 +206,11 @@ namespace CatMetro.Presentation.Screens
 
         private void InvokeLevelSelected()
         {
-            UiAudioManager.Ensure(transform)?.PlayTap();
+            // F-6 (round-1 review): explicit null check, not `?.` — a destroyed
+            // UiAudioManager is Unity fake-null (its overloaded `==` reports null, but the C#
+            // reference the `?.` operator sees is not), so `?.` would still dispatch into it.
+            var audio = UiAudioManager.Ensure(transform);
+            if (audio != null) audio.PlayTap();
             LevelSelected?.Invoke();
         }
 

@@ -188,7 +188,9 @@ namespace CatMetro.Presentation.Hud
         private void Apply()
         {
             bool show = _screenState() == "Won";
-            if (show && !_wasShown) _audio?.PlayWin();
+            // F-6 (round-1 review): explicit null check, not `?.` — see ScreenChromeController
+            // for the Unity fake-null rationale.
+            if (show && !_wasShown && _audio != null) _audio.PlayWin();
             if (show) LayoutChip();
             if (_panelRoot.activeSelf != show) _panelRoot.SetActive(show);
             if (show && !_registered && _regions != null)
@@ -209,7 +211,9 @@ namespace CatMetro.Presentation.Hud
         private void InvokeNext()
         {
             // Seam ONLY (criterion 5): Bootstrap owns level advance. Nothing else happens.
-            _audio?.PlayTap();
+            // F-6 (round-1 review): explicit null check, not `?.` — see ScreenChromeController
+            // for the Unity fake-null rationale.
+            if (_audio != null) _audio.PlayTap();
             NextRequested?.Invoke();
         }
 

@@ -66,9 +66,19 @@ namespace CatMetro.Presentation.Hud
             var state = _screenState();
             if (_previousState != null && state != _previousState)
             {
-                if (state == "FailureReview") _audio?.PlayWarning();
+                // F-6 (round-1 review): explicit null checks, not `?.` — a destroyed
+                // UiAudioManager is Unity fake-null (its overloaded `==` reports null, but the
+                // C# reference the `?.` operator sees is not), so `?.` would still dispatch
+                // into it. Audio never gates a visual state either way; this only changes how
+                // the null case is detected.
+                if (state == "FailureReview")
+                {
+                    if (_audio != null) _audio.PlayWarning();
+                }
                 else if (_previousState == "FailureReview" && state == "Playing")
-                    _audio?.PlayTap();
+                {
+                    if (_audio != null) _audio.PlayTap();
+                }
             }
             if (Cta != null) Cta.SetVisible(state == "FailureReview");
             if (Veil != null) Veil.SetVisible(state == "Halted");
