@@ -127,8 +127,20 @@ namespace CatMetro.Tests.Daily
             Assert.That(second.Records.Select(r => r.DateKey), Is.EqualTo(ExpectedHorizon));
 
             for (int i = 0; i < ExpectedHorizon.Length; i++)
+            {
                 AssertDeterministicAdmission(first.Records[i], second.Records[i]);
+                // Exact-head review Finding 1: the candidate horizon must admit WITHOUT the
+                // fallback and on the FIRST candidate attempt — a partial family regression
+                // that silently shifts dates onto k>=1 or the fallback board changes what
+                // players get and must turn this red, not just move a log line.
+                Assert.That(first.Records[i].UsedFallback, Is.False, first.Records[i].DateKey);
+                Assert.That(first.Records[i].K, Is.Zero, first.Records[i].DateKey);
+            }
 
+            // Same finding: the family/k distribution is a pinned characteristic of the shipped
+            // horizon, not an informational log line. Re-pin deliberately on any authored change.
+            Assert.That(Distribution(first.Records),
+                Is.EqualTo("alternating=29,cascade=33,queued=28;fallback=0;k0=90"));
             TestContext.WriteLine("DAILY_HORIZON distribution " + Distribution(first.Records));
         }
 
