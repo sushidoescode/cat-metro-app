@@ -130,7 +130,7 @@ on that app record.
      and `AnalyticsQueue` (`unity/Assets/Scripts/Application/Analytics/AnalyticsQueue.cs:41`) is
      constructed only from tests (`QueueFixtures.cs:41`, `QueueNonTransactionalTests.cs:22,55`,
      `unity/Assets/Tests/EditMode/Engine/BootstrapSeamTests.cs:78,85`) — nowhere under `Scripts/`.
-  2. The only `UnityWebRequest` under `unity/Assets/Scripts/` is
+  2. The only `UnityWebRequest` construction under `unity/Assets/Scripts/` is
      `unity/Assets/Scripts/Bootstrap/StreamingAssetsContentSource.cs:35` — a read of
      `Application.streamingAssetsPath` through a `file://`/`jar:file://` URL (`:29-34`), i.e. an
      in-package local read, not a network call.

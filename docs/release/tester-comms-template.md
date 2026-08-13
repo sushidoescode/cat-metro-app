@@ -12,7 +12,10 @@ Sending these is a **[HUMAN]** act. Nothing here is sent automatically.
 3. **Do not add product claims.** Anything about levels, features or performance must already be
    `VERIFIED` in `docs/store/play-store-listing.md` §Current claim gates (Lane 7's pack — read it,
    never edit it). If a claim is not there, cut the sentence rather than softening it.
-   Message A contains **exactly one** product claim — "No forced ads, energy, or loot-box system;
+   Message A contains **exactly one claim requiring verbatim reproduction** (its opening
+   one-line game description corresponds to the VERIFIED row at
+   `docs/store/play-store-listing.md:72`, publication rule "May remain in current copy") —
+   "No forced ads, energy, or loot-box system;
    every current level is solvable free" — reproduced **verbatim** from the VERIFIED row at
    `docs/store/play-store-listing.md:76`, whose publication rule is "Keep the positioning line
    verbatim". Do not reword it, and do not add a second claim beside it.
@@ -83,7 +86,7 @@ Keep the replies in your own private notes — see the roster-custody rule in st
 > Thanks — this genuinely unblocks the launch.
 > [YOUR NAME]
 
-**Sourcing for the two Google-behaviour statements in message A** (retrieved 2026-08-13):
+**Sourcing for the three Google-behaviour statements in message A** (the 12/14 requirement — §1/S1, Q0-1-gated per rule 5 — plus the two below; retrieved 2026-08-13):
 
 - *"breaks the 14-day streak … has to start over"* — the requirement page is explicit that the 14
   days "must be consecutive to count" and that testers who opt out are not counted
