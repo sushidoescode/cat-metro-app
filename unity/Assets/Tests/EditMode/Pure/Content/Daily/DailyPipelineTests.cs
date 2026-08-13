@@ -22,6 +22,64 @@ namespace CatMetro.Tests.Daily
             Assert.That(f.IsInitOnly, Is.True);
         }
 
+        [Test]
+        public void DefaultRequest_PreservesHistoricalScheme()
+        {
+            var report = DFixtures.Run(DFixtures.Request(new[] { "2026-08-24" },
+                new DFixtures.FixedFactory(DFixtures.L001Dto())));
+            Assert.That(report.Generator, Is.EqualTo("CM-DAILY-1"));
+            Assert.That(report.Records.Single().Seed, Is.EqualTo(855770272u));
+        }
+
+        [Test]
+        public void RuntimeScheme_UsesProductSeedForEveryAttempt()
+        {
+            var scheme = DailyLineSeedScheme.Instance;
+            Assert.That(scheme.Derive("2026-08-24", 0), Is.EqualTo(1449106418u));
+            Assert.That(scheme.Derive("2026-08-24", 10), Is.EqualTo(1449106418u));
+        }
+
+        [Test]
+        public void DailyRunReport_LegacyConstructorRemainsSourceCompatible()
+        {
+            var records = new List<DailyDateRecord>();
+            var constructor = typeof(DailyRunReport).GetConstructor(new[]
+            {
+                typeof(IReadOnlyList<DailyDateRecord>), typeof(string), typeof(bool),
+            });
+            var report = new DailyRunReport(records, "legacy-board", exitFailure: true);
+
+            Assert.That(constructor, Is.Not.Null,
+                "the runtime generator label must not remove CM-C6's public constructor");
+            Assert.That(report.Generator, Is.EqualTo(DailySeed.GENERATOR_CONSTANT));
+            Assert.That(report.Records, Is.SameAs(records));
+            Assert.That(report.BoardProvenance, Is.EqualTo("legacy-board"));
+            Assert.That(report.ExitFailure, Is.True);
+        }
+
+        [Test]
+        public void RuntimeRequest_UsesItsSchemeForThePipelineAttempt()
+        {
+            var historical = DFixtures.Request(new[] { "2026-08-24" },
+                new DFixtures.FixedFactory(DFixtures.L001Dto()));
+            var runtime = new DailyRunRequest(
+                historical.SchemaBytes,
+                historical.ValidatorConfig,
+                historical.PipelineConfig,
+                historical.WeekdayCurveBytes,
+                historical.DateKeys,
+                historical.Factory,
+                historical.ReferenceTimestamp,
+                historical.BoardProvenance,
+                DailyLineSeedScheme.Instance,
+                historical.MaxNodesExpanded);
+
+            var report = DFixtures.Run(runtime);
+            Assert.That(report.Records.Single().Seed, Is.EqualTo(1449106418u));
+            Assert.That(((DFixtures.FixedFactory)historical.Factory).Calls.Single().seed,
+                Is.EqualTo(1449106418u));
+        }
+
         // Criterion 4a: a board failing a blocking stage at k=0 and passing at k=1 resolves k=1.
         [Test]
         public void SaltLoop_FailAtK0_PassAtK1_ResolvesK1()

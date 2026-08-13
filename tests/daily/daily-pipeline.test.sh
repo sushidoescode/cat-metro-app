@@ -16,7 +16,7 @@ seed_rx='^DAILY_SEED [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]+ [0-9]+$'
 # Review F2: every grep below fails CLOSED — a moved scan root must fail this wrapper, not
 # silence it (the check.sh scan_banned posture; cf. commit ee637c9's fail-open removal).
 [ -d "$daily_root" ] || fail "scan root $daily_root does not exist (fail-closed)"
-[ -n "$(ls unity/Assets/Tests/EditMode/Pure/Daily/*.cs 2>/dev/null)" ] \
+[ -n "$(ls unity/Assets/Tests/EditMode/Pure/Content/Daily/*.cs 2>/dev/null)" ] \
   || fail "criterion 10: Daily NUnit sources missing (fail-closed)"
 
 # Criterion 10: the dotnet leg is green — full suite, UNFILTERED (review F1: a namespace filter
@@ -26,6 +26,31 @@ if ! dotnet test dotnet/CatMetro.sln -c Release --nologo > "$tmp/test.out" 2>&1;
   tail -20 "$tmp/test.out"
   fail "criterion 10: dotnet test not green"
 fi
+
+# Daily Line's two dated 90x2 proofs are intentionally absent from ordinary solution and Unity
+# discovery. Compile them behind their dedicated symbol and execute the exact fixture once here,
+# where the real-validator cost belongs. Exit 0 is insufficient: pin non-zero exact discovery and
+# result counts so a renamed filter or missing fixture fails closed.
+if ! dotnet test dotnet/CatMetro.Tests/CatMetro.Tests.csproj -c Release --nologo \
+    -p:DefineConstants=CATMETRO_DAILY_LONG_TESTS \
+    --filter FullyQualifiedName~CatMetro.Tests.Daily.DailyLongHorizonTests \
+    --logger 'console;verbosity=normal' > "$tmp/long-test.out" 2>&1; then
+  tail -40 "$tmp/long-test.out"
+  fail "criterion 10: Daily long horizon fixture not green"
+fi
+discovered=$(sed -nE \
+  's/.*NUnit3TestExecutor discovered ([0-9]+) of ([0-9]+) NUnit test cases.*/\1 \2/p' \
+  "$tmp/long-test.out" | tail -1)
+[ "$discovered" = "2 2" ] \
+  || fail "criterion 10: expected long discovery 2 of 2, found '${discovered:-none}'"
+total=$(sed -nE 's/^Total tests: ([0-9]+)$/\1/p' "$tmp/long-test.out" | tail -1)
+passed=$(sed -nE 's/^[[:space:]]*Passed: ([0-9]+)$/\1/p' "$tmp/long-test.out" | tail -1)
+[ "$total" = "2" ] && [ "$passed" = "2" ] \
+  || fail "criterion 10: expected long result 2 passed of 2, found passed=${passed:-none} total=${total:-none}"
+grep -q 'Passed ShippedNinetyDateHorizon_IsSolvedNonBlockingAndByteDeterministic' \
+  "$tmp/long-test.out" || fail "criterion 10: shipped candidate horizon result missing"
+grep -q 'Passed ShippedFallbackNinetyDateHorizon_ExhaustsThenAdmitsFreshDeterministicBoards' \
+  "$tmp/long-test.out" || fail "criterion 10: shipped fallback horizon result missing"
 
 # Criteria 6b + 7 (+ the criterion-3 smoke instance): two 30-date runs through the host are
 # byte-identical, and each prints exactly one anchored DAILY_SEED line per date with nothing
@@ -67,18 +92,37 @@ if grep -rEnq --include='*.cs' '\bSystem\.IO\b' "$daily_root"; then
   fail "criterion 6c: file API reference under the Daily root"
 fi
 
-# Criterion 8b: no type under the Daily root implements IBoardFactory — the Q-S gap cannot be
-# silently filled. Review F3: each candidate file is whitespace-FLATTENED first, so a base list
-# wrapped onto its own line cannot evade the declaration-shape grep; plain references (the
-# pipeline's Factory field, the interface's own file) stay legal.
-impl=""
+# Criterion 8b: Q3 authorizes exactly one shipped IBoardFactory implementation, owned by
+# DailyBoardFactory.cs. Keep Review F3's whitespace-flattening so a wrapped base list cannot
+# evade the declaration scan, count declarations rather than files, and fail closed on every
+# scan/read error. Plain references and the interface declaration remain legal.
+if ! find "$daily_root" -type f -name '*.cs' -print > "$tmp/daily-cs.list"; then
+  fail "criterion 8b: could not enumerate Daily C# sources (fail-closed)"
+fi
+impl_count=0
+impl_path=""
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  if tr '\n\t' '  ' < "$f" | grep -qE '(class|struct)[^:{]*:[^{]*IBoardFactory'; then
-    impl="$impl $f"
+  flat=$(tr '\n\t' '  ' < "$f") \
+    || fail "criterion 8b: could not flatten $f (fail-closed)"
+  matches=$(printf '%s\n' "$flat" \
+    | grep -oE '(class|struct)[^:{]*:[^{]*IBoardFactory')
+  scan_status=$?
+  [ "$scan_status" -le 1 ] \
+    || fail "criterion 8b: declaration scan failed for $f (fail-closed)"
+  if [ "$scan_status" -eq 0 ]; then
+    match_count=$(printf '%s\n' "$matches" | awk 'NF { n++ } END { print n + 0 }') \
+      || fail "criterion 8b: could not count declarations in $f (fail-closed)"
+    impl_count=$((impl_count + match_count))
+    impl_path="$f"
   fi
-done < <(grep -rl --include='*.cs' 'IBoardFactory' "$daily_root" 2>/dev/null || true)
-[ -z "$impl" ] || fail "criterion 8b: IBoardFactory implementation under the Daily root:$impl"
+done < "$tmp/daily-cs.list"
+[ "$impl_count" -eq 1 ] \
+  || fail "criterion 8b: expected exactly one IBoardFactory implementation, found $impl_count"
+case "$impl_path" in
+  */DailyBoardFactory.cs) ;;
+  *) fail "criterion 8b: sole IBoardFactory implementation is not DailyBoardFactory.cs: $impl_path" ;;
+esac
 
 # Criterion 11: scope guard over the Daily root + the entry script — no backend, no store, no
 # push, no analytics, no clock, no engine, no network...
@@ -95,5 +139,5 @@ lit=$(grep -rEn --include='*.cs' --exclude-dir=obj --exclude-dir=bin '\b90\b' \
   "$daily_root" dotnet/CatMetro.DailyTools || true)
 [ -z "$lit" ] || fail "criterion 3c: hard-coded horizon literal: $lit"
 
-echo "daily-pipeline.test.sh: OK (2, 3c-d smoke, 5, 6a-c, 7, 8b, 9-file, 10, 11)"
+echo "daily-pipeline.test.sh: OK (2, 3c-d smoke, 5, 6a-c, 7, 8b, 9-file, 10 long=2, 11)"
 exit 0
