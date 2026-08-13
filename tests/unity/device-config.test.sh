@@ -80,14 +80,21 @@ if grep -q 'm_Shader: {fileID: 0}' "$MAT"; then
   fail "criterion 4: null shader reference — that is silent magenta"
 fi
 
-# --- criterion 5 static: primitive count == bind count, proven live ---
+# --- criterion 5 static: device-owned board/camera construction is primitive-free ---
+owned_prim=$(grep -ro 'GameObject.CreatePrimitive' unity/Assets/Scripts/Presentation/Board unity/Assets/Scripts/Presentation/Cameras --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
+[ "$owned_prim" = "0" ] || fail "criterion 5: Board/Cameras still create $owned_prim stripped-component primitives"
 prim=$(grep -ro 'GameObject.CreatePrimitive' unity/Assets/Scripts/Presentation --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-bind=$(grep -ro 'GreyboxMaterial.Shared' unity/Assets/Scripts/Presentation --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-[ "$prim" = "$bind" ] && [ "$prim" != "0" ] \
-  || fail "criterion 5: unbound runtime primitives ($prim CreatePrimitive vs $bind binds)"
+wave_prim=$(grep -o 'GameObject.CreatePrimitive' unity/Assets/Scripts/Presentation/Hud/WavePreview/WavePreviewStrip.cs 2>/dev/null | wc -l | tr -d ' ')
+wave_bind=$(grep -o 'GreyboxMaterial.Shared' unity/Assets/Scripts/Presentation/Hud/WavePreview/WavePreviewStrip.cs 2>/dev/null | wc -l | tr -d ' ')
+[ "$prim" = "$wave_prim" ] || fail "criterion 5: primitive exists outside the separately owned WavePreviewStrip ($prim total vs $wave_prim allowed)"
+primitive_bind_counts_match() { [ "$1" = "$2" ]; }
+primitive_bind_counts_match "$wave_prim" "$wave_bind" \
+  || fail "criterion 5: remaining WavePreview primitives are not one-to-one material-bound ($wave_prim primitives vs $wave_bind binds)"
 fp=$(grep -ro 'GameObject.CreatePrimitive' "$FIX" --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
 fb=$(grep -ro 'GreyboxMaterial.Shared' "$FIX" --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-[ "$fp" != "$fb" ] || fail "criterion 5: the counting gate failed to fire on the fixture"
+if primitive_bind_counts_match "$fp" "$fb"; then
+  fail "criterion 5: the counting gate failed to fire on the fixture"
+fi
 
 echo "device-config.test.sh: OK (1, 2-yaml, 3, 4, 5-static)"
 exit 0

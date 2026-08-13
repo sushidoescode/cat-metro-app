@@ -24,3 +24,7 @@ unity/*.sln
 unity/*.slnx
 unity/.vsconfig
 unity/.vscode/
+
+# ADR-0011: licensed Polyfork derivatives are local-only in this public repository.
+unity/Assets/Art/Polyfork/Models/*.fbx
+unity/Assets/Art/Polyfork/Models/*.fbx.meta
