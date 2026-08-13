@@ -29,9 +29,7 @@ namespace CatMetro.Presentation.Hud
             view._rect = go.AddComponent<RectTransform>();
 
             var bg = go.AddComponent<Image>();
-            var mat = UiChromeMaterial.Shared;
-            if (mat != null) bg.material = mat;
-            bg.color = new Color(0.13f, 0.19f, 0.29f, 0.92f); // ink-navy chip, text carries meaning
+            CatMetroUiTheme.StyleImage(bg, CatMetroUiTheme.TicketOrange);
 
             var textGo = new GameObject("Label");
             textGo.transform.SetParent(go.transform, false);
@@ -43,8 +41,7 @@ namespace CatMetro.Presentation.Hud
             view._text = textGo.AddComponent<TextMeshProUGUI>();
             view._text.text = Strings.UiStrings.Get("retry.cta"); // key-only, never a literal
             view._text.alignment = TextAlignmentOptions.Center;
-            view._text.fontSize = 40f;
-            view._text.color = Color.white;
+            CatMetroUiTheme.StyleText(view._text, CatMetroTextRole.Cta);
 
             go.SetActive(false);
             return view;

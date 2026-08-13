@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using CatMetro.Presentation.Input;
+using CatMetro.Presentation.Audio;
 
 namespace CatMetro.Presentation.Hud
 {
@@ -37,6 +38,8 @@ namespace CatMetro.Presentation.Hud
         private RectTransform _chipRect;
         private TMP_Text _ctaText;
         private Transform _footer;
+        private UiAudioManager _audio;
+        private bool _wasShown;
         private bool _registered;
         private Rect _chipPaintedPx;
         // R1-L7 lesson: re-layout only when the safe area actually changes (frame-rate policy).
@@ -113,15 +116,47 @@ namespace CatMetro.Presentation.Hud
             // rearrangement to keep the banner legible above this scrim is TG-4's call, not
             // this slice's — the shape+text pair on the CTA still carries state, never color
             // alone.
-            scrim.color = new Color(0f, 0.05f, 0.10f, 0.45f);
+            var scrimColor = CatMetroUiTheme.DepotNavy;
+            scrimColor.a = 0.62f;
+            CatMetroUiTheme.StyleImage(scrim, scrimColor, rounded: false);
+
+            var card = CatMetroUiTheme.MakeImage(_panelRoot.transform, "CompletionCard",
+                new Vector2(0.09f, 0.34f), new Vector2(0.91f, 0.72f),
+                CatMetroUiTheme.WarmPaper);
+            CatMetroUiTheme.MakeImage(card.transform, "RouteMotif",
+                new Vector2(0.13f, 0.46f), new Vector2(0.87f, 0.54f),
+                CatMetroUiTheme.MetroTeal);
+            CatMetroUiTheme.MakeImage(card.transform, "RouteDotLeft",
+                new Vector2(0.10f, 0.37f), new Vector2(0.24f, 0.63f),
+                CatMetroUiTheme.TicketOrange);
+            CatMetroUiTheme.MakeImage(card.transform, "RouteDotRight",
+                new Vector2(0.76f, 0.37f), new Vector2(0.90f, 0.63f),
+                CatMetroUiTheme.MetroTeal);
+            var cat = CatMetroUiTheme.MakeImage(card.transform, "CompletionCat",
+                new Vector2(0.42f, 0.29f), new Vector2(0.58f, 0.71f),
+                CatMetroUiTheme.InkNavy).rectTransform;
+            var earLeft = CatMetroUiTheme.MakeSymbol(cat, "CompletionEarLeft",
+                new Vector2(-0.02f, 0.76f), new Vector2(0.48f, 1.34f),
+                CatMetroUiTheme.InkNavy, "SymbolTriangle").rectTransform;
+            earLeft.localRotation = Quaternion.Euler(0f, 0f, 18f);
+            var earRight = CatMetroUiTheme.MakeSymbol(cat, "CompletionEarRight",
+                new Vector2(0.52f, 0.76f), new Vector2(1.02f, 1.34f),
+                CatMetroUiTheme.InkNavy, "SymbolTriangle").rectTransform;
+            CatMetroUiTheme.MakeImage(_panelRoot.transform, "ConfettiTeal",
+                new Vector2(0.035f, 0.51f), new Vector2(0.065f, 0.58f),
+                CatMetroUiTheme.MetroTeal, rounded: false).rectTransform.localRotation =
+                Quaternion.Euler(0f, 0f, 24f);
+            CatMetroUiTheme.MakeImage(_panelRoot.transform, "ConfettiOrange",
+                new Vector2(0.935f, 0.56f), new Vector2(0.965f, 0.63f),
+                CatMetroUiTheme.TicketOrange, rounded: false).rectTransform.localRotation =
+                Quaternion.Euler(0f, 0f, -20f);
 
             // Exactly ONE primary CTA (CM-R19.3) — painted here, hit through the region.
             var chipGo = new GameObject("PrimaryCta");
             chipGo.transform.SetParent(_panelRoot.transform, false);
             _chipRect = chipGo.AddComponent<RectTransform>();
             var chipBg = chipGo.AddComponent<Image>();
-            if (mat != null) chipBg.material = mat;
-            chipBg.color = new Color(0.10f, 0.32f, 0.24f, 0.95f); // text carries meaning
+            CatMetroUiTheme.StyleImage(chipBg, CatMetroUiTheme.TicketOrange);
 
             var labelGo = new GameObject("CtaLabel");
             labelGo.transform.SetParent(chipGo.transform, false);
@@ -133,8 +168,7 @@ namespace CatMetro.Presentation.Hud
             _ctaText = labelGo.AddComponent<TextMeshProUGUI>();
             _ctaText.text = Strings.UiStrings.Get("results.next"); // key-only, never a literal
             _ctaText.alignment = TextAlignmentOptions.Center;
-            _ctaText.fontSize = 40f;
-            _ctaText.color = Color.white;
+            CatMetroUiTheme.StyleText(_ctaText, CatMetroTextRole.Cta);
 
             // TG-4's structurally-empty footer: it EXISTS so its emptiness is assertable,
             // and it stays childless — the count==1 test is the §5 monetization tripwire.
@@ -146,6 +180,7 @@ namespace CatMetro.Presentation.Hud
             frect.offsetMin = Vector2.zero;
             frect.offsetMax = Vector2.zero;
             _footer = footerGo.transform;
+            _audio = UiAudioManager.Ensure(transform);
 
             _panelRoot.SetActive(false);
         }
@@ -153,6 +188,9 @@ namespace CatMetro.Presentation.Hud
         private void Apply()
         {
             bool show = _screenState() == "Won";
+            // F-6 (round-1 review): explicit null check, not `?.` — see ScreenChromeController
+            // for the Unity fake-null rationale.
+            if (show && !_wasShown && _audio != null) _audio.PlayWin();
             if (show) LayoutChip();
             if (_panelRoot.activeSelf != show) _panelRoot.SetActive(show);
             if (show && !_registered && _regions != null)
@@ -167,11 +205,15 @@ namespace CatMetro.Presentation.Hud
                 _regions.Unregister(RegionId);
                 _registered = false;
             }
+            _wasShown = show;
         }
 
         private void InvokeNext()
         {
             // Seam ONLY (criterion 5): Bootstrap owns level advance. Nothing else happens.
+            // F-6 (round-1 review): explicit null check, not `?.` — see ScreenChromeController
+            // for the Unity fake-null rationale.
+            if (_audio != null) _audio.PlayTap();
             NextRequested?.Invoke();
         }
 

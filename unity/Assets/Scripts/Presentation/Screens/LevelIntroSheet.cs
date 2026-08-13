@@ -3,10 +3,11 @@ using UnityEngine.UI;
 using TMPro;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Input;
+using CatMetro.Presentation.Audio;
 
 namespace CatMetro.Presentation.Screens
 {
-    // CM-UX-06 criteria 6/7: the minimal LevelIntro sheet — the piece that makes the game
+    // CM-UX-06 criteria 6/7: the paper route-card LevelIntro sheet — the piece that makes the game
     // explain itself before play. Level name + goal line (intro.goal template with {count}
     // substituted — the component receives the KEY plus injected data, never a literal:
     // the BannerView substitution precedent) + an explicit full-width Play CTA in the
@@ -60,62 +61,38 @@ namespace CatMetro.Presentation.Screens
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
 
-            MakePanel(go.transform, "SheetPanel",
-                new Vector2(0.06f, 0.40f), new Vector2(0.94f, 0.76f),
-                new Color(0.13f, 0.19f, 0.29f, 0.92f));
-            view._name = MakeText(go.transform, "LevelName",
-                new Vector2(0.10f, 0.62f), new Vector2(0.90f, 0.74f), 52f);
-            view._goal = MakeText(go.transform, "GoalLine",
-                new Vector2(0.10f, 0.44f), new Vector2(0.90f, 0.58f), 36f);
+            Color scrim = CatMetroUiTheme.InkNavy;
+            scrim.a = 0.78f;
+            CatMetroUiTheme.MakeImage(go.transform, "IntroScrim",
+                Vector2.zero, Vector2.one, scrim, rounded: false);
+            CatMetroUiTheme.MakeImage(go.transform, "SheetPanel",
+                new Vector2(0.06f, 0.38f), new Vector2(0.94f, 0.78f),
+                CatMetroUiTheme.WarmPaper);
+            CatMetroUiTheme.MakeImage(go.transform, "RouteAccent",
+                new Vector2(0.13f, 0.735f), new Vector2(0.87f, 0.747f),
+                CatMetroUiTheme.MetroTeal);
+            CatMetroUiTheme.MakeImage(go.transform, "RouteDot",
+                new Vector2(0.11f, 0.720f), new Vector2(0.15f, 0.762f),
+                CatMetroUiTheme.TicketOrange);
+            view._name = CatMetroUiTheme.MakeText(go.transform, "LevelName",
+                new Vector2(0.10f, 0.575f), new Vector2(0.90f, 0.710f), "",
+                CatMetroTextRole.Heading);
+            view._goal = CatMetroUiTheme.MakeText(go.transform, "GoalLine",
+                new Vector2(0.12f, 0.44f), new Vector2(0.88f, 0.57f), "",
+                CatMetroTextRole.Body);
 
             // The Play chip: px-laid to the thumb band at Show (live Screen reads there only).
             var chipGo = new GameObject("PlayChip");
             chipGo.transform.SetParent(go.transform, false);
             view._chip = chipGo.AddComponent<RectTransform>();
             var bg = chipGo.AddComponent<Image>();
-            var mat = UiChromeMaterial.Shared;
-            if (mat != null) bg.material = mat;
-            bg.color = new Color(0.13f, 0.19f, 0.29f, 0.95f);
-            view._playLabel = MakeText(chipGo.transform, "PlayLabel",
-                Vector2.zero, Vector2.one, 40f);
+            CatMetroUiTheme.StyleImage(bg, CatMetroUiTheme.TicketOrange);
+            view._playLabel = CatMetroUiTheme.MakeText(chipGo.transform, "PlayLabel",
+                Vector2.zero, Vector2.one, "", CatMetroTextRole.Cta);
             view._playLabel.text = Strings.UiStrings.Get("intro.play"); // key-only
 
             go.SetActive(false);
             return view;
-        }
-
-        private static void MakePanel(Transform parent, string name,
-            Vector2 anchorMin, Vector2 anchorMax, Color color)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-            var rect = go.AddComponent<RectTransform>();
-            rect.anchorMin = anchorMin;
-            rect.anchorMax = anchorMax;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-            var img = go.AddComponent<Image>();
-            var mat = UiChromeMaterial.Shared;
-            if (mat != null) img.material = mat;
-            img.color = color;
-        }
-
-        private static TMP_Text MakeText(Transform parent, string name,
-            Vector2 anchorMin, Vector2 anchorMax, float size)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-            var rect = go.AddComponent<RectTransform>();
-            rect.anchorMin = anchorMin;
-            rect.anchorMax = anchorMax;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-            var tmp = go.AddComponent<TextMeshProUGUI>();
-            tmp.text = "";
-            tmp.alignment = TextAlignmentOptions.Center;
-            tmp.fontSize = size;
-            tmp.color = Color.white;
-            return tmp;
         }
 
         public void Attach(ChromeRegions regions)
@@ -173,9 +150,18 @@ namespace CatMetro.Presentation.Screens
             if (_regions != null && !_registered)
             {
                 _regions.Register(PlayRegionId, () => _chipRectPx,
-                    () => PlayRequested?.Invoke(), PlayRegionPriority);
+                    InvokePlay, PlayRegionPriority);
                 _registered = true;
             }
+        }
+
+        private void InvokePlay()
+        {
+            // F-6 (round-1 review): explicit null check, not `?.` — see HomeScreenView for the
+            // Unity fake-null rationale.
+            var audio = UiAudioManager.Ensure(transform);
+            if (audio != null) audio.PlayTap();
+            PlayRequested?.Invoke();
         }
 
         private void UnregisterChip()

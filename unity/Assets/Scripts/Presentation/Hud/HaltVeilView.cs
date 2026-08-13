@@ -29,9 +29,9 @@ namespace CatMetro.Presentation.Hud
             rect.offsetMax = Vector2.zero;
 
             var scrim = go.AddComponent<Image>();
-            var mat = UiChromeMaterial.Shared;
-            if (mat != null) scrim.material = mat;
-            scrim.color = new Color(0f, 0f, 0f, 0.65f);
+            var veil = CatMetroUiTheme.DepotNavy;
+            veil.a = 0.80f;
+            CatMetroUiTheme.StyleImage(scrim, veil, rounded: false);
 
             var textGo = new GameObject("Notice");
             textGo.transform.SetParent(go.transform, false);
@@ -43,8 +43,8 @@ namespace CatMetro.Presentation.Hud
             view._text = textGo.AddComponent<TextMeshProUGUI>();
             view._text.text = Strings.UiStrings.Get("halt.notice"); // key-only, never a literal
             view._text.alignment = TextAlignmentOptions.Center;
-            view._text.fontSize = 44f;
-            view._text.color = Color.white;
+            CatMetroUiTheme.StyleText(view._text, CatMetroTextRole.Heading,
+                CatMetroUiTheme.WarmPaper);
 
             go.SetActive(false);
             return view;
