@@ -16,7 +16,7 @@ seed_rx='^DAILY_SEED [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]+ [0-9]+$'
 # Review F2: every grep below fails CLOSED — a moved scan root must fail this wrapper, not
 # silence it (the check.sh scan_banned posture; cf. commit ee637c9's fail-open removal).
 [ -d "$daily_root" ] || fail "scan root $daily_root does not exist (fail-closed)"
-[ -n "$(ls unity/Assets/Tests/EditMode/Pure/Daily/*.cs 2>/dev/null)" ] \
+[ -n "$(ls unity/Assets/Tests/EditMode/Pure/Content/Daily/*.cs 2>/dev/null)" ] \
   || fail "criterion 10: Daily NUnit sources missing (fail-closed)"
 
 # Criterion 10: the dotnet leg is green — full suite, UNFILTERED (review F1: a namespace filter
