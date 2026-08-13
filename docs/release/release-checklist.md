@@ -8,6 +8,15 @@ step is manual, it says manual. Where the answer is not in the repo or in a cite
 **UNKNOWN**. Google-policy claims carry source + retrieval date **2026-08-13**; repo claims carry
 `path:line`.
 
+**Actor labels used in this file and in `docs/runbooks/play-closed-test.md`:**
+
+- **[HUMAN]** — a Play Console action, an upload, a tag push, or spend. Agents never perform these
+  (`AGENTS.md` §Commands; `docs/constitution.md:43-44`).
+- **[LOCAL]** — a human act on the human's own machine (Unity Editor build, keystore creation,
+  running the gate scripts). **Never an agent's**: an agent has no Unity, and the keystore steps in
+  §2 are explicitly outside anything an agent may reach.
+- **[MANUAL]** — a hand-written record with no tooling behind it.
+
 ---
 
 ## 0. Questions a human must answer before any release act
@@ -62,10 +71,18 @@ Checklist per candidate:
   your app is automatically enrolled in quantum-ready, hybrid signing with Google-generated keys";
   the upload key is "the key you use to sign your app bundle before uploading it to the Play Console"
   ([Play App Signing](https://support.google.com/googleplay/android-developer/answer/9842756?hl=en), retrieved 2026-08-13).
-- **Custody:** the upload keystore and its passwords never enter this repository or any log —
-  `docs/security/threat-model.md:235` marks them "Never" in repo and "Never" in logs, and records the
-  intent that the repo "can only ever hold an *upload* key (RK-33)". There is **no secret-scanning
-  gate in CI today** (§3), so this rule is enforced by the human, not by the machine.
+- **Custody:** `docs/security/threat-model.md:235` scores the upload keystore + password
+  **"In the repo? Never"** and **"Agent-reachable? Never"**, and answers "Where it must live" with
+  "Encrypted CI secret + Play App Signing, so the repo can only ever hold an *upload* key (RK-33)".
+  Both prohibitions bind independently: it is never committed, **and** it is never placed where an
+  agent session can read it (no repo-relative path, no exported variable in a shell an agent runs in,
+  no `.env` an agent could open). There is **no secret-scanning gate in CI today** (§3), so this rule
+  is enforced by the human, not by the machine.
+- **Recorded follow-up (OWED, outside this lane's charter — flagged for a follow-up contract):** the
+  repo has no `.gitignore` patterns for keystore-shaped files (`*.keystore`, `*.jks`, `*.p12`,
+  `*.pem`). Until some contract adds them, an accidental `git add` of a key is not caught by anything.
+  If one ever does touch git history, the recovery is Play's upload-key reset (see Loss recovery
+  below) plus rotating the key — not a history rewrite alone.
 - **Loss recovery:** with Play App Signing you "can create a new one and request an upload key reset
   in the Play console"; "Resetting your upload key will not affect the app signing key that Google
   Play uses" (same Android source, retrieved 2026-08-13).
@@ -78,7 +95,7 @@ Checklist per candidate:
 
 | Gate | Command / trigger | What it really enforces | What it does NOT do |
 |---|---|---|---|
-| `scripts/check.sh` | local + CI on every PR/push (`.github/workflows/ci.yml:13`) | `bash -n` syntax over `scripts/**` and `tests/**` shell files (`:21-27`); no unresolved `{{TOKEN}}` init tokens, binary files skipped (`:29-38`); banned-symbol scans over `unity/Assets/Scripts/Domain`, `.../Content`, `.../Domain/Solver`, `.../Content/Daily` and linked pure tests, fail-closed on a missing root (`:40-141`) | It is **not** a compiler and **not** a typechecker — its own line 2 says "stack-agnostic stand-in until the engine lands (TODO(stack): wire real lint+typecheck)"; line 143 prints "interim harness". **No C# is compiled by check.sh.** |
+| `scripts/check.sh` | local + CI: PR + push to main (`.github/workflows/ci.yml:13`) | `bash -n` syntax over `scripts/**` and `tests/**` shell files (`:21-27`); zero unresolved double-brace init tokens anywhere in the tree, binary files skipped (`:29-38`) — the scan is repo-wide, so writing such a token into *any* file, including a doc, fails the gate (`check.sh:29` assembles its own pattern by concatenation precisely to avoid self-matching); banned-symbol scans over `unity/Assets/Scripts/Domain`, `.../Content`, `.../Domain/Solver`, `.../Content/Daily` and linked pure tests, fail-closed on a missing root (`:40-141`) | It is **not** a compiler and **not** a typechecker — its own line 2 says "stack-agnostic stand-in until the engine lands (TODO(stack): wire real lint+typecheck)"; line 143 prints "interim harness". **No C# is compiled by check.sh.** |
 | `scripts/test.sh` | local + CI (`.github/workflows/ci.yml:14`) | runs every `tests/**/*.test.sh`, pass iff exit 0 (`:10-18`) | it does **not** run Unity EditMode/PlayMode suites; those run only where a Unity install exists. "No tests found = green" (`:5,20-23`) |
 | `scripts/build.sh` | local + not in CI | content-staging check only, refuses `--apply` (`:12-18`) | **produces no artifact**: `:20` prints "build: nothing to build yet — engine scaffold lands with the specs (TODO(stack))"; `:9-11` disclaims the real device build path |
 | `.github/workflows/ci.yml` | PR + push to main | `ubuntu-latest`, checkout, `check.sh`, `test.sh` | no toolchain/dependency install (`:11-12` TODOs), **no Unity, no compile, no APK/AAB**, no e2e (`:15`), no dependency audit (`:16`), **no secret scan** (`:17` `TODO(secret-scan)`) |
@@ -103,8 +120,9 @@ CI must assert the release job never sets `BuildOptions.Development` — **not b
   (`state/PROJECT_STATE.md:113`; same warning `state/handoffs/SESSION-HANDOFF-2026-08-08.md:54`).
   Verified in this worktree: `unity/Assets/Editor/` holds only `SceneBootstrapper.cs`. Its recorded
   text (`evals/results/device/c2b-crit8/ARTIFACT.md:114-151`) builds an **APK** via
-  `BuildPipeline.BuildPlayer` and never sets `EditorUserBuildSettings.buildAppBundle` — **there is no
-  AAB path in this repo.** Human call still open (`state/PROJECT_STATE.md:113`): commit it, record it
+  `BuildPipeline.BuildPlayer` and never sets `EditorUserBuildSettings.buildAppBundle` — **so no
+  scripted/CLI AAB path exists; the manual Unity Editor route (`docs/runbooks/play-closed-test.md`
+  §4.3) is the only path today.** Human call still open (`state/PROJECT_STATE.md:113`): commit it, record it
   as an artifact, or discard it (two sibling shims, `DevfixUrpSetup.cs` and `SpikeUrpSetup.cs`, are in
   the same class).
 - **No signed commits.** `state/PROJECT_STATE.md:84` — Amendment 1's bootstrap route relied on the
@@ -195,10 +213,10 @@ what the repo/current sources say, and who decides. **No plan file was edited.**
 | # | Plan claim | Reality as of 2026-08-13 | Impact | Disposition |
 |---|---|---|---|---|
 | **F-1** | `docs/plan/DAY1_RUNBOOK.md:29`: create the app declaring "App will contain **in-app purchases** and **ads** (rewarded only — declare ads = yes)" | No monetization or ads code exists: `unity/Packages/manifest.json` lists only Unity first-party packages + `com.unity.nuget.newtonsoft-json`; `unity/ProjectSettings/UnityConnectSettings.asset` has `UnityAdsSettings.m_Enabled: 0`, `UnityPurchasingSettings.m_Enabled: 0`. `AGENTS.md` §Risky paths requires a human `state/mode`→production flip *before* any billing/IAP/ads code merges | Declaring capabilities the build lacks contradicts `docs/prd/PRD.md:715` ("answers must match actual app behavior — a mismatch is a policy violation") | **HUMAN decides the declarations.** Flagged only |
-| **F-2** | `docs/plan/DAY1_RUNBOOK.md:112-113` + `docs/plan/EXECUTION_PLAN.md:46,425`: privacy policy live at `catmetro.com/privacy` before the first listing save | The drafted page `docs/plan/web/privacy/index.html:112-114` names Google (Play, Crashlytics, AdMob), **RevenueCat** and **OneSignal** as data recipients. None of those SDKs exist in the tree (manifest above); the only in-repo occurrences of those names are comments/QA strings (`unity/Assets/Scripts/Services/Analytics/IAnalytics.cs:21`, `unity/Assets/Scripts/Application/EventTaxonomy/Taxonomy.cs:51,100`). Domain registration status: **UNKNOWN** from this repo | Publishing that page as-is over-declares data collection for the closed-test build and will not match a truthful Data safety form | **HUMAN** authors/points the policy at the real build. Flagged only |
+| **F-2** | `docs/plan/DAY1_RUNBOOK.md:112-113` + `docs/plan/EXECUTION_PLAN.md:46,425`: privacy policy live at `catmetro.com/privacy` before the first listing save | The drafted page `docs/plan/web/privacy/index.html:112-114` names Google (Play, Crashlytics, AdMob), **RevenueCat** and **OneSignal** as data recipients. None of those SDKs is a dependency — verified against `unity/Packages/manifest.json` (Unity first-party packages + `com.unity.nuget.newtonsoft-json` only). All in-repo occurrences of those four names are inert text, not code paths: in `unity/**` `.cs` they are 3 matching lines across 2 files — a comment (`unity/Assets/Scripts/Services/Analytics/IAnalytics.cs:21`) and two QA-procedure sink strings in the declared-dark event taxonomy (`unity/Assets/Scripts/Application/EventTaxonomy/Taxonomy.cs:51,100`) — plus prose and CSV rows under `docs/`. Domain registration status: **UNKNOWN** from this repo | Publishing that page as-is over-declares data collection for the closed-test build and will not match a truthful Data safety form | **HUMAN** authors/points the policy at the real build. Flagged only |
 | **F-3** | `docs/plan/specs/revenuecat_implementation.md:54`: upload "the Day-1 skeleton AAB (with Billing permission, targetSdk 36)" to the closed track and recruit 12 testers | No Billing library, no RevenueCat, no service-account wiring in the tree; the production-mode gate (F-1) is unflipped (`state/mode` = sprint per `state/PROJECT_STATE.md:8`) | Following it literally would add a Billing permission to a build with no billing code | **HUMAN**; the closed test does not need it. Flagged only |
 | **F-4** | `docs/plan/data/github_issue_backlog.md:23-24`: M1/M2 gates dated **Aug 1–7 / Aug 8–14** requiring 20 solver-validated levels plus "RC sandbox purchase + rewarded ad + push each pass on the current device build" by D14 | Today is 2026-08-13 with 17 wired levels (`state/PROJECT_STATE.md:8`) and none of the RC/ads/push systems built; the closed test has not started | The plan's milestone dates are stale by construction; treating them as live gates mis-sequences today's work | **HUMAN** re-dates or retires. Flagged only |
-| **F-5** | `docs/plan/DAY1_RUNBOOK.md:16-19` and `docs/prd/PRD.md:958` (A-18): the pre-Nov-13-2023 account exemption "voids the gate" | **Consistent with current Google documentation** — the requirement binds "personal accounts created after November 13, 2023" ([source](https://support.google.com/googleplay/android-developer/answer/14151465?hl=en), retrieved 2026-08-13). Not a discrepancy; recorded because the *answer for this account* is still QR-1/**UNKNOWN** | none if answered | **HUMAN** answers QR-1 |
+| **F-5** | `docs/plan/DAY1_RUNBOOK.md:16-19` and `docs/prd/PRD.md:958` (A-18) both treat an account created before 2023-11-13 as exempt from the tester gate entirely | **Consistent with current Google documentation** — the requirement binds "personal accounts created after November 13, 2023" ([source](https://support.google.com/googleplay/android-developer/answer/14151465?hl=en), retrieved 2026-08-13). Not a discrepancy; recorded because the *answer for this account* is still QR-1/**UNKNOWN** | none if answered | **HUMAN** answers QR-1 |
 | **F-6** | `state/handoffs/CM-C10-frozen-contract.md:347` claims the build shim "is committed on main" | False — the shim is untracked on every ref (`state/PROJECT_STATE.md:113`, `state/handoffs/SESSION-HANDOFF-2026-08-08.md:54`, and this worktree's `unity/Assets/Editor/` listing). This is a `state/handoffs` file, not `docs/plan`, and is recorded here because it misleads a release-time reader | A release procedure trusting that line would fail at build time | Already corrected in the newer handoff; **HUMAN** may prune. Flagged only |
 
 ### Cross-pack notes on `docs/store/**` (Lane 7's shipped pack — pointer only, never edited)

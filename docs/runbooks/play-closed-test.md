@@ -78,9 +78,9 @@ Boundary caveat: Google's page does not define whether the 14th day counts inclu
 timezone/midnight boundary applies — **UNKNOWN**. Add one buffer day before applying.
 
 **Consequence for the ~Aug-15 clock in `state/PROJECT_STATE.md:8` and the Aug-20 feature-complete
-target:** the two are not in tension — upload *something shippable today*, keep uploading better
-builds into the same track, and let the Aug-20 build land on a roster whose clock has already been
-running for a week. Waiting for feature-complete before the first upload converts a 7-day review
+target:** the two are not in tension — upload **[HUMAN]** *something shippable today*, keep uploading
+better builds into the same track, and let the Aug-20 build land on a roster whose clock has already
+been running for a week. Waiting for feature-complete before the first upload converts a 7-day review
 risk into a 7-day slip of the entire production-access date.
 
 ---
@@ -122,6 +122,20 @@ on that app record.
   and provide a link to their privacy policy." Internal-testing-only apps are exempt: "Apps that are
   active on internal testing tracks are exempt from inclusion in the data safety section."
   ([Play Console Help, Data safety](https://support.google.com/googleplay/android-developer/answer/10787469?hl=en), retrieved 2026-08-13.)
+- **Evidence for a "no data collected or shared" answer** (check these against the candidate before
+  you tick the boxes — the form must describe the build, not the roadmap):
+  1. The analytics transport interface `unity/Assets/Scripts/Application/Analytics/IAnalyticsTransport.cs:10`
+     has **no implementation in `unity/Assets/Scripts/**`** — the only implementer in the tree is the
+     test double `RecordingTransport` (`unity/Assets/Tests/EditMode/Pure/Analytics/QueueFixtures.cs:16`),
+     and `AnalyticsQueue` (`unity/Assets/Scripts/Application/Analytics/AnalyticsQueue.cs:41`) is
+     constructed only from tests (`QueueFixtures.cs:41`, `QueueNonTransactionalTests.cs:22,55`,
+     `unity/Assets/Tests/EditMode/Engine/BootstrapSeamTests.cs:78,85`) — nowhere under `Scripts/`.
+  2. The only `UnityWebRequest` under `unity/Assets/Scripts/` is
+     `unity/Assets/Scripts/Bootstrap/StreamingAssetsContentSource.cs:35` — a read of
+     `Application.streamingAssetsPath` through a `file://`/`jar:file://` URL (`:29-34`), i.e. an
+     in-package local read, not a network call.
+  Re-run both checks on the exact release candidate; they are hand checks, not gates (§3 of
+  `docs/release/release-checklist.md`).
 - **Also required before review:** privacy policy link, content rating questionnaire, ads
   declaration, target audience/age group, and app-access details if any part of the app needs
   sign-in ([Play Console Help, Prepare your app for review](https://support.google.com/googleplay/android-developer/answer/9859455?hl=en), retrieved 2026-08-13).
@@ -177,9 +191,9 @@ as if it did.
 - Google Play requires the **Android App Bundle** for new apps (announced 2020-11 for August 2021,
   [Android Developers Blog](https://android-developers.googleblog.com/2020/11/new-android-app-bundle-and-target-api.html), retrieved 2026-08-13; [About Android App Bundles](https://developer.android.com/guide/app-bundle), retrieved 2026-08-13).
 
-**Therefore: there is no AAB build path in this repository today.** Adding one is a code change
-(`unity/**`) and is out of scope for this lane — it needs its own contract. Today's route is the
-Unity Editor GUI, done by the human.
+**Therefore: no scripted/CLI AAB path exists in this repository today — the manual Unity Editor route
+in §4.3 is the only path.** Adding a scripted one is a code change (`unity/**`) and is out of scope
+for this lane; it needs its own contract.
 
 ### 4.3 Today's route — Unity Editor, by hand **[LOCAL]**
 
@@ -201,9 +215,12 @@ versions; the intent line matters more than the exact label.
 4. **Create the upload key** — Player Settings → Publishing Settings → Keystore Manager → create a
    new keystore + key. Today `androidUseCustomKeystore: 0` and `AndroidKeystoreName:` is empty
    (`unity/ProjectSettings/ProjectSettings.asset:273,286`), so nothing is configured yet.
-   - Store the `.keystore` **outside the repository**. The repo's own rule:
-     `docs/security/threat-model.md:235` — upload keystore + password "Never" in repo, "Never" in
-     logs; the repo "can only ever hold an *upload* key (RK-33)". Treat that as never-in-repo.
+   - Store the `.keystore` **outside the repository, and outside anything an agent can read**. The
+     repo's own rule, `docs/security/threat-model.md:235`, scores the upload keystore + password
+     **"In the repo? Never"** and **"Agent-reachable? Never"**, with "Where it must live" =
+     "Encrypted CI secret + Play App Signing, so the repo can only ever hold an *upload* key
+     (RK-33)". Both prohibitions bind: never committed, and never in a path or environment variable
+     an agent session can reach.
    - Back it up (password manager + one offline copy). If it is lost: with Play App Signing you "can
      create a new one and request an upload key reset in the Play console", and "Resetting your
      upload key will not affect the app signing key that Google Play uses"
@@ -213,9 +230,10 @@ versions; the intent line matters more than the exact label.
      upload key is "the key you use to sign your app bundle before uploading it to the Play Console"
      ([Play Console Help, Play App Signing](https://support.google.com/googleplay/android-developer/answer/9842756?hl=en), retrieved 2026-08-13).
 5. Set the version code and name — see §5.
-6. Build. Record the output path, the `git rev-parse HEAD` of the tree you built from, and the AAB's
-   SHA-256 into the provenance ledger in `docs/release/release-checklist.md`. This is manual; nothing
-   computes it for you.
+6. Build. Record the artifact **filename** (not its path — build outputs live outside the repo and a
+   path can leak a private directory layout into a committed doc), the `git rev-parse HEAD` of the
+   tree you built from, and the AAB's SHA-256 into the provenance ledger in
+   `docs/release/release-checklist.md`. This is manual; nothing computes it for you.
 7. **Warning about the local tree:** the main checkout was reported at 2026-08-13 session start with
    *uncommitted* modifications to `unity/ProjectSettings/ProjectSettings.asset` and
    `unity/ProjectSettings/UnityConnectSettings.asset` (coordinator-reported `git status`; not
@@ -226,9 +244,9 @@ versions; the intent line matters more than the exact label.
 
 | Setting | Repo value | Play requirement (retrieved 2026-08-13) |
 |---|---|---|
-| Target API | `AndroidTargetSdkVersion: 36` (`ProjectSettings.asset:179`) | "New apps and app updates must target Android 16 (API level 36) or higher to be submitted to Google Play" from August 31, 2026 ([target API requirements](https://support.google.com/googleplay/android-developer/answer/11926878?hl=en)) — satisfied |
+| Target API | `AndroidTargetSdkVersion: 36` (`ProjectSettings.asset:179`) | "New apps and app updates must target Android 16 (API level 36) or higher to be submitted to Google Play" from August 31, 2026; the same page adds "You will be able to request an extension to November 1, 2026 if you need more time to update your app" ([target API requirements](https://support.google.com/googleplay/android-developer/answer/11926878?hl=en), retrieved 2026-08-13) — **already satisfied, so no extension is needed**; the deadline is 18 days out and this build clears it |
 | Min SDK | `AndroidMinSdkVersion: 25` (`:178`) | no Play minimum found in the retrieved sources — narrows the tester device pool only |
-| Architectures | `AndroidTargetArchitectures: 2` (`:269`) — ARM64 in Unity's architecture flags | 64-bit is required; **ARM64-only means 32-bit-only phones cannot install** — relevant when recruiting 12 testers with old hardware. Confirm the checkbox state in Build Settings rather than trusting this reading of the enum |
+| Architectures | `AndroidTargetArchitectures: 2` (`:269`) — ARM64 in Unity's architecture flags | "Apps published on Google Play need to support 64-bit architectures", and "It isn't required to support every 64-bit architecture, but for each native 32-bit architecture you support you must include the corresponding 64-bit architecture" ([Support 64-bit architectures](https://developer.android.com/google/play/requirements/64-bit), retrieved 2026-08-13) — an ARM64-only bundle ships no 32-bit ABI at all, so the rule is satisfied. Consequence to expect: a bundle with no `armeabi-v7a` libraries has nothing to serve a 32-bit-only phone, so such devices drop out of the tester pool. That exclusion is a mechanical consequence of ABI selection, **not** a quoted Google statement — **UNVERIFIED** here. Confirm the checkbox state in Build Settings rather than trusting this reading of the enum |
 | Scripting backend | `scriptingBackend: Android: 1` (`:837-838`) = IL2CPP | required for 64-bit |
 | Code stripping | `stripEngineCode: 1` (`:183`) | not a Play rule; it is the cause of the device log spam recorded at `state/PROJECT_STATE.md:111` (missing collider classes; gameplay unaffected). Testers may see console noise only on dev builds |
 
@@ -279,12 +297,35 @@ the email-list route with a list named `catmetro-testers`.
 Roster sizing: recruit **16–20** to land **12** opted-in. The 12 is a floor that must hold
 *continuously* (§1), so every drop-out costs a fresh 14 days for that seat.
 
+**Roster custody:** tester names and Gmail addresses are other people's personal data. They live in
+Play Console and in the human's own private sheet — **never in this repository**, in a commit
+message, a PR body, an evidence artifact, or any agent-readable file. The repo has no secret- or
+PII-scanning gate today (`state/PROJECT_STATE.md:92`, `.github/workflows/ci.yml:17`), so this rule is
+enforced by the human alone.
+
 ---
 
 ## 7. The opt-in flow **[HUMAN → testers]**
 
-1. Publish the first closed release (upload the AAB to the closed track → review → published).
-2. The opt-in link "only shows when an app is Published" — copy it from the Testers tab
+1. **Publish the first closed release** **[HUMAN]**. The Console flow, per
+   [Play Console Help, Prepare and roll out a release](https://support.google.com/googleplay/android-developer/answer/9859348?hl=en) (retrieved 2026-08-13):
+   1. Go to **Testing → Closed testing** and "click **Create new release**" near the top right.
+   2. "Add your app bundles" — upload the `.aab` from §4.3.
+   3. App signing: the release page's "App integrity" section is where an app signing key can be
+      changed; leave the Play App Signing default unless you have a reason (§4.3 step 4).
+   4. "Name your release" and "Enter release notes" — put the version code and the one-line "what to
+      look at" from `docs/release/tester-comms-template.md` §D in the notes; testers see them.
+   5. "Save as draft" preserves the work; "Next" moves on.
+   6. Then, from the track's **Releases tab**, "Edit" → review → "Next" for the preview screen →
+      "Resolve any errors shown under 'Errors summary'" → **"Start rollout"**. (A rollout percentage
+      applies to *updates*; for a first release the same page is where you commit.)
+   7. Country/region availability is shown per release on the **Releases overview** page. The exact
+      first-release ordering of the availability and declaration prompts is **UNKNOWN** here — the
+      Console flow is authoritative; expect release-notes and country/region availability steps, and
+      expect it to refuse to roll out until §3.2's declarations are complete. Do not invent a
+      sequence; follow the errors summary, which names what is missing.
+2. Wait for review, then the opt-in link appears: it "only shows when an app is Published" — copy it
+   from the Testers tab
    ([source](https://support.google.com/googleplay/android-developer/answer/9845334?hl=en), retrieved 2026-08-13).
 3. Send the link. Paste text: `docs/release/tester-comms-template.md`.
 4. **Each tester must open the link, sign in with the Google account that is on your list (or in the
@@ -292,9 +333,16 @@ Roster sizing: recruit **16–20** to land **12** opted-in. The 12 is a floor th
    The requirement page is explicit that the 12 must be "opted-in", and the setup page says "Each
    tester needs to opt-in using the link"; for Google Groups, "users need to join the group before
    opting into your test" (both retrieved 2026-08-13).
-5. Testers then install from Play on that same Google account. Sideloaded APKs do **not** count.
+5. Testers then install from Play on that same Google account. What the requirement counts is
+   *opted-in testers*, not installs; **no retrieved source says installation method affects the
+   count — "a sideloaded APK does not count" is UNVERIFIED.** Ask for a Play install anyway: the
+   production-access questions ask you to report "whether testers used all of your app's features"
+   and whether "usage was consistent with how you would expect a production user to use your app"
+   ([App testing requirements](https://support.google.com/googleplay/android-developer/answer/14151465?hl=en), retrieved 2026-08-13), which is a story you can only tell about people playing the real thing.
 6. Track it yourself: name → invited → opted-in date → last confirmed still opted-in. Console shows
-   the tester count; your sheet shows who is about to break the streak.
+   the tester count; your sheet shows who is about to break the streak. **That sheet holds other
+   people's names and Gmail addresses — keep it in the human's own private storage, never in this
+   repository or any agent-readable file** (§6, Roster custody).
 
 **Parallel path worth using today:** the **internal testing** track publishes fast — "When you
 publish a new Android App Bundle to the internal test track, it will be available to testers within
@@ -333,6 +381,17 @@ Weekly rhythm that costs ~20 minutes:
    us understand your app, its testing process, and its production readiness" (same page, retrieved
    2026-08-13). Answer them about the build the testers actually played — the repo already flags this
    as an open question (`docs/prd/PRD.md:1079`, NEW-Q40).
+   **What the application asks for** (same page, retrieved 2026-08-13) — this is why §8's feedback
+   loop is not optional paperwork:
+   - "Provide information about the engagement you received from testers during your closed test.
+     Examples of relevant information here includes: Whether testers used all of your app's features"
+     and "Whether your testers' usage was consistent with how you would expect a production user to
+     use your app."
+   - "summarize the feedback that you received from testers, and let us know how you collected this
+     feedback".
+   - "what changes you made to your app or game based on what you learned during your closed test."
+   Keep the raw tester replies and a dated list of changes-made-because-of-feedback from day one; you
+   cannot reconstruct them at application time.
 3. Repo-side gates that must be true before a *production* release, independent of Google:
    - `state/mode` flipped to `production` by a **human-authored commit** before any billing/IAP/ads
      code merges (`AGENTS.md` §Risky paths; `state/PROJECT_STATE.md:10`).
@@ -350,7 +409,7 @@ Weekly rhythm that costs ~20 minutes:
 
 | Failure | Early signal | Prevention |
 |---|---|---|
-| Waiting for feature-complete before the first upload | nothing published by Aug 15 | upload today; review time is serial and unbounded in the worst case (§1.2) |
+| Waiting for feature-complete before the first upload | nothing published by Aug 15 | upload **[HUMAN]** today; review time is serial and unbounded in the worst case (§1.2) |
 | Debug-signed / development build uploaded | Console rejects the artifact | §4.3 steps 3–4 |
 | Version code reused | Console refuses the upload | §5 |
 | Testers invited but never opted in | Console tester count < 12 while your sheet says 12 | §7 step 4; chase the "Become a tester" tap specifically |
@@ -385,13 +444,14 @@ Weekly rhythm that costs ~20 minutes:
 | S5 | Data safety form applies to closed tracks; privacy policy link required; internal-only exempt | https://support.google.com/googleplay/android-developer/answer/10787469?hl=en |
 | S6 | Pre-review requirements: privacy policy, content rating, ads declaration, target audience, app access | https://support.google.com/googleplay/android-developer/answer/9859455?hl=en |
 | S7 | Review "up to seven days or longer in exceptional cases" | https://support.google.com/googleplay/android-developer/answer/9859751?hl=en |
-| S8 | Target API 36 from 2026-08-31; extension to 2026-11-01 | https://support.google.com/googleplay/android-developer/answer/11926878?hl=en |
+| S8 | Target API 36 required from 2026-08-31 (§4.4) | https://support.google.com/googleplay/android-developer/answer/11926878?hl=en |
 | S9 | Icon 512×512, feature graphic 1024×500, ≥2 screenshots, 320–3840px, ≤2× rule, 9:16 portrait | https://support.google.com/googleplay/android-developer/answer/9866151?hl=en |
 | S10 | versionCode: positive integer, must increase, max 2,100,000,000, no reuse | https://developer.android.com/studio/publish/versioning |
 | S11 | Debug certificates not accepted for publishing; upload key reset process | https://developer.android.com/studio/publish/app-signing |
 | S12 | AAB required for new apps (announced 2020-11, effective Aug 2021) | https://android-developers.googleblog.com/2020/11/new-android-app-bundle-and-target-api.html · https://developer.android.com/guide/app-bundle |
-| S13 | Closed testing overview (marketing page) | https://play.google.com/console/about/closed-testing/ |
-| S14 | 20 → 12 tester change dated 2024-12-11 (secondary, corroborating only) | https://primetestlab.com/blog/google-play-changed-20-to-12-testers |
+| S13 | Create-release sub-flow in §7 step 1: "Create new release", "Add your app bundles", "Name your release", "Enter release notes", Releases tab → "Start rollout" | https://support.google.com/googleplay/android-developer/answer/9859348?hl=en |
+| S14 | 64-bit architecture requirement quoted in §4.4 | https://developer.android.com/google/play/requirements/64-bit |
+| S15 | 20 → 12 tester change dated 2024-12-11 (secondary, corroborating only — §1) | https://primetestlab.com/blog/google-play-changed-20-to-12-testers |
 
 ## 13. Explicitly not covered / UNKNOWN
 

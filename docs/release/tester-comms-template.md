@@ -8,12 +8,43 @@ Sending these is a **[HUMAN]** act. Nothing here is sent automatically.
 1. Fill every `[BRACKET]`. Do not send with a placeholder still in the text.
 2. `[OPT-IN URL]` comes from Play Console → Testing → Closed testing → Manage track → Testers tab.
    It "only shows when an app is Published"
-   ([Play Console Help](https://support.google.com/googleplay/android-developer/answer/9845334?hl=en), retrieved 2026-08-13) — so you cannot send message A before the first closed release clears review.
+   ([Play Console Help](https://support.google.com/googleplay/android-developer/answer/9845334?hl=en), retrieved 2026-08-13) — so you cannot send message A before the first closed release clears review. Send **A0** in the meantime; it needs no URL.
 3. **Do not add product claims.** Anything about levels, features or performance must already be
    `VERIFIED` in `docs/store/play-store-listing.md` §Current claim gates (Lane 7's pack — read it,
    never edit it). If a claim is not there, cut the sentence rather than softening it.
+   Message A contains **exactly one** product claim — "No forced ads, energy, or loot-box system;
+   every current level is solvable free" — reproduced **verbatim** from the VERIFIED row at
+   `docs/store/play-store-listing.md:76`, whose publication rule is "Keep the positioning line
+   verbatim". Do not reword it, and do not add a second claim beside it.
 4. Keep the tester roster (names + Gmail addresses) **out of this repository**: personal data, and
    the repo has no secret-scanning gate today (`state/PROJECT_STATE.md:92`, `.github/workflows/ci.yml:17`).
+
+---
+
+## A0. Pre-publish ask (send TODAY — no opt-in URL exists yet)
+
+Use this while the first closed release is still in review. It collects the Gmail addresses you need
+for the tester list so that the moment the opt-in URL appears you can send message A to a roster that
+is already assembled — the review wait then costs you nothing.
+
+> Hi [NAME] — quick favour with a deadline. I'm about to put my game **Cat Metro** into a Google Play
+> closed test, and Google requires **12 people opted in for 14 straight days** before I'm allowed to
+> launch. I'd like you to be one of them.
+>
+> **Right now I just need your Gmail address** — that's the account Google ties the test to. Nothing
+> to install yet; Google is still reviewing the first build.
+>
+> **What it will involve, so you can say no now rather than later:**
+> - One link to tap on an **Android phone** (it won't work on iPhone), then install from Play.
+> - Staying in the test for **two weeks** — leaving early restarts the clock for that seat.
+> - Opening it a couple of times a week and telling me what's confusing or boring.
+>
+> I'll send the link as soon as Google approves the build — probably [DATE ESTIMATE], possibly up to
+> a week. Reply with your Gmail if you're in.
+>
+> [YOUR NAME]
+
+Keep the replies in your own private notes — see the roster-custody rule in step 4 above.
 
 ---
 
@@ -32,19 +63,34 @@ Sending these is a **[HUMAN]** act. Nothing here is sent automatically.
 > 3. Play for a few minutes.
 >
 > **What I need over the next two weeks:**
-> - **Stay opted in until [DATE = opt-in date + 15 days].** Uninstalling is fine; tapping *Leave the
->   test* is not — Google's clock resets for that seat and I'd have to start the 14 days over.
-> - Open it a couple of times a week. Google looks at whether testers actually engage.
+> - **Stay opted in until [DATE = opt-in date + 15 days].** Please don't tap *Leave the test* — that
+>   breaks the 14-day streak for that seat and it has to start over. Keep it installed to be safe.
+> - Open it a couple of times a week and actually play. When I apply to launch, Google asks me to
+>   describe the engagement I got from testers and what I changed because of their feedback.
 > - Tell me anything confusing, boring, or broken. One sentence is enough.
 >
 > **Fair warning about the build:** it is an early test build. [ONE HONEST LINE ABOUT THE CURRENT
 > STATE — e.g. placeholder art / no sound / [N] levels. Fill from the exact release candidate.]
-> No ads, no purchases, no account needed.
+> No forced ads, energy, or loot-box system; every current level is solvable free.
 >
 > **Where to send feedback:** [FEEDBACK EMAIL OR LINK] (same address is listed in the Play test page).
 >
 > Thanks — this genuinely unblocks the launch.
 > [YOUR NAME]
+
+**Sourcing for the two Google-behaviour statements in message A** (retrieved 2026-08-13):
+
+- *"breaks the 14-day streak … has to start over"* — the requirement page is explicit that the 14
+  days "must be consecutive to count" and that testers who opt out are not counted
+  ([App testing requirements](https://support.google.com/googleplay/android-developer/answer/14151465?hl=en)).
+  Whether **uninstalling** (as opposed to tapping *Leave the test*) affects the count is **not stated
+  in any retrieved source — UNVERIFIED**. That is why the message asks people to keep it installed
+  rather than promising that uninstalling is harmless.
+- *"Google asks me to describe the engagement … and what I changed"* — the same page's
+  production-access questions ask developers to "Provide information about the engagement you
+  received from testers during your closed test", to "summarize the feedback that you received from
+  testers, and let us know how you collected this feedback", and to state "what changes you made to
+  your app or game based on what you learned during your closed test".
 
 ---
 
@@ -108,6 +154,9 @@ only build-to-feedback binding this project has today
 
 - No promises you have not decided to keep (credits, free content, prizes). If you promise it, write
   it down.
+- **Never tie an incentive to an install, an opt-in, a rating, or a review.** Paying for or rewarding
+  those is the shape of a policy violation and it corrupts the only signal the test exists to
+  produce. Thanks and credits are fine; "opt in and I'll send you £10" is not.
 - No claims outside the VERIFIED set in `docs/store/play-store-listing.md`.
 - No links to internal docs, the private repo, or unreleased plans.
 - If a tester asks what data the app collects, answer from the Data safety form you actually
