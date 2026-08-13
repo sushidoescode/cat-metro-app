@@ -35,6 +35,8 @@ Stakes posture: `state/mode` (human-set — sprint/standard/production; policy i
 - `.github/**` — CI/review/deploy rules (also hook- and CODEOWNERS-protected)
 - `infra/**` — infrastructure-as-code
 - `**/billing/**`, `**/iap/**`, `**/ads/**` — monetization tripwires: before code lands here, a human flips the stakes mode to production (see state/PROJECT_STATE.md)
+- `unity/Assets/Scripts/Integrations/RevenueCat/**`, `unity/Assets/Resources/Monetization/**`, `unity/Assets/Plugins/Android/**`, `unity/Assets/ExternalDependencyManager/**` — monetization/billing integration surfaces: same tripwire posture as the globs above
+- `unity/Packages/**` — dependency surface (ADR + independent review; no stakes-mode tripwire)
 
 ## Layout
 

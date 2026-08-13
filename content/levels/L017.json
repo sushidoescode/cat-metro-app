@@ -1,17 +1,17 @@
 {
   "schemaVersion": 2,
-  "id": "L008",
-  "name": "Double Berth",
-  "seed": 1008,
+  "id": "L017",
+  "name": "Tight Headways",
+  "seed": 1017,
   "meta": {
-    "band": "alternation",
-    "difficultyTarget": 0.24,
+    "band": "queue-reading",
+    "difficultyTarget": 0.36,
     "mechanics": [
       "switch",
       "queue"
     ],
     "newMechanic": null,
-    "teachingGoal": "Two switches share one line: the gate opens for the red rush at once, and the berth switch is set before the blue rush",
+    "teachingGoal": "Waves arrive close together -- watch the preview strip and flip right on cue",
     "minActionWindowTicks": 12,
     "authoredBy": "llm+validator"
   },
@@ -21,7 +21,7 @@
         "id": "SRC",
         "x": 3,
         "y": 9,
-        "queueCapacity": 4
+        "queueCapacity": 3
       },
       {
         "id": "GATE",
@@ -29,25 +29,25 @@
         "y": 7
       },
       {
-        "id": "RED",
-        "x": 1,
-        "y": 3
+        "id": "HOLD",
+        "x": 5,
+        "y": 7,
+        "queueCapacity": 1
       },
       {
-        "id": "J2",
-        "x": 5,
-        "y": 7
+        "id": "J1",
+        "x": 3,
+        "y": 5
+      },
+      {
+        "id": "RED",
+        "x": 1,
+        "y": 1
       },
       {
         "id": "BLU",
         "x": 5,
-        "y": 3
-      },
-      {
-        "id": "TRAP",
-        "x": 7,
-        "y": 7,
-        "queueCapacity": 1
+        "y": 1
       }
     ],
     "edges": [
@@ -60,26 +60,26 @@
       {
         "id": "E2",
         "from": "GATE",
-        "to": "RED",
-        "travelTicks": 10
+        "to": "J1",
+        "travelTicks": 6
       },
       {
         "id": "E3",
         "from": "GATE",
-        "to": "J2",
-        "travelTicks": 6
+        "to": "HOLD",
+        "travelTicks": 20
       },
       {
         "id": "E4",
-        "from": "J2",
-        "to": "BLU",
+        "from": "J1",
+        "to": "RED",
         "travelTicks": 8
       },
       {
         "id": "E5",
-        "from": "J2",
-        "to": "TRAP",
-        "travelTicks": 4
+        "from": "J1",
+        "to": "BLU",
+        "travelTicks": 8
       }
     ]
   },
@@ -120,12 +120,12 @@
     },
     {
       "id": "S2",
-      "nodeId": "J2",
+      "nodeId": "J1",
       "routes": [
         "E4",
         "E5"
       ],
-      "initialRoute": 1
+      "initialRoute": 0
     }
   ],
   "waves": [
@@ -137,45 +137,45 @@
       "spacingTicks": 1
     },
     {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 70,
+      "tick": 24,
       "sourceNode": "SRC",
       "color": "blue",
-      "count": 3,
+      "count": 1,
+      "spacingTicks": 1
+    },
+    {
+      "tick": 40,
+      "sourceNode": "SRC",
+      "color": "red",
+      "count": 1,
+      "spacingTicks": 1
+    },
+    {
+      "tick": 56,
+      "sourceNode": "SRC",
+      "color": "blue",
+      "count": 2,
       "spacingTicks": 12
     },
     {
-      "tick": 150,
+      "tick": 88,
       "sourceNode": "SRC",
       "color": "red",
       "count": 2,
-      "spacingTicks": 16
+      "spacingTicks": 12
     }
   ],
   "win": {
-    "deliveries": 8,
-    "timeLimitTicks": 230,
+    "deliveries": 7,
+    "timeLimitTicks": 170,
     "perfectMaxSwitches": 4,
     "stars": {
-      "two": 520,
-      "three": 760
+      "two": 650,
+      "three": 900
     }
   },
   "economy": {
-    "baseTickets": 20,
-    "perfectBonus": 12
+    "baseTickets": 34,
+    "perfectBonus": 20
   }
 }

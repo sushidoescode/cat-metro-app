@@ -113,6 +113,39 @@ namespace CatMetro.Tests.Solver
         }
 
         [Test]
+        public void SuccessorAttempts_StopPromptlyAtTheSharedWorkCeiling()
+        {
+            var r = LevelSolver.Solve(
+                SolverFixtures.TieBreakBoard(), 11, maxNodesExpanded: 100);
+
+            Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.NotFound));
+            Assert.That(r.NotFoundReason, Is.EqualTo(NotFoundReason.Budget));
+            Assert.That(r.NodesExpanded, Is.EqualTo(34),
+                "the search stops on the first rejected successor-work charge");
+            Assert.That(r.OptimalLog.Entries.Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void CanonicalRefinement_UsesTheSameTotalWorkCeiling()
+        {
+            // Search reaches the raw win in 97 expansions. After successor work is charged, the
+            // remainder still cannot certify and compare the equal-primary winning histories.
+            var control = LevelSolver.Solve(SolverFixtures.TieBreakBoard(), 11);
+            var r = LevelSolver.Solve(
+                SolverFixtures.TieBreakBoard(), 11, maxNodesExpanded: 400);
+
+            Assert.That(control.Verdict, Is.EqualTo(SolveVerdict.Solved));
+            Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.NotFound));
+            Assert.That(r.NotFoundReason, Is.EqualTo(NotFoundReason.Budget));
+            Assert.That(r.NodesExpanded, Is.EqualTo(97),
+                "NodesExpanded remains honest search accounting; refinement is separately metered");
+            Assert.That(r.OptimalLog.Entries.Count, Is.EqualTo(0));
+            Assert.That(r.PinnedPruned, Is.EqualTo(control.PinnedPruned),
+                "the budget stop preserves genuine search pins but may not fabricate one");
+            Assert.That(r.FirstPinMessage, Is.EqualTo(control.FirstPinMessage));
+        }
+
+        [Test]
         public void BudgetDefault_IsTheDeclaredConstant()
         {
             var p = typeof(LevelSolver).GetMethod("Solve").GetParameters()[2];

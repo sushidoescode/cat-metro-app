@@ -1,17 +1,17 @@
 {
   "schemaVersion": 2,
-  "id": "L008",
-  "name": "Double Berth",
-  "seed": 1008,
+  "id": "L013",
+  "name": "Fish Rush",
+  "seed": 1013,
   "meta": {
-    "band": "alternation",
-    "difficultyTarget": 0.24,
+    "band": "queue-reading",
+    "difficultyTarget": 0.31,
     "mechanics": [
       "switch",
       "queue"
     ],
     "newMechanic": null,
-    "teachingGoal": "Two switches share one line: the gate opens for the red rush at once, and the berth switch is set before the blue rush",
+    "teachingGoal": "A whole rush of cats arrives at once -- set the route before they hit the platform, not during",
     "minActionWindowTicks": 12,
     "authoredBy": "llm+validator"
   },
@@ -20,34 +20,40 @@
       {
         "id": "SRC",
         "x": 3,
-        "y": 9,
-        "queueCapacity": 4
+        "y": 10,
+        "queueCapacity": 5
       },
       {
         "id": "GATE",
         "x": 3,
-        "y": 7
+        "y": 8
+      },
+      {
+        "id": "HOLD",
+        "x": 5,
+        "y": 8,
+        "queueCapacity": 1
+      },
+      {
+        "id": "PLAT",
+        "x": 3,
+        "y": 6,
+        "queueCapacity": 3
+      },
+      {
+        "id": "J1",
+        "x": 3,
+        "y": 4
       },
       {
         "id": "RED",
         "x": 1,
-        "y": 3
-      },
-      {
-        "id": "J2",
-        "x": 5,
-        "y": 7
+        "y": 2
       },
       {
         "id": "BLU",
         "x": 5,
-        "y": 3
-      },
-      {
-        "id": "TRAP",
-        "x": 7,
-        "y": 7,
-        "queueCapacity": 1
+        "y": 2
       }
     ],
     "edges": [
@@ -55,31 +61,37 @@
         "id": "E1",
         "from": "SRC",
         "to": "GATE",
-        "travelTicks": 6
+        "travelTicks": 5
       },
       {
         "id": "E2",
         "from": "GATE",
-        "to": "RED",
-        "travelTicks": 10
+        "to": "PLAT",
+        "travelTicks": 5
       },
       {
         "id": "E3",
         "from": "GATE",
-        "to": "J2",
-        "travelTicks": 6
+        "to": "HOLD",
+        "travelTicks": 20
       },
       {
         "id": "E4",
-        "from": "J2",
-        "to": "BLU",
-        "travelTicks": 8
+        "from": "PLAT",
+        "to": "J1",
+        "travelTicks": 5
       },
       {
         "id": "E5",
-        "from": "J2",
-        "to": "TRAP",
-        "travelTicks": 4
+        "from": "J1",
+        "to": "RED",
+        "travelTicks": 7
+      },
+      {
+        "id": "E6",
+        "from": "J1",
+        "to": "BLU",
+        "travelTicks": 7
       }
     ]
   },
@@ -120,12 +132,12 @@
     },
     {
       "id": "S2",
-      "nodeId": "J2",
+      "nodeId": "J1",
       "routes": [
-        "E4",
-        "E5"
+        "E5",
+        "E6"
       ],
-      "initialRoute": 1
+      "initialRoute": 0
     }
   ],
   "waves": [
@@ -133,49 +145,35 @@
       "tick": 8,
       "sourceNode": "SRC",
       "color": "red",
-      "count": 1,
+      "count": 2,
       "spacingTicks": 1
     },
     {
       "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 70,
-      "sourceNode": "SRC",
-      "color": "blue",
-      "count": 3,
-      "spacingTicks": 12
-    },
-    {
-      "tick": 150,
       "sourceNode": "SRC",
       "color": "red",
       "count": 2,
-      "spacingTicks": 16
+      "spacingTicks": 1
+    },
+    {
+      "tick": 55,
+      "sourceNode": "SRC",
+      "color": "blue",
+      "count": 3,
+      "spacingTicks": 1
     }
   ],
   "win": {
-    "deliveries": 8,
-    "timeLimitTicks": 230,
-    "perfectMaxSwitches": 4,
+    "deliveries": 7,
+    "timeLimitTicks": 110,
+    "perfectMaxSwitches": 1,
     "stars": {
-      "two": 520,
-      "three": 760
+      "two": 550,
+      "three": 800
     }
   },
   "economy": {
-    "baseTickets": 20,
-    "perfectBonus": 12
+    "baseTickets": 28,
+    "perfectBonus": 16
   }
 }
