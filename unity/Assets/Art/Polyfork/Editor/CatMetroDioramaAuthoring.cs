@@ -153,7 +153,7 @@ namespace CatMetro.Editor
         private static void RequirePolyforkLocalCustody()
         {
             string localModelRoot = Path.Combine(
-                Application.dataPath, "Art", "Polyfork", "Models");
+                UnityEngine.Application.dataPath, "Art", "Polyfork", "Models");
             string[] models =
             {
                 "polyfork_tram_track_tile_f3c69a.fbx",
