@@ -27,7 +27,6 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private Canvas _canvas;
         private RectTransform _tray;
         private readonly List<EntryVisual> _entries = new List<EntryVisual>();
-        private readonly List<GameObject> _legacyPrimitives = new List<GameObject>();
         private int _lastRefreshTick = -1;
         private Rect _lastSafeArea = new Rect(-1f, -1f, -1f, -1f);
         private float _lastDpi = -1f;
@@ -45,23 +44,12 @@ namespace CatMetro.Presentation.Hud.WavePreview
             strip._camera = cam;
             strip.CreateVisualTree();
 
-            // Sequenced lane boundary: the reference-style tree above is safe now, while this
-            // legacy construction site stays byte-visible until Lane 1A lands its criterion-5
-            // gate re-author. The renderer is never painted and the collider is removed as in
-            // the prior implementation. A later, separate commit deletes this entire block.
-            for (int i = 0; i < 2; i++)
-            {
-                var legacy = GameObject.CreatePrimitive(PrimitiveType.Quad);
-                legacy.name = "LegacyWavePrimitive" + i;
-                legacy.transform.SetParent(go.transform, false);
-                var renderer = legacy.GetComponent<Renderer>();
-                renderer.sharedMaterial = Board.GreyboxMaterial.Shared;
-                renderer.enabled = false;
-                Object.Destroy(legacy.GetComponent<Collider>());
-                legacy.SetActive(false);
-                strip._legacyPrimitives.Add(legacy);
-            }
-
+            // F-1: Lane 1A's criterion-5 gate re-author is an ancestor of this head, so the
+            // legacy primitive-quad/GreyboxMaterial.Shared construction that used to wait on
+            // it is removed outright — the reference-style UGUI/TMP tree above is the only
+            // wave-preview geometry now. (Deliberately not naming the removed factory call
+            // literally in this comment: WavePreviewSource_ContainsNoPrimitiveConstruction
+            // source-scans this very file for that substring.)
             strip.Layout();
             strip.Refresh();
             return strip;
