@@ -352,10 +352,17 @@ namespace CatMetro.Tests.Corpus
     // Q1/Q2, L013's PLAT) ever buffer — the round-1 reviewer's own probe showed they don't, and a
     // from-first-principles trace of Simulation.cs confirms why: step 4a releases at most one
     // queued head per node per tick, so any single incoming edge feeds a downstream node at most
-    // 1 arrival/tick, which that node's own 1-per-tick release always keeps pace with — genuine
-    // depth >= 2 at a non-source node requires >= 3 simultaneous arrivals from >= 3 distinct
-    // incoming edges (proven: 2 converging edges cap out at depth 1, since the first arrival
-    // always zero-dwell passes through). A single `sources` entry is enforced (LevelImporter.cs,
+    // 1 arrival/tick, which that node's own 1-per-tick release always keeps pace with. Multi-edge
+    // convergence CAN produce depth >= 2 at a non-source node — the round-2 reviewer's
+    // two-converging-edge counter-example reaches it (per-tick trace in the #76 review record),
+    // refuting the ">= 3 converging edges" lemma this comment previously claimed (corrected here
+    // per #76 Minor-10) — but never on the line these observables sample: on a single-source
+    // board, inflow is mouth-capped at 1 cat/tick upstream, so a parallel converging route can
+    // only add delay, never throughput (the counter-example's converging line wins at tick 38 vs
+    // the solver optimum 35, necessarily). Since liveness here samples the SOLVER-OPTIMAL log,
+    // downstream buffering can never appear on it on any single-source board — do not re-attempt
+    // convergence experiments against these observables; that exact experiment already blew the
+    // work meter below. A single `sources` entry is enforced (LevelImporter.cs,
     // "second source is pinned out of CM-C1 scope"), so multi-edge convergence into one node is
     // achievable only via an extra switch — attempted for L012 this round (a 3-route SPLIT switch
     // feeding Q1 via three travelTicks-staggered edges, engineered to converge three solo cats on
