@@ -191,9 +191,23 @@ as if it did.
 - Google Play requires the **Android App Bundle** for new apps (announced 2020-11 for August 2021,
   [Android Developers Blog](https://android-developers.googleblog.com/2020/11/new-android-app-bundle-and-target-api.html), retrieved 2026-08-13; [About Android App Bundles](https://developer.android.com/guide/app-bundle), retrieved 2026-08-13).
 
-**Therefore: no scripted/CLI AAB path exists in this repository today — the manual Unity Editor route
-in §4.3 is the only path.** Adding a scripted one is a code change (`unity/**`) and is out of scope
-for this lane; it needs its own contract.
+**Scripted path [SUPERSEDED — the contract this line asked for landed]:** this line originally read
+"no scripted/CLI AAB path exists in this repository today"; the BUILD-AAB contract (PR #82,
+2026-08-13) added `unity/Assets/Editor/CatMetroCliAabBuild.cs`. Invocation (the `-buildTarget
+Android` flag is load-bearing — without it BuildPlayer performs an implicit platform switch):
+
+```
+CM_AAB_OUT=/absolute/path/catmetro.aab \
+  "/Applications/Unity/Hub/Editor/6000.3.16f1/Unity.app/Contents/MacOS/Unity" \
+  -batchmode -nographics -quit -buildTarget Android \
+  -projectPath unity -executeMethod CatMetroCliAabBuild.BuildAndroidAab -logFile /tmp/aab.log
+```
+
+It fails closed: refuses a non-`.aab` output, refuses `CM_DEV_BUILD=1`, and refuses a DEBUG-SIGNED
+build unless `CM_ALLOW_DEBUG_SIGNING=1` explicitly opts into a pipeline proof (a debug `.aab` is
+never uploadable). It prints `CLI_AAB_RESULT … signing=custom|debug` machine-readably and never
+touches keystore material — signing comes from your local, uncommitted Player Settings (§4.3
+step 4). The manual Editor route below remains equally valid **[LOCAL]**.
 
 ### 4.3 Today's route — Unity Editor, by hand **[LOCAL]**
 
