@@ -353,7 +353,7 @@ namespace CatMetro.Tests.Daily
         }
 
         [Test]
-        [NonParallelizable]
+        [Parallelizable(ParallelScope.None)]
         public void EqualOffsetInstants_HaveIdenticalUtcSeedAndBoardBytesAcrossCultures()
         {
             CultureInfo originalCulture = Thread.CurrentThread.CurrentCulture;
