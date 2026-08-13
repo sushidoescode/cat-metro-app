@@ -29,17 +29,12 @@ namespace CatMetro.Presentation.Hud
             rect.offsetMax = Vector2.zero;
 
             var canvas = go.AddComponent<Canvas>();
-            var camera = parent.root.GetComponentInChildren<Camera>();
-            if (camera != null)
-            {
-                canvas.renderMode = RenderMode.ScreenSpaceCamera;
-                canvas.worldCamera = camera;
-                canvas.planeDistance = 1f;
-            }
-            else
-            {
-                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            }
+            // F-2: ScreenSpaceCamera placement disagrees with the diorama board camera's
+            // off-centre custom projection/view matrices (CauseCameraController), the same
+            // defect fixed on WavePreviewStrip's canvas. Overlay renders straight to the
+            // device screen so the banner keeps its intended layout regardless of the board
+            // camera's framing.
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = 115;
 
             var card = CatMetroUiTheme.MakeImage(go.transform, "BannerCard",

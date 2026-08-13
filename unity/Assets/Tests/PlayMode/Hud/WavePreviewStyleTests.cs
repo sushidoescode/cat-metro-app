@@ -72,6 +72,52 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(preview.InTopBand(0), Is.True);
         }
 
+        [UnityTest]
+        public IEnumerator WaveTray_UnderDioramaCamera900x2000Aspect_CornersStayInsideTopBand()
+        {
+            // F-2 regression (round-1 review): reproduces the reviewed finding under the
+            // diorama board camera's off-centre projection/view matrices
+            // (CauseCameraController), forced to the exact 900x2000 portrait aspect Lane 1A
+            // used to measure the defect — the same aspect its own evidence-capture rig applies
+            // in DioramaConstructionTests.cs's Capture() helper
+            // (`causeCamera.ApplyDioramaFraming(width / (float)height)` with width=900,
+            // height=2000). Aspect-forcing rather than a literal Screen.SetResolution matches
+            // that file's own headless-safe precedent
+            // (PolyforkDressing_ProjectsAtReadablePhoneScaleInsideThePlayfield) and is provably
+            // equivalent here: the ScreenSpaceCamera bug is a projection-matrix/camera-state
+            // mismatch, not a raw-resolution effect. Before the F-2 fix, this same camera state
+            // sent WorldToScreenPoint results to a viewportY far outside the top band (Lane 1A
+            // measured y~=2958-3073 on a 2000-high screen); the fix's Overlay canvas removes
+            // the camera from this computation entirely
+            // (RectTransformUtility.WorldToScreenPoint(null, worldPos) returns worldPos.x/y
+            // verbatim), so this stays green regardless of the board camera's framing.
+            _root = GameRoot.Launch();
+            yield return null;
+
+            _root.Cam.aspect = 900f / 2000f;
+            _root.CauseCam.ApplyDioramaFraming(_root.Cam.aspect);
+
+            var preview = _root.Preview;
+            var canvas = Find(preview.transform, "WavePreviewCanvas").GetComponent<Canvas>();
+            var tray = Find(preview.transform, "WaveTray").GetComponent<RectTransform>();
+
+            var corners = new Vector3[4];
+            tray.GetWorldCorners(corners);
+            // Mirrors WavePreviewStrip.InTopBand's own eventCamera/viewportY math exactly
+            // (:87-99), but walks all four rect corners instead of only the center.
+            var eventCamera = canvas.renderMode == RenderMode.ScreenSpaceOverlay
+                ? null : canvas.worldCamera;
+            foreach (var corner in corners)
+            {
+                var screenPoint = RectTransformUtility.WorldToScreenPoint(eventCamera, corner);
+                float viewportY = Screen.height > 0 ? screenPoint.y / Screen.height : 0f;
+                Assert.That(viewportY, Is.GreaterThanOrEqualTo(0.85f).And.LessThanOrEqualTo(1f),
+                    "wave tray corner " + corner + " projects to viewportY=" + viewportY
+                    + " under the diorama camera's 900x2000-aspect off-centre projection; the "
+                    + "strip must stay inside the top 0-15% band");
+            }
+        }
+
         [TestCase("red", "SymbolCircle")]
         [TestCase("blue", "SymbolSquare")]
         [TestCase("yellow", "SymbolTriangle")]

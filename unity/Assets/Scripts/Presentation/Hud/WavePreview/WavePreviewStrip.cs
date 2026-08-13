@@ -142,16 +142,16 @@ namespace CatMetro.Presentation.Hud.WavePreview
             var canvasGo = new GameObject("WavePreviewCanvas");
             canvasGo.transform.SetParent(transform, false);
             _canvas = canvasGo.AddComponent<Canvas>();
-            if (_camera != null)
-            {
-                _canvas.renderMode = RenderMode.ScreenSpaceCamera;
-                _canvas.worldCamera = _camera;
-                _canvas.planeDistance = 1f;
-            }
-            else
-            {
-                _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            }
+            // F-2: ScreenSpaceCamera canvases are placed from the Transform + planeDistance +
+            // implicit frustum. The diorama board camera (CauseCameraController) overrides
+            // both projectionMatrix (off-centre ortho) and worldToCameraMatrix (a virtual
+            // pitched view), so that placement math disagrees with what the camera actually
+            // renders and the strip projects off-band (measured at y~=2958-3073 on a 2000-high
+            // screen). Overlay renders straight to the device screen, independent of the board
+            // camera's framing, so the strip stays inside its safe-area band regardless. The
+            // camera reference is kept only for InTopBand's world math below, never for canvas
+            // placement.
+            _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             _canvas.sortingOrder = 80;
             var scaler = canvasGo.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;

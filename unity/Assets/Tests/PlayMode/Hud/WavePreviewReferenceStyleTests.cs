@@ -38,7 +38,12 @@ namespace CatMetro.Tests.PlayMode
             var preview = _root.Preview;
             var canvas = Find(preview.transform, "WavePreviewCanvas").GetComponent<Canvas>();
             Assert.That(canvas, Is.Not.Null);
-            Assert.That(canvas.renderMode, Is.EqualTo(RenderMode.ScreenSpaceCamera));
+            // F-2 (round-1 review fix): ScreenSpaceCamera disagrees with the diorama board
+            // camera's off-centre custom projection/view matrices and projects the strip off
+            // its safe-area band (measured y~=2958-3073 on a 2000-high screen). This PR-added
+            // pin is revised to Overlay, which this PR's own fix now uses; it is not a
+            // weakened pre-existing law.
+            Assert.That(canvas.renderMode, Is.EqualTo(RenderMode.ScreenSpaceOverlay));
             Assert.That(preview.GetComponentsInChildren<GraphicRaycaster>(true).Length,
                 Is.Zero, "the reference strip remains display-only");
 
