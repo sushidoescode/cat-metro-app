@@ -28,8 +28,8 @@ records the same thing: "this signature alone activates nothing" (`monetization_
 |---|---|
 | Q-S1 | Sign, amend or reject each proposed slug + price row in §1. Unsigned slugs cannot be created. |
 | Q-S2 | Does each district's included livery entitlement attach to the All Access products (Q-D3)? §2's attachment table shows both readings. |
-| Q-S3 | **Consequence on a signed number:** §8.3's judge packet is a signed **15 codes per recipient / 25 packets / 375 codes** inventory covering one code per SKU class. Two new district SKUs make it 17 per recipient / 425 total unless districts are excluded from the packet. Which? |
-| Q-S4 | Does the Night-Harbor two-price no-scroll copy law generalize to every district-led sheet (Q-D4)? §3 assumes yes and marks it PROPOSED. |
+| Q-S3 | **Judge packet — no inventory change is implied.** §8.3's signed 15-code packet is *not* one code per SKU: it is one `cm_supporter_pack` code that already covers All Access and **every signed district**, plus per-SKU codes only where the umbrella does not reach (six cat skins, four liveries, Harvest, Snowbell, two rewind packs) — `monetization_spec.md:733-740`. Night Harbor has no dedicated code today, and new districts add **zero** codes. The only residual: does a judge need a **standalone à-la-carte district code** to demonstrate the district purchase path, or does the supporter code suffice (as it already does for Night Harbor)? |
+| Q-S4 | Does the Night-Harbor two-price no-scroll copy law generalize to every district-led sheet (Q-D4)? §3 proposes yes **conditional on** the All-Access exclusion line shipping with it (`districts.md` §2.3) — the two-price row alone would read as a completeness claim the catalog does not honor. Note SC-3: the no-scroll budget on `post_level_5` is already contested. |
 | Q-S5 | SC-1/SC-2 in `districts.md` (CM-R10 and `product_spec.md:592` still say Night Harbor is All-Access-only) must be ruled before any district SKU is created. |
 
 ---
@@ -70,8 +70,17 @@ Marking for the table below: the `district_night_harbor` row restates the signed
 | `district_night_harbor` | `cm_district_night_harbor` | `cm_all_access`, `cm_all_access_499`, `cm_supporter_pack` (signed, `monetization_spec.md:701-706`) | exactly `district_night_harbor` |
 | `district_sardine_sidings` | `cm_district_sardine_sidings` | same three umbrella products | exactly `district_sardine_sidings` |
 | `district_lantern_hill` | `cm_district_lantern_hill` | same three umbrella products | exactly `district_lantern_hill` |
-| `livery_sardine_sidings` | `cm_district_sardine_sidings` | **reading A (proposed):** the same three umbrella products, because the livery ships as part of the district · **reading B:** nothing — All Access buys lines, not looks | exactly `livery_sardine_sidings` |
+| `livery_sardine_sidings` | `cm_district_sardine_sidings` | **reading A (proposed):** the same three umbrella products, because the livery ships as part of the district · **reading B (see the consequence below):** nothing — All Access buys lines, not looks | exactly `livery_sardine_sidings` |
 | `livery_lantern_hill` | `cm_district_lantern_hill` | same choice as above (Q-S2) | exactly `livery_lantern_hill` |
+
+**Reading B's consequence, stated plainly for the human's ruling (Q-S2).** While the included liveries
+have **no standalone SKU**, reading B means an All Access or Supporter owner — the highest-paying
+customer — can never obtain a district livery at all, except by buying the à-la-carte district a second
+time at full price, with the signed no-credit/no-proration copy explaining that nothing is refunded
+(`monetization_spec.md:713`). That is an upsell that punishes the umbrella buyer, and this lane treats it
+as **NOT VIABLE as drawn**. Reading B becomes coherent only if the human also authorizes a standalone
+livery SKU (a new signed product, a new price row, and a new §8.2 catalog entry) — which is a different
+proposal than the one in §1. Reading A is what this document proposes.
 
 Rules this design does not get to bend, restated so the implementer inherits them:
 
@@ -83,7 +92,10 @@ Rules this design does not get to bend, restated so the implementer inherits the
 3. **Existing-owner proof before activation.** Attaching a new district entitlement to an
    already-sold All Access product requires sandbox/device evidence that an existing owner receives the
    attachment after CustomerInfo refresh/Restore, and that refunding either overlapping product cannot
-   revoke the other (`:723-726`).
+   revoke the other (`:723-726`). **Actor split:** authoring and running the test harness and capturing
+   the evidence is **[AGENT]** work; provisioning license testers and Google accounts, issuing the
+   refund, and every RevenueCat/Play **Console state change** are **[HUMAN]** acts — an agent never
+   mutates dashboard or Console state, and all of it sits after the `state/mode` flip.
 4. **No proration, no credit.** A district owner buying All Access sees the signed no-credit copy before
    confirmation (`:713`).
 5. **Consumables stay out.** No district SKU may contain rewinds or any consumable.
@@ -99,6 +111,11 @@ Rules this design does not get to bend, restated so the implementer inherits the
   "`{District}` only — `{localized_price}`" and "All playable lines — `{localized_price}`" without
   scrolling, exactly as §8.3 already requires of every Night-Harbor-led sheet including `post_level_5`
   (`:712`). No district-led sheet may imply a district is obtainable only through All Access.
+  **Conditional (see `districts.md` §2.3):** this generalization is proposed *together with* the
+  exclusion line — a sheet showing the "All playable lines" row must also name what that row does not
+  contain (standalone `<X>` Line themes, cat-skin and livery waves), because "every playable line" is
+  deliberately narrower than "everything" (`monetization_spec.md:619`, `:627-630`). Generalizing the
+  two-price row **without** the exclusion line is not what this document proposes.
 - **Unchanged, and not touched by this lane:** `post_level_5` is the one scripted exposure, **once per
   install ever**, with dismissal available on frame 1 (CM-R26; `monetization_spec.md:919`); three
   consecutive declines mute every ad row for 24 hours, a decline consumes no cap and grants nothing
@@ -127,4 +144,3 @@ commit lands (partial supersession is invalid) → the catalog manifest ships wi
 **inactive** → license/restore/refund/overlap testing → activate one at a time on signed dashboard
 evidence. District content "activates only with its validated routes" (`:1010-1011`) — and no district
 route is authored today.
-</content>

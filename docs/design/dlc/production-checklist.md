@@ -35,7 +35,22 @@ under an ordinary task contract · **[BLOCKED]** = cannot begin before the `stat
 - [ ] **[AGENT]** Generation via the Polyfork MCP; **derivatives stay local-only** until custody is
       signed. Precedent for why: nine FBXs previously reached the public repo and had to be purged from
       tip and history, with a residual that pre-rewrite objects may remain fetchable by SHA
-      (`state/PROJECT_STATE.md:55`). No source FBX/GLB enters the repo on an agent's judgment.
+      (`state/PROJECT_STATE.md:55`). **That residual is still open** — a hosted scrub may need GitHub
+      Support, and no evidence exists in-repo that it was performed; carry it as an open item on every
+      district that reuses the Polyfork path. No source FBX/GLB enters the repo on an agent's judgment.
+- [ ] **REQUIRED INPUT to ADR-0011 (delivery boundary, not a custody detail):** under the pipeline that
+      exists today, a paid district's **art ships to every install regardless of entitlement**, exactly
+      as its level JSON does. There is **no Addressables, Play Asset Delivery, asset-bundle, or
+      download-on-entitlement mechanism** in this repo, and this lane proposes none. The custody ADR must
+      therefore answer the licensing question in its real shape: are Polyfork-derived assets licensed for
+      distribution inside a Play binary **to non-purchasers of the content they belong to**? An agent
+      cannot answer that — **[HUMAN]**.
+- [ ] **[AGENT]** Polyfork MCP credential handling: the MCP connection is **user-scope and human-held**
+      (`state/PROJECT_STATE.md:79` — user-scope `claude mcp add` or the launching shell; keys never in
+      the project `.mcp.json`, which is repo-side and unignored). The key never enters `.mcp.json`, PR
+      text, commit messages, logs, or evidence captures; the existing `.env` placement is a **recorded
+      deviation** from the 2026-08-02 owner-only-store decision (`:77`), not a pattern to replicate.
+      Secret-scan CI is still TODO (`:92`), so nothing key-shaped may be committed at all.
 - [ ] **[AGENT]** Assets conform to the LOCKED art direction: 12-hex palette, rounded shape language,
       ortho 30° camera, one toon shader family, dressing ≤6% of screen outside the board safe rect
       (`docs/plan/specs/product_spec.md:130-181`). A district picks **Day or Night** — a third lighting
@@ -66,9 +81,10 @@ under an ordinary task contract · **[BLOCKED]** = cannot begin before the `stat
       declared queue mechanics decorative on most boards and forced an honest correction rather than a
       claim (`state/PROJECT_STATE.md:52`). Carry a per-board probe as evidence, not a claim.
 - [ ] Add a band wrapper under `tests/corpus/` following the shape of
-      `tests/corpus/queue-reading-band.test.sh` (it re-runs `scripts/validate-content.sh:44`, asserts the
-      prior corpus is byte-unchanged at `:161`, and re-runs `scripts/stage-content.sh` in check mode at
-      `:170`).
+      `tests/corpus/queue-reading-band.test.sh` — that file re-runs `scripts/validate-content.sh` at its
+      own line 44, asserts the prior corpus is byte-unchanged at its line 161, and re-runs
+      `scripts/stage-content.sh` in check mode at its line 170 (all three line numbers belong to the
+      wrapper, not to the scripts it invokes).
 - [ ] Brittleness caveat to design against: the solver's earliest-tick tie-break historically left zero
       early-side jitter margin for non-tick-0 toggles (`state/PROJECT_STATE.md:101`), later re-measured at
       100% after the centering fix (`:109`). **Verify the current solver state before relying on either
@@ -86,6 +102,11 @@ under an ordinary task contract · **[BLOCKED]** = cannot begin before the `stat
       directions** between `content/levels/*.json` and the staged tree
       (`tests/unity/editmode.test.sh:18-24`). Consequence to design around, not around: **the district's
       JSON ships in the free APK**; access is an entitlement check, never asset absence.
+- [ ] Same boundary for **art**: district models/textures land in the Unity project and ship to every
+      install. **No Addressables, Play Asset Delivery, asset-bundle or download-on-entitlement mechanism
+      exists in this repo, and none is proposed by this lane** — so "paid content" means gated *access*,
+      never withheld *bytes*. This is a required input to ADR-0011 (Stage 1) and must never be described
+      as piracy protection.
 - [ ] `bash scripts/check.sh` and `bash scripts/build.sh` green.
 - [ ] Inherited traps, verified as still-open debt: the stager excludes all `*.meta`, so a **new**
       StreamingAssets folder is unverified (`state/PROJECT_STATE.md:100`) — district levels land in the
@@ -112,12 +133,19 @@ under an ordinary task contract · **[BLOCKED]** = cannot begin before the `stat
 
 ## Stage 5 — QA and device pass
 
-- [ ] **[BLOCKED/AGENT]** Durable-item test set per §8.7 (`monetization_spec.md:944-947`): purchase,
-      pending, cancel, offline cache, restore, overlap-refund, duplicate callback, account mismatch,
-      reinstall.
-- [ ] **[BLOCKED/AGENT]** Guest-route rewarded branches per §8.9 step 5: no-fill, decline, cap,
-      task-kill, offline, expired trial — and the law that the route writes **zero** progress, stars,
-      tickets, medals or leaderboard evidence (`:800-804`).
+**Actor split for every row in this stage (applies to both halves below):** authoring and running the
+test harness, driving the device, and capturing/recording evidence is **[AGENT]** work (after the mode
+flip). Provisioning license testers and Google/Play accounts, issuing refunds or revocations, and **any
+Console or RevenueCat dashboard state change** are **[HUMAN]** acts — an agent never mutates them.
+
+- [ ] **[BLOCKED → AGENT harness / HUMAN provisioning]** Durable-item test set per §8.7
+      (`monetization_spec.md:944-947`): purchase, pending, cancel, offline cache, restore,
+      overlap-refund, duplicate callback, account mismatch, reinstall. The refund/revocation and
+      license-tester legs cannot run without the **[HUMAN]** acts above.
+- [ ] **[BLOCKED → AGENT harness / HUMAN provisioning]** Guest-route rewarded branches per §8.9 step 5:
+      no-fill, decline, cap, task-kill, offline, expired trial — and the law that the route writes
+      **zero** progress, stars, tickets, medals or leaderboard evidence (`:800-804`). Ad-unit and
+      placement configuration is a **[HUMAN]** console act.
 - [ ] **[AGENT]** Accessibility and performance evidence at parity with a free district (§8.7's closing
       paragraph, `:945-947`).
 - [ ] **[HUMAN]** Pixel device QA on a fresh APK; device findings recorded (the open one that touches
@@ -155,4 +183,3 @@ under an ordinary task contract · **[BLOCKED]** = cannot begin before the `stat
 | Signal Works (D-3) | no | no | none | none proposed | blocked: needs `cooldown`/`gate` free first |
 
 Nothing in this table is shipped. Nothing in this table is scheduled.
-</content>

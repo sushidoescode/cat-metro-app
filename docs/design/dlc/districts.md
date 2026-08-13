@@ -54,14 +54,25 @@ mechanics in the corpus today) unless L018+ lands first.
 
 **2.2 Id allocation (PROPOSED, needs Q-D2).** Night Harbor holds L901–L910 (`product_spec.md:592`).
 Proposal: reserve L900–L999 for paid districts, ten ids per district, allocated in signature order.
-That caps the paid catalog at ten districts unless the human amends the id pattern — a real ceiling on
-"deep catalog," recorded here rather than discovered later.
+Because the signed block starts at L901, the ten-id stride yields **nine** contiguous districts
+(L901–L910 … L981–L990), leaving L900 and L991–L999 as a ten-id remainder that is not a contiguous
+district slot. **The paid catalog therefore ceilings at nine ten-level districts** — Night Harbor plus
+eight — unless the human amends the `^L[0-9]{3}$` pattern or accepts a non-contiguous allocation. A real
+ceiling on "deep catalog," recorded now rather than discovered at district nine.
 
 **2.3 Naming.** Districts are place nouns (Yard, Cross, Platforms, Gardens, Terminus, Harbor). Cosmetic
 SKUs own the "`<X>` Line" form (Sakura Line, Neon Line, Harvest Line, Snowbell Line, Brass Line —
 `monetization_spec.md:653-669`), so no proposed district uses it: a player must never confuse a $2.99
 **theme** with a $2.99 **district**. The retired name "Rooftop Line" is not reused (CM-R10.1 keeps a CI
-grep gate at zero occurrences).
+grep gate at zero occurrences). **The same anti-confusion duty runs in the copy direction (PROPOSED):**
+because "All playable lines" is deliberately narrower than "everything," any district-led sheet that
+shows the All Access row must also name what that row does **not** contain — the standalone `<X>` Line
+themes and the standalone cat-skin/livery waves — in the same sheet. §8.2 already makes this the
+substance of All Access ("every playable line," not "the complete Cat Metro," and it "does not silently
+include later standalone cosmetics" — `monetization_spec.md:619`, `:627-630`); this rule is what keeps
+that true at the surface a player actually reads. Q-S4's generalization of the two-price no-scroll law is
+**conditional on this exclusion line shipping with it** — the two-price row without the exclusion row
+would make the comparison less honest, not more.
 
 **2.4 Cosmetics inside a district.** Each district includes exactly **one** line livery, granted by the
 same product set as the district itself, never sold standalone, never imitating an earned Cup/Founder
@@ -88,10 +99,12 @@ the board palette. Purchase copy must not imply a theme is included.
   carte, entitlement `district_night_harbor`, also attached to every All Access product
   (`monetization_spec.md:621`, `:701-706`).
 - **Fair-core boundary, concretely:** never inserted into `GameRoot.LevelBand` (`GameRoot.cs:296-300`);
-  excluded from the Daily Line rotation pool and District Cup rounds, so no free mode ever requires it;
-  no global-board channel exists for district levels (ADR-0010 scopes boards to Daily/Cup); revocation
-  relocks content and retains every star/score (CM-R10 / §8.3 matrix); first-clear tickets-per-minute ≤
-  the highest-yield free level's (CM-R10.6/A-27).
+  never the source of a District Cup round (`product_spec.md:469`, and `:471` "No purchases interact with
+  the Cup in any way"); neither the Daily generator's board/asset inputs nor the 30-board hand-validated
+  backup pool shipped in StreamingAssets (`product_spec.md:462`) references it by id, topology or
+  dressing; no global-board channel exists for district levels (ADR-0010 scopes boards to Daily/Cup);
+  revocation relocks content and retains every star/score (CM-R10 / §8.3 matrix); first-clear
+  tickets-per-minute ≤ the highest-yield free level's (CM-R10.6/A-27).
 - **Honesty rule carried verbatim in behavior:** every Night-Harbor-led sheet, including `post_level_5`,
   shows both "Night Harbor only — `{localized_price}`" and "All playable lines — `{localized_price}`"
   without scrolling (`monetization_spec.md:712`), and the All Access comparison states that All Access
@@ -114,16 +127,27 @@ the board palette. Purchase copy must not imply a theme is included.
 - **Fair-core boundary, concretely for this district:**
   1. **Not a bridge:** `GameRoot.LevelBand` (`GameRoot.cs:296-300`) contains only free ids; a testable
      rule is "`LevelBand` contains no `L9xx` id." Free progression L001→…→L030 never routes through it.
-  2. **Not required by any free mode:** excluded from Daily Line's rotating-district pool
-     (`product_spec.md:469`) and from District Cup rounds. A free player's Daily can never demand it.
-  3. **No gameplay channel touched:** the included livery is paint/decal on the existing train capsule —
+  2. **Not required by any free mode**, stated against the two modes as they actually work:
+     **(a) District Cup** — a paid district is never the "one rotating district" a Cup round remixes
+     (`product_spec.md:469`), which is what `:471`'s "No purchases interact with the Cup in any way"
+     already demands; **(b) Daily Line** — the Daily is generated on-device from a pinned seed and
+     generator params, with a 30-board hand-validated backup pool shipped in StreamingAssets
+     (`product_spec.md:450`, `:462`). The invariant is therefore an **input** rule, not a pool-exclusion
+     rule: neither the generator's board/asset inputs nor any of the 30 backup boards may reference a
+     paid district by level id, board topology, or district dressing. A free player's Daily can never
+     demand paid content.
+  3. **Paid content never introduces a mechanic** — machine-checkable: every `L9xx` level has
+     `newMechanic: null` **and** its `mechanics` array is a subset of the union of `mechanics` declared
+     by all non-`L9xx` levels in `content/levels/`. This is the testable form of §8.1 law 1's
+     "every mechanic … remain free."
+  4. **No gameplay channel touched:** the included livery is paint/decal on the existing train capsule —
      it cannot change destination color, symbol tag, silhouette class, hitbox, animation timing, queue
      footprint, or preview legibility (§8.1 law 4; `product_spec.md:154-162`).
-  4. **Durable and restorable:** one-time non-consumable; revocation relocks levels while retaining every
+  5. **Durable and restorable:** one-time non-consumable; revocation relocks levels while retaining every
      star, score and completion; repurchase/Restore resumes exactly (§8.3 matrix, `monetization_spec.md:720`).
-  5. **No faucet advantage:** first-clear tickets-per-minute ≤ the highest-yield free level's, printed in
+  6. **No faucet advantage:** first-clear tickets-per-minute ≤ the highest-yield free level's, printed in
      the test output (CM-R10.6/A-27 extended — Q-D6).
-  6. **No rank channel:** district runs are not submitted to any global board (ADR-0010).
+  7. **No rank channel:** district runs are not submitted to any global board (ADR-0010).
 - **Unbuilt dependencies (labelled, not assumed):** the district map / level-select surface is UNBUILT
   (`GameRoot.cs:291-292` defers campaign gating; the story exists only as design in
   `docs/prd/ux-flows.md`); the entitlement gate is monetization code and therefore behind the production
@@ -139,14 +163,18 @@ the board palette. Purchase copy must not imply a theme is included.
   L921.
 - **Cosmetic set:** one included livery, `Lantern Hill` line livery. No badge. No theme.
 - **Player-facing promise:** "Ten evening routes up the hill. Optional, permanent, and no new rules."
-- **Fair-core boundary:** identical six clauses as D-1, with one addition — Lantern Hill's Night preset
+- **Fair-core boundary:** identical seven clauses as D-1, with one addition — Lantern Hill's Night preset
   must pass the same readability gates as the free Night district (Midnight Terminus): color always
   paired with symbol and silhouette, CM-R21's five-rater protocol and the silhouette-at-64px check
   (`PRD.md:381-386`; §8.7's "every paid district gets the same accessibility and performance evidence as
   a free district").
 - **Unbuilt dependencies:** same three as D-1.
 
-### D-3 · Signal Works — PROPOSED, CONDITIONAL, NOT PROPOSED FOR WAVE 1
+---
+
+## 3b. Blocked — NOT in the catalog
+
+### BLOCKED · D-3 · Signal Works — no SKU proposed, not shippable under §8.1 law 1
 
 - **Theme:** signal box and repair shed; Day preset.
 - **Why conditional:** its intended remix vocabulary is `cooldown` and `gate`. Both exist **only** as
@@ -170,7 +198,8 @@ the board palette. Purchase copy must not imply a theme is included.
 | Star-milestone badge earned inside a paid district | **REDESIGNED to none** | Would put a cosmetic-milestone row out of reach with `all_access` absent (CM-R10.3). |
 | Rewind pack bundled into a district SKU | **DROPPED** | Mixes a consumable into a durable non-consumable and breaks §8.1 law 3's permanently-restorable promise. |
 | Paid district rounds in the weekly District Cup | **DROPPED** | §8.1 laws 1 and 6: Cup stays free and no purchase confers medal/rank eligibility. |
-| Paid district as the home of a new mechanic | **DROPPED (see D-3)** | §8.1 law 1 keeps every mechanic free. |
+| Paid district as the home of a new mechanic | **DROPPED (see §3b, D-3)** | §8.1 law 1 keeps every mechanic free. |
+| Timed "launch-week" district discount | **DROPPED** | The anti-dark-pattern rules ban countdown timers of any kind precisely because "we run no time-limited sales at launch, so none can be real" (`monetization_spec.md:415`). |
 
 ---
 
@@ -196,11 +225,22 @@ priced options visible without scrolling on the same `post_level_5` sheet. §8.7
 copy changes but is silent on the combined budget. Ruling needed on what must fit before any district
 paywall copy is designed.
 
-**SC-4 — judge-code storage instructions contradict each other today.** CM-R31.5 (`PRD.md:530`) requires
-the remaining codes and a redemption guide in `ops/judge_codes.md` **inside this repo**; §8.3
-(`monetization_spec.md:744-746`) says codes "live only in the human-controlled secret store … never in
-this repository." §8.7's CM-R31 row schedules the replacement, so both instructions are live until the
-supersession lands, and one of them puts secrets in the repo. Ruling needed on which binds **now**.
+**SC-4 — judge-code storage: two live instructions, but they are not evenly weighted.** CM-R31.5
+(`PRD.md:530`) names `ops/judge_codes.md` **inside this repo** for the remaining 23 codes and the
+redemption guide — **and gates itself**: "Secret-handling is risks RK-26: gitignore + secret-scan rule
+must exist before the file is created." §8.3 (`monetization_spec.md:744-746`) says codes and redemption
+URLs "live only in the human-controlled secret store and the judge-only Devpost field—never in this
+repository." Both are live until §8.7's supersession lands, so this is surfaced, not resolved — but the
+weight runs one way, and recording it evenly would itself be a false balance. Four citations point the
+same direction: (i) the §8.10 signature block's own condition, "no code secret may enter the repository"
+(`monetization_spec.md:1029-1030`) — human-signed; (ii) CM-R31.5's self-blocking precondition above,
+**currently unmet** — secret-scan CI is still TODO (`state/PROJECT_STATE.md:79`, `:92`), so the in-repo
+file is not authorized to be created yet even under its own requirement; (iii) §8.7's CM-R31 replacement
+row, which already schedules "human secret-store handling" as the successor (`monetization_spec.md:924`);
+(iv) the standing repo rule that nothing key-shaped may be committed while secret-scan CI is absent
+(`state/PROJECT_STATE.md:79`). **Ruling needed** on which text binds now and on retiring the
+`ops/judge_codes.md` line — but no agent may create that file in the meantime, and this lane proposes no
+district-code artifact of any kind.
 
 **SC-5 — ADR-0011 does not exist in `docs/adr/` on this ref.** The contract and
 `state/PROJECT_STATE.md:8` treat a Polyfork-custody ADR-0011 amendment as owed and unsigned; a glob of
@@ -222,5 +262,3 @@ between the LOCKED L011–L017 table and `product_spec.md:350`'s "L011–L015" p
 CM-R23–CM-R33 · `docs/adr/0010-play-games-services-leaderboards.md` ·
 `docs/plan/data/level_schema.json` · `content/levels/` · `unity/Assets/Scripts/Bootstrap/GameRoot.cs` ·
 `scripts/stage-content.sh` · `tests/unity/editmode.test.sh` · `state/PROJECT_STATE.md`.
-</content>
-</invoke>
