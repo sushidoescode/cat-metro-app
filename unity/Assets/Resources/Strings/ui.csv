@@ -10,3 +10,5 @@ results.next,Next
 home.title,Cat Metro
 intro.play,Play
 intro.goal,Deliver {count} cats
+home.daily.label,Daily Line
+results.daily.done,Home

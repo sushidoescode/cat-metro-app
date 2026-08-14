@@ -33,3 +33,12 @@ unity/Assets/Art/Generated/incoming/
 # so an unrelated `git add -A` cannot sweep them in.
 unity/Assets/Art/Generated.meta
 unity/Assets/Art/Generated/incoming.meta
+
+# Upload keystore + password are Never-in-repo / Never-agent-reachable (docs/security/threat-model.md:235); if one ever lands here anyway, treat it as compromised and use Play's upload-key reset (docs/release/release-checklist.md §2 "Loss recovery") to rotate — a history rewrite alone is not sufficient.
+*.keystore
+*.jks
+*.p12
+*.pem
+*.pfx
+*.bks
+*.key
