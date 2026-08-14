@@ -8,9 +8,18 @@ namespace CatMetro.Presentation.Screens
 {
     // CM-UX-06 criteria 3/4/5/6: the greybox session-1 Home. One pulsing L001 pin (72dp,
     // thumb-band-centered via pure HomeLayout math; live Screen reads only here, the
-    // RetryCtaView precedent), parked-district silhouettes, csv-keyed title — and NOTHING
-    // else: no shop, no daily, no badges (S-01 layout intent; the tree test is the
-    // monetization tripwire), and neither TG-3 variant of the bonus-district tile exists.
+    // RetryCtaView precedent), parked-district silhouettes, csv-keyed title — and by DEFAULT
+    // nothing else: no shop, no badges (S-01 layout intent; HomeScreenTests.cs's tree walk is
+    // the monetization tripwire, still exercised via the same zero-argument Create() every
+    // existing caller/test uses), and neither TG-3 variant of the bonus-district tile exists.
+    // CM-DAILYWIRE correction (discovered mid-implementation, recorded in the frozen contract's
+    // FA-4 revision): product_spec §18 gates Daily behind "after L007 win," and S-01's own
+    // "no daily entry rendered in session 1" law is the SAME rule from the other direction —
+    // this class honors both by never constructing the Daily pin unless the caller explicitly
+    // opts in (dailyEntryUnlocked, default false — the CM-UX-07 "zero screen objects
+    // constructed" precedent, not merely hidden). GameRoot passes true only when
+    // DailyEntryUnlocked is set (currently a dev/test-only seam — see Known debt: the real
+    // L007-win check needs the save layer, unwired for any level today).
     // Render-only by law (P-1): the pin's hit routes through the INJECTED ChromeRegions
     // registry — this view is the tranche's first registrar and honors the R1-F3 lifetime
     // law (unregister on Hide AND OnDestroy). Motion posture (P-5, A11Y-S01-2): the pulse is
@@ -20,17 +29,27 @@ namespace CatMetro.Presentation.Screens
     {
         private const string PinRegionId = "home.pin.l001";
         private const int PinRegionPriority = 0; // explicit per A-UX1-3
+        // CM-DAILYWIRE: the Daily entry's own region, registered/unregistered by the exact same
+        // RegisterPin/UnregisterPin/OnDisable/OnEnable lifetime law the L001 pin already obeys
+        // (a second call site into the same helpers, never a parallel implementation).
+        private const string DailyPinRegionId = "home.pin.daily";
+        private const int DailyPinRegionPriority = 0; // explicit per A-UX1-3, same tier as L001's
 
         public System.Action LevelSelected;
+        public System.Action DailySelected;
 
         private ChromeRegions _regions;
         private System.Func<bool> _motionOff;
         private bool _registered;
+        private bool _dailyRegistered;
         private bool _shown; // #46 review F4: Show()-left-shown intent, survives OnDisable/OnEnable
         private TMP_Text _title;
         private RectTransform _pin;
         private RectTransform _ring;
+        private RectTransform _dailyPin;
+        private TMP_Text _dailyLabel;
         private Rect _pinRectPx;
+        private Rect _dailyPinRectPx;
         private float _phase;
 
         public Rect PinPaintedRectPx => _pinRectPx;
@@ -41,8 +60,15 @@ namespace CatMetro.Presentation.Screens
         public float PinScale => _pin != null ? _pin.localScale.x : 1f;
         public bool IsVisible => gameObject.activeSelf;
         public string TitleText => _title != null ? _title.text : "";
+        public Rect DailyPinPaintedRectPx => _dailyPinRectPx;
+        public RectTransform DailyPinTransform => _dailyPin;
+        public string DailyLabelText => _dailyLabel != null ? _dailyLabel.text : "";
 
-        public static HomeScreenView Create(Transform canvasParent)
+        // dailyEntryUnlocked (CM-DAILYWIRE, default false): every EXISTING caller/test uses the
+        // zero-argument form, so HomeScreenTests.cs's S-01 tree walk and exactly-one-region
+        // count keep exercising the untouched session-1 tree. Only GameRoot, when
+        // DailyEntryUnlocked is explicitly set, passes true.
+        public static HomeScreenView Create(Transform canvasParent, bool dailyEntryUnlocked = false)
         {
             var go = new GameObject("HomeScreen");
             go.transform.SetParent(canvasParent, false);
@@ -70,6 +96,19 @@ namespace CatMetro.Presentation.Screens
                 new Color(0.95f, 0.92f, 0.85f, 0.85f));
             view._pin = MakeChip(go.transform, "PinL001",
                 new Color(0.13f, 0.19f, 0.29f, 0.95f));
+
+            // CM-DAILYWIRE: the Daily entry — a second, static (no pulse) chip beside the L001
+            // pin, following the same MakeChip + csv-keyed label pattern as the rest of Home.
+            // NEVER constructed when dailyEntryUnlocked is false (S-01 — the CM-UX-07
+            // "zero objects constructed" law, not merely inactive/hidden).
+            if (dailyEntryUnlocked)
+            {
+                view._dailyPin = MakeChip(go.transform, "PinDaily",
+                    new Color(0.10f, 0.32f, 0.24f, 0.95f));
+                view._dailyLabel = MakeText(view._dailyPin.transform, "PinDailyLabel",
+                    Vector2.zero, Vector2.one,
+                    Strings.UiStrings.Get("home.daily.label"), 22f); // key-only, never a literal
+            }
 
             go.SetActive(false);
             return view;
@@ -133,18 +172,21 @@ namespace CatMetro.Presentation.Screens
             gameObject.SetActive(true);
             LayoutPin();
             RegisterPin();
+            RegisterDailyPin();
         }
 
         public void Hide()
         {
             _shown = false;
             UnregisterPin();
+            UnregisterDailyPin();
             gameObject.SetActive(false);
         }
 
         private void OnDestroy()
         {
             UnregisterPin(); // R1-F3 lifetime law
+            UnregisterDailyPin();
         }
 
         // CM-UX-07 W-1 (R2-3, audit M-3): mirrors OnDestroy — a deactivated-but-not-destroyed
@@ -154,6 +196,7 @@ namespace CatMetro.Presentation.Screens
         private void OnDisable()
         {
             UnregisterPin();
+            UnregisterDailyPin();
         }
 
         // #46 review F4: mirrors OnDisable — a host reactivated directly (SetActive(true), not
@@ -166,7 +209,11 @@ namespace CatMetro.Presentation.Screens
         // nothing (Hide()'s "not shown" intent survives OnEnable too).
         private void OnEnable()
         {
-            if (_shown) RegisterPin();
+            if (_shown)
+            {
+                RegisterPin();
+                RegisterDailyPin();
+            }
         }
 
         private void RegisterPin()
@@ -188,6 +235,30 @@ namespace CatMetro.Presentation.Screens
             }
         }
 
+        // CM-DAILYWIRE: the Daily pin's own register/unregister pair — same shape as
+        // RegisterPin/UnregisterPin above, a second call site into the identical lifetime law
+        // (R1-F3), never a parallel implementation of it. Guarded on _dailyPin != null: when
+        // Create() ran with dailyEntryUnlocked false, no pin exists to register a hit region
+        // for — S-01 forbids even an invisible one.
+        private void RegisterDailyPin()
+        {
+            if (_dailyPin != null && _regions != null && !_dailyRegistered)
+            {
+                _regions.Register(DailyPinRegionId, () => _dailyPinRectPx,
+                    () => DailySelected?.Invoke(), DailyPinRegionPriority);
+                _dailyRegistered = true;
+            }
+        }
+
+        private void UnregisterDailyPin()
+        {
+            if (_regions != null && _dailyRegistered)
+            {
+                _regions.Unregister(DailyPinRegionId);
+                _dailyRegistered = false;
+            }
+        }
+
         // The live binding site (A-UX1-5 law): Screen.safeArea/dpi are read HERE and handed
         // to pure math; px placement via bottom-left anchoring, the RetryCtaView pattern.
         private void LayoutPin()
@@ -197,6 +268,12 @@ namespace CatMetro.Presentation.Screens
             _pinRectPx = HomeLayout.PinRect(safeArea, dpi);
             ApplyPx(_pin, _pinRectPx);
             ApplyPx(_ring, HomeLayout.RingRect(safeArea, dpi));
+            // Guarded: null when Create() ran with dailyEntryUnlocked false (S-01).
+            if (_dailyPin != null)
+            {
+                _dailyPinRectPx = HomeLayout.DailyPinRect(safeArea, dpi);
+                ApplyPx(_dailyPin, _dailyPinRectPx);
+            }
         }
 
         private static void ApplyPx(RectTransform rect, Rect px)

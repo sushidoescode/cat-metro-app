@@ -13,6 +13,12 @@ namespace CatMetro.Presentation.Screens
         public const float PinSideDp = 72f;
         public const float RingMarginDp = 8f;
 
+        // CM-DAILYWIRE: the Daily entry's secondary pin — smaller than the L001 onboarding
+        // pin (56dp, still clearing the 48dp floor by construction, A11Y-S01-4) and placed to
+        // its right inside the SAME thumb band, never overlapping it.
+        public const float DailyPinSideDp = 56f;
+        public const float DailyPinGapDp = 16f;
+
         public static Rect PinRect(Rect safeArea, float dpi)
         {
             float side = PinSideDp * HudBands.PxPerDp(dpi);
@@ -31,6 +37,19 @@ namespace CatMetro.Presentation.Screens
             var pin = PinRect(safeArea, dpi);
             return new Rect(pin.x - margin, pin.y - margin,
                 pin.width + margin * 2f, pin.height + margin * 2f);
+        }
+
+        // Pure math over injected inputs (the A-UX1-5 law, same as PinRect/RingRect above) —
+        // no live Screen read in here. Vertically centered in the same thumb band as the L001
+        // pin; horizontally offset to its right by a fixed dp gap so the two never overlap for
+        // any safe-area width/dpi this app ships on.
+        public static Rect DailyPinRect(Rect safeArea, float dpi)
+        {
+            float pxPerDp = HudBands.PxPerDp(dpi);
+            var l001 = PinRect(safeArea, dpi);
+            float side = DailyPinSideDp * pxPerDp;
+            float gap = DailyPinGapDp * pxPerDp;
+            return new Rect(l001.xMax + gap, l001.y + (l001.height - side) / 2f, side, side);
         }
     }
 }
