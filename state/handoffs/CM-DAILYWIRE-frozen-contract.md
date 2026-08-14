@@ -101,6 +101,49 @@ the Bootstrap boundary, and everything downstream of that single read stays pure
   entry point ships unconditionally visible on Home (not gated on campaign progress); the
   ticket reward is SURFACED (see criterion 9) but not persisted or capped.
 
+## Correction discovered mid-implementation (revises FA-4; recorded, not silently applied)
+
+While implementing the Home pin, `unity/Assets/Tests/PlayMode/Screens/HomeScreenTests.cs`
+(an EXISTING, previously-frozen CM-UX-06 test, untouched by this contract) was found to
+assert `Home_SessionOneStructuralLaw_NoCommerceNodes_DecoyControlled`: a tree walk over
+Home's GameObjects that fails if ANY node name contains `"daily"` (among other banned
+commerce/monetization words), with the comment "S-01: 'No shop entry, no daily entry, no
+badges rendered in session 1'" — plus `Pin_RegistersExactlyOneRegion_...` asserting Home
+registers **exactly one** chrome region. An unconditional Daily pin breaks BOTH. This is not
+an implementation accident to route around (e.g. by renaming nodes to dodge the string
+scan) — it is CM-UX-06's own deliberate, tested product law, and it independently agrees
+with product_spec §18's "Unlock: after L007 win": Daily must not appear on the (today, only)
+Home surface until that gate is satisfied. FA-4 already found the save layer — the only
+thing that could compute "has L007 been won" — fully built but never wired into Bootstrap
+for any level. Revised resolution, honoring both the existing test and the spec's gate
+exactly, per the "pick the reading most consistent with product_spec + proceed" instruction:
+
+- `HomeScreenView.Create(Transform, bool dailyEntryUnlocked = false)` — an added OPTIONAL
+  parameter. Every EXISTING caller/test (including all of `HomeScreenTests.cs`) uses the
+  original one-argument form and is therefore completely unaffected: false means the Daily
+  pin/label GameObjects are **never constructed** (the CM-UX-07 "zero screen objects
+  constructed" precedent — not merely hidden), so the S-01 tree walk and the exactly-one-
+  region count both keep passing exactly as CM-UX-06 pinned them.
+- `GameRoot.DailyEntryUnlocked` (new `static bool`, default false, dev-fenced — mirrors
+  `BootToHome`'s exact shape, needed because `ComposeDevScreenFlow` reads it synchronously at
+  Wire-time) gates the one call site that matters: `ComposeDevScreenFlow`'s
+  `HomeScreenView.Create` call. Shipped/default behavior is unchanged from before this
+  contract touched anything: zero Daily surface anywhere, session 1 or otherwise.
+- The REAL wiring underneath (SelectDaily, ResolveDailyBoard, the real DailyPipeline call,
+  ReturnHomeFromDaily, the ticket surfacing) is unaffected by this correction — it is real,
+  tested, functioning production code; only the Home pin's CONSTRUCTION is now conditional.
+  This contract's own tests exercise it by setting `GameRoot.DailyEntryUnlocked = true`
+  before booting (mirroring the `BootToHome` test-hygiene precedent), proving the feature
+  works end to end without shipping it visible before its product-spec'd unlock condition can
+  actually be computed.
+- **Known debt, sharpened by this discovery (supersedes the earlier, softer FA-4 wording):**
+  the L007-unlock gate is not a "nice to have deferred enhancement" — it is the ONLY thing
+  standing between this contract's real, tested Daily pipeline and an actual player-visible
+  Home entry. It blocks on the identical save-layer-not-wired root cause FA-4 already named.
+  Whoever wires `ISave`/`SaveStore` into Bootstrap next should flip `DailyEntryUnlocked`
+  (or replace it with a real progress-derived value) as close to a one-line follow-up as this
+  codebase gets.
+
 ## Design
 
 ### Clock boundary
@@ -165,10 +208,13 @@ changes).
 
 ## Acceptance criteria
 
-1. **Home carries a Daily entry.** A second chrome region (`home.pin.daily`) registers when
-   Home shows and unregisters when it hides/destroys, following the exact `RegisterPin`/
-   `UnregisterPin`/`OnDisable`/`OnEnable` lifetime law the L001 pin already obeys. Its label
-   resolves through a new ui.csv key, never a literal.
+1. **Home carries a Daily entry, gated by `DailyEntryUnlocked` (see the mid-implementation
+   correction above).** When unlocked, a second chrome region (`home.pin.daily`) registers
+   when Home shows and unregisters when it hides/destroys, following the exact `RegisterPin`/
+   `UnregisterPin`/`OnDisable`/`OnEnable` lifetime law the L001 pin already obeys, and its
+   label resolves through a new ui.csv key, never a literal. When NOT unlocked (the shipped
+   default), zero Daily objects are constructed and `HomeScreenTests.cs`'s existing S-01 tree
+   walk / exactly-one-region assertions pass completely untouched.
 2. **Selecting Daily runs the real pipeline for today.** `SelectDaily()` derives today's UTC
    date key from exactly one clock read, builds a `DailyRunRequest` with the embedded
    schema/validator/pipeline inputs, and calls the real `DailyPipeline.Run` — proven by a fixed
@@ -219,8 +265,14 @@ changes).
   `results.daily.done`)
 - New tests under `unity/Assets/Tests/EditMode/**` and `unity/Assets/Tests/PlayMode/**`
   (mirroring `LoadNextBandTests.cs`/`DevScreenFlowTests.cs`/`LoadNextTests.cs` patterns), plus
-  one new `UiCsvDailyWireTests.cs` mirroring `UiCsvUx06Tests.cs`'s append-declaration pattern
-  (existing `UiCsvDisciplineTests.cs`/`UiCsvUx06Tests.cs` are untouched)
+  one new `UiCsvDailyWireTests.cs` mirroring `UiCsvUx06Tests.cs`'s append-declaration pattern.
+  **Correction (discovered via the first full EditMode run):** the existing
+  `UiCsvDisciplineTests.cs`/`UiCsvUx06Tests.cs` DO need a one-line edit each — both pin an
+  EXACT total row count (`NewRows_ExactlyTheSevenPinned_Appended` /
+  `ThisSlice_AppendsExactlyThreeRows_BytePinned`), and `UiCsvUx06Tests.cs`'s own comment names
+  the sanctioned mechanism verbatim: "amended only by declared contract evolution (raise the
+  count + pin your own rows...)". Only the numeric bound and its comment change (12→14 in each
+  file); every existing byte-pinned row assertion (rows 0-11) is untouched.
 - this frozen contract; the one `state/PROJECT_STATE.md` row at merge
 
 Out of scope, refused here (per the coordinator's brief): leaderboards/PGS (ADR-0010's own
@@ -242,10 +294,16 @@ existing `ChromeRegions`/`TapInput` seam; (3) returning Home from a Daily win re
 
 ## Known debt / follow-ups recorded here (not fixed by this contract)
 
+- **Highest priority, sharpened by the mid-implementation correction above:** `GameRoot.
+  DailyEntryUnlocked` is a dev/test-only static seam, not a real progression gate. Wiring
+  `ISave`/`SaveStore` into Bootstrap (unwired for ANY level today, campaign or Daily — CM-C7's
+  save layer is fully built and fully unused at runtime) is the ONLY remaining step between
+  this contract's real, tested Daily pipeline and an actual player-visible Home entry —
+  replace the static flag with a real "has L007 been won" read once that layer exists. This
+  single gap now blocks THREE things at once: the L007-unlock visibility gate itself,
+  first-clear-vs-practice ticket enforcement (A-DL-6), and the actual player-facing launch of
+  everything this contract built.
 - The 30-board dated backup pool (product_spec §18's second fallback layer) is unbuilt (FA-3).
-- Save-layer wiring into Bootstrap/GameRoot does not exist for ANY level yet, campaign or
-  Daily — CM-C7's `ISave`/`SaveStore` is fully built and fully unused at runtime (FA-4). This
-  blocks both the L007-unlock gate and first-clear ticket enforcement.
 - No level anywhere shows a ticket-reward amount in pixels yet; `DailyTicketsEarned` is a
   tested data seam, not UI.
 - On-device wall-clock timing for a full `k=0..SaltMaxK` candidate loop (up to 11 solves) plus

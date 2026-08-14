@@ -65,6 +65,17 @@ namespace CatMetro.Presentation.Hud
             Apply();
         }
 
+        // CM-DAILYWIRE: a Daily-session win must not read the campaign advance-verb copy (it
+        // returns Home, never advances the campaign band) — this changes ONLY the text of the
+        // ONE existing CTA (CM-R19.3's count==1 invariant is untouched; no second region, no
+        // footer child). EnsureViews()'s own default text is unaffected, so the LOCKED
+        // campaign-win pin (ResultsStringsTests / ResultsPanelTests) stays exactly as before.
+        public void SetCtaTextKey(string key)
+        {
+            EnsureViews();
+            _ctaText.text = Strings.UiStrings.Get(key);
+        }
+
         private void Update()
         {
             if (_screenState != null) Apply();
