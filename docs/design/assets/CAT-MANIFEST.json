@@ -1,0 +1,117 @@
+{
+  "_meta": {
+    "contract": "RICH-ASSETS (state/handoffs/RICH-ASSETS-frozen-contract.md)",
+    "directive": "H-1 2026-08-14: Meshy + Tripo, richer assets, cuter cats, rich beautiful game",
+    "art_direction": "product_spec.md section 7 — tabletop diorama: hand-built model railway of a cat city on a wooden desk, modular low-poly, toon shader family, warm lighting, charming not childish",
+    "colorblind_rule": "line colors never appear alone — every cat carries color + symbol redundancy (circle red, square blue, triangle yellow, diamond green, star wild) plus a distinct silhouette per color",
+    "custody": "outputs land in unity/Assets/Art/Generated/incoming/ (gitignored); candidates are local until curated + provenance'd; license/asset ADR owed before any of these ship in the Play binary",
+    "style_base": "low-poly hand-painted toy figurine style for a wooden desktop model railway diorama, soft rounded shapes with no sharp exterior edges, warm cozy lighting, flat toon-friendly colors, clean silhouette readable at small size, charming not childish"
+  },
+  "assets": [
+    {
+      "id": "cat-red-tabby",
+      "kind": "cat",
+      "service": "meshy",
+      "out": "cat-red-tabby.glb",
+      "prompt": "Cute chibi tabby cat figurine, round plump body, small round ears, big friendly eyes, gentle smile. Signal red coat (hex E15A47) with cream muzzle and paws, a white circle badge on its chest and a round circle tag on its collar. Distinct round-eared tabby silhouette. Low-poly hand-painted toy figurine for a wooden desktop model railway diorama, soft rounded shapes, warm cozy lighting, flat toon-friendly colors, clean silhouette, charming not childish. Full body, single character, standing."
+    },
+    {
+      "id": "cat-blue-siamese",
+      "kind": "cat",
+      "service": "meshy",
+      "out": "cat-blue-siamese.glb",
+      "prompt": "Cute chibi siamese cat figurine, slim elegant body, big gentle blue eyes, tall pointed ears. Harbor blue coat (hex 3E7CC9) with cream chest, a white square badge on its chest and a square tag on its collar. Distinct slim siamese silhouette. Low-poly hand-painted toy figurine for a wooden desktop model railway diorama, soft rounded shapes, warm cozy lighting, flat toon-friendly colors, clean silhouette, charming not childish. Full body, single character, standing."
+    },
+    {
+      "id": "cat-yellow-longhair",
+      "kind": "cat",
+      "service": "meshy",
+      "out": "cat-yellow-longhair.glb",
+      "prompt": "Cute chibi fluffy longhair cat figurine, very round and floofy, big warm eyes, tufted cheeks. Tabby yellow coat (hex EFC13D) with cream ruff, a white triangle badge on its chest and a triangle tag on its collar. Distinct fluffy longhair silhouette. Low-poly hand-painted toy figurine for a wooden desktop model railway diorama, soft rounded shapes, warm cozy lighting, flat toon-friendly colors, clean silhouette, charming not childish. Full body, single character, sitting proudly."
+    },
+    {
+      "id": "cat-green-shorthair",
+      "kind": "cat",
+      "service": "meshy",
+      "out": "cat-green-shorthair.glb",
+      "prompt": "Cute chibi sleek shorthair cat figurine, smooth rounded body, big curious eyes, neat whiskers. Garden green coat (hex 4FA36A) with cream belly, a white diamond badge on its chest and a diamond tag on its collar. Distinct sleek shorthair silhouette. Low-poly hand-painted toy figurine for a wooden desktop model railway diorama, soft rounded shapes, warm cozy lighting, flat toon-friendly colors, clean silhouette, charming not childish. Full body, single character, standing alert."
+    },
+    {
+      "id": "cat-wild-alley",
+      "kind": "cat",
+      "service": "meshy",
+      "out": "cat-wild-alley.glb",
+      "prompt": "Cute chibi scruffy alley cat figurine, round tousled body, one charmingly bent ear, big playful eyes, tiny fang smile. Catnip violet coat (hex A06BD8) with cream patches, a white star badge on its chest and a star tag on its collar. Distinct scruffy bent-ear alley cat silhouette. Low-poly hand-painted toy figurine for a wooden desktop model railway diorama, soft rounded shapes, warm cozy lighting, flat toon-friendly colors, clean silhouette, charming not childish. Full body, single character, mid-strut."
+    },
+    {
+      "id": "cat-red-tabby-sitting",
+      "kind": "cat",
+      "service": "tripo",
+      "out": "cat-red-tabby-sitting.glb",
+      "prompt": "Cute chibi tabby cat figurine sitting with tail curled around its paws, round plump body, small round ears, big content eyes. Signal red coat (hex E15A47), cream muzzle, white circle badge on chest and circle collar tag. Round-eared tabby silhouette. Low-poly hand-painted toy figurine for a wooden desktop model railway diorama, soft rounded shapes, warm cozy lighting, flat toon-friendly colors, charming not childish. Full body, single character."
+    },
+    {
+      "id": "cat-blue-siamese-loaf",
+      "kind": "cat",
+      "service": "tripo",
+      "out": "cat-blue-siamese-loaf.glb",
+      "prompt": "Cute chibi siamese cat figurine in a cozy loaf pose, paws tucked under, eyes half closed and content, tall pointed ears. Harbor blue coat (hex 3E7CC9), cream chest, white square badge on chest and square collar tag. Slim siamese silhouette. Low-poly hand-painted toy figurine for a wooden desktop model railway diorama, soft rounded shapes, warm cozy lighting, flat toon-friendly colors, charming not childish. Full body, single character."
+    },
+    {
+      "id": "cat-yellow-longhair-wave",
+      "kind": "cat",
+      "service": "tripo",
+      "out": "cat-yellow-longhair-wave.glb",
+      "prompt": "Cute chibi fluffy longhair cat figurine waving one paw in greeting, very round and floofy, big happy eyes. Tabby yellow coat (hex EFC13D), cream ruff, white triangle badge on chest and triangle collar tag. Fluffy longhair silhouette. Low-poly hand-painted toy figurine for a wooden desktop model railway diorama, soft rounded shapes, warm cozy lighting, flat toon-friendly colors, charming not childish. Full body, single character."
+    },
+    {
+      "id": "cat-green-shorthair-sit",
+      "kind": "cat",
+      "service": "tripo",
+      "out": "cat-green-shorthair-sit.glb",
+      "prompt": "Cute chibi sleek shorthair cat figurine sitting tall and attentive like a tiny commuter, smooth rounded body, big bright eyes. Garden green coat (hex 4FA36A), cream belly, white diamond badge on chest and diamond collar tag. Sleek shorthair silhouette. Low-poly hand-painted toy figurine for a wooden desktop model railway diorama, soft rounded shapes, warm cozy lighting, flat toon-friendly colors, charming not childish. Full body, single character."
+    },
+    {
+      "id": "cat-conductor",
+      "kind": "cat",
+      "service": "meshy",
+      "out": "cat-conductor.glb",
+      "prompt": "Cute chibi station-master cat figurine, round friendly body, big kind eyes, wearing a tiny metro teal conductor cap (hex 3BAFA8) and a ticket orange scarf (hex F08A3C), holding a small brass whistle. Cream and navy fur (cream F2EAD9, ink navy 22304A markings). Mascot character, no line-color affiliation. Low-poly hand-painted toy figurine for a wooden desktop model railway diorama, soft rounded shapes, warm cozy lighting, flat toon-friendly colors, charming not childish. Full body, single character, standing proudly."
+    },
+    {
+      "id": "prop-depot-shed",
+      "kind": "prop",
+      "service": "tripo",
+      "out": "prop-depot-shed.glb",
+      "prompt": "Miniature wooden train depot shed for a desktop model railway diorama, rounded corners everywhere, cream painted walls (hex F2EAD9), ink navy roof (hex 22304A), ticket orange sliding door (hex F08A3C), soft beveled base like cut cardboard. Hand-built toy look, low-poly, flat toon-friendly colors, warm cozy lighting, charming not childish. Single building, clean silhouette."
+    },
+    {
+      "id": "prop-toy-engine",
+      "kind": "prop",
+      "service": "meshy",
+      "out": "prop-toy-engine.glb",
+      "prompt": "Toy train engine for a desktop model railway, rounded capsule body with a cab silhouette shaped like two small cat ears, metro teal body (hex 3BAFA8), cream trim (hex F2EAD9), ink navy chassis (hex 22304A), chunky rounded wheels, no sharp edges. Hand-painted wooden toy look, low-poly, flat toon-friendly colors, warm cozy lighting, charming not childish. Single vehicle, clean silhouette."
+    },
+    {
+      "id": "prop-station-kiosk",
+      "kind": "prop",
+      "service": "tripo",
+      "out": "prop-station-kiosk.glb",
+      "prompt": "Miniature rounded station platform kiosk for a desktop model railway diorama, cream walls (hex F2EAD9), ink navy trim (hex 22304A), scalloped awning in harbor blue (hex 3E7CC9), a large square symbol signboard above the awning, small rounded platform base. Hand-built toy look, low-poly, flat toon-friendly colors, warm cozy lighting, charming not childish. Single building, clean silhouette. Recolor variants per line at curation."
+    },
+    {
+      "id": "prop-trees",
+      "kind": "prop",
+      "service": "tripo",
+      "out": "prop-trees.glb",
+      "prompt": "Set of three miniature rounded lollipop-style toy trees for a desktop model railway diorama, soft ball-shaped garden green foliage (hex 4FA36A), warm wooden trunks, small round wooden bases, slightly different heights. Hand-painted toy look, low-poly, flat toon-friendly colors, warm cozy lighting, no sharp edges. Clean grouped silhouette."
+    },
+    {
+      "id": "prop-desk-clutter",
+      "kind": "prop",
+      "service": "tripo",
+      "out": "prop-desk-clutter.glb",
+      "prompt": "Cozy desk-margin props beside a model railway: a warm paper-white ceramic coffee cup (hex FAF6EC) with gentle steam swirl and a ticket orange pencil (hex F08A3C), oversized relative to the miniature trains to sell the desktop scale. Soft rounded shapes, hand-painted toy look, low-poly, flat toon-friendly colors, warm cozy lighting. Two objects, clean silhouettes."
+    }
+  ]
+}

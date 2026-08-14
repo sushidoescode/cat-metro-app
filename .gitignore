@@ -24,3 +24,7 @@ unity/*.sln
 unity/*.slnx
 unity/.vsconfig
 unity/.vscode/
+
+# RICH-ASSETS: generated candidates are LOCAL until curated + provenance'd
+# (Polyfork custody pattern; promotion path in docs/design/assets/PIPELINE.md)
+unity/Assets/Art/Generated/incoming/
