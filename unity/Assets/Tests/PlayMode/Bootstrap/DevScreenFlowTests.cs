@@ -146,7 +146,10 @@ namespace CatMetro.Tests.PlayMode
             var canvasGo = FindByName(_root.gameObject, "ScreensCanvas");
             Assert.That(canvasGo, Is.Not.Null);
             var canvas = canvasGo.GetComponent<Canvas>();
-            Assert.That(canvas.renderMode, Is.EqualTo(RenderMode.ScreenSpaceCamera));
+            // ART-EVIDENCE canvas unification (PR #68 round-2 review E-1): ScreenSpaceOverlay,
+            // unconditionally, matching every other chrome canvas — the sortingOrder ladder
+            // now compares on one shared layer end to end (see GameRoot.ComposeDevScreenFlow).
+            Assert.That(canvas.renderMode, Is.EqualTo(RenderMode.ScreenSpaceOverlay));
             Assert.That(canvas.sortingOrder, Is.EqualTo(120), "above the CM-UX-04 results canvas (110)");
 
             // board input is gated while Home is shown (criterion 2c re-confirmed through the

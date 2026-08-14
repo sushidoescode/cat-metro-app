@@ -51,19 +51,11 @@ namespace CatMetro.Presentation.Hud
             var go = new GameObject("HintChipCanvas");
             go.transform.SetParent(transform, false);
             _canvas = go.AddComponent<Canvas>();
-            // Screen Space - Camera when the wired camera exists (renders into capture RTs —
-            // the #33 visual-verification rule needs real frames); overlay as the fallback.
-            var cam = GetComponentInChildren<Camera>();
-            if (cam != null)
-            {
-                _canvas.renderMode = RenderMode.ScreenSpaceCamera;
-                _canvas.worldCamera = cam;
-                _canvas.planeDistance = 1f;
-            }
-            else
-            {
-                _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            }
+            // ART-EVIDENCE canvas unification (PR #68 round-2 review E-1): ScreenSpaceOverlay,
+            // unconditionally — see ScreenChromeController.EnsureViews for the full rationale
+            // (mixed render modes made the sortingOrder ladder non-authoritative; the capture
+            // path now reads the composited back buffer, which sees Overlay content).
+            _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             // A-UX5-3: below the CM-UX-02 chrome canvas (100) — the halt veil overlays the
             // chip if they are ever co-visible; the visibility law hides it on Halted anyway.
             _canvas.sortingOrder = 90;
