@@ -23,6 +23,16 @@ namespace CatMetro.Tests.PlayMode
     // side-by-side proof of that gap.
     public sealed class ArtEvidenceCaptureTests
     {
+        // A fresh batch process's first uses of a given shader/material pair render one or a
+        // few frames of a placeholder color while Unity compiles that variant asynchronously,
+        // self-correcting once compilation catches up (unrelated to render mode or sortingOrder
+        // — the same placeholder was isolated and reproduced on the very first captured frame
+        // after a session boot, before the shared UI material's shader variants had ever been
+        // used in this process, and never recurred on a second session booted later in the same
+        // run). This many empty frames is a generous, cheap margin before the run's first
+        // capture; only that first capture needs it.
+        private const int WarmupFrames = 30;
+
         private GameRoot _root;
 
         [SetUp]
@@ -69,8 +79,13 @@ namespace CatMetro.Tests.PlayMode
 
             GameRoot.BootToHome = true;
             _root = GameRoot.LaunchWith(Fixture(OverflowFixtureJson()));
-            yield return null;
-            yield return null;
+            // WarmupFrames: this session's first frames can read a placeholder color for the
+            // shared UI material's shader before this fresh batch process finishes compiling
+            // that variant (see the WarmupFrames comment above) — a capture-timing artifact,
+            // not a canvas/render-mode defect. A too-early read shows this placeholder; a
+            // second GameRoot booted later in the same run (item 5 below) needs no warmup at
+            // all because the variant is already compiled by then.
+            for (int i = 0; i < WarmupFrames; i++) yield return null;
 
             // 1. Home
             Assert.That(_root.ScreensVisible, Is.True, "capture precondition: Home is up");
@@ -80,7 +95,7 @@ namespace CatMetro.Tests.PlayMode
             // 2. LevelIntro
             Assert.That(_root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center),
                 Is.EqualTo(-3), "capture precondition: the pin tap actually routed to Home");
-            yield return null;
+            for (int i = 0; i < WarmupFrames; i++) yield return null;
             Assert.That(_root.Intro.IsVisible, Is.True, "capture precondition: Intro is up");
             yield return CaptureBackBuffer(dir, "02-levelintro.png");
 
