@@ -47,6 +47,38 @@ if echo "$leak" | grep -Eq "$sm|$st"; then echo "  FAIL: sentinel key leaked in 
 leak2=$(MESHY_API_KEY="$sm" TRIPO_API_KEY="$st" bash "$script" 2>&1 || true)
 if echo "$leak2" | grep -Eq "$sm|$st"; then echo "  FAIL: sentinel key leaked in usage output"; fail=1; else echo "  ok: no key leak in usage"; fi
 
+# (c2) THE LIVE PATH must not leak the key either (the dry-run legs above never reach
+# need_key or api_curl — they return before it). This drives a real, non-dry-run
+# generation with sentinel keys against a base that refuses instantly (https://127.0.0.1:1
+# satisfies the https:// guard and connection-refuses with no network), so api_curl runs
+# and its whole stdout+stderr is searched for the sentinel. A future debug line in
+# api_curl, or any un-redacted error path, turns this RED. The lead cat is meshy, so
+# TRIPO_API_BASE only affects the tripo probe.
+leak3=$(MESHY_API_KEY="$sm" MESHY_API_BASE="https://127.0.0.1:1" GEN_ASSETS_OUT_DIR="$(mktemp -d)" \
+  bash "$script" meshy "a live cat" test-cat.glb 2>&1 || true)
+if echo "$leak3" | grep -Eq "$sm"; then echo "  FAIL: sentinel key leaked on the live meshy path"; fail=1; else echo "  ok: no key leak on live meshy path"; fi
+leak4=$(TRIPO_API_KEY="$st" TRIPO_API_BASE="https://127.0.0.1:1" GEN_ASSETS_OUT_DIR="$(mktemp -d)" \
+  bash "$script" tripo "a live cat" test-cat.glb 2>&1 || true)
+if echo "$leak4" | grep -Eq "$st"; then echo "  FAIL: sentinel key leaked on the live tripo path"; fail=1; else echo "  ok: no key leak on live tripo path"; fi
+
+# (c3) the redactor is not vacuous: extract redact() and prove it masks the key value —
+# if a future edit no-ops the redactor body (a real M4-class mutation), this turns RED.
+redfn=$(mktemp)
+sed -n '/^redact()/,/^}/p' "$script" > "$redfn"
+grep -q 'REDACTED' "$redfn" || { echo "  FAIL: could not extract a working redact() (vacuity guard broke)"; fail=1; }
+probe=$(MESHY_API_KEY="$sm" bash -c ". '$redfn'; redact \"leak \$MESHY_API_KEY here\"" 2>&1)
+rm -f "$redfn"
+if echo "$probe" | grep -q "$sm"; then echo "  FAIL: redactor does not mask the key (vacuity guard)"; fail=1
+elif echo "$probe" | grep -q 'REDACTED'; then echo "  ok: redactor masks the key"
+else echo "  FAIL: redactor probe produced no redacted output (did not run)"; fail=1; fi
+
+# (f) manifest-driven path escape is refused (F5): an 'out' with .. or a separator must
+# not create files outside the gitignored candidate dir, even keyless.
+esc=$(env -u MESHY_API_KEY bash "$script" meshy "x" "../ESCAPED.glb" 2>&1); rc=$?
+t "path-escape out refused" 1 $rc
+echo "$esc" | grep -q 'bare filename' || { echo "  FAIL: escape refusal does not explain the bare-filename rule"; fail=1; }
+[ -e ../ESCAPED.glb ] || [ -e ../ESCAPED ] && { echo "  FAIL: path escape created a file/dir outside the candidate area"; fail=1; rm -rf ../ESCAPED.glb ../ESCAPED; }
+
 # (d) the script never references the human's key file by name
 if grep -q '\.env' "$script"; then echo "  FAIL: script references the key file path"; fail=1; else echo "  ok: no key-file reference in script"; fi
 

@@ -8,6 +8,21 @@ All API facts below were retrieved **2026-08-14** from the vendors' live docs; r
 before relying on them after a vendor version bump. Auth headers are recorded by NAME
 only — never a value.
 
+## Custody-posture deviation — HUMAN RULING OWED (F7, do not treat as settled)
+
+This design has the **human hold the credential** but **execute agent-authored code**
+(`gen-assets.sh`) inside that credentialed session. That is a real deviation from the
+repo's standing posture: `docs/security/threat-model.md:238` classes the asset-gen keys
+as *Agent-reachable: No — owner-only credential store*, and
+`docs/adr/0009-ci-topology-and-secret-custody.md` states agent-reachable contexts never
+hold the credential. The mitigation here is that the code never reads/echoes/persists a
+key and (post-review) validates every vendor-supplied URL before curl touches it — but
+**the deviation itself is a high-severity residual, and the constitution reserves its
+acceptance to the human** (principle 5), as does the ordering of the still-owed
+asset-license ADR (this pipeline is tooling; nothing ships to the Play binary from it
+without that ADR). Two items for the human queue: (1) accept or reject running this
+script in the keyed session; (2) sequence the license ADR. Neither is an agent's call.
+
 ## Key custody (the repo's standing posture)
 
 - Keys live in the human's env file, permission-denied to agents by design.
@@ -23,7 +38,17 @@ only — never a value.
 
   The `!` prefix executes this in YOUR interactive session shell, so no agent ever
   touches the key file — that is the designed custody boundary. `set -a` exports what
-  the file defines; `set +a` turns auto-export back off.
+  the file defines; `set +a` turns auto-export back off. **Caveat (F10):** because the
+  parts are `&&`-chained, if `source .env` fails (no `.env` yet, wrong directory, typo)
+  the chain stops before `set +a` and leaves your shell in auto-export. If that happens,
+  run `set +a` yourself, or run the arming in a throwaway subshell:
+  `(set -a; source .env; set +a; bash scripts/gen-assets.sh queue docs/design/assets/CAT-MANIFEST.json)`.
+- **Before the full 15-entry queue (F12):** run ONE probe —
+  `! set -a && source .env && set +a && bash scripts/gen-assets.sh tripo "a test cat" /tmp/probe.glb`
+  — to confirm the Tripo v3 request/response shape below matches the live service (this
+  pipeline researched it with a retrieval date but could not execute it), so a schema
+  drift costs one asset, not fifteen. Meshy's shape is corroborated independently; Tripo's
+  is the higher-uncertainty one.
 
 ## Meshy API (retrieved 2026-08-14, docs.meshy.ai)
 
@@ -89,7 +114,10 @@ only — never a value.
     cancellation; post-cancellation generations fall back to free-tier terms.
 - **ADR note:** purely AI-generated geometry may be uncopyrightable in the US (license
   ≠ copyright); the owed asset ADR must record per-asset provenance (service, account
-  tier at generation time, task id — the sidecar JSON carries this) before release.
+  tier, task id) before release. The sidecar carries service, task id, timestamp, sha256,
+  and a `plan_tier` field — populated from `GEN_ASSETS_ACCOUNT_TIER`, which the human sets
+  when arming (the script cannot introspect an account tier). Set it to your real tier
+  (e.g. `paid`) so the ADR never has to guess; it defaults to `unknown`.
 
 ## Flow
 
@@ -98,8 +126,11 @@ prompt (CAT-MANIFEST.json)
   -> create task (Meshy: preview -> refine | Tripo: text-to-model)
   -> poll until terminal status (timeouts: Meshy 1200s/stage, Tripo 900s)
   -> download GLB immediately (signed URLs expire)
+  -> https-only, size-capped, glTF-magic-verified download (a vendor-supplied URL is
+     external DATA — never passed to curl as an option, never allowed to write outside
+     the candidate dir)
   -> unity/Assets/Art/Generated/incoming/<id>.glb  + <id>.glb.json sidecar
-       (prompt, service, task id, UTC timestamp, sha256)
+       (prompt, service, task id, UTC timestamp, sha256, plan_tier)
 ```
 
 `incoming/` is **gitignored**: generated candidates stay LOCAL until a human curates

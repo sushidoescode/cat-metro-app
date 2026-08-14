@@ -30,16 +30,26 @@
 # Tunables (env, all optional):
 #   MESHY_AI_MODEL (latest) MESHY_POLYCOUNT (30000) MESHY_TEXTURE_RES (2k)
 #   MESHY_ENABLE_PBR (false) MESHY_POLL_INTERVAL (10s) MESHY_STAGE_TIMEOUT (1200s)
+#   MESHY_API_BASE (https://api.meshy.ai/openapi/v2; https:// enforced)
 #   TRIPO_MODEL_VERSION (server default) TRIPO_POLL_INTERVAL (5s) TRIPO_TIMEOUT (900s)
+#   TRIPO_API_BASE (https://openapi.tripo3d.ai/v3; https:// enforced)
 #   DOWNLOAD_TIMEOUT (900s) GEN_ASSETS_OUT_DIR (unity/Assets/Art/Generated/incoming)
+#   GEN_ASSETS_ACCOUNT_TIER (unknown; recorded per-asset in the sidecar for the license ADR)
 
 set -uo pipefail
 set +x # custody discipline: xtrace stays off no matter what the caller inherited
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
-MESHY_BASE="https://api.meshy.ai/openapi/v2"
+MESHY_BASE="${MESHY_API_BASE:-https://api.meshy.ai/openapi/v2}"
 TRIPO_BASE="${TRIPO_API_BASE:-https://openapi.tripo3d.ai/v3}"
+# F4: MESHY_API_BASE / TRIPO_API_BASE override where each bearer token is sent — enforce
+# https on BOTH (symmetric: an unvalidated override was the original flaw), so a stray
+# http:// (cleartext key) or a redirect target can never carry the credential; each
+# resolved base is surfaced in live output below, so a redirect is never silent.
+case "$MESHY_BASE" in https://*) ;; *) echo "gen-assets: MESHY_API_BASE must be https:// (got: $MESHY_BASE)" >&2; exit 1 ;; esac
+case "$TRIPO_BASE" in https://*) ;; *) echo "gen-assets: TRIPO_API_BASE must be https:// (got: $TRIPO_BASE)" >&2; exit 1 ;; esac
 OUT_DIR="${GEN_ASSETS_OUT_DIR:-unity/Assets/Art/Generated/incoming}"
+ACCOUNT_TIER="${GEN_ASSETS_ACCOUNT_TIER:-unknown}"
 
 MESHY_AI_MODEL="${MESHY_AI_MODEL:-latest}"
 MESHY_POLYCOUNT="${MESHY_POLYCOUNT:-30000}"
@@ -55,7 +65,9 @@ DRY_RUN=0
 
 # --- custody helpers -----------------------------------------------------------------
 
-redact() { # every byte this script prints goes through here
+redact() { # routes the script's OWN printed output through key redaction (F9: curl's own
+  # stderr — e.g. connection errors — bypasses this; safe because no key is ever passed
+  # to curl on argv/stdout, but do not assume curl's stderr is redacted)
   local s="$1"
   [ -n "${MESHY_API_KEY:-}" ] && s=${s//"$MESHY_API_KEY"/[REDACTED]}
   [ -n "${TRIPO_API_KEY:-}" ] && s=${s//"$TRIPO_API_KEY"/[REDACTED]}
@@ -67,10 +79,12 @@ err() { redact "$*" >&2; }
 
 die() { err "gen-assets: ERROR: $*"; exit 1; }
 
-need_key() { # $1 = env var NAME; only its name is ever printed
+need_key() { # $1 = env var NAME; only its name is ever printed. Returns 1 (soft, F3) so a
+             # queue armed with only one service's key continues past the entries it cannot serve.
   local name="$1"
   if [ -z "${!name:-}" ]; then
-    die "$name is not set in the environment. Live generation is armed by the human: export $name in your own session (see docs/design/assets/PIPELINE.md), then re-run. Use --dry-run to preview requests without keys."
+    err "gen-assets: ERROR: $name is not set in the environment. Live generation is armed by the human: export $name in your own session (see docs/design/assets/PIPELINE.md), then re-run. Use --dry-run to preview requests without keys."
+    return 1
   fi
 }
 
@@ -105,46 +119,71 @@ sha256_of() {
 
 utc_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
-resolve_out() { # bare filename -> incoming dir; explicit paths honored
+resolve_out() { # bare filename -> incoming dir. F5: the manifest is external DATA, so an
+  # 'out' with a path separator or '..' could steer a network-fetched file into the
+  # tracked Unity tree, outside the gitignored candidate area and its curation gate. Only
+  # bare filenames are honored; anything with '/' or '..' is refused by the caller.
   case "$1" in
-    */*) printf '%s\n' "$1" ;;
-    *)   printf '%s/%s\n' "$OUT_DIR" "$1" ;;
+    *..*|*/*) return 1 ;;
+    *)        printf '%s/%s\n' "$OUT_DIR" "$1" ;;
   esac
 }
 
-write_sidecar() { # out, service, prompt, task_ids (comma-joined), extra_note
+write_sidecar() { # out, service, prompt, task_ids (comma-joined), sha, ts, note, tier
   python3 -c '
-import json, sys, hashlib
-out, service, prompt, task_ids, sha, ts, note = sys.argv[1:8]
+import json, sys
+out, service, prompt, task_ids, sha, ts, note, tier = sys.argv[1:9]
 side = {
     "prompt": prompt,
     "service": service,
     "task_id": task_ids,
     "timestamp_utc": ts,
     "sha256": sha,
+    "plan_tier": tier,   # F8: the license depends on account tier; recorded from
+                         # GEN_ASSETS_ACCOUNT_TIER (the human sets it when arming), so the
+                         # asset ADR never has to guess. "unknown" if not supplied.
     "note": note,
 }
 with open(out + ".json", "w") as f:
     json.dump(side, f, indent=2)
     f.write("\n")
-' "$1" "$2" "$3" "$4" "$5" "$6" "$7"
+' "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8"
 }
 
-download_to() { # url, out — no auth header: model URLs are signed, keys never sent to CDNs
+download_to() { # url, out — no auth header (URLs are signed); https-only, size-capped, glTF-verified
   local url="$1" out="$2" tmp
+  # F1: the url is vendor-supplied (RK-6 external DATA). A bare curl argument beginning
+  # with '-' is an OPTION, and one token (-K/--config) makes curl execute an attacker
+  # file — arbitrary local read/write while the human's keys are armed. Two independent
+  # defenses: require an https:// scheme (so it can never begin with '-'), and pass the
+  # url after '--'. F6: cap the size (a 4GB response must not fill the disk and be
+  # certified by a sidecar), pin the protocol across redirects, and verify the payload
+  # is a binary glTF before it lands where Unity will auto-import it.
+  case "$url" in
+    https://*) ;;
+    *) err "refusing non-https download url"; return 1 ;;
+  esac
+  mkdir -p "$(dirname "$out")" || { err "cannot create output dir for $out"; return 1; }
   tmp="$out.part"
-  if ! curl -sS -L --fail --max-time "$DOWNLOAD_TIMEOUT" -o "$tmp" "$url"; then
+  if ! curl -sS -L --fail --proto '=https' --proto-redir '=https' \
+       --max-filesize 268435456 --max-time "$DOWNLOAD_TIMEOUT" -o "$tmp" -- "$url"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  if [ "$(head -c 4 "$tmp" 2>/dev/null)" != "glTF" ]; then
+    err "refusing download: payload is not a binary glTF (.glb)"
     rm -f "$tmp"
     return 1
   fi
   mv "$tmp" "$out"
 }
 
-finish_asset() { # out, service, prompt, task_ids, note — sidecar + report
+finish_asset() { # out, service, prompt, task_ids, note — sidecar + report (soft-fail: F3)
   local sha
-  sha=$(sha256_of "$1") || die "sha256 failed for $1"
-  write_sidecar "$1" "$2" "$3" "$4" "$sha" "$(utc_now)" "$5" || die "sidecar write failed for $1"
-  say "DONE  [$2] $1 (sha256 $sha, sidecar $1.json)"
+  sha=$(sha256_of "$1") || { err "sha256 failed for $1"; return 1; }
+  write_sidecar "$1" "$2" "$3" "$4" "$sha" "$(utc_now)" "$5" "$ACCOUNT_TIER" \
+    || { err "sidecar write failed for $1"; return 1; }
+  say "DONE  [$2] $1 (sha256 $sha, tier $ACCOUNT_TIER, sidecar $1.json)"
 }
 
 # --- Meshy: preview -> refine -> download (docs/design/assets/PIPELINE.md) -----------
@@ -202,8 +241,8 @@ meshy_generate() { # prompt, out
     say "  then: poll refine task, download model_urls.glb -> $out (+ sidecar $out.json)"
     return 0
   fi
-  need_key MESHY_API_KEY
-  say "MESHY create preview: $prompt"
+  need_key MESHY_API_KEY || return 1
+  say "MESHY create preview: $prompt (base $MESHY_BASE)"
   resp=$(api_curl "$MESHY_API_KEY" -X POST -d "$body" "$MESHY_BASE/text-to-3d") || { err "meshy: preview create failed: $(redact "$resp")"; return 1; }
   pid=$(printf '%s' "$resp" | json_get result) || { err "meshy: no task id in create response"; return 1; }
   say "  preview task: $pid"
@@ -241,8 +280,8 @@ tripo_generate() { # prompt, out
     say "  then: download output.model_url IMMEDIATELY (signed URL, short expiry) -> $out (+ sidecar $out.json)"
     return 0
   fi
-  need_key TRIPO_API_KEY
-  say "TRIPO create: $prompt"
+  need_key TRIPO_API_KEY || return 1
+  say "TRIPO create: $prompt (base $TRIPO_BASE)"
   resp=$(api_curl "$TRIPO_API_KEY" -X POST -d "$body" "$TRIPO_BASE/generation/text-to-model") || { err "tripo: create failed: $(redact "$resp")"; return 1; }
   tid=$(printf '%s' "$resp" | json_get data.task_id) || { err "tripo: no task id in create response"; return 1; }
   say "  task: $tid"
@@ -270,17 +309,18 @@ tripo_generate() { # prompt, out
 # --- one asset / batch ---------------------------------------------------------------
 
 generate_one() { # service, prompt, out_arg
+  # F3: per-asset failures RETURN non-zero (never exit) so queue_run continues to the
+  # next entry and prints its N/M summary; die() is reserved for main-level misuse.
   local service="$1" prompt="$2" out
-  out=$(resolve_out "$3")
-  case "$out" in *.glb) ;; *) die "output must end in .glb (got: $out)";; esac
-  if [ "$DRY_RUN" -eq 0 ]; then
-    mkdir -p "$(dirname "$out")" || die "cannot create output dir for $out"
-    if [ -f "$out" ]; then say "SKIP  [$service] $out exists (delete it to regenerate)"; return 0; fi
+  out=$(resolve_out "$3") || { err "output name must be a bare filename under $OUT_DIR (got: $3)"; return 1; }
+  case "$out" in *.glb) ;; *) err "output must end in .glb (got: $out)"; return 1;; esac
+  if [ "$DRY_RUN" -eq 0 ] && [ -f "$out" ]; then
+    say "SKIP  [$service] $out exists (delete it to regenerate)"; return 0
   fi
   case "$service" in
     meshy) meshy_generate "$prompt" "$out" ;;
     tripo) tripo_generate "$prompt" "$out" ;;
-    *) die "unknown service '$service' (want: meshy | tripo)" ;;
+    *) err "unknown service '$service' (want: meshy | tripo)"; return 1 ;;
   esac
 }
 
@@ -331,7 +371,8 @@ needed.
 
 Tunables (env, optional): MESHY_AI_MODEL MESHY_POLYCOUNT MESHY_TEXTURE_RES
   MESHY_ENABLE_PBR MESHY_POLL_INTERVAL MESHY_STAGE_TIMEOUT TRIPO_MODEL_VERSION
-  TRIPO_POLL_INTERVAL TRIPO_TIMEOUT DOWNLOAD_TIMEOUT GEN_ASSETS_OUT_DIR
+  TRIPO_POLL_INTERVAL TRIPO_TIMEOUT MESHY_API_BASE TRIPO_API_BASE (both https:// enforced)
+  DOWNLOAD_TIMEOUT GEN_ASSETS_OUT_DIR GEN_ASSETS_ACCOUNT_TIER (recorded per-asset in the sidecar)
 EOF
 }
 

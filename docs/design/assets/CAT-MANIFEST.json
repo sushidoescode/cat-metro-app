@@ -3,7 +3,7 @@
     "contract": "RICH-ASSETS (state/handoffs/RICH-ASSETS-frozen-contract.md)",
     "directive": "H-1 2026-08-14: Meshy + Tripo, richer assets, cuter cats, rich beautiful game",
     "art_direction": "product_spec.md section 7 — tabletop diorama: hand-built model railway of a cat city on a wooden desk, modular low-poly, toon shader family, warm lighting, charming not childish",
-    "colorblind_rule": "line colors never appear alone — every cat carries color + symbol redundancy (circle red, square blue, triangle yellow, diamond green, star wild) plus a distinct silhouette per color",
+    "colorblind_rule": "line colors never appear alone — every line-affiliated cat carries color + symbol redundancy (circle red, square blue, triangle yellow, diamond green, star wild) plus a distinct silhouette per color; cat-conductor is the unaffiliated mascot (base cream/navy palette, no line color)",
     "custody": "outputs land in unity/Assets/Art/Generated/incoming/ (gitignored); candidates are local until curated + provenance'd; license/asset ADR owed before any of these ship in the Play binary",
     "style_base": "low-poly hand-painted toy figurine style for a wooden desktop model railway diorama, soft rounded shapes with no sharp exterior edges, warm cozy lighting, flat toon-friendly colors, clean silhouette readable at small size, charming not childish"
   },
