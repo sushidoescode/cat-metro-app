@@ -31,12 +31,24 @@ usage() {
 
 cmd="${1:-}"; shift || true
 case "$cmd" in
-  boot) # start the AVD headless (idempotent: exits 0 if already answering)
+  boot) # start the AVD headless on EMU_SERIAL's own port (idempotent; bounded wait)
     if aemu shell true 2>/dev/null; then echo "already booted"; exit 0; fi
-    nohup "$SDK/emulator/emulator" -avd "$AVD" -no-window -gpu swiftshader_indirect \
-      -no-audio -no-boot-anim >/dev/null 2>&1 &
-    aemu wait-for-device
-    until [ "$(aemu shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 3; done
+    port="${EMU_SERIAL#emulator-}"
+    case "$port" in *[!0-9]*|'') echo "emu-selftest: cannot derive a port from '$EMU_SERIAL'" >&2; exit 1 ;; esac
+    nohup "$SDK/emulator/emulator" -avd "$AVD" -port "$port" -no-window \
+      -gpu swiftshader_indirect -no-audio -no-boot-anim >/dev/null 2>&1 &
+    tries=0
+    until aemu shell true 2>/dev/null; do
+      tries=$((tries + 1))
+      [ "$tries" -le 60 ] || { echo "emu-selftest: device did not appear within 180s" >&2; exit 1; }
+      sleep 3
+    done
+    tries=0
+    until [ "$(aemu shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do
+      tries=$((tries + 1))
+      [ "$tries" -le 60 ] || { echo "emu-selftest: boot did not complete within 180s" >&2; exit 1; }
+      sleep 3
+    done
     echo "booted"
     ;;
   install) # install <apk-path> (replacing any prior install)
@@ -60,8 +72,9 @@ case "$cmd" in
     [ -n "${1:-}" ] || { echo "emu-selftest: frame needs an output path" >&2; exit 1; }
     aemu exec-out screencap -p > "$1"
     ;;
-  tap) # tap <x> <y> in raw framebuffer coordinates (portrait: 1080x2400)
+  tap) # tap <x> <y> in raw framebuffer coordinates (portrait: 1080x2400); digits only
     [ -n "${2:-}" ] || { echo "emu-selftest: tap needs x and y" >&2; exit 1; }
+    case "${1}${2}" in *[!0-9]*) echo "emu-selftest: tap coordinates must be numeric" >&2; exit 1 ;; esac
     aemu shell input tap "$1" "$2"
     ;;
   rotate-landscape) # drive the virtual accelerometer to a landscape pose
@@ -69,6 +82,7 @@ case "$cmd" in
     aemu emu sensor set acceleration 9.81:0:0
     ;;
   rotate-portrait) # portrait pose; a pre-ORIENT-LOCK build additionally needs coldstart
+    aemu shell settings put system accelerometer_rotation 1
     aemu emu sensor set acceleration 0:9.81:0
     ;;
   status) # one-line health: serial, boot state, display rotation, foreground app

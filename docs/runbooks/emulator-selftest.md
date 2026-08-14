@@ -20,13 +20,24 @@ the rig played and won L001 and L002 unassisted. Helper: `scripts/emu-selftest.s
 
 ## Boot / install / drive
 
-- Boot headless: `bash scripts/emu-selftest.sh boot` (flags used: `-no-window -gpu
-  swiftshader_indirect -no-audio -no-boot-anim`).
-- Install: `bash scripts/emu-selftest.sh install <dev.apk>` · launch: `... launch`.
-- Capture: `... frame out.png` · tap: `... tap <x> <y>` · health: `... status`.
-- Tap coordinates are RAW framebuffer pixels (portrait 1080x2400). When a viewer
-  displays a scaled screenshot, multiply its coordinates back to the raw size before
-  tapping.
+All device interaction goes through the helper — its ten subcommands are the entire
+supported surface, and every one is serial-guarded. Never type raw adb in a self-test
+flow, including for rotation.
+
+- `boot` — start the AVD headless on EMU_SERIAL's port (flags: `-no-window -gpu
+  swiftshader_indirect -no-audio -no-boot-anim`; waits are bounded at 180s).
+- `install <dev.apk>` — install/replace the build under test.
+- `launch` — warm-start the game activity · `bounce` — HOME + relaunch (clears
+  stolen-focus pause states) · `coldstart` — force-stop + relaunch (the only reset
+  for a stuck orientation on a pre-lock build).
+- `frame <out.png>` — capture the raw framebuffer · `tap <x> <y>` — numeric raw
+  framebuffer coordinates (portrait 1080x2400; when a viewer displays a scaled
+  screenshot, multiply its coordinates back to the raw size before tapping).
+- `rotate-landscape` / `rotate-portrait` — drive the virtual accelerometer via
+  `bash scripts/emu-selftest.sh rotate-landscape` and `... rotate-portrait` (both
+  enable `accelerometer_rotation` first; see the rotation trap below for why
+  Settings-layer rotation alone does nothing).
+- `status` — one-line health: serial, boot state, display rotation, foreground app.
 
 ## Trap ledger (each of these cost real time)
 
@@ -35,10 +46,11 @@ the rig played and won L001 and L002 unassisted. Helper: `scripts/emu-selftest.s
 - **OS dialogs steal focus and pause Unity**: a system dialog over the game leaves the
   player in `pauseUnity` limbo after dismissal. Fix: `bounce` (HOME + relaunch).
 - **Rotation is driven by the app, not by Settings**: with the pre-ORIENT-LOCK build the
-  activity is the orientation source (`fullSensor`), so `settings put system
-  user_rotation` and even `cmd window user-rotation lock` do NOTHING. Drive the virtual
-  accelerometer instead: `adb emu sensor set acceleration 9.81:0:0` (landscape) /
-  `0:9.81:0` (portrait) with `accelerometer_rotation` enabled.
+  activity is the orientation source (`fullSensor`), so Settings-layer `user_rotation`
+  and even a WindowManager rotation lock do NOTHING. Drive the virtual accelerometer
+  instead — `rotate-landscape` / `rotate-portrait` (the sensor acceleration vector,
+  `9.81:0:0` vs `0:9.81:0`, with `accelerometer_rotation` enabled; the subcommands
+  set both).
 - **Landscape is sticky on the unlocked build**: once rotated, the activity stays
   landscape after the sensor returns to portrait — warm relaunch does not fix it; only
   `force-stop` + relaunch (`coldstart`) does. ORIENT-LOCK (PR #87) removes the whole
