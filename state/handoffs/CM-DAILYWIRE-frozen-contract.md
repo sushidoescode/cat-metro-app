@@ -97,9 +97,11 @@ the Bootstrap boundary, and everything downstream of that single read stays pure
   any level, campaign or Daily. Wiring persistence into GameRoot for the first time (load on
   boot, commit on pause/win, choose an `ISaveFileSystem`) is a genuine new integration surface,
   not a cheap read — it is NOT built by this contract. Both the L007-unlock gate and A-DL-6's
-  first-clear enforcement are recorded as follow-up work sharing that one blocker. The Daily
-  entry point ships unconditionally visible on Home (not gated on campaign progress); the
-  ticket reward is SURFACED (see criterion 9) but not persisted or capped.
+  first-clear enforcement are recorded as follow-up work sharing that one blocker. **[The
+  next sentence is SUPERSEDED by the correction below — recorded, not silently deleted, per
+  the "never route around a finding" rule.]** ~~The Daily entry point ships unconditionally
+  visible on Home (not gated on campaign progress)~~; the ticket reward is SURFACED (see
+  criterion 9) but not persisted or capped.
 
 ## Correction discovered mid-implementation (revises FA-4; recorded, not silently applied)
 
@@ -143,6 +145,46 @@ exactly, per the "pick the reading most consistent with product_spec + proceed" 
   Whoever wires `ISave`/`SaveStore` into Bootstrap next should flip `DailyEntryUnlocked`
   (or replace it with a real progress-derived value) as close to a one-line follow-up as this
   codebase gets.
+
+## Review fix round (PR #85, round 1) — every finding, named and closed
+
+- **F1 (HIGH):** `DailyRuntimeInputsTests`'s `ValidatorConfig`/`PipelineConfig` "drift guards"
+  never read the source files — they compared compiled constants to a second set of
+  hand-typed literals. Rewritten to the schema test's own pattern: read the real
+  `config/validator_thresholds.json`/`config/daily_pipeline.json`, parse through the public
+  `ValidatorConfig.Parse`/`DailyPipelineConfig.Parse`, assert every field DailyRuntimeInputs
+  actually claims to mirror against the PARSED value.
+- **F2 (HIGH):** the win-path test's campaign fixture was `"L001"` (`LevelBand[0]`), which
+  cannot discriminate the mutation it exists to catch (`NextLevelId`'s own out-of-band wrap
+  rule coincidentally lands on `LevelBand[0]` too). Switched to `"L004"`; mutation RED proof
+  recorded verbatim below. The region-count assertion also tightened from `Is.LessThan` to
+  the exact `regionBaseline - 2`.
+- **F3 (MEDIUM):** `ReturnHomeFromDaily` now defers `Home.Show()`/`Stack.Push` by a one-frame
+  input lockout (`Update()`-driven, `_pendingHomeShowFrame`) so a repeat tap at the results
+  CTA's coordinates — which the L001/Daily pins occupy once shown — cannot land on them,
+  whether the repeat tap is same-frame or one yield later. Found and closed a related latent
+  bug while implementing this: `LoadLevel()` now cancels any stale pending show on every level
+  load, so a rapid return-home-then-reselect-Daily sequence can't leave an old lockout armed
+  to fire mid-way through a NEW Daily session.
+- **F4 (MEDIUM):** `SelectDaily()` now no-ops if `_dailySession` is already true, preventing a
+  second call from corrupting `_preDailyLevel` with the Daily board itself.
+- **F5 (MEDIUM):** a new forcing-function test (`WeekdayCurveBytes_IfTheFileExists_
+  MustBeEmbedded`) proves the fourth `DailyRunRequest` input (the weekday curve) is honestly
+  absent today and will loudly fail the day `config/daily_weekday_curve.json` exists, naming
+  the fix. Known-debt entry added below.
+- **F6:** two new Known-debt entries — (a) current-date admissibility is proven only for the
+  two pinned test dates, not exhaustively; the failure mode stays bounded and loud regardless.
+  (b) a lost (failed) Daily session has no wired exit except Retry — no Home escape from
+  `FailureReview` for a daily session; follow-up candidate named.
+- **F7:** FA-4's now-superseded "ships unconditionally visible on Home" sentence marked
+  `[SUPERSEDED by the correction below]` and struck through rather than deleted.
+- **F9:** the "sanctioned mechanism" comment this contract cited was misattributed to
+  `UiCsvUx06Tests.cs` — it actually lives in `UiCsvDisciplineTests.cs`. Corrected here and in
+  the evidence file.
+
+Full re-verification after this round: `scripts/check.sh` OK; `dotnet test` unaffected (no
+`dotnet/**` files touched by this round); Unity EditMode/PlayMode filtered + full re-runs
+green (exact counts in the evidence file, updated for this round).
 
 ## Design
 
@@ -269,10 +311,12 @@ changes).
   **Correction (discovered via the first full EditMode run):** the existing
   `UiCsvDisciplineTests.cs`/`UiCsvUx06Tests.cs` DO need a one-line edit each — both pin an
   EXACT total row count (`NewRows_ExactlyTheSevenPinned_Appended` /
-  `ThisSlice_AppendsExactlyThreeRows_BytePinned`), and `UiCsvUx06Tests.cs`'s own comment names
-  the sanctioned mechanism verbatim: "amended only by declared contract evolution (raise the
-  count + pin your own rows...)". Only the numeric bound and its comment change (12→14 in each
-  file); every existing byte-pinned row assertion (rows 0-11) is untouched.
+  `ThisSlice_AppendsExactlyThreeRows_BytePinned`), and **`UiCsvDisciplineTests.cs`'s** own
+  comment (`NewRows_ExactlyTheSevenPinned_Appended`'s R1-L6 note — F9, review fix round:
+  corrected attribution, this sentence previously named the wrong file) names the sanctioned
+  mechanism verbatim: "amended only by declared contract evolution (raise the count + pin
+  your own rows...)". Only the numeric bound and its comment change (12→14 in each file);
+  every existing byte-pinned row assertion (rows 0-11) is untouched.
 - this frozen contract; the one `state/PROJECT_STATE.md` row at merge
 
 Out of scope, refused here (per the coordinator's brief): leaderboards/PGS (ADR-0010's own
@@ -309,3 +353,37 @@ existing `ChromeRegions`/`TapInput` seam; (3) returning Home from a Daily win re
 - On-device wall-clock timing for a full `k=0..SaltMaxK` candidate loop (up to 11 solves) plus
   a possible fallback solve is unmeasured on real hardware in this contract — the templates are
   small (1-2 switches) so this is expected to be fast, but it is asserted, not measured, here.
+- **F5 (review fix round): the weekday-curve truth-fork.** `DailyRuntimeInputs` supplies
+  exactly three embedded inputs; `GameRoot.ResolveDailyBoard` passes the fourth
+  `DailyRunRequest` field, `weekdayCurveBytes`, as a literal `null` (#73's own NEW-Q21
+  "absent file" behavior). `config/daily_weekday_curve.json` cannot exist today (the daily
+  wrapper's own criterion-9 gate forbids it), so this is currently correct by construction —
+  but the day NEW-Q21 answers and the file lands, this wiring silently keeps passing `null`
+  past a now-real curve unless someone updates it. `DailyRuntimeInputsTests.
+  WeekdayCurveBytes_IfTheFileExists_MustBeEmbedded` is the forcing function: it passes
+  trivially while the file is absent and fails loudly the day it exists, naming the exact fix
+  (a fourth embedded `WeekdayCurveBytes` input mirroring the other three, plus a
+  `GameRoot.ResolveDailyBoard` edit to stop passing `null`).
+- **F6(a) (review fix round): current-date admissibility is unproven before 2026-08-24.** Every
+  test in this contract pins one of two specific dates (2026-08-24, seed `1449106418`;
+  2026-08-10, seed `252386339`) via the injectable `DailyClockUnixSeconds` seam — #73's own
+  90-date horizon proof covers a much wider range, but THIS wiring layer has only exercised
+  those two dates end-to-end through the embedded-inputs path. The production default
+  (`DateTimeOffset.UtcNow`) will resolve whatever the device's real calendar date is, which
+  could fall outside anything directly proven here. The failure mode is bounded and loud by
+  design (criterion 7 — `ResolveDailyBoard` returns `null` and logs an error on any admission
+  failure, never a silent or partial board), so this is an accepted, recorded risk rather than
+  a blocking defect, but it is not the same claim as "every reachable date is proven."
+- **F6(b) (review fix round): a lost Daily has no exit except winning.** `ReturnHomeFromDaily`
+  is reachable ONLY from `ResultsPanel.NextRequested`, which only fires on a real `Won`
+  transition. A Daily session that reaches `FailureReview` has exactly the same recourse every
+  campaign level has — the Retry verb (`Input.RetryRegionActive`/`RetryTapped`), which
+  replays the SAME Daily board from tick 0 — and no wired way back to Home at all. For a
+  campaign level this is arguably fine (progression doesn't need a Home escape mid-band); for
+  a Daily session, which is entered FROM Home as a discrete side mode, a player who keeps
+  losing is stuck retry-looping the same board with no exit. Follow-up candidate: a Home verb
+  on the fail chrome, gated to daily sessions only (`_dailySession`), reusing
+  `ReturnHomeFromDaily`'s own restore-and-show machinery (including its F3 one-frame lockout,
+  which is chrome-region-and-frame-generic, not Won-specific). Not built here — out of this
+  contract's declared scope (fail-chrome edits were never in the Files-in-scope list) and
+  discovered only during the review fix round, so it is recorded rather than silently added.
