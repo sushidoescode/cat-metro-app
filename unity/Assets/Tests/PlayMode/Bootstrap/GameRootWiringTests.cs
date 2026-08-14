@@ -62,7 +62,7 @@ namespace CatMetro.Tests.PlayMode
         // --- criterion 1: chrome attach ---
 
         [UnityTest]
-        public IEnumerator Wire_AttachesScreenChromeAndHintChip_ToRootGameObject_BothScreenSpaceCamera()
+        public IEnumerator Wire_AttachesScreenChromeAndHintChip_ToRootGameObject_BothScreenSpaceOverlay()
         {
             _root = GameRoot.Launch();
             yield return null;
@@ -76,9 +76,12 @@ namespace CatMetro.Tests.PlayMode
 
             var chromeCanvas = chrome.ChromeRoot.GetComponent<Canvas>();
             var hintCanvas = hint.ChipRoot.GetComponent<Canvas>();
-            Assert.That(chromeCanvas.renderMode, Is.EqualTo(RenderMode.ScreenSpaceCamera),
-                "the M-4 regression pin: the self-resolve pattern finds the camera child");
-            Assert.That(hintCanvas.renderMode, Is.EqualTo(RenderMode.ScreenSpaceCamera));
+            // ART-EVIDENCE canvas unification (PR #68 round-2 review E-1): the former M-4
+            // regression pin asserted ScreenSpaceCamera via the per-controller camera
+            // self-resolve — that self-resolve is gone; every chrome canvas is Overlay now so
+            // the sortingOrder ladder compares on one shared layer end to end.
+            Assert.That(chromeCanvas.renderMode, Is.EqualTo(RenderMode.ScreenSpaceOverlay));
+            Assert.That(hintCanvas.renderMode, Is.EqualTo(RenderMode.ScreenSpaceOverlay));
             Assert.That(chromeCanvas.sortingOrder, Is.EqualTo(100), "unchanged");
             Assert.That(hintCanvas.sortingOrder, Is.EqualTo(90), "unchanged");
         }
@@ -384,7 +387,7 @@ namespace CatMetro.Tests.PlayMode
         // --- CM-LOADNEXT criterion 1: the ResultsPanel attach line ---
 
         [UnityTest]
-        public IEnumerator Wire_AttachesResultsPanel_ToRootGameObject_ScreenSpaceCamera()
+        public IEnumerator Wire_AttachesResultsPanel_ToRootGameObject_ScreenSpaceOverlay()
         {
             _root = GameRoot.Launch();
             yield return null;
@@ -393,8 +396,11 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(results, Is.Not.Null, "Wire attaches ResultsPanel to root.gameObject");
             Assert.That(results.PanelRoot, Is.Not.Null);
             var resultsCanvas = results.PanelRoot.GetComponent<Canvas>();
-            Assert.That(resultsCanvas.renderMode, Is.EqualTo(RenderMode.ScreenSpaceCamera),
-                "the M-4-style regression pin: the self-resolve pattern finds the camera child");
+            // ART-EVIDENCE canvas unification (PR #68 round-2 review E-1): the former
+            // M-4-style regression pin asserted ScreenSpaceCamera via the per-controller
+            // camera self-resolve — that self-resolve is gone; every chrome canvas is
+            // Overlay now so the sortingOrder ladder compares on one shared layer end to end.
+            Assert.That(resultsCanvas.renderMode, Is.EqualTo(RenderMode.ScreenSpaceOverlay));
             Assert.That(resultsCanvas.sortingOrder, Is.EqualTo(110), "unchanged (above chrome/hint)");
         }
 

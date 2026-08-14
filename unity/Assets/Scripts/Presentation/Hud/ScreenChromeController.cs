@@ -42,19 +42,17 @@ namespace CatMetro.Presentation.Hud
             var go = new GameObject("ChromeCanvas");
             go.transform.SetParent(transform, false);
             _canvas = go.AddComponent<Canvas>();
-            // Screen Space - Camera when the wired camera exists (renders into capture RTs —
-            // the #33 visual-verification rule needs real frames); overlay only as a fallback.
-            var cam = GetComponentInChildren<Camera>();
-            if (cam != null)
-            {
-                _canvas.renderMode = RenderMode.ScreenSpaceCamera;
-                _canvas.worldCamera = cam;
-                _canvas.planeDistance = 1f;
-            }
-            else
-            {
-                _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            }
+            // ART-EVIDENCE canvas unification (PR #68 round-2 review E-1): ScreenSpaceOverlay,
+            // unconditionally, matching WavePreviewStrip and BannerView. A ScreenSpaceCamera
+            // canvas here used to "render into capture RTs" for the #33 visual-verification
+            // rule, but Unity composites every Overlay canvas straight onto the display
+            // regardless of what any single camera renders — mixing the two render modes
+            // across the chrome stack made the authored sortingOrder ladder (80/90/100/110/
+            // 115/120) non-authoritative (an Overlay surface always paints above a
+            // Camera-space one, whatever the numbers say). The capture path that needs real
+            // frames now reads the composited screen back buffer instead of a camera render
+            // target, which sees Overlay content directly.
+            _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             _canvas.sortingOrder = 100;
             Cta = RetryCtaView.Create(_canvas.transform);
             Veil = HaltVeilView.Create(_canvas.transform);

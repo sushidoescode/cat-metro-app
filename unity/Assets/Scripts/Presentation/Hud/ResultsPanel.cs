@@ -79,19 +79,11 @@ namespace CatMetro.Presentation.Hud
             var go = new GameObject("ResultsCanvas");
             go.transform.SetParent(transform, false);
             _canvas = go.AddComponent<Canvas>();
-            // ScreenSpaceCamera when the wired camera exists (renders into capture RTs — the
-            // #33 visual-verification rule needs real frames); overlay only as a fallback.
-            var cam = GetComponentInChildren<Camera>();
-            if (cam != null)
-            {
-                _canvas.renderMode = RenderMode.ScreenSpaceCamera;
-                _canvas.worldCamera = cam;
-                _canvas.planeDistance = 1f;
-            }
-            else
-            {
-                _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            }
+            // ART-EVIDENCE canvas unification (PR #68 round-2 review E-1): ScreenSpaceOverlay,
+            // unconditionally — see ScreenChromeController.EnsureViews for the full rationale
+            // (mixed render modes made the sortingOrder ladder non-authoritative; the capture
+            // path now reads the composited back buffer, which sees Overlay content).
+            _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             _canvas.sortingOrder = 110; // above CM-UX-02's chrome canvas (100)
 
             var mat = UiChromeMaterial.Shared; // the F-DEV-2 lesson: never a strippable default

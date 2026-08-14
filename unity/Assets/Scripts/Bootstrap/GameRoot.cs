@@ -188,9 +188,11 @@ namespace CatMetro.Bootstrap
 
             // CM-UX-07 criterion 1: chrome + hint attach to root.gameObject. F8 (round-1 review)
             // correction: the camera is NOT on root.gameObject itself — it lives on a child
-            // GameObject named "Camera" (built above at GameRoot.cs:141-143); each controller
-            // resolves it via GetComponentInChildren<Camera>() (the self-resolve pattern).
-            // Regression pin: sortingOrder 100/90 unchanged.
+            // GameObject named "Camera" (built above at GameRoot.cs:141-143). ART-EVIDENCE
+            // canvas unification retired the per-controller camera self-resolve: every chrome
+            // canvas is ScreenSpaceOverlay unconditionally now, so no controller needs the
+            // camera reference for its own canvas setup any more. Regression pin: sortingOrder
+            // 100/90 unchanged.
             // #46 review F5: guarded the same way the dev-only capture attach below is guarded
             // (existence-checked before AddComponent) — a pre-existing controller (e.g. attached
             // before Wire runs, the scene-boot path) survives as the single instance instead of
@@ -232,18 +234,21 @@ namespace CatMetro.Bootstrap
         }
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
-        // CM-UX-07 criterion 6: ONE ScreensCanvas (ScreenSpaceCamera on Cam, sortingOrder 120 —
-        // above the CM-UX-04 results canvas at 110) hosting Home + LevelIntro. Deliveries/name
-        // come from the already-loaded level — no new I/O. ScreensVisible reads the stack, so
-        // there is exactly one source of truth for "a screen is up".
+        // CM-UX-07 criterion 6: ONE ScreensCanvas (sortingOrder 120 — above the CM-UX-04
+        // results canvas at 110) hosting Home + LevelIntro. Deliveries/name come from the
+        // already-loaded level — no new I/O. ScreensVisible reads the stack, so there is
+        // exactly one source of truth for "a screen is up".
+        // ART-EVIDENCE canvas unification (PR #68 round-2 review E-1): ScreenSpaceOverlay,
+        // unconditionally, matching every other chrome canvas (ScreenChromeController.
+        // EnsureViews carries the full rationale) — mixing render modes across the chrome
+        // stack made the sortingOrder ladder non-authoritative (an Overlay surface always
+        // paints above a Camera-space one, whatever the numbers say).
         private void ComposeDevScreenFlow()
         {
             var canvasGo = new GameObject("ScreensCanvas");
             canvasGo.transform.SetParent(transform, false);
             var canvas = canvasGo.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceCamera;
-            canvas.worldCamera = Cam;
-            canvas.planeDistance = 1f;
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = 120;
 
             Stack = new CatMetro.Presentation.Screens.ScreenStack();
