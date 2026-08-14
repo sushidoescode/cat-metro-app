@@ -77,7 +77,58 @@ else echo "  FAIL: redactor probe produced no redacted output (did not run)"; fa
 esc=$(env -u MESHY_API_KEY bash "$script" meshy "x" "../ESCAPED.glb" 2>&1); rc=$?
 t "path-escape out refused" 1 $rc
 echo "$esc" | grep -q 'bare filename' || { echo "  FAIL: escape refusal does not explain the bare-filename rule"; fail=1; }
-[ -e ../ESCAPED.glb ] || [ -e ../ESCAPED ] && { echo "  FAIL: path escape created a file/dir outside the candidate area"; fail=1; rm -rf ../ESCAPED.glb ../ESCAPED; }
+if [ -e ../ESCAPED.glb ] || [ -e ../ESCAPED ]; then
+  echo "  FAIL: path escape created a file/dir outside the candidate area"; fail=1
+  # scoped cleanup: only the two exact names this leg could have produced (never rm -rf a
+  # broad sibling-of-repo path)
+  rm -f ../ESCAPED.glb; rmdir ../ESCAPED 2>/dev/null || true
+fi
+
+# (g) the download + base-redirect controls (F1/F4/F6) are pinned so a future edit cannot
+# silently revert them with a green suite. Behavioral where possible (source-token checks
+# run on a COMMENT-STRIPPED view — the EMU-RIG lesson: a token in a comment must not satisfy
+# a gate; 'glTF' in this function's own comment would otherwise mask a dropped magic check).
+dlfn=$(mktemp)
+sed -n '/^download_to()/,/^}/p' "$script" > "$dlfn"
+
+# g1: a stubbed curl must NEVER be reached for an option-injection or non-https url.
+stubdir=$(mktemp -d)
+printf '#!/bin/sh\necho CURL_INVOKED\nexit 22\n' > "$stubdir/curl"; chmod +x "$stubdir/curl"
+gout=$(PATH="$stubdir:$PATH" DOWNLOAD_TIMEOUT=5 bash -c '
+  err(){ :; }
+  . "'"$dlfn"'"
+  download_to "--config=/etc/passwd" "'"$stubdir"'/a.glb"; echo "inj_rc=$?"
+  download_to "http://x/a.glb" "'"$stubdir"'/b.glb"; echo "http_rc=$?"
+  download_to "file:///etc/passwd" "'"$stubdir"'/c.glb"; echo "file_rc=$?"
+' 2>&1)
+rm -rf "$stubdir"
+if echo "$gout" | grep -q CURL_INVOKED; then
+  echo "  FAIL: download_to reached curl on a bad url (F1 scheme guard regressed)"; fail=1
+elif echo "$gout" | grep -q 'inj_rc=1' && echo "$gout" | grep -q 'http_rc=1' && echo "$gout" | grep -q 'file_rc=1'; then
+  echo "  ok: download_to refuses bad urls before curl"
+else echo "  FAIL: download_to guard probe did not run as expected ($gout)"; fail=1; fi
+
+# g2: a curl that "succeeds" writing a NON-glTF payload for a valid https url must not let
+# the file land (catches a dropped magic check even though 'glTF' stays in the comment).
+magdir=$(mktemp -d); land="$magdir/out.glb"
+printf '#!/bin/sh\no=""; while [ $# -gt 0 ]; do [ "$1" = "-o" ] && o="$2"; shift; done\nprintf NOTGLTF > "$o"\nexit 0\n' > "$magdir/curl"; chmod +x "$magdir/curl"
+PATH="$magdir:$PATH" DOWNLOAD_TIMEOUT=5 bash -c 'err(){ :; }; . "'"$dlfn"'"; download_to "https://api.meshy.ai/x.glb" "'"$land"'"' >/dev/null 2>&1
+if [ -e "$land" ]; then echo "  FAIL: a non-glTF payload landed (F6 magic check regressed)"; fail=1
+else echo "  ok: download_to rejects non-glTF payloads"; fi
+rm -rf "$magdir"
+
+# g3: remaining F6 flags pinned on a COMMENT-STRIPPED view of download_to (code, not prose).
+dlcode=$(sed 's/#.*//' "$dlfn")
+echo "$dlcode" | grep -q 'max-filesize' || { echo "  FAIL: download_to lost its --max-filesize cap (F6)"; fail=1; }
+echo "$dlcode" | grep -q 'proto-redir'  || { echo "  FAIL: download_to lost its protocol pin (F6)"; fail=1; }
+echo "$dlcode" | grep -q -- '-- "\$url"' || { echo "  FAIL: download_to no longer passes url after -- (F1)"; fail=1; }
+rm -f "$dlfn"
+
+# g4: each vendor base rejects an attacker host (F4 allowlist).
+badbase=$(MESHY_API_BASE="https://attacker.example/v2" bash "$script" meshy "x" y.glb --dry-run 2>&1); [ $? -ne 0 ] || { echo "  FAIL: MESHY_API_BASE accepts a non-Meshy host (F4 allowlist regressed)"; fail=1; }
+echo "$badbase" | grep -q 'Meshy host' || { echo "  FAIL: meshy base rejection does not name the host rule"; fail=1; }
+badtripo=$(TRIPO_API_BASE="https://attacker.example/v3" bash "$script" tripo "x" y.glb --dry-run 2>&1); [ $? -ne 0 ] || { echo "  FAIL: TRIPO_API_BASE accepts a non-Tripo host (F4 allowlist regressed)"; fail=1; }
+echo "$badtripo" | grep -q 'Tripo host' || { echo "  FAIL: tripo base rejection does not name the host rule"; fail=1; }
 
 # (d) the script never references the human's key file by name
 if grep -q '\.env' "$script"; then echo "  FAIL: script references the key file path"; fail=1; else echo "  ok: no key-file reference in script"; fi

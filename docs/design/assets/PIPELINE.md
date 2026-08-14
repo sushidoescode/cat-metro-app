@@ -126,9 +126,10 @@ prompt (CAT-MANIFEST.json)
   -> create task (Meshy: preview -> refine | Tripo: text-to-model)
   -> poll until terminal status (timeouts: Meshy 1200s/stage, Tripo 900s)
   -> download GLB immediately (signed URLs expire)
-  -> https-only, size-capped, glTF-magic-verified download (a vendor-supplied URL is
-     external DATA — never passed to curl as an option, never allowed to write outside
-     the candidate dir)
+  -> host-allowlisted, size-capped (--max-filesize; note: a reliable pre-flight cap
+     needs curl >= 8.4.0), glTF-magic-verified, glob-off download (a vendor-supplied URL
+     is external DATA — never passed to curl as an option, never allowed to write outside
+     the candidate dir; the bearer token only ever reaches the vendor's own host)
   -> unity/Assets/Art/Generated/incoming/<id>.glb  + <id>.glb.json sidecar
        (prompt, service, task id, UTC timestamp, sha256, plan_tier)
 ```

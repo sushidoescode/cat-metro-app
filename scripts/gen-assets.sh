@@ -42,12 +42,20 @@ cd "$(git rev-parse --show-toplevel)" || exit 1
 
 MESHY_BASE="${MESHY_API_BASE:-https://api.meshy.ai/openapi/v2}"
 TRIPO_BASE="${TRIPO_API_BASE:-https://openapi.tripo3d.ai/v3}"
-# F4: MESHY_API_BASE / TRIPO_API_BASE override where each bearer token is sent — enforce
-# https on BOTH (symmetric: an unvalidated override was the original flaw), so a stray
-# http:// (cleartext key) or a redirect target can never carry the credential; each
-# resolved base is surfaced in live output below, so a redirect is never silent.
-case "$MESHY_BASE" in https://*) ;; *) echo "gen-assets: MESHY_API_BASE must be https:// (got: $MESHY_BASE)" >&2; exit 1 ;; esac
-case "$TRIPO_BASE" in https://*) ;; *) echo "gen-assets: TRIPO_API_BASE must be https:// (got: $TRIPO_BASE)" >&2; exit 1 ;; esac
+# F4 (hardened per fix-round review): MESHY_API_BASE / TRIPO_API_BASE override where each
+# bearer token is sent. An https-only check still let a stray base redirect the key to any
+# https host; a HOST ALLOWLIST closes the vector entirely — only each vendor's own host (or
+# loopback, for the offline custody test) may ever carry the credential. The default hosts
+# are covered; a legitimate alt-host is a reviewed edit here, not a runtime surprise. Each
+# resolved base is still surfaced in live output below, so even an allowed base is never silent.
+case "$MESHY_BASE" in
+  https://api.meshy.ai/*|https://127.0.0.1:*|https://localhost:*) ;;
+  *) echo "gen-assets: MESHY_API_BASE must be the Meshy host over https (got: $MESHY_BASE)" >&2; exit 1 ;;
+esac
+case "$TRIPO_BASE" in
+  https://openapi.tripo3d.ai/*|https://127.0.0.1:*|https://localhost:*) ;;
+  *) echo "gen-assets: TRIPO_API_BASE must be the Tripo host over https (got: $TRIPO_BASE)" >&2; exit 1 ;;
+esac
 OUT_DIR="${GEN_ASSETS_OUT_DIR:-unity/Assets/Art/Generated/incoming}"
 ACCOUNT_TIER="${GEN_ASSETS_ACCOUNT_TIER:-unknown}"
 
@@ -165,7 +173,8 @@ download_to() { # url, out — no auth header (URLs are signed); https-only, siz
   esac
   mkdir -p "$(dirname "$out")" || { err "cannot create output dir for $out"; return 1; }
   tmp="$out.part"
-  if ! curl -sS -L --fail --proto '=https' --proto-redir '=https' \
+  # --globoff: a vendor url with {a,b} / [1-9] must not fan out into multiple requests.
+  if ! curl -sS -L --fail --globoff --proto '=https' --proto-redir '=https' \
        --max-filesize 268435456 --max-time "$DOWNLOAD_TIMEOUT" -o "$tmp" -- "$url"; then
     rm -f "$tmp"
     return 1
