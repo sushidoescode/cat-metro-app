@@ -106,6 +106,11 @@ namespace CatMetro.Bootstrap
         // suppress the other; see DevBootOverrideTests.Precedence_*).
         private bool _bootToHomeFileOverride;
 
+        // CM-DAILYWIRE F3 (review fix round): the pending-Home-show marker ReturnHomeFromDaily
+        // sets instead of calling Home.Show()/Stack.Push synchronously — see the Update()
+        // comment for the one-frame-lockout rationale. -1 == nothing pending.
+        private int _pendingHomeShowFrame = -1;
+
         public CatMetro.Presentation.Screens.HomeScreenView Home { get; private set; }
         public CatMetro.Presentation.Screens.LevelIntroSheet Intro { get; private set; }
         public CatMetro.Presentation.Screens.ScreenStack Stack { get; private set; }
@@ -393,6 +398,19 @@ namespace CatMetro.Bootstrap
             // select/return-home alike) — the ONLY place this becomes non-null again is a
             // real Daily Won transition in Update(), below.
             DailyTicketsEarned = null;
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            // CM-DAILYWIRE F3 (review fix round): any new level load cancels a stale pending
+            // Home-show. Without this, a rapid return-home -> re-select-Daily sequence (no
+            // yield in between — SelectDaily_IsDeterministic_... exercises exactly this
+            // shape) would leave the FIRST return-home's deferred show armed while a SECOND
+            // Daily session is now in progress; Update() would later show Home uninvited
+            // mid-session the first time enough frames pass. SelectDaily's own LoadLevel call
+            // clears it here BEFORE SelectDaily arms nothing (SelectDaily never shows Home at
+            // all); ReturnHomeFromDaily's LoadLevel call clears it here too, before
+            // ReturnHomeFromDaily arms its OWN fresh value immediately afterward — so the
+            // ordering never fights itself.
+            _pendingHomeShowFrame = -1;
+#endif
             _level = level;
             Session = new GameSession(level);
             if (View != null) Destroy(View.gameObject);
@@ -477,11 +495,12 @@ namespace CatMetro.Bootstrap
                 LoadLevel(restore);
             }
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
-            if (Home != null)
-            {
-                Home.Show();
-                Stack.Push("home");
-            }
+            // CM-DAILYWIRE F3 (review fix round): Home.Show()/Stack.Push deferred — see the
+            // Update() comment below for the one-frame-input-lockout rationale (the L001/
+            // Daily pins the Show() below would register sit at the SAME screen coordinates
+            // the results CTA the player just tapped occupied, both centered in the same
+            // thumb band).
+            if (Home != null) _pendingHomeShowFrame = Time.frameCount;
 #endif
         }
 
@@ -495,6 +514,14 @@ namespace CatMetro.Bootstrap
         public void SelectDaily()
         {
             if (Session == null) return;
+            // CM-DAILYWIRE F4 (review fix round): defensive — a second SelectDaily() call
+            // while already in a Daily session must be a no-op, mirroring LoadNext's own
+            // defensive-clear shape/comment style (A-LN-3-adjacent). Without this guard,
+            // _preDailyLevel below would be overwritten with _level, which by then IS the
+            // Daily board itself (set by the FIRST call's LoadLevel) — corrupting the
+            // return-home restore target to the Daily board instead of the true pre-Daily
+            // campaign level.
+            if (_dailySession) return;
             var resolved = ResolveDailyBoard();
             if (resolved == null) return;
             _preDailyLevel = _level;
@@ -558,6 +585,27 @@ namespace CatMetro.Bootstrap
         private void Update()
         {
             if (Session == null || _halted) return;
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            // CM-DAILYWIRE F3 (review fix round): the one-frame input lockout. Request frame
+            // F (ReturnHomeFromDaily, above) sets _pendingHomeShowFrame = F WITHOUT showing
+            // Home yet, so a same-frame repeat tap at the CTA's coordinates finds nothing
+            // registered there. This check only fires once Time.frameCount > F + 1 — i.e. it
+            // skips the very next Update() (frame F+1) too, so a SECOND tap arriving after
+            // exactly one yield (still "at" frame F+1) ALSO finds nothing registered yet and
+            // falls through harmlessly, instead of landing on the freshly-shown pin and
+            // pushing Intro. Home actually appears on the Update() at frame F+2. Mirrors
+            // LoadLevel's own unregister-before-show sequencing principle, extended across a
+            // frame boundary instead of within one synchronous call.
+            if (_pendingHomeShowFrame >= 0 && Time.frameCount > _pendingHomeShowFrame + 1)
+            {
+                _pendingHomeShowFrame = -1;
+                if (Home != null)
+                {
+                    Home.Show();
+                    Stack.Push("home");
+                }
+            }
+#endif
             if (Session.State.Outcome.Kind == CatMetro.Domain.OutcomeKind.Running
                 && ScreenState == "Playing")
             {

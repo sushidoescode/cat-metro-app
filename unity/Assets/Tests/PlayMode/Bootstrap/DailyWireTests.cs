@@ -59,10 +59,14 @@ namespace CatMetro.Tests.PlayMode
             return r.Value;
         }
 
-        private IEnumerator BootToHomeWithCampaignFixture()
+        // F2 (review fix round): optional campaignId, default "L001" for the tests that don't
+        // care which campaign level is active. The win-path test below passes "L004"
+        // specifically — see its own comment for why L001 (== LevelBand[0]) cannot
+        // discriminate the mutation it exists to catch.
+        private IEnumerator BootToHomeWithCampaignFixture(string campaignId = "L001")
         {
             GameRoot.BootToHome = true;
-            _root = GameRoot.LaunchWith(Import(CampaignFixtureJson("L001")));
+            _root = GameRoot.LaunchWith(Import(CampaignFixtureJson(campaignId)));
             yield return null;
             Assert.That(_root.Home, Is.Not.Null, "precondition: the dev screen flow composed");
             Assert.That(_root.Home.IsVisible, Is.True, "precondition: Home shown on boot");
@@ -121,9 +125,13 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Home.IsVisible, Is.False, "Home hides once Daily is selected");
             Assert.That(_root.IsDailySession, Is.True,
                 "the real tap reached SelectDaily(), not a no-op");
-            Assert.That(_root.Input.Regions.Count, Is.LessThan(regionBaseline),
-                "both Home pins (L001 + Daily) unregister once Home hides — a ghost region "
-                + "would leave this count unchanged or higher");
+            // F2 (review fix round): EXACTLY two regions gone (the L001 pin + the Daily pin),
+            // not merely "fewer than before" — Is.LessThan would also pass if only one
+            // unregistered (a real ghost-region bug) or if some unrelated third region
+            // vanished too, proving nothing precise.
+            Assert.That(_root.Input.Regions.Count, Is.EqualTo(regionBaseline - 2),
+                "both Home pins (L001 + Daily), and only those two, unregister once Home "
+                + "hides — a ghost region would leave this count higher");
         }
 
         // --- criteria 2/3/8: the real pipeline runs for the injected date, loads through the
@@ -148,6 +156,37 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Home.IsVisible, Is.False);
             CollectionAssert.AreEqual(new string[0], _root.Stack.ToBreadcrumb(),
                 "no Intro sheet for Daily — straight into gameplay");
+        }
+
+        // --- F4 (review fix round): a second SelectDaily() call while already in a Daily
+        // session must be a no-op and must not corrupt the pre-daily restore target ---
+
+        [UnityTest]
+        public IEnumerator SelectDaily_CalledTwiceInARow_IsANoOp_PreDailyRestoreTargetSurvives()
+        {
+            yield return BootToHomeWithCampaignFixture("L004");
+            string campaignId = _root.CurrentLevelId;
+            _root.DailyClockUnixSeconds = () => PinnedUnixSeconds;
+
+            _root.SelectDaily();
+            Assert.That(_root.IsDailySession, Is.True, "precondition: the first call succeeded");
+            Assert.That(_root.Session.Level.Dto.Id, Is.EqualTo("L800"));
+
+            // The reviewer's scenario: call it again, directly, no yield — before the guard,
+            // this would set _preDailyLevel = _level, and _level by now IS the Daily board
+            // itself, corrupting the restore target.
+            _root.SelectDaily();
+            Assert.That(_root.IsDailySession, Is.True, "still in the same daily session");
+            Assert.That(_root.Session.Level.Dto.Id, Is.EqualTo("L800"),
+                "the second call did nothing — no reload, no second board resolution");
+
+            var panel = _root.GetComponent<ResultsPanel>();
+            panel.NextRequested?.Invoke(); // the LoadNextTests direct-call precedent
+            Assert.That(_root.IsDailySession, Is.False);
+            Assert.That(_root.CurrentLevelId, Is.EqualTo(campaignId),
+                "the pre-daily restore target must be the ORIGINAL campaign level — a "
+                + "corrupted _preDailyLevel would restore to the Daily board (\"L800\") "
+                + "instead");
         }
 
         // --- determinism at the wiring layer (criterion 4/8): one clock read, pure downstream ---
@@ -178,6 +217,20 @@ namespace CatMetro.Tests.PlayMode
             _root.SelectDaily();
             Assert.That((uint)_root.Session.Level.Dto.Seed, Is.EqualTo(OtherSeed),
                 "#73's own pinned vector for 2026-08-10");
+
+            // F3 (review fix round, found while implementing the one-frame lockout): the
+            // return-home -> immediate-reselect sequence just above (no yield between
+            // NextRequested?.Invoke() and the next SelectDaily()) used to leave the FIRST
+            // return-home's deferred Home-show armed while a SECOND Daily session is now in
+            // progress — LoadLevel's own pending-show clear (inside SelectDaily's call)
+            // closes that. Pump several frames now (well past the lockout window) and prove
+            // Home never appears uninvited mid-session.
+            for (int i = 0; i < 5; i++) yield return null;
+            Assert.That(_root.IsDailySession, Is.True,
+                "still in the SECOND daily session — nothing here should have returned home");
+            Assert.That(_root.Home.IsVisible, Is.False,
+                "a stale pending Home-show from the FIRST return-home cycle must not fire "
+                + "while a different Daily session is active");
         }
 
         // --- criteria 5/6/9: a REAL Daily win (solver-witnessed, the DevLevelOverrideTests
@@ -187,9 +240,21 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator DailyWin_SolverWitnessed_SurfacesTickets_ReturnsHome_NeverAdvancesCampaign()
         {
-            yield return BootToHomeWithCampaignFixture();
+            // F2 (review fix round): "L004", deliberately NOT LevelBand[0]. The daily board
+            // that loads carries id "L800", which is outside LevelBand entirely — under the
+            // MUTATION this test exists to catch (deleting OnResultsCtaRequested's
+            // _dailySession branch, routing every CTA tap straight to LoadNext), LoadNext
+            // would compute NextLevelId("L800"), and NextLevelId's own A-LN-2 "unknown id
+            // restarts the band" rule maps ANY out-of-band id to LevelBand[0] == "L001". With
+            // the ORIGINAL "L001" fixture, that wrap target coincidentally equals the
+            // pre-Daily campaign id, so the mutated code silently produced the "right"
+            // answer for the wrong reason and the assertion below could never go red. "L004"
+            // has no such coincidence: the mutated path lands on "L001", not "L004", so the
+            // restored-id assertion now genuinely discriminates the real router branch from
+            // both the wrap path and the advance path.
+            yield return BootToHomeWithCampaignFixture("L004");
             string campaignIdBeforeDaily = _root.CurrentLevelId;
-            Assert.That(campaignIdBeforeDaily, Is.EqualTo("L001"));
+            Assert.That(campaignIdBeforeDaily, Is.EqualTo("L004"));
 
             _root.DailyClockUnixSeconds = () => PinnedUnixSeconds;
             _root.SelectDaily();
@@ -231,8 +296,73 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.DailyTicketsEarned, Is.Null, "cleared on the return-home reload");
             Assert.That(_root.CurrentLevelId, Is.EqualTo(campaignIdBeforeDaily),
                 "restored the SAME campaign level — never GameRoot.NextLevelId/LevelBand");
-            Assert.That(_root.Home.IsVisible, Is.True, "Home re-shown");
+
+            // F3 (review fix round): Home.Show()/Stack.Push are now deferred by the one-frame
+            // input lockout (GameRoot.Update) — immediately after the tap, Home is NOT yet
+            // visible and the breadcrumb is momentarily empty by design (this is exactly the
+            // window DailyWin_DoubleTapAcrossOneYield... below proves is safe from ghost
+            // navigation). Two yields let the deferred show settle before asserting the final,
+            // steady-state screen.
+            Assert.That(_root.Home.IsVisible, Is.False,
+                "precondition: still within the one-frame lockout window immediately after "
+                + "the tap — Home has not been shown yet");
+            yield return null;
+            yield return null;
+            Assert.That(_root.Home.IsVisible, Is.True, "Home re-shown once the lockout clears");
             CollectionAssert.AreEqual(new[] { "home" }, _root.Stack.ToBreadcrumb());
+        }
+
+        // --- F3 (review fix round): a repeat tap at the SAME coordinates, one yield after the
+        // first, must not land on the freshly-shown Home pin and push Intro ---
+
+        [UnityTest]
+        public IEnumerator DailyWin_DoubleTapAcrossOneYield_DoesNotLandOnHomePin_NoIntroPushed()
+        {
+            yield return BootToHomeWithCampaignFixture("L004");
+            _root.DailyClockUnixSeconds = () => PinnedUnixSeconds;
+            _root.SelectDaily();
+
+            var level = _root.Session.Level;
+            var solve = CatMetro.Domain.Solver.LevelSolver.Solve(level.Graph, (ulong)level.Dto.Seed);
+            Assert.That(solve.Verdict, Is.EqualTo(CatMetro.Domain.Solver.SolveVerdict.Solved));
+            foreach (var e in solve.OptimalLog.Entries)
+            {
+                while (_root.Session.State.Tick < e.Tick
+                    && _root.Session.State.Outcome.Kind == CatMetro.Domain.OutcomeKind.Running)
+                    _root.Session.AdvanceMs(
+                        CatMetro.Application.Session.TickInterpolator.TICK_MS);
+                _root.Session.EnqueueToggle(e.SwitchId);
+            }
+            _root.Session.AdvanceMs(400 * CatMetro.Application.Session.TickInterpolator.TICK_MS);
+            yield return null;
+            Assert.That(_root.ScreenState, Is.EqualTo("Won"));
+            yield return null;
+            var panel = _root.GetComponent<ResultsPanel>();
+            Assert.That(panel.IsVisible, Is.True, "precondition: the panel is showing");
+            var center = panel.ChipPaintedRectPx.center;
+
+            int tap1 = _root.Input.HandleTapAtScreen(center);
+            Assert.That(tap1, Is.EqualTo(-3), "precondition: the first tap returned home");
+            Assert.That(_root.IsDailySession, Is.False, "precondition: the router fired once");
+
+            yield return null; // the ONE-yield gap this test exists to exercise
+
+            // The repeat tap, at the EXACT same screen coordinates: the L001/Daily pins
+            // (once shown) center in the same thumb band the results CTA occupied, so this
+            // is the coordinate a real accidental double-tap would land on.
+            int tap2 = _root.Input.HandleTapAtScreen(center);
+            Assert.That(tap2, Is.Not.EqualTo(-3),
+                "the lockout window must still be active one yield after the transition — "
+                + "the repeat tap must not resolve to a chrome region at all");
+
+            // Let the deferred Home.Show() actually settle before checking the final state.
+            yield return null;
+            yield return null;
+            Assert.That(_root.Home.IsVisible, Is.True, "Home eventually settles visible");
+            CollectionAssert.AreEqual(new[] { "home" }, _root.Stack.ToBreadcrumb(),
+                "the double-tap across one yield must not have pushed intro — exactly one "
+                + "\"home\" entry, never [\"home\", \"intro\"]");
+            Assert.That(_root.Intro.IsVisible, Is.False, "no Intro sheet was ever shown");
         }
 
         // --- criterion 7: an unadmittable factory fails loud, Home stays exactly as it was ---
