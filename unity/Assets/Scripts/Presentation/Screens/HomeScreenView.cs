@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Input;
+using CatMetro.Presentation.Theme;
 
 namespace CatMetro.Presentation.Screens
 {
@@ -43,6 +44,7 @@ namespace CatMetro.Presentation.Screens
         private bool _registered;
         private bool _dailyRegistered;
         private bool _shown; // #46 review F4: Show()-left-shown intent, survives OnDisable/OnEnable
+        private Image _background; // BEAUTIFUL-MENU: the warm-paper tabletop ground
         private TMP_Text _title;
         private RectTransform _pin;
         private RectTransform _ring;
@@ -60,6 +62,19 @@ namespace CatMetro.Presentation.Screens
         public float PinScale => _pin != null ? _pin.localScale.x : 1f;
         public bool IsVisible => gameObject.activeSelf;
         public string TitleText => _title != null ? _title.text : "";
+        // BEAUTIFUL-MENU: style read-backs (the TitleText/RingVisible accessor precedent) —
+        // tests measure the REAL painted colors against the Palette source of truth.
+        public Color BackgroundColor => _background != null ? _background.color : default(Color);
+        public Color TitleColor => _title != null ? _title.color : default(Color);
+        public Color PinRingColor
+        {
+            get
+            {
+                if (_ring == null) return default(Color);
+                var img = _ring.GetComponent<Image>();
+                return img != null ? img.color : default(Color);
+            }
+        }
         public Rect DailyPinPaintedRectPx => _dailyPinRectPx;
         public RectTransform DailyPinTransform => _dailyPin;
         public string DailyLabelText => _dailyLabel != null ? _dailyLabel.text : "";
@@ -79,9 +94,18 @@ namespace CatMetro.Presentation.Screens
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
 
+            // BEAUTIFUL-MENU: the warm-paper tabletop ground (full-bleed, drawn FIRST so it
+            // sits behind everything) + an inset cream base board with the shared rounded
+            // UiChrome material — the diorama "cardboard edge." Both are plain Images, so the
+            // HomeScreenTests render-only whitelist still holds; names avoid every tripwire word.
+            view._background = MakeSurface(go.transform, "Background",
+                Vector2.zero, Vector2.one, Palette.WarmPaper, rounded: false);
+            MakeSurface(go.transform, "BaseBoard",
+                new Vector2(0.04f, 0.05f), new Vector2(0.96f, 0.95f), Palette.CreamCard, rounded: true);
+
             view._title = MakeText(go.transform, "Title",
                 new Vector2(0.08f, 0.87f), new Vector2(0.92f, 0.97f),
-                Strings.UiStrings.Get("home.title"), 48f); // key-only, never a literal
+                Strings.UiStrings.Get("home.title"), 48f, Palette.InkNavy); // key-only, never a literal
 
             // Parked-district silhouettes: scenery, not buttons (S-01 — curiosity, no locks).
             MakeSilhouette(go.transform, "ParkedDistrictA",
@@ -92,10 +116,10 @@ namespace CatMetro.Presentation.Screens
                 new Vector2(0.16f, 0.32f), new Vector2(0.62f, 0.48f));
 
             // The raised-ring shape twin sits BEHIND the pin (sibling order = draw order).
-            view._ring = MakeChip(go.transform, "PinRingL001",
-                new Color(0.95f, 0.92f, 0.85f, 0.85f));
-            view._pin = MakeChip(go.transform, "PinL001",
-                new Color(0.13f, 0.19f, 0.29f, 0.95f));
+            // BEAUTIFUL-MENU: the ring is the single warm CTA glow (ticket orange); the pin
+            // stays ink navy — both from the Palette source, replacing inline literals.
+            view._ring = MakeChip(go.transform, "PinRingL001", Palette.TicketOrange);
+            view._pin = MakeChip(go.transform, "PinL001", Palette.InkNavy);
 
             // CM-DAILYWIRE: the Daily entry — a second, static (no pulse) chip beside the L001
             // pin, following the same MakeChip + csv-keyed label pattern as the rest of Home.
@@ -107,7 +131,7 @@ namespace CatMetro.Presentation.Screens
                     new Color(0.10f, 0.32f, 0.24f, 0.95f));
                 view._dailyLabel = MakeText(view._dailyPin.transform, "PinDailyLabel",
                     Vector2.zero, Vector2.one,
-                    Strings.UiStrings.Get("home.daily.label"), 22f); // key-only, never a literal
+                    Strings.UiStrings.Get("home.daily.label"), 22f, Palette.WarmPaper); // key-only, never a literal
             }
 
             go.SetActive(false);
@@ -115,7 +139,7 @@ namespace CatMetro.Presentation.Screens
         }
 
         private static TMP_Text MakeText(Transform parent, string name,
-            Vector2 anchorMin, Vector2 anchorMax, string text, float size)
+            Vector2 anchorMin, Vector2 anchorMax, string text, float size, Color color)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
@@ -128,8 +152,30 @@ namespace CatMetro.Presentation.Screens
             tmp.text = text;
             tmp.alignment = TextAlignmentOptions.Center;
             tmp.fontSize = size;
-            tmp.color = Color.white;
+            tmp.color = color;
             return tmp;
+        }
+
+        // BEAUTIFUL-MENU: a full-rect surface (background / base board). Plain Image so the
+        // whitelist holds; 'rounded' opts into the shared UiChrome material for a soft edge.
+        private static Image MakeSurface(Transform parent, string name,
+            Vector2 anchorMin, Vector2 anchorMax, Color color, bool rounded)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            var img = go.AddComponent<Image>();
+            if (rounded)
+            {
+                var mat = UiChromeMaterial.Shared;
+                if (mat != null) img.material = mat;
+            }
+            img.color = color;
+            return img;
         }
 
         private static void MakeSilhouette(Transform parent, string name,
@@ -145,7 +191,9 @@ namespace CatMetro.Presentation.Screens
             var img = go.AddComponent<Image>();
             var mat = UiChromeMaterial.Shared;
             if (mat != null) img.material = mat;
-            img.color = new Color(0.35f, 0.38f, 0.42f, 0.55f); // muted parked scenery
+            // BEAUTIFUL-MENU: parked scenery in low-alpha depot navy over the cream board
+            // (S-01: curiosity, not locks) — was a flat neutral grey.
+            img.color = Palette.WithAlpha(Palette.DepotNavy, 0.30f);
         }
 
         private static RectTransform MakeChip(Transform parent, string name, Color color)
