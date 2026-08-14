@@ -66,12 +66,19 @@ flow, including for rotation.
 
 `evals/results/device/emu-gameplay-pass-2026-08-14/` — frames + ARTIFACT.md manifest:
 boot-to-halt, tap-retry, mid-transit switch flip, matched delivery, L001 "All cats
-home!" + Next, L002 load with blue cast, mixed-color play, L002 win — plus the
-landscape-defect before-frame that motivates ORIENT-LOCK. Known dev-build noise in
+home!" + Next, L002 post-load halt (pending-blue wave preview; the cast is red then
+blue), mixed-color play, L002 win — plus the landscape-defect before-frame that
+motivates ORIENT-LOCK. Known dev-build noise in
 frames: six collider errors in the boot console (tracked, art-chain) and the
 NEW-Q4 domain-guard halt banner, which is correct behavior for a misrouted cat.
 
-## Open question (human queue)
+## Open questions (human queue)
 
-Wiring `emu-selftest` into CI would need a hosted-runner emulator budget ruling —
-recorded, not assumed.
+- Wiring `emu-selftest` into CI would need a hosted-runner emulator budget ruling —
+  recorded, not assumed.
+- **The physical Pixel's hardware serial appears in this runbook, the EMU-RIG
+  contract, and the shape gate** (which requires it here, so it cannot be redacted
+  without a contract change). It is an identifier, not a credential, but committing it
+  is the human's call — ruling requested (#89 review F12/R2-5). If redaction is
+  ordered, the guard keeps working with a placeholder; only the concreteness of the
+  ledger entry is lost.
