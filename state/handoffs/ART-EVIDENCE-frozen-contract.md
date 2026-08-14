@@ -154,3 +154,25 @@ editor-drift settings files are reverted before every commit if Unity touched th
 ## Status log
 
 - 2026-08-13 — contract frozen at `3c80b92` (this commit).
+- 2026-08-14 — all four criteria certified. Z-order pin (`8818596`) proven RED against the
+  pre-unification tree (both discriminating cases failed with the exact E-1 render-mode
+  mismatch, not a setup error), then GREEN after the unification fix (`bcd4090`), then a
+  single-canvas mutation proof (only `ScreenChromeController` reverted) killed exactly the
+  two tests that reference it. Capture rig (`7575496`) needed one follow-up
+  (`6fde975`): the run's first back-buffer reads showed a shader-compilation placeholder
+  color (Unity's async compiler, first use of a shader/material pair in a fresh batch
+  process) — isolated by comparing against the identical technique several frames later in
+  the same session (correct) and a second session booted later in the process (correct, no
+  warm-up needed); fixed with 30 warm-up frames before the run's first capture only. The
+  RT-vs-back-buffer comparison pair (`03-playing-wave.png` vs
+  `03-playing-wave-camera-rt-comparison.png`) empirically confirms E-1: the RT frame's top
+  status band is empty where the back-buffer frame shows the wave-preview strip. Six frames
+  + the comparison committed at `045055a`
+  (`evals/results/ux/ui-chrome-pass/artev-2026-08-14/`), each inspected by eye; the
+  Polyfork-models-absent limitation recorded honestly in that directory's `ARTIFACT.md`.
+  Full-suite re-run at the tip matches the recorded baseline exactly (EM 833/830/3 failed,
+  PM 180/171/9 failed, same test names both times) — zero new failures.
+  `bash scripts/check.sh` green; `bash scripts/test.sh` 16/17 (the one failure is
+  `tests/unity/editmode.test.sh`, fail-closed by design on the pre-existing baseline).
+  Worktree clean at the final tip (one incidental `dotnet` lock-file drift from the test
+  run's own `dotnet test` legs was caught and reverted).
