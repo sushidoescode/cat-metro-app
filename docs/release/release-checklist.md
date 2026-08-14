@@ -78,11 +78,14 @@ Checklist per candidate:
   agent session can read it (no repo-relative path, no exported variable in a shell an agent runs in,
   no `.env` an agent could open). There is **no secret-scanning gate in CI today** (§3), so this rule
   is enforced by the human, not by the machine.
-- **Recorded follow-up (DISCHARGED by `chore/keystore-gitignore`, outside this lane's original
+- **Recorded follow-up (DISCHARGED by #83, outside this lane's original
   charter):** the repo now has root `.gitignore` patterns for keystore-shaped files (`*.keystore`,
-  `*.jks`, `*.p12`, `*.pem`); a `git ls-files` scan against all four patterns at discharge time found
-  no tracked file matching any of them. An accidental `git add` of a key is now caught by the ignore
-  pattern (not by any scanning gate — none exists, §3). If one ever does touch git history anyway, the
+  `*.jks`, `*.p12`, `*.pem`, `*.pfx`, `*.bks`, `*.key`); a `git ls-files` scan against all seven
+  patterns at discharge time found no tracked file matching any of them. An accidental `git add` of
+  a file with one of those seven extensions is now caught by the ignore (not by any scanning gate —
+  none exists, §3). NOT covered: password-carrying files with other names (`keystore.properties`,
+  `gradle.properties`, env exports) — the password half of the threat-model row stays human-guarded
+  only. If a key ever does touch git history anyway, the
   recovery is Play's upload-key reset (see Loss recovery below) plus rotating the key — not a history
   rewrite alone.
 - **Loss recovery:** with Play App Signing you "can create a new one and request an upload key reset

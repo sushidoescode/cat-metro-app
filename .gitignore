@@ -30,3 +30,6 @@ unity/.vscode/
 *.jks
 *.p12
 *.pem
+*.pfx
+*.bks
+*.key
