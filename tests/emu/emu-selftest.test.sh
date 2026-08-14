@@ -25,15 +25,23 @@ pack="evals/results/device/emu-gameplay-pass-2026-08-14"
 [ -x "$src" ] || fail "helper script is not executable"
 
 # Behavioral refusal probe (F1, hardened per R2-3): a non-emulator serial must be
-# refused with exit 2 BEFORE any adb invocation — asserted by observation, not by
-# source order: a shim adb sits first on PATH (with the SDK path pointed at nothing so
-# the script's own PATH prepend cannot outrank it) and records a sentinel if the
-# script reaches adb at all. The deliberately-nonexistent serial means that even a
-# future guard regression cannot reach real hardware from this probe.
+# refused with exit 2 BEFORE any PATH-resolved adb invocation — asserted by observation,
+# not by source order: a shim adb sits first on PATH and records a sentinel if the script
+# reaches a PATH-resolved adb. (An absolute-path adb wrapper would slip this shim, but
+# the adb-occurrence counter below still counts it — belt and suspenders.) The
+# deliberately-nonexistent serial means even a guard regression cannot reach real hardware.
 shimdir="$(mktemp -d "${TMPDIR:-/tmp}/emushim.XXXXXX")"
 sentinel="$shimdir/adb-was-invoked"
 printf '#!/bin/sh\ntouch "%s"\nexit 0\n' "$sentinel" > "$shimdir/adb"
 chmod +x "$shimdir/adb"
+# F-A: self-test the shim BEFORE trusting its silence — a noexec TMPDIR (or a chmod that
+# no-ops) would leave the shim unrunnable and the probe would fail OPEN, silently losing
+# the adb-before-refusal detector. Prove the instrument works (runs AND records), then
+# reset it. The explicit if-guard reports the reason instead of letting set -e short it.
+if ! "$shimdir/adb" >/dev/null 2>&1 || [ ! -e "$sentinel" ]; then
+  fail "probe shim is non-functional — cannot verify adb-before-refusal"
+fi
+rm -f "$sentinel"
 probe_rc=0
 probe_out="$(EMU_SERIAL="pixel-nonexistent-0000" ANDROID_SDK_ROOT="$shimdir/no-sdk" \
   PATH="$shimdir:$PATH" bash "$src" status 2>&1)" || probe_rc=$?
@@ -75,14 +83,19 @@ adb_occurrences=$(printf ' %s ' "$codeview" | tr '\n' ' ' | grep -oE '[^A-Za-z0-
 has 'adb -s "\$EMU_SERIAL"' || fail "the adb wrapper is not serial-scoped"
 has 'emulator-\*' || fail "the emulator-only serial allowlist is missing"
 
-# Condition-6 controls are gated too (R2-4 — control present must mean gate present).
-has ' -port "\$port"' || fail "boot does not pass EMU_SERIAL's derived port"
-has 'cannot derive a port' || fail "boot does not refuse an underivable serial"
-has 'did not appear within' || fail "boot's device wait is unbounded"
-has 'did not complete within' || fail "boot's boot-complete wait is unbounded"
+# Condition-6 controls are gated on the CONTROL FORM, not its error string (F-B: a gate
+# that greps only the message lets a maintainer keep the message and defang the control).
+# Each check pins the exact code shape a defang mutation would have to alter.
+has ' -port "\$port" -no-window' || fail "boot does not pass EMU_SERIAL's derived port to the launcher"
+hasE 'case "\$port" in \*\[!0-9\]' || fail "boot does not reject an underivable serial's port"
+# Both boot waits are bounded by the literal '-le 60' guard; unbounding either (D1/D2 raise
+# the number) drops the count below 2.
+bound_count=$(grep -cE '\[ "\$tries" -le 60 \]' <<<"$stripped" || true)
+[ "$bound_count" -eq 2 ] || fail "boot's two 180s waits are not both bounded at -le 60 (found $bound_count)"
 sed -n '/rotate-portrait)/,/;;/p' <<<"$stripped" | grep -q 'accelerometer_rotation 1' \
   || fail "rotate-portrait does not enable accelerometer_rotation"
-has 'tap coordinates must be numeric' || fail "tap does not enforce numeric coordinates"
+# The tap guard must validate the ACTUAL args "${1}${2}" (D3 defangs by testing a literal).
+hasE 'case "\$\{1\}\$\{2\}" in \*\[!0-9\]' || fail "tap does not validate its own coordinate args"
 
 # No upload or signing surface, ever (raw source; matches are failures outright).
 grep -Eiq 'fastlane|supply|keystore|apksigner|jarsigner|play.*upload' "$src" \
