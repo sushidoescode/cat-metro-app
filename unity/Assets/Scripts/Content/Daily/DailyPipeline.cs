@@ -18,7 +18,10 @@ namespace CatMetro.Content.Daily
         public readonly IReadOnlyList<string> DateKeys; // criterion 2: the date list is an input
         public readonly IBoardFactory Factory;
         public readonly string ReferenceTimestamp;      // host-computed or null (CM-C5 A-C5-4)
-        public readonly string BoardProvenance;         // artifact honesty: names the Q-S stub
+        public readonly string BoardProvenance;         // artifact honesty: names whichever factory
+                                                          // produced the run — the shipped
+                                                          // DailyBoardFactory generator (Q3, PR #73)
+                                                          // or CatMetro.DailyTools' own CLI stub
         public readonly IDailySeedScheme SeedScheme;
         public readonly int MaxNodesExpanded;
 

@@ -21,10 +21,13 @@ namespace CatMetro.DailyTools
         public bool Exists(string relativePath) => File.Exists(relativePath);
     }
 
-    // Q-S (A-C6-9): the fixed-board HARNESS STUB — imports an existing corpus level once and
-    // returns that DTO for every date. Zero board-shaping rules live here or anywhere else:
-    // the real generator is stop-gated on Q-S and arrives as its own contract; the artifact
-    // names this stub in boardProvenance so no one mistakes stub dailies for generated ones.
+    // Q3 (human-ruled, PR #73): DailyBoardFactory now ships as the one runtime IBoardFactory
+    // implementation (see IBoardFactory.cs) — the real generator is no longer stop-gated.
+    // CatMetro.DailyTools' pre-validation CLI still runs its OWN fixed-board HARNESS STUB below:
+    // imports an existing corpus level once and returns that DTO for every date, zero
+    // board-shaping rules live here. Historical note: under CM-C6 criterion 8 this stub existed
+    // because Q-S (A-C6-9) was open and no generator shipped at all; the artifact still names
+    // this stub in boardProvenance so no one mistakes stub dailies for generated ones.
     internal sealed class FixedBoardFactory : IBoardFactory
     {
         private readonly LevelDto _dto;
@@ -116,7 +119,8 @@ namespace CatMetro.DailyTools
                 schemaBytes, thresholds.Value, config, curveBytes, dates,
                 new FixedBoardFactory(import.Value.Dto),
                 referenceTimestamp: null,
-                boardProvenance: "stub:" + board.Replace('\\', '/') + " (Q-S: no shipped generator)"));
+                boardProvenance: "stub:" + board.Replace('\\', '/')
+                    + " (DailyTools CLI fixed-board stub — DailyBoardFactory ships separately, see IBoardFactory.cs)"));
             if (!run.Ok)
             {
                 Console.Error.WriteLine("validate-dailies: " + run.Error);
