@@ -2,6 +2,7 @@ using System.Threading;
 using CatMetro.Application.Retry;
 using CatMetro.Application.Session;
 using CatMetro.Content;
+using CatMetro.Content.Daily;
 using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Cameras;
 using CatMetro.Presentation.Diagnostics;
@@ -41,6 +42,37 @@ namespace CatMetro.Bootstrap
         // through Launch/LaunchWith, which always Wire synchronously before returning).
         public string CurrentLevelId => _level?.Dto.Id;
 
+        // CM-DAILYWIRE: the session marker — true from a successful SelectDaily() until
+        // ReturnHomeFromDaily() (or a fresh campaign LoadNext, defensively). Read-only so the
+        // ONLY place that can flip it is this file's own funnel logic, never a test/UI hand-set.
+        public bool IsDailySession => _dailySession;
+        private bool _dailySession;
+        // The level that was active immediately before Daily was selected — restored by
+        // ReturnHomeFromDaily() so nothing behind Home is a stale Won Daily session (the same
+        // collision class CM-LOADNEXT's Known-debt entry names for the dev BootToHome flow).
+        private ImportedLevel _preDailyLevel;
+
+        // CM-DAILYWIRE criterion 9 (A-DL-6): surfaced, not persisted — null except immediately
+        // after a Daily session's real Won transition, cleared on the next LoadLevel(). No
+        // level (campaign or Daily) renders a ticket amount in pixels yet; this is a tested
+        // data seam, not UI (see the frozen contract's Known-debt list).
+        public int? DailyTicketsEarned { get; private set; }
+
+        // CM-DAILYWIRE: the ONE ambient-clock read this contract adds — injectable exactly like
+        // MotionOffToggle/AnimatorDurationScale (the P-3 injection style) so tests pin an exact
+        // date without depending on wall-clock nondeterminism. Everything downstream of this one
+        // call (DailyLineSeed, DailyBoardFactory, CorpusValidator, the solver) stays the same
+        // pure functions #73 already tests.
+        public System.Func<long> DailyClockUnixSeconds =
+            () => System.DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        // Injectable exactly like DailyClockUnixSeconds — the production default is the ONE
+        // shipped IBoardFactory (DailyBoardFactory, Content/Daily's Q3-authorized owner); tests
+        // substitute a controlled factory to prove criterion 7's loud-failure path without
+        // depending on the real generator ever actually failing (it does not, across #73's own
+        // 90-date proof).
+        public System.Func<IBoardFactory> DailyFactory = () => new DailyBoardFactory();
+
         // CM-C3 A-C3-3: motion state = toggle OR OS animation scale zero. No save field; the
         // device wiring of the OS scale arrives with the settings screen (reads-only here).
         public bool MotionOffToggle;
@@ -56,12 +88,28 @@ namespace CatMetro.Bootstrap
         // is unchanged when this is false). Default false.
         public static bool BootToHome;
 
+        // CM-DAILYWIRE: mirrors BootToHome's exact shape — a static field so ComposeDevScreenFlow
+        // can read it synchronously at Wire-time (an instance field set AFTER LaunchWith returns
+        // would be too late). Default false: product_spec §18 gates Daily behind "after L007
+        // win," and HomeScreenTests.cs's S-01 tree walk independently forbids a Daily node on
+        // the session-1 Home this class composes today — the two rules agree, and neither is
+        // this contract's to relax. The real L007-win check needs the save layer, which is
+        // unwired for any level today (Known debt, both here and in the frozen contract);
+        // until it lands, this is a dev/test-only seam for exercising the real wiring, never a
+        // shipped default.
+        public static bool DailyEntryUnlocked;
+
         // CM-DEVCAP3: the device-side companion to BootToHome — set from DevBootOverride's file
         // read inside InitializeFromSeam (the real device/Launch()/Awake() path only; LaunchWith
         // never touches it, exactly like DevLevelOverride never applies there). OR'd with the
         // static flag at Wire-end (criterion 5: the two seams are independent — neither can
         // suppress the other; see DevBootOverrideTests.Precedence_*).
         private bool _bootToHomeFileOverride;
+
+        // CM-DAILYWIRE F3 (review fix round): the pending-Home-show marker ReturnHomeFromDaily
+        // sets instead of calling Home.Show()/Stack.Push synchronously — see the Update()
+        // comment for the one-frame-lockout rationale. -1 == nothing pending.
+        private int _pendingHomeShowFrame = -1;
 
         public CatMetro.Presentation.Screens.HomeScreenView Home { get; private set; }
         public CatMetro.Presentation.Screens.LevelIntroSheet Intro { get; private set; }
@@ -217,7 +265,9 @@ namespace CatMetro.Bootstrap
                 gameObject.AddComponent<ResultsPanel>();
             var results = GetComponent<ResultsPanel>();
             results.Attach(() => ScreenState, Input.Regions);
-            results.NextRequested = LoadNext;
+            // CM-DAILYWIRE: the seam now routes through a small router instead of binding
+            // LoadNext directly — a Daily win must never reach campaign progression.
+            results.NextRequested = OnResultsCtaRequested;
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             if (GetComponent<DevCapture.DevFrameCapture>() == null)
@@ -247,7 +297,10 @@ namespace CatMetro.Bootstrap
             canvas.sortingOrder = 120;
 
             Stack = new CatMetro.Presentation.Screens.ScreenStack();
-            Home = CatMetro.Presentation.Screens.HomeScreenView.Create(canvasGo.transform);
+            // CM-DAILYWIRE: DailyEntryUnlocked false (the shipped default) means Create() never
+            // builds the Daily pin at all — S-01 honored exactly, not merely a hidden node.
+            Home = CatMetro.Presentation.Screens.HomeScreenView.Create(
+                canvasGo.transform, DailyEntryUnlocked);
             Home.Attach(Input.Regions, () => MotionOff);
             Intro = CatMetro.Presentation.Screens.LevelIntroSheet.Create(canvasGo.transform);
             Intro.Attach(Input.Regions);
@@ -262,6 +315,12 @@ namespace CatMetro.Bootstrap
                 Intro.Show(_level.Dto.Name, _level.Dto.Win.Deliveries);
                 Stack.Push("intro");
             };
+            // CM-DAILYWIRE: the Daily entry — no Intro sheet (the pin's own label is
+            // self-explanatory; unlike campaign levels this is not a fresh unnamed board), so
+            // SelectDaily() itself hides Home and clears the stack straight into gameplay on a
+            // successful resolve; on failure it returns without touching Home at all
+            // (criterion 7 — loud, never silent, never a half-shown screen).
+            Home.DailySelected = SelectDaily;
             Intro.PlayRequested = () =>
             {
                 Intro.Hide();
@@ -335,6 +394,23 @@ namespace CatMetro.Bootstrap
             // LoadNextTests.DoubleTap_SameFrame_NoYieldBetween_DoesNotSkipALevel) can re-resolve
             // the STALE region and invoke NextRequested again, skipping a band level.
             Input.Regions.Unregister(ResultsPanel.RegionId);
+            // CM-DAILYWIRE criterion 9: cleared on every level load (Retry/LoadNext/Daily
+            // select/return-home alike) — the ONLY place this becomes non-null again is a
+            // real Daily Won transition in Update(), below.
+            DailyTicketsEarned = null;
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            // CM-DAILYWIRE F3 (review fix round): any new level load cancels a stale pending
+            // Home-show. Without this, a rapid return-home -> re-select-Daily sequence (no
+            // yield in between — SelectDaily_IsDeterministic_... exercises exactly this
+            // shape) would leave the FIRST return-home's deferred show armed while a SECOND
+            // Daily session is now in progress; Update() would later show Home uninvited
+            // mid-session the first time enough frames pass. SelectDaily's own LoadLevel call
+            // clears it here BEFORE SelectDaily arms nothing (SelectDaily never shows Home at
+            // all); ReturnHomeFromDaily's LoadLevel call clears it here too, before
+            // ReturnHomeFromDaily arms its OWN fresh value immediately afterward — so the
+            // ordering never fights itself.
+            _pendingHomeShowFrame = -1;
+#endif
             _level = level;
             Session = new GameSession(level);
             if (View != null) Destroy(View.gameObject);
@@ -366,6 +442,12 @@ namespace CatMetro.Bootstrap
         public void LoadNext()
         {
             if (Session == null) return;
+            // CM-DAILYWIRE: defensive — campaign progression must never run inside a Daily
+            // session. Unreachable via any wired UI (OnResultsCtaRequested routes Daily to
+            // ReturnHomeFromDaily instead), but LoadNext is a public method any caller could
+            // invoke directly (the same permissive shape Retry/LoadNext already had before this
+            // contract, A-LN-3) — a second, independent guard layer.
+            _dailySession = false;
             string nextPath = LevelPath(NextLevelId(_level.Dto.Id));
             var source = new StreamingAssetsContentSource();
             var bytes = source.ReadAsync(nextPath, CancellationToken.None).GetAwaiter().GetResult();
@@ -384,9 +466,146 @@ namespace CatMetro.Bootstrap
             if (hint != null) hint.ResetForNewLevel();
         }
 
+        // CM-DAILYWIRE: ResultsPanel's ONE seam now routes here instead of binding LoadNext
+        // directly — the single decision point that keeps a Daily win structurally unable to
+        // reach LevelBand/NextLevelId/WrapAtEndOfBand (criterion 5). Deleting this branch (i.e.
+        // routing straight to LoadNext again) is the named mutation proof.
+        private void OnResultsCtaRequested()
+        {
+            if (_dailySession) { ReturnHomeFromDaily(); return; }
+            LoadNext();
+        }
+
+        // CM-DAILYWIRE criterion 6: a Daily win returns Home, never the next level. Restores
+        // the campaign level that was active before Daily was selected (never a stale Won
+        // Daily session bleeding behind a freshly re-shown Home — the same collision class
+        // CM-LOADNEXT's Known-debt entry names for this dev-only flow) and resets the CTA text
+        // back to the campaign default. The Home/Stack re-show is internally fenced because
+        // Home only exists behind BootToHome (Q-5) — _dailySession can only be true when Home
+        // exists in the first place, since SelectDaily's only caller is Home.DailySelected.
+        private void ReturnHomeFromDaily()
+        {
+            _dailySession = false;
+            var results = GetComponent<ResultsPanel>();
+            if (results != null) results.SetCtaTextKey("results.next");
+            if (_preDailyLevel != null)
+            {
+                var restore = _preDailyLevel;
+                _preDailyLevel = null;
+                LoadLevel(restore);
+            }
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            // CM-DAILYWIRE F3 (review fix round): Home.Show()/Stack.Push deferred — see the
+            // Update() comment below for the one-frame-input-lockout rationale (the L001/
+            // Daily pins the Show() below would register sit at the SAME screen coordinates
+            // the results CTA the player just tapped occupied, both centered in the same
+            // thumb band).
+            if (Home != null) _pendingHomeShowFrame = Time.frameCount;
+#endif
+        }
+
+        // CM-DAILYWIRE criteria 2/3/8: the funnel-position-6 entry point. Reads the ONE clock
+        // value, runs the REAL DailyPipeline (schema/validator/pipeline inputs from
+        // DailyRuntimeInputs — embedded compiled constants, never a shipped file, FA-2), and on
+        // a real admission loads the board through LevelImporter.Import — the identical
+        // function InitializeFromSeam/LoadNext already call. On any failure nothing loads and
+        // Home stays exactly as it was (criterion 7) — a loud, recorded error, never a silent
+        // blank board.
+        public void SelectDaily()
+        {
+            if (Session == null) return;
+            // CM-DAILYWIRE F4 (review fix round): defensive — a second SelectDaily() call
+            // while already in a Daily session must be a no-op, mirroring LoadNext's own
+            // defensive-clear shape/comment style (A-LN-3-adjacent). Without this guard,
+            // _preDailyLevel below would be overwritten with _level, which by then IS the
+            // Daily board itself (set by the FIRST call's LoadLevel) — corrupting the
+            // return-home restore target to the Daily board instead of the true pre-Daily
+            // campaign level.
+            if (_dailySession) return;
+            var resolved = ResolveDailyBoard();
+            if (resolved == null) return;
+            _preDailyLevel = _level;
+            LoadLevel(resolved);
+            _dailySession = true;
+            var results = GetComponent<ResultsPanel>();
+            if (results != null) results.SetCtaTextKey("results.daily.done");
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            if (Home != null)
+            {
+                Home.Hide();
+                while (Stack != null && Stack.TryPop(out _)) { }
+            }
+#endif
+        }
+
+        // Pure orchestration over the real engine API — no parallel validator, no shortcut
+        // admission. Returns null on ANY failure (request-level or a blocked date record); the
+        // caller (SelectDaily) treats null uniformly as "nothing to load."
+        private ImportedLevel ResolveDailyBoard()
+        {
+            long unixSeconds = DailyClockUnixSeconds();
+            string dateKey = DailyLineSeed.DateKeyFromUnixSeconds(unixSeconds);
+            var request = new DailyRunRequest(
+                DailyRuntimeInputs.SchemaBytes,
+                DailyRuntimeInputs.ValidatorConfig,
+                DailyRuntimeInputs.PipelineConfig(dateKey),
+                weekdayCurveBytes: null,
+                dateKeys: new[] { dateKey },
+                factory: DailyFactory(),
+                referenceTimestamp: null,
+                boardProvenance: "runtime:GameRoot.SelectDaily (CM-DAILYWIRE)",
+                seedScheme: DailyLineSeedScheme.Instance);
+
+            var run = DailyPipeline.Run(request);
+            if (!run.Ok)
+            {
+                Debug.LogError("daily pipeline request failed for " + dateKey + ": " + run.Error);
+                return null;
+            }
+            var record = run.Value.Records[0];
+            if (record.Blocks || record.Board == null || record.BoardJson == null)
+            {
+                Debug.LogError("daily pipeline could not admit a board for " + dateKey + ": "
+                    + record.Detail);
+                return null;
+            }
+            var imported = LevelImporter.Import(
+                System.Text.Encoding.UTF8.GetBytes(record.BoardJson));
+            if (!imported.Ok)
+            {
+                Debug.LogError("daily board unusable for " + dateKey + ": " + imported.Error);
+                return null;
+            }
+            // The SEAM_LOADED artifact line's Daily sibling — proves the played board came
+            // through the real admission pipeline, not a shortcut.
+            Debug.Log("SEAM_LOADED daily:" + dateKey);
+            return imported.Value;
+        }
+
         private void Update()
         {
             if (Session == null || _halted) return;
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            // CM-DAILYWIRE F3 (review fix round): the one-frame input lockout. Request frame
+            // F (ReturnHomeFromDaily, above) sets _pendingHomeShowFrame = F WITHOUT showing
+            // Home yet, so a same-frame repeat tap at the CTA's coordinates finds nothing
+            // registered there. This check only fires once Time.frameCount > F + 1 — i.e. it
+            // skips the very next Update() (frame F+1) too, so a SECOND tap arriving after
+            // exactly one yield (still "at" frame F+1) ALSO finds nothing registered yet and
+            // falls through harmlessly, instead of landing on the freshly-shown pin and
+            // pushing Intro. Home actually appears on the Update() at frame F+2. Mirrors
+            // LoadLevel's own unregister-before-show sequencing principle, extended across a
+            // frame boundary instead of within one synchronous call.
+            if (_pendingHomeShowFrame >= 0 && Time.frameCount > _pendingHomeShowFrame + 1)
+            {
+                _pendingHomeShowFrame = -1;
+                if (Home != null)
+                {
+                    Home.Show();
+                    Stack.Push("home");
+                }
+            }
+#endif
             if (Session.State.Outcome.Kind == CatMetro.Domain.OutcomeKind.Running
                 && ScreenState == "Playing")
             {
@@ -420,6 +639,9 @@ namespace CatMetro.Bootstrap
             {
                 ScreenState = "Won";
                 Banner.ShowKey("win.banner");
+                // CM-DAILYWIRE criterion 9 (A-DL-6): surfaced the moment a REAL Daily win
+                // happens — the admitted board's own DTO reward, never a guessed/pinned amount.
+                if (_dailySession) DailyTicketsEarned = _level.Dto.Economy.BaseTickets;
             }
             else if (outcome.Kind == CatMetro.Domain.OutcomeKind.Failed
                 && ScreenState != "FailureReview")
