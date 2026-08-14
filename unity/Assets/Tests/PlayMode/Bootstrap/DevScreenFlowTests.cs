@@ -10,10 +10,13 @@ using CatMetro.Content;
 
 namespace CatMetro.Tests.PlayMode
 {
-    // CM-UX-07 criterion 6: the dev-only screen flow behind GameRoot.BootToHome (S1/S9
-    // resolution). Static-field hygiene: BootToHome is reset in SetUp AND TearDown so a failed
-    // test never bleeds the dev flag into an unrelated fixture (the flag defaults false —
-    // shipped boot, Q-5 honored).
+    // CM-UX-07 criterion 6 / CM-BOOT-HOME: the screen flow (Home/Intro/ScreenStack) GameRoot
+    // composes. CM-BOOT-HOME retired GameRoot.BootToHome as the compose gate — Home now
+    // composes by default on every real boot (Launch()/Awake()) and never at all through
+    // LaunchWith (the gameplay-fixture seam), so this file's tests below assert the NEW
+    // topology directly rather than toggling a flag. BootToHome itself is still reset in
+    // SetUp/TearDown as harmless static-field hygiene (nothing reads it for composition
+    // anymore, but out-of-scope fixtures elsewhere still touch it).
     //
     // CM-DEVCAP3 addendum: DevBootOverride.DirectoryOverride is ALSO reset in SetUp/TearDown to
     // an isolated empty temp dir (PR #52 F7 correction: most tests below boot via LaunchWith — a
@@ -61,10 +64,20 @@ namespace CatMetro.Tests.PlayMode
             return null;
         }
 
-        // --- the flag OFF pin: zero screen objects constructed (shipped boot) ---
+        // --- CM-BOOT-HOME declared pin inversion: LaunchWith itself never composes a screen
+        // flow (retitled from "the flag OFF pin: ... (shipped boot)" — LaunchWith is the
+        // ~12-gameplay-fixture seam, NOT shipped boot anymore; shipped boot's positive Home
+        // proof now lives in ShippedBootHomeTests.cs, which drives the REAL Launch() seam).
+        // The assertions below are UNCHANGED (still true under the new topology, for a
+        // different reason): CM-BOOT-HOME EDIT 2 moved ComposeScreenFlow's call site from Wire
+        // to InitializeFromSeam, and LaunchWith calls Wire directly, bypassing
+        // InitializeFromSeam entirely — so it is now structurally impossible for LaunchWith to
+        // compose Home, independent of any flag's value (BootToHome is no longer even read for
+        // this purpose). This re-baselines the pin from "the flag is off" to "this seam never
+        // reaches the composer at all" — a strictly stronger guarantee. ---
 
         [UnityTest]
-        public IEnumerator FlagFalse_ZeroScreenObjectsConstructed_ShippedBootPin()
+        public IEnumerator LaunchWith_NeverComposesAScreenFlow_GameplayFixtureSeamPin()
         {
             _root = GameRoot.LaunchWith(Fixture());
             yield return null;
@@ -74,7 +87,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Stack, Is.Null);
             Assert.That(_root.ScreensVisible, Is.False);
             Assert.That(FindByName(_root.gameObject, "ScreensCanvas"), Is.Null,
-                "no ScreensCanvas exists in shipped boot");
+                "no ScreensCanvas exists on the LaunchWith seam");
             Assert.That(
                 _root.gameObject.GetComponentInChildren<CatMetro.Presentation.Screens.HomeScreenView>(true),
                 Is.Null, "zero Home objects constructed");
@@ -87,15 +100,18 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Input.HandleTapAtScreen(discPos), Is.EqualTo(0));
         }
 
-        // --- CM-DEVCAP3 criterion 2 (additive extension — the existing pin above is untouched):
-        // the SAME shipped-boot pin, reusing the exact same assertion shape (Home/Intro/Stack
-        // null, no ScreensCanvas, disc tap live), but proving the OTHER seam's absence case —
-        // booted via the REAL GameRoot.Launch() path (the only path the file seam ever reaches)
-        // with DevBootOverride.DirectoryOverride pointed at a guaranteed-empty temp dir, so no
-        // boot.json exists. This is the CM-DEVCAP3 sibling of the flag-false pin above. ---
+        // --- CM-BOOT-HOME declared pin inversion (the headline one): the REAL Launch() seam —
+        // formerly "BootOverrideFileAbsent_ZeroScreenObjectsConstructed_ShippedBootPin_
+        // ViaRealLaunch", asserting Home/Intro/Stack ARE null on shipped boot (the OLD Q-5
+        // design this contract's frozen contract explicitly supersedes). CM-BOOT-HOME criterion
+        // 1 makes Home the shipped default: the REAL Launch() seam, with no boot.json present
+        // (so DevBootOverride's file seam contributes nothing) and the dev skip-hatch at its
+        // default false, now composes Home unconditionally. Inverted to its positive
+        // counterpart — not deleted, not loosened — proving the NEW topology at the exact same
+        // seam the old pin proved the OLD one at. ---
 
         [UnityTest]
-        public IEnumerator BootOverrideFileAbsent_ZeroScreenObjectsConstructed_ShippedBootPin_ViaRealLaunch()
+        public IEnumerator RealLaunchSeam_NoBootOverrideFile_StillComposesHome_ShippedDefaultPin()
         {
             Assert.That(File.Exists(Path.Combine(_tmpDir, "boot.json")), Is.False,
                 "precondition: no boot.json exists in the injected devcap dir — otherwise this "
@@ -104,32 +120,46 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
 
             Assert.That(_root.Session.Level.Dto.Id, Is.EqualTo("L001"), "shipped L001 board");
-            Assert.That(_root.Home, Is.Null);
-            Assert.That(_root.Intro, Is.Null);
-            Assert.That(_root.Stack, Is.Null);
-            Assert.That(_root.ScreensVisible, Is.False);
-            Assert.That(FindByName(_root.gameObject, "ScreensCanvas"), Is.Null,
-                "no ScreensCanvas exists in shipped boot");
-            Assert.That(
-                _root.gameObject.GetComponentInChildren<CatMetro.Presentation.Screens.HomeScreenView>(true),
-                Is.Null, "zero Home objects constructed");
-            Assert.That(
-                _root.gameObject.GetComponentInChildren<CatMetro.Presentation.Screens.LevelIntroSheet>(true),
-                Is.Null, "zero Intro objects constructed");
+            Assert.That(_root.Home, Is.Not.Null,
+                "CM-BOOT-HOME criterion 1: Home composes on the real seam, file-absent or not");
+            Assert.That(_root.Home.IsVisible, Is.True, "Home shown on boot");
+            Assert.That(_root.Intro, Is.Not.Null);
+            Assert.That(_root.Stack, Is.Not.Null);
+            Assert.That(_root.ScreensVisible, Is.True);
+            CollectionAssert.AreEqual(new[] { "home" }, _root.Stack.ToBreadcrumb());
+            Assert.That(FindByName(_root.gameObject, "ScreensCanvas"), Is.Not.Null,
+                "the ScreensCanvas exists on the real boot seam");
 
-            // board input is unaffected (positive control: the merged behavior still holds)
+            // CM-BOOT-HOME criterion 2 (the tick-0 hold): board input is now gated while Home
+            // is up — the opposite of this pin's old "board input is unaffected" control, which
+            // proved the pre-CM-BOOT-HOME design where a dev screen flow never mounted here.
             var discPos2 = _root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0));
-            Assert.That(_root.Input.HandleTapAtScreen(discPos2), Is.EqualTo(0));
+            Assert.That(_root.Home.PinPaintedRectPx.Contains(discPos2), Is.False,
+                "precondition: the disc sits outside the Home pin's rect — otherwise this test "
+                + "cannot tell the board gate apart from the pin's chrome region claiming the tap");
+            Assert.That(_root.Input.HandleTapAtScreen(discPos2), Is.EqualTo(-1),
+                "board input is gated while Home is up (criterion 2c)");
+            Assert.That(_root.Session.State.Tick, Is.EqualTo(0),
+                "criterion 2: the sim is held at tick 0 while Home is shown");
         }
 
-        // --- the flag ON flow: Home -> pin tap -> Intro -> Play tap -> Playing, full round-trip ---
+        // --- CM-BOOT-HOME declared pin inversion: the round-trip flow, re-seamed onto the REAL
+        // Launch() seam (formerly "BootToHome_ComposesHomeIntroFlow_..." via
+        // `GameRoot.BootToHome = true; LaunchWith(...)`) — that seam is retired, not merely
+        // re-gated (see the pin above): LaunchWith can no longer reach the composer under ANY
+        // flag value. This is the shipped-default topology now (criterion 1), so the round trip
+        // is proven through GameRoot.Launch() with the dev skip-hatch left at its default false
+        // — no test-side override needed. Every assertion below is UNCHANGED in intent (Home ->
+        // pin tap -> Intro -> Play tap -> Playing, region-count/visibility discriminators all
+        // preserved); only the boot seam and the loaded level (L001 instead of the local
+        // fixture — the level's own DTO fields feed every assertion, so this substitution is
+        // load-bearing-free) changed. ---
 
         [UnityTest]
         public IEnumerator
-            BootToHome_ComposesHomeIntroFlow_PinTapToIntro_PlayTapToPlaying_StackRoundTrips()
+            RealLaunchSeam_ComposesHomeIntroFlow_PinTapToIntro_PlayTapToPlaying_StackRoundTrips()
         {
-            GameRoot.BootToHome = true;
-            _root = GameRoot.LaunchWith(Fixture());
+            _root = GameRoot.Launch();
             yield return null;
 
             Assert.That(_root.ScreensVisible, Is.True);
@@ -138,6 +168,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Intro, Is.Not.Null);
             Assert.That(_root.Intro.IsVisible, Is.False, "Intro not shown yet");
             CollectionAssert.AreEqual(new[] { "home" }, _root.Stack.ToBreadcrumb());
+            Assert.That(_root.Session.State.Tick, Is.EqualTo(0),
+                "criterion 2: the sim is held at tick 0 while Home is shown");
             // F1/F2 fix (round-1 review): baseline region count while only Home's pin is
             // registered — used below to prove the pin's region is genuinely gone (not just
             // visually hidden) once LevelSelected fires, without hardcoding a literal count.
@@ -176,10 +208,10 @@ namespace CatMetro.Tests.PlayMode
             // HudBands.ThumbBand(Screen.safeArea) and HomeLayout.PinRect centers the pin in
             // that IDENTICAL band, so "chip.Contains(pin.center)" reduces to
             // "band.Contains(band.center)": true by construction for any dpi/safe-area/device,
-            // and its rationale was false besides — Home.Hide() (GameRoot.cs:210) has already
-            // unregistered the pin by this point, so no tie-break ever occurs here. Replaced
-            // with asserts that read SUT state and can fail under the plausible mutation of
-            // deleting `Home.Hide();` at GameRoot.cs:210 (the PR's headline in-slice fix).
+            // and its rationale was false besides — Home.Hide() (GameRoot.ComposeScreenFlow)
+            // has already unregistered the pin by this point, so no tie-break ever occurs here.
+            // Replaced with asserts that read SUT state and can fail under the plausible
+            // mutation of deleting `Home.Hide();` (the PR's headline in-slice fix).
             Assert.That(_root.Home.IsVisible, Is.False,
                 "F2 discriminator: LevelSelected must call Home.Hide() — otherwise Home (and "
                 + "its title) is still visible bleeding through the Intro sheet right now");
@@ -190,7 +222,8 @@ namespace CatMetro.Tests.PlayMode
                 + "reads baseline + 1 (both regions live — the tie-break geometry this test "
                 + "must actually exercise)");
 
-            // tap Play: both hide, stack empties, board input returns
+            // tap Play: both hide, stack empties, board input returns, and CM-BOOT-HOME
+            // criterion 2's tick-0 hold lifts — the sim now advances on subsequent frames.
             int playResult = _root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center);
             Assert.That(playResult, Is.EqualTo(-3), "the Play chip is a chrome region");
             Assert.That(_root.Intro.IsVisible, Is.False);

@@ -14,23 +14,37 @@ namespace CatMetro.Presentation.Input
     {
         // CM-LOADNEXT D-1 + #46-F9 absorption: the documented registration-priority ladder —
         // explicit values are the law (A-UX1-3), never a registration-order accident. A parent
-        // screen (e.g. HomeScreenView's pin) registers at ParentPriority; an urgent full-screen
-        // escape (the halt region) at HaltEscapePriority; a standalone modal (ResultsPanel) at
-        // ModalPriority; a ScreenStack-hosted modal (LevelIntroSheet) at StackedModalPriority —
-        // one tier above ModalPriority because its ScreensCanvas paints ABOVE ResultsPanel's
-        // canvas (sortingOrder 120 vs 110, GameRoot.cs): the tap law matches the paint law, so
+        // screen registers at ParentPriority; an urgent full-screen escape (the halt region) at
+        // HaltEscapePriority; a standalone modal (ResultsPanel) at ModalPriority; a
+        // ScreenStack-hosted modal (LevelIntroSheet) at StackedModalPriority — one tier above
+        // ModalPriority because its ScreensCanvas paints ABOVE ResultsPanel's canvas
+        // (sortingOrder 120 vs 110, GameRoot.cs): the tap law matches the paint law, so
         // whichever modal is visually on top also wins the tap, by priority, never by which one
         // happened to register first (state/handoffs/CM-UX-07-delta-audit.md D-1).
-        // KNOWN EXCEPTION (NOT fixed by this ladder): "the tap law matches the paint law" is
-        // false for HomeScreenView's own pin — its ScreensCanvas (120) paints ABOVE
-        // ResultsPanel's canvas (110) exactly like a modal would, yet the pin registers at the
-        // LOWER ParentPriority (0) by the separate modal-over-parent law, so ResultsPanel (10)
-        // can outrank a visually-on-top Home pin. Reachable only in the dev BootToHome flow;
-        // flagged, not fixed — state/handoffs/CM-LOADNEXT-frozen-contract.md's Known-debt entry.
+        // CM-BOOT-HOME criterion 4 (the priority-debt fix, formerly a KNOWN EXCEPTION here):
+        // HomeScreenView's OWN pin (the L001 entry) is the one case where "the tap law matches
+        // the paint law" used to be FALSE — its ScreensCanvas (120) paints ABOVE ResultsPanel's
+        // canvas (110) exactly like a modal would, yet the pin registered at the lower
+        // ParentPriority (0) under the separate modal-over-parent law, so ResultsPanel (10)
+        // could outrank a visually-on-top Home pin. Dev-only and unreachable before this
+        // contract (state/handoffs/CM-LOADNEXT-frozen-contract.md's Known-debt entry); CM-BOOT-
+        // HOME promotes Home to the shipped default, so this would have shipped as a live tap
+        // bug the day two tap-eligible regions actually coexisted at the same screen point.
+        // Fixed via HomeScreenPriority, below.
         public const int ParentPriority = 0;
         public const int HaltEscapePriority = 5;
         public const int ModalPriority = 10;
         public const int StackedModalPriority = 11;
+        // CM-BOOT-HOME criterion 4: HomeScreenView's L001 pin's own priority — one tier above
+        // StackedModalPriority (not merely above ModalPriority) so it sits at the TOP of the
+        // ladder rather than wedged between two modal tiers. Home and LevelIntroSheet are
+        // mutually exclusive on screen by construction (HomeScreenView.LevelSelected always
+        // calls Home.Hide() before Intro.Show() — GameRoot.ComposeScreenFlow), so their relative
+        // order never actually resolves a live tie; the only correctness requirement is that the
+        // pin strictly outranks ModalPriority(10) so a visually-on-top Home pin can never lose a
+        // tap tie-break to ResultsPanel, which StackedModalPriority + 1 satisfies with the same
+        // margin the existing ladder already uses between its own tiers.
+        public const int HomeScreenPriority = StackedModalPriority + 1; // 12
 
         private struct Entry
         {

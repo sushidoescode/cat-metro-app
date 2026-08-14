@@ -19,9 +19,21 @@ namespace CatMetro.Tests.PlayMode
         private GameRoot _root;
         private string _state; // the test-controlled state source for transition legs
 
+        [SetUp]
+        public void SetUp()
+        {
+            // CM-BOOT-HOME: RealHalt_RendersTheVeil_WithTheWiringDelegateShape drives L001 to a
+            // real halt through GameRoot.Launch() — Home now composes there by default
+            // (criterion 1), which would hold the sim at tick 0 and never reach the halt.
+            // Opt OUT via the dev skip-Home hatch; the LaunchWith-seam tests (AttachControlled)
+            // are unaffected either way (LaunchWith never composes Home, CM-BOOT-HOME EDIT 2).
+            GameRoot.DevSkipShippedHome = true;
+        }
+
         [TearDown]
         public void TearDown()
         {
+            GameRoot.DevSkipShippedHome = false; // hygiene: restore the true global default
             if (_root != null) Object.Destroy(_root.gameObject);
             _root = null;
             Time.timeScale = 1f;

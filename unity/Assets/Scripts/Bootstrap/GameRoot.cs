@@ -82,54 +82,56 @@ namespace CatMetro.Bootstrap
         private ImportedLevel _level;
         private bool _halted;
 
+        // CM-BOOT-HOME criterion 1: unfenced (was dev-only behind the retired BootToHome gate)
+        // — a shipped build composes Home over every real boot (InitializeFromSeam, below), so
+        // these properties must exist there too, not just in a DEVELOPMENT_BUILD/editor test.
+        public CatMetro.Presentation.Screens.HomeScreenView Home { get; private set; }
+        public CatMetro.Presentation.Screens.LevelIntroSheet Intro { get; private set; }
+        public CatMetro.Presentation.Screens.ScreenStack Stack { get; private set; }
+
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
-        // CM-UX-07 criterion 6: the dev-only screen flow's launch seam — the DevLevelOverride
-        // precedent (a dev build's boot path, never shipped boot: Q-5 honored, InitializeFromSeam
-        // is unchanged when this is false). Default false.
+        // CM-BOOT-HOME criterion 3: RETIRED as the compose gate (ComposeScreenFlow no longer
+        // reads this — it is unconditional on real boot now, gated only by SkipHome() below).
+        // Kept, dev-only, ONLY because out-of-scope LaunchWith-seam fixtures still reference it
+        // (DailyWireTests.cs, DevBootOverrideTests.Precedence_*, and this file's own history) —
+        // setting it no longer composes anything through LaunchWith (EDIT 2 moved the compose
+        // call to InitializeFromSeam, which LaunchWith bypasses by construction), so those
+        // fixtures need their own follow-up migration (reported, not silently fixed here).
         public static bool BootToHome;
 
-        // CM-DAILYWIRE: mirrors BootToHome's exact shape — a static field so ComposeDevScreenFlow
-        // can read it synchronously at Wire-time (an instance field set AFTER LaunchWith returns
-        // would be too late). Default false: product_spec §18 gates Daily behind "after L007
-        // win," and HomeScreenTests.cs's S-01 tree walk independently forbids a Daily node on
-        // the session-1 Home this class composes today — the two rules agree, and neither is
+        // CM-BOOT-HOME criterion 3: the inverted successor to BootToHome. Home now composes by
+        // DEFAULT on every real boot (Launch()/Awake() -> InitializeFromSeam) — this is the
+        // dev/test-only opt-OUT hatch so the Launch()-gameplay fixtures (FailureTests,
+        // ChromeStateTests, DeviceConfigTests, GreyboxTests, GameRootWiringTests' halt tests)
+        // keep booting straight to L001 gameplay with no screen in the way. Default false: a
+        // real device build never touches this — the shipped default composes Home.
+        public static bool DevSkipShippedHome;
+
+        // CM-DAILYWIRE: mirrors BootToHome's exact shape — a static field so ComposeScreenFlow
+        // can read it synchronously at compose-time (an instance field set AFTER LaunchWith
+        // returns would be too late). Default false: product_spec §18 gates Daily behind "after
+        // L007 win," and HomeScreenTests.cs's S-01 tree walk independently forbids a Daily node
+        // on the session-1 Home this class composes today — the two rules agree, and neither is
         // this contract's to relax. The real L007-win check needs the save layer, which is
         // unwired for any level today (Known debt, both here and in the frozen contract);
         // until it lands, this is a dev/test-only seam for exercising the real wiring, never a
-        // shipped default.
+        // shipped default (ComposeScreenFlow reads this through a #if — see below — so a
+        // shipped build never builds the Daily pin at all).
         public static bool DailyEntryUnlocked;
-
-        // CM-DEVCAP3: the device-side companion to BootToHome — set from DevBootOverride's file
-        // read inside InitializeFromSeam (the real device/Launch()/Awake() path only; LaunchWith
-        // never touches it, exactly like DevLevelOverride never applies there). OR'd with the
-        // static flag at Wire-end (criterion 5: the two seams are independent — neither can
-        // suppress the other; see DevBootOverrideTests.Precedence_*).
-        private bool _bootToHomeFileOverride;
 
         // CM-DAILYWIRE F3 (review fix round): the pending-Home-show marker ReturnHomeFromDaily
         // sets instead of calling Home.Show()/Stack.Push synchronously — see the Update()
         // comment for the one-frame-lockout rationale. -1 == nothing pending.
         private int _pendingHomeShowFrame = -1;
-
-        public CatMetro.Presentation.Screens.HomeScreenView Home { get; private set; }
-        public CatMetro.Presentation.Screens.LevelIntroSheet Intro { get; private set; }
-        public CatMetro.Presentation.Screens.ScreenStack Stack { get; private set; }
 #endif
 
-        // CM-UX-07 criterion 2: true iff the dev screen flow (criterion 6) currently shows a
-        // screen (Home or LevelIntro) — derived from the stack so there is one source of truth.
-        // Always false in shipped boot: the predicate degenerates to the decompose's exact line.
-        public bool ScreensVisible
-        {
-            get
-            {
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
-                return Stack != null && Stack.Count > 0;
-#else
-                return false;
-#endif
-            }
-        }
+        // CM-UX-07 criterion 2 / CM-BOOT-HOME criterion 1: true iff a screen (Home or
+        // LevelIntro) currently shows — derived from the stack so there is one source of truth.
+        // Unconditional now: a shipped build composes Home on every real boot (Stack is
+        // non-null there by construction), and the LaunchWith-only gameplay fixtures never
+        // compose at all (EDIT 2), so Stack stays null and this degenerates to false for them —
+        // no #if/#else needed either way.
+        public bool ScreensVisible => Stack != null && Stack.Count > 0;
 
         public static GameRoot Launch(string levelPath = "content/levels/L001.json")
         {
@@ -180,12 +182,23 @@ namespace CatMetro.Bootstrap
             if (Session != null) return;
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             // CM-DEVCAP3: evaluated BEFORE the level-override early-return so the boot-to-home
-            // file takes effect on either sub-path (dev level override OR the shipped level) —
-            // the two file seams are independent (one picks WHICH level, the other picks
-            // WHETHER the dev screen flow composes over it, Q-5 law).
-            _bootToHomeFileOverride = DevCapture.DevBootOverride.ShouldBootToHome();
+            // file's own read/parse/log side effects fire on either sub-path (dev level override
+            // OR the shipped level) — CM-BOOT-HOME criterion 3 retired its RETURN VALUE as a
+            // compose gate (Home composes unconditionally on real boot now, see SkipHome()
+            // below), but the file is still read here so DevBootOverrideTests.cs's malformed-
+            // file coverage (loud/quiet fallback logging) keeps exercising the real thing.
+            DevCapture.DevBootOverride.ShouldBootToHome();
             var devLevel = DevCapture.DevLevelOverride.TryImport();
-            if (devLevel != null) { Wire(devLevel); return; }
+            if (devLevel != null)
+            {
+                Wire(devLevel);
+                // CM-BOOT-HOME criterion 1: compose BEFORE the early return — this dev-level
+                // sub-path is still a REAL boot (SceneBoot/Launch(), never LaunchWith), so it
+                // gets Home exactly like the shipped branch below, unless the dev skip hatch
+                // opts out.
+                if (!SkipHome()) ComposeScreenFlow();
+                return;
+            }
 #endif
             var source = new StreamingAssetsContentSource();
             var bytes = source.ReadAsync(levelPath, CancellationToken.None).GetAwaiter().GetResult();
@@ -195,6 +208,24 @@ namespace CatMetro.Bootstrap
             // Criterion 8's artifact line: proves the played level came through the seam.
             Debug.Log("SEAM_LOADED " + levelPath);
             Wire(imported.Value);
+            // CM-BOOT-HOME criterion 1 (the new shipped default): every real boot composes Home
+            // over the just-wired level, unless the dev skip hatch opts out (SkipHome(), always
+            // false in a shipped build). LaunchWith (the ~12 gameplay fixtures' seam) bypasses
+            // InitializeFromSeam entirely and never reaches this line — they get NO Home.
+            if (!SkipHome()) ComposeScreenFlow();
+        }
+
+        // CM-BOOT-HOME criterion 3: true only in a dev/test build that explicitly opts OUT of
+        // the shipped Home screen (DevSkipShippedHome, the inverted BootToHome successor) —
+        // always false in a shipped (non-dev, non-editor) build, so a real device ALWAYS
+        // composes Home on boot.
+        private static bool SkipHome()
+        {
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            return DevSkipShippedHome;
+#else
+            return false;
+#endif
         }
 
         private void Wire(ImportedLevel level)
@@ -224,9 +255,10 @@ namespace CatMetro.Bootstrap
             // is NOT behavior-unchanged in shipped boot as a whole — previously BoardInputActive
             // was null (TapInput treats null as always-active), so discs resolved even during
             // Won/FailureReview/Halted; the "ScreenState == Playing" term newly closes them
-            // there (that is criterion 2's point). Only the "!ScreensVisible" term is
-            // behavior-neutral in shipped boot, since ScreensVisible degenerates to false there
-            // (criterion 6 never mounts).
+            // there (that is criterion 2's point). CM-BOOT-HOME update: the "!ScreensVisible"
+            // term is LIVE in shipped boot now too (Home composes by default there, criterion 1)
+            // — it degenerates to false only on the LaunchWith-only gameplay-fixture seam, which
+            // never composes a screen flow at all (EDIT 2).
             Input.BoardInputActive = () => ScreenState == "Playing" && !ScreensVisible;
             Banner = BannerView.Create(transform);
             Preview = WavePreviewStrip.Create(transform, Session, Cam);
@@ -272,21 +304,18 @@ namespace CatMetro.Bootstrap
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             if (GetComponent<DevCapture.DevFrameCapture>() == null)
                 gameObject.AddComponent<DevCapture.DevFrameCapture>().Wire(this);
-            // CM-DEVCAP3 criterion 5 (precedence): OR'd, never AND'd — the static test flag's
-            // own power to compose is never gated by the file (it composes even when the file
-            // is absent/malformed), and the file's power to compose is never gated by the flag
-            // (it composes even when BootToHome is left at its default false, the only case
-            // that matters on a real device where the static flag is never touched).
-            if (BootToHome || _bootToHomeFileOverride) ComposeDevScreenFlow();
 #endif
         }
 
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
-        // CM-UX-07 criterion 6: ONE ScreensCanvas (ScreenSpaceCamera on Cam, sortingOrder 120 —
-        // above the CM-UX-04 results canvas at 110) hosting Home + LevelIntro. Deliveries/name
-        // come from the already-loaded level — no new I/O. ScreensVisible reads the stack, so
-        // there is exactly one source of truth for "a screen is up".
-        private void ComposeDevScreenFlow()
+        // CM-UX-07 criterion 6 / CM-BOOT-HOME criterion 1: ONE ScreensCanvas (ScreenSpaceCamera
+        // on Cam, sortingOrder 120 — above the CM-UX-04 results canvas at 110) hosting Home +
+        // LevelIntro. Deliveries/name come from the already-loaded level — no new I/O.
+        // ScreensVisible reads the stack, so there is exactly one source of truth for "a screen
+        // is up". CM-BOOT-HOME: unfenced (renamed from ComposeDevScreenFlow) — this now runs on
+        // EVERY real boot, shipped included (criterion 1), so it may reference only already-
+        // shipped Presentation.Screens types + Canvas/Camera — no Newtonsoft, no DevCapture
+        // (verified: this method touches none).
+        private void ComposeScreenFlow()
         {
             var canvasGo = new GameObject("ScreensCanvas");
             canvasGo.transform.SetParent(transform, false);
@@ -297,10 +326,17 @@ namespace CatMetro.Bootstrap
             canvas.sortingOrder = 120;
 
             Stack = new CatMetro.Presentation.Screens.ScreenStack();
-            // CM-DAILYWIRE: DailyEntryUnlocked false (the shipped default) means Create() never
-            // builds the Daily pin at all — S-01 honored exactly, not merely a hidden node.
+            // CM-DAILYWIRE / CM-BOOT-HOME criterion 5: DailyEntryUnlocked is a dev/test-only
+            // static field (fenced) — a shipped build has no such flag, so dailyUnlocked is
+            // unconditionally false there (S-01 / commerce-free law: the Daily pin must never
+            // even be CONSTRUCTED on the shipped path, not merely hidden).
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            bool dailyUnlocked = DailyEntryUnlocked;
+#else
+            bool dailyUnlocked = false;
+#endif
             Home = CatMetro.Presentation.Screens.HomeScreenView.Create(
-                canvasGo.transform, DailyEntryUnlocked);
+                canvasGo.transform, dailyUnlocked);
             Home.Attach(Input.Regions, () => MotionOff);
             Intro = CatMetro.Presentation.Screens.LevelIntroSheet.Create(canvasGo.transform);
             Intro.Attach(Input.Regions);
@@ -319,7 +355,11 @@ namespace CatMetro.Bootstrap
             // self-explanatory; unlike campaign levels this is not a fresh unnamed board), so
             // SelectDaily() itself hides Home and clears the stack straight into gameplay on a
             // successful resolve; on failure it returns without touching Home at all
-            // (criterion 7 — loud, never silent, never a half-shown screen).
+            // (criterion 7 — loud, never silent, never a half-shown screen). SelectDaily is a
+            // public, unfenced method, but the Daily pin above is only ever CONSTRUCTED when
+            // dailyUnlocked is true (never in a shipped build), so this delegate can never fire
+            // there — wiring it unconditionally costs nothing and keeps this method identical
+            // across dev and shipped builds.
             Home.DailySelected = SelectDaily;
             Intro.PlayRequested = () =>
             {
@@ -331,7 +371,6 @@ namespace CatMetro.Bootstrap
             Home.Show();
             Stack.Push("home");
         }
-#endif
 
         // CM-C3 criterion 10's reason→key mapping, PURE and test-drivable (review S1): the
         // PlatformOverflow branch is the ELSE — no shipped code names the pinned enum member
@@ -481,8 +520,10 @@ namespace CatMetro.Bootstrap
         // Daily session bleeding behind a freshly re-shown Home — the same collision class
         // CM-LOADNEXT's Known-debt entry names for this dev-only flow) and resets the CTA text
         // back to the campaign default. The Home/Stack re-show is internally fenced because
-        // Home only exists behind BootToHome (Q-5) — _dailySession can only be true when Home
-        // exists in the first place, since SelectDaily's only caller is Home.DailySelected.
+        // this whole path is reachable only through a real Daily session (dev/test-only,
+        // DailyEntryUnlocked-gated — CM-BOOT-HOME leaves Daily out of scope, criterion 5), and
+        // _dailySession can only be true when Home exists in the first place, since SelectDaily's
+        // only caller is Home.DailySelected.
         private void ReturnHomeFromDaily()
         {
             _dailySession = false;
@@ -606,8 +647,14 @@ namespace CatMetro.Bootstrap
                 }
             }
 #endif
+            // CM-BOOT-HOME criterion 2 (the tick-0 hold — the one genuinely new behavior): the
+            // trailing "&& !ScreensVisible" mirrors the board-input gate above
+            // (Input.BoardInputActive) so the sim never advances behind Home/Intro before the
+            // first Play tap — L001 cannot auto-run/fail while the player hasn't started yet.
+            // Once the Play tap drains the stack (ScreensVisible -> false), the sim resumes from
+            // tick 0 exactly as if this frame were the very first one.
             if (Session.State.Outcome.Kind == CatMetro.Domain.OutcomeKind.Running
-                && ScreenState == "Playing")
+                && ScreenState == "Playing" && !ScreensVisible)
             {
                 try
                 {

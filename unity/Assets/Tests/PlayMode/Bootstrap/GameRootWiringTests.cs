@@ -24,12 +24,20 @@ namespace CatMetro.Tests.PlayMode
         public void SetUp()
         {
             GameRoot.BootToHome = false;
+            // CM-BOOT-HOME: this file drives L001 to Playing/Won/Halted through the REAL
+            // Launch() seam in several tests — Home now composes there by default
+            // (criterion 1), which would gate board input and hold the sim at tick 0
+            // (criterion 2), breaking every assumption below. Opt OUT via the dev skip-Home
+            // hatch; BoardInputGate_HomeShownUnderDevFlag_DiscScanMisses below is the one test
+            // that explicitly wants Home shown, so it flips this back off for its own body.
+            GameRoot.DevSkipShippedHome = true;
         }
 
         [TearDown]
         public void TearDown()
         {
             GameRoot.BootToHome = false;
+            GameRoot.DevSkipShippedHome = false; // hygiene: restore the true global default
             if (_root != null) Object.Destroy(_root.gameObject);
             _root = null;
             Time.timeScale = 1f;
@@ -122,11 +130,25 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator BoardInputGate_HomeShownUnderDevFlag_DiscScanMisses()
         {
-            GameRoot.BootToHome = true;
-            _root = GameRoot.LaunchWith(QuietFixture());
+            // CM-BOOT-HOME migration (declared pin inversion — "BootToHome-gated compose"):
+            // LaunchWith no longer composes Home under ANY condition (EDIT 2 moved the compose
+            // call to InitializeFromSeam, which LaunchWith bypasses by construction), so
+            // `GameRoot.BootToHome = true; LaunchWith(...)` can no longer reach a shown Home —
+            // that seam is retired, not merely re-gated. This test's OWN point (Home shown gates
+            // the board) is proven more strongly today: through the REAL Launch() seam with the
+            // file's own skip-hatch explicitly OFF (overriding this file's SetUp default), which
+            // is exactly the shipped default topology (criterion 1) rather than a dev-only flag.
+            GameRoot.DevSkipShippedHome = false;
+            _root = GameRoot.Launch();
             yield return null;
 
-            Assert.That(_root.ScreenState, Is.EqualTo("Playing"), "the sim itself keeps running");
+            // CM-BOOT-HOME criterion 2 (the tick-0 hold): the ScreenState LABEL stays "Playing"
+            // while Home is up (that never changes), but the sim itself is now HELD at tick 0 —
+            // the opposite of the pre-CM-BOOT-HOME behavior this test's old comment described.
+            Assert.That(_root.ScreenState, Is.EqualTo("Playing"));
+            Assert.That(_root.Session.State.Tick, Is.EqualTo(0),
+                "criterion 2: the sim is held at tick 0 while Home is shown — it does not run "
+                + "in the background behind the screen the way it used to");
             Assert.That(_root.ScreensVisible, Is.True, "Home mounted — the stack is non-empty");
 
             var discPos = _root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0));
