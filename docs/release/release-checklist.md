@@ -78,11 +78,13 @@ Checklist per candidate:
   agent session can read it (no repo-relative path, no exported variable in a shell an agent runs in,
   no `.env` an agent could open). There is **no secret-scanning gate in CI today** (§3), so this rule
   is enforced by the human, not by the machine.
-- **Recorded follow-up (OWED, outside this lane's charter — flagged for a follow-up contract):** the
-  repo has no `.gitignore` patterns for keystore-shaped files (`*.keystore`, `*.jks`, `*.p12`,
-  `*.pem`). Until some contract adds them, an accidental `git add` of a key is not caught by anything.
-  If one ever does touch git history, the recovery is Play's upload-key reset (see Loss recovery
-  below) plus rotating the key — not a history rewrite alone.
+- **Recorded follow-up (DISCHARGED by `chore/keystore-gitignore`, outside this lane's original
+  charter):** the repo now has root `.gitignore` patterns for keystore-shaped files (`*.keystore`,
+  `*.jks`, `*.p12`, `*.pem`); a `git ls-files` scan against all four patterns at discharge time found
+  no tracked file matching any of them. An accidental `git add` of a key is now caught by the ignore
+  pattern (not by any scanning gate — none exists, §3). If one ever does touch git history anyway, the
+  recovery is Play's upload-key reset (see Loss recovery below) plus rotating the key — not a history
+  rewrite alone.
 - **Loss recovery:** with Play App Signing you "can create a new one and request an upload key reset
   in the Play console"; "Resetting your upload key will not affect the app signing key that Google
   Play uses" (same Android source, retrieved 2026-08-13).
