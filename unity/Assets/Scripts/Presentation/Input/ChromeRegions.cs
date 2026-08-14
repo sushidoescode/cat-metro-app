@@ -34,17 +34,20 @@ namespace CatMetro.Presentation.Input
         public const int ParentPriority = 0;
         public const int HaltEscapePriority = 5;
         public const int ModalPriority = 10;
-        public const int StackedModalPriority = 11;
-        // CM-BOOT-HOME criterion 4: HomeScreenView's L001 pin's own priority — one tier above
-        // StackedModalPriority (not merely above ModalPriority) so it sits at the TOP of the
-        // ladder rather than wedged between two modal tiers. Home and LevelIntroSheet are
-        // mutually exclusive on screen by construction (HomeScreenView.LevelSelected always
-        // calls Home.Hide() before Intro.Show() — GameRoot.ComposeScreenFlow), so their relative
-        // order never actually resolves a live tie; the only correctness requirement is that the
-        // pin strictly outranks ModalPriority(10) so a visually-on-top Home pin can never lose a
-        // tap tie-break to ResultsPanel, which StackedModalPriority + 1 satisfies with the same
-        // margin the existing ladder already uses between its own tiers.
-        public const int HomeScreenPriority = StackedModalPriority + 1; // 12
+        // CM-BOOT-HOME criterion 4: HomeScreenView's L001 pin sits BETWEEN the two modal tiers —
+        // strictly above ModalPriority(10) so a visually-on-top Home pin can never lose a tap
+        // tie-break to ResultsPanel (the debt this criterion exists to fix), and strictly BELOW
+        // StackedModalPriority so a ScreenStack-hosted modal pushed OVER Home still wins the
+        // overlap. That second half is load-bearing and was learned the hard way: an earlier
+        // revision of this fix put the pin at the TOP of the ladder (StackedModalPriority + 1)
+        // on the reasoning that Home and LevelIntroSheet are "mutually exclusive by construction"
+        // (LevelSelected hides Home before showing Intro). Production does behave that way, but
+        // ScreenCoRegistrationTests pins the LAW for the co-registered case — and with the pin
+        // on top, the Home pin stole the sheet's Play chip: playRequested was 0, i.e. THE GAME
+        // WAS NOT STARTABLE FROM THE SHEET. The stacked modal must outrank the parent screen's
+        // pin, always. StackedModalPriority therefore moves up one tier to preserve that.
+        public const int HomeScreenPriority = ModalPriority + 1;        // 11
+        public const int StackedModalPriority = HomeScreenPriority + 1; // 12
 
         private struct Entry
         {

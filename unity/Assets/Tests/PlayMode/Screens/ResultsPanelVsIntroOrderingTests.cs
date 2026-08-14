@@ -18,7 +18,7 @@ namespace CatMetro.Tests.PlayMode
     //
     // The ordering law (D-1 + #46-F9): LevelIntroSheet's ScreensCanvas paints ABOVE
     // ResultsPanel's canvas (sortingOrder 120 vs 110, GameRoot.cs) — "intro.play" registers at
-    // ChromeRegions.StackedModalPriority (11), strictly above ResultsPanel's
+    // ChromeRegions.StackedModalPriority (12), strictly above ResultsPanel's
     // ChromeRegions.ModalPriority (10). The topmost-PAINTED modal always wins the TAP, by
     // priority, never by registration luck.
     public sealed class ResultsPanelVsIntroOrderingTests
