@@ -338,6 +338,24 @@ existing `ChromeRegions`/`TapInput` seam; (3) returning Home from a Daily win re
 
 ## Known debt / follow-ups recorded here (not fixed by this contract)
 
+- **[#85 round-2 D-1 — and a completeness correction owned by the coordination session: the
+  fix round's "all nine findings applied" claim was 8-for-9; the reviewer's F6 was silently
+  dropped in the coordinator's renumbered dispatch and is dispositioned HERE, 9th]** The
+  CM-UX-05 hint-attempt run intentionally SURVIVES Daily transitions in this contract:
+  `Hints.ResetForNewLevel()` is called only in `LoadNext()`; `SelectDaily`→`LoadLevel` and
+  `ReturnHomeFromDaily`→`LoadLevel` change the level id without resetting, so a Daily failure
+  counts toward the restored campaign level's hint threshold (and vice versa). Recorded as
+  intentional-for-now rather than silently fixed at the review cap; the follow-up (reset on
+  Daily-boundary transitions + a test pinning the boundary semantics) rides the SAVE-WIRE /
+  Daily-unlock contract, which owns the session-boundary semantics anyway.
+- **[#85 round-2 D-2]** The F3 input lockout closes the SAME-FRAME and one-yield double-tap
+  windows only (frame-count gate, Home shows at F+2). The >1-frame human-cadence double-tap
+  (~6 frames) REMAINS OPEN and is inherited by the pre-existing CM-LOADNEXT tap-collision
+  debt (`ChromeRegions.cs:24-29`); the standard close is a time-based or first-tap-consuming
+  lockout. Dev-fenced-only in every branch of the residual; two benign dev-only consequences
+  during the lockout window recorded by the reviewer (bare board visible ~2 frames; a stray
+  tap in the window routes to the board as a miss).
+
 - **Highest priority, sharpened by the mid-implementation correction above:** `GameRoot.
   DailyEntryUnlocked` is a dev/test-only static seam, not a real progression gate. Wiring
   `ISave`/`SaveStore` into Bootstrap (unwired for ANY level today, campaign or Daily — CM-C7's
