@@ -85,7 +85,12 @@ are read-only reference points (already Overlay from #68) — not edited.
    (90/100/110/120) stays byte-identical. *Checks:* the three updated existing PlayMode
    assertions (renamed to say Overlay, not Camera) + the new z-order tests below (which
    would not compile/pass otherwise).
-2. **Z-order pin, red-first.** A new PlayMode test file proves, with real Wire()-attached
+2. **Z-order pin, proven-discriminating.** [Wording corrected per #86 review F-5: the RED
+   evidence was STASH-DERIVED after the fix existed in the working tree — the fix was stashed
+   out of six files and the tests run against the pre-unification state; the property (the
+   tests genuinely fail against that state, with the exact E-1 render-mode mismatch) is what
+   the artifacts prove; the original "written and run RED first, then the fix" ordering claim
+   was a post-hoc reconstruction and is retracted.] A new PlayMode test file proves, with real Wire()-attached
    canvases: (a) at a real Halted state with a genuinely pending wave, the halt veil's canvas
    shares a render mode with the wave strip's canvas and paints above it (100 > 80, real);
    (b) ResultsPanel's canvas shares a render mode with and paints above chrome's (110 > 100);
@@ -155,7 +160,7 @@ editor-drift settings files are reverted before every commit if Unity touched th
 
 - 2026-08-13 — contract frozen at `3c80b92` (this commit).
 - 2026-08-14 — all four criteria certified. Z-order pin (`8818596`) proven RED against the
-  pre-unification tree (both discriminating cases failed with the exact E-1 render-mode
+  pre-unification tree (stash-derived — see the F-5 correction in Method) (both discriminating cases failed with the exact E-1 render-mode
   mismatch, not a setup error), then GREEN after the unification fix (`bcd4090`), then a
   single-canvas mutation proof (only `ScreenChromeController` reverted) killed exactly the
   two tests that reference it. Capture rig (`7575496`) needed one follow-up
@@ -176,3 +181,19 @@ editor-drift settings files are reverted before every commit if Unity touched th
   `tests/unity/editmode.test.sh`, fail-closed by design on the pre-existing baseline).
   Worktree clean at the final tip (one incidental `dotnet` lock-file drift from the test
   run's own `dotnet test` legs was caught and reverted).
+
+
+## Post-review corrections (2026-08-14, #86 round 1 — applied by the coordination session)
+
+- **F-1 disclosure:** the unification blinds the two main-landed RT evidence rigs
+  (`ResultsPanelTests` + `ChromeStateTests` captures) and defeats the #39 M-2 anti-vacuity
+  probe — full statement + the NAMED follow-up contract in this branch's `ARTIFACT.md`
+  §Disclosure. Those files were deliberately not edited here (scope).
+- **F-3 correction:** the PLAYMODE "baseline" run recorded in the session evidence log was in
+  fact POST-change (the EM baseline was genuinely pre-change; the PM 9-count is independently
+  anchored on main's art-chain-blockers record, and failure-message-level identity was
+  verified 9/9 + 3/3 by the reviewer). The zero-new-failures conclusion stands on those
+  anchors, not on the mislabeled run.
+- **F-2:** the frames' tree attribution corrected to `6fde975` in `ARTIFACT.md`.
+- **F-8:** the RT-comparison wording narrowed ("no tray" retracted; chips/glyphs/divider are
+  the demonstrated differences).

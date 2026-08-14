@@ -95,6 +95,9 @@ namespace CatMetro.Tests.PlayMode
             // 2. LevelIntro
             Assert.That(_root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center),
                 Is.EqualTo(-3), "capture precondition: the pin tap actually routed to Home");
+            // Review F-7 note: this second loop is NOT shader warm-up — it is an intro-settle
+            // delay reusing the same frame count for convenience. Only the run's FIRST capture
+            // needs the shader warm-up documented at WarmupFrames' declaration.
             for (int i = 0; i < WarmupFrames; i++) yield return null;
             Assert.That(_root.Intro.IsVisible, Is.True, "capture precondition: Intro is up");
             yield return CaptureBackBuffer(dir, "02-levelintro.png");

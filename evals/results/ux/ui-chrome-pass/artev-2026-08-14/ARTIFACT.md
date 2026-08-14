@@ -1,7 +1,9 @@
 # ART-EVIDENCE — six taste-gate frames + the RT-vs-back-buffer comparison
 
-Captured 2026-08-14 with Unity 6000.3.16f1 at tree `7575496` (art/evidence-pass, after the
-chrome-canvas unification commits landed) via the committed `ArtEvidenceCaptureTests`
+Captured 2026-08-14 with Unity 6000.3.16f1 at tree `6fde975` (art/evidence-pass, after the
+chrome-canvas unification commits AND the shader warm-up fix landed — reproducing at
+`7575496`, which lacks the warm-up, yields the cyan placeholder bug described below;
+attribution corrected per the #86 round-1 review F-2) via the committed `ArtEvidenceCaptureTests`
 capture rig (`unity/Assets/Tests/PlayMode/Bootstrap/ArtEvidenceCaptureTests.cs`,
 `CaptureEvidence_SixChromeFrames_WhenRequested`), armed with `CM_ARTEV_CAPTURE_DIR`.
 Command: `Unity -batchmode -projectPath unity -executeMethod
@@ -44,8 +46,10 @@ whether or not the 900×2000 resize was applied, and had nothing to do with sort
 seconds apart) are the direct comparison item 3 asked for. Inspected side by side: the back-
 buffer frame shows the wave-preview strip — two Warm Paper trays, red cat faces, "x6" counts —
 in the top status band, sitting above the diorama board. The RT frame shows the *identical*
-board (track, switch, stations, scenery, desk) with the **top status band empty** — no tray,
-no chip, no count. The wave strip (and every other Overlay chrome surface, by the same
+board (track, switch, stations, scenery, desk) with the **top status band's chrome content
+absent** — the band background itself is identical warm-paper in both frames (the tray, if
+separable, is not demonstrably absent; corrected per review F-8); what differs: no red cat
+chips, no "x6" count glyphs, no divider. The wave strip (and every other Overlay chrome surface, by the same
 mechanism) is invisible to the RT route and visible on the back-buffer route, exactly as E-1
 predicted.
 
@@ -94,3 +98,19 @@ unification and capture-path work is actually about — palette, typography, lay
 banner/results composition, and the now-real cross-canvas paint order (the wave strip
 genuinely painting above/inside the correct band, the halt-adjacent surfaces never
 inverted). Taste judgment on the board/prop art itself is Lane 1A's evidence to supply.
+
+
+## Disclosure (per the #86 round-1 review F-1): two main-landed RT evidence rigs are now blind
+
+The chrome-canvas unification (this branch) means `ResultsPanelTests.CaptureEvidence_ResultsFrame_WhenRequested`
+and `ChromeStateTests`' `CaptureEvidence_*` rigs — both env-armed, both main-landed, both
+capturing via `Cam.Render()` into a RenderTexture — no longer see their subjects (ResultsPanel's
+and ScreenChromeController's canvases are now Overlay, which never enters a camera's render
+target). Worse, the #39 M-2 anti-vacuity probe in the ResultsPanel rig no longer discriminates:
+the reviewer pixel-sampled this directory's own frames at the probe's two coordinates and
+showed it PASSES on a chrome-less frame. Until the named follow-up lands, any armed run of
+those two rigs produces NON-PROBATIVE frames and their outputs must not be treated as evidence.
+NAMED FOLLOW-UP CONTRACT: retrofit both rigs to back-buffer capture (the
+`ArtEvidenceCaptureTests` pattern, including the cold-process shader warm-up) and restore the
+M-2 probe's discriminating power with a chrome-only-differentiated coordinate pair. Those two
+test files were NOT edited in this PR — they are outside this contract's scope (hard rule 4).

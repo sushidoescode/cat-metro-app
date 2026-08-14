@@ -9,7 +9,13 @@ using CatMetro.Presentation.Hud;
 
 namespace CatMetro.Tests.PlayMode
 {
-    // ART-EVIDENCE criterion 2 (PR #68 round-2 review finding E-1). Before this pin, the wave
+    // ART-EVIDENCE criterion 2 (PR #68 round-2 review finding E-1). Scope note (review F-6):
+    // these pins bind SAME-RENDER-MODE + numeric sortingOrder, not full compositing-layer
+    // identity — two Camera-space canvases on different cameras would satisfy them. That gap
+    // is closed in aggregate by the absolute Overlay pins in GameRootWiringTests /
+    // DevScreenFlowTests / WavePreviewReferenceStyleTests and by the project using no sorting
+    // layers; if either of those facts changes, strengthen these to absolute pins.
+    // Before this pin, the wave
     // strip and the banner painted through Unity's ScreenSpaceOverlay compositing layer while
     // chrome/hint/results/the dev screens painted through a ScreenSpaceCamera layer instead.
     // Those two layers never compare by sortingOrder: an overlay canvas always composites above
