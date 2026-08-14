@@ -27,6 +27,25 @@ Android emulator against a real build.
 Together 02+03 are the paired proof of criterion 2: **held at 0, then advancing** — the one
 genuinely new behavior in this contract.
 
+## First-tap observation — investigated and RESOLVED (not a defect)
+
+During capture, the first pin tap after a cold start did not register while the second did.
+That reproduced deterministically, so it was investigated rather than written off:
+
+- **Discriminating test:** after a cold start, one tap was sent to DEAD SPACE (screen centre,
+  where no region is registered) — it changed nothing, as expected — and then a **single**
+  tap on the pin opened the Intro immediately.
+- **Conclusion:** the first touch after the activity gains focus is consumed by Android's
+  window focus change, not delivered to the app. The neutral tap "spends" that swallow. If
+  this were a hit-rect or priority-ordering defect, the pin would still have required two
+  taps AFTER the neutral one — it did not.
+- **Therefore not attributable to this contract** (and not to the `HomeScreenPriority` fix):
+  it is an emulator/Android input artifact affecting the first touch of any session,
+  whatever it lands on. Recorded here so a future session does not re-chase it.
+
+That run also re-confirmed the tick-0 hold independently: the board behind the Intro was
+again FRESH (~65s after boot).
+
 ## What is dev-build noise, not the feature
 
 The Development Console overlay and its six "CapsuleCollider doesn't exist" lines are the
