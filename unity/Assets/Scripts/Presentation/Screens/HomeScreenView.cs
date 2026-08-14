@@ -111,6 +111,16 @@ namespace CatMetro.Presentation.Screens
             // HomeScreenTests render-only whitelist still holds; names avoid every tripwire word.
             view._background = MakeSurface(go.transform, "Background",
                 Vector2.zero, Vector2.one, Palette.WarmPaper, rounded: false);
+            // MENU-POLISH: the §7 "base-board bevel with a visible cardboard edge" + "soft
+            // contact shadow" — the cue that sells the miniature. Drawn BEHIND the board and
+            // offset DOWNWARD so it peeks out under the bottom lip (thickness/contact shadow)
+            // with only a hairline at the sides and NONE above the top edge: a symmetric rim
+            // reads as a UI panel border, not a board sitting on a desk. Alpha is deliberately
+            // strong — a first pass at 0.28 computed to ~#BEBEBF over warm paper and washed out
+            // to a light grey frame (verified on device, the exact failure this replaces).
+            MakeSurface(go.transform, "BoardEdge",
+                new Vector2(0.034f, 0.034f), new Vector2(0.966f, 0.944f),
+                Palette.WithAlpha(Palette.DepotNavy, 0.55f), rounded: true);
             MakeSurface(go.transform, "BaseBoard",
                 new Vector2(0.04f, 0.05f), new Vector2(0.96f, 0.95f), Palette.CreamCard, rounded: true);
 
@@ -204,7 +214,11 @@ namespace CatMetro.Presentation.Screens
             if (mat != null) img.material = mat;
             // BEAUTIFUL-MENU: parked scenery in low-alpha depot navy over the cream board
             // (S-01: curiosity, not locks) — was a flat neutral grey.
-            img.color = Palette.WithAlpha(Palette.DepotNavy, 0.30f);
+            // MENU-POLISH: 0.30 washed out to light taupe over CreamCard (the taste note);
+            // 0.44 gives the parked districts real presence while staying clearly SCENERY —
+            // still far below the L001 pin's full-strength navy, so the single CTA keeps its
+            // visual primacy (S-01's "one pulsing affordance" law).
+            img.color = Palette.WithAlpha(Palette.DepotNavy, 0.44f);
         }
 
         private static RectTransform MakeChip(Transform parent, string name, Color color)
