@@ -46,11 +46,17 @@ script in the keyed session; (2) sequence the license ADR. Neither is an agent's
 - **PROBE BOTH SERVICES BEFORE ANY FULL QUEUE — standing gate, not a historical note.**
   Run one single-asset probe per service and confirm each produces a real `.glb`:
   ```
-  ! cd <repo> && set -a && source ./.env && set +a && GEN_ASSETS_ACCOUNT_TIER=paid \
-      bash scripts/gen-assets.sh tripo "a test cat" probe-tripo.glb
-  ! cd <repo> && set -a && source ./.env && set +a && GEN_ASSETS_ACCOUNT_TIER=paid \
-      bash scripts/gen-assets.sh meshy "a test cat" probe-meshy.glb
+  ! cd <repo> && set -a && source ./.env && set +a && \
+      probe_id="$(date -u +%Y%m%dT%H%M%SZ)-$$" && GEN_ASSETS_ACCOUNT_TIER=paid \
+      bash scripts/gen-assets.sh tripo "a test cat" "probe-tripo-${probe_id}.glb"
+  ! cd <repo> && set -a && source ./.env && set +a && \
+      probe_id="$(date -u +%Y%m%dT%H%M%SZ)-$$" && GEN_ASSETS_ACCOUNT_TIER=paid \
+      bash scripts/gen-assets.sh meshy "a test cat" "probe-meshy-${probe_id}.glb"
   ```
+  The timestamp-plus-shell-PID suffix makes every probe output new: a fixed filename would
+  hit the queue's intentional existing-file `SKIP` path after the first run and falsely
+  report success without exercising create, poll, or download. Confirm neither probe logs
+  `SKIP`, and inspect the two newly named GLBs and sidecars before starting the queue.
   This gate fires for **any** change that could touch a generation path — ours or the
   vendor's — not only a vendor-version bump. [Review finding, 2026-08-15: an earlier
   revision narrowed this to "for a future vendor-version change". That would NOT have
