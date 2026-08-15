@@ -31,7 +31,7 @@
 #   MESHY_AI_MODEL (latest) MESHY_POLYCOUNT (30000) MESHY_TEXTURE_RES (2k)
 #   MESHY_ENABLE_PBR (false) MESHY_POLL_INTERVAL (10s) MESHY_STAGE_TIMEOUT (1200s)
 #   MESHY_API_BASE (https://api.meshy.ai/openapi/v2; https:// enforced)
-#   TRIPO_MODEL_VERSION (server default) TRIPO_POLL_INTERVAL (5s) TRIPO_TIMEOUT (900s)
+#   TRIPO_MODEL_VERSION (v3.1-20260211) TRIPO_POLL_INTERVAL (5s) TRIPO_TIMEOUT (900s)
 #   TRIPO_API_BASE (https://openapi.tripo3d.ai/v3; https:// enforced)
 #   DOWNLOAD_TIMEOUT (900s) GEN_ASSETS_OUT_DIR (unity/Assets/Art/Generated/incoming)
 #   GEN_ASSETS_ACCOUNT_TIER (unknown; recorded per-asset in the sidecar for the license ADR)
@@ -231,7 +231,15 @@ meshy_poll() { # $1 = task id; prints final task JSON on success
       FAILED|CANCELED)
         err "meshy: task $id ended $status: $(printf '%s' "$resp" | json_get task_error.message || echo 'no error message')"
         return 1 ;;
-      *) say "  meshy task $id: $status ${progress}% (waited ${waited}s)" ;;
+      # LIVE-VERIFIED 2026-08-14: progress goes to STDERR, never stdout. This function's
+      # stdout is its DATA CHANNEL — the caller does `final=$(meshy_poll "$rid")` and parses
+      # it as JSON. Emitting progress on stdout put "  meshy task …%" lines in front of the
+      # JSON, so json_get died and every Meshy asset failed with "no GLB url on refine task"
+      # (7/7 in the human's first live queue; Tripo was immune because it polls inline, which
+      # is why the failure split perfectly along service lines). The preview poll hid the bug
+      # by discarding stdout with >/dev/null — which also swallowed the progress lines, so the
+      # log looked like polling never happened at all.
+      *) redact "  meshy task $id: $status ${progress}% (waited ${waited}s)" >&2 ;;
     esac
     [ "$waited" -ge "$MESHY_STAGE_TIMEOUT" ] && { err "meshy: task $id timed out after ${MESHY_STAGE_TIMEOUT}s"; return 1; }
     sleep "$MESHY_POLL_INTERVAL"; waited=$((waited + MESHY_POLL_INTERVAL))
@@ -255,6 +263,8 @@ meshy_generate() { # prompt, out
   resp=$(api_curl "$MESHY_API_KEY" -X POST -d "$body" "$MESHY_BASE/text-to-3d") || { err "meshy: preview create failed: $(redact "$resp")"; return 1; }
   pid=$(printf '%s' "$resp" | json_get result) || { err "meshy: no task id in create response"; return 1; }
   say "  preview task: $pid"
+  # >/dev/null discards only the final JSON (the data channel); progress now goes to stderr
+  # so the preview stage is visible in the log exactly like Tripo's inline polling.
   meshy_poll "$pid" >/dev/null || return 1
   say "MESHY create refine (texture) for $pid"
   resp=$(api_curl "$MESHY_API_KEY" -X POST -d "$(meshy_refine_body "$pid")" "$MESHY_BASE/text-to-3d") || { err "meshy: refine create failed: $(redact "$resp")"; return 1; }
@@ -269,13 +279,22 @@ meshy_generate() { # prompt, out
 
 # --- Tripo: create -> poll -> download (URLs expire fast: fetch immediately) ---------
 
+# LIVE-VERIFIED 2026-08-14: Tripo v3 REQUIRES `model`. Omitting it returns HTTP 400 with
+# code 1004 "model is required, allowed values: P1-20260311, v2.5-20250123, v3.0-20250812,
+# v3.1-20260211". The original shape sent `model` only when TRIPO_MODEL_VERSION was set, and
+# the default was unset — so every live tripo call failed. Caught by the one-asset probe the
+# PIPELINE doc prescribes (review finding F12: the v3 shape was documented but never
+# executed), which is exactly the 1-asset-instead-of-9 cost that probe exists to pay.
+# Default is the newest v-series model, matching this script's /v3 base URL; override with
+# TRIPO_MODEL_VERSION for a different one from the allowed list above.
+TRIPO_MODEL_DEFAULT="v3.1-20260211"
+TRIPO_MODEL="${TRIPO_MODEL_VERSION:-$TRIPO_MODEL_DEFAULT}"
+
 tripo_body() {
   python3 -c '
 import json, sys
-b = {"prompt": sys.argv[1]}
-if sys.argv[2]:
-    b["model"] = sys.argv[2]
-print(json.dumps(b))' "$1" "${TRIPO_MODEL_VERSION:-}"
+print(json.dumps({"prompt": sys.argv[1], "model": sys.argv[2]}))' \
+    "$1" "$TRIPO_MODEL"
 }
 
 tripo_generate() { # prompt, out
@@ -312,7 +331,7 @@ tripo_generate() { # prompt, out
     || { err "tripo: no model url on task $tid"; return 1; }
   say "  downloading GLB (signed URL, short expiry) -> $out"
   download_to "$url" "$out" || { err "tripo: download failed for $tid (signed URLs expire in minutes — re-run to regenerate)"; return 1; }
-  finish_asset "$out" "tripo" "$prompt" "$tid" "tripo model=${TRIPO_MODEL_VERSION:-server-default}"
+  finish_asset "$out" "tripo" "$prompt" "$tid" "tripo model=$TRIPO_MODEL"
 }
 
 # --- one asset / batch ---------------------------------------------------------------
@@ -379,7 +398,8 @@ to regenerate. --dry-run prints the requests it WOULD make (auth redacted), no k
 needed.
 
 Tunables (env, optional): MESHY_AI_MODEL MESHY_POLYCOUNT MESHY_TEXTURE_RES
-  MESHY_ENABLE_PBR MESHY_POLL_INTERVAL MESHY_STAGE_TIMEOUT TRIPO_MODEL_VERSION
+  MESHY_ENABLE_PBR MESHY_POLL_INTERVAL MESHY_STAGE_TIMEOUT
+  TRIPO_MODEL_VERSION (default: v3.1-20260211)
   TRIPO_POLL_INTERVAL TRIPO_TIMEOUT MESHY_API_BASE TRIPO_API_BASE (both https:// enforced)
   DOWNLOAD_TIMEOUT GEN_ASSETS_OUT_DIR GEN_ASSETS_ACCOUNT_TIER (recorded per-asset in the sidecar)
 EOF
