@@ -25,6 +25,15 @@ unity/*.slnx
 unity/.vsconfig
 unity/.vscode/
 
+# RICH-ASSETS: generated candidates are LOCAL until curated + provenance'd
+# (Polyfork custody pattern; promotion path in docs/design/assets/PIPELINE.md)
+unity/Assets/Art/Generated/incoming/
+# F11: if Unity opens the project after a generation run it writes .meta files for the
+# generated tree's parent folders, which the line above does not cover — ignore them too
+# so an unrelated `git add -A` cannot sweep them in.
+unity/Assets/Art/Generated.meta
+unity/Assets/Art/Generated/incoming.meta
+
 # Upload keystore + password are Never-in-repo / Never-agent-reachable (docs/security/threat-model.md:235); if one ever lands here anyway, treat it as compromised and use Play's upload-key reset (docs/release/release-checklist.md §2 "Loss recovery") to rotate — a history rewrite alone is not sufficient.
 *.keystore
 *.jks
