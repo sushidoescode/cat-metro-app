@@ -1,10 +1,11 @@
 using System.Collections;
-using System.Text;
+using System.IO;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using CatMetro.Bootstrap;
+using CatMetro.Bootstrap.DevCapture;
 using CatMetro.Content;
 using CatMetro.Content.Daily;
 using CatMetro.Presentation.Hud;
@@ -30,10 +31,21 @@ namespace CatMetro.Tests.PlayMode
         private const uint OtherSeed = 252386339u;
         private const long OtherUnixSeconds = 1786363200L; // 2026-08-10T12:00:00Z
 
+        // CM-BOOT-HOME: the boot-helper re-seam's temp dir. Home now composes on the REAL boot
+        // path (InitializeFromSeam), which LaunchWith bypasses entirely — so this suite injects
+        // its campaign fixture through DevLevelOverride's file seam and boots via Launch(),
+        // exactly the DevBootOverrideTests/DevLevelOverrideTests SceneBoot pattern. Assertion
+        // bodies are untouched: only HOW the fixture reaches GameRoot changed.
+        private string _tmpDir;
+
         [SetUp]
         public void SetUp()
         {
             GameRoot.BootToHome = false;
+            _tmpDir = Path.Combine(Path.GetTempPath(),
+                "cm-dailywire-" + System.Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(_tmpDir);
+            DevLevelOverride.DirectoryOverride = _tmpDir;
             // CM-DAILYWIRE: the shipped default is false (S-01 — HomeScreenTests.cs's own tree
             // walk forbids a Daily node on session-1 Home; product_spec §18 agrees, "after L007
             // win"). This suite explicitly opts into the dev/test-only seam to exercise the
@@ -47,17 +59,27 @@ namespace CatMetro.Tests.PlayMode
         {
             GameRoot.BootToHome = false;
             GameRoot.DailyEntryUnlocked = false;
+            DevLevelOverride.DirectoryOverride = null; // CM-BOOT-HOME re-seam hygiene
+            if (!string.IsNullOrEmpty(_tmpDir) && Directory.Exists(_tmpDir))
+                Directory.Delete(_tmpDir, true);
+            _tmpDir = null;
             if (_root != null) Object.Destroy(_root.gameObject);
             _root = null;
             Time.timeScale = 1f;
         }
 
-        private static ImportedLevel Import(string json)
+        // CM-BOOT-HOME: writes the campaign fixture where DevLevelOverride reads it, then boots
+        // the REAL seam — InitializeFromSeam picks the fixture up and composes Home over it.
+        private GameRoot LaunchWithCampaignFixture(string campaignId = "L001")
         {
-            var r = LevelImporter.Import(Encoding.UTF8.GetBytes(json));
-            Assert.That(r.Ok, Is.True, "fixture must import: " + r.Error);
-            return r.Value;
+            File.WriteAllText(Path.Combine(_tmpDir, "level.json"), CampaignFixtureJson(campaignId));
+            return GameRoot.Launch();
         }
+
+        // CM-BOOT-HOME: the old in-memory Import() helper is retired — the fixture now reaches
+        // GameRoot as BYTES through DevLevelOverride's real file seam (which runs the identical
+        // LevelImporter.Import internally and logs DEVCAP_LEVEL_OVERRIDE_INVALID on a bad
+        // payload), so a separate parse-and-assert helper would be a second source of truth.
 
         // F2 (review fix round): optional campaignId, default "L001" for the tests that don't
         // care which campaign level is active. The win-path test below passes "L004"
@@ -65,10 +87,9 @@ namespace CatMetro.Tests.PlayMode
         // discriminate the mutation it exists to catch.
         private IEnumerator BootToHomeWithCampaignFixture(string campaignId = "L001")
         {
-            GameRoot.BootToHome = true;
-            _root = GameRoot.LaunchWith(Import(CampaignFixtureJson(campaignId)));
+            _root = LaunchWithCampaignFixture(campaignId);
             yield return null;
-            Assert.That(_root.Home, Is.Not.Null, "precondition: the dev screen flow composed");
+            Assert.That(_root.Home, Is.Not.Null, "precondition: the screen flow composed");
             Assert.That(_root.Home.IsVisible, Is.True, "precondition: Home shown on boot");
         }
 
@@ -81,11 +102,10 @@ namespace CatMetro.Tests.PlayMode
         public IEnumerator ShippedDefault_DailyEntryUnlocked_False_BuildsZeroDailyObjects()
         {
             GameRoot.DailyEntryUnlocked = false; // the actual shipped default, overriding SetUp
-            GameRoot.BootToHome = true;
-            _root = GameRoot.LaunchWith(Import(CampaignFixtureJson("L001")));
+            _root = LaunchWithCampaignFixture("L001");
             yield return null;
 
-            Assert.That(_root.Home, Is.Not.Null, "precondition: the dev screen flow composed");
+            Assert.That(_root.Home, Is.Not.Null, "precondition: the screen flow composed");
             Assert.That(_root.Home.DailyPinTransform, Is.Null,
                 "zero Daily objects constructed — not merely hidden (the CM-UX-07 shipped-boot "
                 + "precedent) — S-01 and product_spec §18 (\"after L007 win\") both forbid it "
@@ -98,7 +118,7 @@ namespace CatMetro.Tests.PlayMode
             Object.Destroy(_root.gameObject);
             yield return null;
             GameRoot.DailyEntryUnlocked = true;
-            _root = GameRoot.LaunchWith(Import(CampaignFixtureJson("L001")));
+            _root = LaunchWithCampaignFixture("L001");
             yield return null;
             Assert.That(_root.Home.DailyPinTransform, Is.Not.Null,
                 "control: the flag genuinely gates construction");

@@ -23,13 +23,22 @@ namespace CatMetro.Tests.PlayMode
     // Launch() reach) is caught RED instead of passing silently. Criteria 1 (honored, announced,
     // real screen-flow composition), 3 (four malformed classes: bad JSON syntax, a
     // well-formed-but-wrong key, an explicit false value, a present-but-non-boolean value — all
-    // fall back to shipped boot with no throw and no partial composition), 4 (Q-5 law
-    // reasserted: the file NEVER changes which level boots), 5 (precedence between the static
-    // test flag and the file). Static-field hygiene: GameRoot.BootToHome, DevBootOverride's
-    // DirectoryOverride, AND DevLevelOverride's DirectoryOverride (F5: this fixture's symmetric
-    // isolation gap, since the F3 test needs both seams pointed at the same temp dir anyway) are
-    // all reset in SetUp AND TearDown so a failed test never bleeds state into an unrelated
-    // fixture, and no test here is exposed to a real file on the developer's machine.
+    // fall back to shipped boot with no throw), 4 (Q-5 law reasserted: the file NEVER changes
+    // which level boots), 5 (the flag/file relationship, re-baselined below). Static-field
+    // hygiene: GameRoot.BootToHome, DevBootOverride's DirectoryOverride, AND DevLevelOverride's
+    // DirectoryOverride (F5: this fixture's symmetric isolation gap, since the F3 test needs
+    // both seams pointed at the same temp dir anyway) are all reset in SetUp AND TearDown so a
+    // failed test never bleeds state into an unrelated fixture, and no test here is exposed to
+    // a real file on the developer's machine.
+    //
+    // CM-BOOT-HOME declared pin inversion (this file is one of the three named in the frozen
+    // contract): criterion 3's "shipped boot with no partial composition" used to mean
+    // "ScreensVisible stays False / Home stays Null" — CM-BOOT-HOME retires the file's return
+    // value as ComposeScreenFlow's gate entirely (criterion 3), so Home now composes
+    // UNCONDITIONALLY on every real boot regardless of the file's presence/validity/content.
+    // Every malformed-file test below is inverted to its positive counterpart (ScreensVisible
+    // True / Home Not.Null) while its actual file-parsing/logging assertions — this file's real
+    // subject — stay byte-for-byte unchanged; each inversion is commented in place with why.
     public sealed class DevBootOverrideTests
     {
         private GameRoot _root;
@@ -90,7 +99,11 @@ namespace CatMetro.Tests.PlayMode
 
         // --- criterion 1: file present + bootToHome:true -> honored, announced, real device
         // boot (SceneBoot -> Awake -> InitializeFromSeam) composes Home visible / board input
-        // gated / stack ["home"] ---
+        // gated / stack ["home"]. CM-BOOT-HOME note: composition itself is unconditional on
+        // real boot now (criterion 1) — this pin's remaining discriminating power is the
+        // "announced" half (the LogAssert.Expect below), proving the file is still genuinely
+        // read/parsed/logged even though its result no longer gates anything. Left as a
+        // positive assertion (never inverted, nothing to invert — it was already True). ---
         [UnityTest]
         public IEnumerator FilePresent_BootToHomeTrue_ComposesDevScreenFlow_ViaSceneBoot()
         {
@@ -118,7 +131,13 @@ namespace CatMetro.Tests.PlayMode
                 "criterion 1: board input is gated while the file-driven dev screen flow is up");
         }
 
-        // --- criterion 3(a): bad JSON syntax -> shipped boot, loud fallback, no throw ---
+        // --- CM-BOOT-HOME declared pin inversion (criterion 3(a)): bad JSON syntax -> the
+        // FILE's own fallback is still loud and the LEVEL is still the normal shipped one
+        // (Q-5, unchanged); "ScreensVisible False / Home Null" is INVERTED here — CM-BOOT-HOME
+        // criterion 3 retired the file's return value as a compose gate, so Home now composes
+        // unconditionally on the real Launch() seam regardless of the file's validity. This is
+        // a re-baseline, not a loosening: the file-parsing/logging assertions below (the actual
+        // point of this test) are byte-for-byte unchanged. ---
         [UnityTest]
         public IEnumerator MalformedFile_BadJsonSyntax_ShippedBoot_LoudFallback_NoThrow()
         {
@@ -129,34 +148,41 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Assert.That(_root.Session, Is.Not.Null, "still boots — never a crash or hang");
             Assert.That(_root.Session.Level.Dto.Id, Is.EqualTo("L001"), "the NORMAL shipped level booted");
-            Assert.That(_root.ScreensVisible, Is.False, "no partial composition");
-            Assert.That(_root.Home, Is.Null);
-            Assert.That(_root.Intro, Is.Null);
-            Assert.That(_root.Stack, Is.Null);
+            Assert.That(_root.ScreensVisible, Is.True,
+                "CM-BOOT-HOME criterion 1: Home composes unconditionally on real boot — the "
+                + "malformed file's fallback affects ONLY whether the file's own request is "
+                + "honored, never whether the shipped default composes");
+            Assert.That(_root.Home, Is.Not.Null);
+            Assert.That(_root.Intro, Is.Not.Null);
+            Assert.That(_root.Stack, Is.Not.Null);
         }
 
-        // --- criterion 3(b): well-formed JSON, WRONG key -> shipped boot, no throw, no log ---
+        // --- CM-BOOT-HOME declared pin inversion (criterion 3(b)): well-formed JSON, WRONG key
+        // -> the file-parsing/no-throw/no-log assertions are unchanged; ScreensVisible/Home
+        // inverted for the same reason as the pin above (compose is unconditional now). ---
         [UnityTest]
         public IEnumerator MalformedFile_WrongKey_ShippedBoot_NoThrow_NoLog()
         {
             File.WriteAllText(Path.Combine(_tmpDir, "boot.json"), "{\"boot_to_home\": true}");
-            // the SEAM_LOADED line is the NORMAL shipped-boot log (GameRoot.cs:131) — expected
+            // the SEAM_LOADED line is the NORMAL shipped-boot log (GameRoot.cs) — expected
             // here, never an "unexpected" log; only DEVCAP_BOOT_OVERRIDE_INVALID may not fire
             LogAssert.Expect(LogType.Log, "SEAM_LOADED content/levels/L001.json");
             _root = GameRoot.Launch();
             yield return null;
             Assert.That(_root.Session, Is.Not.Null);
             Assert.That(_root.Session.Level.Dto.Id, Is.EqualTo("L001"));
-            Assert.That(_root.ScreensVisible, Is.False, "no partial composition");
-            Assert.That(_root.Home, Is.Null);
-            Assert.That(_root.Intro, Is.Null);
-            Assert.That(_root.Stack, Is.Null);
+            Assert.That(_root.ScreensVisible, Is.True,
+                "CM-BOOT-HOME criterion 1: Home composes unconditionally on real boot");
+            Assert.That(_root.Home, Is.Not.Null);
+            Assert.That(_root.Intro, Is.Not.Null);
+            Assert.That(_root.Stack, Is.Not.Null);
             // a well-formed file that simply doesn't request the override is NOT an error case
             // (same shape as absence) — no DEVCAP_BOOT_OVERRIDE_INVALID line may fire
             LogAssert.NoUnexpectedReceived();
         }
 
-        // --- criterion 3(c): well-formed JSON, explicit FALSE value -> shipped boot, no throw ---
+        // --- CM-BOOT-HOME declared pin inversion (criterion 3(c)): well-formed JSON, explicit
+        // FALSE value -> the same inversion, same rationale as the pin above. ---
         [UnityTest]
         public IEnumerator MalformedFile_ExplicitFalseValue_ShippedBoot_NoThrow_NoLog()
         {
@@ -166,16 +192,20 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Assert.That(_root.Session, Is.Not.Null);
             Assert.That(_root.Session.Level.Dto.Id, Is.EqualTo("L001"));
-            Assert.That(_root.ScreensVisible, Is.False, "no partial composition");
-            Assert.That(_root.Home, Is.Null);
-            Assert.That(_root.Intro, Is.Null);
-            Assert.That(_root.Stack, Is.Null);
+            Assert.That(_root.ScreensVisible, Is.True,
+                "CM-BOOT-HOME criterion 1: Home composes unconditionally on real boot — even an "
+                + "explicit bootToHome:false in the file no longer suppresses it (the file's "
+                + "return value is retired as a compose gate, criterion 3)");
+            Assert.That(_root.Home, Is.Not.Null);
+            Assert.That(_root.Intro, Is.Not.Null);
+            Assert.That(_root.Stack, Is.Not.Null);
             LogAssert.NoUnexpectedReceived();
         }
 
-        // --- criterion 3(d) (PR #52 F2): well-formed JSON, PRESENT key, NON-BOOLEAN value ->
-        // loud fallback (same discipline as bad JSON syntax) — this is the diagnostic vacuum a
-        // human hits writing the file via a quoted shell one-liner ("bootToHome": "true") ---
+        // --- CM-BOOT-HOME declared pin inversion (criterion 3(d), PR #52 F2): well-formed
+        // JSON, PRESENT key, NON-BOOLEAN value -> loud fallback (same discipline as bad JSON
+        // syntax) — this is the diagnostic vacuum a human hits writing the file via a quoted
+        // shell one-liner ("bootToHome": "true"). Same inversion as the pins above. ---
         [UnityTest]
         public IEnumerator MalformedFile_NonBooleanValue_ShippedBoot_LoudFallback_NoThrow()
         {
@@ -186,16 +216,21 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Assert.That(_root.Session, Is.Not.Null, "still boots — never a crash or hang");
             Assert.That(_root.Session.Level.Dto.Id, Is.EqualTo("L001"), "the NORMAL shipped level booted");
-            Assert.That(_root.ScreensVisible, Is.False, "no partial composition");
-            Assert.That(_root.Home, Is.Null);
-            Assert.That(_root.Intro, Is.Null);
-            Assert.That(_root.Stack, Is.Null);
+            Assert.That(_root.ScreensVisible, Is.True,
+                "CM-BOOT-HOME criterion 1: Home composes unconditionally on real boot");
+            Assert.That(_root.Home, Is.Not.Null);
+            Assert.That(_root.Intro, Is.Not.Null);
+            Assert.That(_root.Stack, Is.Not.Null);
         }
 
         // --- criterion 4: Q-5 law reasserted — the boot-to-home file changes ONLY the screen
         // flow, never which level boots (shipped boot stays L001 even when the file composes
         // the dev screen flow on top of it). SceneBoot (PR #52 F1): must prove this on the REAL
-        // device path, not just via Launch(). ---
+        // device path, not just via Launch(). CM-BOOT-HOME note: ScreensVisible is True here
+        // unconditionally now (Home composes on every real boot, criterion 1) rather than
+        // specifically BECAUSE the file was honored — the precondition comment below is kept
+        // (still literally true) but no longer discriminates the file read from its absence;
+        // the level-id assertion (this test's actual point) is untouched either way. ---
         [UnityTest]
         public IEnumerator Q5Law_ShippedBootStaysL001_EvenWithBootOverrideFilePresentAndHonored()
         {
@@ -203,8 +238,8 @@ namespace CatMetro.Tests.PlayMode
             _root = SceneBoot();
             yield return null;
             Assert.That(_root.ScreensVisible, Is.True,
-                "precondition: the file was honored — otherwise this test cannot tell apart "
-                + "'the file never changes the level' from 'the file was never read at all'");
+                "precondition: Home composes on every real boot now (CM-BOOT-HOME criterion 1) "
+                + "— kept as a sanity precondition, not a file-specific discriminator anymore");
             Assert.That(_root.Session.Level.Dto.Id, Is.EqualTo("L001"),
                 "Q-5 law: the boot-to-home file changes ONLY the screen flow, never which level "
                 + "boots — that stays DevLevelOverride's job, never this file's");
@@ -212,10 +247,13 @@ namespace CatMetro.Tests.PlayMode
 
         // --- PR #52 F3: the COMBINED seam — devcap/level.json AND devcap/boot.json both
         // present (the real demo workflow: adb push D001 + boot.json into the SAME devcap dir).
-        // GameRoot.cs's own comment documents "boot-to-home applies over an overridden level" —
-        // this is the only test that actually pins that design, via SceneBoot (the real device
-        // path) so a mutation that reorders the two seam checks (e.g. moving the boot-to-home
-        // read below the dev-level early-return) is caught. ---
+        // CM-BOOT-HOME note: Home now composes over EVERY real boot, dev-level-overridden or
+        // not (InitializeFromSeam composes on both the dev-level branch and the shipped branch,
+        // criterion 1) — so "composes over the demo level" is no longer specifically the boot-
+        // to-home file's doing, but the level-id + composed-Home assertions below still pin the
+        // real point: the dev-level seam and the screen-flow compose call cooperate correctly
+        // (a mutation reordering InitializeFromSeam's two branches, or dropping the dev-level
+        // branch's own compose call, is still caught here). ---
         [UnityTest]
         public IEnumerator CombinedSeams_LevelOverrideAndBootOverride_BothPresent_ComposesHomeOverDemoLevel()
         {
@@ -229,20 +267,21 @@ namespace CatMetro.Tests.PlayMode
                 "precondition: the injected DEV LEVEL booted, not the shipped L001 — otherwise "
                 + "this test cannot tell apart 'both seams composed together' from 'only one did'");
             Assert.That(_root.ScreensVisible, Is.True,
-                "boot-to-home composes the dev screen flow OVER the overridden level — the "
-                + "documented design (GameRoot.cs) and the real demo workflow (push D001 + "
-                + "boot.json together)");
+                "Home composes over the dev-level-overridden boot too (CM-BOOT-HOME criterion 1 "
+                + "reaches BOTH InitializeFromSeam branches, not just the shipped one)");
             Assert.That(_root.Home, Is.Not.Null);
             Assert.That(_root.Home.IsVisible, Is.True, "Home shown on boot, over the demo level");
             CollectionAssert.AreEqual(new[] { "home" }, _root.Stack.ToBreadcrumb());
         }
 
-        // --- criterion 5: precedence — the static test flag's own power to compose is never
-        // gated by the file (they are OR'd, independent checks, never AND'd): with the flag
-        // true and the file malformed, GameRoot still composes AND the file's own INVALID log
-        // still fires — proving neither check suppresses the other. See the report for the
-        // full disposition (there is no genuine "force off" scenario for either seam, since
-        // both are pure additive "turn on" triggers). ---
+        // --- CM-BOOT-HOME re-baseline (criterion 5's precedence question is now moot): the
+        // static flag and the file used to be two INDEPENDENT, OR'd triggers for composing —
+        // criterion 3 retired BOTH as compose gates (compose is unconditional on real boot now,
+        // gated only by the dev skip-hatch, DevSkipShippedHome). This test's assertion is
+        // UNCHANGED (True) and still a valid regression pin — a mutation that reintroduces a
+        // gate condition on the file's return value, or that makes a malformed file suppress
+        // composition, would turn it RED — but the "precedence" framing is retired: there is no
+        // longer a second gate for the flag to take precedence OVER. ---
         [UnityTest]
         public IEnumerator Precedence_StaticFlagTrue_FileMalformed_StaticFlagStillComposes()
         {
@@ -253,15 +292,22 @@ namespace CatMetro.Tests.PlayMode
             _root = GameRoot.Launch();
             yield return null;
             Assert.That(_root.ScreensVisible, Is.True,
-                "precedence: the static flag composes regardless of file validity — the file "
-                + "check is independent and never gates the flag's own composition path");
+                "CM-BOOT-HOME: compose is unconditional on real boot regardless of BootToHome's "
+                + "value or the file's validity — the malformed file's own INVALID log (asserted "
+                + "above) still fires independently, proving the file is still read/parsed even "
+                + "though its result no longer gates anything");
         }
 
         // --- CM-SEAMS (security-S1): pre-read size cap. An oversize but otherwise WELL-FORMED
         // file (bootToHome:true, padded past CONTENT_MAX_FILE_BYTES) must be rejected BEFORE
-        // parsing — never honored, even though its content alone would request the override.
-        // This is what makes the assertion mutation-provable: a size check that fires too late
-        // (or not at all) does not just change the log wording, it lets the override THROUGH. ---
+        // parsing — the log regex below (unchanged) is the mutation-provable proof: a size
+        // check that fires too late (or not at all) changes the log wording, or lets the file's
+        // content actually get parsed instead of short-circuited. CM-BOOT-HOME declared pin
+        // inversion: "never honored" used to mean "Home never composes" (ScreensVisible False);
+        // that meaning is retired — CM-BOOT-HOME criterion 3 makes Home compose unconditionally
+        // on real boot regardless of this file, so "never honored" now means exactly what the
+        // log regex proves (the oversize content is rejected pre-parse, never read as JSON, and
+        // no DEVCAP_BOOT_OVERRIDE success line can fire) — not whether Home appears. ---
         [UnityTest]
         public IEnumerator OversizeFile_ExceedsContentMaxFileBytes_LoudFallback_NeverHonored()
         {
@@ -275,12 +321,14 @@ namespace CatMetro.Tests.PlayMode
             _root = SceneBoot();
             yield return null;
             Assert.That(_root.Session, Is.Not.Null, "still boots — never a crash or hang");
-            Assert.That(_root.ScreensVisible, Is.False,
-                "the oversize file's own bootToHome:true content must NEVER be honored — the "
-                + "size cap must fire before the content is even looked at");
-            Assert.That(_root.Home, Is.Null);
-            Assert.That(_root.Intro, Is.Null);
-            Assert.That(_root.Stack, Is.Null);
+            Assert.That(_root.ScreensVisible, Is.True,
+                "CM-BOOT-HOME criterion 1: Home composes unconditionally on real boot — the "
+                + "oversize file's own content is proven UNPARSED by the log regex above (the "
+                + "success line 'DEVCAP_BOOT_OVERRIDE <path>' never fires), never by whether "
+                + "Home appears");
+            Assert.That(_root.Home, Is.Not.Null);
+            Assert.That(_root.Intro, Is.Not.Null);
+            Assert.That(_root.Stack, Is.Not.Null);
         }
 
         // --- CM-SEAMS (security-S1): the parse itself is depth-bounded at
@@ -288,7 +336,10 @@ namespace CatMetro.Tests.PlayMode
         // 20-level-deep file is accepted by the OLD unguarded JObject.Parse (it would then read
         // the nested JObject as the "bootToHome" value and reject it as non-boolean — a
         // DIFFERENT, MaxDepth-unrelated message) and rejected by the NEW depth-bounded parse
-        // with a message naming MaxDepth. The regex pins the CAUSE, not just "some error". ---
+        // with a message naming MaxDepth. The regex pins the CAUSE, not just "some error".
+        // CM-BOOT-HOME declared pin inversion: ScreensVisible is True now (Home composes
+        // unconditionally on real boot, criterion 1) — this test's own proving power lives
+        // entirely in the MaxDepth-naming log regex above, unchanged. ---
         [UnityTest]
         public IEnumerator DeeplyNestedFile_ExceedsContentMaxJsonDepth_LoudFallback_NamesMaxDepth()
         {
@@ -299,7 +350,8 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Assert.That(_root.Session, Is.Not.Null, "still boots — never a crash or hang");
             Assert.That(_root.Session.Level.Dto.Id, Is.EqualTo("L001"), "the NORMAL shipped level booted");
-            Assert.That(_root.ScreensVisible, Is.False);
+            Assert.That(_root.ScreensVisible, Is.True,
+                "CM-BOOT-HOME criterion 1: Home composes unconditionally on real boot");
         }
 
         // --- CM-SEAMS (pins the security-S2 sanitization landed in PR #52 — code-R1: it was

@@ -18,9 +18,22 @@ namespace CatMetro.Tests.PlayMode
     {
         private GameRoot _root;
 
+        [SetUp]
+        public void SetUp()
+        {
+            // CM-BOOT-HOME: every criterion here drives L001 through the REAL GameRoot.Launch()
+            // seam and taps/advances immediately — Home now composes there by default
+            // (criterion 1), which would gate the switch tap (BoardInputActive) and hold the
+            // sim at tick 0 (criterion 2), breaking every assertion below. Opt OUT via the dev
+            // skip-Home hatch (the inverted BootToHome successor) so this greybox suite keeps
+            // booting straight to gameplay, exactly as before this contract.
+            GameRoot.DevSkipShippedHome = true;
+        }
+
         [TearDown]
         public void TearDown()
         {
+            GameRoot.DevSkipShippedHome = false; // hygiene: restore the true global default
             if (_root != null) Object.Destroy(_root.gameObject);
             _root = null;
         }

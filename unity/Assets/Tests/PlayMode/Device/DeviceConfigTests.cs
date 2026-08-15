@@ -24,11 +24,19 @@ namespace CatMetro.Tests.PlayMode
             // criterion 3: a target leaked by any earlier test would make the boot-policy
             // assertion vacuous — prove Wire() sets it, not history
             UnityEngine.Application.targetFrameRate = -1;
+            // CM-BOOT-HOME: both UnityTests below boot through GameRoot.Launch() — Home now
+            // composes there by default (criterion 1), which would gate the switch tap
+            // (FramePolicy test is unaffected, but AllRuntimeRenderers_BindGreybox_TextMesh
+            // Survives walks every renderer under the root and would trip on Home's own
+            // Image/Text components, none of which bind the Greybox material). Opt OUT via the
+            // dev skip-Home hatch.
+            GameRoot.DevSkipShippedHome = true;
         }
 
         [TearDown]
         public void TearDown()
         {
+            GameRoot.DevSkipShippedHome = false; // hygiene: restore the true global default
             Time.timeScale = 1f;
             QualitySettings.vSyncCount = 0; // undo the F-3 de-vacuum poke (runtime-only)
             if (_root != null) Object.Destroy(_root.gameObject);

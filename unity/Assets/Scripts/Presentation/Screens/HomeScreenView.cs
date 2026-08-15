@@ -29,12 +29,23 @@ namespace CatMetro.Presentation.Screens
     public sealed class HomeScreenView : MonoBehaviour
     {
         private const string PinRegionId = "home.pin.l001";
-        private const int PinRegionPriority = 0; // explicit per A-UX1-3
+        // CM-BOOT-HOME criterion 4 (the priority-debt fix): was ChromeRegions.ParentPriority(0)
+        // — outranked ResultsPanel's ModalPriority(10) despite Home's ScreensCanvas painting
+        // ABOVE ResultsPanel's canvas (120 vs 110, GameRoot.cs). See ChromeRegions.cs's own
+        // comment for the full justification of the new value.
+        private const int PinRegionPriority = ChromeRegions.HomeScreenPriority;
         // CM-DAILYWIRE: the Daily entry's own region, registered/unregistered by the exact same
         // RegisterPin/UnregisterPin/OnDisable/OnEnable lifetime law the L001 pin already obeys
         // (a second call site into the same helpers, never a parallel implementation).
         private const string DailyPinRegionId = "home.pin.daily";
-        private const int DailyPinRegionPriority = 0; // explicit per A-UX1-3, same tier as L001's
+        // CM-BOOT-HOME: deliberately left at the OLD ParentPriority(0), NOT raised alongside
+        // PinRegionPriority above — Daily is explicitly out of scope for this contract
+        // (criterion 5, commerce-free shipped path) and this pin is never constructed at all
+        // when dailyUnlocked is false (GameRoot.ComposeScreenFlow), which is unconditionally the
+        // case in a shipped build — so the priority-debt fix's live-tap-bug risk never reaches
+        // it. Left as a named, flagged follow-up rather than silently widened past this
+        // contract's declared scope.
+        private const int DailyPinRegionPriority = 0; // explicit per A-UX1-3
 
         public System.Action LevelSelected;
         public System.Action DailySelected;
@@ -100,6 +111,16 @@ namespace CatMetro.Presentation.Screens
             // HomeScreenTests render-only whitelist still holds; names avoid every tripwire word.
             view._background = MakeSurface(go.transform, "Background",
                 Vector2.zero, Vector2.one, Palette.WarmPaper, rounded: false);
+            // MENU-POLISH: the §7 "base-board bevel with a visible cardboard edge" + "soft
+            // contact shadow" — the cue that sells the miniature. Drawn BEHIND the board and
+            // offset DOWNWARD so it peeks out under the bottom lip (thickness/contact shadow)
+            // with only a hairline at the sides and NONE above the top edge: a symmetric rim
+            // reads as a UI panel border, not a board sitting on a desk. Alpha is deliberately
+            // strong — a first pass at 0.28 computed to ~#BEBEBF over warm paper and washed out
+            // to a light grey frame (verified on device, the exact failure this replaces).
+            MakeSurface(go.transform, "BoardEdge",
+                new Vector2(0.034f, 0.034f), new Vector2(0.966f, 0.944f),
+                Palette.WithAlpha(Palette.DepotNavy, 0.55f), rounded: true);
             MakeSurface(go.transform, "BaseBoard",
                 new Vector2(0.04f, 0.05f), new Vector2(0.96f, 0.95f), Palette.CreamCard, rounded: true);
 
@@ -193,7 +214,11 @@ namespace CatMetro.Presentation.Screens
             if (mat != null) img.material = mat;
             // BEAUTIFUL-MENU: parked scenery in low-alpha depot navy over the cream board
             // (S-01: curiosity, not locks) — was a flat neutral grey.
-            img.color = Palette.WithAlpha(Palette.DepotNavy, 0.30f);
+            // MENU-POLISH: 0.30 washed out to light taupe over CreamCard (the taste note);
+            // 0.44 gives the parked districts real presence while staying clearly SCENERY —
+            // still far below the L001 pin's full-strength navy, so the single CTA keeps its
+            // visual primacy (S-01's "one pulsing affordance" law).
+            img.color = Palette.WithAlpha(Palette.DepotNavy, 0.44f);
         }
 
         private static RectTransform MakeChip(Transform parent, string name, Color color)

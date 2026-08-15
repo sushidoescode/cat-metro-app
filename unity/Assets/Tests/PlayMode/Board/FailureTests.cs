@@ -20,9 +20,23 @@ namespace CatMetro.Tests.PlayMode
     {
         private GameRoot _root;
 
+        [SetUp]
+        public void SetUp()
+        {
+            // CM-BOOT-HOME: this fixture drives L001 (and LaunchWith fixtures) to
+            // FailureReview through the REAL Launch() seam in one test below — Home now
+            // composes there by default (criterion 1), which would hold the sim at tick 0
+            // (criterion 2) and gate board/tap input, defeating every RunToFail deadline loop.
+            // Opt OUT via the dev skip-Home hatch (the inverted BootToHome successor) so this
+            // file keeps booting straight to gameplay. LaunchWith-seam tests are unaffected
+            // either way (LaunchWith never composes Home at all, CM-BOOT-HOME EDIT 2).
+            GameRoot.DevSkipShippedHome = true;
+        }
+
         [TearDown]
         public void TearDown()
         {
+            GameRoot.DevSkipShippedHome = false; // hygiene: restore the true global default
             Time.timeScale = 1f;
             if (_root != null) Object.Destroy(_root.gameObject);
             _root = null;
