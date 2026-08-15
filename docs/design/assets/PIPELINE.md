@@ -43,11 +43,26 @@ script in the keyed session; (2) sequence the license ADR. Neither is an agent's
   the chain stops before `set +a` and leaves your shell in auto-export. If that happens,
   run `set +a` yourself, or run the arming in a throwaway subshell:
   `(set -a; source .env; set +a; bash scripts/gen-assets.sh queue docs/design/assets/CAT-MANIFEST.json)`.
+- **PROBE BOTH SERVICES BEFORE ANY FULL QUEUE — standing gate, not a historical note.**
+  Run one single-asset probe per service and confirm each produces a real `.glb`:
+  ```
+  ! cd <repo> && set -a && source ./.env && set +a && GEN_ASSETS_ACCOUNT_TIER=paid \
+      bash scripts/gen-assets.sh tripo "a test cat" probe-tripo.glb
+  ! cd <repo> && set -a && source ./.env && set +a && GEN_ASSETS_ACCOUNT_TIER=paid \
+      bash scripts/gen-assets.sh meshy "a test cat" probe-meshy.glb
+  ```
+  This gate fires for **any** change that could touch a generation path — ours or the
+  vendor's — not only a vendor-version bump. [Review finding, 2026-08-15: an earlier
+  revision narrowed this to "for a future vendor-version change". That would NOT have
+  caught the two defects actually hit on 2026-08-14: the Tripo one was a vendor-schema
+  drift, but the Meshy one was OUR OWN stdout bug in `meshy_poll` — no vendor change
+  involved — and it burned 7 assets in a live queue precisely because only Tripo had ever
+  been probed. Both services, every time.]
 - **Live probe record (F12, 2026-08-14):** the first one-asset Tripo probe returned HTTP
   400/code 1004 because v3 requires `model`; after the script sent `v3.1-20260211`, the
   same probe completed create → poll → signed-URL download and produced a valid GLB plus
-  sidecar. For a future vendor-version change, repeat that ONE probe before a full queue so
-  another schema drift costs one asset, not fifteen.
+  sidecar. Meshy was never probed, and its 7 queue entries all failed — the evidence for
+  the both-services rule above.
 
 ## Meshy API (retrieved 2026-08-14, docs.meshy.ai)
 
