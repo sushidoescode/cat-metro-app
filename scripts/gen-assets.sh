@@ -31,7 +31,7 @@
 #   MESHY_AI_MODEL (latest) MESHY_POLYCOUNT (30000) MESHY_TEXTURE_RES (2k)
 #   MESHY_ENABLE_PBR (false) MESHY_POLL_INTERVAL (10s) MESHY_STAGE_TIMEOUT (1200s)
 #   MESHY_API_BASE (https://api.meshy.ai/openapi/v2; https:// enforced)
-#   TRIPO_MODEL_VERSION (server default) TRIPO_POLL_INTERVAL (5s) TRIPO_TIMEOUT (900s)
+#   TRIPO_MODEL_VERSION (v3.1-20260211) TRIPO_POLL_INTERVAL (5s) TRIPO_TIMEOUT (900s)
 #   TRIPO_API_BASE (https://openapi.tripo3d.ai/v3; https:// enforced)
 #   DOWNLOAD_TIMEOUT (900s) GEN_ASSETS_OUT_DIR (unity/Assets/Art/Generated/incoming)
 #   GEN_ASSETS_ACCOUNT_TIER (unknown; recorded per-asset in the sidecar for the license ADR)
@@ -288,12 +288,13 @@ meshy_generate() { # prompt, out
 # Default is the newest v-series model, matching this script's /v3 base URL; override with
 # TRIPO_MODEL_VERSION for a different one from the allowed list above.
 TRIPO_MODEL_DEFAULT="v3.1-20260211"
+TRIPO_MODEL="${TRIPO_MODEL_VERSION:-$TRIPO_MODEL_DEFAULT}"
 
 tripo_body() {
   python3 -c '
 import json, sys
 print(json.dumps({"prompt": sys.argv[1], "model": sys.argv[2]}))' \
-    "$1" "${TRIPO_MODEL_VERSION:-$TRIPO_MODEL_DEFAULT}"
+    "$1" "$TRIPO_MODEL"
 }
 
 tripo_generate() { # prompt, out
@@ -330,7 +331,7 @@ tripo_generate() { # prompt, out
     || { err "tripo: no model url on task $tid"; return 1; }
   say "  downloading GLB (signed URL, short expiry) -> $out"
   download_to "$url" "$out" || { err "tripo: download failed for $tid (signed URLs expire in minutes — re-run to regenerate)"; return 1; }
-  finish_asset "$out" "tripo" "$prompt" "$tid" "tripo model=${TRIPO_MODEL_VERSION:-server-default}"
+  finish_asset "$out" "tripo" "$prompt" "$tid" "tripo model=$TRIPO_MODEL"
 }
 
 # --- one asset / batch ---------------------------------------------------------------
@@ -397,7 +398,8 @@ to regenerate. --dry-run prints the requests it WOULD make (auth redacted), no k
 needed.
 
 Tunables (env, optional): MESHY_AI_MODEL MESHY_POLYCOUNT MESHY_TEXTURE_RES
-  MESHY_ENABLE_PBR MESHY_POLL_INTERVAL MESHY_STAGE_TIMEOUT TRIPO_MODEL_VERSION
+  MESHY_ENABLE_PBR MESHY_POLL_INTERVAL MESHY_STAGE_TIMEOUT
+  TRIPO_MODEL_VERSION (default: v3.1-20260211)
   TRIPO_POLL_INTERVAL TRIPO_TIMEOUT MESHY_API_BASE TRIPO_API_BASE (both https:// enforced)
   DOWNLOAD_TIMEOUT GEN_ASSETS_OUT_DIR GEN_ASSETS_ACCOUNT_TIER (recorded per-asset in the sidecar)
 EOF

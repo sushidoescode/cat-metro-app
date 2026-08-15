@@ -43,12 +43,11 @@ script in the keyed session; (2) sequence the license ADR. Neither is an agent's
   the chain stops before `set +a` and leaves your shell in auto-export. If that happens,
   run `set +a` yourself, or run the arming in a throwaway subshell:
   `(set -a; source .env; set +a; bash scripts/gen-assets.sh queue docs/design/assets/CAT-MANIFEST.json)`.
-- **Before the full 15-entry queue (F12):** run ONE probe —
-  `! set -a && source .env && set +a && bash scripts/gen-assets.sh tripo "a test cat" /tmp/probe.glb`
-  — to confirm the Tripo v3 request/response shape below matches the live service (this
-  pipeline researched it with a retrieval date but could not execute it), so a schema
-  drift costs one asset, not fifteen. Meshy's shape is corroborated independently; Tripo's
-  is the higher-uncertainty one.
+- **Live probe record (F12, 2026-08-14):** the first one-asset Tripo probe returned HTTP
+  400/code 1004 because v3 requires `model`; after the script sent `v3.1-20260211`, the
+  same probe completed create → poll → signed-URL download and produced a valid GLB plus
+  sidecar. For a future vendor-version change, repeat that ONE probe before a full queue so
+  another schema drift costs one asset, not fifteen.
 
 ## Meshy API (retrieved 2026-08-14, docs.meshy.ai)
 
@@ -80,9 +79,11 @@ script in the keyed session; (2) sequence the license ADR. Neither is an agent's
   `https://api.tripo3d.ai/v2/openapi`; v3 is what the current quick-start documents.
   `TRIPO_API_BASE` env var overrides the base if the host moves again.
 - **Auth header (name):** `Authorization`, shape `Bearer <key>`
-- **Create task:** `POST /generation/text-to-model` — fields: `prompt` (required),
-  `model` (version id, e.g. a dated v3.1 tag; server default when omitted), optional
-  `texture`, `face_limit`.
+- **Create task:** `POST /generation/text-to-model` — fields: `prompt` and `model` are
+  required by the live v3 API as verified 2026-08-14. The reported allowed models were
+  `P1-20260311`, `v2.5-20250123`, `v3.0-20250812`, and `v3.1-20260211`; the script defaults
+  to `v3.1-20260211` and `TRIPO_MODEL_VERSION` can select another allowed value. Optional
+  fields include `texture` and `face_limit`.
   - Response envelope: `{ "code": 0, "data": { "task_id": "<task-id>" } }`
 - **Poll:** `GET /tasks/<task-id>` — `data.status`: in-progress states (`queued`,
   `running`) then `success` | `failed` | `cancelled` | `banned`; `data.progress` 0–100.
@@ -143,5 +144,6 @@ the tracked tree is a separate, reviewed change.
 
 `--dry-run` prints every request the script WOULD make (method, URL, headers with the
 auth value redacted, JSON body, poll/download plan) and requires no keys. Agents test
-with dry-run + `tests/assets/gen-assets-custody.test.sh`; live generation is
-human-armed only, via the one-liner above.
+with dry-run + `tests/assets/gen-assets-custody.test.sh` and
+`tests/assets/tripo-model-contract.test.sh`; live generation is human-armed only, via
+the one-liner above.
