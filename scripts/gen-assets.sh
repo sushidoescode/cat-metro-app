@@ -231,7 +231,15 @@ meshy_poll() { # $1 = task id; prints final task JSON on success
       FAILED|CANCELED)
         err "meshy: task $id ended $status: $(printf '%s' "$resp" | json_get task_error.message || echo 'no error message')"
         return 1 ;;
-      *) say "  meshy task $id: $status ${progress}% (waited ${waited}s)" ;;
+      # LIVE-VERIFIED 2026-08-14: progress goes to STDERR, never stdout. This function's
+      # stdout is its DATA CHANNEL — the caller does `final=$(meshy_poll "$rid")` and parses
+      # it as JSON. Emitting progress on stdout put "  meshy task …%" lines in front of the
+      # JSON, so json_get died and every Meshy asset failed with "no GLB url on refine task"
+      # (7/7 in the human's first live queue; Tripo was immune because it polls inline, which
+      # is why the failure split perfectly along service lines). The preview poll hid the bug
+      # by discarding stdout with >/dev/null — which also swallowed the progress lines, so the
+      # log looked like polling never happened at all.
+      *) redact "  meshy task $id: $status ${progress}% (waited ${waited}s)" >&2 ;;
     esac
     [ "$waited" -ge "$MESHY_STAGE_TIMEOUT" ] && { err "meshy: task $id timed out after ${MESHY_STAGE_TIMEOUT}s"; return 1; }
     sleep "$MESHY_POLL_INTERVAL"; waited=$((waited + MESHY_POLL_INTERVAL))
@@ -255,6 +263,8 @@ meshy_generate() { # prompt, out
   resp=$(api_curl "$MESHY_API_KEY" -X POST -d "$body" "$MESHY_BASE/text-to-3d") || { err "meshy: preview create failed: $(redact "$resp")"; return 1; }
   pid=$(printf '%s' "$resp" | json_get result) || { err "meshy: no task id in create response"; return 1; }
   say "  preview task: $pid"
+  # >/dev/null discards only the final JSON (the data channel); progress now goes to stderr
+  # so the preview stage is visible in the log exactly like Tripo's inline polling.
   meshy_poll "$pid" >/dev/null || return 1
   say "MESHY create refine (texture) for $pid"
   resp=$(api_curl "$MESHY_API_KEY" -X POST -d "$(meshy_refine_body "$pid")" "$MESHY_BASE/text-to-3d") || { err "meshy: refine create failed: $(redact "$resp")"; return 1; }
