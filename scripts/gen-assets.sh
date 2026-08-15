@@ -269,13 +269,21 @@ meshy_generate() { # prompt, out
 
 # --- Tripo: create -> poll -> download (URLs expire fast: fetch immediately) ---------
 
+# LIVE-VERIFIED 2026-08-14: Tripo v3 REQUIRES `model`. Omitting it returns HTTP 400 with
+# code 1004 "model is required, allowed values: P1-20260311, v2.5-20250123, v3.0-20250812,
+# v3.1-20260211". The original shape sent `model` only when TRIPO_MODEL_VERSION was set, and
+# the default was unset — so every live tripo call failed. Caught by the one-asset probe the
+# PIPELINE doc prescribes (review finding F12: the v3 shape was documented but never
+# executed), which is exactly the 1-asset-instead-of-9 cost that probe exists to pay.
+# Default is the newest v-series model, matching this script's /v3 base URL; override with
+# TRIPO_MODEL_VERSION for a different one from the allowed list above.
+TRIPO_MODEL_DEFAULT="v3.1-20260211"
+
 tripo_body() {
   python3 -c '
 import json, sys
-b = {"prompt": sys.argv[1]}
-if sys.argv[2]:
-    b["model"] = sys.argv[2]
-print(json.dumps(b))' "$1" "${TRIPO_MODEL_VERSION:-}"
+print(json.dumps({"prompt": sys.argv[1], "model": sys.argv[2]}))' \
+    "$1" "${TRIPO_MODEL_VERSION:-$TRIPO_MODEL_DEFAULT}"
 }
 
 tripo_generate() { # prompt, out
