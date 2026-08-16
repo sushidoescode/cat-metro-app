@@ -6517,6 +6517,13 @@ run_bounded(
     True,
 )
 run_bounded(
+    "indexed-lost-uv-control",
+    error_classification_case,
+    "indexed-lost-uv-control",
+    "meshes[7].primitives[11] material references missing TEXCOORD_3",
+    True,
+)
+run_bounded(
     "lost-uv-prefix-near-miss",
     error_classification_case,
     "lost-uv-prefix-near-miss",
@@ -6577,6 +6584,7 @@ import signal
 import stat
 import subprocess
 import sys
+import time
 import traceback
 import types
 from pathlib import Path
@@ -6608,6 +6616,7 @@ MAX_CHILD_STREAM_BYTES = MAX_METADATA_BYTES
 MAX_DIAGNOSTIC_BYTES = 512
 MAX_COMPONENT_BYTES = 255
 UUID_HEX_BYTES = 32
+MAX_OVERFLOW_SECONDS = 4
 
 process_context = multiprocessing.get_context("fork")
 errors: list[str] = []
@@ -6677,6 +6686,7 @@ def setup_case(
     final_glb = output_dir / filename
     final_json = Path(f"{final_glb}.json")
     old_pair = None
+    old_identities = None
     if force:
         write_glb(final_glb, triangles=14_000)
         final_json.write_text(
@@ -6684,6 +6694,10 @@ def setup_case(
             encoding="utf-8",
         )
         old_pair = (final_glb.read_bytes(), final_json.read_bytes())
+        old_identities = {
+            "glb": (os.lstat(final_glb).st_dev, os.lstat(final_glb).st_ino),
+            "json": (os.lstat(final_json).st_dev, os.lstat(final_json).st_ino),
+        }
     fake_log = case_root / "fake.log"
     fake_audit = case_root / "fake.audit"
     selected_blender = blender or fake_blender
@@ -6711,6 +6725,7 @@ def setup_case(
         final_glb=final_glb,
         final_json=final_json,
         old_pair=old_pair,
+        old_identities=old_identities,
         force=force,
         fake_log=fake_log,
         fake_audit=fake_audit,
@@ -6793,6 +6808,52 @@ def fake_records(case: types.SimpleNamespace) -> list[dict[str, object]]:
     ]
 
 
+def fake_argument_path(case: types.SimpleNamespace, flag: str) -> Path:
+    records = fake_records(case)
+    assert len(records) == 1
+    argv = records[0].get("argv")
+    assert isinstance(argv, list) and flag in argv
+    index = argv.index(flag)
+    assert index + 1 < len(argv) and isinstance(argv[index + 1], str)
+    return Path(argv[index + 1])
+
+
+def staged_pair_from_fake_record(
+    case: types.SimpleNamespace,
+) -> dict[str, Path]:
+    staged_glb = fake_argument_path(case, "--output")
+    return {"glb": staged_glb, "json": Path(f"{staged_glb}.json")}
+
+
+def path_identity(path: Path) -> tuple[int, int] | None:
+    try:
+        status = os.lstat(path)
+    except OSError:
+        return None
+    return status.st_dev, status.st_ino
+
+
+def observed_path_key(path: Path) -> str:
+    return os.path.realpath(os.path.abspath(os.fspath(path)))
+
+
+def same_observed_path(left: Path, right: Path) -> bool:
+    return observed_path_key(left) == observed_path_key(right)
+
+
+def observe_old_role_destination(
+    case: types.SimpleNamespace,
+    source_identity: tuple[int, int] | None,
+    destination: Path,
+    observed: dict[str, Path],
+) -> None:
+    if case.old_identities is None or source_identity is None:
+        return
+    for role, identity in case.old_identities.items():
+        if source_identity == identity:
+            observed[role] = destination
+
+
 def assert_fake_reached(case: types.SimpleNamespace) -> None:
     assert audit_lines(case) == ["version", "asset"]
     records = fake_records(case)
@@ -6832,7 +6893,10 @@ def assert_success_pair(
     }
 
 
-def force_failure_terminal(case: types.SimpleNamespace) -> bool:
+def force_failure_terminal(
+    case: types.SimpleNamespace,
+    observed_old_locations: dict[str, Path],
+) -> bool:
     assert case.old_pair is not None
     entries = list(case.output.iterdir())
     if (
@@ -6843,16 +6907,15 @@ def force_failure_terminal(case: types.SimpleNamespace) -> bool:
         return True
     if case.final_glb.exists() or case.final_json.exists() or len(entries) != 2:
         return False
-    glb_backups = [
-        path
-        for path in entries
-        if ".glb.backup-" in path.name and ".glb.json.backup-" not in path.name
-    ]
-    json_backups = [path for path in entries if ".glb.json.backup-" in path.name]
+    if set(observed_old_locations) != {"glb", "json"}:
+        return False
+    glb_backup = observed_old_locations["glb"]
+    json_backup = observed_old_locations["json"]
     return (
-        len(glb_backups) == len(json_backups) == 1
-        and glb_backups[0].read_bytes() == case.old_pair[0]
-        and json_backups[0].read_bytes() == case.old_pair[1]
+        {observed_path_key(path) for path in entries}
+        == {observed_path_key(glb_backup), observed_path_key(json_backup)}
+        and glb_backup.read_bytes() == case.old_pair[0]
+        and json_backup.read_bytes() == case.old_pair[1]
     )
 
 
@@ -6898,17 +6961,41 @@ def lock_release_terminal_case() -> None:
 
 def force_cleanup_terminal_case() -> None:
     case = setup_case("force-cleanup-terminal", force=True)
-    real_unlink = Path.unlink
+    real_replace = os.replace
+    observed_old_locations: dict[str, Path] = {}
     injected_attempts = 0
 
-    def persistent_backup_unlink(path, *args, **kwargs):
-        nonlocal injected_attempts
-        if ".glb.backup-" in path.name and ".glb.json.backup-" not in path.name:
-            injected_attempts += 1
-            raise OSError("injected persistent backup cleanup failure")
-        return real_unlink(path, *args, **kwargs)
+    def observe_replace(source, destination, *args, **kwargs):
+        source_identity = path_identity(Path(source))
+        result = real_replace(source, destination, *args, **kwargs)
+        observe_old_role_destination(
+            case,
+            source_identity,
+            Path(destination),
+            observed_old_locations,
+        )
+        return result
 
-    with mock.patch.object(Path, "unlink", persistent_backup_unlink):
+    def reject_old_member_removal(event, arguments):
+        nonlocal injected_attempts
+        if event != "os.remove" or case.old_identities is None:
+            return
+        path = arguments[0]
+        directory_descriptor = arguments[1]
+        try:
+            status = os.stat(
+                path,
+                dir_fd=None if directory_descriptor == -1 else directory_descriptor,
+                follow_symlinks=False,
+            )
+        except (OSError, TypeError, ValueError):
+            return
+        if (status.st_dev, status.st_ino) in set(case.old_identities.values()):
+            injected_attempts += 1
+            raise OSError("injected persistent old-member cleanup failure")
+
+    sys.addaudithook(reject_old_member_removal)
+    with mock.patch.object(os, "replace", observe_replace):
         result, stdout, stderr, caught = run_main(case)
     assert injected_attempts >= 2
     assert caught is None
@@ -6919,7 +7006,7 @@ def force_cleanup_terminal_case() -> None:
         assert result == 1
         assert "output_triangles=" not in stdout
         assert_one_diagnostic(stderr)
-        assert force_failure_terminal(case), (
+        assert force_failure_terminal(case, observed_old_locations), (
             "force cleanup failure left neither exact old finals nor a complete "
             "recoverable old backup pair"
         )
@@ -6971,8 +7058,6 @@ class GuardedReader:
         self.guard.reject("file.readlines")
 
     def peek(self, size=-1):
-        if size == 0:
-            return self.handle.peek(size)
         self.guard.reject("file.peek")
 
     def __iter__(self):
@@ -7079,7 +7164,7 @@ class LateReadGuard:
         return self.real_copyfileobj(source, destination, *args, **kwargs)
 
     def guarded_mmap(self, descriptor, length, *args, **kwargs):
-        if self.fd_is_target(descriptor) and length != 0:
+        if self.fd_is_target(descriptor):
             self.reject("mmap")
         return self.real_mmap(descriptor, length, *args, **kwargs)
 
@@ -7147,8 +7232,7 @@ class LateReadGuard:
         return stack
 
     def prove_controls(self, path: Path, scratch: Path) -> None:
-        controls = []
-        controls.append(lambda: path.read_bytes())
+        controls = [("path read", lambda: path.read_bytes())]
 
         def descriptor_read():
             descriptor = os.open(path, os.O_RDONLY)
@@ -7157,19 +7241,69 @@ class LateReadGuard:
             finally:
                 os.close(descriptor)
 
-        controls.append(descriptor_read)
-        controls.append(lambda: shutil.copyfile(path, scratch))
+        controls.append(("descriptor read", descriptor_read))
+        controls.append(("copy", lambda: shutil.copyfile(path, scratch)))
+
+        def buffered_peek_zero():
+            with open(path, "rb") as handle:
+                return handle.peek(0)
+
+        def map_zero_length():
+            descriptor = os.open(path, os.O_RDONLY)
+            try:
+                with mmap.mmap(descriptor, 0, access=mmap.ACCESS_READ) as mapping:
+                    return mapping[0]
+            finally:
+                os.close(descriptor)
+
+        controls.extend(
+            (
+                ("zero-length buffered peek", buffered_peek_zero),
+                ("zero-length mapping", map_zero_length),
+            )
+        )
         self.probing = True
         try:
-            for control in controls:
+            for label, control in controls:
                 caught = False
                 try:
                     control()
                 except LateReadAttempt:
                     caught = True
                 finally:
-                    scratch.unlink(missing_ok=True)
-                assert caught
+                    try:
+                        os.unlink(scratch)
+                    except FileNotFoundError:
+                        pass
+                assert caught, f"armed {label} control was not rejected"
+
+            with open(path, "rb") as handle:
+                assert handle.read(0) == b""
+                assert handle.read1(0) == b""
+                assert handle.readinto(bytearray()) == 0
+                assert handle.readinto1(bytearray()) == 0
+                assert handle.readline(0) == b""
+            descriptor = os.open(path, os.O_RDONLY)
+            try:
+                assert os.read(descriptor, 0) == b""
+            finally:
+                os.close(descriptor)
+
+            unarmed = scratch.with_name(f"{scratch.name}-unarmed")
+            unarmed.write_bytes(b"unarmed-control")
+            try:
+                with open(unarmed, "rb") as handle:
+                    assert handle.peek(0)
+                descriptor = os.open(unarmed, os.O_RDONLY)
+                try:
+                    with mmap.mmap(
+                        descriptor, 0, access=mmap.ACCESS_READ
+                    ) as mapping:
+                        assert len(mapping) > 0
+                finally:
+                    os.close(descriptor)
+            finally:
+                os.unlink(unarmed)
         finally:
             self.probing = False
             self.production_attempted = False
@@ -7189,7 +7323,9 @@ def late_class_cap_case(kind: str) -> None:
     case = setup_case(f"late-cap-{kind}", force=force)
     guard = LateReadGuard()
     mutation_count = 0
-    expected_attacked_existing = None
+    observed_existing_bytes = None
+    observed_old_locations: dict[str, Path] = {}
+    role_observations: list[tuple[bool, bool, bool]] = []
     patchers = []
 
     if kind == "metadata-snapshot":
@@ -7198,9 +7334,9 @@ def late_class_cap_case(kind: str) -> None:
         def mutate_metadata(*args, **kwargs):
             nonlocal mutation_count
             result = real_preservation(*args, **kwargs)
-            matches = list(case.output.glob(".glb-decimation-sources-*/*.json"))
-            assert len(matches) == 1
-            target = matches[0]
+            observed_source = fake_argument_path(case, "--source")
+            target = Path(f"{observed_source}.json")
+            assert target.exists()
             pad_json_like(target, MAX_METADATA_BYTES + 4)
             guard.arm(target)
             guard.prove_controls(target, case.root / "guard-copy")
@@ -7238,44 +7374,68 @@ def late_class_cap_case(kind: str) -> None:
             ]
         )
     elif kind == "existing-derivative":
-        real_checked = module._checked_lstat
+        real_promote = module.promote_pair
 
-        def grow_after_class_lstat(path, label, maximum, *args, **kwargs):
-            nonlocal mutation_count, expected_attacked_existing
-            result = real_checked(path, label, maximum, *args, **kwargs)
-            if label == "existing derivative GLB" and mutation_count == 0:
-                _pad_glb_to_size(Path(path), MAX_DERIVATIVE_BYTES + 4)
-                expected_attacked_existing = Path(path).read_bytes()
-                guard.arm(Path(path))
-                guard.prove_controls(Path(path), case.root / "guard-copy")
+        def grow_before_promote(
+            staged_glb, staged_json, final_glb, final_json, force
+        ):
+            nonlocal mutation_count, observed_existing_bytes
+            assert same_observed_path(Path(final_glb), case.final_glb), (
+                "public promotion destination did not identify the final role"
+            )
+            if mutation_count == 0:
+                _pad_glb_to_size(case.final_glb, MAX_DERIVATIVE_BYTES + 4)
+                observed_existing_bytes = case.final_glb.read_bytes()
+                guard.arm(case.final_glb)
+                guard.prove_controls(case.final_glb, case.root / "guard-copy")
                 mutation_count += 1
-            return result
+            return real_promote(
+                staged_glb, staged_json, final_glb, final_json, force
+            )
 
-        patchers.append(mock.patch.object(module, "_checked_lstat", grow_after_class_lstat))
+        patchers.append(mock.patch.object(module, "promote_pair", grow_before_promote))
     elif kind in {"final-derivative", "backup-derivative"}:
         real_replace = os.replace
 
         def grow_after_replace(source, destination, *args, **kwargs):
             nonlocal mutation_count
-            result = real_replace(source, destination, *args, **kwargs)
             source_path = Path(source)
             destination_path = Path(destination)
-            source_canonical = Path(os.path.realpath(os.path.abspath(source_path)))
-            destination_canonical = Path(
-                os.path.realpath(os.path.abspath(destination_path))
+            source_identity = path_identity(source_path)
+            staged_pair = None
+            if len(fake_records(case)) == 1:
+                staged_pair = staged_pair_from_fake_record(case)
+            staged_identity = (
+                None if staged_pair is None else path_identity(staged_pair["glb"])
             )
-            final_canonical = Path(
-                os.path.realpath(os.path.abspath(case.final_glb))
+            if staged_pair is not None:
+                role_observations.append(
+                    (
+                        same_observed_path(source_path, staged_pair["glb"]),
+                        same_observed_path(destination_path, case.final_glb),
+                        source_identity == staged_identity,
+                    )
+                )
+            final_role = (
+                staged_pair is not None
+                and same_observed_path(destination_path, case.final_glb)
+                and source_identity == staged_identity
+            )
+            backup_role = (
+                case.old_identities is not None
+                and source_identity == case.old_identities["glb"]
+            )
+            result = real_replace(source, destination, *args, **kwargs)
+            observe_old_role_destination(
+                case,
+                source_identity,
+                destination_path,
+                observed_old_locations,
             )
             should_mutate = (
-                kind == "final-derivative"
-                and destination_canonical == final_canonical
-                and source_path.parent.name.startswith("asset-")
+                kind == "final-derivative" and final_role
             ) or (
-                kind == "backup-derivative"
-                and source_canonical == final_canonical
-                and ".glb.backup-" in destination_path.name
-                and ".glb.json.backup-" not in destination_path.name
+                kind == "backup-derivative" and backup_role
             )
             if should_mutate and mutation_count == 0:
                 _pad_glb_to_size(destination_path, MAX_DERIVATIVE_BYTES + 4)
@@ -7293,7 +7453,13 @@ def late_class_cap_case(kind: str) -> None:
         for patcher in patchers:
             stack.enter_context(patcher)
         result, stdout, stderr, caught = run_main(case)
-    assert mutation_count == 1
+    assert mutation_count == 1, (
+        kind,
+        "expected one role-derived mutation",
+        result,
+        caught,
+        role_observations,
+    )
     assert not guard.production_attempted, f"{kind}: later read crossed its class cap"
     assert caught is None, (kind, caught)
     assert result == 1, (kind, result, stdout, stderr)
@@ -7303,13 +7469,13 @@ def late_class_cap_case(kind: str) -> None:
     if kind in {"metadata-snapshot", "provenance", "final-derivative"}:
         assert list(case.output.iterdir()) == []
     elif kind == "existing-derivative":
-        assert expected_attacked_existing is not None
-        assert case.final_glb.read_bytes() == expected_attacked_existing
+        assert observed_existing_bytes is not None
+        assert case.final_glb.read_bytes() == observed_existing_bytes
         assert case.old_pair is not None
         assert case.final_json.read_bytes() == case.old_pair[1]
         assert set(case.output.iterdir()) == {case.final_glb, case.final_json}
     else:
-        assert force_failure_terminal(case)
+        assert force_failure_terminal(case, observed_old_locations)
 
 
 def transaction_name_boundary_case() -> None:
@@ -7370,12 +7536,20 @@ def exact_child_environment_case() -> None:
     assert unlisted_value not in result[1] + result[2]
 
 
-def write_blender_wrapper(case: types.SimpleNamespace, profile: str) -> Path:
+def write_blender_wrapper(
+    case: types.SimpleNamespace, profile: str
+) -> tuple[Path, Path]:
     wrapper = case.root / "blender-wrapper"
+    marker = case.root / "overflow-child.json"
     helper_directory = str(repo / "tests" / "assets")
     wrapper.write_text(
         f'''#!/usr/bin/env python3
+import json
+import os
 import sys
+import time
+from pathlib import Path
+
 sys.dont_write_bytecode = True
 sys.path.insert(0, {helper_directory!r})
 from fake_blender import main as fake_main
@@ -7383,37 +7557,58 @@ from fake_blender import main as fake_main
 argv = sys.argv[1:]
 profile = {profile!r}
 is_version = "--version" in argv
+overflow = profile in {{"version-stdout-over", "version-stderr-over"}} and is_version
+overflow = overflow or (
+    profile in {{"asset-stdout-over", "asset-stderr-over"}} and not is_version
+)
+if profile.endswith("-over") and overflow:
+    try:
+        os.setsid()
+    except OSError:
+        pass
+    Path({str(marker)!r}).write_text(
+        json.dumps({{"pid": os.getpid(), "pgrp": os.getpgrp()}}),
+        encoding="utf-8",
+    )
 if profile == "version-small" and is_version:
     print("small-version-child-line")
     print("small-version-error-line", file=sys.stderr)
 elif profile == "version-stdout-over" and is_version:
     sys.stdout.write("V" * ({MAX_CHILD_STREAM_BYTES} + 1) + "\\n")
     sys.stdout.flush()
+    while True:
+        time.sleep(1)
 elif profile == "version-stderr-over" and is_version:
     sys.stderr.write("E" * ({MAX_CHILD_STREAM_BYTES} + 1) + "\\n")
     sys.stderr.flush()
+    while True:
+        time.sleep(1)
 elif profile in {{"asset-small", "asset-fail"}} and not is_version:
     print("child-" + "sec" + "ret" + "=child-sensitive-value\\nbenign-output-line")
     print("child-" + "sec" + "ret" + "=child-sensitive-value\\nbenign-error-line", file=sys.stderr)
 elif profile == "asset-stdout-over" and not is_version:
     sys.stdout.write("O" * ({MAX_CHILD_STREAM_BYTES} + 1) + "\\n")
     sys.stdout.flush()
+    while True:
+        time.sleep(1)
 elif profile == "asset-stderr-over" and not is_version:
     sys.stderr.write("R" * ({MAX_CHILD_STREAM_BYTES} + 1) + "\\n")
     sys.stderr.flush()
+    while True:
+        time.sleep(1)
 raise SystemExit(fake_main(argv))
 ''',
         encoding="utf-8",
     )
     wrapper.chmod(0o755)
-    return wrapper
+    return wrapper, marker
 
 
 def assert_public_records(payload: bytes) -> str:
     decoded = payload.decode("utf-8")
     if not decoded:
         return decoded
-    assert decoded.endswith("\n"), repr(decoded[-80:])
+    assert decoded.endswith("\n"), "public record is not newline terminated"
     for line in decoded.splitlines():
         assert line.startswith("glb-decimation: "), (
             "child stream bypassed the centralized record boundary"
@@ -7424,26 +7619,165 @@ def assert_public_records(payload: bytes) -> str:
     return decoded
 
 
+def overflow_marker(marker: Path) -> dict[str, int] | None:
+    try:
+        value = json.loads(marker.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(value, dict):
+        return None
+    pid = value.get("pid")
+    process_group = value.get("pgrp")
+    if not isinstance(pid, int) or not isinstance(process_group, int):
+        return None
+    if pid <= 1 or process_group <= 1:
+        return None
+    return {"pid": pid, "pgrp": process_group}
+
+
+def marked_process_alive(pid: int, process_group: int) -> bool:
+    try:
+        return os.getpgid(pid) == process_group
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def process_group_alive(process_group: int) -> bool:
+    try:
+        os.killpg(process_group, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def signal_process_group(process_group: int, selected_signal: signal.Signals) -> None:
+    assert process_group > 1 and process_group != os.getpgrp()
+    try:
+        os.killpg(process_group, selected_signal)
+    except ProcessLookupError:
+        pass
+
+
+def wait_for_marked_tree(marker_record: dict[str, int], timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not marked_process_alive(
+            marker_record["pid"], marker_record["pgrp"]
+        ) and not process_group_alive(marker_record["pgrp"]):
+            return True
+        time.sleep(0.02)
+    return not marked_process_alive(
+        marker_record["pid"], marker_record["pgrp"]
+    ) and not process_group_alive(marker_record["pgrp"])
+
+
+def run_overflow_cli(
+    case: types.SimpleNamespace,
+    marker: Path,
+    *,
+    mode: str,
+) -> types.SimpleNamespace:
+    started = time.monotonic()
+    process = subprocess.Popen(
+        [sys.executable, str(script), *case.arguments],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+        env=child_environment(case, mode=mode),
+    )
+    timed_out = False
+    marker_record = None
+    try:
+        stdout, stderr = process.communicate(timeout=MAX_OVERFLOW_SECONDS)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        marker_record = overflow_marker(marker)
+        if marker_record is not None:
+            signal_process_group(marker_record["pgrp"], signal.SIGTERM)
+        try:
+            stdout, stderr = process.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            signal_process_group(process.pid, signal.SIGTERM)
+            try:
+                stdout, stderr = process.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                signal_process_group(process.pid, signal.SIGKILL)
+                stdout, stderr = process.communicate(timeout=2)
+    elapsed = time.monotonic() - started
+    marker_record = marker_record or overflow_marker(marker)
+    marker_missing = marker_record is None
+    child_or_group_was_alive = False
+    if marker_record is not None:
+        child_or_group_was_alive = marked_process_alive(
+            marker_record["pid"], marker_record["pgrp"]
+        ) or process_group_alive(marker_record["pgrp"])
+        if child_or_group_was_alive:
+            signal_process_group(marker_record["pgrp"], signal.SIGTERM)
+            if not wait_for_marked_tree(marker_record, 1):
+                signal_process_group(marker_record["pgrp"], signal.SIGKILL)
+        tree_dead = wait_for_marked_tree(marker_record, 2)
+    else:
+        tree_dead = False
+    assert process.poll() is not None
+    return types.SimpleNamespace(
+        returncode=process.returncode,
+        stdout=stdout,
+        stderr=stderr,
+        timed_out=timed_out,
+        elapsed=elapsed,
+        marker_missing=marker_missing,
+        child_or_group_was_alive=child_or_group_was_alive,
+        tree_dead=tree_dead,
+    )
+
+
 def child_output_case(profile: str) -> None:
     placeholder = setup_case(f"child-output-{profile}")
-    wrapper = write_blender_wrapper(placeholder, profile)
+    wrapper, marker = write_blender_wrapper(placeholder, profile)
     placeholder.blender = wrapper
     placeholder.arguments[placeholder.arguments.index(str(fake_blender))] = str(wrapper)
     mode = "fail" if profile == "asset-fail" else "success"
-    result = run_cli(placeholder, mode=mode)
-    stdout = assert_public_records(result.stdout)
-    stderr = assert_public_records(result.stderr)
-    combined = stdout + stderr
-    assert "child-sensitive-value" not in combined, (
-        "sensitive child value crossed the public record boundary"
-    )
-
     overflow = profile.endswith("-over")
+    if overflow:
+        result = run_overflow_cli(placeholder, marker, mode=mode)
+    else:
+        result = run_cli(placeholder, mode=mode)
+
+    violations = []
+    try:
+        stdout = assert_public_records(result.stdout)
+        stderr = assert_public_records(result.stderr)
+    except (AssertionError, UnicodeDecodeError):
+        stdout = ""
+        stderr = ""
+        violations.append("child output crossed the bounded public record surface")
+    combined = stdout + stderr
+    if "child-sensitive-value" in combined:
+        violations.append("child value crossed the public record boundary")
+
     failure = profile == "asset-fail"
-    if overflow or failure:
-        assert result.returncode != 0, (
-            "overflowing or failed child process was reported as success"
-        )
+    if overflow:
+        if result.timed_out or result.elapsed >= MAX_OVERFLOW_SECONDS:
+            violations.append("child stream overflow was not terminated promptly")
+        if result.marker_missing:
+            violations.append("overflow child identity was not observed")
+        if result.child_or_group_was_alive or not result.tree_dead:
+            violations.append("overflow child or process group survived candidate exit")
+        if result.returncode == 0:
+            violations.append("overflowing child process was reported as success")
+        if "output_triangles=" in stdout:
+            violations.append("overflowing child emitted a success record")
+        if placeholder.final_glb.exists() or placeholder.final_json.exists():
+            violations.append("overflowing child committed a final pair")
+        if any(placeholder.output.iterdir()):
+            violations.append("overflowing child left staging residue")
+    elif failure:
+        assert result.returncode != 0, "failed child process was reported as success"
         assert "output_triangles=" not in stdout
         assert not placeholder.final_glb.exists()
         assert not placeholder.final_json.exists()
@@ -7453,6 +7787,7 @@ def child_output_case(profile: str) -> None:
         assert placeholder.final_glb.read_bytes()[:4] == b"glTF"
         assert placeholder.final_json.exists()
     assert_source_unchanged(placeholder)
+    assert not violations, "; ".join(violations)
 
 
 def child_entry(result_queue, function, arguments) -> None:
