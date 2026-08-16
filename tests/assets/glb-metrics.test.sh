@@ -18,6 +18,89 @@ run_metrics() {
 write_fixture "$tmp/valid.glb" --triangles 37 --translate 4 5 6
 write_fixture "$tmp/two-primitives.glb" --triangles 12 --primitive-count 2
 write_fixture "$tmp/scene-content.glb" --triangles 12 --primitive-count 2 --add-scene-content
+write_fixture "$tmp/topology-1.glb" --triangles 1
+write_fixture "$tmp/topology-2.glb" --triangles 2
+write_fixture "$tmp/topology-30000.glb" --triangles 30000
+PYTHONDONTWRITEBYTECODE=1 python3 - \
+  "$tmp/topology-1.glb" "$tmp/topology-2.glb" "$tmp/topology-30000.glb" <<'PY'
+import json
+import math
+import struct
+import sys
+from pathlib import Path
+
+
+def read_glb(path):
+    raw = Path(path).read_bytes()
+    json_length, kind = struct.unpack_from("<I4s", raw, 12)
+    assert kind == b"JSON"
+    document = json.loads(raw[20:20 + json_length].rstrip(b" "))
+    bin_start = 20 + json_length
+    bin_length, bin_kind = struct.unpack_from("<I4s", raw, bin_start)
+    assert bin_kind == b"BIN\0"
+    return document, raw[bin_start + 8:bin_start + 8 + bin_length]
+
+
+def accessor_values(document, binary, accessor_number):
+    accessor = document["accessors"][accessor_number]
+    view = document["bufferViews"][accessor["bufferView"]]
+    formats = {
+        (5123, "SCALAR"): ("H", 1),
+        (5126, "VEC2"): ("f", 2),
+        (5126, "VEC3"): ("f", 3),
+    }
+    code, width = formats[(accessor["componentType"], accessor["type"])]
+    element_size = struct.calcsize("<" + code * width)
+    stride = view.get("byteStride", element_size)
+    start = view.get("byteOffset", 0) + accessor.get("byteOffset", 0)
+    return [
+        struct.unpack_from("<" + code * width, binary, start + index * stride)
+        for index in range(accessor["count"])
+    ]
+
+
+for path, triangle_count, vertex_count in zip(
+    sys.argv[1:], (1, 2, 30_000), (3, 4, 30_002), strict=True
+):
+    document, binary = read_glb(path)
+    primitive = document["meshes"][0]["primitives"][0]
+    positions = accessor_values(
+        document, binary, primitive["attributes"]["POSITION"]
+    )
+    uvs = accessor_values(
+        document, binary, primitive["attributes"]["TEXCOORD_0"]
+    )
+    indices = [
+        entry[0]
+        for entry in accessor_values(document, binary, primitive["indices"])
+    ]
+    faces = [tuple(indices[start:start + 3]) for start in range(0, len(indices), 3)]
+
+    # Break caught: the shared fixture again uses decorative/unreferenced
+    # vertices or repeated/zero-area faces to imitate a large mesh.
+    assert len(positions) == len(uvs) == vertex_count
+    assert len(faces) == triangle_count
+    assert set(indices) == set(range(vertex_count))
+    geometric_faces = set()
+    for face in faces:
+        points = [positions[index] for index in face]
+        ab = tuple(points[1][axis] - points[0][axis] for axis in range(3))
+        ac = tuple(points[2][axis] - points[0][axis] for axis in range(3))
+        cross = (
+            ab[1] * ac[2] - ab[2] * ac[1],
+            ab[2] * ac[0] - ab[0] * ac[2],
+            ab[0] * ac[1] - ab[1] * ac[0],
+        )
+        assert math.sqrt(sum(value * value for value in cross)) > 0.0
+        geometric_faces.add(tuple(sorted(points)))
+    assert len(geometric_faces) == triangle_count
+    assert [min(point[axis] for point in positions) for axis in range(3)] == [
+        -1.0, -1.0, -1.0
+    ]
+    assert [max(point[axis] for point in positions) for axis in range(3)] == [
+        1.0, 1.0, 1.0
+    ]
+PY
 PYTHONDONTWRITEBYTECODE=1 python3 - "$tmp/two-primitives.glb" "$tmp/scene-content.glb" <<'PY'
 import json
 import struct
@@ -99,7 +182,7 @@ assert raw == json.dumps(d, sort_keys=True) + "\n"
 # Break caught: triangle counts are inferred from vertices or bytes, not indices.
 assert d["triangles"] == 37
 # Break caught: POSITION accessor vertices are omitted or double-counted.
-assert d["vertices"] == 8
+assert d["vertices"] == 39
 # Break caught: mesh, primitive, or material arrays are counted incorrectly.
 assert d["meshes"] == d["primitives"] == d["materials"] == 1
 # Break caught: an embedded image is classified as external or is missed.
@@ -117,6 +200,7 @@ assert d["world_bounds"] == {"min": [3.0, 4.0, 5.0], "max": [5.0, 6.0, 7.0]}
 PY
 
 cat >"$tmp/mutate_glb.py" <<'PY'
+import base64
 import json
 import struct
 import sys
@@ -164,6 +248,51 @@ def add_spot_light(doc):
     return spot
 
 
+def append_buffer_view(doc, binary, payload, *, target=None):
+    declared_length = doc["buffers"][0]["byteLength"]
+    changed = bytearray(binary[:declared_length])
+    while len(changed) % 4:
+        changed.append(0)
+    view = {"buffer": 0, "byteOffset": len(changed), "byteLength": len(payload)}
+    if target is not None:
+        view["target"] = target
+    changed.extend(payload)
+    doc["bufferViews"].append(view)
+    doc["buffers"][0]["byteLength"] = len(changed)
+    return len(doc["bufferViews"]) - 1, bytes(changed)
+
+
+def index_storage(doc, binary, primitive):
+    accessor = doc["accessors"][primitive["indices"]]
+    assert accessor["componentType"] == 5123 and accessor["type"] == "SCALAR"
+    view = doc["bufferViews"][accessor["bufferView"]]
+    start = view.get("byteOffset", 0) + accessor.get("byteOffset", 0)
+    count = accessor["count"]
+    values = list(struct.unpack_from(f"<{count}H", binary, start))
+    return accessor, values
+
+
+def sparse_uv(doc, binary, primitive, indices):
+    uv_accessor = doc["accessors"][primitive["attributes"]["TEXCOORD_0"]]
+    index_view, binary = append_buffer_view(doc, binary, bytes(indices))
+    values_view, binary = append_buffer_view(
+        doc, binary, struct.pack("<4f", 0.25, 0.25, 0.75, 0.75)
+    )
+    uv_accessor["sparse"] = {
+        "count": 2,
+        "indices": {"bufferView": index_view, "componentType": 5121},
+        "values": {"bufferView": values_view},
+    }
+    return binary
+
+
+def embedded_image_payload(doc, binary):
+    image = doc["images"][0]
+    view = doc["bufferViews"][image["bufferView"]]
+    start = view.get("byteOffset", 0)
+    return binary[start:start + view["byteLength"]]
+
+
 path = Path(sys.argv[1])
 action = sys.argv[2]
 if action == "magic":
@@ -173,6 +302,20 @@ if action == "magic":
 if action == "truncated":
     path.write_bytes(path.read_bytes()[:-3])
     raise SystemExit()
+if action == "oversized-file":
+    original = bytearray(path.read_bytes())
+    minimum_total = 128 * 1024 * 1024 + 1
+    payload_length = minimum_total - len(original) - 8
+    payload_length += -payload_length % 4
+    total_length = len(original) + 8 + payload_length
+    struct.pack_into("<I", original, 8, total_length)
+    with path.open("wb") as handle:
+        handle.write(original)
+        handle.write(struct.pack("<I4s", payload_length, b"TEST"))
+        handle.seek(payload_length - 1, 1)
+        handle.write(b"\0")
+    assert path.stat().st_size == total_length and total_length > 128 * 1024 * 1024
+    raise SystemExit()
 doc, binary = read(path)
 if action == "deep-json":
     # The container and all required glTF fields stay valid; only unknown JSON
@@ -181,9 +324,204 @@ if action == "deep-json":
     base_json = json.dumps(doc, separators=(",", ":"), sort_keys=True).encode()
     write_raw_json(path, base_json[:-1] + b',"hostile":' + b"[" * depth + b"0" + b"]" * depth + b"}", binary)
     raise SystemExit()
+if action == "duplicate-json-key":
+    base_json = json.dumps(doc, separators=(",", ":"), sort_keys=True).encode()
+    write_raw_json(
+        path,
+        base_json[:-1] + b',"asset":{"version":"2.0"}}',
+        binary,
+    )
+    raise SystemExit()
+if action == "hostile-json-integer":
+    base_json = json.dumps(doc, separators=(",", ":"), sort_keys=True).encode()
+    write_raw_json(
+        path,
+        base_json[:-1] + b',"hostile":' + b"9" * 5_000 + b"}",
+        binary,
+    )
+    raise SystemExit()
+if action == "oversized-json":
+    doc["extras"] = {"padding": "x" * (16 * 1024 * 1024)}
+    write(path, doc, binary)
+    raise SystemExit()
 primitive = doc["meshes"][0]["primitives"][0]
 second_primitive = doc["meshes"][0]["primitives"][1] if len(doc["meshes"][0]["primitives"]) > 1 else None
-if action == "mode":
+if action == "missing-asset":
+    doc.pop("asset", None)
+elif action == "asset-version-1":
+    doc["asset"]["version"] = "1.0"
+elif action == "normalized-position":
+    position = doc["accessors"][primitive["attributes"]["POSITION"]]
+    position["normalized"] = True
+elif action == "position-vec2":
+    position = doc["accessors"][primitive["attributes"]["POSITION"]]
+    position["type"] = "VEC2"
+elif action == "position-unsigned-short":
+    position = doc["accessors"][primitive["attributes"]["POSITION"]]
+    position["componentType"] = 5123
+elif action == "uv-alias-position":
+    primitive["attributes"]["TEXCOORD_0"] = primitive["attributes"]["POSITION"]
+elif action in {
+    "uv-ushort-normalized",
+    "uv-ushort-unnormalized",
+    "uv-signed-normalized",
+}:
+    uv = doc["accessors"][primitive["attributes"]["TEXCOORD_0"]]
+    view = doc["bufferViews"][uv["bufferView"]]
+    changed_binary = bytearray(binary)
+    start = view.get("byteOffset", 0) + uv.get("byteOffset", 0)
+    count = uv["count"]
+    values = tuple(
+        value
+        for index in range(count)
+        for value in (
+            round(65_535 * index / max(1, count - 1)),
+            0 if index % 2 == 0 else 65_535,
+        )
+    )
+    struct.pack_into(f"<{len(values)}H", changed_binary, start, *values)
+    binary = bytes(changed_binary)
+    uv["componentType"] = 5122 if action == "uv-signed-normalized" else 5123
+    uv["normalized"] = action != "uv-ushort-unnormalized"
+elif action.startswith("sparse-uv-"):
+    uv_count = doc["accessors"][primitive["attributes"]["TEXCOORD_0"]]["count"]
+    sparse_indices = {
+        "sparse-uv-valid": [0, uv_count - 1],
+        "sparse-uv-duplicate": [0, 0],
+        "sparse-uv-descending": [2, 1],
+        "sparse-uv-out-of-range": [0, uv_count],
+    }[action]
+    binary = sparse_uv(doc, binary, primitive, sparse_indices)
+elif action == "zero-indices":
+    index_accessor, indices = index_storage(doc, binary, primitive)
+    view = doc["bufferViews"][index_accessor["bufferView"]]
+    start = view.get("byteOffset", 0) + index_accessor.get("byteOffset", 0)
+    changed_binary = bytearray(binary)
+    struct.pack_into(f"<{len(indices)}H", changed_binary, start, *([0] * len(indices)))
+    binary = bytes(changed_binary)
+elif action == "repeat-first-face":
+    index_accessor, indices = index_storage(doc, binary, primitive)
+    view = doc["bufferViews"][index_accessor["bufferView"]]
+    start = view.get("byteOffset", 0) + index_accessor.get("byteOffset", 0)
+    repeated = [value for _ in range(len(indices) // 3) for value in (0, 1, 2)]
+    changed_binary = bytearray(binary)
+    struct.pack_into(f"<{len(repeated)}H", changed_binary, start, *repeated)
+    binary = bytes(changed_binary)
+elif action == "unreferenced-vertex":
+    index_accessor, indices = index_storage(doc, binary, primitive)
+    position_count = doc["accessors"][primitive["attributes"]["POSITION"]]["count"]
+    indices[-3:] = [0, 1, position_count - 2]
+    view = doc["bufferViews"][index_accessor["bufferView"]]
+    start = view.get("byteOffset", 0) + index_accessor.get("byteOffset", 0)
+    changed_binary = bytearray(binary)
+    struct.pack_into(f"<{len(indices)}H", changed_binary, start, *indices)
+    binary = bytes(changed_binary)
+elif action == "append-two-duplicate-faces":
+    index_accessor, indices = index_storage(doc, binary, primitive)
+    expanded = indices + indices[:6]
+    new_view, binary = append_buffer_view(
+        doc,
+        binary,
+        struct.pack(f"<{len(expanded)}H", *expanded),
+        target=34963,
+    )
+    index_accessor["bufferView"] = new_view
+    index_accessor["byteOffset"] = 0
+    index_accessor["count"] = len(expanded)
+elif action == "append-two-degenerate-faces":
+    index_accessor, indices = index_storage(doc, binary, primitive)
+    expanded = indices + [0, 0, 0, 1, 1, 1]
+    new_view, binary = append_buffer_view(
+        doc,
+        binary,
+        struct.pack(f"<{len(expanded)}H", *expanded),
+        target=34963,
+    )
+    index_accessor["bufferView"] = new_view
+    index_accessor["byteOffset"] = 0
+    index_accessor["count"] = len(expanded)
+elif action == "append-duplicate-position-face":
+    position_accessor = doc["accessors"][primitive["attributes"]["POSITION"]]
+    position_view = doc["bufferViews"][position_accessor["bufferView"]]
+    position_start = position_view.get("byteOffset", 0) + position_accessor.get(
+        "byteOffset", 0
+    )
+    position_count = position_accessor["count"]
+    position_payload = binary[
+        position_start:position_start + position_count * 12
+    ]
+    position_view_number, binary = append_buffer_view(
+        doc, binary, position_payload + position_payload[:36], target=34962
+    )
+    position_accessor["bufferView"] = position_view_number
+    position_accessor["byteOffset"] = 0
+    position_accessor["count"] = position_count + 3
+
+    uv_accessor = doc["accessors"][primitive["attributes"]["TEXCOORD_0"]]
+    uv_view = doc["bufferViews"][uv_accessor["bufferView"]]
+    uv_start = uv_view.get("byteOffset", 0) + uv_accessor.get("byteOffset", 0)
+    uv_payload = binary[uv_start:uv_start + position_count * 8]
+    uv_view_number, binary = append_buffer_view(
+        doc, binary, uv_payload + uv_payload[:24], target=34962
+    )
+    uv_accessor["bufferView"] = uv_view_number
+    uv_accessor["byteOffset"] = 0
+    uv_accessor["count"] = position_count + 3
+
+    index_accessor, indices = index_storage(doc, binary, primitive)
+    expanded = indices + [position_count, position_count + 1, position_count + 2]
+    index_view_number, binary = append_buffer_view(
+        doc,
+        binary,
+        struct.pack(f"<{len(expanded)}H", *expanded),
+        target=34963,
+    )
+    index_accessor["bufferView"] = index_view_number
+    index_accessor["byteOffset"] = 0
+    index_accessor["count"] = len(expanded)
+elif action == "detach-base-color":
+    doc["materials"][0]["pbrMetallicRoughness"].pop("baseColorTexture")
+elif action == "move-base-color-to-normal":
+    material = doc["materials"][0]
+    material["normalTexture"] = material["pbrMetallicRoughness"].pop(
+        "baseColorTexture"
+    )
+elif action == "base-color-texcoord-1":
+    doc["materials"][0]["pbrMetallicRoughness"]["baseColorTexture"][
+        "texCoord"
+    ] = 1
+elif action == "alter-image-payload":
+    image = doc["images"][0]
+    view = doc["bufferViews"][image["bufferView"]]
+    changed_binary = bytearray(binary)
+    changed_binary[view["byteOffset"] + view["byteLength"] - 1] ^= 1
+    binary = bytes(changed_binary)
+elif action.startswith("data-image-"):
+    image = doc["images"][0]
+    original_payload = embedded_image_payload(doc, binary)
+    image.pop("bufferView")
+    image.pop("mimeType", None)
+    if action == "data-image-valid":
+        uri = "data:image/png;base64," + base64.b64encode(original_payload).decode()
+    elif action == "data-image-invalid-base64":
+        uri = "data:image/png;base64,NOT-BASE64"
+    elif action == "data-image-wrong-media":
+        uri = "data:text/plain;base64," + base64.b64encode(original_payload).decode()
+    elif action == "data-image-oversized":
+        uri = "data:image/png;base64," + base64.b64encode(
+            b"x" * (8 * 1024 * 1024 + 1)
+        ).decode()
+    else:
+        raise AssertionError(action)
+    image["uri"] = uri
+elif action == "too-many-accessors":
+    template = dict(doc["accessors"][0])
+    doc["accessors"].extend(
+        dict(template) for _ in range(65_537 - len(doc["accessors"]))
+    )
+elif action == "accessor-count-limit":
+    doc["accessors"][primitive["attributes"]["POSITION"]]["count"] = 50_000_001
+elif action == "mode":
     primitive["mode"] = 1
 elif action == "declared-bounds":
     accessor = doc["accessors"][primitive["attributes"]["POSITION"]]
@@ -280,7 +618,7 @@ d = json.load(open(sys.argv[1], encoding="utf-8"))
 assert d["extensions_used"] == d["extensions_required"] == []
 # Break caught: legal extras metadata changes unrelated ordinary inspection facts.
 assert d["triangles"] == 37
-assert d["vertices"] == 8
+assert d["vertices"] == 39
 assert d["meshes"] == d["primitives"] == d["materials"] == 1
 assert d["images"] == d["embedded_images"] == 1
 assert d["uv_primitives"] == d["material_primitives"] == 1
@@ -326,7 +664,7 @@ for path in sys.argv[1:]:
     assert d["lights"] == 1
     # Break caught: opaque spot metadata alters ordinary inspection metrics.
     assert d["triangles"] == 37
-    assert d["vertices"] == 8
+    assert d["vertices"] == 39
     assert d["meshes"] == d["primitives"] == d["materials"] == 1
     assert d["images"] == d["embedded_images"] == 1
     assert d["uv_primitives"] == d["material_primitives"] == 1
@@ -604,3 +942,357 @@ expect_preservation_rejection "light" "$tmp/source.glb" "$tmp/light.glb"
 expect_preservation_rejection "skin" "$tmp/source.glb" "$tmp/skin.glb"
 # Break caught: a morph target is introduced into a static derivative.
 expect_preservation_rejection "morph target" "$tmp/source.glb" "$tmp/morph.glb"
+
+# Hardening fixtures use independent byte/document mutations.  Positive
+# controls sit beside each hostile case so a parser that rejects everything,
+# returns constant topology/hash fields, or compares only resource counts
+# cannot turn this section green.
+for action in \
+  missing-asset asset-version-1 normalized-position position-vec2 \
+  position-unsigned-short uv-alias-position uv-ushort-normalized \
+  uv-ushort-unnormalized uv-signed-normalized sparse-uv-valid \
+  sparse-uv-duplicate sparse-uv-descending sparse-uv-out-of-range \
+  zero-indices repeat-first-face unreferenced-vertex \
+  append-two-duplicate-faces append-two-degenerate-faces \
+  append-duplicate-position-face \
+  detach-base-color move-base-color-to-normal base-color-texcoord-1 \
+  alter-image-payload \
+  data-image-valid data-image-invalid-base64 data-image-wrong-media \
+  data-image-oversized too-many-accessors accessor-count-limit \
+  duplicate-json-key hostile-json-integer oversized-json oversized-file
+do
+  cp "$tmp/valid.glb" "$tmp/$action.glb"
+  mutate "$tmp/$action.glb" "$action"
+done
+
+set +e
+PYTHONDONTWRITEBYTECODE=1 python3 - "$metrics_script" "$tmp" <<'PY'
+import importlib.util
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+
+script = Path(sys.argv[1])
+fixture_root = Path(sys.argv[2])
+spec = importlib.util.spec_from_file_location("glb_metrics_hardening", script)
+assert spec and spec.loader
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+
+PNG_SHA256 = "6587ef8f161ecd2a57c16e50f2c264221a76f89acbd2bdb169d648225fc58400"
+BASE_COLOR_BINDING = [{
+    "material": 0,
+    "role": "baseColor",
+    "texcoord": 0,
+    "payload_sha256": PNG_SHA256,
+}]
+NORMAL_BINDING = [{
+    "material": 0,
+    "role": "normal",
+    "texcoord": 0,
+    "payload_sha256": PNG_SHA256,
+}]
+failures = []
+
+
+def check(name, operation):
+    try:
+        operation()
+    except Exception as exc:  # collect every independent RED in one invocation
+        failures.append(f"{name}: {type(exc).__name__}: {exc}")
+
+
+def inspect(name):
+    return module.inspect_glb(fixture_root / f"{name}.glb")
+
+
+def assert_surface(
+    metrics, *, triangles, vertices, referenced, unique, degenerate=0
+):
+    # Break caught: raw index-entry count is replaced by the deduplicated count,
+    # or surface facts are absent/constant and cannot expose fake topology.
+    # ``unique_triangles`` is the number of distinct non-degenerate geometric
+    # faces; the separate degenerate count keeps the two-face source duplicate
+    # allowance from becoming a two-zero-area-face loophole.
+    assert metrics["triangles"] == triangles
+    assert metrics["vertices"] == vertices
+    assert metrics["referenced_vertices"] == referenced
+    assert metrics["unique_triangles"] == unique
+    assert metrics["degenerate_triangles"] == degenerate
+
+
+def assert_texture_facts(metrics):
+    # Literals are derived from the fixed 70-byte PNG in the fixture, not from
+    # the inspector.  Counts alone cannot satisfy either assertion.
+    assert metrics["image_payload_sha256"] == [PNG_SHA256]
+    assert metrics["material_texture_bindings"] == BASE_COLOR_BINDING
+
+
+def valid_control():
+    metrics = inspect("valid")
+    assert_surface(
+        metrics, triangles=37, vertices=39, referenced=39, unique=37
+    )
+    assert_texture_facts(metrics)
+    assert module.compare_preservation(metrics, metrics) == []
+
+
+check("valid strict surface/resource control", valid_control)
+
+
+def fixture_scale_controls():
+    for name, triangles, vertices in (
+        ("topology-1", 1, 3),
+        ("topology-2", 2, 4),
+        ("topology-30000", 30_000, 30_002),
+    ):
+        metrics = inspect(name)
+        assert_surface(
+            metrics,
+            triangles=triangles,
+            vertices=vertices,
+            referenced=vertices,
+            unique=triangles,
+        )
+        assert metrics["uv_primitives"] == 1
+        assert metrics["world_bounds"] == {
+            "min": [-1.0, -1.0, -1.0],
+            "max": [1.0, 1.0, 1.0],
+        }
+
+
+check("1/2/30k topology metrics are measured, not constant", fixture_scale_controls)
+
+
+def supported_uv_controls():
+    default = inspect("valid")
+    normalized_ushort = inspect("uv-ushort-normalized")
+    assert default["uv_primitives"] == normalized_ushort["uv_primitives"] == 1
+    assert_surface(
+        normalized_ushort,
+        triangles=37,
+        vertices=39,
+        referenced=39,
+        unique=37,
+    )
+
+
+check("FLOAT and normalized-ushort VEC2 UV controls", supported_uv_controls)
+
+
+def sparse_uv_control():
+    metrics = inspect("sparse-uv-valid")
+    assert metrics["uv_primitives"] == 1
+    assert_surface(
+        metrics, triangles=37, vertices=39, referenced=39, unique=37
+    )
+
+
+check("strictly increasing in-range sparse UV control", sparse_uv_control)
+
+
+def data_image_control():
+    metrics = inspect("data-image-valid")
+    assert metrics["embedded_images"] == 1
+    assert_texture_facts(metrics)
+    assert module.compare_preservation(inspect("valid"), metrics) == []
+
+
+check("valid bounded base64 image control", data_image_control)
+
+
+def topology_output(name, referenced, unique, diagnostic, *, degenerate=0):
+    source = inspect("valid")
+    output = inspect(name)
+    assert_surface(
+        output,
+        triangles=37,
+        vertices=39,
+        referenced=referenced,
+        unique=unique,
+        degenerate=degenerate,
+    )
+    reasons = module.compare_preservation(source, output)
+    assert reasons, f"{name} fake surface was accepted"
+    assert any(diagnostic in reason.lower() for reason in reasons), reasons
+
+
+check(
+    "zero-area output surface",
+    lambda: topology_output(
+        "zero-indices", 1, 0, "degenerate triangle", degenerate=37
+    ),
+)
+check(
+    "repeated-face output surface",
+    lambda: topology_output("repeat-first-face", 3, 1, "unique triangle"),
+)
+
+
+def duplicate_positions_output():
+    source = inspect("valid")
+    output = inspect("append-duplicate-position-face")
+    # The appended face has three fresh indexes and all 42 vertices are used,
+    # but its three POSITION values duplicate face zero.  Index-tuple
+    # deduplication therefore cannot satisfy the geometric surface metric.
+    assert_surface(
+        output, triangles=38, vertices=42, referenced=42, unique=37
+    )
+    reasons = module.compare_preservation(source, output)
+    assert reasons and any("unique triangle" in reason.lower() for reason in reasons), reasons
+
+
+check("duplicate geometric face through distinct indexes", duplicate_positions_output)
+check(
+    "unreferenced output vertex",
+    lambda: topology_output("unreferenced-vertex", 38, 37, "referenced vert"),
+)
+
+
+def known_source_duplicate_delta():
+    source = inspect("append-two-duplicate-faces")
+    output = inspect("valid")
+    # The two current source GLBs each have exactly this raw-vs-unique delta.
+    # Preserve raw triangle semantics and permit the source-side delta only;
+    # clean outputs remain strict.
+    assert_surface(
+        source, triangles=39, vertices=39, referenced=39, unique=37
+    )
+    assert_surface(
+        output, triangles=37, vertices=39, referenced=39, unique=37
+    )
+    assert module.compare_preservation(source, output) == []
+
+
+check("known source duplicate-face delta of two", known_source_duplicate_delta)
+
+
+def source_degenerate_delta_is_not_the_duplicate_allowance():
+    source = inspect("append-two-degenerate-faces")
+    output = inspect("valid")
+    assert_surface(
+        source,
+        triangles=39,
+        vertices=39,
+        referenced=39,
+        unique=37,
+        degenerate=2,
+    )
+    reasons = module.compare_preservation(source, output)
+    assert reasons and any("degenerate triangle" in reason.lower() for reason in reasons), reasons
+
+
+check(
+    "source degenerate faces cannot borrow duplicate-face allowance",
+    source_degenerate_delta_is_not_the_duplicate_allowance,
+)
+
+
+def detached_binding():
+    source = inspect("valid")
+    output = inspect("detach-base-color")
+    assert output["materials"] == source["materials"] == 1
+    assert output["images"] == source["images"] == 1
+    assert output["embedded_images"] == source["embedded_images"] == 1
+    assert output["image_payload_sha256"] == source["image_payload_sha256"]
+    assert source["material_texture_bindings"] == BASE_COLOR_BINDING
+    assert output["material_texture_bindings"] == []
+    reasons = module.compare_preservation(source, output)
+    assert reasons and any("texture binding" in reason.lower() for reason in reasons), reasons
+
+
+check("detached base-color binding with intact counts", detached_binding)
+
+
+def changed_texture_role():
+    source = inspect("valid")
+    output = inspect("move-base-color-to-normal")
+    assert output["materials"] == source["materials"] == 1
+    assert output["images"] == source["images"] == 1
+    assert output["image_payload_sha256"] == source["image_payload_sha256"]
+    assert source["material_texture_bindings"] == BASE_COLOR_BINDING
+    assert output["material_texture_bindings"] == NORMAL_BINDING
+    reasons = module.compare_preservation(source, output)
+    assert reasons and any("texture binding" in reason.lower() for reason in reasons), reasons
+
+
+check("texture role changed with intact counts/payload", changed_texture_role)
+
+
+def changed_payload():
+    source = inspect("valid")
+    output = inspect("alter-image-payload")
+    assert output["materials"] == source["materials"] == 1
+    assert output["embedded_images"] == source["embedded_images"] == 1
+    assert source["image_payload_sha256"] == [PNG_SHA256]
+    assert output["image_payload_sha256"] != source["image_payload_sha256"]
+    assert output["material_texture_bindings"] != BASE_COLOR_BINDING
+    reasons = module.compare_preservation(source, output)
+    assert reasons and any("image payload" in reason.lower() for reason in reasons), reasons
+
+
+check("changed embedded payload with intact counts", changed_payload)
+
+
+def cli_reject(name, *required_text):
+    completed = subprocess.run(
+        [sys.executable, str(script), str(fixture_root / f"{name}.glb")],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert completed.returncode != 0, "hostile fixture exited zero"
+    assert completed.stdout == "", "hostile fixture wrote stdout"
+    lines = completed.stderr.splitlines()
+    has_traceback = "traceback" in completed.stderr.lower()
+    assert len(lines) == 1 and lines[0].startswith("glb-metrics:"), (
+        f"expected one prefixed diagnostic; lines={len(lines)}, "
+        f"traceback={has_traceback}"
+    )
+    assert not has_traceback, "Python traceback escaped"
+    for text in required_text:
+        assert text.lower() in lines[0].lower(), lines[0]
+
+
+for case, required in (
+    ("missing-asset", ("asset",)),
+    ("asset-version-1", ("version", "2.0")),
+    ("duplicate-json-key", ("duplicate",)),
+    ("hostile-json-integer", ()),
+    ("oversized-json", ("json", "limit")),
+    ("oversized-file", ("file", "limit")),
+    ("too-many-accessors", ("accessor", "limit")),
+    ("accessor-count-limit", ("accessor", "limit")),
+    ("normalized-position", ("position", "normalized")),
+    ("position-vec2", ("position", "float vec3")),
+    ("position-unsigned-short", ("position", "float vec3")),
+    ("uv-alias-position", ("texcoord_0",)),
+    ("uv-ushort-unnormalized", ("texcoord_0", "normalized")),
+    ("uv-signed-normalized", ("texcoord_0",)),
+    ("base-color-texcoord-1", ("texcoord",)),
+    ("sparse-uv-duplicate", ("sparse", "increasing")),
+    ("sparse-uv-descending", ("sparse", "increasing")),
+    ("sparse-uv-out-of-range", ("sparse", "range")),
+    ("data-image-invalid-base64", ("image", "base64")),
+    ("data-image-wrong-media", ("image",)),
+    ("data-image-oversized", ("image", "limit")),
+):
+    check(f"CLI rejection: {case}", lambda case=case, required=required: cli_reject(case, *required))
+
+if failures:
+    for failure in failures:
+        print(f"glb-metrics hardening RED: {failure}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+hardening_rc=$?
+set -e
+if [ "$hardening_rc" -ne 0 ]; then
+  exit "$hardening_rc"
+fi
+
+echo "glb-metrics test: pass"

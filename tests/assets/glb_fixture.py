@@ -33,11 +33,21 @@ def write_glb(
     declared_bounds: tuple[tuple[float, float, float], tuple[float, float, float]] | None = None,
     translation: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> None:
-    """Write a self-contained GLB whose repeated indices encode *triangles*."""
-    if triangles < 0:
-        raise ValueError("triangles must be non-negative")
+    """Write a self-contained GLB with real, deterministic triangle topology.
+
+    Each primitive is a zig-zag strip encoded as independent TRIANGLES.  Its
+    ``n`` faces use ``n + 2`` vertices and consecutive index triples, which
+    keeps every face unique and non-degenerate while referencing every vertex.
+    This stays linear (and comfortably below unsigned-short limits for the
+    30k pipeline fixtures) instead of teaching tests that repeated faces are a
+    plausible stand-in for a decimated surface.
+    """
+    if triangles < 1:
+        raise ValueError("triangles must be positive")
     if primitive_count < 1:
         raise ValueError("primitive_count must be positive")
+    if triangles < primitive_count:
+        raise ValueError("each primitive must contain at least one triangle")
 
     minimum, maximum = bounds
     declared_minimum, declared_maximum = declared_bounds or bounds
@@ -81,7 +91,6 @@ def write_glb(
         accessors.append(accessor)
         return len(accessors) - 1
 
-    uvs = ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)) * 2
     triangle_base, triangle_remainder = divmod(triangles, primitive_count)
     primitives: list[dict[str, object]] = []
 
@@ -90,11 +99,24 @@ def write_glb(
         # distributed yet their union preserves the caller's global bounds.
         x0 = minimum[0] + (maximum[0] - minimum[0]) * primitive_index / primitive_count
         x1 = minimum[0] + (maximum[0] - minimum[0]) * (primitive_index + 1) / primitive_count
+        primitive_triangles = triangle_base + (1 if primitive_index < triangle_remainder else 0)
+        vertex_count = primitive_triangles + 2
+        if vertex_count > 65_536:
+            raise ValueError("fixture primitive exceeds unsigned-short index range")
+
+        # Consecutive points advance monotonically across X/Z and alternate Y.
+        # Every three-point window therefore has non-zero projected XY area;
+        # endpoints and the alternating Y values preserve the exact bounds.
         positions = [
-            (x, y, z)
-            for x in (x0, x1)
-            for y in (minimum[1], maximum[1])
-            for z in (minimum[2], maximum[2])
+            (
+                x0 + (x1 - x0) * vertex_index / (vertex_count - 1),
+                minimum[1] if vertex_index % 2 == 0 else maximum[1],
+                minimum[2]
+                + (maximum[2] - minimum[2])
+                * vertex_index
+                / (vertex_count - 1),
+            )
+            for vertex_index in range(vertex_count)
         ]
         accessor_minimum = list(declared_minimum) if declared_bounds else [
             x0, minimum[1], minimum[2]
@@ -102,25 +124,46 @@ def write_glb(
         accessor_maximum = list(declared_maximum) if declared_bounds else [
             x1, maximum[1], maximum[2]
         ]
-        position_bytes = struct.pack("<24f", *(coordinate for point in positions for coordinate in point))
+        position_bytes = struct.pack(
+            f"<{vertex_count * 3}f",
+            *(coordinate for point in positions for coordinate in point),
+        )
         position_view = append_view(position_bytes, target=34962)
         position_accessor = append_accessor(
             position_view,
-            8,
+            vertex_count,
             5126,
             "VEC3",
             minimum_value=accessor_minimum,
             maximum_value=accessor_maximum,
         )
 
-        primitive_triangles = triangle_base + (1 if primitive_index < triangle_remainder else 0)
-        indices = (0, 1, 2) * primitive_triangles
+        indices = tuple(
+            index
+            for triangle_index in range(primitive_triangles)
+            for index in (triangle_index, triangle_index + 1, triangle_index + 2)
+        )
         index_view = append_view(struct.pack(f"<{len(indices)}H", *indices), target=34963)
         index_accessor = append_accessor(index_view, len(indices), 5123, "SCALAR")
         attributes: dict[str, int] = {"POSITION": position_accessor}
         if include_uv:
-            uv_view = append_view(struct.pack("<16f", *(coordinate for uv in uvs for coordinate in uv)), target=34962)
-            attributes["TEXCOORD_0"] = append_accessor(uv_view, 8, 5126, "VEC2")
+            uvs = tuple(
+                (
+                    vertex_index / (vertex_count - 1),
+                    0.0 if vertex_index % 2 == 0 else 1.0,
+                )
+                for vertex_index in range(vertex_count)
+            )
+            uv_view = append_view(
+                struct.pack(
+                    f"<{vertex_count * 2}f",
+                    *(coordinate for uv in uvs for coordinate in uv),
+                ),
+                target=34962,
+            )
+            attributes["TEXCOORD_0"] = append_accessor(
+                uv_view, vertex_count, 5126, "VEC2"
+            )
         primitive: dict[str, object] = {"attributes": attributes, "indices": index_accessor, "mode": 4}
         if include_material:
             primitive["material"] = 0
