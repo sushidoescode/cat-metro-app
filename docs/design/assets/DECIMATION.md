@@ -43,24 +43,51 @@ caller's working directory:
 | `--blender` | the executable returned by searching `PATH` for `blender` |
 
 The approved/default `incoming/decimated` destination is covered by the
-repository's `incoming/` ignore rule. Before any repo-local run, verify the
-selected destination with a hypothetical leaf (no file is created):
+repository's `incoming/` ignore rule. Before any repo-local run, verify every
+actual manifest GLB/JSON destination leaf. This standard-library check creates
+no file and invokes Git with an argument vector:
 
 ```bash
 output_dir=unity/Assets/Art/Generated/incoming/decimated
-git check-ignore -q "$output_dir/.decimation-custody-check" || {
-  printf 'selected decimation output is not gitignored: %s\n' "$output_dir" >&2
-  exit 1
-}
+PYTHONDONTWRITEBYTECODE=1 python3 - \
+  docs/design/assets/CAT-MANIFEST.json "$output_dir" <<'PY'
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+output_dir = Path(sys.argv[2])
+for asset in manifest["assets"]:
+    output = asset["out"]
+    for leaf in (output, f"{output}.json"):
+        selected_path = output_dir / leaf
+        result = subprocess.run(
+            ["git", "check-ignore", "-q", "--", str(selected_path)],
+            check=False,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if result.returncode != 0:
+            print(
+                "selected decimation output is not gitignored: "
+                f"{selected_path.as_posix()!r}",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+print("all manifest derivative GLB/JSON leaves are gitignored")
+PY
 ```
 
 `--output-dir` accepts any distinct writable directory; the orchestrator does
 not require it to be beneath `incoming/`, inside a repository, or covered by a
 Git ignore rule. It enforces the selected filesystem root, not Git custody.
 Never select a tracked Unity directory, `docs/`, or another tracked path. For
-an absolute repo-local destination in another checkout, run
-`git -C <checkout> check-ignore <relative-hypothetical-leaf>` before invoking
-the tool.
+an absolute repo-local destination in another checkout, run this same loop
+against every manifest GLB and `<out>.json` leaf, using an argument vector of
+`git -C <checkout> check-ignore -q -- <relative-output>/<leaf>`. Do not replace
+the real leaf set with one marker filename.
 
 Use explicit paths when the tracked scripts live in a clean worktree but the
 large ignored source files live in the main checkout. This is the real-queue
@@ -626,15 +653,71 @@ while IFS=$'\t' read -r id out; do
     "$render_root/after/$id.png" 25
 done < <(jq -r '.assets[] | [.id, .out] | @tsv' docs/design/assets/CAT-MANIFEST.json)
 
-git -C /Users/sushantsrikrish/cat-metro-app \
-  status --short --untracked-files=all -- .catshots
+PYTHONDONTWRITEBYTECODE=1 python3 - \
+  docs/design/assets/CAT-MANIFEST.json \
+  /Users/sushantsrikrish/cat-metro-app <<'PY'
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+checkout = Path(sys.argv[2])
+tracked = subprocess.run(
+    ["git", "-C", str(checkout), "ls-files", "-z", "--", ".catshots"],
+    check=True,
+    stdin=subprocess.DEVNULL,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+)
+if tracked.stdout:
+    print(".catshots contains a tracked or staged path", file=sys.stderr)
+    raise SystemExit(1)
+
+status = subprocess.run(
+    [
+        "git", "-C", str(checkout), "status", "--porcelain=v1", "-z",
+        "--untracked-files=all", "--", ".catshots",
+    ],
+    check=True,
+    stdin=subprocess.DEVNULL,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+)
+states = {}
+for entry in status.stdout.split(b"\0"):
+    if not entry:
+        continue
+    if len(entry) < 4 or entry[2:3] != b" ":
+        print("unexpected Git porcelain record for .catshots", file=sys.stderr)
+        raise SystemExit(1)
+    states[os.fsdecode(entry[3:])] = entry[:2].decode("ascii")
+
+expected = {
+    f".catshots/glb-decimation-2026-08-15/{phase}/{asset['id']}.png"
+    for asset in manifest["assets"]
+    for phase in ("before", "after")
+}
+if len(expected) != 30:
+    print("manifest does not identify 15 unique render pairs", file=sys.stderr)
+    raise SystemExit(1)
+wrong = sorted(path for path in expected if states.get(path) != "??")
+if wrong:
+    for path in wrong:
+        print(f"expected untracked render is missing or not ??: {path}", file=sys.stderr)
+    raise SystemExit(1)
+print("30/30 individual renders are present and untracked")
+PY
 ```
 
 Actually view all 30 individual PNGs at the same size. A contact sheet is only
-a navigation aid; it never replaces individual inspection. The status command
-must continue to show generated depictions only as `??` untracked paths, never
-as staged or tracked files. Never use `git add -A` in a checkout containing
-them. Record a separate PASS/FAIL for every row:
+a navigation aid; it never replaces individual inspection. The custody check
+requires an empty `git ls-files -- .catshots` result and requires all 30
+individual before/after paths to have `??` porcelain status. It intentionally
+does not require contact sheets, which may not have been built yet. Never use
+`git add -A` in a checkout containing these files. Record a separate PASS/FAIL
+for every row:
 
 | Asset | Required visual comparison |
 |---|---|
