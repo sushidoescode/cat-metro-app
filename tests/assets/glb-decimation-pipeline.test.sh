@@ -732,7 +732,8 @@ upper = input_dir / "Case.glb"
 lower = input_dir / "case.glb"
 write_glb(upper, triangles=30000)
 write_sidecar(upper, "meshy", "casefold identity fixture")
-if not lower.exists():
+case_insensitive_casefold = lower.exists()
+if not case_insensitive_casefold:
     write_glb(lower, triangles=30000)
     write_sidecar(lower, "meshy", "casefold identity fixture")
 else:
@@ -746,7 +747,11 @@ input_before = snapshot(input_dir)
 result, output, fake_log, fake_audit = run_case(case_root, input_dir, output_dir, manifest)
 require_pre_fake_rejection(
     "case-fold duplicate outputs", result, output, fake_log, fake_audit,
-    r"duplicate[^\n]*out|case.?fold|output paths alias",
+    (
+        r"duplicate[^\n]*out|case.?fold|output paths alias|source paths alias"
+        if case_insensitive_casefold
+        else r"duplicate[^\n]*out|case.?fold|output paths alias"
+    ),
 )
 check(snapshot(input_dir) == input_before, "case-fold duplicate outputs: source tree changed")
 check(list(output_dir.iterdir()) == [], "case-fold duplicate outputs: partial output was created")
@@ -811,8 +816,11 @@ if [ "$review_section" = all ] || [ "$review_section" = B ]; then
     "$decimate_script" "$tmp/review-rollback" <<'PY'
 import hashlib
 import importlib.util
+import multiprocessing
 import os
 import sys
+import threading
+import traceback
 from pathlib import Path
 from unittest import mock
 
@@ -828,8 +836,9 @@ spec.loader.exec_module(module)
 
 errors = []
 forward_order = ["backup_glb", "backup_json", "promote_glb", "promote_json"]
+process_context = multiprocessing.get_context("fork")
 
-def check(condition, message):
+def check_parent(condition, message):
     if not condition:
         errors.append(message)
 
@@ -842,7 +851,20 @@ def backup_files(directory):
         key=lambda path: path.name,
     )
 
-def exercise(name, primary_failure, restore_failure=None):
+def exercise(
+    name,
+    primary_failure,
+    restore_failure=None,
+    *,
+    hang_on_restore=False,
+    restore_progress=None,
+):
+    case_errors = []
+
+    def check(condition, message):
+        if not condition:
+            case_errors.append(message)
+
     directory = root / name
     directory.mkdir()
     staged_glb = directory / "staged.glb"
@@ -860,8 +882,10 @@ def exercise(name, primary_failure, restore_failure=None):
     real_replace = os.replace
     captured_backups = {}
     calls = []
+    call_count = 0
+    unexpected_seen = None
     primary_reached = False
-    restore_reached = False
+    restore_attempts = 0
 
     def classify(source, destination):
         source_path = Path(source)
@@ -883,9 +907,13 @@ def exercise(name, primary_failure, restore_failure=None):
         return f"unexpected:{source_path.name}->{destination_path.name}"
 
     def replacing(source, destination):
-        nonlocal primary_reached, restore_reached
+        nonlocal call_count, primary_reached, restore_attempts, unexpected_seen
         phase = classify(source, destination)
-        calls.append(phase)
+        call_count += 1
+        if phase.startswith("unexpected:") and unexpected_seen is None:
+            unexpected_seen = phase
+        if len(calls) < 128:
+            calls.append(phase)
         if phase == primary_failure and not primary_reached:
             primary_reached = True
             raise OSError(f"injected primary {primary_failure} failure")
@@ -893,14 +921,20 @@ def exercise(name, primary_failure, restore_failure=None):
             restore_failure is not None
             and primary_reached
             and phase == restore_failure
-            and not restore_reached
         ):
-            restore_reached = True
-            raise OSError(f"injected compound {restore_failure} failure")
+            restore_attempts += 1
+            if restore_attempts == 1 and restore_progress is not None:
+                restore_progress.set()
+            if hang_on_restore:
+                threading.Event().wait()
+            raise OSError(
+                f"injected persistent {restore_failure} failure "
+                f"attempt={restore_attempts}"
+            )
         return real_replace(source, destination)
 
     caught = None
-    with mock.patch.object(module.os, "replace", side_effect=replacing):
+    with mock.patch.object(module.os, "replace", new=replacing):
         try:
             module.promote_pair(
                 staged_glb, staged_json, final_glb, final_json, True
@@ -917,11 +951,11 @@ def exercise(name, primary_failure, restore_failure=None):
         f"{label}: forward phases were not reached in order; calls={calls}",
     )
     check(
-        not any(phase.startswith("unexpected:") for phase in calls),
-        f"{label}: unclassified replace call; calls={calls}",
+        unexpected_seen is None,
+        f"{label}: unclassified replace call {unexpected_seen}; calls={calls} count={call_count}",
     )
     if restore_failure is not None:
-        check(restore_reached, f"{label}: compound restore injection was not reached; calls={calls}")
+        check(restore_attempts >= 1, f"{label}: persistent restore injection was not reached; calls={calls}")
         check(restore_failure in calls, f"{label}: restore phase absent; calls={calls}")
 
     backups = backup_files(directory)
@@ -968,8 +1002,104 @@ def exercise(name, primary_failure, restore_failure=None):
                 f"{label}: final pair absent without a complete two-file old backup pair",
             )
 
+    known_paths = {
+        path
+        for path in (
+            staged_glb,
+            staged_json,
+            final_glb,
+            final_json,
+            captured_glb,
+            captured_json,
+        )
+        if path is not None and path.exists()
+    }
+    actual_paths = set(directory.iterdir())
+    check(
+        actual_paths == known_paths,
+        f"{label}: unexpected rollback residue: "
+        f"{sorted(path.name for path in actual_paths - known_paths)}",
+    )
+
+    return case_errors
+
+def child_exercise(sender, restore_progress, arguments, hang_on_restore):
+    try:
+        case_errors = exercise(
+            *arguments,
+            hang_on_restore=hang_on_restore,
+            restore_progress=restore_progress,
+        )
+        sender.send(("result", case_errors))
+    except BaseException:
+        sender.send(("crash", traceback.format_exc()))
+    finally:
+        sender.close()
+
+def stop_child(process):
+    process.terminate()
+    process.join(2)
+    if process.is_alive():
+        process.kill()
+        process.join(2)
+    check_parent(not process.is_alive(), f"child pid {process.pid} could not be terminated")
+
+def run_bounded(arguments, *, expect_hang=False):
+    label = f"{arguments[1]}+{arguments[2] or 'single'}"
+    receiver, sender = process_context.Pipe(duplex=False)
+    restore_progress = process_context.Event()
+    process = process_context.Process(
+        target=child_exercise,
+        args=(sender, restore_progress, arguments, expect_hang),
+        name=f"rollback-{arguments[0]}",
+        daemon=True,
+    )
+    process.start()
+    sender.close()
+
+    if expect_hang:
+        reached = restore_progress.wait(4)
+        check_parent(reached, f"{label}: hang mutation never reached restore")
+        if reached:
+            process.join(0.25)
+            check_parent(process.is_alive(), f"{label}: hang mutation unexpectedly returned")
+        if process.is_alive():
+            stop_child(process)
+    else:
+        process.join(4)
+        if process.is_alive():
+            reached_restore = restore_progress.is_set()
+            stop_child(process)
+            if arguments[2] is not None and reached_restore:
+                errors.append(
+                    f"{label}: persistent restore retry loop exceeded 4 seconds "
+                    "after first targeted restore reach"
+                )
+            else:
+                errors.append(
+                    f"{label}: fault exercise exceeded 4 seconds before its "
+                    "targeted restore was proven"
+                )
+
+    payload = None
+    if receiver.poll():
+        try:
+            payload = receiver.recv()
+        except EOFError:
+            payload = None
+    receiver.close()
+    if not expect_hang and payload is None and process.exitcode not in {0, -15, -9}:
+        errors.append(f"{label}: child exited {process.exitcode} without evidence")
+    if not expect_hang and payload is not None:
+        kind, value = payload
+        if kind == "result":
+            errors.extend(value)
+        else:
+            errors.append(f"{label}: child crashed:\n{value}")
+    process.close()
+
 for phase in forward_order:
-    exercise(f"single-{phase}", phase)
+    run_bounded((f"single-{phase}", phase, None))
 
 for primary, restore in [
     ("backup_json", "restore_glb"),
@@ -978,7 +1108,19 @@ for primary, restore in [
     ("promote_json", "restore_glb"),
     ("promote_json", "restore_json"),
 ]:
-    exercise(f"compound-{primary}-{restore}", primary, restore)
+    run_bounded((f"compound-{primary}-{restore}", primary, restore))
+
+# Prove a production retry/hang after a persistent restore fault cannot retain
+# this test process. The child reports first restore reach, then blocks forever;
+# the parent must terminate it within the bounded probe.
+run_bounded(
+    (
+        "mutation-hanging-restore",
+        "promote_json",
+        "restore_json",
+        ),
+    expect_hang=True,
+)
 
 if errors:
     raise AssertionError("promotion rollback regressions:\n- " + "\n- ".join(errors))
@@ -1003,7 +1145,10 @@ if [ "$review_section" = all ] || [ "$review_section" = C ]; then
 import contextlib
 import hashlib
 import importlib.util
+import inspect
+import multiprocessing
 import os
+import signal
 import sys
 import threading
 from pathlib import Path
@@ -1019,11 +1164,90 @@ module = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = module
 spec.loader.exec_module(module)
 
-final_glb = root / "final.glb"
-final_json = root / "final.glb.json"
+# Mutation-probe the outer termination mechanism itself. The child reaches a
+# guard wrapped around the real promote_pair call and then blocks forever; it
+# must be observed and killed without retaining a worker or touching the repo.
+def hanging_guard_mutation(reached, mutation_root):
+    mutation_root.mkdir()
+    staged_glb = mutation_root / "staged.glb"
+    staged_json = mutation_root / "staged.json"
+    staged_glb.write_bytes(b"hanging mutation GLB")
+    staged_json.write_bytes(b"hanging mutation JSON")
+    final_glb = mutation_root / "final.glb"
+    final_json = mutation_root / "final.glb.json"
+    real_promote_pair = module.promote_pair
+
+    @contextlib.contextmanager
+    def hanging_guard(_final_glb, _final_json):
+        reached.set()
+        threading.Event().wait()
+        yield
+
+    def mutated_promote_pair(*arguments):
+        with hanging_guard(arguments[2], arguments[3]):
+            return real_promote_pair(*arguments)
+
+    with mock.patch.object(module, "promote_pair", new=mutated_promote_pair):
+        module.promote_pair(
+            staged_glb, staged_json, final_glb, final_json, False
+        )
+
+process_context = multiprocessing.get_context("fork")
+hang_reached = process_context.Event()
+hang_process = process_context.Process(
+    target=hanging_guard_mutation,
+    args=(hang_reached, root / "mutation-hanging-guard"),
+    name="concurrency-hanging-guard-mutation",
+    daemon=True,
+)
+hang_process.start()
+try:
+    assert hang_reached.wait(4), "hanging guard mutation never reached the guard"
+    hang_process.join(0.25)
+    assert hang_process.is_alive(), "hanging guard mutation unexpectedly returned"
+finally:
+    if hang_process.is_alive():
+        hang_process.terminate()
+        hang_process.join(2)
+    if hang_process.is_alive():
+        hang_process.kill()
+        hang_process.join(2)
+    assert not hang_process.is_alive(), "hanging guard mutation could not be terminated"
+    hang_process.close()
+
+# Run all real callback and no-callback concurrency legs in a process that the
+# outer harness can terminate even if a production lock blocks forever.
+probe_pid = os.fork()
+if probe_pid:
+    class ProbeTimeout(Exception):
+        pass
+
+    def timeout_probe(_signum, _frame):
+        raise ProbeTimeout
+
+    previous_handler = signal.signal(signal.SIGALRM, timeout_probe)
+    signal.alarm(20)
+    try:
+        try:
+            _, probe_status = os.waitpid(probe_pid, 0)
+        except ProbeTimeout:
+            os.kill(probe_pid, signal.SIGKILL)
+            os.waitpid(probe_pid, 0)
+            raise AssertionError(
+                "concurrency probe exceeded 20 seconds and was terminated"
+            )
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous_handler)
+    raise SystemExit(os.waitstatus_to_exitcode(probe_status))
+
+callback_root = root / "callback-protocol"
+callback_root.mkdir()
+final_glb = callback_root / "final.glb"
+final_json = callback_root / "final.glb.json"
 staged = {
-    "A": (root / "a-staged.glb", root / "a-staged.json"),
-    "B": (root / "b-staged.glb", root / "b-staged.json"),
+    "A": (callback_root / "a-staged.glb", callback_root / "a-staged.json"),
+    "B": (callback_root / "b-staged.glb", callback_root / "b-staged.json"),
 }
 payloads = {
     "A": (b"complete derivative from A", b"complete provenance from A"),
@@ -1057,21 +1281,53 @@ guard_acquisitions = []
 
 @contextlib.contextmanager
 def missing_promotion_guard(
-    _final_glb, _final_json, *, on_attempt=None, on_acquired=None
+    final_glb, final_json, *, on_attempt=None, on_acquired=None
 ):
+    del final_glb, final_json
     if on_attempt is not None:
         on_attempt(False)
     if on_acquired is not None:
         on_acquired(False)
     yield
 
-real_promotion_guard = getattr(
+production_promotion_guard = getattr(
     module, "_promotion_guard", missing_promotion_guard
 )
+guard_parameters = list(
+    inspect.signature(production_promotion_guard).parameters.values()
+)
+assert [parameter.name for parameter in guard_parameters] == [
+    "final_glb", "final_json", "on_attempt", "on_acquired",
+], "_promotion_guard must expose the exact frozen parameter names/order"
+assert all(
+    parameter.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+    for parameter in guard_parameters[:2]
+), "_promotion_guard final paths must be positional parameters"
+assert all(
+    parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    and parameter.default is None
+    for parameter in guard_parameters[2:]
+), "_promotion_guard callbacks must be keyword-only and default exactly to None"
+real_promotion_guard = production_promotion_guard
 if os.environ.get("GLB_DECIMATION_TEST_GUARD_MUTATION") == "noop":
     real_promotion_guard = missing_promotion_guard
 elif os.environ.get("GLB_DECIMATION_TEST_GUARD_MUTATION") not in {None, ""}:
     raise AssertionError("unsupported GLB_DECIMATION_TEST_GUARD_MUTATION")
+
+class MissingPromotionLock:
+    def acquire(self, blocking=True):
+        del blocking
+        return True
+
+    def release(self):
+        return None
+
+def missing_promotion_lock_for(_final_glb, _final_json):
+    return MissingPromotionLock()
+
+real_promotion_lock_for = getattr(
+    module, "_promotion_lock_for", missing_promotion_lock_for
+)
 
 def thread_owner():
     name = threading.current_thread().name
@@ -1193,27 +1449,40 @@ with (
     mock.patch.object(module, "_path_exists", new=observing_path_exists),
     mock.patch.object(module.os, "replace", new=replacing),
 ):
-    thread_a = threading.Thread(target=promote, args=("A",), name="promotion-A")
-    thread_b = threading.Thread(target=promote, args=("B",), name="promotion-B")
-    thread_a.start()
-    assert a_at_first_replace.wait(5), "A never reached first GLB promotion"
-    thread_b.start()
-    assert b_progress.wait(5), "B reached neither the guard-attempt seam nor first replace"
-    b_acquired_before_a_release = b_guard_acquired.is_set()
+    thread_a = threading.Thread(
+        target=promote, args=("A",), name="promotion-A", daemon=True
+    )
+    thread_b = threading.Thread(
+        target=promote, args=("B",), name="promotion-B", daemon=True
+    )
+    try:
+        thread_a.start()
+        assert a_at_first_replace.wait(5), "A never reached first GLB promotion"
+        thread_b.start()
+        assert b_progress.wait(5), "B reached neither the guard-attempt seam nor first replace"
+        b_acquired_before_a_release = b_guard_acquired.is_set()
 
-    # Correct code signals the guard attempt and blocks on A's transaction.
-    # Current unlocked code instead reaches B's first replace and blocks there.
-    allow_a_glb_replace.set()
-    assert a_glb_established.wait(5), "A never established the destination GLB"
-    allow_b_glb_replace.set()
-    if b_at_first_replace.is_set():
-        assert b_json_failure_reached.wait(5), "B crossed but did not reach JSON injection"
-    release_a_json.set()
+        # Correct code signals the guard attempt and blocks on A's transaction.
+        # Current unlocked code instead reaches B's first replace and blocks there.
+        allow_a_glb_replace.set()
+        assert a_glb_established.wait(5), "A never established the destination GLB"
+        allow_b_glb_replace.set()
+        if b_at_first_replace.is_set():
+            assert b_json_failure_reached.wait(5), "B crossed but did not reach JSON injection"
+        release_a_json.set()
 
-    thread_a.join(5)
-    thread_b.join(5)
-    assert not thread_a.is_alive(), "A promotion thread did not terminate"
-    assert not thread_b.is_alive(), "B promotion thread did not terminate"
+        thread_a.join(5)
+        thread_b.join(5)
+        assert not thread_a.is_alive(), "A promotion thread did not terminate"
+        assert not thread_b.is_alive(), "B promotion thread did not terminate"
+    finally:
+        allow_a_glb_replace.set()
+        allow_b_glb_replace.set()
+        release_a_json.set()
+        if thread_a.is_alive():
+            thread_a.join(0.5)
+        if thread_b.is_alive():
+            thread_b.join(0.5)
 
 errors = []
 def check(condition, message):
@@ -1282,11 +1551,383 @@ if complete_pair:
         "final JSON hash does not belong to successful A",
     )
 expected_entries = {final_glb, final_json, staged["B"][0], staged["B"][1]}
-actual_entries = set(root.iterdir())
+actual_entries = set(callback_root.iterdir())
 check(
     actual_entries == expected_entries,
     "concurrent promotion left missing/unexpected transaction entries: "
     f"{sorted(path.name for path in actual_entries)}",
+)
+
+# Independently exercise the real, unwrapped guard with its normal callback
+# defaults. `_promotion_lock_for(final_glb, final_json)` must return the stable
+# same-output LockLike used on every guard call. The proxy below delegates every
+# acquire/release to that real lock and only records the low-level contention;
+# it never supplies serialization.
+def no_callback_probe(case_root, guard_override=None):
+    case_errors = []
+
+    def check_case(condition, message):
+        if not condition:
+            case_errors.append(message)
+
+    case_root.mkdir()
+    probe_final_glb = case_root / "final.glb"
+    probe_final_json = case_root / "final.glb.json"
+    probe_staged = {
+        "A": (case_root / "a-staged.glb", case_root / "a-staged.json"),
+        "B": (case_root / "b-staged.glb", case_root / "b-staged.json"),
+    }
+    probe_payloads = {
+        "A": (b"no-callback derivative A", b"no-callback provenance A"),
+        "B": (b"no-callback derivative B", b"no-callback provenance B"),
+    }
+    for probe_owner in ("A", "B"):
+        probe_staged[probe_owner][0].write_bytes(probe_payloads[probe_owner][0])
+        probe_staged[probe_owner][1].write_bytes(probe_payloads[probe_owner][1])
+
+    probe_state_mutex = threading.Lock()
+    lock_state = threading.local()
+    probe_a_at_replace = threading.Event()
+    probe_b_at_replace = threading.Event()
+    probe_b_progress = threading.Event()
+    probe_b_contended = threading.Event()
+    probe_b_acquired = threading.Event()
+    probe_allow_a_glb = threading.Event()
+    probe_a_glb_established = threading.Event()
+    probe_allow_b_glb = threading.Event()
+    probe_b_json_failure = threading.Event()
+    probe_release_a_json = threading.Event()
+    probe_results = {}
+    probe_replace_calls = []
+    probe_path_observations = []
+    probe_lock_operations = []
+    underlying_locks = []
+
+    def probe_owner():
+        name = threading.current_thread().name
+        if name == "no-callback-A":
+            return "A"
+        if name == "no-callback-B":
+            return "B"
+        raise AssertionError(f"unexpected no-callback thread {name!r}")
+
+    def pair_is_complete_a():
+        return (
+            probe_final_glb.is_file()
+            and probe_final_json.is_file()
+            and probe_final_glb.read_bytes() == probe_payloads["A"][0]
+            and probe_final_json.read_bytes() == probe_payloads["A"][1]
+        )
+
+    class ObservingLock:
+        def __init__(self, underlying):
+            self.underlying = underlying
+
+        def acquire(self, blocking=True):
+            owner = probe_owner()
+            result = self.underlying.acquire(blocking)
+            completed = pair_is_complete_a()
+            with probe_state_mutex:
+                probe_lock_operations.append(
+                    (owner, "acquire", blocking, result, completed)
+                )
+            if owner == "B" and not blocking and not result:
+                probe_b_contended.set()
+                probe_b_progress.set()
+            if result:
+                lock_state.active = True
+                if owner == "B":
+                    probe_b_acquired.set()
+            return result
+
+        def release(self):
+            owner = probe_owner()
+            with probe_state_mutex:
+                probe_lock_operations.append(
+                    (owner, "release", None, None, pair_is_complete_a())
+                )
+            lock_state.active = False
+            return self.underlying.release()
+
+    def observing_lock_for(lock_glb, lock_json):
+        assert Path(lock_glb) == probe_final_glb
+        assert Path(lock_json) == probe_final_json
+        underlying = real_promotion_lock_for(lock_glb, lock_json)
+        with probe_state_mutex:
+            underlying_locks.append((probe_owner(), underlying))
+        return ObservingLock(underlying)
+
+    def probe_path_exists(path):
+        candidate = Path(path)
+        value = real_path_exists(candidate)
+        if candidate in {probe_final_glb, probe_final_json}:
+            owner = probe_owner()
+            member = "glb" if candidate == probe_final_glb else "json"
+            active = bool(getattr(lock_state, "active", False))
+            completed = pair_is_complete_a()
+            with probe_state_mutex:
+                probe_path_observations.append(
+                    (owner, member, value, active, completed)
+                )
+        return value
+
+    def probe_replacing(source, destination):
+        source_path = Path(source)
+        destination_path = Path(destination)
+        if source_path in probe_staged["A"]:
+            owner = "A"
+        elif source_path in probe_staged["B"]:
+            owner = "B"
+        else:
+            return real_replace(source_path, destination_path)
+        if destination_path == probe_final_glb:
+            member = "glb"
+        elif destination_path == probe_final_json:
+            member = "json"
+        else:
+            return real_replace(source_path, destination_path)
+        with probe_state_mutex:
+            probe_replace_calls.append((owner, member))
+        if owner == "A" and member == "glb":
+            probe_a_at_replace.set()
+            if not probe_allow_a_glb.wait(5):
+                raise AssertionError("timed out releasing no-callback A GLB")
+            result = real_replace(source_path, destination_path)
+            probe_a_glb_established.set()
+            if not probe_release_a_json.wait(5):
+                raise AssertionError("timed out releasing no-callback A JSON")
+            return result
+        if owner == "B" and member == "glb":
+            probe_b_at_replace.set()
+            probe_b_progress.set()
+            if not probe_allow_b_glb.wait(5):
+                raise AssertionError("timed out releasing no-callback B GLB")
+            return real_replace(source_path, destination_path)
+        if owner == "B" and member == "json":
+            probe_b_json_failure.set()
+            raise OSError("injected no-callback B JSON failure")
+        return real_replace(source_path, destination_path)
+
+    def probe_promote(owner):
+        try:
+            module.promote_pair(
+                probe_staged[owner][0],
+                probe_staged[owner][1],
+                probe_final_glb,
+                probe_final_json,
+                False,
+            )
+        except BaseException as exc:
+            result = ("failure", exc)
+        else:
+            result = ("success", None)
+        with probe_state_mutex:
+            probe_results[owner] = result
+
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(
+            mock.patch.object(
+                module,
+                "_promotion_lock_for",
+                new=observing_lock_for,
+                create=True,
+            )
+        )
+        stack.enter_context(
+            mock.patch.object(module, "_path_exists", new=probe_path_exists)
+        )
+        stack.enter_context(
+            mock.patch.object(module.os, "replace", new=probe_replacing)
+        )
+        if guard_override is not None:
+            stack.enter_context(
+                mock.patch.object(
+                    module,
+                    "_promotion_guard",
+                    new=guard_override,
+                    create=True,
+                )
+            )
+
+        probe_thread_a = threading.Thread(
+            target=probe_promote,
+            args=("A",),
+            name="no-callback-A",
+            daemon=True,
+        )
+        probe_thread_b = threading.Thread(
+            target=probe_promote,
+            args=("B",),
+            name="no-callback-B",
+            daemon=True,
+        )
+        try:
+            probe_thread_a.start()
+            assert probe_a_at_replace.wait(5), "no-callback A never reached GLB promotion"
+            probe_thread_b.start()
+            assert probe_b_progress.wait(5), (
+                "no-callback B reached neither real low-level contention nor replace"
+            )
+            b_acquired_before_release = probe_b_acquired.is_set()
+            probe_allow_a_glb.set()
+            assert probe_a_glb_established.wait(5), (
+                "no-callback A never established destination GLB"
+            )
+            probe_allow_b_glb.set()
+            if probe_b_at_replace.is_set():
+                assert probe_b_json_failure.wait(5), (
+                    "no-callback B crossed without reaching JSON injection"
+                )
+            probe_release_a_json.set()
+            probe_thread_a.join(5)
+            probe_thread_b.join(5)
+            assert not probe_thread_a.is_alive(), "no-callback A did not terminate"
+            assert not probe_thread_b.is_alive(), "no-callback B did not terminate"
+        finally:
+            probe_allow_a_glb.set()
+            probe_allow_b_glb.set()
+            probe_release_a_json.set()
+            if probe_thread_a.is_alive():
+                probe_thread_a.join(0.5)
+            if probe_thread_b.is_alive():
+                probe_thread_b.join(0.5)
+
+    with probe_state_mutex:
+        result_snapshot = dict(probe_results)
+        replace_snapshot = list(probe_replace_calls)
+        path_snapshot = list(probe_path_observations)
+        lock_snapshot = list(probe_lock_operations)
+        lock_object_snapshot = list(underlying_locks)
+
+    successes = [
+        owner for owner, result in result_snapshot.items()
+        if result[0] == "success"
+    ]
+    failures = [
+        owner for owner, result in result_snapshot.items()
+        if result[0] == "failure"
+    ]
+    check_case(set(result_snapshot) == {"A", "B"}, f"missing results: {result_snapshot}")
+    check_case(successes == ["A"], f"expected only A success: {result_snapshot}")
+    check_case(failures == ["B"], f"expected only B failure: {result_snapshot}")
+    b_exception = result_snapshot.get("B", (None, None))[1]
+    check_case(
+        isinstance(b_exception, module.DecimationError)
+        and str(b_exception) == "refusing existing derivative without --force",
+        f"B lacked exact post-lock destination refusal: {b_exception!r}",
+    )
+    check_case(probe_b_contended.is_set(), "B did not observe real low-level contention")
+    check_case(probe_b_acquired.is_set(), "B did not acquire the real low-level lock")
+    check_case(
+        not b_acquired_before_release,
+        "B acquired the low-level lock before A released its transaction",
+    )
+    check_case(
+        any(
+            owner == "A" and operation == "acquire"
+            and blocking is False and result is True
+            for owner, operation, blocking, result, _ in lock_snapshot
+        ),
+        f"A lacked a successful nonblocking lock acquire: {lock_snapshot}",
+    )
+    check_case(
+        any(
+            owner == "B" and operation == "acquire"
+            and blocking is False and result is False
+            for owner, operation, blocking, result, _ in lock_snapshot
+        ),
+        f"B lacked a failed nonblocking contention probe: {lock_snapshot}",
+    )
+    check_case(
+        any(
+            owner == "B" and operation == "acquire"
+            and blocking is True and result is True and completed
+            for owner, operation, blocking, result, completed in lock_snapshot
+        ),
+        f"B did not acquire after A's complete pair: {lock_snapshot}",
+    )
+    check_case(
+        any(item[0] == "A" and item[1] == "release" for item in lock_snapshot)
+        and any(item[0] == "B" and item[1] == "release" for item in lock_snapshot),
+        f"both low-level releases were not observed: {lock_snapshot}",
+    )
+    if lock_object_snapshot:
+        first_underlying = lock_object_snapshot[0][1]
+        check_case(
+            all(underlying is first_underlying for _, underlying in lock_object_snapshot)
+            and {owner for owner, _ in lock_object_snapshot} == {"A", "B"},
+            "_promotion_lock_for did not return one stable same-output lock",
+        )
+    else:
+        check_case(False, "_promotion_lock_for was never reached")
+    check_case(
+        not probe_b_at_replace.is_set(),
+        f"B reached replace despite no-callback locking: {replace_snapshot}",
+    )
+    b_postlock = [
+        (member, value, completed)
+        for owner, member, value, active, completed in path_snapshot
+        if owner == "B" and active
+    ]
+    check_case(
+        {member for member, _, _ in b_postlock} == {"glb", "json"}
+        and all(value and completed for _, value, completed in b_postlock),
+        f"B did not recheck both completed finals after real acquire: {b_postlock}",
+    )
+    complete_pair = probe_final_glb.is_file() and probe_final_json.is_file()
+    check_case(complete_pair, "no-callback successful A final pair is incomplete")
+    if complete_pair:
+        check_case(
+            probe_final_glb.read_bytes() == probe_payloads["A"][0],
+            "no-callback final GLB is not A's member",
+        )
+        check_case(
+            probe_final_json.read_bytes() == probe_payloads["A"][1],
+            "no-callback final JSON is not A's member",
+        )
+    expected_probe_entries = {
+        probe_final_glb,
+        probe_final_json,
+        probe_staged["B"][0],
+        probe_staged["B"][1],
+    }
+    actual_probe_entries = set(case_root.iterdir())
+    check_case(
+        actual_probe_entries == expected_probe_entries,
+        "no-callback probe left missing/unexpected entries: "
+        f"{sorted(path.name for path in actual_probe_entries)}",
+    )
+    return case_errors
+
+errors.extend(
+    f"no-callback: {message}"
+    for message in no_callback_probe(root / "no-callback-real-guard")
+)
+
+@contextlib.contextmanager
+def callback_only_lock_mutation(
+    mutation_glb, mutation_json, *, on_attempt=None, on_acquired=None
+):
+    if on_attempt is None and on_acquired is None:
+        yield
+        return
+    with production_promotion_guard(
+        mutation_glb,
+        mutation_json,
+        on_attempt=on_attempt,
+        on_acquired=on_acquired,
+    ):
+        yield
+
+callback_only_errors = no_callback_probe(
+    root / "mutation-callback-only-lock",
+    callback_only_lock_mutation,
+)
+check(
+    any("real low-level contention" in message for message in callback_only_errors)
+    and any("reached replace" in message for message in callback_only_errors),
+    "callback-only locking mutation was not killed by the no-callback leg: "
+    f"{callback_only_errors}",
 )
 if errors:
     raise AssertionError("concurrent promotion regressions:\n- " + "\n- ".join(errors))
