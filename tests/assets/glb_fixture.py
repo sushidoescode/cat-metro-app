@@ -126,6 +126,34 @@ def write_glb(
             primitive["material"] = 0
         primitives.append(primitive)
 
+    if add_scene_content:
+        for primitive in primitives:
+            position_accessor = accessors[primitive["attributes"]["POSITION"]]
+            position_count = position_accessor["count"]
+            assert isinstance(position_count, int)
+            joint_values = (0,) * (position_count * 4)
+            joints_view = append_view(struct.pack(f"<{len(joint_values)}H", *joint_values), target=34962)
+            joints_accessor = append_accessor(joints_view, position_count, 5123, "VEC4")
+            weights = tuple(value for _ in range(position_count) for value in (1.0, 0.0, 0.0, 0.0))
+            weights_view = append_view(struct.pack(f"<{len(weights)}f", *weights), target=34962)
+            weights_accessor = append_accessor(weights_view, position_count, 5126, "VEC4")
+            attributes = primitive["attributes"]
+            assert isinstance(attributes, dict)
+            attributes["JOINTS_0"] = joints_accessor
+            attributes["WEIGHTS_0"] = weights_accessor
+
+            morph_values = (0.0,) * (position_count * 3)
+            morph_view = append_view(struct.pack(f"<{len(morph_values)}f", *morph_values), target=34962)
+            morph_accessor = append_accessor(
+                morph_view,
+                position_count,
+                5126,
+                "VEC3",
+                minimum_value=[0.0, 0.0, 0.0],
+                maximum_value=[0.0, 0.0, 0.0],
+            )
+            primitive["targets"] = [{"POSITION": morph_accessor}]
+
     document: dict[str, object] = {
         "asset": {"version": "2.0", "generator": "cat-metro-glb-fixture"},
         "buffers": [{"byteLength": len(data)}],
@@ -157,8 +185,6 @@ def write_glb(
         time_accessor = append_accessor(time_view, 1, 5126, "SCALAR", minimum_value=[0.0], maximum_value=[0.0])
         animation_value_view = append_view(struct.pack("<3f", 0.0, 0.0, 0.0))
         animation_value_accessor = append_accessor(animation_value_view, 1, 5126, "VEC3")
-        morph_view = append_view(struct.pack("<24f", *(0.0 for _ in range(24))), target=34962)
-        morph_accessor = append_accessor(morph_view, 8, 5126, "VEC3")
         document["animations"] = [{
             "samplers": [{"input": time_accessor, "output": animation_value_accessor, "interpolation": "LINEAR"}],
             "channels": [{"sampler": 0, "target": {"node": 0, "path": "translation"}}],
@@ -174,7 +200,6 @@ def write_glb(
         node["children"] = [1]
         node["extensions"] = {"KHR_lights_punctual": {"light": 0}}
         document["nodes"].append({"translation": [0.0, 0.0, 0.0]})
-        primitives[0]["targets"] = [{"POSITION": morph_accessor}]
 
     # Views are appended while assembling the image, so buffer byteLength is
     # finalized only after every payload is present.

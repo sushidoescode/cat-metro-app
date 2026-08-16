@@ -51,13 +51,41 @@ scene_raw = Path(sys.argv[2]).read_bytes()
 scene_json_length, scene_kind = struct.unpack_from("<I4s", scene_raw, 12)
 assert scene_kind == b"JSON"
 scene = json.loads(scene_raw[20:20 + scene_json_length].rstrip(b" "))
+scene_bin_start = 20 + scene_json_length
+scene_bin_length, scene_bin_kind = struct.unpack_from("<I4s", scene_raw, scene_bin_start)
+assert scene_bin_kind == b"BIN\0"
+scene_binary = scene_raw[scene_bin_start + 8:scene_bin_start + 8 + scene_bin_length]
 # Break caught: scene-content fixtures themselves are schema-invalid placeholders.
 assert scene["animations"][0]["samplers"][0]["input"] >= 0
 assert scene["animations"][0]["channels"][0]["target"] == {"node": 0, "path": "translation"}
 assert scene["cameras"][0] == {"type": "perspective", "perspective": {"yfov": 0.7, "znear": 0.1}}
 assert scene["skins"][0]["joints"] == [1]
+assert len(scene["nodes"]) > 1
 assert scene["extensions"]["KHR_lights_punctual"]["lights"][0]["type"] == "point"
-assert scene["meshes"][0]["primitives"][0]["targets"][0]["POSITION"] >= 0
+target_counts = []
+for scene_primitive in scene["meshes"][0]["primitives"]:
+    attributes = scene_primitive["attributes"]
+    position = scene["accessors"][attributes["POSITION"]]
+    joints = scene["accessors"][attributes["JOINTS_0"]]
+    weights = scene["accessors"][attributes["WEIGHTS_0"]]
+    # Break caught: a skinned primitive has missing/mismatched JOINTS_0 or WEIGHTS_0.
+    assert joints["count"] == weights["count"] == position["count"] == 8
+    assert joints["componentType"] == 5123 and joints["type"] == "VEC4"
+    assert weights["componentType"] == 5126 and weights["type"] == "VEC4"
+    joints_view = scene["bufferViews"][joints["bufferView"]]
+    weights_view = scene["bufferViews"][weights["bufferView"]]
+    joint_values = list(struct.iter_unpack("<4H", scene_binary[joints_view["byteOffset"]:joints_view["byteOffset"] + joints_view["byteLength"]]))
+    weight_values = list(struct.iter_unpack("<4f", scene_binary[weights_view["byteOffset"]:weights_view["byteOffset"] + weights_view["byteLength"]]))
+    assert joint_values == [(0, 0, 0, 0)] * position["count"]
+    assert weight_values == [(1.0, 0.0, 0.0, 0.0)] * position["count"]
+    target_counts.append(len(scene_primitive["targets"]))
+    morph = scene["accessors"][scene_primitive["targets"][0]["POSITION"]]
+    # Break caught: morph POSITION accessors lack required shape/count/bounds facts.
+    assert morph["count"] == position["count"] == 8
+    assert morph["componentType"] == 5126 and morph["type"] == "VEC3"
+    assert morph["min"] == morph["max"] == [0.0, 0.0, 0.0]
+# Break caught: primitives in one mesh disagree on morph target count.
+assert target_counts == [1, 1]
 PY
 run_metrics "$tmp/valid.glb" >"$tmp/valid.json"
 PYTHONDONTWRITEBYTECODE=1 python3 - "$tmp/valid.json" <<'PY'
