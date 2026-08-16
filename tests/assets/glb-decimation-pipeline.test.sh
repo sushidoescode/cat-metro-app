@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
 # Behavioral contract for the offline GLB decimation orchestrator. The fake
 # process boundary is validated independently before any production entry point
-# runs, so the initial RED can only be earned by the absent orchestrator.
+# runs, so a later RED is attributable to orchestrator behavior.
 set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
 decimate_script=${DECIMATE_SCRIPT:-$repo/scripts/decimate-assets.py}
 fake_blender="$repo/tests/assets/fake_blender.py"
 expected_driver=$(cd "$(dirname "$decimate_script")" && pwd -P)/blender_decimate.py
+review_section=${GLB_DECIMATION_REVIEW_SECTION:-all}
+case "$review_section" in
+  all|A|B|C) ;;
+  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all, A, B, or C"
+     printf 'glb-decimation pipeline test: %s\n' "$die_message" >&2
+     exit 2 ;;
+esac
 tmp=$(mktemp -d)
 marker_name="$(basename "$tmp")-argv-injection-marker"
 marker="$repo/$marker_name"
@@ -495,6 +502,802 @@ scene = metrics["unexpected_scene_content"]
 assert [scene[name] for name in ("animations", "cameras", "lights", "skins", "morph_targets")] == [1, 1, 1, 1, 1]
 PY
 assert_no_external_effects
+
+# Review regression A: filesystem identity is stronger than path spelling.
+# These cases exercise the real orchestration entry point, but require every
+# alias to be rejected before even the fake Blender version probe.
+if [ "$review_section" = all ] || [ "$review_section" = A ]; then
+  PYTHONDONTWRITEBYTECODE=1 python3 - \
+    "$decimate_script" "$tmp/review-identity" "$repo" "$fake_blender" <<'PY'
+import contextlib
+import hashlib
+import importlib.util
+import io
+import json
+import os
+import re
+import sys
+from pathlib import Path
+from unittest import mock
+
+script = Path(sys.argv[1])
+root = Path(sys.argv[2])
+repo = Path(sys.argv[3])
+fake_blender = Path(sys.argv[4])
+root.mkdir()
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(repo / "tests" / "assets"))
+from glb_fixture import write_glb
+
+spec = importlib.util.spec_from_file_location("decimate_assets_identity_test", script)
+assert spec is not None and spec.loader is not None
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+
+errors = []
+
+def check(condition, message):
+    if not condition:
+        errors.append(message)
+
+def digest_bytes(value):
+    return hashlib.sha256(value).hexdigest()
+
+def snapshot(root_path):
+    records = []
+    for path in sorted(root_path.rglob("*"), key=lambda item: item.as_posix()):
+        relative = path.relative_to(root_path).as_posix()
+        if path.is_symlink():
+            records.append((relative, "symlink", os.readlink(path)))
+        elif path.is_dir():
+            records.append((relative, "directory"))
+        else:
+            data = path.read_bytes()
+            records.append((relative, "file", digest_bytes(data), data[:4].hex()))
+    return records
+
+def write_sidecar(source, service, prompt):
+    path = Path(f"{source}.json")
+    path.write_text(json.dumps({
+        "service": service,
+        "task_id": f"fixture-{service}-task",
+        "timestamp_utc": "2026-08-15T12:34:56Z",
+        "plan_tier": "paid",
+        "prompt": prompt,
+        "note": "local paid fixture",
+        "sha256": digest_bytes(source.read_bytes()),
+    }, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+def write_manifest(path, entries):
+    path.write_text(
+        json.dumps({"assets": entries}, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+def line_count(path):
+    if not path.exists():
+        return 0
+    return len(path.read_text(encoding="utf-8").splitlines())
+
+def run_case(case_root, input_dir, output_dir, manifest, *, force=False):
+    fake_log = case_root / "fake.log"
+    fake_audit = case_root / "fake.audit"
+    environment = {
+        "FAKE_BLENDER_MODE": "success",
+        "FAKE_BLENDER_LOG": str(fake_log),
+        "FAKE_BLENDER_AUDIT": str(fake_audit),
+        "PIPELINE_SENTINEL_KEY": "identity-sentinel-1",
+        "PIPELINE_SENTINEL_TOKEN": "identity-sentinel-2",
+        "PIPELINE_SENTINEL_SECRET": "identity-sentinel-3",
+        "PIPELINE_SENTINEL_AUTH": "identity-sentinel-4",
+        "PIPELINE_SENTINEL_CREDENTIAL": "identity-sentinel-5",
+        "PIPELINE_SENTINEL_BEARER": "identity-sentinel-6",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    arguments = [
+        "--manifest", str(manifest),
+        "--input-dir", str(input_dir),
+        "--output-dir", str(output_dir),
+        "--blender", str(fake_blender),
+    ]
+    if force:
+        arguments.append("--force")
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with (
+        mock.patch.dict(os.environ, environment, clear=False),
+        contextlib.redirect_stdout(stdout),
+        contextlib.redirect_stderr(stderr),
+    ):
+        result = module.main(arguments)
+    return result, stdout.getvalue() + stderr.getvalue(), fake_log, fake_audit
+
+def require_pre_fake_rejection(label, result, output, fake_log, fake_audit, pattern):
+    check(result != 0, f"{label}: aliased filesystem identity was accepted")
+    check(
+        re.search(pattern, output, re.IGNORECASE) is not None,
+        f"{label}: missing alias diagnostic; output={output!r}",
+    )
+    check(line_count(fake_log) == 0, f"{label}: fake asset invocation was reached")
+    check(line_count(fake_audit) == 0, f"{label}: fake version/asset invocation was reached")
+
+def require_no_transaction_residue(label, tree):
+    residue = [
+        path.relative_to(tree).as_posix()
+        for path in tree.rglob("*")
+        if path.name.startswith(".glb-decimation-") or ".backup-" in path.name
+    ]
+    check(not residue, f"{label}: transaction residue remains: {residue}")
+
+# A1: each forced final member aliases the corresponding source inode.
+case_root = root / "force-destination-hardlinks"
+input_dir = case_root / "input"
+output_dir = case_root / "output"
+input_dir.mkdir(parents=True)
+output_dir.mkdir()
+source = input_dir / "asset.glb"
+write_glb(source, triangles=30000)
+sidecar = write_sidecar(source, "meshy", "identity fixture cat")
+final_glb = output_dir / source.name
+final_json = output_dir / sidecar.name
+os.link(source, final_glb)
+os.link(sidecar, final_json)
+assert os.path.samefile(source, final_glb)
+assert os.path.samefile(sidecar, final_json)
+manifest = case_root / "manifest.json"
+write_manifest(manifest, [{
+    "id": "identity-cat", "kind": "cat", "service": "meshy",
+    "out": source.name, "prompt": "identity fixture cat",
+}])
+input_before = snapshot(input_dir)
+output_before = snapshot(output_dir)
+source_bytes = source.read_bytes()
+sidecar_bytes = sidecar.read_bytes()
+source_hash = digest_bytes(source_bytes)
+sidecar_hash = digest_bytes(sidecar_bytes)
+result, output, fake_log, fake_audit = run_case(
+    case_root, input_dir, output_dir, manifest, force=True
+)
+require_pre_fake_rejection(
+    "force destination hardlinks", result, output, fake_log, fake_audit,
+    r"alias|hard.?link|same (?:file|identity|inode)|filesystem identity",
+)
+check(snapshot(input_dir) == input_before, "force destination hardlinks: source tree changed")
+check(snapshot(output_dir) == output_before, "force destination hardlinks: initial output pair changed")
+check(source.read_bytes() == source_bytes, "force destination hardlinks: source GLB bytes changed")
+check(sidecar.read_bytes() == sidecar_bytes, "force destination hardlinks: source sidecar bytes changed")
+check(digest_bytes(source.read_bytes()) == source_hash, "force destination hardlinks: source GLB hash changed")
+check(digest_bytes(sidecar.read_bytes()) == sidecar_hash, "force destination hardlinks: source sidecar hash changed")
+check(source.read_bytes()[:4] == b"glTF", "force destination hardlinks: source GLB magic changed")
+check(
+    final_glb.exists() and os.path.samefile(source, final_glb),
+    "force destination hardlinks: GLB alias was detached or removed",
+)
+check(
+    final_json.exists() and os.path.samefile(sidecar, final_json),
+    "force destination hardlinks: JSON alias was detached or removed",
+)
+require_no_transaction_residue("force destination hardlinks", case_root)
+
+# A2: two different manifest leaves name the same source GLB inode.
+case_root = root / "manifest-source-hardlinks"
+input_dir = case_root / "input"
+output_dir = case_root / "output"
+input_dir.mkdir(parents=True)
+output_dir.mkdir()
+source_a = input_dir / "first.glb"
+source_b = input_dir / "second.glb"
+write_glb(source_a, triangles=30000)
+os.link(source_a, source_b)
+assert os.path.samefile(source_a, source_b)
+sidecar_a = write_sidecar(source_a, "meshy", "shared identity fixture")
+sidecar_b = write_sidecar(source_b, "meshy", "shared identity fixture")
+assert not os.path.samefile(sidecar_a, sidecar_b)
+manifest = case_root / "manifest.json"
+write_manifest(manifest, [
+    {"id": "identity-first", "kind": "cat", "service": "meshy", "out": source_a.name, "prompt": "shared identity fixture"},
+    {"id": "identity-second", "kind": "cat", "service": "meshy", "out": source_b.name, "prompt": "shared identity fixture"},
+])
+input_before = snapshot(input_dir)
+source_a_bytes = source_a.read_bytes()
+source_b_bytes = source_b.read_bytes()
+source_a_hash = digest_bytes(source_a_bytes)
+source_b_hash = digest_bytes(source_b_bytes)
+result, output, fake_log, fake_audit = run_case(case_root, input_dir, output_dir, manifest)
+require_pre_fake_rejection(
+    "manifest source hardlinks", result, output, fake_log, fake_audit,
+    r"source paths alias|hard.?link|duplicate source|same (?:file|identity|inode)|filesystem identity",
+)
+check(snapshot(input_dir) == input_before, "manifest source hardlinks: source tree changed")
+check(source_a.read_bytes() == source_a_bytes, "manifest source hardlinks: first source bytes changed")
+check(source_b.read_bytes() == source_b_bytes, "manifest source hardlinks: second source bytes changed")
+check(digest_bytes(source_a.read_bytes()) == source_a_hash, "manifest source hardlinks: first source hash changed")
+check(digest_bytes(source_b.read_bytes()) == source_b_hash, "manifest source hardlinks: second source hash changed")
+check(source_a.read_bytes()[:4] == b"glTF", "manifest source hardlinks: first source magic changed")
+check(source_b.read_bytes()[:4] == b"glTF", "manifest source hardlinks: second source magic changed")
+check(os.path.samefile(source_a, source_b), "manifest source hardlinks: source identity split")
+check(list(output_dir.iterdir()) == [], "manifest source hardlinks: partial output was created")
+require_no_transaction_residue("manifest source hardlinks", case_root)
+
+# A3: output names that differ only by case must be duplicate/alias-invalid on
+# both case-sensitive and case-insensitive filesystems.
+case_root = root / "casefold-output-names"
+input_dir = case_root / "input"
+output_dir = case_root / "output"
+input_dir.mkdir(parents=True)
+output_dir.mkdir()
+upper = input_dir / "Case.glb"
+lower = input_dir / "case.glb"
+write_glb(upper, triangles=30000)
+write_sidecar(upper, "meshy", "casefold identity fixture")
+if not lower.exists():
+    write_glb(lower, triangles=30000)
+    write_sidecar(lower, "meshy", "casefold identity fixture")
+else:
+    assert os.path.samefile(upper, lower)
+manifest = case_root / "manifest.json"
+write_manifest(manifest, [
+    {"id": "case-upper", "kind": "cat", "service": "meshy", "out": "Case.glb", "prompt": "casefold identity fixture"},
+    {"id": "case-lower", "kind": "cat", "service": "meshy", "out": "case.glb", "prompt": "casefold identity fixture"},
+])
+input_before = snapshot(input_dir)
+result, output, fake_log, fake_audit = run_case(case_root, input_dir, output_dir, manifest)
+require_pre_fake_rejection(
+    "case-fold duplicate outputs", result, output, fake_log, fake_audit,
+    r"duplicate[^\n]*out|case.?fold|output paths alias",
+)
+check(snapshot(input_dir) == input_before, "case-fold duplicate outputs: source tree changed")
+check(list(output_dir.iterdir()) == [], "case-fold duplicate outputs: partial output was created")
+require_no_transaction_residue("case-fold duplicate outputs", case_root)
+
+# A4: on a case-insensitive volume, differently cased root spellings are one
+# directory. The capability guard itself proves why a skip is safe elsewhere.
+case_root = root / "case-variant-roots"
+input_dir = case_root / "InputCase"
+output_dir = case_root / "inputcase"
+input_dir.mkdir(parents=True)
+case_insensitive = output_dir.exists() and os.path.samefile(input_dir, output_dir)
+if case_insensitive:
+    source = input_dir / "asset.glb"
+    write_glb(source, triangles=30000)
+    sidecar = write_sidecar(source, "meshy", "case root identity fixture")
+    manifest = case_root / "manifest.json"
+    write_manifest(manifest, [{
+        "id": "case-root-cat", "kind": "cat", "service": "meshy",
+        "out": source.name, "prompt": "case root identity fixture",
+    }])
+    source_bytes = source.read_bytes()
+    sidecar_bytes = sidecar.read_bytes()
+    source_hash = digest_bytes(source_bytes)
+    sidecar_hash = digest_bytes(sidecar_bytes)
+    tree_before = snapshot(input_dir)
+    result, output, fake_log, fake_audit = run_case(
+        case_root, input_dir, output_dir, manifest, force=True
+    )
+    require_pre_fake_rejection(
+        "case-variant samefile roots", result, output, fake_log, fake_audit,
+        r"alias|overlap|input.*output|output.*input|same (?:file|directory|identity|inode)",
+    )
+    check(os.path.samefile(input_dir, output_dir), "case-variant roots stopped aliasing")
+    check(snapshot(input_dir) == tree_before, "case-variant samefile roots: shared source tree changed")
+    check(source.read_bytes() == source_bytes, "case-variant samefile roots: source GLB changed")
+    check(sidecar.read_bytes() == sidecar_bytes, "case-variant samefile roots: source sidecar changed")
+    check(digest_bytes(source.read_bytes()) == source_hash, "case-variant samefile roots: source GLB hash changed")
+    check(digest_bytes(sidecar.read_bytes()) == sidecar_hash, "case-variant samefile roots: source sidecar hash changed")
+    check(source.read_bytes()[:4] == b"glTF", "case-variant samefile roots: GLB magic changed")
+    require_no_transaction_residue("case-variant samefile roots", case_root)
+else:
+    assert not output_dir.exists()
+    print("glb-decimation review A: case-variant root skipped; volume proved case-sensitive")
+
+if errors:
+    raise AssertionError("filesystem identity regressions:\n- " + "\n- ".join(errors))
+PY
+  assert_no_external_effects
+fi
+
+if [ "$review_section" = A ]; then
+  printf 'glb-decimation review A: pass\n'
+  exit 0
+fi
+
+# Review regression B: every forced promotion phase and rollback branch must
+# preserve pair lineage. Persistent restore faults may leave a recoverable old
+# pair only when both finals are absent and both complete backups remain.
+if [ "$review_section" = all ] || [ "$review_section" = B ]; then
+  PYTHONDONTWRITEBYTECODE=1 python3 - \
+    "$decimate_script" "$tmp/review-rollback" <<'PY'
+import hashlib
+import importlib.util
+import os
+import sys
+from pathlib import Path
+from unittest import mock
+
+script = Path(sys.argv[1])
+root = Path(sys.argv[2])
+root.mkdir()
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("decimate_assets_rollback_test", script)
+assert spec is not None and spec.loader is not None
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+
+errors = []
+forward_order = ["backup_glb", "backup_json", "promote_glb", "promote_json"]
+
+def check(condition, message):
+    if not condition:
+        errors.append(message)
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+def backup_files(directory):
+    return sorted(
+        (path for path in directory.iterdir() if ".backup-" in path.name),
+        key=lambda path: path.name,
+    )
+
+def exercise(name, primary_failure, restore_failure=None):
+    directory = root / name
+    directory.mkdir()
+    staged_glb = directory / "staged.glb"
+    staged_json = directory / "staged.json"
+    final_glb = directory / "final.glb"
+    final_json = directory / "final.glb.json"
+    old_glb = f"old GLB bytes for {name}".encode()
+    old_json = f"old JSON bytes for {name}".encode()
+    staged_glb.write_bytes(f"new GLB bytes for {name}".encode())
+    staged_json.write_bytes(f"new JSON bytes for {name}".encode())
+    final_glb.write_bytes(old_glb)
+    final_json.write_bytes(old_json)
+    old_hashes = (digest(final_glb), digest(final_json))
+
+    real_replace = os.replace
+    captured_backups = {}
+    calls = []
+    primary_reached = False
+    restore_reached = False
+
+    def classify(source, destination):
+        source_path = Path(source)
+        destination_path = Path(destination)
+        if source_path == final_glb and destination_path != staged_glb:
+            captured_backups["glb"] = destination_path
+            return "backup_glb"
+        if source_path == final_json and destination_path != staged_json:
+            captured_backups["json"] = destination_path
+            return "backup_json"
+        if source_path == staged_glb and destination_path == final_glb:
+            return "promote_glb"
+        if source_path == staged_json and destination_path == final_json:
+            return "promote_json"
+        if source_path == captured_backups.get("glb") and destination_path == final_glb:
+            return "restore_glb"
+        if source_path == captured_backups.get("json") and destination_path == final_json:
+            return "restore_json"
+        return f"unexpected:{source_path.name}->{destination_path.name}"
+
+    def replacing(source, destination):
+        nonlocal primary_reached, restore_reached
+        phase = classify(source, destination)
+        calls.append(phase)
+        if phase == primary_failure and not primary_reached:
+            primary_reached = True
+            raise OSError(f"injected primary {primary_failure} failure")
+        if (
+            restore_failure is not None
+            and primary_reached
+            and phase == restore_failure
+            and not restore_reached
+        ):
+            restore_reached = True
+            raise OSError(f"injected compound {restore_failure} failure")
+        return real_replace(source, destination)
+
+    caught = None
+    with mock.patch.object(module.os, "replace", side_effect=replacing):
+        try:
+            module.promote_pair(
+                staged_glb, staged_json, final_glb, final_json, True
+            )
+        except BaseException as exc:
+            caught = exc
+
+    label = f"{primary_failure}+{restore_failure or 'single'}"
+    check(caught is not None, f"{label}: promotion swallowed injected failure")
+    check(primary_reached, f"{label}: primary injection was not reached; calls={calls}")
+    expected_prefix = forward_order[: forward_order.index(primary_failure) + 1]
+    check(
+        calls[: len(expected_prefix)] == expected_prefix,
+        f"{label}: forward phases were not reached in order; calls={calls}",
+    )
+    check(
+        not any(phase.startswith("unexpected:") for phase in calls),
+        f"{label}: unclassified replace call; calls={calls}",
+    )
+    if restore_failure is not None:
+        check(restore_reached, f"{label}: compound restore injection was not reached; calls={calls}")
+        check(restore_failure in calls, f"{label}: restore phase absent; calls={calls}")
+
+    backups = backup_files(directory)
+    finals_are_old = (
+        final_glb.is_file()
+        and final_json.is_file()
+        and (digest(final_glb), digest(final_json)) == old_hashes
+    )
+    finals_absent = not final_glb.exists() and not final_json.exists()
+    captured_glb = captured_backups.get("glb")
+    captured_json = captured_backups.get("json")
+    complete_old_backups = (
+        len(backups) == 2
+        and captured_glb is not None
+        and captured_json is not None
+        and set(backups) == {captured_glb, captured_json}
+        and captured_glb.is_file()
+        and captured_json.is_file()
+        and digest(captured_glb) == old_hashes[0]
+        and digest(captured_json) == old_hashes[1]
+    )
+
+    if restore_failure is None:
+        check(finals_are_old, f"{label}: old final pair was not restored exactly")
+        check(not backups, f"{label}: backup residue remained after recoverable failure: {backups}")
+    else:
+        allowed_terminal = (
+            (finals_are_old and not backups)
+            or (finals_absent and complete_old_backups)
+        )
+        check(
+            allowed_terminal,
+            f"{label}: split, partial, or unrecoverable terminal state; "
+            f"final_glb={final_glb.exists()} final_json={final_json.exists()} "
+            f"backup_hashes={[digest(path) for path in backups]}",
+        )
+        check(
+            not (final_glb.exists() != final_json.exists()),
+            f"{label}: exactly one final member remains",
+        )
+        if finals_absent:
+            check(
+                complete_old_backups,
+                f"{label}: final pair absent without a complete two-file old backup pair",
+            )
+
+for phase in forward_order:
+    exercise(f"single-{phase}", phase)
+
+for primary, restore in [
+    ("backup_json", "restore_glb"),
+    ("promote_glb", "restore_glb"),
+    ("promote_glb", "restore_json"),
+    ("promote_json", "restore_glb"),
+    ("promote_json", "restore_json"),
+]:
+    exercise(f"compound-{primary}-{restore}", primary, restore)
+
+if errors:
+    raise AssertionError("promotion rollback regressions:\n- " + "\n- ".join(errors))
+PY
+  assert_no_external_effects
+fi
+
+if [ "$review_section" = B ]; then
+  printf 'glb-decimation review B: pass\n'
+  exit 0
+fi
+
+# Review regression C: the default absent-destination promotion is one atomic
+# custody decision. Freeze _promotion_guard(final_glb, final_json, *,
+# on_attempt=None, on_acquired=None) as a private context-manager seam around
+# the complete existence-check/promotion/rollback transaction. Its callbacks
+# report a nonblocking contention decision; _path_exists then proves B rechecks
+# both completed finals after the real same-output guard acquires.
+if [ "$review_section" = all ] || [ "$review_section" = C ]; then
+  PYTHONDONTWRITEBYTECODE=1 python3 - \
+    "$decimate_script" "$tmp/review-concurrency" <<'PY'
+import contextlib
+import hashlib
+import importlib.util
+import os
+import sys
+import threading
+from pathlib import Path
+from unittest import mock
+
+script = Path(sys.argv[1])
+root = Path(sys.argv[2])
+root.mkdir()
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("decimate_assets_concurrency_test", script)
+assert spec is not None and spec.loader is not None
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+
+final_glb = root / "final.glb"
+final_json = root / "final.glb.json"
+staged = {
+    "A": (root / "a-staged.glb", root / "a-staged.json"),
+    "B": (root / "b-staged.glb", root / "b-staged.json"),
+}
+payloads = {
+    "A": (b"complete derivative from A", b"complete provenance from A"),
+    "B": (b"complete derivative from B", b"complete provenance from B"),
+}
+for owner in ("A", "B"):
+    staged[owner][0].write_bytes(payloads[owner][0])
+    staged[owner][1].write_bytes(payloads[owner][1])
+
+real_replace = os.replace
+real_path_exists = module._path_exists
+state_mutex = threading.Lock()
+guard_state = threading.local()
+a_at_first_replace = threading.Event()
+b_at_first_replace = threading.Event()
+b_progress = threading.Event()
+b_guard_attempted = threading.Event()
+a_guard_acquired = threading.Event()
+b_guard_acquired = threading.Event()
+a_pair_completed_in_guard = threading.Event()
+allow_a_glb_replace = threading.Event()
+a_glb_established = threading.Event()
+allow_b_glb_replace = threading.Event()
+b_json_failure_reached = threading.Event()
+release_a_json = threading.Event()
+results = {}
+replace_calls = []
+path_observations = []
+guard_attempts = []
+guard_acquisitions = []
+
+@contextlib.contextmanager
+def missing_promotion_guard(
+    _final_glb, _final_json, *, on_attempt=None, on_acquired=None
+):
+    if on_attempt is not None:
+        on_attempt(False)
+    if on_acquired is not None:
+        on_acquired(False)
+    yield
+
+real_promotion_guard = getattr(
+    module, "_promotion_guard", missing_promotion_guard
+)
+if os.environ.get("GLB_DECIMATION_TEST_GUARD_MUTATION") == "noop":
+    real_promotion_guard = missing_promotion_guard
+elif os.environ.get("GLB_DECIMATION_TEST_GUARD_MUTATION") not in {None, ""}:
+    raise AssertionError("unsupported GLB_DECIMATION_TEST_GUARD_MUTATION")
+
+def thread_owner():
+    name = threading.current_thread().name
+    if name == "promotion-A":
+        return "A"
+    if name == "promotion-B":
+        return "B"
+    raise AssertionError(f"unexpected promotion thread {name!r}")
+
+@contextlib.contextmanager
+def controlled_promotion_guard(guard_glb, guard_json):
+    assert Path(guard_glb) == final_glb
+    assert Path(guard_json) == final_json
+    owner = thread_owner()
+
+    def attempted(contended):
+        assert isinstance(contended, bool)
+        with state_mutex:
+            guard_attempts.append((owner, contended))
+        if owner == "B":
+            b_guard_attempted.set()
+            b_progress.set()
+
+    def acquired(contended):
+        assert isinstance(contended, bool)
+        completed = a_pair_completed_in_guard.is_set()
+        with state_mutex:
+            guard_acquisitions.append((owner, contended, completed))
+        if owner == "A":
+            a_guard_acquired.set()
+        else:
+            b_guard_acquired.set()
+
+    with real_promotion_guard(
+        guard_glb,
+        guard_json,
+        on_attempt=attempted,
+        on_acquired=acquired,
+    ):
+        guard_state.active = True
+        try:
+            yield
+        finally:
+            if (
+                owner == "A"
+                and final_glb.is_file()
+                and final_json.is_file()
+                and final_glb.read_bytes() == payloads["A"][0]
+                and final_json.read_bytes() == payloads["A"][1]
+            ):
+                a_pair_completed_in_guard.set()
+            guard_state.active = False
+
+def observing_path_exists(path):
+    candidate = Path(path)
+    value = real_path_exists(candidate)
+    if candidate in {final_glb, final_json}:
+        owner = thread_owner()
+        member = "glb" if candidate == final_glb else "json"
+        inside_guard = bool(getattr(guard_state, "active", False))
+        completed = a_pair_completed_in_guard.is_set()
+        with state_mutex:
+            path_observations.append(
+                (owner, member, value, inside_guard, completed)
+            )
+    return value
+
+def replacing(source, destination):
+    source_path = Path(source)
+    destination_path = Path(destination)
+    if source_path in staged["A"]:
+        owner = "A"
+    elif source_path in staged["B"]:
+        owner = "B"
+    else:
+        return real_replace(source_path, destination_path)
+    if destination_path == final_glb:
+        member = "glb"
+    elif destination_path == final_json:
+        member = "json"
+    else:
+        return real_replace(source_path, destination_path)
+    with state_mutex:
+        replace_calls.append((owner, member))
+    if owner == "A" and member == "glb":
+        a_at_first_replace.set()
+        if not allow_a_glb_replace.wait(5):
+            raise AssertionError("timed out releasing A GLB promotion")
+        result = real_replace(source_path, destination_path)
+        a_glb_established.set()
+        if not release_a_json.wait(5):
+            raise AssertionError("timed out releasing A JSON promotion")
+        return result
+    if owner == "B" and member == "glb":
+        b_at_first_replace.set()
+        b_progress.set()
+        if not allow_b_glb_replace.wait(5):
+            raise AssertionError("timed out releasing B GLB promotion")
+        return real_replace(source_path, destination_path)
+    if owner == "B" and member == "json":
+        b_json_failure_reached.set()
+        raise OSError("injected concurrent B JSON promotion failure")
+    return real_replace(source_path, destination_path)
+
+def promote(owner):
+    try:
+        module.promote_pair(
+            staged[owner][0], staged[owner][1], final_glb, final_json, False
+        )
+    except BaseException as exc:
+        result = ("failure", exc)
+    else:
+        result = ("success", None)
+    with state_mutex:
+        results[owner] = result
+
+with (
+    mock.patch.object(module, "_promotion_guard", new=controlled_promotion_guard, create=True),
+    mock.patch.object(module, "_path_exists", new=observing_path_exists),
+    mock.patch.object(module.os, "replace", new=replacing),
+):
+    thread_a = threading.Thread(target=promote, args=("A",), name="promotion-A")
+    thread_b = threading.Thread(target=promote, args=("B",), name="promotion-B")
+    thread_a.start()
+    assert a_at_first_replace.wait(5), "A never reached first GLB promotion"
+    thread_b.start()
+    assert b_progress.wait(5), "B reached neither the guard-attempt seam nor first replace"
+    b_acquired_before_a_release = b_guard_acquired.is_set()
+
+    # Correct code signals the guard attempt and blocks on A's transaction.
+    # Current unlocked code instead reaches B's first replace and blocks there.
+    allow_a_glb_replace.set()
+    assert a_glb_established.wait(5), "A never established the destination GLB"
+    allow_b_glb_replace.set()
+    if b_at_first_replace.is_set():
+        assert b_json_failure_reached.wait(5), "B crossed but did not reach JSON injection"
+    release_a_json.set()
+
+    thread_a.join(5)
+    thread_b.join(5)
+    assert not thread_a.is_alive(), "A promotion thread did not terminate"
+    assert not thread_b.is_alive(), "B promotion thread did not terminate"
+
+errors = []
+def check(condition, message):
+    if not condition:
+        errors.append(message)
+
+with state_mutex:
+    result_snapshot = dict(results)
+    replace_snapshot = list(replace_calls)
+    observation_snapshot = list(path_observations)
+    attempt_snapshot = list(guard_attempts)
+    acquisition_snapshot = list(guard_acquisitions)
+
+check(set(result_snapshot) == {"A", "B"}, f"missing thread result: {result_snapshot}")
+successes = [owner for owner, result in result_snapshot.items() if result[0] == "success"]
+failures = [owner for owner, result in result_snapshot.items() if result[0] == "failure"]
+check(successes == ["A"], f"expected only A success; results={result_snapshot}")
+check(failures == ["B"], f"expected only B refusal/failure; results={result_snapshot}")
+b_exception = result_snapshot.get("B", (None, None))[1]
+check(
+    isinstance(b_exception, module.DecimationError)
+    and str(b_exception) == "refusing existing derivative without --force",
+    f"B lacked exact existing-destination DecimationError: {b_exception!r}",
+)
+check(a_guard_acquired.is_set(), "A did not acquire the _promotion_guard seam")
+check(b_guard_attempted.is_set(), "B did not attempt _promotion_guard before A release")
+check(b_guard_acquired.is_set(), "B did not acquire _promotion_guard after A completed")
+check(
+    not b_acquired_before_a_release,
+    "B acquired _promotion_guard before A released its transaction",
+)
+check(
+    attempt_snapshot == [("A", False), ("B", True)],
+    f"guard attempts did not prove real B contention: {attempt_snapshot}",
+)
+check(
+    acquisition_snapshot == [("A", False, False), ("B", True, True)],
+    "guard acquisitions did not serialize B behind completed A: "
+    f"{acquisition_snapshot}",
+)
+check(a_pair_completed_in_guard.is_set(), "A pair was not completed while its guard was held")
+check(not b_at_first_replace.is_set(), f"B replace was reached: {replace_snapshot}")
+b_postlock = [
+    (member, value, completed)
+    for owner, member, value, inside_guard, completed in observation_snapshot
+    if owner == "B" and inside_guard
+]
+check(
+    {member for member, _, _ in b_postlock} == {"glb", "json"}
+    and all(value and completed for _, value, completed in b_postlock),
+    f"B did not recheck both completed A finals inside the guard: {b_postlock}",
+)
+complete_pair = final_glb.is_file() and final_json.is_file()
+check(complete_pair, "successful A final pair is incomplete")
+if complete_pair:
+    check(final_glb.read_bytes() == payloads["A"][0], "final GLB is not A's successful member")
+    check(final_json.read_bytes() == payloads["A"][1], "final JSON is not A's successful member")
+    check(
+        hashlib.sha256(final_glb.read_bytes()).hexdigest()
+        == hashlib.sha256(payloads["A"][0]).hexdigest(),
+        "final GLB hash does not belong to successful A",
+    )
+    check(
+        hashlib.sha256(final_json.read_bytes()).hexdigest()
+        == hashlib.sha256(payloads["A"][1]).hexdigest(),
+        "final JSON hash does not belong to successful A",
+    )
+expected_entries = {final_glb, final_json, staged["B"][0], staged["B"][1]}
+actual_entries = set(root.iterdir())
+check(
+    actual_entries == expected_entries,
+    "concurrent promotion left missing/unexpected transaction entries: "
+    f"{sorted(path.name for path in actual_entries)}",
+)
+if errors:
+    raise AssertionError("concurrent promotion regressions:\n- " + "\n- ".join(errors))
+PY
+  assert_no_external_effects
+fi
+
+if [ "$review_section" = C ]; then
+  printf 'glb-decimation review C: pass\n'
+  exit 0
+fi
 
 # Happy path: both selected roots deliberately contain spaces and shell
 # metacharacters. If production turns the argument vector into a shell string,
