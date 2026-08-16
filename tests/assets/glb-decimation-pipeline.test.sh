@@ -3019,9 +3019,15 @@ def regular_private_snapshot(observation, trusted_sha, original, label):
         f"{observation['source_mode']:o}",
     )
     check(
-        observation["source_parent_mode"] & 0o077 == 0,
-        f"{label}: Blender source snapshot parent was not private: "
-        f"{observation['source_parent_mode']:o}",
+        observation.get("source_uid") == os.getuid(),
+        f"{label}: Blender source snapshot is not owned by the invoking user",
+    )
+    check(
+        observation["source_parent_mode"] == 0o700
+        and observation.get("source_parent_uid") == os.getuid(),
+        f"{label}: Blender source snapshot parent was not owned mode-0700: "
+        f"mode={observation['source_parent_mode']:o} "
+        f"uid={observation.get('source_parent_uid')!r}",
     )
 
 
@@ -3192,7 +3198,9 @@ def exercise_snapshot_seam(case_name, *, hang, fail_process, progress):
                 "symlink": stat.S_ISLNK(status.st_mode),
                 "nlink": status.st_nlink,
                 "mode": stat.S_IMODE(status.st_mode),
+                "uid": status.st_uid,
                 "parent_mode": stat.S_IMODE(os.lstat(path.parent).st_mode),
+                "parent_uid": os.lstat(path.parent).st_uid,
                 "trusted": trusted,
             }
         seam_observation["prepared_source_sha"] = prepared["source_sha"]
@@ -3258,8 +3266,13 @@ def exercise_snapshot_seam(case_name, *, hang, fail_process, progress):
             f"{member_name} snapshot remained writable",
         )
         require(
-            observation["parent_mode"] & 0o077 == 0,
-            f"{member_name} snapshot parent is not private",
+            observation["uid"] == os.getuid(),
+            f"{member_name} snapshot is not owned by the invoking user",
+        )
+        require(
+            observation["parent_mode"] == 0o700
+            and observation["parent_uid"] == os.getuid(),
+            f"{member_name} snapshot parent is not owned mode-0700",
         )
         if snapshot != original:
             require(
@@ -3369,10 +3382,12 @@ run_snapshot_seam_bounded(
 run_snapshot_seam_bounded("pre-version-snapshot-hang", expect_hang=True)
 
 
-# J2b: keep the original sidecar replaced by a different *valid* record only
-# while provenance is built, then restore it. Real processing must emit the
-# frozen original values. The companion mutation deliberately discards the
-# prepared record and rereads the live path, proving the lineage oracle fires.
+# J2b: replace the original sidecar with a different *valid* record before real
+# asset processing starts, keep it live throughout processing, then restore it.
+# Secure code reads only its frozen sidecar snapshot and emits the original
+# record without the test replacing its source_record argument. The companion
+# mutation deliberately rereads the live original path, proving the lineage
+# oracle fires against that vulnerable implementation shape.
 def exercise_sidecar_provenance(case_name, *, late_reread):
     findings = []
 
@@ -3413,10 +3428,18 @@ def exercise_sidecar_provenance(case_name, *, late_reread):
     }
     # The alternate is not malformed bait: it satisfies the real validator.
     module._validate_source_record(alternate_record, asset, digest(source))
+    real_process_asset = module._process_asset
     real_provenance = module._provenance_record
     attack_reached = False
+    late_reread_reached = False
+    mutation_snapshot_root = case_root / "mutation-sidecar-snapshot"
+    mutation_sidecar_snapshot = mutation_snapshot_root / sidecar.name
+    if late_reread:
+        mutation_snapshot_root.mkdir(mode=0o700)
+        mutation_sidecar_snapshot.write_bytes(sidecar_bytes)
+        mutation_sidecar_snapshot.chmod(0o400)
 
-    def attacking_provenance(*args, **kwargs):
+    def attacking_process_asset(*args, **kwargs):
         nonlocal attack_reached
         attack_reached = True
         sidecar.write_bytes(alternate_bytes)
@@ -3424,16 +3447,36 @@ def exercise_sidecar_provenance(case_name, *, late_reread):
             positional = list(args)
             named = dict(kwargs)
             if late_reread:
-                live_record = json.loads(sidecar.read_text(encoding="utf-8"))
-                if len(positional) >= 4:
-                    positional[3] = live_record
-                elif "source_record" in named:
-                    named["source_record"] = live_record
+                # Isolate the mutation to a late provenance reread even against
+                # today's original-path implementation: model only the fixed
+                # sidecar-path snapshot boundary, leaving source_record intact.
+                if len(positional) >= 2:
+                    prepared = dict(positional[1])
+                    prepared["source_sidecar_path"] = mutation_sidecar_snapshot
+                    positional[1] = prepared
+                elif "prepared" in named:
+                    prepared = dict(named["prepared"])
+                    prepared["source_sidecar_path"] = mutation_sidecar_snapshot
+                    named["prepared"] = prepared
                 else:
-                    raise AssertionError("provenance source_record argument is missing")
-            return real_provenance(*positional, **named)
+                    raise AssertionError("process prepared argument is missing")
+            return real_process_asset(*positional, **named)
         finally:
             sidecar.write_bytes(sidecar_bytes)
+
+    def late_reread_provenance(*args, **kwargs):
+        nonlocal late_reread_reached
+        late_reread_reached = True
+        live_record = json.loads(sidecar.read_text(encoding="utf-8"))
+        positional = list(args)
+        named = dict(kwargs)
+        if len(positional) >= 4:
+            positional[3] = live_record
+        elif "source_record" in named:
+            named["source_record"] = live_record
+        else:
+            raise AssertionError("provenance source_record argument is missing")
+        return real_provenance(*positional, **named)
 
     environment = {
         "FAKE_BLENDER_MODE": "success",
@@ -3442,12 +3485,20 @@ def exercise_sidecar_provenance(case_name, *, late_reread):
     }
     stdout = io.StringIO()
     stderr = io.StringIO()
+    provenance_patch = (
+        mock.patch.object(
+            module, "_provenance_record", new=late_reread_provenance
+        )
+        if late_reread
+        else contextlib.nullcontext()
+    )
     try:
         with (
             mock.patch.dict(os.environ, environment, clear=False),
             mock.patch.object(
-                module, "_provenance_record", new=attacking_provenance
+                module, "_process_asset", new=attacking_process_asset
             ),
+            provenance_patch,
             contextlib.redirect_stdout(stdout),
             contextlib.redirect_stderr(stderr),
         ):
@@ -3459,6 +3510,8 @@ def exercise_sidecar_provenance(case_name, *, late_reread):
             ])
     finally:
         sidecar.write_bytes(sidecar_bytes)
+        if mutation_snapshot_root.exists():
+            shutil.rmtree(mutation_snapshot_root)
 
     final_glb = output_dir / source.name
     final_json = Path(f"{final_glb}.json")
@@ -3469,13 +3522,32 @@ def exercise_sidecar_provenance(case_name, *, late_reread):
         name: original_record[name]
         for name in sorted(module.REQUIRED_SOURCE_FIELDS - {"sha256"})
     }
+    alternate_provenance = {
+        name: alternate_record[name]
+        for name in sorted(module.REQUIRED_SOURCE_FIELDS - {"sha256"})
+    }
     lineage_is_original = bool(
         isinstance(proof, dict)
         and proof.get("source", {}).get("sidecar_sha256")
         == digest_bytes(sidecar_bytes)
         and proof.get("source", {}).get("provenance") == expected_provenance
     )
+    mutation_emitted_live_record = bool(
+        isinstance(proof, dict)
+        and proof.get("source", {}).get("sidecar_sha256")
+        == digest_bytes(sidecar_bytes)
+        and proof.get("source", {}).get("provenance") == alternate_provenance
+    )
     require(attack_reached, f"{case_name}: sidecar swap-back seam was not reached")
+    if late_reread:
+        require(
+            late_reread_reached,
+            f"{case_name}: late original-path reread mutation was not reached",
+        )
+        require(
+            not os.path.lexists(mutation_snapshot_root),
+            f"{case_name}: mutation-control sidecar snapshot leaked",
+        )
     require(source.read_bytes() == source_bytes, f"{case_name}: source changed")
     require(sidecar.read_bytes() == sidecar_bytes, f"{case_name}: sidecar changed")
     records = (
@@ -3484,7 +3556,10 @@ def exercise_sidecar_provenance(case_name, *, late_reread):
     )
     if not late_reread:
         require(result == 0, f"{case_name}: real processing returned {result}: {stderr.getvalue()!r}")
-        require(lineage_is_original, f"{case_name}: emitted provenance reread the live sidecar")
+        require(
+            lineage_is_original,
+            f"{case_name}: final provenance lacks snapshotted original sidecar values",
+        )
         require(
             set(output_dir.iterdir()) == {final_glb, final_json},
             f"{case_name}: real processing left unexpected output residue",
@@ -3515,8 +3590,13 @@ def exercise_sidecar_provenance(case_name, *, late_reread):
                 f"{case_name}: fake source remained writable",
             )
             require(
-                observation["source_parent_mode"] & 0o077 == 0,
-                f"{case_name}: fake source parent was not private",
+                observation.get("source_uid") == os.getuid(),
+                f"{case_name}: fake source was not owned by the invoking user",
+            )
+            require(
+                observation["source_parent_mode"] == 0o700
+                and observation.get("source_parent_uid") == os.getuid(),
+                f"{case_name}: fake source parent was not owned mode-0700",
             )
             if snapshot != source:
                 require(
@@ -3527,12 +3607,18 @@ def exercise_sidecar_provenance(case_name, *, late_reread):
                     not os.path.lexists(snapshot.parent),
                     f"{case_name}: source snapshot tree leaked",
                 )
-    mutation_detected = result != 0 or not lineage_is_original
+    mutation_detected = (
+        result == 0
+        and late_reread_reached
+        and mutation_emitted_live_record
+        and not lineage_is_original
+    )
     return {
         "findings": findings,
         "mutation_detected": mutation_detected,
         "result": result,
         "attack_reached": attack_reached,
+        "late_reread_reached": late_reread_reached,
     }
 
 
@@ -3575,15 +3661,20 @@ def run_sidecar_provenance_bounded(case_name, *, late_reread):
         result_kind, value = payload
         if result_kind == "crash":
             errors.append(f"{case_name}: sidecar child crashed:\n{value}")
-        elif late_reread:
-            if not value["attack_reached"]:
-                errors.append(f"{case_name}: late-reread mutation missed its seam")
-            if not value["mutation_detected"]:
-                errors.append(
-                    f"{case_name}: dead-snapshot late-reread mutation escaped the oracle"
-                )
         else:
             errors.extend(value["findings"])
+            if late_reread:
+                if not value["attack_reached"]:
+                    errors.append(f"{case_name}: late-reread mutation missed its seam")
+                if not value["late_reread_reached"]:
+                    errors.append(
+                        f"{case_name}: late original-path reread was not exercised"
+                    )
+                if not value["mutation_detected"]:
+                    errors.append(
+                        f"{case_name}: late-reread mutation did not emit the live "
+                        "alternate record for the lineage oracle to reject"
+                    )
     process.close()
 
 
@@ -3719,6 +3810,7 @@ hazardous_names = {
     "GOOGLE_API_KEY", "GITHUB_TOKEN",
     "UNRELATED_PARENT_SETTING",
 }
+inherited_values = {str(hostile_home), str(hostile_tmp), str(hostile_xdg)}
 
 
 def private_cleanup_findings(records, label):
@@ -3726,17 +3818,19 @@ def private_cleanup_findings(records, label):
     seen = set()
     for record in records:
         facts = list(record.get("private_paths", {}).values())
-        private_root_fact = record.get("private_root")
-        if isinstance(private_root_fact, dict):
-            facts.append(private_root_fact)
         for fact in facts:
             if not isinstance(fact, dict):
                 continue
             path_value = fact.get("path")
-            mode = fact.get("mode")
-            if not isinstance(path_value, str) or not isinstance(mode, int):
+            if not isinstance(path_value, str):
                 continue
-            if mode & 0o077 or path_value in seen:
+            if (
+                fact.get("exists") is not True
+                or fact.get("is_directory") is not True
+                or fact.get("is_symlink") is not False
+                or path_value in inherited_values
+                or path_value in seen
+            ):
                 continue
             seen.add(path_value)
             if os.path.lexists(path_value):
@@ -3767,28 +3861,14 @@ for record in environment_records:
             f"{record.get('phase')}: {name} is not a real private directory: {fact}",
         )
         check(
-            isinstance(fact.get("mode"), int) and fact["mode"] & 0o077 == 0,
-            f"{record.get('phase')}: {name} is group/world accessible: {fact}",
+            fact.get("mode") == 0o700 and fact.get("uid") == os.getuid(),
+            f"{record.get('phase')}: {name} is not invoking-user-owned "
+            f"mode-0700: {fact}",
         )
         child_values.append(fact.get("path"))
-    inherited_values = {str(hostile_home), str(hostile_tmp), str(hostile_xdg)}
     check(
         all(value not in inherited_values for value in child_values),
         f"{record.get('phase')}: inherited HOME/XDG/temp was reused",
-    )
-    if child_values and all(isinstance(value, str) for value in child_values):
-        common = os.path.commonpath(child_values)
-        check(common not in {"", os.path.sep}, f"{record.get('phase')}: private dirs lack a private common root")
-    private_root_fact = record.get("private_root")
-    check(
-        isinstance(private_root_fact, dict)
-        and private_root_fact.get("exists") is True
-        and private_root_fact.get("is_directory") is True
-        and private_root_fact.get("is_symlink") is False
-        and isinstance(private_root_fact.get("mode"), int)
-        and private_root_fact["mode"] & 0o077 == 0,
-        f"{record.get('phase')}: common private root is not a private real directory: "
-        f"{private_root_fact}",
     )
 errors.extend(private_cleanup_findings(environment_records, "environment success"))
 
@@ -3800,9 +3880,10 @@ leak_fact = {
     "is_directory": True,
     "is_symlink": False,
     "mode": 0o700,
+    "uid": os.getuid(),
 }
 leak_findings = private_cleanup_findings(
-    [{"private_paths": {"HOME": leak_fact}, "private_root": leak_fact}],
+    [{"private_paths": {"HOME": leak_fact}}],
     "cleanup-oracle",
 )
 check(bool(leak_findings), "private-tree cleanup oracle accepted a leaked directory")
@@ -3899,20 +3980,11 @@ for record in failure_environment_records:
             and fact.get("exists") is True
             and fact.get("is_directory") is True
             and fact.get("is_symlink") is False
-            and isinstance(fact.get("mode"), int)
-            and fact["mode"] & 0o077 == 0,
-            f"failure cleanup {name} was not private during the child",
+            and fact.get("mode") == 0o700
+            and fact.get("uid") == os.getuid(),
+            f"failure cleanup {name} was not invoking-user-owned mode-0700 "
+            "during the child",
         )
-    private_root_fact = record.get("private_root")
-    check(
-        isinstance(private_root_fact, dict)
-        and private_root_fact.get("exists") is True
-        and private_root_fact.get("is_directory") is True
-        and private_root_fact.get("is_symlink") is False
-        and isinstance(private_root_fact.get("mode"), int)
-        and private_root_fact["mode"] & 0o077 == 0,
-        "failure cleanup common root was not private during the child",
-    )
 errors.extend(
     private_cleanup_findings(failure_environment_records, "environment failure")
 )
@@ -3957,6 +4029,7 @@ if [ "$review_section" = all ] || [ "$review_section" = K ]; then
   PYTHONDONTWRITEBYTECODE=1 python3 - \
     "$decimate_script" "$tmp/review-preflight-diagnostics" "$repo" \
     "$fake_blender" <<'PY'
+import builtins
 import contextlib
 import hashlib
 import importlib.util
@@ -3972,6 +4045,7 @@ import subprocess
 import sys
 import traceback
 from pathlib import Path
+from unittest import mock
 
 
 script = Path(sys.argv[1])
@@ -4341,7 +4415,7 @@ def require_preflight_rejection(case, label, pattern, *, force=False):
 
 
 class WholeReadAttempt(RuntimeError):
-    """Raised by the audit oracle before a guarded oversize file is opened."""
+    """Raised before a guarded oversize file can return any data bytes."""
 
 
 def exercise_size_preflight(
@@ -4356,10 +4430,10 @@ def exercise_size_preflight(
 ):
     """Prove size is rejected through lstat before any whole-file reader.
 
-    A CPython audit hook observes the common readers below their Path/os/shutil
-    APIs. The synthetic mutation checks keep this oracle discriminating: a
-    production mutation that opens the oversize member before rejecting it is
-    stopped at the open event and reported as an attributable RED.
+    The reader-layer oracle permits a no-follow/nonblocking descriptor open,
+    fstat, and close with zero data read. It guards Path/file-object reads,
+    descriptor reads, and copies independently. Synthetic mutations keep the
+    oracle discriminating without treating a safe metadata-only open as a read.
     """
 
     case_before = tree_snapshot(case["input"])
@@ -4386,9 +4460,12 @@ def exercise_size_preflight(
     receive, send = process_context.Pipe(duplex=False)
 
     def child():
-        armed = {"value": False}
+        guarded_fds = set()
+        read_attempted = {"value": False}
 
         def is_guarded(raw_path):
+            if isinstance(raw_path, int):
+                return raw_path in guarded_fds
             try:
                 candidate = Path(
                     os.path.realpath(os.path.abspath(os.fsdecode(raw_path)))
@@ -4405,61 +4482,235 @@ def exercise_size_preflight(
                 return False
             return stat.S_ISREG(status.st_mode) and status.st_size > size_limit
 
-        def audit(event, arguments_value):
-            if (
-                armed["value"]
-                and event == "open"
-                and arguments_value
-                and is_guarded(arguments_value[0])
-            ):
-                raise WholeReadAttempt(
-                    f"whole read/copy attempted for guarded {member}"
-                )
+        def reject_read(operation):
+            read_attempted["value"] = True
+            raise WholeReadAttempt(
+                f"{operation} attempted data access for guarded {member}"
+            )
 
-        sys.addaudithook(audit)
+        class GuardedReader:
+            def __init__(self, handle, descriptor=None):
+                self._handle = handle
+                self._descriptor = descriptor
+
+            def _reject(self, operation):
+                reject_read(operation)
+
+            def read(self, size=-1, *args):
+                if size == 0:
+                    return self._handle.read(size, *args)
+                self._reject("file read")
+
+            def read1(self, size=-1):
+                if size == 0:
+                    return self._handle.read1(size)
+                self._reject("buffered read")
+
+            def readall(self):
+                self._reject("full read")
+
+            def readinto(self, buffer):
+                if len(memoryview(buffer)) == 0:
+                    return self._handle.readinto(buffer)
+                self._reject("readinto")
+
+            def readinto1(self, buffer):
+                if len(memoryview(buffer)) == 0:
+                    return self._handle.readinto1(buffer)
+                self._reject("buffered readinto")
+
+            def readline(self, size=-1):
+                if size == 0:
+                    return self._handle.readline(size)
+                self._reject("line read")
+
+            def readlines(self, hint=-1):
+                self._reject("line reads")
+
+            def peek(self, size=-1):
+                if size == 0:
+                    return self._handle.peek(size)
+                self._reject("peek")
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                self._reject("iterator read")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, _exc_type, _exc, _traceback):
+                self.close()
+                return False
+
+            def close(self):
+                try:
+                    self._handle.close()
+                finally:
+                    if self._descriptor is not None:
+                        guarded_fds.discard(self._descriptor)
+
+            def __getattr__(self, name):
+                return getattr(self._handle, name)
+
+        real_builtin_open = builtins.open
+        real_io_open = io.open
+        real_os_open = os.open
+        real_os_close = os.close
+        real_os_read = os.read
+        real_os_fdopen = os.fdopen
+        real_copyfile = shutil.copyfile
+
+        def wrap_reader(handle, value, descriptor=None):
+            if is_guarded(value):
+                return GuardedReader(handle, descriptor)
+            return handle
+
+        def guarded_builtin_open(value, *args, **kwargs):
+            handle = real_builtin_open(value, *args, **kwargs)
+            return wrap_reader(handle, value)
+
+        def guarded_io_open(value, *args, **kwargs):
+            handle = real_io_open(value, *args, **kwargs)
+            return wrap_reader(handle, value)
+
+        def guarded_os_open(value, *args, **kwargs):
+            descriptor = real_os_open(value, *args, **kwargs)
+            if is_guarded(value):
+                guarded_fds.add(descriptor)
+            return descriptor
+
+        def guarded_os_close(descriptor):
+            guarded_fds.discard(descriptor)
+            return real_os_close(descriptor)
+
+        def guarded_os_read(descriptor, count):
+            if descriptor in guarded_fds and count != 0:
+                reject_read("descriptor read")
+            return real_os_read(descriptor, count)
+
+        def guarded_os_fdopen(descriptor, *args, **kwargs):
+            handle = real_os_fdopen(descriptor, *args, **kwargs)
+            return wrap_reader(handle, descriptor, descriptor)
+
+        def guarded_copyfile(source, destination, *args, **kwargs):
+            if is_guarded(source):
+                reject_read("copy")
+            return real_copyfile(source, destination, *args, **kwargs)
+
+        optional_patches = []
+        if hasattr(os, "pread"):
+            real_pread = os.pread
+
+            def guarded_pread(descriptor, count, offset):
+                if descriptor in guarded_fds and count != 0:
+                    reject_read("pread")
+                return real_pread(descriptor, count, offset)
+
+            optional_patches.append(mock.patch.object(os, "pread", new=guarded_pread))
+        if hasattr(os, "readv"):
+            real_readv = os.readv
+
+            def guarded_readv(descriptor, buffers):
+                if descriptor in guarded_fds and any(len(value) for value in buffers):
+                    reject_read("readv")
+                return real_readv(descriptor, buffers)
+
+            optional_patches.append(mock.patch.object(os, "readv", new=guarded_readv))
+
         mutation_copy = case["root"] / "audit-oracle-copy"
         mutation_hits = []
-        armed["value"] = True
         try:
-            for reader in (
-                lambda: guarded_path.read_bytes(),
-                lambda: os.close(os.open(guarded_path, os.O_RDONLY)),
-                lambda: shutil.copyfile(guarded_path, mutation_copy),
-            ):
-                try:
-                    reader()
-                except WholeReadAttempt:
-                    mutation_hits.append(True)
-                else:
-                    mutation_hits.append(False)
-                finally:
-                    armed["value"] = False
-                    mutation_copy.unlink(missing_ok=True)
-                    armed["value"] = True
+            with contextlib.ExitStack() as stack:
+                for patcher in (
+                    mock.patch.object(builtins, "open", new=guarded_builtin_open),
+                    mock.patch.object(io, "open", new=guarded_io_open),
+                    mock.patch.object(os, "open", new=guarded_os_open),
+                    mock.patch.object(os, "close", new=guarded_os_close),
+                    mock.patch.object(os, "read", new=guarded_os_read),
+                    mock.patch.object(os, "fdopen", new=guarded_os_fdopen),
+                    mock.patch.object(shutil, "copyfile", new=guarded_copyfile),
+                    *optional_patches,
+                ):
+                    stack.enter_context(patcher)
 
-            os.environ.clear()
-            os.environ.update(environment(case, extra_environment))
-            stdout = io.StringIO()
-            stderr = io.StringIO()
-            production_read_attempted = False
-            returncode = None
-            try:
-                with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-                    returncode = module.main(arguments(case)[2:])
-            except WholeReadAttempt:
-                production_read_attempted = True
-            send.send({
-                "mutation_hits": mutation_hits,
-                "production_read_attempted": production_read_attempted,
-                "returncode": returncode,
-                "stdout": stdout.getvalue(),
-                "stderr": stderr.getvalue(),
-            })
+                safe_flags = (
+                    os.O_RDONLY
+                    | getattr(os, "O_NOFOLLOW", 0)
+                    | getattr(os, "O_NONBLOCK", 0)
+                )
+                descriptor_only_passed = False
+                descriptor = None
+                try:
+                    descriptor = os.open(guarded_path, safe_flags)
+                    descriptor_status = os.fstat(descriptor)
+                    descriptor_only_passed = (
+                        getattr(os, "O_NOFOLLOW", 0) != 0
+                        and getattr(os, "O_NONBLOCK", 0) != 0
+                        and stat.S_ISREG(descriptor_status.st_mode)
+                        and descriptor_status.st_size > size_limit
+                    )
+                except WholeReadAttempt:
+                    descriptor_only_passed = False
+                finally:
+                    if descriptor is not None:
+                        os.close(descriptor)
+                descriptor_only_passed = (
+                    descriptor_only_passed and not read_attempted["value"]
+                )
+
+                def descriptor_reader():
+                    descriptor_value = os.open(guarded_path, safe_flags)
+                    try:
+                        os.read(descriptor_value, 1)
+                    finally:
+                        os.close(descriptor_value)
+
+                for reader in (
+                    lambda: guarded_path.read_bytes(),
+                    descriptor_reader,
+                    lambda: shutil.copyfile(guarded_path, mutation_copy),
+                ):
+                    read_attempted["value"] = False
+                    mutation_caught = False
+                    try:
+                        reader()
+                    except WholeReadAttempt:
+                        mutation_caught = True
+                    finally:
+                        mutation_hits.append(
+                            mutation_caught and read_attempted["value"]
+                        )
+                        mutation_copy.unlink(missing_ok=True)
+
+                os.environ.clear()
+                os.environ.update(environment(case, extra_environment))
+                stdout = io.StringIO()
+                stderr = io.StringIO()
+                read_attempted["value"] = False
+                returncode = None
+                try:
+                    with (
+                        contextlib.redirect_stdout(stdout),
+                        contextlib.redirect_stderr(stderr),
+                    ):
+                        returncode = module.main(arguments(case)[2:])
+                except WholeReadAttempt:
+                    pass
+                payload = {
+                    "descriptor_only_passed": descriptor_only_passed,
+                    "mutation_hits": mutation_hits,
+                    "production_read_attempted": read_attempted["value"],
+                    "returncode": returncode,
+                    "stdout": stdout.getvalue(),
+                    "stderr": stderr.getvalue(),
+                }
+            send.send(payload)
         except BaseException:
-            armed["value"] = False
             send.send({"traceback": traceback.format_exc()})
         finally:
-            armed["value"] = False
             send.close()
 
     process = process_context.Process(target=child)
@@ -4498,8 +4749,12 @@ def exercise_size_preflight(
         return
 
     check(
+        payload["descriptor_only_passed"],
+        f"{label}: safe O_NOFOLLOW/O_NONBLOCK open+fstat+close was rejected",
+    )
+    check(
         payload["mutation_hits"] == [True, True, True],
-        f"{label}: audit oracle did not kill Path/os.open/shutil full-read mutations",
+        f"{label}: reader oracle missed Path/os.read/shutil copy mutations",
     )
     check(
         not payload["production_read_attempted"],
@@ -7126,6 +7381,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 - \
   "$repo/scripts" "$happy_log" "$input_dir" "$output_dir" \
   "$fake_blender" "$expected_driver" "$happy_log.audit" <<'PY'
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -7170,7 +7426,11 @@ for index, record in enumerate(records):
     assert record["source_lstat_symlink"] is False
     assert record["source_nlink"] == 1
     assert record["source_mode"] & 0o222 == 0
-    assert record["source_parent_mode"] & 0o077 == 0
+    assert record["source_uid"] == os.getuid()
+    assert record["source_parent_mode"] == 0o700
+    assert record["source_parent_uid"] == os.getuid()
+    assert not os.path.lexists(observed_source)
+    assert not os.path.lexists(observed_source.parent)
     staged_output = Path(values["--output"])
     staged_outputs.append(staged_output)
     assert staged_output.resolve().is_relative_to(output_dir.resolve())

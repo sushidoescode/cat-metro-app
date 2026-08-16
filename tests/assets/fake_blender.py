@@ -89,32 +89,12 @@ def _audit_environment(phase: str) -> None:
                 "is_directory": stat.S_ISDIR(status.st_mode),
                 "is_symlink": stat.S_ISLNK(status.st_mode),
                 "mode": stat.S_IMODE(status.st_mode),
-            }
-    private_root = None
-    path_values = [
-        fact["path"]
-        for fact in private_paths.values()
-        if isinstance(fact.get("path"), str)
-    ]
-    if path_values:
-        common = Path(os.path.commonpath(path_values))
-        try:
-            common_status = os.lstat(common)
-        except OSError:
-            private_root = {"path": str(common), "exists": False}
-        else:
-            private_root = {
-                "path": str(common),
-                "exists": True,
-                "is_directory": stat.S_ISDIR(common_status.st_mode),
-                "is_symlink": stat.S_ISLNK(common_status.st_mode),
-                "mode": stat.S_IMODE(common_status.st_mode),
+                "uid": status.st_uid,
             }
     record = {
         "phase": phase,
         "names": sorted(os.environ),
         "private_paths": private_paths,
-        "private_root": private_root,
     }
     with Path(destination).open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, sort_keys=True) + "\n")
@@ -130,7 +110,9 @@ def _source_observation(source: Path) -> dict[str, object]:
         "source_lstat_symlink": stat.S_ISLNK(status.st_mode),
         "source_nlink": status.st_nlink,
         "source_mode": stat.S_IMODE(status.st_mode),
+        "source_uid": status.st_uid,
         "source_parent_mode": stat.S_IMODE(parent_status.st_mode),
+        "source_parent_uid": parent_status.st_uid,
     }
 
 
