@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 import threading
@@ -498,16 +499,42 @@ def _promotion_guard(
             lock.release()
 
 
-def _matches_sha256(path: Path, expected: str) -> bool:
+def _sha256_match_status(path: Path, expected: str) -> bool | None:
+    """Return an exact match decision, or None when identity is unreadable."""
     try:
-        return path.is_file() and _sha256(path) == expected
-    except OSError:
+        status = path.stat()
+        if not stat.S_ISREG(status.st_mode):
+            return False
+        return _sha256(path) == expected
+    except FileNotFoundError:
         return False
+    except OSError:
+        return None
+
+
+def _matches_sha256(path: Path, expected: str) -> bool:
+    return _sha256_match_status(path, expected) is True
 
 
 def _remove_non_old_final(final: Path, old_sha: str) -> None:
-    if _path_exists(final) and not _matches_sha256(final, old_sha):
+    if _path_exists(final) and _sha256_match_status(final, old_sha) is False:
         final.unlink()
+
+
+def _unlink_pair_bounded(first: Path, second: Path, error_message: str) -> None:
+    """Independently remove both members, retrying one reported unlink fault."""
+    members = (first, second)
+    for _ in range(2):
+        for member in members:
+            if not _path_exists(member):
+                continue
+            try:
+                member.unlink()
+            except OSError:
+                pass
+        if not any(_path_exists(member) for member in members):
+            return
+    raise DecimationError(error_message)
 
 
 def _copy_old_member(source: Path, destination: Path, old_sha: str) -> bool:
@@ -688,12 +715,13 @@ def promote_pair(
         if not glb_exists:
             try:
                 os.replace(staged_glb, final_glb)
-                try:
-                    os.replace(staged_json, final_json)
-                except BaseException:
-                    final_glb.unlink(missing_ok=True)
-                    raise
+                os.replace(staged_json, final_json)
             except BaseException:
+                _unlink_pair_bounded(
+                    final_glb,
+                    final_json,
+                    "absent-destination promotion could not remove partial pair",
+                )
                 raise
             return
 
@@ -731,8 +759,11 @@ def promote_pair(
 
         # The complete candidate and complete recovery pair are verified before
         # either old backup is deleted.
-        backup_glb.unlink()
-        backup_json.unlink()
+        _unlink_pair_bounded(
+            backup_glb,
+            backup_json,
+            "forced promotion could not remove old backups",
+        )
 
 
 def _destination_state(final_glb: Path, final_json: Path, force: bool) -> None:
