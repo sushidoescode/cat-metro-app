@@ -12,6 +12,7 @@
 ## Active tasks
 | id | title | owner (human/session) | status | branch |
 |---|---|---|---|---|
+| GLB-DECIMATION | Offline Blender GLB decimation: cats 15k, props 10k; exact custody/structure/material/render evidence | coordination session 2026-08-15/16 | IN REVIEW — real queue 15/15; 25,352,000→199,998 tris and 855,215,420→24,717,404 bytes; pipeline/evidence heads `a434638`/`9acd64a`, ADR truth fix `4c12f5d`; evidence `docs/design/assets/GLB-DECIMATION-EVIDENCE.md`; PR pending and **HUMAN MERGE REQUIRED** for proposed ADR-0012. Visual disposition: 14/15 target-scale approve, toy engine board-only; source lineup still rejects Wild identity, Yellow Wave geometry/badge, and mixed plinths. Next: exact-head full gates + PR/CI/human ADR decision → separately freeze plinth/source curation → board/Home wiring → generated-asset licence ADR before shipping. | `task/GLB-DECIMATION` |
 | CM-C1 | Domain skeleton + replay-hash test | session 2026-08-02/03 | DONE — golden human-committed, merged (#2/#3) | (merged) |
 | CM-C2a | Content importer (bytes → LevelGraph) | session 2026-08-03 | DONE — merged (#8) after 9-finding review | (merged) |
 | CM-C4 | Solver (BFS ≤2-switch, beam beyond) | session 2026-08-03/04 | DONE — merged (#9) after review round | (merged) |
