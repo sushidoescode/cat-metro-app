@@ -226,6 +226,7 @@ _PROPERTY_OBJECT_CHILDREN = {
         ("orthographic", "property"),
         ("perspective", "property"),
     ),
+    "light": (("spot", "property"),),
     "material": (
         ("pbrMetallicRoughness", "material_pbr"),
         ("normalTexture", "property"),
@@ -272,7 +273,7 @@ def _extension_payload_names(document: Mapping[str, object]) -> set[str]:
                             "KHR_lights_punctual.lights",
                         )
                         pending.extend(
-                            (light, "property", depth + 1) for light in lights
+                            (light, "light", depth + 1) for light in lights
                         )
         for child_name, child_kind in _PROPERTY_OBJECT_CHILDREN.get(kind, ()):
             if child_name in property_object:
