@@ -9,6 +9,7 @@ sys.dont_write_bytecode = True
 
 import argparse
 import math
+import os
 import struct
 import zlib
 from pathlib import Path
@@ -51,6 +52,17 @@ def _write_png(path: Path, size: int, rgb: bytes) -> None:
     )
 
 
+def _source_is_output(source: Path, output: Path) -> bool:
+    if os.path.abspath(source) == os.path.abspath(output):
+        return True
+    if source.resolve(strict=False) == output.resolve(strict=False):
+        return True
+    try:
+        return source.samefile(output)
+    except FileNotFoundError:
+        return False
+
+
 def render(
     source: Path,
     output: Path,
@@ -61,6 +73,8 @@ def render(
     minimum_coverage: float = DEFAULT_MINIMUM_COVERAGE,
 ) -> tuple[int, int, float]:
     """Render *source* into *output* and return evidence density facts."""
+    if _source_is_output(source, output):
+        raise RenderError("source and output refer to the same file")
     if size <= 0:
         raise RenderError("size must be positive")
     if splat_radius < 0:
