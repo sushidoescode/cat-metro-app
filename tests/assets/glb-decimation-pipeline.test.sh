@@ -10,8 +10,8 @@ fake_blender="$repo/tests/assets/fake_blender.py"
 expected_driver=$(cd "$(dirname "$decimate_script")" && pwd -P)/blender_decimate.py
 review_section=${GLB_DECIMATION_REVIEW_SECTION:-all}
 case "$review_section" in
-  all|A|B|C|D|E) ;;
-  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all, A, B, C, D, or E"
+  all|A|B|C|D|E|F) ;;
+  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all, A, B, C, D, E, or F"
      printf 'glb-decimation pipeline test: %s\n' "$die_message" >&2
      exit 2 ;;
 esac
@@ -216,6 +216,7 @@ run_decimator() {
     FAKE_BLENDER_AUDIT="$log.audit" \
     FAKE_BLENDER_VERSION="${CASE_BLENDER_VERSION:-5.1.2}" \
     FAKE_BLENDER_BUILD_HASH="${CASE_BLENDER_BUILD_HASH:-ec6e62d40fa9}" \
+    FAKE_BLENDER_VERSION_BANNER="${CASE_BLENDER_VERSION_BANNER:-0}" \
     PIPELINE_SENTINEL_KEY="environment-sentinel-1" \
     PIPELINE_SENTINEL_TOKEN="environment-sentinel-2" \
     PIPELINE_SENTINEL_SECRET="environment-sentinel-3" \
@@ -521,6 +522,140 @@ fi
 
 if [ "$review_section" = E ]; then
   printf 'glb-decimation review E: pass\n'
+  exit 0
+fi
+
+# Review regression F: Blender 5.1.2's official version output includes a
+# banner before the exact version and build identity lines. The banner is an
+# accepted prefix only; it must not weaken either pinned identity check.
+if [ "$review_section" = all ] || [ "$review_section" = F ]; then
+  banner_audit="$tmp/official-banner.audit"
+  banner_output=$(
+    FAKE_BLENDER_VERSION_BANNER=1 \
+      FAKE_BLENDER_AUDIT="$banner_audit" \
+      PYTHONDONTWRITEBYTECODE=1 \
+      "$fake_blender" --background --version
+  )
+  expected_banner_output=$'Blender 5.1.2 (hash ec6e62d40fa9 built 2026-05-19 01:30:33)\nBlender 5.1.2\n\tbuild hash: ec6e62d40fa9'
+  test "$banner_output" = "$expected_banner_output" || \
+    die "fake Blender official banner surface is wrong"
+  test "$(cat "$banner_audit")" = version || \
+    die "fake Blender official banner missed its version audit"
+
+  prepare_version_banner_case() {
+    local label=$1
+    version_case="$tmp/review-version-banner/$label"
+    input_dir="$version_case/input"
+    output_dir="$version_case/output"
+    manifest="$version_case/manifest.json"
+    version_log="$version_case/fake.log"
+    version_stdout="$version_case/stdout"
+    version_stderr="$version_case/stderr"
+    mkdir -p "$input_dir" "$output_dir"
+    write_fixture "$input_dir/asset.glb" --triangles 30000
+    write_sidecar \
+      "$input_dir/asset.glb" meshy "official banner fixture cat"
+    write_single_manifest \
+      "$manifest" official-banner-cat cat meshy asset.glb \
+      "official banner fixture cat"
+    version_input_before=$(fingerprint_tree "$input_dir")
+  }
+
+  assert_version_banner_custody() {
+    local label=$1
+    test "$version_input_before" = "$(fingerprint_tree "$input_dir")" || \
+      die "$label changed its source custody tree"
+    if find "$version_case" \
+      \( -name '.glb-decimation-*' -o -name '*.backup-*' \) \
+      -print -quit | grep -q .; then
+      find "$version_case" \
+        \( -name '.glb-decimation-*' -o -name '*.backup-*' \) -print >&2
+      die "$label left transaction residue"
+    fi
+    assert_no_external_effects
+  }
+
+  run_rejected_version_banner_case() {
+    local label=$1
+    local version=$2
+    local build_hash=$3
+    local diagnostic=$4
+    prepare_version_banner_case "$label"
+    set +e
+    CASE_BLENDER_VERSION_BANNER=1 \
+      CASE_BLENDER_VERSION="$version" \
+      CASE_BLENDER_BUILD_HASH="$build_hash" \
+      run_decimator \
+        success "$version_log" "$version_stdout" "$version_stderr"
+    local rc=$?
+    set -e
+    test "$rc" -ne 0 || die "$label accepted the wrong Blender identity"
+    test ! -s "$version_stdout" || die "$label wrote an acceptance record"
+    rg -q "^$diagnostic$" "$version_stderr" || {
+      sed -n '1,80p' "$version_stderr" >&2
+      die "$label lacked its pinned Blender diagnostic"
+    }
+    test "$(cat "$version_log.audit")" = version || \
+      die "$label passed the fake version phase"
+    test "$(line_count "$version_log")" -eq 0 || \
+      die "$label reached the fake asset phase"
+    if find "$output_dir" -mindepth 1 -print -quit | grep -q .; then
+      find "$output_dir" -mindepth 1 -print >&2
+      die "$label created an output"
+    fi
+    assert_version_banner_custody "$label"
+  }
+
+  run_rejected_version_banner_case \
+    official-banner-wrong-version 5.2.0 ec6e62d40fa9 \
+    'glb-decimation: requires Blender 5\.1\.2'
+  run_rejected_version_banner_case \
+    official-banner-wrong-build 5.1.2 wrong-build \
+    'glb-decimation: requires Blender (5\.1\.2|build ec6e62d40fa9)'
+
+  prepare_version_banner_case official-banner-correct
+  set +e
+  CASE_BLENDER_VERSION_BANNER=1 \
+    run_decimator \
+      success "$version_log" "$version_stdout" "$version_stderr"
+  banner_rc=$?
+  set -e
+  assert_version_banner_custody "official pinned Blender banner"
+  if [ "$banner_rc" -ne 0 ]; then
+    test ! -s "$version_stdout" || \
+      die "rejected official Blender banner wrote an acceptance record"
+    test "$(cat "$version_log.audit")" = version || \
+      die "rejected official Blender banner crossed the version boundary"
+    test "$(line_count "$version_log")" -eq 0 || \
+      die "rejected official Blender banner reached the asset phase"
+    if find "$output_dir" -mindepth 1 -print -quit | grep -q .; then
+      find "$output_dir" -mindepth 1 -print >&2
+      die "rejected official Blender banner created an output"
+    fi
+    rg -q '^glb-decimation: requires Blender 5\.1\.2$' \
+      "$version_stderr" || {
+      sed -n '1,80p' "$version_stderr" >&2
+      die "official Blender banner failed for an unexpected reason"
+    }
+    sed -n '1,80p' "$version_stderr" >&2
+    die "official Blender 5.1.2 banner was rejected"
+  fi
+  test ! -s "$version_stderr" || \
+    die "official Blender banner success wrote stderr"
+  test "$(cat "$version_log.audit")" = $'version\nasset' || \
+    die "official Blender banner missed its safe asset path"
+  test "$(line_count "$version_log")" -eq 1 || \
+    die "official Blender banner did not run one asset"
+  test "$version_input_before" = "$(fingerprint_tree "$input_dir")" || \
+    die "official Blender banner changed its source custody tree"
+  test "$(LC_ALL=C command ls -1A "$output_dir" | sort)" = \
+    $'asset.glb\nasset.glb.json' || \
+    die "official Blender banner did not produce one exact final pair"
+  assert_version_banner_custody "official pinned Blender banner"
+fi
+
+if [ "$review_section" = F ]; then
+  printf 'glb-decimation review F: pass\n'
   exit 0
 fi
 

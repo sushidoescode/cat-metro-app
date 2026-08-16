@@ -83,11 +83,17 @@ def main(argv: list[str]) -> int:
     _reject_forbidden_environment()
     if "--version" in argv:
         _audit_phase("version")
-        print(f"Blender {os.environ.get('FAKE_BLENDER_VERSION', '5.1.2')}")
-        print(
-            "build hash: "
-            f"{os.environ.get('FAKE_BLENDER_BUILD_HASH', 'ec6e62d40fa9')}"
-        )
+        version = os.environ.get("FAKE_BLENDER_VERSION", "5.1.2")
+        build_hash = os.environ.get("FAKE_BLENDER_BUILD_HASH", "ec6e62d40fa9")
+        banner_enabled = os.environ.get("FAKE_BLENDER_VERSION_BANNER") == "1"
+        if banner_enabled:
+            print(
+                f"Blender {version} (hash {build_hash} "
+                "built 2026-05-19 01:30:33)"
+            )
+        print(f"Blender {version}")
+        prefix = "\t" if banner_enabled else ""
+        print(f"{prefix}build hash: {build_hash}")
         return 0
 
     _audit_phase("asset")
