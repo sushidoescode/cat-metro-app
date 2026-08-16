@@ -8,6 +8,9 @@ import binascii
 import hashlib
 import json
 import math
+import os
+import re
+import stat
 import struct
 import sys
 from collections import Counter
@@ -40,6 +43,12 @@ MAX_JSON_BYTES = 16 * 1024 * 1024
 MAX_ACCESSORS = 65_536
 MAX_ACCESSOR_COUNT = 8_000_000
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_DIAGNOSTIC_BYTES = 512
+
+_CREDENTIAL_SHAPE = re.compile(
+    r"api[_ -]?key|token|secret|authorization|credential|bearer|https?://",
+    re.IGNORECASE,
+)
 
 _COMPONENT_SIZES = {
     5120: 1,
@@ -91,10 +100,27 @@ def _reject_duplicate_keys(
 
 
 def _read_glb(path: Path) -> tuple[dict[str, object], bytes]:
-    size = path.stat().st_size
-    if size > MAX_GLB_BYTES:
+    before_open = path.stat()
+    if not stat.S_ISREG(before_open.st_mode):
+        raise GlbError("GLB source must be a regular file")
+    if before_open.st_size > MAX_GLB_BYTES:
         raise GlbError(f"GLB file exceeds limit {MAX_GLB_BYTES} bytes")
-    data = path.read_bytes()
+
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    descriptor = os.open(path, flags)
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            raise GlbError("GLB source must be a regular file")
+        if opened.st_size > MAX_GLB_BYTES:
+            raise GlbError(f"GLB file exceeds limit {MAX_GLB_BYTES} bytes")
+        with os.fdopen(descriptor, "rb", closefd=True) as handle:
+            descriptor = -1
+            data = handle.read(MAX_GLB_BYTES + 1)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
     if len(data) > MAX_GLB_BYTES:
         raise GlbError(f"GLB file exceeds limit {MAX_GLB_BYTES} bytes")
     offset = _validated_header(data)
@@ -840,7 +866,6 @@ def _inspect_document(
     uv_primitives = 0
     morph_targets = 0
     used_materials: set[int] = set()
-    material_texcoords: dict[int, set[str]] = {}
     for mesh_number, value in enumerate(meshes):
         mesh = _object(value, f"meshes[{mesh_number}]")
         primitives = _array(mesh.get("primitives"), f"meshes[{mesh_number}].primitives")
@@ -932,10 +957,18 @@ def _inspect_document(
                     primitive["material"], len(materials), f"{label}.material"
                 )
                 used_materials.add(material_index)
-                material_texcoords.setdefault(material_index, set()).update(
-                    semantic for semantic in attribute_indices
-                    if semantic.startswith("TEXCOORD_")
-                )
+                for _, _, texcoord in material_texture_references[
+                    material_index
+                ]:
+                    semantic = f"TEXCOORD_{texcoord}"
+                    # TEXCOORD_0 coverage remains an inspectable preservation
+                    # failure through uv_primitives != primitives; callers rely
+                    # on receiving those metrics. Non-default sets have no
+                    # legacy aggregate, so reject their missing primitive here.
+                    if texcoord != 0 and semantic not in attribute_indices:
+                        raise GlbError(
+                            f"{label} material references missing {semantic}"
+                        )
                 material_primitives += 1
             if "TEXCOORD_0" in attributes:
                 uv_primitives += 1
@@ -961,14 +994,6 @@ def _inspect_document(
         for role, texture_index, texcoord in material_texture_references[
             material_index
         ]:
-            semantic = f"TEXCOORD_{texcoord}"
-            if (
-                texcoord != 0
-                and semantic not in material_texcoords.get(material_index, set())
-            ):
-                raise GlbError(
-                    f"materials[{material_index}] references missing {semantic}"
-                )
             image_index = texture_sources[texture_index]
             if image_index is None:
                 raise GlbError(
@@ -1353,9 +1378,46 @@ def compare_preservation(source: Mapping[str, object], output: Mapping[str, obje
     return reasons
 
 
+def _diagnostic_payload(message: object) -> bytes:
+    raw = str(message) or "input processing failed"
+    if _CREDENTIAL_SHAPE.search(raw):
+        raw = "input rejected (details redacted)"
+    printable: list[str] = []
+    for character in raw:
+        if character.isprintable():
+            printable.append(character)
+            continue
+        codepoint = ord(character)
+        if codepoint <= 0xFF:
+            printable.append(f"\\x{codepoint:02x}")
+        elif codepoint <= 0xFFFF:
+            printable.append(f"\\u{codepoint:04x}")
+        else:
+            printable.append(f"\\U{codepoint:08x}")
+
+    prefix = b"glb-metrics: "
+    body_budget = MAX_DIAGNOSTIC_BYTES - len(prefix) - 1
+    body = "".join(printable).encode("utf-8")
+    if len(body) > body_budget:
+        body = body[:body_budget - 3].decode("utf-8", "ignore").encode("utf-8")
+        body += b"..."
+    return prefix + body + b"\n"
+
+
+def _emit_diagnostic(message: object) -> None:
+    payload = _diagnostic_payload(message)
+    byte_stream = getattr(sys.stderr, "buffer", None)
+    if byte_stream is not None:
+        byte_stream.write(payload)
+        byte_stream.flush()
+    else:
+        sys.stderr.write(payload.decode("utf-8"))
+        sys.stderr.flush()
+
+
 def _main(arguments: list[str]) -> int:
     if len(arguments) != 1:
-        print("glb-metrics: usage: glb_metrics.py FILE", file=sys.stderr)
+        _emit_diagnostic("usage: glb_metrics.py FILE")
         return 2
     try:
         metrics = inspect_glb(Path(arguments[0]))
@@ -1363,8 +1425,7 @@ def _main(arguments: list[str]) -> int:
         GlbError, OSError, struct.error, UnicodeError, ValueError,
         OverflowError, MemoryError, RecursionError,
     ) as exc:
-        diagnostic = " ".join(str(exc).splitlines()) or "input processing failed"
-        print(f"glb-metrics: {diagnostic}", file=sys.stderr)
+        _emit_diagnostic(exc)
         return 1
     print(json.dumps(metrics, sort_keys=True))
     return 0
