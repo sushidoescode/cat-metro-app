@@ -2655,6 +2655,155 @@ def exercise_persistent_unlink():
     return findings
 
 
+def exercise_force_postrename_alias(name, member, kind, rollback):
+    """Race force verification with a same-byte alias after a real rename."""
+    case = new_case(name)
+    case["old_glb_bytes"] = f"old GLB for {name}".encode()
+    case["old_json_bytes"] = f"old JSON for {name}".encode()
+    case["staged_glb"].write_bytes(case["glb_bytes"])
+    case["staged_json"].write_bytes(case["json_bytes"])
+    case["final_glb"].write_bytes(case["old_glb_bytes"])
+    case["final_json"].write_bytes(case["old_json_bytes"])
+    backups = {
+        "glb": case["directory"] / ".old-glb",
+        "json": case["directory"] / ".old-json",
+    }
+    attacked_final = case[f"final_{member}"]
+    attacked_payload = (
+        case[f"old_{member}_bytes"] if rollback else case[f"{member}_bytes"]
+    )
+    referent = case["directory"] / f"attacker-{member}-{kind}"
+    referent.write_bytes(attacked_payload)
+    real_replace = os.replace
+    primary_reached = False
+    alias_injections = 0
+
+    def unique_backup(path):
+        candidate = Path(path)
+        if candidate == case["final_glb"]:
+            return backups["glb"]
+        if candidate == case["final_json"]:
+            return backups["json"]
+        raise AssertionError(f"{name}: unexpected backup source {candidate}")
+
+    def install_alias():
+        nonlocal alias_injections
+        attacked_final.unlink(missing_ok=True)
+        if kind == "symlink":
+            attacked_final.symlink_to(referent.name)
+        elif kind == "hardlink":
+            os.link(referent, attacked_final)
+        else:
+            raise AssertionError(f"{name}: unsupported alias kind {kind}")
+        alias_injections += 1
+
+    def replacing(source, destination):
+        nonlocal primary_reached
+        source_path = Path(source)
+        destination_path = Path(destination)
+        result = real_replace(source_path, destination_path)
+        completed_candidate_pair = (
+            source_path == case["staged_json"]
+            and destination_path == case["final_json"]
+        )
+        restoring_attacked_member = (
+            rollback
+            and primary_reached
+            and destination_path == attacked_final
+        )
+        if restoring_attacked_member:
+            # Persistent by construction: every restore attempt is raced.
+            install_alias()
+        if completed_candidate_pair:
+            if rollback and not primary_reached:
+                primary_reached = True
+                raise OSError("injected force promotion failure after second rename")
+            if not rollback and alias_injections == 0:
+                install_alias()
+        return result
+
+    caught = None
+    with (
+        mock.patch.object(module, "_unique_backup", new=unique_backup),
+        mock.patch.object(module.os, "replace", new=replacing),
+    ):
+        try:
+            module.promote_pair(
+                case["staged_glb"],
+                case["staged_json"],
+                case["final_glb"],
+                case["final_json"],
+                True,
+            )
+        except BaseException as exc:
+            caught = exc
+
+    findings = []
+    if alias_injections < 1:
+        findings.append(f"{name}: post-rename alias mutation was not reached")
+    if rollback:
+        if not primary_reached:
+            findings.append(f"{name}: force rollback trigger was not reached")
+        if caught is None:
+            findings.append(f"{name}: injected force rollback failure was swallowed")
+        elif not isinstance(caught, (OSError, module.DecimationError)):
+            findings.append(f"{name}: force rollback raised {type(caught).__name__}")
+        expected_payloads = {
+            "glb": case["old_glb_bytes"],
+            "json": case["old_json_bytes"],
+        }
+    elif caught is None:
+        expected_payloads = {
+            "glb": case["glb_bytes"],
+            "json": case["json_bytes"],
+        }
+    elif isinstance(caught, module.DecimationError):
+        expected_payloads = {
+            "glb": case["old_glb_bytes"],
+            "json": case["old_json_bytes"],
+        }
+    else:
+        findings.append(
+            f"{name}: successful force race raised unexpected {type(caught).__name__}"
+        )
+        expected_payloads = {
+            "glb": case["old_glb_bytes"],
+            "json": case["old_json_bytes"],
+        }
+
+    final_pair = {case["final_glb"], case["final_json"]}
+    backup_pair = {backups["glb"], backups["json"]}
+    if all(os.path.lexists(path) for path in final_pair):
+        terminal = {"glb": case["final_glb"], "json": case["final_json"]}
+    elif (
+        rollback
+        and not any(os.path.lexists(path) for path in final_pair)
+        and all(os.path.lexists(path) for path in backup_pair)
+    ):
+        terminal = {"glb": backups["glb"], "json": backups["json"]}
+    else:
+        terminal = {}
+        findings.append(f"{name}: terminal pair is split or missing")
+
+    for terminal_member, path in terminal.items():
+        expected = expected_payloads[terminal_member]
+        if not regular_payload(path, expected):
+            findings.append(
+                f"{name}: terminal {terminal_member} is not regular, single-link, "
+                "and the exact expected hash"
+            )
+    expected_membership = set(terminal.values()) | {referent}
+    actual_membership = set(case["directory"].iterdir())
+    if actual_membership != expected_membership:
+        findings.append(
+            f"{name}: unexpected force terminal residue: "
+            f"{sorted(path.name for path in actual_membership)}"
+        )
+    if not regular_payload(referent, attacked_payload):
+        findings.append(f"{name}: attacker referent was modified or retained a link")
+    return findings
+
+
 def child(sender, scenario, arguments):
     try:
         if scenario == "control":
@@ -2666,6 +2815,8 @@ def child(sender, scenario, arguments):
             findings = exercise_between_renames(*arguments)
         elif scenario == "persistent-unlink":
             findings = exercise_persistent_unlink()
+        elif scenario == "force-alias":
+            findings = exercise_force_postrename_alias(*arguments)
         else:
             raise AssertionError(f"unknown promotion scenario {scenario}")
         sender.send(("result", findings))
@@ -2735,6 +2886,18 @@ for mutation in (
     label = f"between-renames-{mutation}"
     run_bounded("between-renames", (label, mutation), label)
 run_bounded("persistent-unlink", (), "second-rename-persistent-final-unlink")
+for force_rollback in (False, True):
+    force_mode = "persistent-rollback" if force_rollback else "success"
+    for alias_kind in ("symlink", "hardlink"):
+        for alias_member in ("glb", "json"):
+            label = (
+                f"force-{force_mode}-postrename-{alias_member}-{alias_kind}-same-bytes"
+            )
+            run_bounded(
+                "force-alias",
+                (label, alias_member, alias_kind, force_rollback),
+                label,
+            )
 
 if errors:
     raise AssertionError("promotion custody hardening regressions:\n- " + "\n- ".join(errors))
@@ -2762,10 +2925,14 @@ import hashlib
 import importlib.util
 import io
 import json
+import multiprocessing
 import os
+import shutil
 import stat
 import subprocess
 import sys
+import threading
+import traceback
 from pathlib import Path
 from unittest import mock
 
@@ -2858,6 +3025,17 @@ def regular_private_snapshot(observation, trusted_sha, original, label):
     )
 
 
+def require_snapshot_cleanup(observation, original, label):
+    snapshot = Path(observation["source"])
+    if snapshot == original:
+        return
+    check(not os.path.lexists(snapshot), f"{label}: source snapshot file leaked")
+    check(
+        not os.path.lexists(snapshot.parent),
+        f"{label}: source snapshot tree leaked",
+    )
+
+
 # J1: the fake swaps the original to a different valid GLB, reads the exact
 # --source argument, then restores the original before the orchestrator's final
 # custody check. Secure code succeeds only because Blender was given the frozen
@@ -2922,6 +3100,7 @@ if len(swap_records) == 1:
     regular_private_snapshot(
         observation, trusted_source_sha, swap_source, "source swap-back"
     )
+    require_snapshot_cleanup(observation, swap_source, "source swap-back")
     check(
         observation["source_sha256"] != foreign_sha,
         "source swap-back: Blender consumed the foreign source bytes",
@@ -2959,105 +3138,457 @@ assert spec is not None and spec.loader is not None
 module = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = module
 spec.loader.exec_module(module)
-seam_root = root / "pre-version-snapshot"
-seam_input = seam_root / "input"
-seam_output = seam_root / "output"
-seam_input.mkdir(parents=True)
-seam_output.mkdir()
-seam_source = seam_input / "asset.glb"
-seam_manifest = seam_root / "manifest.json"
-write_glb(seam_source, triangles=30000)
-seam_sidecar = write_source_sidecar(seam_source, "pre-version fixture cat")
-write_manifest(seam_manifest, seam_source.name, "pre-version fixture cat")
-seam_source_bytes = seam_source.read_bytes()
-seam_sidecar_bytes = seam_sidecar.read_bytes()
-malicious_source_bytes = b"foreign source present only across version seam"
-malicious_sidecar_bytes = b"foreign sidecar present only across version seam"
-seam_observation = {}
-version_seam_reached = False
+process_context = multiprocessing.get_context("fork")
 
 
-def mutating_version_check(_blender, _child_env):
-    global version_seam_reached
-    version_seam_reached = True
-    seam_source.write_bytes(malicious_source_bytes)
-    seam_sidecar.write_bytes(malicious_sidecar_bytes)
+def exercise_snapshot_seam(case_name, *, hang, fail_process, progress):
+    case_errors = []
 
+    def require(condition, message):
+        if not condition:
+            case_errors.append(message)
 
-def observing_process(_asset, prepared, *_arguments):
-    # Model the attacker's swap-back before Blender consumes its source. These
-    # writes are test cleanup as well as the second half of the attack.
-    seam_source.write_bytes(seam_source_bytes)
-    seam_sidecar.write_bytes(seam_sidecar_bytes)
-    source_snapshot = Path(prepared["source_path"])
-    sidecar_snapshot = Path(prepared["source_sidecar_path"])
-    for name, path, trusted in (
-        ("source", source_snapshot, seam_source_bytes),
-        ("sidecar", sidecar_snapshot, seam_sidecar_bytes),
-    ):
-        status = os.lstat(path)
-        seam_observation[name] = {
-            "path": path,
-            "bytes": path.read_bytes(),
-            "regular": stat.S_ISREG(status.st_mode),
-            "symlink": stat.S_ISLNK(status.st_mode),
-            "nlink": status.st_nlink,
-            "mode": stat.S_IMODE(status.st_mode),
-            "parent_mode": stat.S_IMODE(os.lstat(path.parent).st_mode),
-            "trusted": trusted,
-        }
-    seam_observation["prepared_source_sha"] = prepared["source_sha"]
-    seam_observation["prepared_sidecar_sha"] = prepared["source_sidecar_sha"]
+    seam_root = root / case_name
+    seam_input = seam_root / "input"
+    seam_output = seam_root / "output"
+    seam_input.mkdir(parents=True)
+    seam_output.mkdir()
+    seam_source = seam_input / "asset.glb"
+    seam_manifest = seam_root / "manifest.json"
+    write_glb(seam_source, triangles=30000)
+    seam_sidecar = write_source_sidecar(seam_source, "pre-version fixture cat")
+    write_manifest(seam_manifest, seam_source.name, "pre-version fixture cat")
+    seam_source_bytes = seam_source.read_bytes()
+    seam_sidecar_bytes = seam_sidecar.read_bytes()
+    malicious_source_bytes = b"foreign source present only across version seam"
+    malicious_sidecar_bytes = b"foreign sidecar present only across version seam"
+    seam_observation = {}
+    version_seam_reached = False
 
+    def mutating_version_check(_blender, _child_env):
+        nonlocal version_seam_reached
+        version_seam_reached = True
+        seam_source.write_bytes(malicious_source_bytes)
+        seam_sidecar.write_bytes(malicious_sidecar_bytes)
+        progress.set()
+        if hang:
+            threading.Event().wait()
 
-seam_stdout = io.StringIO()
-seam_stderr = io.StringIO()
-try:
-    with (
-        mock.patch.object(module, "_check_blender_version", new=mutating_version_check),
-        mock.patch.object(module, "_process_asset", new=observing_process),
-        contextlib.redirect_stdout(seam_stdout),
-        contextlib.redirect_stderr(seam_stderr),
-    ):
-        seam_result = module.main([
-            "--manifest", str(seam_manifest),
-            "--input-dir", str(seam_input),
-            "--output-dir", str(seam_output),
-            "--blender", str(fake_blender),
-        ])
-finally:
-    seam_source.write_bytes(seam_source_bytes)
-    seam_sidecar.write_bytes(seam_sidecar_bytes)
-check(seam_result == 0, f"pre-version snapshot seam returned {seam_result}")
-check(version_seam_reached, "pre-version mutation seam was not reached")
-check(set(seam_observation) >= {"source", "sidecar"}, "snapshot pair was not observed")
-for name, original, trusted in (
-    ("source", seam_source, seam_source_bytes),
-    ("sidecar", seam_sidecar, seam_sidecar_bytes),
-):
-    observation = seam_observation.get(name)
-    if observation is None:
-        continue
-    check(observation["path"] != original, f"{name} snapshot reused mutable original path")
-    check(observation["bytes"] == trusted, f"{name} snapshot captured foreign seam bytes")
-    check(
-        observation["regular"] and not observation["symlink"]
-        and observation["nlink"] == 1,
-        f"{name} snapshot is not lstat-regular/single-link: {observation}",
+    def observing_process(_asset, prepared, *_arguments):
+        # Model the attacker's swap-back before Blender consumes its source.
+        seam_source.write_bytes(seam_source_bytes)
+        seam_sidecar.write_bytes(seam_sidecar_bytes)
+        source_snapshot = Path(prepared["source_path"])
+        sidecar_snapshot = Path(prepared["source_sidecar_path"])
+        for member_name, path, trusted in (
+            ("source", source_snapshot, seam_source_bytes),
+            ("sidecar", sidecar_snapshot, seam_sidecar_bytes),
+        ):
+            status = os.lstat(path)
+            seam_observation[member_name] = {
+                "path": path,
+                "bytes": path.read_bytes(),
+                "regular": stat.S_ISREG(status.st_mode),
+                "symlink": stat.S_ISLNK(status.st_mode),
+                "nlink": status.st_nlink,
+                "mode": stat.S_IMODE(status.st_mode),
+                "parent_mode": stat.S_IMODE(os.lstat(path.parent).st_mode),
+                "trusted": trusted,
+            }
+        seam_observation["prepared_source_sha"] = prepared["source_sha"]
+        seam_observation["prepared_sidecar_sha"] = prepared["source_sidecar_sha"]
+        if fail_process:
+            raise module.DecimationError("injected processing failure after snapshot observation")
+
+    seam_stdout = io.StringIO()
+    seam_stderr = io.StringIO()
+    seam_result = None
+    try:
+        with (
+            mock.patch.object(
+                module, "_check_blender_version", new=mutating_version_check
+            ),
+            mock.patch.object(module, "_process_asset", new=observing_process),
+            contextlib.redirect_stdout(seam_stdout),
+            contextlib.redirect_stderr(seam_stderr),
+        ):
+            seam_result = module.main([
+                "--manifest", str(seam_manifest),
+                "--input-dir", str(seam_input),
+                "--output-dir", str(seam_output),
+                "--blender", str(fake_blender),
+            ])
+    finally:
+        seam_source.write_bytes(seam_source_bytes)
+        seam_sidecar.write_bytes(seam_sidecar_bytes)
+
+    expected_result = 1 if fail_process else 0
+    require(
+        seam_result == expected_result,
+        f"pre-version snapshot seam returned {seam_result}, expected {expected_result}",
     )
-    check(observation["mode"] & 0o222 == 0, f"{name} snapshot remained writable")
-    check(observation["parent_mode"] & 0o077 == 0, f"{name} snapshot parent is not private")
-check(
-    seam_observation.get("prepared_source_sha") == digest_bytes(seam_source_bytes),
-    "prepared source hash is not the trusted original hash",
+    require(version_seam_reached, "pre-version mutation seam was not reached")
+    require(
+        set(seam_observation) >= {"source", "sidecar"},
+        "snapshot pair was not observed",
+    )
+    for member_name, original, trusted in (
+        ("source", seam_source, seam_source_bytes),
+        ("sidecar", seam_sidecar, seam_sidecar_bytes),
+    ):
+        observation = seam_observation.get(member_name)
+        if observation is None:
+            continue
+        snapshot = Path(observation["path"])
+        require(
+            snapshot != original,
+            f"{member_name} snapshot reused mutable original path",
+        )
+        require(
+            observation["bytes"] == trusted,
+            f"{member_name} snapshot captured foreign seam bytes",
+        )
+        require(
+            observation["regular"] and not observation["symlink"]
+            and observation["nlink"] == 1,
+            f"{member_name} snapshot is not lstat-regular/single-link: {observation}",
+        )
+        require(
+            observation["mode"] & 0o222 == 0,
+            f"{member_name} snapshot remained writable",
+        )
+        require(
+            observation["parent_mode"] & 0o077 == 0,
+            f"{member_name} snapshot parent is not private",
+        )
+        if snapshot != original:
+            require(
+                not os.path.lexists(snapshot),
+                f"{member_name} snapshot file leaked after completion",
+            )
+            require(
+                not os.path.lexists(snapshot.parent),
+                f"{member_name} snapshot tree leaked after completion",
+            )
+    require(
+        seam_observation.get("prepared_source_sha")
+        == digest_bytes(seam_source_bytes),
+        "prepared source hash is not the trusted original hash",
+    )
+    require(
+        seam_observation.get("prepared_sidecar_sha")
+        == digest_bytes(seam_sidecar_bytes),
+        "prepared sidecar hash is not the trusted original hash",
+    )
+    require(seam_source.read_bytes() == seam_source_bytes, "seam changed source")
+    require(seam_sidecar.read_bytes() == seam_sidecar_bytes, "seam changed sidecar")
+    require(list(seam_output.iterdir()) == [], "snapshot seam left output residue")
+    return case_errors
+
+
+def snapshot_seam_child(sender, progress, case_name, hang, fail_process):
+    try:
+        findings = exercise_snapshot_seam(
+            case_name,
+            hang=hang,
+            fail_process=fail_process,
+            progress=progress,
+        )
+        sender.send(("result", findings))
+    except BaseException:
+        sender.send(("crash", traceback.format_exc()))
+    finally:
+        sender.close()
+
+
+def stop_snapshot_child(process):
+    process.terminate()
+    process.join(2)
+    if process.is_alive():
+        process.kill()
+        process.join(2)
+    check(not process.is_alive(), "snapshot seam child could not be terminated")
+
+
+def run_snapshot_seam_bounded(
+    case_name, *, expect_hang=False, expect_failure=False
+):
+    receiver, sender = process_context.Pipe(duplex=False)
+    progress = process_context.Event()
+    process = process_context.Process(
+        target=snapshot_seam_child,
+        args=(sender, progress, case_name, expect_hang, expect_failure),
+        name=f"snapshot-seam-{case_name}",
+        daemon=True,
+    )
+    process.start()
+    sender.close()
+    if expect_hang:
+        reached = progress.wait(4)
+        check(reached, "snapshot hang mutation did not reach the version seam")
+        if reached:
+            process.join(0.25)
+            check(process.is_alive(), "snapshot hang mutation unexpectedly returned")
+        if process.is_alive():
+            stop_snapshot_child(process)
+    else:
+        process.join(10)
+        if process.is_alive():
+            stop_snapshot_child(process)
+            errors.append("snapshot seam exceeded its ten-second bound")
+
+    payload = None
+    if receiver.poll():
+        try:
+            payload = receiver.recv()
+        except EOFError:
+            payload = None
+    receiver.close()
+    if not expect_hang:
+        if payload is None:
+            errors.append(
+                f"snapshot seam child exited {process.exitcode} without evidence"
+            )
+        else:
+            result_kind, value = payload
+            if result_kind == "result":
+                errors.extend(value)
+            else:
+                errors.append(f"snapshot seam child crashed:\n{value}")
+    process.close()
+    if expect_hang:
+        hang_root = root / case_name
+        if hang_root.exists():
+            shutil.rmtree(hang_root)
+
+
+run_snapshot_seam_bounded("pre-version-snapshot")
+run_snapshot_seam_bounded(
+    "pre-version-snapshot-failure", expect_failure=True
 )
-check(
-    seam_observation.get("prepared_sidecar_sha") == digest_bytes(seam_sidecar_bytes),
-    "prepared sidecar hash is not the trusted original hash",
-)
-check(seam_source.read_bytes() == seam_source_bytes, "seam restoration changed source")
-check(seam_sidecar.read_bytes() == seam_sidecar_bytes, "seam restoration changed sidecar")
-check(list(seam_output.iterdir()) == [], "snapshot seam left output residue")
+run_snapshot_seam_bounded("pre-version-snapshot-hang", expect_hang=True)
+
+
+# J2b: keep the original sidecar replaced by a different *valid* record only
+# while provenance is built, then restore it. Real processing must emit the
+# frozen original values. The companion mutation deliberately discards the
+# prepared record and rereads the live path, proving the lineage oracle fires.
+def exercise_sidecar_provenance(case_name, *, late_reread):
+    findings = []
+
+    def require(condition, message):
+        if not condition:
+            findings.append(message)
+
+    case_root = root / case_name
+    input_dir = case_root / "input"
+    output_dir = case_root / "output"
+    input_dir.mkdir(parents=True)
+    output_dir.mkdir()
+    source = input_dir / "asset.glb"
+    manifest = case_root / "manifest.json"
+    fake_log = case_root / "fake.log"
+    fake_audit = case_root / "fake.audit"
+    write_glb(source, triangles=30000)
+    sidecar = write_source_sidecar(source, "sidecar swap-back fixture cat")
+    write_manifest(manifest, source.name, "sidecar swap-back fixture cat")
+    source_bytes = source.read_bytes()
+    sidecar_bytes = sidecar.read_bytes()
+    original_record = json.loads(sidecar_bytes)
+    alternate_record = dict(original_record)
+    alternate_record.update({
+        "task_id": "alternate-valid-task",
+        "timestamp_utc": "2026-08-15T13:14:15Z",
+        "note": "valid alternate visible only during the provenance seam",
+    })
+    alternate_bytes = (
+        json.dumps(alternate_record, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    asset = {
+        "id": "snapshot-cat",
+        "kind": "cat",
+        "service": "meshy",
+        "out": source.name,
+        "prompt": "sidecar swap-back fixture cat",
+    }
+    # The alternate is not malformed bait: it satisfies the real validator.
+    module._validate_source_record(alternate_record, asset, digest(source))
+    real_provenance = module._provenance_record
+    attack_reached = False
+
+    def attacking_provenance(*args, **kwargs):
+        nonlocal attack_reached
+        attack_reached = True
+        sidecar.write_bytes(alternate_bytes)
+        try:
+            positional = list(args)
+            named = dict(kwargs)
+            if late_reread:
+                live_record = json.loads(sidecar.read_text(encoding="utf-8"))
+                if len(positional) >= 4:
+                    positional[3] = live_record
+                elif "source_record" in named:
+                    named["source_record"] = live_record
+                else:
+                    raise AssertionError("provenance source_record argument is missing")
+            return real_provenance(*positional, **named)
+        finally:
+            sidecar.write_bytes(sidecar_bytes)
+
+    environment = {
+        "FAKE_BLENDER_MODE": "success",
+        "FAKE_BLENDER_LOG": str(fake_log),
+        "FAKE_BLENDER_AUDIT": str(fake_audit),
+    }
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    try:
+        with (
+            mock.patch.dict(os.environ, environment, clear=False),
+            mock.patch.object(
+                module, "_provenance_record", new=attacking_provenance
+            ),
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(stderr),
+        ):
+            result = module.main([
+                "--manifest", str(manifest),
+                "--input-dir", str(input_dir),
+                "--output-dir", str(output_dir),
+                "--blender", str(fake_blender),
+            ])
+    finally:
+        sidecar.write_bytes(sidecar_bytes)
+
+    final_glb = output_dir / source.name
+    final_json = Path(f"{final_glb}.json")
+    proof = None
+    if final_json.is_file():
+        proof = json.loads(final_json.read_text(encoding="utf-8"))
+    expected_provenance = {
+        name: original_record[name]
+        for name in sorted(module.REQUIRED_SOURCE_FIELDS - {"sha256"})
+    }
+    lineage_is_original = bool(
+        isinstance(proof, dict)
+        and proof.get("source", {}).get("sidecar_sha256")
+        == digest_bytes(sidecar_bytes)
+        and proof.get("source", {}).get("provenance") == expected_provenance
+    )
+    require(attack_reached, f"{case_name}: sidecar swap-back seam was not reached")
+    require(source.read_bytes() == source_bytes, f"{case_name}: source changed")
+    require(sidecar.read_bytes() == sidecar_bytes, f"{case_name}: sidecar changed")
+    records = (
+        [json.loads(line) for line in fake_log.read_text(encoding="utf-8").splitlines()]
+        if fake_log.exists() else []
+    )
+    if not late_reread:
+        require(result == 0, f"{case_name}: real processing returned {result}: {stderr.getvalue()!r}")
+        require(lineage_is_original, f"{case_name}: emitted provenance reread the live sidecar")
+        require(
+            set(output_dir.iterdir()) == {final_glb, final_json},
+            f"{case_name}: real processing left unexpected output residue",
+        )
+        require(
+            fake_audit.exists()
+            and fake_audit.read_text(encoding="utf-8").splitlines()
+            == ["version", "asset"],
+            f"{case_name}: real processing missed a fake phase",
+        )
+        require(len(records) == 1, f"{case_name}: fake asset count differs")
+        if len(records) == 1:
+            observation = records[0]
+            snapshot = Path(observation["source"])
+            require(snapshot != source, f"{case_name}: fake received original source")
+            require(
+                observation["source_sha256"] == digest_bytes(source_bytes),
+                f"{case_name}: fake source hash differs",
+            )
+            require(
+                observation["source_lstat_regular"] is True
+                and observation["source_lstat_symlink"] is False
+                and observation["source_nlink"] == 1,
+                f"{case_name}: fake source was not regular/single-link",
+            )
+            require(
+                observation["source_mode"] & 0o222 == 0,
+                f"{case_name}: fake source remained writable",
+            )
+            require(
+                observation["source_parent_mode"] & 0o077 == 0,
+                f"{case_name}: fake source parent was not private",
+            )
+            if snapshot != source:
+                require(
+                    not os.path.lexists(snapshot),
+                    f"{case_name}: source snapshot file leaked",
+                )
+                require(
+                    not os.path.lexists(snapshot.parent),
+                    f"{case_name}: source snapshot tree leaked",
+                )
+    mutation_detected = result != 0 or not lineage_is_original
+    return {
+        "findings": findings,
+        "mutation_detected": mutation_detected,
+        "result": result,
+        "attack_reached": attack_reached,
+    }
+
+
+def sidecar_provenance_child(sender, case_name, late_reread):
+    try:
+        sender.send((
+            "result",
+            exercise_sidecar_provenance(case_name, late_reread=late_reread),
+        ))
+    except BaseException:
+        sender.send(("crash", traceback.format_exc()))
+    finally:
+        sender.close()
+
+
+def run_sidecar_provenance_bounded(case_name, *, late_reread):
+    receiver, sender = process_context.Pipe(duplex=False)
+    process = process_context.Process(
+        target=sidecar_provenance_child,
+        args=(sender, case_name, late_reread),
+        name=f"sidecar-provenance-{case_name}",
+        daemon=True,
+    )
+    process.start()
+    sender.close()
+    process.join(20)
+    if process.is_alive():
+        stop_snapshot_child(process)
+        errors.append(f"{case_name}: sidecar processing exceeded twenty seconds")
+    payload = None
+    if receiver.poll():
+        try:
+            payload = receiver.recv()
+        except EOFError:
+            payload = None
+    receiver.close()
+    if payload is None:
+        errors.append(f"{case_name}: sidecar child exited without evidence")
+    else:
+        result_kind, value = payload
+        if result_kind == "crash":
+            errors.append(f"{case_name}: sidecar child crashed:\n{value}")
+        elif late_reread:
+            if not value["attack_reached"]:
+                errors.append(f"{case_name}: late-reread mutation missed its seam")
+            if not value["mutation_detected"]:
+                errors.append(
+                    f"{case_name}: dead-snapshot late-reread mutation escaped the oracle"
+                )
+        else:
+            errors.extend(value["findings"])
+    process.close()
+
+
+run_sidecar_provenance_bounded("sidecar-swap-back-control", late_reread=False)
+run_sidecar_provenance_bounded("sidecar-late-reread-mutation", late_reread=True)
 
 
 # J3: a controlled parent environment carries hazardous loader, Python,
@@ -3188,6 +3719,31 @@ hazardous_names = {
     "GOOGLE_API_KEY", "GITHUB_TOKEN",
     "UNRELATED_PARENT_SETTING",
 }
+
+
+def private_cleanup_findings(records, label):
+    findings = []
+    seen = set()
+    for record in records:
+        facts = list(record.get("private_paths", {}).values())
+        private_root_fact = record.get("private_root")
+        if isinstance(private_root_fact, dict):
+            facts.append(private_root_fact)
+        for fact in facts:
+            if not isinstance(fact, dict):
+                continue
+            path_value = fact.get("path")
+            mode = fact.get("mode")
+            if not isinstance(path_value, str) or not isinstance(mode, int):
+                continue
+            if mode & 0o077 or path_value in seen:
+                continue
+            seen.add(path_value)
+            if os.path.lexists(path_value):
+                findings.append(f"{label}: private child tree leaked: {path_value}")
+    return findings
+
+
 for record in environment_records:
     names = set(record.get("names", []))
     check(required_controls <= names, f"{record.get('phase')}: fake controls were stripped")
@@ -3223,6 +3779,34 @@ for record in environment_records:
     if child_values and all(isinstance(value, str) for value in child_values):
         common = os.path.commonpath(child_values)
         check(common not in {"", os.path.sep}, f"{record.get('phase')}: private dirs lack a private common root")
+    private_root_fact = record.get("private_root")
+    check(
+        isinstance(private_root_fact, dict)
+        and private_root_fact.get("exists") is True
+        and private_root_fact.get("is_directory") is True
+        and private_root_fact.get("is_symlink") is False
+        and isinstance(private_root_fact.get("mode"), int)
+        and private_root_fact["mode"] & 0o077 == 0,
+        f"{record.get('phase')}: common private root is not a private real directory: "
+        f"{private_root_fact}",
+    )
+errors.extend(private_cleanup_findings(environment_records, "environment success"))
+
+leak_oracle = env_root / "oracle-leaked-private-tree"
+leak_oracle.mkdir(mode=0o700)
+leak_fact = {
+    "path": str(leak_oracle),
+    "exists": True,
+    "is_directory": True,
+    "is_symlink": False,
+    "mode": 0o700,
+}
+leak_findings = private_cleanup_findings(
+    [{"private_paths": {"HOME": leak_fact}, "private_root": leak_fact}],
+    "cleanup-oracle",
+)
+check(bool(leak_findings), "private-tree cleanup oracle accepted a leaked directory")
+shutil.rmtree(leak_oracle)
 check(env_source.read_bytes() == env_source_bytes, "environment run changed source")
 check(env_sidecar.read_bytes() == env_sidecar_bytes, "environment run changed sidecar")
 check(
@@ -3234,6 +3818,17 @@ check(
     sorted(path.name for path in env_output.iterdir()) == ["asset.glb", "asset.glb.json"],
     "environment run left unexpected output/sandbox residue",
 )
+env_asset_records = (
+    [json.loads(line) for line in env_log.read_text(encoding="utf-8").splitlines()]
+    if env_log.exists() else []
+)
+check(len(env_asset_records) == 1, "environment run lacks one fake asset record")
+if len(env_asset_records) == 1:
+    regular_private_snapshot(
+        env_asset_records[0], digest_bytes(env_source_bytes), env_source,
+        "environment run",
+    )
+    require_snapshot_cleanup(env_asset_records[0], env_source, "environment run")
 combined = env_result.stdout + env_result.stderr
 for forbidden_value in (
     "dummy-token-never-log", "dummy-secret-key-never-log",
@@ -3241,6 +3836,105 @@ for forbidden_value in (
     "hostile-profile",
 ):
     check(forbidden_value not in combined, "environment run logged a hostile value")
+
+
+# The same private roots and source snapshots are retired on an asset-process
+# failure, not only after a successful promotion.
+failure_root = root / "failure-private-cleanup"
+failure_input = failure_root / "input"
+failure_output = failure_root / "output"
+failure_input.mkdir(parents=True)
+failure_output.mkdir()
+failure_source = failure_input / "asset.glb"
+failure_manifest = failure_root / "manifest.json"
+failure_log = failure_root / "fake.log"
+failure_audit = failure_root / "fake.audit"
+failure_capture = failure_root / "environment.jsonl"
+write_glb(failure_source, triangles=30000)
+failure_sidecar = write_source_sidecar(failure_source, "failure cleanup fixture cat")
+write_manifest(failure_manifest, failure_source.name, "failure cleanup fixture cat")
+failure_source_bytes = failure_source.read_bytes()
+failure_sidecar_bytes = failure_sidecar.read_bytes()
+failure_environment = dict(parent_environment)
+failure_environment.update({
+    "FAKE_BLENDER_MODE": "fail",
+    "FAKE_BLENDER_LOG": str(failure_log),
+    "FAKE_BLENDER_AUDIT": str(failure_audit),
+    "FAKE_BLENDER_ENV_LOG": str(failure_capture),
+})
+try:
+    failure_result = subprocess.run(
+        cli_arguments(failure_manifest, failure_input, failure_output),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env=failure_environment,
+    )
+except subprocess.TimeoutExpired as exc:
+    raise AssertionError("failure cleanup CLI exceeded 20 seconds") from exc
+check(failure_result.returncode != 0, "failure cleanup control unexpectedly succeeded")
+failure_environment_records = (
+    [
+        json.loads(line)
+        for line in failure_capture.read_text(encoding="utf-8").splitlines()
+    ]
+    if failure_capture.exists() else []
+)
+check(
+    [record.get("phase") for record in failure_environment_records]
+    == ["version", "asset"],
+    "failure cleanup missed a child environment phase",
+)
+for record in failure_environment_records:
+    names = set(record.get("names", []))
+    check(required_controls <= names, "failure cleanup stripped fake controls")
+    check(required_private <= names, "failure cleanup lacks private env homes")
+    check(not names & hazardous_names, "failure cleanup passed hazardous variables")
+    check(names <= allowed_names, "failure cleanup child env is not minimal")
+    for name in sorted(required_private):
+        fact = record.get("private_paths", {}).get(name)
+        check(
+            isinstance(fact, dict)
+            and fact.get("exists") is True
+            and fact.get("is_directory") is True
+            and fact.get("is_symlink") is False
+            and isinstance(fact.get("mode"), int)
+            and fact["mode"] & 0o077 == 0,
+            f"failure cleanup {name} was not private during the child",
+        )
+    private_root_fact = record.get("private_root")
+    check(
+        isinstance(private_root_fact, dict)
+        and private_root_fact.get("exists") is True
+        and private_root_fact.get("is_directory") is True
+        and private_root_fact.get("is_symlink") is False
+        and isinstance(private_root_fact.get("mode"), int)
+        and private_root_fact["mode"] & 0o077 == 0,
+        "failure cleanup common root was not private during the child",
+    )
+errors.extend(
+    private_cleanup_findings(failure_environment_records, "environment failure")
+)
+failure_asset_records = (
+    [json.loads(line) for line in failure_log.read_text(encoding="utf-8").splitlines()]
+    if failure_log.exists() else []
+)
+check(len(failure_asset_records) == 1, "failure cleanup lacks one fake asset record")
+if len(failure_asset_records) == 1:
+    regular_private_snapshot(
+        failure_asset_records[0], digest_bytes(failure_source_bytes),
+        failure_source, "failure cleanup",
+    )
+    require_snapshot_cleanup(
+        failure_asset_records[0], failure_source, "failure cleanup"
+    )
+check(failure_source.read_bytes() == failure_source_bytes, "failure changed source")
+check(
+    failure_sidecar.read_bytes() == failure_sidecar_bytes,
+    "failure changed source sidecar",
+)
+check(list(failure_output.iterdir()) == [], "failure left output/staging residue")
 
 
 if errors:
@@ -3263,13 +3957,20 @@ if [ "$review_section" = all ] || [ "$review_section" = K ]; then
   PYTHONDONTWRITEBYTECODE=1 python3 - \
     "$decimate_script" "$tmp/review-preflight-diagnostics" "$repo" \
     "$fake_blender" <<'PY'
+import contextlib
 import hashlib
+import importlib.util
+import io
 import json
+import multiprocessing
 import os
 import re
+import shutil
 import stat
+import struct
 import subprocess
 import sys
+import traceback
 from pathlib import Path
 
 
@@ -3281,6 +3982,15 @@ root.mkdir()
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(repo / "tests" / "assets"))
 from glb_fixture import write_glb
+
+spec = importlib.util.spec_from_file_location(
+    "decimate_assets_preflight_diagnostics_test", script
+)
+assert spec is not None and spec.loader is not None
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+process_context = multiprocessing.get_context("fork")
 
 
 MAX_METADATA_BYTES = 1_048_576
@@ -3385,6 +4095,20 @@ def prepare_valid(name, filename="asset.glb", prompt="preflight fixture cat"):
     }
 
 
+def pad_valid_glb_to_size(path, size):
+    current_size = path.stat().st_size
+    padding_size = size - current_size - 8
+    assert padding_size >= 0 and padding_size % 4 == 0
+    with path.open("r+b") as handle:
+        magic, version, declared = struct.unpack("<4sII", handle.read(12))
+        assert magic == b"glTF" and version == 2 and declared == current_size
+        handle.seek(8)
+        handle.write(struct.pack("<I", size))
+        handle.seek(0, os.SEEK_END)
+        handle.write(struct.pack("<I4s", padding_size, b"PAD "))
+        handle.truncate(size)
+
+
 def arguments(case, force=False):
     result = [
         sys.executable,
@@ -3426,6 +4150,167 @@ def run_case(case, *, force=False, extra_environment=None, timeout=5):
     return result, None
 
 
+def require_boundary_success(
+    case, label, *, extra_environment=None, expected_glb_size=None, timeout=45
+):
+    source_before = tree_snapshot(case["input"])
+    result, timeout_error = run_case(
+        case,
+        extra_environment=extra_environment,
+        timeout=timeout,
+    )
+    check(timeout_error is None, f"{label}: exact-boundary control timed out")
+    if result is not None:
+        check(
+            result.returncode == 0,
+            f"{label}: exact boundary was rejected: {result.stderr!r}",
+        )
+        check(result.stderr == "", f"{label}: success wrote stderr")
+    final_glb = case["output"] / case["source"].name
+    final_json = Path(f"{final_glb}.json")
+    check(
+        set(case["output"].iterdir()) == {final_glb, final_json},
+        f"{label}: success did not leave exactly one final pair",
+    )
+    if expected_glb_size is not None and final_glb.is_file():
+        check(
+            final_glb.stat().st_size == expected_glb_size,
+            f"{label}: final GLB lost its exact accepted boundary size",
+        )
+    check(
+        line_count(case["fake_audit"]) == 2
+        and line_count(case["fake_log"]) == 1,
+        f"{label}: success did not reach exactly version+asset fake phases",
+    )
+    check(
+        tree_snapshot(case["input"]) == source_before,
+        f"{label}: success changed source custody",
+    )
+
+
+# Exact acceptance boundaries are behavior, not just constants. In particular,
+# 64 entries subsumes the known 15-asset queue and 128 MiB subsumes its ~75 MiB
+# largest source without weakening the requested ceilings.
+manifest_boundary = prepare_valid("manifest-exact-one-mib")
+manifest_payload = manifest_boundary["manifest"].read_bytes()
+manifest_boundary["manifest"].write_bytes(
+    manifest_payload + b" " * (MAX_METADATA_BYTES - len(manifest_payload))
+)
+assert manifest_boundary["manifest"].stat().st_size == MAX_METADATA_BYTES
+require_boundary_success(manifest_boundary, "manifest exactly one MiB")
+
+sidecar_boundary = prepare_valid("sidecar-exact-one-mib")
+sidecar_record = json.loads(
+    sidecar_boundary["sidecar"].read_text(encoding="utf-8")
+)
+sidecar_record["note"] = ""
+empty_note_payload = (
+    json.dumps(sidecar_record, sort_keys=True) + "\n"
+).encode("utf-8")
+sidecar_record["note"] = "N" * (MAX_METADATA_BYTES - len(empty_note_payload))
+sidecar_payload = (
+    json.dumps(sidecar_record, sort_keys=True) + "\n"
+).encode("utf-8")
+assert len(sidecar_payload) == MAX_METADATA_BYTES
+sidecar_boundary["sidecar"].write_bytes(sidecar_payload)
+require_boundary_success(sidecar_boundary, "source sidecar exactly one MiB")
+
+manifest_count_boundary_root = root / "manifest-exact-64"
+manifest_count_boundary_input = manifest_count_boundary_root / "input"
+manifest_count_boundary_output = manifest_count_boundary_root / "output"
+manifest_count_boundary_input.mkdir(parents=True)
+manifest_count_boundary_output.mkdir()
+manifest_count_boundary_path = manifest_count_boundary_root / "manifest.json"
+manifest_count_boundary_prompt = "manifest count boundary fixture"
+manifest_count_boundary_entries = [
+    {
+        "id": f"boundary-{index:02d}",
+        "kind": "cat",
+        "service": "meshy",
+        "out": f"boundary-{index:02d}.glb",
+        "prompt": manifest_count_boundary_prompt,
+    }
+    for index in range(MAX_MANIFEST_ASSETS)
+]
+for entry in manifest_count_boundary_entries:
+    boundary_source = manifest_count_boundary_input / entry["out"]
+    write_glb(boundary_source, triangles=30000)
+    write_sidecar(boundary_source, manifest_count_boundary_prompt)
+manifest_count_boundary_path.write_text(
+    json.dumps({"assets": manifest_count_boundary_entries}, sort_keys=True) + "\n",
+    encoding="utf-8",
+)
+manifest_count_boundary = {
+    "root": manifest_count_boundary_root,
+    "input": manifest_count_boundary_input,
+    "output": manifest_count_boundary_output,
+    "manifest": manifest_count_boundary_path,
+    "fake_log": manifest_count_boundary_root / "fake.log",
+    "fake_audit": manifest_count_boundary_root / "fake.audit",
+}
+manifest_count_input_before = tree_snapshot(manifest_count_boundary_input)
+manifest_count_result, manifest_count_timeout = run_case(
+    manifest_count_boundary,
+    timeout=60,
+)
+check(manifest_count_timeout is None, "manifest with exactly 64 entries timed out")
+if manifest_count_result is not None:
+    check(
+        manifest_count_result.returncode == 0,
+        "manifest with exactly 64 valid entries was rejected: "
+        f"{manifest_count_result.stderr!r}",
+    )
+check(
+    line_count(manifest_count_boundary["fake_audit"])
+    == MAX_MANIFEST_ASSETS + 1
+    and line_count(manifest_count_boundary["fake_log"])
+    == MAX_MANIFEST_ASSETS,
+    "manifest with exactly 64 entries missed a version or asset phase",
+)
+expected_count_outputs = {
+    manifest_count_boundary_output / entry["out"]
+    for entry in manifest_count_boundary_entries
+} | {
+    manifest_count_boundary_output / f"{entry['out']}.json"
+    for entry in manifest_count_boundary_entries
+}
+check(
+    set(manifest_count_boundary_output.iterdir()) == expected_count_outputs,
+    "manifest with exactly 64 entries lost a final pair",
+)
+check(
+    tree_snapshot(manifest_count_boundary_input) == manifest_count_input_before,
+    "manifest with exactly 64 entries changed source custody",
+)
+
+source_boundary = prepare_valid("source-exact-128-mib")
+pad_valid_glb_to_size(source_boundary["source"], MAX_SOURCE_BYTES)
+source_boundary_record = json.loads(
+    source_boundary["sidecar"].read_text(encoding="utf-8")
+)
+source_boundary_record["sha256"] = digest(source_boundary["source"])
+source_boundary["sidecar"].write_text(
+    json.dumps(source_boundary_record, sort_keys=True) + "\n",
+    encoding="utf-8",
+)
+require_boundary_success(
+    source_boundary,
+    "source GLB exactly 128 MiB",
+    timeout=60,
+)
+
+derivative_boundary = prepare_valid("derivative-exact-64-mib")
+require_boundary_success(
+    derivative_boundary,
+    "derivative GLB exactly 64 MiB",
+    extra_environment={
+        "FAKE_BLENDER_OUTPUT_EXACT_SIZE": str(MAX_DERIVATIVE_BYTES)
+    },
+    expected_glb_size=MAX_DERIVATIVE_BYTES,
+    timeout=45,
+)
+
+
 def require_preflight_rejection(case, label, pattern, *, force=False):
     case_before = tree_snapshot(case["root"])
     result, timeout = run_case(case, force=force)
@@ -3453,6 +4338,217 @@ def require_preflight_rejection(case, label, pattern, *, force=False):
         tree_snapshot(case["root"]) == case_before,
         f"{label}: case membership/type/links/bytes changed",
     )
+
+
+class WholeReadAttempt(RuntimeError):
+    """Raised by the audit oracle before a guarded oversize file is opened."""
+
+
+def exercise_size_preflight(
+    case,
+    label,
+    pattern,
+    *,
+    member,
+    extra_environment=None,
+    expected_fake_audit=0,
+    expected_fake_log=0,
+):
+    """Prove size is rejected through lstat before any whole-file reader.
+
+    A CPython audit hook observes the common readers below their Path/os/shutil
+    APIs. The synthetic mutation checks keep this oracle discriminating: a
+    production mutation that opens the oversize member before rejecting it is
+    stopped at the open event and reported as an attributable RED.
+    """
+
+    case_before = tree_snapshot(case["input"])
+    if member == "manifest":
+        guarded_path = case["manifest"]
+        size_limit = MAX_METADATA_BYTES
+    elif member == "sidecar":
+        guarded_path = case["sidecar"]
+        size_limit = MAX_METADATA_BYTES
+    elif member == "source":
+        guarded_path = case["source"]
+        size_limit = MAX_SOURCE_BYTES
+    elif member == "derivative":
+        guarded_path = case["root"] / "audit-oracle-oversize.glb"
+        with guarded_path.open("wb") as handle:
+            handle.write(b"glTF")
+            handle.truncate(MAX_DERIVATIVE_BYTES + 1)
+        size_limit = MAX_DERIVATIVE_BYTES
+    else:
+        raise AssertionError(f"unsupported guarded member {member}")
+
+    guarded_absolute = Path(os.path.realpath(os.path.abspath(guarded_path)))
+    output_absolute = Path(os.path.realpath(os.path.abspath(case["output"])))
+    receive, send = process_context.Pipe(duplex=False)
+
+    def child():
+        armed = {"value": False}
+
+        def is_guarded(raw_path):
+            try:
+                candidate = Path(
+                    os.path.realpath(os.path.abspath(os.fsdecode(raw_path)))
+                )
+            except (TypeError, ValueError):
+                return False
+            if candidate == guarded_absolute:
+                return True
+            if member != "derivative" or not candidate.is_relative_to(output_absolute):
+                return False
+            try:
+                status = os.lstat(candidate)
+            except OSError:
+                return False
+            return stat.S_ISREG(status.st_mode) and status.st_size > size_limit
+
+        def audit(event, arguments_value):
+            if (
+                armed["value"]
+                and event == "open"
+                and arguments_value
+                and is_guarded(arguments_value[0])
+            ):
+                raise WholeReadAttempt(
+                    f"whole read/copy attempted for guarded {member}"
+                )
+
+        sys.addaudithook(audit)
+        mutation_copy = case["root"] / "audit-oracle-copy"
+        mutation_hits = []
+        armed["value"] = True
+        try:
+            for reader in (
+                lambda: guarded_path.read_bytes(),
+                lambda: os.close(os.open(guarded_path, os.O_RDONLY)),
+                lambda: shutil.copyfile(guarded_path, mutation_copy),
+            ):
+                try:
+                    reader()
+                except WholeReadAttempt:
+                    mutation_hits.append(True)
+                else:
+                    mutation_hits.append(False)
+                finally:
+                    armed["value"] = False
+                    mutation_copy.unlink(missing_ok=True)
+                    armed["value"] = True
+
+            os.environ.clear()
+            os.environ.update(environment(case, extra_environment))
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            production_read_attempted = False
+            returncode = None
+            try:
+                with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                    returncode = module.main(arguments(case)[2:])
+            except WholeReadAttempt:
+                production_read_attempted = True
+            send.send({
+                "mutation_hits": mutation_hits,
+                "production_read_attempted": production_read_attempted,
+                "returncode": returncode,
+                "stdout": stdout.getvalue(),
+                "stderr": stderr.getvalue(),
+            })
+        except BaseException:
+            armed["value"] = False
+            send.send({"traceback": traceback.format_exc()})
+        finally:
+            armed["value"] = False
+            send.close()
+
+    process = process_context.Process(target=child)
+    process.start()
+    send.close()
+    process.join(20)
+    if process.is_alive():
+        process.terminate()
+        process.join(2)
+        if process.is_alive():
+            process.kill()
+            process.join(2)
+        errors.append(f"{label}: bounded size-preflight child hung")
+        receive.close()
+        guarded_path.unlink(missing_ok=True)
+        process.close()
+        return
+    payload = None
+    if receive.poll(1):
+        try:
+            payload = receive.recv()
+        except EOFError:
+            payload = None
+    receive.close()
+    child_exitcode = process.exitcode
+    process.close()
+    if payload is None:
+        errors.append(
+            f"{label}: size-preflight child exited {child_exitcode} without a record"
+        )
+        guarded_path.unlink(missing_ok=True)
+        return
+    if "traceback" in payload:
+        errors.append(f"{label}: size-preflight child crashed:\n{payload['traceback']}")
+        guarded_path.unlink(missing_ok=True)
+        return
+
+    check(
+        payload["mutation_hits"] == [True, True, True],
+        f"{label}: audit oracle did not kill Path/os.open/shutil full-read mutations",
+    )
+    check(
+        not payload["production_read_attempted"],
+        f"{label}: whole read/copy attempted before lstat size rejection",
+    )
+    if not payload["production_read_attempted"]:
+        check(payload["returncode"] == 1, f"{label}: oversize member was accepted")
+        if expected_fake_log == 0:
+            check(payload["stdout"] == "", f"{label}: preflight rejection wrote stdout")
+        else:
+            check(
+                payload["stdout"].endswith("\n")
+                and len(payload["stdout"].splitlines()) == 1
+                and payload["stdout"][:-1].isprintable()
+                and len(payload["stdout"].encode("utf-8"))
+                <= MAX_DIAGNOSTIC_BYTES,
+                f"{label}: progress stdout is not printable/one-line/capped: "
+                f"{payload['stdout']!r}",
+            )
+        check(
+            re.search(pattern, payload["stderr"], re.IGNORECASE) is not None,
+            f"{label}: wrong size diagnostic: "
+            f"{(payload['stdout'] + payload['stderr'])!r}",
+        )
+        check(
+            payload["stderr"].endswith("\n")
+            and len(payload["stderr"].splitlines()) == 1
+            and payload["stderr"][:-1].isprintable()
+            and len(payload["stderr"].encode("utf-8")) <= MAX_DIAGNOSTIC_BYTES,
+            f"{label}: size diagnostic is not printable/one-line/capped: "
+            f"{payload['stderr']!r}",
+        )
+    check(
+        line_count(case["fake_audit"]) == expected_fake_audit,
+        f"{label}: wrong fake audit phase count",
+    )
+    check(
+        line_count(case["fake_log"]) == expected_fake_log,
+        f"{label}: wrong fake asset phase count",
+    )
+    check(
+        tree_snapshot(case["input"]) == case_before,
+        f"{label}: source custody changed",
+    )
+    check(
+        list(case["output"].iterdir()) == [],
+        f"{label}: final or staging residue remains",
+    )
+    guarded_path.unlink(missing_ok=True)
 
 
 def manifest_type_case(kind):
@@ -3550,10 +4646,11 @@ manifest_size["manifest"].write_bytes(
     manifest_payload + b" " * (MAX_METADATA_BYTES + 1 - len(manifest_payload))
 )
 assert manifest_size["manifest"].stat().st_size == MAX_METADATA_BYTES + 1
-require_preflight_rejection(
+exercise_size_preflight(
     manifest_size,
     "manifest over one MiB",
     r"manifest[^\n]*(too large|size|limit|1048576)",
+    member="manifest",
 )
 
 sidecar_size = prepare_valid("sidecar-over-one-mib")
@@ -3563,10 +4660,11 @@ sidecar_size["sidecar"].write_text(
     json.dumps(sidecar_record, sort_keys=True) + "\n", encoding="utf-8"
 )
 assert sidecar_size["sidecar"].stat().st_size > MAX_METADATA_BYTES
-require_preflight_rejection(
+exercise_size_preflight(
     sidecar_size,
     "source sidecar over one MiB",
     r"source sidecar[^\n]*(too large|size|limit|1048576)",
+    member="sidecar",
 )
 
 manifest_count = prepare_valid("manifest-over-count")
@@ -3604,10 +4702,11 @@ source_size["sidecar"].write_text(json.dumps({
     "note": "oversize sparse source",
     "sha256": "0" * 64,
 }, sort_keys=True) + "\n", encoding="utf-8")
-require_preflight_rejection(
+exercise_size_preflight(
     source_size,
     "source GLB over 128 MiB",
     r"source[^\n]*(too large|size|limit|134217728)",
+    member="source",
 )
 
 
@@ -3615,37 +4714,16 @@ require_preflight_rejection(
 # can read it. This is intentionally post-child, but still leaves no final or
 # staging residue and preserves the source pair exactly.
 derivative_size = prepare_valid("derivative-over-64-mib")
-derivative_input_before = tree_snapshot(derivative_size["input"])
-derivative_result, derivative_timeout = run_case(
+exercise_size_preflight(
     derivative_size,
+    "derivative over 64 MiB",
+    r"derivative[^\n]*(too large|size|limit|67108864)",
+    member="derivative",
     extra_environment={
         "FAKE_BLENDER_OUTPUT_SIZE": str(MAX_DERIVATIVE_BYTES + 1)
     },
-    timeout=10,
-)
-check(derivative_timeout is None, "oversize derivative handling exceeded ten seconds")
-if derivative_result is not None:
-    check(derivative_result.returncode != 0, "oversize derivative was accepted")
-    check(
-        re.search(
-            r"derivative[^\n]*(too large|size|limit|67108864)",
-            derivative_result.stderr,
-            re.IGNORECASE,
-        ) is not None,
-        f"oversize derivative had wrong diagnostic: {derivative_result.stderr!r}",
-    )
-check(
-    line_count(derivative_size["fake_audit"]) == 2
-    and line_count(derivative_size["fake_log"]) == 1,
-    "oversize derivative did not reach exactly version+asset fake phases",
-)
-check(
-    tree_snapshot(derivative_size["input"]) == derivative_input_before,
-    "oversize derivative run changed source custody",
-)
-check(
-    list(derivative_size["output"].iterdir()) == [],
-    "oversize derivative left a final or staging directory",
+    expected_fake_audit=2,
+    expected_fake_log=1,
 )
 
 
@@ -3753,9 +4831,12 @@ def hostile_diagnostic_case(name, control_name, policy_pattern):
         f"{result.stderr!r}",
     )
     check(
-        len(result.stdout.splitlines()) == 1
-        and result.stdout.rstrip("\n").isprintable(),
-        f"{name}: stdout records were forged: {result.stdout!r}",
+        result.stdout.startswith("glb-decimation: ")
+        and result.stdout.endswith("\n")
+        and len(result.stdout.splitlines()) == 1
+        and result.stdout[:-1].isprintable()
+        and len(result.stdout.encode("utf-8")) <= MAX_DIAGNOSTIC_BYTES,
+        f"{name}: stdout is not printable/one-line/capped: {result.stdout!r}",
     )
     check(
         line_count(case["fake_audit"]) == 2

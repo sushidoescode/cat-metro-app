@@ -90,10 +90,31 @@ def _audit_environment(phase: str) -> None:
                 "is_symlink": stat.S_ISLNK(status.st_mode),
                 "mode": stat.S_IMODE(status.st_mode),
             }
+    private_root = None
+    path_values = [
+        fact["path"]
+        for fact in private_paths.values()
+        if isinstance(fact.get("path"), str)
+    ]
+    if path_values:
+        common = Path(os.path.commonpath(path_values))
+        try:
+            common_status = os.lstat(common)
+        except OSError:
+            private_root = {"path": str(common), "exists": False}
+        else:
+            private_root = {
+                "path": str(common),
+                "exists": True,
+                "is_directory": stat.S_ISDIR(common_status.st_mode),
+                "is_symlink": stat.S_ISLNK(common_status.st_mode),
+                "mode": stat.S_IMODE(common_status.st_mode),
+            }
     record = {
         "phase": phase,
         "names": sorted(os.environ),
         "private_paths": private_paths,
+        "private_root": private_root,
     }
     with Path(destination).open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, sort_keys=True) + "\n")
@@ -138,6 +159,23 @@ def _replace_external_uri(path: Path, uri: str) -> None:
         + trailing_chunks
     )
     path.write_bytes(rebuilt)
+
+
+def _pad_glb_to_size(path: Path, size: int) -> None:
+    """Append one valid unknown chunk so a boundary-sized GLB stays parseable."""
+    current_size = path.stat().st_size
+    padding_size = size - current_size - 8
+    if size < current_size + 8 or padding_size % 4:
+        raise SystemExit("fake-blender: exact GLB size cannot hold an aligned chunk")
+    with path.open("r+b") as handle:
+        magic, version, declared = struct.unpack("<4sII", handle.read(12))
+        if magic != b"glTF" or version != 2 or declared != current_size:
+            raise SystemExit("fake-blender: exact-size input has an invalid header")
+        handle.seek(8)
+        handle.write(struct.pack("<I", size))
+        handle.seek(0, os.SEEK_END)
+        handle.write(struct.pack("<I4s", padding_size, b"PAD "))
+        handle.truncate(size)
 
 
 def _processing_arguments(argv: list[str]) -> argparse.Namespace:
@@ -254,6 +292,11 @@ def main(argv: list[str]) -> int:
         if requested_uri is not None:
             _replace_external_uri(args.output, requested_uri)
         requested_size = os.environ.get("FAKE_BLENDER_OUTPUT_SIZE")
+        exact_size = os.environ.get("FAKE_BLENDER_OUTPUT_EXACT_SIZE")
+        if requested_size is not None and exact_size is not None:
+            raise SystemExit("fake-blender: output size controls are mutually exclusive")
+        if exact_size is not None:
+            _pad_glb_to_size(args.output, int(exact_size))
         if requested_size is not None:
             size = int(requested_size)
             if size < 0:
