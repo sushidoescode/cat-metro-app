@@ -146,6 +146,16 @@ def write(path, doc, binary):
     )
 
 
+def write_raw_json(path, json_payload, binary):
+    json_payload += b" " * (-len(json_payload) % 4)
+    binary += b"\0" * (-len(binary) % 4)
+    path.write_bytes(
+        struct.pack("<4sII", b"glTF", 2, 12 + 8 + len(json_payload) + 8 + len(binary))
+        + struct.pack("<I4s", len(json_payload), b"JSON") + json_payload
+        + struct.pack("<I4s", len(binary), b"BIN\0") + binary
+    )
+
+
 path = Path(sys.argv[1])
 action = sys.argv[2]
 if action == "magic":
@@ -156,6 +166,13 @@ if action == "truncated":
     path.write_bytes(path.read_bytes()[:-3])
     raise SystemExit()
 doc, binary = read(path)
+if action == "deep-json":
+    # The container and all required glTF fields stay valid; only unknown JSON
+    # nesting is hostile to a parser without a depth guard.
+    depth = 1_500
+    base_json = json.dumps(doc, separators=(",", ":"), sort_keys=True).encode()
+    write_raw_json(path, base_json[:-1] + b',"hostile":' + b"[" * depth + b"0" + b"]" * depth + b"}", binary)
+    raise SystemExit()
 primitive = doc["meshes"][0]["primitives"][0]
 second_primitive = doc["meshes"][0]["primitives"][1] if len(doc["meshes"][0]["primitives"]) > 1 else None
 if action == "mode":
@@ -176,6 +193,30 @@ elif action == "extension":
     doc["extensionsUsed"] = ["VENDOR_unreviewed"]
 elif action == "meshopt":
     doc["extensionsUsed"] = ["EXT_meshopt_compression"]
+elif action == "undeclared-draco":
+    doc.pop("extensionsUsed", None)
+    primitive["extensions"] = {"KHR_draco_mesh_compression": {"bufferView": 0, "attributes": {"POSITION": 0}}}
+elif action == "out-of-range-index":
+    index_accessor = doc["accessors"][primitive["indices"]]
+    index_view = doc["bufferViews"][index_accessor["bufferView"]]
+    index_offset = index_view["byteOffset"] + index_accessor.get("byteOffset", 0)
+    changed_binary = bytearray(binary)
+    struct.pack_into("<H", changed_binary, index_offset, 255)
+    binary = bytes(changed_binary)
+elif action == "misaligned-accessor":
+    for view in doc["bufferViews"]:
+        view["byteOffset"] += 1
+    binary = b"\0" + binary
+    doc["buffers"][0]["byteLength"] = len(binary) + (-len(binary) % 4)
+elif action == "deep-node-cycle":
+    depth = 1_500
+    doc["nodes"] = [
+        {"mesh": 0, "translation": [0.0, 0.0, 0.0], "children": [1]},
+        *({"children": [index + 1]} for index in range(1, depth)),
+        {"children": [0]},
+    ]
+    doc["scenes"] = [{"nodes": [0]}]
+    doc["scene"] = 0
 elif action.startswith("only-"):
     content = action.removeprefix("only-")
     assert content in {"animation", "camera", "light", "skin", "morph"}
@@ -351,8 +392,77 @@ expect_preservation_rejection() {
   expect_preservation reject "$@"
 }
 
+expect_inspection_or_preservation_rejection() {
+  local name=$1
+  local source=$2
+  local output=$3
+  local stdout="$tmp/${name// /-}.out"
+  local stderr="$tmp/${name// /-}.err"
+  set +e
+  run_metrics "$output" >"$stdout" 2>"$stderr"
+  local rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    grep -q '^glb-metrics:' "$stderr"
+  else
+    expect_preservation_rejection "$name" "$source" "$output"
+  fi
+}
+
+expect_single_diagnostic_failure() {
+  local name=$1
+  local input=$2
+  local stdout="$tmp/${name// /-}.out"
+  local stderr="$tmp/${name// /-}.err"
+  set +e
+  run_metrics "$input" >"$stdout" 2>"$stderr"
+  local rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then
+    echo "expected hostile-input failure: $name" >&2
+    exit 1
+  fi
+  PYTHONDONTWRITEBYTECODE=1 python3 - "$name" "$stdout" "$stderr" <<'PY'
+import sys
+from pathlib import Path
+
+name, stdout_path, stderr_path = sys.argv[1:]
+stdout = Path(stdout_path).read_text(encoding="utf-8")
+stderr = Path(stderr_path).read_text(encoding="utf-8")
+lines = stderr.splitlines()
+assert stdout == "", f"{name}: hostile input wrote stdout: {stdout!r}"
+assert len(lines) == 1 and lines[0].startswith("glb-metrics:"), f"{name}: expected one glb-metrics diagnostic, got {stderr!r}"
+assert "Traceback" not in stderr and "RecursionError" not in stderr, f"{name}: Python exception escaped: {stderr!r}"
+PY
+}
+
 # Break caught: a comparator rejects every output, including an unchanged valid pair.
 expect_preservation_acceptance "unchanged baseline" "$tmp/source.glb" "$tmp/output.glb"
+
+cp "$tmp/output.glb" "$tmp/undeclared-draco.glb"
+mutate "$tmp/undeclared-draco.glb" undeclared-draco
+# Break caught: an actual undeclared Draco payload bypasses the extension allowlist.
+expect_inspection_or_preservation_rejection "undeclared Draco payload" "$tmp/source.glb" "$tmp/undeclared-draco.glb"
+
+cp "$tmp/valid.glb" "$tmp/out-of-range-index.glb"
+mutate "$tmp/out-of-range-index.glb" out-of-range-index
+# Break caught: decoded indices outside the eight POSITION vertices are trusted.
+expect_metrics_failure "out-of-range index" "$tmp/out-of-range-index.glb"
+
+cp "$tmp/valid.glb" "$tmp/misaligned-accessor.glb"
+mutate "$tmp/misaligned-accessor.glb" misaligned-accessor
+# Break caught: accessor alignment ignores the bufferView byte offset.
+expect_metrics_failure "misaligned effective accessor" "$tmp/misaligned-accessor.glb"
+
+cp "$tmp/valid.glb" "$tmp/deep-node-cycle.glb"
+mutate "$tmp/deep-node-cycle.glb" deep-node-cycle
+# Break caught: hostile selected-scene depth/cycles leak a Python recursion traceback.
+expect_single_diagnostic_failure "deep node cycle" "$tmp/deep-node-cycle.glb"
+
+cp "$tmp/valid.glb" "$tmp/deep-json.glb"
+mutate "$tmp/deep-json.glb" deep-json
+# Break caught: hostile JSON nesting leaks a Python recursion traceback.
+expect_single_diagnostic_failure "deep JSON" "$tmp/deep-json.glb"
 
 cp "$tmp/output.glb" "$tmp/center-drift.glb"
 mutate "$tmp/center-drift.glb" translate
