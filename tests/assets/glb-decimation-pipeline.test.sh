@@ -4035,6 +4035,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import mmap
 import multiprocessing
 import os
 import re
@@ -4447,7 +4448,7 @@ def exercise_size_preflight(
         guarded_path = case["source"]
         size_limit = MAX_SOURCE_BYTES
     elif member == "derivative":
-        guarded_path = case["root"] / "audit-oracle-oversize.glb"
+        guarded_path = case["root"] / "reader-oracle-oversize.glb"
         with guarded_path.open("wb") as handle:
             handle.write(b"glTF")
             handle.truncate(MAX_DERIVATIVE_BYTES + 1)
@@ -4463,9 +4464,37 @@ def exercise_size_preflight(
         guarded_fds = set()
         read_attempted = {"value": False}
 
+        def descriptor_is_guarded(descriptor):
+            if descriptor in guarded_fds:
+                return True
+            try:
+                descriptor_status = os.fstat(descriptor)
+            except OSError:
+                return False
+            candidates = [guarded_absolute]
+            if member == "derivative":
+                for current, _directories, filenames in os.walk(
+                    output_absolute, followlinks=False
+                ):
+                    candidates.extend(Path(current) / name for name in filenames)
+            for candidate in candidates:
+                try:
+                    candidate_status = os.lstat(candidate)
+                except OSError:
+                    continue
+                if (
+                    stat.S_ISREG(candidate_status.st_mode)
+                    and candidate_status.st_size > size_limit
+                    and (candidate_status.st_dev, candidate_status.st_ino)
+                    == (descriptor_status.st_dev, descriptor_status.st_ino)
+                ):
+                    guarded_fds.add(descriptor)
+                    return True
+            return False
+
         def is_guarded(raw_path):
             if isinstance(raw_path, int):
-                return raw_path in guarded_fds
+                return descriptor_is_guarded(raw_path)
             try:
                 candidate = Path(
                     os.path.realpath(os.path.abspath(os.fsdecode(raw_path)))
@@ -4562,9 +4591,20 @@ def exercise_size_preflight(
         real_os_read = os.read
         real_os_fdopen = os.fdopen
         real_copyfile = shutil.copyfile
+        real_copy = shutil.copy
+        real_copy2 = shutil.copy2
+        real_copyfileobj = shutil.copyfileobj
+        real_mmap = mmap.mmap
 
         def wrap_reader(handle, value, descriptor=None):
             if is_guarded(value):
+                if descriptor is None:
+                    try:
+                        descriptor = handle.fileno()
+                    except (AttributeError, OSError, ValueError):
+                        descriptor = None
+                    if descriptor is not None:
+                        guarded_fds.add(descriptor)
                 return GuardedReader(handle, descriptor)
             return handle
 
@@ -4587,7 +4627,7 @@ def exercise_size_preflight(
             return real_os_close(descriptor)
 
         def guarded_os_read(descriptor, count):
-            if descriptor in guarded_fds and count != 0:
+            if descriptor_is_guarded(descriptor) and count != 0:
                 reject_read("descriptor read")
             return real_os_read(descriptor, count)
 
@@ -4600,12 +4640,39 @@ def exercise_size_preflight(
                 reject_read("copy")
             return real_copyfile(source, destination, *args, **kwargs)
 
+        def guarded_copy(source, destination, *args, **kwargs):
+            if is_guarded(source):
+                reject_read("shutil.copy")
+            return real_copy(source, destination, *args, **kwargs)
+
+        def guarded_copy2(source, destination, *args, **kwargs):
+            if is_guarded(source):
+                reject_read("shutil.copy2")
+            return real_copy2(source, destination, *args, **kwargs)
+
+        def guarded_copyfileobj(source, destination, *args, **kwargs):
+            try:
+                source_descriptor = source.fileno()
+            except (AttributeError, OSError, ValueError):
+                source_descriptor = None
+            if (
+                source_descriptor is not None
+                and descriptor_is_guarded(source_descriptor)
+            ):
+                reject_read("shutil.copyfileobj")
+            return real_copyfileobj(source, destination, *args, **kwargs)
+
+        def guarded_mmap(descriptor, *args, **kwargs):
+            if descriptor_is_guarded(descriptor):
+                reject_read("mmap")
+            return real_mmap(descriptor, *args, **kwargs)
+
         optional_patches = []
         if hasattr(os, "pread"):
             real_pread = os.pread
 
             def guarded_pread(descriptor, count, offset):
-                if descriptor in guarded_fds and count != 0:
+                if descriptor_is_guarded(descriptor) and count != 0:
                     reject_read("pread")
                 return real_pread(descriptor, count, offset)
 
@@ -4614,14 +4681,103 @@ def exercise_size_preflight(
             real_readv = os.readv
 
             def guarded_readv(descriptor, buffers):
-                if descriptor in guarded_fds and any(len(value) for value in buffers):
+                if descriptor_is_guarded(descriptor) and any(
+                    len(value) for value in buffers
+                ):
                     reject_read("readv")
                 return real_readv(descriptor, buffers)
 
             optional_patches.append(mock.patch.object(os, "readv", new=guarded_readv))
+        if hasattr(os, "preadv"):
+            real_preadv = os.preadv
 
-        mutation_copy = case["root"] / "audit-oracle-copy"
-        mutation_hits = []
+            def guarded_preadv(descriptor, buffers, offset, *args, **kwargs):
+                if descriptor_is_guarded(descriptor) and any(
+                    len(value) for value in buffers
+                ):
+                    reject_read("preadv")
+                return real_preadv(descriptor, buffers, offset, *args, **kwargs)
+
+            optional_patches.append(
+                mock.patch.object(os, "preadv", new=guarded_preadv)
+            )
+        if hasattr(os, "sendfile"):
+            real_sendfile = os.sendfile
+
+            def guarded_sendfile(
+                destination_descriptor,
+                source_descriptor,
+                offset,
+                count,
+                *args,
+                **kwargs,
+            ):
+                if descriptor_is_guarded(source_descriptor) and count != 0:
+                    reject_read("sendfile")
+                return real_sendfile(
+                    destination_descriptor,
+                    source_descriptor,
+                    offset,
+                    count,
+                    *args,
+                    **kwargs,
+                )
+
+            optional_patches.append(
+                mock.patch.object(os, "sendfile", new=guarded_sendfile)
+            )
+        if hasattr(os, "copy_file_range"):
+            real_copy_file_range = os.copy_file_range
+
+            def guarded_copy_file_range(
+                source_descriptor,
+                destination_descriptor,
+                count,
+                *args,
+                **kwargs,
+            ):
+                if descriptor_is_guarded(source_descriptor) and count != 0:
+                    reject_read("copy_file_range")
+                return real_copy_file_range(
+                    source_descriptor,
+                    destination_descriptor,
+                    count,
+                    *args,
+                    **kwargs,
+                )
+
+            optional_patches.append(
+                mock.patch.object(
+                    os, "copy_file_range", new=guarded_copy_file_range
+                )
+            )
+        for fastcopy_name in (
+            "_fastcopy_fcopyfile",
+            "_fastcopy_sendfile",
+            "_fastcopy_copy_file_range",
+        ):
+            if not hasattr(shutil, fastcopy_name):
+                continue
+            real_fastcopy = getattr(shutil, fastcopy_name)
+
+            def guarded_fastcopy(source, *args, _real=real_fastcopy, **kwargs):
+                try:
+                    source_descriptor = source.fileno()
+                except (AttributeError, OSError, ValueError):
+                    source_descriptor = None
+                if (
+                    source_descriptor is not None
+                    and descriptor_is_guarded(source_descriptor)
+                ):
+                    reject_read("shutil fast-copy")
+                return _real(source, *args, **kwargs)
+
+            optional_patches.append(
+                mock.patch.object(shutil, fastcopy_name, new=guarded_fastcopy)
+            )
+
+        mutation_copy = case["root"] / "reader-oracle-copy"
+        mutation_results = {}
         try:
             with contextlib.ExitStack() as stack:
                 for patcher in (
@@ -4632,6 +4788,12 @@ def exercise_size_preflight(
                     mock.patch.object(os, "read", new=guarded_os_read),
                     mock.patch.object(os, "fdopen", new=guarded_os_fdopen),
                     mock.patch.object(shutil, "copyfile", new=guarded_copyfile),
+                    mock.patch.object(shutil, "copy", new=guarded_copy),
+                    mock.patch.object(shutil, "copy2", new=guarded_copy2),
+                    mock.patch.object(
+                        shutil, "copyfileobj", new=guarded_copyfileobj
+                    ),
+                    mock.patch.object(mmap, "mmap", new=guarded_mmap),
                     *optional_patches,
                 ):
                     stack.enter_context(patcher)
@@ -4646,11 +4808,13 @@ def exercise_size_preflight(
                 try:
                     descriptor = os.open(guarded_path, safe_flags)
                     descriptor_status = os.fstat(descriptor)
+                    zero_read = os.read(descriptor, 0)
                     descriptor_only_passed = (
                         getattr(os, "O_NOFOLLOW", 0) != 0
                         and getattr(os, "O_NONBLOCK", 0) != 0
                         and stat.S_ISREG(descriptor_status.st_mode)
                         and descriptor_status.st_size > size_limit
+                        and zero_read == b""
                     )
                 except WholeReadAttempt:
                     descriptor_only_passed = False
@@ -4661,18 +4825,139 @@ def exercise_size_preflight(
                     descriptor_only_passed and not read_attempted["value"]
                 )
 
-                def descriptor_reader():
-                    descriptor_value = os.open(guarded_path, safe_flags)
-                    try:
-                        os.read(descriptor_value, 1)
-                    finally:
-                        os.close(descriptor_value)
+                with guarded_path.open("rb") as zero_handle:
+                    descriptor_only_passed = (
+                        descriptor_only_passed and zero_handle.read(0) == b""
+                    )
+                descriptor_only_passed = (
+                    descriptor_only_passed and not read_attempted["value"]
+                )
 
-                for reader in (
-                    lambda: guarded_path.read_bytes(),
-                    descriptor_reader,
-                    lambda: shutil.copyfile(guarded_path, mutation_copy),
-                ):
+                def descriptor_reader(operation):
+                    def reader():
+                        descriptor_value = os.open(guarded_path, safe_flags)
+                        try:
+                            return operation(descriptor_value)
+                        finally:
+                            os.close(descriptor_value)
+                    return reader
+
+                def transfer_reader(operation):
+                    def reader():
+                        source_descriptor = os.open(guarded_path, safe_flags)
+                        destination_descriptor = os.open(
+                            mutation_copy,
+                            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                            0o600,
+                        )
+                        try:
+                            return operation(
+                                source_descriptor, destination_descriptor
+                            )
+                        finally:
+                            os.close(destination_descriptor)
+                            os.close(source_descriptor)
+                    return reader
+
+                def file_reader(operation, *, use_builtin=False):
+                    def reader():
+                        opener = builtins.open if use_builtin else io.open
+                        with opener(guarded_path, "rb") as handle:
+                            return operation(handle)
+                    return reader
+
+                def mmap_read(descriptor_value):
+                    mapping = mmap.mmap(
+                        descriptor_value, 1, access=mmap.ACCESS_READ
+                    )
+                    try:
+                        return mapping[0]
+                    finally:
+                        mapping.close()
+
+                def copyfileobj_read():
+                    with (
+                        io.open(guarded_path, "rb") as source_handle,
+                        io.open(mutation_copy, "wb") as destination_handle,
+                    ):
+                        shutil.copyfileobj(
+                            source_handle, destination_handle, length=1
+                        )
+
+                mutation_readers = {
+                    "path.read_bytes": lambda: guarded_path.read_bytes(),
+                    "file.read": file_reader(lambda handle: handle.read(1)),
+                    "builtins.read": file_reader(
+                        lambda handle: handle.read(1), use_builtin=True
+                    ),
+                    "file.readinto": file_reader(
+                        lambda handle: handle.readinto(bytearray(1))
+                    ),
+                    "file.readline": file_reader(
+                        lambda handle: handle.readline(1)
+                    ),
+                    "file.iteration": file_reader(lambda handle: next(handle)),
+                    "os.read": descriptor_reader(
+                        lambda descriptor_value: os.read(descriptor_value, 1)
+                    ),
+                    "mmap": descriptor_reader(mmap_read),
+                    "shutil.copyfile": lambda: shutil.copyfile(
+                        guarded_path, mutation_copy
+                    ),
+                    "shutil.copy": lambda: shutil.copy(
+                        guarded_path, mutation_copy
+                    ),
+                    "shutil.copy2": lambda: shutil.copy2(
+                        guarded_path, mutation_copy
+                    ),
+                    "shutil.copyfileobj": copyfileobj_read,
+                }
+                if hasattr(os, "pread"):
+                    mutation_readers["os.pread"] = descriptor_reader(
+                        lambda descriptor_value: os.pread(
+                            descriptor_value, 1, 0
+                        )
+                    )
+                if hasattr(os, "readv"):
+                    mutation_readers["os.readv"] = descriptor_reader(
+                        lambda descriptor_value: os.readv(
+                            descriptor_value, [bytearray(1)]
+                        )
+                    )
+                if hasattr(os, "preadv"):
+                    mutation_readers["os.preadv"] = descriptor_reader(
+                        lambda descriptor_value: os.preadv(
+                            descriptor_value, [bytearray(1)], 0
+                        )
+                    )
+                if hasattr(os, "sendfile"):
+                    def sendfile_read(
+                        source_descriptor, destination_descriptor
+                    ):
+                        return os.sendfile(
+                            destination_descriptor,
+                            source_descriptor,
+                            0,
+                            1,
+                        )
+
+                    mutation_readers["os.sendfile"] = transfer_reader(
+                        sendfile_read
+                    )
+                if hasattr(os, "copy_file_range"):
+                    def copy_file_range_read(
+                        source_descriptor, destination_descriptor
+                    ):
+                        return os.copy_file_range(
+                            source_descriptor,
+                            destination_descriptor,
+                            1,
+                        )
+
+                    mutation_readers["os.copy_file_range"] = transfer_reader(
+                        copy_file_range_read
+                    )
+                for mutation_name, reader in mutation_readers.items():
                     read_attempted["value"] = False
                     mutation_caught = False
                     try:
@@ -4680,7 +4965,7 @@ def exercise_size_preflight(
                     except WholeReadAttempt:
                         mutation_caught = True
                     finally:
-                        mutation_hits.append(
+                        mutation_results[mutation_name] = (
                             mutation_caught and read_attempted["value"]
                         )
                         mutation_copy.unlink(missing_ok=True)
@@ -4701,7 +4986,7 @@ def exercise_size_preflight(
                     pass
                 payload = {
                     "descriptor_only_passed": descriptor_only_passed,
-                    "mutation_hits": mutation_hits,
+                    "mutation_results": mutation_results,
                     "production_read_attempted": read_attempted["value"],
                     "returncode": returncode,
                     "stdout": stdout.getvalue(),
@@ -4750,11 +5035,40 @@ def exercise_size_preflight(
 
     check(
         payload["descriptor_only_passed"],
-        f"{label}: safe O_NOFOLLOW/O_NONBLOCK open+fstat+close was rejected",
+        f"{label}: safe O_NOFOLLOW/O_NONBLOCK open+fstat+close/read(0) "
+        "was rejected",
+    )
+    expected_mutations = {
+        "path.read_bytes",
+        "file.read",
+        "builtins.read",
+        "file.readinto",
+        "file.readline",
+        "file.iteration",
+        "os.read",
+        "mmap",
+        "shutil.copyfile",
+        "shutil.copy",
+        "shutil.copy2",
+        "shutil.copyfileobj",
+    }
+    for capability in (
+        "pread", "readv", "preadv", "sendfile", "copy_file_range"
+    ):
+        if hasattr(os, capability):
+            expected_mutations.add(f"os.{capability}")
+    mutation_results = payload["mutation_results"]
+    check(
+        set(mutation_results) == expected_mutations,
+        f"{label}: reader oracle capability matrix differs: "
+        f"actual={sorted(mutation_results)} expected={sorted(expected_mutations)}",
+    )
+    missed_mutations = sorted(
+        name for name, detected in mutation_results.items() if not detected
     )
     check(
-        payload["mutation_hits"] == [True, True, True],
-        f"{label}: reader oracle missed Path/os.read/shutil copy mutations",
+        not missed_mutations,
+        f"{label}: reader oracle missed stdlib mutations: {missed_mutations}",
     )
     check(
         not payload["production_read_attempted"],
