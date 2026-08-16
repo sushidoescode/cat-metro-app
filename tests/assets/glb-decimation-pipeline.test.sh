@@ -10,8 +10,8 @@ fake_blender="$repo/tests/assets/fake_blender.py"
 expected_driver=$(cd "$(dirname "$decimate_script")" && pwd -P)/blender_decimate.py
 review_section=${GLB_DECIMATION_REVIEW_SECTION:-all}
 case "$review_section" in
-  all|A|B|C|D|E|F|G|H|I|J|K) ;;
-  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all or A through K"
+  all|A|B|C|D|E|F|G|H|I|J|K|L) ;;
+  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all or A through L"
      printf 'glb-decimation pipeline test: %s\n' "$die_message" >&2
      exit 2 ;;
 esac
@@ -5436,6 +5436,588 @@ fi
 
 if [ "$review_section" = K ]; then
   printf 'glb-decimation review K: pass\n'
+  exit 0
+fi
+
+# Review hardening L: acceptance is a byte-bound custody decision, not a
+# validation of one pathname followed by publication of whatever later occupies
+# it. Bind the validated candidate/provenance hashes through promotion, check
+# the immutable original pair before any final name or success record appears,
+# enforce the derivative cap at the inspector boundary, redact an entire signed
+# URI rather than keyword fragments, and reserve the public `lost UV` category
+# for the exact material-referenced missing-TEXCOORD diagnostic. Every injected
+# race runs in its own bounded process and private temporary subtree.
+if [ "$review_section" = all ] || [ "$review_section" = L ]; then
+  PYTHONDONTWRITEBYTECODE=1 python3 - \
+    "$decimate_script" "$tmp/review-acceptance-binding" "$repo" \
+    "$fake_blender" <<'PY'
+import contextlib
+import hashlib
+import importlib.util
+import io
+import json
+import multiprocessing
+import os
+import queue as queue_module
+import signal
+import sys
+import traceback
+import types
+from pathlib import Path
+from unittest import mock
+
+
+script = Path(sys.argv[1])
+root = Path(sys.argv[2])
+repo = Path(sys.argv[3])
+fake_blender = Path(sys.argv[4])
+root.mkdir()
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(repo / "tests" / "assets"))
+from fake_blender import _pad_glb_to_size  # noqa: E402
+from glb_fixture import write_glb  # noqa: E402
+
+spec = importlib.util.spec_from_file_location(
+    "decimate_assets_acceptance_binding_test", script
+)
+assert spec is not None and spec.loader is not None
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+
+process_context = multiprocessing.get_context("fork")
+errors: list[str] = []
+
+
+def digest_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def digest_file(path: Path) -> str:
+    return digest_bytes(path.read_bytes())
+
+
+def setup_case(label: str, *, force: bool = False) -> types.SimpleNamespace:
+    case_root = root / label
+    case_root.mkdir()
+    input_dir = case_root / "input"
+    output_dir = case_root / "output"
+    input_dir.mkdir()
+    output_dir.mkdir()
+
+    source = input_dir / "candidate.glb"
+    source_sidecar = input_dir / "candidate.glb.json"
+    write_glb(source, triangles=30_000)
+    source_record = {
+        "service": "meshy",
+        "task_id": "fixture-task",
+        "timestamp_utc": "2026-08-15T12:34:56Z",
+        "plan_tier": "paid",
+        "prompt": "acceptance binding fixture",
+        "note": "local fixture",
+        "sha256": digest_file(source),
+    }
+    source_sidecar.write_text(
+        json.dumps(source_record, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    manifest = case_root / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "assets": [
+                    {
+                        "id": "binding-fixture",
+                        "kind": "cat",
+                        "service": "meshy",
+                        "out": "candidate.glb",
+                        "prompt": "acceptance binding fixture",
+                    }
+                ]
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    final_glb = output_dir / "candidate.glb"
+    final_json = output_dir / "candidate.glb.json"
+    old_pair = None
+    if force:
+        write_glb(final_glb, triangles=14_000)
+        final_json.write_text(
+            json.dumps({"generation": "frozen-old-pair"}, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        old_pair = (final_glb.read_bytes(), final_json.read_bytes())
+
+    fake_log = case_root / "fake.log"
+    fake_audit = case_root / "fake.audit"
+    arguments = [
+        "--manifest",
+        str(manifest),
+        "--input-dir",
+        str(input_dir),
+        "--output-dir",
+        str(output_dir),
+        "--blender",
+        str(fake_blender),
+    ]
+    if force:
+        arguments.append("--force")
+    return types.SimpleNamespace(
+        root=case_root,
+        input=input_dir,
+        output=output_dir,
+        source=source,
+        source_sidecar=source_sidecar,
+        source_bytes=source.read_bytes(),
+        sidecar_bytes=source_sidecar.read_bytes(),
+        final_glb=final_glb,
+        final_json=final_json,
+        old_pair=old_pair,
+        force=force,
+        fake_log=fake_log,
+        fake_audit=fake_audit,
+        arguments=arguments,
+    )
+
+
+def run_main(case: types.SimpleNamespace) -> tuple[int, str, str]:
+    environment = {
+        "PATH": os.environ.get("PATH", os.defpath),
+        "FAKE_BLENDER_MODE": "success",
+        "FAKE_BLENDER_LOG": str(case.fake_log),
+        "FAKE_BLENDER_AUDIT": str(case.fake_audit),
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with (
+        mock.patch.dict(os.environ, environment, clear=True),
+        contextlib.redirect_stdout(stdout),
+        contextlib.redirect_stderr(stderr),
+    ):
+        result = module.main(case.arguments)
+    assert isinstance(result, int)
+    return result, stdout.getvalue(), stderr.getvalue()
+
+
+def assert_fake_reached(case: types.SimpleNamespace) -> None:
+    assert case.fake_audit.read_text(encoding="utf-8").splitlines() == [
+        "version",
+        "asset",
+    ]
+    records = [
+        json.loads(line)
+        for line in case.fake_log.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(records) == 1
+    assert records[0]["target"] == 15_000
+
+
+def assert_source_pair(
+    case: types.SimpleNamespace,
+    expected_source: bytes,
+    expected_sidecar: bytes,
+) -> None:
+    assert case.source.read_bytes() == expected_source
+    assert case.source_sidecar.read_bytes() == expected_sidecar
+
+
+def assert_one_diagnostic(stderr: str, policy_fragment: str | None = None) -> None:
+    assert stderr.startswith("glb-decimation: "), repr(stderr)
+    assert stderr.endswith("\n"), repr(stderr)
+    assert len(stderr.splitlines()) == 1, repr(stderr)
+    assert stderr[:-1].isprintable(), repr(stderr)
+    assert len(stderr.encode("utf-8")) <= 512, repr(stderr)
+    if policy_fragment is not None:
+        assert policy_fragment in stderr, repr(stderr)
+
+
+def assert_failed_terminal(
+    case: types.SimpleNamespace,
+    result: int,
+    stdout: str,
+    stderr: str,
+) -> None:
+    assert result != 0, (result, stdout, stderr)
+    assert "output_triangles=" not in stdout, stdout
+    assert_one_diagnostic(stderr)
+    if case.force:
+        assert case.old_pair is not None
+        assert case.final_glb.read_bytes() == case.old_pair[0]
+        assert case.final_json.read_bytes() == case.old_pair[1]
+        assert set(path.name for path in case.output.iterdir()) == {
+            case.final_glb.name,
+            case.final_json.name,
+        }
+    else:
+        assert not case.final_glb.exists()
+        assert not case.final_json.exists()
+        assert list(case.output.iterdir()) == []
+
+
+def control_case(label: str, force: bool) -> None:
+    case = setup_case(label, force=force)
+    result, stdout, stderr = run_main(case)
+    assert result == 0, (stdout, stderr)
+    assert_fake_reached(case)
+    assert_source_pair(case, case.source_bytes, case.sidecar_bytes)
+    assert stderr == ""
+    assert stdout.count("output_triangles=") == 1
+    assert case.final_glb.read_bytes()[:4] == b"glTF"
+    record = json.loads(case.final_json.read_text(encoding="utf-8"))
+    assert record["derivative"]["sha256"] == digest_file(case.final_glb)
+    assert set(path.name for path in case.output.iterdir()) == {
+        case.final_glb.name,
+        case.final_json.name,
+    }
+
+
+def staged_mutation_case(label: str, member: str, force: bool) -> None:
+    case = setup_case(label, force=force)
+    real_promote = module.promote_pair
+    mutation_reached = False
+    sensitive_value = "staged-sensitive-value"
+
+    def mutate_then_promote(*args, **kwargs):
+        nonlocal mutation_reached
+        mutation_reached = True
+        staged_glb = Path(args[0])
+        staged_json = Path(args[1])
+        if member == "glb":
+            staged_glb.write_bytes(b"not a GLB")
+        else:
+            record = json.loads(staged_json.read_text(encoding="utf-8"))
+            record["source"]["provenance"]["task_id"] = "forged-lineage"
+            record["tool"]["name"] = "forged-tool"
+            record["forbidden_" + "secret"] = sensitive_value
+            staged_json.write_text(
+                json.dumps(record, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        return real_promote(*args, **kwargs)
+
+    with mock.patch.object(module, "promote_pair", mutate_then_promote):
+        result, stdout, stderr = run_main(case)
+    assert mutation_reached
+    assert_fake_reached(case)
+    assert_source_pair(case, case.source_bytes, case.sidecar_bytes)
+    assert sensitive_value not in stdout + stderr
+    assert_failed_terminal(case, result, stdout, stderr)
+    for path in case.output.iterdir():
+        if path.is_file():
+            assert sensitive_value.encode("utf-8") not in path.read_bytes()
+
+
+def original_mutation_case(label: str, member: str, force: bool) -> None:
+    case = setup_case(label, force=force)
+    real_write = module.write_staged_provenance
+    mutation_reached = False
+    attacked_source = case.source_bytes
+    attacked_sidecar = case.sidecar_bytes
+
+    def write_then_mutate(path, record):
+        nonlocal mutation_reached, attacked_source, attacked_sidecar
+        real_write(path, record)
+        mutation_reached = True
+        if member == "source":
+            attacked_source = case.source_bytes + b"\0\0\0\0"
+            case.source.write_bytes(attacked_source)
+        else:
+            changed = json.loads(case.sidecar_bytes)
+            changed["note"] = "changed after validation"
+            case.source_sidecar.write_text(
+                json.dumps(changed, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            attacked_sidecar = case.source_sidecar.read_bytes()
+
+    with mock.patch.object(module, "write_staged_provenance", write_then_mutate):
+        result, stdout, stderr = run_main(case)
+    assert mutation_reached
+    assert_fake_reached(case)
+    # The pipeline detects but never repairs or otherwise rewrites an input that
+    # another actor permanently changed.
+    assert_source_pair(case, attacked_source, attacked_sidecar)
+    assert_failed_terminal(case, result, stdout, stderr)
+
+
+def diagnostic_control_case() -> None:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with (
+        mock.patch.object(
+            module,
+            "_run",
+            side_effect=module.DecimationError("external URI rejected by policy"),
+        ),
+        contextlib.redirect_stdout(stdout),
+        contextlib.redirect_stderr(stderr),
+    ):
+        result = module.main([])
+    assert result != 0
+    assert stdout.getvalue() == ""
+    assert_one_diagnostic(stderr.getvalue(), "external URI rejected by policy")
+
+
+def signed_uri_diagnostic_case() -> None:
+    scheme = "https"
+    user_value = "redact-user-value"
+    password_value = "redact-password-value"
+    host_value = "private-host.example.invalid"
+    path_value = "signed-path-value"
+    credential_value = "redact-credential-value"
+    signature_value = "redact-signature-value"
+    token_value = "redact-token-value"
+    fragment_value = "redact-fragment-value"
+    signed_uri = (
+        f"{scheme}://{user_value}:{password_value}@{host_value}/{path_value}"
+        f"?X-Amz-Credential={credential_value}"
+        f"&X-Amz-Signature={signature_value}"
+        f"&token={token_value}#{fragment_value}"
+    )
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with (
+        mock.patch.object(
+            module,
+            "_run",
+            side_effect=module.DecimationError(
+                f"external URI rejected by policy: {signed_uri}"
+            ),
+        ),
+        contextlib.redirect_stdout(stdout),
+        contextlib.redirect_stderr(stderr),
+    ):
+        result = module.main([])
+    diagnostic = stderr.getvalue()
+    assert result != 0
+    assert stdout.getvalue() == ""
+    assert_one_diagnostic(diagnostic, "external URI rejected by policy")
+    folded_diagnostic = diagnostic.casefold()
+    for forbidden in (
+        scheme,
+        user_value,
+        password_value,
+        host_value,
+        path_value,
+        "X-Amz-Credential",
+        credential_value,
+        "X-Amz-Signature",
+        signature_value,
+        "token=",
+        token_value,
+        fragment_value,
+    ):
+        assert forbidden.casefold() not in folded_diagnostic, (forbidden, diagnostic)
+
+
+class ObservedReader:
+    def __init__(self, handle, reads: list[int]) -> None:
+        self.handle = handle
+        self.reads = reads
+
+    def __enter__(self):
+        self.handle.__enter__()
+        return self
+
+    def __exit__(self, *args):
+        return self.handle.__exit__(*args)
+
+    def read(self, *args, **kwargs):
+        payload = self.handle.read(*args, **kwargs)
+        self.reads.append(len(payload))
+        return payload
+
+    def __getattr__(self, name):
+        return getattr(self.handle, name)
+
+
+def candidate_cap_race_case() -> None:
+    case = setup_case("candidate-cap-race")
+    real_verified_hash = module._verified_hash
+    real_fdopen = os.fdopen
+    target_identity: tuple[int, int] | None = None
+    observed_inspector_reads: list[int] = []
+    mutation_count = 0
+
+    def grow_after_preflight(path, label, maximum_bytes, *args, **kwargs):
+        nonlocal target_identity, mutation_count
+        result = real_verified_hash(path, label, maximum_bytes, *args, **kwargs)
+        if label == "derivative GLB" and mutation_count == 0:
+            mutation_count += 1
+            _pad_glb_to_size(
+                Path(path), module.MAX_DERIVATIVE_GLB_BYTES + 4
+            )
+            status = os.lstat(path)
+            target_identity = (status.st_dev, status.st_ino)
+        return result
+
+    def observing_fdopen(descriptor, *args, **kwargs):
+        handle = real_fdopen(descriptor, *args, **kwargs)
+        status = os.fstat(handle.fileno())
+        if target_identity == (status.st_dev, status.st_ino):
+            return ObservedReader(handle, observed_inspector_reads)
+        return handle
+
+    with (
+        mock.patch.object(module, "_verified_hash", grow_after_preflight),
+        mock.patch.object(os, "fdopen", observing_fdopen),
+    ):
+        result, stdout, stderr = run_main(case)
+    assert mutation_count == 1
+    assert_fake_reached(case)
+    assert_source_pair(case, case.source_bytes, case.sidecar_bytes)
+    assert_failed_terminal(case, result, stdout, stderr)
+    assert max(observed_inspector_reads, default=0) <= module.MAX_DERIVATIVE_GLB_BYTES, (
+        observed_inspector_reads,
+        module.MAX_DERIVATIVE_GLB_BYTES,
+    )
+
+
+def error_classification_case(label: str, precise: bool) -> None:
+    case = setup_case(label)
+    real_inspect = module.inspect_glb
+    injected = False
+
+    def fail_derivative(path):
+        nonlocal injected
+        candidate = Path(path)
+        if candidate.parent.name.startswith("asset-"):
+            injected = True
+            if precise:
+                raise module.GlbError(
+                    "meshes[0].primitives[0] material references missing TEXCOORD_0"
+                )
+            raise module.GlbError(
+                "integrity category mismatch; material references missing "
+                "TEXCOORD_0 appeared only in unrelated context"
+            )
+        return real_inspect(path)
+
+    with mock.patch.object(module, "inspect_glb", fail_derivative):
+        result, stdout, stderr = run_main(case)
+    assert injected
+    assert_fake_reached(case)
+    assert_source_pair(case, case.source_bytes, case.sidecar_bytes)
+    assert_failed_terminal(case, result, stdout, stderr)
+    if precise:
+        assert "lost UV" in stderr, stderr
+    else:
+        assert "integrity category mismatch" in stderr, stderr
+        assert "lost UV" not in stderr, stderr
+
+
+def child_entry(result_queue, function, arguments) -> None:
+    try:
+        try:
+            os.setsid()
+        except OSError:
+            pass
+        function(*arguments)
+    except BaseException:
+        result_queue.put(("error", traceback.format_exc()))
+    else:
+        result_queue.put(("ok", ""))
+
+
+def terminate_process_tree(process) -> None:
+    if not process.is_alive():
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        process.terminate()
+    process.join(2)
+    if process.is_alive():
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            process.kill()
+        process.join(2)
+
+
+def run_bounded(label: str, function, *arguments) -> None:
+    result_queue = process_context.Queue()
+    process = process_context.Process(
+        target=child_entry,
+        args=(result_queue, function, arguments),
+        name=f"glb-review-l-{label}",
+    )
+    process.start()
+    process.join(15)
+    if process.is_alive():
+        terminate_process_tree(process)
+        errors.append(f"{label}: bounded probe hung")
+    else:
+        try:
+            state, detail = result_queue.get(timeout=1)
+        except queue_module.Empty:
+            errors.append(f"{label}: child exited {process.exitcode} without a result")
+        else:
+            if state != "ok":
+                errors.append(f"{label}:\n{detail}")
+        if process.exitcode not in (0, None):
+            errors.append(f"{label}: child exit was {process.exitcode}")
+    result_queue.close()
+    result_queue.join_thread()
+    process.close()
+
+
+# Positive controls ensure the real fake-Blender/promotion path is live in both
+# absent-destination and force modes before any fault is injected.
+run_bounded("control-absent", control_case, "control-absent", False)
+run_bounded("control-force", control_case, "control-force", True)
+
+for force in (False, True):
+    mode = "force" if force else "absent"
+    for member in ("glb", "json"):
+        run_bounded(
+            f"staged-{member}-{mode}",
+            staged_mutation_case,
+            f"staged-{member}-{mode}",
+            member,
+            force,
+        )
+    for member in ("source", "sidecar"):
+        run_bounded(
+            f"original-{member}-{mode}",
+            original_mutation_case,
+            f"original-{member}-{mode}",
+            member,
+            force,
+        )
+
+run_bounded("diagnostic-control", diagnostic_control_case)
+run_bounded("signed-uri-redaction", signed_uri_diagnostic_case)
+run_bounded("candidate-cap-race", candidate_cap_race_case)
+run_bounded(
+    "exact-lost-uv-control",
+    error_classification_case,
+    "exact-lost-uv-control",
+    True,
+)
+run_bounded(
+    "unrelated-error-classification",
+    error_classification_case,
+    "unrelated-error-classification",
+    False,
+)
+
+if errors:
+    raise AssertionError(
+        "acceptance/publish hardening regressions:\n- " + "\n- ".join(errors)
+    )
+PY
+  assert_no_external_effects
+fi
+
+if [ "$review_section" = L ]; then
+  printf 'glb-decimation review L: pass\n'
   exit 0
 fi
 
