@@ -533,7 +533,10 @@ Use these locally verified importer controls:
 > `_validated_decimation_ratio(inspected, audited, effective, target)` returns
 > `target / effective`. This supersedes Task 6's original single-import,
 > raw-denominator mechanics; the category bands and post-export authority are
-> unchanged.
+> unchanged. The current driver also emits a flushed, count-only triangle-audit
+> operator diagnostic after the ratio guards pass; that line is non-contractual
+> and non-authoritative, and post-export inspection remains the acceptance
+> authority.
 
 ```python
 result = bpy.ops.import_scene.gltf(

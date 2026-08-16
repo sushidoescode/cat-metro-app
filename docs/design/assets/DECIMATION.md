@@ -509,14 +509,16 @@ Blender and one acceptance line after promotion. Validated IDs cannot add a
 line or control character. Counts are decimal integers without grouping:
 
 ```text
-glb-decimation: asset=cat-conductor category=cat target=15000 source_triangles=42000
-blender-decimate: triangle-audit inspected=42000 audited=42000 effective=41998 delta=-2
-glb-decimation: asset=cat-conductor output_triangles=15000 output_vertices=9000
+glb-decimation: asset=cat-red-tabby-sitting category=cat target=15000 source_triangles=1428306
+blender-decimate: triangle-audit inspected=1428306 audited=1428306 effective=1428304 delta=-2
+glb-decimation: asset=cat-red-tabby-sitting output_triangles=15000 output_vertices=9460
 ```
 
-The flushed count-only audit line is emitted after all ratio guards pass;
-`delta` is `effective - inspected`, so an import-time duplicate-face cleanup is
-negative. It contains no path or source metadata.
+The flushed count-only audit line is an optional, non-authoritative operator
+diagnostic emitted after all ratio guards pass; it is not an acceptance record
+or required per-asset evidence. `delta` is `effective - inspected`, so an
+import-time duplicate-face cleanup is negative. The diagnostic contains no
+path or source metadata.
 
 Blender's per-asset standard output/error is inherited. Python stdout
 buffering—especially under the combined `>file 2>&1` capture above—and Blender
@@ -577,12 +579,14 @@ Complete every item; code-green and exit 0 are necessary but not sufficient.
   newer release, modified bundle, alternate exporter, or compression add-on.
 - [ ] Run the explicit command above in an offline, no-key session. Confirm no
   GUI opens, save the complete output, and require `real_rc == 0`.
-- [ ] Account for one start-format, one count-only triangle-audit record, and
-  one acceptance-format record per successful manifest entry. Require
+- [ ] Account for one start-format and one acceptance-format record per
+  successful manifest entry, but do not require their physical ordering
+  relative to Blender output in a combined capture. If a count-only
+  triangle-audit diagnostic is present, optionally sanity-check
   `inspected == audited`, `target < effective <= inspected`, and
-  `delta == effective - inspected`, but do not require physical ordering
-  relative to other Blender output in a combined capture. Do not count Blender
-  chatter as acceptance or use transcript order as the success authority.
+  `delta == effective - inspected`; do not require diagnostic cardinality,
+  count Blender chatter as acceptance, or use transcript order as the success
+  authority.
 - [ ] Confirm the output root contains exactly 15 GLBs and their 15 JSON
   sidecars, with no `.glb-decimation-*`, `.*.backup-*`, split pair, symlink,
   external file, or unexplained residue.
