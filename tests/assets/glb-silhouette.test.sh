@@ -324,6 +324,36 @@ def invoke(
         return None
 
 
+def open_targets_path(
+    path: object,
+    keywords: dict[str, object],
+    expected: Path,
+) -> bool:
+    """Recognize absolute or parent-dirfd opens of one controlled source."""
+    try:
+        raw_path = os.fsdecode(os.fspath(path))
+    except TypeError:
+        return False
+    directory_descriptor = keywords.get("dir_fd")
+    if directory_descriptor is None or os.path.isabs(raw_path):
+        return os.path.abspath(raw_path) == str(expected)
+    if (
+        isinstance(directory_descriptor, bool)
+        or not isinstance(directory_descriptor, int)
+        or raw_path != expected.name
+    ):
+        return False
+    try:
+        opened_parent = os.fstat(directory_descriptor)
+        expected_parent = expected.parent.stat()
+    except OSError:
+        return False
+    return (
+        opened_parent.st_dev == expected_parent.st_dev
+        and opened_parent.st_ino == expected_parent.st_ino
+    )
+
+
 def invoke_with_rss_limit(
     program: Path,
     source: Path,
@@ -663,6 +693,26 @@ def build_shared_primitive_scene(
     write_glb(output, document, binary)
 
 
+def build_shared_node_scene(
+    source: Path,
+    output: Path,
+    node_count: int,
+) -> None:
+    """Instance one real mesh primitive from many selected scene nodes."""
+    document, binary = parse_glb(source)
+    meshes = document["meshes"]
+    assert isinstance(meshes, list) and len(meshes) == 1
+    mesh = meshes[0]
+    assert isinstance(mesh, dict)
+    primitives = mesh["primitives"]
+    assert isinstance(primitives, list) and len(primitives) == 1
+    nodes = [{"mesh": 0} for _ in range(node_count)]
+    document["nodes"] = nodes
+    document["scenes"] = [{"nodes": list(range(node_count))}]
+    document["scene"] = 0
+    write_glb(output, document, binary)
+
+
 def shared_scene_work(path: Path) -> tuple[int, int, int]:
     """Independently measure the single-node shared-accessor test shape."""
     document, _ = parse_glb(path)
@@ -692,6 +742,41 @@ def shared_scene_work(path: Path) -> tuple[int, int, int]:
         assert isinstance(count, int)
         selected_references += count
     return len(primitives), len(index_accessors), selected_references
+
+
+def instanced_scene_work(path: Path) -> tuple[int, int, int, int]:
+    """Measure mesh-definition and selected-instance work independently."""
+    document, _ = parse_glb(path)
+    meshes = document["meshes"]
+    nodes = document["nodes"]
+    scenes = document["scenes"]
+    assert isinstance(meshes, list) and len(meshes) == 1
+    assert isinstance(nodes, list)
+    assert isinstance(scenes, list) and len(scenes) == 1
+    mesh = meshes[0]
+    scene = scenes[0]
+    assert isinstance(mesh, dict) and isinstance(scene, dict)
+    primitives = mesh["primitives"]
+    roots = scene["nodes"]
+    assert isinstance(primitives, list) and len(primitives) == 1
+    assert isinstance(roots, list) and roots == list(range(len(nodes)))
+    item = primitives[0]
+    assert isinstance(item, dict) and item.get("mode") == 4
+    index_number = item.get("indices")
+    assert isinstance(index_number, int)
+    index_accessor, _ = accessor_and_view(document, index_number)
+    index_count = index_accessor.get("count")
+    assert isinstance(index_count, int)
+    for node in nodes:
+        assert isinstance(node, dict) and node.get("mesh") == 0
+    mesh_definition_references = index_count * len(primitives)
+    selected_references = mesh_definition_references * len(nodes)
+    return (
+        len(nodes),
+        len(primitives),
+        mesh_definition_references,
+        selected_references,
+    )
 
 
 def reported_vertices(stdout: str) -> int | None:
@@ -1323,6 +1408,71 @@ check(
     "topology budget rejection left staging residue",
 )
 
+# Mutation caught: counting each mesh definition only once misses scene-node
+# instancing.  This fixture has one mesh/primitive and one 3,000-index accessor,
+# which looks safely below the cap at the mesh-definition layer, but 3,000
+# selected nodes make the actual selected-scene work 9,000,000 references.
+instanced_topology_case = root / "instanced-topology-budget"
+instanced_topology_case.mkdir()
+instanced_topology_source = instanced_topology_case / "shared-mesh-nodes.glb"
+instanced_topology_output = instanced_topology_case / "shared-mesh-nodes.png"
+build_shared_node_scene(
+    shared_topology_template,
+    instanced_topology_source,
+    node_count=3_000,
+)
+(
+    selected_node_total,
+    mesh_primitive_total,
+    mesh_definition_references,
+    instanced_selected_references,
+) = instanced_scene_work(instanced_topology_source)
+check(
+    selected_node_total == 3_000
+    and mesh_primitive_total == 1
+    and mesh_definition_references == 3_000
+    and mesh_definition_references < maximum_selected_index_references
+    and instanced_selected_references == 9_000_000
+    and instanced_selected_references > maximum_selected_index_references,
+    "instanced topology: fixture does not discriminate mesh-only counting",
+)
+instanced_topology_started = time.monotonic()
+instanced_topology_result = invoke(
+    instanced_topology_source,
+    instanced_topology_output,
+    "25",
+    "--size", "64",
+    "--splat-radius", "1",
+    "--min-coverage", "0",
+    timeout=1.5,
+)
+instanced_topology_elapsed = time.monotonic() - instanced_topology_started
+check_prefixed_failure(
+    instanced_topology_result,
+    "instanced selected-scene topology",
+)
+if instanced_topology_result is not None:
+    instanced_topology_diagnostic = instanced_topology_result.stderr.lower()
+    check(
+        "8000000" in instanced_topology_diagnostic
+        and "index" in instanced_topology_diagnostic
+        and "reference" in instanced_topology_diagnostic,
+        "instanced topology: diagnostic does not identify the fixed cap",
+    )
+check(
+    instanced_topology_elapsed < 2.0,
+    "instanced topology: rejection occurred after expanded scene traversal",
+)
+check(
+    not instanced_topology_output.exists(),
+    "instanced topology left an evidence PNG",
+)
+check(
+    {path.name for path in instanced_topology_case.iterdir()}
+    == {"shared-mesh-nodes.glb"},
+    "instanced topology rejection left staging residue",
+)
+
 
 # Independent-review follow-up: the source itself is immutable evidence input.
 # It must be a regular, single-link, non-symlink file, and the bytes opened
@@ -1405,11 +1555,10 @@ def swap_before_open(
     **keywords: object,
 ) -> int:
     global swap_performed
-    try:
-        candidate = os.path.abspath(os.fsdecode(os.fspath(path)))
-    except TypeError:
-        candidate = ""
-    if not swap_performed and candidate == str(swap_source):
+    if (
+        not swap_performed
+        and open_targets_path(path, keywords, swap_source)
+    ):
         swap_original_replace(swap_source, swap_held_original)
         swap_original_replace(swap_replacement, swap_source)
         swap_performed = True
@@ -1448,6 +1597,175 @@ check(
     {path.name for path in swap_case.iterdir()}
     == {"held-original.glb", "source.glb"},
     "source swap rejection left staging residue",
+)
+
+# Mutation caught: a superficially correct lstat/O_NOFOLLOW/fstat preflight
+# that closes its descriptor and later reopens the pathname.  The hook swaps
+# only on the second source-path os.open.  A renderer may reject that mutation
+# or render from the first validated snapshot; it may never render the
+# replacement bytes.  Distinct control renders and a forced post-render second
+# open prove both the visual oracle and the mutation injector.
+reopen_original_control = root / "reopen-original-control.png"
+reopen_replacement_control = root / "reopen-replacement-control.png"
+reopen_original_control_result = invoke(
+    source_template,
+    reopen_original_control,
+    "25",
+    "--size", "64",
+    "--splat-radius", "1",
+    "--min-coverage", "0",
+)
+reopen_replacement_control_result = invoke(
+    target_template,
+    reopen_replacement_control,
+    "25",
+    "--size", "64",
+    "--splat-radius", "1",
+    "--min-coverage", "0",
+)
+check(
+    reopen_original_control_result is not None
+    and reopen_original_control_result.returncode == 0
+    and reopen_replacement_control_result is not None
+    and reopen_replacement_control_result.returncode == 0,
+    "second-open controls did not both render",
+)
+reopen_original_control_bytes = (
+    reopen_original_control.read_bytes()
+    if reopen_original_control.exists()
+    else b""
+)
+reopen_replacement_control_bytes = (
+    reopen_replacement_control.read_bytes()
+    if reopen_replacement_control.exists()
+    else b""
+)
+check(
+    bool(reopen_original_control_bytes)
+    and bool(reopen_replacement_control_bytes)
+    and reopen_original_control_bytes != reopen_replacement_control_bytes
+    and reopen_original_control_result is not None
+    and reopen_replacement_control_result is not None
+    and reported_vertices(reopen_original_control_result.stdout)
+    != reported_vertices(reopen_replacement_control_result.stdout),
+    "second-open controls do not distinguish original and replacement",
+)
+
+reopen_case = source_custody / "second-open-swap"
+reopen_case.mkdir()
+reopen_source = reopen_case / "source.glb"
+reopen_replacement = reopen_case / "replacement.glb"
+reopen_held_original = reopen_case / "held-original.glb"
+reopen_output = reopen_case / "output.png"
+shutil.copyfile(source_template, reopen_source)
+shutil.copyfile(target_template, reopen_replacement)
+reopen_original_bytes = reopen_source.read_bytes()
+reopen_replacement_bytes = reopen_replacement.read_bytes()
+check(
+    reopen_original_bytes != reopen_replacement_bytes,
+    "second-open swap fixtures are not byte-distinct",
+)
+
+reopen_module_name = "catmetro_glb_silhouette_second_open_probe"
+reopen_spec = importlib.util.spec_from_file_location(reopen_module_name, script)
+assert reopen_spec is not None and reopen_spec.loader is not None
+reopen_module = importlib.util.module_from_spec(reopen_spec)
+reopen_original_open = os.open
+reopen_original_replace = os.replace
+reopen_open_count = 0
+reopen_swap_performed = False
+reopen_error: BaseException | None = None
+reopen_render_result: tuple[int, int, float] | None = None
+
+
+def swap_on_second_open(
+    path: object,
+    flags: int,
+    *arguments: object,
+    **keywords: object,
+) -> int:
+    global reopen_open_count, reopen_swap_performed
+    if open_targets_path(path, keywords, reopen_source):
+        reopen_open_count += 1
+        if reopen_open_count == 2:
+            reopen_original_replace(reopen_source, reopen_held_original)
+            reopen_original_replace(reopen_replacement, reopen_source)
+            reopen_swap_performed = True
+    return reopen_original_open(path, flags, *arguments, **keywords)
+
+
+sys.path.insert(0, scripts_directory)
+try:
+    reopen_spec.loader.exec_module(reopen_module)
+    os.open = swap_on_second_open
+    try:
+        reopen_render_result = reopen_module.render(
+            reopen_source,
+            reopen_output,
+            25.0,
+            size=64,
+            splat_radius=1,
+            minimum_coverage=0.0,
+        )
+    except BaseException as exc:
+        reopen_error = exc
+    reopen_render_open_count = reopen_open_count
+
+    # A correct one-open snapshot does not naturally reach the injected swap.
+    # Complete the second-open mutation after rendering so the setup oracle
+    # proves that exactly the next pathname open selects replacement bytes.
+    mutation_probe_payload = b""
+    while reopen_open_count < 2:
+        probe_descriptor = os.open(reopen_source, os.O_RDONLY)
+        try:
+            chunks: list[bytes] = []
+            while True:
+                chunk = os.read(probe_descriptor, 64 * 1024)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            mutation_probe_payload = b"".join(chunks)
+        finally:
+            os.close(probe_descriptor)
+finally:
+    os.open = reopen_original_open
+    sys.path.remove(scripts_directory)
+    sys.modules.pop(reopen_module_name, None)
+
+check(
+    reopen_render_open_count >= 1,
+    "second-open policy did not consume a no-follow source descriptor",
+)
+check(reopen_swap_performed, "second-open pathname swap was not injected")
+check(
+    reopen_held_original.read_bytes() == reopen_original_bytes
+    and reopen_source.read_bytes() == reopen_replacement_bytes,
+    "second-open swap changed either captured source payload",
+)
+if mutation_probe_payload:
+    check(
+        mutation_probe_payload == reopen_replacement_bytes,
+        "second-open mutation probe did not read replacement bytes",
+    )
+if reopen_error is not None:
+    check(not reopen_output.exists(), "rejected second-open swap left a PNG")
+else:
+    check(
+        reopen_render_result is not None
+        and reopen_render_result[0]
+        == reported_vertices(reopen_original_control_result.stdout)
+        and reopen_output.exists()
+        and reopen_output.read_bytes() == reopen_original_control_bytes
+        and reopen_output.read_bytes() != reopen_replacement_control_bytes,
+        "second-open swap rendered replacement bytes instead of first snapshot",
+    )
+check(
+    {path.name for path in reopen_case.iterdir()}
+    in (
+        {"held-original.glb", "source.glb"},
+        {"held-original.glb", "source.glb", "output.png"},
+    ),
+    "second-open swap left staging residue",
 )
 
 
