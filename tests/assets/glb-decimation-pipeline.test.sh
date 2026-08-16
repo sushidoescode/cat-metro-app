@@ -845,11 +845,246 @@ def check_parent(condition, message):
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
-def backup_files(directory):
-    return sorted(
-        (path for path in directory.iterdir() if ".backup-" in path.name),
-        key=lambda path: path.name,
+def terminal_errors(
+    label,
+    directory,
+    staged_glb,
+    staged_json,
+    final_glb,
+    final_json,
+    old_hashes,
+    captured_backups,
+    *,
+    allow_absent_recovery,
+):
+    findings = []
+
+    def require(condition, message):
+        if not condition:
+            findings.append(message)
+
+    actual_paths = set(directory.iterdir())
+    staged_leftovers = {
+        path for path in (staged_glb, staged_json) if path.exists()
+    }
+    finals_are_old = (
+        final_glb.is_file()
+        and final_json.is_file()
+        and (digest(final_glb), digest(final_json)) == old_hashes
     )
+    finals_absent = not final_glb.exists() and not final_json.exists()
+    captured_glb = captured_backups.get("glb")
+    captured_json = captured_backups.get("json")
+    captured_paths = {
+        path for path in (captured_glb, captured_json) if path is not None
+    }
+    all_captured_paths = set(captured_backups.values())
+    extant_captured = {
+        path
+        for path in all_captured_paths
+        if path.exists() or path.is_symlink()
+    }
+
+    if finals_are_old:
+        expected_paths = staged_leftovers | {final_glb, final_json}
+        require(
+            not extant_captured,
+            f"{label}: captured backup remains after exact final restoration: "
+            f"{sorted(path.name for path in extant_captured)}",
+        )
+        require(
+            actual_paths == expected_paths,
+            f"{label}: unexpected restored-branch contents: "
+            f"{sorted(path.name for path in actual_paths - expected_paths)}",
+        )
+        return findings
+
+    if finals_absent and allow_absent_recovery:
+        protected_paths = {staged_glb, staged_json, final_glb, final_json}
+        captured_are_unique_siblings = (
+            set(captured_backups) == {"glb", "json"}
+            and captured_glb is not None
+            and captured_json is not None
+            and len(captured_paths) == 2
+            and captured_paths.isdisjoint(protected_paths)
+            and all(path.parent == directory for path in captured_paths)
+        )
+        complete_old_backups = (
+            captured_are_unique_siblings
+            and captured_glb.is_file()
+            and captured_json.is_file()
+            and digest(captured_glb) == old_hashes[0]
+            and digest(captured_json) == old_hashes[1]
+        )
+        expected_paths = staged_leftovers | captured_paths
+        require(
+            complete_old_backups,
+            f"{label}: final pair absent without exactly two captured, unique, "
+            "sibling old backup files",
+        )
+        require(
+            actual_paths == expected_paths,
+            f"{label}: unexpected recoverable-backup contents: "
+            f"{sorted(path.name for path in actual_paths - expected_paths)}",
+        )
+        return findings
+
+    if not allow_absent_recovery:
+        findings.append(f"{label}: old final pair was not restored exactly")
+    else:
+        findings.append(
+            f"{label}: split, partial, or unrecoverable terminal state; "
+            f"final_glb={final_glb.exists()} final_json={final_json.exists()}"
+        )
+    if final_glb.exists() != final_json.exists():
+        findings.append(f"{label}: exactly one final member remains")
+    return findings
+
+def new_oracle_fixture(name):
+    directory = root / f"oracle-{name}"
+    directory.mkdir()
+    staged_glb = directory / "staged.glb"
+    staged_json = directory / "staged.json"
+    final_glb = directory / "final.glb"
+    final_json = directory / "final.glb.json"
+    old_glb = f"old oracle GLB bytes for {name}".encode()
+    old_json = f"old oracle JSON bytes for {name}".encode()
+    staged_glb.write_bytes(f"staged oracle GLB bytes for {name}".encode())
+    staged_json.write_bytes(f"staged oracle JSON bytes for {name}".encode())
+    return {
+        "label": f"oracle-{name}",
+        "directory": directory,
+        "staged_glb": staged_glb,
+        "staged_json": staged_json,
+        "final_glb": final_glb,
+        "final_json": final_json,
+        "old_glb": old_glb,
+        "old_json": old_json,
+        "old_hashes": (
+            hashlib.sha256(old_glb).hexdigest(),
+            hashlib.sha256(old_json).hexdigest(),
+        ),
+    }
+
+def inspect_oracle_fixture(fixture, captured_backups):
+    return terminal_errors(
+        fixture["label"],
+        fixture["directory"],
+        fixture["staged_glb"],
+        fixture["staged_json"],
+        fixture["final_glb"],
+        fixture["final_json"],
+        fixture["old_hashes"],
+        captured_backups,
+        allow_absent_recovery=True,
+    )
+
+def prove_terminal_oracle_mutations():
+    probe_errors = []
+
+    def probe(condition, message):
+        if not condition:
+            probe_errors.append(message)
+
+    restored_copy = new_oracle_fixture("copy-restore-residue")
+    restored_copy["final_glb"].write_bytes(restored_copy["old_glb"])
+    restored_copy["final_json"].write_bytes(restored_copy["old_json"])
+    copy_captures = {
+        "glb": restored_copy["directory"] / ".old-glb",
+        "json": restored_copy["directory"] / ".old-json",
+    }
+    probe(
+        not inspect_oracle_fixture(restored_copy, copy_captures),
+        "terminal oracle rejected exact restored finals with absent captured backups",
+    )
+    copy_captures["glb"].write_bytes(restored_copy["old_glb"])
+    probe(
+        digest(copy_captures["glb"]) == restored_copy["old_hashes"][0]
+        and (
+            restored_copy["final_glb"].read_bytes(),
+            restored_copy["final_json"].read_bytes(),
+        )
+        == (restored_copy["old_glb"], restored_copy["old_json"]),
+        "copy-restore mutation precondition was not established",
+    )
+    copy_errors = inspect_oracle_fixture(restored_copy, copy_captures)
+    probe(
+        any("captured backup remains" in error for error in copy_errors),
+        "terminal oracle accepted copy restoration with captured .old-glb residue",
+    )
+    probe(
+        any("unexpected restored-branch contents" in error for error in copy_errors),
+        "copy-restore mutation did not exercise exact restored-branch membership",
+    )
+
+    restored_extra = new_oracle_fixture("restored-extra-residue")
+    restored_extra["final_glb"].write_bytes(restored_extra["old_glb"])
+    restored_extra["final_json"].write_bytes(restored_extra["old_json"])
+    restored_captures = {
+        "glb": restored_extra["directory"] / ".old-glb",
+        "json": restored_extra["directory"] / ".old-json",
+    }
+    probe(
+        not inspect_oracle_fixture(restored_extra, restored_captures),
+        "terminal oracle rejected clean exact-restored baseline",
+    )
+    (restored_extra["directory"] / "arbitrary-residue").write_text(
+        "must be rejected", encoding="utf-8"
+    )
+    restored_extra_errors = inspect_oracle_fixture(
+        restored_extra, restored_captures
+    )
+    probe(
+        any(
+            "unexpected restored-branch contents" in error
+            for error in restored_extra_errors
+        ),
+        "terminal oracle accepted arbitrary residue beside restored finals",
+    )
+
+    absent_recovery = new_oracle_fixture("renamed-backup-recovery")
+    renamed_captures = {
+        "glb": absent_recovery["directory"] / ".rollback-hold-old-glb",
+        "json": absent_recovery["directory"] / ".rollback-hold-old-json",
+    }
+    probe(
+        {path.name for path in renamed_captures.values()}
+        == {".rollback-hold-old-glb", ".rollback-hold-old-json"}
+        and not absent_recovery["final_glb"].exists()
+        and not absent_recovery["final_json"].exists(),
+        "renamed recoverable-backup precondition was not established",
+    )
+    renamed_captures["glb"].write_bytes(absent_recovery["old_glb"])
+    renamed_captures["json"].write_bytes(absent_recovery["old_json"])
+    probe(
+        (digest(renamed_captures["glb"]), digest(renamed_captures["json"]))
+        == absent_recovery["old_hashes"],
+        "renamed recoverable-backup hashes do not match the old pair",
+    )
+    renamed_errors = inspect_oracle_fixture(absent_recovery, renamed_captures)
+    probe(
+        not renamed_errors,
+        "terminal oracle rejected valid arbitrarily named recovery pair: "
+        f"{renamed_errors}",
+    )
+    (absent_recovery["directory"] / "arbitrary-residue").write_text(
+        "must be rejected", encoding="utf-8"
+    )
+    renamed_extra_errors = inspect_oracle_fixture(
+        absent_recovery, renamed_captures
+    )
+    probe(
+        any(
+            "unexpected recoverable-backup contents" in error
+            for error in renamed_extra_errors
+        ),
+        "terminal oracle accepted arbitrary residue beside recovery backups",
+    )
+    if probe_errors:
+        raise AssertionError(
+            "rollback terminal oracle self-test regressions:\n- "
+            + "\n- ".join(probe_errors)
+        )
 
 def exercise(
     name,
@@ -958,67 +1193,18 @@ def exercise(
         check(restore_attempts >= 1, f"{label}: persistent restore injection was not reached; calls={calls}")
         check(restore_failure in calls, f"{label}: restore phase absent; calls={calls}")
 
-    backups = backup_files(directory)
-    finals_are_old = (
-        final_glb.is_file()
-        and final_json.is_file()
-        and (digest(final_glb), digest(final_json)) == old_hashes
-    )
-    finals_absent = not final_glb.exists() and not final_json.exists()
-    captured_glb = captured_backups.get("glb")
-    captured_json = captured_backups.get("json")
-    complete_old_backups = (
-        len(backups) == 2
-        and captured_glb is not None
-        and captured_json is not None
-        and set(backups) == {captured_glb, captured_json}
-        and captured_glb.is_file()
-        and captured_json.is_file()
-        and digest(captured_glb) == old_hashes[0]
-        and digest(captured_json) == old_hashes[1]
-    )
-
-    if restore_failure is None:
-        check(finals_are_old, f"{label}: old final pair was not restored exactly")
-        check(not backups, f"{label}: backup residue remained after recoverable failure: {backups}")
-    else:
-        allowed_terminal = (
-            (finals_are_old and not backups)
-            or (finals_absent and complete_old_backups)
-        )
-        check(
-            allowed_terminal,
-            f"{label}: split, partial, or unrecoverable terminal state; "
-            f"final_glb={final_glb.exists()} final_json={final_json.exists()} "
-            f"backup_hashes={[digest(path) for path in backups]}",
-        )
-        check(
-            not (final_glb.exists() != final_json.exists()),
-            f"{label}: exactly one final member remains",
-        )
-        if finals_absent:
-            check(
-                complete_old_backups,
-                f"{label}: final pair absent without a complete two-file old backup pair",
-            )
-
-    known_paths = {
-        path
-        for path in (
+    case_errors.extend(
+        terminal_errors(
+            label,
+            directory,
             staged_glb,
             staged_json,
             final_glb,
             final_json,
-            captured_glb,
-            captured_json,
+            old_hashes,
+            captured_backups,
+            allow_absent_recovery=restore_failure is not None,
         )
-        if path is not None and path.exists()
-    }
-    actual_paths = set(directory.iterdir())
-    check(
-        actual_paths == known_paths,
-        f"{label}: unexpected rollback residue: "
-        f"{sorted(path.name for path in actual_paths - known_paths)}",
     )
 
     return case_errors
@@ -1097,6 +1283,8 @@ def run_bounded(arguments, *, expect_hang=False):
         else:
             errors.append(f"{label}: child crashed:\n{value}")
     process.close()
+
+prove_terminal_oracle_mutations()
 
 for phase in forward_order:
     run_bounded((f"single-{phase}", phase, None))
