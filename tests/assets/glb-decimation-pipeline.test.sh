@@ -10,8 +10,8 @@ fake_blender="$repo/tests/assets/fake_blender.py"
 expected_driver=$(cd "$(dirname "$decimate_script")" && pwd -P)/blender_decimate.py
 review_section=${GLB_DECIMATION_REVIEW_SECTION:-all}
 case "$review_section" in
-  all|A|B|C|D|E|F|G|H|I|J|K|L) ;;
-  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all or A through L"
+  all|A|B|C|D|E|F|G|H|I|J|K|L|M) ;;
+  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all or A through M"
      printf 'glb-decimation pipeline test: %s\n' "$die_message" >&2
      exit 2 ;;
 esac
@@ -6018,6 +6018,1003 @@ fi
 
 if [ "$review_section" = L ]; then
   printf 'glb-decimation review L: pass\n'
+  exit 0
+fi
+
+# Review hardening M: a transaction reports the terminal state it actually
+# leaves, every later read retains the member's original class cap, generated
+# transaction names fit the selected filesystem, child environment names are an
+# exact allowlist, and each child stream is bounded to the existing 1 MiB
+# metadata envelope before any optional 512-byte public record. The 1 MiB child
+# stream ceiling is a test-frozen implementation clarification: the frozen
+# contract requires bounded subprocess output but did not assign a second cap.
+if [ "$review_section" = all ] || [ "$review_section" = M ]; then
+  PYTHONDONTWRITEBYTECODE=1 python3 - \
+    "$decimate_script" "$tmp/review-transaction-terminal" "$repo" \
+    "$fake_blender" <<'PY'
+import builtins
+import contextlib
+import hashlib
+import importlib.util
+import io
+import json
+import mmap
+import multiprocessing
+import os
+import queue as queue_module
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import traceback
+import types
+from pathlib import Path
+from unittest import mock
+
+
+script = Path(sys.argv[1])
+root = Path(sys.argv[2])
+repo = Path(sys.argv[3])
+fake_blender = Path(sys.argv[4])
+root.mkdir()
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(repo / "tests" / "assets"))
+from fake_blender import _pad_glb_to_size  # noqa: E402
+from glb_fixture import write_glb  # noqa: E402
+
+spec = importlib.util.spec_from_file_location(
+    "decimate_assets_transaction_terminal_test", script
+)
+assert spec is not None and spec.loader is not None
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+
+MAX_METADATA_BYTES = 1_048_576
+MAX_PROVENANCE_BYTES = 2_097_152
+MAX_DERIVATIVE_BYTES = 67_108_864
+MAX_CHILD_STREAM_BYTES = MAX_METADATA_BYTES
+MAX_DIAGNOSTIC_BYTES = 512
+MAX_COMPONENT_BYTES = 255
+UUID_HEX_BYTES = 32
+
+process_context = multiprocessing.get_context("fork")
+errors: list[str] = []
+
+
+def digest_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def digest_file(path: Path) -> str:
+    return digest_bytes(path.read_bytes())
+
+
+def setup_case(
+    label: str,
+    *,
+    force: bool = False,
+    filename: str = "candidate.glb",
+    blender: Path | None = None,
+) -> types.SimpleNamespace:
+    case_root = root / label
+    case_root.mkdir()
+    input_dir = case_root / "input"
+    output_dir = case_root / "output"
+    input_dir.mkdir()
+    output_dir.mkdir()
+    source = input_dir / filename
+    source_sidecar = Path(f"{source}.json")
+    write_glb(source, triangles=30_000)
+    source_sidecar.write_text(
+        json.dumps(
+            {
+                "service": "meshy",
+                "task_id": "fixture-task",
+                "timestamp_utc": "2026-08-15T12:34:56Z",
+                "plan_tier": "paid",
+                "prompt": "transaction terminal fixture",
+                "note": "local fixture",
+                "sha256": digest_file(source),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest = case_root / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "assets": [
+                    {
+                        "id": "terminal-fixture",
+                        "kind": "cat",
+                        "service": "meshy",
+                        "out": filename,
+                        "prompt": "transaction terminal fixture",
+                    }
+                ]
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    final_glb = output_dir / filename
+    final_json = Path(f"{final_glb}.json")
+    old_pair = None
+    if force:
+        write_glb(final_glb, triangles=14_000)
+        final_json.write_text(
+            json.dumps({"generation": "frozen-old-pair"}, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        old_pair = (final_glb.read_bytes(), final_json.read_bytes())
+    fake_log = case_root / "fake.log"
+    fake_audit = case_root / "fake.audit"
+    selected_blender = blender or fake_blender
+    arguments = [
+        "--manifest",
+        str(manifest),
+        "--input-dir",
+        str(input_dir),
+        "--output-dir",
+        str(output_dir),
+        "--blender",
+        str(selected_blender),
+    ]
+    if force:
+        arguments.append("--force")
+    return types.SimpleNamespace(
+        root=case_root,
+        input=input_dir,
+        output=output_dir,
+        source=source,
+        source_sidecar=source_sidecar,
+        source_bytes=source.read_bytes(),
+        sidecar_bytes=source_sidecar.read_bytes(),
+        manifest=manifest,
+        final_glb=final_glb,
+        final_json=final_json,
+        old_pair=old_pair,
+        force=force,
+        fake_log=fake_log,
+        fake_audit=fake_audit,
+        blender=selected_blender,
+        arguments=arguments,
+    )
+
+
+def child_environment(
+    case: types.SimpleNamespace,
+    *,
+    mode: str = "success",
+    extra: dict[str, str] | None = None,
+) -> dict[str, str]:
+    environment = {
+        "PATH": os.environ.get("PATH", os.defpath),
+        "FAKE_BLENDER_MODE": mode,
+        "FAKE_BLENDER_LOG": str(case.fake_log),
+        "FAKE_BLENDER_AUDIT": str(case.fake_audit),
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    if extra:
+        environment.update(extra)
+    return environment
+
+
+def run_main(
+    case: types.SimpleNamespace,
+    *,
+    mode: str = "success",
+    extra_environment: dict[str, str] | None = None,
+) -> tuple[int | None, str, str, BaseException | None]:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    caught = None
+    result = None
+    with (
+        mock.patch.dict(
+            os.environ,
+            child_environment(case, mode=mode, extra=extra_environment),
+            clear=True,
+        ),
+        contextlib.redirect_stdout(stdout),
+        contextlib.redirect_stderr(stderr),
+    ):
+        try:
+            result = module.main(case.arguments)
+        except BaseException as exc:  # fault-injection exceptions are observed
+            caught = exc
+    return result, stdout.getvalue(), stderr.getvalue(), caught
+
+
+def run_cli(
+    case: types.SimpleNamespace,
+    *,
+    mode: str = "success",
+    timeout: int = 15,
+) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        [sys.executable, str(script), *case.arguments],
+        check=False,
+        capture_output=True,
+        timeout=timeout,
+        env=child_environment(case, mode=mode),
+    )
+
+
+def audit_lines(case: types.SimpleNamespace) -> list[str]:
+    if not case.fake_audit.exists():
+        return []
+    return case.fake_audit.read_text(encoding="utf-8").splitlines()
+
+
+def fake_records(case: types.SimpleNamespace) -> list[dict[str, object]]:
+    if not case.fake_log.exists():
+        return []
+    return [
+        json.loads(line)
+        for line in case.fake_log.read_text(encoding="utf-8").splitlines()
+    ]
+
+
+def assert_fake_reached(case: types.SimpleNamespace) -> None:
+    assert audit_lines(case) == ["version", "asset"]
+    records = fake_records(case)
+    assert len(records) == 1 and records[0]["target"] == 15_000
+
+
+def assert_source_unchanged(case: types.SimpleNamespace) -> None:
+    assert case.source.read_bytes() == case.source_bytes
+    assert case.source_sidecar.read_bytes() == case.sidecar_bytes
+
+
+def assert_one_diagnostic(stderr: str) -> None:
+    assert stderr.startswith("glb-decimation: "), repr(stderr)
+    assert stderr.endswith("\n"), repr(stderr)
+    assert len(stderr.splitlines()) == 1, repr(stderr)
+    assert stderr[:-1].isprintable(), repr(stderr)
+    assert len(stderr.encode("utf-8")) <= MAX_DIAGNOSTIC_BYTES, repr(stderr)
+
+
+def assert_success_pair(
+    case: types.SimpleNamespace,
+    result: int | None,
+    stdout: str,
+    stderr: str,
+    caught: BaseException | None,
+) -> None:
+    assert caught is None
+    assert result == 0, (result, stdout, stderr)
+    assert stderr == ""
+    assert stdout.count("output_triangles=") == 1
+    assert case.final_glb.read_bytes()[:4] == b"glTF"
+    record = json.loads(case.final_json.read_text(encoding="utf-8"))
+    assert record["derivative"]["sha256"] == digest_file(case.final_glb)
+    assert set(path.name for path in case.output.iterdir()) == {
+        case.final_glb.name,
+        case.final_json.name,
+    }
+
+
+def force_failure_terminal(case: types.SimpleNamespace) -> bool:
+    assert case.old_pair is not None
+    entries = list(case.output.iterdir())
+    if (
+        set(entries) == {case.final_glb, case.final_json}
+        and case.final_glb.read_bytes() == case.old_pair[0]
+        and case.final_json.read_bytes() == case.old_pair[1]
+    ):
+        return True
+    if case.final_glb.exists() or case.final_json.exists() or len(entries) != 2:
+        return False
+    glb_backups = [
+        path
+        for path in entries
+        if ".glb.backup-" in path.name and ".glb.json.backup-" not in path.name
+    ]
+    json_backups = [path for path in entries if ".glb.json.backup-" in path.name]
+    return (
+        len(glb_backups) == len(json_backups) == 1
+        and glb_backups[0].read_bytes() == case.old_pair[0]
+        and json_backups[0].read_bytes() == case.old_pair[1]
+    )
+
+
+def lock_release_terminal_case() -> None:
+    case = setup_case("lock-release-terminal")
+    real_promote = module.promote_pair
+    real_guard = module._promotion_guard
+    armed = False
+    injected = False
+
+    def armed_promote(*args, **kwargs):
+        nonlocal armed
+        armed = True
+        return real_promote(*args, **kwargs)
+
+    @contextlib.contextmanager
+    def release_after_effect(*args, **kwargs):
+        nonlocal injected
+        with real_guard(*args, **kwargs):
+            yield
+        if armed and not injected:
+            injected = True
+            raise OSError("injected lock-release failure after effect")
+
+    with (
+        mock.patch.object(module, "promote_pair", armed_promote),
+        mock.patch.object(module, "_promotion_guard", release_after_effect),
+    ):
+        result, stdout, stderr, caught = run_main(case)
+    assert injected
+    assert caught is None
+    assert_source_unchanged(case)
+    if result == 0:
+        assert_success_pair(case, result, stdout, stderr, caught)
+    else:
+        assert result == 1
+        assert "output_triangles=" not in stdout
+        assert_one_diagnostic(stderr)
+        assert list(case.output.iterdir()) == [], (
+            "lock-release failure reported non-success with committed finals"
+        )
+
+
+def force_cleanup_terminal_case() -> None:
+    case = setup_case("force-cleanup-terminal", force=True)
+    real_unlink = Path.unlink
+    injected_attempts = 0
+
+    def persistent_backup_unlink(path, *args, **kwargs):
+        nonlocal injected_attempts
+        if ".glb.backup-" in path.name and ".glb.json.backup-" not in path.name:
+            injected_attempts += 1
+            raise OSError("injected persistent backup cleanup failure")
+        return real_unlink(path, *args, **kwargs)
+
+    with mock.patch.object(Path, "unlink", persistent_backup_unlink):
+        result, stdout, stderr, caught = run_main(case)
+    assert injected_attempts >= 2
+    assert caught is None
+    assert_source_unchanged(case)
+    if result == 0:
+        assert_success_pair(case, result, stdout, stderr, caught)
+    else:
+        assert result == 1
+        assert "output_triangles=" not in stdout
+        assert_one_diagnostic(stderr)
+        assert force_failure_terminal(case), (
+            "force cleanup failure left neither exact old finals nor a complete "
+            "recoverable old backup pair"
+        )
+
+
+class LateReadAttempt(RuntimeError):
+    pass
+
+
+class GuardedReader:
+    def __init__(self, handle, guard) -> None:
+        self.handle = handle
+        self.guard = guard
+
+    def _read(self, operation: str, size: int | None = None):
+        if size == 0:
+            return None
+        self.guard.reject(operation)
+
+    def read(self, size=-1, *args):
+        if size == 0:
+            return self.handle.read(size, *args)
+        self.guard.reject("file.read")
+
+    def read1(self, size=-1):
+        if size == 0:
+            return self.handle.read1(size)
+        self.guard.reject("file.read1")
+
+    def readall(self):
+        self.guard.reject("file.readall")
+
+    def readinto(self, buffer):
+        if len(memoryview(buffer)) == 0:
+            return self.handle.readinto(buffer)
+        self.guard.reject("file.readinto")
+
+    def readinto1(self, buffer):
+        if len(memoryview(buffer)) == 0:
+            return self.handle.readinto1(buffer)
+        self.guard.reject("file.readinto1")
+
+    def readline(self, size=-1):
+        if size == 0:
+            return self.handle.readline(size)
+        self.guard.reject("file.readline")
+
+    def readlines(self, hint=-1):
+        self.guard.reject("file.readlines")
+
+    def peek(self, size=-1):
+        if size == 0:
+            return self.handle.peek(size)
+        self.guard.reject("file.peek")
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.guard.reject("file iteration")
+
+    def __enter__(self):
+        self.handle.__enter__()
+        return self
+
+    def __exit__(self, *args):
+        return self.handle.__exit__(*args)
+
+    def __getattr__(self, name):
+        return getattr(self.handle, name)
+
+
+class LateReadGuard:
+    def __init__(self) -> None:
+        self.identity: tuple[int, int] | None = None
+        self.production_attempted = False
+        self.probing = False
+        self.real_builtin_open = builtins.open
+        self.real_io_open = io.open
+        self.real_fdopen = os.fdopen
+        self.real_read = os.read
+        self.real_copyfile = shutil.copyfile
+        self.real_copy = shutil.copy
+        self.real_copy2 = shutil.copy2
+        self.real_copyfileobj = shutil.copyfileobj
+        self.real_mmap = mmap.mmap
+
+    def arm(self, path: Path) -> None:
+        status = os.lstat(path)
+        assert stat.S_ISREG(status.st_mode)
+        self.identity = (status.st_dev, status.st_ino)
+
+    def fd_is_target(self, descriptor: int) -> bool:
+        if self.identity is None:
+            return False
+        try:
+            status = os.fstat(descriptor)
+        except OSError:
+            return False
+        return (status.st_dev, status.st_ino) == self.identity
+
+    def path_is_target(self, path) -> bool:
+        if isinstance(path, int):
+            return self.fd_is_target(path)
+        if self.identity is None:
+            return False
+        try:
+            status = os.lstat(path)
+        except (OSError, TypeError, ValueError):
+            return False
+        return (status.st_dev, status.st_ino) == self.identity
+
+    def reject(self, operation: str):
+        if not self.probing:
+            self.production_attempted = True
+        raise LateReadAttempt(operation)
+
+    def guarded_builtin_open(self, file, *args, **kwargs):
+        handle = self.real_builtin_open(file, *args, **kwargs)
+        return GuardedReader(handle, self) if self.path_is_target(file) else handle
+
+    def guarded_io_open(self, file, *args, **kwargs):
+        handle = self.real_io_open(file, *args, **kwargs)
+        return GuardedReader(handle, self) if self.path_is_target(file) else handle
+
+    def guarded_fdopen(self, descriptor, *args, **kwargs):
+        handle = self.real_fdopen(descriptor, *args, **kwargs)
+        return GuardedReader(handle, self) if self.fd_is_target(descriptor) else handle
+
+    def guarded_read(self, descriptor, count):
+        if self.fd_is_target(descriptor) and count != 0:
+            self.reject("os.read")
+        return self.real_read(descriptor, count)
+
+    def guarded_copyfile(self, source, destination, *args, **kwargs):
+        if self.path_is_target(source):
+            self.reject("shutil.copyfile")
+        return self.real_copyfile(source, destination, *args, **kwargs)
+
+    def guarded_copy(self, source, destination, *args, **kwargs):
+        if self.path_is_target(source):
+            self.reject("shutil.copy")
+        return self.real_copy(source, destination, *args, **kwargs)
+
+    def guarded_copy2(self, source, destination, *args, **kwargs):
+        if self.path_is_target(source):
+            self.reject("shutil.copy2")
+        return self.real_copy2(source, destination, *args, **kwargs)
+
+    def guarded_copyfileobj(self, source, destination, *args, **kwargs):
+        try:
+            descriptor = source.fileno()
+        except (AttributeError, OSError, ValueError):
+            descriptor = -1
+        if descriptor >= 0 and self.fd_is_target(descriptor):
+            self.reject("shutil.copyfileobj")
+        return self.real_copyfileobj(source, destination, *args, **kwargs)
+
+    def guarded_mmap(self, descriptor, length, *args, **kwargs):
+        if self.fd_is_target(descriptor) and length != 0:
+            self.reject("mmap")
+        return self.real_mmap(descriptor, length, *args, **kwargs)
+
+    def patches(self):
+        stack = contextlib.ExitStack()
+        stack.enter_context(mock.patch.object(builtins, "open", self.guarded_builtin_open))
+        stack.enter_context(mock.patch.object(io, "open", self.guarded_io_open))
+        stack.enter_context(mock.patch.object(os, "fdopen", self.guarded_fdopen))
+        stack.enter_context(mock.patch.object(os, "read", self.guarded_read))
+        stack.enter_context(mock.patch.object(shutil, "copyfile", self.guarded_copyfile))
+        stack.enter_context(mock.patch.object(shutil, "copy", self.guarded_copy))
+        stack.enter_context(mock.patch.object(shutil, "copy2", self.guarded_copy2))
+        stack.enter_context(
+            mock.patch.object(shutil, "copyfileobj", self.guarded_copyfileobj)
+        )
+        stack.enter_context(mock.patch.object(mmap, "mmap", self.guarded_mmap))
+
+        if hasattr(os, "pread"):
+            real_pread = os.pread
+
+            def guarded_pread(descriptor, count, offset):
+                if self.fd_is_target(descriptor) and count != 0:
+                    self.reject("os.pread")
+                return real_pread(descriptor, count, offset)
+
+            stack.enter_context(mock.patch.object(os, "pread", guarded_pread))
+        if hasattr(os, "readv"):
+            real_readv = os.readv
+
+            def guarded_readv(descriptor, buffers):
+                if self.fd_is_target(descriptor) and sum(map(len, buffers)):
+                    self.reject("os.readv")
+                return real_readv(descriptor, buffers)
+
+            stack.enter_context(mock.patch.object(os, "readv", guarded_readv))
+        if hasattr(os, "preadv"):
+            real_preadv = os.preadv
+
+            def guarded_preadv(descriptor, buffers, offset, *args):
+                if self.fd_is_target(descriptor) and sum(map(len, buffers)):
+                    self.reject("os.preadv")
+                return real_preadv(descriptor, buffers, offset, *args)
+
+            stack.enter_context(mock.patch.object(os, "preadv", guarded_preadv))
+        if hasattr(os, "sendfile"):
+            real_sendfile = os.sendfile
+
+            def guarded_sendfile(destination, source, offset, count, *args, **kwargs):
+                if self.fd_is_target(source) and count != 0:
+                    self.reject("os.sendfile")
+                return real_sendfile(destination, source, offset, count, *args, **kwargs)
+
+            stack.enter_context(mock.patch.object(os, "sendfile", guarded_sendfile))
+        if hasattr(os, "copy_file_range"):
+            real_copy_range = os.copy_file_range
+
+            def guarded_copy_range(source, destination, count, *args, **kwargs):
+                if self.fd_is_target(source) and count != 0:
+                    self.reject("os.copy_file_range")
+                return real_copy_range(source, destination, count, *args, **kwargs)
+
+            stack.enter_context(
+                mock.patch.object(os, "copy_file_range", guarded_copy_range)
+            )
+        return stack
+
+    def prove_controls(self, path: Path, scratch: Path) -> None:
+        controls = []
+        controls.append(lambda: path.read_bytes())
+
+        def descriptor_read():
+            descriptor = os.open(path, os.O_RDONLY)
+            try:
+                return os.read(descriptor, 1)
+            finally:
+                os.close(descriptor)
+
+        controls.append(descriptor_read)
+        controls.append(lambda: shutil.copyfile(path, scratch))
+        self.probing = True
+        try:
+            for control in controls:
+                caught = False
+                try:
+                    control()
+                except LateReadAttempt:
+                    caught = True
+                finally:
+                    scratch.unlink(missing_ok=True)
+                assert caught
+        finally:
+            self.probing = False
+            self.production_attempted = False
+
+
+def pad_json_like(path: Path, size: int) -> None:
+    path.chmod(0o600)
+    current = path.stat().st_size
+    assert current < size
+    with path.open("ab") as handle:
+        handle.write(b" " * (size - current))
+    assert path.stat().st_size == size
+
+
+def late_class_cap_case(kind: str) -> None:
+    force = kind in {"existing-derivative", "backup-derivative"}
+    case = setup_case(f"late-cap-{kind}", force=force)
+    guard = LateReadGuard()
+    mutation_count = 0
+    expected_attacked_existing = None
+    patchers = []
+
+    if kind == "metadata-snapshot":
+        real_preservation = module._candidate_preservation
+
+        def mutate_metadata(*args, **kwargs):
+            nonlocal mutation_count
+            result = real_preservation(*args, **kwargs)
+            matches = list(case.output.glob(".glb-decimation-sources-*/*.json"))
+            assert len(matches) == 1
+            target = matches[0]
+            pad_json_like(target, MAX_METADATA_BYTES + 4)
+            guard.arm(target)
+            guard.prove_controls(target, case.root / "guard-copy")
+            mutation_count += 1
+            return result
+
+        patchers.append(
+            mock.patch.object(module, "_candidate_preservation", mutate_metadata)
+        )
+    elif kind == "provenance":
+        real_write = module.write_staged_provenance
+        real_guard = module._promotion_guard
+        staged_json = None
+
+        def capture_provenance(path, record):
+            nonlocal staged_json
+            real_write(path, record)
+            staged_json = Path(path)
+
+        @contextlib.contextmanager
+        def mutate_under_guard(*args, **kwargs):
+            nonlocal mutation_count
+            with real_guard(*args, **kwargs):
+                if staged_json is not None and mutation_count == 0:
+                    pad_json_like(staged_json, MAX_PROVENANCE_BYTES + 4)
+                    guard.arm(staged_json)
+                    guard.prove_controls(staged_json, case.root / "guard-copy")
+                    mutation_count += 1
+                yield
+
+        patchers.extend(
+            [
+                mock.patch.object(module, "write_staged_provenance", capture_provenance),
+                mock.patch.object(module, "_promotion_guard", mutate_under_guard),
+            ]
+        )
+    elif kind == "existing-derivative":
+        real_checked = module._checked_lstat
+
+        def grow_after_class_lstat(path, label, maximum, *args, **kwargs):
+            nonlocal mutation_count, expected_attacked_existing
+            result = real_checked(path, label, maximum, *args, **kwargs)
+            if label == "existing derivative GLB" and mutation_count == 0:
+                _pad_glb_to_size(Path(path), MAX_DERIVATIVE_BYTES + 4)
+                expected_attacked_existing = Path(path).read_bytes()
+                guard.arm(Path(path))
+                guard.prove_controls(Path(path), case.root / "guard-copy")
+                mutation_count += 1
+            return result
+
+        patchers.append(mock.patch.object(module, "_checked_lstat", grow_after_class_lstat))
+    elif kind in {"final-derivative", "backup-derivative"}:
+        real_replace = os.replace
+
+        def grow_after_replace(source, destination, *args, **kwargs):
+            nonlocal mutation_count
+            result = real_replace(source, destination, *args, **kwargs)
+            source_path = Path(source)
+            destination_path = Path(destination)
+            source_canonical = Path(os.path.realpath(os.path.abspath(source_path)))
+            destination_canonical = Path(
+                os.path.realpath(os.path.abspath(destination_path))
+            )
+            final_canonical = Path(
+                os.path.realpath(os.path.abspath(case.final_glb))
+            )
+            should_mutate = (
+                kind == "final-derivative"
+                and destination_canonical == final_canonical
+                and source_path.parent.name.startswith("asset-")
+            ) or (
+                kind == "backup-derivative"
+                and source_canonical == final_canonical
+                and ".glb.backup-" in destination_path.name
+                and ".glb.json.backup-" not in destination_path.name
+            )
+            if should_mutate and mutation_count == 0:
+                _pad_glb_to_size(destination_path, MAX_DERIVATIVE_BYTES + 4)
+                guard.arm(destination_path)
+                guard.prove_controls(destination_path, case.root / "guard-copy")
+                mutation_count += 1
+            return result
+
+        patchers.append(mock.patch.object(os, "replace", grow_after_replace))
+    else:
+        raise AssertionError(kind)
+
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(guard.patches())
+        for patcher in patchers:
+            stack.enter_context(patcher)
+        result, stdout, stderr, caught = run_main(case)
+    assert mutation_count == 1
+    assert not guard.production_attempted, f"{kind}: later read crossed its class cap"
+    assert caught is None, (kind, caught)
+    assert result == 1, (kind, result, stdout, stderr)
+    assert "output_triangles=" not in stdout
+    assert_one_diagnostic(stderr)
+    assert_source_unchanged(case)
+    if kind in {"metadata-snapshot", "provenance", "final-derivative"}:
+        assert list(case.output.iterdir()) == []
+    elif kind == "existing-derivative":
+        assert expected_attacked_existing is not None
+        assert case.final_glb.read_bytes() == expected_attacked_existing
+        assert case.old_pair is not None
+        assert case.final_json.read_bytes() == case.old_pair[1]
+        assert set(case.output.iterdir()) == {case.final_glb, case.final_json}
+    else:
+        assert force_failure_terminal(case)
+
+
+def transaction_name_boundary_case() -> None:
+    longest_suffix_overhead = (
+        len(os.fsencode("."))
+        + len(os.fsencode(".json"))
+        + len(os.fsencode(".retired-"))
+        + UUID_HEX_BYTES
+    )
+    safe_length = MAX_COMPONENT_BYTES - longest_suffix_overhead
+    assert safe_length == 208
+    safe_name = "n" * (safe_length - len(".glb")) + ".glb"
+    unsafe_name = "n" * (safe_length + 1 - len(".glb")) + ".glb"
+
+    safe = setup_case("transaction-name-safe", force=True, filename=safe_name)
+    safe_result = run_main(safe)
+    assert_fake_reached(safe)
+    assert_source_unchanged(safe)
+    assert_success_pair(safe, *safe_result)
+
+    unsafe = setup_case("transaction-name-plus-one", force=True, filename=unsafe_name)
+    result, stdout, stderr, caught = run_main(unsafe)
+    assert caught is None
+    assert result == 1, (result, stdout, stderr)
+    assert stdout == ""
+    assert_one_diagnostic(stderr)
+    assert audit_lines(unsafe) == [] and fake_records(unsafe) == []
+    assert_source_unchanged(unsafe)
+    assert unsafe.old_pair is not None
+    assert unsafe.final_glb.read_bytes() == unsafe.old_pair[0]
+    assert unsafe.final_json.read_bytes() == unsafe.old_pair[1]
+    assert set(unsafe.output.iterdir()) == {unsafe.final_glb, unsafe.final_json}
+
+
+def exact_child_environment_case() -> None:
+    case = setup_case("exact-child-environment")
+    environment_log = case.root / "environment.log"
+    unlisted_name = "FAKE_BLENDER_UNLISTED_VALUE"
+    unlisted_value = "generic-unlisted-value"
+    result = run_main(
+        case,
+        extra_environment={
+            "FAKE_BLENDER_ENV_LOG": str(environment_log),
+            unlisted_name: unlisted_value,
+        },
+    )
+    assert_success_pair(case, *result)
+    assert_source_unchanged(case)
+    records = [
+        json.loads(line)
+        for line in environment_log.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [record["phase"] for record in records] == ["version", "asset"]
+    for record in records:
+        assert unlisted_name not in record["names"], (
+            "unlisted test-prefix environment name reached a child"
+        )
+    assert unlisted_value not in result[1] + result[2]
+
+
+def write_blender_wrapper(case: types.SimpleNamespace, profile: str) -> Path:
+    wrapper = case.root / "blender-wrapper"
+    helper_directory = str(repo / "tests" / "assets")
+    wrapper.write_text(
+        f'''#!/usr/bin/env python3
+import sys
+sys.dont_write_bytecode = True
+sys.path.insert(0, {helper_directory!r})
+from fake_blender import main as fake_main
+
+argv = sys.argv[1:]
+profile = {profile!r}
+is_version = "--version" in argv
+if profile == "version-small" and is_version:
+    print("small-version-child-line")
+    print("small-version-error-line", file=sys.stderr)
+elif profile == "version-stdout-over" and is_version:
+    sys.stdout.write("V" * ({MAX_CHILD_STREAM_BYTES} + 1) + "\\n")
+    sys.stdout.flush()
+elif profile == "version-stderr-over" and is_version:
+    sys.stderr.write("E" * ({MAX_CHILD_STREAM_BYTES} + 1) + "\\n")
+    sys.stderr.flush()
+elif profile in {{"asset-small", "asset-fail"}} and not is_version:
+    print("child-" + "sec" + "ret" + "=child-sensitive-value\\nbenign-output-line")
+    print("child-" + "sec" + "ret" + "=child-sensitive-value\\nbenign-error-line", file=sys.stderr)
+elif profile == "asset-stdout-over" and not is_version:
+    sys.stdout.write("O" * ({MAX_CHILD_STREAM_BYTES} + 1) + "\\n")
+    sys.stdout.flush()
+elif profile == "asset-stderr-over" and not is_version:
+    sys.stderr.write("R" * ({MAX_CHILD_STREAM_BYTES} + 1) + "\\n")
+    sys.stderr.flush()
+raise SystemExit(fake_main(argv))
+''',
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    return wrapper
+
+
+def assert_public_records(payload: bytes) -> str:
+    decoded = payload.decode("utf-8")
+    if not decoded:
+        return decoded
+    assert decoded.endswith("\n"), repr(decoded[-80:])
+    for line in decoded.splitlines():
+        assert line.startswith("glb-decimation: "), (
+            "child stream bypassed the centralized record boundary"
+        )
+        assert line.isprintable(), "public child record contains controls"
+        assert len((line + "\n").encode("utf-8")) <= MAX_DIAGNOSTIC_BYTES
+    assert len(payload) <= 4 * MAX_DIAGNOSTIC_BYTES
+    return decoded
+
+
+def child_output_case(profile: str) -> None:
+    placeholder = setup_case(f"child-output-{profile}")
+    wrapper = write_blender_wrapper(placeholder, profile)
+    placeholder.blender = wrapper
+    placeholder.arguments[placeholder.arguments.index(str(fake_blender))] = str(wrapper)
+    mode = "fail" if profile == "asset-fail" else "success"
+    result = run_cli(placeholder, mode=mode)
+    stdout = assert_public_records(result.stdout)
+    stderr = assert_public_records(result.stderr)
+    combined = stdout + stderr
+    assert "child-sensitive-value" not in combined, (
+        "sensitive child value crossed the public record boundary"
+    )
+
+    overflow = profile.endswith("-over")
+    failure = profile == "asset-fail"
+    if overflow or failure:
+        assert result.returncode != 0, (
+            "overflowing or failed child process was reported as success"
+        )
+        assert "output_triangles=" not in stdout
+        assert not placeholder.final_glb.exists()
+        assert not placeholder.final_json.exists()
+        assert not any(placeholder.output.iterdir())
+    else:
+        assert result.returncode == 0, (profile, stdout, stderr)
+        assert placeholder.final_glb.read_bytes()[:4] == b"glTF"
+        assert placeholder.final_json.exists()
+    assert_source_unchanged(placeholder)
+
+
+def child_entry(result_queue, function, arguments) -> None:
+    try:
+        try:
+            os.setsid()
+        except OSError:
+            pass
+        function(*arguments)
+    except BaseException:
+        result_queue.put(("error", traceback.format_exc()))
+    else:
+        result_queue.put(("ok", ""))
+
+
+def terminate_process_tree(process) -> None:
+    if not process.is_alive():
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        process.terminate()
+    process.join(2)
+    if process.is_alive():
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            process.kill()
+        process.join(2)
+
+
+def run_bounded(label: str, function, *arguments) -> None:
+    result_queue = process_context.Queue()
+    process = process_context.Process(
+        target=child_entry,
+        args=(result_queue, function, arguments),
+        name=f"glb-review-m-{label}",
+    )
+    process.start()
+    process.join(20)
+    if process.is_alive():
+        terminate_process_tree(process)
+        errors.append(f"{label}: bounded probe hung")
+    else:
+        try:
+            state, detail = result_queue.get(timeout=1)
+        except queue_module.Empty:
+            errors.append(f"{label}: child exited {process.exitcode} without a result")
+        else:
+            if state != "ok":
+                errors.append(f"{label}:\n{detail}")
+        if process.exitcode not in (0, None):
+            errors.append(f"{label}: child exit was {process.exitcode}")
+    result_queue.close()
+    result_queue.join_thread()
+    process.close()
+
+
+run_bounded("lock-release-terminal", lock_release_terminal_case)
+run_bounded("force-cleanup-terminal", force_cleanup_terminal_case)
+for late_member in (
+    "metadata-snapshot",
+    "provenance",
+    "existing-derivative",
+    "final-derivative",
+    "backup-derivative",
+):
+    run_bounded(f"late-cap-{late_member}", late_class_cap_case, late_member)
+run_bounded("transaction-name-boundary", transaction_name_boundary_case)
+run_bounded("exact-child-environment", exact_child_environment_case)
+for child_profile in (
+    "version-small",
+    "version-stdout-over",
+    "version-stderr-over",
+    "asset-small",
+    "asset-fail",
+    "asset-stdout-over",
+    "asset-stderr-over",
+):
+    run_bounded(f"child-{child_profile}", child_output_case, child_profile)
+
+if errors:
+    raise AssertionError(
+        "transaction/cap/subprocess hardening regressions:\n- "
+        + "\n- ".join(errors)
+    )
+PY
+  assert_no_external_effects
+fi
+
+if [ "$review_section" = M ]; then
+  printf 'glb-decimation review M: pass\n'
   exit 0
 fi
 
