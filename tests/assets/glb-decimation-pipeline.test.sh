@@ -5451,15 +5451,20 @@ if [ "$review_section" = all ] || [ "$review_section" = L ]; then
   PYTHONDONTWRITEBYTECODE=1 python3 - \
     "$decimate_script" "$tmp/review-acceptance-binding" "$repo" \
     "$fake_blender" <<'PY'
+import builtins
 import contextlib
 import hashlib
 import importlib.util
 import io
 import json
+import mmap
 import multiprocessing
 import os
 import queue as queue_module
+import shutil
 import signal
+import stat
+import struct
 import sys
 import traceback
 import types
@@ -5618,6 +5623,24 @@ def assert_fake_reached(case: types.SimpleNamespace) -> None:
     assert records[0]["target"] == 15_000
 
 
+def staged_output_from_fake_record(case: types.SimpleNamespace) -> Path | None:
+    if not case.fake_log.exists():
+        return None
+    records = [
+        json.loads(line)
+        for line in case.fake_log.read_text(encoding="utf-8").splitlines()
+    ]
+    if not records:
+        return None
+    argv = records[-1].get("argv")
+    if not isinstance(argv, list) or "--output" not in argv:
+        raise AssertionError("fake asset record has no output argument")
+    index = argv.index("--output")
+    if index + 1 >= len(argv) or not isinstance(argv[index + 1], str):
+        raise AssertionError("fake asset record has an invalid output argument")
+    return Path(argv[index + 1])
+
+
 def assert_source_pair(
     case: types.SimpleNamespace,
     expected_source: bytes,
@@ -5677,7 +5700,12 @@ def control_case(label: str, force: bool) -> None:
     }
 
 
-def staged_mutation_case(label: str, member: str, force: bool) -> None:
+def staged_mutation_case(
+    label: str,
+    member: str,
+    force: bool,
+    mutation: str,
+) -> None:
     case = setup_case(label, force=force)
     real_promote = module.promote_pair
     mutation_reached = False
@@ -5688,9 +5716,12 @@ def staged_mutation_case(label: str, member: str, force: bool) -> None:
         mutation_reached = True
         staged_glb = Path(args[0])
         staged_json = Path(args[1])
-        if member == "glb":
-            staged_glb.write_bytes(b"not a GLB")
-        else:
+        target = staged_glb if member == "glb" else staged_json
+        accepted_bytes = target.read_bytes()
+        accepted_sha = digest_bytes(accepted_bytes)
+        if mutation == "invalid" and member == "glb":
+            target.write_bytes(b"not a GLB")
+        elif mutation == "invalid":
             record = json.loads(staged_json.read_text(encoding="utf-8"))
             record["source"]["provenance"]["task_id"] = "forged-lineage"
             record["tool"]["name"] = "forged-tool"
@@ -5699,6 +5730,46 @@ def staged_mutation_case(label: str, member: str, force: bool) -> None:
                 json.dumps(record, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
+        elif mutation == "same-length" and member == "glb":
+            accepted_metrics = module.inspect_glb(staged_glb)
+            json_length, chunk_kind = struct.unpack_from("<I4s", accepted_bytes, 12)
+            assert chunk_kind == b"JSON"
+            chunk_end = 20 + json_length
+            json_chunk = accepted_bytes[20:chunk_end]
+            padding = len(json_chunk) - len(json_chunk.rstrip(b" "))
+            assert padding > 0
+            unpadded_json = json_chunk[:-padding]
+            assert b"," in unpadded_json
+            replacement_chunk = unpadded_json.replace(b",", b", ", 1)
+            replacement_chunk += b" " * (padding - 1)
+            assert len(replacement_chunk) == len(json_chunk)
+            replacement = bytearray(accepted_bytes)
+            replacement[20:chunk_end] = replacement_chunk
+            replacement_bytes = bytes(replacement)
+            assert len(replacement_bytes) == len(accepted_bytes)
+            assert json.loads(unpadded_json) == json.loads(
+                replacement_bytes[20:chunk_end].rstrip(b" ")
+            )
+            staged_glb.write_bytes(replacement_bytes)
+            replacement_metrics = module.inspect_glb(staged_glb)
+            for key in set(accepted_metrics) - {"path", "sha256"}:
+                assert replacement_metrics[key] == accepted_metrics[key], key
+        elif mutation == "same-length":
+            accepted_record = json.loads(accepted_bytes)
+            marker = b"\n  \""
+            assert marker in accepted_bytes
+            replacement_bytes = accepted_bytes.replace(
+                marker, b"\n\t \"", 1
+            )
+            assert len(replacement_bytes) == len(accepted_bytes)
+            assert json.loads(replacement_bytes) == accepted_record
+            staged_json.write_bytes(replacement_bytes)
+        else:
+            raise AssertionError(f"unsupported staged mutation {mutation}")
+        replacement_bytes = target.read_bytes()
+        assert digest_bytes(replacement_bytes) != accepted_sha
+        if mutation == "same-length":
+            assert len(replacement_bytes) == len(accepted_bytes)
         return real_promote(*args, **kwargs)
 
     with mock.patch.object(module, "promote_pair", mutate_then_promote):
@@ -5716,17 +5787,21 @@ def staged_mutation_case(label: str, member: str, force: bool) -> None:
 def original_mutation_case(label: str, member: str, force: bool) -> None:
     case = setup_case(label, force=force)
     real_write = module.write_staged_provenance
+    real_promote = module.promote_pair
+    real_replace = os.replace
     mutation_reached = False
-    attacked_source = case.source_bytes
-    attacked_sidecar = case.sidecar_bytes
+    promotion_calls = 0
+    final_rename_touches: list[tuple[Path, Path]] = []
+    changed_source = case.source_bytes
+    changed_sidecar = case.sidecar_bytes
 
     def write_then_mutate(path, record):
-        nonlocal mutation_reached, attacked_source, attacked_sidecar
+        nonlocal mutation_reached, changed_source, changed_sidecar
         real_write(path, record)
         mutation_reached = True
         if member == "source":
-            attacked_source = case.source_bytes + b"\0\0\0\0"
-            case.source.write_bytes(attacked_source)
+            changed_source = case.source_bytes + b"\0\0\0\0"
+            case.source.write_bytes(changed_source)
         else:
             changed = json.loads(case.sidecar_bytes)
             changed["note"] = "changed after validation"
@@ -5734,16 +5809,41 @@ def original_mutation_case(label: str, member: str, force: bool) -> None:
                 json.dumps(changed, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
-            attacked_sidecar = case.source_sidecar.read_bytes()
+            changed_sidecar = case.source_sidecar.read_bytes()
 
-    with mock.patch.object(module, "write_staged_provenance", write_then_mutate):
+    def observing_promote(*args, **kwargs):
+        nonlocal promotion_calls
+        promotion_calls += 1
+        return real_promote(*args, **kwargs)
+
+    def observing_replace(source, destination, *args, **kwargs):
+        source_path = Path(os.path.realpath(os.path.abspath(source)))
+        destination_path = Path(os.path.realpath(os.path.abspath(destination)))
+        finals = {
+            Path(os.path.realpath(case.final_glb)),
+            Path(os.path.realpath(case.final_json)),
+        }
+        if source_path in finals or destination_path in finals:
+            final_rename_touches.append((source_path, destination_path))
+        return real_replace(source, destination, *args, **kwargs)
+
+    with (
+        mock.patch.object(module, "write_staged_provenance", write_then_mutate),
+        mock.patch.object(module, "promote_pair", observing_promote),
+        mock.patch.object(module.os, "replace", observing_replace),
+    ):
         result, stdout, stderr = run_main(case)
     assert mutation_reached
     assert_fake_reached(case)
     # The pipeline detects but never repairs or otherwise rewrites an input that
     # another actor permanently changed.
-    assert_source_pair(case, attacked_source, attacked_sidecar)
+    assert_source_pair(case, changed_source, changed_sidecar)
     assert_failed_terminal(case, result, stdout, stderr)
+    assert promotion_calls == 0, "original custody was checked after promotion began"
+    assert final_rename_touches == [], (
+        "original custody was checked only after a final-name rename",
+        final_rename_touches,
+    )
 
 
 def diagnostic_control_case() -> None:
@@ -5816,10 +5916,54 @@ def signed_uri_diagnostic_case() -> None:
         assert forbidden.casefold() not in folded_diagnostic, (forbidden, diagnostic)
 
 
-class ObservedReader:
-    def __init__(self, handle, reads: list[int]) -> None:
+class CandidateReadLimit(RuntimeError):
+    pass
+
+
+class CountingReader:
+    def __init__(self, handle, guard) -> None:
         self.handle = handle
-        self.reads = reads
+        self.guard = guard
+
+    def _payload(self, operation: str, payload):
+        self.guard.observe(len(payload), operation)
+        return payload
+
+    def read(self, *args, **kwargs):
+        return self._payload("file.read", self.handle.read(*args, **kwargs))
+
+    def read1(self, *args, **kwargs):
+        return self._payload("file.read1", self.handle.read1(*args, **kwargs))
+
+    def readall(self):
+        return self._payload("file.readall", self.handle.readall())
+
+    def readinto(self, buffer):
+        count = self.handle.readinto(buffer)
+        self.guard.observe(0 if count is None else count, "file.readinto")
+        return count
+
+    def readinto1(self, buffer):
+        count = self.handle.readinto1(buffer)
+        self.guard.observe(0 if count is None else count, "file.readinto1")
+        return count
+
+    def readline(self, *args, **kwargs):
+        return self._payload("file.readline", self.handle.readline(*args, **kwargs))
+
+    def readlines(self, *args, **kwargs):
+        lines = self.handle.readlines(*args, **kwargs)
+        self.guard.observe(sum(len(line) for line in lines), "file.readlines")
+        return lines
+
+    def peek(self, *args, **kwargs):
+        return self._payload("file.peek", self.handle.peek(*args, **kwargs))
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return self._payload("file iteration", next(self.handle))
 
     def __enter__(self):
         self.handle.__enter__()
@@ -5828,58 +5972,426 @@ class ObservedReader:
     def __exit__(self, *args):
         return self.handle.__exit__(*args)
 
-    def read(self, *args, **kwargs):
-        payload = self.handle.read(*args, **kwargs)
-        self.reads.append(len(payload))
-        return payload
-
     def __getattr__(self, name):
         return getattr(self.handle, name)
 
 
-def candidate_cap_race_case() -> None:
-    case = setup_case("candidate-cap-race")
-    real_verified_hash = module._verified_hash
-    real_fdopen = os.fdopen
-    target_identity: tuple[int, int] | None = None
-    observed_inspector_reads: list[int] = []
-    mutation_count = 0
+class CumulativeReadGuard:
+    def __init__(self, maximum_bytes: int, *, strict: bool) -> None:
+        self.maximum_bytes = maximum_bytes
+        self.strict = strict
+        self.identity: tuple[int, int] | None = None
+        self.total_bytes = 0
+        self.over_limit = False
+        self.target_opens = 0
+        self.operations: list[str] = []
+        self.real_builtin_open = builtins.open
+        self.real_io_open = io.open
+        self.real_os_open = os.open
+        self.real_fdopen = os.fdopen
+        self.real_read = os.read
+        self.real_copyfile = shutil.copyfile
+        self.real_copy = shutil.copy
+        self.real_copy2 = shutil.copy2
+        self.real_copyfileobj = shutil.copyfileobj
+        self.real_mmap = mmap.mmap
 
-    def grow_after_preflight(path, label, maximum_bytes, *args, **kwargs):
-        nonlocal target_identity, mutation_count
-        result = real_verified_hash(path, label, maximum_bytes, *args, **kwargs)
-        if label == "derivative GLB" and mutation_count == 0:
-            mutation_count += 1
-            _pad_glb_to_size(
-                Path(path), module.MAX_DERIVATIVE_GLB_BYTES + 4
-            )
+    def arm(self, path: Path) -> None:
+        status = os.lstat(path)
+        assert stat.S_ISREG(status.st_mode)
+        self.identity = (status.st_dev, status.st_ino)
+
+    def fd_is_target(self, descriptor: int) -> bool:
+        if self.identity is None:
+            return False
+        try:
+            status = os.fstat(descriptor)
+        except OSError:
+            return False
+        return (status.st_dev, status.st_ino) == self.identity
+
+    def path_is_target(self, path) -> bool:
+        if isinstance(path, int):
+            return self.fd_is_target(path)
+        if self.identity is None:
+            return False
+        try:
             status = os.lstat(path)
-            target_identity = (status.st_dev, status.st_ino)
-        return result
+        except (OSError, TypeError, ValueError):
+            return False
+        return (status.st_dev, status.st_ino) == self.identity
 
-    def observing_fdopen(descriptor, *args, **kwargs):
-        handle = real_fdopen(descriptor, *args, **kwargs)
-        status = os.fstat(handle.fileno())
-        if target_identity == (status.st_dev, status.st_ino):
-            return ObservedReader(handle, observed_inspector_reads)
+    def observe(self, count: int, operation: str) -> None:
+        if count <= 0:
+            return
+        self.total_bytes += count
+        self.operations.append(operation)
+        if self.total_bytes > self.maximum_bytes:
+            self.over_limit = True
+            if self.strict:
+                raise CandidateReadLimit(operation)
+
+    def wrap_handle(self, handle):
+        if isinstance(handle, CountingReader) and handle.guard is self:
+            return handle
+        return CountingReader(handle, self)
+
+    def guarded_builtin_open(self, file, *args, **kwargs):
+        handle = self.real_builtin_open(file, *args, **kwargs)
+        if self.path_is_target(file):
+            self.target_opens += 1
+            return self.wrap_handle(handle)
         return handle
 
+    def guarded_io_open(self, file, *args, **kwargs):
+        handle = self.real_io_open(file, *args, **kwargs)
+        if self.path_is_target(file):
+            self.target_opens += 1
+            return self.wrap_handle(handle)
+        return handle
+
+    def guarded_os_open(self, path, *args, **kwargs):
+        descriptor = self.real_os_open(path, *args, **kwargs)
+        if self.fd_is_target(descriptor):
+            self.target_opens += 1
+        return descriptor
+
+    def guarded_fdopen(self, descriptor, *args, **kwargs):
+        handle = self.real_fdopen(descriptor, *args, **kwargs)
+        if self.fd_is_target(descriptor):
+            return self.wrap_handle(handle)
+        return handle
+
+    def guarded_read(self, descriptor, count):
+        payload = self.real_read(descriptor, count)
+        if self.fd_is_target(descriptor):
+            self.observe(len(payload), "os.read")
+        return payload
+
+    def _copy_observed(self, operation, source, destination, *args, **kwargs):
+        target = self.path_is_target(source)
+        before = self.total_bytes
+        result = operation(source, destination, *args, **kwargs)
+        if target and self.total_bytes == before:
+            self.observe(os.lstat(destination).st_size, operation.__name__)
+        return result
+
+    def guarded_copyfile(self, source, destination, *args, **kwargs):
+        return self._copy_observed(
+            self.real_copyfile, source, destination, *args, **kwargs
+        )
+
+    def guarded_copy(self, source, destination, *args, **kwargs):
+        return self._copy_observed(
+            self.real_copy, source, destination, *args, **kwargs
+        )
+
+    def guarded_copy2(self, source, destination, *args, **kwargs):
+        return self._copy_observed(
+            self.real_copy2, source, destination, *args, **kwargs
+        )
+
+    def guarded_copyfileobj(self, source, destination, *args, **kwargs):
+        before = self.total_bytes
+        target = False
+        try:
+            target = self.fd_is_target(source.fileno())
+        except (AttributeError, OSError, ValueError):
+            pass
+        result = self.real_copyfileobj(source, destination, *args, **kwargs)
+        if target and self.total_bytes == before:
+            destination.flush()
+            self.observe(os.fstat(destination.fileno()).st_size, "shutil.copyfileobj")
+        return result
+
+    def guarded_mmap(self, descriptor, length, *args, **kwargs):
+        if self.fd_is_target(descriptor):
+            count = os.fstat(descriptor).st_size if length == 0 else length
+            self.observe(count, "mmap")
+        return self.real_mmap(descriptor, length, *args, **kwargs)
+
+    def patches(self):
+        stack = contextlib.ExitStack()
+        stack.enter_context(mock.patch.object(builtins, "open", self.guarded_builtin_open))
+        stack.enter_context(mock.patch.object(io, "open", self.guarded_io_open))
+        stack.enter_context(mock.patch.object(os, "open", self.guarded_os_open))
+        stack.enter_context(mock.patch.object(os, "fdopen", self.guarded_fdopen))
+        stack.enter_context(mock.patch.object(os, "read", self.guarded_read))
+        stack.enter_context(mock.patch.object(shutil, "copyfile", self.guarded_copyfile))
+        stack.enter_context(mock.patch.object(shutil, "copy", self.guarded_copy))
+        stack.enter_context(mock.patch.object(shutil, "copy2", self.guarded_copy2))
+        stack.enter_context(
+            mock.patch.object(shutil, "copyfileobj", self.guarded_copyfileobj)
+        )
+        stack.enter_context(mock.patch.object(mmap, "mmap", self.guarded_mmap))
+
+        if hasattr(os, "pread"):
+            real_pread = os.pread
+
+            def guarded_pread(descriptor, count, offset):
+                payload = real_pread(descriptor, count, offset)
+                if self.fd_is_target(descriptor):
+                    self.observe(len(payload), "os.pread")
+                return payload
+
+            stack.enter_context(mock.patch.object(os, "pread", guarded_pread))
+        if hasattr(os, "readv"):
+            real_readv = os.readv
+
+            def guarded_readv(descriptor, buffers):
+                count = real_readv(descriptor, buffers)
+                if self.fd_is_target(descriptor):
+                    self.observe(count, "os.readv")
+                return count
+
+            stack.enter_context(mock.patch.object(os, "readv", guarded_readv))
+        if hasattr(os, "preadv"):
+            real_preadv = os.preadv
+
+            def guarded_preadv(descriptor, buffers, offset, *args):
+                count = real_preadv(descriptor, buffers, offset, *args)
+                if self.fd_is_target(descriptor):
+                    self.observe(count, "os.preadv")
+                return count
+
+            stack.enter_context(mock.patch.object(os, "preadv", guarded_preadv))
+        if hasattr(os, "sendfile"):
+            real_sendfile = os.sendfile
+
+            def guarded_sendfile(destination, source, offset, count, *args, **kwargs):
+                transferred = real_sendfile(
+                    destination, source, offset, count, *args, **kwargs
+                )
+                if self.fd_is_target(source):
+                    self.observe(transferred, "os.sendfile")
+                return transferred
+
+            stack.enter_context(mock.patch.object(os, "sendfile", guarded_sendfile))
+        if hasattr(os, "copy_file_range"):
+            real_copy_range = os.copy_file_range
+
+            def guarded_copy_range(source, destination, count, *args, **kwargs):
+                transferred = real_copy_range(
+                    source, destination, count, *args, **kwargs
+                )
+                if self.fd_is_target(source):
+                    self.observe(transferred, "os.copy_file_range")
+                return transferred
+
+            stack.enter_context(
+                mock.patch.object(os, "copy_file_range", guarded_copy_range)
+            )
+        return stack
+
+
+def prove_cumulative_reader_oracle(case: types.SimpleNamespace) -> None:
+    mib = 1024 * 1024
+    control_cap = 2 * mib
+    control_size = control_cap + 4
+    control = case.root / "reader-control.bin"
+    control.write_bytes(b"R" * control_size)
+    scratch = case.root / "reader-copy.bin"
+
+    def file_chunks(opener, method="read"):
+        with opener(control, "rb") as handle:
+            while True:
+                if method == "readinto":
+                    count = handle.readinto(bytearray(mib))
+                    if not count:
+                        break
+                else:
+                    payload = getattr(handle, method)(mib)
+                    if not payload:
+                        break
+
+    def descriptor_chunks(operation):
+        descriptor = os.open(control, os.O_RDONLY)
+        try:
+            offset = 0
+            while True:
+                count = operation(descriptor, offset)
+                if not count:
+                    break
+                offset += count
+        finally:
+            os.close(descriptor)
+
+    def fdopen_chunks():
+        descriptor = os.open(control, os.O_RDONLY)
+        with os.fdopen(descriptor, "rb", closefd=True) as handle:
+            while handle.read(mib):
+                pass
+
+    def mmap_whole():
+        descriptor = os.open(control, os.O_RDONLY)
+        try:
+            mapping = mmap.mmap(descriptor, 0, access=mmap.ACCESS_READ)
+            mapping.close()
+        finally:
+            os.close(descriptor)
+
+    def copyfileobj_chunks():
+        with (control.open("rb") as source, scratch.open("wb") as destination):
+            shutil.copyfileobj(source, destination, length=mib)
+
+    def mixed_read_surfaces():
+        with builtins.open(control, "rb") as handle:
+            assert len(handle.read(mib)) == mib
+        descriptor = os.open(control, os.O_RDONLY)
+        try:
+            os.lseek(descriptor, mib, os.SEEK_SET)
+            assert len(os.read(descriptor, mib)) == mib
+        finally:
+            os.close(descriptor)
+        with io.open(control, "rb") as handle:
+            handle.seek(2 * mib)
+            handle.read(4)
+
+    readers = {
+        "path.read_bytes": control.read_bytes,
+        "builtins.open": lambda: file_chunks(builtins.open),
+        "io.open": lambda: file_chunks(io.open),
+        "file.readinto": lambda: file_chunks(io.open, "readinto"),
+        "os.read": lambda: descriptor_chunks(
+            lambda descriptor, _offset: len(os.read(descriptor, mib))
+        ),
+        "os.fdopen": fdopen_chunks,
+        "mmap": mmap_whole,
+        "shutil.copyfile": lambda: shutil.copyfile(control, scratch),
+        "shutil.copy": lambda: shutil.copy(control, scratch),
+        "shutil.copy2": lambda: shutil.copy2(control, scratch),
+        "shutil.copyfileobj": copyfileobj_chunks,
+        "mixed public surfaces": mixed_read_surfaces,
+    }
+    if hasattr(os, "pread"):
+        readers["os.pread"] = lambda: descriptor_chunks(
+            lambda descriptor, offset: len(os.pread(descriptor, mib, offset))
+        )
+    if hasattr(os, "readv"):
+        readers["os.readv"] = lambda: descriptor_chunks(
+            lambda descriptor, _offset: os.readv(descriptor, [bytearray(mib)])
+        )
+    if hasattr(os, "preadv"):
+        readers["os.preadv"] = lambda: descriptor_chunks(
+            lambda descriptor, offset: os.preadv(
+                descriptor, [bytearray(mib)], offset
+            )
+        )
+    sendfile_regular_file_supported = False
+    if hasattr(os, "sendfile"):
+        source_descriptor = os.open(control, os.O_RDONLY)
+        destination_descriptor = os.open(
+            scratch, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600
+        )
+        try:
+            try:
+                sendfile_regular_file_supported = (
+                    os.sendfile(
+                        destination_descriptor,
+                        source_descriptor,
+                        0,
+                        1,
+                    )
+                    == 1
+                )
+            except OSError:
+                pass
+        finally:
+            os.close(destination_descriptor)
+            os.close(source_descriptor)
+            scratch.unlink(missing_ok=True)
+    if sendfile_regular_file_supported:
+        def sendfile_chunks():
+            source = os.open(control, os.O_RDONLY)
+            destination = os.open(scratch, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            try:
+                offset = 0
+                while True:
+                    count = os.sendfile(destination, source, offset, mib)
+                    if not count:
+                        break
+                    offset += count
+            finally:
+                os.close(destination)
+                os.close(source)
+
+        readers["os.sendfile"] = sendfile_chunks
+    if hasattr(os, "copy_file_range"):
+        def copy_range_chunks():
+            source = os.open(control, os.O_RDONLY)
+            destination = os.open(scratch, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            try:
+                while os.copy_file_range(source, destination, mib):
+                    pass
+            finally:
+                os.close(destination)
+                os.close(source)
+
+        readers["os.copy_file_range"] = copy_range_chunks
+
+    for name, reader in readers.items():
+        guard = CumulativeReadGuard(control_cap, strict=True)
+        guard.arm(control)
+        caught = False
+        try:
+            with guard.patches():
+                reader()
+        except CandidateReadLimit:
+            caught = True
+        finally:
+            scratch.unlink(missing_ok=True)
+        assert caught, f"reader oracle missed {name}"
+        assert guard.over_limit, f"reader oracle did not cross its cap for {name}"
+        assert guard.total_bytes == control_size, (
+            name,
+            guard.total_bytes,
+            control_size,
+            guard.operations,
+        )
+    control.unlink()
+
+
+def candidate_cap_race_case() -> None:
+    case = setup_case("candidate-cap-race")
+    derivative_cap = 64 * 1024 * 1024
+    guard = CumulativeReadGuard(derivative_cap, strict=False)
+    real_inspect = module.inspect_glb
+    mutation_count = 0
+
+    prove_cumulative_reader_oracle(case)
+
+    def grow_at_inspection(path):
+        nonlocal mutation_count
+        candidate = staged_output_from_fake_record(case)
+        inspected = Path(path)
+        if candidate is not None and inspected == candidate and mutation_count == 0:
+            _pad_glb_to_size(inspected, derivative_cap + 4)
+            guard.arm(inspected)
+            mutation_count += 1
+        return real_inspect(path)
+
     with (
-        mock.patch.object(module, "_verified_hash", grow_after_preflight),
-        mock.patch.object(os, "fdopen", observing_fdopen),
+        guard.patches(),
+        mock.patch.object(module, "inspect_glb", grow_at_inspection),
     ):
         result, stdout, stderr = run_main(case)
     assert mutation_count == 1
     assert_fake_reached(case)
     assert_source_pair(case, case.source_bytes, case.sidecar_bytes)
     assert_failed_terminal(case, result, stdout, stderr)
-    assert max(observed_inspector_reads, default=0) <= module.MAX_DERIVATIVE_GLB_BYTES, (
-        observed_inspector_reads,
-        module.MAX_DERIVATIVE_GLB_BYTES,
+    assert not guard.over_limit, (
+        "candidate read exceeded the derivative cap",
+        guard.total_bytes,
+        guard.operations,
+        {"rejected_before_data_read": guard.total_bytes == 0},
     )
 
 
-def error_classification_case(label: str, precise: bool) -> None:
+def error_classification_case(
+    label: str,
+    inspector_message: str,
+    expect_lost_uv: bool,
+) -> None:
     case = setup_case(label)
     real_inspect = module.inspect_glb
     injected = False
@@ -5887,16 +6399,10 @@ def error_classification_case(label: str, precise: bool) -> None:
     def fail_derivative(path):
         nonlocal injected
         candidate = Path(path)
-        if candidate.parent.name.startswith("asset-"):
+        staged_output = staged_output_from_fake_record(case)
+        if staged_output is not None and candidate == staged_output:
             injected = True
-            if precise:
-                raise module.GlbError(
-                    "meshes[0].primitives[0] material references missing TEXCOORD_0"
-                )
-            raise module.GlbError(
-                "integrity category mismatch; material references missing "
-                "TEXCOORD_0 appeared only in unrelated context"
-            )
+            raise module.GlbError(inspector_message)
         return real_inspect(path)
 
     with mock.patch.object(module, "inspect_glb", fail_derivative):
@@ -5905,10 +6411,9 @@ def error_classification_case(label: str, precise: bool) -> None:
     assert_fake_reached(case)
     assert_source_pair(case, case.source_bytes, case.sidecar_bytes)
     assert_failed_terminal(case, result, stdout, stderr)
-    if precise:
+    if expect_lost_uv:
         assert "lost UV" in stderr, stderr
     else:
-        assert "integrity category mismatch" in stderr, stderr
         assert "lost UV" not in stderr, stderr
 
 
@@ -5977,11 +6482,20 @@ for force in (False, True):
     mode = "force" if force else "absent"
     for member in ("glb", "json"):
         run_bounded(
-            f"staged-{member}-{mode}",
+            f"staged-{member}-invalid-{mode}",
             staged_mutation_case,
-            f"staged-{member}-{mode}",
+            f"staged-{member}-invalid-{mode}",
             member,
             force,
+            "invalid",
+        )
+        run_bounded(
+            f"staged-{member}-same-length-{mode}",
+            staged_mutation_case,
+            f"staged-{member}-same-length-{mode}",
+            member,
+            force,
+            "same-length",
         )
     for member in ("source", "sidecar"):
         run_bounded(
@@ -5999,12 +6513,28 @@ run_bounded(
     "exact-lost-uv-control",
     error_classification_case,
     "exact-lost-uv-control",
+    "meshes[0].primitives[0] material references missing TEXCOORD_0",
     True,
 )
 run_bounded(
-    "unrelated-error-classification",
+    "lost-uv-prefix-near-miss",
     error_classification_case,
-    "unrelated-error-classification",
+    "lost-uv-prefix-near-miss",
+    "context: meshes[0].primitives[0] material references missing TEXCOORD_0",
+    False,
+)
+run_bounded(
+    "lost-uv-suffix-near-miss",
+    error_classification_case,
+    "lost-uv-suffix-near-miss",
+    "meshes[0].primitives[0] material references missing TEXCOORD_0; context",
+    False,
+)
+run_bounded(
+    "generic-inspector-error-control",
+    error_classification_case,
+    "generic-inspector-error-control",
+    "derivative integrity check failed",
     False,
 )
 
