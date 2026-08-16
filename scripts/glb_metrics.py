@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
 import math
 import struct
 import sys
+from collections import Counter
 from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 
@@ -18,9 +21,11 @@ class GlbError(ValueError):
 
 METRIC_KEYS = (
     "path", "sha256", "bytes", "meshes", "primitives", "vertices",
-    "triangles", "materials", "material_primitives", "images",
-    "embedded_images", "uv_primitives", "animations", "cameras", "lights",
-    "skins", "morph_targets", "external_uris", "extensions_used",
+    "triangles", "referenced_vertices", "unique_triangles",
+    "degenerate_triangles", "materials", "material_primitives", "images",
+    "embedded_images", "image_payload_sha256", "material_texture_bindings",
+    "uv_primitives", "animations", "cameras", "lights", "skins",
+    "morph_targets", "external_uris", "extensions_used",
     "extensions_required", "world_bounds",
 )
 
@@ -30,6 +35,11 @@ CENTER_DRIFT_MAX = 0.005
 SCALE_DRIFT_MAX = 0.01
 NORMALIZED_EXTENT_DRIFT_MAX = 0.02
 MAX_DOCUMENT_NESTING = 256
+MAX_GLB_BYTES = 128 * 1024 * 1024
+MAX_JSON_BYTES = 16 * 1024 * 1024
+MAX_ACCESSORS = 65_536
+MAX_ACCESSOR_COUNT = 8_000_000
+MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
 _COMPONENT_SIZES = {
     5120: 1,
@@ -69,8 +79,24 @@ def _reject_json_constant(value: str) -> object:
     raise GlbError(f"invalid non-finite JSON number {value}")
 
 
+def _reject_duplicate_keys(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise GlbError(f"duplicate JSON object key {key!r}")
+        result[key] = value
+    return result
+
+
 def _read_glb(path: Path) -> tuple[dict[str, object], bytes]:
+    size = path.stat().st_size
+    if size > MAX_GLB_BYTES:
+        raise GlbError(f"GLB file exceeds limit {MAX_GLB_BYTES} bytes")
     data = path.read_bytes()
+    if len(data) > MAX_GLB_BYTES:
+        raise GlbError(f"GLB file exceeds limit {MAX_GLB_BYTES} bytes")
     offset = _validated_header(data)
     document: dict[str, object] | None = None
     chunk_number = 0
@@ -89,12 +115,19 @@ def _read_glb(path: Path) -> tuple[dict[str, object], bytes]:
         if kind == b"JSON":
             if document is not None:
                 raise GlbError("duplicate JSON chunk")
+            if length > MAX_JSON_BYTES:
+                raise GlbError(
+                    f"GLB JSON chunk exceeds limit {MAX_JSON_BYTES} bytes"
+                )
             try:
                 decoded = json.loads(
                     data[offset:end].rstrip(b" ").decode("utf-8"),
                     parse_constant=_reject_json_constant,
+                    object_pairs_hook=_reject_duplicate_keys,
                 )
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            except GlbError:
+                raise
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
                 raise GlbError(f"invalid GLB JSON: {exc}") from exc
             except (RecursionError, MemoryError, OverflowError) as exc:
                 raise GlbError("GLB JSON exceeds parser resource limits") from exc
@@ -354,6 +387,8 @@ def _validate_sparse(
     component_size: int,
     element_size: int,
     label: str,
+    binary: bytes | None,
+    buffer_embedded: list[bool],
 ) -> None:
     sparse = _object(sparse_value, label)
     count = _integer(sparse.get("count"), f"{label}.count", minimum=1)
@@ -381,23 +416,67 @@ def _validate_sparse(
         raise GlbError(f"{label}.indices has a misaligned effective offset")
     if (validated_views[values_view][1] + values_offset) % component_size:
         raise GlbError(f"{label}.values has a misaligned effective offset")
+    indices_buffer, indices_view_offset, _, _ = validated_views[indices_view]
+    values_buffer = validated_views[values_view][0]
+    if (
+        binary is None
+        or indices_buffer != 0
+        or values_buffer != 0
+        or not buffer_embedded[indices_buffer]
+        or not buffer_embedded[values_buffer]
+    ):
+        raise GlbError(f"{label} must use the embedded BIN chunk")
+    unpack_format = {5121: "<B", 5123: "<H", 5125: "<I"}[component_type]
+    start = indices_view_offset + indices_offset
+    previous = -1
+    for item in range(count):
+        sparse_index = struct.unpack_from(
+            unpack_format, binary, start + item * index_component_size
+        )[0]
+        if sparse_index >= accessor_count:
+            raise GlbError(f"{label}.indices value is out of range")
+        if sparse_index <= previous:
+            raise GlbError(f"{label}.indices must be strictly increasing")
+        previous = sparse_index
 
 
-def _validate_texture_info(value: object, texture_count: int, label: str) -> None:
+def _validate_texture_info(
+    value: object, texture_count: int, label: str
+) -> tuple[int, int]:
     info = _object(value, label)
-    _index(info.get("index"), texture_count, f"{label}.index")
+    texture = _index(info.get("index"), texture_count, f"{label}.index")
+    texcoord = _integer(info.get("texCoord", 0), f"{label}.texCoord")
+    return texture, texcoord
 
 
-def _validate_material_references(material: Mapping[str, object], texture_count: int, label: str) -> None:
+def _validate_material_references(
+    material: Mapping[str, object], texture_count: int, label: str
+) -> list[tuple[str, int, int]]:
+    references: list[tuple[str, int, int]] = []
     pbr_value = material.get("pbrMetallicRoughness")
     if pbr_value is not None:
         pbr = _object(pbr_value, f"{label}.pbrMetallicRoughness")
-        for name in ("baseColorTexture", "metallicRoughnessTexture"):
+        for name, role in (
+            ("baseColorTexture", "baseColor"),
+            ("metallicRoughnessTexture", "metallicRoughness"),
+        ):
             if name in pbr:
-                _validate_texture_info(pbr[name], texture_count, f"{label}.pbrMetallicRoughness.{name}")
-    for name in ("normalTexture", "occlusionTexture", "emissiveTexture"):
+                texture, texcoord = _validate_texture_info(
+                    pbr[name], texture_count,
+                    f"{label}.pbrMetallicRoughness.{name}",
+                )
+                references.append((role, texture, texcoord))
+    for name, role in (
+        ("normalTexture", "normal"),
+        ("occlusionTexture", "occlusion"),
+        ("emissiveTexture", "emissive"),
+    ):
         if name in material:
-            _validate_texture_info(material[name], texture_count, f"{label}.{name}")
+            texture, texcoord = _validate_texture_info(
+                material[name], texture_count, f"{label}.{name}"
+            )
+            references.append((role, texture, texcoord))
+    return references
 
 
 def _inspect_document(
@@ -411,6 +490,10 @@ def _inspect_document(
     if len(binary_chunks) > 1:
         raise GlbError("duplicate BIN chunk")
     binary = binary_chunks[0] if binary_chunks else None
+
+    asset = _object(document.get("asset"), "asset")
+    if asset.get("version") != "2.0":
+        raise GlbError("asset.version must be exactly 2.0")
 
     extensions_used = _extension_names(document, "extensionsUsed")
     extensions_required = _extension_names(document, "extensionsRequired")
@@ -463,6 +546,8 @@ def _inspect_document(
         validated_views.append((buffer_index, offset, length, stride))
 
     accessors = _root_array(document, "accessors")
+    if len(accessors) > MAX_ACCESSORS:
+        raise GlbError(f"accessor array exceeds limit {MAX_ACCESSORS}")
     validated_accessors: list[tuple[int | None, int, int, str, int, int]] = []
     for number, value in enumerate(accessors):
         accessor = _object(value, f"accessors[{number}]")
@@ -473,6 +558,10 @@ def _inspect_document(
         if not isinstance(kind, str) or kind not in _TYPE_COMPONENTS:
             raise GlbError(f"accessors[{number}] has unsupported type")
         count = _integer(accessor.get("count"), f"accessors[{number}].count")
+        if count > MAX_ACCESSOR_COUNT:
+            raise GlbError(
+                f"accessor count exceeds limit {MAX_ACCESSOR_COUNT}"
+            )
         accessor_offset = _integer(accessor.get("byteOffset", 0), f"accessors[{number}].byteOffset")
         view_value = accessor.get("bufferView")
         view_index = None if view_value is None else _index(view_value, len(buffer_views), f"accessors[{number}].bufferView")
@@ -499,50 +588,105 @@ def _inspect_document(
                 accessor["sparse"], count, validated_views, component_size,
                 element_size,
                 f"accessors[{number}].sparse",
+                binary,
+                buffer_embedded,
             )
         normalized = accessor.get("normalized", False)
         if not isinstance(normalized, bool):
             raise GlbError(f"accessors[{number}].normalized must be boolean")
         validated_accessors.append((view_index, accessor_offset, count, kind, component_type, element_size))
 
+    def embedded_view_payload(view_value: object, label: str) -> bytes:
+        view_index = _index(view_value, len(buffer_views), f"{label}.bufferView")
+        buffer_index, offset, length, _ = validated_views[view_index]
+        if length > MAX_IMAGE_BYTES:
+            raise GlbError(
+                f"{label} payload exceeds image limit {MAX_IMAGE_BYTES} bytes"
+            )
+        if (
+            binary is None
+            or buffer_index != 0
+            or not buffer_embedded[buffer_index]
+        ):
+            raise GlbError(f"{label} must use the embedded BIN chunk")
+        return binary[offset:offset + length]
+
+    def data_image_payload(uri: str, label: str) -> bytes:
+        header, separator, encoded = uri.partition(",")
+        if not separator or header.lower() not in (
+            "data:image/png;base64",
+            "data:image/jpeg;base64",
+        ):
+            raise GlbError(f"{label} has an unsupported embedded image URI")
+        maximum_encoded = 4 * ((MAX_IMAGE_BYTES + 2) // 3)
+        if len(encoded) > maximum_encoded:
+            raise GlbError(
+                f"{label} payload exceeds image limit {MAX_IMAGE_BYTES} bytes"
+            )
+        try:
+            payload = base64.b64decode(encoded, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise GlbError(f"{label} has invalid base64 image data") from exc
+        if len(payload) > MAX_IMAGE_BYTES:
+            raise GlbError(
+                f"{label} payload exceeds image limit {MAX_IMAGE_BYTES} bytes"
+            )
+        return payload
+
     images = _root_array(document, "images")
     embedded_images = 0
+    image_payload_sha256: list[str | None] = []
     for number, value in enumerate(images):
         image = _object(value, f"images[{number}]")
+        label = f"images[{number}]"
         has_uri = "uri" in image
         has_view = "bufferView" in image
         if has_uri == has_view:
-            raise GlbError(f"images[{number}] must contain exactly one of uri or bufferView")
+            raise GlbError(f"{label} must contain exactly one of uri or bufferView")
         if has_view:
-            _index(image["bufferView"], len(buffer_views), f"images[{number}].bufferView")
             mime = image.get("mimeType")
-            if not isinstance(mime, str) or not mime:
-                raise GlbError(f"images[{number}].mimeType is required for bufferView images")
+            if mime not in ("image/png", "image/jpeg"):
+                raise GlbError(f"{label}.mimeType is not a supported image type")
+            payload = embedded_view_payload(image["bufferView"], label)
             embedded_images += 1
+            image_payload_sha256.append(hashlib.sha256(payload).hexdigest())
         else:
             uri = image["uri"]
             if not isinstance(uri, str) or not uri:
-                raise GlbError(f"images[{number}].uri must be a non-empty string")
+                raise GlbError(f"{label}.uri must be a non-empty string")
             if uri.startswith("data:"):
+                payload = data_image_payload(uri, label)
                 embedded_images += 1
+                image_payload_sha256.append(hashlib.sha256(payload).hexdigest())
             else:
                 external_uris.add(uri)
+                image_payload_sha256.append(None)
 
     samplers = _root_array(document, "samplers")
     for number, value in enumerate(samplers):
         _object(value, f"samplers[{number}]")
     textures = _root_array(document, "textures")
+    texture_sources: list[int | None] = []
     for number, value in enumerate(textures):
         texture = _object(value, f"textures[{number}]")
+        source: int | None = None
         if "source" in texture:
-            _index(texture["source"], len(images), f"textures[{number}].source")
+            source = _index(
+                texture["source"], len(images), f"textures[{number}].source"
+            )
         if "sampler" in texture:
             _index(texture["sampler"], len(samplers), f"textures[{number}].sampler")
+        texture_sources.append(source)
 
     materials = _root_array(document, "materials")
+    material_texture_references: list[list[tuple[str, int, int]]] = []
     for number, value in enumerate(materials):
         material = _object(value, f"materials[{number}]")
-        _validate_material_references(material, len(textures), f"materials[{number}]")
+        material_texture_references.append(
+            _validate_material_references(
+                material, len(textures), f"materials[{number}]"
+            )
+        )
 
     local_bounds: dict[tuple[int, int], tuple[list[float], list[float]]] = {}
     local_position_accessors: dict[tuple[int, int], int] = {}
@@ -557,6 +701,8 @@ def _inspect_document(
         view_index, accessor_offset, count, kind, component_type, _ = validated_accessors[accessor_index]
         if kind != "VEC3" or component_type != 5126:
             raise GlbError(f"{label} must use a FLOAT VEC3 accessor")
+        if accessor.get("normalized", False):
+            raise GlbError(f"{label} cannot be normalized")
         if "sparse" in accessor:
             raise GlbError(f"{label} cannot use a sparse accessor")
         if count == 0 or view_index is None:
@@ -596,7 +742,9 @@ def _inspect_document(
                 raise GlbError(f"{label} declared bounds disagree with POSITION bytes")
         return minimum, maximum
 
-    def decode_indices(accessor_index: int, position_count: int, label: str) -> int:
+    def index_values(
+        accessor_index: int, position_count: int, label: str
+    ) -> Iterator[int]:
         accessor = _object(accessors[accessor_index], f"accessors[{accessor_index}]")
         view_index, accessor_offset, count, kind, component_type, _ = validated_accessors[accessor_index]
         if kind != "SCALAR" or component_type not in (5121, 5123, 5125):
@@ -623,15 +771,76 @@ def _inspect_document(
                 raise GlbError(
                     f"{label} value {index} is outside POSITION count {position_count}"
                 )
-        return count
+            yield index
+
+    def position_at(
+        accessor_index: int, position_index: int, label: str
+    ) -> tuple[float, float, float]:
+        view_index, accessor_offset, _, _, _, _ = validated_accessors[accessor_index]
+        if view_index is None or binary is None:
+            raise GlbError(f"{label} must contain POSITION values")
+        _, view_offset, _, view_stride = validated_views[view_index]
+        point = struct.unpack_from(
+            "<3f", binary,
+            view_offset + accessor_offset + position_index * (view_stride or 12),
+        )
+        if not all(math.isfinite(value) for value in point):
+            raise GlbError(f"{label} contains a non-finite POSITION")
+        return point
+
+    def validate_texcoord_accessor(accessor_index: int, label: str) -> None:
+        accessor = _object(accessors[accessor_index], f"accessors[{accessor_index}]")
+        _, _, _, kind, component_type, _ = validated_accessors[accessor_index]
+        normalized = accessor.get("normalized", False)
+        if kind != "VEC2":
+            raise GlbError(f"{label} must use a VEC2 accessor")
+        if component_type == 5126:
+            if normalized:
+                raise GlbError(f"{label} FLOAT accessor cannot be normalized")
+        elif component_type in (5121, 5123):
+            if not normalized:
+                raise GlbError(
+                    f"{label} integer accessor must be normalized"
+                )
+        else:
+            raise GlbError(f"{label} has an unsupported component type")
+
+    def triangle_indices(
+        values: Iterator[int], count: int, mode: int
+    ) -> Iterator[tuple[int, int, int]]:
+        if mode == 4:
+            for _ in range(count // 3):
+                yield next(values), next(values), next(values)
+            return
+        if count < 3:
+            for _ in values:
+                pass
+            return
+        first = next(values)
+        second = next(values)
+        if mode == 5:
+            previous_previous, previous = first, second
+            for current in values:
+                yield previous_previous, previous, current
+                previous_previous, previous = previous, current
+        else:
+            previous = second
+            for current in values:
+                yield first, previous, current
+                previous = current
 
     meshes = _root_array(document, "meshes")
     primitive_count = 0
     vertices = 0
     triangles = 0
+    referenced_vertices = 0
+    unique_faces: set[bytes] = set()
+    degenerate_triangles = 0
     material_primitives = 0
     uv_primitives = 0
     morph_targets = 0
+    used_materials: set[int] = set()
+    material_texcoords: dict[int, set[str]] = {}
     for mesh_number, value in enumerate(meshes):
         mesh = _object(value, f"meshes[{mesh_number}]")
         primitives = _array(mesh.get("primitives"), f"meshes[{mesh_number}].primitives")
@@ -656,21 +865,77 @@ def _inspect_document(
             for semantic, accessor_index in attribute_indices.items():
                 if validated_accessors[accessor_index][2] != position_count:
                     raise GlbError(f"{label}.attributes.{semantic} count disagrees with POSITION")
+                if semantic.startswith("TEXCOORD_"):
+                    suffix = semantic.removeprefix("TEXCOORD_")
+                    if not suffix.isdigit():
+                        raise GlbError(f"{label}.attributes.{semantic} is invalid")
+                    validate_texcoord_accessor(
+                        accessor_index, f"{label}.attributes.{semantic}"
+                    )
             mode = _integer(primitive.get("mode", 4), f"{label}.mode")
             if mode not in (4, 5, 6):
                 raise GlbError(f"{label} uses unsupported primitive mode {mode}")
             element_count = position_count
             if "indices" in primitive:
                 index_accessor = validate_accessor_reference(primitive["indices"], f"{label}.indices")
-                element_count = decode_indices(index_accessor, position_count, f"{label}.indices")
+                element_count = validated_accessors[index_accessor][2]
+                raw_indices = index_values(
+                    index_accessor, position_count, f"{label}.indices"
+                )
+            else:
+                raw_indices = iter(range(position_count))
             if mode == 4:
                 if element_count % 3:
                     raise GlbError(f"{label} triangle count is not divisible by three")
-                triangles += element_count // 3
+                primitive_triangles = element_count // 3
             else:
-                triangles += max(0, element_count - 2)
+                primitive_triangles = max(0, element_count - 2)
+            triangles += primitive_triangles
+
+            referenced = bytearray(position_count)
+
+            def checked_indices() -> Iterator[int]:
+                nonlocal referenced_vertices
+                for index in raw_indices:
+                    if not referenced[index]:
+                        referenced[index] = 1
+                        referenced_vertices += 1
+                    yield index
+
+            position_label = f"{label}.POSITION"
+            for face in triangle_indices(
+                checked_indices(), element_count, mode
+            ):
+                points = tuple(
+                    position_at(position_index, index, position_label)
+                    for index in face
+                )
+                ab = tuple(points[1][axis] - points[0][axis] for axis in range(3))
+                ac = tuple(points[2][axis] - points[0][axis] for axis in range(3))
+                cross = (
+                    ab[1] * ac[2] - ab[2] * ac[1],
+                    ab[2] * ac[0] - ab[0] * ac[2],
+                    ab[0] * ac[1] - ab[1] * ac[0],
+                )
+                if len(set(points)) != 3 or cross == (0.0, 0.0, 0.0):
+                    degenerate_triangles += 1
+                    continue
+                encoded_points = sorted(
+                    struct.pack(
+                        "<3f", *(0.0 if value == 0.0 else value for value in point)
+                    )
+                    for point in points
+                )
+                unique_faces.add(b"".join(encoded_points))
             if "material" in primitive:
-                _index(primitive["material"], len(materials), f"{label}.material")
+                material_index = _index(
+                    primitive["material"], len(materials), f"{label}.material"
+                )
+                used_materials.add(material_index)
+                material_texcoords.setdefault(material_index, set()).update(
+                    semantic for semantic in attribute_indices
+                    if semantic.startswith("TEXCOORD_")
+                )
                 material_primitives += 1
             if "TEXCOORD_0" in attributes:
                 uv_primitives += 1
@@ -690,6 +955,33 @@ def _inspect_document(
             morph_targets += len(targets)
             primitive_count += 1
             vertices += position_count
+
+    material_texture_bindings: list[dict[str, object]] = []
+    for material_index in sorted(used_materials):
+        for role, texture_index, texcoord in material_texture_references[
+            material_index
+        ]:
+            semantic = f"TEXCOORD_{texcoord}"
+            if (
+                texcoord != 0
+                and semantic not in material_texcoords.get(material_index, set())
+            ):
+                raise GlbError(
+                    f"materials[{material_index}] references missing {semantic}"
+                )
+            image_index = texture_sources[texture_index]
+            if image_index is None:
+                raise GlbError(
+                    f"textures[{texture_index}] used by material has no source"
+                )
+            material_texture_bindings.append(
+                {
+                    "material": material_index,
+                    "role": role,
+                    "texcoord": texcoord,
+                    "payload_sha256": image_payload_sha256[image_index],
+                }
+            )
 
     cameras = _root_array(document, "cameras")
     for number, value in enumerate(cameras):
@@ -845,10 +1137,15 @@ def _inspect_document(
         "primitives": primitive_count,
         "vertices": vertices,
         "triangles": triangles,
+        "referenced_vertices": referenced_vertices,
+        "unique_triangles": len(unique_faces),
+        "degenerate_triangles": degenerate_triangles,
         "materials": len(materials),
         "material_primitives": material_primitives,
         "images": len(images),
         "embedded_images": embedded_images,
+        "image_payload_sha256": image_payload_sha256,
+        "material_texture_bindings": material_texture_bindings,
         "uv_primitives": uv_primitives,
         "animations": len(animations),
         "cameras": len(cameras),
@@ -914,6 +1211,12 @@ def compare_preservation(source: Mapping[str, object], output: Mapping[str, obje
 
         try:
             primitives = _metric_integer(metrics, "primitives", label)
+            degenerate = _metric_integer(metrics, "degenerate_triangles", label)
+            if degenerate:
+                reasons.append(
+                    f"{label} contains {degenerate} degenerate triangle"
+                    f"{'' if degenerate == 1 else 's'}"
+                )
             if _metric_integer(metrics, "uv_primitives", label) != primitives:
                 reasons.append(f"{label} does not bind TEXCOORD_0 on every primitive")
             if _metric_integer(metrics, "material_primitives", label) != primitives:
@@ -930,6 +1233,27 @@ def compare_preservation(source: Mapping[str, object], output: Mapping[str, obje
                     reasons.append(f"{label} contains {count} {singular}{'' if count == 1 else 's'}")
         except GlbError as exc:
             reasons.append(str(exc))
+
+    try:
+        output_vertices = _metric_integer(output, "vertices", "output")
+        output_referenced = _metric_integer(
+            output, "referenced_vertices", "output"
+        )
+        if output_referenced != output_vertices:
+            reasons.append(
+                "output referenced vertex count "
+                f"{output_referenced} differs from vertex count {output_vertices}"
+            )
+        output_triangles = _metric_integer(output, "triangles", "output")
+        output_unique = _metric_integer(output, "unique_triangles", "output")
+        if output_unique != output_triangles:
+            reasons.append(
+                "output unique triangle count "
+                f"{output_unique} differs from raw triangle count "
+                f"{output_triangles}"
+            )
+    except GlbError as exc:
+        reasons.append(str(exc))
 
     output_extensions_value = output.get("extensions_used", [])
     output_required_value = output.get("extensions_required", [])
@@ -949,17 +1273,52 @@ def compare_preservation(source: Mapping[str, object], output: Mapping[str, obje
         elif extension not in ALLOWED_OUTPUT_EXTENSIONS:
             reasons.append(f"output extension {extension} is not approved")
 
-    for name, description in (
-        ("materials", "material count"),
-        ("embedded_images", "embedded-image count"),
+    try:
+        source_materials = _metric_integer(source, "materials", "source")
+        output_materials = _metric_integer(output, "materials", "output")
+        if source_materials != output_materials:
+            reasons.append(
+                "material count changed from "
+                f"{source_materials} to {output_materials}"
+            )
+    except GlbError as exc:
+        reasons.append(str(exc))
+
+    source_payloads = source.get("image_payload_sha256")
+    output_payloads = output.get("image_payload_sha256")
+    if not isinstance(source_payloads, list) or not all(
+        isinstance(item, (str, type(None))) for item in source_payloads
     ):
+        reasons.append("source image payload hashes are malformed")
+    elif not isinstance(output_payloads, list) or not all(
+        isinstance(item, (str, type(None))) for item in output_payloads
+    ):
+        reasons.append("output image payload hashes are malformed")
+    elif Counter(source_payloads) != Counter(output_payloads):
+        reasons.append("image payload multiset changed")
         try:
-            source_value = _metric_integer(source, name, "source")
-            output_value = _metric_integer(output, name, "output")
-            if source_value != output_value:
-                reasons.append(f"{description} changed from {source_value} to {output_value}")
+            source_embedded = _metric_integer(
+                source, "embedded_images", "source"
+            )
+            output_embedded = _metric_integer(
+                output, "embedded_images", "output"
+            )
+            if source_embedded != output_embedded:
+                reasons.append(
+                    "embedded-image count changed from "
+                    f"{source_embedded} to {output_embedded}"
+                )
         except GlbError as exc:
             reasons.append(str(exc))
+
+    source_bindings = source.get("material_texture_bindings")
+    output_bindings = output.get("material_texture_bindings")
+    if not isinstance(source_bindings, list):
+        reasons.append("source material texture bindings are malformed")
+    elif not isinstance(output_bindings, list):
+        reasons.append("output material texture bindings are malformed")
+    elif source_bindings != output_bindings:
+        reasons.append("material texture bindings changed")
 
     try:
         source_center, source_extents = center_and_extents(source.get("world_bounds"))
@@ -1000,8 +1359,12 @@ def _main(arguments: list[str]) -> int:
         return 2
     try:
         metrics = inspect_glb(Path(arguments[0]))
-    except (GlbError, OSError, struct.error) as exc:
-        print(f"glb-metrics: {exc}", file=sys.stderr)
+    except (
+        GlbError, OSError, struct.error, UnicodeError, ValueError,
+        OverflowError, MemoryError, RecursionError,
+    ) as exc:
+        diagnostic = " ".join(str(exc).splitlines()) or "input processing failed"
+        print(f"glb-metrics: {diagnostic}", file=sys.stderr)
         return 1
     print(json.dumps(metrics, sort_keys=True))
     return 0
