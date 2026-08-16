@@ -156,6 +156,14 @@ def write_raw_json(path, json_payload, binary):
     )
 
 
+def add_spot_light(doc):
+    spot = {"innerConeAngle": 0.1, "outerConeAngle": 0.5}
+    doc["extensionsUsed"] = ["KHR_lights_punctual"]
+    doc["extensions"] = {"KHR_lights_punctual": {"lights": [{"type": "spot", "intensity": 1.0, "spot": spot}]}}
+    doc["nodes"][0]["extensions"] = {"KHR_lights_punctual": {"light": 0}}
+    return spot
+
+
 path = Path(sys.argv[1])
 action = sys.argv[2]
 if action == "magic":
@@ -198,6 +206,15 @@ elif action == "extras-metadata":
     doc["nodes"][0]["extras"] = {"extensions": {"renderer": {"quality": "preview"}}}
     primitive["extras"] = {"extensions": ["thumbnail", "preview"]}
     doc["materials"][0]["extras"] = {"extensions": {"authoring": {"source": "fixture"}}}
+elif action == "spot-vendor-extension":
+    spot = add_spot_light(doc)
+    spot["extensions"] = {"VENDOR_undeclared": {}}
+elif action == "spot-extras-list":
+    spot = add_spot_light(doc)
+    spot["extras"] = {"extensions": ["png", "jpg"], "fixture": "opaque list metadata"}
+elif action == "spot-extras-object":
+    spot = add_spot_light(doc)
+    spot["extras"] = {"extensions": {"asset_pipeline": {"format": "png", "quality": "preview"}}}
 elif action == "undeclared-draco":
     doc.pop("extensionsUsed", None)
     primitive["extensions"] = {"KHR_draco_mesh_compression": {"bufferView": 0, "attributes": {"POSITION": 0}}}
@@ -273,6 +290,7 @@ PY
 expect_metrics_failure() {
   local name=$1
   local input=$2
+  local expected_text=${3:-}
   local stdout="$tmp/${name// /-}.out"
   local stderr="$tmp/${name// /-}.err"
   set +e
@@ -285,7 +303,40 @@ expect_metrics_failure() {
   fi
   # Break caught: malformed input lacks the promised fail-closed diagnostic.
   grep -q '^glb-metrics:' "$stderr"
+  if [ -n "$expected_text" ]; then
+    grep -Fq "$expected_text" "$stderr"
+  fi
 }
+
+for spot_case in spot-extras-list spot-extras-object; do
+  cp "$tmp/valid.glb" "$tmp/$spot_case.glb"
+  mutate "$tmp/$spot_case.glb" "$spot_case"
+  run_metrics "$tmp/$spot_case.glb" >"$tmp/$spot_case.json"
+done
+PYTHONDONTWRITEBYTECODE=1 python3 - "$tmp/spot-extras-list.json" "$tmp/spot-extras-object.json" <<'PY'
+import json
+import sys
+
+for path in sys.argv[1:]:
+    d = json.load(open(path, encoding="utf-8"))
+    # Break caught: opaque spot.extras metadata is counted as a glTF extension.
+    assert d["extensions_used"] == ["KHR_lights_punctual"]
+    assert d["extensions_required"] == []
+    # Break caught: valid declared punctual spot lights are not counted.
+    assert d["lights"] == 1
+    # Break caught: opaque spot metadata alters ordinary inspection metrics.
+    assert d["triangles"] == 37
+    assert d["vertices"] == 8
+    assert d["meshes"] == d["primitives"] == d["materials"] == 1
+    assert d["images"] == d["embedded_images"] == 1
+    assert d["uv_primitives"] == d["material_primitives"] == 1
+    assert d["world_bounds"] == {"min": [3.0, 4.0, 5.0], "max": [5.0, 6.0, 7.0]}
+PY
+
+cp "$tmp/valid.glb" "$tmp/spot-vendor-extension.glb"
+mutate "$tmp/spot-vendor-extension.glb" spot-vendor-extension
+# Break caught: undeclared extensions nested in valid KHR spot objects are ignored.
+expect_metrics_failure "undeclared spot vendor extension" "$tmp/spot-vendor-extension.glb" "VENDOR_undeclared"
 
 cp "$tmp/valid.glb" "$tmp/bad-magic.glb"
 mutate "$tmp/bad-magic.glb" magic
