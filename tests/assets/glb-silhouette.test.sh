@@ -251,21 +251,19 @@ PYTHONDONTWRITEBYTECODE=1 python3 - \
   "$silhouette_script" "$tmp" <<'PY'
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import importlib.util
-import io
 import json
 import os
 import re
 import resource
-import runpy
 import shutil
 import signal
 import struct
 import subprocess
 import sys
 import time
+import zlib
 from pathlib import Path
 
 
@@ -315,6 +313,69 @@ def invoke(
         )
     except subprocess.TimeoutExpired:
         return None
+
+
+def invoke_with_rss_limit(
+    program: Path,
+    source: Path,
+    output: Path,
+    *arguments: str,
+    timeout: float = 2.0,
+    maximum_rss: int = 64 * 1024 * 1024,
+) -> tuple[subprocess.CompletedProcess[str], bool, bool, int]:
+    command = [python, str(program), str(source), str(output), *arguments]
+
+    def lower_priority() -> None:
+        try:
+            os.nice(10)
+        except OSError:
+            pass
+
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=environment,
+        preexec_fn=lower_priority,
+    )
+    ps = shutil.which("ps")
+    assert ps is not None
+    deadline = time.monotonic() + timeout
+    peak_rss = 0
+    exceeded_memory = False
+    exceeded_time = False
+    try:
+        while process.poll() is None:
+            measurement = subprocess.run(
+                [ps, "-o", "rss=", "-p", str(process.pid)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            value = measurement.stdout.strip()
+            if value.isdigit():
+                peak_rss = max(peak_rss, int(value) * 1024)
+            if peak_rss > maximum_rss:
+                exceeded_memory = True
+                process.kill()
+                break
+            if time.monotonic() >= deadline:
+                exceeded_time = True
+                process.kill()
+                break
+            time.sleep(0.005)
+        stdout, stderr = process.communicate(timeout=1.0)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+    return (
+        subprocess.CompletedProcess(command, process.returncode, stdout, stderr),
+        exceeded_memory,
+        exceeded_time,
+        peak_rss,
+    )
 
 
 def check_prefixed_failure(
@@ -516,6 +577,54 @@ def reported_vertices(stdout: str) -> int | None:
     return None if match is None else int(match.group(1))
 
 
+def is_complete_png(path: Path, expected_size: int) -> bool:
+    try:
+        data = path.read_bytes()
+        if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+            return False
+        offset = 8
+        dimensions: tuple[int, int] | None = None
+        compressed = bytearray()
+        saw_end = False
+        while offset < len(data):
+            if len(data) - offset < 12:
+                return False
+            length = struct.unpack_from(">I", data, offset)[0]
+            end = offset + 12 + length
+            if end > len(data):
+                return False
+            kind = data[offset + 4:offset + 8]
+            payload = data[offset + 8:offset + 8 + length]
+            checksum = struct.unpack_from(">I", data, offset + 8 + length)[0]
+            if zlib.crc32(kind + payload) & 0xFFFFFFFF != checksum:
+                return False
+            if kind == b"IHDR":
+                if len(payload) != 13:
+                    return False
+                width, height = struct.unpack_from(">2I", payload)
+                dimensions = (width, height)
+            elif kind == b"IDAT":
+                compressed.extend(payload)
+            elif kind == b"IEND":
+                if payload:
+                    return False
+                saw_end = True
+                offset = end
+                break
+            offset = end
+        if (
+            not saw_end
+            or offset != len(data)
+            or dimensions != (expected_size, expected_size)
+            or not compressed
+        ):
+            return False
+        raw = zlib.decompress(bytes(compressed))
+        return len(raw) == expected_size * (1 + expected_size * 3)
+    except (OSError, struct.error, zlib.error):
+        return False
+
+
 # Control: a normal single-link PNG can be atomically rerendered in place.
 ordinary_output = root / "ordinary-rerender.png"
 ordinary_first = invoke(
@@ -543,14 +652,15 @@ check(
     "ordinary output: rerender was refused",
 )
 check(
-    ordinary_output.is_file()
-    and ordinary_output.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"),
+    is_complete_png(ordinary_output, 64),
     "ordinary output: rerender did not leave a PNG",
 )
 
 
 # Mutations caught: following either kind of link and writing the final path
-# directly.  Both distinct immutable GLBs and link topology must survive.
+# directly.  A renderer may reject the linked output or atomically replace its
+# directory entry with a complete PNG; it must never write through to the
+# distinct immutable GLB.
 for link_kind in ("symlink", "hardlink"):
     case = root / f"distinct-{link_kind}"
     case.mkdir()
@@ -564,10 +674,8 @@ for link_kind in ("symlink", "hardlink"):
     check(source_before != target_before, f"{link_kind}: setup GLBs are not distinct")
     if link_kind == "symlink":
         output.symlink_to(target.name)
-        link_before = os.readlink(output)
     else:
         os.link(target, output)
-        link_before = ""
     result = invoke(
         source,
         output,
@@ -576,17 +684,28 @@ for link_kind in ("symlink", "hardlink"):
         "--splat-radius", "4",
         "--min-coverage", "0.001",
     )
-    check_prefixed_failure(result, f"distinct {link_kind} output")
-    check(source.read_bytes() == source_before, f"{link_kind}: source GLB changed")
-    check(target.read_bytes() == target_before, f"{link_kind}: target GLB changed")
-    if link_kind == "symlink":
-        check(output.is_symlink(), "symlink: output link was detached or replaced")
+    if result is not None and result.returncode == 0:
+        check(result.stderr == "", f"{link_kind}: successful render wrote stderr")
         check(
-            output.is_symlink() and os.readlink(output) == link_before,
-            "symlink: output link target changed",
+            is_complete_png(output, 64),
+            f"{link_kind}: successful replacement is not a complete PNG",
+        )
+        check(
+            not output.is_symlink() and not os.path.samefile(output, target),
+            f"{link_kind}: successful replacement still aliases its target",
         )
     else:
-        check(os.path.samefile(output, target), "hardlink: link topology changed")
+        check_prefixed_failure(result, f"distinct {link_kind} output")
+        check(
+            output.exists() and output.read_bytes() == target_before,
+            f"{link_kind}: rejected output was partially changed",
+        )
+    check(source.read_bytes() == source_before, f"{link_kind}: source GLB changed")
+    check(target.read_bytes() == target_before, f"{link_kind}: target GLB changed")
+    check(
+        {path.name for path in case.iterdir()} == {"a.glb", "b.glb", "out.png"},
+        f"{link_kind}: output transaction left staging residue",
+    )
 
 
 # A real short-write fault must affect only a staging file.  Direct final
@@ -781,8 +900,7 @@ for label, numeric_source, arguments in numeric_cases:
     check(not output.exists(), f"{label}: left an output PNG")
 
 
-# Special files are rejected by metadata before an open can block.  Exercise
-# both sides of the CLI boundary with real FIFOs and a hard timeout.
+# A special GLB input is rejected by metadata before an open can block.
 fifo_source = root / "source.fifo"
 os.mkfifo(fifo_source)
 fifo_source_output = root / "fifo-source.png"
@@ -798,10 +916,17 @@ fifo_source_result = invoke(
 check_prefixed_failure(fifo_source_result, "FIFO source")
 check(not fifo_source_output.exists(), "FIFO source left an output PNG")
 
-fifo_output = root / "output.fifo"
+# A FIFO output is not a GLB input.  As with linked output paths, either clean
+# rejection or bounded atomic replacement with a complete PNG is compliant.
+fifo_output_case = root / "fifo-output"
+fifo_output_case.mkdir()
+fifo_output_source = fifo_output_case / "source.glb"
+shutil.copyfile(source_template, fifo_output_source)
+fifo_output_source_before = fifo_output_source.read_bytes()
+fifo_output = fifo_output_case / "output.fifo"
 os.mkfifo(fifo_output)
 fifo_output_result = invoke(
-    source_template,
+    fifo_output_source,
     fifo_output,
     "0",
     "--size", "64",
@@ -809,69 +934,92 @@ fifo_output_result = invoke(
     "--min-coverage", "0",
     timeout=1.5,
 )
-check_prefixed_failure(fifo_output_result, "FIFO output")
-check(fifo_output.is_fifo(), "FIFO output was replaced or removed")
+if fifo_output_result is not None and fifo_output_result.returncode == 0:
+    check(fifo_output_result.stderr == "", "FIFO output success wrote stderr")
+    check(is_complete_png(fifo_output, 64), "FIFO output is not a complete PNG")
+    check(
+        fifo_output.is_file() and not fifo_output.is_symlink(),
+        "FIFO output success did not atomically install a regular PNG",
+    )
+else:
+    check_prefixed_failure(fifo_output_result, "FIFO output")
+    check(not fifo_output.is_file(), "FIFO output rejection left a partial file")
+check(
+    fifo_output_source.read_bytes() == fifo_output_source_before,
+    "FIFO output changed its GLB source",
+)
+fifo_output_names = {path.name for path in fifo_output_case.iterdir()}
+check(
+    fifo_output_names in ({"source.glb"}, {"source.glb", "output.fifo"}),
+    "FIFO output transaction left staging residue",
+)
 
 
-# A sparse 512 MiB + 1 input is rejected from metadata before any read.  The
-# read guard prevents the RED implementation from allocating that amount while
-# still proving that an implementation which opens first cannot pass.
-oversized_source = root / "oversized.glb"
+# A sparse 512 MiB + 1 input runs in a lower-priority subprocess whose elapsed
+# time and resident set are monitored externally.  This black-box oracle is
+# independent of whether production reads with Path.read_bytes, Path.open,
+# builtins.open, or another API.
+oversized_case = root / "oversized-input"
+oversized_case.mkdir()
+oversized_source = oversized_case / "oversized.glb"
 with oversized_source.open("wb") as handle:
     handle.truncate(512 * 1024 * 1024 + 1)
-oversized_output = root / "oversized.png"
-original_read_bytes = Path.read_bytes
-oversized_reads = 0
-
-
-def guarded_read_bytes(path: Path) -> bytes:
-    global oversized_reads
-    if path == oversized_source:
-        oversized_reads += 1
-        raise AssertionError("oversized input was read")
-    return original_read_bytes(path)
-
-
-captured_stdout = io.StringIO()
-captured_stderr = io.StringIO()
-oversized_exit: int | None = None
-oversized_exception: BaseException | None = None
-old_argv = sys.argv
-old_path = list(sys.path)
-try:
-    Path.read_bytes = guarded_read_bytes
-    sys.argv = [
-        str(script),
-        str(oversized_source),
-        str(oversized_output),
+oversized_output = oversized_case / "oversized.png"
+oversized_result, oversized_memory, oversized_time, oversized_peak = (
+    invoke_with_rss_limit(
+        script,
+        oversized_source,
+        oversized_output,
         "0",
         "--size", "64",
         "--splat-radius", "1",
         "--min-coverage", "0",
-    ]
-    sys.path.insert(0, str(script.parent))
-    with contextlib.redirect_stdout(captured_stdout), contextlib.redirect_stderr(captured_stderr):
-        try:
-            runpy.run_path(str(script), run_name="__main__")
-        except SystemExit as exc:
-            oversized_exit = exc.code if isinstance(exc.code, int) else 1
-        except BaseException as exc:
-            oversized_exception = exc
-finally:
-    Path.read_bytes = original_read_bytes
-    sys.argv = old_argv
-    sys.path[:] = old_path
-
-oversized_lines = captured_stderr.getvalue().splitlines()
-check(oversized_reads == 0, "oversized input was opened before rejection")
-check(oversized_exception is None, "oversized input raised outside the CLI boundary")
-check(oversized_exit not in (None, 0), "oversized input unexpectedly returned success")
-check(captured_stdout.getvalue() == "", "oversized input wrote stdout")
-check(
-    len(oversized_lines) == 1 and oversized_lines[0].startswith("glb-silhouette:"),
-    f"oversized input lacked one prefixed diagnostic: {captured_stderr.getvalue()!r}",
+    )
 )
+if oversized_memory:
+    failures.append(
+        f"oversized input exceeded 64 MiB RSS budget (peak {oversized_peak} bytes)"
+    )
+elif oversized_time:
+    failures.append("oversized input exceeded bounded runtime")
+else:
+    check_prefixed_failure(oversized_result, "oversized input")
 check(not oversized_output.exists(), "oversized input left an output PNG")
+check(
+    {path.name for path in oversized_case.iterdir()} == {"oversized.glb"},
+    "oversized input left staging residue",
+)
+
+# Mutation control: the same external monitor must stop an implementation that
+# changes only its reader to Path.open('rb').read().  This would have escaped
+# the former Path.read_bytes monkeypatch without exercising any product seam.
+alternate_reader = root / "alternate-open-reader.py"
+alternate_reader.write_text(
+    "from pathlib import Path\n"
+    "import sys\n"
+    "with Path(sys.argv[1]).open('rb') as handle:\n"
+    "    handle.read()\n"
+    "print('glb-silhouette: alternate reader escaped bound', file=sys.stderr)\n"
+    "raise SystemExit(1)\n",
+    encoding="utf-8",
+)
+alternate_output = root / "alternate-open-reader.png"
+alternate_result, alternate_memory, alternate_time, alternate_peak = (
+    invoke_with_rss_limit(
+        alternate_reader,
+        oversized_source,
+        alternate_output,
+        timeout=2.0,
+    )
+)
+check(
+    alternate_memory
+    and not alternate_time
+    and alternate_result.returncode != 0
+    and alternate_peak > 64 * 1024 * 1024,
+    "bounded oversize oracle did not kill the Path.open().read() mutation",
+)
+check(not alternate_output.exists(), "alternate reader mutation left output")
 
 
 if failures:
