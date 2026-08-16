@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import stat
+import struct
 import sys
 from pathlib import Path
 
@@ -54,6 +57,89 @@ def _audit_phase(phase: str) -> None:
             handle.write(f"{phase}\n")
 
 
+def _audit_environment(phase: str) -> None:
+    """Record only names plus private-directory facts for environment tests."""
+    destination = os.environ.get("FAKE_BLENDER_ENV_LOG")
+    if not destination:
+        return
+    private_names = (
+        "HOME",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+        "XDG_CONFIG_HOME",
+        "XDG_CACHE_HOME",
+        "XDG_DATA_HOME",
+        "XDG_STATE_HOME",
+    )
+    private_paths = {}
+    for name in private_names:
+        value = os.environ.get(name)
+        if value is None:
+            continue
+        path = Path(value)
+        try:
+            status = os.lstat(path)
+        except OSError:
+            private_paths[name] = {"path": value, "exists": False}
+        else:
+            private_paths[name] = {
+                "path": value,
+                "exists": True,
+                "is_directory": stat.S_ISDIR(status.st_mode),
+                "is_symlink": stat.S_ISLNK(status.st_mode),
+                "mode": stat.S_IMODE(status.st_mode),
+            }
+    record = {
+        "phase": phase,
+        "names": sorted(os.environ),
+        "private_paths": private_paths,
+    }
+    with Path(destination).open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True) + "\n")
+
+
+def _source_observation(source: Path) -> dict[str, object]:
+    status = os.lstat(source)
+    parent_status = os.lstat(source.parent)
+    return {
+        "source": str(source),
+        "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+        "source_lstat_regular": stat.S_ISREG(status.st_mode),
+        "source_lstat_symlink": stat.S_ISLNK(status.st_mode),
+        "source_nlink": status.st_nlink,
+        "source_mode": stat.S_IMODE(status.st_mode),
+        "source_parent_mode": stat.S_IMODE(parent_status.st_mode),
+    }
+
+
+def _replace_external_uri(path: Path, uri: str) -> None:
+    """Rewrite the fixture's JSON chunk while retaining its BIN payload."""
+    payload = path.read_bytes()
+    magic, version, _ = struct.unpack_from("<4sII", payload, 0)
+    if magic != b"glTF" or version != 2:
+        raise RuntimeError("fake-blender: URI rewrite received a malformed GLB")
+    json_length, chunk_type = struct.unpack_from("<I4s", payload, 12)
+    if chunk_type != b"JSON":
+        raise RuntimeError("fake-blender: URI rewrite found no leading JSON chunk")
+    document = json.loads(payload[20 : 20 + json_length].rstrip(b" \t\r\n\0"))
+    document["images"][0] = {"uri": uri}
+    json_payload = json.dumps(
+        document, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    json_payload += b" " * (-len(json_payload) % 4)
+    trailing_chunks = payload[20 + json_length :]
+    rebuilt = (
+        struct.pack(
+            "<4sII", b"glTF", 2, 12 + 8 + len(json_payload) + len(trailing_chunks)
+        )
+        + struct.pack("<I4s", len(json_payload), b"JSON")
+        + json_payload
+        + trailing_chunks
+    )
+    path.write_bytes(rebuilt)
+
+
 def _processing_arguments(argv: list[str]) -> argparse.Namespace:
     try:
         separator = argv.index("--")
@@ -82,6 +168,7 @@ def _processing_arguments(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str]) -> int:
     _reject_forbidden_environment()
     if "--version" in argv:
+        _audit_environment("version")
         _audit_phase("version")
         version = os.environ.get("FAKE_BLENDER_VERSION", "5.1.2")
         build_hash = os.environ.get("FAKE_BLENDER_BUILD_HASH", "ec6e62d40fa9")
@@ -100,49 +187,83 @@ def main(argv: list[str]) -> int:
         print(f"{prefix}build hash: {build_hash}")
         return 0
 
+    _audit_environment("asset")
     _audit_phase("asset")
     args = _processing_arguments(argv)
     mode = os.environ.get("FAKE_BLENDER_MODE", "success")
     if mode not in _MODES:
         raise SystemExit(f"fake-blender: unsupported mode {mode!r}")
 
-    log = os.environ.get("FAKE_BLENDER_LOG")
-    if log:
-        with Path(log).open("a", encoding="utf-8") as handle:
-            handle.write(
-                json.dumps(
-                    {"argv": [str(value) for value in sys.argv], "target": args.target_triangles},
-                    sort_keys=True,
+    swap_path_value = os.environ.get("FAKE_BLENDER_SWAP_PATH")
+    swap_payload_value = os.environ.get("FAKE_BLENDER_SWAP_PAYLOAD_PATH")
+    if (swap_path_value is None) != (swap_payload_value is None):
+        raise SystemExit("fake-blender: incomplete source-swap controls")
+    swap_path = Path(swap_path_value) if swap_path_value is not None else None
+    original_bytes = swap_path.read_bytes() if swap_path is not None else None
+    try:
+        if swap_path is not None and swap_payload_value is not None:
+            swap_path.write_bytes(Path(swap_payload_value).read_bytes())
+
+        observation = _source_observation(args.source)
+        log = os.environ.get("FAKE_BLENDER_LOG")
+        if log:
+            with Path(log).open("a", encoding="utf-8") as handle:
+                handle.write(
+                    json.dumps(
+                        {
+                            "argv": [str(value) for value in sys.argv],
+                            "target": args.target_triangles,
+                            "source_swap_performed": swap_path is not None,
+                            **observation,
+                        },
+                        sort_keys=True,
+                    )
+                    + "\n"
                 )
-                + "\n"
-            )
 
-    if mode == "fail":
-        return 17
-    if mode == "malformed_output":
-        args.output.write_bytes(b"not glTF")
+        if mode == "fail":
+            return 17
+        if mode == "malformed_output":
+            args.output.write_bytes(b"not glTF")
+            return 0
+
+        triangles = {
+            "over_budget": args.target_triangles + 1,
+            "under_budget": args.target_triangles - 2_001,
+        }.get(mode, args.target_triangles)
+        requested_extension = os.environ.get("FAKE_BLENDER_OUTPUT_EXTENSION")
+        requested_uri = os.environ.get("FAKE_BLENDER_OUTPUT_URI")
+        extensions = (
+            (requested_extension,)
+            if requested_extension is not None
+            else (("VENDOR_unreviewed",) if mode == "unsupported_extension" else ())
+        )
+        write_glb(
+            args.output,
+            triangles=triangles,
+            include_uv=mode != "missing_uv",
+            include_material=mode != "missing_material",
+            include_image=mode != "missing_image",
+            external_image=mode == "external_image" or requested_uri is not None,
+            extensions=extensions,
+            add_scene_content=mode == "unexpected_scene_content",
+            translation=(100.0, 0.0, 0.0)
+            if mode == "bounds_drift"
+            else (0.0, 0.0, 0.0),
+        )
+        if requested_uri is not None:
+            _replace_external_uri(args.output, requested_uri)
+        requested_size = os.environ.get("FAKE_BLENDER_OUTPUT_SIZE")
+        if requested_size is not None:
+            size = int(requested_size)
+            if size < 0:
+                raise SystemExit("fake-blender: output size must be non-negative")
+            with args.output.open("r+b") as handle:
+                handle.truncate(size)
         return 0
-
-    triangles = {
-        "over_budget": args.target_triangles + 1,
-        "under_budget": args.target_triangles - 2_001,
-    }.get(mode, args.target_triangles)
-    write_glb(
-        args.output,
-        triangles=triangles,
-        include_uv=mode != "missing_uv",
-        include_material=mode != "missing_material",
-        include_image=mode != "missing_image",
-        external_image=mode == "external_image",
-        extensions=("VENDOR_unreviewed",)
-        if mode == "unsupported_extension"
-        else (),
-        add_scene_content=mode == "unexpected_scene_content",
-        translation=(100.0, 0.0, 0.0)
-        if mode == "bounds_drift"
-        else (0.0, 0.0, 0.0),
-    )
-    return 0
+    finally:
+        if swap_path is not None and original_bytes is not None:
+            swap_path.write_bytes(original_bytes)
 
 
 if __name__ == "__main__":

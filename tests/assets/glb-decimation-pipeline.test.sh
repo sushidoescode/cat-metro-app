@@ -10,8 +10,8 @@ fake_blender="$repo/tests/assets/fake_blender.py"
 expected_driver=$(cd "$(dirname "$decimate_script")" && pwd -P)/blender_decimate.py
 review_section=${GLB_DECIMATION_REVIEW_SECTION:-all}
 case "$review_section" in
-  all|A|B|C|D|E|F|G|H) ;;
-  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all, A, B, C, D, E, F, G, or H"
+  all|A|B|C|D|E|F|G|H|I|J|K) ;;
+  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all or A through K"
      printf 'glb-decimation pipeline test: %s\n' "$die_message" >&2
      exit 2 ;;
 esac
@@ -2297,6 +2297,1497 @@ scene = metrics["unexpected_scene_content"]
 assert [scene[name] for name in ("animations", "cameras", "lights", "skins", "morph_targets")] == [1, 1, 1, 1, 1]
 PY
 assert_no_external_effects
+
+# Review hardening I: promotion inputs and absent-destination commits are a
+# custody boundary, not merely pathnames. Staged members must be lstat-regular,
+# private single-link files. Their hashes and types are frozen before the first
+# rename and reverified only after both final names exist. A failed second rename
+# must retire the candidate pair intact outside the final namespace even when
+# unlink persistently fails; no caller may observe a lone final. Every fault runs
+# in a bounded child so an accidental retry loop cannot retain the test process.
+if [ "$review_section" = all ] || [ "$review_section" = I ]; then
+  PYTHONDONTWRITEBYTECODE=1 python3 - \
+    "$decimate_script" "$tmp/review-promotion-custody" <<'PY'
+import hashlib
+import importlib.util
+import multiprocessing
+import os
+import stat
+import sys
+import traceback
+from pathlib import Path
+from unittest import mock
+
+
+script = Path(sys.argv[1])
+root = Path(sys.argv[2])
+root.mkdir()
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location(
+    "decimate_assets_promotion_custody_test", script
+)
+assert spec is not None and spec.loader is not None
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+process_context = multiprocessing.get_context("fork")
+errors = []
+
+
+def digest_bytes(value):
+    return hashlib.sha256(value).hexdigest()
+
+
+def lstat_regular_single(path):
+    try:
+        status = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    return stat.S_ISREG(status.st_mode) and status.st_nlink == 1
+
+
+def regular_payload(path, payload):
+    return (
+        lstat_regular_single(path)
+        and path.read_bytes() == payload
+        and digest_bytes(path.read_bytes()) == digest_bytes(payload)
+    )
+
+
+def new_case(name):
+    directory = root / name
+    directory.mkdir()
+    return {
+        "directory": directory,
+        "staged_glb": directory / "staged.glb",
+        "staged_json": directory / "staged.json",
+        "final_glb": directory / "final.glb",
+        "final_json": directory / "final.glb.json",
+        "glb_bytes": f"candidate GLB for {name}".encode(),
+        "json_bytes": f"candidate JSON for {name}".encode(),
+    }
+
+
+def exercise_compliant_control():
+    case = new_case("compliant-regular-single-link")
+    case["staged_glb"].write_bytes(case["glb_bytes"])
+    case["staged_json"].write_bytes(case["json_bytes"])
+    assert lstat_regular_single(case["staged_glb"])
+    assert lstat_regular_single(case["staged_json"])
+    module.promote_pair(
+        case["staged_glb"],
+        case["staged_json"],
+        case["final_glb"],
+        case["final_json"],
+        False,
+    )
+    assert regular_payload(case["final_glb"], case["glb_bytes"])
+    assert regular_payload(case["final_json"], case["json_bytes"])
+    assert set(case["directory"].iterdir()) == {
+        case["final_glb"], case["final_json"]
+    }
+
+
+def exercise_staged_type(name, member, kind):
+    case = new_case(name)
+    target = case[f"staged_{member}"]
+    other_member = "json" if member == "glb" else "glb"
+    other = case[f"staged_{other_member}"]
+    target_payload = case[f"{member}_bytes"]
+    other_payload = case[f"{other_member}_bytes"]
+    other.write_bytes(other_payload)
+    referent = case["directory"] / f"{member}-referent"
+    if kind == "symlink":
+        referent.write_bytes(target_payload)
+        target.symlink_to(referent.name)
+        assert target.is_symlink() and target.read_bytes() == target_payload
+    elif kind == "hardlink":
+        referent.write_bytes(target_payload)
+        os.link(referent, target)
+        assert os.lstat(target).st_nlink == 2 and os.path.samefile(target, referent)
+    elif kind == "fifo":
+        os.mkfifo(target, 0o600)
+        assert stat.S_ISFIFO(os.lstat(target).st_mode)
+    elif kind == "directory":
+        target.mkdir()
+    else:
+        raise AssertionError(f"unsupported staged type {kind}")
+    before = {
+        path.name: (
+            "symlink", os.readlink(path)
+        ) if path.is_symlink() else (
+            "regular", path.read_bytes(), os.lstat(path).st_nlink
+        ) if stat.S_ISREG(os.lstat(path).st_mode) else (
+            "mode", stat.S_IFMT(os.lstat(path).st_mode)
+        )
+        for path in case["directory"].iterdir()
+    }
+    caught = None
+    try:
+        module.promote_pair(
+            case["staged_glb"],
+            case["staged_json"],
+            case["final_glb"],
+            case["final_json"],
+            False,
+        )
+    except BaseException as exc:
+        caught = exc
+    findings = []
+    if caught is None:
+        findings.append(f"{name}: staged {kind} {member} was accepted")
+    elif not isinstance(caught, module.DecimationError):
+        findings.append(
+            f"{name}: staged rejection raised {type(caught).__name__}, not DecimationError"
+        )
+    if case["final_glb"].exists() or case["final_glb"].is_symlink():
+        findings.append(f"{name}: rejected staged custody left a final GLB")
+    if case["final_json"].exists() or case["final_json"].is_symlink():
+        findings.append(f"{name}: rejected staged custody left a final JSON")
+    after = {}
+    for path in case["directory"].iterdir():
+        if path.is_symlink():
+            after[path.name] = ("symlink", os.readlink(path))
+        else:
+            status = os.lstat(path)
+            if stat.S_ISREG(status.st_mode):
+                after[path.name] = ("regular", path.read_bytes(), status.st_nlink)
+            else:
+                after[path.name] = ("mode", stat.S_IFMT(status.st_mode))
+    if after != before:
+        findings.append(
+            f"{name}: staged rejection changed exact custody membership/type/bytes; "
+            f"before={before!r} after={after!r}"
+        )
+    return findings
+
+
+def exercise_between_renames(name, mutation):
+    case = new_case(name)
+    case["staged_glb"].write_bytes(case["glb_bytes"])
+    case["staged_json"].write_bytes(case["json_bytes"])
+    foreign = case["directory"] / "foreign-referent"
+    foreign.write_bytes(b"foreign bytes that are never a candidate")
+    permitted = {foreign}
+    same_bytes_referent = None
+    if mutation.endswith("link-same"):
+        member = "glb" if mutation.startswith("glb-") else "json"
+        same_bytes_referent = case["directory"] / f"same-{member}-referent"
+        same_bytes_referent.write_bytes(case[f"{member}_bytes"])
+        permitted.add(same_bytes_referent)
+    real_replace = os.replace
+    first_reached = False
+    second_reached = False
+
+    def replacing(source, destination):
+        nonlocal first_reached, second_reached
+        source_path = Path(source)
+        destination_path = Path(destination)
+        if source_path == case["staged_glb"] and destination_path == case["final_glb"]:
+            result = real_replace(source_path, destination_path)
+            first_reached = True
+            if mutation == "glb-bytes":
+                case["final_glb"].write_bytes(b"foreign GLB after first rename")
+            elif mutation == "glb-symlink":
+                case["final_glb"].unlink()
+                case["final_glb"].symlink_to(foreign.name)
+            elif mutation == "json-bytes":
+                case["staged_json"].write_bytes(b"foreign JSON before second rename")
+            elif not mutation.startswith(("glb-post-pair-", "json-post-pair-")):
+                raise AssertionError(f"unknown between-rename mutation {mutation}")
+            return result
+        if source_path == case["staged_json"] and destination_path == case["final_json"]:
+            second_reached = True
+            result = real_replace(source_path, destination_path)
+            if mutation == "glb-post-pair-bytes":
+                case["final_glb"].write_bytes(b"foreign GLB after complete rename pair")
+            elif mutation == "json-post-pair-bytes":
+                case["final_json"].write_bytes(b"foreign JSON after complete rename pair")
+            elif mutation == "glb-post-pair-symlink-same":
+                case["final_glb"].unlink()
+                case["final_glb"].symlink_to(same_bytes_referent.name)
+            elif mutation == "json-post-pair-symlink-same":
+                case["final_json"].unlink()
+                case["final_json"].symlink_to(same_bytes_referent.name)
+            elif mutation == "glb-post-pair-hardlink-same":
+                case["final_glb"].unlink()
+                os.link(same_bytes_referent, case["final_glb"])
+            elif mutation == "json-post-pair-hardlink-same":
+                case["final_json"].unlink()
+                os.link(same_bytes_referent, case["final_json"])
+            return result
+        return real_replace(source_path, destination_path)
+
+    caught = None
+    with mock.patch.object(module.os, "replace", new=replacing):
+        try:
+            module.promote_pair(
+                case["staged_glb"],
+                case["staged_json"],
+                case["final_glb"],
+                case["final_json"],
+                False,
+            )
+        except BaseException as exc:
+            caught = exc
+    findings = []
+    if not first_reached or not second_reached:
+        findings.append(
+            f"{name}: mutation did not span both renames: "
+            f"first={first_reached} second={second_reached}"
+        )
+    if caught is None:
+        findings.append(f"{name}: foreign pair returned success")
+    elif not isinstance(caught, module.DecimationError):
+        findings.append(
+            f"{name}: post-promotion verification raised "
+            f"{type(caught).__name__}, not DecimationError"
+        )
+    if os.path.lexists(case["final_glb"]) or os.path.lexists(case["final_json"]):
+        findings.append(f"{name}: failed post-promotion verification left a final member")
+    actual = set(case["directory"].iterdir())
+    staged_pair = {case["staged_glb"], case["staged_json"]}
+    if frozenset(actual) not in {
+        frozenset(permitted), frozenset(permitted | staged_pair)
+    }:
+        findings.append(
+            f"{name}: unexpected post-verification residue: "
+            f"{sorted(path.name for path in actual)}"
+        )
+    if actual == permitted | staged_pair:
+        for path in staged_pair:
+            if not lstat_regular_single(path):
+                findings.append(f"{name}: retired staged member is not regular/single-link")
+        if not regular_payload(case["staged_glb"], case["glb_bytes"]):
+            findings.append(f"{name}: retired staged GLB is not the exact candidate")
+        if not regular_payload(case["staged_json"], case["json_bytes"]):
+            findings.append(f"{name}: retired staged JSON is not the exact candidate")
+    if foreign.read_bytes() != b"foreign bytes that are never a candidate":
+        findings.append(f"{name}: foreign referent changed")
+    if same_bytes_referent is not None:
+        member = "glb" if mutation.startswith("glb-") else "json"
+        if not regular_payload(same_bytes_referent, case[f"{member}_bytes"]):
+            findings.append(f"{name}: same-byte referent lost exact custody")
+    return findings
+
+
+def exercise_persistent_unlink():
+    name = "second-rename-persistent-final-unlink"
+    case = new_case(name)
+    case["staged_glb"].write_bytes(case["glb_bytes"])
+    case["staged_json"].write_bytes(case["json_bytes"])
+    real_replace = os.replace
+    real_unlink = os.unlink
+    real_remove = os.remove
+    second_reached = False
+    unlink_attempts = 0
+
+    def replacing(source, destination):
+        nonlocal second_reached
+        source_path = Path(source)
+        destination_path = Path(destination)
+        if source_path == case["staged_json"] and destination_path == case["final_json"]:
+            second_reached = True
+            raise OSError("injected second rename failure before effect")
+        return real_replace(source_path, destination_path)
+
+    def unlinking(path, *args, **kwargs):
+        nonlocal unlink_attempts
+        candidate = Path(path)
+        if candidate == case["final_glb"]:
+            unlink_attempts += 1
+            if unlink_attempts > 16:
+                raise AssertionError("unbounded persistent final-GLB unlink retry")
+            raise OSError("injected persistent final-GLB unlink failure")
+        return real_unlink(path, *args, **kwargs)
+
+    def removing(path, *args, **kwargs):
+        candidate = Path(path)
+        if candidate == case["final_glb"]:
+            return unlinking(path, *args, **kwargs)
+        return real_remove(path, *args, **kwargs)
+
+    caught = None
+    with (
+        mock.patch.object(module.os, "replace", new=replacing),
+        mock.patch.object(module.os, "unlink", new=unlinking),
+        mock.patch.object(module.os, "remove", new=removing),
+    ):
+        try:
+            module.promote_pair(
+                case["staged_glb"],
+                case["staged_json"],
+                case["final_glb"],
+                case["final_json"],
+                False,
+            )
+        except BaseException as exc:
+            caught = exc
+    findings = []
+    if caught is None:
+        findings.append(f"{name}: second-rename failure was swallowed")
+    elif not isinstance(caught, (OSError, module.DecimationError)):
+        findings.append(
+            f"{name}: recovery raised unexpected {type(caught).__name__}"
+        )
+    if not second_reached:
+        findings.append(f"{name}: second rename injection was not reached")
+    if unlink_attempts > 16:
+        findings.append(f"{name}: unlink retries exceeded the explicit bound")
+    if os.path.lexists(case["final_glb"]) or os.path.lexists(case["final_json"]):
+        findings.append(f"{name}: terminal still contains a final member")
+    actual = set(case["directory"].iterdir())
+    payloads = []
+    for path in actual:
+        if not lstat_regular_single(path):
+            payloads.append(None)
+        else:
+            payloads.append(path.read_bytes())
+    if (
+        len(actual) != 2
+        or sorted(payloads, key=lambda value: b"" if value is None else value)
+        != sorted((case["glb_bytes"], case["json_bytes"]))
+    ):
+        findings.append(
+            f"{name}: terminal must contain exactly the privately retired candidate pair; "
+            f"found {sorted(path.name for path in actual)}"
+        )
+    return findings
+
+
+def child(sender, scenario, arguments):
+    try:
+        if scenario == "control":
+            exercise_compliant_control()
+            findings = []
+        elif scenario == "staged-type":
+            findings = exercise_staged_type(*arguments)
+        elif scenario == "between-renames":
+            findings = exercise_between_renames(*arguments)
+        elif scenario == "persistent-unlink":
+            findings = exercise_persistent_unlink()
+        else:
+            raise AssertionError(f"unknown promotion scenario {scenario}")
+        sender.send(("result", findings))
+    except BaseException:
+        sender.send(("crash", traceback.format_exc()))
+    finally:
+        sender.close()
+
+
+def run_bounded(scenario, arguments, label):
+    receiver, sender = process_context.Pipe(duplex=False)
+    process = process_context.Process(
+        target=child,
+        args=(sender, scenario, arguments),
+        name=f"promotion-custody-{label}",
+        daemon=True,
+    )
+    process.start()
+    sender.close()
+    process.join(4)
+    if process.is_alive():
+        process.terminate()
+        process.join(2)
+        if process.is_alive():
+            process.kill()
+            process.join(2)
+        errors.append(f"{label}: scenario exceeded four-second bound")
+    payload = None
+    if receiver.poll():
+        try:
+            payload = receiver.recv()
+        except EOFError:
+            payload = None
+    receiver.close()
+    if payload is None:
+        if not any(error.startswith(f"{label}:") for error in errors):
+            errors.append(f"{label}: child exited {process.exitcode} without evidence")
+    else:
+        kind, value = payload
+        if kind == "result":
+            errors.extend(value)
+        else:
+            errors.append(f"{label}: child crashed:\n{value}")
+    process.close()
+
+
+run_bounded("control", (), "compliant-regular-single-link")
+for staged_kind in ("symlink", "hardlink", "fifo", "directory"):
+    for staged_member in ("glb", "json"):
+        label = f"staged-{staged_member}-{staged_kind}"
+        run_bounded(
+            "staged-type",
+            (label, staged_member, staged_kind),
+            label,
+        )
+for mutation in (
+    "glb-bytes",
+    "glb-symlink",
+    "json-bytes",
+    "glb-post-pair-bytes",
+    "json-post-pair-bytes",
+    "glb-post-pair-symlink-same",
+    "json-post-pair-symlink-same",
+    "glb-post-pair-hardlink-same",
+    "json-post-pair-hardlink-same",
+):
+    label = f"between-renames-{mutation}"
+    run_bounded("between-renames", (label, mutation), label)
+run_bounded("persistent-unlink", (), "second-rename-persistent-final-unlink")
+
+if errors:
+    raise AssertionError("promotion custody hardening regressions:\n- " + "\n- ".join(errors))
+PY
+  assert_no_external_effects
+fi
+
+if [ "$review_section" = I ]; then
+  printf 'glb-decimation review I: pass\n'
+  exit 0
+fi
+
+# Review hardening J: validated source bytes cannot remain a mutable pathname
+# contract. Freeze a private, no-follow, read-only, single-link source+sidecar
+# snapshot before any child executable runs, pass the source snapshot to Blender,
+# and retain original lineage in provenance. Child hygiene is an explicit minimal
+# name allowlist with private HOME/XDG/temp directories. This is environment
+# isolation only; the test deliberately makes no OS network-sandbox claim.
+if [ "$review_section" = all ] || [ "$review_section" = J ]; then
+  PYTHONDONTWRITEBYTECODE=1 python3 - \
+    "$decimate_script" "$tmp/review-source-environment" "$repo" \
+    "$fake_blender" <<'PY'
+import contextlib
+import hashlib
+import importlib.util
+import io
+import json
+import os
+import stat
+import subprocess
+import sys
+from pathlib import Path
+from unittest import mock
+
+
+script = Path(sys.argv[1])
+root = Path(sys.argv[2])
+repo = Path(sys.argv[3])
+fake_blender = Path(sys.argv[4])
+root.mkdir()
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(repo / "tests" / "assets"))
+from glb_fixture import write_glb
+
+
+errors = []
+
+
+def check(condition, message):
+    if not condition:
+        errors.append(message)
+
+
+def digest_bytes(value):
+    return hashlib.sha256(value).hexdigest()
+
+
+def digest(path):
+    return digest_bytes(path.read_bytes())
+
+
+def write_source_sidecar(source, prompt):
+    sidecar = Path(f"{source}.json")
+    sidecar.write_text(json.dumps({
+        "service": "meshy",
+        "task_id": "fixture-meshy-task",
+        "timestamp_utc": "2026-08-15T12:34:56Z",
+        "plan_tier": "paid",
+        "prompt": prompt,
+        "note": "trusted local fixture",
+        "sha256": digest(source),
+    }, sort_keys=True) + "\n", encoding="utf-8")
+    return sidecar
+
+
+def write_manifest(path, filename, prompt):
+    path.write_text(json.dumps({"assets": [{
+        "id": "snapshot-cat",
+        "kind": "cat",
+        "service": "meshy",
+        "out": filename,
+        "prompt": prompt,
+    }]}, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def cli_arguments(manifest, input_dir, output_dir):
+    return [
+        sys.executable,
+        str(script),
+        "--manifest", str(manifest),
+        "--input-dir", str(input_dir),
+        "--output-dir", str(output_dir),
+        "--blender", str(fake_blender),
+    ]
+
+
+def regular_private_snapshot(observation, trusted_sha, original, label):
+    check(
+        Path(observation["source"]) != original,
+        f"{label}: Blender received the mutable original source path",
+    )
+    check(
+        observation["source_sha256"] == trusted_sha,
+        f"{label}: Blender did not read the trusted source snapshot",
+    )
+    check(
+        observation["source_lstat_regular"] is True
+        and observation["source_lstat_symlink"] is False
+        and observation["source_nlink"] == 1,
+        f"{label}: Blender source was not lstat-regular/single-link: {observation}",
+    )
+    check(
+        observation["source_mode"] & 0o222 == 0,
+        f"{label}: Blender source snapshot remained writable: "
+        f"{observation['source_mode']:o}",
+    )
+    check(
+        observation["source_parent_mode"] & 0o077 == 0,
+        f"{label}: Blender source snapshot parent was not private: "
+        f"{observation['source_parent_mode']:o}",
+    )
+
+
+# J1: the fake swaps the original to a different valid GLB, reads the exact
+# --source argument, then restores the original before the orchestrator's final
+# custody check. Secure code succeeds only because Blender was given the frozen
+# copy. Current original-path code also returns zero, so the observed hash/path
+# assertions are the discriminating oracle.
+swap_root = root / "swap-back-cli"
+swap_input = swap_root / "input"
+swap_output = swap_root / "output"
+swap_input.mkdir(parents=True)
+swap_output.mkdir()
+swap_source = swap_input / "asset.glb"
+swap_payload = swap_root / "foreign.glb"
+swap_manifest = swap_root / "manifest.json"
+swap_log = swap_root / "fake.log"
+swap_audit = swap_root / "fake.audit"
+write_glb(swap_source, triangles=30000)
+write_glb(swap_payload, triangles=31000, translation=(0.125, 0.0, 0.0))
+swap_sidecar = write_source_sidecar(swap_source, "snapshot fixture cat")
+write_manifest(swap_manifest, swap_source.name, "snapshot fixture cat")
+trusted_source_bytes = swap_source.read_bytes()
+trusted_sidecar_bytes = swap_sidecar.read_bytes()
+trusted_source_sha = digest_bytes(trusted_source_bytes)
+foreign_sha = digest(swap_payload)
+check(foreign_sha != trusted_source_sha, "swap-back fixture hashes unexpectedly match")
+swap_environment = os.environ.copy()
+swap_environment.update({
+    "FAKE_BLENDER_MODE": "success",
+    "FAKE_BLENDER_LOG": str(swap_log),
+    "FAKE_BLENDER_AUDIT": str(swap_audit),
+    "FAKE_BLENDER_SWAP_PATH": str(swap_source),
+    "FAKE_BLENDER_SWAP_PAYLOAD_PATH": str(swap_payload),
+})
+try:
+    swap_result = subprocess.run(
+        cli_arguments(swap_manifest, swap_input, swap_output),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env=swap_environment,
+    )
+except subprocess.TimeoutExpired as exc:
+    raise AssertionError("source swap-back CLI exceeded 20-second bound") from exc
+check(
+    swap_result.returncode == 0,
+    "source swap-back run did not safely neutralize the attack: "
+    f"stdout={swap_result.stdout!r} stderr={swap_result.stderr!r}",
+)
+check(swap_source.read_bytes() == trusted_source_bytes, "swap-back changed source bytes")
+check(swap_sidecar.read_bytes() == trusted_sidecar_bytes, "swap-back changed sidecar bytes")
+swap_records = (
+    [json.loads(line) for line in swap_log.read_text(encoding="utf-8").splitlines()]
+    if swap_log.exists() else []
+)
+check(len(swap_records) == 1, f"swap-back fake records differ: {swap_records}")
+if len(swap_records) == 1:
+    observation = swap_records[0]
+    check(
+        observation["source_swap_performed"] is True,
+        "source swap-back: fake mutation controls were stripped",
+    )
+    regular_private_snapshot(
+        observation, trusted_source_sha, swap_source, "source swap-back"
+    )
+    check(
+        observation["source_sha256"] != foreign_sha,
+        "source swap-back: Blender consumed the foreign source bytes",
+    )
+check(
+    swap_audit.exists()
+    and swap_audit.read_text(encoding="utf-8").splitlines() == ["version", "asset"],
+    "source swap-back did not exercise both fake Blender phases",
+)
+final_glb = swap_output / swap_source.name
+final_json = Path(f"{final_glb}.json")
+check(final_glb.is_file() and final_json.is_file(), "source swap-back lacks final pair")
+if final_json.is_file():
+    proof = json.loads(final_json.read_text(encoding="utf-8"))
+    check(
+        proof["source"]["filename"] == swap_source.name
+        and proof["source"]["sha256"] == trusted_source_sha
+        and proof["source"]["sidecar_sha256"] == digest_bytes(trusted_sidecar_bytes),
+        f"source swap-back provenance lost original lineage: {proof.get('source')!r}",
+    )
+check(
+    set(swap_output.iterdir()) == {final_glb, final_json},
+    "source swap-back left snapshot/staging residue in output",
+)
+
+
+# J2: swap both originals at the version-executable seam, restore them at the
+# processing boundary, and then inspect the prepared pair. A late snapshot has
+# frozen the foreign bytes; an original-path implementation instead fails the
+# private-path oracle. Only a pair frozen before *any* child executable passes.
+spec = importlib.util.spec_from_file_location(
+    "decimate_assets_snapshot_seam_test", script
+)
+assert spec is not None and spec.loader is not None
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+seam_root = root / "pre-version-snapshot"
+seam_input = seam_root / "input"
+seam_output = seam_root / "output"
+seam_input.mkdir(parents=True)
+seam_output.mkdir()
+seam_source = seam_input / "asset.glb"
+seam_manifest = seam_root / "manifest.json"
+write_glb(seam_source, triangles=30000)
+seam_sidecar = write_source_sidecar(seam_source, "pre-version fixture cat")
+write_manifest(seam_manifest, seam_source.name, "pre-version fixture cat")
+seam_source_bytes = seam_source.read_bytes()
+seam_sidecar_bytes = seam_sidecar.read_bytes()
+malicious_source_bytes = b"foreign source present only across version seam"
+malicious_sidecar_bytes = b"foreign sidecar present only across version seam"
+seam_observation = {}
+version_seam_reached = False
+
+
+def mutating_version_check(_blender, _child_env):
+    global version_seam_reached
+    version_seam_reached = True
+    seam_source.write_bytes(malicious_source_bytes)
+    seam_sidecar.write_bytes(malicious_sidecar_bytes)
+
+
+def observing_process(_asset, prepared, *_arguments):
+    # Model the attacker's swap-back before Blender consumes its source. These
+    # writes are test cleanup as well as the second half of the attack.
+    seam_source.write_bytes(seam_source_bytes)
+    seam_sidecar.write_bytes(seam_sidecar_bytes)
+    source_snapshot = Path(prepared["source_path"])
+    sidecar_snapshot = Path(prepared["source_sidecar_path"])
+    for name, path, trusted in (
+        ("source", source_snapshot, seam_source_bytes),
+        ("sidecar", sidecar_snapshot, seam_sidecar_bytes),
+    ):
+        status = os.lstat(path)
+        seam_observation[name] = {
+            "path": path,
+            "bytes": path.read_bytes(),
+            "regular": stat.S_ISREG(status.st_mode),
+            "symlink": stat.S_ISLNK(status.st_mode),
+            "nlink": status.st_nlink,
+            "mode": stat.S_IMODE(status.st_mode),
+            "parent_mode": stat.S_IMODE(os.lstat(path.parent).st_mode),
+            "trusted": trusted,
+        }
+    seam_observation["prepared_source_sha"] = prepared["source_sha"]
+    seam_observation["prepared_sidecar_sha"] = prepared["source_sidecar_sha"]
+
+
+seam_stdout = io.StringIO()
+seam_stderr = io.StringIO()
+try:
+    with (
+        mock.patch.object(module, "_check_blender_version", new=mutating_version_check),
+        mock.patch.object(module, "_process_asset", new=observing_process),
+        contextlib.redirect_stdout(seam_stdout),
+        contextlib.redirect_stderr(seam_stderr),
+    ):
+        seam_result = module.main([
+            "--manifest", str(seam_manifest),
+            "--input-dir", str(seam_input),
+            "--output-dir", str(seam_output),
+            "--blender", str(fake_blender),
+        ])
+finally:
+    seam_source.write_bytes(seam_source_bytes)
+    seam_sidecar.write_bytes(seam_sidecar_bytes)
+check(seam_result == 0, f"pre-version snapshot seam returned {seam_result}")
+check(version_seam_reached, "pre-version mutation seam was not reached")
+check(set(seam_observation) >= {"source", "sidecar"}, "snapshot pair was not observed")
+for name, original, trusted in (
+    ("source", seam_source, seam_source_bytes),
+    ("sidecar", seam_sidecar, seam_sidecar_bytes),
+):
+    observation = seam_observation.get(name)
+    if observation is None:
+        continue
+    check(observation["path"] != original, f"{name} snapshot reused mutable original path")
+    check(observation["bytes"] == trusted, f"{name} snapshot captured foreign seam bytes")
+    check(
+        observation["regular"] and not observation["symlink"]
+        and observation["nlink"] == 1,
+        f"{name} snapshot is not lstat-regular/single-link: {observation}",
+    )
+    check(observation["mode"] & 0o222 == 0, f"{name} snapshot remained writable")
+    check(observation["parent_mode"] & 0o077 == 0, f"{name} snapshot parent is not private")
+check(
+    seam_observation.get("prepared_source_sha") == digest_bytes(seam_source_bytes),
+    "prepared source hash is not the trusted original hash",
+)
+check(
+    seam_observation.get("prepared_sidecar_sha") == digest_bytes(seam_sidecar_bytes),
+    "prepared sidecar hash is not the trusted original hash",
+)
+check(seam_source.read_bytes() == seam_source_bytes, "seam restoration changed source")
+check(seam_sidecar.read_bytes() == seam_sidecar_bytes, "seam restoration changed sidecar")
+check(list(seam_output.iterdir()) == [], "snapshot seam left output residue")
+
+
+# J3: a controlled parent environment carries hazardous loader, Python,
+# Blender-user, proxy, cloud-profile, credential, and unrelated variables. The
+# fake records only child variable names and private-directory lstat facts.
+env_root = root / "minimal-child-environment"
+env_input = env_root / "input"
+env_output = env_root / "output"
+env_input.mkdir(parents=True)
+env_output.mkdir()
+env_source = env_input / "asset.glb"
+env_manifest = env_root / "manifest.json"
+env_log = env_root / "fake.log"
+env_audit = env_root / "fake.audit"
+env_capture = env_root / "environment.jsonl"
+write_glb(env_source, triangles=30000)
+env_sidecar = write_source_sidecar(env_source, "environment fixture cat")
+write_manifest(env_manifest, env_source.name, "environment fixture cat")
+env_source_bytes = env_source.read_bytes()
+env_sidecar_bytes = env_sidecar.read_bytes()
+hostile_home = env_root / "inherited-home"
+hostile_tmp = env_root / "inherited-temp"
+hostile_xdg = env_root / "inherited-xdg"
+for directory in (hostile_home, hostile_tmp, hostile_xdg):
+    directory.mkdir(mode=0o755)
+parent_environment = {
+    "PATH": os.environ["PATH"],
+    "HOME": str(hostile_home),
+    "TMPDIR": str(hostile_tmp),
+    "TMP": str(hostile_tmp),
+    "TEMP": str(hostile_tmp),
+    "XDG_CONFIG_HOME": str(hostile_xdg),
+    "LANG": "C.UTF-8",
+    "FAKE_BLENDER_MODE": "success",
+    "FAKE_BLENDER_LOG": str(env_log),
+    "FAKE_BLENDER_AUDIT": str(env_audit),
+    "FAKE_BLENDER_ENV_LOG": str(env_capture),
+    "FAKE_BLENDER_VERSION": "5.1.2",
+    "FAKE_BLENDER_BUILD_HASH": "ec6e62d40fa9",
+    "LD_PRELOAD": "",
+    "LD_LIBRARY_PATH": str(env_root / "loader"),
+    "DYLD_INSERT_LIBRARIES": "",
+    "DYLD_LIBRARY_PATH": str(env_root / "dyld"),
+    "PYTHONPATH": str(env_root / "pythonpath"),
+    "PYTHONSTARTUP": str(env_root / "startup.py"),
+    "PYTHONBREAKPOINT": "0",
+    "PYTHONUSERBASE": str(env_root / "python-user"),
+    "PYTHONSAFEPATH": "1",
+    "PYTHONNOUSERSITE": "1",
+    "BLENDER_USER_CONFIG": str(env_root / "blender-config"),
+    "BLENDER_USER_SCRIPTS": str(env_root / "blender-scripts"),
+    "BLENDER_USER_DATAFILES": str(env_root / "blender-data"),
+    "HTTP_PROXY": "http://127.0.0.1:9",
+    "HTTPS_PROXY": "http://127.0.0.1:9",
+    "ALL_PROXY": "socks5://127.0.0.1:9",
+    "NO_PROXY": "*",
+    "http_proxy": "http://127.0.0.1:9",
+    "https_proxy": "http://127.0.0.1:9",
+    "all_proxy": "socks5://127.0.0.1:9",
+    "no_proxy": "*",
+    "AWS_PROFILE": "hostile-profile",
+    "AWS_CONFIG_FILE": str(env_root / "aws-config"),
+    "AWS_ACCESS_KEY_ID": "dummy-access-key-never-log",
+    "AWS_SECRET_ACCESS_KEY": "dummy-secret-key-never-log",
+    "AWS_SESSION_TOKEN": "dummy-session-token-never-log",
+    "CLOUDSDK_CONFIG": str(env_root / "gcloud"),
+    "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE": str(env_root / "gcloud.json"),
+    "AZURE_CONFIG_DIR": str(env_root / "azure"),
+    "AZURE_CLIENT_ID": "dummy-client-id-never-log",
+    "AZURE_CLIENT_SECRET": "dummy-client-secret-never-log",
+    "KUBECONFIG": str(env_root / "kubeconfig"),
+    "GOOGLE_APPLICATION_CREDENTIALS": str(env_root / "google.json"),
+    "GOOGLE_API_KEY": "dummy-google-key-never-log",
+    "GITHUB_TOKEN": "dummy-token-never-log",
+    "UNRELATED_PARENT_SETTING": "must-not-cross-child-boundary",
+}
+try:
+    env_result = subprocess.run(
+        cli_arguments(env_manifest, env_input, env_output),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env=parent_environment,
+    )
+except subprocess.TimeoutExpired as exc:
+    raise AssertionError("minimal child-environment CLI exceeded 20 seconds") from exc
+check(
+    env_result.returncode == 0,
+    "minimal child-environment control failed: "
+    f"stdout={env_result.stdout!r} stderr={env_result.stderr!r}",
+)
+environment_records = (
+    [json.loads(line) for line in env_capture.read_text(encoding="utf-8").splitlines()]
+    if env_capture.exists() else []
+)
+check(
+    [record.get("phase") for record in environment_records] == ["version", "asset"],
+    f"child environment phases differ: {environment_records}",
+)
+required_controls = {
+    "FAKE_BLENDER_MODE",
+    "FAKE_BLENDER_LOG",
+    "FAKE_BLENDER_AUDIT",
+    "FAKE_BLENDER_ENV_LOG",
+    "FAKE_BLENDER_VERSION",
+    "FAKE_BLENDER_BUILD_HASH",
+}
+required_private = {
+    "HOME", "TMPDIR", "TMP", "TEMP", "XDG_CONFIG_HOME",
+    "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
+}
+allowed_names = required_controls | required_private | {
+    "PATH", "LANG", "LC_ALL", "LC_CTYPE", "__CF_USER_TEXT_ENCODING",
+}
+hazardous_names = {
+    "LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES",
+    "DYLD_LIBRARY_PATH", "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP",
+    "PYTHONINSPECT", "PYTHONWARNINGS", "PYTHONBREAKPOINT",
+    "PYTHONUSERBASE", "PYTHONSAFEPATH", "PYTHONNOUSERSITE",
+    "BLENDER_USER_CONFIG", "BLENDER_USER_SCRIPTS", "BLENDER_USER_DATAFILES",
+    "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "all_proxy", "no_proxy",
+    "AWS_PROFILE", "AWS_CONFIG_FILE", "CLOUDSDK_CONFIG", "AZURE_CONFIG_DIR",
+    "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+    "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE", "AZURE_CLIENT_ID",
+    "AZURE_CLIENT_SECRET", "KUBECONFIG", "GOOGLE_APPLICATION_CREDENTIALS",
+    "GOOGLE_API_KEY", "GITHUB_TOKEN",
+    "UNRELATED_PARENT_SETTING",
+}
+for record in environment_records:
+    names = set(record.get("names", []))
+    check(required_controls <= names, f"{record.get('phase')}: fake controls were stripped")
+    check(required_private <= names, f"{record.get('phase')}: private env homes are incomplete")
+    check(not names & hazardous_names, f"{record.get('phase')}: hazardous vars crossed: {sorted(names & hazardous_names)}")
+    check(
+        names <= allowed_names,
+        f"{record.get('phase')}: child env is not a minimal allowlist: "
+        f"{sorted(names - allowed_names)}",
+    )
+    private_paths = record.get("private_paths", {})
+    child_values = []
+    for name in sorted(required_private):
+        fact = private_paths.get(name)
+        check(isinstance(fact, dict), f"{record.get('phase')}: missing private fact {name}")
+        if not isinstance(fact, dict):
+            continue
+        check(
+            fact.get("exists") is True and fact.get("is_directory") is True
+            and fact.get("is_symlink") is False,
+            f"{record.get('phase')}: {name} is not a real private directory: {fact}",
+        )
+        check(
+            isinstance(fact.get("mode"), int) and fact["mode"] & 0o077 == 0,
+            f"{record.get('phase')}: {name} is group/world accessible: {fact}",
+        )
+        child_values.append(fact.get("path"))
+    inherited_values = {str(hostile_home), str(hostile_tmp), str(hostile_xdg)}
+    check(
+        all(value not in inherited_values for value in child_values),
+        f"{record.get('phase')}: inherited HOME/XDG/temp was reused",
+    )
+    if child_values and all(isinstance(value, str) for value in child_values):
+        common = os.path.commonpath(child_values)
+        check(common not in {"", os.path.sep}, f"{record.get('phase')}: private dirs lack a private common root")
+check(env_source.read_bytes() == env_source_bytes, "environment run changed source")
+check(env_sidecar.read_bytes() == env_sidecar_bytes, "environment run changed sidecar")
+check(
+    env_audit.exists()
+    and env_audit.read_text(encoding="utf-8").splitlines() == ["version", "asset"],
+    "environment run missed a fake phase",
+)
+check(
+    sorted(path.name for path in env_output.iterdir()) == ["asset.glb", "asset.glb.json"],
+    "environment run left unexpected output/sandbox residue",
+)
+combined = env_result.stdout + env_result.stderr
+for forbidden_value in (
+    "dummy-token-never-log", "dummy-secret-key-never-log",
+    "dummy-client-secret-never-log", "must-not-cross-child-boundary",
+    "hostile-profile",
+):
+    check(forbidden_value not in combined, "environment run logged a hostile value")
+
+
+if errors:
+    raise AssertionError("source/environment hardening regressions:\n- " + "\n- ".join(errors))
+PY
+  assert_no_external_effects
+fi
+
+if [ "$review_section" = J ]; then
+  printf 'glb-decimation review J: pass\n'
+  exit 0
+fi
+
+# Review hardening K: every untrusted file is rejected by lstat before an
+# unbounded read or child process. The current 15-file envelope leaves generous
+# fixed ceilings (1 MiB metadata, 64 manifest entries, 128 MiB source GLB,
+# 64 MiB derivative GLB). Output names and every CLI diagnostic are printable,
+# one physical line, and bounded even when glTF extension/URI fields are hostile.
+if [ "$review_section" = all ] || [ "$review_section" = K ]; then
+  PYTHONDONTWRITEBYTECODE=1 python3 - \
+    "$decimate_script" "$tmp/review-preflight-diagnostics" "$repo" \
+    "$fake_blender" <<'PY'
+import hashlib
+import json
+import os
+import re
+import stat
+import subprocess
+import sys
+from pathlib import Path
+
+
+script = Path(sys.argv[1])
+root = Path(sys.argv[2])
+repo = Path(sys.argv[3])
+fake_blender = Path(sys.argv[4])
+root.mkdir()
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(repo / "tests" / "assets"))
+from glb_fixture import write_glb
+
+
+MAX_METADATA_BYTES = 1_048_576
+MAX_MANIFEST_ASSETS = 64
+MAX_SOURCE_BYTES = 128 * 1024 * 1024
+MAX_DERIVATIVE_BYTES = 64 * 1024 * 1024
+MAX_DIAGNOSTIC_BYTES = 512
+errors = []
+
+
+def check(condition, message):
+    if not condition:
+        errors.append(message)
+
+
+def digest_bytes(value):
+    return hashlib.sha256(value).hexdigest()
+
+
+def digest(path):
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(block)
+    return hasher.hexdigest()
+
+
+def tree_snapshot(directory):
+    records = []
+    for current, directory_names, filenames in os.walk(directory, followlinks=False):
+        current_path = Path(current)
+        for name in sorted(directory_names + filenames):
+            path = current_path / name
+            relative = path.relative_to(directory).as_posix()
+            status = os.lstat(path)
+            mode_type = stat.S_IFMT(status.st_mode)
+            if stat.S_ISLNK(status.st_mode):
+                records.append((relative, "symlink", os.readlink(path)))
+            elif stat.S_ISREG(status.st_mode):
+                records.append(
+                    (relative, "regular", status.st_nlink, status.st_size, digest(path))
+                )
+            elif stat.S_ISDIR(status.st_mode):
+                records.append((relative, "directory", stat.S_IMODE(status.st_mode)))
+            else:
+                records.append((relative, "special", mode_type, stat.S_IMODE(status.st_mode)))
+    return records
+
+
+def line_count(path):
+    if not path.exists():
+        return 0
+    return len(path.read_text(encoding="utf-8").splitlines())
+
+
+def write_sidecar(source, prompt="preflight fixture cat"):
+    sidecar = Path(f"{source}.json")
+    sidecar.write_text(json.dumps({
+        "service": "meshy",
+        "task_id": "fixture-meshy-task",
+        "timestamp_utc": "2026-08-15T12:34:56Z",
+        "plan_tier": "paid",
+        "prompt": prompt,
+        "note": "trusted fixture metadata",
+        "sha256": digest(source),
+    }, sort_keys=True) + "\n", encoding="utf-8")
+    return sidecar
+
+
+def write_manifest(path, filename="asset.glb", prompt="preflight fixture cat"):
+    path.write_text(json.dumps({"assets": [{
+        "id": "preflight-cat",
+        "kind": "cat",
+        "service": "meshy",
+        "out": filename,
+        "prompt": prompt,
+    }]}, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def prepare_valid(name, filename="asset.glb", prompt="preflight fixture cat"):
+    case_root = root / name
+    input_dir = case_root / "input"
+    output_dir = case_root / "output"
+    input_dir.mkdir(parents=True)
+    output_dir.mkdir()
+    source = input_dir / filename
+    manifest = case_root / "manifest.json"
+    fake_log = case_root / "fake.log"
+    fake_audit = case_root / "fake.audit"
+    write_glb(source, triangles=30000)
+    sidecar = write_sidecar(source, prompt)
+    write_manifest(manifest, filename, prompt)
+    return {
+        "root": case_root,
+        "input": input_dir,
+        "output": output_dir,
+        "source": source,
+        "sidecar": sidecar,
+        "manifest": manifest,
+        "fake_log": fake_log,
+        "fake_audit": fake_audit,
+    }
+
+
+def arguments(case, force=False):
+    result = [
+        sys.executable,
+        str(script),
+        "--manifest", str(case["manifest"]),
+        "--input-dir", str(case["input"]),
+        "--output-dir", str(case["output"]),
+        "--blender", str(fake_blender),
+    ]
+    if force:
+        result.append("--force")
+    return result
+
+
+def environment(case, extra=None):
+    value = os.environ.copy()
+    value.update({
+        "FAKE_BLENDER_MODE": "success",
+        "FAKE_BLENDER_LOG": str(case["fake_log"]),
+        "FAKE_BLENDER_AUDIT": str(case["fake_audit"]),
+    })
+    if extra:
+        value.update(extra)
+    return value
+
+
+def run_case(case, *, force=False, extra_environment=None, timeout=5):
+    try:
+        result = subprocess.run(
+            arguments(case, force),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=environment(case, extra_environment),
+        )
+    except subprocess.TimeoutExpired as exc:
+        return None, exc
+    return result, None
+
+
+def require_preflight_rejection(case, label, pattern, *, force=False):
+    case_before = tree_snapshot(case["root"])
+    result, timeout = run_case(case, force=force)
+    if timeout is not None:
+        errors.append(f"{label}: preflight hung and was killed at five seconds")
+    else:
+        check(result.returncode != 0, f"{label}: unsafe file/envelope was accepted")
+        combined = result.stdout + result.stderr
+        check(
+            re.search(pattern, result.stderr, re.IGNORECASE) is not None,
+            f"{label}: wrong preflight diagnostic: {combined!r}",
+        )
+        check(result.stdout == "", f"{label}: preflight rejection wrote stdout")
+        check(
+            result.stderr.endswith("\n")
+            and len(result.stderr.splitlines()) == 1
+            and result.stderr[:-1].isprintable()
+            and len(result.stderr.encode("utf-8")) <= MAX_DIAGNOSTIC_BYTES,
+            f"{label}: preflight diagnostic is not printable/one-line/capped: "
+            f"{result.stderr!r}",
+        )
+    check(line_count(case["fake_log"]) == 0, f"{label}: fake asset phase was reached")
+    check(line_count(case["fake_audit"]) == 0, f"{label}: fake version phase was reached")
+    check(
+        tree_snapshot(case["root"]) == case_before,
+        f"{label}: case membership/type/links/bytes changed",
+    )
+
+
+def manifest_type_case(kind):
+    label = f"manifest-{kind}"
+    case = prepare_valid(label)
+    path = case["manifest"]
+    witness = path.with_name(f"{path.name}.{kind}-witness")
+    if kind == "symlink":
+        os.replace(path, witness)
+        path.symlink_to(witness.name)
+    elif kind == "hardlink":
+        os.link(path, witness)
+    elif kind == "fifo":
+        path.unlink()
+        os.mkfifo(path, 0o600)
+    elif kind == "directory":
+        path.unlink()
+        path.mkdir()
+    else:
+        raise AssertionError(f"unsupported manifest kind {kind}")
+    return case, label
+
+
+def source_type_case(kind, member):
+    label = f"source-{member}-{kind}"
+    case = prepare_valid(label)
+    path = case["source"] if member == "glb" else case["sidecar"]
+    witness = path.with_name(f"{path.name}.{kind}-witness")
+    if kind == "symlink":
+        os.replace(path, witness)
+        path.symlink_to(witness.name)
+    elif kind == "hardlink":
+        os.link(path, witness)
+    elif kind == "fifo":
+        path.unlink()
+        os.mkfifo(path, 0o600)
+    elif kind == "directory":
+        path.unlink()
+        path.mkdir()
+    else:
+        raise AssertionError(f"unsupported source kind {kind}")
+    return case, label
+
+
+def install_old_pair(case):
+    final_glb = case["output"] / "asset.glb"
+    final_json = case["output"] / "asset.glb.json"
+    final_glb.write_bytes(b"old derivative bytes")
+    final_json.write_bytes(b"old provenance bytes")
+    return final_glb, final_json
+
+
+def final_type_case(kind, member):
+    label = f"final-{member}-{kind}"
+    case = prepare_valid(label)
+    final_glb, final_json = install_old_pair(case)
+    path = final_glb if member == "glb" else final_json
+    witness = path.with_name(f"{path.name}.{kind}-witness")
+    if kind == "symlink":
+        os.replace(path, witness)
+        path.symlink_to(witness.name)
+    elif kind == "hardlink":
+        os.link(path, witness)
+    elif kind == "fifo":
+        path.unlink()
+        os.mkfifo(path, 0o600)
+    elif kind == "directory":
+        path.unlink()
+        path.mkdir()
+    else:
+        raise AssertionError(f"unsupported final kind {kind}")
+    return case, label
+
+
+regular_single_pattern = r"regular[^\n]*(single.?link|one link)|single.?link[^\n]*regular|file custody"
+for file_kind in ("symlink", "hardlink", "fifo", "directory"):
+    case, label = manifest_type_case(file_kind)
+    require_preflight_rejection(case, label, regular_single_pattern)
+    for source_member in ("glb", "sidecar"):
+        case, label = source_type_case(file_kind, source_member)
+        require_preflight_rejection(case, label, regular_single_pattern)
+    for final_member in ("glb", "json"):
+        case, label = final_type_case(file_kind, final_member)
+        require_preflight_rejection(
+            case, label, regular_single_pattern, force=True
+        )
+
+
+# Metadata and manifest count ceilings are checked before content traversal or
+# fake version execution. Padding keeps the oversize manifest valid JSON.
+manifest_size = prepare_valid("manifest-over-one-mib")
+manifest_payload = manifest_size["manifest"].read_bytes()
+assert len(manifest_payload) < MAX_METADATA_BYTES
+manifest_size["manifest"].write_bytes(
+    manifest_payload + b" " * (MAX_METADATA_BYTES + 1 - len(manifest_payload))
+)
+assert manifest_size["manifest"].stat().st_size == MAX_METADATA_BYTES + 1
+require_preflight_rejection(
+    manifest_size,
+    "manifest over one MiB",
+    r"manifest[^\n]*(too large|size|limit|1048576)",
+)
+
+sidecar_size = prepare_valid("sidecar-over-one-mib")
+sidecar_record = json.loads(sidecar_size["sidecar"].read_text(encoding="utf-8"))
+sidecar_record["note"] = "N" * MAX_METADATA_BYTES
+sidecar_size["sidecar"].write_text(
+    json.dumps(sidecar_record, sort_keys=True) + "\n", encoding="utf-8"
+)
+assert sidecar_size["sidecar"].stat().st_size > MAX_METADATA_BYTES
+require_preflight_rejection(
+    sidecar_size,
+    "source sidecar over one MiB",
+    r"source sidecar[^\n]*(too large|size|limit|1048576)",
+)
+
+manifest_count = prepare_valid("manifest-over-count")
+manifest_entries = [
+    {
+        "id": f"asset-{index:03d}",
+        "kind": "cat",
+        "service": "meshy",
+        "out": f"asset-{index:03d}.glb",
+        "prompt": "count fixture cat",
+    }
+    for index in range(MAX_MANIFEST_ASSETS + 1)
+]
+manifest_count["manifest"].write_text(
+    json.dumps({"assets": manifest_entries}, sort_keys=True) + "\n",
+    encoding="utf-8",
+)
+require_preflight_rejection(
+    manifest_count,
+    "manifest over asset-count envelope",
+    r"manifest[^\n]*(too many|count|limit|64)",
+)
+
+source_size = prepare_valid("source-over-128-mib")
+source_size["source"].unlink()
+with source_size["source"].open("wb") as handle:
+    handle.write(b"glTF")
+    handle.truncate(MAX_SOURCE_BYTES + 1)
+source_size["sidecar"].write_text(json.dumps({
+    "service": "meshy",
+    "task_id": "fixture-meshy-task",
+    "timestamp_utc": "2026-08-15T12:34:56Z",
+    "plan_tier": "paid",
+    "prompt": "preflight fixture cat",
+    "note": "oversize sparse source",
+    "sha256": "0" * 64,
+}, sort_keys=True) + "\n", encoding="utf-8")
+require_preflight_rejection(
+    source_size,
+    "source GLB over 128 MiB",
+    r"source[^\n]*(too large|size|limit|134217728)",
+)
+
+
+# A Blender-created candidate has its own tighter envelope before inspect_glb
+# can read it. This is intentionally post-child, but still leaves no final or
+# staging residue and preserves the source pair exactly.
+derivative_size = prepare_valid("derivative-over-64-mib")
+derivative_input_before = tree_snapshot(derivative_size["input"])
+derivative_result, derivative_timeout = run_case(
+    derivative_size,
+    extra_environment={
+        "FAKE_BLENDER_OUTPUT_SIZE": str(MAX_DERIVATIVE_BYTES + 1)
+    },
+    timeout=10,
+)
+check(derivative_timeout is None, "oversize derivative handling exceeded ten seconds")
+if derivative_result is not None:
+    check(derivative_result.returncode != 0, "oversize derivative was accepted")
+    check(
+        re.search(
+            r"derivative[^\n]*(too large|size|limit|67108864)",
+            derivative_result.stderr,
+            re.IGNORECASE,
+        ) is not None,
+        f"oversize derivative had wrong diagnostic: {derivative_result.stderr!r}",
+    )
+check(
+    line_count(derivative_size["fake_audit"]) == 2
+    and line_count(derivative_size["fake_log"]) == 1,
+    "oversize derivative did not reach exactly version+asset fake phases",
+)
+check(
+    tree_snapshot(derivative_size["input"]) == derivative_input_before,
+    "oversize derivative run changed source custody",
+)
+check(
+    list(derivative_size["output"].iterdir()) == [],
+    "oversize derivative left a final or staging directory",
+)
+
+
+# Output filenames are both portable enough for the selected filesystem and
+# safe to interpolate in records. Broad printable Unicode remains supported.
+unsafe_output_names = (
+    ("line-feed", "unsafe\nforged.glb"),
+    ("carriage-return", "unsafe\rforged.glb"),
+    ("tab", "unsafe\tforged.glb"),
+    ("escape", "unsafe\x1bforged.glb"),
+    ("unicode-line-separator", "unsafe\u2028forged.glb"),
+    ("unicode-paragraph-separator", "unsafe\u2029forged.glb"),
+    ("overlong", "x" * 300 + ".glb"),
+)
+for label, filename in unsafe_output_names:
+    case_root = root / f"output-name-{label}"
+    input_dir = case_root / "input"
+    output_dir = case_root / "output"
+    input_dir.mkdir(parents=True)
+    output_dir.mkdir()
+    case = {
+        "root": case_root,
+        "input": input_dir,
+        "output": output_dir,
+        "manifest": case_root / "manifest.json",
+        "fake_log": case_root / "fake.log",
+        "fake_audit": case_root / "fake.audit",
+    }
+    write_manifest(case["manifest"], filename)
+    result, timeout = run_case(case)
+    check(timeout is None, f"output name {label}: rejection hung")
+    if result is None:
+        check(line_count(case["fake_audit"]) == 0, f"output name {label}: fake was reached")
+        check(list(output_dir.iterdir()) == [], f"output name {label}: output was created")
+        continue
+    check(result.returncode != 0, f"output name {label}: unsafe name was accepted")
+    check(result.stdout == "", f"output name {label}: rejection wrote stdout")
+    check(
+        re.search(
+            r"out[^\n]*(printable|single.?line|filename length|too long)",
+            result.stderr,
+            re.IGNORECASE,
+        ) is not None,
+        f"output name {label}: wrong diagnostic {result.stderr!r}",
+    )
+    check(
+        result.stderr.endswith("\n")
+        and len(result.stderr.splitlines()) == 1
+        and result.stderr[:-1].isprintable()
+        and len(result.stderr.encode("utf-8")) <= MAX_DIAGNOSTIC_BYTES,
+        f"output name {label}: diagnostic is not printable/one-line/capped",
+    )
+    check(filename not in result.stderr, f"output name {label}: raw hostile name leaked")
+    check(line_count(case["fake_audit"]) == 0, f"output name {label}: fake was reached")
+    check(list(output_dir.iterdir()) == [], f"output name {label}: output was created")
+
+safe_name = "Café Cat № 7.glb"
+safe_output = prepare_valid(
+    "safe-printable-output-name", safe_name, "safe printable fixture cat"
+)
+safe_result, safe_timeout = run_case(safe_output)
+check(safe_timeout is None, "safe printable output name hung")
+if safe_result is not None:
+    check(
+        safe_result.returncode == 0,
+        f"safe printable output name was rejected: {safe_result.stderr!r}",
+    )
+check(
+    sorted(path.name for path in safe_output["output"].iterdir())
+    == [safe_name, f"{safe_name}.json"],
+    "safe printable Unicode output name lost its exact final pair",
+)
+
+
+# Hostile glTF strings cross the fake process boundary as data. The policy class
+# remains legible, but raw fields never forge a second record or expand stderr
+# without bound. Both routes prove the CLI-level formatter is centralized.
+def hostile_diagnostic_case(name, control_name, policy_pattern):
+    case = prepare_valid(name)
+    source_before = tree_snapshot(case["input"])
+    marker = f"FORGED-{name.upper()}-RECORD"
+    hostile = f"bad\n{marker}\r\x1b[31m\u2028" + "Z" * 4096
+    result, timeout = run_case(
+        case,
+        extra_environment={control_name: hostile},
+        timeout=10,
+    )
+    check(timeout is None, f"{name}: hostile diagnostic run hung")
+    if result is None:
+        check(tree_snapshot(case["input"]) == source_before, f"{name}: source changed")
+        check(list(case["output"].iterdir()) == [], f"{name}: final/staging residue remains")
+        return
+    check(result.returncode != 0, f"{name}: hostile derivative was accepted")
+    check(
+        re.search(policy_pattern, result.stderr, re.IGNORECASE) is not None,
+        f"{name}: sanitized diagnostic lost its policy class: {result.stderr!r}",
+    )
+    check(
+        result.stderr.startswith("glb-decimation: ")
+        and result.stderr.endswith("\n")
+        and len(result.stderr.splitlines()) == 1
+        and result.stderr[:-1].isprintable()
+        and len(result.stderr.encode("utf-8")) <= MAX_DIAGNOSTIC_BYTES,
+        f"{name}: diagnostic is not centralized printable/one-line/capped: "
+        f"{result.stderr!r}",
+    )
+    check(
+        len(result.stdout.splitlines()) == 1
+        and result.stdout.rstrip("\n").isprintable(),
+        f"{name}: stdout records were forged: {result.stdout!r}",
+    )
+    check(
+        line_count(case["fake_audit"]) == 2
+        and line_count(case["fake_log"]) == 1,
+        f"{name}: hostile field did not cross exactly one fake asset boundary",
+    )
+    check(tree_snapshot(case["input"]) == source_before, f"{name}: source changed")
+    check(list(case["output"].iterdir()) == [], f"{name}: final/staging residue remains")
+
+
+hostile_diagnostic_case(
+    "hostile-extension",
+    "FAKE_BLENDER_OUTPUT_EXTENSION",
+    r"extension",
+)
+hostile_diagnostic_case(
+    "hostile-uri",
+    "FAKE_BLENDER_OUTPUT_URI",
+    r"external[^\n]*uri",
+)
+
+
+if errors:
+    raise AssertionError("preflight/diagnostic hardening regressions:\n- " + "\n- ".join(errors))
+PY
+  assert_no_external_effects
+fi
+
+if [ "$review_section" = K ]; then
+  printf 'glb-decimation review K: pass\n'
+  exit 0
+fi
 
 # Review regression A: filesystem identity is stronger than path spelling.
 # These cases exercise the real orchestration entry point, but require every
@@ -4590,7 +6081,15 @@ for index, record in enumerate(records):
         "--minimum-triangles", "--maximum-triangles",
     ]
     values = dict(zip(post[0::2], post[1::2]))
-    assert Path(values["--source"]) == expected_sources[index]
+    observed_source = Path(record["source"])
+    assert Path(values["--source"]) == observed_source
+    assert observed_source != expected_sources[index]
+    assert record["source_sha256"] == inspect_glb(expected_sources[index])["sha256"]
+    assert record["source_lstat_regular"] is True
+    assert record["source_lstat_symlink"] is False
+    assert record["source_nlink"] == 1
+    assert record["source_mode"] & 0o222 == 0
+    assert record["source_parent_mode"] & 0o077 == 0
     staged_output = Path(values["--output"])
     staged_outputs.append(staged_output)
     assert staged_output.resolve().is_relative_to(output_dir.resolve())
