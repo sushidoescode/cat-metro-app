@@ -518,13 +518,19 @@ The driver runs only inside Blender, checks `bpy.app.version == (5, 1, 2)` and b
 
 Use these locally verified importer controls:
 
+> **Task 8b supersession (2026-08-16):** The mandatory textured/lit review
+> found that the original importer settings allowed split seam vertices to move
+> independently during collapse decimation. The corrected `merge_vertices=True`
+> and `import_shading="SMOOTH"` literals below supersede only those two Task 6
+> values; all other Task 6 requirements remain unchanged.
+
 ```python
 result = bpy.ops.import_scene.gltf(
     filepath=str(source),
     loglevel=1,
     import_pack_images=True,
-    merge_vertices=False,
-    import_shading="NORMALS",
+    merge_vertices=True,
+    import_shading="SMOOTH",
     import_webp_texture=False,
     import_unused_materials=False,
     import_select_created_objects=True,
