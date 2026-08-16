@@ -2239,7 +2239,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, sys.argv[1])
-from glb_metrics import inspect_glb
+from glb_metrics import GlbError, inspect_glb
 
 root = Path(sys.argv[2])
 records = [json.loads(line) for line in Path(sys.argv[3]).read_text(encoding="utf-8").splitlines()]
@@ -2269,12 +2269,21 @@ assert (root / "malformed_output.glb").read_bytes() == b"not glTF"
 metrics = {
     mode: inspect_glb(root / f"{mode}.glb")
     for mode in modes
-    if mode not in {"fail", "malformed_output"}
+    if mode not in {"fail", "malformed_output", "missing_uv"}
 }
 assert metrics["success"]["triangles"] == 10000
 assert metrics["over_budget"]["triangles"] == 10001
 assert metrics["under_budget"]["triangles"] == 7999
-assert metrics["missing_uv"]["uv_primitives"] == 0
+try:
+    inspect_glb(root / "missing_uv.glb")
+except GlbError as exc:
+    diagnostic = str(exc)
+    assert "TEXCOORD_0" in diagnostic, diagnostic
+    assert "material references missing" in diagnostic, diagnostic
+else:
+    raise AssertionError(
+        "direct inspection accepted a material-referenced missing TEXCOORD_0"
+    )
 assert metrics["missing_material"]["materials"] == 0
 assert metrics["missing_material"]["material_primitives"] == 0
 assert metrics["missing_image"]["images"] == 0
