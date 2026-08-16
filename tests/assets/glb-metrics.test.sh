@@ -207,6 +207,13 @@ import sys
 from pathlib import Path
 
 
+_PNG_1X1_BLUE = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+    "0000000d4944415478da635048b8f01f000444025033a22d480000000049454e44"
+    "ae426082"
+)
+
+
 def read(path):
     data = path.read_bytes()
     json_length, chunk_type = struct.unpack_from("<I4s", data, 12)
@@ -293,6 +300,16 @@ def embedded_image_payload(doc, binary):
     return binary[start:start + view["byteLength"]]
 
 
+def add_multi_role_material(doc, binary):
+    image_view, binary = append_buffer_view(doc, binary, _PNG_1X1_BLUE)
+    doc["images"].append({"bufferView": image_view, "mimeType": "image/png"})
+    doc["textures"].append({"source": 1})
+    doc["materials"][0]["pbrMetallicRoughness"][
+        "metallicRoughnessTexture"
+    ] = {"index": 1}
+    return binary
+
+
 path = Path(sys.argv[1])
 action = sys.argv[2]
 if action == "magic":
@@ -302,9 +319,13 @@ if action == "magic":
 if action == "truncated":
     path.write_bytes(path.read_bytes()[:-3])
     raise SystemExit()
-if action == "oversized-file":
+if action in {"large-valid-file", "oversized-file"}:
     original = bytearray(path.read_bytes())
-    minimum_total = 128 * 1024 * 1024 + 1
+    minimum_total = (
+        44 * 1024 * 1024
+        if action == "large-valid-file"
+        else 128 * 1024 * 1024 + 1
+    )
     payload_length = minimum_total - len(original) - 8
     payload_length += -payload_length % 4
     total_length = len(original) + 8 + payload_length
@@ -314,7 +335,7 @@ if action == "oversized-file":
         handle.write(struct.pack("<I4s", payload_length, b"TEST"))
         handle.seek(payload_length - 1, 1)
         handle.write(b"\0")
-    assert path.stat().st_size == total_length and total_length > 128 * 1024 * 1024
+    assert path.stat().st_size == total_length and total_length >= minimum_total
     raise SystemExit()
 doc, binary = read(path)
 if action == "deep-json":
@@ -479,6 +500,21 @@ elif action == "append-duplicate-position-face":
     index_accessor["bufferView"] = index_view_number
     index_accessor["byteOffset"] = 0
     index_accessor["count"] = len(expanded)
+elif action in {
+    "multi-role-valid",
+    "multi-role-detach-metallic",
+    "multi-role-rebind-metallic",
+}:
+    binary = add_multi_role_material(doc, binary)
+    metallic = doc["materials"][0]["pbrMetallicRoughness"][
+        "metallicRoughnessTexture"
+    ]
+    if action == "multi-role-detach-metallic":
+        doc["materials"][0]["pbrMetallicRoughness"].pop(
+            "metallicRoughnessTexture"
+        )
+    elif action == "multi-role-rebind-metallic":
+        metallic["index"] = 0
 elif action == "detach-base-color":
     doc["materials"][0]["pbrMetallicRoughness"].pop("baseColorTexture")
 elif action == "move-base-color-to-normal":
@@ -955,11 +991,13 @@ for action in \
   zero-indices repeat-first-face unreferenced-vertex \
   append-two-duplicate-faces append-two-degenerate-faces \
   append-duplicate-position-face \
+  multi-role-valid multi-role-detach-metallic multi-role-rebind-metallic \
   detach-base-color move-base-color-to-normal base-color-texcoord-1 \
   alter-image-payload \
   data-image-valid data-image-invalid-base64 data-image-wrong-media \
   data-image-oversized too-many-accessors accessor-count-limit \
-  duplicate-json-key hostile-json-integer oversized-json oversized-file
+  duplicate-json-key hostile-json-integer oversized-json large-valid-file \
+  oversized-file
 do
   cp "$tmp/valid.glb" "$tmp/$action.glb"
   mutate "$tmp/$action.glb" "$action"
@@ -983,6 +1021,7 @@ sys.modules[spec.name] = module
 spec.loader.exec_module(module)
 
 PNG_SHA256 = "6587ef8f161ecd2a57c16e50f2c264221a76f89acbd2bdb169d648225fc58400"
+BLUE_PNG_SHA256 = "e5f51f6524bb1ea3b9fd6ecdeac8a3773f213c45c598aa49835d982d0f05ec55"
 BASE_COLOR_BINDING = [{
     "material": 0,
     "role": "baseColor",
@@ -995,6 +1034,29 @@ NORMAL_BINDING = [{
     "texcoord": 0,
     "payload_sha256": PNG_SHA256,
 }]
+MULTI_ROLE_BINDINGS = [
+    {
+        "material": 0,
+        "role": "baseColor",
+        "texcoord": 0,
+        "payload_sha256": PNG_SHA256,
+    },
+    {
+        "material": 0,
+        "role": "metallicRoughness",
+        "texcoord": 0,
+        "payload_sha256": BLUE_PNG_SHA256,
+    },
+]
+REBOUND_MULTI_ROLE_BINDINGS = [
+    MULTI_ROLE_BINDINGS[0],
+    {
+        "material": 0,
+        "role": "metallicRoughness",
+        "texcoord": 0,
+        "payload_sha256": PNG_SHA256,
+    },
+]
 failures = []
 
 
@@ -1041,6 +1103,22 @@ def valid_control():
 
 
 check("valid strict surface/resource control", valid_control)
+
+
+def real_envelope_file_control():
+    source = inspect("valid")
+    metrics = inspect("large-valid-file")
+    # The largest reviewed source is about 71.7 MiB.  A valid 44 MiB control
+    # keeps a guessed 20 MiB file cap from rejecting known-envelope inputs.
+    assert metrics["bytes"] >= 44 * 1024 * 1024
+    assert_surface(
+        metrics, triangles=37, vertices=39, referenced=39, unique=37
+    )
+    assert_texture_facts(metrics)
+    assert module.compare_preservation(source, metrics) == []
+
+
+check("valid 44 MiB real-envelope file control", real_envelope_file_control)
 
 
 def fixture_scale_controls():
@@ -1170,6 +1248,28 @@ def known_source_duplicate_delta():
 check("known source duplicate-face delta of two", known_source_duplicate_delta)
 
 
+def duplicate_source_does_not_weaken_output_checks():
+    source = inspect("append-two-duplicate-faces")
+    assert_surface(
+        source, triangles=39, vertices=39, referenced=39, unique=37
+    )
+    for output_name, diagnostic in (
+        ("zero-indices", "degenerate triangle"),
+        ("repeat-first-face", "unique triangle"),
+        ("append-duplicate-position-face", "unique triangle"),
+        ("unreferenced-vertex", "referenced vert"),
+    ):
+        reasons = module.compare_preservation(source, inspect(output_name))
+        assert reasons, f"duplicate source bypassed {output_name} output check"
+        assert any(diagnostic in reason.lower() for reason in reasons), reasons
+
+
+check(
+    "duplicate-face source still enforces every output topology check",
+    duplicate_source_does_not_weaken_output_checks,
+)
+
+
 def source_degenerate_delta_is_not_the_duplicate_allowance():
     source = inspect("append-two-degenerate-faces")
     output = inspect("valid")
@@ -1188,6 +1288,45 @@ def source_degenerate_delta_is_not_the_duplicate_allowance():
 check(
     "source degenerate faces cannot borrow duplicate-face allowance",
     source_degenerate_delta_is_not_the_duplicate_allowance,
+)
+
+
+def multi_role_texture_control():
+    metrics = inspect("multi-role-valid")
+    assert metrics["materials"] == 1
+    assert metrics["images"] == metrics["embedded_images"] == 2
+    assert metrics["image_payload_sha256"] == [PNG_SHA256, BLUE_PNG_SHA256]
+    assert metrics["material_texture_bindings"] == MULTI_ROLE_BINDINGS
+    assert module.compare_preservation(metrics, metrics) == []
+
+
+check("base-color plus metallic-roughness valid control", multi_role_texture_control)
+
+
+def metallic_binding_regression(name, expected_bindings):
+    source = inspect("multi-role-valid")
+    output = inspect(name)
+    assert output["materials"] == source["materials"] == 1
+    assert output["images"] == source["images"] == 2
+    assert output["embedded_images"] == source["embedded_images"] == 2
+    assert output["image_payload_sha256"] == source["image_payload_sha256"]
+    assert source["material_texture_bindings"] == MULTI_ROLE_BINDINGS
+    assert output["material_texture_bindings"] == expected_bindings
+    reasons = module.compare_preservation(source, output)
+    assert reasons and any("texture binding" in reason.lower() for reason in reasons), reasons
+
+
+check(
+    "detached metallic-roughness role with intact counts/payloads",
+    lambda: metallic_binding_regression(
+        "multi-role-detach-metallic", BASE_COLOR_BINDING
+    ),
+)
+check(
+    "rebound metallic-roughness role with intact counts/payloads",
+    lambda: metallic_binding_regression(
+        "multi-role-rebind-metallic", REBOUND_MULTI_ROLE_BINDINGS
+    ),
 )
 
 

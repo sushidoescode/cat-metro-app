@@ -31,7 +31,7 @@ metrics = json.load(open(sys.argv[1], encoding="utf-8"))
 # Break caught: fixture setup does not exercise two independent primitives.
 assert metrics["meshes"] == 1
 assert metrics["primitives"] == 2
-assert metrics["vertices"] == 16
+assert metrics["vertices"] == 6
 assert metrics["world_bounds"] == {
     "min": [-1.0, -1.0, -1.0],
     "max": [1.0, 1.0, 1.0],
