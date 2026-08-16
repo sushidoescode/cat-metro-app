@@ -2294,6 +2294,9 @@ def prove_oracle_mutations():
     absent_pair["final_glb"].write_bytes(absent_pair["new_glb"])
     assert absent_terminal_errors("oracle-split-final", absent_pair, allowed)
     absent_pair["final_glb"].unlink()
+    absent_pair["final_json"].write_bytes(absent_pair["new_json"])
+    assert absent_terminal_errors("oracle-split-json-final", absent_pair, allowed)
+    absent_pair["final_json"].unlink()
     (absent_pair["directory"] / "arbitrary-residue").write_bytes(b"residue")
     assert absent_terminal_errors("oracle-extra-residue", absent_pair, allowed)
 
@@ -2449,7 +2452,7 @@ def exercise_unverified_candidate_hash(name):
 
 
 def exercise_absent_replace_fault(
-    name, phase, after_effect, unlink_fault=False
+    name, phase, after_effect, cleanup_member=None
 ):
     pair = make_pair(name, forced=False)
     real_replace = os.replace
@@ -2479,12 +2482,24 @@ def exercise_absent_replace_fault(
             )
         return real_replace(source_path, destination_path)
 
+    if cleanup_member not in {None, "glb", "json"}:
+        raise AssertionError(f"unsupported cleanup member {cleanup_member!r}")
+    cleanup_path = (
+        pair[f"final_{cleanup_member}"] if cleanup_member is not None else None
+    )
+
     def unlinking(path, *args, **kwargs):
         nonlocal unlink_faults
         candidate = Path(path)
-        if unlink_fault and candidate == pair["final_glb"] and unlink_faults == 0:
+        if (
+            cleanup_path is not None
+            and candidate == cleanup_path
+            and unlink_faults == 0
+        ):
             unlink_faults += 1
-            raise OSError("injected one-shot final GLB cleanup failure")
+            raise OSError(
+                f"injected one-shot final {cleanup_member.upper()} cleanup failure"
+            )
         return real_unlink(path, *args, **kwargs)
 
     caught = None
@@ -2505,8 +2520,10 @@ def exercise_absent_replace_fault(
         findings.append(f"{name}: injected replace failure was swallowed")
     if not injected:
         findings.append(f"{name}: targeted replace phase was not reached")
-    if unlink_fault and unlink_faults != 1:
-        findings.append(f"{name}: one-shot GLB cleanup unlink was not injected")
+    if cleanup_member is not None and unlink_faults != 1:
+        findings.append(
+            f"{name}: one-shot {cleanup_member.upper()} cleanup unlink was not injected"
+        )
 
     both_staged = frozenset({pair["staged_glb"], pair["staged_json"]})
     only_glb = frozenset({pair["staged_glb"]})
@@ -2662,7 +2679,11 @@ run_bounded(
 )
 run_bounded(
     "absent",
-    ("absent-second-after-effect-unlink", "promote_json", True, True),
+    ("absent-second-after-effect-glb-unlink", "promote_json", True, "glb"),
+)
+run_bounded(
+    "absent",
+    ("absent-second-after-effect-json-unlink", "promote_json", True, "json"),
 )
 
 run_bounded("cleanup", ("force-cleanup-glb-unlink", "glb"))
