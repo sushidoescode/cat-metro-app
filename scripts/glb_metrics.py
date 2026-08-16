@@ -8,7 +8,7 @@ import json
 import math
 import struct
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 
 
@@ -400,7 +400,12 @@ def _validate_material_references(material: Mapping[str, object], texture_count:
             _validate_texture_info(material[name], texture_count, f"{label}.{name}")
 
 
-def _inspect_document(document: dict[str, object], data: bytes) -> dict[str, object]:
+def _inspect_document(
+    document: dict[str, object], data: bytes
+) -> tuple[
+    dict[str, object],
+    Callable[[], Iterator[tuple[float, float, float]]],
+]:
     chunks = _chunks(data)
     binary_chunks = [payload for kind, payload in chunks if kind == b"BIN\0"]
     if len(binary_chunks) > 1:
@@ -540,11 +545,14 @@ def _inspect_document(document: dict[str, object], data: bytes) -> dict[str, obj
         _validate_material_references(material, len(textures), f"materials[{number}]")
 
     local_bounds: dict[tuple[int, int], tuple[list[float], list[float]]] = {}
+    local_position_accessors: dict[tuple[int, int], int] = {}
 
     def validate_accessor_reference(value: object, label: str) -> int:
         return _index(value, len(accessors), label)
 
-    def decode_position(accessor_index: int, label: str) -> tuple[list[float], list[float]]:
+    def position_values(
+        accessor_index: int, label: str
+    ) -> Iterator[tuple[float, float, float]]:
         accessor = _object(accessors[accessor_index], f"accessors[{accessor_index}]")
         view_index, accessor_offset, count, kind, component_type, _ = validated_accessors[accessor_index]
         if kind != "VEC3" or component_type != 5126:
@@ -558,12 +566,17 @@ def _inspect_document(document: dict[str, object], data: bytes) -> dict[str, obj
             raise GlbError(f"{label} must be stored in the embedded BIN chunk")
         stride = view_stride or 12
         start = view_offset + accessor_offset
-        minimum = [math.inf, math.inf, math.inf]
-        maximum = [-math.inf, -math.inf, -math.inf]
         for item in range(count):
             point = struct.unpack_from("<3f", binary, start + item * stride)
             if not all(math.isfinite(value) for value in point):
                 raise GlbError(f"{label} contains a non-finite POSITION")
+            yield point
+
+    def decode_position(accessor_index: int, label: str) -> tuple[list[float], list[float]]:
+        accessor = _object(accessors[accessor_index], f"accessors[{accessor_index}]")
+        minimum = [math.inf, math.inf, math.inf]
+        maximum = [-math.inf, -math.inf, -math.inf]
+        for point in position_values(accessor_index, label):
             for axis, value in enumerate(point):
                 minimum[axis] = min(minimum[axis], value)
                 maximum[axis] = max(maximum[axis], value)
@@ -638,6 +651,7 @@ def _inspect_document(document: dict[str, object], data: bytes) -> dict[str, obj
             position_index = attribute_indices["POSITION"]
             bounds = decode_position(position_index, f"{label}.POSITION")
             local_bounds[(mesh_number, primitive_number)] = bounds
+            local_position_accessors[(mesh_number, primitive_number)] = position_index
             position_count = validated_accessors[position_index][2]
             for semantic, accessor_index in attribute_indices.items():
                 if validated_accessors[accessor_index][2] != position_count:
@@ -756,55 +770,77 @@ def _inspect_document(document: dict[str, object], data: bytes) -> dict[str, obj
             raise GlbError(f"scenes[{number}].nodes contains duplicates")
         scene_roots.append(roots)
 
+    def iter_scene_nodes() -> Iterator[tuple[int, tuple[float, ...]]]:
+        active_nodes: set[int] = set()
+        visited_nodes: set[int] = set()
+        traversal: list[tuple[bool, int, tuple[float, ...]]] = [
+            (True, root, _IDENTITY) for root in reversed(scene_roots[scene_index])
+        ]
+        while traversal:
+            entering, node_index, parent = traversal.pop()
+            if not entering:
+                active_nodes.remove(node_index)
+                visited_nodes.add(node_index)
+                continue
+            if node_index in active_nodes:
+                raise GlbError("selected scene graph contains a cycle")
+            if node_index in visited_nodes:
+                raise GlbError("selected scene graph references a node more than once")
+            active_nodes.add(node_index)
+            node = node_objects[node_index]
+            world = _matrix_multiply(parent, _node_matrix(node, f"nodes[{node_index}]"))
+            if not all(math.isfinite(value) for value in world):
+                raise GlbError("selected scene graph produces a non-finite transform")
+            yield node_index, world
+            traversal.append((False, node_index, world))
+            traversal.extend(
+                (True, child, world) for child in reversed(node_children[node_index])
+            )
+
     world_minimum = [math.inf, math.inf, math.inf]
     world_maximum = [-math.inf, -math.inf, -math.inf]
     found_geometry = False
-
-    active_nodes: set[int] = set()
-    visited_nodes: set[int] = set()
-    traversal: list[tuple[bool, int, tuple[float, ...]]] = [
-        (True, root, _IDENTITY) for root in reversed(scene_roots[scene_index])
-    ]
-    while traversal:
-        entering, node_index, parent = traversal.pop()
-        if not entering:
-            active_nodes.remove(node_index)
-            visited_nodes.add(node_index)
-            continue
-        if node_index in active_nodes:
-            raise GlbError("selected scene graph contains a cycle")
-        if node_index in visited_nodes:
-            raise GlbError("selected scene graph references a node more than once")
-        active_nodes.add(node_index)
+    for node_index, world in iter_scene_nodes():
         node = node_objects[node_index]
-        world = _matrix_multiply(parent, _node_matrix(node, f"nodes[{node_index}]"))
-        if not all(math.isfinite(value) for value in world):
-            raise GlbError("selected scene graph produces a non-finite transform")
         mesh_value = node.get("mesh")
-        if mesh_value is not None:
+        if mesh_value is None:
+            continue
+        mesh_index = _index(mesh_value, len(meshes), f"nodes[{node_index}].mesh")
+        primitives = _array(
+            _object(meshes[mesh_index], f"meshes[{mesh_index}]").get("primitives"),
+            f"meshes[{mesh_index}].primitives",
+        )
+        for primitive_number in range(len(primitives)):
+            minimum, maximum = local_bounds[(mesh_index, primitive_number)]
+            for x in (minimum[0], maximum[0]):
+                for y in (minimum[1], maximum[1]):
+                    for z in (minimum[2], maximum[2]):
+                        point = _transform_point(world, (x, y, z))
+                        for axis, coordinate in enumerate(point):
+                            world_minimum[axis] = min(world_minimum[axis], coordinate)
+                            world_maximum[axis] = max(world_maximum[axis], coordinate)
+            found_geometry = True
+    if not found_geometry:
+        raise GlbError("selected scene contains no POSITION geometry")
+
+    def world_position_iterator() -> Iterator[tuple[float, float, float]]:
+        for node_index, world in iter_scene_nodes():
+            node = node_objects[node_index]
+            mesh_value = node.get("mesh")
+            if mesh_value is None:
+                continue
             mesh_index = _index(mesh_value, len(meshes), f"nodes[{node_index}].mesh")
             primitives = _array(
                 _object(meshes[mesh_index], f"meshes[{mesh_index}]").get("primitives"),
                 f"meshes[{mesh_index}].primitives",
             )
             for primitive_number in range(len(primitives)):
-                minimum, maximum = local_bounds[(mesh_index, primitive_number)]
-                for x in (minimum[0], maximum[0]):
-                    for y in (minimum[1], maximum[1]):
-                        for z in (minimum[2], maximum[2]):
-                            point = _transform_point(world, (x, y, z))
-                            for axis, coordinate in enumerate(point):
-                                world_minimum[axis] = min(world_minimum[axis], coordinate)
-                                world_maximum[axis] = max(world_maximum[axis], coordinate)
-                found_geometry = True
-        traversal.append((False, node_index, world))
-        traversal.extend(
-            (True, child, world) for child in reversed(node_children[node_index])
-        )
-    if not found_geometry:
-        raise GlbError("selected scene contains no POSITION geometry")
+                label = f"meshes[{mesh_index}].primitives[{primitive_number}].POSITION"
+                accessor_index = local_position_accessors[(mesh_index, primitive_number)]
+                for point in position_values(accessor_index, label):
+                    yield _transform_point(world, point)
 
-    return {
+    details = {
         "meshes": len(meshes),
         "primitives": primitive_count,
         "vertices": vertices,
@@ -824,13 +860,14 @@ def _inspect_document(document: dict[str, object], data: bytes) -> dict[str, obj
         "extensions_required": extensions_required,
         "world_bounds": {"min": world_minimum, "max": world_maximum},
     }
+    return details, world_position_iterator
 
 
 def inspect_glb(path: Path) -> dict[str, object]:
     """Inspect *path* and return authoritative geometry and resource metrics."""
     path = Path(path)
     document, data = _read_glb(path)
-    details = _inspect_document(document, data)
+    details, _ = _inspect_document(document, data)
     metrics: dict[str, object] = {
         "path": str(path),
         "sha256": hashlib.sha256(data).hexdigest(),
@@ -840,6 +877,13 @@ def inspect_glb(path: Path) -> dict[str, object]:
     if tuple(metrics) != METRIC_KEYS:
         raise AssertionError("internal metric key mismatch")
     return metrics
+
+
+def iter_world_positions(path: Path) -> Iterator[tuple[float, float, float]]:
+    """Yield checked POSITION values for every primitive in the selected scene."""
+    document, data = _read_glb(Path(path))
+    _, position_iterator = _inspect_document(document, data)
+    return position_iterator()
 
 
 def center_and_extents(bounds: object) -> tuple[list[float], list[float]]:
