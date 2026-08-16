@@ -1,7 +1,9 @@
 # Offline GLB decimation operations
 
-This is the operator contract for converting the 15 ignored generated source
-GLBs into smaller, ignored GLB derivatives. The governing decision is
+This is the operator contract for converting the 15 gitignored generated
+source GLBs into smaller local derivatives. The approved default derivative
+destination is gitignored; an arbitrary explicit destination is not. The
+governing decision is
 [ADR-0012](../../adr/0012-blender-headless-glb-decimation.md), which remains
 **Proposed** and requires human approval. This tooling decision is not a
 generated-asset license approval.
@@ -39,6 +41,26 @@ caller's working directory:
 | `--input-dir` | `unity/Assets/Art/Generated/incoming` |
 | `--output-dir` | `unity/Assets/Art/Generated/incoming/decimated` |
 | `--blender` | the executable returned by searching `PATH` for `blender` |
+
+The approved/default `incoming/decimated` destination is covered by the
+repository's `incoming/` ignore rule. Before any repo-local run, verify the
+selected destination with a hypothetical leaf (no file is created):
+
+```bash
+output_dir=unity/Assets/Art/Generated/incoming/decimated
+git check-ignore -q "$output_dir/.decimation-custody-check" || {
+  printf 'selected decimation output is not gitignored: %s\n' "$output_dir" >&2
+  exit 1
+}
+```
+
+`--output-dir` accepts any distinct writable directory; the orchestrator does
+not require it to be beneath `incoming/`, inside a repository, or covered by a
+Git ignore rule. It enforces the selected filesystem root, not Git custody.
+Never select a tracked Unity directory, `docs/`, or another tracked path. For
+an absolute repo-local destination in another checkout, run
+`git -C <checkout> check-ignore <relative-hypothetical-leaf>` before invoking
+the tool.
 
 Use explicit paths when the tracked scripts live in a clean worktree but the
 large ignored source files live in the main checkout. This is the real-queue
@@ -135,6 +157,13 @@ All manifest entries and source custody records are preflighted before Blender
 runs. An expected validation failure exits nonzero and prints a concise
 `glb-decimation: <diagnostic>` line on standard error.
 
+Manifest IDs are validated before even the Blender version probe. They must be
+nonempty, have no leading/trailing whitespace, and be printable single-line
+strings; ordinary printable Unicode, spaces, and mixed case remain valid. An
+invalid ID receives the fixed, non-interpolating diagnostic
+`glb-decimation: invalid manifest: id must be a printable single-line string`,
+so an ID cannot forge another physical start or acceptance record.
+
 Before Blender, the orchestrator rejects:
 
 - a missing, non-file, malformed, empty, or structurally invalid manifest;
@@ -156,9 +185,10 @@ Before Blender, the orchestrator rejects:
   morph target;
 - a source sidecar missing any required string field (`service`, `task_id`,
   `timestamp_utc`, `plan_tier`, `prompt`, `note`, `sha256`), a non-lowercase
-  64-digit SHA-256, a non-second-precision UTC timestamp, a tier other than
-  `paid`, or service/prompt/hash facts that disagree with the manifest/source;
-  and
+  64-character SHA-256, a timestamp that does not have the exact textual shape
+  `YYYY-MM-DDTHH:MM:SSZ`, a tier other than `paid`, or service/prompt/hash
+  facts that disagree with the manifest/source; the timestamp regex checks UTC
+  second-precision shape only, not calendar-date validity; and
 - a missing, non-executable, wrong-version, wrong-build, or timed-out Blender.
 
 After Blender, the orchestrator rejects:
@@ -172,8 +202,10 @@ After Blender, the orchestrator rejects:
   allowlist is exactly empty;
 - bounds drift outside the formulas below;
 - a source GLB or source-sidecar hash change during processing;
-- a provenance record containing a secret-shaped key/value or URL, or any
-  failure to create, flush, fsync, re-read, and hash-check its staged JSON; and
+- a provenance record containing a secret-shaped key/value or an HTTP(S)
+  URL-shaped string (including a signed download URL), or any failure to
+  create, flush, fsync, re-read, and hash-check its staged JSON; the scan does
+  not reject every non-HTTP URI scheme; and
 - any promotion, rollback, or cleanup state that cannot be verified.
 
 The GLB parser additionally rejects malformed headers/chunks, invalid JSON,
@@ -214,8 +246,10 @@ checks do not replace the required human silhouette comparison.
 The accepted sidecar is UTF-8 JSON with schema version 1, sorted keys, two-space
 indentation, and a trailing newline. It is created exclusively in staging,
 flushed and fsynced, then re-read before promotion. The derivative hash in the
-sidecar must equal the staged GLB's SHA-256. This complete example uses dummy,
-non-secret 64-digit hashes:
+sidecar must equal the staged GLB's SHA-256. `tool.timestamp_utc` is generated
+from the current UTC time at provenance-record creation and formatted to whole
+seconds; it is not copied from the source generation timestamp. This complete
+example uses dummy, non-secret 64-character hashes:
 
 ```json
 {
@@ -430,19 +464,27 @@ find "$output" -type f -exec shasum -a 256 {} \;
 
 ## Logs, exit status, and offline posture
 
-For each asset, the orchestrator emits one start line before Blender and one
-acceptance line after promotion. Counts are decimal integers without grouping:
+For each asset, the orchestrator calls for one start line before launching
+Blender and one acceptance line after promotion. Validated IDs cannot add a
+line or control character. Counts are decimal integers without grouping:
 
 ```text
 glb-decimation: asset=cat-conductor category=cat target=15000 source_triangles=42000
 glb-decimation: asset=cat-conductor output_triangles=15000 output_vertices=9000
 ```
 
-Blender's per-asset standard output/error is inherited and can appear between
-those lines. Version-probe output is captured rather than replayed. There is no
-batch success summary: exit 0 after the final acceptance line is the success
-signal. Expected pipeline failures exit 1 and end with a prefixed diagnostic,
-for example:
+Blender's per-asset standard output/error is inherited. Python stdout
+buffering—especially under the combined `>file 2>&1` capture above—and Blender
+stderr can reorder the visible transcript relative to the orchestrator's call
+order. Treat the sample as record formats, not a promise about adjacent lines,
+combined-stream ordering, or which line appears last. Version-probe output is
+captured rather than replayed.
+
+There is no batch success summary. Exit 0 together with the exact final pairs,
+matching hashes, and accepted metrics is authoritative. Expected pipeline
+failures exit 1 and emit a prefixed diagnostic on standard error, but buffering
+means that diagnostic need not be the last line in a combined capture. Example
+diagnostic format:
 
 ```text
 glb-decimation: derivative triangle band miss for cat: 15001
@@ -461,12 +503,13 @@ receive an environment copy with every variable whose name contains `KEY`,
 passed as a vector with `shell=False`, and standard input is `/dev/null`.
 
 Generated files and source metadata remain untrusted data. Secret-shaped keys
-or values, bearer-shaped data, and URL-shaped strings are rejected from the
-derivative provenance record. Logs should contain only asset IDs, categories,
-triangle/vertex counts, safe diagnostics, and Blender's local processing
-output. If a log unexpectedly contains sensitive or remote-service material,
-stop, preserve it outside the repository, and treat the run as a custody
-incident.
+or values, bearer-shaped data, and HTTP(S) URL-shaped strings (including signed
+download URLs) are rejected from the derivative provenance record; other URI
+schemes are not rejected by that secret scan. Logs should contain only
+validated asset IDs, categories, triangle/vertex counts, safe diagnostics, and
+Blender's local processing output. If a log unexpectedly contains sensitive or
+remote-service material, stop, preserve it outside the repository, and treat
+the run as a custody incident.
 
 ## Real-run acceptance checklist
 
@@ -480,13 +523,19 @@ Complete every item; code-green and exit 0 are necessary but not sufficient.
   the input and output directories are different filesystem identities and
   that every destination is either absent or a deliberately reviewed complete
   pair.
+- [ ] For a repo-local output, require `git check-ignore` to accept a
+  hypothetical leaf beneath the selected directory. Confirm the path is not a
+  tracked Unity or documentation destination; the orchestrator does not make
+  this Git-custody decision for the operator.
 - [ ] Confirm the stock Blender toolchain is 5.1.2, build
   `ec6e62d40fa9`, with bundled `io_scene_gltf2` 5.1.20. Do not substitute a
   newer release, modified bundle, alternate exporter, or compression add-on.
 - [ ] Run the explicit command above in an offline, no-key session. Confirm no
   GUI opens, save the complete output, and require `real_rc == 0`.
-- [ ] Require one start and one acceptance line for each manifest entry in
-  order. Do not count Blender chatter as an acceptance record.
+- [ ] Account for one start-format and one acceptance-format record per
+  successful manifest entry, but do not require their physical ordering
+  relative to Blender output in a combined capture. Do not count Blender
+  chatter as acceptance or use transcript order as the success authority.
 - [ ] Confirm the output root contains exactly 15 GLBs and their 15 JSON
   sidecars, with no `.glb-decimation-*`, `.*.backup-*`, split pair, symlink,
   external file, or unexplained residue.
@@ -560,7 +609,10 @@ PY
 
 Render every source and derivative from the exact tracked renderer at HEAD,
 using the same default 520-pixel canvas and yaw 25. Each invocation must pass
-the renderer's 1% minimum coverage gate:
+the renderer's 1% minimum coverage gate. The planned `.catshots/` root is
+inside the main repository checkout. It is untracked but **not gitignored**;
+the same is true of any contact sheets created there. These depictions require
+active operator custody rather than relying on an ignore rule.
 
 ```bash
 render_root="/Users/sushantsrikrish/cat-metro-app/.catshots/glb-decimation-2026-08-15"
@@ -573,11 +625,16 @@ while IFS=$'\t' read -r id out; do
     "/Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming/decimated/$out" \
     "$render_root/after/$id.png" 25
 done < <(jq -r '.assets[] | [.id, .out] | @tsv' docs/design/assets/CAT-MANIFEST.json)
+
+git -C /Users/sushantsrikrish/cat-metro-app \
+  status --short --untracked-files=all -- .catshots
 ```
 
 Actually view all 30 individual PNGs at the same size. A contact sheet is only
-a navigation aid; it never replaces individual inspection. Record a separate
-PASS/FAIL for every row:
+a navigation aid; it never replaces individual inspection. The status command
+must continue to show generated depictions only as `??` untracked paths, never
+as staged or tracked files. Never use `git add -A` in a checkout containing
+them. Record a separate PASS/FAIL for every row:
 
 | Asset | Required visual comparison |
 |---|---|
@@ -605,10 +662,13 @@ a visual failure even when all numeric checks pass.
 
 ## Shipping and license boundary — human approval required
 
-The derivative GLBs, derivative sidecars, silhouette PNGs, and contact sheets
-are ignored local artifacts. **They must not be copied, added, committed, or
-otherwise promoted into tracked Unity assets, and generated-art depictions
-must not enter tracked documentation, until all three gates exist and pass:**
+Derivative GLBs and sidecars are gitignored only when they stay under the
+approved/default `incoming/decimated/` tree. An arbitrary explicit output may
+not be ignored. Silhouette PNGs and contact sheets under repo-local
+`.catshots/` are untracked but not gitignored. **None of these artifacts may be
+copied, staged, committed, shipped, or otherwise promoted into tracked Unity
+assets, and generated-art depictions must not enter tracked documentation,
+until all three gates exist and pass:**
 
 1. a separate generated-asset license ADR covering the Meshy/Tripo source
    rights and provenance;

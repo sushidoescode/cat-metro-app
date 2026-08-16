@@ -174,9 +174,11 @@ the one-liner above.
 Generation custody ends at
 `unity/Assets/Art/Generated/incoming/{manifest-out}` and its source provenance
 sidecar. The separate offline derivative workflow is documented in
-[DECIMATION.md](DECIMATION.md); it writes only beneath the ignored
-`incoming/decimated/` tree. Decimation does not contact either generation
-service and does not change or supersede the source's service, account tier,
-prompt, task, timestamp, provenance, or license record. Promotion into tracked
-Unity assets remains subject to the separate generated-asset license ADR,
-curation contract, and human approval.
+[DECIMATION.md](DECIMATION.md). Its approved/default destination is the
+gitignored `incoming/decimated/` tree, but an explicit `--output-dir` is not
+restricted to an ignored path; the operator must verify Git custody separately.
+Decimation does not contact either generation service and does not change or
+supersede the source's service, account tier, prompt, task, timestamp,
+provenance, or license record. Promotion into tracked Unity assets remains
+subject to the separate generated-asset license ADR, curation contract, and
+human approval.
