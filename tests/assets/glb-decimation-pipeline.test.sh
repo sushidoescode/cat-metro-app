@@ -10,8 +10,8 @@ fake_blender="$repo/tests/assets/fake_blender.py"
 expected_driver=$(cd "$(dirname "$decimate_script")" && pwd -P)/blender_decimate.py
 review_section=${GLB_DECIMATION_REVIEW_SECTION:-all}
 case "$review_section" in
-  all|A|B|C|D) ;;
-  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all, A, B, C, or D"
+  all|A|B|C|D|E) ;;
+  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all, A, B, C, D, or E"
      printf 'glb-decimation pipeline test: %s\n' "$die_message" >&2
      exit 2 ;;
 esac
@@ -333,6 +333,190 @@ def scan(value):
 scan(record)
 PY
 }
+
+# Review regression E: manifest IDs enter operator logs and therefore must be
+# non-empty printable single-line values. Reject controls and Unicode line
+# separators before even the fake Blender version probe; retain ordinary broad
+# printable IDs rather than inventing a lowercase naming convention.
+if [ "$review_section" = all ] || [ "$review_section" = E ]; then
+  PYTHONDONTWRITEBYTECODE=1 python3 - \
+    "$decimate_script" "$tmp/review-manifest-id" "$repo" "$fake_blender" <<'PY'
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+script = Path(sys.argv[1])
+root = Path(sys.argv[2])
+repo = Path(sys.argv[3])
+fake_blender = Path(sys.argv[4])
+root.mkdir()
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(repo / "tests" / "assets"))
+from glb_fixture import write_glb
+
+errors = []
+
+def check(condition, message):
+    if not condition:
+        errors.append(message)
+
+def digest(value):
+    return hashlib.sha256(value).hexdigest()
+
+def lines(path):
+    if not path.exists():
+        return []
+    return path.read_text(encoding="utf-8").splitlines()
+
+def prepare_case(label, identifier):
+    case_root = root / label
+    input_dir = case_root / "input"
+    output_dir = case_root / "output"
+    input_dir.mkdir(parents=True)
+    output_dir.mkdir()
+    source = input_dir / "asset.glb"
+    source_sidecar = Path(f"{source}.json")
+    manifest = case_root / "manifest.json"
+    fake_log = case_root / "fake.log"
+    fake_audit = case_root / "fake.audit"
+    write_glb(source, triangles=30000)
+    source_bytes = source.read_bytes()
+    source_sidecar.write_text(json.dumps({
+        "service": "meshy",
+        "task_id": "fixture-meshy-task",
+        "timestamp_utc": "2026-08-15T12:34:56Z",
+        "plan_tier": "paid",
+        "prompt": "fixture cat",
+        "note": "local paid fixture",
+        "sha256": digest(source_bytes),
+    }, sort_keys=True) + "\n", encoding="utf-8")
+    sidecar_bytes = source_sidecar.read_bytes()
+    manifest.write_text(json.dumps({"assets": [{
+        "id": identifier,
+        "kind": "cat",
+        "service": "meshy",
+        "out": "asset.glb",
+        "prompt": "fixture cat",
+    }]}, sort_keys=True) + "\n", encoding="utf-8")
+    environment = {
+        "PATH": os.environ["PATH"],
+        "CURL_SENTINEL_LOG": os.environ["CURL_SENTINEL_LOG"],
+        "FAKE_BLENDER_MODE": "success",
+        "FAKE_BLENDER_LOG": str(fake_log),
+        "FAKE_BLENDER_AUDIT": str(fake_audit),
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "--manifest", str(manifest),
+                "--input-dir", str(input_dir),
+                "--output-dir", str(output_dir),
+                "--blender", str(fake_blender),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            env=environment,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise AssertionError(f"{label}: bounded CLI invocation timed out") from exc
+    return {
+        "result": result,
+        "input_dir": input_dir,
+        "output_dir": output_dir,
+        "source": source,
+        "source_bytes": source_bytes,
+        "source_sidecar": source_sidecar,
+        "sidecar_bytes": sidecar_bytes,
+        "fake_log": fake_log,
+        "fake_audit": fake_audit,
+    }
+
+unsafe_ids = (
+    ("empty", "", r"id[^\r\n]*non-empty"),
+    ("line-feed", "unsafe\nglb-decimation: asset=forged-line-feed", r"id[^\r\n]*single-line"),
+    ("carriage-return", "unsafe\rglb-decimation: asset=forged-carriage-return", r"id[^\r\n]*single-line"),
+    ("tab", "unsafe\tglb-decimation: asset=forged-tab", r"id[^\r\n]*single-line"),
+    ("escape", "unsafe\x1bglb-decimation: asset=forged-escape", r"id[^\r\n]*single-line"),
+    ("unicode-line-separator", "unsafe\u2028glb-decimation: asset=forged-line-separator", r"id[^\r\n]*single-line"),
+    ("unicode-paragraph-separator", "unsafe\u2029glb-decimation: asset=forged-paragraph-separator", r"id[^\r\n]*single-line"),
+)
+
+for label, identifier, detail_pattern in unsafe_ids:
+    case = prepare_case(label, identifier)
+    result = case["result"]
+    combined = result.stdout + result.stderr
+    diagnostic = rf"^glb-decimation: invalid manifest: [^\r\n]*{detail_pattern}[^\r\n]*$"
+    check(result.returncode != 0, f"{label}: unsafe manifest ID was accepted")
+    check(result.stdout == "", f"{label}: rejection wrote stdout: {result.stdout!r}")
+    check(
+        len(result.stderr.splitlines()) == 1
+        and re.fullmatch(diagnostic, result.stderr.rstrip("\n"), re.IGNORECASE) is not None,
+        f"{label}: missing single-line ID diagnostic: {combined!r}",
+    )
+    check(lines(case["fake_audit"]) == [], f"{label}: fake version/asset execution was reached")
+    check(lines(case["fake_log"]) == [], f"{label}: fake asset execution was logged")
+    physical_records = [
+        line for line in combined.splitlines()
+        if line.startswith("glb-decimation: asset=")
+        or "output_triangles=" in line
+    ]
+    check(not physical_records, f"{label}: forged physical records escaped: {physical_records!r}")
+    check(case["source"].read_bytes() == case["source_bytes"], f"{label}: source GLB changed")
+    check(
+        case["source_sidecar"].read_bytes() == case["sidecar_bytes"],
+        f"{label}: source sidecar changed",
+    )
+    check(
+        sorted(path.name for path in case["input_dir"].iterdir())
+        == ["asset.glb", "asset.glb.json"],
+        f"{label}: source custody membership changed",
+    )
+    check(list(case["output_dir"].rglob("*")) == [], f"{label}: output/residue was created")
+
+safe_identifier = "Cat Metro № 7 – café"
+check(safe_identifier.isprintable(), "safe fixture is not printable")
+safe = prepare_case("safe-printable", safe_identifier)
+safe_result = safe["result"]
+safe_lines = safe_result.stdout.splitlines()
+check(safe_result.returncode == 0, f"safe printable ID was rejected: {safe_result.stderr!r}")
+check(safe_result.stderr == "", f"safe printable ID wrote stderr: {safe_result.stderr!r}")
+check(
+    len(safe_lines) == 2
+    and all(f"asset={safe_identifier}" in line for line in safe_lines),
+    f"safe printable ID did not remain on two exact physical records: {safe_lines!r}",
+)
+check(lines(safe["fake_audit"]) == ["version", "asset"], "safe printable ID missed fake phases")
+check(len(lines(safe["fake_log"])) == 1, "safe printable ID missed fake asset execution")
+check(safe["source"].read_bytes() == safe["source_bytes"], "safe printable ID changed source GLB")
+check(
+    safe["source_sidecar"].read_bytes() == safe["sidecar_bytes"],
+    "safe printable ID changed source sidecar",
+)
+check(
+    sorted(path.name for path in safe["output_dir"].iterdir())
+    == ["asset.glb", "asset.glb.json"],
+    "safe printable ID did not produce one exact final pair",
+)
+
+if errors:
+    raise AssertionError("manifest ID log-safety regressions:\n- " + "\n- ".join(errors))
+PY
+  assert_no_external_effects
+fi
+
+if [ "$review_section" = E ]; then
+  printf 'glb-decimation review E: pass\n'
+  exit 0
+fi
 
 # Validate syntax without generating bytecode, then exercise every fake mode
 # from a foreign working directory. This proves the fixture import is relative
