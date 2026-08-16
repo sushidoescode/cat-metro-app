@@ -315,7 +315,8 @@ def _check_blender_version(blender: Path, child_env: Mapping[str, str]) -> None:
         raise DecimationError("Blender version check failed") from exc
 
     lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    if not lines or lines[0] != f"Blender {BLENDER_VERSION}":
+    expected_version = f"Blender {BLENDER_VERSION}"
+    if expected_version not in lines:
         raise DecimationError(f"requires Blender {BLENDER_VERSION}")
     expected_build = f"build hash: {BLENDER_BUILD_HASH}"
     if expected_build not in lines:
