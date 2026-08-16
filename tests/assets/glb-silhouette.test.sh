@@ -477,6 +477,51 @@ def accessor_and_view(
     return accessor, view
 
 
+def surface_shape(path: Path) -> tuple[int | None, tuple[int, ...] | None]:
+    """Return the fixture's POSITION count and unsigned-short indices safely."""
+    try:
+        document, binary = parse_glb(path)
+        item = primitive(document)
+        attributes = item["attributes"]
+        if not isinstance(attributes, dict):
+            return None, None
+        position_number = attributes["POSITION"]
+        index_number = item["indices"]
+        if not isinstance(position_number, int) or not isinstance(index_number, int):
+            return None, None
+        position_accessor, _ = accessor_and_view(document, position_number)
+        index_accessor, index_view = accessor_and_view(document, index_number)
+        position_count = position_accessor.get("count")
+        index_count = index_accessor.get("count")
+        if (
+            not isinstance(position_count, int)
+            or position_count < 0
+            or index_accessor.get("componentType") != 5123
+            or index_accessor.get("type") != "SCALAR"
+            or not isinstance(index_count, int)
+            or index_count < 0
+        ):
+            return None, None
+        start = int(index_view.get("byteOffset", 0)) + int(
+            index_accessor.get("byteOffset", 0)
+        )
+        end = start + index_count * 2
+        if start < 0 or end > len(binary):
+            return None, None
+        indices = struct.unpack_from(f"<{index_count}H", binary, start)
+        return position_count, indices
+    except (
+        AssertionError,
+        IndexError,
+        KeyError,
+        OSError,
+        TypeError,
+        ValueError,
+        struct.error,
+    ):
+        return None, None
+
+
 def append_view(
     document: dict[str, object],
     binary: bytearray,
@@ -537,7 +582,7 @@ def build_orphan_positions(source: Path, output: Path) -> None:
     assert accessor["componentType"] == 5126
     assert accessor["type"] == "VEC3"
     count = accessor["count"]
-    assert count == 8
+    assert isinstance(count, int) and count >= 3
     start = int(view.get("byteOffset", 0)) + int(accessor.get("byteOffset", 0))
     original = bytes(binary[start:start + count * 12])
     decorative = []
@@ -556,8 +601,8 @@ def build_orphan_positions(source: Path, output: Path) -> None:
         "componentType": 5126,
         "count": count + 10_000,
         "type": "VEC3",
-        "min": [-1.0, -1.0, -1.0],
-        "max": [1.0, 1.0, 1.0],
+        "min": accessor["min"],
+        "max": accessor["max"],
     }
     attributes["POSITION"] = append_accessor(document, new_accessor)
     write_glb(output, document, binary)
@@ -572,7 +617,7 @@ def build_high_work_surface(source: Path, output: Path) -> None:
     assert isinstance(position_number, int)
     position_accessor, _ = accessor_and_view(document, position_number)
     position_count = position_accessor["count"]
-    assert position_count == 10_008
+    assert isinstance(position_count, int) and position_count >= 9_999
     indices = tuple(range(9_999))
     payload = struct.pack(f"<{len(indices)}H", *indices)
     view_number = append_view(document, binary, payload, 34963)
@@ -814,10 +859,25 @@ check(
 # produces the same acceptable PNG even though all triangle topology is gone.
 zeroed_source = root / "zeroed-indices.glb"
 build_zeroed_indices(source_template, zeroed_source)
+source_position_count, source_indices = surface_shape(source_template)
+zeroed_position_count, zeroed_indices = surface_shape(zeroed_source)
 check(
     hashlib.sha256(zeroed_source.read_bytes()).digest()
     != hashlib.sha256(source_template.read_bytes()).digest(),
     "zero-index mutation did not change the GLB",
+)
+check(
+    source_indices is not None and len(source_indices) >= 3 and any(source_indices),
+    "zero-index control lacks nonzero triangle indices",
+)
+check(
+    zeroed_position_count == source_position_count
+    and source_indices is not None
+    and zeroed_indices is not None
+    and len(zeroed_indices) == len(source_indices)
+    and len(zeroed_indices) >= 3
+    and all(index == 0 for index in zeroed_indices),
+    "zero-index mutation did not preserve and zero every triangle index",
 )
 surface_output = root / "referenced-surface.png"
 surface_result = invoke(
@@ -854,6 +914,20 @@ if zeroed_output.exists() and surface_output.exists():
 # by any index.  They must neither change pixels nor inflate reported evidence.
 orphan_source = root / "orphan-positions.glb"
 build_orphan_positions(source_template, orphan_source)
+orphan_position_count, orphan_indices = surface_shape(orphan_source)
+check(
+    source_position_count is not None
+    and orphan_position_count == source_position_count + 10_000,
+    "orphan mutation did not append exactly 10000 POSITION values",
+)
+check(
+    source_position_count is not None
+    and source_indices is not None
+    and orphan_indices == source_indices
+    and bool(source_indices)
+    and max(source_indices) < source_position_count,
+    "orphan mutation did not leave appended POSITION values unreferenced",
+)
 orphan_output = root / "orphan-positions.png"
 orphan_result = invoke(
     orphan_source,
