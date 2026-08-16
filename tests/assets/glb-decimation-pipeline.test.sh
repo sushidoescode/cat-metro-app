@@ -10,8 +10,8 @@ fake_blender="$repo/tests/assets/fake_blender.py"
 expected_driver=$(cd "$(dirname "$decimate_script")" && pwd -P)/blender_decimate.py
 review_section=${GLB_DECIMATION_REVIEW_SECTION:-all}
 case "$review_section" in
-  all|A|B|C|D|E|F|G) ;;
-  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all, A, B, C, D, E, F, or G"
+  all|A|B|C|D|E|F|G|H) ;;
+  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all, A, B, C, D, E, F, G, or H"
      printf 'glb-decimation pipeline test: %s\n' "$die_message" >&2
      exit 2 ;;
 esac
@@ -315,6 +315,1156 @@ fi
 
 if [ "$review_section" = G ]; then
   printf 'glb-decimation review G: pass\n'
+  exit 0
+fi
+
+# Regression H: seam-safe welding changes Blender's in-memory topology for two
+# real assets, so the outer GLB count cannot also be the collapse denominator.
+# Audit the unmerged/smoothed topology exactly, then independently measure the
+# welded/smoothed topology used for decimation. The fake-bpy probes below pin
+# executed behavior and call order; scoped AST checks pin literal custody flags
+# without allowing an unreachable direct call to bless an unsafe alias call.
+if [ "$review_section" = all ] || [ "$review_section" = H ]; then
+  PYTHONDONTWRITEBYTECODE=1 python3 - "$expected_driver" <<'PY'
+import ast
+import importlib.util
+import inspect
+import sys
+import tempfile
+import types
+from argparse import Namespace
+from pathlib import Path
+from unittest import mock
+
+
+sys.dont_write_bytecode = True
+
+
+class AuditContractError(AssertionError):
+    pass
+
+
+AUDIT_IMPORT_LITERALS = {
+    "loglevel": 1,
+    "import_pack_images": True,
+    "merge_vertices": False,
+    "import_shading": "SMOOTH",
+    "import_webp_texture": False,
+    "import_unused_materials": False,
+    "import_select_created_objects": True,
+    "import_scene_extras": False,
+    "import_scene_as_collection": True,
+    "import_merge_material_slots": True,
+}
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise AuditContractError(message)
+
+
+def dotted_name(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = dotted_name(node.value)
+        if parent is not None:
+            return f"{parent}.{node.attr}"
+    return None
+
+
+def top_level_function(tree: ast.Module, name: str, label: str) -> ast.FunctionDef:
+    matches = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == name
+    ]
+    require(
+        len(matches) == 1,
+        f"{label}: expected exactly one top-level {name} FunctionDef; "
+        f"found {len(matches)}",
+    )
+    return matches[0]
+
+
+def require_audit_import_ast(source: str, label: str) -> int:
+    tree = ast.parse(source, filename=label)
+    audit_function = top_level_function(tree, "_audit_import_source", label)
+    calls = [
+        node
+        for node in ast.walk(audit_function)
+        if isinstance(node, ast.Call)
+        and dotted_name(node.func) == "bpy.ops.import_scene.gltf"
+    ]
+    require(
+        len(calls) == 1,
+        f"{label}: _audit_import_source must contain exactly one direct "
+        f"bpy.ops.import_scene.gltf call; found {len(calls)}",
+    )
+    call = calls[0]
+    require(not call.args, f"{label}: audit import must not use positional arguments")
+    require(
+        all(keyword.arg is not None for keyword in call.keywords),
+        f"{label}: audit import must not use dynamic **kwargs",
+    )
+    keyword_nodes = {}
+    for keyword in call.keywords:
+        require(
+            keyword.arg not in keyword_nodes,
+            f"{label}: duplicate audit import keyword {keyword.arg}",
+        )
+        keyword_nodes[keyword.arg] = keyword.value
+    expected_names = {"filepath", *AUDIT_IMPORT_LITERALS}
+    require(
+        set(keyword_nodes) == expected_names,
+        f"{label}: audit import keyword set must be exactly "
+        f"{sorted(expected_names)}; found {sorted(keyword_nodes)}",
+    )
+    filepath = keyword_nodes["filepath"]
+    require(
+        isinstance(filepath, ast.Call)
+        and isinstance(filepath.func, ast.Name)
+        and filepath.func.id == "str"
+        and len(filepath.args) == 1
+        and isinstance(filepath.args[0], ast.Name)
+        and filepath.args[0].id == "source"
+        and not filepath.keywords,
+        f"{label}: audit filepath must be exactly str(source)",
+    )
+    alternate_same_line_calls = [
+        node
+        for node in ast.walk(audit_function)
+        if isinstance(node, ast.Call)
+        and node is not call
+        and node is not filepath
+        and node.lineno == call.lineno
+    ]
+    require(
+        not alternate_same_line_calls,
+        f"{label}: the direct audit import line must contain no alternate "
+        "call expression",
+    )
+    for name, expected in AUDIT_IMPORT_LITERALS.items():
+        value = keyword_nodes[name]
+        require(
+            isinstance(value, ast.Constant)
+            and type(value.value) is type(expected)
+            and value.value == expected,
+            f"{label}: audit import keyword {name} must be literal {expected!r}",
+        )
+    return call.lineno
+
+
+class ImportRecorder:
+    def __init__(self) -> None:
+        self.calls = []
+        self.result = {"FINISHED"}
+
+    def __call__(self, *args, **kwargs):
+        frame = inspect.currentframe()
+        caller = frame.f_back if frame is not None else None
+        caller_site = (
+            caller.f_code.co_name,
+            caller.f_lineno,
+        ) if caller is not None else (None, None)
+        self.calls.append((args, dict(kwargs), caller_site))
+        del frame
+        return set(self.result)
+
+
+module_serial = 0
+
+
+def load_driver(path: Path, label: str):
+    global module_serial
+    module_serial += 1
+    recorder = ImportRecorder()
+    fake_bpy = types.ModuleType("bpy")
+    fake_bpy.ops = types.SimpleNamespace(
+        import_scene=types.SimpleNamespace(gltf=recorder)
+    )
+    fake_bpy.app = types.SimpleNamespace(
+        version=(5, 1, 2), build_hash=b"ec6e62d40fa9"
+    )
+    fake_bpy.data = types.SimpleNamespace(objects=[], actions=[])
+    fake_bpy.context = types.SimpleNamespace(
+        view_layer=types.SimpleNamespace(objects=types.SimpleNamespace(active=None))
+    )
+    module_name = f"_catmetro_audit_driver_{module_serial}"
+    prior_bpy = sys.modules.get("bpy")
+    try:
+        sys.modules["bpy"] = fake_bpy
+        spec = importlib.util.spec_from_file_location(module_name, path)
+        require(spec is not None and spec.loader is not None, f"{label}: import spec failed")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(module_name, None)
+        raise
+    finally:
+        if prior_bpy is None:
+            sys.modules.pop("bpy", None)
+        else:
+            sys.modules["bpy"] = prior_bpy
+    return module, recorder, module_name
+
+
+def require_signatures(module, label: str) -> None:
+    expected = {
+        "_audit_import_source": ("source",),
+        "_audit_source": ("source", "inspected_triangles"),
+        "_validated_decimation_ratio": (
+            "inspected", "audited", "effective", "target"
+        ),
+        "_decimate": ("args", "mesh_objects", "audited_source_triangles"),
+        "main": ("argv",),
+    }
+    for name, parameter_names in expected.items():
+        function = getattr(module, name, None)
+        require(callable(function), f"{label}: missing callable {name}")
+        parameters = list(inspect.signature(function).parameters.values())
+        require(
+            tuple(parameter.name for parameter in parameters) == parameter_names,
+            f"{label}: {name} parameter names/order must be {parameter_names}",
+        )
+        require(
+            all(
+                parameter.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+                and parameter.default is inspect.Parameter.empty
+                for parameter in parameters
+            ),
+            f"{label}: {name} parameters must be required positional-or-keyword values",
+        )
+
+
+def expect_rejection(callback, message: str) -> None:
+    try:
+        callback()
+    except (RuntimeError, ValueError):
+        return
+    raise AuditContractError(message)
+
+
+def require_audit_import_behavior(
+    module, recorder: ImportRecorder, direct_call_line: int, label: str
+) -> None:
+    source = Path("audit behavior source.glb")
+    recorder.calls.clear()
+    recorder.result = {"FINISHED"}
+    module._audit_import_source(source)
+    require(
+        len(recorder.calls) == 1,
+        f"{label}: _audit_import_source must execute exactly one glTF import; "
+        f"observed {len(recorder.calls)}",
+    )
+    args, kwargs, caller_site = recorder.calls[0]
+    require(
+        caller_site == ("_audit_import_source", direct_call_line),
+        f"{label}: _audit_import_source must execute its direct AST import call "
+        f"at line {direct_call_line}; observed caller {caller_site}",
+    )
+    require(not args, f"{label}: executed audit import used positional arguments")
+    expected = {"filepath": str(source), **AUDIT_IMPORT_LITERALS}
+    require(
+        kwargs == expected,
+        f"{label}: executed audit import kwargs differ: {kwargs!r}",
+    )
+    recorder.calls.clear()
+    recorder.result = {"CANCELLED"}
+    expect_rejection(
+        lambda: module._audit_import_source(source),
+        f"{label}: _audit_import_source accepted a cancelled Blender operator",
+    )
+    require(
+        len(recorder.calls) == 1,
+        f"{label}: cancelled audit import was not executed exactly once",
+    )
+    recorder.calls.clear()
+    recorder.result = {"FINISHED", "RUNNING_MODAL"}
+    expect_rejection(
+        lambda: module._audit_import_source(source),
+        f"{label}: _audit_import_source accepted a non-exact FINISHED result",
+    )
+    require(
+        len(recorder.calls) == 1,
+        f"{label}: non-exact FINISHED audit import was not executed exactly once",
+    )
+    recorder.result = {"FINISHED"}
+
+
+class ModifierCollection:
+    def __init__(self, events) -> None:
+        self.events = events
+        self.created = []
+
+    def new(self, name, modifier_type):
+        modifier = types.SimpleNamespace(name=name, type=modifier_type)
+        self.created.append(modifier)
+        self.events.append(("modifier", modifier_type, modifier))
+        return modifier
+
+
+def require_audit_source_behavior(
+    module, recorder: ImportRecorder, label: str
+) -> None:
+    events = []
+    recorder.calls.clear()
+    modifiers = ModifierCollection(events)
+    mesh_object = types.SimpleNamespace(modifiers=modifiers)
+    source = Path("audited-source.glb")
+
+    def audit_import(candidate):
+        events.append(("audit-import", candidate))
+
+    def static_mesh_objects():
+        events.append(("static-validate",))
+        return [mesh_object]
+
+    def apply_modifier(obj, modifier):
+        events.append(("apply", obj, modifier))
+
+    def triangle_count(objects):
+        events.append(("count", tuple(objects)))
+        return 12
+
+    with (
+        mock.patch.object(module, "_audit_import_source", new=audit_import),
+        mock.patch.object(module, "_static_mesh_objects", new=static_mesh_objects),
+        mock.patch.object(module, "apply_modifier", new=apply_modifier),
+        mock.patch.object(module, "_triangle_count", new=triangle_count),
+    ):
+        audited = module._audit_source(source, 12)
+    require(audited == 12, f"{label}: exact audit did not return counted triangles")
+    require(
+        [event[0] for event in events]
+        == ["audit-import", "static-validate", "modifier", "apply", "count"],
+        f"{label}: audit must import, statically validate, triangulate, apply, then count; "
+        f"observed {[event[0] for event in events]}",
+    )
+    require(
+        events[0][1] == source
+        and events[2][1] == "TRIANGULATE"
+        and events[3][1] is mesh_object
+        and events[3][2] is events[2][2]
+        and events[4][1] == (mesh_object,),
+        f"{label}: audit triangulation/count did not use the validated mesh",
+    )
+    require(
+        not recorder.calls,
+        f"{label}: _audit_source executed a glTF importer outside "
+        "_audit_import_source",
+    )
+
+    recorder.calls.clear()
+    mismatch_events = []
+    mismatch_modifiers = ModifierCollection(mismatch_events)
+    mismatch_mesh = types.SimpleNamespace(modifiers=mismatch_modifiers)
+    with (
+        mock.patch.object(module, "_audit_import_source", new=lambda _source: None),
+        mock.patch.object(module, "_static_mesh_objects", new=lambda: [mismatch_mesh]),
+        mock.patch.object(module, "apply_modifier", new=lambda _obj, _modifier: None),
+        mock.patch.object(module, "_triangle_count", new=lambda _objects: 10),
+    ):
+        expect_rejection(
+            lambda: module._audit_source(source, 12),
+            f"{label}: exact audit accepted inspected=12/audited=10",
+        )
+    require(
+        not recorder.calls,
+        f"{label}: _audit_source mismatch path executed a glTF importer outside "
+        "_audit_import_source",
+    )
+
+
+def require_ratio_behavior(module, label: str) -> None:
+    for values, expected in (
+        ((12, 12, 10, 5), 0.5),
+        ((12, 12, 8, 2), 0.25),
+        ((20, 20, 16, 4), 0.25),
+    ):
+        ratio = module._validated_decimation_ratio(*values)
+        require(
+            type(ratio) is float and ratio == expected,
+            f"{label}: effective denominator must produce {expected} for {values}; "
+            f"found {ratio!r}",
+        )
+    for values, guard_name in (
+        ((12, 10, 10, 5), "audited/inspected mismatch"),
+        ((12, 12, 13, 5), "effective-over-source"),
+        ((12, 12, 5, 5), "effective-at-target"),
+        ((12, 12, 4, 5), "effective-below-target"),
+    ):
+        expect_rejection(
+            lambda values=values: module._validated_decimation_ratio(*values),
+            f"{label}: {guard_name} guard did not reject {values}",
+        )
+
+
+def exercise_decimate(module, audited_value, ratio_override=None):
+    events = []
+    modifiers = ModifierCollection(events)
+    mesh_object = types.SimpleNamespace(modifiers=modifiers)
+    counts = iter((10, 5))
+    ratio_calls = []
+    applied_decimate_ratios = []
+    helper_was_called_before_apply = []
+
+    def ratio_spy(inspected, audited, effective, target):
+        ratio_calls.append((inspected, audited, effective, target))
+        return ratio_override
+
+    def apply_spy(_obj, modifier):
+        if modifier.type == "DECIMATE":
+            applied_decimate_ratios.append(getattr(modifier, "ratio", None))
+            if ratio_override is not None:
+                helper_was_called_before_apply.append(bool(ratio_calls))
+
+    patches = [
+        mock.patch.object(module, "apply_modifier", new=apply_spy),
+        mock.patch.object(module, "_triangle_count", new=lambda _objects: next(counts)),
+    ]
+    if ratio_override is not None:
+        patches.append(
+            mock.patch.object(module, "_validated_decimation_ratio", new=ratio_spy)
+        )
+    with patches[0], patches[1]:
+        if len(patches) == 3:
+            with patches[2]:
+                module._decimate(
+                    Namespace(
+                        source_triangles=12,
+                        target_triangles=5,
+                        minimum_triangles=4,
+                        maximum_triangles=5,
+                    ),
+                    [mesh_object],
+                    audited_value,
+                )
+        else:
+            module._decimate(
+                Namespace(
+                    source_triangles=12,
+                    target_triangles=5,
+                    minimum_triangles=4,
+                    maximum_triangles=5,
+                ),
+                [mesh_object],
+                audited_value,
+            )
+    decimate_modifiers = [
+        modifier for modifier in modifiers.created if modifier.type == "DECIMATE"
+    ]
+    require(len(decimate_modifiers) == 1, "_decimate must create one DECIMATE modifier")
+    return (
+        decimate_modifiers[0].ratio,
+        ratio_calls,
+        applied_decimate_ratios,
+        helper_was_called_before_apply,
+    )
+
+
+def require_decimate_behavior(module, label: str) -> None:
+    ratio, _, applied_ratios, _ = exercise_decimate(module, 12)
+    require(
+        ratio == 0.5,
+        f"{label}: _decimate used the raw/audited denominator instead of effective=10; "
+        f"ratio={ratio!r}",
+    )
+    require(
+        applied_ratios == [0.5],
+        f"{label}: applied DECIMATE ratio must use effective=10 at application "
+        f"time; observed {applied_ratios}",
+    )
+    ratio, calls, applied_ratios, helper_before_apply = exercise_decimate(
+        module, 7319, ratio_override=0.375
+    )
+    require(
+        calls == [(12, 7319, 10, 5)],
+        f"{label}: _decimate must call _validated_decimation_ratio once with "
+        f"(inspected,audited,effective,target); calls={calls}",
+    )
+    require(
+        ratio == 0.375,
+        f"{label}: _decimate ignored the validated helper's effective ratio",
+    )
+    require(
+        applied_ratios == [0.375] and helper_before_apply == [True],
+        f"{label}: validated ratio must be computed before and present during "
+        f"DECIMATE application; ratios={applied_ratios} "
+        f"helper_before_apply={helper_before_apply}",
+    )
+
+
+def require_main_sequence(module, recorder: ImportRecorder, label: str) -> None:
+    with tempfile.TemporaryDirectory(prefix="catmetro-audit-main-") as directory:
+        root = Path(directory)
+        source = root / "source.glb"
+        output = root / "output.glb"
+        source.write_bytes(b"glTF fixture sentinel")
+        args = Namespace(
+            source=source,
+            output=output,
+            source_triangles=12,
+            target_triangles=5,
+            minimum_triangles=4,
+            maximum_triangles=5,
+        )
+        audited_sentinel = object()
+        mesh_sentinel = object()
+        events = []
+        recorder.calls.clear()
+
+        def audit(candidate, inspected):
+            events.append(("audit", candidate, inspected))
+            return audited_sentinel
+
+        def decimate(decimate_args, meshes, audited):
+            require(decimate_args is args, f"{label}: main replaced parsed arguments")
+            require(meshes == [mesh_sentinel], f"{label}: main replaced safe mesh list")
+            require(
+                audited is audited_sentinel,
+                f"{label}: main did not pass _audit_source's result into _decimate",
+            )
+            events.append(("decimate",))
+
+        with (
+            mock.patch.object(module, "_arguments", new=lambda _argv: args),
+            mock.patch.object(module, "_require_blender_pin", new=lambda: None),
+            mock.patch.object(
+                module,
+                "_remove_factory_objects",
+                new=lambda: events.append(("clear",)),
+            ),
+            mock.patch.object(module, "_audit_source", new=audit),
+            mock.patch.object(
+                module,
+                "_import_source",
+                new=lambda candidate: events.append(("safe-import", candidate)),
+            ),
+            mock.patch.object(
+                module,
+                "_static_mesh_objects",
+                new=lambda: events.append(("static-validate",)) or [mesh_sentinel],
+            ),
+            mock.patch.object(module, "_decimate", new=decimate),
+            mock.patch.object(
+                module,
+                "_export_output",
+                new=lambda candidate: events.append(("export", candidate)),
+            ),
+        ):
+            result = module.main(["blender", "--", "fixture"])
+        require(result == 0, f"{label}: compliant main sequence returned {result!r}")
+        require(
+            [event[0] for event in events]
+            == [
+                "clear",
+                "audit",
+                "clear",
+                "safe-import",
+                "static-validate",
+                "decimate",
+                "export",
+            ],
+            f"{label}: main sequence must be clear→audit→clear→safe import→"
+            f"static validate→decimate→export; observed {[event[0] for event in events]}",
+        )
+        require(
+            events[1][1:] == (source, 12)
+            and events[3][1] == source
+            and events[6][1] == output,
+            f"{label}: main sequence used the wrong source/output custody paths",
+        )
+        require(
+            not recorder.calls,
+            f"{label}: main executed a glTF importer outside the audited/safe helpers",
+        )
+
+
+def validate_driver(path: Path, label: str) -> None:
+    source = path.read_text(encoding="utf-8")
+    direct_call_line = require_audit_import_ast(source, label)
+    module, recorder, module_name = load_driver(path, label)
+    try:
+        require_signatures(module, label)
+        require_audit_import_behavior(module, recorder, direct_call_line, label)
+        require_audit_source_behavior(module, recorder, label)
+        require_ratio_behavior(module, label)
+        require_decimate_behavior(module, label)
+        require_main_sequence(module, recorder, label)
+    finally:
+        sys.modules.pop(module_name, None)
+
+
+compliant_fixture = '''
+import argparse
+import sys
+from pathlib import Path
+import bpy
+
+EXIT_CODE = 97
+
+def _arguments(argv):
+    raise AssertionError("patched by the behavior fixture")
+
+def _require_blender_pin():
+    pass
+
+def _remove_factory_objects():
+    pass
+
+def _audit_import_source(source):
+    result = bpy.ops.import_scene.gltf(
+        filepath=str(source),
+        loglevel=1,
+        import_pack_images=True,
+        merge_vertices=False,
+        import_shading="SMOOTH",
+        import_webp_texture=False,
+        import_unused_materials=False,
+        import_select_created_objects=True,
+        import_scene_extras=False,
+        import_scene_as_collection=True,
+        import_merge_material_slots=True,
+    )
+    if result != {"FINISHED"}:
+        raise RuntimeError(f"GLB audit import returned {result}")
+
+def _import_source(source):
+    pass
+
+def _static_mesh_objects():
+    return []
+
+def apply_modifier(obj, modifier):
+    pass
+
+def _triangle_count(mesh_objects):
+    return 0
+
+def _audit_source(source, inspected_triangles):
+    _audit_import_source(source)
+    mesh_objects = _static_mesh_objects()
+    for obj in mesh_objects:
+        triangulate = obj.modifiers.new("CatMetroAuditTriangulate", "TRIANGULATE")
+        apply_modifier(obj, triangulate)
+    audited = _triangle_count(mesh_objects)
+    if audited != inspected_triangles:
+        raise RuntimeError("audited source triangle count disagrees with inspector")
+    return audited
+
+def _validated_decimation_ratio(inspected, audited, effective, target):
+    if audited != inspected:
+        raise RuntimeError("audited source triangle count disagrees with inspector")
+    if effective > inspected or effective > audited:
+        raise RuntimeError("effective triangle count exceeds source")
+    if effective <= target:
+        raise RuntimeError("effective triangle count must exceed target")
+    return target / effective
+
+def _decimate(args, mesh_objects, audited_source_triangles):
+    for obj in mesh_objects:
+        triangulate = obj.modifiers.new("CatMetroTriangulate", "TRIANGULATE")
+        apply_modifier(obj, triangulate)
+    effective = _triangle_count(mesh_objects)
+    ratio = _validated_decimation_ratio(
+        args.source_triangles, audited_source_triangles, effective, args.target_triangles
+    )
+    for obj in mesh_objects:
+        decimate = obj.modifiers.new("CatMetroCollapseDecimate", "DECIMATE")
+        decimate.ratio = ratio
+        apply_modifier(obj, decimate)
+    output_triangles = _triangle_count(mesh_objects)
+    if not args.minimum_triangles <= output_triangles <= args.maximum_triangles:
+        raise RuntimeError("decimated count outside band")
+
+def _export_output(output):
+    pass
+
+def main(argv):
+    try:
+        args = _arguments(argv)
+        _require_blender_pin()
+        if not args.source.is_file():
+            raise RuntimeError("source GLB is missing")
+        if not args.output.parent.is_dir():
+            raise RuntimeError("output directory is missing")
+        if args.output.exists():
+            raise RuntimeError("staged output already exists")
+        _remove_factory_objects()
+        audited = _audit_source(args.source, args.source_triangles)
+        _remove_factory_objects()
+        _import_source(args.source)
+        mesh_objects = _static_mesh_objects()
+        _decimate(args, mesh_objects, audited)
+        _export_output(args.output)
+        return 0
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(f"blender-decimate: {exc}", file=sys.stderr)
+        return EXIT_CODE
+'''
+
+
+def replaced_once(source: str, old: str, new: str, label: str) -> str:
+    require(
+        source.count(old) == 1,
+        f"mutation fixture {label}: expected one replacement target; "
+        f"found {source.count(old)}",
+    )
+    return source.replace(old, new, 1)
+
+
+def assert_mutation_rejected(source: str, label: str, diagnostic: str) -> None:
+    with tempfile.TemporaryDirectory(prefix="catmetro-audit-mutation-") as directory:
+        path = Path(directory) / "blender_decimate.py"
+        path.write_text(source, encoding="utf-8")
+        try:
+            validate_driver(path, f"mutation {label}")
+        except AuditContractError as exc:
+            require(
+                diagnostic in str(exc),
+                f"mutation {label}: wrong test diagnostic: {exc}",
+            )
+        else:
+            raise AuditContractError(f"mutation {label} unexpectedly passed")
+
+
+with tempfile.TemporaryDirectory(prefix="catmetro-audit-compliant-") as directory:
+    compliant_path = Path(directory) / "blender_decimate.py"
+    compliant_path.write_text(compliant_fixture, encoding="utf-8")
+    validate_driver(compliant_path, "compliant Task 8c control")
+
+
+# Independently kill every literal audit-import custody flag.
+flag_mutations = {
+    "loglevel": ("        loglevel=1,", "        loglevel=2,"),
+    "import_pack_images": (
+        "        import_pack_images=True,", "        import_pack_images=False,"
+    ),
+    "merge_vertices": (
+        "        merge_vertices=False,", "        merge_vertices=True,"
+    ),
+    "import_shading": (
+        '        import_shading="SMOOTH",', '        import_shading="NORMALS",'
+    ),
+    "import_webp_texture": (
+        "        import_webp_texture=False,", "        import_webp_texture=True,"
+    ),
+    "import_unused_materials": (
+        "        import_unused_materials=False,",
+        "        import_unused_materials=True,",
+    ),
+    "import_select_created_objects": (
+        "        import_select_created_objects=True,",
+        "        import_select_created_objects=False,",
+    ),
+    "import_scene_extras": (
+        "        import_scene_extras=False,", "        import_scene_extras=True,"
+    ),
+    "import_scene_as_collection": (
+        "        import_scene_as_collection=True,",
+        "        import_scene_as_collection=False,",
+    ),
+    "import_merge_material_slots": (
+        "        import_merge_material_slots=True,",
+        "        import_merge_material_slots=False,",
+    ),
+}
+for flag, (old, new) in flag_mutations.items():
+    assert_mutation_rejected(
+        replaced_once(compliant_fixture, old, new, flag),
+        f"audit flag {flag}",
+        f"audit import keyword {flag} must be literal",
+    )
+
+
+audit_block = '''def _audit_import_source(source):
+    result = bpy.ops.import_scene.gltf(
+        filepath=str(source),
+        loglevel=1,
+        import_pack_images=True,
+        merge_vertices=False,
+        import_shading="SMOOTH",
+        import_webp_texture=False,
+        import_unused_materials=False,
+        import_select_created_objects=True,
+        import_scene_extras=False,
+        import_scene_as_collection=True,
+        import_merge_material_slots=True,
+    )
+    if result != {"FINISHED"}:
+        raise RuntimeError(f"GLB audit import returned {result}")
+'''
+alias_bypass_block = '''def _audit_import_source(source):
+    importer = bpy.ops.import_scene.gltf
+    if False:
+        bpy.ops.import_scene.gltf(
+            filepath=str(source),
+            loglevel=1,
+            import_pack_images=True,
+            merge_vertices=False,
+            import_shading="SMOOTH",
+            import_webp_texture=False,
+            import_unused_materials=False,
+            import_select_created_objects=True,
+            import_scene_extras=False,
+            import_scene_as_collection=True,
+            import_merge_material_slots=True,
+        )
+    result = importer(
+        filepath=str(source),
+        loglevel=1,
+        import_pack_images=True,
+        merge_vertices=False,
+        import_shading="SMOOTH",
+        import_webp_texture=False,
+        import_unused_materials=False,
+        import_select_created_objects=True,
+        import_scene_extras=False,
+        import_scene_as_collection=True,
+        import_merge_material_slots=True,
+    )
+    if result != {"FINISHED"}:
+        raise RuntimeError(f"GLB audit import returned {result}")
+'''
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture, audit_block, alias_bypass_block, "unreachable direct alias bypass"
+    ),
+    "unreachable direct alias bypass",
+    "must execute its direct AST import call",
+)
+same_line_alias_bypass_block = '''def _audit_import_source(source):
+    importer = bpy.ops.import_scene.gltf
+    result = bpy.ops.import_scene.gltf(filepath=str(source), loglevel=1, import_pack_images=True, merge_vertices=False, import_shading="SMOOTH", import_webp_texture=False, import_unused_materials=False, import_select_created_objects=True, import_scene_extras=False, import_scene_as_collection=True, import_merge_material_slots=True) if False else importer(filepath=str(source), loglevel=1, import_pack_images=True, merge_vertices=False, import_shading="SMOOTH", import_webp_texture=False, import_unused_materials=False, import_select_created_objects=True, import_scene_extras=False, import_scene_as_collection=True, import_merge_material_slots=True)
+    if result != {"FINISHED"}:
+        raise RuntimeError(f"GLB audit import returned {result}")
+'''
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        audit_block,
+        same_line_alias_bypass_block,
+        "same-line unreachable direct alias bypass",
+    ),
+    "same-line unreachable direct alias bypass",
+    "direct audit import line must contain no alternate call expression",
+)
+shadowed_str_alias_bypass_block = '''def _audit_import_source(source):
+    filepath = source.__str__()
+    str = bpy.ops.import_scene.gltf
+    result = bpy.ops.import_scene.gltf(filepath=str(source), loglevel=1, import_pack_images=True, merge_vertices=False, import_shading="SMOOTH", import_webp_texture=False, import_unused_materials=False, import_select_created_objects=True, import_scene_extras=False, import_scene_as_collection=True, import_merge_material_slots=True) if False else str(filepath=filepath, loglevel=1, import_pack_images=True, merge_vertices=False, import_shading="SMOOTH", import_webp_texture=False, import_unused_materials=False, import_select_created_objects=True, import_scene_extras=False, import_scene_as_collection=True, import_merge_material_slots=True)
+    if result != {"FINISHED"}:
+        raise RuntimeError(f"GLB audit import returned {result}")
+'''
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        audit_block,
+        shadowed_str_alias_bypass_block,
+        "same-line shadowed-str alias bypass",
+    ),
+    "same-line shadowed-str alias bypass",
+    "direct audit import line must contain no alternate call expression",
+)
+
+exact_result_check = '''    if result != {"FINISHED"}:
+        raise RuntimeError(f"GLB audit import returned {result}")
+'''
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        exact_result_check,
+        '''    if "FINISHED" not in result:
+        raise RuntimeError(f"GLB audit import returned {result}")
+''',
+        "non-exact audit operator result",
+    ),
+    "non-exact audit operator result",
+    "accepted a non-exact FINISHED result",
+)
+
+# Exact means exact: deleting the comparison or allowing the observed magic -2
+# must both fail, while the import/static/triangulation/count legs stay live.
+exact_check = '''    if audited != inspected_triangles:
+        raise RuntimeError("audited source triangle count disagrees with inspector")
+'''
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        exact_check,
+        '''    if False:
+        raise RuntimeError("audited source triangle count disagrees with inspector")
+''',
+        "missing exact audit",
+    ),
+    "missing exact audit",
+    "exact audit accepted inspected=12/audited=10",
+)
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        exact_check,
+        '''    if abs(audited - inspected_triangles) > 2:
+        raise RuntimeError("audited source triangle count disagrees with inspector")
+''',
+        "magic minus-two audit tolerance",
+    ),
+    "magic minus-two audit tolerance",
+    "exact audit accepted inspected=12/audited=10",
+)
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        exact_check,
+        '''    if audited != inspected_triangles:
+        importer = bpy.ops.import_scene.gltf
+        importer(filepath=str(source), merge_vertices=True)
+        raise RuntimeError("audited source triangle count disagrees with inspector")
+''',
+        "mismatch-branch alias import",
+    ),
+    "mismatch-branch alias import",
+    "mismatch path executed a glTF importer outside _audit_import_source",
+)
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        "    _audit_import_source(source)\n",
+        "    pass  # mutation: dead audit importer\n",
+        "dead audit importer",
+    ),
+    "dead audit importer",
+    "audit must import, statically validate, triangulate, apply, then count",
+)
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        "    _audit_import_source(source)\n    mesh_objects = _static_mesh_objects()\n",
+        "    _audit_import_source(source)\n"
+        "    importer = bpy.ops.import_scene.gltf\n"
+        "    importer(filepath=str(source), merge_vertices=True)\n"
+        "    mesh_objects = _static_mesh_objects()\n",
+        "audit source alias-extra import",
+    ),
+    "audit source alias-extra import",
+    "_audit_source executed a glTF importer outside _audit_import_source",
+)
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        "    _audit_import_source(source)\n    mesh_objects = _static_mesh_objects()\n",
+        "    _audit_import_source(source)\n"
+        "    mesh_objects = []  # mutation: static validation bypassed\n",
+        "static validation bypass",
+    ),
+    "static validation bypass",
+    "audit must import, statically validate, triangulate, apply, then count",
+)
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        "    for obj in mesh_objects:\n        triangulate = obj.modifiers.new(\"CatMetroAuditTriangulate\", \"TRIANGULATE\")\n        apply_modifier(obj, triangulate)\n",
+        "    for obj in ():\n        triangulate = obj.modifiers.new(\"CatMetroAuditTriangulate\", \"TRIANGULATE\")\n        apply_modifier(obj, triangulate)\n",
+        "audit triangulation bypass",
+    ),
+    "audit triangulation bypass",
+    "audit must import, statically validate, triangulate, apply, then count",
+)
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        "    audited = _triangle_count(mesh_objects)\n",
+        "    audited = inspected_triangles  # mutation: count bypassed\n",
+        "audit count bypass",
+    ),
+    "audit count bypass",
+    "audit must import, statically validate, triangulate, apply, then count",
+)
+
+# Independently kill each ratio guard and the raw-denominator regression.
+ratio_guard_mutations = (
+    (
+        "mismatch guard",
+        '''    if audited != inspected:
+        raise RuntimeError("audited source triangle count disagrees with inspector")
+''',
+        '''    if False:
+        raise RuntimeError("audited source triangle count disagrees with inspector")
+''',
+        "audited/inspected mismatch guard did not reject",
+    ),
+    (
+        "effective-over-source guard",
+        '''    if effective > inspected or effective > audited:
+        raise RuntimeError("effective triangle count exceeds source")
+''',
+        '''    if False:
+        raise RuntimeError("effective triangle count exceeds source")
+''',
+        "effective-over-source guard did not reject",
+    ),
+    (
+        "effective-at-or-below-target guard",
+        '''    if effective <= target:
+        raise RuntimeError("effective triangle count must exceed target")
+''',
+        '''    if False:
+        raise RuntimeError("effective triangle count must exceed target")
+''',
+        "effective-at-target guard did not reject",
+    ),
+)
+for mutation_label, old, new, diagnostic in ratio_guard_mutations:
+    assert_mutation_rejected(
+        replaced_once(compliant_fixture, old, new, mutation_label),
+        mutation_label,
+        diagnostic,
+    )
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        "    return target / effective\n",
+        "    return target / inspected  # mutation: raw denominator\n",
+        "raw denominator helper",
+    ),
+    "raw denominator helper",
+    "effective denominator must produce 0.5",
+)
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        "    return target / effective\n",
+        "    return 0.5  # mutation: one-vector constant\n",
+        "constant ratio helper",
+    ),
+    "constant ratio helper",
+    "effective denominator must produce 0.25",
+)
+validated_call = '''    ratio = _validated_decimation_ratio(
+        args.source_triangles, audited_source_triangles, effective, args.target_triangles
+    )
+'''
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        validated_call,
+        "    ratio = args.target_triangles / args.source_triangles\n",
+        "raw denominator in decimate",
+    ),
+    "raw denominator in decimate",
+    "_decimate used the raw/audited denominator",
+)
+ratio_application_block = '''    effective = _triangle_count(mesh_objects)
+    ratio = _validated_decimation_ratio(
+        args.source_triangles, audited_source_triangles, effective, args.target_triangles
+    )
+    for obj in mesh_objects:
+        decimate = obj.modifiers.new("CatMetroCollapseDecimate", "DECIMATE")
+        decimate.ratio = ratio
+        apply_modifier(obj, decimate)
+'''
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        ratio_application_block,
+        '''    effective = _triangle_count(mesh_objects)
+    ratio = args.target_triangles / args.source_triangles
+    for obj in mesh_objects:
+        decimate = obj.modifiers.new("CatMetroCollapseDecimate", "DECIMATE")
+        decimate.ratio = ratio
+        apply_modifier(obj, decimate)
+    validated_ratio = _validated_decimation_ratio(
+        args.source_triangles, audited_source_triangles, effective, args.target_triangles
+    )
+    decimate.ratio = validated_ratio
+''',
+        "post-apply ratio rewrite",
+    ),
+    "post-apply ratio rewrite",
+    "applied DECIMATE ratio must use effective=10 at application time",
+)
+
+# A correct but dead helper, a reordered import, or missing audit cleanup cannot
+# satisfy the dynamic main contract.
+main_audit_call = "        audited = _audit_source(args.source, args.source_triangles)\n"
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        main_audit_call,
+        "        audited = args.source_triangles  # mutation: dead audit helper\n",
+        "dead audit helper",
+    ),
+    "dead audit helper",
+    "main did not pass _audit_source's result into _decimate",
+)
+cleanup_sequence = '''        audited = _audit_source(args.source, args.source_triangles)
+        _remove_factory_objects()
+        _import_source(args.source)
+'''
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        cleanup_sequence,
+        '''        audited = _audit_source(args.source, args.source_triangles)
+        _import_source(args.source)
+''',
+        "audit cleanup bypass",
+    ),
+    "audit cleanup bypass",
+    "main sequence must be",
+)
+ordered_sequence = '''        _remove_factory_objects()
+        audited = _audit_source(args.source, args.source_triangles)
+        _remove_factory_objects()
+        _import_source(args.source)
+'''
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        ordered_sequence,
+        '''        _remove_factory_objects()
+        _import_source(args.source)
+        audited = _audit_source(args.source, args.source_triangles)
+        _remove_factory_objects()
+''',
+        "main audit/import reorder",
+    ),
+    "main audit/import reorder",
+    "main sequence must be",
+)
+assert_mutation_rejected(
+    replaced_once(
+        compliant_fixture,
+        "        _import_source(args.source)\n"
+        "        mesh_objects = _static_mesh_objects()\n",
+        "        _import_source(args.source)\n"
+        "        importer = bpy.ops.import_scene.gltf\n"
+        "        importer(filepath=str(args.source), merge_vertices=True)\n"
+        "        mesh_objects = _static_mesh_objects()\n",
+        "main alias-extra import",
+    ),
+    "main alias-extra import",
+    "main executed a glTF importer outside the audited/safe helpers",
+)
+
+
+print(
+    "glb-decimation review H: compliant fixture and mutation controls pass",
+    flush=True,
+)
+driver = Path(sys.argv[1])
+try:
+    validate_driver(driver, str(driver))
+except AuditContractError as exc:
+    print(f"glb-decimation pipeline test: Task 8c audit contract: {exc}", file=sys.stderr)
+    raise SystemExit(1) from None
+PY
+fi
+
+if [ "$review_section" = H ]; then
+  printf 'glb-decimation review H: pass\n'
   exit 0
 fi
 
