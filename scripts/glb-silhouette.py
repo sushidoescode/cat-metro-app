@@ -8,6 +8,7 @@ import sys
 sys.dont_write_bytecode = True
 
 import argparse
+import json
 import math
 import os
 import re
@@ -27,6 +28,7 @@ DEFAULT_SIZE = 520
 DEFAULT_SPLAT_RADIUS = 2
 DEFAULT_MINIMUM_COVERAGE = 0.01
 MAXIMUM_SOURCE_BYTES = 512 * 1024 * 1024
+MAXIMUM_SELECTED_INDEX_REFERENCES = 8_000_000
 MAXIMUM_SIZE = 2048
 MAXIMUM_SPLAT_RADIUS = 64
 MAXIMUM_RASTER_WORK = 100_000_000
@@ -41,6 +43,11 @@ _CREDENTIAL_SHAPE = re.compile(
 
 class RenderError(ValueError):
     """Raised when the requested silhouette would not be valid evidence."""
+
+
+class _ArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise RenderError(message)
 
 
 def _png_chunk(kind: bytes, payload: bytes) -> bytes:
@@ -87,31 +94,109 @@ def _write_png(path: Path, size: int, rgb: bytes) -> None:
             os.fsync(handle.fileno())
         os.replace(staged, path)
         staged = None
-    finally:
+    except BaseException as primary_error:
+        cleanup_errors: list[OSError] = []
         if descriptor >= 0:
-            os.close(descriptor)
+            try:
+                os.close(descriptor)
+            except OSError as exc:
+                cleanup_errors.append(exc)
         if staged is not None:
             try:
                 staged.unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as exc:
+                cleanup_errors.append(exc)
+        if cleanup_errors:
+            raise RenderError(
+                "PNG publication failed and temporary cleanup failed"
+            ) from primary_error
+        raise
 
 
-def _source_status(source: Path) -> os.stat_result:
+def _source_snapshot(source: Path) -> tuple[bytes, os.stat_result]:
+    """Read one immutable, regular, single-link source through one descriptor."""
     try:
-        status = source.stat()
+        before_open = source.lstat()
     except FileNotFoundError as exc:
         raise RenderError("source GLB does not exist") from exc
-    if not stat.S_ISREG(status.st_mode):
+    if not stat.S_ISREG(before_open.st_mode):
         raise RenderError("source GLB must be a regular file")
-    if status.st_size > MAXIMUM_SOURCE_BYTES:
+    if before_open.st_nlink != 1:
+        raise RenderError("source GLB must have exactly one hard link")
+    if before_open.st_size > MAXIMUM_SOURCE_BYTES:
         raise RenderError(
             f"source GLB exceeds {MAXIMUM_SOURCE_BYTES}-byte limit"
         )
-    return status
+
+    no_follow = getattr(os, "O_NOFOLLOW", None)
+    if no_follow is None:
+        raise RenderError("source no-follow reads are unavailable")
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0) | no_follow
+    descriptor = os.open(source, flags)
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            raise RenderError("source GLB must be a regular file")
+        if opened.st_nlink != 1:
+            raise RenderError("source GLB must have exactly one hard link")
+        if opened.st_size > MAXIMUM_SOURCE_BYTES:
+            raise RenderError(
+                f"source GLB exceeds {MAXIMUM_SOURCE_BYTES}-byte limit"
+            )
+        if (
+            opened.st_dev,
+            opened.st_ino,
+            opened.st_size,
+            opened.st_mtime_ns,
+            opened.st_ctime_ns,
+        ) != (
+            before_open.st_dev,
+            before_open.st_ino,
+            before_open.st_size,
+            before_open.st_mtime_ns,
+            before_open.st_ctime_ns,
+        ):
+            raise RenderError("source GLB changed before it could be opened")
+
+        with os.fdopen(descriptor, "rb", closefd=True) as handle:
+            descriptor = -1
+            data = handle.read(MAXIMUM_SOURCE_BYTES + 1)
+            after_read = os.fstat(handle.fileno())
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+    if len(data) > MAXIMUM_SOURCE_BYTES:
+        raise RenderError(
+            f"source GLB exceeds {MAXIMUM_SOURCE_BYTES}-byte limit"
+        )
+    if len(data) != opened.st_size:
+        raise RenderError("source GLB size changed while it was read")
+    if (
+        after_read.st_dev,
+        after_read.st_ino,
+        after_read.st_nlink,
+        after_read.st_size,
+        after_read.st_mtime_ns,
+        after_read.st_ctime_ns,
+    ) != (
+        opened.st_dev,
+        opened.st_ino,
+        opened.st_nlink,
+        opened.st_size,
+        opened.st_mtime_ns,
+        opened.st_ctime_ns,
+    ):
+        raise RenderError("source GLB changed while it was read")
+    return data, opened
 
 
-def _validate_output(output: Path) -> None:
+def _validate_output(
+    source: Path, source_status: os.stat_result, output: Path
+) -> None:
+    if os.path.abspath(source) == os.path.abspath(output):
+        raise RenderError("source and output refer to the same file")
     try:
         status = output.lstat()
     except FileNotFoundError:
@@ -122,15 +207,58 @@ def _validate_output(output: Path) -> None:
         raise RenderError("output path must be a regular file when it exists")
     if status.st_nlink != 1:
         raise RenderError("output path must have exactly one hard link")
+    if (status.st_dev, status.st_ino) == (
+        source_status.st_dev,
+        source_status.st_ino,
+    ):
+        raise RenderError("source and output refer to the same file")
 
 
-def _source_is_output(source: Path, output: Path) -> bool:
-    if os.path.abspath(source) == os.path.abspath(output):
-        return True
-    try:
-        return source.samefile(output)
-    except (FileNotFoundError, OSError):
-        return False
+def _source_document(data: bytes) -> dict[str, object]:
+    """Parse the already-captured bytes without reopening the source path."""
+    offset = glb_metrics._validated_header(data)
+    document: dict[str, object] | None = None
+    chunk_number = 0
+    while offset < len(data):
+        if len(data) - offset < 8:
+            raise GlbError("truncated GLB chunk header")
+        length, kind = struct.unpack_from("<I4s", data, offset)
+        if length % 4:
+            raise GlbError("GLB chunk length is not four-byte aligned")
+        offset += 8
+        end = offset + length
+        if end > len(data):
+            raise GlbError("GLB chunk overruns file")
+        if chunk_number == 0 and kind != b"JSON":
+            raise GlbError("JSON must be the first GLB chunk")
+        if kind == b"JSON":
+            if document is not None:
+                raise GlbError("duplicate JSON chunk")
+            if length > glb_metrics.MAX_JSON_BYTES:
+                raise GlbError(
+                    "GLB JSON chunk exceeds limit "
+                    f"{glb_metrics.MAX_JSON_BYTES} bytes"
+                )
+            try:
+                decoded = json.loads(
+                    data[offset:end].rstrip(b" ").decode("utf-8"),
+                    parse_constant=glb_metrics._reject_json_constant,
+                    object_pairs_hook=glb_metrics._reject_duplicate_keys,
+                )
+            except GlbError:
+                raise
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+                raise GlbError(f"invalid GLB JSON: {exc}") from exc
+            except (RecursionError, MemoryError, OverflowError) as exc:
+                raise GlbError("GLB JSON exceeds parser resource limits") from exc
+            if not isinstance(decoded, dict):
+                raise GlbError("GLB JSON root must be an object")
+            document = decoded
+        offset = end
+        chunk_number += 1
+    if document is None:
+        raise GlbError("missing JSON chunk")
+    return document
 
 
 def _binary_chunk(data: bytes) -> bytes:
@@ -142,6 +270,110 @@ def _binary_chunk(data: bytes) -> bytes:
     if len(chunks) != 1:
         raise GlbError("GLB must contain one embedded BIN chunk")
     return chunks[0]
+
+
+def _selected_scene_node_indices(
+    document: Mapping[str, object],
+) -> Iterator[int]:
+    """Traverse the selected scene cheaply while rejecting repeated nodes."""
+    nodes = glb_metrics._root_array(document, "nodes")
+    scenes = glb_metrics._root_array(document, "scenes")
+    if not scenes:
+        raise GlbError("GLB has no scenes")
+    scene_index = glb_metrics._index(document.get("scene", 0), len(scenes), "scene")
+    scene = glb_metrics._object(scenes[scene_index], f"scenes[{scene_index}]")
+    roots = [
+        glb_metrics._index(value, len(nodes), f"scenes[{scene_index}].nodes")
+        for value in glb_metrics._array(
+            scene.get("nodes", []), f"scenes[{scene_index}].nodes"
+        )
+    ]
+    if len(set(roots)) != len(roots):
+        raise GlbError(f"scenes[{scene_index}].nodes contains duplicates")
+
+    active: set[int] = set()
+    visited: set[int] = set()
+    traversal: list[tuple[bool, int]] = [
+        (True, root) for root in reversed(roots)
+    ]
+    while traversal:
+        entering, node_index = traversal.pop()
+        if not entering:
+            active.remove(node_index)
+            visited.add(node_index)
+            continue
+        if node_index in active:
+            raise GlbError("selected scene graph contains a cycle")
+        if node_index in visited:
+            raise GlbError("selected scene graph references a node more than once")
+        active.add(node_index)
+        yield node_index
+        node = glb_metrics._object(nodes[node_index], f"nodes[{node_index}]")
+        children = [
+            glb_metrics._index(
+                child, len(nodes), f"nodes[{node_index}].children"
+            )
+            for child in glb_metrics._array(
+                node.get("children", []), f"nodes[{node_index}].children"
+            )
+        ]
+        if len(set(children)) != len(children):
+            raise GlbError(f"nodes[{node_index}].children contains duplicates")
+        traversal.append((False, node_index))
+        traversal.extend((True, child) for child in reversed(children))
+
+
+def _validate_selected_scene_work(document: Mapping[str, object]) -> None:
+    """Reject aggregate topology expansion before strict geometry inspection."""
+    accessors = glb_metrics._root_array(document, "accessors")
+    meshes = glb_metrics._root_array(document, "meshes")
+    nodes = glb_metrics._root_array(document, "nodes")
+    mesh_work: list[int] = []
+    for mesh_number, mesh_value in enumerate(meshes):
+        mesh = glb_metrics._object(mesh_value, f"meshes[{mesh_number}]")
+        primitives = glb_metrics._array(
+            mesh.get("primitives"), f"meshes[{mesh_number}].primitives"
+        )
+        selected_references = 0
+        for primitive_number, primitive_value in enumerate(primitives):
+            label = f"meshes[{mesh_number}].primitives[{primitive_number}]"
+            primitive = glb_metrics._object(primitive_value, label)
+            if "indices" in primitive:
+                accessor_index = glb_metrics._index(
+                    primitive["indices"], len(accessors), f"{label}.indices"
+                )
+            else:
+                attributes = glb_metrics._object(
+                    primitive.get("attributes"), f"{label}.attributes"
+                )
+                accessor_index = glb_metrics._index(
+                    attributes.get("POSITION"),
+                    len(accessors),
+                    f"{label}.attributes.POSITION",
+                )
+            accessor = glb_metrics._object(
+                accessors[accessor_index], f"accessors[{accessor_index}]"
+            )
+            selected_references += glb_metrics._integer(
+                accessor.get("count"), f"accessors[{accessor_index}].count"
+            )
+        mesh_work.append(selected_references)
+
+    selected_references = 0
+    for node_index in _selected_scene_node_indices(document):
+        node = glb_metrics._object(nodes[node_index], f"nodes[{node_index}]")
+        mesh_value = node.get("mesh")
+        if mesh_value is None:
+            continue
+        mesh_index = glb_metrics._index(
+            mesh_value, len(meshes), f"nodes[{node_index}].mesh"
+        )
+        selected_references += mesh_work[mesh_index]
+        if selected_references > MAXIMUM_SELECTED_INDEX_REFERENCES:
+            raise RenderError(
+                "selected scene exceeds "
+                f"{MAXIMUM_SELECTED_INDEX_REFERENCES} index-reference limit"
+            )
 
 
 def _scene_nodes(
@@ -233,12 +465,9 @@ def _triangle_faces(
 
 
 def _surface_world_positions(
-    source: Path,
+    document: dict[str, object], data: bytes
 ) -> Iterator[tuple[float, float, float]]:
     """Yield only vertices used by valid, non-degenerate surface triangles."""
-    document, data = glb_metrics._read_glb(source)
-    # Keep the metrics inspector as the single strict validation authority.
-    glb_metrics._inspect_document(document, data)
     binary = _binary_chunk(data)
     accessors = glb_metrics._root_array(document, "accessors")
     views = glb_metrics._root_array(document, "bufferViews")
@@ -309,9 +538,9 @@ def _surface_world_positions(
             ):
                 if first == second or second == third or first == third:
                     continue
-                a = point_at(first)
-                b = point_at(second)
-                c = point_at(third)
+                a = glb_metrics._transform_point(world, point_at(first))
+                b = glb_metrics._transform_point(world, point_at(second))
+                c = glb_metrics._transform_point(world, point_at(third))
                 ab = tuple(b[axis] - a[axis] for axis in range(3))
                 ac = tuple(c[axis] - a[axis] for axis in range(3))
                 cross = (
@@ -339,10 +568,6 @@ def render(
     minimum_coverage: float = DEFAULT_MINIMUM_COVERAGE,
 ) -> tuple[int, int, float]:
     """Render *source* into *output* and return evidence density facts."""
-    _source_status(source)
-    if _source_is_output(source, output):
-        raise RenderError("source and output refer to the same file")
-    _validate_output(output)
     if not 1 <= size <= MAXIMUM_SIZE:
         raise RenderError(f"size must be between 1 and {MAXIMUM_SIZE}")
     if not 0 <= splat_radius <= MAXIMUM_SPLAT_RADIUS:
@@ -354,6 +579,13 @@ def render(
     if not math.isfinite(yaw_degrees):
         raise RenderError("yaw must be finite")
 
+    source_data, source_status = _source_snapshot(source)
+    _validate_output(source, source_status, output)
+    document = _source_document(source_data)
+    _validate_selected_scene_work(document)
+    # Run the strict inspector only after the cheap aggregate-work rejection.
+    glb_metrics._inspect_document(document, source_data)
+
     yaw = math.radians(math.fmod(yaw_degrees, 360.0))
     cosine = math.cos(yaw)
     sine = math.sin(yaw)
@@ -361,7 +593,7 @@ def render(
     maximum_by_work = MAXIMUM_RASTER_WORK // footprint
     maximum_positions = min(MAXIMUM_SURFACE_VERTICES, maximum_by_work)
     projected_positions: list[tuple[float, float, float]] = []
-    for x, y, z in _surface_world_positions(source):
+    for x, y, z in _surface_world_positions(document, source_data):
         if len(projected_positions) >= maximum_positions:
             raise RenderError(
                 f"raster work exceeds {MAXIMUM_RASTER_WORK}-sample limit"
@@ -469,7 +701,7 @@ def _emit_diagnostic(message: object) -> None:
 
 
 def _main(arguments: list[str]) -> int:
-    parser = argparse.ArgumentParser(
+    parser = _ArgumentParser(
         description="Render a checked GLB scene as a depth-shaded silhouette"
     )
     parser.add_argument("source", type=Path)
@@ -478,8 +710,8 @@ def _main(arguments: list[str]) -> int:
     parser.add_argument("--size", type=int, default=DEFAULT_SIZE)
     parser.add_argument("--splat-radius", type=int, default=DEFAULT_SPLAT_RADIUS)
     parser.add_argument("--min-coverage", type=float, default=DEFAULT_MINIMUM_COVERAGE)
-    args = parser.parse_args(arguments)
     try:
+        args = parser.parse_args(arguments)
         vertices, filled_pixels, coverage = render(
             args.source,
             args.output,
