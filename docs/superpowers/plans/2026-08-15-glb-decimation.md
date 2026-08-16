@@ -514,7 +514,7 @@ git commit -m "test: pin decimation custody and budgets red"
 
 - [ ] **Step 1: Implement a one-asset Blender 5.1.2 driver**
 
-The driver runs only inside Blender, checks `bpy.app.version == (5, 1, 2)` and build hash `ec6e62d40fa9`, deletes factory objects through `bpy.data.objects.remove(obj, do_unlink=True)`, imports one source, and checks every operator result is exactly `{"FINISHED"}` because Blender operators can return `{"CANCELLED"}` without raising. Require the frozen one-mesh/one-primitive static-input invariant and reject cameras, lights, animation data/actions, armatures/skins, shape keys/morphs, unsupported object types, or no mesh. Triangulate, cross-check the in-memory triangle count with the outer inspector's source count passed as an argument, and apply collapse Decimate using `target / source_triangles`; refuse a source already at/below target and do not silently retry an undershoot.
+The driver runs only inside Blender, checks `bpy.app.version == (5, 1, 2)` and build hash `ec6e62d40fa9`, deletes factory objects through `bpy.data.objects.remove(obj, do_unlink=True)`, and checks every operator result is exactly `{"FINISHED"}` because Blender operators can return `{"CANCELLED"}` without raising. Require the frozen one-mesh/one-primitive static-input invariant and reject cameras, lights, animation data/actions, armatures/skins, shape keys/morphs, unsupported object types, or no mesh.
 
 Use these locally verified importer controls:
 
@@ -523,6 +523,17 @@ Use these locally verified importer controls:
 > independently during collapse decimation. The corrected `merge_vertices=True`
 > and `import_shading="SMOOTH"` literals below supersede only those two Task 6
 > values; all other Task 6 requirements remain unchanged.
+
+> **Task 8c supersession (2026-08-16):** The driver first imports the source
+> unmerged and smoothed through `_audit_import_source`, statically validates and
+> triangulates it, and requires that audited count to equal the outer inspector
+> exactly. It then clears the audit scene and performs the seam-safe import
+> below. The seam-safe count is the measured effective topology: it may not
+> exceed either exact source count and must remain strictly above the target.
+> `_validated_decimation_ratio(inspected, audited, effective, target)` returns
+> `target / effective`. This supersedes Task 6's original single-import,
+> raw-denominator mechanics; the category bands and post-export authority are
+> unchanged.
 
 ```python
 result = bpy.ops.import_scene.gltf(

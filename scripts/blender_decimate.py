@@ -73,6 +73,24 @@ def _remove_factory_objects() -> None:
         bpy.data.objects.remove(obj, do_unlink=True)
 
 
+def _audit_import_source(source: Path) -> None:
+    result = bpy.ops.import_scene.gltf(
+        filepath=str(source),
+        loglevel=1,
+        import_pack_images=True,
+        merge_vertices=False,
+        import_shading="SMOOTH",
+        import_webp_texture=False,
+        import_unused_materials=False,
+        import_select_created_objects=True,
+        import_scene_extras=False,
+        import_scene_as_collection=True,
+        import_merge_material_slots=True,
+    )
+    if result != {"FINISHED"}:
+        raise RuntimeError(f"GLB audit import returned {result}")
+
+
 def _import_source(source: Path) -> None:
     result = bpy.ops.import_scene.gltf(
         filepath=str(source),
@@ -156,20 +174,57 @@ def _triangle_count(mesh_objects: list[object]) -> int:
     return total
 
 
-def _decimate(args: argparse.Namespace, mesh_objects: list[object]) -> None:
+def _audit_source(source: Path, inspected_triangles: int) -> int:
+    _audit_import_source(source)
+    mesh_objects = _static_mesh_objects()
+    for obj in mesh_objects:
+        triangulate = obj.modifiers.new("CatMetroAuditTriangulate", "TRIANGULATE")
+        apply_modifier(obj, triangulate)
+    audited = _triangle_count(mesh_objects)
+    if audited != inspected_triangles:
+        raise RuntimeError(
+            "audited source triangle count "
+            f"{audited} disagrees with inspector count {inspected_triangles}"
+        )
+    return audited
+
+
+def _validated_decimation_ratio(
+    inspected: int, audited: int, effective: int, target: int
+) -> float:
+    if audited != inspected:
+        raise RuntimeError("audited source triangle count disagrees with inspector")
+    if effective > inspected or effective > audited:
+        raise RuntimeError("effective triangle count exceeds source")
+    if effective <= target:
+        raise RuntimeError("effective triangle count must exceed target")
+    return target / effective
+
+
+def _decimate(
+    args: argparse.Namespace,
+    mesh_objects: list[object],
+    audited_source_triangles: int,
+) -> None:
     for obj in mesh_objects:
         triangulate = obj.modifiers.new("CatMetroTriangulate", "TRIANGULATE")
         apply_modifier(obj, triangulate)
 
-    measured_source = _triangle_count(mesh_objects)
-    if measured_source != args.source_triangles:
-        raise RuntimeError(
-            "in-memory source triangle count "
-            f"{measured_source} disagrees with inspector count "
-            f"{args.source_triangles}"
-        )
-
-    ratio = args.target_triangles / args.source_triangles
+    effective = _triangle_count(mesh_objects)
+    ratio = _validated_decimation_ratio(
+        args.source_triangles,
+        audited_source_triangles,
+        effective,
+        args.target_triangles,
+    )
+    print(
+        "blender-decimate: triangle-audit "
+        f"inspected={args.source_triangles} "
+        f"audited={audited_source_triangles} "
+        f"effective={effective} "
+        f"delta={effective - args.source_triangles}",
+        flush=True,
+    )
     for obj in mesh_objects:
         decimate = obj.modifiers.new("CatMetroCollapseDecimate", "DECIMATE")
         decimate.decimate_type = "COLLAPSE"
@@ -242,9 +297,13 @@ def main(argv: list[str]) -> int:
         if args.output.exists():
             raise RuntimeError("staged output already exists")
         _remove_factory_objects()
+        audited_source_triangles = _audit_source(
+            args.source, args.source_triangles
+        )
+        _remove_factory_objects()
         _import_source(args.source)
         mesh_objects = _static_mesh_objects()
-        _decimate(args, mesh_objects)
+        _decimate(args, mesh_objects, audited_source_triangles)
         _export_output(args.output)
         return 0
     except (OSError, RuntimeError, ValueError) as exc:

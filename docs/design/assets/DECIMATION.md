@@ -139,7 +139,8 @@ Every derivative must also be within the global **5,000–20,000 triangle**
 range. Categories cannot borrow each other's policy. A source at or below its
 category target fails with `source already within budget`; it requires a
 curation decision and is not silently re-exported. Blender's collapse ratio is
-`target triangles / measured source triangles`, and the strict post-export GLB
+`target triangles / measured seam-safe effective triangles`. The raw GLB count
+remains the source-custody and provenance count, and the strict post-export GLB
 inspection—not Blender's requested ratio—is the acceptance authority.
 
 ## Exact Blender process boundary
@@ -172,9 +173,15 @@ with this exact ordered argument surface (paths and counts vary per asset):
 ```
 
 Each asset process has a 1,800-second timeout, standard input disconnected,
-and no shell. The driver removes factory objects, imports one GLB, requires one
-static mesh and one material primitive, triangulates, applies Blender's
-`COLLAPSE` decimator, and exports an ordinary self-contained GLB. Exported
+and no shell. Inside that one process, the driver first imports the GLB with
+`merge_vertices=False` and `import_shading="SMOOTH"`, requires one static mesh
+and one material primitive, triangulates, and requires the audited count to
+equal the outer inspector exactly. It clears those audit objects before the
+second import, which uses the seam-safe `merge_vertices=True` and
+`import_shading="SMOOTH"` settings. The measured seam-safe count must not
+exceed the raw inspected/audited count and must remain strictly above the
+category target. The driver applies Blender's `COLLAPSE` decimator using the
+effective count, then exports an ordinary self-contained GLB. Exported
 animations, skins, morphs, cameras, lights, Draco, gltfpack, and arbitrary
 extensions are disabled.
 
@@ -217,6 +224,12 @@ Before Blender, the orchestrator rejects:
   facts that disagree with the manifest/source; the timestamp regex checks UTC
   second-precision shape only, not calendar-date validity; and
 - a missing, non-executable, wrong-version, wrong-build, or timed-out Blender.
+
+Inside Blender, the driver fails before decimation if the unmerged/smoothed
+audit count differs at all from the inspected raw GLB count, if the seam-safe
+effective count exceeds either exact source count, or if the effective count
+is at or below the category target. There is no two-triangle exception or
+percentage tolerance.
 
 After Blender, the orchestrator rejects:
 
@@ -497,8 +510,13 @@ line or control character. Counts are decimal integers without grouping:
 
 ```text
 glb-decimation: asset=cat-conductor category=cat target=15000 source_triangles=42000
+blender-decimate: triangle-audit inspected=42000 audited=42000 effective=41998 delta=-2
 glb-decimation: asset=cat-conductor output_triangles=15000 output_vertices=9000
 ```
+
+The flushed count-only audit line is emitted after all ratio guards pass;
+`delta` is `effective - inspected`, so an import-time duplicate-face cleanup is
+negative. It contains no path or source metadata.
 
 Blender's per-asset standard output/error is inherited. Python stdout
 buffering—especially under the combined `>file 2>&1` capture above—and Blender
@@ -559,9 +577,11 @@ Complete every item; code-green and exit 0 are necessary but not sufficient.
   newer release, modified bundle, alternate exporter, or compression add-on.
 - [ ] Run the explicit command above in an offline, no-key session. Confirm no
   GUI opens, save the complete output, and require `real_rc == 0`.
-- [ ] Account for one start-format and one acceptance-format record per
-  successful manifest entry, but do not require their physical ordering
-  relative to Blender output in a combined capture. Do not count Blender
+- [ ] Account for one start-format, one count-only triangle-audit record, and
+  one acceptance-format record per successful manifest entry. Require
+  `inspected == audited`, `target < effective <= inspected`, and
+  `delta == effective - inspected`, but do not require physical ordering
+  relative to other Blender output in a combined capture. Do not count Blender
   chatter as acceptance or use transcript order as the success authority.
 - [ ] Confirm the output root contains exactly 15 GLBs and their 15 JSON
   sidecars, with no `.glb-decimation-*`, `.*.backup-*`, split pair, symlink,
