@@ -29,6 +29,7 @@ ALLOWED_OUTPUT_EXTENSIONS = frozenset()
 CENTER_DRIFT_MAX = 0.005
 SCALE_DRIFT_MAX = 0.01
 NORMALIZED_EXTENT_DRIFT_MAX = 0.02
+MAX_DOCUMENT_NESTING = 256
 
 _COMPONENT_SIZES = {
     5120: 1,
@@ -95,6 +96,8 @@ def _read_glb(path: Path) -> tuple[dict[str, object], bytes]:
                 )
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise GlbError(f"invalid GLB JSON: {exc}") from exc
+            except (RecursionError, MemoryError, OverflowError) as exc:
+                raise GlbError("GLB JSON exceeds parser resource limits") from exc
             if not isinstance(decoded, dict):
                 raise GlbError("GLB JSON root must be an object")
             document = decoded
@@ -181,6 +184,28 @@ def _extension_names(document: Mapping[str, object], name: str) -> list[str]:
     return sorted(result)
 
 
+def _extension_payload_names(document: Mapping[str, object]) -> set[str]:
+    payload_names: set[str] = set()
+    pending: list[tuple[object, int]] = [(document, 0)]
+    while pending:
+        value, depth = pending.pop()
+        if depth > MAX_DOCUMENT_NESTING:
+            raise GlbError(
+                f"GLB JSON nesting exceeds limit {MAX_DOCUMENT_NESTING}"
+            )
+        if isinstance(value, dict):
+            if "extensions" in value:
+                extensions = _object(value["extensions"], "extensions")
+                for name in extensions:
+                    if not isinstance(name, str) or not name:
+                        raise GlbError("extensions names must be non-empty strings")
+                    payload_names.add(name)
+            pending.extend((child, depth + 1) for child in value.values())
+        elif isinstance(value, list):
+            pending.extend((child, depth + 1) for child in value)
+    return payload_names
+
+
 def _matrix_multiply(left: tuple[float, ...], right: tuple[float, ...]) -> tuple[float, ...]:
     return tuple(
         sum(left[k * 4 + row] * right[column * 4 + k] for k in range(4))
@@ -243,6 +268,7 @@ def _validate_sparse(
     sparse_value: object,
     accessor_count: int,
     validated_views: list[tuple[int, int, int, int | None]],
+    component_size: int,
     element_size: int,
     label: str,
 ) -> None:
@@ -268,6 +294,10 @@ def _validate_sparse(
         raise GlbError(f"{label}.indices overruns its bufferView")
     if values_offset + count * element_size > validated_views[values_view][2]:
         raise GlbError(f"{label}.values overruns its bufferView")
+    if (validated_views[indices_view][1] + indices_offset) % index_component_size:
+        raise GlbError(f"{label}.indices has a misaligned effective offset")
+    if (validated_views[values_view][1] + values_offset) % component_size:
+        raise GlbError(f"{label}.values has a misaligned effective offset")
 
 
 def _validate_texture_info(value: object, texture_count: int, label: str) -> None:
@@ -293,6 +323,17 @@ def _inspect_document(document: dict[str, object], data: bytes) -> dict[str, obj
     if len(binary_chunks) > 1:
         raise GlbError("duplicate BIN chunk")
     binary = binary_chunks[0] if binary_chunks else None
+
+    extensions_used = _extension_names(document, "extensionsUsed")
+    extensions_required = _extension_names(document, "extensionsRequired")
+    if not set(extensions_required).issubset(extensions_used):
+        raise GlbError("extensionsRequired must be a subset of extensionsUsed")
+    extension_payloads = _extension_payload_names(document)
+    undeclared_extensions = extension_payloads - set(extensions_used)
+    if undeclared_extensions:
+        names = ", ".join(sorted(undeclared_extensions))
+        raise GlbError(f"extension payload is not declared in extensionsUsed: {names}")
+    extensions_used = sorted(set(extensions_used) | extension_payloads)
 
     buffers = _root_array(document, "buffers")
     buffer_lengths: list[int] = []
@@ -347,10 +388,13 @@ def _inspect_document(document: dict[str, object], data: bytes) -> dict[str, obj
         view_value = accessor.get("bufferView")
         view_index = None if view_value is None else _index(view_value, len(buffer_views), f"accessors[{number}].bufferView")
         element_size = _COMPONENT_SIZES[component_type] * _TYPE_COMPONENTS[kind]
-        if accessor_offset % _COMPONENT_SIZES[component_type]:
+        component_size = _COMPONENT_SIZES[component_type]
+        if accessor_offset % component_size:
             raise GlbError(f"accessors[{number}].byteOffset is misaligned")
         if view_index is not None:
-            _, _, view_length, view_stride = validated_views[view_index]
+            _, view_offset, view_length, view_stride = validated_views[view_index]
+            if (view_offset + accessor_offset) % component_size:
+                raise GlbError(f"accessors[{number}] has a misaligned effective offset")
             stride = view_stride or element_size
             if stride < element_size:
                 raise GlbError(f"accessors[{number}] byteStride is smaller than its element")
@@ -359,9 +403,12 @@ def _inspect_document(document: dict[str, object], data: bytes) -> dict[str, obj
                 raise GlbError(f"accessors[{number}] overruns its bufferView")
         elif "sparse" not in accessor:
             raise GlbError(f"accessors[{number}] has neither bufferView nor sparse storage")
+        elif accessor_offset:
+            raise GlbError(f"accessors[{number}].byteOffset requires a bufferView")
         if "sparse" in accessor:
             _validate_sparse(
-                accessor["sparse"], count, validated_views, element_size,
+                accessor["sparse"], count, validated_views, component_size,
+                element_size,
                 f"accessors[{number}].sparse",
             )
         normalized = accessor.get("normalized", False)
@@ -452,6 +499,35 @@ def _inspect_document(document: dict[str, object], data: bytes) -> dict[str, obj
                 raise GlbError(f"{label} declared bounds disagree with POSITION bytes")
         return minimum, maximum
 
+    def decode_indices(accessor_index: int, position_count: int, label: str) -> int:
+        accessor = _object(accessors[accessor_index], f"accessors[{accessor_index}]")
+        view_index, accessor_offset, count, kind, component_type, _ = validated_accessors[accessor_index]
+        if kind != "SCALAR" or component_type not in (5121, 5123, 5125):
+            raise GlbError(f"{label} must use an unsigned SCALAR accessor")
+        if accessor.get("normalized", False):
+            raise GlbError(f"{label} cannot be normalized")
+        if "sparse" in accessor:
+            raise GlbError(f"{label} cannot use a sparse accessor")
+        if view_index is None:
+            raise GlbError(f"{label} must have stored index values")
+        buffer_index, view_offset, _, view_stride = validated_views[view_index]
+        if not buffer_embedded[buffer_index] or buffer_index != 0 or binary is None:
+            raise GlbError(f"{label} must be stored in the embedded BIN chunk")
+        if view_stride is not None:
+            raise GlbError(f"{label} bufferView cannot have byteStride")
+        component_size = _COMPONENT_SIZES[component_type]
+        start = view_offset + accessor_offset
+        if start % component_size:
+            raise GlbError(f"{label} is misaligned")
+        unpack_format = {5121: "<B", 5123: "<H", 5125: "<I"}[component_type]
+        for item in range(count):
+            index = struct.unpack_from(unpack_format, binary, start + item * component_size)[0]
+            if index >= position_count:
+                raise GlbError(
+                    f"{label} value {index} is outside POSITION count {position_count}"
+                )
+        return count
+
     meshes = _root_array(document, "meshes")
     primitive_count = 0
     vertices = 0
@@ -488,9 +564,7 @@ def _inspect_document(document: dict[str, object], data: bytes) -> dict[str, obj
             element_count = position_count
             if "indices" in primitive:
                 index_accessor = validate_accessor_reference(primitive["indices"], f"{label}.indices")
-                _, _, element_count, index_kind, index_component, _ = validated_accessors[index_accessor]
-                if index_kind != "SCALAR" or index_component not in (5121, 5123, 5125):
-                    raise GlbError(f"{label}.indices must use an unsigned SCALAR accessor")
+                element_count = decode_indices(index_accessor, position_count, f"{label}.indices")
             if mode == 4:
                 if element_count % 3:
                     raise GlbError(f"{label} triangle count is not divisible by three")
@@ -598,19 +672,26 @@ def _inspect_document(document: dict[str, object], data: bytes) -> dict[str, obj
             raise GlbError(f"scenes[{number}].nodes contains duplicates")
         scene_roots.append(roots)
 
-    extensions_used = _extension_names(document, "extensionsUsed")
-    extensions_required = _extension_names(document, "extensionsRequired")
-    if not set(extensions_required).issubset(extensions_used):
-        raise GlbError("extensionsRequired must be a subset of extensionsUsed")
-
     world_minimum = [math.inf, math.inf, math.inf]
     world_maximum = [-math.inf, -math.inf, -math.inf]
     found_geometry = False
 
-    def walk(node_index: int, parent: tuple[float, ...], ancestors: frozenset[int]) -> None:
-        nonlocal found_geometry
-        if node_index in ancestors:
+    active_nodes: set[int] = set()
+    visited_nodes: set[int] = set()
+    traversal: list[tuple[bool, int, tuple[float, ...]]] = [
+        (True, root, _IDENTITY) for root in reversed(scene_roots[scene_index])
+    ]
+    while traversal:
+        entering, node_index, parent = traversal.pop()
+        if not entering:
+            active_nodes.remove(node_index)
+            visited_nodes.add(node_index)
+            continue
+        if node_index in active_nodes:
             raise GlbError("selected scene graph contains a cycle")
+        if node_index in visited_nodes:
+            raise GlbError("selected scene graph references a node more than once")
+        active_nodes.add(node_index)
         node = node_objects[node_index]
         world = _matrix_multiply(parent, _node_matrix(node, f"nodes[{node_index}]"))
         if not all(math.isfinite(value) for value in world):
@@ -618,7 +699,10 @@ def _inspect_document(document: dict[str, object], data: bytes) -> dict[str, obj
         mesh_value = node.get("mesh")
         if mesh_value is not None:
             mesh_index = _index(mesh_value, len(meshes), f"nodes[{node_index}].mesh")
-            primitives = _array(_object(meshes[mesh_index], f"meshes[{mesh_index}]").get("primitives"), f"meshes[{mesh_index}].primitives")
+            primitives = _array(
+                _object(meshes[mesh_index], f"meshes[{mesh_index}]").get("primitives"),
+                f"meshes[{mesh_index}].primitives",
+            )
             for primitive_number in range(len(primitives)):
                 minimum, maximum = local_bounds[(mesh_index, primitive_number)]
                 for x in (minimum[0], maximum[0]):
@@ -629,12 +713,10 @@ def _inspect_document(document: dict[str, object], data: bytes) -> dict[str, obj
                                 world_minimum[axis] = min(world_minimum[axis], coordinate)
                                 world_maximum[axis] = max(world_maximum[axis], coordinate)
                 found_geometry = True
-        next_ancestors = ancestors | {node_index}
-        for child in node_children[node_index]:
-            walk(child, world, next_ancestors)
-
-    for root in scene_roots[scene_index]:
-        walk(root, _IDENTITY, frozenset())
+        traversal.append((False, node_index, world))
+        traversal.extend(
+            (True, child, world) for child in reversed(node_children[node_index])
+        )
     if not found_geometry:
         raise GlbError("selected scene contains no POSITION geometry")
 
