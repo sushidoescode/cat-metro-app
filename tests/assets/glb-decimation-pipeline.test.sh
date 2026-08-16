@@ -10,8 +10,8 @@ fake_blender="$repo/tests/assets/fake_blender.py"
 expected_driver=$(cd "$(dirname "$decimate_script")" && pwd -P)/blender_decimate.py
 review_section=${GLB_DECIMATION_REVIEW_SECTION:-all}
 case "$review_section" in
-  all|A|B|C|D|E|F) ;;
-  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all, A, B, C, D, E, or F"
+  all|A|B|C|D|E|F|G) ;;
+  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all, A, B, C, D, E, F, or G"
      printf 'glb-decimation pipeline test: %s\n' "$die_message" >&2
      exit 2 ;;
 esac
@@ -32,6 +32,132 @@ die() {
   printf 'glb-decimation pipeline test: %s\n' "$1" >&2
   exit 1
 }
+
+# Regression G: glTF attribute/normal seams commonly arrive as coincident split
+# vertices. If they remain disconnected, collapse decimation can move each side
+# independently and open visible cracks. Keep the import boundary seam-safe with
+# explicit literal arguments; defaults or computed values make custody ambiguous.
+if [ "$review_section" = all ] || [ "$review_section" = G ]; then
+  PYTHONDONTWRITEBYTECODE=1 python3 - "$expected_driver" <<'PY'
+import ast
+import sys
+from pathlib import Path
+
+
+class ImportConfigurationError(AssertionError):
+    pass
+
+
+def dotted_name(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = dotted_name(node.value)
+        if parent is not None:
+            return f"{parent}.{node.attr}"
+    return None
+
+
+def require_seam_safe_import(source: str, label: str) -> None:
+    tree = ast.parse(source, filename=label)
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and dotted_name(node.func) == "bpy.ops.import_scene.gltf"
+    ]
+    if len(calls) != 1:
+        raise ImportConfigurationError(
+            f"{label}: expected exactly one bpy.ops.import_scene.gltf call; "
+            f"found {len(calls)}"
+        )
+
+    call = calls[0]
+    if any(keyword.arg is None for keyword in call.keywords):
+        raise ImportConfigurationError(
+            f"{label}: glTF import must not use dynamic **kwargs"
+        )
+
+    errors: list[str] = []
+    for name, expected in (
+        ("merge_vertices", True),
+        ("import_shading", "SMOOTH"),
+    ):
+        matches = [keyword.value for keyword in call.keywords if keyword.arg == name]
+        if len(matches) != 1:
+            errors.append(f"{name} must appear exactly once")
+            continue
+        value = matches[0]
+        if not isinstance(value, ast.Constant) or type(value.value) is not type(expected):
+            errors.append(f"{name} must be the literal {expected!r}")
+            continue
+        if value.value != expected:
+            errors.append(f"{name} must be the literal {expected!r}")
+
+    if errors:
+        raise ImportConfigurationError(f"{label}: " + "; ".join(errors))
+
+
+def assert_rejected(source: str, expected_diagnostic: str) -> None:
+    try:
+        require_seam_safe_import(source, "mutation control")
+    except ImportConfigurationError as exc:
+        if expected_diagnostic not in str(exc):
+            raise AssertionError(
+                f"mutation control returned the wrong diagnostic: {exc}"
+            ) from exc
+    else:
+        raise AssertionError(
+            f"mutation control unexpectedly accepted: {expected_diagnostic}"
+        )
+
+
+compliant_fixture = """
+def import_fixture():
+    bpy.ops.import_scene.gltf(
+        filepath="fixture.glb",
+        merge_vertices=True,
+        import_shading="SMOOTH",
+    )
+"""
+require_seam_safe_import(compliant_fixture, "compliant control")
+
+# Prove each required flag independently detects the regression observed in the
+# rendered assets, then prove call cardinality and literalness are enforced.
+assert_rejected(
+    compliant_fixture.replace("merge_vertices=True", "merge_vertices=False"),
+    "merge_vertices must be the literal True",
+)
+assert_rejected(
+    compliant_fixture.replace('import_shading="SMOOTH"', 'import_shading="NORMALS"'),
+    "import_shading must be the literal 'SMOOTH'",
+)
+assert_rejected(
+    compliant_fixture + "\nbpy.ops.import_scene.gltf(filepath='duplicate.glb')\n",
+    "expected exactly one bpy.ops.import_scene.gltf call; found 2",
+)
+assert_rejected(
+    compliant_fixture.replace("merge_vertices=True", "merge_vertices=SEAM_SAFE"),
+    "merge_vertices must be the literal True",
+)
+assert_rejected(
+    compliant_fixture.replace('import_shading="SMOOTH"', "import_shading=SHADING_MODE"),
+    "import_shading must be the literal 'SMOOTH'",
+)
+
+driver = Path(sys.argv[1])
+try:
+    require_seam_safe_import(driver.read_text(encoding="utf-8"), str(driver))
+except ImportConfigurationError as exc:
+    print(f"glb-decimation pipeline test: {exc}", file=sys.stderr)
+    raise SystemExit(1) from None
+PY
+fi
+
+if [ "$review_section" = G ]; then
+  printf 'glb-decimation review G: pass\n'
+  exit 0
+fi
 
 test ! -e "$marker" || die "shell-evaluation marker already exists"
 marker_cleanup_armed=1
