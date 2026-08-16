@@ -10,8 +10,8 @@ fake_blender="$repo/tests/assets/fake_blender.py"
 expected_driver=$(cd "$(dirname "$decimate_script")" && pwd -P)/blender_decimate.py
 review_section=${GLB_DECIMATION_REVIEW_SECTION:-all}
 case "$review_section" in
-  all|A|B|C) ;;
-  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all, A, B, or C"
+  all|A|B|C|D) ;;
+  *) die_message="GLB_DECIMATION_REVIEW_SECTION must be all, A, B, C, or D"
      printf 'glb-decimation pipeline test: %s\n' "$die_message" >&2
      exit 2 ;;
 esac
@@ -2125,6 +2125,557 @@ fi
 
 if [ "$review_section" = C ]; then
   printf 'glb-decimation review C: pass\n'
+  exit 0
+fi
+
+# Review regression D: rollback decisions treat unreadable hashes as unknown,
+# normalize both members after replace-after-effect failures, and clean both
+# force backups even when either one-shot unlink reports an error.
+if [ "$review_section" = all ] || [ "$review_section" = D ]; then
+  PYTHONDONTWRITEBYTECODE=1 python3 - \
+    "$decimate_script" "$tmp/review-rollback-io" <<'PY'
+import hashlib
+import importlib.util
+import multiprocessing
+import os
+import sys
+import traceback
+from pathlib import Path
+from unittest import mock
+
+script = Path(sys.argv[1])
+root = Path(sys.argv[2])
+root.mkdir()
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("decimate_assets_rollback_io_test", script)
+assert spec is not None and spec.loader is not None
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+
+errors = []
+process_context = multiprocessing.get_context("fork")
+
+def digest_bytes(value):
+    return hashlib.sha256(value).hexdigest()
+
+
+def digest(path):
+    return digest_bytes(path.read_bytes())
+
+
+def lexists(path):
+    return os.path.lexists(path)
+
+
+def make_pair(name, *, forced):
+    directory = root / name
+    directory.mkdir()
+    pair = {
+        "directory": directory,
+        "staged_glb": directory / "staged.glb",
+        "staged_json": directory / "staged.json",
+        "final_glb": directory / "final.glb",
+        "final_json": directory / "final.glb.json",
+        "backup_glb": directory / ".captured-old-glb",
+        "backup_json": directory / ".captured-old-json",
+        "new_glb": f"new GLB bytes for {name}".encode(),
+        "new_json": f"new JSON bytes for {name}".encode(),
+        "old_glb": f"old GLB bytes for {name}".encode(),
+        "old_json": f"old JSON bytes for {name}".encode(),
+    }
+    pair["staged_glb"].write_bytes(pair["new_glb"])
+    pair["staged_json"].write_bytes(pair["new_json"])
+    if forced:
+        pair["final_glb"].write_bytes(pair["old_glb"])
+        pair["final_json"].write_bytes(pair["old_json"])
+    return pair
+
+
+def exact_hash_recovery_errors(label, pair):
+    findings = []
+    expected = {
+        pair["staged_glb"], pair["staged_json"],
+        pair["final_glb"], pair["final_json"],
+    }
+    actual = set(pair["directory"].iterdir())
+    if actual != expected:
+        findings.append(
+            f"{label}: early backup failure membership changed: "
+            f"{sorted(path.name for path in actual)}"
+        )
+    for key, payload in (
+        ("staged_glb", pair["new_glb"]),
+        ("staged_json", pair["new_json"]),
+        ("final_glb", pair["old_glb"]),
+        ("final_json", pair["old_json"]),
+    ):
+        path = pair[key]
+        if not path.is_file() or path.read_bytes() != payload:
+            findings.append(f"{label}: {key} custody was not preserved exactly")
+    if lexists(pair["backup_glb"]) or lexists(pair["backup_json"]):
+        findings.append(f"{label}: backup exists despite pre-effect backup failure")
+    return findings
+
+
+def absent_terminal_errors(label, pair, allowed_memberships):
+    findings = []
+    if lexists(pair["final_glb"]) or lexists(pair["final_json"]):
+        findings.append(f"{label}: absent-destination failure left a final member")
+    actual = frozenset(pair["directory"].iterdir())
+    if actual not in allowed_memberships:
+        findings.append(
+            f"{label}: unexpected failure residue: "
+            f"{sorted(path.name for path in actual)}"
+        )
+    for key, payload in (
+        ("staged_glb", pair["new_glb"]),
+        ("staged_json", pair["new_json"]),
+    ):
+        path = pair[key]
+        if path in actual and (not path.is_file() or path.read_bytes() != payload):
+            findings.append(f"{label}: {key} residue has the wrong bytes")
+    return findings
+
+
+def force_cleanup_terminal_errors(label, pair):
+    findings = []
+    actual = set(pair["directory"].iterdir())
+    final_pair = {pair["final_glb"], pair["final_json"]}
+    backup_pair = {pair["backup_glb"], pair["backup_json"]}
+    staged_pair = {pair["staged_glb"], pair["staged_json"]}
+    if actual == final_pair and all(path.is_file() for path in final_pair):
+        hashes = (digest(pair["final_glb"]), digest(pair["final_json"]))
+        allowed_hashes = {
+            (digest_bytes(pair["new_glb"]), digest_bytes(pair["new_json"])),
+            (digest_bytes(pair["old_glb"]), digest_bytes(pair["old_json"])),
+        }
+        if hashes not in allowed_hashes:
+            findings.append(f"{label}: complete finals have mixed or unknown custody")
+        return findings
+
+    finals_absent = not lexists(pair["final_glb"]) and not lexists(pair["final_json"])
+    staged_leftovers = actual & staged_pair
+    if finals_absent and actual == backup_pair | staged_leftovers:
+        if not all(path.is_file() for path in backup_pair) or (
+            digest(pair["backup_glb"]), digest(pair["backup_json"])
+        ) != (
+            digest_bytes(pair["old_glb"]), digest_bytes(pair["old_json"])
+        ):
+            findings.append(f"{label}: fail-closed backup pair is incomplete or wrong")
+        for key, payload in (
+            ("staged_glb", pair["new_glb"]),
+            ("staged_json", pair["new_json"]),
+        ):
+            path = pair[key]
+            if path in staged_leftovers and path.read_bytes() != payload:
+                findings.append(f"{label}: staged recovery member has wrong bytes")
+        return findings
+
+    findings.append(
+        f"{label}: terminal is neither residue-free finals nor a complete old "
+        f"backup pair: {sorted(path.name for path in actual)}"
+    )
+    if lexists(pair["backup_glb"]) != lexists(pair["backup_json"]):
+        findings.append(f"{label}: exactly one old backup remains")
+    return findings
+
+
+def prove_oracle_mutations():
+    hash_pair = make_pair("oracle-hash", forced=True)
+    assert not exact_hash_recovery_errors("oracle-hash", hash_pair)
+    hash_pair["final_glb"].write_bytes(hash_pair["new_glb"])
+    assert exact_hash_recovery_errors("oracle-hash-wrong-final", hash_pair)
+
+    absent_pair = make_pair("oracle-absent", forced=False)
+    absent_pair["staged_glb"].unlink()
+    allowed = {frozenset({absent_pair["staged_json"]})}
+    assert not absent_terminal_errors("oracle-absent", absent_pair, allowed)
+    absent_pair["final_glb"].write_bytes(absent_pair["new_glb"])
+    assert absent_terminal_errors("oracle-split-final", absent_pair, allowed)
+    absent_pair["final_glb"].unlink()
+    (absent_pair["directory"] / "arbitrary-residue").write_bytes(b"residue")
+    assert absent_terminal_errors("oracle-extra-residue", absent_pair, allowed)
+
+    cleanup_pair = make_pair("oracle-cleanup", forced=True)
+    os.replace(cleanup_pair["staged_glb"], cleanup_pair["final_glb"])
+    os.replace(cleanup_pair["staged_json"], cleanup_pair["final_json"])
+    assert not force_cleanup_terminal_errors("oracle-cleanup", cleanup_pair)
+    cleanup_pair["backup_json"].write_bytes(cleanup_pair["old_json"])
+    mutation_errors = force_cleanup_terminal_errors(
+        "oracle-one-backup", cleanup_pair
+    )
+    assert mutation_errors and any("exactly one" in error for error in mutation_errors)
+
+
+prove_oracle_mutations()
+
+def exercise_hash_read_fault(name, target_key, persistent):
+    pair = make_pair(name, forced=True)
+    real_sha256 = module._sha256
+    real_replace = os.replace
+    primary_reached = False
+    hash_faults = 0
+
+    def unique_backup(path):
+        candidate = Path(path)
+        if candidate == pair["final_glb"]:
+            return pair["backup_glb"]
+        if candidate == pair["final_json"]:
+            return pair["backup_json"]
+        raise AssertionError(f"unexpected backup source {candidate}")
+
+    def replacing(source, destination):
+        nonlocal primary_reached
+        source_path = Path(source)
+        destination_path = Path(destination)
+        if (
+            not primary_reached
+            and source_path == pair["final_glb"]
+            and destination_path == pair["backup_glb"]
+        ):
+            primary_reached = True
+            raise OSError("injected early backup failure before effect")
+        return real_replace(source, destination)
+
+    def faulting_sha256(path):
+        nonlocal hash_faults
+        candidate = Path(path)
+        if (
+            primary_reached
+            and candidate == pair[target_key]
+            and (persistent or hash_faults == 0)
+        ):
+            hash_faults += 1
+            raise OSError("injected hash read failure")
+        return real_sha256(candidate)
+
+    caught = None
+    with (
+        mock.patch.object(module, "_unique_backup", new=unique_backup),
+        mock.patch.object(module, "_sha256", new=faulting_sha256),
+        mock.patch.object(module.os, "replace", new=replacing),
+    ):
+        try:
+            module.promote_pair(
+                pair["staged_glb"], pair["staged_json"],
+                pair["final_glb"], pair["final_json"], True,
+            )
+        except BaseException as exc:
+            caught = exc
+
+    findings = []
+    if caught is None:
+        findings.append(f"{name}: early backup failure was swallowed")
+    if not primary_reached:
+        findings.append(f"{name}: early pre-effect backup fault was not reached")
+    if hash_faults < 1:
+        findings.append(f"{name}: hash-read fault was not reached")
+    findings.extend(exact_hash_recovery_errors(name, pair))
+    return findings
+
+
+def exercise_unverified_candidate_hash(name):
+    """Kill the opposite naive fix: treating a hash-read error as a match."""
+    pair = make_pair(name, forced=True)
+    real_sha256 = module._sha256
+    real_replace = os.replace
+    candidate_corrupted = False
+    hash_faults = 0
+
+    def unique_backup(path):
+        candidate = Path(path)
+        if candidate == pair["final_glb"]:
+            return pair["backup_glb"]
+        if candidate == pair["final_json"]:
+            return pair["backup_json"]
+        raise AssertionError(f"unexpected backup source {candidate}")
+
+    def replacing(source, destination):
+        nonlocal candidate_corrupted
+        source_path = Path(source)
+        destination_path = Path(destination)
+        result = real_replace(source_path, destination_path)
+        if (
+            source_path == pair["staged_json"]
+            and destination_path == pair["final_json"]
+        ):
+            pair["final_json"].write_bytes(b"corrupted unverified candidate")
+            candidate_corrupted = True
+        return result
+
+    def faulting_sha256(path):
+        nonlocal hash_faults
+        candidate = Path(path)
+        if candidate_corrupted and candidate == pair["final_json"] and hash_faults == 0:
+            hash_faults += 1
+            raise OSError("injected candidate hash read failure")
+        return real_sha256(candidate)
+
+    caught = None
+    with (
+        mock.patch.object(module, "_unique_backup", new=unique_backup),
+        mock.patch.object(module, "_sha256", new=faulting_sha256),
+        mock.patch.object(module.os, "replace", new=replacing),
+    ):
+        try:
+            module.promote_pair(
+                pair["staged_glb"], pair["staged_json"],
+                pair["final_glb"], pair["final_json"], True,
+            )
+        except BaseException as exc:
+            caught = exc
+
+    findings = []
+    if not candidate_corrupted:
+        findings.append(f"{name}: corrupted-candidate after-effect was not reached")
+    if hash_faults != 1:
+        findings.append(f"{name}: candidate hash-read fault was not reached exactly once")
+    findings.extend(force_cleanup_terminal_errors(name, pair))
+    if caught is None:
+        expected_new = (
+            digest_bytes(pair["new_glb"]), digest_bytes(pair["new_json"])
+        )
+        if (
+            not pair["final_glb"].is_file()
+            or not pair["final_json"].is_file()
+            or (digest(pair["final_glb"]), digest(pair["final_json"]))
+            != expected_new
+        ):
+            findings.append(
+                f"{name}: hash-read error was treated as successful candidate verification"
+            )
+    return findings
+
+
+def exercise_absent_replace_fault(
+    name, phase, after_effect, unlink_fault=False
+):
+    pair = make_pair(name, forced=False)
+    real_replace = os.replace
+    real_unlink = Path.unlink
+    injected = False
+    unlink_faults = 0
+
+    phase_source, phase_destination = {
+        "promote_glb": (pair["staged_glb"], pair["final_glb"]),
+        "promote_json": (pair["staged_json"], pair["final_json"]),
+    }[phase]
+
+    def replacing(source, destination):
+        nonlocal injected
+        source_path = Path(source)
+        destination_path = Path(destination)
+        if (
+            not injected
+            and source_path == phase_source
+            and destination_path == phase_destination
+        ):
+            injected = True
+            if after_effect:
+                real_replace(source_path, destination_path)
+            raise OSError(
+                f"injected {phase} {'after' if after_effect else 'before'}-effect failure"
+            )
+        return real_replace(source_path, destination_path)
+
+    def unlinking(path, *args, **kwargs):
+        nonlocal unlink_faults
+        candidate = Path(path)
+        if unlink_fault and candidate == pair["final_glb"] and unlink_faults == 0:
+            unlink_faults += 1
+            raise OSError("injected one-shot final GLB cleanup failure")
+        return real_unlink(path, *args, **kwargs)
+
+    caught = None
+    with (
+        mock.patch.object(module.os, "replace", new=replacing),
+        mock.patch.object(Path, "unlink", new=unlinking),
+    ):
+        try:
+            module.promote_pair(
+                pair["staged_glb"], pair["staged_json"],
+                pair["final_glb"], pair["final_json"], False,
+            )
+        except BaseException as exc:
+            caught = exc
+
+    findings = []
+    if caught is None:
+        findings.append(f"{name}: injected replace failure was swallowed")
+    if not injected:
+        findings.append(f"{name}: targeted replace phase was not reached")
+    if unlink_fault and unlink_faults != 1:
+        findings.append(f"{name}: one-shot GLB cleanup unlink was not injected")
+
+    both_staged = frozenset({pair["staged_glb"], pair["staged_json"]})
+    only_glb = frozenset({pair["staged_glb"]})
+    only_json = frozenset({pair["staged_json"]})
+    empty = frozenset()
+    if phase == "promote_glb" and not after_effect:
+        allowed = {both_staged}
+    elif phase == "promote_glb":
+        allowed = {only_json, both_staged}
+    elif not after_effect:
+        allowed = {only_json, both_staged}
+    else:
+        allowed = {empty, only_glb, only_json, both_staged}
+    findings.extend(absent_terminal_errors(name, pair, allowed))
+    return findings
+
+
+def exercise_force_cleanup_fault(name, failed_member):
+    pair = make_pair(name, forced=True)
+    real_unlink = Path.unlink
+    unlink_faults = 0
+
+    def unique_backup(path):
+        candidate = Path(path)
+        if candidate == pair["final_glb"]:
+            return pair["backup_glb"]
+        if candidate == pair["final_json"]:
+            return pair["backup_json"]
+        raise AssertionError(f"unexpected backup source {candidate}")
+
+    failed_path = pair[f"backup_{failed_member}"]
+
+    def unlinking(path, *args, **kwargs):
+        nonlocal unlink_faults
+        candidate = Path(path)
+        if candidate == failed_path and unlink_faults == 0:
+            unlink_faults += 1
+            raise OSError(f"injected one-shot {failed_member} backup cleanup failure")
+        return real_unlink(path, *args, **kwargs)
+
+    caught = None
+    with (
+        mock.patch.object(module, "_unique_backup", new=unique_backup),
+        mock.patch.object(Path, "unlink", new=unlinking),
+    ):
+        try:
+            module.promote_pair(
+                pair["staged_glb"], pair["staged_json"],
+                pair["final_glb"], pair["final_json"], True,
+            )
+        except BaseException as exc:
+            caught = exc
+
+    findings = []
+    if unlink_faults != 1:
+        findings.append(f"{name}: targeted one-shot backup unlink was not reached")
+    findings.extend(force_cleanup_terminal_errors(name, pair))
+    if caught is None:
+        successful_entries = {pair["final_glb"], pair["final_json"]}
+        successful_hashes = (
+            digest_bytes(pair["new_glb"]), digest_bytes(pair["new_json"])
+        )
+        if (
+            set(pair["directory"].iterdir()) != successful_entries
+            or not all(path.is_file() for path in successful_entries)
+            or (digest(pair["final_glb"]), digest(pair["final_json"]))
+            != successful_hashes
+        ):
+            findings.append(
+                f"{name}: promotion returned success without residue-free new finals"
+            )
+    return findings
+
+
+def child_scenario(sender, kind, arguments):
+    try:
+        if kind == "hash":
+            findings = exercise_hash_read_fault(*arguments)
+        elif kind == "candidate_hash":
+            findings = exercise_unverified_candidate_hash(*arguments)
+        elif kind == "absent":
+            findings = exercise_absent_replace_fault(*arguments)
+        elif kind == "cleanup":
+            findings = exercise_force_cleanup_fault(*arguments)
+        else:
+            raise AssertionError(f"unknown scenario kind {kind}")
+        sender.send(("result", findings))
+    except BaseException:
+        sender.send(("crash", traceback.format_exc()))
+    finally:
+        sender.close()
+
+
+def run_bounded(kind, arguments):
+    label = arguments[0]
+    receiver, sender = process_context.Pipe(duplex=False)
+    process = process_context.Process(
+        target=child_scenario,
+        args=(sender, kind, arguments),
+        name=f"rollback-io-{label}",
+        daemon=True,
+    )
+    process.start()
+    sender.close()
+    process.join(4)
+    if process.is_alive():
+        process.terminate()
+        process.join(2)
+        if process.is_alive():
+            process.kill()
+            process.join(2)
+        errors.append(f"{label}: fault handling exceeded the four-second bound")
+
+    payload = None
+    if receiver.poll():
+        try:
+            payload = receiver.recv()
+        except EOFError:
+            payload = None
+    receiver.close()
+    if payload is None and not errors[-1:] == [
+        f"{label}: fault handling exceeded the four-second bound"
+    ]:
+        errors.append(f"{label}: child exited {process.exitcode} without evidence")
+    elif payload is not None:
+        result_kind, value = payload
+        if result_kind == "result":
+            errors.extend(value)
+        else:
+            errors.append(f"{label}: child crashed:\n{value}")
+    process.close()
+
+
+run_bounded("hash", ("hash-transient-old-glb", "final_glb", False))
+run_bounded("hash", ("hash-persistent-old-json", "final_json", True))
+run_bounded("candidate_hash", ("hash-unknown-candidate-json",))
+
+run_bounded(
+    "absent",
+    ("absent-first-before-effect", "promote_glb", False),
+)
+run_bounded(
+    "absent",
+    ("absent-first-after-effect", "promote_glb", True),
+)
+run_bounded(
+    "absent",
+    ("absent-second-before-effect", "promote_json", False),
+)
+run_bounded(
+    "absent",
+    ("absent-second-after-effect", "promote_json", True),
+)
+run_bounded(
+    "absent",
+    ("absent-second-after-effect-unlink", "promote_json", True, True),
+)
+
+run_bounded("cleanup", ("force-cleanup-glb-unlink", "glb"))
+run_bounded("cleanup", ("force-cleanup-json-unlink", "json"))
+
+if errors:
+    raise AssertionError("rollback I/O regressions:\n- " + "\n- ".join(errors))
+PY
+  assert_no_external_effects
+fi
+
+if [ "$review_section" = D ]; then
+  printf 'glb-decimation review D: pass\n'
   exit 0
 fi
 
