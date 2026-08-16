@@ -217,6 +217,8 @@ run_decimator() {
     FAKE_BLENDER_VERSION="${CASE_BLENDER_VERSION:-5.1.2}" \
     FAKE_BLENDER_BUILD_HASH="${CASE_BLENDER_BUILD_HASH:-ec6e62d40fa9}" \
     FAKE_BLENDER_VERSION_BANNER="${CASE_BLENDER_VERSION_BANNER:-0}" \
+    FAKE_BLENDER_BANNER_VERSION="${CASE_BLENDER_BANNER_VERSION:-${CASE_BLENDER_VERSION:-5.1.2}}" \
+    FAKE_BLENDER_BANNER_BUILD_HASH="${CASE_BLENDER_BANNER_BUILD_HASH:-${CASE_BLENDER_BUILD_HASH:-ec6e62d40fa9}}" \
     PIPELINE_SENTINEL_KEY="environment-sentinel-1" \
     PIPELINE_SENTINEL_TOKEN="environment-sentinel-2" \
     PIPELINE_SENTINEL_SECRET="environment-sentinel-3" \
@@ -541,6 +543,18 @@ if [ "$review_section" = all ] || [ "$review_section" = F ]; then
     die "fake Blender official banner surface is wrong"
   test "$(cat "$banner_audit")" = version || \
     die "fake Blender official banner missed its version audit"
+  independent_banner_output=$(
+    FAKE_BLENDER_VERSION_BANNER=1 \
+      FAKE_BLENDER_VERSION=5.2.0 \
+      FAKE_BLENDER_BUILD_HASH=wrong-build \
+      FAKE_BLENDER_BANNER_VERSION=5.1.2 \
+      FAKE_BLENDER_BANNER_BUILD_HASH=ec6e62d40fa9 \
+      PYTHONDONTWRITEBYTECODE=1 \
+      "$fake_blender" --background --version
+  )
+  expected_independent_banner=$'Blender 5.1.2 (hash ec6e62d40fa9 built 2026-05-19 01:30:33)\nBlender 5.2.0\n\tbuild hash: wrong-build'
+  test "$independent_banner_output" = "$expected_independent_banner" || \
+    die "fake Blender banner/plain identity overrides are not independent"
 
   prepare_version_banner_case() {
     local label=$1
@@ -580,11 +594,15 @@ if [ "$review_section" = all ] || [ "$review_section" = F ]; then
     local version=$2
     local build_hash=$3
     local diagnostic=$4
+    local banner_version=${5:-$version}
+    local banner_build_hash=${6:-$build_hash}
     prepare_version_banner_case "$label"
     set +e
     CASE_BLENDER_VERSION_BANNER=1 \
       CASE_BLENDER_VERSION="$version" \
       CASE_BLENDER_BUILD_HASH="$build_hash" \
+      CASE_BLENDER_BANNER_VERSION="$banner_version" \
+      CASE_BLENDER_BANNER_BUILD_HASH="$banner_build_hash" \
       run_decimator \
         success "$version_log" "$version_stdout" "$version_stderr"
     local rc=$?
@@ -612,6 +630,14 @@ if [ "$review_section" = all ] || [ "$review_section" = F ]; then
   run_rejected_version_banner_case \
     official-banner-wrong-build 5.1.2 wrong-build \
     'glb-decimation: requires Blender (5\.1\.2|build ec6e62d40fa9)'
+  run_rejected_version_banner_case \
+    official-banner-authoritative-version-mismatch 5.2.0 ec6e62d40fa9 \
+    'glb-decimation: requires Blender 5\.1\.2' \
+    5.1.2 ec6e62d40fa9
+  run_rejected_version_banner_case \
+    official-banner-authoritative-build-mismatch 5.1.2 wrong-build \
+    'glb-decimation: requires Blender (5\.1\.2|build ec6e62d40fa9)' \
+    5.1.2 ec6e62d40fa9
 
   prepare_version_banner_case official-banner-correct
   set +e

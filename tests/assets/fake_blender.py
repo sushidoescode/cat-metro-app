@@ -87,8 +87,12 @@ def main(argv: list[str]) -> int:
         build_hash = os.environ.get("FAKE_BLENDER_BUILD_HASH", "ec6e62d40fa9")
         banner_enabled = os.environ.get("FAKE_BLENDER_VERSION_BANNER") == "1"
         if banner_enabled:
+            banner_version = os.environ.get("FAKE_BLENDER_BANNER_VERSION", version)
+            banner_build_hash = os.environ.get(
+                "FAKE_BLENDER_BANNER_BUILD_HASH", build_hash
+            )
             print(
-                f"Blender {version} (hash {build_hash} "
+                f"Blender {banner_version} (hash {banner_build_hash} "
                 "built 2026-05-19 01:30:33)"
             )
         print(f"Blender {version}")
