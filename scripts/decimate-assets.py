@@ -171,7 +171,16 @@ def _load_manifest(path: Path) -> list[dict[str, str]]:
             raise DecimationError(
                 f"invalid manifest: assets[{index}] must be an object"
             )
-        identifier = _nonempty_string(value.get("id"), f"assets[{index}].id")
+        try:
+            identifier = _nonempty_string(value.get("id"), f"assets[{index}].id")
+        except DecimationError:
+            raise DecimationError(
+                "invalid manifest: id must be a printable single-line string"
+            ) from None
+        if not identifier.isprintable():
+            raise DecimationError(
+                "invalid manifest: id must be a printable single-line string"
+            )
         output = _bare_glb_filename(value.get("out"))
         kind = _nonempty_string(value.get("kind"), f"assets[{index}].kind")
         service = _nonempty_string(
