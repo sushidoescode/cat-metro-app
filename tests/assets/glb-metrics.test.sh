@@ -526,6 +526,16 @@ elif action == "base-color-texcoord-1":
     doc["materials"][0]["pbrMetallicRoughness"]["baseColorTexture"][
         "texCoord"
     ] = 1
+elif action in {"texcoord1-valid", "texcoord1-missing-second"}:
+    assert second_primitive is not None
+    doc["materials"][0]["pbrMetallicRoughness"]["baseColorTexture"][
+        "texCoord"
+    ] = 1
+    for mesh_primitive in doc["meshes"][0]["primitives"]:
+        attributes = mesh_primitive["attributes"]
+        attributes["TEXCOORD_1"] = attributes["TEXCOORD_0"]
+    if action == "texcoord1-missing-second":
+        second_primitive["attributes"].pop("TEXCOORD_1")
 elif action == "alter-image-payload":
     image = doc["images"][0]
     view = doc["bufferViews"][image["bufferView"]]
@@ -573,6 +583,12 @@ elif action == "remove-one-material":
     second_primitive.pop("material")
 elif action == "extension":
     doc["extensionsUsed"] = ["VENDOR_unreviewed"]
+elif action == "hostile-diagnostic-extension":
+    hostile = (
+        "\x1b[31m\x01\nAuthorization: Bearer "
+        "CATMETRO_TEST_CREDENTIAL_SENTINEL\r" + "X" * 4_096
+    )
+    doc["extensionsUsed"] = [hostile, hostile]
 elif action == "meshopt":
     doc["extensionsUsed"] = ["EXT_meshopt_compression"]
 elif action == "extras-metadata":
@@ -997,17 +1013,28 @@ for action in \
   data-image-valid data-image-invalid-base64 data-image-wrong-media \
   data-image-oversized too-many-accessors accessor-count-limit \
   duplicate-json-key hostile-json-integer oversized-json large-valid-file \
-  oversized-file
+  oversized-file hostile-diagnostic-extension
 do
   cp "$tmp/valid.glb" "$tmp/$action.glb"
   mutate "$tmp/$action.glb" "$action"
 done
+
+for action in texcoord1-valid texcoord1-missing-second; do
+  cp "$tmp/two-primitives.glb" "$tmp/$action.glb"
+  mutate "$tmp/$action.glb" "$action"
+done
+
+# No writer is paired with this FIFO.  A reader that merely stats it and then
+# reads to EOF will block; the bounded child below therefore distinguishes the
+# required pre-open special-file rejection without risking the test runner.
+mkfifo "$tmp/special-source.fifo"
 
 set +e
 PYTHONDONTWRITEBYTECODE=1 python3 - "$metrics_script" "$tmp" <<'PY'
 import importlib.util
 import json
 import subprocess
+import struct
 import sys
 from pathlib import Path
 
@@ -1069,6 +1096,13 @@ def check(name, operation):
 
 def inspect(name):
     return module.inspect_glb(fixture_root / f"{name}.glb")
+
+
+def document(name):
+    raw = (fixture_root / f"{name}.glb").read_bytes()
+    json_length, kind = struct.unpack_from("<I4s", raw, 12)
+    assert kind == b"JSON"
+    return json.loads(raw[20:20 + json_length].rstrip(b" "))
 
 
 def assert_surface(
@@ -1303,6 +1337,73 @@ def multi_role_texture_control():
 check("base-color plus metallic-roughness valid control", multi_role_texture_control)
 
 
+def per_primitive_texcoord1_requirement():
+    default_document = document("two-primitives")
+    default_primitives = default_document["meshes"][0]["primitives"]
+    default_texture = default_document["materials"][0][
+        "pbrMetallicRoughness"
+    ]["baseColorTexture"]
+    # The absent texCoord property means TEXCOORD_0; every using primitive has
+    # that set, so strict validation must retain the default-set control.
+    assert default_texture == {"index": 0}
+    assert all(
+        "TEXCOORD_0" in primitive["attributes"]
+        for primitive in default_primitives
+    )
+    default_metrics = inspect("two-primitives")
+    assert default_metrics["uv_primitives"] == 2
+    assert module.compare_preservation(default_metrics, default_metrics) == []
+
+    valid_document = document("texcoord1-valid")
+    missing_document = document("texcoord1-missing-second")
+    valid_primitives = valid_document["meshes"][0]["primitives"]
+    missing_primitives = missing_document["meshes"][0]["primitives"]
+    # Both documents retain identical material/texture bindings and both
+    # primitives retain TEXCOORD_0.  Only the second primitive's required
+    # TEXCOORD_1 set is absent in the negative, defeating a material-wide
+    # union of attribute semantics.
+    assert valid_document["materials"] == missing_document["materials"]
+    assert valid_document["materials"][0]["pbrMetallicRoughness"][
+        "baseColorTexture"
+    ] == {"index": 0, "texCoord": 1}
+    assert [primitive["material"] for primitive in valid_primitives] == [0, 0]
+    assert [primitive["material"] for primitive in missing_primitives] == [0, 0]
+    assert sum(
+        "TEXCOORD_0" in primitive["attributes"]
+        for primitive in valid_primitives
+    ) == sum(
+        "TEXCOORD_0" in primitive["attributes"]
+        for primitive in missing_primitives
+    ) == 2
+    assert sum(
+        "TEXCOORD_1" in primitive["attributes"]
+        for primitive in valid_primitives
+    ) == 2
+    assert sum(
+        "TEXCOORD_1" in primitive["attributes"]
+        for primitive in missing_primitives
+    ) == 1
+
+    valid_metrics = inspect("texcoord1-valid")
+    assert valid_metrics["uv_primitives"] == 2
+    assert valid_metrics["material_primitives"] == 2
+    assert module.compare_preservation(valid_metrics, valid_metrics) == []
+    try:
+        missing_metrics = inspect("texcoord1-missing-second")
+    except module.GlbError:
+        return
+    assert missing_metrics["uv_primitives"] == 2
+    assert missing_metrics["material_primitives"] == 2
+    reasons = module.compare_preservation(valid_metrics, missing_metrics)
+    assert reasons, "second primitive omitted required TEXCOORD_1 and was accepted"
+
+
+check(
+    "TEXCOORD_1 is required on every primitive using its material",
+    per_primitive_texcoord1_requirement,
+)
+
+
 def metallic_binding_regression(name, expected_bindings):
     source = inspect("multi-role-valid")
     output = inspect(name)
@@ -1396,6 +1497,86 @@ def cli_reject(name, *required_text):
     assert not has_traceback, "Python traceback escaped"
     for text in required_text:
         assert text.lower() in lines[0].lower(), lines[0]
+
+
+def special_source_rejection():
+    path = fixture_root / "special-source.fifo"
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(script), str(path)],
+            check=False,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=2.0,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise AssertionError(
+            "CLI opened/read the FIFO instead of rejecting it before open"
+        ) from exc
+    assert completed.returncode != 0, "special source exited zero"
+    assert completed.stdout == "", "special source wrote stdout"
+    lines = completed.stderr.splitlines()
+    assert len(lines) == 1 and lines[0].startswith("glb-metrics:"), (
+        f"expected one prefixed diagnostic, got {completed.stderr!r}"
+    )
+    assert "traceback" not in completed.stderr.lower(), completed.stderr
+    folded = lines[0].lower()
+    assert any(
+        phrase in folded
+        for phrase in (
+            "regular file",
+            "non-regular",
+            "special file",
+            "unsupported file type",
+            "unsupported source",
+            "not a file",
+            "fifo",
+        )
+    ), f"diagnostic did not identify the special source: {lines[0]!r}"
+
+
+check("FIFO source is rejected before opening", special_source_rejection)
+
+
+def hostile_diagnostic_is_bounded_and_redacted():
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            str(fixture_root / "hostile-diagnostic-extension.glb"),
+        ],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=2.0,
+    )
+    assert completed.returncode != 0, "hostile extension exited zero"
+    assert completed.stdout == b"", "hostile extension wrote stdout"
+    diagnostic = completed.stderr
+    assert diagnostic.endswith(b"\n") and diagnostic.count(b"\n") == 1, (
+        f"expected exactly one diagnostic line, got {diagnostic!r}"
+    )
+    assert len(diagnostic) <= 512, f"diagnostic is {len(diagnostic)} bytes"
+    body = diagnostic[:-1]
+    assert body.startswith(b"glb-metrics:"), body
+    rendered = body.decode("utf-8")
+    assert all(character.isprintable() for character in rendered), repr(rendered)
+    folded = body.lower()
+    for forbidden in (
+        b"catmetro_test_credential_sentinel",
+        b"authorization: bearer",
+    ):
+        assert forbidden not in folded, f"diagnostic echoed {forbidden!r}"
+    assert b"traceback" not in folded, body
+
+
+check(
+    "hostile extension diagnostic is one bounded printable redacted line",
+    hostile_diagnostic_is_bounded_and_redacted,
+)
 
 
 for case, required in (
