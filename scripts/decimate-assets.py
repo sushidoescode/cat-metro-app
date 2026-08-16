@@ -9,6 +9,8 @@ import sys
 sys.dont_write_bytecode = True
 
 import argparse
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
@@ -16,6 +18,8 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
+import unicodedata
 import uuid
 from collections.abc import Mapping
 from datetime import datetime, timezone
@@ -160,6 +164,7 @@ def _load_manifest(path: Path) -> list[dict[str, str]]:
     assets: list[dict[str, str]] = []
     identifiers: set[str] = set()
     outputs: set[str] = set()
+    normalized_outputs: set[str] = set()
     for index, value in enumerate(entries):
         if not isinstance(value, dict):
             raise DecimationError(
@@ -174,12 +179,18 @@ def _load_manifest(path: Path) -> list[dict[str, str]]:
         prompt = _nonempty_string(value.get("prompt"), f"assets[{index}].prompt")
         if identifier in identifiers or output in outputs:
             raise DecimationError("invalid manifest: duplicate id or out")
+        normalized_output = unicodedata.normalize("NFC", output).casefold()
+        if normalized_output in normalized_outputs:
+            raise DecimationError(
+                "invalid manifest: duplicate out after case-fold/Unicode normalization"
+            )
         if kind not in POLICY:
             raise DecimationError(f"unsupported kind for asset {identifier}")
         if service not in KNOWN_SERVICES:
             raise DecimationError(f"unsupported service for asset {identifier}")
         identifiers.add(identifier)
         outputs.add(output)
+        normalized_outputs.add(normalized_output)
         assets.append(
             {
                 "id": identifier,
@@ -349,10 +360,307 @@ def _unique_backup(path: Path) -> Path:
     raise DecimationError("could not allocate a unique derivative backup path")
 
 
-def _restore_backup(backup: Path, final: Path) -> None:
-    if _path_exists(final):
+class _PromotionLock:
+    """One in-process pair lock backed by an inter-process directory flock."""
+
+    def __init__(self, directory: Path) -> None:
+        self._directory = directory
+        self._thread_lock = threading.Lock()
+        self._directory_fd: int | None = None
+
+    def acquire(self, blocking: bool = True) -> bool:
+        acquired_thread = self._thread_lock.acquire(blocking)
+        if not acquired_thread:
+            return False
+
+        directory_fd: int | None = None
+        try:
+            directory_fd = os.open(
+                self._directory,
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+            )
+            operation = fcntl.LOCK_EX
+            if not blocking:
+                operation |= fcntl.LOCK_NB
+            try:
+                fcntl.flock(directory_fd, operation)
+            except BlockingIOError:
+                os.close(directory_fd)
+                self._thread_lock.release()
+                return False
+            self._directory_fd = directory_fd
+            return True
+        except BaseException:
+            if directory_fd is not None:
+                try:
+                    os.close(directory_fd)
+                except OSError:
+                    pass
+            self._thread_lock.release()
+            raise
+
+    def release(self) -> None:
+        directory_fd = self._directory_fd
+        if directory_fd is None:
+            raise RuntimeError("promotion lock is not held")
+        self._directory_fd = None
+        try:
+            fcntl.flock(directory_fd, fcntl.LOCK_UN)
+        finally:
+            try:
+                os.close(directory_fd)
+            finally:
+                self._thread_lock.release()
+
+    def _discard_after_fork(self) -> None:
+        """Close only the child's inherited descriptor and reset thread state."""
+        directory_fd = self._directory_fd
+        self._directory_fd = None
+        if directory_fd is not None:
+            try:
+                os.close(directory_fd)
+            except OSError:
+                pass
+        self._thread_lock = threading.Lock()
+
+
+_PROMOTION_LOCKS: dict[tuple[str, str], _PromotionLock] = {}
+_PROMOTION_LOCKS_GUARD = threading.Lock()
+_PROMOTION_LOCKS_PID = os.getpid()
+
+
+def _reset_promotion_locks_after_fork() -> None:
+    global _PROMOTION_LOCKS, _PROMOTION_LOCKS_GUARD, _PROMOTION_LOCKS_PID
+
+    for inherited_lock in _PROMOTION_LOCKS.values():
+        inherited_lock._discard_after_fork()
+    _PROMOTION_LOCKS = {}
+    _PROMOTION_LOCKS_GUARD = threading.Lock()
+    _PROMOTION_LOCKS_PID = os.getpid()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_promotion_locks_after_fork)
+
+
+def _canonical_lock_path(path: Path) -> str:
+    resolved = os.path.realpath(os.path.abspath(os.fspath(path)))
+    return unicodedata.normalize("NFC", resolved).casefold()
+
+
+def _promotion_lock_for(final_glb: Path, final_json: Path) -> _PromotionLock:
+    """Return the stable same-output lock for this process."""
+    global _PROMOTION_LOCKS, _PROMOTION_LOCKS_GUARD, _PROMOTION_LOCKS_PID
+
+    current_pid = os.getpid()
+    if current_pid != _PROMOTION_LOCKS_PID:
+        # Defensive fallback for runtimes without register_at_fork support.
+        _reset_promotion_locks_after_fork()
+
+    final_glb = Path(final_glb)
+    final_json = Path(final_json)
+    if final_glb.parent != final_json.parent:
+        raise DecimationError("derivative pair must share one output directory")
+    key = (_canonical_lock_path(final_glb), _canonical_lock_path(final_json))
+    directory = Path(os.path.realpath(os.path.abspath(final_glb.parent)))
+    with _PROMOTION_LOCKS_GUARD:
+        lock = _PROMOTION_LOCKS.get(key)
+        if lock is None:
+            lock = _PromotionLock(directory)
+            _PROMOTION_LOCKS[key] = lock
+        return lock
+
+
+@contextlib.contextmanager
+def _promotion_guard(
+    final_glb: Path,
+    final_json: Path,
+    *,
+    on_attempt=None,
+    on_acquired=None,
+):
+    """Serialize one complete destination decision and pair transaction."""
+    lock = _promotion_lock_for(final_glb, final_json)
+    held = lock.acquire(False)
+    contended = not held
+    try:
+        if on_attempt is not None:
+            on_attempt(contended)
+        if not held:
+            held = lock.acquire(True)
+            if not held:
+                raise RuntimeError("blocking promotion lock acquisition failed")
+        if on_acquired is not None:
+            on_acquired(contended)
+        yield
+    finally:
+        if held:
+            lock.release()
+
+
+def _matches_sha256(path: Path, expected: str) -> bool:
+    try:
+        return path.is_file() and _sha256(path) == expected
+    except OSError:
+        return False
+
+
+def _remove_non_old_final(final: Path, old_sha: str) -> None:
+    if _path_exists(final) and not _matches_sha256(final, old_sha):
         final.unlink()
-    os.replace(backup, final)
+
+
+def _copy_old_member(source: Path, destination: Path, old_sha: str) -> bool:
+    """Bounded fallback when a rename failed after establishing an old final."""
+    if not _matches_sha256(source, old_sha):
+        return False
+    try:
+        destination.unlink(missing_ok=True)
+        with source.open("rb") as reader, destination.open("xb") as writer:
+            shutil.copyfileobj(reader, writer, length=1024 * 1024)
+            writer.flush()
+            os.fsync(writer.fileno())
+    except OSError:
+        try:
+            destination.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return False
+    return _matches_sha256(destination, old_sha)
+
+
+def _old_final_pair(
+    final_glb: Path,
+    final_json: Path,
+    backup_glb: Path,
+    backup_json: Path,
+    old_glb_sha: str,
+    old_json_sha: str,
+) -> bool:
+    return (
+        _matches_sha256(final_glb, old_glb_sha)
+        and _matches_sha256(final_json, old_json_sha)
+        and not _path_exists(backup_glb)
+        and not _path_exists(backup_json)
+    )
+
+
+def _old_backup_pair(
+    final_glb: Path,
+    final_json: Path,
+    backup_glb: Path,
+    backup_json: Path,
+    old_glb_sha: str,
+    old_json_sha: str,
+) -> bool:
+    return (
+        not _path_exists(final_glb)
+        and not _path_exists(final_json)
+        and _matches_sha256(backup_glb, old_glb_sha)
+        and _matches_sha256(backup_json, old_json_sha)
+    )
+
+
+def _restore_old_pair(
+    final_glb: Path,
+    final_json: Path,
+    backup_glb: Path,
+    backup_json: Path,
+    old_glb_sha: str,
+    old_json_sha: str,
+) -> None:
+    """Attempt both restores, then normalize to one verified terminal state."""
+    members = (
+        (backup_glb, final_glb, old_glb_sha),
+        (backup_json, final_json, old_json_sha),
+    )
+
+    # Candidate members cannot be allowed to overwrite the captured old pair.
+    for _, final, old_sha in members:
+        try:
+            _remove_non_old_final(final, old_sha)
+        except OSError:
+            pass
+
+    # These attempts are independent: a GLB restore error never skips JSON.
+    for backup, final, old_sha in members:
+        if not _matches_sha256(backup, old_sha):
+            continue
+        try:
+            if _path_exists(final):
+                final.unlink()
+            os.replace(backup, final)
+        except OSError:
+            continue
+
+    if _old_final_pair(
+        final_glb,
+        final_json,
+        backup_glb,
+        backup_json,
+        old_glb_sha,
+        old_json_sha,
+    ):
+        return
+
+    # A persistent restore fault chooses the recoverable-backup terminal form.
+    # First establish both complete backups without destroying an old final.
+    for backup, final, old_sha in members:
+        if _matches_sha256(backup, old_sha):
+            continue
+        if not _matches_sha256(final, old_sha):
+            continue
+        try:
+            os.replace(final, backup)
+        except OSError:
+            _copy_old_member(final, backup, old_sha)
+
+    if _matches_sha256(backup_glb, old_glb_sha) and _matches_sha256(
+        backup_json, old_json_sha
+    ):
+        for _, final, _ in members:
+            try:
+                final.unlink(missing_ok=True)
+            except OSError:
+                pass
+        if _old_backup_pair(
+            final_glb,
+            final_json,
+            backup_glb,
+            backup_json,
+            old_glb_sha,
+            old_json_sha,
+        ):
+            return
+
+    # Last bounded fallback: materialize exact old finals, verify both, then
+    # remove backups. This covers a rename that failed after doing its work.
+    for backup, final, old_sha in members:
+        if _matches_sha256(final, old_sha):
+            continue
+        if not _matches_sha256(backup, old_sha):
+            continue
+        try:
+            os.replace(backup, final)
+        except OSError:
+            _copy_old_member(backup, final, old_sha)
+    if _matches_sha256(final_glb, old_glb_sha) and _matches_sha256(
+        final_json, old_json_sha
+    ):
+        for backup, _, _ in members:
+            try:
+                backup.unlink(missing_ok=True)
+            except OSError:
+                pass
+    if not _old_final_pair(
+        final_glb,
+        final_json,
+        backup_glb,
+        backup_json,
+        old_glb_sha,
+        old_json_sha,
+    ):
+        raise DecimationError("forced promotion could not recover the old pair")
 
 
 def promote_pair(
@@ -369,66 +677,62 @@ def promote_pair(
     final_json = Path(final_json)
     if not staged_glb.is_file() or not staged_json.is_file():
         raise DecimationError("staged derivative pair is incomplete")
+    with _promotion_guard(final_glb, final_json):
+        glb_exists = _path_exists(final_glb)
+        json_exists = _path_exists(final_json)
+        if glb_exists != json_exists:
+            raise DecimationError("existing derivative lineage is inconsistent")
+        if glb_exists and not force:
+            raise DecimationError("refusing existing derivative without --force")
 
-    glb_exists = _path_exists(final_glb)
-    json_exists = _path_exists(final_json)
-    if glb_exists != json_exists:
-        raise DecimationError("existing derivative lineage is inconsistent")
-    if glb_exists and not force:
-        raise DecimationError("refusing existing derivative without --force")
-
-    if not glb_exists:
-        try:
-            os.replace(staged_glb, final_glb)
+        if not glb_exists:
             try:
-                os.replace(staged_json, final_json)
+                os.replace(staged_glb, final_glb)
+                try:
+                    os.replace(staged_json, final_json)
+                except BaseException:
+                    final_glb.unlink(missing_ok=True)
+                    raise
             except BaseException:
-                final_glb.unlink(missing_ok=True)
                 raise
-        except BaseException:
-            raise
-        return
+            return
 
-    backup_glb = _unique_backup(final_glb)
-    backup_json = _unique_backup(final_json)
-    moved_glb = False
-    moved_json = False
-    promoted_glb = False
-    promoted_json = False
-    try:
-        os.replace(final_glb, backup_glb)
-        moved_glb = True
+        old_glb_sha = _sha256(final_glb)
+        old_json_sha = _sha256(final_json)
+        candidate_glb_sha = _sha256(staged_glb)
+        candidate_json_sha = _sha256(staged_json)
+        backup_glb = _unique_backup(final_glb)
+        backup_json = _unique_backup(final_json)
+
+        # Explicit forward state machine. Any phase failure is recovered from
+        # observed hashes rather than optimistic booleans about os.replace.
         try:
+            os.replace(final_glb, backup_glb)
             os.replace(final_json, backup_json)
-            moved_json = True
-        except BaseException:
-            os.replace(backup_glb, final_glb)
-            moved_glb = False
-            raise
-
-        try:
             os.replace(staged_glb, final_glb)
-            promoted_glb = True
             os.replace(staged_json, final_json)
-            promoted_json = True
-        except BaseException:
-            if promoted_glb and _path_exists(final_glb):
-                final_glb.unlink()
-            if promoted_json and _path_exists(final_json):
-                final_json.unlink()
-            _restore_backup(backup_glb, final_glb)
-            moved_glb = False
-            _restore_backup(backup_json, final_json)
-            moved_json = False
-            raise
-    finally:
-        if not moved_glb:
-            backup_glb.unlink(missing_ok=True)
-        if not moved_json:
-            backup_json.unlink(missing_ok=True)
+            if not (
+                _matches_sha256(final_glb, candidate_glb_sha)
+                and _matches_sha256(final_json, candidate_json_sha)
+                and _matches_sha256(backup_glb, old_glb_sha)
+                and _matches_sha256(backup_json, old_json_sha)
+            ):
+                raise DecimationError("forced promotion pair verification failed")
+        except BaseException as primary_error:
+            _restore_old_pair(
+                final_glb,
+                final_json,
+                backup_glb,
+                backup_json,
+                old_glb_sha,
+                old_json_sha,
+            )
+            raise primary_error
 
-    backup_glb.unlink(missing_ok=True)
-    backup_json.unlink(missing_ok=True)
+        # The complete candidate and complete recovery pair are verified before
+        # either old backup is deleted.
+        backup_glb.unlink()
+        backup_json.unlink()
 
 
 def _destination_state(final_glb: Path, final_json: Path, force: bool) -> None:
@@ -639,6 +943,19 @@ def _process_asset(
     )
 
 
+def _filesystem_identity(path: Path, label: str) -> tuple[int, int] | None:
+    if not _path_exists(path):
+        return None
+    try:
+        status = path.stat()
+    except FileNotFoundError:
+        # Preserve a dangling leaf for the existing symlink/path diagnostics.
+        return None
+    except OSError as exc:
+        raise DecimationError(f"{label} filesystem identity cannot be read") from exc
+    return status.st_dev, status.st_ino
+
+
 def _prepare_assets(
     assets: list[dict[str, str]],
     input_base: Path,
@@ -646,9 +963,10 @@ def _prepare_assets(
     output_root: Path,
     force: bool,
 ) -> list[dict[str, object]]:
-    prepared_assets: list[dict[str, object]] = []
+    path_sets: list[dict[str, object]] = []
     source_paths: set[Path] = set()
     output_paths: set[Path] = set()
+    existing_identities: dict[tuple[int, int], tuple[str, Path]] = {}
     for asset in assets:
         source_path = input_base / asset["out"]
         source_sidecar_path = input_base / f"{asset['out']}.json"
@@ -665,7 +983,8 @@ def _prepare_assets(
             raise DecimationError(f"missing source for asset {asset['id']}")
         if not source_sidecar_path.is_file():
             raise DecimationError(f"missing source sidecar for asset {asset['id']}")
-        _destination_state(final_glb, final_json, force)
+        with _promotion_guard(final_glb, final_json):
+            _destination_state(final_glb, final_json, force)
 
         if resolved_source in source_paths or resolved_source_sidecar in source_paths:
             raise DecimationError("source paths alias across manifest entries")
@@ -674,6 +993,52 @@ def _prepare_assets(
             raise DecimationError("output paths alias across manifest entries")
         output_paths.update((resolved_final_glb, resolved_final_json))
 
+        for label, candidate in (
+            (f"source for asset {asset['id']}", source_path),
+            (f"source sidecar for asset {asset['id']}", source_sidecar_path),
+            (f"output GLB for asset {asset['id']}", final_glb),
+            (f"output JSON for asset {asset['id']}", final_json),
+        ):
+            identity = _filesystem_identity(candidate, label)
+            if identity is None:
+                continue
+            previous = existing_identities.get(identity)
+            if previous is not None:
+                previous_label, previous_path = previous
+                raise DecimationError(
+                    "filesystem identity alias between "
+                    f"{previous_label} ({previous_path}) and {label} ({candidate})"
+                )
+            existing_identities[identity] = (label, candidate)
+
+        path_sets.append(
+            {
+                "asset": asset,
+                "source_path": source_path,
+                "source_sidecar_path": source_sidecar_path,
+                "final_glb": final_glb,
+                "final_json": final_json,
+            }
+        )
+
+    if source_paths & output_paths:
+        raise DecimationError("source and output paths alias")
+
+    prepared_assets: list[dict[str, object]] = []
+    for paths in path_sets:
+        asset_value = paths["asset"]
+        if not isinstance(asset_value, dict):
+            raise AssertionError("internal prepared asset type mismatch")
+        asset = asset_value
+        source_path = paths["source_path"]
+        source_sidecar_path = paths["source_sidecar_path"]
+        final_glb = paths["final_glb"]
+        final_json = paths["final_json"]
+        if not all(
+            isinstance(path, Path)
+            for path in (source_path, source_sidecar_path, final_glb, final_json)
+        ):
+            raise AssertionError("internal preflight path type mismatch")
         source_sha = _sha256(source_path)
         source_record_value, source_sidecar_bytes = _load_json_bytes(
             source_sidecar_path, "source sidecar"
@@ -707,9 +1072,6 @@ def _prepare_assets(
                 "source_metrics": source_metrics,
             }
         )
-
-    if source_paths & output_paths:
-        raise DecimationError("source and output paths alias")
     return prepared_assets
 
 
@@ -743,6 +1105,14 @@ def _run(argv: list[str]) -> None:
     output_root = Path(os.path.abspath(args.output_dir)).resolve(strict=True)
     if not output_root.is_dir():
         raise DecimationError("output directory is missing")
+    try:
+        roots_are_same = os.path.samefile(input_root, output_root)
+    except OSError as exc:
+        raise DecimationError("input/output directory identity cannot be read") from exc
+    if roots_are_same:
+        raise DecimationError(
+            "input and output directories alias the same filesystem identity"
+        )
 
     prepared_assets = _prepare_assets(
         assets,
