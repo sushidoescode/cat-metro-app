@@ -31,6 +31,28 @@ _MODES = {
     "fail",
 }
 
+_FORBIDDEN_ENVIRONMENT_SENTINELS = (
+    "PIPELINE_SENTINEL_KEY",
+    "PIPELINE_SENTINEL_TOKEN",
+    "PIPELINE_SENTINEL_SECRET",
+    "PIPELINE_SENTINEL_AUTH",
+    "PIPELINE_SENTINEL_CREDENTIAL",
+    "PIPELINE_SENTINEL_BEARER",
+)
+
+
+def _reject_forbidden_environment() -> None:
+    if any(name in os.environ for name in _FORBIDDEN_ENVIRONMENT_SENTINELS):
+        print("fake-blender: forbidden environment sentinel present", file=sys.stderr)
+        raise SystemExit(86)
+
+
+def _audit_phase(phase: str) -> None:
+    audit = os.environ.get("FAKE_BLENDER_AUDIT")
+    if audit:
+        with Path(audit).open("a", encoding="utf-8") as handle:
+            handle.write(f"{phase}\n")
+
 
 def _processing_arguments(argv: list[str]) -> argparse.Namespace:
     try:
@@ -58,7 +80,9 @@ def _processing_arguments(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str]) -> int:
+    _reject_forbidden_environment()
     if "--version" in argv:
+        _audit_phase("version")
         print(f"Blender {os.environ.get('FAKE_BLENDER_VERSION', '5.1.2')}")
         print(
             "build hash: "
@@ -66,6 +90,7 @@ def main(argv: list[str]) -> int:
         )
         return 0
 
+    _audit_phase("asset")
     args = _processing_arguments(argv)
     mode = os.environ.get("FAKE_BLENDER_MODE", "success")
     if mode not in _MODES:

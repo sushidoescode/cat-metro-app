@@ -11,10 +11,13 @@ expected_driver=$(cd "$(dirname "$decimate_script")" && pwd -P)/blender_decimate
 tmp=$(mktemp -d)
 marker_name="$(basename "$tmp")-argv-injection-marker"
 marker="$repo/$marker_name"
+marker_cleanup_armed=0
 
 cleanup() {
   rm -rf -- "$tmp"
-  rm -f -- "$marker"
+  if [ "$marker_cleanup_armed" -eq 1 ]; then
+    rm -f -- "$marker"
+  fi
 }
 trap cleanup EXIT
 
@@ -24,6 +27,7 @@ die() {
 }
 
 test ! -e "$marker" || die "shell-evaluation marker already exists"
+marker_cleanup_armed=1
 cd "$repo"
 
 mkdir -p "$tmp/bin"
@@ -54,6 +58,15 @@ print(hashlib.sha256(Path(sys.argv[1]).read_bytes()).hexdigest())
 PY
 }
 
+magic_hex() {
+  PYTHONDONTWRITEBYTECODE=1 python3 - "$1" <<'PY'
+import sys
+from pathlib import Path
+
+print(Path(sys.argv[1]).read_bytes()[:4].hex())
+PY
+}
+
 write_fixture() {
   PYTHONDONTWRITEBYTECODE=1 python3 "$repo/tests/assets/glb_fixture.py" "$@"
 }
@@ -70,6 +83,7 @@ write_sidecar() {
   PYTHONDONTWRITEBYTECODE=1 python3 - \
     "$source.json" "$service" "$prompt" "$tier" "$claimed_sha" <<'PY'
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -192,10 +206,15 @@ run_decimator() {
   env \
     FAKE_BLENDER_MODE="$mode" \
     FAKE_BLENDER_LOG="$log" \
+    FAKE_BLENDER_AUDIT="$log.audit" \
     FAKE_BLENDER_VERSION="${CASE_BLENDER_VERSION:-5.1.2}" \
     FAKE_BLENDER_BUILD_HASH="${CASE_BLENDER_BUILD_HASH:-ec6e62d40fa9}" \
-    PIPELINE_TEST_API_KEY="must-not-leak-key-value" \
-    PIPELINE_TEST_AUTHORIZATION="must-not-leak-auth-value" \
+    PIPELINE_SENTINEL_KEY="environment-sentinel-1" \
+    PIPELINE_SENTINEL_TOKEN="environment-sentinel-2" \
+    PIPELINE_SENTINEL_SECRET="environment-sentinel-3" \
+    PIPELINE_SENTINEL_AUTH="environment-sentinel-4" \
+    PIPELINE_SENTINEL_CREDENTIAL="environment-sentinel-5" \
+    PIPELINE_SENTINEL_BEARER="environment-sentinel-6" \
     PYTHONDONTWRITEBYTECODE=1 \
     python3 "$decimate_script" \
       --manifest "$manifest" \
@@ -204,6 +223,108 @@ run_decimator() {
       --blender "$fake_blender" \
       "$@" \
       >"$stdout" 2>"$stderr"
+}
+
+assert_exact_provenance() {
+  local source=$1
+  local final=$2
+  local proof=$3
+  local category=$4
+  local target=$5
+  local minimum=$6
+  local service=$7
+  local prompt=$8
+  PYTHONDONTWRITEBYTECODE=1 python3 - \
+    "$repo/scripts" "$source" "$final" "$proof" \
+    "$category" "$target" "$minimum" "$service" "$prompt" <<'PY'
+import hashlib
+import json
+import re
+import sys
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, sys.argv[1])
+from glb_metrics import compare_preservation, inspect_glb
+
+source = Path(sys.argv[2])
+final = Path(sys.argv[3])
+proof_path = Path(sys.argv[4])
+category = sys.argv[5]
+target = int(sys.argv[6])
+minimum = int(sys.argv[7])
+service = sys.argv[8]
+prompt = sys.argv[9]
+source_sidecar_path = Path(f"{source}.json")
+
+source_metrics = inspect_glb(source)
+output_metrics = inspect_glb(final)
+source_sidecar = json.loads(source_sidecar_path.read_text(encoding="utf-8"))
+record = json.loads(proof_path.read_text(encoding="utf-8"))
+metric_names = (
+    "triangles", "vertices", "primitives", "materials",
+    "material_primitives", "images", "embedded_images", "uv_primitives",
+    "animations", "cameras", "lights", "skins", "morph_targets",
+    "extensions_used", "extensions_required", "world_bounds",
+)
+
+assert set(record) == {"schema_version", "source", "derivative", "tool", "geometry"}
+assert record["schema_version"] == 1
+assert set(record["source"]) == {"filename", "sha256", "sidecar_sha256", "provenance"}
+assert record["source"]["filename"] == source.name
+assert record["source"]["sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
+assert record["source"]["sidecar_sha256"] == hashlib.sha256(source_sidecar_path.read_bytes()).hexdigest()
+assert record["source"]["provenance"] == {
+    key: source_sidecar[key]
+    for key in sorted({"service", "task_id", "timestamp_utc", "plan_tier", "prompt", "note"})
+}
+assert source_sidecar["service"] == service
+assert source_sidecar["prompt"] == prompt
+assert source_sidecar["plan_tier"] == "paid"
+
+assert record["derivative"] == {
+    "filename": final.name,
+    "sha256": hashlib.sha256(final.read_bytes()).hexdigest(),
+}
+assert set(record["tool"]) == {"name", "version", "build_hash", "operation", "timestamp_utc"}
+assert record["tool"]["name"] == "Blender"
+assert record["tool"]["version"] == "5.1.2"
+assert record["tool"]["build_hash"] == "ec6e62d40fa9"
+assert record["tool"]["operation"] == "collapse-decimate"
+assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", record["tool"]["timestamp_utc"])
+
+geometry = record["geometry"]
+assert set(geometry) == {
+    "category", "target_triangles", "accepted_minimum",
+    "accepted_maximum", "source", "output",
+}
+assert geometry["category"] == category
+assert geometry["target_triangles"] == target
+assert geometry["accepted_minimum"] == minimum
+assert geometry["accepted_maximum"] == target
+assert geometry["source"] == {name: source_metrics[name] for name in metric_names}
+assert geometry["output"] == {name: output_metrics[name] for name in metric_names}
+assert minimum <= output_metrics["triangles"] <= target
+assert 5000 <= output_metrics["triangles"] <= 20000
+assert compare_preservation(source_metrics, output_metrics) == []
+
+forbidden = re.compile(
+    r"api[_-]?key|token|secret|authorization|credential|bearer|https?://",
+    re.IGNORECASE,
+)
+def scan(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            assert not forbidden.search(str(key)), key
+            scan(child)
+    elif isinstance(value, list):
+        for child in value:
+            scan(child)
+    elif isinstance(value, str):
+        assert not forbidden.search(value), value
+
+scan(record)
+PY
 }
 
 # Validate syntax without generating bytecode, then exercise every fake mode
@@ -219,15 +340,67 @@ for filename in sys.argv[1:]:
 PY
 test -x "$fake_blender" || die "fake Blender is not executable"
 
-version_output=$(PYTHONDONTWRITEBYTECODE=1 "$fake_blender" --background --version)
+version_audit="$tmp/version.audit"
+version_output=$(
+  FAKE_BLENDER_AUDIT="$version_audit" \
+    PYTHONDONTWRITEBYTECODE=1 "$fake_blender" --background --version
+)
 test "$version_output" = $'Blender 5.1.2\nbuild hash: ec6e62d40fa9' || \
   die "fake Blender version surface is wrong"
+test "$(cat "$version_audit")" = version || \
+  die "fake Blender did not safely audit its version phase"
 wrong_version_output=$(
   FAKE_BLENDER_VERSION=5.2.0 FAKE_BLENDER_BUILD_HASH=wrong \
     PYTHONDONTWRITEBYTECODE=1 "$fake_blender" --background --version
 )
 test "$wrong_version_output" = $'Blender 5.2.0\nbuild hash: wrong' || \
   die "fake Blender version overrides are wrong"
+
+forbidden_audit="$tmp/forbidden-environment.audit"
+forbidden_log="$tmp/forbidden-environment.log"
+sentinel_names=(
+  PIPELINE_SENTINEL_KEY PIPELINE_SENTINEL_TOKEN PIPELINE_SENTINEL_SECRET
+  PIPELINE_SENTINEL_AUTH PIPELINE_SENTINEL_CREDENTIAL PIPELINE_SENTINEL_BEARER
+)
+sentinel_number=0
+for sentinel_name in "${sentinel_names[@]}"; do
+  sentinel_number=$((sentinel_number + 1))
+  sentinel_value="environment-probe-$sentinel_number"
+  for phase in version asset; do
+    before_audit=$(line_count "$forbidden_audit")
+    before_log=$(line_count "$forbidden_log")
+    set +e
+    if [ "$phase" = version ]; then
+      env "$sentinel_name=$sentinel_value" \
+        FAKE_BLENDER_AUDIT="$forbidden_audit" \
+        FAKE_BLENDER_LOG="$forbidden_log" \
+        PYTHONDONTWRITEBYTECODE=1 \
+        "$fake_blender" --background --version \
+        >"$tmp/forbidden.stdout" 2>"$tmp/forbidden.stderr"
+    else
+      env "$sentinel_name=$sentinel_value" \
+        FAKE_BLENDER_AUDIT="$forbidden_audit" \
+        FAKE_BLENDER_LOG="$forbidden_log" \
+        PYTHONDONTWRITEBYTECODE=1 \
+        "$fake_blender" --background --factory-startup -- \
+        >"$tmp/forbidden.stdout" 2>"$tmp/forbidden.stderr"
+    fi
+    forbidden_rc=$?
+    set -e
+    test "$forbidden_rc" -eq 86 || \
+      die "fake Blender accepted $sentinel_name on its $phase phase"
+    rg -q '^fake-blender: forbidden environment sentinel present$' \
+      "$tmp/forbidden.stderr" || \
+      die "fake Blender lacked its safe environment rejection"
+    if rg -Fq "$sentinel_value" "$tmp/forbidden.stdout" "$tmp/forbidden.stderr"; then
+      die "fake Blender logged a forbidden environment value"
+    fi
+    test "$(line_count "$forbidden_audit")" -eq "$before_audit" || \
+      die "fake Blender audited a rejected environment"
+    test "$(line_count "$forbidden_log")" -eq "$before_log" || \
+      die "fake Blender logged a rejected environment"
+  done
+done
 
 preflight="$tmp/fake-preflight"
 mkdir -p "$preflight/caller"
@@ -379,8 +552,8 @@ test "$happy_input_before" = "$(fingerprint_tree "$input_dir")" || \
   die "happy path modified a source or source sidecar"
 
 PYTHONDONTWRITEBYTECODE=1 python3 - \
-  "$repo/scripts" "$happy_log" "$input_dir" "$output_dir" "$fake_blender" "$expected_driver" <<'PY'
-import hashlib
+  "$repo/scripts" "$happy_log" "$input_dir" "$output_dir" \
+  "$fake_blender" "$expected_driver" "$happy_log.audit" <<'PY'
 import json
 import re
 import sys
@@ -390,10 +563,11 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, sys.argv[1])
 from glb_metrics import compare_preservation, inspect_glb
 
-log_path, input_dir, output_dir, fake_path, driver_path = map(Path, sys.argv[2:])
+log_path, input_dir, output_dir, fake_path, driver_path, audit_path = map(Path, sys.argv[2:])
 records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
 assert len(records) == 2
 assert [record["target"] for record in records] == [15000, 10000]
+assert audit_path.read_text(encoding="utf-8").splitlines() == ["version", "asset", "asset"]
 fixed_prefix = [
     "--background", "--factory-startup", "--offline-mode", "--disable-autoexec",
     "--threads", "1", "--python-exit-code", "97", "--python",
@@ -403,6 +577,7 @@ expected_source_triangles = ["30000", "20000"]
 expected_targets = ["15000", "10000"]
 expected_minima = ["13500", "9000"]
 expected_maxima = ["15000", "10000"]
+staged_outputs = []
 for index, record in enumerate(records):
     argv = record["argv"]
     assert Path(argv[0]).resolve() == fake_path.resolve()
@@ -418,19 +593,20 @@ for index, record in enumerate(records):
     values = dict(zip(post[0::2], post[1::2]))
     assert Path(values["--source"]) == expected_sources[index]
     staged_output = Path(values["--output"])
+    staged_outputs.append(staged_output)
     assert staged_output.resolve().is_relative_to(output_dir.resolve())
     assert staged_output.suffix == ".glb"
     assert values["--source-triangles"] == expected_source_triangles[index]
     assert values["--target-triangles"] == expected_targets[index]
     assert values["--minimum-triangles"] == expected_minima[index]
     assert values["--maximum-triangles"] == expected_maxima[index]
+assert len(set(staged_outputs)) == len(staged_outputs) == 2
 
-for filename, category, target, minimum, source_triangles in (
-    ("cat-source.glb", "cat", 15000, 13500, 30000),
-    ("prop-source.glb", "prop", 10000, 9000, 20000),
+for filename, target, minimum in (
+    ("cat-source.glb", 15000, 13500),
+    ("prop-source.glb", 10000, 9000),
 ):
     source = input_dir / filename
-    source_sidecar_path = Path(f"{source}.json")
     final = output_dir / filename
     proof_path = Path(f"{final}.json")
     assert final.is_file() and proof_path.is_file()
@@ -440,40 +616,6 @@ for filename, category, target, minimum, source_triangles in (
     assert minimum <= output_metrics["triangles"] <= target
     assert 5000 <= output_metrics["triangles"] <= 20000
     assert compare_preservation(source_metrics, output_metrics) == []
-
-    source_sidecar = json.loads(source_sidecar_path.read_text(encoding="utf-8"))
-    proof = json.loads(proof_path.read_text(encoding="utf-8"))
-    assert proof["schema_version"] == 1
-    assert proof["source"]["filename"] == filename
-    assert proof["source"]["sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
-    assert proof["source"]["sidecar_sha256"] == hashlib.sha256(source_sidecar_path.read_bytes()).hexdigest()
-    assert proof["source"]["provenance"] == {
-        key: source_sidecar[key]
-        for key in sorted({"service", "task_id", "timestamp_utc", "plan_tier", "prompt", "note"})
-    }
-    assert proof["derivative"] == {
-        "filename": filename,
-        "sha256": hashlib.sha256(final.read_bytes()).hexdigest(),
-    }
-    assert proof["tool"]["name"] == "Blender"
-    assert proof["tool"]["version"] == "5.1.2"
-    assert proof["tool"]["build_hash"] == "ec6e62d40fa9"
-    assert proof["tool"]["operation"] == "collapse-decimate"
-    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", proof["tool"]["timestamp_utc"])
-    geometry = proof["geometry"]
-    assert geometry["category"] == category
-    assert geometry["target_triangles"] == target
-    assert geometry["accepted_minimum"] == minimum
-    assert geometry["accepted_maximum"] == target
-    assert geometry["source"]["triangles"] == source_triangles
-    assert geometry["output"]["triangles"] == target
-    for facts in (geometry["source"], geometry["output"]):
-        assert set(facts) == {
-            "triangles", "vertices", "primitives", "materials",
-            "material_primitives", "images", "embedded_images", "uv_primitives",
-            "animations", "cameras", "lights", "skins", "morph_targets",
-            "extensions_used", "extensions_required", "world_bounds",
-        }
 
 forbidden = re.compile(
     r"api[_-]?key|token|secret|authorization|credential|bearer|https?://",
@@ -505,6 +647,13 @@ assert actual_entries == [
 ]
 PY
 
+assert_exact_provenance \
+  "$input_dir/cat-source.glb" "$output_dir/cat-source.glb" \
+  "$output_dir/cat-source.glb.json" cat 15000 13500 meshy "round fixture cat"
+assert_exact_provenance \
+  "$input_dir/prop-source.glb" "$output_dir/prop-source.glb" \
+  "$output_dir/prop-source.glb.json" prop 10000 9000 tripo "rounded fixture prop"
+
 # Each table row receives a fresh input/output tree. The shared runner proves
 # the named diagnostic, source custody, final-pair behavior, fake reachability,
 # curl abstinence, and absence of shell evaluation.
@@ -514,6 +663,7 @@ output_dir=
 manifest=
 final_glb=
 final_json=
+case_external_referent=
 
 prepare_valid_case() {
   local name=$1
@@ -524,6 +674,7 @@ prepare_valid_case() {
   manifest="$case_root/manifest.json"
   final_glb="$output_dir/asset.glb"
   final_json="$output_dir/asset.glb.json"
+  case_external_referent=
   mkdir -p "$input_dir" "$output_dir"
   write_fixture "$input_dir/asset.glb" --triangles "$triangles"
   write_sidecar "$input_dir/asset.glb" meshy "fixture cat" paid
@@ -557,9 +708,22 @@ run_failure_case() {
   local stdout="$case_root/run.stdout"
   local stderr="$case_root/run.stderr"
   local log="$case_root/fake.log"
-  local before_input before_lines after_lines old_glb_sha='' old_json_sha=''
+  local before_input before_output='' before_lines after_lines
+  local old_glb_sha='' old_json_sha=''
+  local referent_snapshot='' referent_sha='' referent_magic=''
 
   before_input=$(fingerprint_tree "$input_dir")
+  if [ "$existing" = preserve_tree ]; then
+    before_output=$(fingerprint_tree "$output_dir")
+  fi
+  if [ -n "$case_external_referent" ]; then
+    referent_snapshot="$case_root/external-referent.snapshot"
+    cp -- "$case_external_referent" "$referent_snapshot"
+    referent_sha=$(sha256_file "$case_external_referent")
+    referent_magic=$(magic_hex "$case_external_referent")
+    test "$referent_magic" = 676c5446 || \
+      die "$name external referent was not independently valid GLB input"
+  fi
   before_lines=$(line_count "$log")
   if [ "$existing" = preserve ]; then
     old_glb_sha=$(sha256_file "$final_glb")
@@ -577,6 +741,14 @@ run_failure_case() {
   fi
   test "$before_input" = "$(fingerprint_tree "$input_dir")" || \
     die "$name modified its source custody tree"
+  if [ -n "$case_external_referent" ]; then
+    test "$referent_sha" = "$(sha256_file "$case_external_referent")" || \
+      die "$name changed its external referent hash"
+    test "$referent_magic" = "$(magic_hex "$case_external_referent")" || \
+      die "$name changed its external referent magic"
+    cmp -s "$referent_snapshot" "$case_external_referent" || \
+      die "$name changed its external referent bytes"
+  fi
 
   after_lines=$(line_count "$log")
   if [ "$fake_reached" = yes ]; then
@@ -592,6 +764,9 @@ run_failure_case() {
       die "$name changed the existing derivative"
     test "$old_json_sha" = "$(sha256_file "$final_json")" || \
       die "$name changed the existing provenance"
+  elif [ "$existing" = preserve_tree ]; then
+    test "$before_output" = "$(fingerprint_tree "$output_dir")" || \
+      die "$name changed its pre-existing output tree or symlink"
   elif find "$output_dir" -mindepth 1 -print -quit | grep -q .; then
     find "$output_dir" -mindepth 1 -print >&2
     die "$name left a final or staged output"
@@ -667,12 +842,19 @@ setup_path_escape() {
   prepare_valid_case path-escape
   write_single_manifest "$manifest" fixture-cat cat meshy ../escape.glb "fixture cat"
 }
-setup_symlink_escape() {
-  prepare_valid_case symlink-escape
-  mv "$input_dir/asset.glb" "$case_root/outside.glb"
+setup_input_symlink_escape() {
+  prepare_valid_case input-symlink-escape
+  case_external_referent="$case_root/outside-input.glb"
+  mv "$input_dir/asset.glb" "$case_external_referent"
   rm -f -- "$input_dir/asset.glb.json"
-  ln -s "../outside.glb" "$input_dir/asset.glb"
+  ln -s "../outside-input.glb" "$input_dir/asset.glb"
   write_sidecar "$input_dir/asset.glb" meshy "fixture cat" paid
+}
+setup_output_symlink_escape() {
+  prepare_valid_case output-symlink-escape
+  case_external_referent="$case_root/outside-output.glb"
+  write_fixture "$case_external_referent" --triangles 14000
+  ln -s "../outside-output.glb" "$final_glb"
 }
 setup_wrong_version() {
   prepare_valid_case wrong-version
@@ -721,8 +903,10 @@ setup_path_escape
 run_failure_case "manifest path escape" success 'bare \.glb filename' no
 test ! -e "$case_root/escape.glb" && test ! -e "$case_root/escape.glb.json" || \
   die "manifest path escape created an escaped output"
-setup_symlink_escape
-run_failure_case "source symlink escape" success 'path escapes' no
+setup_input_symlink_escape
+run_failure_case "input-leaf symlink escape" success 'path escapes' no
+setup_output_symlink_escape
+run_failure_case "output-leaf symlink escape" success 'path escapes' no preserve_tree
 setup_wrong_version
 run_failure_case "wrong Blender version" success 'requires Blender 5\.1\.2' no
 unset CASE_BLENDER_VERSION
@@ -833,6 +1017,9 @@ assert sorted(path.name for path in glb.parent.iterdir()) == [
     "asset.glb", "asset.glb.json"
 ]
 PY
+assert_exact_provenance \
+  "$input_dir/asset.glb" "$final_glb" "$final_json" \
+  cat 15000 13500 meshy "fixture cat"
 assert_no_external_effects
 
 # Static network boundary: the inspector, Blender driver, and orchestrator may
@@ -858,9 +1045,12 @@ PY
 # Fault injection at the public promotion boundary. The injected exception is
 # tied to the staged-JSON -> final-JSON replace, so both rollback legs prove
 # the first promotion really occurred before the second one failed.
-PYTHONDONTWRITEBYTECODE=1 python3 - "$decimate_script" "$tmp/helper-faults" <<'PY'
+PYTHONDONTWRITEBYTECODE=1 python3 - \
+  "$decimate_script" "$tmp/helper-faults" "$repo" "$fake_blender" <<'PY'
+import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import sys
@@ -869,7 +1059,13 @@ from unittest import mock
 
 script = Path(sys.argv[1])
 root = Path(sys.argv[2])
+repo = Path(sys.argv[3])
+fake_blender = Path(sys.argv[4])
 root.mkdir()
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(repo / "tests" / "assets"))
+from glb_fixture import write_glb
+
 spec = importlib.util.spec_from_file_location("decimate_assets_under_test", script)
 assert spec is not None and spec.loader is not None
 module = importlib.util.module_from_spec(spec)
@@ -932,27 +1128,112 @@ def inject_second_promotion(directory, force):
 inject_second_promotion(root / "new-destination", False)
 inject_second_promotion(root / "forced-destination", True)
 
-staged = root / "provenance-failure.json"
-record = {"schema_version": 1, "derivative": {"sha256": "0" * 64}}
+# Freeze main(argv: list[str]) as the import-safe orchestration interface. This
+# fault reaches the real one-asset path after version check, fake execution,
+# and candidate validation, then fails the staged provenance Path.open before
+# promotion can begin.
+orchestration = root / "provenance-orchestration"
+input_dir = orchestration / "input"
+output_dir = orchestration / "output"
+input_dir.mkdir(parents=True)
+output_dir.mkdir()
+source = input_dir / "asset.glb"
+source_sidecar = Path(f"{source}.json")
+manifest = orchestration / "manifest.json"
+final_glb = output_dir / "asset.glb"
+final_json = output_dir / "asset.glb.json"
+fake_log = orchestration / "fake.log"
+fake_audit = orchestration / "fake.audit"
+write_glb(source, triangles=30000)
+source_sha = digest(source)
+source_sidecar.write_text(json.dumps({
+    "service": "meshy",
+    "task_id": "fixture-meshy-task",
+    "timestamp_utc": "2026-08-15T12:34:56Z",
+    "plan_tier": "paid",
+    "prompt": "fixture cat",
+    "note": "local paid fixture",
+    "sha256": source_sha,
+}, sort_keys=True) + "\n", encoding="utf-8")
+manifest.write_text(json.dumps({"assets": [{
+    "id": "fixture-cat",
+    "kind": "cat",
+    "service": "meshy",
+    "out": "asset.glb",
+    "prompt": "fixture cat",
+}]}, sort_keys=True) + "\n", encoding="utf-8")
+source_before = source.read_bytes()
+sidecar_before = source_sidecar.read_bytes()
+
 real_open = Path.open
 promote = mock.Mock()
+opened_paths = []
 
 def failing_open(path, *args, **kwargs):
-    if path == staged:
+    mode = args[0] if args else kwargs.get("mode", "r")
+    candidate = Path(path)
+    resolved = candidate.resolve(strict=False)
+    if (
+        any(flag in mode for flag in "wax")
+        and candidate.suffix == ".json"
+        and resolved.is_relative_to(output_dir.resolve())
+        and candidate != final_json
+    ):
+        opened_paths.append(candidate)
         raise OSError("injected staged provenance failure")
     return real_open(path, *args, **kwargs)
 
-with mock.patch.object(Path, "open", failing_open), mock.patch.object(
-    module, "promote_pair", promote
+sentinel_environment = {
+    "FAKE_BLENDER_MODE": "success",
+    "FAKE_BLENDER_LOG": str(fake_log),
+    "FAKE_BLENDER_AUDIT": str(fake_audit),
+    "PIPELINE_SENTINEL_KEY": "orchestration-sentinel-1",
+    "PIPELINE_SENTINEL_TOKEN": "orchestration-sentinel-2",
+    "PIPELINE_SENTINEL_SECRET": "orchestration-sentinel-3",
+    "PIPELINE_SENTINEL_AUTH": "orchestration-sentinel-4",
+    "PIPELINE_SENTINEL_CREDENTIAL": "orchestration-sentinel-5",
+    "PIPELINE_SENTINEL_BEARER": "orchestration-sentinel-6",
+    "PYTHONDONTWRITEBYTECODE": "1",
+}
+arguments = [
+    "--manifest", str(manifest),
+    "--input-dir", str(input_dir),
+    "--output-dir", str(output_dir),
+    "--blender", str(fake_blender),
+]
+stdout = io.StringIO()
+stderr = io.StringIO()
+assert callable(module.main), "decimate-assets.py must expose main(argv: list[str]) -> int"
+with (
+    mock.patch.dict(os.environ, sentinel_environment, clear=False),
+    mock.patch.object(Path, "open", failing_open),
+    mock.patch.object(module, "promote_pair", promote),
+    contextlib.redirect_stdout(stdout),
+    contextlib.redirect_stderr(stderr),
 ):
     try:
-        module.write_staged_provenance(staged, record)
+        main_result = module.main(arguments)
     except OSError as exc:
         assert "injected staged provenance failure" in str(exc)
+    except SystemExit as exc:
+        assert isinstance(exc.code, int) and exc.code != 0
     else:
-        raise AssertionError("write_staged_provenance swallowed open failure")
+        assert isinstance(main_result, int) and main_result != 0
+
+assert len(opened_paths) == 1
+assert opened_paths[0] != final_json
+assert opened_paths[0].resolve(strict=False).is_relative_to(output_dir.resolve())
 promote.assert_not_called()
-assert not staged.exists()
+assert not final_glb.exists() and not final_json.exists()
+assert source.read_bytes() == source_before
+assert source_sidecar.read_bytes() == sidecar_before
+records = [json.loads(line) for line in fake_log.read_text(encoding="utf-8").splitlines()]
+assert len(records) == 1 and records[0]["target"] == 15000
+assert fake_audit.read_text(encoding="utf-8").splitlines() == ["version", "asset"]
+combined_output = stdout.getvalue() + stderr.getvalue()
+for value in sentinel_environment.values():
+    if value.startswith("orchestration-sentinel-"):
+        assert value not in combined_output
 PY
 
 assert_no_external_effects
