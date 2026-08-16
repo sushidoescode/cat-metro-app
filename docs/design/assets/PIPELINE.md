@@ -168,3 +168,15 @@ auth value redacted, JSON body, poll/download plan) and requires no keys. Agents
 with dry-run + `tests/assets/gen-assets-custody.test.sh` and
 `tests/assets/tripo-model-contract.test.sh`; live generation is human-armed only, via
 the one-liner above.
+
+## Local decimation boundary
+
+Generation custody ends at
+`unity/Assets/Art/Generated/incoming/{manifest-out}` and its source provenance
+sidecar. The separate offline derivative workflow is documented in
+[DECIMATION.md](DECIMATION.md); it writes only beneath the ignored
+`incoming/decimated/` tree. Decimation does not contact either generation
+service and does not change or supersede the source's service, account tier,
+prompt, task, timestamp, provenance, or license record. Promotion into tracked
+Unity assets remains subject to the separate generated-asset license ADR,
+curation contract, and human approval.
