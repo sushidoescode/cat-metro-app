@@ -274,6 +274,10 @@ target_template = root / "hardening-target.glb"
 python = sys.executable
 environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
 failures: list[str] = []
+maximum_source_bytes = 512 * 1024 * 1024
+oversized_diagnostic = (
+    f"glb-silhouette: source GLB exceeds {maximum_source_bytes}-byte limit"
+)
 
 count_error = root / "two-regions-count.err"
 if count_error.exists():
@@ -393,6 +397,18 @@ def check_prefixed_failure(
         f"{label}: expected one prefixed diagnostic, got {result.stderr!r}",
     )
     check("Traceback" not in result.stderr, f"{label}: leaked a traceback")
+
+
+def check_oversized_failure(
+    result: subprocess.CompletedProcess[str],
+    label: str,
+) -> None:
+    check(result.returncode == 1, f"{label}: expected exit 1")
+    check(result.stdout == "", f"{label}: failure wrote stdout")
+    check(
+        result.stderr == oversized_diagnostic + "\n",
+        f"{label}: expected {oversized_diagnostic!r}, got {result.stderr!r}",
+    )
 
 
 def parse_glb(path: Path) -> tuple[dict[str, object], bytearray]:
@@ -955,15 +971,21 @@ check(
 )
 
 
-# A sparse 512 MiB + 1 input runs in a lower-priority subprocess whose elapsed
-# time and resident set are monitored externally.  This black-box oracle is
-# independent of whether production reads with Path.read_bytes, Path.open,
-# builtins.open, or another API.
+# A sparse 1 TiB input runs in a lower-priority subprocess whose elapsed time
+# and resident set are monitored externally.  It cannot be fully consumed by a
+# bounded-memory streaming reader before the hard timeout.  Production may
+# read a small bounded header, but must select the size-limit diagnostic before
+# walking the file.
 oversized_case = root / "oversized-input"
 oversized_case.mkdir()
 oversized_source = oversized_case / "oversized.glb"
 with oversized_source.open("wb") as handle:
-    handle.truncate(512 * 1024 * 1024 + 1)
+    handle.write(
+        struct.pack("<4sII", b"glTF", 2, 0xFFFFFFFF)
+        + struct.pack("<I4s", 4, b"JSON")
+        + b"{}  "
+    )
+    handle.truncate(1 << 40)
 oversized_output = oversized_case / "oversized.png"
 oversized_result, oversized_memory, oversized_time, oversized_peak = (
     invoke_with_rss_limit(
@@ -983,43 +1005,71 @@ if oversized_memory:
 elif oversized_time:
     failures.append("oversized input exceeded bounded runtime")
 else:
-    check_prefixed_failure(oversized_result, "oversized input")
+    check_oversized_failure(oversized_result, "oversized input")
 check(not oversized_output.exists(), "oversized input left an output PNG")
 check(
     {path.name for path in oversized_case.iterdir()} == {"oversized.glb"},
     "oversized input left staging residue",
 )
 
-# Mutation control: the same external monitor must stop an implementation that
-# changes only its reader to Path.open('rb').read().  This would have escaped
-# the former Path.read_bytes monkeypatch without exercising any product seam.
-alternate_reader = root / "alternate-open-reader.py"
-alternate_reader.write_text(
+# Control: one bounded 1 MiB inspection read stays under both limits and may
+# still produce the exact size diagnostic.
+bounded_reader = root / "bounded-header-reader.py"
+bounded_reader.write_text(
     "from pathlib import Path\n"
     "import sys\n"
     "with Path(sys.argv[1]).open('rb') as handle:\n"
-    "    handle.read()\n"
-    "print('glb-silhouette: alternate reader escaped bound', file=sys.stderr)\n"
+    "    handle.read(1024 * 1024)\n"
+    f"print({oversized_diagnostic!r}, file=sys.stderr)\n"
     "raise SystemExit(1)\n",
     encoding="utf-8",
 )
-alternate_output = root / "alternate-open-reader.png"
-alternate_result, alternate_memory, alternate_time, alternate_peak = (
+bounded_output = root / "bounded-header-reader.png"
+bounded_result, bounded_memory, bounded_time, _bounded_peak = (
     invoke_with_rss_limit(
-        alternate_reader,
+        bounded_reader,
         oversized_source,
-        alternate_output,
+        bounded_output,
         timeout=2.0,
     )
 )
 check(
-    alternate_memory
-    and not alternate_time
-    and alternate_result.returncode != 0
-    and alternate_peak > 64 * 1024 * 1024,
-    "bounded oversize oracle did not kill the Path.open().read() mutation",
+    not bounded_memory and not bounded_time,
+    "bounded oversize oracle rejected a small inspection read",
 )
-check(not alternate_output.exists(), "alternate reader mutation left output")
+check_oversized_failure(bounded_result, "bounded inspection control")
+check(not bounded_output.exists(), "bounded inspection control left output")
+
+# Mutation control: a Path.open(...).read(1 MiB) loop keeps resident memory
+# small, but full streaming consumption of 1 TiB must hit the time bound before
+# it can print the otherwise-exact diagnostic.
+streaming_reader = root / "streaming-chunk-reader.py"
+streaming_reader.write_text(
+    "from pathlib import Path\n"
+    "import sys\n"
+    "with Path(sys.argv[1]).open('rb') as handle:\n"
+    "    while handle.read(1024 * 1024):\n"
+    "        pass\n"
+    f"print({oversized_diagnostic!r}, file=sys.stderr)\n"
+    "raise SystemExit(1)\n",
+    encoding="utf-8",
+)
+streaming_output = root / "streaming-chunk-reader.png"
+streaming_result, streaming_memory, streaming_time, _streaming_peak = (
+    invoke_with_rss_limit(
+        streaming_reader,
+        oversized_source,
+        streaming_output,
+        timeout=1.0,
+    )
+)
+check(
+    streaming_time
+    and not streaming_memory
+    and streaming_result.returncode != 0,
+    "bounded oversize oracle did not stop the streaming-chunk mutation",
+)
+check(not streaming_output.exists(), "streaming reader mutation left output")
 
 
 if failures:
