@@ -2012,14 +2012,16 @@ if [ "$review_section" = all ] || [ "$review_section" = F ]; then
 
   assert_version_banner_custody() {
     local label=$1
+    local expected_terminal=${2:-empty}
     test "$version_input_before" = "$(fingerprint_tree "$input_dir")" || \
       die "$label changed its source custody tree"
-    if find "$version_case" \
-      \( -name '.glb-decimation-*' -o -name '*.backup-*' \) \
-      -print -quit | grep -q .; then
-      find "$version_case" \
-        \( -name '.glb-decimation-*' -o -name '*.backup-*' \) -print >&2
-      die "$label left transaction residue"
+    if [ "$expected_terminal" = pair ]; then
+      test "$(LC_ALL=C command ls -1A "$output_dir" | sort)" = \
+        $'asset.glb\nasset.glb.json' || \
+        die "$label changed the public output tree"
+    else
+      test -z "$(find "$output_dir" -mindepth 1 -print -quit)" || \
+        die "$label changed the public output tree"
     fi
     assert_no_external_effects
   }
@@ -2081,7 +2083,11 @@ if [ "$review_section" = all ] || [ "$review_section" = F ]; then
       success "$version_log" "$version_stdout" "$version_stderr"
   banner_rc=$?
   set -e
-  assert_version_banner_custody "official pinned Blender banner"
+  if [ "$banner_rc" -eq 0 ]; then
+    assert_version_banner_custody "official pinned Blender banner" pair
+  else
+    assert_version_banner_custody "official pinned Blender banner"
+  fi
   if [ "$banner_rc" -ne 0 ]; then
     test ! -s "$version_stdout" || \
       die "rejected official Blender banner wrote an acceptance record"
@@ -2112,7 +2118,7 @@ if [ "$review_section" = all ] || [ "$review_section" = F ]; then
   test "$(LC_ALL=C command ls -1A "$output_dir" | sort)" = \
     $'asset.glb\nasset.glb.json' || \
     die "official Blender banner did not produce one exact final pair"
-  assert_version_banner_custody "official pinned Blender banner"
+  assert_version_banner_custody "official pinned Blender banner" pair
 fi
 
 if [ "$review_section" = F ]; then
@@ -4557,8 +4563,7 @@ def exercise_size_preflight(
                 self._reject("line reads")
 
             def peek(self, size=-1):
-                if size == 0:
-                    return self._handle.peek(size)
+                # BufferedReader.peek(0) may still fill and expose bytes.
                 self._reject("peek")
 
             def __iter__(self):
@@ -4580,6 +4585,28 @@ def exercise_size_preflight(
                 finally:
                     if self._descriptor is not None:
                         guarded_fds.discard(self._descriptor)
+
+            def _wrap_exposed_handle(self, handle):
+                descriptor = self._descriptor
+                if descriptor is None:
+                    try:
+                        descriptor = handle.fileno()
+                    except (AttributeError, OSError, ValueError):
+                        descriptor = None
+                if descriptor is not None:
+                    guarded_fds.add(descriptor)
+                return GuardedReader(handle, descriptor)
+
+            @property
+            def raw(self):
+                return self._wrap_exposed_handle(self._handle.raw)
+
+            @property
+            def buffer(self):
+                return self._wrap_exposed_handle(self._handle.buffer)
+
+            def detach(self):
+                return self._wrap_exposed_handle(self._handle.detach())
 
             def __getattr__(self, name):
                 return getattr(self._handle, name)
@@ -4827,8 +4854,26 @@ def exercise_size_preflight(
 
                 with guarded_path.open("rb") as zero_handle:
                     descriptor_only_passed = (
-                        descriptor_only_passed and zero_handle.read(0) == b""
+                        descriptor_only_passed
+                        and zero_handle.read(0) == b""
+                        and zero_handle.raw.read(0) == b""
                     )
+                with io.open(
+                    guarded_path, "r", encoding="ascii"
+                ) as zero_text_handle:
+                    descriptor_only_passed = (
+                        descriptor_only_passed
+                        and zero_text_handle.buffer.read(0) == b""
+                    )
+                zero_detach_handle = io.open(guarded_path, "rb")
+                zero_detached = zero_detach_handle.detach()
+                try:
+                    descriptor_only_passed = (
+                        descriptor_only_passed
+                        and zero_detached.read(0) == b""
+                    )
+                finally:
+                    zero_detached.close()
                 descriptor_only_passed = (
                     descriptor_only_passed and not read_attempted["value"]
                 )
@@ -4875,6 +4920,15 @@ def exercise_size_preflight(
                     finally:
                         mapping.close()
 
+                def mmap_zero_length_read(descriptor_value):
+                    mapping = mmap.mmap(
+                        descriptor_value, 0, access=mmap.ACCESS_READ
+                    )
+                    try:
+                        return mapping[0]
+                    finally:
+                        mapping.close()
+
                 def copyfileobj_read():
                     with (
                         io.open(guarded_path, "rb") as source_handle,
@@ -4883,6 +4937,20 @@ def exercise_size_preflight(
                         shutil.copyfileobj(
                             source_handle, destination_handle, length=1
                         )
+
+                def detached_file_read():
+                    source_handle = io.open(guarded_path, "rb")
+                    detached_handle = source_handle.detach()
+                    try:
+                        return detached_handle.read(1)
+                    finally:
+                        detached_handle.close()
+
+                def text_buffer_read():
+                    with io.open(
+                        guarded_path, "r", encoding="ascii"
+                    ) as source_handle:
+                        return source_handle.buffer.read(1)
 
                 mutation_readers = {
                     "path.read_bytes": lambda: guarded_path.read_bytes(),
@@ -4896,11 +4964,18 @@ def exercise_size_preflight(
                     "file.readline": file_reader(
                         lambda handle: handle.readline(1)
                     ),
+                    "file.peek-zero": file_reader(lambda handle: handle.peek(0)),
+                    "file.raw.read": file_reader(
+                        lambda handle: handle.raw.read(1)
+                    ),
+                    "file.detach.read": detached_file_read,
+                    "file.buffer.read": text_buffer_read,
                     "file.iteration": file_reader(lambda handle: next(handle)),
                     "os.read": descriptor_reader(
                         lambda descriptor_value: os.read(descriptor_value, 1)
                     ),
                     "mmap": descriptor_reader(mmap_read),
+                    "mmap-zero-length": descriptor_reader(mmap_zero_length_read),
                     "shutil.copyfile": lambda: shutil.copyfile(
                         guarded_path, mutation_copy
                     ),
@@ -5044,9 +5119,14 @@ def exercise_size_preflight(
         "builtins.read",
         "file.readinto",
         "file.readline",
+        "file.peek-zero",
+        "file.raw.read",
+        "file.detach.read",
+        "file.buffer.read",
         "file.iteration",
         "os.read",
         "mmap",
+        "mmap-zero-length",
         "shutil.copyfile",
         "shutil.copy",
         "shutil.copy2",
@@ -6417,6 +6497,50 @@ def error_classification_case(
         assert "lost UV" not in stderr, stderr
 
 
+def arbitrary_uv_mapping_case() -> None:
+    # Select three runtime-derived values per axis, then exercise their full
+    # Cartesian product. This contains mesh-only, primitive-only, UV-only,
+    # pairwise, and all-axis changes without publishing a finite tuple lookup.
+    seed = os.lstat(root).st_ino ^ os.getpid()
+    meshes = (seed % 97 + 1, seed % 97 + 102, seed % 997 + 1000)
+    primitives = (seed % 89 + 1, seed % 89 + 96, seed % 991 + 1000)
+    uv_sets = (seed % 5 + 1, seed % 5 + 8, seed % 983 + 1000)
+    selected = {
+        (mesh, primitive, uv_set)
+        for mesh in meshes
+        for primitive in primitives
+        for uv_set in uv_sets
+    }
+    assert len(selected) == 27
+    base = (meshes[0], primitives[0], uv_sets[0])
+    axis_witnesses = {
+        "mesh-only": (meshes[2], primitives[0], uv_sets[0]),
+        "primitive-only": (meshes[0], primitives[2], uv_sets[0]),
+        "uv-only": (meshes[0], primitives[0], uv_sets[2]),
+        "all-axes": (meshes[2], primitives[2], uv_sets[2]),
+    }
+    assert all(witness in selected for witness in axis_witnesses.values())
+    assert sum(left != right for left, right in zip(base, axis_witnesses["mesh-only"])) == 1
+    assert sum(left != right for left, right in zip(base, axis_witnesses["primitive-only"])) == 1
+    assert sum(left != right for left, right in zip(base, axis_witnesses["uv-only"])) == 1
+    assert sum(left != right for left, right in zip(base, axis_witnesses["all-axes"])) == 3
+    for axis, label in enumerate(("mesh-only", "primitive-only", "uv-only")):
+        witness = axis_witnesses[label]
+        assert witness[axis] >= 1000 and len(str(witness[axis])) >= 4
+        assert not all(len(str(value)) <= 3 for value in witness), (
+            "digit-width mutant accepted a large-axis witness",
+            label,
+            witness,
+        )
+    for ordinal, (mesh, primitive, uv_set) in enumerate(sorted(selected)):
+        error_classification_case(
+            f"arbitrary-uv-{ordinal}",
+            f"meshes[{mesh}].primitives[{primitive}] material references "
+            f"missing TEXCOORD_{uv_set}",
+            True,
+        )
+
+
 def child_entry(result_queue, function, arguments) -> None:
     try:
         try:
@@ -6523,6 +6647,7 @@ run_bounded(
     "meshes[7].primitives[11] material references missing TEXCOORD_3",
     True,
 )
+run_bounded("arbitrary-selected-uv-mapping", arbitrary_uv_mapping_case)
 run_bounded(
     "lost-uv-prefix-near-miss",
     error_classification_case,
@@ -6579,6 +6704,7 @@ import mmap
 import multiprocessing
 import os
 import queue as queue_module
+import selectors
 import shutil
 import signal
 import stat
@@ -6614,9 +6740,9 @@ MAX_PROVENANCE_BYTES = 2_097_152
 MAX_DERIVATIVE_BYTES = 67_108_864
 MAX_CHILD_STREAM_BYTES = MAX_METADATA_BYTES
 MAX_DIAGNOSTIC_BYTES = 512
-MAX_COMPONENT_BYTES = 255
-UUID_HEX_BYTES = 32
+MAX_TRANSACTION_SAFE_FILENAME_BYTES = 208
 MAX_OVERFLOW_SECONDS = 4
+MAX_PUBLIC_CAPTURE_BYTES = 4 * MAX_DIAGNOSTIC_BYTES
 
 process_context = multiprocessing.get_context("fork")
 errors: list[str] = []
@@ -6818,13 +6944,6 @@ def fake_argument_path(case: types.SimpleNamespace, flag: str) -> Path:
     return Path(argv[index + 1])
 
 
-def staged_pair_from_fake_record(
-    case: types.SimpleNamespace,
-) -> dict[str, Path]:
-    staged_glb = fake_argument_path(case, "--output")
-    return {"glb": staged_glb, "json": Path(f"{staged_glb}.json")}
-
-
 def path_identity(path: Path) -> tuple[int, int] | None:
     try:
         status = os.lstat(path)
@@ -6839,19 +6958,6 @@ def observed_path_key(path: Path) -> str:
 
 def same_observed_path(left: Path, right: Path) -> bool:
     return observed_path_key(left) == observed_path_key(right)
-
-
-def observe_old_role_destination(
-    case: types.SimpleNamespace,
-    source_identity: tuple[int, int] | None,
-    destination: Path,
-    observed: dict[str, Path],
-) -> None:
-    if case.old_identities is None or source_identity is None:
-        return
-    for role, identity in case.old_identities.items():
-        if source_identity == identity:
-            observed[role] = destination
 
 
 def assert_fake_reached(case: types.SimpleNamespace) -> None:
@@ -6893,30 +6999,11 @@ def assert_success_pair(
     }
 
 
-def force_failure_terminal(
-    case: types.SimpleNamespace,
-    observed_old_locations: dict[str, Path],
-) -> bool:
+def assert_old_public_pair(case: types.SimpleNamespace) -> None:
     assert case.old_pair is not None
-    entries = list(case.output.iterdir())
-    if (
-        set(entries) == {case.final_glb, case.final_json}
-        and case.final_glb.read_bytes() == case.old_pair[0]
-        and case.final_json.read_bytes() == case.old_pair[1]
-    ):
-        return True
-    if case.final_glb.exists() or case.final_json.exists() or len(entries) != 2:
-        return False
-    if set(observed_old_locations) != {"glb", "json"}:
-        return False
-    glb_backup = observed_old_locations["glb"]
-    json_backup = observed_old_locations["json"]
-    return (
-        {observed_path_key(path) for path in entries}
-        == {observed_path_key(glb_backup), observed_path_key(json_backup)}
-        and glb_backup.read_bytes() == case.old_pair[0]
-        and json_backup.read_bytes() == case.old_pair[1]
-    )
+    assert case.final_glb.read_bytes() == case.old_pair[0]
+    assert case.final_json.read_bytes() == case.old_pair[1]
+    assert set(case.output.iterdir()) == {case.final_glb, case.final_json}
 
 
 def lock_release_terminal_case() -> None:
@@ -6961,20 +7048,7 @@ def lock_release_terminal_case() -> None:
 
 def force_cleanup_terminal_case() -> None:
     case = setup_case("force-cleanup-terminal", force=True)
-    real_replace = os.replace
-    observed_old_locations: dict[str, Path] = {}
     injected_attempts = 0
-
-    def observe_replace(source, destination, *args, **kwargs):
-        source_identity = path_identity(Path(source))
-        result = real_replace(source, destination, *args, **kwargs)
-        observe_old_role_destination(
-            case,
-            source_identity,
-            Path(destination),
-            observed_old_locations,
-        )
-        return result
 
     def reject_old_member_removal(event, arguments):
         nonlocal injected_attempts
@@ -6995,8 +7069,7 @@ def force_cleanup_terminal_case() -> None:
             raise OSError("injected persistent old-member cleanup failure")
 
     sys.addaudithook(reject_old_member_removal)
-    with mock.patch.object(os, "replace", observe_replace):
-        result, stdout, stderr, caught = run_main(case)
+    result, stdout, stderr, caught = run_main(case)
     assert injected_attempts >= 2
     assert caught is None
     assert_source_unchanged(case)
@@ -7006,65 +7079,59 @@ def force_cleanup_terminal_case() -> None:
         assert result == 1
         assert "output_triangles=" not in stdout
         assert_one_diagnostic(stderr)
-        assert force_failure_terminal(case, observed_old_locations), (
-            "force cleanup failure left neither exact old finals nor a complete "
-            "recoverable old backup pair"
-        )
+        assert_old_public_pair(case)
 
 
-class LateReadAttempt(RuntimeError):
+class BoundedReadAttempt(RuntimeError):
     pass
 
 
-class GuardedReader:
+class BoundedReader:
     def __init__(self, handle, guard) -> None:
         self.handle = handle
         self.guard = guard
 
-    def _read(self, operation: str, size: int | None = None):
-        if size == 0:
-            return None
-        self.guard.reject(operation)
+    def _payload(self, operation: str, payload):
+        self.guard.observe(len(payload), operation)
+        return payload
 
-    def read(self, size=-1, *args):
-        if size == 0:
-            return self.handle.read(size, *args)
-        self.guard.reject("file.read")
+    def read(self, *args, **kwargs):
+        return self._payload("file.read", self.handle.read(*args, **kwargs))
 
-    def read1(self, size=-1):
-        if size == 0:
-            return self.handle.read1(size)
-        self.guard.reject("file.read1")
+    def read1(self, *args, **kwargs):
+        return self._payload("file.read1", self.handle.read1(*args, **kwargs))
 
     def readall(self):
-        self.guard.reject("file.readall")
+        return self._payload("file.readall", self.handle.readall())
 
     def readinto(self, buffer):
-        if len(memoryview(buffer)) == 0:
-            return self.handle.readinto(buffer)
-        self.guard.reject("file.readinto")
+        count = self.handle.readinto(buffer)
+        self.guard.observe(0 if count is None else count, "file.readinto")
+        return count
 
     def readinto1(self, buffer):
-        if len(memoryview(buffer)) == 0:
-            return self.handle.readinto1(buffer)
-        self.guard.reject("file.readinto1")
+        count = self.handle.readinto1(buffer)
+        self.guard.observe(0 if count is None else count, "file.readinto1")
+        return count
 
-    def readline(self, size=-1):
-        if size == 0:
-            return self.handle.readline(size)
-        self.guard.reject("file.readline")
+    def readline(self, *args, **kwargs):
+        return self._payload("file.readline", self.handle.readline(*args, **kwargs))
 
-    def readlines(self, hint=-1):
-        self.guard.reject("file.readlines")
+    def readlines(self, *args, **kwargs):
+        lines = self.handle.readlines(*args, **kwargs)
+        self.guard.observe(sum(len(line) for line in lines), "file.readlines")
+        return lines
 
-    def peek(self, size=-1):
-        self.guard.reject("file.peek")
+    def peek(self, *args, **kwargs):
+        # The returned payload, not the requested size, is authoritative:
+        # BufferedReader.peek(0) may fill and expose its internal buffer.
+        return self._payload("file.peek", self.handle.peek(*args, **kwargs))
 
     def __iter__(self):
         return self
 
     def __next__(self):
-        self.guard.reject("file iteration")
+        return self._payload("file iteration", next(self.handle))
 
     def __enter__(self):
         self.handle.__enter__()
@@ -7073,15 +7140,28 @@ class GuardedReader:
     def __exit__(self, *args):
         return self.handle.__exit__(*args)
 
+    @property
+    def raw(self):
+        return BoundedReader(self.handle.raw, self.guard)
+
+    @property
+    def buffer(self):
+        return BoundedReader(self.handle.buffer, self.guard)
+
+    def detach(self):
+        return BoundedReader(self.handle.detach(), self.guard)
+
     def __getattr__(self, name):
         return getattr(self.handle, name)
 
 
-class LateReadGuard:
-    def __init__(self) -> None:
+class BoundedReadGuard:
+    def __init__(self, maximum_bytes: int) -> None:
+        self.maximum_bytes = maximum_bytes
         self.identity: tuple[int, int] | None = None
-        self.production_attempted = False
-        self.probing = False
+        self.total_bytes = 0
+        self.over_limit = False
+        self.operations: list[str] = []
         self.real_builtin_open = builtins.open
         self.real_io_open = io.open
         self.real_fdopen = os.fdopen
@@ -7117,55 +7197,76 @@ class LateReadGuard:
             return False
         return (status.st_dev, status.st_ino) == self.identity
 
-    def reject(self, operation: str):
-        if not self.probing:
-            self.production_attempted = True
-        raise LateReadAttempt(operation)
+    def observe(self, count: int, operation: str) -> None:
+        if count <= 0:
+            return
+        self.total_bytes += count
+        self.operations.append(operation)
+        if self.total_bytes > self.maximum_bytes:
+            self.over_limit = True
+            raise BoundedReadAttempt(operation)
 
     def guarded_builtin_open(self, file, *args, **kwargs):
         handle = self.real_builtin_open(file, *args, **kwargs)
-        return GuardedReader(handle, self) if self.path_is_target(file) else handle
+        return BoundedReader(handle, self) if self.path_is_target(file) else handle
 
     def guarded_io_open(self, file, *args, **kwargs):
         handle = self.real_io_open(file, *args, **kwargs)
-        return GuardedReader(handle, self) if self.path_is_target(file) else handle
+        return BoundedReader(handle, self) if self.path_is_target(file) else handle
 
     def guarded_fdopen(self, descriptor, *args, **kwargs):
         handle = self.real_fdopen(descriptor, *args, **kwargs)
-        return GuardedReader(handle, self) if self.fd_is_target(descriptor) else handle
+        return BoundedReader(handle, self) if self.fd_is_target(descriptor) else handle
 
     def guarded_read(self, descriptor, count):
-        if self.fd_is_target(descriptor) and count != 0:
-            self.reject("os.read")
-        return self.real_read(descriptor, count)
+        payload = self.real_read(descriptor, count)
+        if self.fd_is_target(descriptor):
+            self.observe(len(payload), "os.read")
+        return payload
+
+    def _copy_observed(self, operation, source, destination, *args, **kwargs):
+        target = self.path_is_target(source)
+        before = self.total_bytes
+        result = operation(source, destination, *args, **kwargs)
+        if target and self.total_bytes == before:
+            self.observe(os.lstat(destination).st_size, operation.__name__)
+        return result
 
     def guarded_copyfile(self, source, destination, *args, **kwargs):
-        if self.path_is_target(source):
-            self.reject("shutil.copyfile")
-        return self.real_copyfile(source, destination, *args, **kwargs)
+        return self._copy_observed(
+            self.real_copyfile, source, destination, *args, **kwargs
+        )
 
     def guarded_copy(self, source, destination, *args, **kwargs):
-        if self.path_is_target(source):
-            self.reject("shutil.copy")
-        return self.real_copy(source, destination, *args, **kwargs)
+        return self._copy_observed(
+            self.real_copy, source, destination, *args, **kwargs
+        )
 
     def guarded_copy2(self, source, destination, *args, **kwargs):
-        if self.path_is_target(source):
-            self.reject("shutil.copy2")
-        return self.real_copy2(source, destination, *args, **kwargs)
+        return self._copy_observed(
+            self.real_copy2, source, destination, *args, **kwargs
+        )
 
     def guarded_copyfileobj(self, source, destination, *args, **kwargs):
+        before = self.total_bytes
         try:
             descriptor = source.fileno()
         except (AttributeError, OSError, ValueError):
             descriptor = -1
-        if descriptor >= 0 and self.fd_is_target(descriptor):
-            self.reject("shutil.copyfileobj")
-        return self.real_copyfileobj(source, destination, *args, **kwargs)
+        target = descriptor >= 0 and self.fd_is_target(descriptor)
+        result = self.real_copyfileobj(source, destination, *args, **kwargs)
+        if target and self.total_bytes == before:
+            destination.flush()
+            self.observe(
+                os.fstat(destination.fileno()).st_size,
+                "shutil.copyfileobj",
+            )
+        return result
 
     def guarded_mmap(self, descriptor, length, *args, **kwargs):
         if self.fd_is_target(descriptor):
-            self.reject("mmap")
+            mapped_bytes = os.fstat(descriptor).st_size if length == 0 else length
+            self.observe(mapped_bytes, "mmap")
         return self.real_mmap(descriptor, length, *args, **kwargs)
 
     def patches(self):
@@ -7186,127 +7287,150 @@ class LateReadGuard:
             real_pread = os.pread
 
             def guarded_pread(descriptor, count, offset):
-                if self.fd_is_target(descriptor) and count != 0:
-                    self.reject("os.pread")
-                return real_pread(descriptor, count, offset)
+                payload = real_pread(descriptor, count, offset)
+                if self.fd_is_target(descriptor):
+                    self.observe(len(payload), "os.pread")
+                return payload
 
             stack.enter_context(mock.patch.object(os, "pread", guarded_pread))
         if hasattr(os, "readv"):
             real_readv = os.readv
 
             def guarded_readv(descriptor, buffers):
-                if self.fd_is_target(descriptor) and sum(map(len, buffers)):
-                    self.reject("os.readv")
-                return real_readv(descriptor, buffers)
+                count = real_readv(descriptor, buffers)
+                if self.fd_is_target(descriptor):
+                    self.observe(count, "os.readv")
+                return count
 
             stack.enter_context(mock.patch.object(os, "readv", guarded_readv))
         if hasattr(os, "preadv"):
             real_preadv = os.preadv
 
             def guarded_preadv(descriptor, buffers, offset, *args):
-                if self.fd_is_target(descriptor) and sum(map(len, buffers)):
-                    self.reject("os.preadv")
-                return real_preadv(descriptor, buffers, offset, *args)
+                count = real_preadv(descriptor, buffers, offset, *args)
+                if self.fd_is_target(descriptor):
+                    self.observe(count, "os.preadv")
+                return count
 
             stack.enter_context(mock.patch.object(os, "preadv", guarded_preadv))
         if hasattr(os, "sendfile"):
             real_sendfile = os.sendfile
 
             def guarded_sendfile(destination, source, offset, count, *args, **kwargs):
-                if self.fd_is_target(source) and count != 0:
-                    self.reject("os.sendfile")
-                return real_sendfile(destination, source, offset, count, *args, **kwargs)
+                transferred = real_sendfile(
+                    destination, source, offset, count, *args, **kwargs
+                )
+                if self.fd_is_target(source):
+                    self.observe(transferred, "os.sendfile")
+                return transferred
 
             stack.enter_context(mock.patch.object(os, "sendfile", guarded_sendfile))
         if hasattr(os, "copy_file_range"):
             real_copy_range = os.copy_file_range
 
             def guarded_copy_range(source, destination, count, *args, **kwargs):
-                if self.fd_is_target(source) and count != 0:
-                    self.reject("os.copy_file_range")
-                return real_copy_range(source, destination, count, *args, **kwargs)
+                transferred = real_copy_range(
+                    source, destination, count, *args, **kwargs
+                )
+                if self.fd_is_target(source):
+                    self.observe(transferred, "os.copy_file_range")
+                return transferred
 
             stack.enter_context(
                 mock.patch.object(os, "copy_file_range", guarded_copy_range)
             )
         return stack
 
-    def prove_controls(self, path: Path, scratch: Path) -> None:
-        controls = [("path read", lambda: path.read_bytes())]
+def bounded_read_oracle_case() -> None:
+    case_root = root / "bounded-read-oracle"
+    case_root.mkdir()
+    target = case_root / "target.bin"
+    scratch = case_root / "copy.bin"
+    target.write_bytes(b"0123456789ab")
+    oracle_limit = 8
 
-        def descriptor_read():
-            descriptor = os.open(path, os.O_RDONLY)
-            try:
-                return os.read(descriptor, 1)
-            finally:
-                os.close(descriptor)
+    def cumulative_reads():
+        with builtins.open(target, "rb") as handle:
+            assert handle.read(5) == b"01234"
+            handle.read(5)
 
-        controls.append(("descriptor read", descriptor_read))
-        controls.append(("copy", lambda: shutil.copyfile(path, scratch)))
+    def zero_length_peek():
+        with builtins.open(target, "rb") as handle:
+            handle.peek(0)
 
-        def buffered_peek_zero():
-            with open(path, "rb") as handle:
-                return handle.peek(0)
-
-        def map_zero_length():
-            descriptor = os.open(path, os.O_RDONLY)
-            try:
-                with mmap.mmap(descriptor, 0, access=mmap.ACCESS_READ) as mapping:
-                    return mapping[0]
-            finally:
-                os.close(descriptor)
-
-        controls.extend(
-            (
-                ("zero-length buffered peek", buffered_peek_zero),
-                ("zero-length mapping", map_zero_length),
-            )
-        )
-        self.probing = True
+    def zero_length_mapping():
+        descriptor = os.open(target, os.O_RDONLY)
         try:
-            for label, control in controls:
-                caught = False
-                try:
-                    control()
-                except LateReadAttempt:
-                    caught = True
-                finally:
-                    try:
-                        os.unlink(scratch)
-                    except FileNotFoundError:
-                        pass
-                assert caught, f"armed {label} control was not rejected"
-
-            with open(path, "rb") as handle:
-                assert handle.read(0) == b""
-                assert handle.read1(0) == b""
-                assert handle.readinto(bytearray()) == 0
-                assert handle.readinto1(bytearray()) == 0
-                assert handle.readline(0) == b""
-            descriptor = os.open(path, os.O_RDONLY)
-            try:
-                assert os.read(descriptor, 0) == b""
-            finally:
-                os.close(descriptor)
-
-            unarmed = scratch.with_name(f"{scratch.name}-unarmed")
-            unarmed.write_bytes(b"unarmed-control")
-            try:
-                with open(unarmed, "rb") as handle:
-                    assert handle.peek(0)
-                descriptor = os.open(unarmed, os.O_RDONLY)
-                try:
-                    with mmap.mmap(
-                        descriptor, 0, access=mmap.ACCESS_READ
-                    ) as mapping:
-                        assert len(mapping) > 0
-                finally:
-                    os.close(descriptor)
-            finally:
-                os.unlink(unarmed)
+            with mmap.mmap(descriptor, 0, access=mmap.ACCESS_READ) as mapping:
+                return mapping[0]
         finally:
-            self.probing = False
-            self.production_attempted = False
+            os.close(descriptor)
+
+    def raw_read():
+        with builtins.open(target, "rb") as handle:
+            return handle.raw.read()
+
+    def detached_read():
+        handle = builtins.open(target, "rb")
+        detached = handle.detach()
+        try:
+            return detached.read()
+        finally:
+            detached.close()
+
+    def text_buffer_read():
+        with builtins.open(target, "r", encoding="ascii") as handle:
+            return handle.buffer.read()
+
+    controls = {
+        "cumulative reads": cumulative_reads,
+        "zero-length buffered peek": zero_length_peek,
+        "zero-length mapping": zero_length_mapping,
+        "raw handle escape": raw_read,
+        "detached handle escape": detached_read,
+        "text buffer escape": text_buffer_read,
+        "whole-path read": target.read_bytes,
+        "copy": lambda: shutil.copyfile(target, scratch),
+    }
+    for label, control in controls.items():
+        guard = BoundedReadGuard(oracle_limit)
+        guard.arm(target)
+        caught = False
+        try:
+            with guard.patches():
+                control()
+        except BoundedReadAttempt:
+            caught = True
+        finally:
+            scratch.unlink(missing_ok=True)
+        assert caught, f"bounded reader oracle missed {label}"
+        assert guard.over_limit, f"bounded reader oracle did not cross for {label}"
+        assert guard.total_bytes > oracle_limit, (label, guard.total_bytes)
+
+    zero_guard = BoundedReadGuard(0)
+    zero_guard.arm(target)
+    with zero_guard.patches():
+        with builtins.open(target, "rb") as handle:
+            assert handle.read(0) == b""
+            assert handle.read1(0) == b""
+            assert handle.readinto(bytearray()) == 0
+            assert handle.readinto1(bytearray()) == 0
+            assert handle.readline(0) == b""
+            assert handle.raw.read(0) == b""
+        with builtins.open(target, "r", encoding="ascii") as handle:
+            assert handle.buffer.read(0) == b""
+        handle = builtins.open(target, "rb")
+        detached = handle.detach()
+        try:
+            assert detached.read(0) == b""
+        finally:
+            detached.close()
+        descriptor = os.open(target, os.O_RDONLY)
+        try:
+            assert os.read(descriptor, 0) == b""
+        finally:
+            os.close(descriptor)
+    assert zero_guard.total_bytes == 0 and not zero_guard.over_limit
 
 
 def pad_json_like(path: Path, size: int) -> None:
@@ -7321,30 +7445,46 @@ def pad_json_like(path: Path, size: int) -> None:
 def late_class_cap_case(kind: str) -> None:
     force = kind in {"existing-derivative", "backup-derivative"}
     case = setup_case(f"late-cap-{kind}", force=force)
-    guard = LateReadGuard()
+    class_limits = {
+        "metadata-snapshot": MAX_METADATA_BYTES,
+        "provenance": MAX_PROVENANCE_BYTES,
+        "existing-derivative": MAX_DERIVATIVE_BYTES,
+        "final-derivative": MAX_DERIVATIVE_BYTES,
+        "backup-derivative": MAX_DERIVATIVE_BYTES,
+    }
+    guard = BoundedReadGuard(class_limits[kind])
     mutation_count = 0
     observed_existing_bytes = None
-    observed_old_locations: dict[str, Path] = {}
     role_observations: list[tuple[bool, bool, bool]] = []
     patchers = []
 
     if kind == "metadata-snapshot":
         real_preservation = module._candidate_preservation
+        real_process_asset = module._process_asset
+        observed_metadata = None
+
+        def observe_metadata_dataflow(asset, prepared, *args, **kwargs):
+            nonlocal observed_metadata
+            candidate = prepared.get("source_sidecar_path")
+            assert isinstance(candidate, Path)
+            observed_metadata = candidate
+            return real_process_asset(asset, prepared, *args, **kwargs)
 
         def mutate_metadata(*args, **kwargs):
             nonlocal mutation_count
             result = real_preservation(*args, **kwargs)
-            observed_source = fake_argument_path(case, "--source")
-            target = Path(f"{observed_source}.json")
-            assert target.exists()
+            assert observed_metadata is not None
+            target = observed_metadata
             pad_json_like(target, MAX_METADATA_BYTES + 4)
             guard.arm(target)
-            guard.prove_controls(target, case.root / "guard-copy")
             mutation_count += 1
             return result
 
-        patchers.append(
-            mock.patch.object(module, "_candidate_preservation", mutate_metadata)
+        patchers.extend(
+            [
+                mock.patch.object(module, "_process_asset", observe_metadata_dataflow),
+                mock.patch.object(module, "_candidate_preservation", mutate_metadata),
+            ]
         )
     elif kind == "provenance":
         real_write = module.write_staged_provenance
@@ -7363,7 +7503,6 @@ def late_class_cap_case(kind: str) -> None:
                 if staged_json is not None and mutation_count == 0:
                     pad_json_like(staged_json, MAX_PROVENANCE_BYTES + 4)
                     guard.arm(staged_json)
-                    guard.prove_controls(staged_json, case.root / "guard-copy")
                     mutation_count += 1
                 yield
 
@@ -7387,7 +7526,6 @@ def late_class_cap_case(kind: str) -> None:
                 _pad_glb_to_size(case.final_glb, MAX_DERIVATIVE_BYTES + 4)
                 observed_existing_bytes = case.final_glb.read_bytes()
                 guard.arm(case.final_glb)
-                guard.prove_controls(case.final_glb, case.root / "guard-copy")
                 mutation_count += 1
             return real_promote(
                 staged_glb, staged_json, final_glb, final_json, force
@@ -7402,22 +7540,22 @@ def late_class_cap_case(kind: str) -> None:
             source_path = Path(source)
             destination_path = Path(destination)
             source_identity = path_identity(source_path)
-            staged_pair = None
+            staged_glb = None
             if len(fake_records(case)) == 1:
-                staged_pair = staged_pair_from_fake_record(case)
+                staged_glb = fake_argument_path(case, "--output")
             staged_identity = (
-                None if staged_pair is None else path_identity(staged_pair["glb"])
+                None if staged_glb is None else path_identity(staged_glb)
             )
-            if staged_pair is not None:
+            if staged_glb is not None:
                 role_observations.append(
                     (
-                        same_observed_path(source_path, staged_pair["glb"]),
+                        same_observed_path(source_path, staged_glb),
                         same_observed_path(destination_path, case.final_glb),
                         source_identity == staged_identity,
                     )
                 )
             final_role = (
-                staged_pair is not None
+                staged_glb is not None
                 and same_observed_path(destination_path, case.final_glb)
                 and source_identity == staged_identity
             )
@@ -7426,12 +7564,6 @@ def late_class_cap_case(kind: str) -> None:
                 and source_identity == case.old_identities["glb"]
             )
             result = real_replace(source, destination, *args, **kwargs)
-            observe_old_role_destination(
-                case,
-                source_identity,
-                destination_path,
-                observed_old_locations,
-            )
             should_mutate = (
                 kind == "final-derivative" and final_role
             ) or (
@@ -7440,7 +7572,6 @@ def late_class_cap_case(kind: str) -> None:
             if should_mutate and mutation_count == 0:
                 _pad_glb_to_size(destination_path, MAX_DERIVATIVE_BYTES + 4)
                 guard.arm(destination_path)
-                guard.prove_controls(destination_path, case.root / "guard-copy")
                 mutation_count += 1
             return result
 
@@ -7460,7 +7591,12 @@ def late_class_cap_case(kind: str) -> None:
         caught,
         role_observations,
     )
-    assert not guard.production_attempted, f"{kind}: later read crossed its class cap"
+    assert not guard.over_limit, (
+        f"{kind}: later reads exceeded the {guard.maximum_bytes}-byte class cap",
+        guard.total_bytes,
+        guard.operations,
+    )
+    assert guard.total_bytes <= guard.maximum_bytes
     assert caught is None, (kind, caught)
     assert result == 1, (kind, result, stdout, stderr)
     assert "output_triangles=" not in stdout
@@ -7475,20 +7611,70 @@ def late_class_cap_case(kind: str) -> None:
         assert case.final_json.read_bytes() == case.old_pair[1]
         assert set(case.output.iterdir()) == {case.final_glb, case.final_json}
     else:
-        assert force_failure_terminal(case, observed_old_locations)
+        assert_old_public_pair(case)
+
+
+def provenance_exact_boundary_case() -> None:
+    case = setup_case("provenance-exact-boundary")
+    guard = BoundedReadGuard(MAX_PROVENANCE_BYTES)
+    real_write = module.write_staged_provenance
+    observed_path = None
+    write_count = 0
+
+    def write_at_boundary(path, record):
+        nonlocal observed_path, write_count
+        real_write(path, record)
+        observed_path = Path(path)
+        pad_json_like(observed_path, MAX_PROVENANCE_BYTES)
+        guard.arm(observed_path)
+        write_count += 1
+
+    with (
+        guard.patches(),
+        mock.patch.object(module, "write_staged_provenance", write_at_boundary),
+    ):
+        result = run_main(case)
+    assert write_count == 1 and observed_path is not None
+    assert not guard.over_limit, (
+        "exact-boundary provenance crossed its 2 MiB read envelope",
+        guard.total_bytes,
+        guard.operations,
+    )
+    assert guard.total_bytes <= MAX_PROVENANCE_BYTES
+    assert_fake_reached(case)
+    assert_source_unchanged(case)
+    assert_success_pair(case, *result)
+    assert case.final_json.stat().st_size == MAX_PROVENANCE_BYTES
 
 
 def transaction_name_boundary_case() -> None:
-    longest_suffix_overhead = (
-        len(os.fsencode("."))
-        + len(os.fsencode(".json"))
-        + len(os.fsencode(".retired-"))
-        + UUID_HEX_BYTES
+    safe_name = (
+        "n" * (MAX_TRANSACTION_SAFE_FILENAME_BYTES - len(".glb")) + ".glb"
     )
-    safe_length = MAX_COMPONENT_BYTES - longest_suffix_overhead
-    assert safe_length == 208
-    safe_name = "n" * (safe_length - len(".glb")) + ".glb"
-    unsafe_name = "n" * (safe_length + 1 - len(".glb")) + ".glb"
+    unsafe_name = (
+        "n" * (MAX_TRANSACTION_SAFE_FILENAME_BYTES + 1 - len(".glb"))
+        + ".glb"
+    )
+    assert len(os.fsencode(safe_name)) == MAX_TRANSACTION_SAFE_FILENAME_BYTES
+    assert len(os.fsencode(unsafe_name)) == MAX_TRANSACTION_SAFE_FILENAME_BYTES + 1
+
+    unicode_stem = "猫" * 68
+    unicode_safe_name = f"{unicode_stem}.glb"
+    unicode_unsafe_name = f"{unicode_stem}n.glb"
+    assert unicode_stem.isprintable()
+    assert len(os.fsencode(unicode_safe_name)) == MAX_TRANSACTION_SAFE_FILENAME_BYTES
+    assert len(os.fsencode(unicode_unsafe_name)) == MAX_TRANSACTION_SAFE_FILENAME_BYTES + 1
+    assert len(unicode_unsafe_name) < MAX_TRANSACTION_SAFE_FILENAME_BYTES
+
+    def assert_unsafe_name_rejected(case):
+        result, stdout, stderr, caught = run_main(case)
+        assert caught is None
+        assert result == 1, (result, stdout, stderr)
+        assert stdout == ""
+        assert_one_diagnostic(stderr)
+        assert audit_lines(case) == [] and fake_records(case) == []
+        assert_source_unchanged(case)
+        assert_old_public_pair(case)
 
     safe = setup_case("transaction-name-safe", force=True, filename=safe_name)
     safe_result = run_main(safe)
@@ -7497,17 +7683,22 @@ def transaction_name_boundary_case() -> None:
     assert_success_pair(safe, *safe_result)
 
     unsafe = setup_case("transaction-name-plus-one", force=True, filename=unsafe_name)
-    result, stdout, stderr, caught = run_main(unsafe)
-    assert caught is None
-    assert result == 1, (result, stdout, stderr)
-    assert stdout == ""
-    assert_one_diagnostic(stderr)
-    assert audit_lines(unsafe) == [] and fake_records(unsafe) == []
-    assert_source_unchanged(unsafe)
-    assert unsafe.old_pair is not None
-    assert unsafe.final_glb.read_bytes() == unsafe.old_pair[0]
-    assert unsafe.final_json.read_bytes() == unsafe.old_pair[1]
-    assert set(unsafe.output.iterdir()) == {unsafe.final_glb, unsafe.final_json}
+    assert_unsafe_name_rejected(unsafe)
+
+    unicode_safe = setup_case(
+        "transaction-name-unicode-safe", force=True, filename=unicode_safe_name
+    )
+    unicode_safe_result = run_main(unicode_safe)
+    assert_fake_reached(unicode_safe)
+    assert_source_unchanged(unicode_safe)
+    assert_success_pair(unicode_safe, *unicode_safe_result)
+
+    unicode_unsafe = setup_case(
+        "transaction-name-unicode-plus-one",
+        force=True,
+        filename=unicode_unsafe_name,
+    )
+    assert_unsafe_name_rejected(unicode_unsafe)
 
 
 def exact_child_environment_case() -> None:
@@ -7538,12 +7729,15 @@ def exact_child_environment_case() -> None:
 
 def write_blender_wrapper(
     case: types.SimpleNamespace, profile: str
-) -> tuple[Path, Path]:
+) -> tuple[Path, Path, Path]:
     wrapper = case.root / "blender-wrapper"
-    marker = case.root / "overflow-child.json"
+    marker = case.root / "stream-child.json"
+    release = case.root / "stream-release"
     helper_directory = str(repo / "tests" / "assets")
     wrapper.write_text(
         f'''#!/usr/bin/env python3
+import contextlib
+import io
 import json
 import os
 import sys
@@ -7561,47 +7755,108 @@ overflow = profile in {{"version-stdout-over", "version-stderr-over"}} and is_ve
 overflow = overflow or (
     profile in {{"asset-stdout-over", "asset-stderr-over"}} and not is_version
 )
-if profile.endswith("-over") and overflow:
+exact = profile in {{"version-stdout-exact", "version-stderr-exact"}} and is_version
+exact = exact or (
+    profile in {{"asset-stdout-exact", "asset-stderr-exact"}} and not is_version
+)
+selected = overflow or exact
+if selected:
     try:
         os.setsid()
     except OSError:
         pass
-    Path({str(marker)!r}).write_text(
-        json.dumps({{"pid": os.getpid(), "pgrp": os.getpgrp()}}),
+marker_path = Path({str(marker)!r})
+marker_draft = marker_path.with_name(marker_path.name + "-next")
+release_path = Path({str(release)!r})
+emitted_bytes = 0
+
+def record_state(attempted_bytes, state):
+    marker_draft.write_text(
+        json.dumps({{
+            "pid": os.getpid(),
+            "pgrp": os.getpgrp(),
+            "profile": profile,
+            "phase": "version" if is_version else "asset",
+            "attempted_bytes": attempted_bytes,
+            "emitted_bytes": emitted_bytes,
+            "state": state,
+        }}, sort_keys=True),
         encoding="utf-8",
     )
+    os.replace(marker_draft, marker_path)
+
+def emit_selected(stream, payload):
+    global emitted_bytes
+    record_state(emitted_bytes + len(payload), "EMITTING")
+    stream.write(payload)
+    stream.flush()
+    emitted_bytes += len(payload)
+    record_state(emitted_bytes, "EMITTING")
+
+def stream_at_limit(stream, token, suffix=""):
+    suffix_bytes = suffix.encode("utf-8")
+    assert len(suffix_bytes) <= {MAX_CHILD_STREAM_BYTES}
+    remaining = {MAX_CHILD_STREAM_BYTES} - len(suffix_bytes)
+    while remaining:
+        payload = token * min(remaining, 16384)
+        emit_selected(stream, payload)
+        remaining -= len(payload)
+    if suffix:
+        emit_selected(stream, suffix)
+    assert emitted_bytes == {MAX_CHILD_STREAM_BYTES}
+    record_state(emitted_bytes, "AT_LIMIT")
+
+def wait_for_release():
+    while not release_path.exists():
+        time.sleep(0.01)
+
+def stream_one_byte_past_limit(stream, token):
+    global emitted_bytes
+    attempted = emitted_bytes + 1
+    record_state(attempted, "OVER_LIMIT_ATTEMPT")
+    stream.write(token)
+    stream.flush()
+    emitted_bytes = attempted
+    record_state(attempted, "OVER_LIMIT_EMITTED")
+    while True:
+        time.sleep(0.1)
+
+if selected:
+    selected_stream = sys.stdout if "-stdout-" in profile else sys.stderr
+    selected_token = "S" if selected_stream is sys.stdout else "E"
+    suffix = ""
+    if is_version and selected_stream is sys.stdout:
+        captured_stdout = io.StringIO()
+        with contextlib.redirect_stdout(captured_stdout):
+            status = fake_main(argv)
+        suffix = "\\n" + captured_stdout.getvalue()
+        sys.stderr.write("e")
+        sys.stderr.flush()
+    else:
+        status = fake_main(argv)
+        if not is_version:
+            opposite_stream = sys.stderr if selected_stream is sys.stdout else sys.stdout
+            opposite_stream.write("x")
+            opposite_stream.flush()
+    stream_at_limit(selected_stream, selected_token, suffix)
+    wait_for_release()
+    if overflow:
+        stream_one_byte_past_limit(selected_stream, selected_token)
+    record_state(emitted_bytes, "RELEASED")
+    raise SystemExit(status)
+
 if profile == "version-small" and is_version:
     print("small-version-child-line")
     print("small-version-error-line", file=sys.stderr)
-elif profile == "version-stdout-over" and is_version:
-    sys.stdout.write("V" * ({MAX_CHILD_STREAM_BYTES} + 1) + "\\n")
-    sys.stdout.flush()
-    while True:
-        time.sleep(1)
-elif profile == "version-stderr-over" and is_version:
-    sys.stderr.write("E" * ({MAX_CHILD_STREAM_BYTES} + 1) + "\\n")
-    sys.stderr.flush()
-    while True:
-        time.sleep(1)
 elif profile in {{"asset-small", "asset-fail"}} and not is_version:
     print("child-" + "sec" + "ret" + "=child-sensitive-value\\nbenign-output-line")
     print("child-" + "sec" + "ret" + "=child-sensitive-value\\nbenign-error-line", file=sys.stderr)
-elif profile == "asset-stdout-over" and not is_version:
-    sys.stdout.write("O" * ({MAX_CHILD_STREAM_BYTES} + 1) + "\\n")
-    sys.stdout.flush()
-    while True:
-        time.sleep(1)
-elif profile == "asset-stderr-over" and not is_version:
-    sys.stderr.write("R" * ({MAX_CHILD_STREAM_BYTES} + 1) + "\\n")
-    sys.stderr.flush()
-    while True:
-        time.sleep(1)
 raise SystemExit(fake_main(argv))
 ''',
         encoding="utf-8",
     )
     wrapper.chmod(0o755)
-    return wrapper, marker
+    return wrapper, marker, release
 
 
 def assert_public_records(payload: bytes) -> str:
@@ -7619,7 +7874,7 @@ def assert_public_records(payload: bytes) -> str:
     return decoded
 
 
-def overflow_marker(marker: Path) -> dict[str, int] | None:
+def stream_marker(marker: Path) -> dict[str, object] | None:
     try:
         value = json.loads(marker.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -7628,11 +7883,19 @@ def overflow_marker(marker: Path) -> dict[str, int] | None:
         return None
     pid = value.get("pid")
     process_group = value.get("pgrp")
-    if not isinstance(pid, int) or not isinstance(process_group, int):
+    attempted = value.get("attempted_bytes")
+    emitted = value.get("emitted_bytes")
+    state = value.get("state")
+    if not all(
+        isinstance(item, int)
+        for item in (pid, process_group, attempted, emitted)
+    ) or not isinstance(state, str):
         return None
     if pid <= 1 or process_group <= 1:
         return None
-    return {"pid": pid, "pgrp": process_group}
+    if attempted < 0 or emitted < 0 or emitted > attempted:
+        return None
+    return value
 
 
 def marked_process_alive(pid: int, process_group: int) -> bool:
@@ -7662,26 +7925,25 @@ def signal_process_group(process_group: int, selected_signal: signal.Signals) ->
         pass
 
 
-def wait_for_marked_tree(marker_record: dict[str, int], timeout: float) -> bool:
+def wait_for_marked_tree(marker_record: dict[str, object], timeout: float) -> bool:
+    pid = marker_record["pid"]
+    process_group = marker_record["pgrp"]
+    assert isinstance(pid, int) and isinstance(process_group, int)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if not marked_process_alive(
-            marker_record["pid"], marker_record["pgrp"]
-        ) and not process_group_alive(marker_record["pgrp"]):
+        if not marked_process_alive(pid, process_group) and not process_group_alive(
+            process_group
+        ):
             return True
         time.sleep(0.02)
-    return not marked_process_alive(
-        marker_record["pid"], marker_record["pgrp"]
-    ) and not process_group_alive(marker_record["pgrp"])
+    return not marked_process_alive(pid, process_group) and not process_group_alive(
+        process_group
+    )
 
 
-def run_overflow_cli(
-    case: types.SimpleNamespace,
-    marker: Path,
-    *,
-    mode: str,
+def start_bounded_capture(
+    case: types.SimpleNamespace, *, mode: str
 ) -> types.SimpleNamespace:
-    started = time.monotonic()
     process = subprocess.Popen(
         [sys.executable, str(script), *case.arguments],
         stdin=subprocess.DEVNULL,
@@ -7690,63 +7952,307 @@ def run_overflow_cli(
         start_new_session=True,
         env=child_environment(case, mode=mode),
     )
-    timed_out = False
-    marker_record = None
-    try:
-        stdout, stderr = process.communicate(timeout=MAX_OVERFLOW_SECONDS)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        marker_record = overflow_marker(marker)
-        if marker_record is not None:
-            signal_process_group(marker_record["pgrp"], signal.SIGTERM)
-        try:
-            stdout, stderr = process.communicate(timeout=2)
-        except subprocess.TimeoutExpired:
-            signal_process_group(process.pid, signal.SIGTERM)
-            try:
-                stdout, stderr = process.communicate(timeout=2)
-            except subprocess.TimeoutExpired:
-                signal_process_group(process.pid, signal.SIGKILL)
-                stdout, stderr = process.communicate(timeout=2)
-    elapsed = time.monotonic() - started
-    marker_record = marker_record or overflow_marker(marker)
-    marker_missing = marker_record is None
-    child_or_group_was_alive = False
-    if marker_record is not None:
-        child_or_group_was_alive = marked_process_alive(
-            marker_record["pid"], marker_record["pgrp"]
-        ) or process_group_alive(marker_record["pgrp"])
-        if child_or_group_was_alive:
-            signal_process_group(marker_record["pgrp"], signal.SIGTERM)
-            if not wait_for_marked_tree(marker_record, 1):
-                signal_process_group(marker_record["pgrp"], signal.SIGKILL)
-        tree_dead = wait_for_marked_tree(marker_record, 2)
-    else:
-        tree_dead = False
-    assert process.poll() is not None
+    assert process.stdout is not None and process.stderr is not None
+    selector = selectors.DefaultSelector()
+    streams = {"stdout": process.stdout, "stderr": process.stderr}
+    buffers = {"stdout": bytearray(), "stderr": bytearray()}
+    for name, stream in streams.items():
+        os.set_blocking(stream.fileno(), False)
+        selector.register(stream, selectors.EVENT_READ, name)
     return types.SimpleNamespace(
-        returncode=process.returncode,
-        stdout=stdout,
-        stderr=stderr,
-        timed_out=timed_out,
-        elapsed=elapsed,
-        marker_missing=marker_missing,
-        child_or_group_was_alive=child_or_group_was_alive,
-        tree_dead=tree_dead,
+        process=process,
+        selector=selector,
+        streams=streams,
+        buffers=buffers,
+        capture_overflow=set(),
+        started=time.monotonic(),
+        closed=False,
     )
 
 
+def drain_bounded_capture(capture: types.SimpleNamespace, timeout: float) -> None:
+    if capture.closed:
+        return
+    for key, _events in capture.selector.select(timeout):
+        stream = key.fileobj
+        try:
+            payload = os.read(stream.fileno(), 64 * 1024)
+        except BlockingIOError:
+            continue
+        if not payload:
+            capture.selector.unregister(stream)
+            continue
+        name = key.data
+        buffer = capture.buffers[name]
+        room = max(0, MAX_PUBLIC_CAPTURE_BYTES + 1 - len(buffer))
+        if room:
+            buffer.extend(payload[:room])
+        if len(payload) > room or len(buffer) > MAX_PUBLIC_CAPTURE_BYTES:
+            capture.capture_overflow.add(name)
+
+
+def close_bounded_capture(capture: types.SimpleNamespace) -> None:
+    if capture.closed:
+        return
+    drain_deadline = time.monotonic() + 1
+    while capture.selector.get_map() and time.monotonic() < drain_deadline:
+        drain_bounded_capture(capture, 0.02)
+    capture.pipes_open = bool(capture.selector.get_map())
+    for stream in capture.streams.values():
+        try:
+            capture.selector.unregister(stream)
+        except KeyError:
+            pass
+        stream.close()
+    capture.selector.close()
+    capture.closed = True
+
+
+def terminate_bounded_capture(
+    capture: types.SimpleNamespace, marker: Path
+) -> None:
+    marker_record = stream_marker(marker)
+    if marker_record is not None:
+        process_group = marker_record["pgrp"]
+        assert isinstance(process_group, int)
+        signal_process_group(process_group, signal.SIGTERM)
+    if capture.process.poll() is None:
+        signal_process_group(capture.process.pid, signal.SIGTERM)
+        try:
+            capture.process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            if marker_record is not None:
+                process_group = marker_record["pgrp"]
+                assert isinstance(process_group, int)
+                signal_process_group(process_group, signal.SIGKILL)
+            signal_process_group(capture.process.pid, signal.SIGKILL)
+            capture.process.wait(timeout=2)
+    close_bounded_capture(capture)
+
+
+def bounded_capture_result(capture: types.SimpleNamespace) -> types.SimpleNamespace:
+    assert capture.process.poll() is not None
+    capture.process.wait()
+    close_bounded_capture(capture)
+    return types.SimpleNamespace(
+        returncode=capture.process.returncode,
+        stdout=bytes(capture.buffers["stdout"]),
+        stderr=bytes(capture.buffers["stderr"]),
+        capture_overflow=tuple(sorted(capture.capture_overflow)),
+        pipes_open=capture.pipes_open,
+    )
+
+
+def marker_is_at_limit(
+    value: dict[str, object] | None, profile: str, phase: str
+) -> bool:
+    return bool(
+        value is not None
+        and value.get("profile") == profile
+        and value.get("phase") == phase
+        and value.get("attempted_bytes") == MAX_CHILD_STREAM_BYTES
+        and value.get("emitted_bytes") == MAX_CHILD_STREAM_BYTES
+        and value.get("state") == "AT_LIMIT"
+    )
+
+
+def wait_for_at_limit(
+    capture: types.SimpleNamespace,
+    marker: Path,
+    profile: str,
+    phase: str,
+    *peers: types.SimpleNamespace,
+) -> dict[str, object]:
+    deadline = time.monotonic() + MAX_OVERFLOW_SECONDS
+    latest = None
+    while time.monotonic() < deadline:
+        drain_bounded_capture(capture, 0.01)
+        for peer in peers:
+            drain_bounded_capture(peer, 0.0)
+        latest = stream_marker(marker)
+        if marker_is_at_limit(latest, profile, phase):
+            assert capture.process.poll() is None
+            pid = latest["pid"]
+            process_group = latest["pgrp"]
+            assert isinstance(pid, int) and isinstance(process_group, int)
+            assert marked_process_alive(pid, process_group)
+            return latest
+        if capture.process.poll() is not None:
+            break
+    raise AssertionError(
+        f"{profile} did not remain alive at the exact child-stream boundary: "
+        f"state={latest!r} returncode={capture.process.poll()!r}"
+    )
+
+
+def assert_still_held(
+    capture: types.SimpleNamespace,
+    marker: Path,
+    profile: str,
+    phase: str,
+) -> dict[str, object]:
+    value = stream_marker(marker)
+    assert marker_is_at_limit(value, profile, phase), value
+    assert capture.process.poll() is None
+    assert value is not None
+    pid = value["pid"]
+    process_group = value["pgrp"]
+    assert isinstance(pid, int) and isinstance(process_group, int)
+    assert marked_process_alive(pid, process_group)
+    return value
+
+
+def wait_for_exit_with_peer_held(
+    selected: types.SimpleNamespace,
+    peer: types.SimpleNamespace,
+    peer_marker: Path,
+    peer_profile: str,
+    phase: str,
+) -> bool:
+    deadline = time.monotonic() + MAX_OVERFLOW_SECONDS
+    while time.monotonic() < deadline:
+        drain_bounded_capture(selected, 0.01)
+        drain_bounded_capture(peer, 0.0)
+        if selected.process.poll() is not None:
+            return True
+        if peer.process.poll() is not None:
+            return False
+        assert_still_held(peer, peer_marker, peer_profile, phase)
+    return selected.process.poll() is not None
+
+
+def child_stream_boundary_case(phase: str, stream_name: str) -> None:
+    exact_profile = f"{phase}-{stream_name}-exact"
+    overflow_profile = f"{phase}-{stream_name}-over"
+    exact_case = setup_case(f"child-output-{exact_profile}")
+    overflow_case = setup_case(f"child-output-{overflow_profile}")
+    exact_wrapper, exact_marker, exact_release = write_blender_wrapper(
+        exact_case, exact_profile
+    )
+    overflow_wrapper, overflow_marker, overflow_release = write_blender_wrapper(
+        overflow_case, overflow_profile
+    )
+    exact_case.arguments[exact_case.arguments.index(str(fake_blender))] = str(
+        exact_wrapper
+    )
+    overflow_case.arguments[overflow_case.arguments.index(str(fake_blender))] = str(
+        overflow_wrapper
+    )
+    exact_case.blender = exact_wrapper
+    overflow_case.blender = overflow_wrapper
+    exact_capture = None
+    overflow_capture = None
+    max_attempted = 0
+    max_emitted = 0
+    try:
+        exact_capture = start_bounded_capture(exact_case, mode="success")
+        exact_state = wait_for_at_limit(
+            exact_capture, exact_marker, exact_profile, phase
+        )
+        assert not exact_release.exists()
+
+        overflow_capture = start_bounded_capture(overflow_case, mode="success")
+        assert exact_capture.started < overflow_capture.started
+        overflow_state = wait_for_at_limit(
+            overflow_capture,
+            overflow_marker,
+            overflow_profile,
+            phase,
+            exact_capture,
+        )
+        assert_still_held(
+            exact_capture, exact_marker, exact_profile, phase
+        )
+        assert not exact_release.exists() and not overflow_release.exists()
+        max_attempted = int(overflow_state["attempted_bytes"])
+        max_emitted = int(overflow_state["emitted_bytes"])
+
+        overflow_release.write_text("release\n", encoding="utf-8")
+        exited = wait_for_exit_with_peer_held(
+            overflow_capture,
+            exact_capture,
+            exact_marker,
+            exact_profile,
+            phase,
+        )
+        latest_overflow = stream_marker(overflow_marker)
+        if latest_overflow is not None:
+            max_attempted = max(
+                max_attempted, int(latest_overflow["attempted_bytes"])
+            )
+            max_emitted = max(max_emitted, int(latest_overflow["emitted_bytes"]))
+        assert exited, (
+            "overflow candidate did not terminate from the released boundary byte",
+            latest_overflow,
+        )
+        assert_still_held(
+            exact_capture, exact_marker, exact_profile, phase
+        )
+        assert not exact_release.exists()
+        assert max_attempted == MAX_CHILD_STREAM_BYTES + 1
+        assert max_emitted in {
+            MAX_CHILD_STREAM_BYTES,
+            MAX_CHILD_STREAM_BYTES + 1,
+        }
+
+        overflow_result = bounded_capture_result(overflow_capture)
+        overflow_stdout = assert_public_records(overflow_result.stdout)
+        overflow_stderr = assert_public_records(overflow_result.stderr)
+        assert not overflow_result.capture_overflow
+        assert not overflow_result.pipes_open
+        assert overflow_result.returncode != 0
+        assert "output_triangles=" not in overflow_stdout
+        assert_one_diagnostic(overflow_stderr)
+        diagnostic = overflow_stderr.casefold()
+        assert "timeout" not in diagnostic and "timed out" not in diagnostic
+        assert list(overflow_case.output.iterdir()) == []
+        assert_source_unchanged(overflow_case)
+        assert wait_for_marked_tree(overflow_state, 2), (
+            "overflow child process group survived candidate failure"
+        )
+
+        exact_release.write_text("release\n", encoding="utf-8")
+        deadline = time.monotonic() + MAX_OVERFLOW_SECONDS
+        while exact_capture.process.poll() is None and time.monotonic() < deadline:
+            drain_bounded_capture(exact_capture, 0.02)
+        assert exact_capture.process.poll() is not None, (
+            "exact-boundary control did not finish after test release"
+        )
+        exact_result = bounded_capture_result(exact_capture)
+        exact_stdout = assert_public_records(exact_result.stdout)
+        exact_stderr = assert_public_records(exact_result.stderr)
+        assert not exact_result.capture_overflow
+        assert not exact_result.pipes_open
+        assert_success_pair(
+            exact_case,
+            exact_result.returncode,
+            exact_stdout,
+            exact_stderr,
+            None,
+        )
+        assert_fake_reached(exact_case)
+        assert_source_unchanged(exact_case)
+        released_state = stream_marker(exact_marker)
+        assert released_state is not None
+        assert released_state.get("attempted_bytes") == MAX_CHILD_STREAM_BYTES
+        assert released_state.get("emitted_bytes") == MAX_CHILD_STREAM_BYTES
+        assert released_state.get("state") == "RELEASED"
+        assert wait_for_marked_tree(exact_state, 2), (
+            "exact-boundary child process group survived successful release"
+        )
+    finally:
+        if overflow_capture is not None:
+            terminate_bounded_capture(overflow_capture, overflow_marker)
+        if exact_capture is not None:
+            terminate_bounded_capture(exact_capture, exact_marker)
+
 def child_output_case(profile: str) -> None:
     placeholder = setup_case(f"child-output-{profile}")
-    wrapper, marker = write_blender_wrapper(placeholder, profile)
+    wrapper, _marker, _release = write_blender_wrapper(placeholder, profile)
     placeholder.blender = wrapper
     placeholder.arguments[placeholder.arguments.index(str(fake_blender))] = str(wrapper)
     mode = "fail" if profile == "asset-fail" else "success"
-    overflow = profile.endswith("-over")
-    if overflow:
-        result = run_overflow_cli(placeholder, marker, mode=mode)
-    else:
-        result = run_cli(placeholder, mode=mode)
+    result = run_cli(placeholder, mode=mode)
 
     violations = []
     try:
@@ -7761,31 +8267,26 @@ def child_output_case(profile: str) -> None:
         violations.append("child value crossed the public record boundary")
 
     failure = profile == "asset-fail"
-    if overflow:
-        if result.timed_out or result.elapsed >= MAX_OVERFLOW_SECONDS:
-            violations.append("child stream overflow was not terminated promptly")
-        if result.marker_missing:
-            violations.append("overflow child identity was not observed")
-        if result.child_or_group_was_alive or not result.tree_dead:
-            violations.append("overflow child or process group survived candidate exit")
-        if result.returncode == 0:
-            violations.append("overflowing child process was reported as success")
-        if "output_triangles=" in stdout:
-            violations.append("overflowing child emitted a success record")
-        if placeholder.final_glb.exists() or placeholder.final_json.exists():
-            violations.append("overflowing child committed a final pair")
-        if any(placeholder.output.iterdir()):
-            violations.append("overflowing child left staging residue")
-    elif failure:
+    if failure:
         assert result.returncode != 0, "failed child process was reported as success"
         assert "output_triangles=" not in stdout
         assert not placeholder.final_glb.exists()
         assert not placeholder.final_json.exists()
         assert not any(placeholder.output.iterdir())
     else:
-        assert result.returncode == 0, (profile, stdout, stderr)
-        assert placeholder.final_glb.read_bytes()[:4] == b"glTF"
-        assert placeholder.final_json.exists()
+        if result.returncode != 0:
+            violations.append("accepted child stream did not complete successfully")
+        elif not (
+            placeholder.final_glb.is_file()
+            and placeholder.final_glb.read_bytes()[:4] == b"glTF"
+            and placeholder.final_json.is_file()
+        ):
+            violations.append("accepted child stream did not commit a final pair")
+        else:
+            try:
+                assert_fake_reached(placeholder)
+            except AssertionError:
+                violations.append("accepted child stream did not reach both child phases")
     assert_source_unchanged(placeholder)
     assert not violations, "; ".join(violations)
 
@@ -7848,6 +8349,8 @@ def run_bounded(label: str, function, *arguments) -> None:
 
 run_bounded("lock-release-terminal", lock_release_terminal_case)
 run_bounded("force-cleanup-terminal", force_cleanup_terminal_case)
+run_bounded("bounded-read-oracle", bounded_read_oracle_case)
+run_bounded("provenance-exact-boundary", provenance_exact_boundary_case)
 for late_member in (
     "metadata-snapshot",
     "provenance",
@@ -7860,14 +8363,18 @@ run_bounded("transaction-name-boundary", transaction_name_boundary_case)
 run_bounded("exact-child-environment", exact_child_environment_case)
 for child_profile in (
     "version-small",
-    "version-stdout-over",
-    "version-stderr-over",
     "asset-small",
     "asset-fail",
-    "asset-stdout-over",
-    "asset-stderr-over",
 ):
     run_bounded(f"child-{child_profile}", child_output_case, child_profile)
+for child_phase in ("version", "asset"):
+    for child_stream in ("stdout", "stderr"):
+        run_bounded(
+            f"child-{child_phase}-{child_stream}-boundary",
+            child_stream_boundary_case,
+            child_phase,
+            child_stream,
+        )
 
 if errors:
     raise AssertionError(
@@ -8003,14 +8510,6 @@ def require_pre_fake_rejection(label, result, output, fake_log, fake_audit, patt
     check(line_count(fake_log) == 0, f"{label}: fake asset invocation was reached")
     check(line_count(fake_audit) == 0, f"{label}: fake version/asset invocation was reached")
 
-def require_no_transaction_residue(label, tree):
-    residue = [
-        path.relative_to(tree).as_posix()
-        for path in tree.rglob("*")
-        if path.name.startswith(".glb-decimation-") or ".backup-" in path.name
-    ]
-    check(not residue, f"{label}: transaction residue remains: {residue}")
-
 # A1: each forced final member aliases the corresponding source inode.
 case_root = root / "force-destination-hardlinks"
 input_dir = case_root / "input"
@@ -8059,7 +8558,6 @@ check(
     final_json.exists() and os.path.samefile(sidecar, final_json),
     "force destination hardlinks: JSON alias was detached or removed",
 )
-require_no_transaction_residue("force destination hardlinks", case_root)
 
 # A2: two different manifest leaves name the same source GLB inode.
 case_root = root / "manifest-source-hardlinks"
@@ -8099,7 +8597,6 @@ check(source_a.read_bytes()[:4] == b"glTF", "manifest source hardlinks: first so
 check(source_b.read_bytes()[:4] == b"glTF", "manifest source hardlinks: second source magic changed")
 check(os.path.samefile(source_a, source_b), "manifest source hardlinks: source identity split")
 check(list(output_dir.iterdir()) == [], "manifest source hardlinks: partial output was created")
-require_no_transaction_residue("manifest source hardlinks", case_root)
 
 # A3: output names that differ only by case must be duplicate/alias-invalid on
 # both case-sensitive and case-insensitive filesystems.
@@ -8135,7 +8632,6 @@ require_pre_fake_rejection(
 )
 check(snapshot(input_dir) == input_before, "case-fold duplicate outputs: source tree changed")
 check(list(output_dir.iterdir()) == [], "case-fold duplicate outputs: partial output was created")
-require_no_transaction_residue("case-fold duplicate outputs", case_root)
 
 # A4: on a case-insensitive volume, differently cased root spellings are one
 # directory. The capability guard itself proves why a skip is safe elsewhere.
@@ -8172,7 +8668,6 @@ if case_insensitive:
     check(digest_bytes(source.read_bytes()) == source_hash, "case-variant samefile roots: source GLB hash changed")
     check(digest_bytes(sidecar.read_bytes()) == sidecar_hash, "case-variant samefile roots: source sidecar hash changed")
     check(source.read_bytes()[:4] == b"glTF", "case-variant samefile roots: GLB magic changed")
-    require_no_transaction_residue("case-variant samefile roots", case_root)
 else:
     assert not output_dir.exists()
     print("glb-decimation review A: case-variant root skipped; volume proved case-sensitive")
