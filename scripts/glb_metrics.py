@@ -961,11 +961,7 @@ def _inspect_document(
                     material_index
                 ]:
                     semantic = f"TEXCOORD_{texcoord}"
-                    # TEXCOORD_0 coverage remains an inspectable preservation
-                    # failure through uv_primitives != primitives; callers rely
-                    # on receiving those metrics. Non-default sets have no
-                    # legacy aggregate, so reject their missing primitive here.
-                    if texcoord != 0 and semantic not in attribute_indices:
+                    if semantic not in attribute_indices:
                         raise GlbError(
                             f"{label} material references missing {semantic}"
                         )
