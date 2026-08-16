@@ -81,28 +81,26 @@ def write_glb(
         accessors.append(accessor)
         return len(accessors) - 1
 
-    base_positions = [
-        (x, y, z)
-        for x in (minimum[0], maximum[0])
-        for y in (minimum[1], maximum[1])
-        for z in (minimum[2], maximum[2])
-    ]
     uvs = ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)) * 2
     triangle_base, triangle_remainder = divmod(triangles, primitive_count)
     primitives: list[dict[str, object]] = []
 
     for primitive_index in range(primitive_count):
-        # Separate accessors make each primitive independently inspectable.  The
-        # offsets distribute their centers evenly along the X axis.
-        center_offset = (primitive_index - (primitive_count - 1) / 2.0) * (
-            (maximum[0] - minimum[0]) / max(primitive_count, 1)
-        )
-        positions = [(x + center_offset, y, z) for x, y, z in base_positions]
+        # Separate accessors partition the requested X span.  They are evenly
+        # distributed yet their union preserves the caller's global bounds.
+        x0 = minimum[0] + (maximum[0] - minimum[0]) * primitive_index / primitive_count
+        x1 = minimum[0] + (maximum[0] - minimum[0]) * (primitive_index + 1) / primitive_count
+        positions = [
+            (x, y, z)
+            for x in (x0, x1)
+            for y in (minimum[1], maximum[1])
+            for z in (minimum[2], maximum[2])
+        ]
         accessor_minimum = list(declared_minimum) if declared_bounds else [
-            minimum[0] + center_offset, minimum[1], minimum[2]
+            x0, minimum[1], minimum[2]
         ]
         accessor_maximum = list(declared_maximum) if declared_bounds else [
-            maximum[0] + center_offset, maximum[1], maximum[2]
+            x1, maximum[1], maximum[2]
         ]
         position_bytes = struct.pack("<24f", *(coordinate for point in positions for coordinate in point))
         position_view = append_view(position_bytes, target=34962)
@@ -155,16 +153,28 @@ def write_glb(
     if extensions:
         document["extensionsUsed"] = list(extensions)
     if add_scene_content:
-        document["animations"] = [{}]
-        document["cameras"] = [{}]
-        document["skins"] = [{}]
+        time_view = append_view(struct.pack("<f", 0.0))
+        time_accessor = append_accessor(time_view, 1, 5126, "SCALAR", minimum_value=[0.0], maximum_value=[0.0])
+        animation_value_view = append_view(struct.pack("<3f", 0.0, 0.0, 0.0))
+        animation_value_accessor = append_accessor(animation_value_view, 1, 5126, "VEC3")
+        morph_view = append_view(struct.pack("<24f", *(0.0 for _ in range(24))), target=34962)
+        morph_accessor = append_accessor(morph_view, 8, 5126, "VEC3")
+        document["animations"] = [{
+            "samplers": [{"input": time_accessor, "output": animation_value_accessor, "interpolation": "LINEAR"}],
+            "channels": [{"sampler": 0, "target": {"node": 0, "path": "translation"}}],
+        }]
+        document["cameras"] = [{"type": "perspective", "perspective": {"yfov": 0.7, "znear": 0.1}}]
+        document["skins"] = [{"joints": [1]}]
         document["extensionsUsed"] = list(dict.fromkeys([*extensions, "KHR_lights_punctual"]))
-        document["extensions"] = {"KHR_lights_punctual": {"lights": [{}]}}
+        document["extensions"] = {"KHR_lights_punctual": {"lights": [{"type": "point", "intensity": 1.0}]}}
         node = document["nodes"][0]
         assert isinstance(node, dict)
         node["camera"] = 0
+        node["skin"] = 0
+        node["children"] = [1]
         node["extensions"] = {"KHR_lights_punctual": {"light": 0}}
-        primitives[0]["targets"] = [{}]
+        document["nodes"].append({"translation": [0.0, 0.0, 0.0]})
+        primitives[0]["targets"] = [{"POSITION": morph_accessor}]
 
     # Views are appended while assembling the image, so buffer byteLength is
     # finalized only after every payload is present.

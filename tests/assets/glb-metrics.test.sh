@@ -16,6 +16,49 @@ run_metrics() {
 }
 
 write_fixture "$tmp/valid.glb" --triangles 37 --translate 4 5 6
+write_fixture "$tmp/two-primitives.glb" --triangles 12 --primitive-count 2
+write_fixture "$tmp/scene-content.glb" --triangles 12 --primitive-count 2 --add-scene-content
+PYTHONDONTWRITEBYTECODE=1 python3 - "$tmp/two-primitives.glb" "$tmp/scene-content.glb" <<'PY'
+import json
+import struct
+import sys
+from pathlib import Path
+
+raw = Path(sys.argv[1]).read_bytes()
+json_length, kind = struct.unpack_from("<I4s", raw, 12)
+assert kind == b"JSON"
+doc = json.loads(raw[20:20 + json_length].rstrip(b" "))
+bin_start = 20 + json_length
+bin_length, bin_kind = struct.unpack_from("<I4s", raw, bin_start)
+assert bin_kind == b"BIN\0"
+binary = raw[bin_start + 8:bin_start + 8 + bin_length]
+positions = []
+index_entries = 0
+for primitive in doc["meshes"][0]["primitives"]:
+    accessor = doc["accessors"][primitive["attributes"]["POSITION"]]
+    view = doc["bufferViews"][accessor["bufferView"]]
+    assert view["byteOffset"] % 4 == 0
+    for index in range(accessor["count"]):
+        positions.append(struct.unpack_from("<3f", binary, view["byteOffset"] + index * 12))
+    index_entries += doc["accessors"][primitive["indices"]]["count"]
+# Break caught: distributing primitive accessors expands requested global bounds.
+assert [min(point[axis] for point in positions) for axis in range(3)] == [-1.0, -1.0, -1.0]
+assert [max(point[axis] for point in positions) for axis in range(3)] == [1.0, 1.0, 1.0]
+# Break caught: splitting triangles across primitives changes their requested total.
+assert index_entries == 36
+
+scene_raw = Path(sys.argv[2]).read_bytes()
+scene_json_length, scene_kind = struct.unpack_from("<I4s", scene_raw, 12)
+assert scene_kind == b"JSON"
+scene = json.loads(scene_raw[20:20 + scene_json_length].rstrip(b" "))
+# Break caught: scene-content fixtures themselves are schema-invalid placeholders.
+assert scene["animations"][0]["samplers"][0]["input"] >= 0
+assert scene["animations"][0]["channels"][0]["target"] == {"node": 0, "path": "translation"}
+assert scene["cameras"][0] == {"type": "perspective", "perspective": {"yfov": 0.7, "znear": 0.1}}
+assert scene["skins"][0]["joints"] == [1]
+assert scene["extensions"]["KHR_lights_punctual"]["lights"][0]["type"] == "point"
+assert scene["meshes"][0]["primitives"][0]["targets"][0]["POSITION"] >= 0
+PY
 run_metrics "$tmp/valid.glb" >"$tmp/valid.json"
 PYTHONDONTWRITEBYTECODE=1 python3 - "$tmp/valid.json" <<'PY'
 import json
@@ -86,6 +129,7 @@ if action == "truncated":
     raise SystemExit()
 doc, binary = read(path)
 primitive = doc["meshes"][0]["primitives"][0]
+second_primitive = doc["meshes"][0]["primitives"][1] if len(doc["meshes"][0]["primitives"]) > 1 else None
 if action == "mode":
     primitive["mode"] = 1
 elif action == "declared-bounds":
@@ -95,23 +139,35 @@ elif action == "declared-bounds":
 elif action == "translate":
     doc["nodes"][0]["translation"] = [1.0, 0.0, 0.0]
 elif action == "remove-one-uv":
-    primitive["attributes"].pop("TEXCOORD_0")
+    assert second_primitive is not None
+    second_primitive["attributes"].pop("TEXCOORD_0")
 elif action == "remove-one-material":
-    primitive.pop("material")
+    assert second_primitive is not None
+    second_primitive.pop("material")
 elif action == "extension":
     doc["extensionsUsed"] = ["VENDOR_unreviewed"]
 elif action == "meshopt":
     doc["extensionsUsed"] = ["EXT_meshopt_compression"]
-elif action == "animation":
-    doc["animations"] = [{}]
-elif action == "camera":
-    doc["cameras"] = [{}]
-elif action == "light":
-    doc["extensions"] = {"KHR_lights_punctual": {"lights": [{}]}}
-elif action == "skin":
-    doc["skins"] = [{}]
-elif action == "morph":
-    primitive["targets"] = [{}]
+elif action.startswith("only-"):
+    content = action.removeprefix("only-")
+    assert content in {"animation", "camera", "light", "skin", "morph"}
+    node = doc["nodes"][0]
+    if content != "animation":
+        doc.pop("animations", None)
+    if content != "camera":
+        doc.pop("cameras", None)
+        node.pop("camera", None)
+    if content != "light":
+        doc.pop("extensions", None)
+        node.pop("extensions", None)
+        doc.pop("extensionsUsed", None)
+    if content != "skin":
+        doc.pop("skins", None)
+        node.pop("skin", None)
+        node.pop("children", None)
+        doc["nodes"] = doc["nodes"][:1]
+    if content != "morph":
+        primitive.pop("targets", None)
 else:
     raise ValueError(action)
 write(path, doc, binary)
@@ -209,31 +265,66 @@ fi
 
 write_fixture "$tmp/source.glb" --triangles 12 --primitive-count 2
 write_fixture "$tmp/output.glb" --triangles 12 --primitive-count 2
+run_metrics "$tmp/source.glb" >"$tmp/source.json"
+run_metrics "$tmp/output.glb" >"$tmp/output.json"
+PYTHONDONTWRITEBYTECODE=1 python3 - "$tmp/source.json" "$tmp/output.json" <<'PY'
+import json
+import sys
 
-expect_preservation_rejection() {
-  local name=$1
-  local source=$2
-  local output=$3
-  local required_diagnostic=${4:-}
-  PYTHONDONTWRITEBYTECODE=1 python3 - "$metrics_script" "$source" "$output" "$name" "$required_diagnostic" <<'PY'
+source = json.load(open(sys.argv[1], encoding="utf-8"))
+output = json.load(open(sys.argv[2], encoding="utf-8"))
+for metrics in (source, output):
+    # Break caught: a later primitive is skipped while collecting metrics/bounds.
+    assert metrics["meshes"] == 1
+    assert metrics["primitives"] == metrics["uv_primitives"] == metrics["material_primitives"] == 2
+    assert metrics["world_bounds"] == {"min": [-1.0, -1.0, -1.0], "max": [1.0, 1.0, 1.0]}
+PY
+
+expect_preservation() {
+  local expectation=$1
+  local name=$2
+  local source=$3
+  local output=$4
+  local required_diagnostic=${5:-}
+  PYTHONDONTWRITEBYTECODE=1 python3 - "$metrics_script" "$expectation" "$source" "$output" "$name" "$required_diagnostic" <<'PY'
 import importlib.util
 import sys
 from pathlib import Path
 
-script, source_path, output_path, name, required_diagnostic = sys.argv[1:]
+script, expectation, source_path, output_path, name, required_diagnostic = sys.argv[1:]
 spec = importlib.util.spec_from_file_location("glb_metrics_under_test", Path(script))
 assert spec and spec.loader
 module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
-reasons = module.compare_preservation(module.inspect_glb(Path(source_path)), module.inspect_glb(Path(output_path)))
+sys.modules[spec.name] = module
+try:
+    spec.loader.exec_module(module)
+    reasons = module.compare_preservation(module.inspect_glb(Path(source_path)), module.inspect_glb(Path(output_path)))
+finally:
+    sys.modules.pop(spec.name, None)
 assert isinstance(reasons, list), f"{name}: comparator must return a diagnostics list"
-assert reasons, f"{name}: preservation regression was accepted"
-if required_diagnostic:
-    assert any(required_diagnostic.lower() in reason.lower() for reason in reasons), (
-        f"{name}: expected explicit diagnostic containing {required_diagnostic!r}, got {reasons!r}"
-    )
+if expectation == "accept":
+    assert reasons == [], f"{name}: unchanged valid pair was rejected: {reasons!r}"
+elif expectation == "reject":
+    assert reasons, f"{name}: preservation regression was accepted"
+    if required_diagnostic:
+        assert any(required_diagnostic.lower() in reason.lower() for reason in reasons), (
+            f"{name}: expected explicit diagnostic containing {required_diagnostic!r}, got {reasons!r}"
+        )
+else:
+    raise AssertionError(f"unknown expectation: {expectation}")
 PY
 }
+
+expect_preservation_acceptance() {
+  expect_preservation accept "$@"
+}
+
+expect_preservation_rejection() {
+  expect_preservation reject "$@"
+}
+
+# Break caught: a comparator rejects every output, including an unchanged valid pair.
+expect_preservation_acceptance "unchanged baseline" "$tmp/source.glb" "$tmp/output.glb"
 
 cp "$tmp/output.glb" "$tmp/center-drift.glb"
 mutate "$tmp/center-drift.glb" translate
@@ -287,8 +378,8 @@ expect_preservation_rejection "arbitrary extension" "$tmp/source.glb" "$tmp/exte
 expect_preservation_rejection "meshopt compression" "$tmp/source.glb" "$tmp/meshopt.glb" "compression extension"
 
 for scene_case in animation camera light skin morph; do
-  cp "$tmp/output.glb" "$tmp/$scene_case.glb"
-  mutate "$tmp/$scene_case.glb" "$scene_case"
+  cp "$tmp/scene-content.glb" "$tmp/$scene_case.glb"
+  mutate "$tmp/$scene_case.glb" "only-$scene_case"
 done
 # Break caught: an animation is introduced into a static derivative.
 expect_preservation_rejection "animation" "$tmp/source.glb" "$tmp/animation.glb"
