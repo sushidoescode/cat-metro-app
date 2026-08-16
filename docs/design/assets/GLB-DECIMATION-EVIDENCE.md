@@ -280,10 +280,17 @@ Silhouette contact sheets:
 ## Material-lit color evidence and visual verdict
 
 Silhouettes alone do not establish material appearance. The independent
-review therefore also inspected all 30 yaw-25 material-lit individual PNGs,
-ten paired views at yaw 115°, ten paired views at yaw 205°, and the four
-current comparison grids at original detail. Every yaw-25 individual is
-640×640 RGBA. The full yaw-25 inventory and hashes are:
+review therefore also inspected all 30 yaw-25 material-lit individual PNGs;
+five source/derivative pairs (10 individual PNGs) at yaw 205° for
+`cat-red-tabby`, `cat-blue-siamese`, `cat-yellow-longhair`,
+`cat-green-shorthair`, and `cat-wild-alley`; five source/derivative pairs
+(10 individual PNGs) at yaw 115° for `cat-red-tabby-sitting`,
+`cat-blue-siamese-loaf`, `cat-yellow-longhair-wave`,
+`cat-green-shorthair-sit`, and `cat-conductor`; and the four current
+comparison grids at original detail. Other PNGs present under `color-yaw205/`
+are legacy diagnostics and were not used for this verdict; the recorded
+five-pair grid hash below is authoritative. Every yaw-25 individual is 640×640
+RGBA. The full yaw-25 inventory and hashes are:
 
 | Asset | Source color PNG SHA-256 | Derivative color PNG SHA-256 |
 |---|---|---|
