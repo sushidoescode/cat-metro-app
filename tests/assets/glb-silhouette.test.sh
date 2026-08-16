@@ -246,6 +246,9 @@ write_fixture \
 write_fixture \
   "$tmp/hardening-target.glb" --triangles 3 \
   --omit-uv --omit-material --omit-image
+write_fixture \
+  "$tmp/shared-topology-base.glb" --triangles 1000 \
+  --omit-uv --omit-material --omit-image
 
 PYTHONDONTWRITEBYTECODE=1 python3 - \
   "$silhouette_script" "$tmp" <<'PY'
@@ -271,10 +274,12 @@ script = Path(sys.argv[1]).resolve()
 root = Path(sys.argv[2]).resolve()
 source_template = root / "hardening-source.glb"
 target_template = root / "hardening-target.glb"
+shared_topology_template = root / "shared-topology-base.glb"
 python = sys.executable
 environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
 failures: list[str] = []
 maximum_source_bytes = 512 * 1024 * 1024
+maximum_selected_index_references = 8_000_000
 oversized_diagnostic = (
     f"glb-silhouette: source GLB exceeds {maximum_source_bytes}-byte limit"
 )
@@ -631,6 +636,62 @@ def build_high_work_surface(source: Path, output: Path) -> None:
         },
     )
     write_glb(output, document, binary)
+
+
+def build_shared_primitive_scene(
+    source: Path,
+    output: Path,
+    primitive_count: int,
+) -> None:
+    """Repeat one real primitive without repeating its binary accessors."""
+    document, binary = parse_glb(source)
+    meshes = document["meshes"]
+    assert isinstance(meshes, list) and len(meshes) == 1
+    mesh = meshes[0]
+    assert isinstance(mesh, dict)
+    primitives = mesh["primitives"]
+    assert isinstance(primitives, list) and len(primitives) == 1
+    item = primitives[0]
+    assert isinstance(item, dict)
+    index_number = item["indices"]
+    assert isinstance(index_number, int)
+    index_accessor, _ = accessor_and_view(document, index_number)
+    assert index_accessor["count"] == 3_000
+    # JSON serialization materializes the primitive records, but every record
+    # intentionally shares the same compact POSITION and index accessors.
+    mesh["primitives"] = [item] * primitive_count
+    write_glb(output, document, binary)
+
+
+def shared_scene_work(path: Path) -> tuple[int, int, int]:
+    """Independently measure the single-node shared-accessor test shape."""
+    document, _ = parse_glb(path)
+    meshes = document["meshes"]
+    nodes = document["nodes"]
+    scenes = document["scenes"]
+    assert isinstance(meshes, list) and len(meshes) == 1
+    assert isinstance(nodes, list) and len(nodes) == 1
+    assert isinstance(scenes, list) and len(scenes) == 1
+    node = nodes[0]
+    scene = scenes[0]
+    assert isinstance(node, dict) and node.get("mesh") == 0
+    assert isinstance(scene, dict) and scene.get("nodes") == [0]
+    mesh = meshes[0]
+    assert isinstance(mesh, dict)
+    primitives = mesh["primitives"]
+    assert isinstance(primitives, list)
+    selected_references = 0
+    index_accessors: set[int] = set()
+    for item in primitives:
+        assert isinstance(item, dict) and item.get("mode") == 4
+        index_number = item.get("indices")
+        assert isinstance(index_number, int)
+        index_accessors.add(index_number)
+        accessor, _ = accessor_and_view(document, index_number)
+        count = accessor.get("count")
+        assert isinstance(count, int)
+        selected_references += count
+    return len(primitives), len(index_accessors), selected_references
 
 
 def reported_vertices(stdout: str) -> int | None:
@@ -1144,6 +1205,474 @@ check(
     "bounded oversize oracle did not stop the streaming-chunk mutation",
 )
 check(not streaming_output.exists(), "streaming reader mutation left output")
+
+
+# Independent-review follow-up: selected-scene topology work is bounded before
+# the strict metrics inspector or surface iterator can perform the full walk.
+# The fixed ceiling is 8,000,000 index references.  It is deliberately above
+# the frozen real-source envelope: all 15 recorded sources have one mesh and
+# one primitive, and the largest mode-4 source has 1,985,458 triangles, hence
+# 5,956,374 selected references.  This tracked evidence is the positive
+# current-real-envelope control; the 1,000-triangle fixture below is the
+# ordinary executable control.
+recorded_metrics = json.loads(
+    Path("docs/design/assets/GLB-DECIMATION-METRICS.json").read_text(
+        encoding="utf-8"
+    )
+)
+recorded_assets = recorded_metrics.get("assets")
+check(
+    isinstance(recorded_assets, list) and len(recorded_assets) == 15,
+    "topology envelope: tracked metrics do not contain 15 assets",
+)
+recorded_work: list[int] = []
+if isinstance(recorded_assets, list):
+    for asset in recorded_assets:
+        source_metrics = asset.get("source") if isinstance(asset, dict) else None
+        if not isinstance(source_metrics, dict):
+            failures.append("topology envelope: malformed source metrics")
+            continue
+        triangles = source_metrics.get("triangles")
+        meshes = source_metrics.get("meshes")
+        primitives = source_metrics.get("primitives")
+        if (
+            not isinstance(triangles, int)
+            or meshes != 1
+            or primitives != 1
+        ):
+            failures.append(
+                "topology envelope: frozen source is not one measured "
+                "mode-4 mesh primitive"
+            )
+            continue
+        recorded_work.append(triangles * 3)
+check(
+    len(recorded_work) == 15
+    and max(recorded_work, default=0) == 5_956_374
+    and all(
+        work <= maximum_selected_index_references for work in recorded_work
+    ),
+    "topology envelope: 8000000-reference ceiling rejects a recorded source",
+)
+
+topology_control_output = root / "shared-topology-control.png"
+topology_control = invoke(
+    shared_topology_template,
+    topology_control_output,
+    "25",
+    "--size", "64",
+    "--splat-radius", "1",
+    "--min-coverage", "0",
+    timeout=2.0,
+)
+check(
+    topology_control is not None and topology_control.returncode == 0,
+    "topology budget: ordinary 3000-reference surface was rejected",
+)
+check(
+    is_complete_png(topology_control_output, 64),
+    "topology budget: ordinary control did not leave a complete PNG",
+)
+
+topology_case = root / "aggregate-topology-budget"
+topology_case.mkdir()
+topology_source = topology_case / "shared-primitives.glb"
+topology_output = topology_case / "shared-primitives.png"
+build_shared_primitive_scene(
+    shared_topology_template,
+    topology_source,
+    primitive_count=3_000,
+)
+primitive_total, distinct_indices, selected_references = shared_scene_work(
+    topology_source
+)
+check(
+    primitive_total == 3_000
+    and distinct_indices == 1
+    and selected_references == 9_000_000
+    and selected_references > maximum_selected_index_references,
+    "topology budget: compact hostile fixture does not cross the fixed cap",
+)
+topology_started = time.monotonic()
+topology_result = invoke(
+    topology_source,
+    topology_output,
+    "25",
+    "--size", "64",
+    "--splat-radius", "1",
+    "--min-coverage", "0",
+    timeout=1.5,
+)
+topology_elapsed = time.monotonic() - topology_started
+check_prefixed_failure(topology_result, "aggregate selected-scene topology")
+if topology_result is not None:
+    topology_diagnostic = topology_result.stderr.lower()
+    check(
+        "8000000" in topology_diagnostic
+        and "index" in topology_diagnostic
+        and "reference" in topology_diagnostic,
+        "topology budget: diagnostic does not identify the fixed reference cap",
+    )
+check(
+    topology_elapsed < 2.0,
+    "topology budget: rejection occurred after an expensive surface walk",
+)
+check(not topology_output.exists(), "topology budget left an evidence PNG")
+check(
+    {path.name for path in topology_case.iterdir()} == {"shared-primitives.glb"},
+    "topology budget rejection left staging residue",
+)
+
+
+# Independent-review follow-up: the source itself is immutable evidence input.
+# It must be a regular, single-link, non-symlink file, and the bytes opened
+# after metadata preflight must be the same inode that was preflighted.
+source_custody = root / "source-custody"
+source_custody.mkdir()
+for link_kind in ("symlink", "hardlink"):
+    case = source_custody / link_kind
+    case.mkdir()
+    target = case / "target.glb"
+    source = case / "source.glb"
+    output = case / "output.png"
+    shutil.copyfile(source_template, target)
+    target_before = target.read_bytes()
+    if link_kind == "symlink":
+        source.symlink_to(target.name)
+    else:
+        os.link(target, source)
+    result = invoke(
+        source,
+        output,
+        "25",
+        "--size", "64",
+        "--splat-radius", "1",
+        "--min-coverage", "0",
+    )
+    check_prefixed_failure(result, f"{link_kind} GLB source")
+    check(not output.exists(), f"{link_kind} GLB source left an evidence PNG")
+    check(
+        target.read_bytes() == target_before
+        and source.read_bytes() == target_before,
+        f"{link_kind} GLB source changed source bytes",
+    )
+    if link_kind == "symlink":
+        check(
+            source.is_symlink() and os.readlink(source) == target.name,
+            "symlink GLB source changed link custody",
+        )
+    else:
+        check(
+            os.path.samefile(source, target)
+            and source.stat().st_nlink == 2
+            and target.stat().st_nlink == 2,
+            "hardlink GLB source changed link custody",
+        )
+    check(
+        {path.name for path in case.iterdir()} == {"source.glb", "target.glb"},
+        f"{link_kind} GLB source left staging residue",
+    )
+
+swap_case = source_custody / "preflight-open-swap"
+swap_case.mkdir()
+swap_source = swap_case / "source.glb"
+swap_replacement = swap_case / "replacement.glb"
+swap_held_original = swap_case / "held-original.glb"
+swap_output = swap_case / "output.png"
+shutil.copyfile(source_template, swap_source)
+shutil.copyfile(target_template, swap_replacement)
+swap_original_bytes = swap_source.read_bytes()
+swap_replacement_bytes = swap_replacement.read_bytes()
+check(
+    swap_original_bytes != swap_replacement_bytes,
+    "source swap: original and replacement fixtures are not distinct",
+)
+
+swap_module_name = "catmetro_glb_silhouette_source_swap_probe"
+swap_spec = importlib.util.spec_from_file_location(swap_module_name, script)
+assert swap_spec is not None and swap_spec.loader is not None
+swap_module = importlib.util.module_from_spec(swap_spec)
+swap_original_open = os.open
+swap_original_replace = os.replace
+swap_performed = False
+swap_error: BaseException | None = None
+
+
+def swap_before_open(
+    path: object,
+    flags: int,
+    *arguments: object,
+    **keywords: object,
+) -> int:
+    global swap_performed
+    try:
+        candidate = os.path.abspath(os.fsdecode(os.fspath(path)))
+    except TypeError:
+        candidate = ""
+    if not swap_performed and candidate == str(swap_source):
+        swap_original_replace(swap_source, swap_held_original)
+        swap_original_replace(swap_replacement, swap_source)
+        swap_performed = True
+    return swap_original_open(path, flags, *arguments, **keywords)
+
+
+sys.path.insert(0, scripts_directory)
+try:
+    swap_spec.loader.exec_module(swap_module)
+    os.open = swap_before_open
+    try:
+        swap_module.render(
+            swap_source,
+            swap_output,
+            25.0,
+            size=64,
+            splat_radius=1,
+            minimum_coverage=0.0,
+        )
+    except BaseException as exc:
+        swap_error = exc
+finally:
+    os.open = swap_original_open
+    sys.path.remove(scripts_directory)
+    sys.modules.pop(swap_module_name, None)
+
+check(swap_performed, "source swap: preflight/open mutation was not injected")
+check(swap_error is not None, "source swap: replacement bytes were rendered")
+check(not swap_output.exists(), "source swap left misattributed evidence")
+check(
+    swap_held_original.read_bytes() == swap_original_bytes
+    and swap_source.read_bytes() == swap_replacement_bytes,
+    "source swap changed either captured source payload",
+)
+check(
+    {path.name for path in swap_case.iterdir()}
+    == {"held-original.glb", "source.glb"},
+    "source swap rejection left staging residue",
+)
+
+
+# Independent-review follow-up: face non-degeneracy is a world-space property.
+# A singular scene transform that collapses a valid local triangle cannot
+# produce silhouette evidence.
+singular_case = root / "singular-world-transform"
+singular_case.mkdir()
+singular_source = singular_case / "singular.glb"
+singular_output = singular_case / "singular.png"
+singular_document, singular_binary = parse_glb(source_template)
+singular_nodes = singular_document["nodes"]
+assert isinstance(singular_nodes, list) and len(singular_nodes) == 1
+singular_node = singular_nodes[0]
+assert isinstance(singular_node, dict)
+singular_node["scale"] = [1.0, 0.0, 1.0]
+write_glb(singular_source, singular_document, singular_binary)
+singular_item = primitive(singular_document)
+singular_attributes = singular_item["attributes"]
+assert isinstance(singular_attributes, dict)
+singular_position_number = singular_attributes["POSITION"]
+singular_index_number = singular_item["indices"]
+assert isinstance(singular_position_number, int)
+assert isinstance(singular_index_number, int)
+singular_position_accessor, singular_position_view = accessor_and_view(
+    singular_document, singular_position_number
+)
+singular_index_accessor, singular_index_view = accessor_and_view(
+    singular_document, singular_index_number
+)
+assert singular_position_accessor["componentType"] == 5126
+assert singular_position_accessor["type"] == "VEC3"
+assert singular_index_accessor["componentType"] == 5123
+position_start = int(singular_position_view.get("byteOffset", 0)) + int(
+    singular_position_accessor.get("byteOffset", 0)
+)
+index_start = int(singular_index_view.get("byteOffset", 0)) + int(
+    singular_index_accessor.get("byteOffset", 0)
+)
+first_indices = struct.unpack_from("<3H", singular_binary, index_start)
+local_triangle = tuple(
+    struct.unpack_from("<3f", singular_binary, position_start + index * 12)
+    for index in first_indices
+)
+
+
+def triangle_cross(
+    points: tuple[tuple[float, float, float], ...],
+) -> tuple[float, float, float]:
+    a, b, c = points
+    ab = tuple(b[axis] - a[axis] for axis in range(3))
+    ac = tuple(c[axis] - a[axis] for axis in range(3))
+    return (
+        ab[1] * ac[2] - ab[2] * ac[1],
+        ab[2] * ac[0] - ab[0] * ac[2],
+        ab[0] * ac[1] - ab[1] * ac[0],
+    )
+
+
+world_triangle = tuple((x, 0.0, z) for x, _y, z in local_triangle)
+check(
+    triangle_cross(local_triangle) != (0.0, 0.0, 0.0)
+    and triangle_cross(world_triangle) == (0.0, 0.0, 0.0),
+    "world-collapse fixture is not locally valid and world-degenerate",
+)
+singular_result = invoke(
+    singular_source,
+    singular_output,
+    "25",
+    "--size", "64",
+    "--splat-radius", "4",
+    "--min-coverage", "0",
+)
+check_prefixed_failure(singular_result, "world-collapsed triangle")
+check(not singular_output.exists(), "world-collapsed triangle left a PNG")
+check(
+    {path.name for path in singular_case.iterdir()} == {"singular.glb"},
+    "world-collapsed triangle left staging residue",
+)
+
+
+# Independent-review follow-up: argparse failures use the same bounded,
+# printable, redacted one-line diagnostic boundary as rendering failures.
+argument_output = root / "hostile-argument.png"
+hostile_argument = (
+    "not-an-integer\n"
+    "token=SAFE_GENERIC_SENTINEL\t"
+    + "x" * 2_048
+)
+argument_result = invoke(
+    source_template,
+    argument_output,
+    "25",
+    "--size", hostile_argument,
+    "--splat-radius", "1",
+    "--min-coverage", "0",
+)
+check_prefixed_failure(argument_result, "hostile argparse value")
+if argument_result is not None:
+    argument_lines = argument_result.stderr.splitlines()
+    check(
+        len(argument_result.stderr.encode("utf-8")) <= 512,
+        "hostile argparse value exceeded 512 diagnostic bytes",
+    )
+    check(
+        len(argument_lines) == 1
+        and all(character.isprintable() for character in argument_lines[0]),
+        "hostile argparse value did not emit exactly one printable line",
+    )
+    lowered_argument_diagnostic = argument_result.stderr.lower()
+    check(
+        "safe_generic_sentinel" not in lowered_argument_diagnostic
+        and "token=" not in lowered_argument_diagnostic
+        and "not-an-integer" not in lowered_argument_diagnostic,
+        "hostile argparse value was echoed instead of redacted",
+    )
+check(not argument_output.exists(), "hostile argparse value left a PNG")
+
+
+# Independent-review follow-up: when publication and exact temporary-file
+# cleanup both fail, the cleanup failure is part of the bounded diagnostic.
+# The prior ordinary PNG remains untouched.  Earlier link cases independently
+# pin preservation of symlink/hardlink referents.
+cleanup_case = root / "persistent-cleanup-failure"
+cleanup_case.mkdir()
+cleanup_source = cleanup_case / "source.glb"
+cleanup_output = cleanup_case / "output.png"
+shutil.copyfile(source_template, cleanup_source)
+cleanup_prior = ordinary_output.read_bytes()
+cleanup_output.write_bytes(cleanup_prior)
+cleanup_wrapper = root / "persistent-cleanup-probe.py"
+cleanup_wrapper.write_text(
+    "from __future__ import annotations\n"
+    "import os\n"
+    "import runpy\n"
+    "import sys\n"
+    "from pathlib import Path\n"
+    "script = Path(sys.argv[1]).resolve()\n"
+    "source = Path(sys.argv[2]).resolve()\n"
+    "output = Path(sys.argv[3]).resolve()\n"
+    "original_replace = os.replace\n"
+    "original_unlink = os.unlink\n"
+    "original_remove = os.remove\n"
+    "original_path_unlink = Path.unlink\n"
+    "def is_stage(value: object) -> bool:\n"
+    "    try:\n"
+    "        return Path(os.fspath(value)).name.startswith('.glb-silhouette-')\n"
+    "    except TypeError:\n"
+    "        return False\n"
+    "def fail_replace(*_args: object, **_kwargs: object) -> None:\n"
+    "    raise OSError('SAFE_GENERIC_SENTINEL publication failure')\n"
+    "def fail_unlink(path: object, *_args: object, **_kwargs: object) -> None:\n"
+    "    if is_stage(path):\n"
+    "        raise OSError('SAFE_GENERIC_SENTINEL temporary cleanup failure')\n"
+    "    original_unlink(path)\n"
+    "def fail_remove(path: object, *_args: object, **_kwargs: object) -> None:\n"
+    "    if is_stage(path):\n"
+    "        raise OSError('SAFE_GENERIC_SENTINEL temporary cleanup failure')\n"
+    "    original_remove(path)\n"
+    "def fail_path_unlink(self: Path, *_args: object, **_kwargs: object) -> None:\n"
+    "    if is_stage(self):\n"
+    "        raise OSError('SAFE_GENERIC_SENTINEL temporary cleanup failure')\n"
+    "    original_path_unlink(self)\n"
+    "sys.path.insert(0, str(script.parent))\n"
+    "os.replace = fail_replace\n"
+    "os.unlink = fail_unlink\n"
+    "os.remove = fail_remove\n"
+    "Path.unlink = fail_path_unlink\n"
+    "try:\n"
+    "    sys.argv = [str(script), str(source), str(output), '25', "
+    "'--size', '64', '--splat-radius', '1', '--min-coverage', '0']\n"
+    "    try:\n"
+    "        runpy.run_path(str(script), run_name='__main__')\n"
+    "    except SystemExit as exc:\n"
+    "        result = exc.code if isinstance(exc.code, int) else 1\n"
+    "    else:\n"
+    "        result = 0\n"
+    "finally:\n"
+    "    os.replace = original_replace\n"
+    "    os.unlink = original_unlink\n"
+    "    os.remove = original_remove\n"
+    "    Path.unlink = original_path_unlink\n"
+    "    sys.path.pop(0)\n"
+    "raise SystemExit(result)\n",
+    encoding="utf-8",
+)
+try:
+    cleanup_result = subprocess.run(
+        [python, str(cleanup_wrapper), str(script), str(cleanup_source), str(cleanup_output)],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=environment,
+        timeout=2.0,
+    )
+except subprocess.TimeoutExpired:
+    cleanup_result = None
+check_prefixed_failure(cleanup_result, "persistent temporary cleanup failure")
+if cleanup_result is not None:
+    check(
+        len(cleanup_result.stderr.encode("utf-8")) <= 512,
+        "persistent cleanup diagnostic exceeded 512 bytes",
+    )
+    check(
+        "cleanup" in cleanup_result.stderr.lower(),
+        "persistent cleanup failure was omitted from the diagnostic",
+    )
+    cleanup_lines = cleanup_result.stderr.splitlines()
+    check(
+        len(cleanup_lines) == 1
+        and all(character.isprintable() for character in cleanup_lines[0]),
+        "persistent cleanup failure did not emit one printable diagnostic",
+    )
+check(
+    cleanup_output.read_bytes() == cleanup_prior,
+    "persistent cleanup failure changed the prior PNG",
+)
+cleanup_residue = [
+    path for path in cleanup_case.iterdir()
+    if path.name.startswith(".glb-silhouette-")
+]
+check(
+    len(cleanup_residue) == 1,
+    "persistent cleanup probe did not exercise the staging cleanup failure",
+)
 
 
 if failures:
