@@ -344,7 +344,6 @@ if [ "$review_section" = all ] || [ "$review_section" = E ]; then
 import hashlib
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -441,35 +440,42 @@ def prepare_case(label, identifier):
     }
 
 unsafe_ids = (
-    ("empty", "", r"id[^\r\n]*non-empty"),
-    ("line-feed", "unsafe\nglb-decimation: asset=forged-line-feed", r"id[^\r\n]*single-line"),
-    ("carriage-return", "unsafe\rglb-decimation: asset=forged-carriage-return", r"id[^\r\n]*single-line"),
-    ("tab", "unsafe\tglb-decimation: asset=forged-tab", r"id[^\r\n]*single-line"),
-    ("escape", "unsafe\x1bglb-decimation: asset=forged-escape", r"id[^\r\n]*single-line"),
-    ("unicode-line-separator", "unsafe\u2028glb-decimation: asset=forged-line-separator", r"id[^\r\n]*single-line"),
-    ("unicode-paragraph-separator", "unsafe\u2029glb-decimation: asset=forged-paragraph-separator", r"id[^\r\n]*single-line"),
+    ("empty", ""),
+    ("line-feed", "unsafe\nglb-decimation: asset=forged-line-feed"),
+    ("carriage-return", "unsafe\rglb-decimation: asset=forged-carriage-return"),
+    ("tab", "unsafe\tglb-decimation: asset=forged-tab"),
+    ("escape", "unsafe\x1bglb-decimation: asset=forged-escape"),
+    ("unicode-line-separator", "unsafe\u2028glb-decimation: asset=forged-line-separator"),
+    ("unicode-paragraph-separator", "unsafe\u2029glb-decimation: asset=forged-paragraph-separator"),
+)
+expected_diagnostic = (
+    "glb-decimation: invalid manifest: "
+    "id must be a printable single-line string\n"
 )
 
-for label, identifier, detail_pattern in unsafe_ids:
+for label, identifier in unsafe_ids:
     case = prepare_case(label, identifier)
     result = case["result"]
     combined = result.stdout + result.stderr
-    diagnostic = rf"^glb-decimation: invalid manifest: [^\r\n]*{detail_pattern}[^\r\n]*$"
     check(result.returncode != 0, f"{label}: unsafe manifest ID was accepted")
     check(result.stdout == "", f"{label}: rejection wrote stdout: {result.stdout!r}")
     check(
-        len(result.stderr.splitlines()) == 1
-        and re.fullmatch(diagnostic, result.stderr.rstrip("\n"), re.IGNORECASE) is not None,
-        f"{label}: missing single-line ID diagnostic: {combined!r}",
+        result.stderr == expected_diagnostic,
+        f"{label}: diagnostic was not exact/non-interpolating: {combined!r}",
     )
+    check(
+        result.stderr.endswith("\n") and result.stderr[:-1].isprintable(),
+        f"{label}: diagnostic contains a nonprintable/control character: {result.stderr!r}",
+    )
+    if identifier:
+        check(identifier not in combined, f"{label}: raw unsafe ID was interpolated")
     check(lines(case["fake_audit"]) == [], f"{label}: fake version/asset execution was reached")
     check(lines(case["fake_log"]) == [], f"{label}: fake asset execution was logged")
-    physical_records = [
-        line for line in combined.splitlines()
-        if line.startswith("glb-decimation: asset=")
-        or "output_triangles=" in line
-    ]
-    check(not physical_records, f"{label}: forged physical records escaped: {physical_records!r}")
+    check(
+        "glb-decimation: asset=" not in combined
+        and "output_triangles=" not in combined,
+        f"{label}: forged start/acceptance record escaped: {combined!r}",
+    )
     check(case["source"].read_bytes() == case["source_bytes"], f"{label}: source GLB changed")
     check(
         case["source_sidecar"].read_bytes() == case["sidecar_bytes"],
