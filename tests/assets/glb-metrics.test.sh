@@ -956,7 +956,8 @@ expect_preservation_rejection "normalized extent drift" "$tmp/source.glb" "$tmp/
 cp "$tmp/output.glb" "$tmp/missing-one-uv.glb"
 mutate "$tmp/missing-one-uv.glb" remove-one-uv
 # Break caught: a UV binding can disappear from one of several primitives.
-expect_preservation_rejection "missing UV binding" "$tmp/source.glb" "$tmp/missing-one-uv.glb"
+expect_inspection_or_preservation_rejection \
+  "missing UV binding" "$tmp/source.glb" "$tmp/missing-one-uv.glb"
 
 cp "$tmp/output.glb" "$tmp/missing-one-material.glb"
 mutate "$tmp/missing-one-material.glb" remove-one-material
@@ -1103,6 +1104,16 @@ def document(name):
     json_length, kind = struct.unpack_from("<I4s", raw, 12)
     assert kind == b"JSON"
     return json.loads(raw[20:20 + json_length].rstrip(b" "))
+
+
+def binary_payload(name):
+    raw = (fixture_root / f"{name}.glb").read_bytes()
+    json_length, json_kind = struct.unpack_from("<I4s", raw, 12)
+    assert json_kind == b"JSON"
+    binary_start = 20 + json_length
+    binary_length, binary_kind = struct.unpack_from("<I4s", raw, binary_start)
+    assert binary_kind == b"BIN\0"
+    return raw[binary_start + 8:binary_start + 8 + binary_length]
 
 
 def assert_surface(
@@ -1576,6 +1587,107 @@ def hostile_diagnostic_is_bounded_and_redacted():
 check(
     "hostile extension diagnostic is one bounded printable redacted line",
     hostile_diagnostic_is_bounded_and_redacted,
+)
+
+
+def implicit_texcoord0_is_required_during_inspection():
+    control_document = document("two-primitives")
+    negative_document = document("missing-one-uv")
+    control_primitives = control_document["meshes"][0]["primitives"]
+    negative_primitives = negative_document["meshes"][0]["primitives"]
+
+    # baseColorTexture omits texCoord, so glTF's default set is TEXCOORD_0.
+    # Both primitives use that material in the positive control.
+    assert control_document["materials"][0]["pbrMetallicRoughness"][
+        "baseColorTexture"
+    ] == {"index": 0}
+    assert [primitive["material"] for primitive in control_primitives] == [0, 0]
+    assert all(
+        "TEXCOORD_0" in primitive["attributes"]
+        for primitive in control_primitives
+    )
+    control_metrics = inspect("two-primitives")
+    assert control_metrics["uv_primitives"] == 2
+
+    # The negative retains the same material, indices, POSITION, and first
+    # primitive.  Restoring only the second TEXCOORD_0 reference makes its
+    # JSON document exactly equal to the valid control.
+    assert negative_document["materials"] == control_document["materials"]
+    assert [primitive["material"] for primitive in negative_primitives] == [0, 0]
+    assert "TEXCOORD_0" in negative_primitives[0]["attributes"]
+    assert "TEXCOORD_0" not in negative_primitives[1]["attributes"]
+    restored_document = json.loads(json.dumps(negative_document))
+    restored_document["meshes"][0]["primitives"][1]["attributes"][
+        "TEXCOORD_0"
+    ] = control_primitives[1]["attributes"]["TEXCOORD_0"]
+    assert restored_document == control_document
+    assert binary_payload("missing-one-uv") == binary_payload("two-primitives")
+
+    semantic_phrases = (
+        "texcoord_0",
+        "texcoord 0",
+        "uv set 0",
+        "texture coordinate set 0",
+        "texture coordinate 0",
+    )
+    issues = []
+    inspect_diagnostics = []
+    for _ in range(2):
+        try:
+            inspect("missing-one-uv")
+        except module.GlbError as exc:
+            inspect_diagnostics.append(str(exc))
+    if len(inspect_diagnostics) == 2:
+        assert inspect_diagnostics[0] == inspect_diagnostics[1], (
+            inspect_diagnostics
+        )
+        assert any(
+            phrase in inspect_diagnostics[0].lower()
+            for phrase in semantic_phrases
+        ), inspect_diagnostics[0]
+    else:
+        issues.append("direct inspect accepted missing default TEXCOORD_0")
+
+    cli_runs = [
+        subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                str(fixture_root / "missing-one-uv.glb"),
+            ],
+            check=False,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=2.0,
+        )
+        for _ in range(2)
+    ]
+    for completed in cli_runs:
+        if completed.returncode == 0:
+            continue
+        assert completed.stdout == "", completed.stdout
+        lines = completed.stderr.splitlines()
+        assert len(lines) == 1 and lines[0].startswith("glb-metrics:"), (
+            f"expected one prefixed diagnostic, got {completed.stderr!r}"
+        )
+        assert "traceback" not in completed.stderr.lower(), completed.stderr
+        assert any(
+            phrase in lines[0].lower() for phrase in semantic_phrases
+        ), lines[0]
+    if all(completed.returncode != 0 for completed in cli_runs):
+        assert cli_runs[0].stderr == cli_runs[1].stderr, (
+            "CLI diagnostic changed between identical invocations"
+        )
+    else:
+        issues.append("CLI accepted missing default TEXCOORD_0")
+    assert not issues, "; ".join(issues)
+
+
+check(
+    "inspection rejects missing implicit TEXCOORD_0 on the second primitive",
+    implicit_texcoord0_is_required_during_inspection,
 )
 
 
