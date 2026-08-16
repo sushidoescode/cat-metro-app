@@ -81,8 +81,9 @@ inspection of every ambiguous appendage or silhouette regression. Code-green alo
 known collapse-decimation operation. One-process isolation bounds cross-asset state, and ordinary GLB
 output avoids a Unity runtime package or decoder.
 
-**Harder:** development machines performing real decimation must provide the exact Blender build and
-bundled importer/exporter version. A Blender upgrade is deliberate rather than automatic. Processing
+**Harder:** development machines performing real decimation must provide the stock exact Blender
+build that carries the verified bundled importer/exporter. A Blender upgrade is deliberate rather
+than automatic. Processing
 15 source files totaling roughly 815.6 MiB costs local CPU, memory, disk, and review time, while
 human silhouette review remains a required non-automated gate.
 
@@ -138,10 +139,12 @@ Primary sources retrieved **2026-08-15**:
 
 The local approved surface was verified as Blender **5.1.2**, build **`ec6e62d40fa9`**, with bundled
 `io_scene_gltf2` **5.1.20**, while running in background/factory-startup/autoexec-disabled mode. The
-implementation must fail closed if any of those exact values differs. Required verification then
-includes focused tests and mutations, syntax/static checks, repository gates, post-export inspection,
-and recorded source/output metrics for all 15 real assets, followed by complete before/after human
-visual evidence.
+implementation fails closed if either reported Blender identity value differs. The add-on version is
+a transitively pinned property of the approved stock bundle and is not independently queried; a
+modified bundle that retains the same reported application identity is unsupported and is not
+claimed to be detectable. Required verification then includes focused tests and mutations,
+syntax/static checks, repository gates, post-export inspection, and recorded source/output metrics
+for all 15 real assets, followed by complete before/after human visual evidence.
 
 An upstream release existing is not an upgrade trigger. A security advisory, platform incompatibility,
 confirmed import/export defect, or inability to install/run the pin may justify change, but an upgrade
