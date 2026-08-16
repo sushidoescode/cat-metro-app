@@ -184,8 +184,7 @@ def _extension_names(document: Mapping[str, object], name: str) -> list[str]:
     return sorted(result)
 
 
-def _extension_payload_names(document: Mapping[str, object]) -> set[str]:
-    payload_names: set[str] = set()
+def _validate_document_nesting(document: Mapping[str, object]) -> None:
     pending: list[tuple[object, int]] = [(document, 0)]
     while pending:
         value, depth = pending.pop()
@@ -194,15 +193,98 @@ def _extension_payload_names(document: Mapping[str, object]) -> set[str]:
                 f"GLB JSON nesting exceeds limit {MAX_DOCUMENT_NESTING}"
             )
         if isinstance(value, dict):
-            if "extensions" in value:
-                extensions = _object(value["extensions"], "extensions")
-                for name in extensions:
-                    if not isinstance(name, str) or not name:
-                        raise GlbError("extensions names must be non-empty strings")
-                    payload_names.add(name)
             pending.extend((child, depth + 1) for child in value.values())
         elif isinstance(value, list):
             pending.extend((child, depth + 1) for child in value)
+
+
+_ROOT_PROPERTY_ARRAYS = {
+    "accessors": "accessor",
+    "animations": "animation",
+    "buffers": "property",
+    "bufferViews": "property",
+    "cameras": "camera",
+    "images": "property",
+    "materials": "material",
+    "meshes": "mesh",
+    "nodes": "property",
+    "samplers": "property",
+    "scenes": "property",
+    "skins": "property",
+    "textures": "property",
+}
+
+_PROPERTY_OBJECT_CHILDREN = {
+    "document": (("asset", "property"),),
+    "accessor": (("sparse", "accessor_sparse"),),
+    "accessor_sparse": (
+        ("indices", "property"),
+        ("values", "property"),
+    ),
+    "animation_channel": (("target", "property"),),
+    "camera": (
+        ("orthographic", "property"),
+        ("perspective", "property"),
+    ),
+    "material": (
+        ("pbrMetallicRoughness", "material_pbr"),
+        ("normalTexture", "property"),
+        ("occlusionTexture", "property"),
+        ("emissiveTexture", "property"),
+    ),
+    "material_pbr": (
+        ("baseColorTexture", "property"),
+        ("metallicRoughnessTexture", "property"),
+    ),
+}
+
+_PROPERTY_ARRAY_CHILDREN = {
+    "document": tuple(_ROOT_PROPERTY_ARRAYS.items()),
+    "animation": (
+        ("channels", "animation_channel"),
+        ("samplers", "property"),
+    ),
+    "mesh": (("primitives", "property"),),
+}
+
+
+def _extension_payload_names(document: Mapping[str, object]) -> set[str]:
+    payload_names: set[str] = set()
+    pending: list[tuple[object, str, int]] = [(document, "document", 0)]
+    while pending:
+        value, kind, depth = pending.pop()
+        if depth > MAX_DOCUMENT_NESTING:
+            raise GlbError(
+                f"glTF property nesting exceeds limit {MAX_DOCUMENT_NESTING}"
+            )
+        property_object = _object(value, f"{kind} property")
+        if "extensions" in property_object:
+            extensions = _object(property_object["extensions"], "extensions")
+            for name, payload in extensions.items():
+                if not isinstance(name, str) or not name:
+                    raise GlbError("extensions names must be non-empty strings")
+                payload_names.add(name)
+                if kind == "document" and name == "KHR_lights_punctual":
+                    light_extension = _object(payload, "KHR_lights_punctual payload")
+                    if "lights" in light_extension:
+                        lights = _array(
+                            light_extension["lights"],
+                            "KHR_lights_punctual.lights",
+                        )
+                        pending.extend(
+                            (light, "property", depth + 1) for light in lights
+                        )
+        for child_name, child_kind in _PROPERTY_OBJECT_CHILDREN.get(kind, ()):
+            if child_name in property_object:
+                pending.append(
+                    (property_object[child_name], child_kind, depth + 1)
+                )
+        for child_name, child_kind in _PROPERTY_ARRAY_CHILDREN.get(kind, ()):
+            if child_name in property_object:
+                children = _array(property_object[child_name], child_name)
+                pending.extend(
+                    (child, child_kind, depth + 1) for child in children
+                )
     return payload_names
 
 
@@ -328,6 +410,7 @@ def _inspect_document(document: dict[str, object], data: bytes) -> dict[str, obj
     extensions_required = _extension_names(document, "extensionsRequired")
     if not set(extensions_required).issubset(extensions_used):
         raise GlbError("extensionsRequired must be a subset of extensionsUsed")
+    _validate_document_nesting(document)
     extension_payloads = _extension_payload_names(document)
     undeclared_extensions = extension_payloads - set(extensions_used)
     if undeclared_extensions:
