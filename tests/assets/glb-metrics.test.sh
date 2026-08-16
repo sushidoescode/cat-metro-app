@@ -193,6 +193,11 @@ elif action == "extension":
     doc["extensionsUsed"] = ["VENDOR_unreviewed"]
 elif action == "meshopt":
     doc["extensionsUsed"] = ["EXT_meshopt_compression"]
+elif action == "extras-metadata":
+    doc["extras"] = {"extensions": ["png", "jpg"], "fixture": "root metadata"}
+    doc["nodes"][0]["extras"] = {"extensions": {"renderer": {"quality": "preview"}}}
+    primitive["extras"] = {"extensions": ["thumbnail", "preview"]}
+    doc["materials"][0]["extras"] = {"extensions": {"authoring": {"source": "fixture"}}}
 elif action == "undeclared-draco":
     doc.pop("extensionsUsed", None)
     primitive["extensions"] = {"KHR_draco_mesh_compression": {"bufferView": 0, "attributes": {"POSITION": 0}}}
@@ -245,6 +250,25 @@ PY
 mutate() {
   PYTHONDONTWRITEBYTECODE=1 python3 "$tmp/mutate_glb.py" "$@"
 }
+
+cp "$tmp/valid.glb" "$tmp/extras-metadata.glb"
+mutate "$tmp/extras-metadata.glb" extras-metadata
+run_metrics "$tmp/extras-metadata.glb" >"$tmp/extras-metadata.json"
+PYTHONDONTWRITEBYTECODE=1 python3 - "$tmp/extras-metadata.json" <<'PY'
+import json
+import sys
+
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+# Break caught: opaque extras metadata is mistaken for real glTF extensions.
+assert d["extensions_used"] == d["extensions_required"] == []
+# Break caught: legal extras metadata changes unrelated ordinary inspection facts.
+assert d["triangles"] == 37
+assert d["vertices"] == 8
+assert d["meshes"] == d["primitives"] == d["materials"] == 1
+assert d["images"] == d["embedded_images"] == 1
+assert d["uv_primitives"] == d["material_primitives"] == 1
+assert d["world_bounds"] == {"min": [3.0, 4.0, 5.0], "max": [5.0, 6.0, 7.0]}
+PY
 
 expect_metrics_failure() {
   local name=$1
