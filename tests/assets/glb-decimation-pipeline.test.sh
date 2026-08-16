@@ -40,7 +40,10 @@ die() {
 if [ "$review_section" = all ] || [ "$review_section" = G ]; then
   PYTHONDONTWRITEBYTECODE=1 python3 - "$expected_driver" <<'PY'
 import ast
+import importlib.util
 import sys
+import tempfile
+import types
 from pathlib import Path
 
 
@@ -60,15 +63,27 @@ def dotted_name(node: ast.expr) -> str | None:
 
 def require_seam_safe_import(source: str, label: str) -> None:
     tree = ast.parse(source, filename=label)
+    import_functions = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_import_source"
+    ]
+    if len(import_functions) != 1:
+        raise ImportConfigurationError(
+            f"{label}: expected exactly one top-level _import_source FunctionDef; "
+            f"found {len(import_functions)}"
+        )
+
     calls = [
         node
-        for node in ast.walk(tree)
+        for node in ast.walk(import_functions[0])
         if isinstance(node, ast.Call)
         and dotted_name(node.func) == "bpy.ops.import_scene.gltf"
     ]
     if len(calls) != 1:
         raise ImportConfigurationError(
-            f"{label}: expected exactly one bpy.ops.import_scene.gltf call; "
+            f"{label}: expected exactly one direct bpy.ops.import_scene.gltf call "
+            "inside _import_source; "
             f"found {len(calls)}"
         )
 
@@ -98,6 +113,72 @@ def require_seam_safe_import(source: str, label: str) -> None:
         raise ImportConfigurationError(f"{label}: " + "; ".join(errors))
 
 
+def require_seam_safe_behavior(driver: Path, label: str) -> None:
+    executed_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    fake_bpy = types.ModuleType("bpy")
+
+    def import_spy(*args: object, **kwargs: object) -> set[str]:
+        executed_calls.append((args, dict(kwargs)))
+        return {"FINISHED"}
+
+    fake_bpy.ops = types.SimpleNamespace(
+        import_scene=types.SimpleNamespace(gltf=import_spy)
+    )
+    prior_bpy = sys.modules.get("bpy")
+    module_name = "_catmetro_blender_decimate_behavior_probe"
+    prior_module = sys.modules.get(module_name)
+
+    try:
+        sys.modules["bpy"] = fake_bpy
+        spec = importlib.util.spec_from_file_location(module_name, driver)
+        if spec is None or spec.loader is None:
+            raise ImportConfigurationError(
+                f"{label}: could not create an import spec for {driver}"
+            )
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+        import_source = getattr(module, "_import_source", None)
+        if not callable(import_source):
+            raise ImportConfigurationError(
+                f"{label}: imported module has no callable _import_source"
+            )
+        import_source(Path("behavior-probe-does-not-need-a-real-file.glb"))
+    finally:
+        if prior_bpy is None:
+            sys.modules.pop("bpy", None)
+        else:
+            sys.modules["bpy"] = prior_bpy
+        if prior_module is None:
+            sys.modules.pop(module_name, None)
+        else:
+            sys.modules[module_name] = prior_module
+
+    if len(executed_calls) != 1:
+        raise ImportConfigurationError(
+            f"{label}: expected _import_source to execute exactly one glTF import; "
+            f"observed {len(executed_calls)}"
+        )
+
+    _, kwargs = executed_calls[0]
+    errors: list[str] = []
+    merge_vertices = kwargs.get("merge_vertices")
+    if type(merge_vertices) is not bool or merge_vertices is not True:
+        errors.append("executed merge_vertices must be True")
+    import_shading = kwargs.get("import_shading")
+    if type(import_shading) is not str or import_shading != "SMOOTH":
+        errors.append("executed import_shading must be 'SMOOTH'")
+    if errors:
+        raise ImportConfigurationError(f"{label}: " + "; ".join(errors))
+
+
+def require_fixture_behavior(source: str, label: str) -> None:
+    with tempfile.TemporaryDirectory(prefix="catmetro-import-probe-") as directory:
+        driver = Path(directory) / "blender_decimate.py"
+        driver.write_text(source, encoding="utf-8")
+        require_seam_safe_behavior(driver, label)
+
+
 def assert_rejected(source: str, expected_diagnostic: str) -> None:
     try:
         require_seam_safe_import(source, "mutation control")
@@ -112,18 +193,39 @@ def assert_rejected(source: str, expected_diagnostic: str) -> None:
         )
 
 
+def assert_behavior_rejected(source: str, *expected_diagnostics: str) -> None:
+    try:
+        require_fixture_behavior(source, "behavior mutation control")
+    except ImportConfigurationError as exc:
+        for expected_diagnostic in expected_diagnostics:
+            if expected_diagnostic not in str(exc):
+                raise AssertionError(
+                    f"behavior mutation returned the wrong diagnostic: {exc}"
+                ) from exc
+    else:
+        raise AssertionError(
+            "behavior mutation unexpectedly accepted: "
+            + ", ".join(expected_diagnostics)
+        )
+
+
 compliant_fixture = """
-def import_fixture():
-    bpy.ops.import_scene.gltf(
+import bpy
+
+def _import_source(source):
+    result = bpy.ops.import_scene.gltf(
         filepath="fixture.glb",
         merge_vertices=True,
         import_shading="SMOOTH",
     )
+    if result != {"FINISHED"}:
+        raise RuntimeError(f"GLB import returned {result}")
 """
 require_seam_safe_import(compliant_fixture, "compliant control")
+require_fixture_behavior(compliant_fixture, "compliant behavior control")
 
 # Prove each required flag independently detects the regression observed in the
-# rendered assets, then prove call cardinality and literalness are enforced.
+# rendered assets, then prove target scope, call cardinality, and literalness.
 assert_rejected(
     compliant_fixture.replace("merge_vertices=True", "merge_vertices=False"),
     "merge_vertices must be the literal True",
@@ -133,8 +235,13 @@ assert_rejected(
     "import_shading must be the literal 'SMOOTH'",
 )
 assert_rejected(
-    compliant_fixture + "\nbpy.ops.import_scene.gltf(filepath='duplicate.glb')\n",
-    "expected exactly one bpy.ops.import_scene.gltf call; found 2",
+    compliant_fixture.replace(
+        "    result = bpy.ops.import_scene.gltf(",
+        "    bpy.ops.import_scene.gltf(filepath='duplicate.glb')\n"
+        "    result = bpy.ops.import_scene.gltf(",
+    ),
+    "expected exactly one direct bpy.ops.import_scene.gltf call "
+    "inside _import_source; found 2",
 )
 assert_rejected(
     compliant_fixture.replace("merge_vertices=True", "merge_vertices=SEAM_SAFE"),
@@ -145,11 +252,63 @@ assert_rejected(
     "import_shading must be the literal 'SMOOTH'",
 )
 
+# An unrelated direct call must not change _import_source's cardinality.
+unrelated_call_fixture = compliant_fixture + """
+
+def unrelated_import():
+    bpy.ops.import_scene.gltf(filepath="unrelated.glb")
+"""
+require_seam_safe_import(unrelated_call_fixture, "unrelated-call scope control")
+require_fixture_behavior(unrelated_call_fixture, "unrelated-call behavior control")
+
+# This is the confirmed bypass for the old global AST scan: its unreachable
+# direct call is compliant, while the import that actually executes goes through
+# an alias with unsafe values. The scoped AST check alone accepts the fixture;
+# the fake-bpy behavior spy must reject both executed arguments.
+unsafe_alias_fixture = """
+import bpy
+
+def _import_source(source):
+    importer = bpy.ops.import_scene.gltf
+    if False:
+        bpy.ops.import_scene.gltf(
+            filepath="unreachable.glb",
+            merge_vertices=True,
+            import_shading="SMOOTH",
+        )
+    result = importer(
+        filepath=str(source),
+        merge_vertices=False,
+        import_shading="NORMALS",
+    )
+    if result != {"FINISHED"}:
+        raise RuntimeError(f"GLB import returned {result}")
+"""
+require_seam_safe_import(unsafe_alias_fixture, "unsafe-alias AST bypass control")
+assert_behavior_rejected(
+    unsafe_alias_fixture,
+    "executed merge_vertices must be True",
+    "executed import_shading must be 'SMOOTH'",
+)
+
 driver = Path(sys.argv[1])
-try:
-    require_seam_safe_import(driver.read_text(encoding="utf-8"), str(driver))
-except ImportConfigurationError as exc:
-    print(f"glb-decimation pipeline test: {exc}", file=sys.stderr)
+driver_errors: list[str] = []
+for check in (
+    lambda: require_seam_safe_import(
+        driver.read_text(encoding="utf-8"), f"{driver} AST"
+    ),
+    lambda: require_seam_safe_behavior(driver, f"{driver} behavior"),
+):
+    try:
+        check()
+    except ImportConfigurationError as exc:
+        driver_errors.append(str(exc))
+
+if driver_errors:
+    print(
+        "glb-decimation pipeline test: " + " | ".join(driver_errors),
+        file=sys.stderr,
+    )
     raise SystemExit(1) from None
 PY
 fi
