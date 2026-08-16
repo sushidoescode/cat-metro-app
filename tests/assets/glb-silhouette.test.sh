@@ -152,4 +152,74 @@ fi
 test ! -e "$tmp/sparse.png"
 rg -n 'glb-silhouette: coverage [0-9.]+ below 0\.100000' "$tmp/sparse.err"
 
+alias_failures=0
+check_source_alias_rejected() {
+  local case_name=$1
+  local source="$tmp/$case_name-source.glb"
+  local output="$tmp/$case_name-output.png"
+  local stdout="$tmp/$case_name.out"
+  local stderr="$tmp/$case_name.err"
+  local before after render_rc
+
+  write_fixture "$source" --triangles 2 --primitive-count 2
+  case "$case_name" in
+    direct)
+      output=$source
+      ;;
+    symlink)
+      ln -s "$(basename "$source")" "$output"
+      ;;
+    hardlink)
+      ln "$source" "$output"
+      ;;
+    *)
+      echo "glb-silhouette test: unknown alias case $case_name" >&2
+      exit 1
+      ;;
+  esac
+  before=$(shasum -a 256 "$source" | awk '{print $1}')
+
+  set +e
+  run_silhouette \
+    "$source" "$output" 0 \
+    --size 128 --splat-radius 4 --min-coverage 0.01 \
+    >"$stdout" 2>"$stderr"
+  render_rc=$?
+  set -e
+  after=$(shasum -a 256 "$source" | awk '{print $1}')
+
+  # Break caught: direct, symbolic, or hard-link output aliases overwrite the
+  # immutable source instead of failing before rendering.
+  if [ "$render_rc" -eq 0 ]; then
+    echo "glb-silhouette test: $case_name source alias unexpectedly passed" >&2
+    alias_failures=$((alias_failures + 1))
+  fi
+  if ! rg -q '^glb-silhouette:' "$stderr"; then
+    echo "glb-silhouette test: $case_name source alias lacked diagnostic" >&2
+    alias_failures=$((alias_failures + 1))
+  fi
+  if [ "$before" != "$after" ]; then
+    echo "glb-silhouette test: $case_name source alias changed GLB hash" >&2
+    alias_failures=$((alias_failures + 1))
+  fi
+  if ! PYTHONDONTWRITEBYTECODE=1 python3 - "$source" <<'PY'
+import sys
+from pathlib import Path
+
+assert Path(sys.argv[1]).read_bytes()[:4] == b"glTF"
+PY
+  then
+    echo "glb-silhouette test: $case_name source alias changed GLB magic" >&2
+    alias_failures=$((alias_failures + 1))
+  fi
+}
+
+check_source_alias_rejected direct
+check_source_alias_rejected symlink
+check_source_alias_rejected hardlink
+if [ "$alias_failures" -ne 0 ]; then
+  echo "glb-silhouette test: $alias_failures source-alias protections failed" >&2
+  exit 1
+fi
+
 echo "glb-silhouette test: pass"
