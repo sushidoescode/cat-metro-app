@@ -14,7 +14,7 @@
       },
       "derivative_filename": "cat-red-tabby.glb",
       "derivative_sha256": "9d6f3e1b0d82f23500779c570943dc2081c6caad7295da7d3fe19c1c50742b59",
-      "derivative_sidecar_sha256": "09d8892b57dc152bee4deaa4a62c5f14d2e16dc69290f8968c0a4e72b5408f0f",
+      "derivative_sidecar_sha256": "9ebb3638031225ab8ade57cf794cfbb69b3ee98c3ff82e500aaf0d1f8738f4db",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           2223077
@@ -131,7 +131,7 @@
       },
       "derivative_filename": "cat-blue-siamese.glb",
       "derivative_sha256": "44ceea493949fa7ea92bf40c7bc05e64c4b78e3ca0bb4c08b41fa7d788ee17b7",
-      "derivative_sidecar_sha256": "b836c05fb5464b2ba1c5197dc0cf28eecd0b8462903c2354ea3f5b4aa7d90b6e",
+      "derivative_sidecar_sha256": "743de6f299f0c70f39dc92b7a7eda5ed6e86bf203ec78eefd4b01b20f9293f29",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           2168586
@@ -248,7 +248,7 @@
       },
       "derivative_filename": "cat-yellow-longhair.glb",
       "derivative_sha256": "36f03503fcbcb918870463222f50d6b17b3c880281ce61f3a15c2cec6963ed3e",
-      "derivative_sidecar_sha256": "5f3b450157b9ab6c89a0481201712ecb4600acfbe093755486383eb4995a81a5",
+      "derivative_sidecar_sha256": "f11a40229f24436206b06d4eee04246ef72c0f10ff3b7c88034d99757be2a4ec",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           2074314
@@ -365,7 +365,7 @@
       },
       "derivative_filename": "cat-green-shorthair.glb",
       "derivative_sha256": "96910d69ad0bfe424c410e0b9df6e137222d858a28322a5276add6228e9186e5",
-      "derivative_sidecar_sha256": "ca1d5bfe395d9d9a808fbbff51b5aa7eac663463c0b734f0f22fcdf75e46f080",
+      "derivative_sidecar_sha256": "9bcd978598e942d139e573ea9cdd3afab7dd86439f0aa56524accc0d9c3b3333",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           1996968
@@ -482,7 +482,7 @@
       },
       "derivative_filename": "cat-wild-alley.glb",
       "derivative_sha256": "3fa010b59c3b5dccbe0eb54453e8d595736cbafa391a9f08effd9d052738479c",
-      "derivative_sidecar_sha256": "8b194e44b356a80b0a201231d2d354f218452fbb3ee03344633462c2da2b51ff",
+      "derivative_sidecar_sha256": "92f095b97e5c4f03116ac087c6852ebcaeabff611b67051faf2b5f2a96f7260b",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           2058026
@@ -599,7 +599,7 @@
       },
       "derivative_filename": "cat-red-tabby-sitting.glb",
       "derivative_sha256": "3ea8e01d78cb058223c74f225e89512efc44f74f638c99133d7720675e8655b6",
-      "derivative_sidecar_sha256": "f034253d73207a5b4d64fa16275618595075966bb97d75b3f7835ce32270b1ee",
+      "derivative_sidecar_sha256": "f40f32794ef55f2f2e797ea870c63fedd6c2959bd0b0facc7fd50f0f1d21d898",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           98443,
@@ -736,7 +736,7 @@
       },
       "derivative_filename": "cat-blue-siamese-loaf.glb",
       "derivative_sha256": "cc1ff113257d48994a94cfdff52554236034e3e6455d402de195461b8c8fc236",
-      "derivative_sidecar_sha256": "a1ee892b4ff188ba0c6bf34dfc9689f5e447135069e797f96e5538e8622abf69",
+      "derivative_sidecar_sha256": "8209d8dcac1e70f31a3070801eeacd3eb3bad19654cb0135ae2c9d7416be4a59",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           99855,
@@ -873,7 +873,7 @@
       },
       "derivative_filename": "cat-yellow-longhair-wave.glb",
       "derivative_sha256": "4e20de09cee1dcfa383bb708608f03b5f8c1aa78ca4a510a3064f435f5f87a27",
-      "derivative_sidecar_sha256": "492d928608ecb44db32cda6631eb9428d8253d823dd60e279d5453e42bb1a451",
+      "derivative_sidecar_sha256": "a084bae339440e74e3b22b0f578fe1a62fe80c15474f4ffd62f717ad6cb9cfb1",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           98739,
@@ -1010,7 +1010,7 @@
       },
       "derivative_filename": "cat-green-shorthair-sit.glb",
       "derivative_sha256": "a5791a945bac21cfe55e7e4cdbcd5cd3233c11997cd0f449972a12768cca93f8",
-      "derivative_sidecar_sha256": "9c602489d7238cc6fd07c50e2ee99eee032e4eb5f07116b7e30c9050e842812e",
+      "derivative_sidecar_sha256": "360ea5e28ca3e09b51fc45c8360ebe04e5b0a6fd38c532f636252bead68439fb",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           99488,
@@ -1147,7 +1147,7 @@
       },
       "derivative_filename": "cat-conductor.glb",
       "derivative_sha256": "3b0bdbe1a0af9377bfde62ebf2b633e694881dc81438f2814e717c4c71ab9e7d",
-      "derivative_sidecar_sha256": "5e99863bae2e2006ca4fc2db24c76d75559b8fa7643bd2511c71526efa7d0f7d",
+      "derivative_sidecar_sha256": "83b5329451479e54719cd06a83445ab74f0bc58ef4dc4749b5b6e3cc50473e6b",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           2566812
@@ -1264,7 +1264,7 @@
       },
       "derivative_filename": "prop-depot-shed.glb",
       "derivative_sha256": "68994c2316e7c0b23252569bfc06cbc1155c29dd41798c8effdbbaba638844b1",
-      "derivative_sidecar_sha256": "24f1d141ec4d66b7cca9976a5b03916144280844121b43153057d9cc05ad5618",
+      "derivative_sidecar_sha256": "0e6c7f6a9065e12b0f3da93605914672947a2a662175ed788470c81f5d736ae2",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           75509,
@@ -1401,7 +1401,7 @@
       },
       "derivative_filename": "prop-toy-engine.glb",
       "derivative_sha256": "f622b390cdf48fccfb382895bef2988df191b523b614e01f03dbd162e052eeaf",
-      "derivative_sidecar_sha256": "9f6d3a843506e68823f1d242e900cb51796923642f11017fd77a39b947168ee1",
+      "derivative_sidecar_sha256": "2f1bd6850cbb836d8c569791ffaa6939c5d5f58a42487381c3954f3fb03aec1f",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           2283895
@@ -1518,7 +1518,7 @@
       },
       "derivative_filename": "prop-station-kiosk.glb",
       "derivative_sha256": "25053fb73009bf004aeeebab4a861bb664c91935b59c059f21d2fc8c9b6f52cf",
-      "derivative_sidecar_sha256": "95ce38ce057334e930dae672318dacaaa14739816b430658ff49d69eef21c0f7",
+      "derivative_sidecar_sha256": "416098fc269903c81ffbcf40e6f469821bfbc6c045b3ce2018e76fd2d30e9dc3",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           100968,
@@ -1655,7 +1655,7 @@
       },
       "derivative_filename": "prop-trees.glb",
       "derivative_sha256": "e34f39de9a0db8f977370d7f0808f44a28b9641a458ada4957f552c62271c0dd",
-      "derivative_sidecar_sha256": "c1478f9511eb19f5cc09d5f089e69a5ec1025ad0ace29771d50d2beb65664eec",
+      "derivative_sidecar_sha256": "96b29000ef1e8f03d0982ffbaa1ec3d5a476cfcff8241a1f35b3a29041495b34",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           76071,
@@ -1792,7 +1792,7 @@
       },
       "derivative_filename": "prop-desk-clutter.glb",
       "derivative_sha256": "d0403b93dc3db30ec3f7e0b825ba7b48f4af7b79094c6b262c7bfa2fb268ec4d",
-      "derivative_sidecar_sha256": "08d6c0fbbff9e340cb496531b9ae83bba8e13759ab1c7ffbc024596bafbbf665",
+      "derivative_sidecar_sha256": "e75ba87683bd0f468871608a0c079adf89e46eca86fecda248997b204da713b4",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           114556,
@@ -1918,7 +1918,7 @@
   ],
   "base_sha": "3115ebdddd23f3d7eb6836c2670f6dfc2d0a6fb4",
   "manifest": "docs/design/assets/CAT-MANIFEST.json",
-  "pipeline_head_sha": "a434638b382f6556bc8ff2aa4b182fa93208a2e5",
+  "pipeline_head_sha": "c6ca12f0e9b506ef3140c358d79e88c9e55d22b2",
   "run_date": "2026-08-16",
   "schema_version": 1,
   "totals": {

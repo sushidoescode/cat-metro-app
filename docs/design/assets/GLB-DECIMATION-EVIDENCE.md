@@ -7,8 +7,8 @@ Run date: **2026-08-16**. The evidence folder retains the frozen
 
 - Frozen contract commit: `bc34c6abf6ecf580465c061c2993a7536aeacf41`.
 - Branch base: `3115ebdddd23f3d7eb6836c2670f6dfc2d0a6fb4`.
-- Independently reviewed pipeline HEAD and real-run code:
-  `a434638b382f6556bc8ff2aa4b182fa93208a2e5`.
+- Integrated, independently reviewed pipeline HEAD and hardened real-run code:
+  `c6ca12f0e9b506ef3140c358d79e88c9e55d22b2`.
 - The reviewed `--force` queue completed 15/15 with exact category and global
   triangle bands, intact source custody, valid schema-1 sidecars, and no
   staging, backup, or process residue.
@@ -54,8 +54,9 @@ python3 scripts/decimate-assets.py \
 ```
 
 Each sidecar records Blender `5.1.2`, build `ec6e62d40fa9`, operation
-`collapse-decimate`, and a UTC timestamp on 2026-08-16. The pinned importer and
-exporter are bundled `io_scene_gltf2` `5.1.20`. The final importer uses literal
+`collapse-decimate`, and a fresh UTC timestamp on 2026-08-17 (the local run
+date remained 2026-08-16). The pinned importer and exporter are bundled
+`io_scene_gltf2` `5.1.20`. The final importer uses literal
 `merge_vertices=True` and `import_shading="SMOOTH"`; the driver separately
 audits the exact unmerged source triangle count before the seam-safe import.
 
@@ -121,6 +122,14 @@ weakened to obtain GREEN:
   effective-count ratio; `a434638` clarified the reviewed diagnostic. The
   unchanged Section H controls and Sections A–G returned GREEN before the
   all-15 run.
+- Final hardening rerun: the approved pipeline RED stack ended at `15d7ed5`,
+  the rewritten pipeline GREEN stack at `ac34a46`, and the combined silhouette
+  accounting fix at `41e1b86`. Their reviewed blobs were integrated at
+  `c6ca12f`, then the guarded real queue completed 15/15 again. All derivative
+  GLB hashes, source/source-sidecar hashes, byte sizes, geometry facts, and
+  bounds remained exact. Only the deliberately fresh provenance timestamps
+  changed, so this record updates the 15 sidecar hashes but does not regenerate
+  or re-disposition the byte-identical visual evidence.
 
 The final evidence author reran the three focused asset suites and repository
 check before committing this record. Detailed ignored author/reviewer reports
