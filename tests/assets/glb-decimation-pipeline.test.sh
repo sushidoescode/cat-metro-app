@@ -7140,7 +7140,11 @@ def temporary_cleanup_terminal_case(force: bool, after_effect: bool) -> None:
         main_result, stdout, stderr, caught = result
         assert caught is None
         assert main_result == 1
-        assert stdout == "", repr(stdout)
+        assert stdout == (
+            "glb-decimation: asset=terminal-fixture category=cat target=15000 "
+            "source_triangles=30000\n"
+        ), repr(stdout)
+        assert "output_triangles=" not in stdout
         assert_one_diagnostic(stderr)
         assert "cleanup" in stderr.lower()
         residue = Path(held[0].inner.name)
