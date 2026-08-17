@@ -1989,6 +1989,78 @@ check(
 )
 
 
+def aggregate_world_position_work_is_precharged_and_inclusive():
+    exact_document = document("topology-1")
+    exact_primitive = exact_document["meshes"][0]["primitives"][0]
+    exact_position = exact_primitive["attributes"]["POSITION"]
+    exact_work = exact_document["accessors"][exact_position]["count"]
+    assert exact_work == 3
+
+    plus_one_document = document("topology-2")
+    plus_one_primitive = plus_one_document["meshes"][0]["primitives"][0]
+    plus_one_position = plus_one_primitive["attributes"]["POSITION"]
+    assert plus_one_document["accessors"][plus_one_position]["count"] == (
+        exact_work + 1
+    )
+
+    shared_document = copy.deepcopy(exact_document)
+    shared_document["nodes"].append({"mesh": 0})
+    selected_scene = shared_document.get("scene", 0)
+    shared_document["scenes"][selected_scene]["nodes"] = [0, 1]
+    shared_path = fixture_root / "aggregate-world-position-shared-instance.glb"
+    write_document(
+        shared_path,
+        shared_document,
+        binary_payload("topology-1"),
+    )
+
+    restore_limit = set_temporary_constant("MAX_WORLD_POSITION_WORK", exact_work)
+    try:
+        exact_points = list(
+            module.iter_world_positions(fixture_root / "topology-1.glb")
+        )
+        assert len(exact_points) == exact_work
+
+        accepted = []
+        for label, path in (
+            ("plus-one POSITION value", fixture_root / "topology-2.glb"),
+            ("shared selected instance", shared_path),
+        ):
+            try:
+                module.iter_world_positions(path)
+            except module.GlbError as exc:
+                folded = str(exc).lower()
+                assert (
+                    "world" in folded
+                    and "position" in folded
+                    and "work" in folded
+                ), str(exc)
+            else:
+                accepted.append(label)
+        assert not accepted, (
+            "world-position work returned iterators before aggregate rejection: "
+            + ", ".join(accepted)
+        )
+    finally:
+        restore_limit()
+
+
+check(
+    "aggregate selected-instance POSITION work is charged before iterator return",
+    aggregate_world_position_work_is_precharged_and_inclusive,
+)
+
+
+def world_position_work_production_ceiling_is_pinned():
+    assert getattr(module, "MAX_WORLD_POSITION_WORK", None) == 8_000_000
+
+
+check(
+    "aggregate world-position work production ceiling is 8000000 values",
+    world_position_work_production_ceiling_is_pinned,
+)
+
+
 def aggregate_geometry_work_is_predecoded_and_inclusive():
     base_document = document("valid")
     base_binary = binary_payload("valid")
