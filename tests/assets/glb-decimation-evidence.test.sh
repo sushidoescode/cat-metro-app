@@ -45,6 +45,32 @@ EXPECTED_MACHINE_AUTHORITY_SHA256 = (
 EXPECTED_SILHOUETTE_TABLE_SHA256 = (
     "9d6159dc9b0ee5c3ddc4adeb08e2b01c206d207d6ff5b77b408f554f8d992b87"
 )
+EXPECTED_SILHOUETTE_CONTACT_ROWS = [
+    {
+        "path": ".catshots/glb-decimation-2026-08-15/before-grid.png",
+        "width": 2600,
+        "height": 1560,
+        "sha256": (
+            "01edebbbe53ada4db60855b6413d09977ace40226be5e15bb948be29af89bc54"
+        ),
+    },
+    {
+        "path": ".catshots/glb-decimation-2026-08-15/after-grid.png",
+        "width": 2600,
+        "height": 1560,
+        "sha256": (
+            "4014f185bff0c99222b24e5399a0c1525473ab8fc8e054e47eda0287f4bce584"
+        ),
+    },
+    {
+        "path": ".catshots/glb-decimation-2026-08-15/comparison-grid.png",
+        "width": 2600,
+        "height": 3120,
+        "sha256": (
+            "0ed07846d71b6772273e3c4b6f6eaf72be9a8214326a2b03c1988e1ba1fc4e89"
+        ),
+    },
+]
 
 ASSET_KEYS = {
     "byte_reduction",
@@ -839,6 +865,11 @@ contact_rows = [
     }
     for match in contact_matches
 ]
+if contact_rows != EXPECTED_SILHOUETTE_CONTACT_ROWS:
+    errors.append(
+        "silhouette contact sheet authority changed: "
+        f"expected={EXPECTED_SILHOUETTE_CONTACT_ROWS!r} actual={contact_rows!r}"
+    )
 if len(contact_rows) != 3:
     errors.append(
         f"silhouette contact sheet inventory must be 3, got {len(contact_rows)}"
