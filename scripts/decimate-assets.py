@@ -2486,12 +2486,13 @@ def _forced_publication_receipt(
 
 def _publication_rollback_bytes(pending: Mapping[str, object]) -> int:
     receipt = pending.get("publication_receipt")
-    if not isinstance(receipt, dict):
+    force = pending.get("force")
+    if not isinstance(receipt, dict) or not isinstance(force, bool):
         raise DecimationError("published pair lacks a rollback receipt")
     destination_was_present = receipt.get("destination_was_present")
     if destination_was_present is False:
         return 0
-    if destination_was_present is not True:
+    if destination_was_present is not True or force is not True:
         raise DecimationError("published pair lacks a rollback receipt")
     *_, old_glb_bytes, old_json_bytes = _forced_publication_receipt(
         pending,
@@ -2507,6 +2508,104 @@ def _clear_publication_recovery(pending: Mapping[str, object]) -> None:
         receipt.pop("old_json_bytes", None)
 
 
+def _restore_retired_candidate_pair(
+    retired_glb: Path,
+    retired_json: Path,
+    candidate_glb_sha: str,
+    candidate_json_sha: str,
+    candidate_glb_bytes: bytes,
+    candidate_json_bytes: bytes,
+) -> None:
+    """Re-form one exact private pair after asymmetric retired-file cleanup."""
+    members = (
+        (
+            retired_glb,
+            candidate_glb_sha,
+            candidate_glb_bytes,
+            MAX_DERIVATIVE_GLB_BYTES,
+        ),
+        (
+            retired_json,
+            candidate_json_sha,
+            candidate_json_bytes,
+            MAX_PROVENANCE_BYTES,
+        ),
+    )
+    recovery_failed = False
+    try:
+        for path, expected_sha, payload, maximum_bytes in members:
+            if _matches_sha256(path, expected_sha, maximum_bytes):
+                continue
+            if _path_exists(path):
+                recovery_failed = True
+                continue
+            try:
+                _write_private_file(path, payload, mode=0o400)
+            except BaseException:
+                recovery_failed = True
+        exact_pair = all(
+            _matches_sha256(path, expected_sha, maximum_bytes)
+            for path, expected_sha, _, maximum_bytes in members
+        )
+    finally:
+        candidate_glb_bytes = b""
+        candidate_json_bytes = b""
+        payload = b""
+        members = ()
+    if recovery_failed or not exact_pair:
+        raise DecimationError(
+            "cleanup rollback could not preserve the exact retired pair"
+        )
+
+
+def _unlink_retired_candidate_pair(
+    retired_glb: Path,
+    retired_json: Path,
+    candidate_glb_sha: str,
+    candidate_json_sha: str,
+) -> None:
+    """Delete both retired members or restore both from bounded receipts."""
+    candidate_glb_bytes = b""
+    candidate_json_bytes = b""
+    try:
+        observed_glb_sha, _, candidate_glb_bytes, _ = _sha256_receipt(
+            retired_glb,
+            "retired derivative GLB",
+            MAX_DERIVATIVE_GLB_BYTES,
+        )
+        observed_json_sha, _, candidate_json_bytes, _ = _sha256_receipt(
+            retired_json,
+            "retired derivative JSON",
+            MAX_PROVENANCE_BYTES,
+        )
+        if (
+            observed_glb_sha != candidate_glb_sha
+            or observed_json_sha != candidate_json_sha
+        ):
+            raise DecimationError(
+                "cleanup rollback retired candidate receipt changed"
+            )
+        try:
+            _unlink_pair_bounded(
+                retired_glb,
+                retired_json,
+                "cleanup rollback could not remove published pair",
+            )
+        except BaseException:
+            _restore_retired_candidate_pair(
+                retired_glb,
+                retired_json,
+                candidate_glb_sha,
+                candidate_json_sha,
+                candidate_glb_bytes,
+                candidate_json_bytes,
+            )
+            raise
+    finally:
+        candidate_glb_bytes = b""
+        candidate_json_bytes = b""
+
+
 def _rollback_publication(pending: Mapping[str, object]) -> None:
     receipt = pending.get("publication_receipt")
     staged_glb = pending.get("staged_glb")
@@ -2514,6 +2613,11 @@ def _rollback_publication(pending: Mapping[str, object]) -> None:
     final_glb = pending.get("final_glb")
     final_json = pending.get("final_json")
     force = pending.get("force")
+    destination_was_present = (
+        receipt.get("destination_was_present")
+        if isinstance(receipt, dict)
+        else None
+    )
     if not (
         isinstance(receipt, dict)
         and isinstance(staged_glb, Path)
@@ -2521,12 +2625,15 @@ def _rollback_publication(pending: Mapping[str, object]) -> None:
         and isinstance(final_glb, Path)
         and isinstance(final_json, Path)
         and isinstance(force, bool)
-        and receipt.get("destination_was_present") is force
+        and isinstance(destination_was_present, bool)
+        and (not destination_was_present or force)
     ):
         raise DecimationError("published pair lacks a rollback receipt")
 
     forced_receipt = (
-        _forced_publication_receipt(pending, "rollback") if force else None
+        _forced_publication_receipt(pending, "rollback")
+        if destination_was_present
+        else None
     )
     with _promotion_guard(final_glb, final_json):
         if forced_receipt is not None and _old_final_pair(
@@ -2541,7 +2648,7 @@ def _rollback_publication(pending: Mapping[str, object]) -> None:
             return
         if not _publication_is_exact_for_rollback(pending):
             raise DecimationError("published pair changed before cleanup rollback")
-        if not force:
+        if not destination_was_present:
             candidate_glb_sha = pending.get("expected_glb_sha")
             candidate_json_sha = pending.get("expected_json_sha")
             if not (
@@ -2557,10 +2664,11 @@ def _rollback_publication(pending: Mapping[str, object]) -> None:
                 candidate_glb_sha,
                 candidate_json_sha,
             )
-            _unlink_pair_bounded(
+            _unlink_retired_candidate_pair(
                 retired_glb,
                 retired_json,
-                "cleanup rollback could not remove published pair",
+                candidate_glb_sha,
+                candidate_json_sha,
             )
             if _path_exists(final_glb) or _path_exists(final_json):
                 raise DecimationError(
@@ -2587,21 +2695,29 @@ def _commit_publication(
     final_glb = pending.get("final_glb")
     final_json = pending.get("final_json")
     force = pending.get("force")
+    destination_was_present = (
+        receipt.get("destination_was_present")
+        if isinstance(receipt, dict)
+        else None
+    )
     if not (
         isinstance(receipt, dict)
         and isinstance(final_glb, Path)
         and isinstance(final_json, Path)
         and isinstance(force, bool)
-        and receipt.get("destination_was_present") is force
+        and isinstance(destination_was_present, bool)
+        and (not destination_was_present or force)
     ):
         raise DecimationError("published pair lacks a commit receipt")
     forced_receipt = (
-        _forced_publication_receipt(pending, "commit") if force else None
+        _forced_publication_receipt(pending, "commit")
+        if destination_was_present
+        else None
     )
     with _promotion_guard(final_glb, final_json):
         if not _publication_is_exact(pending):
             raise DecimationError("published pair changed before cleanup commit")
-        if not force:
+        if not destination_was_present:
             _clear_publication_recovery(pending)
             return
         assert forced_receipt is not None
