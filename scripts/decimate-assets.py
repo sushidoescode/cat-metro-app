@@ -796,8 +796,7 @@ def _run_child_bounded(
         returncode = process.wait()
         return returncode, bytes(buffers["stdout"]), bytes(buffers["stderr"])
     finally:
-        if process.poll() is None:
-            _terminate_child(process)
+        _terminate_child(process)
         for stream in streams.values():
             try:
                 selector.unregister(stream)
