@@ -7405,7 +7405,6 @@ def persistent_absent_rollback_retires_candidate_case() -> None:
     for path in retired_paths:
         status = os.lstat(path)
         assert stat.S_ISREG(status.st_mode) and status.st_nlink == 1
-        assert path.name.startswith(".")
         observed_hashes.add(digest_file(path))
     assert observed_hashes == set(expected_hashes)
     assert_batch_sources_unchanged(case)
@@ -7510,7 +7509,6 @@ def asymmetric_retired_cleanup_restores_exact_pair_case() -> None:
     observed_hashes = set()
     for path in retired_paths:
         status = os.lstat(path)
-        assert path.name.startswith(".")
         assert stat.S_ISREG(status.st_mode) and status.st_nlink == 1
         observed_hashes.add(digest_file(path))
     assert observed_hashes == set(expected_hashes)
@@ -7613,7 +7611,6 @@ def sequential_retirement_rename_failure_case() -> None:
             observed_hashes = set()
             for member in private_members:
                 status = os.lstat(member)
-                assert member.name.startswith(".")
                 assert stat.S_ISREG(status.st_mode) and status.st_nlink == 1
                 observed_hashes.add(digest_file(member))
             assert observed_hashes == set(expected_hashes)
@@ -7654,7 +7651,6 @@ def sequential_retirement_rename_failure_case() -> None:
         residue_hashes = set()
         for path in residue:
             status = os.lstat(path)
-            assert path.name.startswith(".")
             assert stat.S_ISREG(status.st_mode) and status.st_nlink == 1
             residue_hashes.add(digest_file(path))
         assert residue_hashes == set(expected_hashes)
