@@ -8874,6 +8874,103 @@ print("legacy-compat-pass")
                 kqueue_value.close()
 
 
+def legacy_public_cli_case() -> None:
+    violations = []
+    deterministic = setup_case("legacy-zip-keyword")
+    real_zip = builtins.zip
+
+    def python_39_zip(*iterables, **keywords):
+        if keywords:
+            raise TypeError("zip() takes no keyword arguments")
+        return real_zip(*iterables)
+
+    with mock.patch.object(module, "zip", python_39_zip, create=True):
+        deterministic_result = run_main(deterministic)
+    try:
+        assert_fake_reached(deterministic)
+        assert_source_unchanged(deterministic)
+        assert_success_pair(deterministic, *deterministic_result)
+    except AssertionError:
+        violations.append("Python 3.9 zip-keyword mutation rejected the pipeline")
+
+    legacy_python = None
+    candidates = [
+        "/usr/bin/python3",
+        shutil.which("python3.9"),
+        "/opt/homebrew/bin/python3.9",
+        "/usr/local/bin/python3.9",
+    ]
+    for candidate in dict.fromkeys(candidates):
+        if not candidate or not os.access(candidate, os.X_OK):
+            continue
+        probe = subprocess.run(
+            [
+                candidate,
+                "-B",
+                "-c",
+                "import sys; print(int(sys.version_info[:2] <= (3, 9)))",
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=3,
+            check=False,
+        )
+        if probe.returncode == 0 and probe.stdout == b"1\n":
+            legacy_python = candidate
+            break
+
+    if legacy_python is not None:
+        public_case = setup_case("legacy-public-cli")
+        public_result = subprocess.run(
+            [legacy_python, "-B", str(script), *public_case.arguments],
+            check=False,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=15,
+            env=child_environment(public_case),
+        )
+        try:
+            public_stdout = assert_public_records(public_result.stdout)
+            public_stderr = assert_public_records(public_result.stderr)
+            assert_fake_reached(public_case)
+            assert_source_unchanged(public_case)
+            assert_success_pair(
+                public_case,
+                public_result.returncode,
+                public_stdout,
+                public_stderr,
+                None,
+            )
+        except (AssertionError, UnicodeDecodeError):
+            violations.append("actual Python 3.9 public CLI did not publish exactly")
+
+    mismatch = setup_case("prepared-length-mismatch")
+    real_prepare_assets = module._prepare_assets
+
+    def drop_prepared_member(*arguments, **keywords):
+        prepared = real_prepare_assets(*arguments, **keywords)
+        assert len(prepared) == 1
+        return []
+
+    with mock.patch.object(
+        module,
+        "_prepare_assets",
+        new=drop_prepared_member,
+    ):
+        result, stdout, stderr, caught = run_main(mismatch)
+    assert caught is None
+    assert result == 1, (result, stdout, stderr)
+    assert "output_triangles=" not in stdout
+    assert_one_diagnostic(stderr)
+    assert "asset" not in audit_lines(mismatch)
+    assert fake_records(mismatch) == []
+    assert_source_unchanged(mismatch)
+    assert list(mismatch.output.iterdir()) == []
+    assert not violations, "; ".join(violations)
+
+
 def successful_leader_detached_descendant_case() -> None:
     case = setup_case("successful-leader-detached-descendant")
     wrapper = case.root / "detached-descendant-blender.py"
@@ -9115,6 +9212,7 @@ for child_profile in (
 run_bounded("leader-exit-descendant-pipes", leader_exit_descendant_pipe_case)
 run_bounded("successful-cleanup-owned-group", successful_cleanup_owned_group_case)
 run_bounded("missing-waitid-compatibility", missing_waitid_compatibility_case)
+run_bounded("legacy-public-cli", legacy_public_cli_case)
 run_bounded(
     "successful-leader-detached-descendant",
     successful_leader_detached_descendant_case,
