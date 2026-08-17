@@ -292,21 +292,6 @@ def _glb_error_message(exc: GlbError) -> str:
     return str(exc)
 
 
-def _reject_glb_json_constant(value: str) -> object:
-    raise GlbError(f"invalid non-finite JSON number {value}")
-
-
-def _reject_glb_duplicate_keys(
-    pairs: list[tuple[str, object]],
-) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise GlbError(f"duplicate JSON object key {key!r}")
-        result[key] = value
-    return result
-
-
 def _inspect_verified_glb_payload(path: Path, payload: bytes) -> dict[str, object]:
     """Inspect one already-custodied GLB payload without reopening its path."""
     if len(payload) < 20:
@@ -338,18 +323,9 @@ def _inspect_verified_glb_payload(path: Path, payload: bytes) -> dict[str, objec
                     "GLB JSON chunk exceeds limit "
                     f"{_glb_metrics.MAX_JSON_BYTES} bytes"
                 )
-            try:
-                decoded = json.loads(
-                    payload[offset:end].rstrip(b" ").decode("utf-8"),
-                    parse_constant=_reject_glb_json_constant,
-                    object_pairs_hook=_reject_glb_duplicate_keys,
-                )
-            except GlbError:
-                raise
-            except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-                raise GlbError(f"invalid GLB JSON: {exc}") from exc
-            except (RecursionError, MemoryError, OverflowError) as exc:
-                raise GlbError("GLB JSON exceeds parser resource limits") from exc
+            decoded = _glb_metrics._decode_json_bytes(
+                payload[offset:end].rstrip(b" ")
+            )
             if not isinstance(decoded, dict):
                 raise GlbError("GLB JSON root must be an object")
             document = decoded
@@ -476,13 +452,8 @@ def _path_exists(path: Path) -> bool:
 
 def _decode_json_bytes(payload: bytes, label: str) -> object:
     try:
-        return json.loads(payload)
-    except (
-        UnicodeDecodeError,
-        json.JSONDecodeError,
-        RecursionError,
-        MemoryError,
-    ) as exc:
+        return _glb_metrics._decode_json_bytes(payload)
+    except GlbError as exc:
         raise DecimationError(f"invalid {label}") from exc
 
 
@@ -998,7 +969,12 @@ def write_staged_provenance(path: Path, record: Mapping[str, object]) -> None:
     """Create one validated staged provenance file without replacing anything."""
     path = Path(path)
     _reject_forbidden_provenance(record)
-    serialized = json.dumps(record, indent=2, sort_keys=True) + "\n"
+    serialized = json.dumps(
+        record,
+        allow_nan=False,
+        indent=2,
+        sort_keys=True,
+    ) + "\n"
     if len(serialized.encode("utf-8")) > MAX_PROVENANCE_BYTES:
         raise DecimationError(
             f"staged provenance exceeds {MAX_PROVENANCE_BYTES}-byte size limit"
@@ -1590,6 +1566,14 @@ def promote_pair(
     old_glb_bytes: bytes | None = None
     old_json_bytes: bytes | None = None
     destination_was_present = False
+    publication_receipt: dict[str, object] | None = None
+
+    if queued is not None:
+        receipt = queued.get("publication_receipt")
+        if receipt is not None:
+            if not isinstance(receipt, dict) or receipt:
+                raise AssertionError("invalid pending publication receipt")
+            publication_receipt = receipt
 
     try:
         with _promotion_guard(final_glb, final_json):
@@ -1642,6 +1626,16 @@ def promote_pair(
                     ):
                         raise DecimationError(
                             "absent-destination promotion pair verification failed"
+                        )
+                    if publication_receipt is not None:
+                        publication_receipt.update(
+                            {
+                                "destination_was_present": False,
+                                "backup_glb": None,
+                                "backup_json": None,
+                                "old_glb_sha": None,
+                                "old_json_sha": None,
+                            }
                         )
                 except BaseException:
                     try:
@@ -1703,6 +1697,16 @@ def promote_pair(
                     )
                 ):
                     raise DecimationError("forced promotion pair verification failed")
+                if publication_receipt is not None:
+                    publication_receipt.update(
+                        {
+                            "destination_was_present": True,
+                            "backup_glb": backup_glb,
+                            "backup_json": backup_json,
+                            "old_glb_sha": old_glb_sha,
+                            "old_json_sha": old_json_sha,
+                        }
+                    )
             except BaseException as primary_error:
                 _restore_old_pair(
                     final_glb,
@@ -1716,6 +1720,8 @@ def promote_pair(
                 )
                 raise primary_error
 
+            if publication_receipt is not None:
+                return
             try:
                 _unlink_pair_bounded(
                     backup_glb,
@@ -1894,7 +1900,7 @@ def _process_asset(
     os.chmod(asset_staging, 0o700)
     staged_glb = asset_staging / asset["out"]
     staged_json = asset_staging / f"{asset['out']}.json"
-    _emit_record(
+    start_record = (
         f"asset={identifier} category={kind} target={policy['target']} "
         f"source_triangles={source_metrics['triangles']}"
     )
@@ -2029,6 +2035,7 @@ def _process_asset(
         "expected_glb_state": _status_fingerprint(accepted_glb_status),
         "expected_json_state": _status_fingerprint(accepted_json_status),
         "prepared": prepared,
+        "start_record": start_record,
         "success_record": (
             f"asset={identifier} output_triangles={output_metrics['triangles']} "
             f"output_vertices={output_metrics['vertices']}"
@@ -2383,6 +2390,171 @@ def _publication_is_exact(pending: Mapping[str, object]) -> bool:
         return False
 
 
+def _rollback_publication(pending: Mapping[str, object]) -> None:
+    receipt = pending.get("publication_receipt")
+    staged_glb = pending.get("staged_glb")
+    staged_json = pending.get("staged_json")
+    final_glb = pending.get("final_glb")
+    final_json = pending.get("final_json")
+    force = pending.get("force")
+    if not (
+        isinstance(receipt, dict)
+        and isinstance(staged_glb, Path)
+        and isinstance(staged_json, Path)
+        and isinstance(final_glb, Path)
+        and isinstance(final_json, Path)
+        and isinstance(force, bool)
+        and receipt.get("destination_was_present") is force
+    ):
+        raise DecimationError("published pair lacks a rollback receipt")
+
+    with _promotion_guard(final_glb, final_json):
+        if not _publication_is_exact(pending):
+            raise DecimationError("published pair changed before cleanup rollback")
+        if not force:
+            _unlink_pair_bounded(
+                final_glb,
+                final_json,
+                "cleanup rollback could not remove published pair",
+            )
+            if _path_exists(final_glb) or _path_exists(final_json):
+                raise DecimationError(
+                    "cleanup rollback retained an absent-destination final"
+                )
+            return
+
+        backup_glb = receipt.get("backup_glb")
+        backup_json = receipt.get("backup_json")
+        old_glb_sha = receipt.get("old_glb_sha")
+        old_json_sha = receipt.get("old_json_sha")
+        if not (
+            isinstance(backup_glb, Path)
+            and isinstance(backup_json, Path)
+            and isinstance(old_glb_sha, str)
+            and isinstance(old_json_sha, str)
+        ):
+            raise DecimationError("forced publication lacks an old-pair receipt")
+        observed_glb_sha, _, old_glb_bytes, _ = _sha256_receipt(
+            backup_glb,
+            "existing derivative GLB backup",
+            MAX_DERIVATIVE_GLB_BYTES,
+        )
+        observed_json_sha, _, old_json_bytes, _ = _sha256_receipt(
+            backup_json,
+            "existing derivative JSON backup",
+            MAX_PROVENANCE_BYTES,
+        )
+        if observed_glb_sha != old_glb_sha or observed_json_sha != old_json_sha:
+            raise DecimationError("forced publication old-pair receipt changed")
+        _restore_old_pair(
+            final_glb,
+            final_json,
+            backup_glb,
+            backup_json,
+            old_glb_sha,
+            old_json_sha,
+            old_glb_bytes,
+            old_json_bytes,
+        )
+
+
+def _commit_publication(pending: Mapping[str, object]) -> None:
+    receipt = pending.get("publication_receipt")
+    final_glb = pending.get("final_glb")
+    final_json = pending.get("final_json")
+    force = pending.get("force")
+    if not (
+        isinstance(receipt, dict)
+        and isinstance(final_glb, Path)
+        and isinstance(final_json, Path)
+        and isinstance(force, bool)
+        and receipt.get("destination_was_present") is force
+    ):
+        raise DecimationError("published pair lacks a commit receipt")
+    with _promotion_guard(final_glb, final_json):
+        if not _publication_is_exact(pending):
+            raise DecimationError("published pair changed before cleanup commit")
+        if not force:
+            return
+        backup_glb = receipt.get("backup_glb")
+        backup_json = receipt.get("backup_json")
+        old_glb_sha = receipt.get("old_glb_sha")
+        old_json_sha = receipt.get("old_json_sha")
+        if not (
+            isinstance(backup_glb, Path)
+            and isinstance(backup_json, Path)
+            and isinstance(old_glb_sha, str)
+            and isinstance(old_json_sha, str)
+        ):
+            raise DecimationError(
+                "forced publication lacks an old-pair commit receipt"
+            )
+        observed_glb_sha, _, old_glb_bytes, _ = _sha256_receipt(
+            backup_glb,
+            "existing derivative GLB backup",
+            MAX_DERIVATIVE_GLB_BYTES,
+        )
+        observed_json_sha, _, old_json_bytes, _ = _sha256_receipt(
+            backup_json,
+            "existing derivative JSON backup",
+            MAX_PROVENANCE_BYTES,
+        )
+        if observed_glb_sha != old_glb_sha or observed_json_sha != old_json_sha:
+            raise DecimationError("forced publication old-pair commit receipt changed")
+        try:
+            _unlink_pair_bounded(
+                backup_glb,
+                backup_json,
+                "forced publication could not commit old-backup cleanup",
+            )
+        except BaseException as cleanup_error:
+            _restore_old_pair(
+                final_glb,
+                final_json,
+                backup_glb,
+                backup_json,
+                old_glb_sha,
+                old_json_sha,
+                old_glb_bytes,
+                old_json_bytes,
+            )
+            raise cleanup_error
+
+
+def _commit_completed_publications(
+    completed_publications: list[dict[str, object]],
+) -> None:
+    for pending in completed_publications:
+        _commit_publication(pending)
+
+
+def _rollback_completed_publications(
+    completed_publications: list[dict[str, object]],
+) -> None:
+    failures: list[BaseException] = []
+    for pending in reversed(completed_publications):
+        try:
+            _rollback_publication(pending)
+        except BaseException as exc:
+            failures.append(exc)
+    if failures:
+        raise DecimationError(
+            "temporary cleanup failure could not restore every published pair"
+        ) from failures[0]
+
+
+def _emit_completed_records(
+    completed_publications: list[dict[str, object]],
+) -> None:
+    for pending in completed_publications:
+        for name in ("start_record", "success_record"):
+            try:
+                _emit_record(pending[name])
+            except Exception:
+                if not _publication_is_exact(pending):
+                    raise
+
+
 def _run(argv: list[str]) -> None:
     args = _arguments(argv)
     manifest = Path(os.path.abspath(args.manifest))
@@ -2460,6 +2632,8 @@ def _run(argv: list[str]) -> None:
                 if not isinstance(pending, dict):
                     raise AssertionError("internal pending promotion type mismatch")
                 _verify_original_pair(prepared)
+                publication_receipt: dict[str, object] = {}
+                pending["publication_receipt"] = publication_receipt
                 acceptance_key = _queue_promotion_acceptance(
                     pending["staged_glb"],
                     pending["staged_json"],
@@ -2471,6 +2645,7 @@ def _run(argv: list[str]) -> None:
                         "expected_json_sha": pending["expected_json_sha"],
                         "expected_glb_state": pending["expected_glb_state"],
                         "expected_json_state": pending["expected_json_state"],
+                        "publication_receipt": publication_receipt,
                         "verify_before": lambda prepared=prepared: (
                             _verify_snapshot_pair(prepared),
                             _verify_original_pair(prepared),
@@ -2488,11 +2663,6 @@ def _run(argv: list[str]) -> None:
                 finally:
                     _acceptance_records().pop(acceptance_key, None)
                 completed_publications.append(pending)
-                try:
-                    _emit_record(pending["success_record"])
-                except Exception:
-                    if not _publication_is_exact(pending):
-                        raise
             run_completed = True
     except Exception:
         cleanup_finished = bool(private_roots) and not any(
@@ -2504,8 +2674,14 @@ def _run(argv: list[str]) -> None:
             and all(_publication_is_exact(item) for item in completed_publications)
         )
         if cleanup_finished and committed_run:
+            _commit_completed_publications(completed_publications)
+            _emit_completed_records(completed_publications)
             return
+        if run_completed and len(completed_publications) == len(assets):
+            _rollback_completed_publications(completed_publications)
         raise
+    _commit_completed_publications(completed_publications)
+    _emit_completed_records(completed_publications)
 
 
 def _diagnostic_payload(message: object) -> bytes:

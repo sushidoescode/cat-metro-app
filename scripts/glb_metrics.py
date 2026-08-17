@@ -43,6 +43,10 @@ MAX_JSON_BYTES = 16 * 1024 * 1024
 MAX_ACCESSORS = 65_536
 MAX_ACCESSOR_COUNT = 8_000_000
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_GEOMETRY_WORK = 8_000_000
+MAX_IMAGE_WORK_BYTES = 64 * 1024 * 1024
+MAX_JSON_INTEGER_DIGITS = 4_300
+MAX_JSON_NUMBER_CHARACTERS = 4_300
 MAX_DIAGNOSTIC_BYTES = 512
 
 _CREDENTIAL_SHAPE = re.compile(
@@ -99,6 +103,49 @@ def _reject_duplicate_keys(
     return result
 
 
+def _parse_json_integer(value: str) -> int:
+    digits = value[1:] if value.startswith("-") else value
+    if len(digits) > MAX_JSON_INTEGER_DIGITS:
+        raise GlbError(
+            f"JSON integer exceeds {MAX_JSON_INTEGER_DIGITS}-digit limit"
+        )
+    number = 0
+    for offset in range(0, len(digits), 9):
+        block = digits[offset:offset + 9]
+        number = number * (10 ** len(block)) + int(block)
+    return -number if value.startswith("-") else number
+
+
+def _parse_json_float(value: str) -> float:
+    if len(value) > MAX_JSON_NUMBER_CHARACTERS:
+        raise GlbError(
+            "JSON number exceeds "
+            f"{MAX_JSON_NUMBER_CHARACTERS}-character limit"
+        )
+    number = float(value)
+    if not math.isfinite(number):
+        raise GlbError("invalid non-finite JSON number")
+    return number
+
+
+def _decode_json_bytes(payload: bytes) -> object:
+    """Decode strict bounded JSON independently of interpreter defaults."""
+    try:
+        return json.loads(
+            payload.decode("utf-8"),
+            parse_constant=_reject_json_constant,
+            parse_int=_parse_json_integer,
+            parse_float=_parse_json_float,
+            object_pairs_hook=_reject_duplicate_keys,
+        )
+    except GlbError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise GlbError(f"invalid GLB JSON: {exc}") from exc
+    except (RecursionError, MemoryError, OverflowError) as exc:
+        raise GlbError("GLB JSON exceeds parser resource limits") from exc
+
+
 def _read_glb(path: Path) -> tuple[dict[str, object], bytes]:
     before_open = path.stat()
     if not stat.S_ISREG(before_open.st_mode):
@@ -145,18 +192,7 @@ def _read_glb(path: Path) -> tuple[dict[str, object], bytes]:
                 raise GlbError(
                     f"GLB JSON chunk exceeds limit {MAX_JSON_BYTES} bytes"
                 )
-            try:
-                decoded = json.loads(
-                    data[offset:end].rstrip(b" ").decode("utf-8"),
-                    parse_constant=_reject_json_constant,
-                    object_pairs_hook=_reject_duplicate_keys,
-                )
-            except GlbError:
-                raise
-            except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-                raise GlbError(f"invalid GLB JSON: {exc}") from exc
-            except (RecursionError, MemoryError, OverflowError) as exc:
-                raise GlbError("GLB JSON exceeds parser resource limits") from exc
+            decoded = _decode_json_bytes(data[offset:end].rstrip(b" "))
             if not isinstance(decoded, dict):
                 raise GlbError("GLB JSON root must be an object")
             document = decoded
@@ -233,13 +269,13 @@ def _finite_vector(value: object, length: int, label: str) -> list[float]:
 
 def _extension_names(document: Mapping[str, object], name: str) -> list[str]:
     raw = _root_array(document, name)
-    result: list[str] = []
+    result: set[str] = set()
     for value in raw:
         if not isinstance(value, str) or not value:
             raise GlbError(f"{name} entries must be non-empty strings")
         if value in result:
             raise GlbError(f"{name} contains duplicate {value}")
-        result.append(value)
+        result.add(value)
     return sorted(result)
 
 
@@ -505,6 +541,53 @@ def _validate_material_references(
     return references
 
 
+def _validate_geometry_work(
+    document: Mapping[str, object],
+    accessors: list[object],
+    validated_accessors: list[
+        tuple[int | None, int, int, str, int, int]
+    ],
+) -> list[object]:
+    """Reject aggregate all-mesh decode work before reading POSITION values."""
+    meshes = _root_array(document, "meshes")
+    work = 0
+    for mesh_number, mesh_value in enumerate(meshes):
+        mesh = _object(mesh_value, f"meshes[{mesh_number}]")
+        primitives = _array(
+            mesh.get("primitives"), f"meshes[{mesh_number}].primitives"
+        )
+        if not primitives:
+            raise GlbError(f"meshes[{mesh_number}] has no primitives")
+        for primitive_number, primitive_value in enumerate(primitives):
+            label = f"meshes[{mesh_number}].primitives[{primitive_number}]"
+            primitive = _object(primitive_value, label)
+            attributes = _object(
+                primitive.get("attributes"), f"{label}.attributes"
+            )
+            if "POSITION" not in attributes:
+                raise GlbError(f"{label} has no POSITION accessor")
+            position_index = _index(
+                attributes["POSITION"],
+                len(accessors),
+                f"{label}.attributes.POSITION",
+            )
+            position_count = validated_accessors[position_index][2]
+            reference_count = position_count
+            if "indices" in primitive:
+                index = _index(
+                    primitive["indices"], len(accessors), f"{label}.indices"
+                )
+                reference_count = validated_accessors[index][2]
+            work += position_count + reference_count
+            if work > MAX_GEOMETRY_WORK:
+                raise GlbError(
+                    "GLB geometry exceeds "
+                    f"{MAX_GEOMETRY_WORK} combined index-reference and "
+                    "POSITION-value work limit"
+                )
+    return meshes
+
+
 def _inspect_document(
     document: dict[str, object], data: bytes
 ) -> tuple[
@@ -622,7 +705,15 @@ def _inspect_document(
             raise GlbError(f"accessors[{number}].normalized must be boolean")
         validated_accessors.append((view_index, accessor_offset, count, kind, component_type, element_size))
 
-    def embedded_view_payload(view_value: object, label: str) -> bytes:
+    meshes = _validate_geometry_work(
+        document,
+        accessors,
+        validated_accessors,
+    )
+
+    def embedded_view_layout(
+        view_value: object, label: str
+    ) -> tuple[int, int]:
         view_index = _index(view_value, len(buffer_views), f"{label}.bufferView")
         buffer_index, offset, length, _ = validated_views[view_index]
         if length > MAX_IMAGE_BYTES:
@@ -635,9 +726,15 @@ def _inspect_document(
             or not buffer_embedded[buffer_index]
         ):
             raise GlbError(f"{label} must use the embedded BIN chunk")
+        return offset, length
+
+    def embedded_view_payload(view_value: object, label: str) -> bytes:
+        offset, length = embedded_view_layout(view_value, label)
+        if binary is None:
+            raise AssertionError("validated embedded image has no BIN chunk")
         return binary[offset:offset + length]
 
-    def data_image_payload(uri: str, label: str) -> bytes:
+    def data_image_parts(uri: str, label: str) -> str:
         header, separator, encoded = uri.partition(",")
         if not separator or header.lower() not in (
             "data:image/png;base64",
@@ -649,6 +746,10 @@ def _inspect_document(
             raise GlbError(
                 f"{label} payload exceeds image limit {MAX_IMAGE_BYTES} bytes"
             )
+        return encoded
+
+    def data_image_payload(uri: str, label: str) -> bytes:
+        encoded = data_image_parts(uri, label)
         try:
             payload = base64.b64decode(encoded, validate=True)
         except (binascii.Error, ValueError) as exc:
@@ -660,6 +761,32 @@ def _inspect_document(
         return payload
 
     images = _root_array(document, "images")
+    image_work = 0
+    for number, value in enumerate(images):
+        image = _object(value, f"images[{number}]")
+        label = f"images[{number}]"
+        has_uri = "uri" in image
+        has_view = "bufferView" in image
+        if has_uri == has_view:
+            raise GlbError(f"{label} must contain exactly one of uri or bufferView")
+        if has_view:
+            mime = image.get("mimeType")
+            if mime not in ("image/png", "image/jpeg"):
+                raise GlbError(f"{label}.mimeType is not a supported image type")
+            _, work = embedded_view_layout(image["bufferView"], label)
+            image_work += work
+        else:
+            uri = image["uri"]
+            if not isinstance(uri, str) or not uri:
+                raise GlbError(f"{label}.uri must be a non-empty string")
+            if uri.startswith("data:"):
+                image_work += len(data_image_parts(uri, label))
+        if image_work > MAX_IMAGE_WORK_BYTES:
+            raise GlbError(
+                "GLB embedded-image work exceeds "
+                f"{MAX_IMAGE_WORK_BYTES}-byte limit"
+            )
+
     embedded_images = 0
     image_payload_sha256: list[str | None] = []
     for number, value in enumerate(images):
@@ -855,7 +982,6 @@ def _inspect_document(
                 yield first, previous, current
                 previous = current
 
-    meshes = _root_array(document, "meshes")
     primitive_count = 0
     vertices = 0
     triangles = 0

@@ -8,7 +8,6 @@ import sys
 sys.dont_write_bytecode = True
 
 import argparse
-import json
 import math
 import os
 import re
@@ -239,18 +238,9 @@ def _source_document(data: bytes) -> dict[str, object]:
                     "GLB JSON chunk exceeds limit "
                     f"{glb_metrics.MAX_JSON_BYTES} bytes"
                 )
-            try:
-                decoded = json.loads(
-                    data[offset:end].rstrip(b" ").decode("utf-8"),
-                    parse_constant=glb_metrics._reject_json_constant,
-                    object_pairs_hook=glb_metrics._reject_duplicate_keys,
-                )
-            except GlbError:
-                raise
-            except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-                raise GlbError(f"invalid GLB JSON: {exc}") from exc
-            except (RecursionError, MemoryError, OverflowError) as exc:
-                raise GlbError("GLB JSON exceeds parser resource limits") from exc
+            decoded = glb_metrics._decode_json_bytes(
+                data[offset:end].rstrip(b" ")
+            )
             if not isinstance(decoded, dict):
                 raise GlbError("GLB JSON root must be an object")
             document = decoded
