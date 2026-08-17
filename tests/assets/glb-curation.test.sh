@@ -747,6 +747,8 @@ if artifact_root_text:
         )
 
 checksum_path = evidence_root / "SHA256SUMS"
+expected_checksum_sha256 = "52fbbd6440c0ce6802b5094642155229d781de34ffe7fcd77d3eaafbad85da6c"
+assert hashlib.sha256(checksum_path.read_bytes()).hexdigest() == expected_checksum_sha256
 checksum_lines = checksum_path.read_text(encoding="utf-8").splitlines()
 assert len(checksum_lines) == 39
 recorded_pngs = {}
