@@ -8522,6 +8522,73 @@ raise SystemExit(0)
                 wait_for_marked_tree(marker_record, 2)
 
 
+def successful_cleanup_owned_group_case() -> None:
+    real_popen = subprocess.Popen
+    real_killpg = os.killpg
+    ownership = {
+        "process": None,
+        "released": False,
+        "unsafe_signals": [],
+    }
+
+    class OwnershipTrackedProcess:
+        def __init__(self, *arguments, **keywords):
+            assert keywords.get("start_new_session") is True
+            self._process = real_popen(*arguments, **keywords)
+            assert os.getpgid(self._process.pid) == self._process.pid
+            ownership["process"] = self._process
+
+        def __getattr__(self, name):
+            return getattr(self._process, name)
+
+        def poll(self):
+            result = self._process.poll()
+            if result is not None:
+                ownership["released"] = True
+            return result
+
+        def wait(self, *arguments, **keywords):
+            result = self._process.wait(*arguments, **keywords)
+            ownership["released"] = True
+            return result
+
+    def reject_reused_group_signal(process_group, selected_signal):
+        if ownership["released"]:
+            ownership["unsafe_signals"].append(
+                (process_group, int(selected_signal))
+            )
+            raise AssertionError("cleanup signalled a reused process group")
+        return real_killpg(process_group, selected_signal)
+
+    result = None
+    caught = None
+    try:
+        with mock.patch.object(module.subprocess, "Popen", OwnershipTrackedProcess), \
+             mock.patch.object(module.os, "killpg", reject_reused_group_signal):
+            try:
+                result = module._run_child_bounded(
+                    [sys.executable, "-c", "print('owned-group-control')"],
+                    timeout=2,
+                    child_env={"PATH": os.defpath},
+                )
+            except BaseException as exc:
+                caught = exc
+        assert ownership["unsafe_signals"] == [], (
+            "cleanup targeted a numerically reused group after leader reap",
+            ownership["unsafe_signals"],
+        )
+        assert caught is None, caught
+        assert result == (0, b"owned-group-control\n", b"")
+    finally:
+        process = ownership["process"]
+        if process is not None:
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=1)
+
+
 def successful_leader_detached_descendant_case() -> None:
     case = setup_case("successful-leader-detached-descendant")
     wrapper = case.root / "detached-descendant-blender.py"
@@ -8761,6 +8828,7 @@ for child_profile in (
 ):
     run_bounded(f"child-{child_profile}", child_output_case, child_profile)
 run_bounded("leader-exit-descendant-pipes", leader_exit_descendant_pipe_case)
+run_bounded("successful-cleanup-owned-group", successful_cleanup_owned_group_case)
 run_bounded(
     "successful-leader-detached-descendant",
     successful_leader_detached_descendant_case,
