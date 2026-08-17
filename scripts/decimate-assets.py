@@ -127,6 +127,15 @@ class DecimationError(RuntimeError):
     """Expected fail-closed pipeline error suitable for a concise CLI report."""
 
 
+class ArgumentParseError(ValueError):
+    """Expected command-line parse failure with argparse's exit status."""
+
+
+class _ArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise ArgumentParseError(message)
+
+
 def _identity(status: os.stat_result) -> tuple[int, int]:
     return status.st_dev, status.st_ino
 
@@ -2558,7 +2567,7 @@ def _verify_original_pair(prepared: Mapping[str, object]) -> None:
 def _arguments(argv: list[str]) -> argparse.Namespace:
     repository = Path(__file__).resolve().parent.parent
     default_input = repository / "unity/Assets/Art/Generated/incoming"
-    parser = argparse.ArgumentParser(prog="decimate-assets.py")
+    parser = _ArgumentParser(prog="decimate-assets.py")
     parser.add_argument(
         "--manifest",
         type=Path,
@@ -3180,6 +3189,9 @@ def main(argv: list[str]) -> int:
     """Run the orchestrator without exiting, for CLI and fault-injection use."""
     try:
         _run(argv)
+    except ArgumentParseError as exc:
+        _emit_diagnostic(exc)
+        return 2
     except (
         DecimationError,
         GlbError,
