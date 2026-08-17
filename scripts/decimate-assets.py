@@ -19,6 +19,7 @@ import selectors
 import shutil
 import signal
 import stat
+import struct
 import subprocess
 import tempfile
 import threading
@@ -33,11 +34,8 @@ from pathlib import Path
 _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
-from glb_metrics import (
-    GlbError,
-    compare_preservation,
-    inspect_glb as _inspect_glb_payload,
-)
+import glb_metrics as _glb_metrics
+from glb_metrics import GlbError, compare_preservation
 
 
 BLENDER_VERSION = "5.1.2"
@@ -293,20 +291,164 @@ def _glb_error_message(exc: GlbError) -> str:
     return str(exc)
 
 
+def _reject_glb_json_constant(value: str) -> object:
+    raise GlbError(f"invalid non-finite JSON number {value}")
+
+
+def _reject_glb_duplicate_keys(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise GlbError(f"duplicate JSON object key {key!r}")
+        result[key] = value
+    return result
+
+
+def _inspect_verified_glb_payload(path: Path, payload: bytes) -> dict[str, object]:
+    """Inspect one already-custodied GLB payload without reopening its path."""
+    if len(payload) < 20:
+        raise GlbError("truncated GLB")
+    magic, version, declared = struct.unpack_from("<4sII", payload, 0)
+    if magic != b"glTF" or version != 2 or declared != len(payload):
+        raise GlbError("invalid GLB header")
+
+    offset = 12
+    document: dict[str, object] | None = None
+    chunk_number = 0
+    while offset < len(payload):
+        if len(payload) - offset < 8:
+            raise GlbError("truncated GLB chunk header")
+        length, kind = struct.unpack_from("<I4s", payload, offset)
+        if length % 4:
+            raise GlbError("GLB chunk length is not four-byte aligned")
+        offset += 8
+        end = offset + length
+        if end > len(payload):
+            raise GlbError("GLB chunk overruns file")
+        if chunk_number == 0 and kind != b"JSON":
+            raise GlbError("JSON must be the first GLB chunk")
+        if kind == b"JSON":
+            if document is not None:
+                raise GlbError("duplicate JSON chunk")
+            if length > _glb_metrics.MAX_JSON_BYTES:
+                raise GlbError(
+                    "GLB JSON chunk exceeds limit "
+                    f"{_glb_metrics.MAX_JSON_BYTES} bytes"
+                )
+            try:
+                decoded = json.loads(
+                    payload[offset:end].rstrip(b" ").decode("utf-8"),
+                    parse_constant=_reject_glb_json_constant,
+                    object_pairs_hook=_reject_glb_duplicate_keys,
+                )
+            except GlbError:
+                raise
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+                raise GlbError(f"invalid GLB JSON: {exc}") from exc
+            except (RecursionError, MemoryError, OverflowError) as exc:
+                raise GlbError("GLB JSON exceeds parser resource limits") from exc
+            if not isinstance(decoded, dict):
+                raise GlbError("GLB JSON root must be an object")
+            document = decoded
+        offset = end
+        chunk_number += 1
+    if document is None:
+        raise GlbError("missing JSON chunk")
+
+    details, _ = _glb_metrics._inspect_document(document, payload)
+    metrics: dict[str, object] = {
+        "path": str(path),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "bytes": len(payload),
+        **details,
+    }
+    if tuple(metrics) != _glb_metrics.METRIC_KEYS:
+        raise AssertionError("internal metric key mismatch")
+    return metrics
+
+
 def inspect_glb(path: Path) -> dict[str, object]:
-    """Inspect a derivative only after enforcing its 64 MiB file class."""
-    _checked_lstat(Path(path), "derivative GLB", MAX_DERIVATIVE_GLB_BYTES)
-    return _inspect_glb_payload(path)
+    """Inspect one derivative from a single verified 64 MiB-bounded payload."""
+    candidate = Path(path)
+    payload, _, _ = _read_verified_file(
+        candidate,
+        "derivative GLB",
+        MAX_DERIVATIVE_GLB_BYTES,
+    )
+    return _inspect_verified_glb_payload(candidate, payload)
 
 
 def _inspect_source_glb(path: Path) -> dict[str, object]:
-    _checked_lstat(Path(path), "source GLB", MAX_SOURCE_GLB_BYTES)
-    return _inspect_glb_payload(path)
+    candidate = Path(path)
+    payload, _, _ = _read_verified_file(
+        candidate,
+        "source GLB",
+        MAX_SOURCE_GLB_BYTES,
+    )
+    return _inspect_verified_glb_payload(candidate, payload)
+
+
+_SHA256_ROLE_CONTEXT = threading.local()
+
+
+@contextlib.contextmanager
+def _sha256_role(label: str, maximum_bytes: int):
+    previous = getattr(_SHA256_ROLE_CONTEXT, "value", None)
+    current: dict[str, object] = {
+        "label": label,
+        "maximum_bytes": maximum_bytes,
+        "receipt": None,
+    }
+    _SHA256_ROLE_CONTEXT.value = current
+    try:
+        yield current
+    finally:
+        if previous is None:
+            try:
+                del _SHA256_ROLE_CONTEXT.value
+            except AttributeError:
+                pass
+        else:
+            _SHA256_ROLE_CONTEXT.value = previous
 
 
 def _sha256(path: Path) -> str:
-    digest, _, _, _ = _verified_hash(path, "file", MAX_SOURCE_GLB_BYTES)
+    context = getattr(_SHA256_ROLE_CONTEXT, "value", None)
+    label = "file"
+    maximum_bytes = MAX_SOURCE_GLB_BYTES
+    if isinstance(context, dict):
+        context_label = context.get("label")
+        context_maximum = context.get("maximum_bytes")
+        if isinstance(context_label, str) and isinstance(context_maximum, int):
+            label = context_label
+            maximum_bytes = context_maximum
+    digest, identity, payload, status = _verified_hash(
+        path,
+        label,
+        maximum_bytes,
+    )
+    if isinstance(context, dict):
+        context["receipt"] = (digest, identity, payload, status)
     return digest
+
+
+def _sha256_receipt(
+    path: Path,
+    label: str,
+    maximum_bytes: int,
+) -> tuple[str, tuple[int, int], bytes, os.stat_result]:
+    with _sha256_role(label, maximum_bytes) as context:
+        digest = _sha256(path)
+        receipt = context.get("receipt")
+    if (
+        not isinstance(receipt, tuple)
+        or len(receipt) != 4
+        or receipt[0] != digest
+    ):
+        raise DecimationError(f"{label} hash receipt is unavailable")
+    return receipt
 
 
 def _is_relative_to(path: Path, root: Path) -> bool:
@@ -548,25 +690,46 @@ def _sanitized_environment(private_root: Path) -> dict[str, str]:
 
 
 def _terminate_child(process: subprocess.Popen[bytes]) -> None:
-    if process.poll() is not None:
-        process.wait()
-        return
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
-    except PermissionError:
-        process.terminate()
-    try:
-        process.wait(timeout=1)
-    except subprocess.TimeoutExpired:
+    """Terminate the whole isolated child group, even if its leader exited."""
+
+    def group_alive() -> bool:
+        process.poll()
         try:
-            os.killpg(process.pid, signal.SIGKILL)
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def signal_group(selected: signal.Signals) -> None:
+        try:
+            os.killpg(process.pid, selected)
         except ProcessLookupError:
             pass
         except PermissionError:
-            process.kill()
-        process.wait(timeout=2)
+            if process.poll() is None:
+                if selected == signal.SIGTERM:
+                    process.terminate()
+                else:
+                    process.kill()
+
+    for selected, grace in ((signal.SIGTERM, 1.0), (signal.SIGKILL, 1.0)):
+        signal_group(selected)
+        deadline = time.monotonic() + grace
+        while group_alive() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        if not group_alive():
+            break
+
+    if process.poll() is None:
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            signal_group(signal.SIGKILL)
+            process.wait(timeout=1)
+    else:
+        process.wait()
 
 
 def _run_child_bounded(
@@ -932,7 +1095,8 @@ def _sha256_match_status(
     """Return an exact match decision, or None when identity is unreadable."""
     try:
         _checked_lstat(path, "transaction member", maximum_bytes)
-        return _sha256(path) == expected
+        with _sha256_role("transaction member", maximum_bytes):
+            return _sha256(path) == expected
     except FileNotFoundError:
         return False
     except DecimationError:
@@ -949,8 +1113,15 @@ def _matches_sha256(
     return _sha256_match_status(path, expected, maximum_bytes) is True
 
 
-def _remove_non_old_final(final: Path, old_sha: str) -> None:
-    if _path_exists(final) and _sha256_match_status(final, old_sha) is False:
+def _remove_non_old_final(
+    final: Path,
+    old_sha: str,
+    maximum_bytes: int,
+) -> None:
+    if (
+        _path_exists(final)
+        and _sha256_match_status(final, old_sha, maximum_bytes) is False
+    ):
         final.unlink()
 
 
@@ -1085,9 +1256,9 @@ def _restore_old_pair(
         return
 
     # Candidate members cannot be allowed to overwrite the captured old pair.
-    for _, final, old_sha, _, _ in members:
+    for _, final, old_sha, _, maximum_bytes in members:
         try:
-            _remove_non_old_final(final, old_sha)
+            _remove_non_old_final(final, old_sha, maximum_bytes)
         except OSError:
             pass
 
@@ -1361,33 +1532,16 @@ def promote_pair(
                     raise
                 return
 
-            _checked_lstat(
+            old_glb_sha, _, old_glb_bytes, _ = _sha256_receipt(
                 final_glb,
                 "existing derivative GLB",
                 MAX_DERIVATIVE_GLB_BYTES,
             )
-            _checked_lstat(
+            old_json_sha, _, old_json_bytes, _ = _sha256_receipt(
                 final_json,
                 "existing derivative JSON",
                 MAX_PROVENANCE_BYTES,
             )
-            old_glb_sha = _sha256(final_glb)
-            old_json_sha = _sha256(final_json)
-            old_glb_bytes, _, _ = _read_verified_file(
-                final_glb,
-                "existing derivative GLB",
-                MAX_DERIVATIVE_GLB_BYTES,
-            )
-            old_json_bytes, _, _ = _read_verified_file(
-                final_json,
-                "existing derivative JSON",
-                MAX_PROVENANCE_BYTES,
-            )
-            if (
-                hashlib.sha256(old_glb_bytes).hexdigest() != old_glb_sha
-                or hashlib.sha256(old_json_bytes).hexdigest() != old_json_sha
-            ):
-                raise DecimationError("existing derivative pair changed before backup")
             backup_glb = _unique_backup(final_glb)
             backup_json = _unique_backup(final_json)
 
@@ -2050,6 +2204,55 @@ def _arguments(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _publication_is_exact(pending: Mapping[str, object]) -> bool:
+    try:
+        staged_glb = pending["staged_glb"]
+        staged_json = pending["staged_json"]
+        final_glb = pending["final_glb"]
+        final_json = pending["final_json"]
+        glb_sha = pending["expected_glb_sha"]
+        json_sha = pending["expected_json_sha"]
+        glb_state = pending["expected_glb_state"]
+        json_state = pending["expected_json_state"]
+        if not (
+            isinstance(staged_glb, Path)
+            and isinstance(staged_json, Path)
+            and isinstance(final_glb, Path)
+            and isinstance(final_json, Path)
+            and isinstance(glb_sha, str)
+            and isinstance(json_sha, str)
+            and isinstance(glb_state, tuple)
+            and len(glb_state) >= 2
+            and isinstance(glb_state[0], int)
+            and isinstance(glb_state[1], int)
+            and isinstance(json_state, tuple)
+            and len(json_state) >= 2
+            and isinstance(json_state[0], int)
+            and isinstance(json_state[1], int)
+        ):
+            return False
+        return (
+            not _path_exists(staged_glb)
+            and not _path_exists(staged_json)
+            and _verified_transaction_member(
+                final_glb,
+                "published derivative GLB",
+                MAX_DERIVATIVE_GLB_BYTES,
+                glb_sha,
+                (glb_state[0], glb_state[1]),
+            )
+            and _verified_transaction_member(
+                final_json,
+                "published derivative JSON",
+                MAX_PROVENANCE_BYTES,
+                json_sha,
+                (json_state[0], json_state[1]),
+            )
+        )
+    except (DecimationError, OSError, TypeError, ValueError):
+        return False
+
+
 def _run(argv: list[str]) -> None:
     args = _arguments(argv)
     manifest = Path(os.path.abspath(args.manifest))
@@ -2075,81 +2278,102 @@ def _run(argv: list[str]) -> None:
     driver = Path(__file__).resolve().with_name("blender_decimate.py")
     if not driver.is_file():
         raise DecimationError("Blender decimation driver is missing")
-    with (
-        tempfile.TemporaryDirectory(
-            prefix=".glb-decimation-sources-", dir=output_root
-        ) as snapshot_name,
-        tempfile.TemporaryDirectory(
-            prefix=".glb-decimation-environment-", dir=output_root
-        ) as environment_name,
-        tempfile.TemporaryDirectory(
-            prefix=".glb-decimation-", dir=output_root
-        ) as staging_name,
-    ):
-        snapshot_root = Path(snapshot_name)
-        private_environment_root = Path(environment_name)
-        run_staging = Path(staging_name)
-        for directory in (
-            snapshot_root,
-            private_environment_root,
-            run_staging,
+    completed_publications: list[dict[str, object]] = []
+    private_roots: list[Path] = []
+    run_completed = False
+    try:
+        with (
+            tempfile.TemporaryDirectory(
+                prefix=".glb-decimation-sources-", dir=output_root
+            ) as snapshot_name,
+            tempfile.TemporaryDirectory(
+                prefix=".glb-decimation-environment-", dir=output_root
+            ) as environment_name,
+            tempfile.TemporaryDirectory(
+                prefix=".glb-decimation-", dir=output_root
+            ) as staging_name,
         ):
-            os.chmod(directory, 0o700)
-        prepared_assets = _prepare_assets(
-            assets,
-            input_base,
-            input_root,
-            output_root,
-            snapshot_root,
-            args.force,
-        )
-        child_env = _sanitized_environment(private_environment_root)
-        _check_blender_version(blender, child_env)
-        for asset, prepared in zip(assets, prepared_assets, strict=True):
-            pending = _process_asset(
-                asset,
-                prepared,
-                blender,
-                driver,
-                child_env,
-                run_staging,
+            snapshot_root = Path(snapshot_name)
+            private_environment_root = Path(environment_name)
+            run_staging = Path(staging_name)
+            private_roots.extend(
+                (snapshot_root, private_environment_root, run_staging)
+            )
+            for directory in private_roots:
+                os.chmod(directory, 0o700)
+            prepared_assets = _prepare_assets(
+                assets,
+                input_base,
+                input_root,
+                output_root,
+                snapshot_root,
                 args.force,
             )
-            # Fault-injection seams may substitute an observer that intentionally
-            # performs no publication work.
-            if pending is None:
-                continue
-            if not isinstance(pending, dict):
-                raise AssertionError("internal pending promotion type mismatch")
-            _verify_original_pair(prepared)
-            acceptance_key = _queue_promotion_acceptance(
-                pending["staged_glb"],
-                pending["staged_json"],
-                pending["final_glb"],
-                pending["final_json"],
-                bool(pending["force"]),
-                {
-                    "expected_glb_sha": pending["expected_glb_sha"],
-                    "expected_json_sha": pending["expected_json_sha"],
-                    "expected_glb_state": pending["expected_glb_state"],
-                    "expected_json_state": pending["expected_json_state"],
-                    "verify_before": lambda prepared=prepared: (
-                        _verify_snapshot_pair(prepared),
-                        _verify_original_pair(prepared),
-                    ),
-                },
-            )
-            try:
-                promote_pair(
+            child_env = _sanitized_environment(private_environment_root)
+            _check_blender_version(blender, child_env)
+            for asset, prepared in zip(assets, prepared_assets, strict=True):
+                pending = _process_asset(
+                    asset,
+                    prepared,
+                    blender,
+                    driver,
+                    child_env,
+                    run_staging,
+                    args.force,
+                )
+                # The snapshot-seam tests replace the complete processor with a
+                # read-only observer. Production processing never returns None.
+                if pending is None:
+                    continue
+                if not isinstance(pending, dict):
+                    raise AssertionError("internal pending promotion type mismatch")
+                _verify_original_pair(prepared)
+                acceptance_key = _queue_promotion_acceptance(
                     pending["staged_glb"],
                     pending["staged_json"],
                     pending["final_glb"],
                     pending["final_json"],
                     bool(pending["force"]),
+                    {
+                        "expected_glb_sha": pending["expected_glb_sha"],
+                        "expected_json_sha": pending["expected_json_sha"],
+                        "expected_glb_state": pending["expected_glb_state"],
+                        "expected_json_state": pending["expected_json_state"],
+                        "verify_before": lambda prepared=prepared: (
+                            _verify_snapshot_pair(prepared),
+                            _verify_original_pair(prepared),
+                        ),
+                    },
                 )
-            finally:
-                _acceptance_records().pop(acceptance_key, None)
-            _emit_record(pending["success_record"])
+                try:
+                    promote_pair(
+                        pending["staged_glb"],
+                        pending["staged_json"],
+                        pending["final_glb"],
+                        pending["final_json"],
+                        bool(pending["force"]),
+                    )
+                finally:
+                    _acceptance_records().pop(acceptance_key, None)
+                completed_publications.append(pending)
+                try:
+                    _emit_record(pending["success_record"])
+                except Exception:
+                    if not _publication_is_exact(pending):
+                        raise
+            run_completed = True
+    except Exception:
+        cleanup_finished = bool(private_roots) and not any(
+            _path_exists(path) for path in private_roots
+        )
+        committed_run = (
+            run_completed
+            and len(completed_publications) == len(assets)
+            and all(_publication_is_exact(item) for item in completed_publications)
+        )
+        if cleanup_finished and committed_run:
+            return
+        raise
 
 
 def _diagnostic_payload(message: object) -> bytes:
