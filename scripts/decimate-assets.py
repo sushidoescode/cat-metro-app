@@ -1194,32 +1194,47 @@ def _promotion_guard(
             lock.release()
 
 
+def _transaction_member_structure_status(
+    path: Path,
+    maximum_bytes: int,
+) -> bool | None:
+    """Return structural eligibility, or None when identity is unreadable."""
+    try:
+        status = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return None
+    if (
+        not stat.S_ISREG(status.st_mode)
+        or status.st_nlink != 1
+        or status.st_size > maximum_bytes
+    ):
+        return False
+    return True
+
+
 def _sha256_match_status(
     path: Path,
     expected: str,
     maximum_bytes: int = MAX_SOURCE_GLB_BYTES,
 ) -> bool | None:
     """Return an exact match decision, or None when identity is unreadable."""
-    try:
-        _checked_lstat(path, "transaction member", maximum_bytes)
-    except FileNotFoundError:
-        return False
-    except DecimationError:
-        return False
-    except OSError:
-        return None
+    structure_status = _transaction_member_structure_status(path, maximum_bytes)
+    if structure_status is not True:
+        return structure_status
     try:
         with _sha256_role("transaction member", maximum_bytes):
             return _sha256(path) == expected
     except FileNotFoundError:
         return False
     except DecimationError:
-        try:
-            _checked_lstat(path, "transaction member", maximum_bytes)
-        except (FileNotFoundError, DecimationError):
-            return False
-        except OSError:
-            return None
+        structure_status = _transaction_member_structure_status(
+            path,
+            maximum_bytes,
+        )
+        if structure_status is not True:
+            return structure_status
         return None
     except OSError:
         return None
