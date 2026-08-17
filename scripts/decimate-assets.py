@@ -2441,7 +2441,9 @@ def _run(argv: list[str]) -> None:
             )
             child_env = _sanitized_environment(private_environment_root)
             _check_blender_version(blender, child_env)
-            for asset, prepared in zip(assets, prepared_assets, strict=True):
+            if len(assets) != len(prepared_assets):
+                raise DecimationError("prepared asset count mismatch")
+            for asset, prepared in zip(assets, prepared_assets):
                 pending = _process_asset(
                     asset,
                     prepared,
