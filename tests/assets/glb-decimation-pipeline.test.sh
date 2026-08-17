@@ -6925,6 +6925,16 @@ def setup_batch_case(label: str, *, force: bool) -> types.SimpleNamespace:
     return case
 
 
+def setup_mixed_force_case(label: str) -> types.SimpleNamespace:
+    case = setup_batch_case(label, force=True)
+    second_final_glb, second_final_json, second_old_pair = case.batch_pairs[1]
+    assert second_old_pair is not None
+    second_final_glb.unlink()
+    second_final_json.unlink()
+    case.batch_pairs[1] = (second_final_glb, second_final_json, None)
+    return case
+
+
 def child_environment(
     case: types.SimpleNamespace,
     *,
@@ -7381,6 +7391,201 @@ def persistent_absent_rollback_retires_candidate_case() -> None:
         assert path.name.startswith(".")
         observed_hashes.add(digest_file(path))
     assert observed_hashes == set(expected_hashes)
+    assert_batch_sources_unchanged(case)
+
+
+def asymmetric_retired_cleanup_restores_exact_pair_case() -> None:
+    case = setup_batch_case(
+        "asymmetric-retired-cleanup",
+        force=False,
+    )
+    real_process_asset = module._process_asset
+    real_path_unlink = Path.unlink
+    real_receipt = module._sha256_receipt
+    calls = 0
+    rollback_armed = False
+    expected_hashes: tuple[str, str] | None = None
+    blocked_hash: str | None = None
+    blocked_attempts = 0
+    successful_removals = 0
+    retired_receipt_limits: dict[str, int] = {}
+
+    def fail_second_asset(*args, **kwargs):
+        nonlocal calls, rollback_armed, expected_hashes
+        calls += 1
+        if calls == 2:
+            rollback_armed = True
+            raise module.DecimationError("injected later asset failure")
+        pending = real_process_asset(*args, **kwargs)
+        expected_hashes = (
+            pending["expected_glb_sha"],
+            pending["expected_json_sha"],
+        )
+        assert len(set(expected_hashes)) == 2
+        return pending
+
+    def fail_one_retired_member(path, *args, **kwargs):
+        nonlocal blocked_hash, blocked_attempts, successful_removals
+        candidate = Path(path)
+        if not rollback_armed or expected_hashes is None:
+            return real_path_unlink(candidate, *args, **kwargs)
+        try:
+            status = os.lstat(candidate)
+        except OSError:
+            return real_path_unlink(candidate, *args, **kwargs)
+        is_public = any(
+            same_observed_path(candidate, public_member)
+            for final_glb, final_json, _ in case.batch_pairs
+            for public_member in (final_glb, final_json)
+        )
+        if (
+            is_public
+            or not same_observed_path(candidate.parent, case.output)
+            or not stat.S_ISREG(status.st_mode)
+            or status.st_nlink != 1
+        ):
+            return real_path_unlink(candidate, *args, **kwargs)
+        observed_hash = digest_file(candidate)
+        if observed_hash not in expected_hashes:
+            return real_path_unlink(candidate, *args, **kwargs)
+        if blocked_hash is None:
+            blocked_hash = observed_hash
+        if observed_hash == blocked_hash:
+            blocked_attempts += 1
+            assert blocked_attempts <= 4
+            raise OSError("injected asymmetric retirement cleanup failure")
+        result = real_path_unlink(candidate, *args, **kwargs)
+        successful_removals += 1
+        return result
+
+    def observe_retired_receipt(path, label, maximum_bytes):
+        receipt = real_receipt(path, label, maximum_bytes)
+        candidate = Path(path)
+        if (
+            rollback_armed
+            and expected_hashes is not None
+            and same_observed_path(candidate.parent, case.output)
+            and receipt[0] in expected_hashes
+        ):
+            retired_receipt_limits[receipt[0]] = maximum_bytes
+        return receipt
+
+    with (
+        mock.patch.object(module, "_process_asset", new=fail_second_asset),
+        mock.patch.object(Path, "unlink", new=fail_one_retired_member),
+        mock.patch.object(module, "_sha256_receipt", new=observe_retired_receipt),
+    ):
+        result, stdout, stderr, caught = run_main(case)
+    assert calls == 2
+    assert blocked_hash is not None
+    assert blocked_attempts == 2, blocked_attempts
+    assert successful_removals == 1, successful_removals
+    assert caught is None, repr(caught)
+    assert result == 1, (result, stdout, stderr)
+    assert stdout.count("source_triangles=") == 1, repr(stdout)
+    assert "output_triangles=" not in stdout
+    assert_one_diagnostic(stderr)
+    assert expected_hashes is not None
+    for final_glb, final_json, _ in case.batch_pairs:
+        assert not final_glb.exists() and not final_json.exists()
+    retired_paths = list(case.output.iterdir())
+    assert len(retired_paths) == 2, [path.name for path in retired_paths]
+    observed_hashes = set()
+    for path in retired_paths:
+        status = os.lstat(path)
+        assert path.name.startswith(".")
+        assert stat.S_ISREG(status.st_mode) and status.st_nlink == 1
+        observed_hashes.add(digest_file(path))
+    assert observed_hashes == set(expected_hashes)
+    assert retired_receipt_limits == {
+        expected_hashes[0]: MAX_DERIVATIVE_BYTES,
+        expected_hashes[1]: MAX_PROVENANCE_BYTES,
+    }
+    assert_batch_sources_unchanged(case)
+
+
+def mixed_force_success_uses_actual_lineage_case() -> None:
+    case = setup_mixed_force_case("mixed-force-success")
+    real_process_asset = module._process_asset
+    pending_items: list[dict[str, object]] = []
+
+    def capture_pending(*args, **kwargs):
+        pending = real_process_asset(*args, **kwargs)
+        pending_items.append(pending)
+        return pending
+
+    with mock.patch.object(module, "_process_asset", new=capture_pending):
+        result, stdout, stderr, caught = run_main(case)
+    assert caught is None
+    assert result == 0, (result, stdout, stderr)
+    assert stderr == ""
+    assert stdout.count("source_triangles=") == 2, repr(stdout)
+    assert stdout.count("output_triangles=") == 2, repr(stdout)
+    assert len(pending_items) == 2
+    assert [
+        pending["publication_receipt"]["destination_was_present"]
+        for pending in pending_items
+    ] == [True, False]
+    expected_entries = set()
+    for final_glb, final_json, old_pair in case.batch_pairs:
+        assert final_glb.is_file() and final_json.is_file()
+        if old_pair is not None:
+            assert (final_glb.read_bytes(), final_json.read_bytes()) != old_pair
+        record = json.loads(final_json.read_text(encoding="utf-8"))
+        assert record["derivative"]["sha256"] == digest_file(final_glb)
+        expected_entries.update((final_glb, final_json))
+    assert set(case.output.iterdir()) == expected_entries
+    assert_batch_sources_unchanged(case)
+
+
+def mixed_force_later_failure_rolls_back_actual_lineage_case() -> None:
+    case = setup_mixed_force_case("mixed-force-later-failure")
+    real_process_asset = module._process_asset
+    real_rollback_bytes = module._publication_rollback_bytes
+    pending_items: list[dict[str, object]] = []
+    accounting_calls = 0
+
+    def capture_pending(*args, **kwargs):
+        pending = real_process_asset(*args, **kwargs)
+        pending_items.append(pending)
+        return pending
+
+    def fail_after_second_publication(pending):
+        nonlocal accounting_calls
+        observed = real_rollback_bytes(pending)
+        accounting_calls += 1
+        if accounting_calls == 2:
+            raise module.DecimationError("injected mixed force later failure")
+        return observed
+
+    with (
+        mock.patch.object(module, "_process_asset", new=capture_pending),
+        mock.patch.object(
+            module,
+            "_publication_rollback_bytes",
+            new=fail_after_second_publication,
+        ),
+    ):
+        result, stdout, stderr, caught = run_main(case)
+    assert accounting_calls == 2
+    assert caught is None
+    assert result == 1, (result, stdout, stderr)
+    assert stdout.count("source_triangles=") == 2, repr(stdout)
+    assert "output_triangles=" not in stdout
+    assert_one_diagnostic(stderr)
+    assert "mixed force later failure" in stderr
+    assert len(pending_items) == 2
+    assert [
+        pending["publication_receipt"]["destination_was_present"]
+        for pending in pending_items
+    ] == [True, False]
+    first_glb, first_json, first_old_pair = case.batch_pairs[0]
+    second_glb, second_json, second_old_pair = case.batch_pairs[1]
+    assert first_old_pair is not None and second_old_pair is None
+    assert first_glb.read_bytes() == first_old_pair[0]
+    assert first_json.read_bytes() == first_old_pair[1]
+    assert not second_glb.exists() and not second_json.exists()
+    assert set(case.output.iterdir()) == {first_glb, first_json}
     assert_batch_sources_unchanged(case)
 
 
@@ -9809,6 +10014,18 @@ for batch_force in (False, True):
 run_bounded(
     "persistent-absent-rollback-retirement",
     persistent_absent_rollback_retires_candidate_case,
+)
+run_bounded(
+    "asymmetric-retired-cleanup",
+    asymmetric_retired_cleanup_restores_exact_pair_case,
+)
+run_bounded(
+    "mixed-force-success",
+    mixed_force_success_uses_actual_lineage_case,
+)
+run_bounded(
+    "mixed-force-later-failure",
+    mixed_force_later_failure_rolls_back_actual_lineage_case,
 )
 for retry_force in (False, True):
     run_bounded(
