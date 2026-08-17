@@ -1399,11 +1399,11 @@ def _restore_old_pair(
 
     # These attempts are independent: a GLB restore error never skips JSON.
     for backup, final, old_sha, _, maximum_bytes in members:
-        if not _matches_sha256(backup, old_sha, maximum_bytes):
+        if _sha256_match_status(backup, old_sha, maximum_bytes) is not True:
+            continue
+        if _sha256_match_status(final, old_sha, maximum_bytes) is not False:
             continue
         try:
-            if _path_exists(final):
-                final.unlink()
             os.replace(backup, final)
         except OSError:
             continue
@@ -1424,36 +1424,60 @@ def _restore_old_pair(
         final_match = _sha256_match_status(final, old_sha, maximum_bytes)
         if final_match is True:
             continue
-        if final_match is False:
-            _write_old_member(final, old_bytes, old_sha, maximum_bytes)
-            continue
         backup_match = _sha256_match_status(
             backup,
             old_sha,
             maximum_bytes,
         )
-        if backup_match is False:
-            backup_match = _write_old_member(
-                backup,
-                old_bytes,
-                old_sha,
-                maximum_bytes,
-            )
+        if final_match is None:
+            if backup_match is False and not _path_exists(backup):
+                if _write_old_member(
+                    backup,
+                    old_bytes,
+                    old_sha,
+                    maximum_bytes,
+                ):
+                    _unlink_pair_bounded(
+                        backup,
+                        backup,
+                        "unknown final recovery staging could not be removed",
+                    )
+            continue
         if backup_match is True:
             try:
                 os.replace(backup, final)
             except OSError:
                 pass
+            final_match = _sha256_match_status(
+                final,
+                old_sha,
+                maximum_bytes,
+            )
+        if final_match is False:
+            _write_old_member(final, old_bytes, old_sha, maximum_bytes)
     if _matches_sha256(
         final_glb, old_glb_sha, MAX_DERIVATIVE_GLB_BYTES
     ) and _matches_sha256(
         final_json, old_json_sha, MAX_PROVENANCE_BYTES
     ):
-        _unlink_pair_bounded(
-            backup_glb,
-            backup_json,
-            "forced rollback could not remove old backups",
+        backup_statuses = (
+            _sha256_match_status(
+                backup_glb,
+                old_glb_sha,
+                MAX_DERIVATIVE_GLB_BYTES,
+            ),
+            _sha256_match_status(
+                backup_json,
+                old_json_sha,
+                MAX_PROVENANCE_BYTES,
+            ),
         )
+        if all(status is not None for status in backup_statuses):
+            _unlink_pair_bounded(
+                backup_glb,
+                backup_json,
+                "forced rollback could not remove old backups",
+            )
     if not _old_final_pair(
         final_glb,
         final_json,
