@@ -1202,12 +1202,25 @@ def _sha256_match_status(
     """Return an exact match decision, or None when identity is unreadable."""
     try:
         _checked_lstat(path, "transaction member", maximum_bytes)
+    except FileNotFoundError:
+        return False
+    except DecimationError:
+        return False
+    except OSError:
+        return None
+    try:
         with _sha256_role("transaction member", maximum_bytes):
             return _sha256(path) == expected
     except FileNotFoundError:
         return False
     except DecimationError:
-        return False
+        try:
+            _checked_lstat(path, "transaction member", maximum_bytes)
+        except (FileNotFoundError, DecimationError):
+            return False
+        except OSError:
+            return None
+        return None
     except OSError:
         return None
 
@@ -1392,10 +1405,26 @@ def _restore_old_pair(
 
     # A replace-after-effect race may consume and then alias a backup. Captured
     # pre-transaction bytes remain the recovery authority in that case.
-    for _, final, old_sha, old_bytes, maximum_bytes in members:
-        if _matches_sha256(final, old_sha, maximum_bytes):
+    for backup, final, old_sha, old_bytes, maximum_bytes in members:
+        if _sha256_match_status(final, old_sha, maximum_bytes) is True:
             continue
-        _write_old_member(final, old_bytes, old_sha, maximum_bytes)
+        backup_match = _sha256_match_status(
+            backup,
+            old_sha,
+            maximum_bytes,
+        )
+        if backup_match is False:
+            backup_match = _write_old_member(
+                backup,
+                old_bytes,
+                old_sha,
+                maximum_bytes,
+            )
+        if backup_match is True:
+            try:
+                os.replace(backup, final)
+            except OSError:
+                pass
     if _matches_sha256(
         final_glb, old_glb_sha, MAX_DERIVATIVE_GLB_BYTES
     ) and _matches_sha256(
@@ -3039,7 +3068,7 @@ def _run(argv: list[str]) -> None:
                         f"{MAX_PUBLICATION_ROLLBACK_BYTES}"
                     )
             run_completed = True
-    except Exception:
+    except BaseException:
         cleanup_finished = bool(private_roots) and not any(
             _path_exists(path) for path in private_roots
         )
