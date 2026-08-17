@@ -12367,6 +12367,108 @@ def exercise_bounded_reader_unknown_old(name):
     return findings
 
 
+def exercise_lstat_unknown_old(name):
+    pair = make_pair(name, forced=True)
+    expected_glb_sha = digest_bytes(pair["old_glb"])
+    expected_json_sha = digest_bytes(pair["old_json"])
+    old_glb_status = os.lstat(pair["final_glb"])
+    old_glb_identity = (old_glb_status.st_dev, old_glb_status.st_ino)
+
+    os.replace(pair["final_json"], pair["backup_json"])
+    pair["final_json"].write_bytes(pair["new_json"])
+    real_lstat = os.lstat
+    real_unlink = Path.unlink
+    real_write_private_file = module._write_private_file
+    lstat_faults = 0
+    old_identity_unlinks = 0
+    write_faults = 0
+    old_missing_at_write = 0
+
+    class FaultingOs:
+        def __getattr__(self, attribute):
+            return getattr(os, attribute)
+
+        def lstat(self, path):
+            nonlocal lstat_faults
+            candidate = Path(path)
+            if candidate == pair["final_glb"] and lstat_faults < 3:
+                lstat_faults += 1
+                raise OSError("injected bounded identity observation failure")
+            return real_lstat(candidate)
+
+    def observe_unlink(path, *args, **kwargs):
+        nonlocal old_identity_unlinks
+        candidate = Path(path)
+        if candidate == pair["final_glb"] and lexists(candidate):
+            status = real_lstat(candidate)
+            if (status.st_dev, status.st_ino) == old_glb_identity:
+                old_identity_unlinks += 1
+        return real_unlink(candidate, *args, **kwargs)
+
+    def fail_old_glb_materialization(path, payload, mode=0o400):
+        nonlocal write_faults, old_missing_at_write
+        if payload == pair["old_glb"] and write_faults == 0:
+            write_faults += 1
+            if not lexists(pair["final_glb"]):
+                old_missing_at_write += 1
+            else:
+                status = real_lstat(pair["final_glb"])
+                if (status.st_dev, status.st_ino) != old_glb_identity:
+                    old_missing_at_write += 1
+            raise OSError("injected old-member materialization failure")
+        return real_write_private_file(path, payload, mode)
+
+    caught = None
+    with (
+        mock.patch.object(module, "os", new=FaultingOs()),
+        mock.patch.object(Path, "unlink", new=observe_unlink),
+        mock.patch.object(
+            module,
+            "_write_private_file",
+            new=fail_old_glb_materialization,
+        ),
+    ):
+        try:
+            module._restore_old_pair(
+                pair["final_glb"],
+                pair["final_json"],
+                pair["backup_glb"],
+                pair["backup_json"],
+                expected_glb_sha,
+                expected_json_sha,
+                pair["old_glb"],
+                pair["old_json"],
+            )
+        except BaseException as exc:
+            caught = exc
+
+    findings = []
+    if lstat_faults != 3:
+        findings.append(
+            f"{name}: identity observation fault was reached {lstat_faults} times"
+        )
+    if write_faults > 1:
+        findings.append(
+            f"{name}: old-member write fault was reached {write_faults} times"
+        )
+    if old_missing_at_write:
+        findings.append(
+            f"{name}: exact old GLB identity was absent before materialization"
+        )
+    if old_identity_unlinks:
+        findings.append(
+            f"{name}: exact old GLB identity was unlinked on unknown"
+        )
+    if caught is not None:
+        findings.append(f"{name}: recovery raised {type(caught).__name__}")
+    if pair["final_glb"].is_file():
+        status = real_lstat(pair["final_glb"])
+        if (status.st_dev, status.st_ino) != old_glb_identity:
+            findings.append(f"{name}: exact old GLB identity changed")
+    findings.extend(exact_hash_recovery_errors(name, pair))
+    return findings
+
+
 def exercise_absent_replace_fault(
     name, phase, after_effect, cleanup_member=None
 ):
@@ -12522,6 +12624,8 @@ def child_scenario(sender, kind, arguments):
             findings = exercise_unverified_candidate_hash(*arguments)
         elif kind == "bounded_unknown":
             findings = exercise_bounded_reader_unknown_old(*arguments)
+        elif kind == "lstat_unknown":
+            findings = exercise_lstat_unknown_old(*arguments)
         elif kind == "absent":
             findings = exercise_absent_replace_fault(*arguments)
         elif kind == "cleanup":
@@ -12579,6 +12683,7 @@ run_bounded("hash", ("hash-transient-old-glb", "final_glb", False))
 run_bounded("hash", ("hash-persistent-old-json", "final_json", True))
 run_bounded("candidate_hash", ("hash-unknown-candidate-json",))
 run_bounded("bounded_unknown", ("bounded-reader-unknown-old-glb",))
+run_bounded("lstat_unknown", ("lstat-unknown-old-glb",))
 
 run_bounded(
     "absent",
