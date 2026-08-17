@@ -181,6 +181,52 @@ def section_between(document, heading, next_heading):
     return document.split(heading, 1)[1].split(next_heading, 1)[0]
 
 
+def markdown_table_matches(section, label, header, separator, row_pattern):
+    lines = section.splitlines()
+    header_indices = [
+        index for index, line in enumerate(lines) if line == header
+    ]
+    if len(header_indices) != 1:
+        errors.append(
+            f"{label} table header count must be one, got {len(header_indices)}"
+        )
+        return [], set()
+
+    header_index = header_indices[0]
+    claimed_lines = {header_index}
+    separator_index = header_index + 1
+    if separator_index >= len(lines) or lines[separator_index] != separator:
+        actual = None if separator_index >= len(lines) else lines[separator_index]
+        errors.append(
+            f"{label} table separator mismatch: "
+            f"expected={separator!r} actual={actual!r}"
+        )
+    elif separator_index < len(lines):
+        claimed_lines.add(separator_index)
+
+    matches = []
+    row_index = header_index + 2
+    while row_index < len(lines) and lines[row_index].startswith("|"):
+        claimed_lines.add(row_index)
+        line = lines[row_index]
+        match = row_pattern.fullmatch(line)
+        if match is None:
+            errors.append(f"{label} table row does not match schema: {line!r}")
+        else:
+            matches.append(match)
+        row_index += 1
+    return matches, claimed_lines
+
+
+def reject_unclaimed_pipe_rows(section, claimed_lines, label):
+    for index, line in enumerate(section.splitlines()):
+        if line.lstrip().startswith("|") and index not in claimed_lines:
+            errors.append(
+                f"{label} contains a pipe row outside its declared tables "
+                f"at section line {index + 1}: {line!r}"
+            )
+
+
 def comma_int(value):
     return int(value.replace(",", ""))
 
@@ -560,12 +606,22 @@ else:
             )
 
 reduction_pattern = re.compile(
-    r"^\| `([^`]+)` \| (cat|prop) \| "
+    r"\| `([^`]+)` \| (cat|prop) \| "
     r"([0-9,]+) → ([0-9,]+) \| "
     r"([0-9,]+) → ([0-9,]+) \| "
     r"([0-9,]+) → ([0-9,]+) \| "
-    r"([0-9]+\.[0-9]{6})% \| ([0-9]+\.[0-9]{6})% \|$",
-    re.MULTILINE,
+    r"([0-9]+\.[0-9]{6})% \| ([0-9]+\.[0-9]{6})% \|",
+)
+reduction_matches, metrics_claimed_lines = markdown_table_matches(
+    metrics_section,
+    "reduction",
+    "| Asset | Kind | Bytes source → output | Vertices source → output | "
+    "Triangles source → output | Byte reduction | Triangle reduction |",
+    "|---|---:|---:|---:|---:|---:|---:|",
+    reduction_pattern,
+)
+reject_unclaimed_pipe_rows(
+    metrics_section, metrics_claimed_lines, "exact reduction metrics section"
 )
 reduction_rows = [
     {
@@ -580,7 +636,7 @@ reduction_rows = [
         "byte_reduction_percent": float(match.group(9)),
         "triangle_reduction_percent": float(match.group(10)),
     }
-    for match in reduction_pattern.finditer(metrics_section)
+    for match in reduction_matches
 ]
 if [row["id"] for row in reduction_rows] != metric_ids:
     errors.append("Markdown reduction rows do not match machine manifest order")
@@ -616,13 +672,20 @@ bounds_section = section_between(
     "## Source and derivative custody",
 )
 bounds_pattern = re.compile(
-    r"^\| `([^`]+)` \| ([0-9]+\.[0-9]{9}) \| "
-    r"([0-9]+\.[0-9]{9}) \| ([0-9]+\.[0-9]{9}) \|$",
-    re.MULTILINE,
+    r"\| `([^`]+)` \| ([0-9]+\.[0-9]{9}) \| "
+    r"([0-9]+\.[0-9]{9}) \| ([0-9]+\.[0-9]{9}) \|",
+)
+bounds_matches, bounds_claimed_lines = markdown_table_matches(
+    bounds_section,
+    "bounds",
+    "| Asset | Center drift / source L | Scale drift | "
+    "Max normalized-extent drift |",
+    "|---|---:|---:|---:|",
+    bounds_pattern,
 )
 bounds_rows = [
     (match.group(1), match.group(2), match.group(3), match.group(4))
-    for match in bounds_pattern.finditer(bounds_section)
+    for match in bounds_matches
 ]
 if [row[0] for row in bounds_rows] != metric_ids:
     errors.append("Markdown bounds rows do not match machine manifest order")
@@ -652,9 +715,16 @@ for row, asset in zip(bounds_rows, assets):
         errors.append(f"{asset['id']} machine bounds miss preservation tolerances")
 
 structure_pattern = re.compile(
-    r"^\| `([^`]+)` \| ([0-9]+)/([0-9]+) \| exact \| "
-    r"exact: ([a-z -]+(?:, [a-z -]+)*) \| ([0-9]+)/([0-9]+) \| none \|$",
-    re.MULTILINE,
+    r"\| `([^`]+)` \| ([0-9]+)/([0-9]+) \| exact \| "
+    r"exact: ([a-z -]+(?:, [a-z -]+)*) \| ([0-9]+)/([0-9]+) \| none \|",
+)
+structure_matches, structure_claimed_lines = markdown_table_matches(
+    bounds_section,
+    "preservation",
+    "| Asset | Images source/output | Embedded payload bytes | "
+    "Texture-role mapping | UV/material binding | Extensions |",
+    "|---|---:|---|---|---|---|",
+    structure_pattern,
 )
 structure_rows = [
     {
@@ -668,8 +738,13 @@ structure_rows = [
         "source_uv_material": int(match.group(5)),
         "output_uv_material": int(match.group(6)),
     }
-    for match in structure_pattern.finditer(bounds_section)
+    for match in structure_matches
 ]
+reject_unclaimed_pipe_rows(
+    bounds_section,
+    bounds_claimed_lines | structure_claimed_lines,
+    "bounds and structural preservation section",
+)
 if [row["id"] for row in structure_rows] != metric_ids:
     errors.append("Markdown preservation rows do not match machine manifest order")
 if len(structure_rows) != len(assets):
@@ -699,9 +774,16 @@ silhouette_section = section_between(
     "## Material-lit color evidence and visual verdict",
 )
 silhouette_pattern = re.compile(
-    r"^\| `([^`]+)` \| (0\.[0-9]{12}) \| `([0-9a-f]{64})` \| "
-    r"(0\.[0-9]{12}) \| `([0-9a-f]{64})` \|$",
-    re.MULTILINE,
+    r"\| `([^`]+)` \| (0\.[0-9]{12}) \| `([0-9a-f]{64})` \| "
+    r"(0\.[0-9]{12}) \| `([0-9a-f]{64})` \|",
+)
+silhouette_matches, silhouette_claimed_lines = markdown_table_matches(
+    silhouette_section,
+    "silhouette",
+    "| Asset | Before coverage | Before PNG SHA-256 | After coverage | "
+    "After PNG SHA-256 |",
+    "|---|---:|---|---:|---|",
+    silhouette_pattern,
 )
 silhouette_rows = [
     {
@@ -711,7 +793,7 @@ silhouette_rows = [
         "after_coverage": match.group(4),
         "after_sha256": match.group(5),
     }
-    for match in silhouette_pattern.finditer(silhouette_section)
+    for match in silhouette_matches
 ]
 if [row["id"] for row in silhouette_rows] != metric_ids:
     errors.append("silhouette rows do not match machine manifest order")
@@ -738,6 +820,39 @@ if silhouette_table_sha != EXPECTED_SILHOUETTE_TABLE_SHA256:
         f"actual={silhouette_table_sha}"
     )
 
+contact_pattern = re.compile(
+    r"\| `([^`]+)` \| ([1-9][0-9]*)×([1-9][0-9]*) \| `([0-9a-f]{64})` \|"
+)
+contact_matches, contact_claimed_lines = markdown_table_matches(
+    silhouette_section,
+    "silhouette contact sheet",
+    "| Path | Dimensions | SHA-256 |",
+    "|---|---:|---|",
+    contact_pattern,
+)
+contact_rows = [
+    {
+        "path": match.group(1),
+        "width": int(match.group(2)),
+        "height": int(match.group(3)),
+        "sha256": match.group(4),
+    }
+    for match in contact_matches
+]
+if len(contact_rows) != 3:
+    errors.append(
+        f"silhouette contact sheet inventory must be 3, got {len(contact_rows)}"
+    )
+if len({row["path"] for row in contact_rows}) != len(contact_rows):
+    errors.append("silhouette contact sheet paths must be unique")
+if len({row["sha256"] for row in contact_rows}) != len(contact_rows):
+    errors.append("silhouette contact sheet hashes must be unique")
+reject_unclaimed_pipe_rows(
+    silhouette_section,
+    silhouette_claimed_lines | contact_claimed_lines,
+    "silhouette evidence section",
+)
+
 renderer_match = re.search(
     r"Renderer SHA-256:\s*\n`([0-9a-f]{64})`\.", evidence
 )
@@ -757,10 +872,17 @@ next_heading = "## Silhouette evidence"
 if evidence.count(heading) != 1 or evidence.count(next_heading) != 1:
     raise AssertionError("custody table headings must each occur exactly once")
 custody_section = evidence.split(heading, 1)[1].split(next_heading, 1)[0]
-row_pattern = re.compile(
-    r"^\| `([^`]+)` \| `([0-9a-f]{64})` \| `([0-9a-f]{64})` "
-    r"\| `([0-9a-f]{64})` \| `([0-9a-f]{64})` \|$",
-    re.MULTILINE,
+custody_pattern = re.compile(
+    r"\| `([^`]+)` \| `([0-9a-f]{64})` \| `([0-9a-f]{64})` "
+    r"\| `([0-9a-f]{64})` \| `([0-9a-f]{64})` \|",
+)
+custody_matches, custody_claimed_lines = markdown_table_matches(
+    custody_section,
+    "custody",
+    "| Asset | Source GLB SHA-256 | Source JSON SHA-256 | "
+    "Derivative GLB SHA-256 | Derivative JSON SHA-256 |",
+    "|---|---|---|---|---|",
+    custody_pattern,
 )
 markdown_rows = [
     {
@@ -770,8 +892,11 @@ markdown_rows = [
         "derivative_sha256": match.group(4),
         "derivative_sidecar_sha256": match.group(5),
     }
-    for match in row_pattern.finditer(custody_section)
+    for match in custody_matches
 ]
+reject_unclaimed_pipe_rows(
+    custody_section, custody_claimed_lines, "source and derivative custody section"
+)
 if len(markdown_rows) != len(assets):
     errors.append(
         f"custody row count mismatch: markdown={len(markdown_rows)} "
@@ -825,6 +950,12 @@ for asset in assets:
             artifact_root / "decimated" / derivative_filename,
             artifact_root / "decimated" / f"{derivative_filename}.json",
         )
+    )
+
+if len(expected_local_paths) != 60 or len(set(expected_local_paths)) != 60:
+    errors.append(
+        "local custody inventory must contain 60 unique files, got "
+        f"{len(expected_local_paths)} paths / {len(set(expected_local_paths))} unique"
     )
 
 local_available = artifact_root_explicit or any(
