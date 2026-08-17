@@ -12469,7 +12469,7 @@ def exercise_lstat_unknown_old(name):
     return findings
 
 
-def exercise_persistent_lstat_unknown_final(name):
+def exercise_persistent_lstat_unknown_final(name, backup_present):
     pair = make_pair(name, forced=True)
     expected_glb_sha = digest_bytes(pair["old_glb"])
     expected_json_sha = digest_bytes(pair["old_json"])
@@ -12477,6 +12477,11 @@ def exercise_persistent_lstat_unknown_final(name):
     pair["final_glb"].write_bytes(unknown_glb)
     unknown_status = os.lstat(pair["final_glb"])
     unknown_identity = (unknown_status.st_dev, unknown_status.st_ino)
+    backup_identity = None
+    if backup_present:
+        pair["backup_glb"].write_bytes(pair["old_glb"])
+        backup_status = os.lstat(pair["backup_glb"])
+        backup_identity = (backup_status.st_dev, backup_status.st_ino)
     os.replace(pair["final_json"], pair["backup_json"])
     pair["final_json"].write_bytes(pair["new_json"])
 
@@ -12569,7 +12574,16 @@ def exercise_persistent_lstat_unknown_final(name):
             findings.append(f"{name}: unknown public GLB identity changed")
         if pair["final_glb"].read_bytes() != unknown_glb:
             findings.append(f"{name}: unknown public GLB bytes changed")
-    if lexists(pair["backup_glb"]):
+    if backup_present:
+        if not pair["backup_glb"].is_file():
+            findings.append(f"{name}: exact GLB backup is absent")
+        else:
+            backup_status = real_lstat(pair["backup_glb"])
+            if (backup_status.st_dev, backup_status.st_ino) != backup_identity:
+                findings.append(f"{name}: exact GLB backup identity changed")
+            if pair["backup_glb"].read_bytes() != pair["old_glb"]:
+                findings.append(f"{name}: exact GLB backup bytes changed")
+    elif lexists(pair["backup_glb"]):
         findings.append(f"{name}: absent GLB backup was materialized")
     expected_members = {
         pair["staged_glb"],
@@ -12577,6 +12591,8 @@ def exercise_persistent_lstat_unknown_final(name):
         pair["final_glb"],
         pair["final_json"],
     }
+    if backup_present:
+        expected_members.add(pair["backup_glb"])
     if set(pair["directory"].iterdir()) != expected_members:
         findings.append(f"{name}: terminal membership changed")
     if pair["final_json"].read_bytes() != pair["old_json"]:
@@ -12803,7 +12819,11 @@ run_bounded("bounded_unknown", ("bounded-reader-unknown-old-glb",))
 run_bounded("lstat_unknown", ("lstat-unknown-old-glb",))
 run_bounded(
     "persistent_lstat_unknown",
-    ("persistent-lstat-unknown-public-glb",),
+    ("persistent-lstat-unknown-public-glb-absent-backup", False),
+)
+run_bounded(
+    "persistent_lstat_unknown",
+    ("persistent-lstat-unknown-public-glb-exact-backup", True),
 )
 
 run_bounded(
