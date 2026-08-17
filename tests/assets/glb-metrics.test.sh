@@ -1691,6 +1691,48 @@ check(
 )
 
 
+def oversized_benign_public_value_is_redacted():
+    value = "VENDOR_" + "A" * (513 - len("VENDOR_"))
+    assert len(value.encode("utf-8")) == 513
+    capped_document = document("valid")
+    capped_document["extensionsUsed"] = [value]
+    capped_document["extensionsRequired"] = [value]
+    path = fixture_root / "benign-public-value-cap.glb"
+    write_document(path, capped_document, binary_payload("valid"))
+
+    completed = subprocess.run(
+        [sys.executable, str(script), str(path)],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=2.0,
+    )
+    assert completed.returncode == 0 and completed.stderr == "", completed.stderr
+    assert completed.stdout.endswith("\n") and completed.stdout.count("\n") == 1
+    assert value not in completed.stdout
+    record = json.loads(completed.stdout)
+    assert record["extensions_used"] == ["[redacted]"]
+    assert record["extensions_required"] == ["[redacted]"]
+
+    inspected = module.inspect_glb(path)
+    original_limit = module.MAX_DIAGNOSTIC_BYTES
+    try:
+        module.MAX_DIAGNOSTIC_BYTES = len(value.encode("utf-8"))
+        uncapped_record = module._public_success_metrics(inspected)
+    finally:
+        module.MAX_DIAGNOSTIC_BYTES = original_limit
+    assert uncapped_record["extensions_used"] == [value]
+    assert uncapped_record["extensions_required"] == [value]
+
+
+check(
+    "benign public metric values over 512 bytes are redacted",
+    oversized_benign_public_value_is_redacted,
+)
+
+
 def implicit_texcoord0_is_required_during_inspection():
     control_document = document("two-primitives")
     negative_document = document("missing-one-uv")
