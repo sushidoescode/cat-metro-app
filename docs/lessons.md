@@ -14,6 +14,8 @@ Row statuses: `observed` (1 occurrence) → `check-proposed` (2+, proposal open)
 | 2026-08-06 | In-slice fix headlined in the PR body ships with no named test — only committed visual evidence protects it | Agent review (#46 round-1 F2) | 1 | observed | — (candidate: contract-template line — every mid-slice fix gets its own failing-first test row) |
 | 2026-08-06 | Precondition rationale overclaims sufficiency ("otherwise this test doesn't exercise X" where X is unreachable at that point in the test) | Agent review (#46 round-1 F1) | 1 | observed | — |
 | 2026-08-06 | Unregister-on-OnDisable added without matching re-register-on-enable — the phantom-region fix opens its ghost-affordance mirror | Agent review (#46 round-1 F4) | 1 | observed | — |
+| 2026-08-16 | Child-group cleanup after leader exit either leaves descendants alive or signals after reap, when numeric group ownership is no longer durable | GLB pipeline adversarial review (two independent lifecycle findings) | 2 | enforced | Positive descendant-removal and negative post-reap-signal oracles in `tests/assets/glb-decimation-pipeline.test.sh` |
+| 2026-08-16 | Public CLI uses a runtime API newer than the documented interpreter floor (no floor was declared), so the default macOS `python3` crashes | GLB pipeline portability review (`waitid`; keyword-only `zip` strictness) | 2 | enforced | Forced missing-API plus real Python 3.9/3.12 public-CLI oracles in `tests/assets/glb-decimation-pipeline.test.sh` |
 
 <!-- Template row:
 | YYYY-MM-DD | <class, described so a recurrence is recognizable> | <human review / CI / incident / audit> | N | observed | — |
