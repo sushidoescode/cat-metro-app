@@ -1,0 +1,269 @@
+#!/usr/bin/env bash
+# GLB-CURATION: geometry predicates, source-pair transactions, and untouched pins.
+set -euo pipefail
+
+repo_root=$(git rev-parse --show-toplevel)
+rules="$repo_root/scripts/glb_curation_rules.py"
+orchestrator="$repo_root/scripts/curate-assets.py"
+driver="$repo_root/scripts/blender_curate.py"
+metrics="$repo_root/docs/design/assets/GLB-DECIMATION-METRICS.json"
+
+for required in "$rules" "$orchestrator" "$driver"; do
+  if [[ ! -f "$required" ]]; then
+    printf 'glb-curation test: missing production entrypoint: %s\n' "$required" >&2
+    exit 1
+  fi
+done
+
+PYTHONDONTWRITEBYTECODE=1 python3 - \
+  "$repo_root" "$rules" "$orchestrator" "$metrics" <<'PY'
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+import os
+import tempfile
+from pathlib import Path
+
+
+repo_root = Path(os.sys.argv[1])
+rules_path = Path(os.sys.argv[2])
+orchestrator_path = Path(os.sys.argv[3])
+metrics_path = Path(os.sys.argv[4])
+
+
+def load(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise AssertionError(f"could not load {path}")
+    module = importlib.util.module_from_spec(spec)
+    os.sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+rules = load("catmetro_glb_curation_rules", rules_path)
+curator = load("catmetro_curate_assets", orchestrator_path)
+
+assert rules.LOAF_CUT_HEIGHT_RATIO == 0.08
+assert rules.LOAF_SELECTED_FOOTPRINT_MINIMUM == 0.95
+assert rules.LOAF_RETAINED_FOOTPRINT_MAXIMUM == 0.80
+assert rules.WAVE_THIN_SPAN_RATIO == 0.07
+assert rules.WAVE_MIN_Y_LOCATION_RATIO == 0.01
+
+full_bounds = {
+    "minimum": (-0.3852173089981079, -0.5, -0.4085644483566284),
+    "maximum": (0.3852173089981079, 0.5, 0.4085644483566284),
+}
+wave_components = [
+    {
+        "triangles": 1_383_894,
+        "minimum": (-0.3852173089981079, -0.4726581275463104, -0.4085644483566284),
+        "maximum": (0.3852173089981079, 0.5, 0.4024394452571869),
+    },
+    {
+        "triangles": 71_282,
+        "minimum": (-0.000002001221218961291, -0.5, -0.4085644483566284),
+        "maximum": (0.3052848279476166, -0.43638890981674194, -0.2873024046421051),
+    },
+    {
+        "triangles": 38_914,
+        "minimum": (-0.2941795289516449, -0.051845185458660126, -0.3547399640083313),
+        "maximum": (-0.13326361775398254, 0.04354926943778992, -0.19544756412506104),
+    },
+]
+selected = rules.select_wave_fragments(wave_components, full_bounds)
+assert selected == [1], selected
+
+# Equality laws are load-bearing: thinness is strict; min-Y location is inclusive.
+full_unit = {"minimum": (0.0, 0.0, 0.0), "maximum": (1.0, 1.0, 1.0)}
+thin_equal = {"triangles": 10, "minimum": (0.0, 0.0, 0.0), "maximum": (0.07, 0.5, 0.5)}
+assert rules.select_wave_fragments([thin_equal], full_unit) == []
+thin_below_at_location_boundary = {
+    "triangles": 10,
+    "minimum": (0.0, 0.01, 0.0),
+    "maximum": (0.069, 0.50, 0.50),
+}
+assert rules.select_wave_fragments([thin_below_at_location_boundary], full_unit) == [0]
+thin_below_above_location = {
+    **thin_below_at_location_boundary,
+    "minimum": (0.0, 0.0100001, 0.0),
+}
+assert rules.select_wave_fragments([thin_below_above_location], full_unit) == []
+
+rules.validate_loaf_footprints(
+    selected_width_ratio=1.0,
+    selected_depth_ratio=1.0,
+    retained_width_ratio=0.7436,
+    retained_depth_ratio=0.5400,
+)
+for bad in (
+    dict(selected_width_ratio=0.949999, selected_depth_ratio=1.0,
+         retained_width_ratio=0.7436, retained_depth_ratio=0.5400),
+    dict(selected_width_ratio=1.0, selected_depth_ratio=1.0,
+         retained_width_ratio=0.80, retained_depth_ratio=0.5400),
+):
+    try:
+        rules.validate_loaf_footprints(**bad)
+    except rules.CurationRuleError:
+        pass
+    else:
+        raise AssertionError(f"loaf footprint guard accepted {bad!r}")
+
+expected_sources = {
+    "cat-blue-siamese-loaf": "e3015351ec9bda2aebeafcc0ff23f5aa35512af4234c168d79cac750118070e3",
+    "cat-yellow-longhair-wave": "8d7190fd24f552f874bf1d733f2870c44a24c27d6b50cfe1e32095f625fcc57c",
+}
+assert curator.ALLOWED_SOURCE_SHA256 == expected_sources
+
+original_record = {
+    "service": "tripo",
+    "task_id": "fixture-task",
+    "timestamp_utc": "2026-08-15T06:17:35Z",
+    "plan_tier": "paid",
+    "prompt": "fixture prompt",
+    "note": "tripo model=v3.1-20260211",
+    "sha256": expected_sources["cat-yellow-longhair-wave"],
+}
+record_snapshot = dict(original_record)
+new_sha = "a" * 64
+updated = curator.build_curated_source_record(
+    "cat-yellow-longhair-wave", original_record, new_sha
+)
+assert original_record == record_snapshot
+for field in ("service", "task_id", "timestamp_utc", "plan_tier", "prompt"):
+    assert updated[field] == original_record[field]
+assert updated["sha256"] == new_sha
+assert updated["note"] == (
+    "tripo model=v3.1-20260211; Cat Metro GLB-CURATION: "
+    "removed ruled min-Y foot fragment"
+)
+
+
+def write(path: Path, payload: bytes) -> None:
+    path.write_bytes(payload)
+
+
+with tempfile.TemporaryDirectory(prefix="catmetro-curation-test-") as raw:
+    root = Path(raw)
+    final_glb = root / "asset.glb"
+    final_json = root / "asset.glb.json"
+    staged_glb = root / ".asset.candidate.glb"
+    staged_json = root / ".asset.candidate.glb.json"
+    backup_dir = root / "backup"
+    write(final_glb, b"old-glb")
+    write(final_json, b"old-json")
+    write(staged_glb, b"new-glb")
+    write(staged_json, b"new-json")
+    curator.publish_pair(
+        staged_glb=staged_glb,
+        staged_sidecar=staged_json,
+        final_glb=final_glb,
+        final_sidecar=final_json,
+        backup_dir=backup_dir,
+    )
+    assert final_glb.read_bytes() == b"new-glb"
+    assert final_json.read_bytes() == b"new-json"
+    assert (backup_dir / final_glb.name).read_bytes() == b"old-glb"
+    assert (backup_dir / final_json.name).read_bytes() == b"old-json"
+    assert not staged_glb.exists() and not staged_json.exists()
+
+with tempfile.TemporaryDirectory(prefix="catmetro-curation-rollback-") as raw:
+    root = Path(raw)
+    final_glb = root / "asset.glb"
+    final_json = root / "asset.glb.json"
+    staged_glb = root / ".asset.candidate.glb"
+    staged_json = root / ".asset.candidate.glb.json"
+    backup_dir = root / "backup"
+    write(final_glb, b"old-glb")
+    write(final_json, b"old-json")
+    write(staged_glb, b"new-glb")
+    write(staged_json, b"new-json")
+
+    def fail_second(source, destination):
+        if Path(source) == staged_json and Path(destination) == final_json:
+            raise OSError("injected sidecar promotion failure")
+        os.replace(source, destination)
+
+    try:
+        curator.publish_pair(
+            staged_glb=staged_glb,
+            staged_sidecar=staged_json,
+            final_glb=final_glb,
+            final_sidecar=final_json,
+            backup_dir=backup_dir,
+            replace_fn=fail_second,
+        )
+    except curator.CurationError as exc:
+        assert "promotion failed" in str(exc)
+    else:
+        raise AssertionError("injected promotion failure unexpectedly succeeded")
+    assert final_glb.read_bytes() == b"old-glb"
+    assert final_json.read_bytes() == b"old-json"
+    assert (backup_dir / final_glb.name).read_bytes() == b"old-glb"
+    assert (backup_dir / final_json.name).read_bytes() == b"old-json"
+
+expected_untouched = {
+    "cat-red-tabby": "9d6f3e1b0d82f23500779c570943dc2081c6caad7295da7d3fe19c1c50742b59",
+    "cat-blue-siamese": "44ceea493949fa7ea92bf40c7bc05e64c4b78e3ca0bb4c08b41fa7d788ee17b7",
+    "cat-yellow-longhair": "36f03503fcbcb918870463222f50d6b17b3c880281ce61f3a15c2cec6963ed3e",
+    "cat-green-shorthair": "96910d69ad0bfe424c410e0b9df6e137222d858a28322a5276add6228e9186e5",
+    "cat-wild-alley": "3fa010b59c3b5dccbe0eb54453e8d595736cbafa391a9f08effd9d052738479c",
+    "cat-red-tabby-sitting": "3ea8e01d78cb058223c74f225e89512efc44f74f638c99133d7720675e8655b6",
+    "cat-green-shorthair-sit": "a5791a945bac21cfe55e7e4cdbcd5cd3233c11997cd0f449972a12768cca93f8",
+    "cat-conductor": "3b0bdbe1a0af9377bfde62ebf2b633e694881dc81438f2814e717c4c71ab9e7d",
+    "prop-depot-shed": "68994c2316e7c0b23252569bfc06cbc1155c29dd41798c8effdbbaba638844b1",
+    "prop-toy-engine": "f622b390cdf48fccfb382895bef2988df191b523b614e01f03dbd162e052eeaf",
+    "prop-station-kiosk": "25053fb73009bf004aeeebab4a861bb664c91935b59c059f21d2fc8c9b6f52cf",
+    "prop-trees": "e34f39de9a0db8f977370d7f0808f44a28b9641a458ada4957f552c62271c0dd",
+    "prop-desk-clutter": "d0403b93dc3db30ec3f7e0b825ba7b48f4af7b79094c6b262c7bfa2fb268ec4d",
+}
+metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+tracked = {asset["id"]: asset["derivative_sha256"] for asset in metrics["assets"]}
+assert {key: tracked[key] for key in expected_untouched} == expected_untouched
+
+artifact_root_text = os.environ.get("GLB_CURATION_ARTIFACT_ROOT")
+if artifact_root_text:
+    artifact_root = Path(artifact_root_text)
+    for identifier, expected_sha in expected_untouched.items():
+        asset = next(item for item in metrics["assets"] if item["id"] == identifier)
+        path = artifact_root / "decimated" / asset["derivative_filename"]
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        assert digest == expected_sha, (identifier, digest, expected_sha)
+
+print(
+    "glb-curation unit: pass rules=boundary-pinned transactions=success+rollback "
+    f"untouched={len(expected_untouched)}"
+)
+PY
+
+help_output=$(PYTHONDONTWRITEBYTECODE=1 python3 "$orchestrator" --help)
+for flag in --input-dir --backup-dir --blender --asset-id; do
+  if [[ "$help_output" != *"$flag"* ]]; then
+    printf 'glb-curation test: help is missing %s\n' "$flag" >&2
+    exit 1
+  fi
+done
+
+# Strong local leg: a curated-state check must reject both old derivatives and
+# accept both regenerated derivatives. CI omits ignored paid assets and skips.
+if [[ -n ${GLB_CURATION_BASELINE_ROOT:-} && -n ${GLB_CURATION_ARTIFACT_ROOT:-} ]]; then
+  blender_bin=${GLB_CURATION_BLENDER:-/opt/homebrew/bin/blender}
+  for asset_id in cat-blue-siamese-loaf cat-yellow-longhair-wave; do
+    filename="$asset_id.glb"
+    if "$blender_bin" --background --factory-startup --python "$driver" -- \
+      --operation verify-curated --asset-id "$asset_id" \
+      --source "$GLB_CURATION_BASELINE_ROOT/decimated/$filename"; then
+      printf 'glb-curation test: old derivative passed curated check: %s\n' "$asset_id" >&2
+      exit 1
+    fi
+    "$blender_bin" --background --factory-startup --python "$driver" -- \
+      --operation verify-curated --asset-id "$asset_id" \
+      --source "$GLB_CURATION_ARTIFACT_ROOT/decimated/$filename"
+  done
+  printf 'glb-curation local geometry: pass baseline=RED curated=GREEN\n'
+else
+  printf 'glb-curation local geometry: skipped (ignored artifacts not explicit)\n'
+fi
+
