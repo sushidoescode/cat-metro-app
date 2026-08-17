@@ -6,11 +6,15 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
+import re
 from pathlib import Path
 
 runbook = Path("docs/design/assets/DECIMATION.md").read_text(encoding="utf-8")
 state = Path("state/PROJECT_STATE.md").read_text(encoding="utf-8")
 lessons = Path("docs/lessons.md").read_text(encoding="utf-8")
+evidence = Path("docs/design/assets/GLB-DECIMATION-EVIDENCE.md").read_text(
+    encoding="utf-8"
+)
 production = Path("scripts/decimate-assets.py").read_text(encoding="utf-8")
 metrics = Path("scripts/glb_metrics.py").read_text(encoding="utf-8")
 silhouette = Path("scripts/glb-silhouette.py").read_text(encoding="utf-8")
@@ -43,6 +47,15 @@ def require_lesson_row(stem: str, evidence: tuple[str, ...], label: str) -> None
         )
     for fragment in evidence:
         require(matches[0], fragment, f"{label} omits evidence {fragment}")
+
+
+def require_single_commit(text: str, pattern: str, label: str) -> str:
+    matches = re.findall(pattern, text)
+    if len(matches) != 1:
+        raise SystemExit(
+            f"glb-decimation-docs.test.sh: FAIL — {label} count={len(matches)}"
+        )
+    return matches[0]
 
 
 # Fail closed if the implementation topology changes out from under this
@@ -406,8 +419,47 @@ forbid(
     "project state still says integrated findings remain to be closed",
 )
 
+# Cold-resume state and the exact reproduction record must identify the same
+# reviewed production tree. A stale short hash in either record can otherwise
+# direct a reviewer to superseded recovery semantics while every behavior gate
+# still passes at the current checkout.
+state_production_base = require_single_commit(
+    state,
+    r"final reviewed production base is `([0-9a-f]{40})`",
+    "project state final production base",
+)
+evidence_reproduction_base = require_single_commit(
+    evidence,
+    r"reproduction base: `([0-9a-f]{40})`\.",
+    "evidence reproduction base",
+)
+if state_production_base != evidence_reproduction_base:
+    raise SystemExit(
+        "glb-decimation-docs.test.sh: FAIL — state/evidence production-base "
+        f"mismatch: state={state_production_base} "
+        f"evidence={evidence_reproduction_base}"
+    )
+require(
+    state,
+    "persistent unreadability leaves an unknown public member untouched",
+    "project state omits persistent unknown-member custody",
+)
+require(
+    state,
+    "interruptions after publication roll back every completed pair",
+    "project state omits interruption-safe batch rollback",
+)
+
 # Human-caught defect classes are ratcheted to the behavior tests that now pin
 # them, rather than being left only as one-off implementation history.
+require_lesson_row(
+    "Operator runbook or compact state retains superseded parser/resource",
+    (
+        "tests/assets/glb-decimation-docs.test.sh",
+        "state/evidence production-base equality",
+    ),
+    "stale operator/state lesson",
+)
 require_lesson_row(
     "Per-item resource limits are mistaken for aggregate or replay limits",
     ("tests/assets/glb-metrics.test.sh", "tests/assets/glb-silhouette.test.sh"),
