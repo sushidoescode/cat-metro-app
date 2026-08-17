@@ -76,6 +76,7 @@ MAX_MANIFEST_ASSETS = 64
 MAX_SOURCE_GLB_BYTES = 128 * 1024 * 1024
 MAX_DERIVATIVE_GLB_BYTES = 64 * 1024 * 1024
 MAX_PROVENANCE_BYTES = 2 * MAX_METADATA_BYTES
+MAX_PUBLICATION_ROLLBACK_BYTES = 128 * 1024 * 1024
 MAX_CHILD_STREAM_BYTES = MAX_METADATA_BYTES
 MAX_DIAGNOSTIC_BYTES = 512
 MAX_TRANSACTION_SAFE_FILENAME_BYTES = 208
@@ -1705,6 +1706,8 @@ def promote_pair(
                             "backup_json": backup_json,
                             "old_glb_sha": old_glb_sha,
                             "old_json_sha": old_json_sha,
+                            "old_glb_bytes": old_glb_bytes,
+                            "old_json_bytes": old_json_bytes,
                         }
                     )
             except BaseException as primary_error:
@@ -2389,6 +2392,65 @@ def _publication_is_exact(pending: Mapping[str, object]) -> bool:
         return False
 
 
+def _forced_publication_receipt(
+    pending: Mapping[str, object],
+    action: str,
+) -> tuple[Path, Path, str, str, bytes, bytes]:
+    receipt = pending.get("publication_receipt")
+    if not isinstance(receipt, dict):
+        raise DecimationError(f"forced publication lacks an old-pair {action} receipt")
+    backup_glb = receipt.get("backup_glb")
+    backup_json = receipt.get("backup_json")
+    old_glb_sha = receipt.get("old_glb_sha")
+    old_json_sha = receipt.get("old_json_sha")
+    old_glb_bytes = receipt.get("old_glb_bytes")
+    old_json_bytes = receipt.get("old_json_bytes")
+    if not (
+        isinstance(backup_glb, Path)
+        and isinstance(backup_json, Path)
+        and isinstance(old_glb_sha, str)
+        and isinstance(old_json_sha, str)
+        and isinstance(old_glb_bytes, bytes)
+        and isinstance(old_json_bytes, bytes)
+        and len(old_glb_bytes) <= MAX_DERIVATIVE_GLB_BYTES
+        and len(old_json_bytes) <= MAX_PROVENANCE_BYTES
+        and hashlib.sha256(old_glb_bytes).hexdigest() == old_glb_sha
+        and hashlib.sha256(old_json_bytes).hexdigest() == old_json_sha
+    ):
+        raise DecimationError(f"forced publication lacks an old-pair {action} receipt")
+    return (
+        backup_glb,
+        backup_json,
+        old_glb_sha,
+        old_json_sha,
+        old_glb_bytes,
+        old_json_bytes,
+    )
+
+
+def _publication_rollback_bytes(pending: Mapping[str, object]) -> int:
+    receipt = pending.get("publication_receipt")
+    if not isinstance(receipt, dict):
+        raise DecimationError("published pair lacks a rollback receipt")
+    destination_was_present = receipt.get("destination_was_present")
+    if destination_was_present is False:
+        return 0
+    if destination_was_present is not True:
+        raise DecimationError("published pair lacks a rollback receipt")
+    *_, old_glb_bytes, old_json_bytes = _forced_publication_receipt(
+        pending,
+        "accounting",
+    )
+    return len(old_glb_bytes) + len(old_json_bytes)
+
+
+def _clear_publication_recovery(pending: Mapping[str, object]) -> None:
+    receipt = pending.get("publication_receipt")
+    if isinstance(receipt, dict):
+        receipt.pop("old_glb_bytes", None)
+        receipt.pop("old_json_bytes", None)
+
+
 def _rollback_publication(pending: Mapping[str, object]) -> None:
     receipt = pending.get("publication_receipt")
     staged_glb = pending.get("staged_glb")
@@ -2407,7 +2469,20 @@ def _rollback_publication(pending: Mapping[str, object]) -> None:
     ):
         raise DecimationError("published pair lacks a rollback receipt")
 
+    forced_receipt = (
+        _forced_publication_receipt(pending, "rollback") if force else None
+    )
     with _promotion_guard(final_glb, final_json):
+        if forced_receipt is not None and _old_final_pair(
+            final_glb,
+            final_json,
+            forced_receipt[0],
+            forced_receipt[1],
+            forced_receipt[2],
+            forced_receipt[3],
+        ):
+            _clear_publication_recovery(pending)
+            return
         if not _publication_is_exact(pending):
             raise DecimationError("published pair changed before cleanup rollback")
         if not force:
@@ -2420,44 +2495,23 @@ def _rollback_publication(pending: Mapping[str, object]) -> None:
                 raise DecimationError(
                     "cleanup rollback retained an absent-destination final"
                 )
+            _clear_publication_recovery(pending)
             return
 
-        backup_glb = receipt.get("backup_glb")
-        backup_json = receipt.get("backup_json")
-        old_glb_sha = receipt.get("old_glb_sha")
-        old_json_sha = receipt.get("old_json_sha")
-        if not (
-            isinstance(backup_glb, Path)
-            and isinstance(backup_json, Path)
-            and isinstance(old_glb_sha, str)
-            and isinstance(old_json_sha, str)
-        ):
-            raise DecimationError("forced publication lacks an old-pair receipt")
-        observed_glb_sha, _, old_glb_bytes, _ = _sha256_receipt(
-            backup_glb,
-            "existing derivative GLB backup",
-            MAX_DERIVATIVE_GLB_BYTES,
-        )
-        observed_json_sha, _, old_json_bytes, _ = _sha256_receipt(
-            backup_json,
-            "existing derivative JSON backup",
-            MAX_PROVENANCE_BYTES,
-        )
-        if observed_glb_sha != old_glb_sha or observed_json_sha != old_json_sha:
-            raise DecimationError("forced publication old-pair receipt changed")
+        assert forced_receipt is not None
         _restore_old_pair(
             final_glb,
             final_json,
-            backup_glb,
-            backup_json,
-            old_glb_sha,
-            old_json_sha,
-            old_glb_bytes,
-            old_json_bytes,
+            *forced_receipt,
         )
+        _clear_publication_recovery(pending)
 
 
-def _commit_publication(pending: Mapping[str, object]) -> None:
+def _commit_publication(
+    pending: Mapping[str, object],
+    *,
+    retain_recovery: bool = False,
+) -> None:
     receipt = pending.get("publication_receipt")
     final_glb = pending.get("final_glb")
     final_json = pending.get("final_json")
@@ -2470,37 +2524,39 @@ def _commit_publication(pending: Mapping[str, object]) -> None:
         and receipt.get("destination_was_present") is force
     ):
         raise DecimationError("published pair lacks a commit receipt")
+    forced_receipt = (
+        _forced_publication_receipt(pending, "commit") if force else None
+    )
     with _promotion_guard(final_glb, final_json):
         if not _publication_is_exact(pending):
             raise DecimationError("published pair changed before cleanup commit")
         if not force:
+            _clear_publication_recovery(pending)
             return
-        backup_glb = receipt.get("backup_glb")
-        backup_json = receipt.get("backup_json")
-        old_glb_sha = receipt.get("old_glb_sha")
-        old_json_sha = receipt.get("old_json_sha")
-        if not (
-            isinstance(backup_glb, Path)
-            and isinstance(backup_json, Path)
-            and isinstance(old_glb_sha, str)
-            and isinstance(old_json_sha, str)
-        ):
-            raise DecimationError(
-                "forced publication lacks an old-pair commit receipt"
-            )
-        observed_glb_sha, _, old_glb_bytes, _ = _sha256_receipt(
+        assert forced_receipt is not None
+        (
             backup_glb,
-            "existing derivative GLB backup",
-            MAX_DERIVATIVE_GLB_BYTES,
-        )
-        observed_json_sha, _, old_json_bytes, _ = _sha256_receipt(
             backup_json,
-            "existing derivative JSON backup",
-            MAX_PROVENANCE_BYTES,
-        )
-        if observed_glb_sha != old_glb_sha or observed_json_sha != old_json_sha:
-            raise DecimationError("forced publication old-pair commit receipt changed")
+            old_glb_sha,
+            old_json_sha,
+            old_glb_bytes,
+            old_json_bytes,
+        ) = forced_receipt
         try:
+            observed_glb_sha, _, _, _ = _sha256_receipt(
+                backup_glb,
+                "existing derivative GLB backup",
+                MAX_DERIVATIVE_GLB_BYTES,
+            )
+            observed_json_sha, _, _, _ = _sha256_receipt(
+                backup_json,
+                "existing derivative JSON backup",
+                MAX_PROVENANCE_BYTES,
+            )
+            if observed_glb_sha != old_glb_sha or observed_json_sha != old_json_sha:
+                raise DecimationError(
+                    "forced publication old-pair commit receipt changed"
+                )
             _unlink_pair_bounded(
                 backup_glb,
                 backup_json,
@@ -2517,14 +2573,29 @@ def _commit_publication(pending: Mapping[str, object]) -> None:
                 old_glb_bytes,
                 old_json_bytes,
             )
+            if not retain_recovery:
+                _clear_publication_recovery(pending)
             raise cleanup_error
+    if not retain_recovery:
+        _clear_publication_recovery(pending)
 
 
 def _commit_completed_publications(
     completed_publications: list[dict[str, object]],
 ) -> None:
+    try:
+        for pending in completed_publications:
+            _commit_publication(pending, retain_recovery=True)
+    except BaseException as commit_error:
+        try:
+            _rollback_completed_publications(completed_publications)
+        except BaseException as rollback_error:
+            raise DecimationError(
+                "publication commit failure could not restore every published pair"
+            ) from rollback_error
+        raise commit_error
     for pending in completed_publications:
-        _commit_publication(pending)
+        _clear_publication_recovery(pending)
 
 
 def _rollback_completed_publications(
@@ -2579,6 +2650,7 @@ def _run(argv: list[str]) -> None:
     if not driver.is_file():
         raise DecimationError("Blender decimation driver is missing")
     completed_publications: list[dict[str, object]] = []
+    publication_rollback_bytes = 0
     private_roots: list[Path] = []
     run_completed = False
     try:
@@ -2661,6 +2733,12 @@ def _run(argv: list[str]) -> None:
                 finally:
                     _acceptance_records().pop(acceptance_key, None)
                 completed_publications.append(pending)
+                publication_rollback_bytes += _publication_rollback_bytes(pending)
+                if publication_rollback_bytes > MAX_PUBLICATION_ROLLBACK_BYTES:
+                    raise DecimationError(
+                        "publication rollback bytes exceed aggregate limit "
+                        f"{MAX_PUBLICATION_ROLLBACK_BYTES}"
+                    )
             run_completed = True
     except Exception:
         cleanup_finished = bool(private_roots) and not any(
@@ -2675,7 +2753,7 @@ def _run(argv: list[str]) -> None:
             _commit_completed_publications(completed_publications)
             _emit_completed_records(completed_publications)
             return
-        if run_completed and len(completed_publications) == len(assets):
+        if completed_publications:
             _rollback_completed_publications(completed_publications)
         raise
     _commit_completed_publications(completed_publications)
