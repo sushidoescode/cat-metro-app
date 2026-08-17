@@ -11,6 +11,9 @@ from pathlib import Path
 runbook = Path("docs/design/assets/DECIMATION.md").read_text(encoding="utf-8")
 state = Path("state/PROJECT_STATE.md").read_text(encoding="utf-8")
 lessons = Path("docs/lessons.md").read_text(encoding="utf-8")
+evidence = Path("docs/design/assets/GLB-DECIMATION-EVIDENCE.md").read_text(
+    encoding="utf-8"
+)
 production = Path("scripts/decimate-assets.py").read_text(encoding="utf-8")
 metrics = Path("scripts/glb_metrics.py").read_text(encoding="utf-8")
 silhouette = Path("scripts/glb-silhouette.py").read_text(encoding="utf-8")
@@ -404,6 +407,34 @@ forbid(
     state,
     "Next: close exact-head review findings",
     "project state still says integrated findings remain to be closed",
+)
+
+# The whole-inventory metrics date remains the original queue date, while the
+# two curated derivatives have later tool timestamps. Keep the local-date
+# statement scoped to the 13 historical sidecars rather than all 15.
+for fragment, label in (
+    (
+        "The 13 untouched derivative sidecars record",
+        "historical sidecar date scope is undocumented",
+    ),
+    (
+        "2026-08-17T10:33:30Z",
+        "refreshed loaf derivative timestamp is undocumented",
+    ),
+    (
+        "2026-08-17T10:33:48Z",
+        "refreshed wave derivative timestamp is undocumented",
+    ),
+    (
+        "metrics `run_date` remains `2026-08-16`",
+        "whole-inventory run-date meaning is undocumented",
+    ),
+):
+    require(evidence, fragment, label)
+forbid(
+    evidence,
+    "Each sidecar records Blender `5.1.2`",
+    "evidence still applies the historical local date to all 15 sidecars",
 )
 
 # Human-caught defect classes are ratcheted to the behavior tests that now pin
