@@ -12,6 +12,13 @@
   `/Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming`.
 - Recoverable pre-curation files remain under the ignored local
   `curation-backups/GLB-CURATION-2026-08-17-16e20e3/` directory.
+- The reproducible derivative rerun uses tracked
+  `docs/design/assets/GLB-CURATION-MANIFEST.json`, whose inventory is exactly
+  the loaf and wave assets. An isolated rerun produced exactly two GLBs and
+  two sidecars; both GLBs were byte-identical to the retained derivatives.
+- The source publisher locks the input directory, revalidates both frozen
+  GLB/sidecar hashes after Blender, and uses a durable recovery journal around
+  the two sequential replacements.
 
 ## Inventory and order
 

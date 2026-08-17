@@ -63,8 +63,9 @@ are retained at:
 /Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming/curation-backups/GLB-CURATION-2026-08-17-16e20e3
 ```
 
-- `cat-blue-siamese-loaf`: select triangles whose glTF-space vertices are
-  strictly below `min_y + 0.08 * height`, only when that selection spans at
+- `cat-blue-siamese-loaf`: select glTF-space vertices strictly below
+  `min_y + 0.08 * height` and delete their incident faces, only when that
+  vertex selection spans at
   least 95% of the full X and Z footprint while the retained geometry spans
   less than 80% on both axes. This selected only the wide min-Y display disc:
   1,427,775 source triangles became 773,061.
@@ -75,7 +76,26 @@ are retained at:
   debris; the 38,914-triangle non-min-Y component remains outside the ruling.
 - The regenerated derivatives contain 14,999 and 14,998 triangles,
   respectively. The other 13 derivative GLBs are byte-identical to their
-  pre-curation files and are hash-pinned by `tests/assets/glb-curation.test.sh`.
+  pre-curation files. Their GLBs and sidecars are hash-pinned by
+  `tests/assets/glb-curation.test.sh`.
+
+The committed exact-two rerun boundary is executable directly:
+
+```bash
+python3 scripts/decimate-assets.py \
+  --manifest "$PWD/docs/design/assets/GLB-CURATION-MANIFEST.json" \
+  --input-dir /Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming \
+  --output-dir /Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming/decimated \
+  --blender /opt/homebrew/bin/blender \
+  --force
+```
+
+An isolated rerun from that manifest produced exactly two GLBs plus two
+sidecars; both GLBs were byte-identical to the retained curated derivatives.
+The curation publisher holds an advisory source-root lock, revalidates both
+original GLB/sidecar hashes after Blender, writes a durable prepared/committed
+journal, fsyncs each pair transition, and normalizes an interrupted journal on
+the next locked invocation.
 
 Committed renders and their complete checksum inventory are under
 `evals/results/assets/glb-curation-2026-08-17/`. Lane C viewed the source
@@ -485,6 +505,7 @@ HEAD, with no Unity, emulator, adb, network, credential, or `.env` access:
 bash tests/assets/glb-curation.test.sh
 GLB_CURATION_ARTIFACT_ROOT=/Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming \
 GLB_CURATION_BASELINE_ROOT=/Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming/curation-backups/GLB-CURATION-2026-08-17-16e20e3/derivatives-before \
+GLB_CURATION_SOURCE_BASELINE_ROOT=/Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming/curation-backups/GLB-CURATION-2026-08-17-16e20e3 \
 GLB_CURATION_BLENDER=/opt/homebrew/bin/blender \
   bash tests/assets/glb-curation.test.sh
 bash tests/assets/glb-decimation-evidence.test.sh
@@ -494,6 +515,8 @@ bash tests/assets/glb-metrics.test.sh
 bash tests/assets/glb-silhouette.test.sh
 bash tests/assets/glb-decimation-pipeline.test.sh
 bash scripts/check.sh
+bash scripts/test.sh
+bash scripts/build.sh
 git diff --check
 ```
 
@@ -506,7 +529,7 @@ the other 13 asset records remain exact. Generated GLBs and sidecars remain
 local and ignored. The curation PNGs and their checksum inventory are
 committed under `evals/results/assets/glb-curation-2026-08-17/`.
 
-Fresh exact-head observed results on 2026-08-16:
+Historical decimation exact-head observed results on 2026-08-16:
 
 - tracked evidence validator without local artifacts: exit 0,
   `glb-decimation evidence: pass assets=15 local_artifacts=skipped`;

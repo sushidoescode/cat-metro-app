@@ -91,9 +91,14 @@ After seam-safe import the source has three connected components:
 
 | Rank by triangles | Triangles | Thinnest bbox span / full max span | Location |
 |---:|---:|---:|---|
-| 1 | 1,383,894 | `> 0.79` | main body |
-| 2 | 71,282 | `0.06539922752069884` | touches global min-Y; foot debris |
-| 3 | 38,914 | `0.09807603740185485` | does not touch the min-Y band |
+| 1 | 1,383,894 | `0.7704346179962158` | main body |
+| 2 | 71,282 | `0.06361109018325806` | touches global min-Y; foot debris |
+| 3 | 38,914 | `0.09539445489645004` | does not touch the min-Y band |
+
+Measurement correction (2026-08-17 review; predicate and selection unchanged):
+the original frozen table accidentally divided component thin spans by the
+post-removal retained height. The values above use the governed pre-curation
+full-asset maximum span, exactly `1.0` for this source.
 
 The exact selection rule is:
 
@@ -268,4 +273,3 @@ Forbidden or deferred:
 - `docs/design/assets/GLB-DECIMATION-METRICS.json`
 - `evals/results/assets/glb-curation-2026-08-17/**`
 - end-of-session `state/PROJECT_STATE.md` and continuation handoff
-
