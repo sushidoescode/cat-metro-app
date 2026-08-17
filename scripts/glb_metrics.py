@@ -44,6 +44,7 @@ MAX_ACCESSORS = 65_536
 MAX_ACCESSOR_COUNT = 8_000_000
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
 MAX_GEOMETRY_WORK = 8_000_000
+MAX_SPARSE_ACCESSOR_WORK = 8_000_000
 MAX_IMAGE_WORK_BYTES = 64 * 1024 * 1024
 MAX_JSON_INTEGER_DIGITS = 4_300
 MAX_JSON_NUMBER_CHARACTERS = 4_300
@@ -502,6 +503,26 @@ def _validate_sparse(
         previous = sparse_index
 
 
+def _validate_sparse_work(accessors: list[object]) -> None:
+    """Reject aggregate sparse validation work before reading any indices."""
+    work = 0
+    for number, value in enumerate(accessors):
+        accessor = _object(value, f"accessors[{number}]")
+        if "sparse" not in accessor:
+            continue
+        sparse = _object(accessor["sparse"], f"accessors[{number}].sparse")
+        work += _integer(
+            sparse.get("count"),
+            f"accessors[{number}].sparse.count",
+            minimum=1,
+        )
+        if work > MAX_SPARSE_ACCESSOR_WORK:
+            raise GlbError(
+                "GLB sparse accessor work exceeds limit "
+                f"{MAX_SPARSE_ACCESSOR_WORK}"
+            )
+
+
 def _validate_texture_info(
     value: object, texture_count: int, label: str
 ) -> tuple[int, int]:
@@ -657,6 +678,7 @@ def _inspect_document(
     accessors = _root_array(document, "accessors")
     if len(accessors) > MAX_ACCESSORS:
         raise GlbError(f"accessor array exceeds limit {MAX_ACCESSORS}")
+    _validate_sparse_work(accessors)
     validated_accessors: list[tuple[int | None, int, int, str, int, int]] = []
     for number, value in enumerate(accessors):
         accessor = _object(value, f"accessors[{number}]")
