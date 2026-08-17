@@ -59,8 +59,12 @@ def accessor_values(document, binary, accessor_number):
     ]
 
 
+paths = sys.argv[1:]
+triangle_counts = (1, 2, 30_000)
+vertex_counts = (3, 4, 30_002)
+assert len(paths) == len(triangle_counts) == len(vertex_counts)
 for path, triangle_count, vertex_count in zip(
-    sys.argv[1:], (1, 2, 30_000), (3, 4, 30_002), strict=True
+    paths, triangle_counts, vertex_counts
 ):
     document, binary = read_glb(path)
     primitive = document["meshes"][0]["primitives"][0]
@@ -1100,6 +1104,28 @@ def inspect(name):
     return module.inspect_glb(fixture_root / f"{name}.glb")
 
 
+def installed_python_39():
+    candidate = Path("/usr/bin/python3")
+    if not candidate.is_file():
+        return None
+    probe = subprocess.run(
+        [
+            str(candidate),
+            "-B",
+            "-c",
+            "import sys; print(int(sys.version_info[:2] == (3, 9)))",
+        ],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=3.0,
+    )
+    if probe.returncode != 0 or probe.stdout != b"1\n":
+        return None
+    return candidate
+
+
 def document(name):
     raw = (fixture_root / f"{name}.glb").read_bytes()
     json_length, kind = struct.unpack_from("<I4s", raw, 12)
@@ -1731,6 +1757,35 @@ check(
     "benign public metric values over 512 bytes are redacted",
     oversized_benign_public_value_is_redacted,
 )
+
+
+def python_39_public_cli():
+    python_39 = installed_python_39()
+    if python_39 is None:
+        print(
+            "glb-metrics Python 3.9 public CLI: skipped "
+            "(/usr/bin/python3 is not Python 3.9)",
+            file=sys.stderr,
+        )
+        return
+    source = fixture_root / "valid.glb"
+    completed = subprocess.run(
+        [str(python_39), "-B", str(script), str(source)],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=3.0,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stderr == b""
+    record = json.loads(completed.stdout)
+    assert record["path"] == str(source)
+    assert record["triangles"] == 37
+    assert record["vertices"] == 39
+
+
+check("Python 3.9 metrics public CLI", python_39_public_cli)
 
 
 def implicit_texcoord0_is_required_during_inspection():

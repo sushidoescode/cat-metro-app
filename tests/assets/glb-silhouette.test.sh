@@ -2503,6 +2503,75 @@ check(
 )
 
 
+def python_39_public_cli() -> None:
+    candidate = Path("/usr/bin/python3")
+    if not candidate.is_file():
+        print(
+            "glb-silhouette Python 3.9 public CLI: skipped "
+            "(/usr/bin/python3 is not Python 3.9)",
+            file=sys.stderr,
+        )
+        return
+    probe = subprocess.run(
+        [
+            str(candidate),
+            "-B",
+            "-c",
+            "import sys; print(int(sys.version_info[:2] == (3, 9)))",
+        ],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=3.0,
+    )
+    if probe.returncode != 0 or probe.stdout != b"1\n":
+        print(
+            "glb-silhouette Python 3.9 public CLI: skipped "
+            "(/usr/bin/python3 is not Python 3.9)",
+            file=sys.stderr,
+        )
+        return
+
+    output = root / "python39-public.png"
+    result = subprocess.run(
+        [
+            str(candidate),
+            "-B",
+            str(script),
+            str(source_template),
+            str(output),
+            "25",
+            "--size",
+            "64",
+            "--splat-radius",
+            "4",
+            "--min-coverage",
+            "0",
+        ],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=3.0,
+    )
+    check(result.returncode == 0, "Python 3.9 public CLI returned failure")
+    check(result.stderr == b"", "Python 3.9 public CLI wrote a diagnostic")
+    check(
+        output.is_file() and output.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"),
+        "Python 3.9 public CLI did not publish a PNG",
+    )
+    check(
+        result.stdout.endswith(b"\n")
+        and result.stdout.count(b"\n") == 1
+        and len(result.stdout) <= 512,
+        "Python 3.9 public CLI success record was not one bounded line",
+    )
+
+
+python_39_public_cli()
+
+
 if failures:
     for failure in failures:
         print(f"glb-silhouette hardening: {failure}", file=sys.stderr)

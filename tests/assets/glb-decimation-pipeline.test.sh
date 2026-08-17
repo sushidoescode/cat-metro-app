@@ -39,6 +39,8 @@ die() {
 # explicit literal arguments; defaults or computed values make custody ambiguous.
 if [ "$review_section" = all ] || [ "$review_section" = G ]; then
   PYTHONDONTWRITEBYTECODE=1 python3 - "$expected_driver" <<'PY'
+from __future__ import annotations
+
 import ast
 import importlib.util
 import sys
@@ -326,6 +328,8 @@ fi
 # without allowing an unreachable direct call to bless an unsafe alias call.
 if [ "$review_section" = all ] || [ "$review_section" = H ]; then
   PYTHONDONTWRITEBYTECODE=1 python3 - "$expected_driver" <<'PY'
+from __future__ import annotations
+
 import ast
 import importlib.util
 import inspect
@@ -5531,6 +5535,8 @@ if [ "$review_section" = all ] || [ "$review_section" = L ]; then
   PYTHONDONTWRITEBYTECODE=1 python3 - \
     "$decimate_script" "$tmp/review-acceptance-binding" "$repo" \
     "$fake_blender" <<'PY'
+from __future__ import annotations
+
 import builtins
 import contextlib
 import hashlib
@@ -6802,6 +6808,8 @@ PY
   PYTHONDONTWRITEBYTECODE=1 python3 - \
     "$decimate_script" "$tmp/review-transaction-terminal" "$repo" \
     "$fake_blender" <<'PY'
+from __future__ import annotations
+
 import builtins
 import contextlib
 import hashlib
@@ -10014,22 +10022,14 @@ def legacy_public_cli_case() -> None:
     except AssertionError:
         violations.append("Python 3.9 zip-keyword mutation rejected the pipeline")
 
-    legacy_python = None
-    candidates = [
-        "/usr/bin/python3",
-        shutil.which("python3.9"),
-        "/opt/homebrew/bin/python3.9",
-        "/usr/local/bin/python3.9",
-    ]
-    for candidate in dict.fromkeys(candidates):
-        if not candidate or not os.access(candidate, os.X_OK):
-            continue
+    legacy_python = "/usr/bin/python3"
+    if os.access(legacy_python, os.X_OK):
         probe = subprocess.run(
             [
-                candidate,
+                legacy_python,
                 "-B",
                 "-c",
-                "import sys; print(int(sys.version_info[:2] <= (3, 9)))",
+                "import sys; print(int(sys.version_info[:2] == (3, 9)))",
             ],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
@@ -10037,9 +10037,10 @@ def legacy_public_cli_case() -> None:
             timeout=3,
             check=False,
         )
-        if probe.returncode == 0 and probe.stdout == b"1\n":
-            legacy_python = candidate
-            break
+        if probe.returncode != 0 or probe.stdout != b"1\n":
+            legacy_python = None
+    else:
+        legacy_python = None
 
     if legacy_python is not None:
         public_case = setup_case("legacy-public-cli")
@@ -10066,6 +10067,12 @@ def legacy_public_cli_case() -> None:
             )
         except (AssertionError, UnicodeDecodeError):
             violations.append("actual Python 3.9 public CLI did not publish exactly")
+    else:
+        print(
+            "glb-decimation Python 3.9 public CLI: skipped "
+            "(/usr/bin/python3 is not Python 3.9)",
+            file=sys.stderr,
+        )
 
     mismatch = setup_case("prepared-length-mismatch")
     real_prepare_assets = module._prepare_assets
