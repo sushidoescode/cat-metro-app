@@ -6985,11 +6985,13 @@ def assert_success_pair(
     stdout: str,
     stderr: str,
     caught: BaseException | None,
+    *,
+    success_records: int = 1,
 ) -> None:
     assert caught is None
     assert result == 0, (result, stdout, stderr)
     assert stderr == ""
-    assert stdout.count("output_triangles=") == 1
+    assert stdout.count("output_triangles=") == success_records
     assert case.final_glb.read_bytes()[:4] == b"glTF"
     record = json.loads(case.final_json.read_text(encoding="utf-8"))
     assert record["derivative"]["sha256"] == digest_file(case.final_glb)
@@ -7080,6 +7082,67 @@ def force_cleanup_terminal_case() -> None:
         assert "output_triangles=" not in stdout
         assert_one_diagnostic(stderr)
         assert_old_public_pair(case)
+
+
+def temporary_cleanup_after_effect_case() -> None:
+    case = setup_case("temporary-cleanup-after-effect")
+    real_temporary_directory = module.tempfile.TemporaryDirectory
+    injected = False
+
+    class CleanupAfterEffect:
+        def __init__(self, *args, **kwargs) -> None:
+            self.inner = real_temporary_directory(*args, **kwargs)
+
+        def __enter__(self):
+            return self.inner.__enter__()
+
+        def __exit__(self, *args):
+            nonlocal injected
+            result = self.inner.__exit__(*args)
+            if (
+                not injected
+                and case.final_glb.is_file()
+                and case.final_json.is_file()
+            ):
+                injected = True
+                raise OSError("injected temporary cleanup failure after effect")
+            return result
+
+    with mock.patch.object(
+        module.tempfile,
+        "TemporaryDirectory",
+        new=CleanupAfterEffect,
+    ):
+        result = run_main(case)
+    assert injected, "temporary cleanup after-effect seam was not reached"
+    assert_source_unchanged(case)
+    assert_success_pair(case, *result)
+
+
+def success_record_write_case(after_effect: bool) -> None:
+    effect = "after-effect" if after_effect else "before-effect"
+    case = setup_case(f"success-record-{effect}")
+    real_emit_record = module._emit_record
+    injected = False
+
+    def faulting_emit(message) -> None:
+        nonlocal injected
+        if not injected and "output_triangles=" in str(message):
+            injected = True
+            if after_effect:
+                real_emit_record(message)
+            raise OSError(f"injected success-record failure {effect}")
+        real_emit_record(message)
+
+    with mock.patch.object(module, "_emit_record", new=faulting_emit):
+        result = run_main(case)
+    assert injected, f"success-record {effect} seam was not reached"
+    assert_source_unchanged(case)
+    assert_success_pair(
+        case,
+        *result,
+        success_records=1 if after_effect else 0,
+    )
 
 
 class BoundedReadAttempt(RuntimeError):
@@ -7431,6 +7494,135 @@ def bounded_read_oracle_case() -> None:
         finally:
             os.close(descriptor)
     assert zero_guard.total_bytes == 0 and not zero_guard.over_limit
+
+
+def derivative_delegated_open_race_case() -> None:
+    case = setup_case("derivative-delegated-open-race")
+    guard = BoundedReadGuard(MAX_DERIVATIVE_BYTES)
+    real_open = os.open
+    mutation_count = 0
+
+    def grow_at_delegated_open(path, flags, *args, **kwargs):
+        nonlocal mutation_count
+        candidate = None if isinstance(path, int) else Path(path)
+        if (
+            candidate is not None
+            and mutation_count == 0
+            and candidate.parent.name.startswith("asset-")
+            and candidate.name == case.source.name
+        ):
+            _pad_glb_to_size(candidate, MAX_DERIVATIVE_BYTES + 4)
+            guard.arm(candidate)
+            mutation_count += 1
+        return real_open(path, flags, *args, **kwargs)
+
+    with (
+        guard.patches(),
+        mock.patch.object(module.os, "open", new=grow_at_delegated_open),
+    ):
+        result, stdout, stderr, caught = run_main(case)
+    assert mutation_count == 1, "derivative delegated-open race was not reached"
+    assert not guard.over_limit, (
+        "derivative delegated open crossed the 64 MiB role boundary",
+        guard.total_bytes,
+        guard.operations,
+    )
+    assert guard.total_bytes <= MAX_DERIVATIVE_BYTES
+    assert caught is None, caught
+    assert result == 1, (result, stdout, stderr)
+    assert "output_triangles=" not in stdout
+    assert_one_diagnostic(stderr)
+    assert list(case.output.iterdir()) == []
+    assert_source_unchanged(case)
+
+
+def hash_role_race_case(role: str) -> None:
+    case_root = root / f"hash-role-race-{role}"
+    case_root.mkdir()
+    target = case_root / ("member.glb" if role == "glb" else "member.json")
+    maximum = MAX_DERIVATIVE_BYTES if role == "glb" else MAX_PROVENANCE_BYTES
+    if role == "glb":
+        write_glb(target, triangles=14_000)
+    elif role == "json":
+        target.write_text('{"generation":"old"}\n', encoding="utf-8")
+    else:
+        raise AssertionError(role)
+    expected = digest_file(target)
+    guard = BoundedReadGuard(maximum)
+    real_sha256 = module._sha256
+    mutation_count = 0
+
+    def grow_before_hash(path):
+        nonlocal mutation_count
+        candidate = Path(path)
+        if candidate == target and mutation_count == 0:
+            if role == "glb":
+                _pad_glb_to_size(candidate, maximum + 4)
+            else:
+                pad_json_like(candidate, maximum + 4)
+            guard.arm(candidate)
+            mutation_count += 1
+        return real_sha256(candidate)
+
+    with (
+        guard.patches(),
+        mock.patch.object(module, "_sha256", new=grow_before_hash),
+    ):
+        decision = module._sha256_match_status(target, expected, maximum)
+    assert mutation_count == 1, f"{role} hash role race was not reached"
+    assert decision is False, (role, decision)
+    assert not guard.over_limit, (
+        f"{role} hash race crossed its role boundary",
+        guard.total_bytes,
+        guard.operations,
+    )
+    assert guard.total_bytes <= maximum
+
+
+def remove_non_old_final_role_case(role: str) -> None:
+    case_root = root / f"remove-non-old-final-role-{role}"
+    case_root.mkdir()
+    target = case_root / ("candidate.glb" if role == "glb" else "candidate.json")
+    maximum = MAX_DERIVATIVE_BYTES if role == "glb" else MAX_PROVENANCE_BYTES
+    if role == "glb":
+        write_glb(target, triangles=14_000)
+    elif role == "json":
+        target.write_text('{"generation":"candidate"}\n', encoding="utf-8")
+    else:
+        raise AssertionError(role)
+    guard = BoundedReadGuard(maximum)
+    real_sha256 = module._sha256
+    mutation_count = 0
+
+    def grow_before_hash(path):
+        nonlocal mutation_count
+        candidate = Path(path)
+        if candidate == target and mutation_count == 0:
+            if role == "glb":
+                _pad_glb_to_size(candidate, maximum + 4)
+            else:
+                pad_json_like(candidate, maximum + 4)
+            guard.arm(candidate)
+            mutation_count += 1
+        return real_sha256(candidate)
+
+    with (
+        guard.patches(),
+        mock.patch.object(module, "_sha256", new=grow_before_hash),
+    ):
+        module._remove_non_old_final(
+            target,
+            digest_bytes(b"different old member"),
+            maximum,
+        )
+    assert mutation_count == 1, f"{role} removal role race was not reached"
+    assert not os.path.lexists(target), f"{role} non-old final was retained"
+    assert not guard.over_limit, (
+        f"{role} non-old final removal crossed its role boundary",
+        guard.total_bytes,
+        guard.operations,
+    )
+    assert guard.total_bytes <= maximum
 
 
 def pad_json_like(path: Path, size: int) -> None:
@@ -8246,6 +8438,89 @@ def child_stream_boundary_case(phase: str, stream_name: str) -> None:
         if exact_capture is not None:
             terminate_bounded_capture(exact_capture, exact_marker)
 
+
+def leader_exit_descendant_pipe_case() -> None:
+    case = setup_case("leader-exit-descendant-pipes")
+    wrapper = case.root / "descendant-pipe-blender.py"
+    marker = case.root / "descendant.json"
+    descendant_source = '''
+import json
+import os
+import signal
+import sys
+import time
+from pathlib import Path
+
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+Path(sys.argv[1]).write_text(
+    json.dumps({
+        "pid": os.getpid(),
+        "pgrp": os.getpgrp(),
+        "attempted_bytes": 0,
+        "emitted_bytes": 0,
+        "state": "HOLDING",
+    }),
+    encoding="utf-8",
+)
+while True:
+    time.sleep(1)
+'''
+    wrapper.write_text(
+        f'''#!/usr/bin/env python3
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+marker = Path({str(marker)!r})
+descendant_source = {descendant_source!r}
+subprocess.Popen(
+    [sys.executable, "-c", descendant_source, str(marker)],
+    stdin=subprocess.DEVNULL,
+)
+deadline = time.monotonic() + 2
+while not marker.exists() and time.monotonic() < deadline:
+    time.sleep(0.01)
+if not marker.exists():
+    raise SystemExit(71)
+print("Blender {module.BLENDER_VERSION}")
+print("build hash: {module.BLENDER_BUILD_HASH}")
+raise SystemExit(0)
+''',
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    case.arguments[case.arguments.index(str(fake_blender))] = str(wrapper)
+    case.blender = wrapper
+    marker_record = None
+    try:
+        started = time.monotonic()
+        with mock.patch.object(module, "VERSION_TIMEOUT_SECONDS", 1):
+            result, stdout, stderr, caught = run_main(case)
+        elapsed = time.monotonic() - started
+        marker_record = stream_marker(marker)
+        assert marker_record is not None, "descendant marker was not written"
+        assert elapsed < 5, f"descendant-pipe timeout was unbounded: {elapsed:.3f}s"
+        assert caught is None, caught
+        assert result == 1, (result, stdout, stderr)
+        assert "output_triangles=" not in stdout
+        assert_one_diagnostic(stderr)
+        assert list(case.output.iterdir()) == []
+        assert_source_unchanged(case)
+        assert wait_for_marked_tree(marker_record, 2), (
+            "leader exited but its pipe-holding descendant survived timeout",
+            marker_record,
+        )
+    finally:
+        if marker_record is None:
+            marker_record = stream_marker(marker)
+        if marker_record is not None:
+            process_group = marker_record["pgrp"]
+            assert isinstance(process_group, int)
+            if process_group_alive(process_group):
+                signal_process_group(process_group, signal.SIGKILL)
+                wait_for_marked_tree(marker_record, 2)
+
 def child_output_case(profile: str) -> None:
     placeholder = setup_case(f"child-output-{profile}")
     wrapper, _marker, _release = write_blender_wrapper(placeholder, profile)
@@ -8349,7 +8624,18 @@ def run_bounded(label: str, function, *arguments) -> None:
 
 run_bounded("lock-release-terminal", lock_release_terminal_case)
 run_bounded("force-cleanup-terminal", force_cleanup_terminal_case)
+run_bounded("temporary-cleanup-after-effect", temporary_cleanup_after_effect_case)
+run_bounded("success-record-before-effect", success_record_write_case, False)
+run_bounded("success-record-after-effect", success_record_write_case, True)
 run_bounded("bounded-read-oracle", bounded_read_oracle_case)
+run_bounded("derivative-delegated-open-race", derivative_delegated_open_race_case)
+for hash_role in ("json", "glb"):
+    run_bounded(f"hash-role-race-{hash_role}", hash_role_race_case, hash_role)
+    run_bounded(
+        f"remove-non-old-final-role-{hash_role}",
+        remove_non_old_final_role_case,
+        hash_role,
+    )
 run_bounded("provenance-exact-boundary", provenance_exact_boundary_case)
 for late_member in (
     "metadata-snapshot",
@@ -8367,6 +8653,7 @@ for child_profile in (
     "asset-fail",
 ):
     run_bounded(f"child-{child_profile}", child_output_case, child_profile)
+run_bounded("leader-exit-descendant-pipes", leader_exit_descendant_pipe_case)
 for child_phase in ("version", "asset"):
     for child_stream in ("stdout", "stderr"):
         run_bounded(
