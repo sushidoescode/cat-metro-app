@@ -376,6 +376,46 @@ with tempfile.TemporaryDirectory(prefix="catmetro-curation-final-anchor-") as ra
     assert final_json.read_bytes() == b"old-json"
     assert not backup_dir.exists() and not journal.exists()
 
+with tempfile.TemporaryDirectory(prefix="catmetro-curation-corrupt-backup-") as raw:
+    root = Path(raw)
+    final_glb, final_json, staged_glb, staged_json, backup_dir, journal = make_pair(root)
+    original_copy_new = curator._copy_new
+
+    def corrupt_backup_copy(source, destination):
+        original_copy_new(source, destination)
+        if Path(destination) == backup_dir / final_json.name:
+            with Path(destination).open("r+b") as handle:
+                handle.seek(0)
+                handle.write(b"bad-json")
+                handle.truncate()
+                handle.flush()
+                os.fsync(handle.fileno())
+
+    curator._copy_new = corrupt_backup_copy
+    try:
+        try:
+            curator.publish_pair(
+                staged_glb=staged_glb,
+                staged_sidecar=staged_json,
+                final_glb=final_glb,
+                final_sidecar=final_json,
+                backup_dir=backup_dir,
+                journal_path=journal,
+            )
+        except curator.CurationError as exc:
+            assert "backup sidecar" in str(exc) and "mismatch" in str(exc)
+        else:
+            raise AssertionError("corrupt completed backup unexpectedly passed")
+    finally:
+        curator._copy_new = original_copy_new
+    assert final_glb.read_bytes() == b"old-glb"
+    assert final_json.read_bytes() == b"old-json"
+    assert staged_glb.read_bytes() == b"new-glb"
+    assert staged_json.read_bytes() == b"new-json"
+    assert not backup_dir.exists()
+    assert not journal.exists()
+    assert not curator._transaction_next_path(journal).exists()
+
 with tempfile.TemporaryDirectory(prefix="catmetro-curation-after-effect-") as raw:
     root = Path(raw)
     final_glb, final_json, staged_glb, staged_json, backup_dir, journal = make_pair(root)
