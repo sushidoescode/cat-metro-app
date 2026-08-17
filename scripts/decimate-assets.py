@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import re
+import select
 import selectors
 import shutil
 import signal
@@ -689,42 +690,143 @@ def _sanitized_environment(private_root: Path) -> dict[str, str]:
     return child_env
 
 
-def _child_exited_unreaped(process: subprocess.Popen[bytes]) -> bool:
-    """Observe child exit while retaining ownership of its PID and process group."""
-    while True:
-        try:
-            status = os.waitid(
-                os.P_PID,
-                process.pid,
-                os.WEXITED | os.WNOHANG | os.WNOWAIT,
-            )
-        except InterruptedError:
-            continue
-        except ChildProcessError as exc:
-            raise DecimationError("Blender child ownership was lost") from exc
-        return status is not None
+class _ChildExitObserver:
+    """Observe child exit without releasing ownership of its PID or group."""
 
+    def __init__(self, process: subprocess.Popen[bytes]) -> None:
+        self._process = process
+        self._waitid = getattr(os, "waitid", None)
+        self._queue = None
+        self._exited = False
+        self._reaped = False
+        self._backend_error: DecimationError | None = None
+        if self._waitid is not None:
+            return
 
-def _child_ownership_reserved(process: subprocess.Popen[bytes]) -> bool:
-    while True:
-        try:
-            os.waitid(
-                os.P_PID,
-                process.pid,
-                os.WEXITED | os.WNOHANG | os.WNOWAIT,
+        required = (
+            "kqueue",
+            "kevent",
+            "KQ_FILTER_PROC",
+            "KQ_NOTE_EXIT",
+            "KQ_EV_ADD",
+            "KQ_EV_ENABLE",
+            "KQ_EV_ONESHOT",
+        )
+        if not all(hasattr(select, name) for name in required):
+            self._backend_error = DecimationError(
+                "platform lacks an ownership-preserving child exit observer"
             )
-        except InterruptedError:
-            continue
-        except ChildProcessError:
+            return
+
+        try:
+            self._queue = select.kqueue()
+            event = select.kevent(
+                process.pid,
+                filter=select.KQ_FILTER_PROC,
+                flags=(
+                    select.KQ_EV_ADD
+                    | select.KQ_EV_ENABLE
+                    | select.KQ_EV_ONESHOT
+                ),
+                fflags=select.KQ_NOTE_EXIT,
+            )
+            try:
+                self._queue.control([event], 0, 0)
+            except ProcessLookupError:
+                # No code has reaped this owned child. On macOS, registering
+                # EVFILT_PROC after a fast exit reports ESRCH while the zombie
+                # leader still reserves its PID and process-group identity.
+                self._exited = True
+        except OSError as exc:
+            if self._queue is not None:
+                self._queue.close()
+                self._queue = None
+            self._backend_error = DecimationError(
+                "child exit observer could not start"
+            )
+            self._backend_error.__cause__ = exc
+
+    def require_backend(self) -> None:
+        if self._backend_error is not None:
+            raise self._backend_error
+
+    def exited_unreaped(self) -> bool:
+        if self._reaped:
+            raise DecimationError("Blender child ownership was lost")
+        self.require_backend()
+        if self._exited:
+            return True
+
+        if self._waitid is not None:
+            while True:
+                try:
+                    status = self._waitid(
+                        os.P_PID,
+                        self._process.pid,
+                        os.WEXITED | os.WNOHANG | os.WNOWAIT,
+                    )
+                except InterruptedError:
+                    continue
+                except ChildProcessError as exc:
+                    raise DecimationError("Blender child ownership was lost") from exc
+                self._exited = status is not None
+                return self._exited
+
+        if self._queue is None:
+            raise DecimationError("child exit observer is unavailable")
+        while True:
+            try:
+                events = self._queue.control(None, 1, 0)
+            except InterruptedError:
+                continue
+            except OSError as exc:
+                raise DecimationError("child exit observer failed") from exc
+            break
+        for event in events:
+            if (
+                event.ident == self._process.pid
+                and event.filter == select.KQ_FILTER_PROC
+                and event.fflags & select.KQ_NOTE_EXIT
+            ):
+                self._exited = True
+        return self._exited
+
+    def ownership_reserved(self) -> bool:
+        if self._reaped:
             return False
-        return True
+        if self._waitid is None:
+            return True
+        while True:
+            try:
+                self._waitid(
+                    os.P_PID,
+                    self._process.pid,
+                    os.WEXITED | os.WNOHANG | os.WNOWAIT,
+                )
+            except InterruptedError:
+                continue
+            except ChildProcessError:
+                return False
+            return True
+
+    def mark_reaped(self) -> None:
+        self._reaped = True
+
+    def close(self) -> None:
+        queue = self._queue
+        self._queue = None
+        if queue is not None:
+            queue.close()
 
 
-def _terminate_child(process: subprocess.Popen[bytes]) -> int:
+def _terminate_child(
+    process: subprocess.Popen[bytes],
+    observer: _ChildExitObserver,
+) -> int:
     """Terminate the owned child group before reaping its reserved leader PID."""
 
     def signal_owned_group(selected: signal.Signals) -> bool:
-        if not _child_ownership_reserved(process):
+        if not observer.ownership_reserved():
             return False
         try:
             os.killpg(process.pid, selected)
@@ -734,17 +836,25 @@ def _terminate_child(process: subprocess.Popen[bytes]) -> int:
             # macOS reports EPERM when an exited, WNOWAIT-held leader is the
             # group's only remaining member. A live leader still gets a safe
             # direct fallback because its unreaped PID remains ours.
-            if _child_exited_unreaped(process):
+            try:
+                if observer.exited_unreaped():
+                    return False
+            except DecimationError:
+                pass
+            try:
+                if selected == signal.SIGTERM:
+                    process.terminate()
+                else:
+                    process.kill()
+            except (ProcessLookupError, PermissionError):
                 return False
-            if selected == signal.SIGTERM:
-                process.terminate()
-            else:
-                process.kill()
         return True
 
     if signal_owned_group(signal.SIGTERM):
         signal_owned_group(signal.SIGKILL)
-    return process.wait(timeout=1)
+    returncode = process.wait(timeout=1)
+    observer.mark_reaped()
+    return returncode
 
 
 def _run_child_bounded(
@@ -766,20 +876,32 @@ def _run_child_bounded(
         )
     except OSError as exc:
         raise DecimationError("Blender child could not start") from exc
-    if process.stdout is None or process.stderr is None:
-        _terminate_child(process)
-        raise DecimationError("Blender child capture could not start")
 
-    selector = selectors.DefaultSelector()
-    streams = {"stdout": process.stdout, "stderr": process.stderr}
+    observer = _ChildExitObserver(process)
+    selector = None
+    streams = {
+        name: stream
+        for name, stream in (("stdout", process.stdout), ("stderr", process.stderr))
+        if stream is not None
+    }
+    cleanup = contextlib.ExitStack()
+    cleanup.callback(observer.close)
+    for stream in streams.values():
+        cleanup.callback(stream.close)
     buffers = {"stdout": bytearray(), "stderr": bytearray()}
-    for name, stream in streams.items():
-        os.set_blocking(stream.fileno(), False)
-        selector.register(stream, selectors.EVENT_READ, name)
-    deadline = time.monotonic() + timeout
-    failure: DecimationError | None = None
     try:
-        while selector.get_map() or not _child_exited_unreaped(process):
+        observer.require_backend()
+        if process.stdout is None or process.stderr is None:
+            raise DecimationError("Blender child capture could not start")
+
+        selector = selectors.DefaultSelector()
+        cleanup.callback(selector.close)
+        for name, stream in streams.items():
+            os.set_blocking(stream.fileno(), False)
+            selector.register(stream, selectors.EVENT_READ, name)
+        deadline = time.monotonic() + timeout
+        failure: DecimationError | None = None
+        while selector.get_map() or not observer.exited_unreaped():
             remaining_time = deadline - time.monotonic()
             if remaining_time <= 0:
                 failure = DecimationError("Blender child timed out")
@@ -808,14 +930,10 @@ def _run_child_bounded(
         if failure is not None:
             raise failure
     finally:
-        returncode = _terminate_child(process)
-        for stream in streams.values():
-            try:
-                selector.unregister(stream)
-            except (KeyError, ValueError):
-                pass
-            stream.close()
-        selector.close()
+        try:
+            returncode = _terminate_child(process, observer)
+        finally:
+            cleanup.close()
     return returncode, bytes(buffers["stdout"]), bytes(buffers["stderr"])
 
 
