@@ -16,6 +16,8 @@ Row statuses: `observed` (1 occurrence) → `check-proposed` (2+, proposal open)
 | 2026-08-06 | Unregister-on-OnDisable added without matching re-register-on-enable — the phantom-region fix opens its ghost-affordance mirror | Agent review (#46 round-1 F4) | 1 | observed | — |
 | 2026-08-16 | Child-group cleanup after leader exit either leaves descendants alive or signals after reap, when numeric group ownership is no longer durable | GLB pipeline adversarial review (two independent lifecycle findings) | 2 | enforced | Positive descendant-removal and negative post-reap-signal oracles in `tests/assets/glb-decimation-pipeline.test.sh` |
 | 2026-08-16 | Public CLI uses a runtime API newer than the documented interpreter floor (no floor was declared), so the default macOS `python3` crashes | GLB pipeline portability review (`waitid`; keyword-only `zip` strictness) | 2 | enforced | Forced missing-API plus real Python 3.9/3.12 public-CLI oracles in `tests/assets/glb-decimation-pipeline.test.sh` |
+| 2026-08-16 | A refreshed machine evidence record leaves its human custody table or renderer provenance pinned to earlier bytes | GLB exact-head review (renderer attribution and 15-row sidecar table) | 2 | enforced | Cross-format renderer/custody assertions in `tests/assets/glb-decimation-evidence.test.sh` |
+| 2026-08-16 | Operator runbook retains superseded transaction, child-output, or environment behavior after production hardening | GLB exact-head review | 1 | enforced | Production-anchor and operator-truth assertions in `tests/assets/glb-decimation-docs.test.sh` |
 
 <!-- Template row:
 | YYYY-MM-DD | <class, described so a recurrence is recognizable> | <human review / CI / incident / audit> | N | observed | — |

@@ -418,11 +418,14 @@ Both final members must be absent. The staged GLB is renamed first and the
 staged JSON second. If either rename reports a failure—including a rename that
 completed and then raised—the cleanup path independently attempts to remove
 both final names, then makes one bounded retry. A transient one-shot unlink
-fault on either member therefore cannot leave an accepted split pair. If
-cleanup itself remains persistently unavailable, the command reports
-`absent-destination promotion could not remove partial pair`; that is a failed,
-unverified output requiring the recovery procedure below, not an accepted
-derivative.
+fault on either member therefore cannot leave an accepted split pair. If a
+candidate member remains at a public final name, the cleanup path moves the
+complete candidate pair to unique private names of the form
+`.<final-name>.retired-<random>`, verifies both payloads, and requires both
+public final names to be absent. This privately retired candidate pair is a
+rejected transaction, not an accepted derivative. If the pair cannot be
+retired and verified exactly, the command fails closed and the whole directory
+requires the recovery procedure below.
 
 If both destination members already exist, the default path refuses them
 before Blender. If exactly one exists, the lineage is inconsistent and is also
@@ -444,30 +447,32 @@ orchestrator:
 
 A hash-read error before the first backup leaves the old finals in place. In
 rollback, an unreadable identity is treated as unknown, never as proof that a
-file is expendable. A backup or promotion error attempts both old-member
-restores and verifies one of two recoverable old-pair terminal forms:
-
-- both exact old members at the final names and no backups; or
-- neither final present and both exact old members preserved at backup names.
-
-The implementation uses bounded rename/copy fallbacks for after-effect rename
-errors and raises `forced promotion could not recover the old pair` if it
-cannot prove either terminal. The original source GLB and source sidecar are
-never overwrite targets.
+file is expendable. A backup, publication, or cleanup error attempts both
+old-member restores independently. Bounded pre-transaction copies are the
+recovery authority if a rename consumed or aliased a backup. A reported
+failure is normalized only after the implementation proves both exact old
+members at their public final names with no backup residue; otherwise it raises
+`forced promotion could not recover the old pair`. The original source GLB and
+source sidecar are never overwrite targets.
 
 A successful `--force` return means both complete new finals exist and no old
 backup remains. One reported backup-unlink fault is retried for each member. If
 backup deletion stays persistently unavailable after a verified new pair was
-installed, the command fails with `forced promotion could not remove old
-backups`; the verified new finals may coexist with backup residue. Do not treat
-that nonzero exit as either a clean rollback or permission to delete one
-leftover member without inspection.
+installed, the failure path restores the exact old public pair, removes both
+backups, and returns nonzero only after verifying that old-pair terminal with
+no backup residue. Do not treat any nonzero exit as acceptance of the new
+derivative.
 
 Temporary staging is removed when the Python context unwinds normally,
-including expected validation exceptions. An operating-system kill, power
-loss, filesystem fault, or uncatchable process termination can interrupt that
-cleanup or any multi-file transaction. There is no automatic startup recovery
-scan.
+including expected validation exceptions. A cleanup report that arrives after
+publication is normalized to success only when every private root is absent
+and every intended final pair is the exact committed candidate. Otherwise the
+run reverses completed publications in reverse order: an absent destination
+returns to no public pair (or an exact privately retired candidate pair when a
+member cannot be removed), while a forced destination restores its exact old
+public pair with no backup residue. An operating-system kill, power loss,
+filesystem fault, or uncatchable process termination can interrupt that
+normalization. There is no automatic startup recovery scan.
 
 ### Recovery after a nonzero exit or interrupted process
 
@@ -475,24 +480,30 @@ scan.
    `--force`, and do not modify the source GLB or its source sidecar.
 2. Preserve and inventory the exact directory before changing it. Include
    normal finals, `.glb-decimation-*` staging directories, and
-   `.*.backup-*` files; record SHA-256 values for every readable file.
+   `.*.backup-*` and `.*.retired-*` files; record SHA-256 values for every
+   readable file.
 3. Classify a complete pair by content, not filename alone. A JSON member must
    parse, name its GLB in `derivative.filename`, and its
    `derivative.sha256` must equal that GLB's hash. Preserve any unreadable or
    unverified member; an I/O error is not evidence that it is stale.
-4. A complete final pair with no backup residue can be validated normally. A
-   no-final state with a complete, matching old backup pair is recoverable by
-   restoring both old members together during an explicit maintenance action.
-   A complete new final pair plus old backup residue after cleanup failure
-   requires human verification before all matching old backups are removed as
-   a set. Never delete only one member of a possible recovery pair.
+4. Exit 0 plus a complete final pair and no private transaction residue can be
+   validated normally. After a catchable nonzero first publication, the
+   expected terminal has no public finals; an exact retired candidate pair may
+   be preserved for inspection and then removed only as a set. After a
+   catchable nonzero forced replacement, the expected terminal is the exact old
+   public pair with no backup residue. A no-final state with a complete,
+   matching old backup pair can still result from an uncatchable interruption
+   and is recoverable only by restoring both old members together during an
+   explicit maintenance action. Never delete only one member of a candidate or
+   recovery pair.
 5. Quarantine and escalate any split final, split backup, hash disagreement,
    unknown identity, or mixture that cannot be classified. Retain the whole
    directory as evidence rather than attempting another force run.
-6. Remove stale `.glb-decimation-*` staging only after no process is running,
-   the final/backup lineage is classified, and any needed bytes are preserved.
-   Rerun only from an exact state of either no finals or one verified complete
-   final pair, with no unexplained backup/staging residue.
+6. Remove stale `.glb-decimation-*` staging or `.*.retired-*` candidates only
+   after no process is running, the final/backup/candidate lineage is
+   classified, and any needed bytes are preserved. Remove each exact pair as a
+   set. Rerun only from an exact state of either no finals or one verified
+   complete final pair, with no unexplained private residue.
 
 Useful read-only inventory commands are:
 
@@ -505,27 +516,22 @@ find "$output" -type f -exec shasum -a 256 {} \;
 ## Logs, exit status, and offline posture
 
 For each asset, the orchestrator calls for one start line before launching
-Blender and one acceptance line after promotion. Validated IDs cannot add a
-line or control character. Counts are decimal integers without grouping:
+Blender and one acceptance line after terminal publication. Validated IDs
+cannot add a line or control character. Counts are decimal integers without
+grouping:
 
 ```text
 glb-decimation: asset=cat-red-tabby-sitting category=cat target=15000 source_triangles=1428306
-blender-decimate: triangle-audit inspected=1428306 audited=1428306 effective=1428304 delta=-2
 glb-decimation: asset=cat-red-tabby-sitting output_triangles=15000 output_vertices=9460
 ```
 
-The flushed count-only audit line is an optional, non-authoritative operator
-diagnostic emitted after all ratio guards pass; it is not an acceptance record
-or required per-asset evidence. `delta` is `effective - inspected`, so an
-import-time duplicate-face cleanup is negative. The diagnostic contains no
-path or source metadata.
-
-Blender's per-asset standard output/error is inherited. Python stdout
-buffering—especially under the combined `>file 2>&1` capture above—and Blender
-stderr can reorder the visible transcript relative to the orchestrator's call
-order. Treat the sample as record formats, not a promise about adjacent lines,
-combined-stream ordering, or which line appears last. Version-probe output is
-captured rather than replayed.
+Each child's standard output and standard error are captured separately and
+are not replayed. The version and asset calls each enforce an independent
+ceiling of 1 MiB per stream; the first byte beyond either ceiling terminates
+the owned child process group and fails the run. Child text, including the driver's
+internal triangle audit, is never a public acceptance record or diagnostic.
+The sample above therefore shows the complete normal public record formats,
+not output interleaved with Blender chatter.
 
 There is no batch success summary. Exit 0 together with the exact final pairs,
 matching hashes, and accepted metrics is authoritative. Expected pipeline
@@ -545,18 +551,20 @@ No API key, account session, `.env`, credential file, vendor call, download, or
 network access is needed or allowed. The tracked Python pipeline imports no
 network stack. Blender receives `--offline-mode`, `--background`, factory
 settings, and disabled auto-execution. Both the version and asset subprocesses
-receive an environment copy with every variable whose name contains `KEY`,
-`TOKEN`, `SECRET`, `AUTH`, `CREDENTIAL`, or `BEARER` removed. Arguments are
-passed as a vector with `shell=False`, and standard input is `/dev/null`.
+receive an explicit name allowlist: `PATH` and the supported locale variables,
+plus private mode-0700 `HOME`, temporary, and XDG roots created for that run.
+The parent environment is not copied and blacklist-filtered. Arguments are
+passed as a vector with `shell=False`, standard input is `/dev/null`, and both
+captured child streams are discarded after bounded processing.
 
 Generated files and source metadata remain untrusted data. Secret-shaped keys
 or values, bearer-shaped data, and HTTP(S) URL-shaped strings (including signed
 download URLs) are rejected from the derivative provenance record; other URI
 schemes are not rejected by that secret scan. Logs should contain only
-validated asset IDs, categories, triangle/vertex counts, safe diagnostics, and
-Blender's local processing output. If a log unexpectedly contains sensitive or
-remote-service material, stop, preserve it outside the repository, and treat
-the run as a custody incident.
+validated asset IDs, categories, triangle/vertex counts, and bounded public
+diagnostics. Raw Blender output is never replayed. If a log unexpectedly
+contains sensitive or remote-service material, stop, preserve it outside the
+repository, and treat the run as a custody incident.
 
 ## Real-run acceptance checklist
 
@@ -580,16 +588,11 @@ Complete every item; code-green and exit 0 are necessary but not sufficient.
 - [ ] Run the explicit command above in an offline, no-key session. Confirm no
   GUI opens, save the complete output, and require `real_rc == 0`.
 - [ ] Account for one start-format and one acceptance-format record per
-  successful manifest entry, but do not require their physical ordering
-  relative to Blender output in a combined capture. If a count-only
-  triangle-audit diagnostic is present, optionally sanity-check
-  `inspected == audited`, `target < effective <= inspected`, and
-  `delta == effective - inspected`; do not require diagnostic cardinality,
-  count Blender chatter as acceptance, or use transcript order as the success
-  authority.
+  successful manifest entry. Require no raw Blender output in the public
+  transcript, and never use a start record by itself as success authority.
 - [ ] Confirm the output root contains exactly 15 GLBs and their 15 JSON
-  sidecars, with no `.glb-decimation-*`, `.*.backup-*`, split pair, symlink,
-  external file, or unexplained residue.
+  sidecars, with no `.glb-decimation-*`, `.*.backup-*`, `.*.retired-*`, split
+  pair, symlink, external file, or unexplained residue.
 - [ ] Recompute every source, source-sidecar, derivative, and sidecar hash.
   Require source custody hashes to be unchanged and each sidecar's derivative
   hash to match its GLB.
