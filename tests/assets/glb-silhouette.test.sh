@@ -2407,38 +2407,70 @@ shutil.copyfile(source_template, cleanup_source)
 cleanup_prior = ordinary_output.read_bytes()
 cleanup_output.write_bytes(cleanup_prior)
 cleanup_wrapper = root / "persistent-cleanup-probe.py"
+cleanup_report = root / "persistent-cleanup-report.json"
 cleanup_wrapper.write_text(
     "from __future__ import annotations\n"
+    "import json\n"
     "import os\n"
     "import runpy\n"
+    "import stat\n"
     "import sys\n"
     "from pathlib import Path\n"
     "script = Path(sys.argv[1]).resolve()\n"
     "source = Path(sys.argv[2]).resolve()\n"
     "output = Path(sys.argv[3]).resolve()\n"
+    "report = Path(sys.argv[4]).resolve()\n"
     "original_replace = os.replace\n"
     "original_unlink = os.unlink\n"
     "original_remove = os.remove\n"
     "original_path_unlink = Path.unlink\n"
-    "def is_stage(value: object) -> bool:\n"
+    "captured_stage: Path | None = None\n"
+    "captured_identity: tuple[int, int] | None = None\n"
+    "capture_calls = 0\n"
+    "publication_faults = 0\n"
+    "cleanup_faults = 0\n"
+    "def is_captured_stage(value: object) -> bool:\n"
     "    try:\n"
-    "        return Path(os.fspath(value)).name.startswith('.glb-silhouette-')\n"
+    "        candidate = Path(os.path.abspath(os.fspath(value)))\n"
     "    except TypeError:\n"
     "        return False\n"
-    "def fail_replace(*_args: object, **_kwargs: object) -> None:\n"
+    "    if captured_stage is None or captured_identity is None:\n"
+    "        return False\n"
+    "    try:\n"
+    "        status = candidate.lstat()\n"
+    "    except OSError:\n"
+    "        return False\n"
+    "    return (candidate == captured_stage and "
+    "(status.st_dev, status.st_ino) == captured_identity)\n"
+    "def fail_replace(stage: object, final: object, *_args: object, **_kwargs: object) -> None:\n"
+    "    global captured_stage, captured_identity, capture_calls, publication_faults\n"
+    "    if Path(os.path.abspath(os.fspath(final))) != output:\n"
+    "        raise AssertionError('publication target was not the requested output')\n"
+    "    candidate = Path(os.path.abspath(os.fspath(stage)))\n"
+    "    status = candidate.lstat()\n"
+    "    captured_stage = candidate\n"
+    "    captured_identity = (status.st_dev, status.st_ino)\n"
+    "    capture_calls += 1\n"
+    "    publication_faults += 1\n"
     "    raise OSError('SAFE_GENERIC_SENTINEL publication failure')\n"
-    "def fail_unlink(path: object, *_args: object, **_kwargs: object) -> None:\n"
-    "    if is_stage(path):\n"
+    "def fail_unlink(path: object, *args: object, **kwargs: object) -> None:\n"
+    "    global cleanup_faults\n"
+    "    if is_captured_stage(path):\n"
+    "        cleanup_faults += 1\n"
     "        raise OSError('SAFE_GENERIC_SENTINEL temporary cleanup failure')\n"
-    "    original_unlink(path)\n"
-    "def fail_remove(path: object, *_args: object, **_kwargs: object) -> None:\n"
-    "    if is_stage(path):\n"
+    "    original_unlink(path, *args, **kwargs)\n"
+    "def fail_remove(path: object, *args: object, **kwargs: object) -> None:\n"
+    "    global cleanup_faults\n"
+    "    if is_captured_stage(path):\n"
+    "        cleanup_faults += 1\n"
     "        raise OSError('SAFE_GENERIC_SENTINEL temporary cleanup failure')\n"
-    "    original_remove(path)\n"
-    "def fail_path_unlink(self: Path, *_args: object, **_kwargs: object) -> None:\n"
-    "    if is_stage(self):\n"
+    "    original_remove(path, *args, **kwargs)\n"
+    "def fail_path_unlink(self: Path, *args: object, **kwargs: object) -> None:\n"
+    "    global cleanup_faults\n"
+    "    if is_captured_stage(self):\n"
+    "        cleanup_faults += 1\n"
     "        raise OSError('SAFE_GENERIC_SENTINEL temporary cleanup failure')\n"
-    "    original_path_unlink(self)\n"
+    "    original_path_unlink(self, *args, **kwargs)\n"
     "sys.path.insert(0, str(script.parent))\n"
     "os.replace = fail_replace\n"
     "os.unlink = fail_unlink\n"
@@ -2459,12 +2491,40 @@ cleanup_wrapper.write_text(
     "    os.remove = original_remove\n"
     "    Path.unlink = original_path_unlink\n"
     "    sys.path.pop(0)\n"
+    "    stage_status = None\n"
+    "    if captured_stage is not None:\n"
+    "        try:\n"
+    "            observed = captured_stage.lstat()\n"
+    "        except OSError:\n"
+    "            pass\n"
+    "        else:\n"
+    "            stage_status = {\n"
+    "                'device': observed.st_dev,\n"
+    "                'inode': observed.st_ino,\n"
+    "                'regular': stat.S_ISREG(observed.st_mode),\n"
+    "                'links': observed.st_nlink,\n"
+    "            }\n"
+    "    report.write_text(json.dumps({\n"
+    "        'stage_path': str(captured_stage) if captured_stage is not None else None,\n"
+    "        'stage_identity': list(captured_identity) if captured_identity is not None else None,\n"
+    "        'stage_status': stage_status,\n"
+    "        'capture_calls': capture_calls,\n"
+    "        'publication_faults': publication_faults,\n"
+    "        'cleanup_faults': cleanup_faults,\n"
+    "    }, sort_keys=True), encoding='utf-8')\n"
     "raise SystemExit(result)\n",
     encoding="utf-8",
 )
 try:
     cleanup_result = subprocess.run(
-        [python, str(cleanup_wrapper), str(script), str(cleanup_source), str(cleanup_output)],
+        [
+            python,
+            str(cleanup_wrapper),
+            str(script),
+            str(cleanup_source),
+            str(cleanup_output),
+            str(cleanup_report),
+        ],
         check=False,
         capture_output=True,
         text=True,
@@ -2493,14 +2553,48 @@ check(
     cleanup_output.read_bytes() == cleanup_prior,
     "persistent cleanup failure changed the prior PNG",
 )
-cleanup_residue = [
-    path for path in cleanup_case.iterdir()
-    if path.name.startswith(".glb-silhouette-")
-]
-check(
-    len(cleanup_residue) == 1,
-    "persistent cleanup probe did not exercise the staging cleanup failure",
-)
+if cleanup_report.exists():
+    cleanup_probe = json.loads(cleanup_report.read_text(encoding="utf-8"))
+    stage_value = cleanup_probe.get("stage_path")
+    captured_stage = Path(stage_value) if isinstance(stage_value, str) else None
+    stage_identity = cleanup_probe.get("stage_identity")
+    stage_status = cleanup_probe.get("stage_status")
+    check(
+        cleanup_probe.get("capture_calls") == 1,
+        "persistent cleanup probe did not capture exactly one staging role",
+    )
+    check(
+        cleanup_probe.get("publication_faults") == 1,
+        "persistent cleanup probe did not fault the captured publication boundary",
+    )
+    check(
+        cleanup_probe.get("cleanup_faults", 0) >= 1,
+        "persistent cleanup probe did not fault cleanup of the captured staging identity",
+    )
+    check(
+        captured_stage is not None and captured_stage.parent == cleanup_case,
+        "persistent cleanup probe captured a stage outside the output directory",
+    )
+    check(
+        isinstance(stage_identity, list)
+        and len(stage_identity) == 2
+        and isinstance(stage_status, dict)
+        and [stage_status.get("device"), stage_status.get("inode")] == stage_identity
+        and stage_status.get("regular") is True
+        and stage_status.get("links") == 1,
+        "persistent cleanup residue did not preserve the captured regular identity",
+    )
+    cleanup_residue = [
+        path
+        for path in cleanup_case.iterdir()
+        if path not in {cleanup_source, cleanup_output}
+    ]
+    check(
+        captured_stage is not None and cleanup_residue == [captured_stage],
+        "persistent cleanup residue was not exactly the captured staging path",
+    )
+else:
+    failures.append("persistent cleanup probe omitted its runtime dataflow report")
 
 
 def python_39_public_cli() -> None:
