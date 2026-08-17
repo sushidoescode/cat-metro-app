@@ -6704,6 +6704,7 @@ import mmap
 import multiprocessing
 import os
 import queue as queue_module
+import select
 import selectors
 import shutil
 import signal
@@ -8589,6 +8590,290 @@ def successful_cleanup_owned_group_case() -> None:
                 process.wait(timeout=1)
 
 
+def missing_waitid_compatibility_case() -> None:
+    if sys.platform != "darwin" or not hasattr(select, "kqueue"):
+        return
+
+    real_popen = subprocess.Popen
+    real_killpg = os.killpg
+    real_selector = selectors.DefaultSelector
+    real_kqueue = select.kqueue
+    real_waitid = getattr(os, "waitid", None)
+    tracked = {
+        "process": None,
+        "released": False,
+        "unsafe_signals": [],
+        "selectors": [],
+        "kqueues": [],
+    }
+
+    class TrackedKqueue:
+        def __init__(self):
+            self._value = real_kqueue()
+            self.closed = False
+            tracked["kqueues"].append(self)
+
+        def __getattr__(self, name):
+            return getattr(self._value, name)
+
+        def close(self):
+            self.closed = True
+            return self._value.close()
+
+    class TrackedSelector:
+        def __init__(self):
+            self._value = real_selector()
+            self.closed = False
+            tracked["selectors"].append(self)
+
+        def __getattr__(self, name):
+            return getattr(self._value, name)
+
+        def close(self):
+            self.closed = True
+            return self._value.close()
+
+    class OwnershipTrackedProcess:
+        def __init__(self, *arguments, **keywords):
+            self._process = real_popen(*arguments, **keywords)
+            tracked["process"] = self._process
+            if real_waitid is not None:
+                deadline = time.monotonic() + 2
+                while time.monotonic() < deadline:
+                    status = real_waitid(
+                        os.P_PID,
+                        self._process.pid,
+                        os.WEXITED | os.WNOHANG | os.WNOWAIT,
+                    )
+                    if status is not None:
+                        break
+                    time.sleep(0.005)
+                else:
+                    raise AssertionError("fast-exit control did not exit unreaped")
+
+        def __getattr__(self, name):
+            return getattr(self._process, name)
+
+        def poll(self):
+            result = self._process.poll()
+            if result is not None:
+                tracked["released"] = True
+            return result
+
+        def wait(self, *arguments, **keywords):
+            result = self._process.wait(*arguments, **keywords)
+            tracked["released"] = True
+            return result
+
+    def reject_reused_group_signal(process_group, selected_signal):
+        if tracked["released"]:
+            tracked["unsafe_signals"].append(
+                (process_group, int(selected_signal))
+            )
+            raise AssertionError("compat cleanup signalled a reused process group")
+        return real_killpg(process_group, selected_signal)
+
+    descendant_source = r'''
+import json
+import os
+from pathlib import Path
+import signal
+import sys
+import time
+sink = os.open(os.devnull, os.O_WRONLY)
+os.dup2(sink, 1)
+os.dup2(sink, 2)
+os.close(sink)
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+Path(sys.argv[1]).write_text(json.dumps({
+    "pid": os.getpid(),
+    "pgrp": os.getpgrp(),
+    "attempted_bytes": 0,
+    "emitted_bytes": 0,
+    "state": "DETACHED",
+}), encoding="utf-8")
+while True:
+    time.sleep(1)
+'''
+    leader_source = r'''
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+subprocess.Popen(
+    [sys.executable, "-c", sys.argv[2], sys.argv[1]],
+    stdin=subprocess.DEVNULL,
+)
+deadline = time.monotonic() + 2
+while not Path(sys.argv[1]).exists() and time.monotonic() < deadline:
+    time.sleep(0.005)
+if not Path(sys.argv[1]).exists():
+    raise SystemExit(73)
+print("missing-waitid-control")
+'''
+    marker = root / "missing-waitid-descendant.json"
+    caught = None
+    result = None
+    reaped = False
+    record = None
+    if real_waitid is not None:
+        delattr(os, "waitid")
+        try:
+            with mock.patch.object(
+                module.subprocess, "Popen", OwnershipTrackedProcess
+            ), mock.patch.object(
+                module.selectors, "DefaultSelector", TrackedSelector
+            ), mock.patch.object(
+                select, "kqueue", TrackedKqueue
+            ), mock.patch.object(
+                module.os, "killpg", reject_reused_group_signal
+            ):
+                try:
+                    result = module._run_child_bounded(
+                        [
+                            sys.executable,
+                            "-c",
+                            leader_source,
+                            str(marker),
+                            descendant_source,
+                        ],
+                        timeout=3,
+                        child_env={"PATH": os.defpath},
+                    )
+                except BaseException as exc:
+                    caught = exc
+        finally:
+            setattr(os, "waitid", real_waitid)
+
+        process = tracked["process"]
+        assert process is not None
+        record = stream_marker(marker)
+        try:
+            real_waitid(
+                os.P_PID,
+                process.pid,
+                os.WEXITED | os.WNOHANG | os.WNOWAIT,
+            )
+        except ChildProcessError:
+            reaped = True
+
+    legacy_python = None
+    candidates = [
+        shutil.which("python3.12"),
+        "/opt/homebrew/bin/python3.12",
+        "/usr/local/bin/python3.12",
+        "/usr/bin/python3",
+    ]
+    for candidate in dict.fromkeys(candidates):
+        if not candidate or not os.access(candidate, os.X_OK):
+            continue
+        probe = subprocess.run(
+            [
+                candidate,
+                "-B",
+                "-c",
+                "import os,select,sys; print(int(sys.platform == 'darwin' "
+                "and not hasattr(os, 'waitid') and hasattr(select, 'kqueue')))",
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=3,
+            check=False,
+        )
+        if probe.returncode == 0 and probe.stdout == b"1\n":
+            legacy_python = candidate
+            break
+
+    legacy_result = None
+    if legacy_python is not None:
+        legacy_source = r'''
+import importlib.util
+import os
+from pathlib import Path
+import sys
+script = Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location("legacy_decimate_probe", script)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+result = module._run_child_bounded(
+    [sys.executable, "-c", "print('legacy-control')"],
+    timeout=2,
+    child_env={"PATH": os.defpath},
+)
+assert result == (0, b"legacy-control\n", b""), result
+print("legacy-compat-pass")
+'''
+        legacy_result = subprocess.run(
+            [legacy_python, "-B", "-c", legacy_source, str(script)],
+            cwd=repo,
+            env={"PATH": os.defpath, "PYTHONDONTWRITEBYTECODE": "1"},
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=5,
+            check=False,
+        )
+
+    violations = []
+    if real_waitid is not None:
+        process = tracked["process"]
+        assert process is not None
+        if caught is not None:
+            violations.append(f"absence backend raised {type(caught).__name__}")
+        if result != (0, b"missing-waitid-control\n", b""):
+            violations.append("absence backend lost the successful child result")
+        if tracked["unsafe_signals"]:
+            violations.append("absence backend signalled after leader ownership release")
+        if not reaped:
+            violations.append("absence backend did not reap its leader")
+        if not process.stdout.closed or not process.stderr.closed:
+            violations.append("absence backend left a child pipe open")
+        if not tracked["selectors"] or not all(
+            value.closed for value in tracked["selectors"]
+        ):
+            violations.append("absence backend left its selector open")
+        if not tracked["kqueues"] or not all(
+            value.closed for value in tracked["kqueues"]
+        ):
+            violations.append("absence backend left its exit observer open")
+        if record is None or not wait_for_marked_tree(record, 2):
+            violations.append("absence backend left its descendant group alive")
+    if legacy_python is not None and (
+        legacy_result is None or legacy_result.returncode != 0
+    ):
+        violations.append("available legacy macOS Python could not collect a child")
+    elif legacy_result is not None and b"legacy-compat-pass" not in (
+        legacy_result.stdout.splitlines()
+    ):
+        violations.append("legacy macOS Python compatibility control was not exact")
+
+    try:
+        assert not violations, "; ".join(violations)
+    finally:
+        if record is not None and not wait_for_marked_tree(record, 0):
+            process_group = record["pgrp"]
+            assert isinstance(process_group, int)
+            signal_process_group(process_group, signal.SIGKILL)
+        process = tracked["process"]
+        if process is not None:
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=1)
+            for stream in (process.stdout, process.stderr):
+                if stream is not None and not stream.closed:
+                    stream.close()
+        for selector_value in tracked["selectors"]:
+            if not selector_value.closed:
+                selector_value.close()
+        for kqueue_value in tracked["kqueues"]:
+            if not kqueue_value.closed:
+                kqueue_value.close()
+
+
 def successful_leader_detached_descendant_case() -> None:
     case = setup_case("successful-leader-detached-descendant")
     wrapper = case.root / "detached-descendant-blender.py"
@@ -8829,6 +9114,7 @@ for child_profile in (
     run_bounded(f"child-{child_profile}", child_output_case, child_profile)
 run_bounded("leader-exit-descendant-pipes", leader_exit_descendant_pipe_case)
 run_bounded("successful-cleanup-owned-group", successful_cleanup_owned_group_case)
+run_bounded("missing-waitid-compatibility", missing_waitid_compatibility_case)
 run_bounded(
     "successful-leader-detached-descendant",
     successful_leader_detached_descendant_case,
