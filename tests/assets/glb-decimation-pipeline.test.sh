@@ -12469,6 +12469,121 @@ def exercise_lstat_unknown_old(name):
     return findings
 
 
+def exercise_persistent_lstat_unknown_final(name):
+    pair = make_pair(name, forced=True)
+    expected_glb_sha = digest_bytes(pair["old_glb"])
+    expected_json_sha = digest_bytes(pair["old_json"])
+    unknown_glb = b"unclassified public GLB bytes"
+    pair["final_glb"].write_bytes(unknown_glb)
+    unknown_status = os.lstat(pair["final_glb"])
+    unknown_identity = (unknown_status.st_dev, unknown_status.st_ino)
+    os.replace(pair["final_json"], pair["backup_json"])
+    pair["final_json"].write_bytes(pair["new_json"])
+
+    real_lstat = os.lstat
+    real_replace = os.replace
+    real_unlink = Path.unlink
+    real_write_private_file = module._write_private_file
+    lstat_faults = 0
+    final_touches = []
+
+    class FaultingOs:
+        def __getattr__(self, attribute):
+            return getattr(os, attribute)
+
+        def lstat(self, path):
+            nonlocal lstat_faults
+            candidate = Path(path)
+            if candidate == pair["final_glb"]:
+                lstat_faults += 1
+                if lstat_faults > 16:
+                    raise AssertionError("unbounded identity observation retry")
+                raise OSError("injected persistent identity observation failure")
+            return real_lstat(candidate)
+
+        def replace(self, source, destination):
+            source_path = Path(source)
+            destination_path = Path(destination)
+            if (
+                source_path == pair["final_glb"]
+                or destination_path == pair["final_glb"]
+            ):
+                final_touches.append("replace")
+            return real_replace(source_path, destination_path)
+
+    def observe_unlink(path, *args, **kwargs):
+        candidate = Path(path)
+        if candidate == pair["final_glb"]:
+            final_touches.append("unlink")
+        return real_unlink(candidate, *args, **kwargs)
+
+    def observe_private_write(path, payload, mode=0o400):
+        candidate = Path(path)
+        if candidate == pair["final_glb"]:
+            final_touches.append("write")
+        return real_write_private_file(candidate, payload, mode)
+
+    caught = None
+    with (
+        mock.patch.object(module, "os", new=FaultingOs()),
+        mock.patch.object(Path, "unlink", new=observe_unlink),
+        mock.patch.object(
+            module,
+            "_write_private_file",
+            new=observe_private_write,
+        ),
+    ):
+        try:
+            module._restore_old_pair(
+                pair["final_glb"],
+                pair["final_json"],
+                pair["backup_glb"],
+                pair["backup_json"],
+                expected_glb_sha,
+                expected_json_sha,
+                pair["old_glb"],
+                pair["old_json"],
+            )
+        except BaseException as exc:
+            caught = exc
+
+    findings = []
+    if not isinstance(caught, module.DecimationError):
+        findings.append(
+            f"{name}: recovery raised "
+            f"{type(caught).__name__ if caught is not None else 'nothing'}"
+        )
+    if not lstat_faults or lstat_faults > 16:
+        findings.append(
+            f"{name}: persistent identity fault count was {lstat_faults}"
+        )
+    if final_touches:
+        findings.append(
+            f"{name}: unknown public GLB was touched by recovery"
+        )
+    if not pair["final_glb"].is_file():
+        findings.append(f"{name}: unknown public GLB is absent")
+    else:
+        final_status = real_lstat(pair["final_glb"])
+        if (final_status.st_dev, final_status.st_ino) != unknown_identity:
+            findings.append(f"{name}: unknown public GLB identity changed")
+        if pair["final_glb"].read_bytes() != unknown_glb:
+            findings.append(f"{name}: unknown public GLB bytes changed")
+    if lexists(pair["backup_glb"]):
+        findings.append(f"{name}: absent GLB backup was materialized")
+    expected_members = {
+        pair["staged_glb"],
+        pair["staged_json"],
+        pair["final_glb"],
+        pair["final_json"],
+    }
+    if set(pair["directory"].iterdir()) != expected_members:
+        findings.append(f"{name}: terminal membership changed")
+    if pair["final_json"].read_bytes() != pair["old_json"]:
+        findings.append(f"{name}: old JSON was not restored")
+    return findings
+
+
 def exercise_absent_replace_fault(
     name, phase, after_effect, cleanup_member=None
 ):
@@ -12626,6 +12741,8 @@ def child_scenario(sender, kind, arguments):
             findings = exercise_bounded_reader_unknown_old(*arguments)
         elif kind == "lstat_unknown":
             findings = exercise_lstat_unknown_old(*arguments)
+        elif kind == "persistent_lstat_unknown":
+            findings = exercise_persistent_lstat_unknown_final(*arguments)
         elif kind == "absent":
             findings = exercise_absent_replace_fault(*arguments)
         elif kind == "cleanup":
@@ -12684,6 +12801,10 @@ run_bounded("hash", ("hash-persistent-old-json", "final_json", True))
 run_bounded("candidate_hash", ("hash-unknown-candidate-json",))
 run_bounded("bounded_unknown", ("bounded-reader-unknown-old-glb",))
 run_bounded("lstat_unknown", ("lstat-unknown-old-glb",))
+run_bounded(
+    "persistent_lstat_unknown",
+    ("persistent-lstat-unknown-public-glb",),
+)
 
 run_bounded(
     "absent",
