@@ -116,6 +116,8 @@ script in the keyed session; (2) sequence the license ADR. Neither is an agent's
 
 ## License terms (feed the still-owed asset ADR — nothing ships in the Play binary before that ADR lands)
 
+Decision proposal: [ADR-0013](../../adr/0013-generated-asset-licensing.md) remains unsigned and blocks every generated asset from a Play-bound binary.
+
 - **Meshy** (help.meshy.ai asset-ownership articles, retrieved 2026-08-14):
   - **Paid plans:** the subscriber owns generated assets outright — commercial use with
     no attribution required, resale on third-party marketplaces allowed — provided the
