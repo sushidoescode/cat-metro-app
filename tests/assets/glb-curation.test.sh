@@ -430,6 +430,39 @@ with tempfile.TemporaryDirectory(prefix="catmetro-curation-interrupt-") as raw:
     assert final_json.read_bytes() == b"old-json"
     assert not journal.exists()
 
+with tempfile.TemporaryDirectory(prefix="catmetro-curation-prejournal-interrupt-") as raw:
+    root = Path(raw)
+    final_glb, final_json, staged_glb, staged_json, backup_dir, journal = make_pair(root)
+    original_journal_writer = curator._write_transaction_journal
+
+    def interrupt_prepared_journal(*args, **kwargs):
+        raise KeyboardInterrupt("injected prepared-journal interruption")
+
+    curator._write_transaction_journal = interrupt_prepared_journal
+    try:
+        try:
+            curator.publish_pair(
+                staged_glb=staged_glb,
+                staged_sidecar=staged_json,
+                final_glb=final_glb,
+                final_sidecar=final_json,
+                backup_dir=backup_dir,
+                journal_path=journal,
+            )
+        except KeyboardInterrupt:
+            pass
+        else:
+            raise AssertionError("prepared-journal interruption unexpectedly passed")
+    finally:
+        curator._write_transaction_journal = original_journal_writer
+    assert final_glb.read_bytes() == b"old-glb"
+    assert final_json.read_bytes() == b"old-json"
+    assert staged_glb.read_bytes() == b"new-glb"
+    assert staged_json.read_bytes() == b"new-json"
+    assert not backup_dir.exists()
+    assert not journal.exists()
+    assert not curator._transaction_next_path(journal).exists()
+
 with tempfile.TemporaryDirectory(prefix="catmetro-curation-fsync-") as raw:
     root = Path(raw)
     final_glb, final_json, staged_glb, staged_json, backup_dir, journal = make_pair(root)
