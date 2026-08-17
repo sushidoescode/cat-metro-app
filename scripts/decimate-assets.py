@@ -1424,7 +1424,7 @@ def _retire_absent_partial_pair(
     final_json: Path,
     candidate_glb_sha: str,
     candidate_json_sha: str,
-) -> None:
+) -> tuple[Path, Path]:
     """Move a persistently undeletable partial candidate out of final names."""
     retired_glb = _unique_retired(final_glb)
     retired_json = _unique_retired(final_json)
@@ -1464,6 +1464,7 @@ def _retire_absent_partial_pair(
             raise DecimationError(
                 "absent-destination promotion could not retire exact candidate pair"
             ) from None
+    return retired_glb, retired_json
 
 
 def _status_fingerprint(status: os.stat_result) -> tuple[int, int, int, int, int, int]:
@@ -1531,6 +1532,7 @@ def promote_pair(
         staged_glb, staged_json, final_glb, final_json, force
     )
     queued = _acceptance_records().pop(acceptance_key, None)
+    rollback_byte_budget: int | None = None
     if queued is not None:
         if any(
             value is not None
@@ -1548,14 +1550,24 @@ def promote_pair(
         expected_glb_state = queued.get("expected_glb_state")
         expected_json_state = queued.get("expected_json_state")
         verify_before = queued.get("verify_before")
+        queued_rollback_byte_budget = queued.get("rollback_byte_budget")
         if not (
             isinstance(expected_glb_sha, str)
             and isinstance(expected_json_sha, str)
             and isinstance(expected_glb_state, tuple)
             and isinstance(expected_json_state, tuple)
             and callable(verify_before)
+            and (
+                queued_rollback_byte_budget is None
+                or (
+                    isinstance(queued_rollback_byte_budget, int)
+                    and not isinstance(queued_rollback_byte_budget, bool)
+                    and queued_rollback_byte_budget >= 0
+                )
+            )
         ):
             raise AssertionError("invalid pending promotion acceptance")
+        rollback_byte_budget = queued_rollback_byte_budget
     candidate_glb_sha = ""
     candidate_json_sha = ""
     candidate_glb_identity: tuple[int, int] | None = None
@@ -1657,15 +1669,51 @@ def promote_pair(
                     raise
                 return
 
+            if publication_receipt is not None and rollback_byte_budget is None:
+                raise AssertionError("missing publication rollback byte budget")
+            if rollback_byte_budget is not None:
+                old_glb_status = _checked_lstat(
+                    final_glb,
+                    "existing derivative GLB",
+                    MAX_DERIVATIVE_GLB_BYTES,
+                )
+                old_json_status = _checked_lstat(
+                    final_json,
+                    "existing derivative JSON",
+                    MAX_PROVENANCE_BYTES,
+                )
+                if old_glb_status is None or old_json_status is None:
+                    raise AssertionError("existing derivative pair unexpectedly missing")
+                if (
+                    old_glb_status.st_size + old_json_status.st_size
+                    > rollback_byte_budget
+                ):
+                    raise DecimationError(
+                        "publication rollback bytes exceed aggregate limit "
+                        f"{MAX_PUBLICATION_ROLLBACK_BYTES}"
+                    )
+
+            glb_receipt_limit = MAX_DERIVATIVE_GLB_BYTES
+            if rollback_byte_budget is not None:
+                glb_receipt_limit = min(
+                    glb_receipt_limit,
+                    rollback_byte_budget,
+                )
             old_glb_sha, _, old_glb_bytes, _ = _sha256_receipt(
                 final_glb,
                 "existing derivative GLB",
-                MAX_DERIVATIVE_GLB_BYTES,
+                glb_receipt_limit,
             )
+            json_receipt_limit = MAX_PROVENANCE_BYTES
+            if rollback_byte_budget is not None:
+                json_receipt_limit = min(
+                    json_receipt_limit,
+                    rollback_byte_budget - len(old_glb_bytes),
+                )
             old_json_sha, _, old_json_bytes, _ = _sha256_receipt(
                 final_json,
                 "existing derivative JSON",
-                MAX_PROVENANCE_BYTES,
+                json_receipt_limit,
             )
             backup_glb = _unique_backup(final_glb)
             backup_json = _unique_backup(final_json)
@@ -2392,6 +2440,14 @@ def _publication_is_exact(pending: Mapping[str, object]) -> bool:
         return False
 
 
+def _publication_is_exact_for_rollback(pending: Mapping[str, object]) -> bool:
+    """Retry one unreadable transaction-member observation during rollback."""
+    for _ in range(2):
+        if _publication_is_exact(pending):
+            return True
+    return False
+
+
 def _forced_publication_receipt(
     pending: Mapping[str, object],
     action: str,
@@ -2483,12 +2539,27 @@ def _rollback_publication(pending: Mapping[str, object]) -> None:
         ):
             _clear_publication_recovery(pending)
             return
-        if not _publication_is_exact(pending):
+        if not _publication_is_exact_for_rollback(pending):
             raise DecimationError("published pair changed before cleanup rollback")
         if not force:
-            _unlink_pair_bounded(
+            candidate_glb_sha = pending.get("expected_glb_sha")
+            candidate_json_sha = pending.get("expected_json_sha")
+            if not (
+                isinstance(candidate_glb_sha, str)
+                and isinstance(candidate_json_sha, str)
+            ):
+                raise DecimationError("published pair lacks a rollback receipt")
+            retired_glb, retired_json = _retire_absent_partial_pair(
+                staged_glb,
+                staged_json,
                 final_glb,
                 final_json,
+                candidate_glb_sha,
+                candidate_json_sha,
+            )
+            _unlink_pair_bounded(
+                retired_glb,
+                retired_json,
                 "cleanup rollback could not remove published pair",
             )
             if _path_exists(final_glb) or _path_exists(final_json):
@@ -2716,6 +2787,10 @@ def _run(argv: list[str]) -> None:
                         "expected_glb_state": pending["expected_glb_state"],
                         "expected_json_state": pending["expected_json_state"],
                         "publication_receipt": publication_receipt,
+                        "rollback_byte_budget": (
+                            MAX_PUBLICATION_ROLLBACK_BYTES
+                            - publication_rollback_bytes
+                        ),
                         "verify_before": lambda prepared=prepared: (
                             _verify_snapshot_pair(prepared),
                             _verify_original_pair(prepared),
@@ -2763,7 +2838,8 @@ def _run(argv: list[str]) -> None:
 def _diagnostic_payload(message: object) -> bytes:
     raw = str(message) or "input processing failed"
     raw = _HTTP_URI.sub("[redacted-uri]", raw)
-    raw = _CREDENTIAL_SHAPE.sub("[redacted]", raw)
+    if _CREDENTIAL_SHAPE.search(raw):
+        raw = "input processing failed"
     printable: list[str] = []
     for character in raw:
         if character.isprintable():

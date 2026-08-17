@@ -701,6 +701,68 @@ def _emit_diagnostic(message: object) -> None:
         sys.stderr.flush()
 
 
+def _public_path(path: Path) -> str:
+    raw = os.fspath(path)
+    try:
+        encoded = raw.encode("utf-8")
+    except UnicodeError:
+        return "[redacted]"
+    if (
+        not raw
+        or not raw.isprintable()
+        or len(encoded) > MAXIMUM_DIAGNOSTIC_BYTES
+        or _CREDENTIAL_SHAPE.search(raw)
+    ):
+        return "[redacted]"
+    return raw
+
+
+def _success_payload(
+    source: Path,
+    output: Path,
+    vertices: int,
+    filled_pixels: int,
+    coverage: float,
+) -> bytes:
+    def record(source_value: str, output_value: str) -> bytes:
+        line = (
+            f"{source_value} -> {output_value} "
+            f"({vertices} vertices, {filled_pixels} filled pixels, "
+            f"{coverage:.6f} coverage)"
+        )
+        return line.encode("utf-8") + b"\n"
+
+    payload = record(_public_path(source), _public_path(output))
+    if len(payload) > MAXIMUM_DIAGNOSTIC_BYTES:
+        payload = record("[redacted]", "[redacted]")
+    if len(payload) > MAXIMUM_DIAGNOSTIC_BYTES:
+        raise AssertionError("internal success record exceeds public byte limit")
+    return payload
+
+
+def _emit_success(
+    source: Path,
+    output: Path,
+    vertices: int,
+    filled_pixels: int,
+    coverage: float,
+) -> None:
+    payload = _success_payload(
+        source,
+        output,
+        vertices,
+        filled_pixels,
+        coverage,
+    )
+    byte_stream = getattr(sys.stdout, "buffer", None)
+    if byte_stream is not None:
+        byte_stream.write(payload)
+        byte_stream.flush()
+    else:
+        sys.stdout.write(payload.decode("utf-8"))
+        sys.stdout.flush()
+
+
 def _main(arguments: list[str]) -> int:
     parser = _ArgumentParser(
         description="Render a checked GLB scene as a depth-shaded silhouette"
@@ -734,9 +796,12 @@ def _main(arguments: list[str]) -> int:
     ) as exc:
         _emit_diagnostic(exc)
         return 1
-    print(
-        f"{args.source} -> {args.output} "
-        f"({vertices} vertices, {filled_pixels} filled pixels, {coverage:.6f} coverage)"
+    _emit_success(
+        args.source,
+        args.output,
+        vertices,
+        filled_pixels,
+        coverage,
     )
     return 0
 

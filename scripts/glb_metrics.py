@@ -56,6 +56,7 @@ _CREDENTIAL_SHAPE = re.compile(
     r"api[_ -]?key|token|secret|authorization|credential|bearer|https?://",
     re.IGNORECASE,
 )
+_URI_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 
 _COMPONENT_SIZES = {
     5120: 1,
@@ -1593,6 +1594,65 @@ def _emit_diagnostic(message: object) -> None:
         sys.stderr.flush()
 
 
+def _public_text(value: str) -> str:
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeError:
+        return "[redacted]"
+    if (
+        not value
+        or not value.isprintable()
+        or len(encoded) > MAX_DIAGNOSTIC_BYTES
+        or _CREDENTIAL_SHAPE.search(value)
+    ):
+        return "[redacted]"
+    return value
+
+
+def _public_external_uri(value: str) -> str:
+    rendered = _public_text(value)
+    if rendered == "[redacted]":
+        return rendered
+    segments = value.split("/")
+    if (
+        _URI_SCHEME.match(value)
+        or value.startswith(("/", "\\"))
+        or "\\" in value
+        or any(segment in ("", ".", "..") for segment in segments)
+    ):
+        return "[redacted]"
+    return value
+
+
+def _public_value(value: object) -> object:
+    if isinstance(value, str):
+        return _public_text(value)
+    if isinstance(value, list):
+        return [_public_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _public_value(item) for key, item in value.items()}
+    return value
+
+
+def _public_success_metrics(metrics: Mapping[str, object]) -> dict[str, object]:
+    path = metrics.get("path")
+    external_uris = metrics.get("external_uris")
+    if (
+        not isinstance(path, str)
+        or not isinstance(external_uris, list)
+        or not all(isinstance(uri, str) for uri in external_uris)
+    ):
+        raise AssertionError("internal public metric shape mismatch")
+    record = _public_value(dict(metrics))
+    if not isinstance(record, dict):
+        raise AssertionError("internal public metric shape mismatch")
+    record["path"] = _public_text(path)
+    record["external_uris"] = [
+        _public_external_uri(uri) for uri in external_uris
+    ]
+    return record
+
+
 def _main(arguments: list[str]) -> int:
     if len(arguments) != 1:
         _emit_diagnostic("usage: glb_metrics.py FILE")
@@ -1605,7 +1665,13 @@ def _main(arguments: list[str]) -> int:
     ) as exc:
         _emit_diagnostic(exc)
         return 1
-    print(json.dumps(metrics, sort_keys=True))
+    print(
+        json.dumps(
+            _public_success_metrics(metrics),
+            allow_nan=False,
+            sort_keys=True,
+        )
+    )
     return 0
 
 
