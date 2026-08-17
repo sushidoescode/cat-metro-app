@@ -526,6 +526,34 @@ require(
     "project state omits interruption-safe batch rollback",
 )
 
+# The whole-inventory metrics date remains the original queue date, while the
+# two curated derivatives have later tool timestamps. Keep the local-date
+# statement scoped to the 13 historical sidecars rather than all 15.
+for fragment, label in (
+    (
+        "The 13 untouched derivative sidecars record",
+        "historical sidecar date scope is undocumented",
+    ),
+    (
+        "2026-08-17T10:33:30Z",
+        "refreshed loaf derivative timestamp is undocumented",
+    ),
+    (
+        "2026-08-17T10:33:48Z",
+        "refreshed wave derivative timestamp is undocumented",
+    ),
+    (
+        "metrics `run_date` remains `2026-08-16`",
+        "whole-inventory run-date meaning is undocumented",
+    ),
+):
+    require(evidence, fragment, label)
+forbid(
+    evidence,
+    "Each sidecar records Blender `5.1.2`",
+    "evidence still applies the historical local date to all 15 sidecars",
+)
+
 # Human-caught defect classes are ratcheted to the behavior tests that now pin
 # them, rather than being left only as one-off implementation history.
 require_lesson_row(

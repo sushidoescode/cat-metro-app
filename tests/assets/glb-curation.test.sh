@@ -334,6 +334,66 @@ with tempfile.TemporaryDirectory(prefix="catmetro-curation-lock-") as raw:
         else:
             raise AssertionError("concurrent source-root lock unexpectedly succeeded")
 
+with tempfile.TemporaryDirectory(prefix="catmetro-curation-all-journal-recovery-") as raw:
+    root = Path(raw)
+    blender = root / "blender"
+    write(blender, b"#!/bin/sh\nexit 0\n")
+    blender.chmod(0o700)
+    backup_parent = root / "curation-backups"
+    backup_parent.mkdir()
+    arguments = curator._parse_arguments(
+        [
+            "--input-dir",
+            str(root),
+            "--backup-dir",
+            str(backup_parent / "wave-original"),
+            "--blender",
+            str(blender),
+            "--asset-id",
+            curator.WAVE_ID,
+        ]
+    )
+    observed_recoveries = []
+    original_recover = curator.recover_interrupted_pair
+    original_resolve = curator._resolve_input_member
+
+    class RecoveryBoundaryReached(RuntimeError):
+        pass
+
+    def record_recovery(*, journal_path, final_glb, final_sidecar):
+        observed_recoveries.append(
+            (journal_path.name, final_glb.name, final_sidecar.name)
+        )
+        return False
+
+    def stop_after_recovery(*args, **kwargs):
+        raise RecoveryBoundaryReached
+
+    curator.recover_interrupted_pair = record_recovery
+    curator._resolve_input_member = stop_after_recovery
+    try:
+        try:
+            curator.curate(arguments)
+        except RecoveryBoundaryReached:
+            pass
+        else:
+            raise AssertionError("curation unexpectedly passed the recovery boundary")
+    finally:
+        curator.recover_interrupted_pair = original_recover
+        curator._resolve_input_member = original_resolve
+    assert observed_recoveries == [
+        (
+            f".glb-curation-{curator.LOAF_ID}.transaction.json",
+            curator.ASSET_FILENAMES[curator.LOAF_ID],
+            f"{curator.ASSET_FILENAMES[curator.LOAF_ID]}.json",
+        ),
+        (
+            f".glb-curation-{curator.WAVE_ID}.transaction.json",
+            curator.ASSET_FILENAMES[curator.WAVE_ID],
+            f"{curator.ASSET_FILENAMES[curator.WAVE_ID]}.json",
+        ),
+    ]
+
 with tempfile.TemporaryDirectory(prefix="catmetro-curation-preexisting-") as raw:
     root = Path(raw)
     final_glb, final_json, staged_glb, staged_json, backup_dir, journal = make_pair(root)
@@ -691,6 +751,44 @@ checksum_lines = checksum_path.read_text(encoding="utf-8").splitlines()
 assert len(checksum_lines) == 39
 recorded_pngs = {}
 prefix = "evals/results/assets/glb-curation-2026-08-17/"
+evidence_asset_ids = (
+    "cat-red-tabby",
+    "cat-blue-siamese",
+    "cat-yellow-longhair",
+    "cat-green-shorthair",
+    "cat-wild-alley",
+    "cat-red-tabby-sitting",
+    "cat-blue-siamese-loaf",
+    "cat-yellow-longhair-wave",
+    "cat-green-shorthair-sit",
+    "cat-conductor",
+    "prop-depot-shed",
+    "prop-toy-engine",
+    "prop-station-kiosk",
+    "prop-trees",
+    "prop-desk-clutter",
+)
+expected_pngs = {
+    f"{prefix}{name}"
+    for name in (
+        "source-comparison.png",
+        "changed-derivative-comparison.png",
+        "derivative-before-grid.png",
+        "derivative-after-grid.png",
+        "derivative-comparison-grid.png",
+    )
+}
+expected_pngs.update(
+    f"{prefix}{state}/{identifier}.png"
+    for state in ("derivative-before", "derivative-after")
+    for identifier in evidence_asset_ids
+)
+expected_pngs.update(
+    f"{prefix}{state}/{identifier}.png"
+    for state in ("source-before", "source-after")
+    for identifier in ("cat-blue-siamese-loaf", "cat-yellow-longhair-wave")
+)
+assert len(expected_pngs) == 39
 for line in checksum_lines:
     digest, relative = line.split("  ", 1)
     assert len(digest) == 64 and all(character in "0123456789abcdef" for character in digest)
@@ -704,7 +802,8 @@ for line in checksum_lines:
 actual_pngs = {
     str(path.relative_to(repo_root)) for path in evidence_root.rglob("*.png")
 }
-assert set(recorded_pngs) == actual_pngs
+assert set(recorded_pngs) == expected_pngs
+assert actual_pngs == expected_pngs
 for identifier in expected_untouched:
     before = evidence_root / "derivative-before" / f"{identifier}.png"
     after = evidence_root / "derivative-after" / f"{identifier}.png"
