@@ -530,6 +530,20 @@ def publish_pair(
         _copy_new(final_sidecar, backup_sidecar)
         fsync_directory_fn(backup_dir)
         fsync_directory_fn(backup_dir.parent)
+        if (
+            _sha256_file(backup_glb, MAX_SOURCE_BYTES, "source backup GLB")
+            != original_glb_sha
+        ):
+            raise CurationError("source backup GLB hash mismatch")
+        if (
+            _sha256_file(
+                backup_sidecar,
+                MAX_METADATA_BYTES,
+                "source backup sidecar",
+            )
+            != original_sidecar_sha
+        ):
+            raise CurationError("source backup sidecar hash mismatch")
     except BaseException as exc:
         if backup_created:
             for member in (backup_glb, backup_sidecar):
@@ -539,7 +553,9 @@ def publish_pair(
                 backup_dir.rmdir()
             except OSError:
                 pass
-        if isinstance(exc, (OSError, CurationError)):
+        if isinstance(exc, CurationError):
+            raise
+        if isinstance(exc, OSError):
             raise CurationError("could not create complete source backup") from exc
         raise
 
