@@ -28,7 +28,7 @@ DEFAULT_SIZE = 520
 DEFAULT_SPLAT_RADIUS = 2
 DEFAULT_MINIMUM_COVERAGE = 0.01
 MAXIMUM_SOURCE_BYTES = 512 * 1024 * 1024
-MAXIMUM_SELECTED_INDEX_REFERENCES = 8_000_000
+MAXIMUM_SELECTED_SCENE_WORK = 8_000_000
 MAXIMUM_SIZE = 2048
 MAXIMUM_SPLAT_RADIUS = 64
 MAXIMUM_RASTER_WORK = 100_000_000
@@ -324,7 +324,7 @@ def _selected_scene_node_indices(
 
 
 def _validate_selected_scene_work(document: Mapping[str, object]) -> None:
-    """Reject aggregate topology expansion before strict geometry inspection."""
+    """Reject aggregate decode work before strict geometry inspection."""
     accessors = glb_metrics._root_array(document, "accessors")
     meshes = glb_metrics._root_array(document, "meshes")
     nodes = glb_metrics._root_array(document, "nodes")
@@ -334,32 +334,42 @@ def _validate_selected_scene_work(document: Mapping[str, object]) -> None:
         primitives = glb_metrics._array(
             mesh.get("primitives"), f"meshes[{mesh_number}].primitives"
         )
-        selected_references = 0
+        selected_work = 0
         for primitive_number, primitive_value in enumerate(primitives):
             label = f"meshes[{mesh_number}].primitives[{primitive_number}]"
             primitive = glb_metrics._object(primitive_value, label)
+            attributes = glb_metrics._object(
+                primitive.get("attributes"), f"{label}.attributes"
+            )
+            position_index = glb_metrics._index(
+                attributes.get("POSITION"),
+                len(accessors),
+                f"{label}.attributes.POSITION",
+            )
+            position_accessor = glb_metrics._object(
+                accessors[position_index], f"accessors[{position_index}]"
+            )
+            position_count = glb_metrics._integer(
+                position_accessor.get("count"),
+                f"accessors[{position_index}].count",
+            )
             if "indices" in primitive:
-                accessor_index = glb_metrics._index(
+                reference_index = glb_metrics._index(
                     primitive["indices"], len(accessors), f"{label}.indices"
                 )
+                reference_accessor = glb_metrics._object(
+                    accessors[reference_index], f"accessors[{reference_index}]"
+                )
+                reference_count = glb_metrics._integer(
+                    reference_accessor.get("count"),
+                    f"accessors[{reference_index}].count",
+                )
             else:
-                attributes = glb_metrics._object(
-                    primitive.get("attributes"), f"{label}.attributes"
-                )
-                accessor_index = glb_metrics._index(
-                    attributes.get("POSITION"),
-                    len(accessors),
-                    f"{label}.attributes.POSITION",
-                )
-            accessor = glb_metrics._object(
-                accessors[accessor_index], f"accessors[{accessor_index}]"
-            )
-            selected_references += glb_metrics._integer(
-                accessor.get("count"), f"accessors[{accessor_index}].count"
-            )
-        mesh_work.append(selected_references)
+                reference_count = position_count
+            selected_work += reference_count + position_count
+        mesh_work.append(selected_work)
 
-    selected_references = 0
+    selected_work = 0
     for node_index in _selected_scene_node_indices(document):
         node = glb_metrics._object(nodes[node_index], f"nodes[{node_index}]")
         mesh_value = node.get("mesh")
@@ -368,11 +378,12 @@ def _validate_selected_scene_work(document: Mapping[str, object]) -> None:
         mesh_index = glb_metrics._index(
             mesh_value, len(meshes), f"nodes[{node_index}].mesh"
         )
-        selected_references += mesh_work[mesh_index]
-        if selected_references > MAXIMUM_SELECTED_INDEX_REFERENCES:
+        selected_work += mesh_work[mesh_index]
+        if selected_work > MAXIMUM_SELECTED_SCENE_WORK:
             raise RenderError(
                 "selected scene exceeds "
-                f"{MAXIMUM_SELECTED_INDEX_REFERENCES} index-reference limit"
+                f"{MAXIMUM_SELECTED_SCENE_WORK} combined index-reference "
+                "and POSITION-value work limit"
             )
 
 
