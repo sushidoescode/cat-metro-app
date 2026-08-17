@@ -254,6 +254,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 - \
   "$silhouette_script" "$tmp" <<'PY'
 from __future__ import annotations
 
+import copy
 import hashlib
 import importlib.util
 import json
@@ -483,6 +484,28 @@ def write_glb(path: Path, document: dict[str, object], binary: bytearray) -> Non
         + json_payload
         + struct.pack("<I4s", len(binary_payload), b"BIN\0")
         + binary_payload
+    )
+
+
+def write_unknown_integer_glb(
+    path: Path,
+    source: Path,
+    digits: int,
+) -> None:
+    payload = source.read_bytes()
+    json_length, json_kind = struct.unpack_from("<I4s", payload, 12)
+    assert json_kind == b"JSON"
+    encoded = payload[20:20 + json_length].rstrip(b" ")
+    assert encoded.endswith(b"}")
+    changed = encoded[:-1] + b',"numericBoundary":' + b"7" * digits + b"}"
+    changed += b" " * (-len(changed) % 4)
+    suffix = payload[20 + json_length:]
+    total = 12 + 8 + len(changed) + len(suffix)
+    path.write_bytes(
+        struct.pack("<4sII", b"glTF", 2, total)
+        + struct.pack("<I4s", len(changed), b"JSON")
+        + changed
+        + suffix
     )
 
 
@@ -1078,6 +1101,145 @@ check(
     {path.name for path in replace_fault.iterdir()} == {"source.glb", "output.png"},
     "replace fault left staging residue",
 )
+
+
+# JSON integer-token behavior must not depend on the interpreter's optional
+# global digit ceiling. The exact boundary remains accepted; +1 fails in the
+# captured-byte loader before strict inspection or rasterization.
+numeric_case = root / "numeric-token-boundary"
+numeric_case.mkdir()
+numeric_exact = numeric_case / "exact.glb"
+numeric_oversized = numeric_case / "plus-one.glb"
+write_unknown_integer_glb(numeric_exact, source_template, 4_300)
+write_unknown_integer_glb(numeric_oversized, source_template, 4_301)
+integer_setter = getattr(sys, "set_int_max_str_digits", None)
+integer_getter = getattr(sys, "get_int_max_str_digits", None)
+previous_integer_limit = integer_getter() if integer_getter is not None else None
+if integer_setter is not None:
+    integer_setter(0)
+try:
+    try:
+        exact_numeric_document = module._source_document(numeric_exact.read_bytes())
+    except BaseException as exc:
+        failures.append(f"numeric token exact boundary was rejected: {exc}")
+    else:
+        check(
+            set(exact_numeric_document).issuperset({"asset", "numericBoundary"}),
+            "numeric token exact boundary lost the parsed document",
+        )
+    try:
+        module._source_document(numeric_oversized.read_bytes())
+    except module.GlbError as exc:
+        numeric_diagnostic = str(exc).lower()
+        check(
+            "integer" in numeric_diagnostic and "limit" in numeric_diagnostic,
+            "numeric token +1 diagnostic did not identify the integer limit",
+        )
+    else:
+        failures.append("numeric token +1 was accepted by the silhouette loader")
+finally:
+    if integer_setter is not None and previous_integer_limit is not None:
+        integer_setter(previous_integer_limit)
+
+
+# The selected-scene 8M ceiling remains separate from the strict inspector's
+# all-mesh budget. Lower only the latter for a compact exact/+1 oracle: the
+# selected mesh is exactly ten units, while an unselected mesh sharing the same
+# accessors takes the all-mesh total to twenty units.
+aggregate_case = root / "unselected-aggregate-work"
+aggregate_case.mkdir()
+aggregate_source = aggregate_case / "source.glb"
+aggregate_output = aggregate_case / "output.png"
+aggregate_document, aggregate_binary = parse_glb(source_template)
+aggregate_mesh = aggregate_document["meshes"][0]
+aggregate_item = aggregate_mesh["primitives"][0]
+aggregate_position = aggregate_item["attributes"]["POSITION"]
+aggregate_indices = aggregate_item["indices"]
+aggregate_exact_work = (
+    aggregate_document["accessors"][aggregate_position]["count"]
+    + aggregate_document["accessors"][aggregate_indices]["count"]
+)
+check(aggregate_exact_work == 10, "unselected aggregate fixture exact work changed")
+aggregate_document["meshes"].append(
+    {"primitives": [copy.deepcopy(aggregate_item)]}
+)
+check(
+    len(aggregate_document["nodes"]) == 1
+    and aggregate_document["nodes"][0].get("mesh") == 0,
+    "unselected aggregate fixture selected the added mesh",
+)
+write_glb(aggregate_source, aggregate_document, aggregate_binary)
+
+geometry_missing = object()
+previous_geometry_limit = getattr(
+    module.glb_metrics,
+    "MAX_GEOMETRY_WORK",
+    geometry_missing,
+)
+setattr(module.glb_metrics, "MAX_GEOMETRY_WORK", aggregate_exact_work)
+exact_aggregate_output = aggregate_case / "exact.png"
+try:
+    try:
+        module.render(
+            source_template,
+            exact_aggregate_output,
+            25.0,
+            size=64,
+            splat_radius=1,
+            minimum_coverage=0.0,
+        )
+    except BaseException as exc:
+        failures.append(f"all-mesh exact work boundary was rejected: {exc}")
+    else:
+        check(
+            is_complete_png(exact_aggregate_output, 64),
+            "all-mesh exact work boundary did not render a complete PNG",
+        )
+
+    real_metrics_unpack = module.glb_metrics.struct.unpack_from
+    aggregate_position_decodes = 0
+
+    def observe_metrics_unpack(format_string, *args, **kwargs):
+        global aggregate_position_decodes
+        if format_string == "<3f":
+            aggregate_position_decodes += 1
+        return real_metrics_unpack(format_string, *args, **kwargs)
+
+    module.glb_metrics.struct.unpack_from = observe_metrics_unpack
+    try:
+        try:
+            module.render(
+                aggregate_source,
+                aggregate_output,
+                25.0,
+                size=64,
+                splat_radius=1,
+                minimum_coverage=0.0,
+            )
+        except module.GlbError as exc:
+            aggregate_diagnostic = str(exc).lower()
+            check(
+                "geometry" in aggregate_diagnostic
+                and "work" in aggregate_diagnostic,
+                "unselected aggregate diagnostic did not identify geometry work",
+            )
+        else:
+            failures.append("unselected mesh aggregate work was accepted")
+    finally:
+        module.glb_metrics.struct.unpack_from = real_metrics_unpack
+    check(
+        aggregate_position_decodes == 0,
+        "unselected aggregate work was rejected after POSITION decoding",
+    )
+    check(
+        not aggregate_output.exists(),
+        "unselected aggregate rejection left an evidence PNG",
+    )
+finally:
+    if previous_geometry_limit is geometry_missing:
+        delattr(module.glb_metrics, "MAX_GEOMETRY_WORK")
+    else:
+        module.glb_metrics.MAX_GEOMETRY_WORK = previous_geometry_limit
 
 
 # Mutation caught: every index is valid but zero, so raw POSITION splatting

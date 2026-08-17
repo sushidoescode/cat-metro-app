@@ -6709,6 +6709,7 @@ import selectors
 import shutil
 import signal
 import stat
+import struct
 import subprocess
 import sys
 import time
@@ -7085,39 +7086,170 @@ def force_cleanup_terminal_case() -> None:
         assert_old_public_pair(case)
 
 
-def temporary_cleanup_after_effect_case() -> None:
-    case = setup_case("temporary-cleanup-after-effect")
+def temporary_cleanup_terminal_case(force: bool, after_effect: bool) -> None:
+    destination = "force" if force else "absent"
+    effect = "after-effect" if after_effect else "before-effect"
+    case = setup_case(
+        f"temporary-cleanup-{destination}-{effect}",
+        force=force,
+    )
     real_temporary_directory = module.tempfile.TemporaryDirectory
     injected = False
+    held = []
 
-    class CleanupAfterEffect:
+    class CleanupFault:
         def __init__(self, *args, **kwargs) -> None:
             self.inner = real_temporary_directory(*args, **kwargs)
+            self.target = kwargs.get("prefix") == ".glb-decimation-"
+            if self.target:
+                held.append(self)
 
         def __enter__(self):
             return self.inner.__enter__()
 
         def __exit__(self, *args):
             nonlocal injected
-            result = self.inner.__exit__(*args)
             if (
+                self.target
+                and
                 not injected
                 and case.final_glb.is_file()
                 and case.final_json.is_file()
             ):
                 injected = True
-                raise OSError("injected temporary cleanup failure after effect")
-            return result
+                if after_effect:
+                    self.inner.__exit__(*args)
+                raise OSError(f"injected temporary cleanup failure {effect}")
+            return self.inner.__exit__(*args)
 
     with mock.patch.object(
         module.tempfile,
         "TemporaryDirectory",
-        new=CleanupAfterEffect,
+        new=CleanupFault,
     ):
         result = run_main(case)
-    assert injected, "temporary cleanup after-effect seam was not reached"
-    assert_source_unchanged(case)
-    assert_success_pair(case, *result)
+    try:
+        assert injected, f"temporary cleanup {effect} seam was not reached"
+        assert len(held) == 1
+        assert_source_unchanged(case)
+        if after_effect:
+            assert_success_pair(case, *result)
+            assert not Path(held[0].inner.name).exists()
+            return
+
+        main_result, stdout, stderr, caught = result
+        assert caught is None
+        assert main_result == 1
+        assert stdout == "", repr(stdout)
+        assert_one_diagnostic(stderr)
+        assert "cleanup" in stderr.lower()
+        residue = Path(held[0].inner.name)
+        assert residue.is_dir()
+        expected_entries = {residue}
+        if force:
+            assert case.old_pair is not None
+            assert case.final_glb.read_bytes() == case.old_pair[0]
+            assert case.final_json.read_bytes() == case.old_pair[1]
+            expected_entries.update({case.final_glb, case.final_json})
+        else:
+            assert not case.final_glb.exists()
+            assert not case.final_json.exists()
+        assert set(case.output.iterdir()) == expected_entries
+        assert not any(
+            ".backup-" in path.name or ".retired-" in path.name
+            for path in case.output.iterdir()
+        )
+    finally:
+        for wrapper in held:
+            wrapper.inner.cleanup()
+
+    if force:
+        assert_old_public_pair(case)
+    else:
+        assert list(case.output.iterdir()) == []
+
+
+@contextlib.contextmanager
+def interpreter_integer_limit_disabled():
+    setter = getattr(sys, "set_int_max_str_digits", None)
+    getter = getattr(sys, "get_int_max_str_digits", None)
+    previous = getter() if getter is not None else None
+    if setter is not None:
+        setter(0)
+    try:
+        yield
+    finally:
+        if setter is not None and previous is not None:
+            setter(previous)
+
+
+def glb_with_unknown_integer(source: Path, digits: int) -> bytes:
+    payload = source.read_bytes()
+    json_length, json_kind = struct.unpack_from("<I4s", payload, 12)
+    assert json_kind == b"JSON"
+    json_payload = payload[20:20 + json_length].rstrip(b" ")
+    assert json_payload.endswith(b"}")
+    changed_json = (
+        json_payload[:-1]
+        + b',"numericBoundary":'
+        + b"7" * digits
+        + b"}"
+    )
+    changed_json += b" " * (-len(changed_json) % 4)
+    suffix = payload[20 + json_length:]
+    total = 12 + 8 + len(changed_json) + len(suffix)
+    return (
+        struct.pack("<4sII", b"glTF", 2, total)
+        + struct.pack("<I4s", len(changed_json), b"JSON")
+        + changed_json
+        + suffix
+    )
+
+
+def json_numeric_boundary_case() -> None:
+    case = setup_case("json-numeric-boundary")
+    exact_digits = 4_300
+    oversized_digits = exact_digits + 1
+    exact_metadata = b'{"value":' + b"7" * exact_digits + b"}"
+    oversized_metadata = b'{"value":' + b"7" * oversized_digits + b"}"
+    exact_glb = glb_with_unknown_integer(case.source, exact_digits)
+    oversized_glb = glb_with_unknown_integer(case.source, oversized_digits)
+
+    with interpreter_integer_limit_disabled():
+        exact = module._decode_json_bytes(exact_metadata, "numeric boundary")
+        assert isinstance(exact, dict) and set(exact) == {"value"}
+        try:
+            module._decode_json_bytes(oversized_metadata, "numeric boundary")
+        except module.DecimationError as exc:
+            assert "invalid numeric boundary" in str(exc)
+        else:
+            raise AssertionError("metadata decoder accepted an oversized integer token")
+
+        exact_metrics = module._inspect_verified_glb_payload(
+            case.source,
+            exact_glb,
+        )
+        assert exact_metrics["triangles"] == 30_000
+        try:
+            module._inspect_verified_glb_payload(case.source, oversized_glb)
+        except module.GlbError as exc:
+            folded = str(exc).lower()
+            assert "integer" in folded and "limit" in folded
+        else:
+            raise AssertionError("orchestrator GLB loader accepted an oversized integer token")
+
+
+def provenance_finite_number_case() -> None:
+    case = setup_case("provenance-finite-number")
+    for name, value in (("nan", float("nan")), ("infinity", float("inf"))):
+        path = case.output / f"{name}.json"
+        try:
+            module.write_staged_provenance(path, {"value": value})
+        except (module.DecimationError, ValueError):
+            pass
+        else:
+            raise AssertionError(f"provenance writer accepted {name}")
+        assert not path.exists()
 
 
 def success_record_write_case(after_effect: bool) -> None:
@@ -9180,7 +9312,18 @@ def run_bounded(label: str, function, *arguments) -> None:
 
 run_bounded("lock-release-terminal", lock_release_terminal_case)
 run_bounded("force-cleanup-terminal", force_cleanup_terminal_case)
-run_bounded("temporary-cleanup-after-effect", temporary_cleanup_after_effect_case)
+for cleanup_force in (False, True):
+    for cleanup_after_effect in (False, True):
+        run_bounded(
+            "temporary-cleanup-"
+            f"{'force' if cleanup_force else 'absent'}-"
+            f"{'after' if cleanup_after_effect else 'before'}-effect",
+            temporary_cleanup_terminal_case,
+            cleanup_force,
+            cleanup_after_effect,
+        )
+run_bounded("json-numeric-boundary", json_numeric_boundary_case)
+run_bounded("provenance-finite-number", provenance_finite_number_case)
 run_bounded("success-record-before-effect", success_record_write_case, False)
 run_bounded("success-record-after-effect", success_record_write_case, True)
 run_bounded("bounded-read-oracle", bounded_read_oracle_case)

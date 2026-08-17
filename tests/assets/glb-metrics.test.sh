@@ -1032,6 +1032,7 @@ mkfifo "$tmp/special-source.fifo"
 
 set +e
 PYTHONDONTWRITEBYTECODE=1 python3 - "$metrics_script" "$tmp" <<'PY'
+import copy
 import importlib.util
 import json
 import subprocess
@@ -1114,6 +1115,38 @@ def binary_payload(name):
     binary_length, binary_kind = struct.unpack_from("<I4s", raw, binary_start)
     assert binary_kind == b"BIN\0"
     return raw[binary_start + 8:binary_start + 8 + binary_length]
+
+
+def write_document(path, value, binary):
+    encoded = json.dumps(value, separators=(",", ":"), sort_keys=True).encode()
+    encoded += b" " * (-len(encoded) % 4)
+    payload = bytes(binary) + b"\0" * (-len(binary) % 4)
+    total = 12 + 8 + len(encoded) + 8 + len(payload)
+    path.write_bytes(
+        struct.pack("<4sII", b"glTF", 2, total)
+        + struct.pack("<I4s", len(encoded), b"JSON")
+        + encoded
+        + struct.pack("<I4s", len(payload), b"BIN\0")
+        + payload
+    )
+
+
+def write_unknown_integer(path, digits):
+    raw = (fixture_root / "valid.glb").read_bytes()
+    json_length, json_kind = struct.unpack_from("<I4s", raw, 12)
+    assert json_kind == b"JSON"
+    encoded = raw[20:20 + json_length].rstrip(b" ")
+    assert encoded.endswith(b"}")
+    changed = encoded[:-1] + b',"numericBoundary":' + b"7" * digits + b"}"
+    changed += b" " * (-len(changed) % 4)
+    suffix = raw[20 + json_length:]
+    total = 12 + 8 + len(changed) + len(suffix)
+    path.write_bytes(
+        struct.pack("<4sII", b"glTF", 2, total)
+        + struct.pack("<I4s", len(changed), b"JSON")
+        + changed
+        + suffix
+    )
 
 
 def assert_surface(
@@ -1688,6 +1721,172 @@ def implicit_texcoord0_is_required_during_inspection():
 check(
     "inspection rejects missing implicit TEXCOORD_0 on the second primitive",
     implicit_texcoord0_is_required_during_inspection,
+)
+
+
+def bounded_integer_tokens_are_runtime_independent():
+    exact_digits = 4_300
+    exact_path = fixture_root / "numeric-boundary-exact.glb"
+    oversized_path = fixture_root / "numeric-boundary-plus-one.glb"
+    write_unknown_integer(exact_path, exact_digits)
+    write_unknown_integer(oversized_path, exact_digits + 1)
+    setter = getattr(sys, "set_int_max_str_digits", None)
+    getter = getattr(sys, "get_int_max_str_digits", None)
+    previous = getter() if getter is not None else None
+    if setter is not None:
+        setter(0)
+    try:
+        exact = module.inspect_glb(exact_path)
+        assert exact["triangles"] == 37
+        try:
+            module.inspect_glb(oversized_path)
+        except module.GlbError as exc:
+            folded = str(exc).lower()
+            assert "integer" in folded and "limit" in folded, str(exc)
+        else:
+            raise AssertionError("oversized integer token was accepted")
+    finally:
+        if setter is not None and previous is not None:
+            setter(previous)
+
+
+check(
+    "integer-token bound is explicit with the interpreter ceiling disabled",
+    bounded_integer_tokens_are_runtime_independent,
+)
+
+
+def set_temporary_constant(name, value):
+    missing = object()
+    previous = getattr(module, name, missing)
+    setattr(module, name, value)
+
+    def restore():
+        if previous is missing:
+            delattr(module, name)
+        else:
+            setattr(module, name, previous)
+
+    return restore
+
+
+def aggregate_geometry_work_is_predecoded_and_inclusive():
+    base_document = document("valid")
+    base_binary = binary_payload("valid")
+    base_mesh = base_document["meshes"][0]
+    base_primitive = base_mesh["primitives"][0]
+    position_index = base_primitive["attributes"]["POSITION"]
+    index_index = base_primitive["indices"]
+    exact_work = (
+        base_document["accessors"][position_index]["count"]
+        + base_document["accessors"][index_index]["count"]
+    )
+    assert exact_work == 150
+
+    shared_document = copy.deepcopy(base_document)
+    shared_item = shared_document["meshes"][0]["primitives"][0]
+    shared_document["meshes"][0]["primitives"] = [
+        copy.deepcopy(shared_item),
+        copy.deepcopy(shared_item),
+    ]
+    shared_path = fixture_root / "aggregate-shared-accessors.glb"
+    write_document(shared_path, shared_document, base_binary)
+
+    unselected_document = copy.deepcopy(base_document)
+    unselected_item = unselected_document["meshes"][0]["primitives"][0]
+    unselected_document["meshes"].append(
+        {"primitives": [copy.deepcopy(unselected_item)]}
+    )
+    assert (
+        len(unselected_document["nodes"]) == 1
+        and unselected_document["nodes"][0].get("mesh") == 0
+    )
+    unselected_path = fixture_root / "aggregate-unselected-mesh.glb"
+    write_document(unselected_path, unselected_document, base_binary)
+
+    restore_limit = set_temporary_constant("MAX_GEOMETRY_WORK", exact_work)
+    real_unpack = module.struct.unpack_from
+    try:
+        exact = module.inspect_glb(fixture_root / "valid.glb")
+        assert exact["triangles"] == 37
+        for label, path in (
+            ("shared accessors", shared_path),
+            ("unselected mesh", unselected_path),
+        ):
+            position_decodes = 0
+
+            def observing_unpack(format_string, *args, **kwargs):
+                nonlocal position_decodes
+                if format_string == "<3f":
+                    position_decodes += 1
+                return real_unpack(format_string, *args, **kwargs)
+
+            module.struct.unpack_from = observing_unpack
+            try:
+                module.inspect_glb(path)
+            except module.GlbError as exc:
+                folded = str(exc).lower()
+                assert "geometry" in folded and "work" in folded, str(exc)
+            else:
+                raise AssertionError(f"{label} aggregate work was accepted")
+            finally:
+                module.struct.unpack_from = real_unpack
+            assert position_decodes == 0, (
+                f"{label} was rejected after {position_decodes} POSITION decodes"
+            )
+    finally:
+        module.struct.unpack_from = real_unpack
+        restore_limit()
+
+
+check(
+    "aggregate geometry work counts shared accessors and unselected meshes before decode",
+    aggregate_geometry_work_is_predecoded_and_inclusive,
+)
+
+
+def aggregate_image_work_is_prehashed_and_inclusive():
+    base_document = document("valid")
+    base_binary = binary_payload("valid")
+    image = base_document["images"][0]
+    view = base_document["bufferViews"][image["bufferView"]]
+    exact_work = view["byteLength"]
+    assert exact_work == 70
+
+    shared_document = copy.deepcopy(base_document)
+    shared_document["images"].append(copy.deepcopy(shared_document["images"][0]))
+    shared_path = fixture_root / "aggregate-shared-image.glb"
+    write_document(shared_path, shared_document, base_binary)
+
+    restore_limit = set_temporary_constant("MAX_IMAGE_WORK_BYTES", exact_work)
+    real_sha256 = module.hashlib.sha256
+    try:
+        exact = module.inspect_glb(fixture_root / "valid.glb")
+        assert exact["embedded_images"] == 1
+        hash_calls = 0
+
+        def reject_hash(*args, **kwargs):
+            nonlocal hash_calls
+            hash_calls += 1
+            raise AssertionError("image hash started before aggregate rejection")
+
+        module.hashlib.sha256 = reject_hash
+        try:
+            module.inspect_glb(shared_path)
+        except module.GlbError as exc:
+            folded = str(exc).lower()
+            assert "image" in folded and "work" in folded, str(exc)
+        else:
+            raise AssertionError("shared image aggregate work was accepted")
+        assert hash_calls == 0
+    finally:
+        module.hashlib.sha256 = real_sha256
+        restore_limit()
+
+
+check(
+    "aggregate image work counts shared payloads before hashing",
+    aggregate_image_work_is_prehashed_and_inclusive,
 )
 
 
