@@ -689,47 +689,62 @@ def _sanitized_environment(private_root: Path) -> dict[str, str]:
     return child_env
 
 
-def _terminate_child(process: subprocess.Popen[bytes]) -> None:
-    """Terminate the whole isolated child group, even if its leader exited."""
-
-    def group_alive() -> bool:
-        process.poll()
+def _child_exited_unreaped(process: subprocess.Popen[bytes]) -> bool:
+    """Observe child exit while retaining ownership of its PID and process group."""
+    while True:
         try:
-            os.killpg(process.pid, 0)
-        except ProcessLookupError:
+            status = os.waitid(
+                os.P_PID,
+                process.pid,
+                os.WEXITED | os.WNOHANG | os.WNOWAIT,
+            )
+        except InterruptedError:
+            continue
+        except ChildProcessError as exc:
+            raise DecimationError("Blender child ownership was lost") from exc
+        return status is not None
+
+
+def _child_ownership_reserved(process: subprocess.Popen[bytes]) -> bool:
+    while True:
+        try:
+            os.waitid(
+                os.P_PID,
+                process.pid,
+                os.WEXITED | os.WNOHANG | os.WNOWAIT,
+            )
+        except InterruptedError:
+            continue
+        except ChildProcessError:
             return False
-        except PermissionError:
-            return True
         return True
 
-    def signal_group(selected: signal.Signals) -> None:
+
+def _terminate_child(process: subprocess.Popen[bytes]) -> int:
+    """Terminate the owned child group before reaping its reserved leader PID."""
+
+    def signal_owned_group(selected: signal.Signals) -> bool:
+        if not _child_ownership_reserved(process):
+            return False
         try:
             os.killpg(process.pid, selected)
         except ProcessLookupError:
-            pass
+            return False
         except PermissionError:
-            if process.poll() is None:
-                if selected == signal.SIGTERM:
-                    process.terminate()
-                else:
-                    process.kill()
+            # macOS reports EPERM when an exited, WNOWAIT-held leader is the
+            # group's only remaining member. A live leader still gets a safe
+            # direct fallback because its unreaped PID remains ours.
+            if _child_exited_unreaped(process):
+                return False
+            if selected == signal.SIGTERM:
+                process.terminate()
+            else:
+                process.kill()
+        return True
 
-    for selected, grace in ((signal.SIGTERM, 1.0), (signal.SIGKILL, 1.0)):
-        signal_group(selected)
-        deadline = time.monotonic() + grace
-        while group_alive() and time.monotonic() < deadline:
-            time.sleep(0.01)
-        if not group_alive():
-            break
-
-    if process.poll() is None:
-        try:
-            process.wait(timeout=1)
-        except subprocess.TimeoutExpired:
-            signal_group(signal.SIGKILL)
-            process.wait(timeout=1)
-    else:
-        process.wait()
+    if signal_owned_group(signal.SIGTERM):
+        signal_owned_group(signal.SIGKILL)
+    return process.wait(timeout=1)
 
 
 def _run_child_bounded(
@@ -764,7 +779,7 @@ def _run_child_bounded(
     deadline = time.monotonic() + timeout
     failure: DecimationError | None = None
     try:
-        while selector.get_map() or process.poll() is None:
+        while selector.get_map() or not _child_exited_unreaped(process):
             remaining_time = deadline - time.monotonic()
             if remaining_time <= 0:
                 failure = DecimationError("Blender child timed out")
@@ -791,12 +806,9 @@ def _run_child_bounded(
             if failure is not None:
                 break
         if failure is not None:
-            _terminate_child(process)
             raise failure
-        returncode = process.wait()
-        return returncode, bytes(buffers["stdout"]), bytes(buffers["stderr"])
     finally:
-        _terminate_child(process)
+        returncode = _terminate_child(process)
         for stream in streams.values():
             try:
                 selector.unregister(stream)
@@ -804,6 +816,7 @@ def _run_child_bounded(
                 pass
             stream.close()
         selector.close()
+    return returncode, bytes(buffers["stdout"]), bytes(buffers["stderr"])
 
 
 def _resolve_blender(value: str | None) -> Path:
