@@ -489,12 +489,12 @@ is_shallow = subprocess.run(
     stdout=subprocess.PIPE,
     text=True,
 ).stdout.strip() == "true"
-if commit_probe.returncode != 0 and not is_shallow:
-    raise SystemExit(
-        "glb-decimation-docs.test.sh: FAIL — declared production commit "
-        "does not resolve in a full checkout"
-    )
-if commit_probe.returncode == 0:
+if not is_shallow:
+    if commit_probe.returncode != 0:
+        raise SystemExit(
+            "glb-decimation-docs.test.sh: FAIL — declared production commit "
+            "does not resolve in a full checkout"
+        )
     declared_driver = subprocess.run(
         ["git", "show", f"{state_production_base}:scripts/decimate-assets.py"],
         check=True,
