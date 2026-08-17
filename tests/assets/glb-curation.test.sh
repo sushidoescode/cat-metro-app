@@ -445,11 +445,16 @@ with tempfile.TemporaryDirectory(prefix="catmetro-curation-recovery-") as raw:
     root = Path(raw)
     final_glb, final_json, staged_glb, staged_json, backup_dir, journal = make_pair(root)
 
-    def fail_promotion_and_rollback(source, destination):
+    def fail_promotion(source, destination):
         source_path = Path(source)
         destination_path = Path(destination)
         if source_path == staged_json and destination_path == final_json:
             raise OSError("injected sidecar promotion failure")
+        os.replace(source, destination)
+
+    def fail_glb_rollback(source, destination):
+        source_path = Path(source)
+        destination_path = Path(destination)
         if ".rollback-" in source_path.name and destination_path == final_glb:
             raise OSError("injected rollback failure")
         os.replace(source, destination)
@@ -462,7 +467,8 @@ with tempfile.TemporaryDirectory(prefix="catmetro-curation-recovery-") as raw:
             final_sidecar=final_json,
             backup_dir=backup_dir,
             journal_path=journal,
-            replace_fn=fail_promotion_and_rollback,
+            replace_fn=fail_promotion,
+            rollback_replace_fn=fail_glb_rollback,
         )
     except curator.CurationError as exc:
         assert "rollback also failed" in str(exc)
