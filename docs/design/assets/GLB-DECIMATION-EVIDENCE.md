@@ -8,7 +8,7 @@ Run date: **2026-08-16**. The evidence folder retains the frozen
 - Frozen contract commit: `bc34c6abf6ecf580465c061c2993a7536aeacf41`.
 - Branch base: `3115ebdddd23f3d7eb6836c2670f6dfc2d0a6fb4`.
 - Integrated, independently reviewed pipeline and final boundary-hardening
-  reproduction base: `beb9cf7562c15d227427c116c786ec03bd636d71`.
+  reproduction base: `6d5a0da5b71f61d11ef3e0b0fe187b0e25caacaf`.
   The tracked renderer and isolated 15-asset Blender queue were rerun from
   that exact tree without changing the retained local GLBs or sidecars.
 - The reviewed `--force` queue completed 15/15 with exact category and global
@@ -86,7 +86,7 @@ coverage gate. Contact sheets used ImageMagick
 and `-append`; `montage` was not used.
 
 The final boundary-hardened refresh rendered all 15 source/derivative pairs
-into isolated `/private/tmp/catmetro-glb-final-render-r1`. All 30 individual
+into isolated `/private/tmp/catmetro-glb-final-render-r2`. All 30 individual
 PNGs were byte-identical to the retained recorded files, so their hashes and
 coverage values below remain unchanged. The three rebuilt contact sheets were
 pixel-identical to the retained sheets; their byte streams differed only in
@@ -96,7 +96,7 @@ comparison grid was viewed at original detail; because every individual PNG
 is byte-identical, the prior visual disposition carries forward unchanged.
 
 The same exact code base also ran the full 15-asset Blender queue into isolated
-`/private/tmp/catmetro-glb-final-derivatives-r1`. All 15 derivative GLBs were
+`/private/tmp/catmetro-glb-final-derivatives-r2`. All 15 derivative GLBs were
 byte-identical to the retained derivatives. Each fresh sidecar was identical
 after excluding only its expected fresh `tool.timestamp_utc`, and a fresh
 `glb_metrics.py` inspection matched every recorded output metric and derivative
@@ -313,11 +313,11 @@ Silhouette contact sheets:
 | `.catshots/glb-decimation-2026-08-15/comparison-grid.png` | 2600×3120 | `0ed07846d71b6772273e3c4b6f6eaf72be9a8214326a2b03c1988e1ba1fc4e89` |
 
 The exact-head temporary rebuild hashes were
-`08ab01d710bf5544a230a92f6ab71c2379283bba19b012051dcca4e813e93a26`
+`66d8e9dd5a9bb7a06a89491bcd1136fa88dba28e651079f622b148a60fa6ba80`
 (before),
-`38f8ac86b91da2c2ec4aff76bac3a618b903b14803faf96bca8d1df49eea3ea2`
+`7b9ad8ea98689b7e9f5bb97f77d1637a41e0816a6dae74240e404d1b49fef67e`
 (after), and
-`12ab3eb952da7b85a4cc4c341d6a9bc09ff05ff9ae0f1ee4c2d961f5b6c34ffe`
+`f12f80db15708199256e5cdb51d3486157f4ac09888544c903ee9333559c997d`
 (comparison). Each rebuild had zero pixel difference from its retained sheet
 and identical non-date PNG chunks; only ImageMagick's run-time date metadata
 changed, so these temporary hashes do not replace the recorded-file hashes.
