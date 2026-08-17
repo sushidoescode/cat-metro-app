@@ -32,6 +32,12 @@ Done:
 - `3c51870` records regenerated metrics and rendered/looked-at evidence.
 - `f2e719d`, `2d1fcba`, and `0c5fa63` add RED-first review coverage and harden
   locking, custody validation, durable recovery, and exact-two publication.
+- `dad7069` / `101f809` reproduce and close pre-journal interruption residue;
+  `6ebbfe2` / `1876eb5` reproduce corrupt backup copies and re-hash both
+  completed backup members before journal creation or promotion.
+- `049f4d7` / `ff9bd55` normalize both allowed asset journals before any new
+  work, pin the exact evidence paths, and correct the mixed local-run dates;
+  `d8b8c03` pins the complete evidence checksum manifest by literal SHA-256.
 - Both ignored source pairs are curated and both ignored derivatives were
   regenerated through the reviewed decimator. No tracked GLB was added.
 - The 13 unruled derivative GLBs, sidecars, and rendered before/after pairs are
@@ -94,6 +100,19 @@ coverage, exact-two committed inventory, production/failure/concurrency tests,
 literal custody/evidence pins, corrected wave denominator measurements, and
 the present state/handoff record.
 
+Review round 2 found and closed four final blocker classes: failed setup before
+journal durability now removes unusable backup/journal/stage residue; completed
+backup members are hash-verified before publication; both ruled asset journals
+are normalized before either asset can start; and evidence custody now combines
+39 exact paths, actual-byte checks, and a literal hash of `SHA256SUMS`. The date
+record now distinguishes the 13 historical queue members from the two August 17
+local refreshes. At reviewed implementation/evidence head `d8b8c03`, the
+independent reviewer reran the strongest real-Blender reconstruction and found
+both source pairs byte-identical, then passed all focused GLB suites, the local
+60-member custody check, and the branch diff check. The only later branch change
+is this state/handoff closure; exact-head full gates remain the pre-push exit
+step.
+
 ## Decisions and risks
 
 - Pair publication is serialized by an input-directory lock and is recoverable
@@ -104,6 +123,11 @@ the present state/handoff record.
   work.
 - Evidence is H-1-class, not independent human attestation. The generated-art
   licensing and tracked-asset promotion boundaries remain deferred.
+- Follow-up debt — **source-root pathname/inode re-anchor:** the advisory lock
+  pins the opened source-directory inode, while the curation body still follows
+  the directory pathname. A non-cooperating actor could rename and recreate that
+  path and acquire a second inode lock. Literal final/source anchors constrain
+  this outside normal same-tool concurrency; hardening it is a separate contract.
 - Review is capped at two rounds. Any concrete blocker surviving round 2 must
   be named as follow-up debt; do not silently broaden this lane.
 
