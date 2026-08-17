@@ -364,6 +364,43 @@ def _remove_transaction_files(
     fsync_directory_fn(journal_path.parent)
 
 
+def _remove_failed_prepublication_files(
+    *,
+    journal_path: Path,
+    backup_dir: Path,
+    backup_glb: Path,
+    backup_sidecar: Path,
+    fsync_directory_fn: Callable[[Path], None] = _fsync_directory,
+) -> None:
+    """Remove the not-yet-authoritative journal and backup after setup fails."""
+
+    for path in (journal_path, _transaction_next_path(journal_path)):
+        if path.is_symlink():
+            raise CurationError("pre-publication cleanup refuses a symbolic link")
+        if path.exists():
+            _regular_single_link(path, "pre-publication transaction residue")
+            path.unlink()
+    for path in (backup_glb, backup_sidecar):
+        if path.is_symlink():
+            raise CurationError("pre-publication cleanup refuses a symbolic link")
+        if path.exists():
+            _regular_single_link(path, "pre-publication backup residue")
+            path.unlink()
+    if backup_dir.is_symlink():
+        raise CurationError("pre-publication cleanup refuses a symbolic link")
+    if backup_dir.exists():
+        status = backup_dir.lstat()
+        if not stat.S_ISDIR(status.st_mode):
+            raise CurationError("pre-publication backup residue must be a directory")
+        backup_dir.rmdir()
+    synced_directories: set[Path] = set()
+    for directory in (journal_path.parent, backup_dir.parent):
+        if directory in synced_directories:
+            continue
+        fsync_directory_fn(directory)
+        synced_directories.add(directory)
+
+
 def recover_interrupted_pair(
     *,
     journal_path: Path,
@@ -518,12 +555,31 @@ def publish_pair(
         "candidate_glb_sha256": candidate_glb_sha,
         "candidate_sidecar_sha256": candidate_sidecar_sha,
     }
-    _write_transaction_journal(
-        journal_path,
-        transaction,
-        replace_existing=False,
-        fsync_directory_fn=fsync_directory_fn,
-    )
+    try:
+        _write_transaction_journal(
+            journal_path,
+            transaction,
+            replace_existing=False,
+            fsync_directory_fn=fsync_directory_fn,
+        )
+    except BaseException as exc:
+        try:
+            _remove_failed_prepublication_files(
+                journal_path=journal_path,
+                backup_dir=backup_dir,
+                backup_glb=backup_glb,
+                backup_sidecar=backup_sidecar,
+                fsync_directory_fn=fsync_directory_fn,
+            )
+        except BaseException as cleanup_exc:
+            raise CurationError(
+                "transaction journal creation failed and cleanup also failed"
+            ) from cleanup_exc
+        if isinstance(exc, (OSError, CurationError)):
+            raise CurationError(
+                "could not create durable transaction journal"
+            ) from exc
+        raise
 
     try:
         replace_fn(staged_glb, final_glb)
