@@ -7504,6 +7504,146 @@ def asymmetric_retired_cleanup_restores_exact_pair_case() -> None:
     assert_batch_sources_unchanged(case)
 
 
+def sequential_retirement_rename_failure_case() -> None:
+    case = setup_batch_case(
+        "sequential-retirement-rename-failure",
+        force=False,
+    )
+    real_process_asset = module._process_asset
+    real_replace = module.os.replace
+    real_receipt = module._sha256_receipt
+    real_path_unlink = Path.unlink
+    calls = 0
+    rollback_armed = False
+    expected_hashes: tuple[str, str] | None = None
+    first_private_moves = 0
+    second_rename_failures = 0
+    post_fault_receipt_limits: dict[str, int] = {}
+    exact_private_pair_before_public_cleanup = False
+
+    def is_public(path: Path) -> bool:
+        return any(
+            same_observed_path(path, member)
+            for final_glb, final_json, _ in case.batch_pairs
+            for member in (final_glb, final_json)
+        )
+
+    def fail_second_asset(*args, **kwargs):
+        nonlocal calls, rollback_armed, expected_hashes
+        calls += 1
+        if calls == 2:
+            rollback_armed = True
+            raise module.DecimationError("injected later asset failure")
+        pending = real_process_asset(*args, **kwargs)
+        expected_hashes = (
+            pending["expected_glb_sha"],
+            pending["expected_json_sha"],
+        )
+        assert len(set(expected_hashes)) == 2
+        return pending
+
+    def fail_second_public_retirement(source, destination, *args, **kwargs):
+        nonlocal first_private_moves, second_rename_failures
+        source_path = Path(source)
+        destination_path = Path(destination)
+        if (
+            rollback_armed
+            and expected_hashes is not None
+            and is_public(source_path)
+            and same_observed_path(destination_path.parent, case.output)
+            and not is_public(destination_path)
+            and source_path.is_file()
+        ):
+            observed_hash = digest_file(source_path)
+            if observed_hash == expected_hashes[0]:
+                result = real_replace(source, destination, *args, **kwargs)
+                first_private_moves += 1
+                return result
+            if observed_hash == expected_hashes[1]:
+                assert first_private_moves == 1
+                second_rename_failures += 1
+                assert second_rename_failures <= 4
+                raise OSError("injected second retirement rename failure")
+        return real_replace(source, destination, *args, **kwargs)
+
+    def observe_post_fault_receipt(path, label, maximum_bytes):
+        receipt = real_receipt(path, label, maximum_bytes)
+        if (
+            rollback_armed
+            and second_rename_failures > 0
+            and expected_hashes is not None
+            and receipt[0] in expected_hashes
+        ):
+            post_fault_receipt_limits[receipt[0]] = maximum_bytes
+        return receipt
+
+    def observe_public_cleanup(path, *args, **kwargs):
+        nonlocal exact_private_pair_before_public_cleanup
+        candidate = Path(path)
+        if (
+            rollback_armed
+            and second_rename_failures > 0
+            and expected_hashes is not None
+            and is_public(candidate)
+            and candidate.exists()
+        ):
+            private_members = [
+                member
+                for member in case.output.iterdir()
+                if not is_public(member)
+            ]
+            assert len(private_members) == 2
+            observed_hashes = set()
+            for member in private_members:
+                status = os.lstat(member)
+                assert member.name.startswith(".")
+                assert stat.S_ISREG(status.st_mode) and status.st_nlink == 1
+                observed_hashes.add(digest_file(member))
+            assert observed_hashes == set(expected_hashes)
+            exact_private_pair_before_public_cleanup = True
+        return real_path_unlink(candidate, *args, **kwargs)
+
+    with (
+        mock.patch.object(module, "_process_asset", new=fail_second_asset),
+        mock.patch.object(module.os, "replace", new=fail_second_public_retirement),
+        mock.patch.object(
+            module,
+            "_sha256_receipt",
+            new=observe_post_fault_receipt,
+        ),
+        mock.patch.object(Path, "unlink", new=observe_public_cleanup),
+    ):
+        result, stdout, stderr, caught = run_main(case)
+    assert calls == 2
+    assert first_private_moves == 1
+    assert 1 <= second_rename_failures <= 4
+    assert post_fault_receipt_limits == {
+        expected_hashes[0]: MAX_DERIVATIVE_BYTES,
+        expected_hashes[1]: MAX_PROVENANCE_BYTES,
+    }
+    assert exact_private_pair_before_public_cleanup
+    assert caught is None, repr(caught)
+    assert result == 1, (result, stdout, stderr)
+    assert stdout.count("source_triangles=") == 1, repr(stdout)
+    assert "output_triangles=" not in stdout
+    assert_one_diagnostic(stderr)
+    assert "later asset failure" in stderr
+    assert expected_hashes is not None
+    for final_glb, final_json, _ in case.batch_pairs:
+        assert not final_glb.exists() and not final_json.exists()
+    residue = list(case.output.iterdir())
+    if residue:
+        assert len(residue) == 2, [path.name for path in residue]
+        residue_hashes = set()
+        for path in residue:
+            status = os.lstat(path)
+            assert path.name.startswith(".")
+            assert stat.S_ISREG(status.st_mode) and status.st_nlink == 1
+            residue_hashes.add(digest_file(path))
+        assert residue_hashes == set(expected_hashes)
+    assert_batch_sources_unchanged(case)
+
+
 def mixed_force_success_uses_actual_lineage_case() -> None:
     case = setup_mixed_force_case("mixed-force-success")
     real_process_asset = module._process_asset
@@ -10018,6 +10158,10 @@ run_bounded(
 run_bounded(
     "asymmetric-retired-cleanup",
     asymmetric_retired_cleanup_restores_exact_pair_case,
+)
+run_bounded(
+    "sequential-retirement-rename-failure",
+    sequential_retirement_rename_failure_case,
 )
 run_bounded(
     "mixed-force-success",
