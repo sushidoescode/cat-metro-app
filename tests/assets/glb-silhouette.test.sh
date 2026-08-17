@@ -279,7 +279,7 @@ python = sys.executable
 environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
 failures: list[str] = []
 maximum_source_bytes = 512 * 1024 * 1024
-maximum_selected_index_references = 8_000_000
+maximum_selected_scene_work = 8_000_000
 oversized_diagnostic = (
     f"glb-silhouette: source GLB exceeds {maximum_source_bytes}-byte limit"
 )
@@ -672,6 +672,9 @@ def build_shared_primitive_scene(
     source: Path,
     output: Path,
     primitive_count: int,
+    *,
+    expected_index_count: int,
+    expected_position_count: int,
 ) -> None:
     """Repeat one real primitive without repeating its binary accessors."""
     document, binary = parse_glb(source)
@@ -686,7 +689,13 @@ def build_shared_primitive_scene(
     index_number = item["indices"]
     assert isinstance(index_number, int)
     index_accessor, _ = accessor_and_view(document, index_number)
-    assert index_accessor["count"] == 3_000
+    attributes = item["attributes"]
+    assert isinstance(attributes, dict)
+    position_number = attributes["POSITION"]
+    assert isinstance(position_number, int)
+    position_accessor, _ = accessor_and_view(document, position_number)
+    assert index_accessor["count"] == expected_index_count
+    assert position_accessor["count"] == expected_position_count
     # JSON serialization materializes the primitive records, but every record
     # intentionally shares the same compact POSITION and index accessors.
     mesh["primitives"] = [item] * primitive_count
@@ -713,7 +722,7 @@ def build_shared_node_scene(
     write_glb(output, document, binary)
 
 
-def shared_scene_work(path: Path) -> tuple[int, int, int]:
+def shared_scene_work(path: Path) -> tuple[int, int, int, int, int, int]:
     """Independently measure the single-node shared-accessor test shape."""
     document, _ = parse_glb(path)
     meshes = document["meshes"]
@@ -730,21 +739,41 @@ def shared_scene_work(path: Path) -> tuple[int, int, int]:
     assert isinstance(mesh, dict)
     primitives = mesh["primitives"]
     assert isinstance(primitives, list)
-    selected_references = 0
+    selected_index_references = 0
+    selected_position_values = 0
     index_accessors: set[int] = set()
+    position_accessors: set[int] = set()
     for item in primitives:
         assert isinstance(item, dict) and item.get("mode") == 4
+        attributes = item.get("attributes")
+        assert isinstance(attributes, dict)
+        position_number = attributes.get("POSITION")
+        assert isinstance(position_number, int)
+        position_accessors.add(position_number)
+        position_accessor, _ = accessor_and_view(document, position_number)
+        position_count = position_accessor.get("count")
+        assert isinstance(position_count, int)
+        selected_position_values += position_count
         index_number = item.get("indices")
         assert isinstance(index_number, int)
         index_accessors.add(index_number)
         accessor, _ = accessor_and_view(document, index_number)
         count = accessor.get("count")
         assert isinstance(count, int)
-        selected_references += count
-    return len(primitives), len(index_accessors), selected_references
+        selected_index_references += count
+    return (
+        len(primitives),
+        len(index_accessors),
+        len(position_accessors),
+        selected_index_references,
+        selected_position_values,
+        selected_index_references + selected_position_values,
+    )
 
 
-def instanced_scene_work(path: Path) -> tuple[int, int, int, int]:
+def instanced_scene_work(
+    path: Path,
+) -> tuple[int, int, int, int, int, int, int, int]:
     """Measure mesh-definition and selected-instance work independently."""
     document, _ = parse_glb(path)
     meshes = document["meshes"]
@@ -762,6 +791,13 @@ def instanced_scene_work(path: Path) -> tuple[int, int, int, int]:
     assert isinstance(roots, list) and roots == list(range(len(nodes)))
     item = primitives[0]
     assert isinstance(item, dict) and item.get("mode") == 4
+    attributes = item.get("attributes")
+    assert isinstance(attributes, dict)
+    position_number = attributes.get("POSITION")
+    assert isinstance(position_number, int)
+    position_accessor, _ = accessor_and_view(document, position_number)
+    position_count = position_accessor.get("count")
+    assert isinstance(position_count, int)
     index_number = item.get("indices")
     assert isinstance(index_number, int)
     index_accessor, _ = accessor_and_view(document, index_number)
@@ -770,13 +806,56 @@ def instanced_scene_work(path: Path) -> tuple[int, int, int, int]:
     for node in nodes:
         assert isinstance(node, dict) and node.get("mesh") == 0
     mesh_definition_references = index_count * len(primitives)
+    mesh_definition_positions = position_count * len(primitives)
+    mesh_definition_work = (
+        mesh_definition_references + mesh_definition_positions
+    )
     selected_references = mesh_definition_references * len(nodes)
+    selected_positions = mesh_definition_positions * len(nodes)
+    selected_work = selected_references + selected_positions
     return (
         len(nodes),
         len(primitives),
         mesh_definition_references,
+        mesh_definition_positions,
+        mesh_definition_work,
         selected_references,
+        selected_positions,
+        selected_work,
     )
+
+
+def selected_work_document(
+    *,
+    position_count: int,
+    index_count: int | None,
+    node_count: int = 1,
+) -> dict[str, object]:
+    """Build the smallest selected-scene document needed by the cheap guard."""
+    accessors: list[object] = [{"count": position_count}]
+    primitive: dict[str, object] = {
+        "attributes": {"POSITION": 0},
+        "mode": 4,
+    }
+    if index_count is not None:
+        accessors.append({"count": index_count})
+        primitive["indices"] = 1
+    return {
+        "accessors": accessors,
+        "meshes": [{"primitives": [primitive]}],
+        "nodes": [{"mesh": 0} for _ in range(node_count)],
+        "scenes": [{"nodes": list(range(node_count))}],
+        "scene": 0,
+    }
+
+
+def selected_work_error(document: dict[str, object]) -> BaseException | None:
+    """Return the guard's rejection without invoking the expensive inspector."""
+    try:
+        module._validate_selected_scene_work(document)
+    except BaseException as exc:
+        return exc
+    return None
 
 
 def reported_vertices(stdout: str) -> int | None:
@@ -1292,14 +1371,127 @@ check(
 check(not streaming_output.exists(), "streaming reader mutation left output")
 
 
-# Independent-review follow-up: selected-scene topology work is bounded before
+# Reviewer arithmetic oracles exercise the cheap selected-scene guard directly.
+# They intentionally omit large backing buffers: reaching strict GLB inspection
+# would itself violate the guard-before-decode property pinned by the CLI cases.
+def check_combined_work_rejection(
+    error: BaseException | None,
+    label: str,
+) -> None:
+    check(
+        isinstance(error, module.RenderError),
+        f"{label}: combined work was not rejected by the cheap guard",
+    )
+    if error is None:
+        return
+    diagnostic = str(error).lower()
+    check(
+        "8000000" in diagnostic
+        and "position" in diagnostic
+        and "reference" in diagnostic
+        and "work" in diagnostic,
+        f"{label}: rejection did not identify the combined work cap",
+    )
+
+
+# Mutation caught: treating an unindexed primitive as having zero implicit
+# references.  One POSITION accessor of 4,000,001 values is individually below
+# the ceiling, but its implicit references plus decode values total 8,000,002.
+unindexed_position_count = 4_000_001
+unindexed_document = selected_work_document(
+    position_count=unindexed_position_count,
+    index_count=None,
+)
+unindexed_meshes = unindexed_document["meshes"]
+assert isinstance(unindexed_meshes, list) and len(unindexed_meshes) == 1
+unindexed_mesh = unindexed_meshes[0]
+assert isinstance(unindexed_mesh, dict)
+unindexed_primitives = unindexed_mesh["primitives"]
+assert isinstance(unindexed_primitives, list) and len(unindexed_primitives) == 1
+unindexed_primitive = unindexed_primitives[0]
+assert isinstance(unindexed_primitive, dict)
+check(
+    "indices" not in unindexed_primitive
+    and unindexed_position_count <= maximum_selected_scene_work
+    and unindexed_position_count * 2 == 8_000_002
+    and unindexed_position_count * 2 > maximum_selected_scene_work,
+    "unindexed work: fixture does not isolate implicit-reference accounting",
+)
+check_combined_work_rejection(
+    selected_work_error(unindexed_document),
+    "unindexed implicit-reference work",
+)
+
+
+# Mutation caught: adding POSITION work only for the first selected instance.
+# Index work across all 800 nodes and first-instance-only POSITION work are both
+# safe; only multiplying both categories per node crosses the fixed ceiling.
+instanced_position_count = 10_000
+instanced_index_count = 3
+instanced_node_count = 800
+instanced_mesh_work = instanced_position_count + instanced_index_count
+instanced_combined_work = instanced_mesh_work * instanced_node_count
+instanced_first_position_work = (
+    instanced_position_count + instanced_index_count * instanced_node_count
+)
+check(
+    instanced_index_count * instanced_node_count
+    < maximum_selected_scene_work
+    and instanced_first_position_work < maximum_selected_scene_work
+    and instanced_mesh_work * (instanced_node_count - 1)
+    <= maximum_selected_scene_work
+    and instanced_combined_work == 8_002_400
+    and instanced_combined_work > maximum_selected_scene_work,
+    "instanced POSITION work: fixture does not isolate per-node multiplication",
+)
+check_combined_work_rejection(
+    selected_work_error(
+        selected_work_document(
+            position_count=instanced_position_count,
+            index_count=instanced_index_count,
+            node_count=instanced_node_count,
+        )
+    ),
+    "instanced POSITION work",
+)
+
+
+# Boundary mutation caught: changing the guard from > to >= rejects an exact
+# 8,000,000-unit selected scene.  The adjacent +1 document must still reject.
+boundary_position_count = 4_000_000
+boundary_reference_count = 4_000_000
+boundary_document = selected_work_document(
+    position_count=boundary_position_count,
+    index_count=boundary_reference_count,
+)
+check(
+    boundary_position_count + boundary_reference_count
+    == maximum_selected_scene_work,
+    "combined-work boundary: fixture is not exactly 8000000 units",
+)
+check(
+    selected_work_error(boundary_document) is None,
+    "combined-work boundary: exact 8000000 units were rejected",
+)
+boundary_plus_one_document = selected_work_document(
+    position_count=boundary_position_count,
+    index_count=boundary_reference_count + 1,
+)
+check_combined_work_rejection(
+    selected_work_error(boundary_plus_one_document),
+    "combined-work boundary +1",
+)
+
+
+# Independent-review follow-up: selected-scene decode work is bounded before
 # the strict metrics inspector or surface iterator can perform the full walk.
-# The fixed ceiling is 8,000,000 index references.  It is deliberately above
-# the frozen real-source envelope: all 15 recorded sources have one mesh and
-# one primitive, and the largest mode-4 source has 1,985,458 triangles, hence
-# 5,956,374 selected references.  This tracked evidence is the positive
-# current-real-envelope control; the 1,000-triangle fixture below is the
-# ordinary executable control.
+# The fixed ceiling is 8,000,000 combined index-reference and POSITION-value
+# units.  It is deliberately above the frozen real-source envelope: all 15
+# recorded sources have one mesh and one primitive, and the worst source has
+# 5,956,374 selected references plus 1,023,844 POSITION values, exactly
+# 6,980,218 combined units.  This tracked evidence is the positive current-real
+# envelope control; the 1,000-triangle fixture below is the ordinary executable
+# control.
 recorded_metrics = json.loads(
     Path("docs/design/assets/GLB-DECIMATION-METRICS.json").read_text(
         encoding="utf-8"
@@ -1310,7 +1502,7 @@ check(
     isinstance(recorded_assets, list) and len(recorded_assets) == 15,
     "topology envelope: tracked metrics do not contain 15 assets",
 )
-recorded_work: list[int] = []
+recorded_work: list[tuple[int, int, int]] = []
 if isinstance(recorded_assets, list):
     for asset in recorded_assets:
         source_metrics = asset.get("source") if isinstance(asset, dict) else None
@@ -1318,10 +1510,12 @@ if isinstance(recorded_assets, list):
             failures.append("topology envelope: malformed source metrics")
             continue
         triangles = source_metrics.get("triangles")
+        vertices = source_metrics.get("vertices")
         meshes = source_metrics.get("meshes")
         primitives = source_metrics.get("primitives")
         if (
             not isinstance(triangles, int)
+            or not isinstance(vertices, int)
             or meshes != 1
             or primitives != 1
         ):
@@ -1330,14 +1524,17 @@ if isinstance(recorded_assets, list):
                 "mode-4 mesh primitive"
             )
             continue
-        recorded_work.append(triangles * 3)
+        references = triangles * 3
+        recorded_work.append((references, vertices, references + vertices))
 check(
     len(recorded_work) == 15
-    and max(recorded_work, default=0) == 5_956_374
+    and max(recorded_work, key=lambda item: item[2], default=(0, 0, 0))
+    == (5_956_374, 1_023_844, 6_980_218)
     and all(
-        work <= maximum_selected_index_references for work in recorded_work
+        combined <= maximum_selected_scene_work
+        for _references, _positions, combined in recorded_work
     ),
-    "topology envelope: 8000000-reference ceiling rejects a recorded source",
+    "decode-work envelope: 8000000-unit ceiling rejects a recorded source",
 )
 
 topology_control_output = root / "shared-topology-control.png"
@@ -1352,11 +1549,81 @@ topology_control = invoke(
 )
 check(
     topology_control is not None and topology_control.returncode == 0,
-    "topology budget: ordinary 3000-reference surface was rejected",
+    "decode-work budget: ordinary 4002-unit surface was rejected",
 )
 check(
     is_complete_png(topology_control_output, 64),
     "topology budget: ordinary control did not leave a complete PNG",
+)
+
+# Reviewer regression: repeated primitives share one large POSITION accessor
+# while retaining only six index references apiece.  Index-only accounting sees
+# just 4,800 references and admits the file; the strict inspector then performs
+# more than eight million POSITION decodes.  Combined accounting must reject
+# this compact real-GLB shape before that walk.
+shared_position_case = root / "shared-position-budget"
+shared_position_case.mkdir()
+shared_position_source = shared_position_case / "shared-position.glb"
+shared_position_output = shared_position_case / "shared-position.png"
+build_shared_primitive_scene(
+    orphan_source,
+    shared_position_source,
+    primitive_count=800,
+    expected_index_count=6,
+    expected_position_count=10_004,
+)
+(
+    shared_position_primitive_total,
+    shared_position_distinct_indices,
+    shared_position_distinct_positions,
+    shared_position_references,
+    shared_position_values,
+    shared_position_work,
+) = shared_scene_work(shared_position_source)
+check(
+    shared_position_primitive_total == 800
+    and shared_position_distinct_indices == 1
+    and shared_position_distinct_positions == 1
+    and shared_position_references == 4_800
+    and shared_position_references < maximum_selected_scene_work
+    and shared_position_values == 8_003_200
+    and shared_position_work == 8_008_000
+    and shared_position_work > maximum_selected_scene_work,
+    "shared POSITION work: fixture does not discriminate index-only accounting",
+)
+shared_position_started = time.monotonic()
+shared_position_result = invoke(
+    shared_position_source,
+    shared_position_output,
+    "25",
+    "--size", "64",
+    "--splat-radius", "1",
+    "--min-coverage", "0",
+    timeout=1.5,
+)
+shared_position_elapsed = time.monotonic() - shared_position_started
+check_prefixed_failure(shared_position_result, "shared POSITION decode work")
+if shared_position_result is not None:
+    shared_position_diagnostic = shared_position_result.stderr.lower()
+    check(
+        "8000000" in shared_position_diagnostic
+        and "position" in shared_position_diagnostic
+        and "reference" in shared_position_diagnostic
+        and "work" in shared_position_diagnostic,
+        "shared POSITION work: diagnostic does not identify the combined cap",
+    )
+check(
+    shared_position_elapsed < 2.0,
+    "shared POSITION work: rejection occurred after expensive accessor decoding",
+)
+check(
+    not shared_position_output.exists(),
+    "shared POSITION work left an evidence PNG",
+)
+check(
+    {path.name for path in shared_position_case.iterdir()}
+    == {"shared-position.glb"},
+    "shared POSITION work rejection left staging residue",
 )
 
 topology_case = root / "aggregate-topology-budget"
@@ -1367,15 +1634,25 @@ build_shared_primitive_scene(
     shared_topology_template,
     topology_source,
     primitive_count=3_000,
+    expected_index_count=3_000,
+    expected_position_count=1_002,
 )
-primitive_total, distinct_indices, selected_references = shared_scene_work(
-    topology_source
-)
+(
+    primitive_total,
+    distinct_indices,
+    distinct_positions,
+    selected_references,
+    selected_positions,
+    selected_work,
+) = shared_scene_work(topology_source)
 check(
     primitive_total == 3_000
     and distinct_indices == 1
+    and distinct_positions == 1
     and selected_references == 9_000_000
-    and selected_references > maximum_selected_index_references,
+    and selected_positions == 3_006_000
+    and selected_work == 12_006_000
+    and selected_work > maximum_selected_scene_work,
     "topology budget: compact hostile fixture does not cross the fixed cap",
 )
 topology_started = time.monotonic()
@@ -1394,9 +1671,9 @@ if topology_result is not None:
     topology_diagnostic = topology_result.stderr.lower()
     check(
         "8000000" in topology_diagnostic
-        and "index" in topology_diagnostic
+        and "position" in topology_diagnostic
         and "reference" in topology_diagnostic,
-        "topology budget: diagnostic does not identify the fixed reference cap",
+        "topology budget: diagnostic does not identify the combined work cap",
     )
 check(
     topology_elapsed < 2.0,
@@ -1409,9 +1686,9 @@ check(
 )
 
 # Mutation caught: counting each mesh definition only once misses scene-node
-# instancing.  This fixture has one mesh/primitive and one 3,000-index accessor,
-# which looks safely below the cap at the mesh-definition layer, but 3,000
-# selected nodes make the actual selected-scene work 9,000,000 references.
+# instancing.  This fixture has one mesh/primitive with 3,000 indices and 1,002
+# POSITION values, which is safely below the cap at the mesh-definition layer,
+# but 3,000 selected nodes make the actual selected-scene work 12,006,000 units.
 instanced_topology_case = root / "instanced-topology-budget"
 instanced_topology_case.mkdir()
 instanced_topology_source = instanced_topology_case / "shared-mesh-nodes.glb"
@@ -1425,15 +1702,23 @@ build_shared_node_scene(
     selected_node_total,
     mesh_primitive_total,
     mesh_definition_references,
+    mesh_definition_positions,
+    mesh_definition_work,
     instanced_selected_references,
+    instanced_selected_positions,
+    instanced_selected_work,
 ) = instanced_scene_work(instanced_topology_source)
 check(
     selected_node_total == 3_000
     and mesh_primitive_total == 1
     and mesh_definition_references == 3_000
-    and mesh_definition_references < maximum_selected_index_references
+    and mesh_definition_positions == 1_002
+    and mesh_definition_work == 4_002
+    and mesh_definition_work < maximum_selected_scene_work
     and instanced_selected_references == 9_000_000
-    and instanced_selected_references > maximum_selected_index_references,
+    and instanced_selected_positions == 3_006_000
+    and instanced_selected_work == 12_006_000
+    and instanced_selected_work > maximum_selected_scene_work,
     "instanced topology: fixture does not discriminate mesh-only counting",
 )
 instanced_topology_started = time.monotonic()
@@ -1455,9 +1740,9 @@ if instanced_topology_result is not None:
     instanced_topology_diagnostic = instanced_topology_result.stderr.lower()
     check(
         "8000000" in instanced_topology_diagnostic
-        and "index" in instanced_topology_diagnostic
+        and "position" in instanced_topology_diagnostic
         and "reference" in instanced_topology_diagnostic,
-        "instanced topology: diagnostic does not identify the fixed cap",
+        "instanced topology: diagnostic does not identify the combined work cap",
     )
 check(
     instanced_topology_elapsed < 2.0,
