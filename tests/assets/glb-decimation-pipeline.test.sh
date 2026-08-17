@@ -6691,6 +6691,114 @@ fi
 # stream ceiling is a test-frozen implementation clarification: the frozen
 # contract requires bounded subprocess output but did not assign a second cap.
 if [ "$review_section" = all ] || [ "$review_section" = M ]; then
+  PYTHONDONTWRITEBYTECODE=1 python3 - "$repo" <<'PY'
+import ast
+import sys
+from pathlib import Path
+
+
+repo = Path(sys.argv[1])
+drivers = (
+    repo / "tests/assets/glb-decimation-pipeline.test.sh",
+    repo / "tests/assets/glb-metrics.test.sh",
+    repo / "tests/assets/glb-silhouette.test.sh",
+    repo / "tests/assets/glb_fixture.py",
+    repo / "tests/assets/fake_blender.py",
+)
+
+
+def embedded_python_sources(path):
+    text = path.read_text(encoding="utf-8")
+    if path.suffix == ".py":
+        return [(str(path), text)]
+    lines = text.splitlines()
+    sources = []
+    index = 0
+    while index < len(lines):
+        if "<<'PY'" not in lines[index]:
+            index += 1
+            continue
+        start = index + 1
+        end = start
+        while end < len(lines) and lines[end] != "PY":
+            end += 1
+        if end == len(lines):
+            raise AssertionError(f"{path}:{index + 1}: unterminated Python driver")
+        sources.append(
+            (
+                f"{path}:{start + 1}-{end}",
+                "\n".join(lines[start:end]) + "\n",
+            )
+        )
+        index = end + 1
+    return sources
+
+
+def portability_violations(label, source):
+    try:
+        tree = ast.parse(source, filename=label, feature_version=9)
+    except SyntaxError as exc:
+        return [f"{label}: not Python 3.9 grammar: {exc.msg} at line {exc.lineno}"]
+
+    future_annotations = any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "__future__"
+        and any(alias.name == "annotations" for alias in node.names)
+        for node in tree.body
+    )
+    failures = []
+    for node in ast.walk(tree):
+        annotation = None
+        if isinstance(node, ast.arg):
+            annotation = node.annotation
+        elif isinstance(node, ast.AnnAssign):
+            annotation = node.annotation
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            annotation = node.returns
+        if annotation is not None and any(
+            isinstance(child, ast.BinOp) and isinstance(child.op, ast.BitOr)
+            for child in ast.walk(annotation)
+        ) and not future_annotations:
+            failures.append(
+                f"{label}:{node.lineno}: runtime-evaluated union annotation"
+            )
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "zip"
+            and any(keyword.arg == "strict" for keyword in node.keywords)
+        ):
+            failures.append(f"{label}:{node.lineno}: zip keyword requires Python 3.10")
+    return failures
+
+
+assert not portability_violations(
+    "compatible-control",
+    "from __future__ import annotations\ndef f(value: str | None) -> None:\n    pass\n",
+)
+assert any(
+    "runtime-evaluated union annotation" in failure
+    for failure in portability_violations(
+        "union-mutation",
+        "def f(value: str | None):\n    pass\n",
+    )
+)
+assert any(
+    "zip keyword requires Python 3.10" in failure
+    for failure in portability_violations(
+        "zip-mutation",
+        "list(zip((1,), (2,), strict=True))\n",
+    )
+)
+
+violations = []
+for driver in drivers:
+    for label, source in embedded_python_sources(driver):
+        violations.extend(portability_violations(label, source))
+if violations:
+    raise AssertionError("Python 3.9 driver regressions:\n- " + "\n- ".join(violations))
+PY
+
   PYTHONDONTWRITEBYTECODE=1 python3 - \
     "$decimate_script" "$tmp/review-transaction-terminal" "$repo" \
     "$fake_blender" <<'PY'
