@@ -6,7 +6,9 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
+import hashlib
 import re
+import subprocess
 from pathlib import Path
 
 runbook = Path("docs/design/assets/DECIMATION.md").read_text(encoding="utf-8")
@@ -18,6 +20,11 @@ evidence = Path("docs/design/assets/GLB-DECIMATION-EVIDENCE.md").read_text(
 production = Path("scripts/decimate-assets.py").read_text(encoding="utf-8")
 metrics = Path("scripts/glb_metrics.py").read_text(encoding="utf-8")
 silhouette = Path("scripts/glb-silhouette.py").read_text(encoding="utf-8")
+
+EXPECTED_PRODUCTION_BASE = "96149b5ff5121e89cf14c2a9dda98452e280853c"
+EXPECTED_DECIMATOR_SHA256 = (
+    "5b97ce8ee569cb175e861ff0fbd13f1a5682bb6e0944f8e96931c556733f1370"
+)
 
 
 def require(text: str, fragment: str, label: str) -> None:
@@ -439,6 +446,75 @@ if state_production_base != evidence_reproduction_base:
         f"mismatch: state={state_production_base} "
         f"evidence={evidence_reproduction_base}"
     )
+if state_production_base != EXPECTED_PRODUCTION_BASE:
+    raise SystemExit(
+        "glb-decimation-docs.test.sh: FAIL — declared production base is not "
+        f"the reviewed base: declared={state_production_base} "
+        f"reviewed={EXPECTED_PRODUCTION_BASE}"
+    )
+recorded_decimator_sha = require_single_commit(
+    evidence,
+    r"Decimation driver SHA-256 at the reproduction base:\s*"
+    r"`([0-9a-f]{64})`\.",
+    "evidence decimation-driver SHA-256",
+)
+actual_decimator_sha = hashlib.sha256(
+    Path("scripts/decimate-assets.py").read_bytes()
+).hexdigest()
+if recorded_decimator_sha != EXPECTED_DECIMATOR_SHA256:
+    raise SystemExit(
+        "glb-decimation-docs.test.sh: FAIL — evidence driver digest is not "
+        f"the reviewed digest: recorded={recorded_decimator_sha} "
+        f"reviewed={EXPECTED_DECIMATOR_SHA256}"
+    )
+if actual_decimator_sha != recorded_decimator_sha:
+    raise SystemExit(
+        "glb-decimation-docs.test.sh: FAIL — evidence/current driver digest "
+        f"mismatch: evidence={recorded_decimator_sha} "
+        f"current={actual_decimator_sha}"
+    )
+
+# Full clones must prove the declared commit and its production blob directly.
+# A depth-1 CI checkout may omit the ancestor commit object, so the immutable
+# reviewed commit+driver constants above remain the shallow-checkout authority.
+commit_probe = subprocess.run(
+    ["git", "cat-file", "-e", f"{state_production_base}^{{commit}}"],
+    check=False,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+)
+is_shallow = subprocess.run(
+    ["git", "rev-parse", "--is-shallow-repository"],
+    check=True,
+    stdout=subprocess.PIPE,
+    text=True,
+).stdout.strip() == "true"
+if commit_probe.returncode != 0 and not is_shallow:
+    raise SystemExit(
+        "glb-decimation-docs.test.sh: FAIL — declared production commit "
+        "does not resolve in a full checkout"
+    )
+if commit_probe.returncode == 0:
+    declared_driver = subprocess.run(
+        ["git", "show", f"{state_production_base}:scripts/decimate-assets.py"],
+        check=True,
+        stdout=subprocess.PIPE,
+    ).stdout
+    declared_driver_sha = hashlib.sha256(declared_driver).hexdigest()
+    if declared_driver_sha != actual_decimator_sha:
+        raise SystemExit(
+            "glb-decimation-docs.test.sh: FAIL — declared production commit "
+            f"driver mismatch: declared={declared_driver_sha} "
+            f"current={actual_decimator_sha}"
+        )
+    if subprocess.run(
+        ["git", "merge-base", "--is-ancestor", state_production_base, "HEAD"],
+        check=False,
+    ).returncode != 0:
+        raise SystemExit(
+            "glb-decimation-docs.test.sh: FAIL — declared production commit "
+            "is not an ancestor of HEAD"
+        )
 require(
     state,
     "persistent unreadability leaves an unknown public member untouched",
@@ -457,6 +533,7 @@ require_lesson_row(
     (
         "tests/assets/glb-decimation-docs.test.sh",
         "state/evidence production-base equality",
+        "production-driver identity",
     ),
     "stale operator/state lesson",
 )
