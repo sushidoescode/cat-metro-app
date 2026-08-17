@@ -723,8 +723,8 @@
       "triangle_reduction_percent": 98.949805
     },
     {
-      "byte_reduction": 40302788,
-      "byte_reduction_percent": 97.913855,
+      "byte_reduction": 21644480,
+      "byte_reduction_percent": 96.241883,
       "custody_agreements": {
         "derivative_record_derivative_filename_matches_derivative": true,
         "derivative_record_derivative_sha256_matches_derivative": true,
@@ -735,18 +735,18 @@
         "source_sidecar_claim_matches_source": true
       },
       "derivative_filename": "cat-blue-siamese-loaf.glb",
-      "derivative_sha256": "cc1ff113257d48994a94cfdff52554236034e3e6455d402de195461b8c8fc236",
-      "derivative_sidecar_sha256": "8209d8dcac1e70f31a3070801eeacd3eb3bad19654cb0135ae2c9d7416be4a59",
+      "derivative_sha256": "9a7b2ef923f923a78466f18d8bf0cfb82140aebbd30ba3e7cddd3f814fd2953c",
+      "derivative_sidecar_sha256": "2265679b91ff5feb5ab5ef7a277af6c3abfe1fda43e4dff2eccb5cceacc684e4",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           99855,
-          107145,
-          224663
+          224663,
+          107145
         ],
         "output_payload_sha256": [
           "46930de19a31d606f30ef02b1961e102d6bcadda16b394b2e01852055e250e11",
-          "48403c4d7fa420b0d4d0151bfbfe26015d0631864304ba4323439c46b0e3a6a5",
-          "ae9ac0c6ef34e9d8b47bc01fba39786285c94324bad2e64f48172c49a6951543"
+          "ae9ac0c6ef34e9d8b47bc01fba39786285c94324bad2e64f48172c49a6951543",
+          "48403c4d7fa420b0d4d0151bfbfe26015d0631864304ba4323439c46b0e3a6a5"
         ],
         "output_texture_role_payload_sha256": {
           "base_color": [
@@ -762,13 +762,13 @@
         "payload_bytes_identical": true,
         "source_payload_bytes": [
           99855,
-          107145,
-          224663
+          224663,
+          107145
         ],
         "source_payload_sha256": [
           "46930de19a31d606f30ef02b1961e102d6bcadda16b394b2e01852055e250e11",
-          "48403c4d7fa420b0d4d0151bfbfe26015d0631864304ba4323439c46b0e3a6a5",
-          "ae9ac0c6ef34e9d8b47bc01fba39786285c94324bad2e64f48172c49a6951543"
+          "ae9ac0c6ef34e9d8b47bc01fba39786285c94324bad2e64f48172c49a6951543",
+          "48403c4d7fa420b0d4d0151bfbfe26015d0631864304ba4323439c46b0e3a6a5"
         ],
         "source_texture_role_payload_sha256": {
           "base_color": [
@@ -787,7 +787,7 @@
       "kind": "cat",
       "output": {
         "animations": 0,
-        "bytes": 858688,
+        "bytes": 845188,
         "cameras": 0,
         "embedded_images": 3,
         "extensions_required": [],
@@ -803,27 +803,27 @@
         "skins": 0,
         "triangles": 14999,
         "uv_primitives": 1,
-        "vertices": 10472,
+        "vertices": 10050,
         "world_bounds": {
           "max": [
-            0.417325884103775,
-            0.4485729932785034,
-            0.4999879002571106
+            0.23955374956130981,
+            0.44859927892684937,
+            0.33060479164123535
           ],
           "min": [
-            -0.41722339391708374,
-            -0.44854575395584106,
-            -0.49988996982574463
+            -0.38129281997680664,
+            -0.37722525000572205,
+            -0.20951209962368011
           ]
         }
       },
       "preservation_diagnostics": [],
       "service": "tripo",
-      "sidecar_derivative_sha256": "cc1ff113257d48994a94cfdff52554236034e3e6455d402de195461b8c8fc236",
+      "sidecar_derivative_sha256": "9a7b2ef923f923a78466f18d8bf0cfb82140aebbd30ba3e7cddd3f814fd2953c",
       "sidecar_hash_agreement": true,
       "source": {
         "animations": 0,
-        "bytes": 41161476,
+        "bytes": 22489668,
         "cameras": 0,
         "embedded_images": 3,
         "extensions_required": [],
@@ -837,31 +837,31 @@
         "morph_targets": 0,
         "primitives": 1,
         "skins": 0,
-        "triangles": 1427775,
+        "triangles": 773061,
         "uv_primitives": 1,
-        "vertices": 737325,
+        "vertices": 399354,
         "world_bounds": {
           "max": [
-            0.4173875153064728,
+            0.23944392800331116,
             0.4485988914966583,
-            0.5
+            0.3305782377719879
           ],
           "min": [
-            -0.4173875153064728,
-            -0.4485988914966583,
-            -0.5
+            -0.38132739067077637,
+            -0.37682271003723145,
+            -0.20947305858135223
           ]
         }
       },
       "source_filename": "cat-blue-siamese-loaf.glb",
-      "source_sha256": "e3015351ec9bda2aebeafcc0ff23f5aa35512af4234c168d79cac750118070e3",
-      "source_sidecar_sha256": "ce8ea067634f88ee9fc967ea5a0dbc58df890477d3e1dc1905cc3f77a92dcec4",
-      "triangle_reduction": 1412776,
-      "triangle_reduction_percent": 98.949484
+      "source_sha256": "257e59ebac613e3260bfd1161b228ec2be4aa7024969b4b1a3fec2366ffe0097",
+      "source_sidecar_sha256": "93fd18c00ec6a1b369bed7849a0bfdb4c00cba5dfe6b16358995998a86bb1f66",
+      "triangle_reduction": 758062,
+      "triangle_reduction_percent": 98.059791
     },
     {
-      "byte_reduction": 41967412,
-      "byte_reduction_percent": 98.084071,
+      "byte_reduction": 39935836,
+      "byte_reduction_percent": 98.001359,
       "custody_agreements": {
         "derivative_record_derivative_filename_matches_derivative": true,
         "derivative_record_derivative_sha256_matches_derivative": true,
@@ -872,13 +872,13 @@
         "source_sidecar_claim_matches_source": true
       },
       "derivative_filename": "cat-yellow-longhair-wave.glb",
-      "derivative_sha256": "4e20de09cee1dcfa383bb708608f03b5f8c1aa78ca4a510a3064f435f5f87a27",
-      "derivative_sidecar_sha256": "a084bae339440e74e3b22b0f578fe1a62fe80c15474f4ffd62f717ad6cb9cfb1",
+      "derivative_sha256": "2eee06883d024631263485b48da067dd8042f66ef81fc669016731fa5fdaa1ef",
+      "derivative_sidecar_sha256": "b961427de158aba8377e3114cc301d4d144ee38e378df984d8140a31cb3d633e",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           98739,
-          142007,
-          181025
+          181025,
+          142007
         ],
         "output_payload_sha256": [
           "8e85b10b30dd7eb9bd716639d610a7c280436c77f1a196e42126a747b5ef7af3",
@@ -899,8 +899,8 @@
         "payload_bytes_identical": true,
         "source_payload_bytes": [
           98739,
-          142007,
-          181025
+          181025,
+          142007
         ],
         "source_payload_sha256": [
           "8e85b10b30dd7eb9bd716639d610a7c280436c77f1a196e42126a747b5ef7af3",
@@ -924,7 +924,7 @@
       "kind": "cat",
       "output": {
         "animations": 0,
-        "bytes": 819772,
+        "bytes": 814452,
         "cameras": 0,
         "embedded_images": 3,
         "extensions_required": [],
@@ -938,29 +938,29 @@
         "morph_targets": 0,
         "primitives": 1,
         "skins": 0,
-        "triangles": 15000,
+        "triangles": 14998,
         "uv_primitives": 1,
-        "vertices": 9565,
+        "vertices": 9399,
         "world_bounds": {
           "max": [
-            0.38476383686065674,
+            0.38525667786598206,
             0.5001108646392822,
             0.4086005985736847
           ],
           "min": [
             -0.3851708471775055,
-            -0.5000997185707092,
-            -0.4083852767944336
+            -0.47270748019218445,
+            -0.40261077880859375
           ]
         }
       },
       "preservation_diagnostics": [],
       "service": "tripo",
-      "sidecar_derivative_sha256": "4e20de09cee1dcfa383bb708608f03b5f8c1aa78ca4a510a3064f435f5f87a27",
+      "sidecar_derivative_sha256": "2eee06883d024631263485b48da067dd8042f66ef81fc669016731fa5fdaa1ef",
       "sidecar_hash_agreement": true,
       "source": {
         "animations": 0,
-        "bytes": 42787184,
+        "bytes": 40750288,
         "cameras": 0,
         "embedded_images": 3,
         "extensions_required": [],
@@ -974,9 +974,9 @@
         "morph_targets": 0,
         "primitives": 1,
         "skins": 0,
-        "triangles": 1494090,
+        "triangles": 1422808,
         "uv_primitives": 1,
-        "vertices": 763568,
+        "vertices": 726653,
         "world_bounds": {
           "max": [
             0.3852173089981079,
@@ -985,16 +985,16 @@
           ],
           "min": [
             -0.3852173089981079,
-            -0.5,
-            -0.4085644483566284
+            -0.4726581275463104,
+            -0.4024394452571869
           ]
         }
       },
       "source_filename": "cat-yellow-longhair-wave.glb",
-      "source_sha256": "8d7190fd24f552f874bf1d733f2870c44a24c27d6b50cfe1e32095f625fcc57c",
-      "source_sidecar_sha256": "e65414b151fa1dd868e9086c0e274ac61743aef8f8f26bc7bcaa6f49f99c8936",
-      "triangle_reduction": 1479090,
-      "triangle_reduction_percent": 98.996044
+      "source_sha256": "f91ccb7ff9b527ecef168d4285488ff647023fb70875f5403c31db8e2349d99d",
+      "source_sidecar_sha256": "bb787a4073833edfd54af3e401cfa00e73b5279592ba2d146b015d3f1ffe90e4",
+      "triangle_reduction": 1407810,
+      "triangle_reduction_percent": 98.945887
     },
     {
       "byte_reduction": 40621388,
@@ -1923,19 +1923,19 @@
   "schema_version": 1,
   "totals": {
     "assets": 15,
-    "byte_reduction": 830498016,
-    "byte_reduction_percent": 97.109804,
+    "byte_reduction": 809808132,
+    "byte_reduction_percent": 97.040337,
     "cats": 10,
-    "output_bytes": 24717404,
-    "output_triangles": 199998,
-    "output_vertices": 145750,
+    "output_bytes": 24698584,
+    "output_triangles": 199996,
+    "output_vertices": 145162,
     "props": 5,
-    "source_bytes": 855215420,
-    "source_triangles": 25352000,
-    "source_vertices": 13076948,
-    "triangle_reduction": 25152002,
-    "triangle_reduction_percent": 99.211115,
-    "vertex_reduction": 12931198,
-    "vertex_reduction_percent": 98.885443
+    "source_bytes": 834506716,
+    "source_triangles": 24626004,
+    "source_vertices": 12702062,
+    "triangle_reduction": 24426008,
+    "triangle_reduction_percent": 99.187867,
+    "vertex_reduction": 12556900,
+    "vertex_reduction_percent": 98.857178
   }
 }
