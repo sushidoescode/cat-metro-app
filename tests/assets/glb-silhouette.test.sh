@@ -964,6 +964,69 @@ check(
     is_complete_png(ordinary_output, 64),
     "ordinary output: rerender did not leave a PNG",
 )
+if ordinary_first is not None:
+    ordinary_record = re.fullmatch(
+        rf"{re.escape(str(source_template))} -> "
+        rf"{re.escape(str(ordinary_output))} "
+        r"\(\d+ vertices, \d+ filled pixels, [0-9.]+ coverage\)\n",
+        ordinary_first.stdout,
+    )
+    check(
+        ordinary_record is not None and ordinary_first.stderr == "",
+        "ordinary output: short-path success record changed",
+    )
+
+
+# A success record is public even when both rendered files remain private test
+# fixtures. Risk-shaped or nonprintable path values are represented without
+# changing the ordinary short-path record above.
+record_case = root / "success-record-boundary"
+record_case.mkdir()
+record_marker = "NEUTRAL_PRIVATE_SENTINEL"
+record_source = record_case / f"source\ncredential-{record_marker}.glb"
+record_output = record_case / f"output\n{record_marker}.png"
+shutil.copyfile(source_template, record_source)
+record_result = invoke(
+    record_source,
+    record_output,
+    "0",
+    "--size", "64",
+    "--splat-radius", "4",
+    "--min-coverage", "0.001",
+)
+check(
+    record_result is not None and record_result.returncode == 0,
+    "success record boundary: render failed",
+)
+if record_result is not None:
+    record_lines = record_result.stdout.splitlines()
+    check(record_result.stderr == "", "success record boundary wrote stderr")
+    check(
+        record_result.stdout.endswith("\n")
+        and len(record_lines) == 1
+        and all(character.isprintable() for character in record_lines[0])
+        and len(record_result.stdout.encode("utf-8")) <= 512,
+        "success record boundary is not one bounded printable line",
+    )
+    check(
+        record_marker not in record_result.stdout
+        and str(record_source) not in record_result.stdout
+        and str(record_output) not in record_result.stdout,
+        "success record boundary echoed a private path value",
+    )
+    check(
+        re.fullmatch(
+            r"\[redacted\] -> \[redacted\] "
+            r"\(\d+ vertices, \d+ filled pixels, [0-9.]+ coverage\)\n",
+            record_result.stdout,
+        )
+        is not None,
+        "success record boundary lost its stable redacted shape",
+    )
+check(
+    is_complete_png(record_output, 64),
+    "success record boundary did not leave the requested PNG",
+)
 
 
 # Mutations caught: following either kind of link and writing the final path

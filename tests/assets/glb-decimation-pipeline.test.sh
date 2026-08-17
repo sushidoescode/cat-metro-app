@@ -7329,6 +7329,111 @@ def later_asset_failure_rolls_back_batch_case(force: bool) -> None:
     assert_batch_terminal(case, old=force)
 
 
+def persistent_absent_rollback_retires_candidate_case() -> None:
+    case = setup_batch_case(
+        "persistent-absent-rollback-retirement",
+        force=False,
+    )
+    real_process_asset = module._process_asset
+    real_unlink_pair = module._unlink_pair_bounded
+    calls = 0
+    expected_hashes: tuple[str, str] | None = None
+
+    def fail_second_asset(*args, **kwargs):
+        nonlocal calls, expected_hashes
+        calls += 1
+        if calls == 2:
+            raise module.DecimationError("injected later asset failure")
+        pending = real_process_asset(*args, **kwargs)
+        expected_hashes = (
+            pending["expected_glb_sha"],
+            pending["expected_json_sha"],
+        )
+        return pending
+
+    def fail_rollback_unlink(first, second, message):
+        if "cleanup rollback could not remove published pair" in message:
+            raise module.DecimationError(
+                "injected persistent rollback unlink failure"
+            )
+        return real_unlink_pair(first, second, message)
+
+    with (
+        mock.patch.object(module, "_process_asset", new=fail_second_asset),
+        mock.patch.object(module, "_unlink_pair_bounded", new=fail_rollback_unlink),
+    ):
+        result, stdout, stderr, caught = run_main(case)
+    assert calls == 2
+    assert caught is None, repr(caught)
+    assert result == 1, (result, stdout, stderr)
+    assert stdout.count("source_triangles=") == 1, repr(stdout)
+    assert "output_triangles=" not in stdout
+    assert_one_diagnostic(stderr)
+    assert expected_hashes is not None
+    for final_glb, final_json, _ in case.batch_pairs:
+        assert not final_glb.exists() and not final_json.exists()
+    retired_paths = list(case.output.iterdir())
+    assert len(retired_paths) == 2, [path.name for path in retired_paths]
+    observed_hashes = set()
+    for path in retired_paths:
+        status = os.lstat(path)
+        assert stat.S_ISREG(status.st_mode) and status.st_nlink == 1
+        assert path.name.startswith(".")
+        observed_hashes.add(digest_file(path))
+    assert observed_hashes == set(expected_hashes)
+    assert_batch_sources_unchanged(case)
+
+
+def rollback_verification_retry_case(force: bool) -> None:
+    destination = "force" if force else "absent"
+    case = setup_batch_case(
+        f"rollback-verification-retry-{destination}",
+        force=force,
+    )
+    first_final = case.batch_pairs[0][0]
+    real_process_asset = module._process_asset
+    real_verified_member = module._verified_transaction_member
+    process_calls = 0
+    rollback_armed = False
+    target_checks = 0
+
+    def fail_second_asset(*args, **kwargs):
+        nonlocal process_calls, rollback_armed
+        process_calls += 1
+        if process_calls == 2:
+            rollback_armed = True
+            raise module.DecimationError("injected later asset failure")
+        return real_process_asset(*args, **kwargs)
+
+    def fail_first_rollback_check(path, *args, **kwargs):
+        nonlocal target_checks
+        if rollback_armed and same_observed_path(Path(path), first_final):
+            target_checks += 1
+            if target_checks == 1:
+                return False
+        return real_verified_member(path, *args, **kwargs)
+
+    with (
+        mock.patch.object(module, "_process_asset", new=fail_second_asset),
+        mock.patch.object(
+            module,
+            "_verified_transaction_member",
+            new=fail_first_rollback_check,
+        ),
+    ):
+        result, stdout, stderr, caught = run_main(case)
+    assert process_calls == 2
+    assert target_checks == 2, target_checks
+    assert caught is None
+    assert result == 1, (result, stdout, stderr)
+    assert stdout.count("source_triangles=") == 1, repr(stdout)
+    assert "output_triangles=" not in stdout
+    assert_one_diagnostic(stderr)
+    assert "later asset failure" in stderr
+    assert_batch_sources_unchanged(case)
+    assert_batch_terminal(case, old=force)
+
+
 def sequential_force_commit_failure_rolls_back_batch_case() -> None:
     case = setup_batch_case("sequential-force-commit-failure", force=True)
     real_unlink_pair = module._unlink_pair_bounded
@@ -7438,11 +7543,58 @@ def publication_recovery_aggregate_boundary_case() -> None:
     assert over_case.batch_pairs[0][2] is not None
     over_limit = sum(len(member) for member in over_case.batch_pairs[0][2])
     assert over_limit == exact_limit
-    with mock.patch.object(
-        module,
-        "MAX_PUBLICATION_ROLLBACK_BYTES",
-        over_limit,
-        create=True,
+    second_final_glb, second_final_json, second_old_pair = over_case.batch_pairs[1]
+    assert second_old_pair is not None
+    second_identities = {
+        second_final_glb: path_identity(second_final_glb),
+        second_final_json: path_identity(second_final_json),
+    }
+    real_promote_pair = module.promote_pair
+    real_receipt = module._sha256_receipt
+    real_replace = module.os.replace
+    observing_second = False
+    second_receipt_reads = 0
+    second_public_renames = 0
+
+    def observe_second_promotion(*args, **kwargs):
+        nonlocal observing_second
+        selected = same_observed_path(Path(args[2]), second_final_glb)
+        if selected:
+            observing_second = True
+        try:
+            return real_promote_pair(*args, **kwargs)
+        finally:
+            if selected:
+                observing_second = False
+
+    def observe_receipt(path, *args, **kwargs):
+        nonlocal second_receipt_reads
+        if observing_second and any(
+            same_observed_path(Path(path), member) for member in second_identities
+        ):
+            second_receipt_reads += 1
+        return real_receipt(path, *args, **kwargs)
+
+    def observe_replace(source, destination, *args, **kwargs):
+        nonlocal second_public_renames
+        if observing_second and any(
+            same_observed_path(Path(candidate), member)
+            for candidate in (source, destination)
+            for member in second_identities
+        ):
+            second_public_renames += 1
+        return real_replace(source, destination, *args, **kwargs)
+
+    with (
+        mock.patch.object(
+            module,
+            "MAX_PUBLICATION_ROLLBACK_BYTES",
+            over_limit,
+            create=True,
+        ),
+        mock.patch.object(module, "promote_pair", new=observe_second_promotion),
+        mock.patch.object(module, "_sha256_receipt", new=observe_receipt),
+        mock.patch.object(module.os, "replace", new=observe_replace),
     ):
         result, stdout, stderr, caught = run_main(over_case)
     assert caught is None
@@ -7456,8 +7608,37 @@ def publication_recovery_aggregate_boundary_case() -> None:
     assert "output_triangles=" not in stdout
     assert_one_diagnostic(stderr)
     assert "rollback" in stderr.lower() and "limit" in stderr.lower()
+    assert second_receipt_reads == 0, second_receipt_reads
+    assert second_public_renames == 0, second_public_renames
+    assert second_final_glb.read_bytes() == second_old_pair[0]
+    assert second_final_json.read_bytes() == second_old_pair[1]
+    assert path_identity(second_final_glb) == second_identities[second_final_glb]
+    assert path_identity(second_final_json) == second_identities[second_final_json]
     assert_batch_sources_unchanged(over_case)
     assert_batch_terminal(over_case, old=True)
+
+
+def diagnostic_whole_message_redaction_case() -> None:
+    case = setup_case("diagnostic-whole-message-redaction")
+    manifest = json.loads(case.manifest.read_text(encoding="utf-8"))
+    sentinel = "NEUTRAL_PRIVATE_SENTINEL"
+    key_shape = "credential"
+    manifest["assets"][0]["id"] = f"{key_shape} {sentinel}"
+    manifest["assets"][0]["kind"] = "unsupported"
+    case.manifest.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    result, stdout, stderr, caught = run_main(case)
+    assert caught is None
+    assert result == 1, (result, stdout, stderr)
+    assert stdout == ""
+    assert_one_diagnostic(stderr)
+    assert sentinel not in stderr
+    assert key_shape not in stderr.lower()
+    assert "unsupported" not in stderr.lower()
+    assert audit_lines(case) == []
+    assert list(case.output.iterdir()) == []
 
 
 def publication_recovery_production_ceiling_case() -> None:
@@ -9626,6 +9807,17 @@ for batch_force in (False, True):
         batch_force,
     )
 run_bounded(
+    "persistent-absent-rollback-retirement",
+    persistent_absent_rollback_retires_candidate_case,
+)
+for retry_force in (False, True):
+    run_bounded(
+        "rollback-verification-retry-"
+        f"{'force' if retry_force else 'absent'}",
+        rollback_verification_retry_case,
+        retry_force,
+    )
+run_bounded(
     "sequential-force-commit-failure",
     sequential_force_commit_failure_rolls_back_batch_case,
 )
@@ -9640,6 +9832,10 @@ run_bounded(
 run_bounded(
     "publication-recovery-production-ceiling",
     publication_recovery_production_ceiling_case,
+)
+run_bounded(
+    "diagnostic-whole-message-redaction",
+    diagnostic_whole_message_redaction_case,
 )
 run_bounded("json-numeric-boundary", json_numeric_boundary_case)
 run_bounded("provenance-finite-number", provenance_finite_number_case)

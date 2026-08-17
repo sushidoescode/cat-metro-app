@@ -1623,6 +1623,55 @@ check(
 )
 
 
+def success_record_redacts_risky_paths_and_external_uris():
+    marker = "NEUTRAL_PRIVATE_SENTINEL"
+    risky_path = fixture_root / f"metrics\ncredential-{marker}.glb"
+    risky_uri = f"https://example.invalid/{marker}/image.png"
+    risky_document = document("external")
+    risky_document["images"][0]["uri"] = risky_uri
+    write_document(risky_path, risky_document, binary_payload("external"))
+
+    completed = subprocess.run(
+        [sys.executable, str(script), str(risky_path)],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=2.0,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stderr == ""
+    assert completed.stdout.endswith("\n")
+    assert completed.stdout.count("\n") == 1
+    assert marker not in completed.stdout
+    assert risky_uri not in completed.stdout
+    record = json.loads(completed.stdout)
+    assert record["path"] == "[redacted]"
+    assert record["external_uris"] == ["[redacted]"]
+
+    benign_path = fixture_root / "external.glb"
+    benign = subprocess.run(
+        [sys.executable, str(script), str(benign_path)],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=2.0,
+    )
+    assert benign.returncode == 0 and benign.stderr == "", benign.stderr
+    benign_record = json.loads(benign.stdout)
+    assert benign_record["path"] == str(benign_path)
+    assert benign_record["external_uris"] == ["fixture-external.png"]
+
+
+check(
+    "success JSON redacts risky path and external URI values",
+    success_record_redacts_risky_paths_and_external_uris,
+)
+
+
 def implicit_texcoord0_is_required_during_inspection():
     control_document = document("two-primitives")
     negative_document = document("missing-one-uv")
