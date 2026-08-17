@@ -7356,6 +7356,38 @@ def later_asset_failure_rolls_back_batch_case(force: bool) -> None:
     assert_batch_terminal(case, old=force)
 
 
+def interruption_after_first_publication_case(force: bool) -> None:
+    destination = "force" if force else "absent"
+    case = setup_batch_case(
+        f"interruption-after-publication-{destination}",
+        force=force,
+    )
+    real_process_asset = module._process_asset
+    calls = 0
+
+    def interrupt_second_asset(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise KeyboardInterrupt("injected batch interruption")
+        return real_process_asset(*args, **kwargs)
+
+    with mock.patch.object(
+        module,
+        "_process_asset",
+        new=interrupt_second_asset,
+    ):
+        result, stdout, stderr, caught = run_main(case)
+    assert calls == 2
+    assert result is None
+    assert isinstance(caught, KeyboardInterrupt), repr(caught)
+    assert stdout.count("source_triangles=") == 1, repr(stdout)
+    assert "output_triangles=" not in stdout
+    assert stderr == ""
+    assert_batch_sources_unchanged(case)
+    assert_batch_terminal(case, old=force)
+
+
 def persistent_absent_rollback_retires_candidate_case() -> None:
     case = setup_batch_case(
         "persistent-absent-rollback-retirement",
@@ -10177,6 +10209,12 @@ for batch_force in (False, True):
         later_asset_failure_rolls_back_batch_case,
         batch_force,
     )
+    run_bounded(
+        f"interruption-after-publication-"
+        f"{'force' if batch_force else 'absent'}",
+        interruption_after_first_publication_case,
+        batch_force,
+    )
 run_bounded(
     "persistent-absent-rollback-retirement",
     persistent_absent_rollback_retires_candidate_case,
@@ -12221,6 +12259,105 @@ def exercise_unverified_candidate_hash(name):
     return findings
 
 
+def exercise_bounded_reader_unknown_old(name):
+    pair = make_pair(name, forced=True)
+    expected_glb_sha = digest_bytes(pair["old_glb"])
+    expected_json_sha = digest_bytes(pair["old_json"])
+    old_glb_status = os.lstat(pair["final_glb"])
+    old_glb_identity = (old_glb_status.st_dev, old_glb_status.st_ino)
+
+    mismatch = pair["directory"] / "definite-mismatch"
+    mismatch.write_bytes(pair["new_glb"])
+    module._remove_non_old_final(
+        mismatch,
+        expected_glb_sha,
+        module.MAX_DERIVATIVE_GLB_BYTES,
+    )
+
+    os.replace(pair["final_json"], pair["backup_json"])
+    pair["final_json"].write_bytes(pair["new_json"])
+    real_sha256 = module._sha256
+    real_unlink = Path.unlink
+    real_write_old_member = module._write_old_member
+    bounded_faults = 0
+    old_identity_unlinks = 0
+    blocked_rewrites = 0
+
+    def bounded_reader_fault(path):
+        nonlocal bounded_faults
+        candidate = Path(path)
+        if candidate == pair["final_glb"] and bounded_faults < 2:
+            bounded_faults += 1
+            raise module.DecimationError("injected bounded read failure")
+        return real_sha256(candidate)
+
+    def observe_unlink(path, *args, **kwargs):
+        nonlocal old_identity_unlinks
+        candidate = Path(path)
+        if candidate == pair["final_glb"] and lexists(candidate):
+            status = os.lstat(candidate)
+            if (status.st_dev, status.st_ino) == old_glb_identity:
+                old_identity_unlinks += 1
+        return real_unlink(candidate, *args, **kwargs)
+
+    def reject_old_glb_rewrite(destination, payload, expected_sha, maximum_bytes):
+        nonlocal blocked_rewrites
+        candidate = Path(destination)
+        if candidate == pair["final_glb"]:
+            blocked_rewrites += 1
+            return False
+        return real_write_old_member(
+            candidate,
+            payload,
+            expected_sha,
+            maximum_bytes,
+        )
+
+    caught = None
+    with (
+        mock.patch.object(module, "_sha256", new=bounded_reader_fault),
+        mock.patch.object(Path, "unlink", new=observe_unlink),
+        mock.patch.object(module, "_write_old_member", new=reject_old_glb_rewrite),
+    ):
+        try:
+            module._restore_old_pair(
+                pair["final_glb"],
+                pair["final_json"],
+                pair["backup_glb"],
+                pair["backup_json"],
+                expected_glb_sha,
+                expected_json_sha,
+                pair["old_glb"],
+                pair["old_json"],
+            )
+        except BaseException as exc:
+            caught = exc
+
+    findings = []
+    if lexists(mismatch):
+        findings.append(f"{name}: definitive mismatch was retained")
+    if bounded_faults != 2:
+        findings.append(
+            f"{name}: bounded-reader unknown was observed {bounded_faults} times"
+        )
+    if old_identity_unlinks:
+        findings.append(
+            f"{name}: exact old GLB identity was unlinked on unknown"
+        )
+    if blocked_rewrites:
+        findings.append(
+            f"{name}: recovery relied on a blocked old GLB rewrite"
+        )
+    if caught is not None:
+        findings.append(f"{name}: recovery raised {type(caught).__name__}")
+    if pair["final_glb"].is_file():
+        status = os.lstat(pair["final_glb"])
+        if (status.st_dev, status.st_ino) != old_glb_identity:
+            findings.append(f"{name}: exact old GLB identity changed")
+    findings.extend(exact_hash_recovery_errors(name, pair))
+    return findings
+
+
 def exercise_absent_replace_fault(
     name, phase, after_effect, cleanup_member=None
 ):
@@ -12374,6 +12511,8 @@ def child_scenario(sender, kind, arguments):
             findings = exercise_hash_read_fault(*arguments)
         elif kind == "candidate_hash":
             findings = exercise_unverified_candidate_hash(*arguments)
+        elif kind == "bounded_unknown":
+            findings = exercise_bounded_reader_unknown_old(*arguments)
         elif kind == "absent":
             findings = exercise_absent_replace_fault(*arguments)
         elif kind == "cleanup":
@@ -12430,6 +12569,7 @@ def run_bounded(kind, arguments):
 run_bounded("hash", ("hash-transient-old-glb", "final_glb", False))
 run_bounded("hash", ("hash-persistent-old-json", "final_json", True))
 run_bounded("candidate_hash", ("hash-unknown-candidate-json",))
+run_bounded("bounded_unknown", ("bounded-reader-unknown-old-glb",))
 
 run_bounded(
     "absent",
