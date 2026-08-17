@@ -12278,15 +12278,16 @@ def exercise_bounded_reader_unknown_old(name):
     pair["final_json"].write_bytes(pair["new_json"])
     real_sha256 = module._sha256
     real_unlink = Path.unlink
-    real_write_old_member = module._write_old_member
+    real_write_private_file = module._write_private_file
     bounded_faults = 0
     old_identity_unlinks = 0
-    blocked_rewrites = 0
+    write_faults = 0
+    old_missing_at_write = 0
 
     def bounded_reader_fault(path):
         nonlocal bounded_faults
         candidate = Path(path)
-        if candidate == pair["final_glb"] and bounded_faults < 2:
+        if candidate == pair["final_glb"] and bounded_faults < 4:
             bounded_faults += 1
             raise module.DecimationError("injected bounded read failure")
         return real_sha256(candidate)
@@ -12300,24 +12301,28 @@ def exercise_bounded_reader_unknown_old(name):
                 old_identity_unlinks += 1
         return real_unlink(candidate, *args, **kwargs)
 
-    def reject_old_glb_rewrite(destination, payload, expected_sha, maximum_bytes):
-        nonlocal blocked_rewrites
-        candidate = Path(destination)
-        if candidate == pair["final_glb"]:
-            blocked_rewrites += 1
-            return False
-        return real_write_old_member(
-            candidate,
-            payload,
-            expected_sha,
-            maximum_bytes,
-        )
+    def fail_old_glb_materialization(path, payload, mode=0o400):
+        nonlocal write_faults, old_missing_at_write
+        if payload == pair["old_glb"] and write_faults == 0:
+            write_faults += 1
+            if not lexists(pair["final_glb"]):
+                old_missing_at_write += 1
+            else:
+                status = os.lstat(pair["final_glb"])
+                if (status.st_dev, status.st_ino) != old_glb_identity:
+                    old_missing_at_write += 1
+            raise OSError("injected old-member materialization failure")
+        return real_write_private_file(path, payload, mode)
 
     caught = None
     with (
         mock.patch.object(module, "_sha256", new=bounded_reader_fault),
         mock.patch.object(Path, "unlink", new=observe_unlink),
-        mock.patch.object(module, "_write_old_member", new=reject_old_glb_rewrite),
+        mock.patch.object(
+            module,
+            "_write_private_file",
+            new=fail_old_glb_materialization,
+        ),
     ):
         try:
             module._restore_old_pair(
@@ -12336,17 +12341,21 @@ def exercise_bounded_reader_unknown_old(name):
     findings = []
     if lexists(mismatch):
         findings.append(f"{name}: definitive mismatch was retained")
-    if bounded_faults != 2:
+    if bounded_faults != 4:
         findings.append(
             f"{name}: bounded-reader unknown was observed {bounded_faults} times"
+        )
+    if write_faults != 1:
+        findings.append(
+            f"{name}: old-member write fault was observed {write_faults} times"
+        )
+    if old_missing_at_write:
+        findings.append(
+            f"{name}: exact old GLB identity was absent before materialization"
         )
     if old_identity_unlinks:
         findings.append(
             f"{name}: exact old GLB identity was unlinked on unknown"
-        )
-    if blocked_rewrites:
-        findings.append(
-            f"{name}: recovery relied on a blocked old GLB rewrite"
         )
     if caught is not None:
         findings.append(f"{name}: recovery raised {type(caught).__name__}")
