@@ -8521,6 +8521,113 @@ raise SystemExit(0)
                 signal_process_group(process_group, signal.SIGKILL)
                 wait_for_marked_tree(marker_record, 2)
 
+
+def successful_leader_detached_descendant_case() -> None:
+    case = setup_case("successful-leader-detached-descendant")
+    wrapper = case.root / "detached-descendant-blender.py"
+    marker = case.root / "detached-descendant.json"
+    descendant_source = '''
+import json
+import os
+import signal
+import sys
+import time
+from pathlib import Path
+
+sink = os.open(os.devnull, os.O_WRONLY)
+try:
+    os.dup2(sink, 1)
+    os.dup2(sink, 2)
+finally:
+    os.close(sink)
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+Path(sys.argv[1]).write_text(
+    json.dumps({
+        "pid": os.getpid(),
+        "pgrp": os.getpgrp(),
+        "leader_pid": int(sys.argv[2]),
+        "leader_pgrp": int(sys.argv[3]),
+        "attempted_bytes": 0,
+        "emitted_bytes": 0,
+        "state": "DETACHED",
+    }),
+    encoding="utf-8",
+)
+while True:
+    time.sleep(1)
+'''
+    wrapper.write_text(
+        f'''#!/usr/bin/env python3
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+if "--version" not in sys.argv[1:]:
+    os.execv(
+        sys.executable,
+        [sys.executable, {str(fake_blender)!r}, *sys.argv[1:]],
+    )
+audit_path = os.environ.get("FAKE_BLENDER_AUDIT")
+if audit_path:
+    with Path(audit_path).open("a", encoding="utf-8") as handle:
+        handle.write("version\\n")
+marker = Path({str(marker)!r})
+descendant_source = {descendant_source!r}
+subprocess.Popen(
+    [
+        sys.executable,
+        "-c",
+        descendant_source,
+        str(marker),
+        str(os.getpid()),
+        str(os.getpgrp()),
+    ],
+    stdin=subprocess.DEVNULL,
+)
+deadline = time.monotonic() + 2
+while not marker.exists() and time.monotonic() < deadline:
+    time.sleep(0.01)
+if not marker.exists():
+    raise SystemExit(72)
+print("Blender {module.BLENDER_VERSION}")
+print("build hash: {module.BLENDER_BUILD_HASH}")
+raise SystemExit(0)
+''',
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    case.arguments[case.arguments.index(str(fake_blender))] = str(wrapper)
+    case.blender = wrapper
+    marker_record = None
+    try:
+        started = time.monotonic()
+        result = run_main(case)
+        elapsed = time.monotonic() - started
+        marker_record = stream_marker(marker)
+        assert marker_record is not None, "detached descendant marker was not written"
+        assert marker_record.get("leader_pid") != marker_record["pid"]
+        assert marker_record.get("leader_pgrp") == marker_record["pgrp"]
+        assert marker_record["pgrp"] != os.getpgrp()
+        assert elapsed < 8, f"successful group cleanup was unbounded: {elapsed:.3f}s"
+        assert_success_pair(case, *result)
+        assert_fake_reached(case)
+        assert_source_unchanged(case)
+        assert wait_for_marked_tree(marker_record, 2), (
+            "successful leader returned while detached descendant survived",
+            marker_record,
+        )
+    finally:
+        if marker_record is None:
+            marker_record = stream_marker(marker)
+        if marker_record is not None:
+            process_group = marker_record["pgrp"]
+            assert isinstance(process_group, int)
+            if process_group_alive(process_group):
+                signal_process_group(process_group, signal.SIGKILL)
+                wait_for_marked_tree(marker_record, 2)
+
 def child_output_case(profile: str) -> None:
     placeholder = setup_case(f"child-output-{profile}")
     wrapper, _marker, _release = write_blender_wrapper(placeholder, profile)
@@ -8654,6 +8761,10 @@ for child_profile in (
 ):
     run_bounded(f"child-{child_profile}", child_output_case, child_profile)
 run_bounded("leader-exit-descendant-pipes", leader_exit_descendant_pipe_case)
+run_bounded(
+    "successful-leader-detached-descendant",
+    successful_leader_detached_descendant_case,
+)
 for child_phase in ("version", "asset"):
     for child_stream in ("stdout", "stderr"):
         run_bounded(
