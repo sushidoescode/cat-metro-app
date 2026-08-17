@@ -3,6 +3,13 @@
 Run date: **2026-08-16**. The evidence folder retains the frozen
 `glb-decimation-2026-08-15` name; that folder name is not the run date.
 
+Source-curation addendum: **2026-08-17**. Lane C executed the relayed human
+uniform-NO-plinth ruling under the H-1 evidentiary caveat recorded in frozen
+contract commit `77d66b43d06f18873b105239e63d27e2521542ff`. The branch is stacked on
+`task/GLB-DECIMATION` at exact commit
+`16e20e3fe9793ecaeb0f7865e66a55521eebf7db` and must not open a PR until
+PR #94 merges.
+
 ## Result and limits
 
 - Frozen contract commit: `bc34c6abf6ecf580465c061c2993a7536aeacf41`.
@@ -25,9 +32,11 @@ Run date: **2026-08-16**. The evidence folder retains the frozen
   first run. Reviewed colors, embedded textures, and cat badges remain mapped
   to the intended geometry.
 - This is **not shipping approval** and is not a hero-quality verdict.
-  Separately, the current candidate set is **SOURCE-ART SHIPPING REJECT** for
-  the source-art defects recorded below. The generated-asset licence ADR is
-  also still required before any generated file ships.
+  Separately, the current candidate set remains **SOURCE-ART SHIPPING REJECT**
+  for the remaining source-art defects recorded below. The 2026-08-17 curation
+  resolves the ruled loaf display disc and wave min-Y debris only. The
+  generated-asset licence ADR is also still required before any generated
+  file ships.
 
 The paid source GLBs and local derivatives remain outside Git at:
 
@@ -39,9 +48,43 @@ The paid source GLBs and local derivatives remain outside Git at:
 The generated GLBs and their JSON sidecars are ignored local assets and remain
 unlicensed to ship.
 
-All renders remain under the main checkout's untracked
+The original decimation renders remain under the main checkout's untracked
 `.catshots/glb-decimation-2026-08-15/` tree. `.catshots/` is **not ignored**;
 the render tree was deliberately left untracked and unstaged.
+
+## 2026-08-17 source-curation evidence
+
+The curation operates on ignored source copies transactionally, then invokes
+the existing decimation pipeline for an exact two-entry manifest. Recoverable
+pre-curation sources, source sidecars, derivatives, and derivative sidecars
+are retained at:
+
+```text
+/Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming/curation-backups/GLB-CURATION-2026-08-17-16e20e3
+```
+
+- `cat-blue-siamese-loaf`: select triangles whose glTF-space vertices are
+  strictly below `min_y + 0.08 * height`, only when that selection spans at
+  least 95% of the full X and Z footprint while the retained geometry spans
+  less than 80% on both axes. This selected only the wide min-Y display disc:
+  1,427,775 source triangles became 773,061.
+- `cat-yellow-longhair-wave`: seam-safe loose-part analysis found components
+  of 1,383,894, 71,282, and 38,914 triangles. Delete only a component whose
+  thinnest/full-maximum span is below 0.07 and whose minimum Y lies within 1%
+  of full height above min-Y. This selected only the 71,282-triangle foot
+  debris; the 38,914-triangle non-min-Y component remains outside the ruling.
+- The regenerated derivatives contain 14,999 and 14,998 triangles,
+  respectively. The other 13 derivative GLBs are byte-identical to their
+  pre-curation files and are hash-pinned by `tests/assets/glb-curation.test.sh`.
+
+Committed renders and their complete checksum inventory are under
+`evals/results/assets/glb-curation-2026-08-17/`. Lane C viewed the source
+comparison, changed-derivative comparison, and full 15-asset derivative grid
+at original detail. The ruled disc and min-Y debris are absent; the loaf body,
+paws, head, ears, whiskers, and tail and the wave cat, raised paw, feet, and
+tail remain legible. All 13 untouched before/after derivative PNG pairs are
+byte-identical. The evidence README records the looked-at disposition and the
+expected retained non-min-Y wave component.
 
 ## Reproducible command boundary
 
@@ -175,12 +218,12 @@ schema-1 sidecars, not copied from Blender stdout.
 
 Totals:
 
-- bytes: 855,215,420 → 24,717,404; reduction 830,498,016
-  (**97.109804%**);
-- vertices: 13,076,948 → 145,750; reduction 12,931,198
-  (**98.885443%**);
-- triangles: 25,352,000 → 199,998; reduction 25,152,002
-  (**99.211115%**);
+- bytes: 834,506,716 → 24,698,584; reduction 809,808,132
+  (**97.040337%**);
+- vertices: 12,702,062 → 145,162; reduction 12,556,900
+  (**98.857178%**);
+- triangles: 24,626,004 → 199,996; reduction 24,426,008
+  (**99.187867%**);
 - inventory: 15 assets = 10 cats + 5 props.
 
 | Asset | Kind | Bytes source → output | Vertices source → output | Triangles source → output | Byte reduction | Triangle reduction |
@@ -191,8 +234,8 @@ Totals:
 | `cat-green-shorthair` | cat | 72,580,724 → 2,455,408 | 991,419 → 11,469 | 1,916,166 → 15,000 | 96.616997% | 99.217187% |
 | `cat-wild-alley` | cat | 75,029,696 → 2,503,604 | 1,023,844 → 11,067 | 1,985,458 → 15,000 | 96.663183% | 99.244507% |
 | `cat-red-tabby-sitting` | cat | 40,916,992 → 792,700 | 730,535 → 9,460 | 1,428,306 → 15,000 | 98.062663% | 98.949805% |
-| `cat-blue-siamese-loaf` | cat | 41,161,476 → 858,688 | 737,325 → 10,472 | 1,427,775 → 14,999 | 97.913855% | 98.949484% |
-| `cat-yellow-longhair-wave` | cat | 42,787,184 → 819,772 | 763,568 → 9,565 | 1,494,090 → 15,000 | 98.084071% | 98.996044% |
+| `cat-blue-siamese-loaf` | cat | 22,489,668 → 845,188 | 399,354 → 10,050 | 773,061 → 14,999 | 96.241883% | 98.059791% |
+| `cat-yellow-longhair-wave` | cat | 40,750,288 → 814,452 | 726,653 → 9,399 | 1,422,808 → 14,998 | 98.001359% | 98.945887% |
 | `cat-green-shorthair-sit` | cat | 41,414,348 → 792,960 | 739,458 → 9,517 | 1,446,088 → 15,000 | 98.085301% | 98.962719% |
 | `cat-conductor` | cat | 74,835,880 → 3,031,236 | 1,015,478 → 11,656 | 1,960,372 → 15,000 | 95.949488% | 99.234839% |
 | `prop-depot-shed` | prop | 41,258,120 → 735,532 | 740,755 → 8,203 | 1,428,398 → 10,000 | 98.217243% | 99.299915% |
@@ -219,8 +262,8 @@ longest-extent scale drift ≤ 0.01, and maximum normalized-extent drift ≤ 0.0
 | `cat-green-shorthair` | 0.000062786 | 0.000369420 | 0.000253963 |
 | `cat-wild-alley` | 0.000211421 | 0.000187895 | 0.000258012 |
 | `cat-red-tabby-sitting` | 0.000131294 | 0.000097215 | 0.000280030 |
-| `cat-blue-siamese-loaf` | 0.000051245 | 0.000122130 | 0.000123817 |
-| `cat-yellow-longhair-wave` | 0.000203505 | 0.000210583 | 0.000662035 |
+| `cat-blue-siamese-loaf` | 0.000243604 | 0.000488147 | 0.000275818 |
+| `cat-yellow-longhair-wave` | 0.000069492 | 0.000164721 | 0.000137744 |
 | `cat-green-shorthair-sit` | 0.000076666 | 0.000110149 | 0.000015636 |
 | `cat-conductor` | 0.000155974 | 0.000123251 | 0.000495434 |
 | `prop-depot-shed` | 0.000083610 | 0.000051379 | 0.000018482 |
@@ -271,8 +314,8 @@ inspection. All seven custody booleans in the companion JSON are true.
 | `cat-green-shorthair` | `d1a40bfbc4beaba8ac5169260c8d18e4664212f2e9a656549a76dfd3ecf0790b` | `84bbb56e37c97f70c0500f82803a7359d8e7c451b294fc2524222c2fae487eee` | `96910d69ad0bfe424c410e0b9df6e137222d858a28322a5276add6228e9186e5` | `9bcd978598e942d139e573ea9cdd3afab7dd86439f0aa56524accc0d9c3b3333` |
 | `cat-wild-alley` | `b1d85cf314bbc295d7ca28af9c41f9c3bddecd81cfb84603a14648b55d5f462c` | `1b9d1a08924982f38bd24ac7fc138331f5f357efc500802cc1cf3d06567a6467` | `3fa010b59c3b5dccbe0eb54453e8d595736cbafa391a9f08effd9d052738479c` | `92f095b97e5c4f03116ac087c6852ebcaeabff611b67051faf2b5f2a96f7260b` |
 | `cat-red-tabby-sitting` | `418eaa31df9b65c975dd85bdac3f04ab73b64827d81248d6248b57c6e2a81b14` | `982049a7b96684a6c9d3723764a51f378a07887439b2a4d3de8d318e7216b575` | `3ea8e01d78cb058223c74f225e89512efc44f74f638c99133d7720675e8655b6` | `f40f32794ef55f2f2e797ea870c63fedd6c2959bd0b0facc7fd50f0f1d21d898` |
-| `cat-blue-siamese-loaf` | `e3015351ec9bda2aebeafcc0ff23f5aa35512af4234c168d79cac750118070e3` | `ce8ea067634f88ee9fc967ea5a0dbc58df890477d3e1dc1905cc3f77a92dcec4` | `cc1ff113257d48994a94cfdff52554236034e3e6455d402de195461b8c8fc236` | `8209d8dcac1e70f31a3070801eeacd3eb3bad19654cb0135ae2c9d7416be4a59` |
-| `cat-yellow-longhair-wave` | `8d7190fd24f552f874bf1d733f2870c44a24c27d6b50cfe1e32095f625fcc57c` | `e65414b151fa1dd868e9086c0e274ac61743aef8f8f26bc7bcaa6f49f99c8936` | `4e20de09cee1dcfa383bb708608f03b5f8c1aa78ca4a510a3064f435f5f87a27` | `a084bae339440e74e3b22b0f578fe1a62fe80c15474f4ffd62f717ad6cb9cfb1` |
+| `cat-blue-siamese-loaf` | `257e59ebac613e3260bfd1161b228ec2be4aa7024969b4b1a3fec2366ffe0097` | `93fd18c00ec6a1b369bed7849a0bfdb4c00cba5dfe6b16358995998a86bb1f66` | `9a7b2ef923f923a78466f18d8bf0cfb82140aebbd30ba3e7cddd3f814fd2953c` | `2265679b91ff5feb5ab5ef7a277af6c3abfe1fda43e4dff2eccb5cceacc684e4` |
+| `cat-yellow-longhair-wave` | `f91ccb7ff9b527ecef168d4285488ff647023fb70875f5403c31db8e2349d99d` | `bb787a4073833edfd54af3e401cfa00e73b5279592ba2d146b015d3f1ffe90e4` | `2eee06883d024631263485b48da067dd8042f66ef81fc669016731fa5fdaa1ef` | `b961427de158aba8377e3114cc301d4d144ee38e378df984d8140a31cb3d633e` |
 | `cat-green-shorthair-sit` | `2db4f94d7c59c36c01f1f1d51780b30a417001b5d91a10caf420e5e5c1d6c5b2` | `beb9e95db53e897809194921156c46da974e8519dca3c627b9787b2ca2b40cf5` | `a5791a945bac21cfe55e7e4cdbcd5cd3233c11997cd0f449972a12768cca93f8` | `360ea5e28ca3e09b51fc45c8360ebe04e5b0a6fd38c532f636252bead68439fb` |
 | `cat-conductor` | `f2cc476deccbcb4e72b74bd7d7e0bbd0e4c6bd3103149ce3697b85fa5260a9d1` | `9b66a992a560a590a06f435202b5bb246c3d2006dd6fda3b10ed2e059a28d9c4` | `3b0bdbe1a0af9377bfde62ebf2b633e694881dc81438f2814e717c4c71ab9e7d` | `83b5329451479e54719cd06a83445ab74f0bc58ef4dc4749b5b6e3cc50473e6b` |
 | `prop-depot-shed` | `5efb54812e9d03c15c8d7c085a840bfabb09fc3312495c3b85af2ffcf8047aed` | `4816eeb87183c47bd60283af934f43215f129c7dd7183be4455cc04d4192ac83` | `68994c2316e7c0b23252569bfc06cbc1155c29dd41798c8effdbbaba638844b1` | `0e6c7f6a9065e12b0f3da93605914672947a2a662175ed788470c81f5d736ae2` |
@@ -281,16 +324,16 @@ inspection. All seven custody booleans in the companion JSON are true.
 | `prop-trees` | `d94b1586f4eb44a5e61ac5499dfef4ec8e4ddc2125bdf6fc95b6d7948673d863` | `1aa63811903a869927c134161101aa57c8993adc34661c03f9e1aade049e3f0b` | `e34f39de9a0db8f977370d7f0808f44a28b9641a458ada4957f552c62271c0dd` | `96b29000ef1e8f03d0982ffbaa1ec3d5a476cfcff8241a1f35b3a29041495b34` |
 | `prop-desk-clutter` | `f42232e108bce9b9b12a5db6b8472412673a0dea9293cd9d896d43874bb4e9d5` | `393aca3bc5af36b19fed58e32dcd4e975542d1beafe85c0fe85a774830946ced` | `d0403b93dc3db30ec3f7e0b825ba7b48f4af7b79094c6b262c7bfa2fb268ec4d` | `e75ba87683bd0f468871608a0c079adf89e46eca86fecda248997b204da713b4` |
 
-## Silhouette evidence — all 30 individual renders
+## Silhouette evidence — all 30 current source/derivative renders
 
-The inventory is exactly 15 `before/*.png` and 15 `after/*.png` in manifest
-order, with no unexpected file in either directory. Coverage below is exact
-filled-pixel count divided by 270,400, using the renderer's warm-paper
-background semantics. Every file exceeds the 0.01 gate. The reviewer viewed
-all individual pairs; outer silhouettes and intentional appendages remained
-intelligible.
+The table retains the original 13 unchanged source/derivative pairs and uses
+the committed `source-after/` and `derivative-after/` files for the two curated
+rows. Coverage is exact filled-pixel count divided by 270,400, using the
+renderer's warm-paper background semantics. Every file exceeds the 0.01 gate.
+The reviewed pairs preserve intelligible outer silhouettes and intentional
+appendages.
 
-| Asset | Before coverage | Before PNG SHA-256 | After coverage | After PNG SHA-256 |
+| Asset | Source coverage | Source PNG SHA-256 | Derivative coverage | Derivative PNG SHA-256 |
 |---|---:|---|---:|---|
 | `cat-red-tabby` | 0.336623520710 | `816e58667aa20ef7748e00637ca9a959409f05054df88f91e983ebc50575ede2` | 0.194622781065 | `e4c365b84e2a4d730402775d95bb0de11534089ce7c380194cfc644ad6b631d4` |
 | `cat-blue-siamese` | 0.212906804734 | `1f5c951980c716e82094d5a81042ef607cb1441d5758c04f3cbf77e1665a041b` | 0.147928994083 | `4dc258bf08c0b067e9d5c7d2a3408091bac2506593f77f119dfec6c958704d22` |
@@ -298,8 +341,8 @@ intelligible.
 | `cat-green-shorthair` | 0.270684171598 | `b8ff3ff0a6508ac48ab79f273c041eb55e7359838309f64bfac416ce1c145786` | 0.168287721893 | `22c6a6261c23a9b5d59d6256fdf5c6efa4257d47b28dc1a011a196f7d5651fdc` |
 | `cat-wild-alley` | 0.266619822485 | `065373f36ebd527ead3809273c2c3b1e242a99780a182f14ee15dc7c20435c14` | 0.169315828402 | `43d281c384692ec8db097c8d8fbeec587c534b5bd3b0cc64d93673065a522605` |
 | `cat-red-tabby-sitting` | 0.363690828402 | `642ab605fb9ccdd8efbe7e25282810ef47880bdac11473f463b99d3e626fbe00` | 0.198513313609 | `9b5fc0fd1fa3a7f54f2fe406b0293427127394e8cdcf25403466dbe6bdd0c0f9` |
-| `cat-blue-siamese-loaf` | 0.352034023669 | `c8c7144da20bade27e1f168a83f01d12e28c4385ef870549ea3e2b783a2e8396` | 0.170462278107 | `570faca782723d32feb587a0f735ec9fa804218b46d473cbad7b2e6470c19088` |
-| `cat-yellow-longhair-wave` | 0.381109467456 | `f3810df944b2c6ae029ac00aeb1c0fcc96c6d494c0069a589e19cb5347394a17` | 0.202148668639 | `236f4a4131704407d4cb1cefe52779c4cc8fd8b6af73d6fbeaf2fb05742b3c40` |
+| `cat-blue-siamese-loaf` | 0.352300295858 | `a08113a1a979a15c612a34135d965bd72d46c17fe83dd9058fab03aa7fd50ce2` | 0.184870562130 | `24b3e8007d9d46a5211f85522ad66ae1ea549d304860ee8a6dcd54be07cb7796` |
+| `cat-yellow-longhair-wave` | 0.395998520710 | `9cc5ae89fd689caeb2201f2f6453a108794f9119d5d6d9eb680366755b3c384c` | 0.210828402367 | `6a9838b5eb96640dc461b272b18b5aca3a869b554986f4d9795a42420e165ce6` |
 | `cat-green-shorthair-sit` | 0.359900147929 | `c6464f6a56fb331f9a5098b45e295f556e6986a05a29c5bfc1f8fe9c678ee39b` | 0.192381656805 | `6f22e4bf816c03537eff100f6a9520829c922cd5dd147452ba0104583028b6ec` |
 | `cat-conductor` | 0.254223372781 | `31090cb98888afd5a2e93e571552a8855f371f24324c91cfa759c278830ff108` | 0.156568047337 | `bcef82bc042f636f61e9ef6099f70b26fc0a884b323eb222c9699b087f64fd01` |
 | `prop-depot-shed` | 0.536630917160 | `a4b26f058d072c0b3336ad0933555291e5c37e9b74651b5f3c9d46e20ec6f790` | 0.148010355030 | `d708bdf67344d239c9014a028707b9752d3616fa6de4efba12e21936cc80186d` |
@@ -308,13 +351,23 @@ intelligible.
 | `prop-trees` | 0.376475591716 | `c3243e40d60bc1e491896b044fbd8d1879153f08b4472efe837c8bcd9cd6079c` | 0.150654585799 | `8b07d5e982eb04c8f8cd6c01efb1ead3632724bcdcaa5ff793e5e9d291409e38` |
 | `prop-desk-clutter` | 0.239948224852 | `dbb506d76cb1e36d59c436a789d6c631dd6405b063d601bc9ddb2ff5a09e1e01` | 0.115695266272 | `c3c8ae7aee5837b8fee8ff7d10873f335fa604f2e1df42a724d8f02f5455ca73` |
 
-Silhouette contact sheets:
+Original pre-curation silhouette contact sheets:
 
 | Path | Dimensions | SHA-256 |
 |---|---:|---|
 | `.catshots/glb-decimation-2026-08-15/before-grid.png` | 2600×1560 | `01edebbbe53ada4db60855b6413d09977ace40226be5e15bb948be29af89bc54` |
 | `.catshots/glb-decimation-2026-08-15/after-grid.png` | 2600×1560 | `4014f185bff0c99222b24e5399a0c1525473ab8fc8e054e47eda0287f4bce584` |
 | `.catshots/glb-decimation-2026-08-15/comparison-grid.png` | 2600×3120 | `0ed07846d71b6772273e3c4b6f6eaf72be9a8214326a2b03c1988e1ba1fc4e89` |
+
+Current committed curation contact sheets:
+
+| Path under `evals/results/assets/glb-curation-2026-08-17/` | Dimensions | SHA-256 |
+|---|---:|---|
+| `source-comparison.png` | 2080×520 | `193b04304c9615128c96e4f8619664db53d7c0af156ab858debb1885cb99c880` |
+| `changed-derivative-comparison.png` | 2080×520 | `43efbb545691e74621216b815d6c7ca164c9f46f561cb3ede94a9ba76f1dae9b` |
+| `derivative-before-grid.png` | 2600×1560 | `1d9f09d3fde235722a1bc982fe1d9b0d3a59492b66464e9ec231afda2f926025` |
+| `derivative-after-grid.png` | 2600×1560 | `6b49427adc43f2abccfeba374b6bde924ef90ca922b0f388a44bf80cb71baf25` |
+| `derivative-comparison-grid.png` | 2600×3120 | `085e8afef6ad299be8813d41e403608ca4595ad32db9539465ad1b07b4ab6c7d` |
 
 The exact-head temporary rebuild hashes were
 `66d8e9dd5a9bb7a06a89491bcd1136fa88dba28e651079f622b148a60fa6ba80`
@@ -326,18 +379,17 @@ The exact-head temporary rebuild hashes were
 and identical non-date PNG chunks; only ImageMagick's run-time date metadata
 changed, so these temporary hashes do not replace the recorded-file hashes.
 
-The exact-head comparison grid and the `prop-toy-engine` source/derivative pair
-were viewed at original detail. No new silhouette loss appeared: cat ears,
-paws, tails, poses, the conductor outline, and the prop roofs, openings,
-canopies, clutter, and train outline remained intelligible. The existing
-14/15 target-scale approval, board-scale-only condition for
-`prop-toy-engine`, and separate source-art shipping rejection therefore remain
-unchanged.
+The current committed comparison grid and both changed source/derivative pairs
+were viewed at original detail. The ruled geometry is absent and no new
+silhouette loss appeared. The 13 untouched derivative PNG pairs are
+byte-identical. The existing 14/15 target-scale decimation approval and
+board-scale-only condition for `prop-toy-engine` remain unchanged; the
+remaining source-art shipping rejection is narrowed as recorded below.
 
 ## Material-lit color evidence and visual verdict
 
-Silhouettes alone do not establish material appearance. The independent
-review therefore also inspected all 30 yaw-25 material-lit individual PNGs;
+Silhouettes alone do not establish material appearance. The original
+decimation review inspected all 30 yaw-25 material-lit individual PNGs;
 five source/derivative pairs (10 individual PNGs) at yaw 205° for
 `cat-red-tabby`, `cat-blue-siamese`, `cat-yellow-longhair`,
 `cat-green-shorthair`, and `cat-wild-alley`; five source/derivative pairs
@@ -347,7 +399,11 @@ five source/derivative pairs (10 individual PNGs) at yaw 205° for
 comparison grids at original detail. Other PNGs present under `color-yaw205/`
 are legacy diagnostics and were not used for this verdict; the recorded
 five-pair grid hash below is authoritative. Every yaw-25 individual is 640×640
-RGBA. The full yaw-25 inventory and hashes are:
+RGBA. The two curated-asset rows below are retained as historical
+pre-curation color diagnostics; current geometry evidence for those rows is
+the committed silhouette set above. Curation preserved the exact embedded
+texture payloads and material-role bindings, as the machine metrics record.
+The full original yaw-25 inventory and hashes are:
 
 | Asset | Source color PNG SHA-256 | Derivative color PNG SHA-256 |
 |---|---|---|
@@ -367,7 +423,7 @@ RGBA. The full yaw-25 inventory and hashes are:
 | `prop-trees` | `ee78bd6ed0eed4ecab20420ba479b8228a27d455e1ae550e2ec2d2043a1ee4c5` | `deb3d7387ef234b217e776363f761abe5fc626783e61204a85d5a66376ab8ed0` |
 | `prop-desk-clutter` | `ad4cc1070579859e60eb0cb793b8e5dfe108142d15bf7091de6fee2397c09c55` | `fa50ffb37814eeca9bf8144d1157e9b238f9c8b38f517e7ad7718367815dd531` |
 
-The four current reviewed grids are:
+The four original reviewed color grids are:
 
 | Path | Dimensions | SHA-256 |
 |---|---:|---|
@@ -386,8 +442,8 @@ Per-asset visual disposition:
 | `cat-green-shorthair` | APPROVE | Former widespread seams are fully gone; diamond and color retained. Mild boundary faceting remains. |
 | `cat-wild-alley` | APPROVE decimation only | Star and texture retained; no cracks. The separate source-art rejection remains. |
 | `cat-red-tabby-sitting` | APPROVE | Circle and garment/face remain intact; no crack. Mild smoothing. |
-| `cat-blue-siamese-loaf` | APPROVE decimation only | Square and color remain intact; no crack. Mild face/eye faceting. The source plinth inconsistency remains. |
-| `cat-yellow-longhair-wave` | APPROVE decimation only | No new seam/crack and gross appearance retained. The separate source-art rejection remains. |
+| `cat-blue-siamese-loaf` | APPROVE | Curated source and regenerated derivative remove the ruled display disc; body and appendage silhouettes remain intact. Mild face/eye faceting remains. |
+| `cat-yellow-longhair-wave` | APPROVE decimation only | Curated source and regenerated derivative remove the ruled min-Y foot debris with no new seam/crack. The separate badge and non-min-Y source-art rejection remains. |
 | `cat-green-shorthair-sit` | APPROVE | Diamond, color, and silhouette remain intact; the cleanest Tripo result. |
 | `cat-conductor` | APPROVE | Former seams are gone; teal/orange/cream/navy palette, hat, and scarf retained. Minor hero-scale texture blockiness. |
 | `prop-depot-shed` | APPROVE | Seam network is gone; door, roof, and base preserved. Hard edges are slightly softened. |
@@ -396,7 +452,7 @@ Per-asset visual disposition:
 | `prop-trees` | APPROVE | No cracks; grouped silhouette, colors, and bases remain intact. Intentional low-poly faceting is redistributed/smoothed. |
 | `prop-desk-clutter` | APPROVE | Cup, steam, pencils, tiny trains, and track remain intact. Tiny wheel/rail detail softens; not hero quality. |
 
-## Source-art shipping rejection and deferred plinth work
+## Source-art shipping rejection and curation status
 
 The decimator did not create the following defects; they exist in the source
 renders and remain in the derivatives. They nevertheless block this candidate
@@ -406,17 +462,19 @@ set from shipping as current source art:
   upright, with no bent ear. The star badge itself is present and survives
   decimation.
 - `cat-yellow-longhair-wave`: diamond tag rather than the required triangle;
-  floating oval plus loose foot debris/base fragment.
-- display-base consistency: `cat-blue-siamese-loaf` carries a conspicuous
-  display plinth while comparable cats do not, and the yellow-wave source has
-  the loose base geometry above. Plinth/base normalization remains a separate
-  contract; this evidence neither removes nor ratifies those bases.
+  the separate non-min-Y floating oval remains outside the narrow curation
+  ruling.
+
+The uniform-NO-plinth decision is now resolved for this inventory. Lane C
+removed the loaf display disc and the wave min-Y foot debris from the sources
+and regenerated both derivatives. The strict geometry predicates, source and
+derivative before/after hashes, and looked-at renders are recorded above.
 
 Therefore **SOURCE-ART SHIPPING REJECT** is independent of the 14/15
 target-scale decimation approval. No generated candidate may be promoted into
 tracked Unity art or represented as licensed to ship until the source defects,
-plinth decision, and generated-asset licence ADR are resolved. Board/Home
-wiring is also outside this evidence PR.
+and generated-asset licence ADR are resolved. Board/Home wiring is also
+outside this evidence PR.
 
 ## Authoring validation
 
@@ -424,6 +482,11 @@ The final evidence gate runs from the evidence worktree at the recorded code
 HEAD, with no Unity, emulator, adb, network, credential, or `.env` access:
 
 ```bash
+bash tests/assets/glb-curation.test.sh
+GLB_CURATION_ARTIFACT_ROOT=/Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming \
+GLB_CURATION_BASELINE_ROOT=/Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming/curation-backups/GLB-CURATION-2026-08-17-16e20e3/derivatives-before \
+GLB_CURATION_BLENDER=/opt/homebrew/bin/blender \
+  bash tests/assets/glb-curation.test.sh
 bash tests/assets/glb-decimation-evidence.test.sh
 GLB_DECIMATION_ARTIFACT_ROOT=/Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming \
   bash tests/assets/glb-decimation-evidence.test.sh
@@ -438,9 +501,10 @@ The companion JSON is additionally checked for exact manifest order, 15/10/5
 inventory, category/global bands, recomputed totals, sidecar hash agreement,
 source custody, empty preservation diagnostics, exact embedded payload and
 texture-role preservation, and current render hashes. The companion JSON
-remains the unmodified machine authority for this remediation; only this
-Markdown record and its tracked validator change. Generated GLBs, sidecars,
-and PNGs remain local and untracked.
+was recalculated only where the two curated sources invalidate prior entries;
+the other 13 asset records remain exact. Generated GLBs and sidecars remain
+local and ignored. The curation PNGs and their checksum inventory are
+committed under `evals/results/assets/glb-curation-2026-08-17/`.
 
 Fresh exact-head observed results on 2026-08-16:
 
