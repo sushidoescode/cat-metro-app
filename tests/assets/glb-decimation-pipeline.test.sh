@@ -7035,6 +7035,19 @@ def same_observed_path(left: Path, right: Path) -> bool:
     return observed_path_key(left) == observed_path_key(right)
 
 
+def public_final_members(case: types.SimpleNamespace) -> set[Path]:
+    pairs = getattr(
+        case,
+        "batch_pairs",
+        [(case.final_glb, case.final_json, case.old_pair)],
+    )
+    return {
+        member
+        for final_glb, final_json, _ in pairs
+        for member in (final_glb, final_json)
+    }
+
+
 def assert_fake_reached(case: types.SimpleNamespace) -> None:
     assert audit_lines(case) == ["version", "asset"]
     records = fake_records(case)
@@ -7079,9 +7092,10 @@ def assert_success_pair(
 def assert_old_public_pair(case: types.SimpleNamespace) -> None:
     assert case.old_pair is not None
     actual_entries = set(case.output.iterdir())
+    public_members = public_final_members(case)
     observed = {
         "file_count": len(actual_entries),
-        "backup_count": sum(".backup-" in path.name for path in actual_entries),
+        "nonpublic_count": len(actual_entries - public_members),
         "glb": (
             "old"
             if case.final_glb.is_file()
@@ -7128,19 +7142,15 @@ def assert_batch_terminal(case: types.SimpleNamespace, *, old: bool) -> None:
         else:
             assert old_pair is None
     actual_entries = set(case.output.iterdir())
+    nonpublic_entries = actual_entries - public_final_members(case)
     observed = {
         "states": states,
         "file_count": len(actual_entries),
-        "backup_count": sum(".backup-" in path.name for path in actual_entries),
-        "retired_count": sum(".retired-" in path.name for path in actual_entries),
+        "nonpublic_count": len(nonpublic_entries),
     }
     expected_state = "old" if old else "absent"
     assert states == [expected_state] * len(case.batch_pairs), observed
     assert actual_entries == expected_entries, observed
-    assert not any(
-        ".backup-" in path.name or ".retired-" in path.name
-        for path in case.output.iterdir()
-    ), observed
 
 
 def lock_release_terminal_case() -> None:
@@ -7229,19 +7239,26 @@ def temporary_cleanup_terminal_case(force: bool, after_effect: bool) -> None:
     real_temporary_directory = module.tempfile.TemporaryDirectory
     injected = False
     held = []
+    targeted = []
 
     class CleanupFault:
         def __init__(self, *args, **kwargs) -> None:
             self.inner = real_temporary_directory(*args, **kwargs)
-            self.target = kwargs.get("prefix") == ".glb-decimation-"
-            if self.target:
-                held.append(self)
+            self.target = False
+            held.append(self)
 
         def __enter__(self):
             return self.inner.__enter__()
 
         def __exit__(self, *args):
             nonlocal injected
+            self.target = (
+                not targeted
+                and case.final_glb.is_file()
+                and case.final_json.is_file()
+            )
+            if self.target:
+                targeted.append(self)
             if (
                 self.target
                 and
@@ -7263,11 +7280,11 @@ def temporary_cleanup_terminal_case(force: bool, after_effect: bool) -> None:
         result = run_main(case)
     try:
         assert injected, f"temporary cleanup {effect} seam was not reached"
-        assert len(held) == 1
+        assert len(targeted) == 1
         assert_source_unchanged(case)
         if after_effect:
             assert_success_pair(case, *result)
-            assert not Path(held[0].inner.name).exists()
+            assert not Path(targeted[0].inner.name).exists()
             return
 
         main_result, stdout, stderr, caught = result
@@ -7280,25 +7297,25 @@ def temporary_cleanup_terminal_case(force: bool, after_effect: bool) -> None:
         assert "output_triangles=" not in stdout
         assert_one_diagnostic(stderr)
         assert "cleanup" in stderr.lower()
-        residue = Path(held[0].inner.name)
+        residue = Path(targeted[0].inner.name)
         assert residue.is_dir()
-        expected_entries = {residue.name}
+        expected_entries = {residue}
         if force:
             assert case.old_pair is not None
             assert case.final_glb.read_bytes() == case.old_pair[0]
             assert case.final_json.read_bytes() == case.old_pair[1]
-            expected_entries.update({case.final_glb.name, case.final_json.name})
+            expected_entries.update({case.final_glb, case.final_json})
         else:
             assert not case.final_glb.exists()
             assert not case.final_json.exists()
-        actual_entries = {path.name for path in case.output.iterdir()}
-        assert actual_entries == expected_entries, (
-            sorted(actual_entries),
-            sorted(expected_entries),
-        )
-        assert not any(
-            ".backup-" in path.name or ".retired-" in path.name
-            for path in case.output.iterdir()
+        actual_entries = set(case.output.iterdir())
+        assert {
+            observed_path_key(path) for path in actual_entries
+        } == {
+            observed_path_key(path) for path in expected_entries
+        }, (
+            sorted(path.name for path in actual_entries),
+            sorted(path.name for path in expected_entries),
         )
     finally:
         for wrapper in held:
@@ -7822,31 +7839,43 @@ def sequential_force_commit_failure_rolls_back_batch_case() -> None:
 
 def preunlink_receipt_read_failure_restores_single_publication_case() -> None:
     case = setup_case("preunlink-receipt-read-failure", force=True)
+    assert case.old_identities is not None
     real_receipt = module._sha256_receipt
     real_unlink_pair = module._unlink_pair_bounded
     injected = 0
     commit_unlinks = 0
+    commit_active = False
 
-    def fail_backup_json_receipt(path, label, maximum_bytes):
+    def fail_old_json_receipt(path, label, maximum_bytes):
         nonlocal injected
         candidate = Path(path)
-        if ".backup-" in candidate.name and case.final_json.name in candidate.name:
+        if (
+            commit_active
+            and same_observed_path(candidate.parent, case.output)
+            and not same_observed_path(candidate, case.final_json)
+            and path_identity(candidate) == case.old_identities["json"]
+        ):
             injected += 1
-            raise OSError("injected backup JSON receipt read failure")
+            raise OSError("injected old JSON receipt read failure")
         return real_receipt(path, label, maximum_bytes)
 
     def observe_unlink(first, second, message):
         nonlocal commit_unlinks
-        if "commit old-backup cleanup" in message:
+        if commit_active:
             commit_unlinks += 1
         return real_unlink_pair(first, second, message)
 
     def direct_single_commit(completed_publications):
+        nonlocal commit_active
         assert len(completed_publications) == 1
-        return module._commit_publication(completed_publications[0])
+        commit_active = True
+        try:
+            return module._commit_publication(completed_publications[0])
+        finally:
+            commit_active = False
 
     with (
-        mock.patch.object(module, "_sha256_receipt", new=fail_backup_json_receipt),
+        mock.patch.object(module, "_sha256_receipt", new=fail_old_json_receipt),
         mock.patch.object(module, "_unlink_pair_bounded", new=observe_unlink),
         mock.patch.object(
             module,
@@ -7944,10 +7973,11 @@ def publication_recovery_aggregate_boundary_case() -> None:
         result, stdout, stderr, caught = run_main(over_case)
     assert caught is None
     actual_entries = set(over_case.output.iterdir())
+    nonpublic_entries = actual_entries - public_final_members(over_case)
     assert result == 1, {
         "return_code": result,
         "file_count": len(actual_entries),
-        "backup_count": sum(".backup-" in path.name for path in actual_entries),
+        "nonpublic_count": len(nonpublic_entries),
     }
     assert stdout.count("source_triangles=") == 2, repr(stdout)
     assert "output_triangles=" not in stdout
