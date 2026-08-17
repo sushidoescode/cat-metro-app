@@ -12,6 +12,8 @@ Run date: **2026-08-16**. The evidence folder retains the frozen
   The executed renderer and decimation-script bytes are identical to that
   exact tree; the isolated 15-asset Blender queue reran without changing the
   retained local GLBs or sidecars.
+- Decimation driver SHA-256 at the reproduction base:
+  `5b97ce8ee569cb175e861ff0fbd13f1a5682bb6e0944f8e96931c556733f1370`.
 - The reviewed `--force` queue completed 15/15 with exact category and global
   triangle bands, intact source custody, valid schema-1 sidecars, and no
   staging, backup, or process residue.
