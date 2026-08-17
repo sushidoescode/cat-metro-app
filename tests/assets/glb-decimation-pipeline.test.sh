@@ -9984,6 +9984,28 @@ def legacy_public_cli_case() -> None:
     assert not violations, "; ".join(violations)
 
 
+def argument_parse_diagnostic_case() -> None:
+    hostile_value = "not-a-valid-option\nNEUTRAL_PARSE_SENTINEL\t" + "x" * 4_096
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--unsupported-option",
+            hostile_value,
+        ],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=3,
+    )
+    assert result.returncode == 2, result.returncode
+    assert result.stdout == b"", result.stdout
+    stderr = result.stderr.decode("utf-8")
+    assert_one_diagnostic(stderr)
+    assert "Traceback" not in stderr
+
+
 def successful_leader_detached_descendant_case() -> None:
     case = setup_case("successful-leader-detached-descendant")
     wrapper = case.root / "detached-descendant-blender.py"
@@ -10296,6 +10318,7 @@ run_bounded("leader-exit-descendant-pipes", leader_exit_descendant_pipe_case)
 run_bounded("successful-cleanup-owned-group", successful_cleanup_owned_group_case)
 run_bounded("missing-waitid-compatibility", missing_waitid_compatibility_case)
 run_bounded("legacy-public-cli", legacy_public_cli_case)
+run_bounded("argument-parse-diagnostic", argument_parse_diagnostic_case)
 run_bounded(
     "successful-leader-detached-descendant",
     successful_leader_detached_descendant_case,
