@@ -6862,6 +6862,69 @@ def setup_case(
     )
 
 
+def setup_batch_case(label: str, *, force: bool) -> types.SimpleNamespace:
+    case = setup_case(label, force=force, filename="first.glb")
+    second_source = case.input / "second.glb"
+    second_sidecar = Path(f"{second_source}.json")
+    write_glb(second_source, triangles=30_000)
+    second_sidecar.write_text(
+        json.dumps(
+            {
+                "service": "meshy",
+                "task_id": "fixture-task-second",
+                "timestamp_utc": "2026-08-15T12:34:56Z",
+                "plan_tier": "paid",
+                "prompt": "transaction terminal fixture second",
+                "note": "local fixture",
+                "sha256": digest_file(second_source),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest = json.loads(case.manifest.read_text(encoding="utf-8"))
+    manifest["assets"].append(
+        {
+            "id": "terminal-fixture-second",
+            "kind": "cat",
+            "service": "meshy",
+            "out": second_source.name,
+            "prompt": "transaction terminal fixture second",
+        }
+    )
+    case.manifest.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    second_final_glb = case.output / second_source.name
+    second_final_json = Path(f"{second_final_glb}.json")
+    second_old_pair = None
+    if force:
+        write_glb(second_final_glb, triangles=14_000)
+        second_final_json.write_text(
+            json.dumps({"generation": "frozen-old-pair-second"}, sort_keys=True)
+            + "\n",
+            encoding="utf-8",
+        )
+        second_old_pair = (
+            second_final_glb.read_bytes(),
+            second_final_json.read_bytes(),
+        )
+    case.batch_pairs = [
+        (case.final_glb, case.final_json, case.old_pair),
+        (second_final_glb, second_final_json, second_old_pair),
+    ]
+    case.batch_sources = [
+        (case.source, case.source_bytes),
+        (case.source_sidecar, case.sidecar_bytes),
+        (second_source, second_source.read_bytes()),
+        (second_sidecar, second_sidecar.read_bytes()),
+    ]
+    return case
+
+
 def child_environment(
     case: types.SimpleNamespace,
     *,
@@ -7005,9 +7068,69 @@ def assert_success_pair(
 
 def assert_old_public_pair(case: types.SimpleNamespace) -> None:
     assert case.old_pair is not None
-    assert case.final_glb.read_bytes() == case.old_pair[0]
-    assert case.final_json.read_bytes() == case.old_pair[1]
-    assert set(case.output.iterdir()) == {case.final_glb, case.final_json}
+    actual_entries = set(case.output.iterdir())
+    observed = {
+        "file_count": len(actual_entries),
+        "backup_count": sum(".backup-" in path.name for path in actual_entries),
+        "glb": (
+            "old"
+            if case.final_glb.is_file()
+            and case.final_glb.read_bytes() == case.old_pair[0]
+            else "non-old"
+        ),
+        "json": (
+            "old"
+            if case.final_json.is_file()
+            and case.final_json.read_bytes() == case.old_pair[1]
+            else "non-old"
+        ),
+    }
+    assert case.final_glb.read_bytes() == case.old_pair[0], observed
+    assert case.final_json.read_bytes() == case.old_pair[1], observed
+    assert actual_entries == {case.final_glb, case.final_json}, observed
+
+
+def assert_batch_sources_unchanged(case: types.SimpleNamespace) -> None:
+    for path, expected in case.batch_sources:
+        assert path.read_bytes() == expected
+
+
+def assert_batch_terminal(case: types.SimpleNamespace, *, old: bool) -> None:
+    expected_entries = set()
+    states = []
+    for final_glb, final_json, old_pair in case.batch_pairs:
+        if not final_glb.exists() and not final_json.exists():
+            state = "absent"
+        elif final_glb.is_file() and final_json.is_file():
+            state = (
+                "old"
+                if old_pair is not None
+                and final_glb.read_bytes() == old_pair[0]
+                and final_json.read_bytes() == old_pair[1]
+                else "non-old"
+            )
+        else:
+            state = "partial"
+        states.append(state)
+        if old:
+            assert old_pair is not None
+            expected_entries.update((final_glb, final_json))
+        else:
+            assert old_pair is None
+    actual_entries = set(case.output.iterdir())
+    observed = {
+        "states": states,
+        "file_count": len(actual_entries),
+        "backup_count": sum(".backup-" in path.name for path in actual_entries),
+        "retired_count": sum(".retired-" in path.name for path in actual_entries),
+    }
+    expected_state = "old" if old else "absent"
+    assert states == [expected_state] * len(case.batch_pairs), observed
+    assert actual_entries == expected_entries, observed
+    assert not any(
+        ".backup-" in path.name or ".retired-" in path.name
+        for path in case.output.iterdir()
+    ), observed
 
 
 def lock_release_terminal_case() -> None:
@@ -7175,6 +7298,172 @@ def temporary_cleanup_terminal_case(force: bool, after_effect: bool) -> None:
         assert_old_public_pair(case)
     else:
         assert list(case.output.iterdir()) == []
+
+
+def later_asset_failure_rolls_back_batch_case(force: bool) -> None:
+    destination = "force" if force else "absent"
+    case = setup_batch_case(
+        f"later-asset-failure-{destination}",
+        force=force,
+    )
+    real_process_asset = module._process_asset
+    calls = 0
+
+    def fail_second_asset(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise module.DecimationError("injected later asset failure")
+        return real_process_asset(*args, **kwargs)
+
+    with mock.patch.object(module, "_process_asset", new=fail_second_asset):
+        result, stdout, stderr, caught = run_main(case)
+    assert calls == 2
+    assert caught is None
+    assert result == 1
+    assert stdout.count("source_triangles=") == 1, repr(stdout)
+    assert "output_triangles=" not in stdout
+    assert_one_diagnostic(stderr)
+    assert "later asset failure" in stderr
+    assert_batch_sources_unchanged(case)
+    assert_batch_terminal(case, old=force)
+
+
+def sequential_force_commit_failure_rolls_back_batch_case() -> None:
+    case = setup_batch_case("sequential-force-commit-failure", force=True)
+    real_unlink_pair = module._unlink_pair_bounded
+    cleanup_order = []
+    injected = False
+
+    def fail_second_cleanup(first, second, message):
+        nonlocal injected
+        first_path = Path(first)
+        if "commit old-backup cleanup" in message:
+            member = (
+                "second"
+                if case.batch_pairs[1][0].name in first_path.name
+                else "first"
+            )
+            cleanup_order.append(member)
+            if member == "second" and not injected:
+                injected = True
+                raise module.DecimationError(
+                    "injected second publication cleanup failure"
+                )
+        return real_unlink_pair(first, second, message)
+
+    with mock.patch.object(
+        module,
+        "_unlink_pair_bounded",
+        new=fail_second_cleanup,
+    ):
+        result, stdout, stderr, caught = run_main(case)
+    assert injected
+    assert cleanup_order == ["first", "second"], cleanup_order
+    assert caught is None
+    assert result == 1
+    assert stdout.count("source_triangles=") == 2, repr(stdout)
+    assert "output_triangles=" not in stdout
+    assert_one_diagnostic(stderr)
+    assert "second publication cleanup failure" in stderr
+    assert_batch_sources_unchanged(case)
+    assert_batch_terminal(case, old=True)
+
+
+def preunlink_receipt_read_failure_restores_single_publication_case() -> None:
+    case = setup_case("preunlink-receipt-read-failure", force=True)
+    real_receipt = module._sha256_receipt
+    real_unlink_pair = module._unlink_pair_bounded
+    injected = 0
+    commit_unlinks = 0
+
+    def fail_backup_json_receipt(path, label, maximum_bytes):
+        nonlocal injected
+        candidate = Path(path)
+        if ".backup-" in candidate.name and case.final_json.name in candidate.name:
+            injected += 1
+            raise OSError("injected backup JSON receipt read failure")
+        return real_receipt(path, label, maximum_bytes)
+
+    def observe_unlink(first, second, message):
+        nonlocal commit_unlinks
+        if "commit old-backup cleanup" in message:
+            commit_unlinks += 1
+        return real_unlink_pair(first, second, message)
+
+    def direct_single_commit(completed_publications):
+        assert len(completed_publications) == 1
+        return module._commit_publication(completed_publications[0])
+
+    with (
+        mock.patch.object(module, "_sha256_receipt", new=fail_backup_json_receipt),
+        mock.patch.object(module, "_unlink_pair_bounded", new=observe_unlink),
+        mock.patch.object(
+            module,
+            "_commit_completed_publications",
+            new=direct_single_commit,
+        ),
+    ):
+        result, stdout, stderr, caught = run_main(case)
+    assert injected == 1
+    assert commit_unlinks == 0
+    assert caught is None
+    assert result == 1
+    assert stdout.count("source_triangles=") == 1, repr(stdout)
+    assert "output_triangles=" not in stdout
+    assert_one_diagnostic(stderr)
+    assert "receipt read failure" in stderr
+    assert_source_unchanged(case)
+    assert_old_public_pair(case)
+
+
+def publication_recovery_aggregate_boundary_case() -> None:
+    exact_case = setup_case("publication-recovery-aggregate-exact", force=True)
+    assert exact_case.old_pair is not None
+    exact_limit = sum(len(member) for member in exact_case.old_pair)
+    with mock.patch.object(
+        module,
+        "MAX_PUBLICATION_ROLLBACK_BYTES",
+        exact_limit,
+        create=True,
+    ):
+        exact_result = run_main(exact_case)
+    assert_success_pair(exact_case, *exact_result)
+    assert_source_unchanged(exact_case)
+
+    over_case = setup_batch_case(
+        "publication-recovery-aggregate-plus-one-pair",
+        force=True,
+    )
+    assert over_case.batch_pairs[0][2] is not None
+    over_limit = sum(len(member) for member in over_case.batch_pairs[0][2])
+    assert over_limit == exact_limit
+    with mock.patch.object(
+        module,
+        "MAX_PUBLICATION_ROLLBACK_BYTES",
+        over_limit,
+        create=True,
+    ):
+        result, stdout, stderr, caught = run_main(over_case)
+    assert caught is None
+    actual_entries = set(over_case.output.iterdir())
+    assert result == 1, {
+        "return_code": result,
+        "file_count": len(actual_entries),
+        "backup_count": sum(".backup-" in path.name for path in actual_entries),
+    }
+    assert stdout.count("source_triangles=") == 2, repr(stdout)
+    assert "output_triangles=" not in stdout
+    assert_one_diagnostic(stderr)
+    assert "rollback" in stderr.lower() and "limit" in stderr.lower()
+    assert_batch_sources_unchanged(over_case)
+    assert_batch_terminal(over_case, old=True)
+
+
+def publication_recovery_production_ceiling_case() -> None:
+    assert getattr(module, "MAX_PUBLICATION_ROLLBACK_BYTES", None) == (
+        128 * 1024 * 1024
+    )
 
 
 @contextlib.contextmanager
@@ -9330,6 +9619,28 @@ for cleanup_force in (False, True):
             cleanup_force,
             cleanup_after_effect,
         )
+for batch_force in (False, True):
+    run_bounded(
+        f"later-asset-failure-{'force' if batch_force else 'absent'}",
+        later_asset_failure_rolls_back_batch_case,
+        batch_force,
+    )
+run_bounded(
+    "sequential-force-commit-failure",
+    sequential_force_commit_failure_rolls_back_batch_case,
+)
+run_bounded(
+    "preunlink-receipt-read-failure",
+    preunlink_receipt_read_failure_restores_single_publication_case,
+)
+run_bounded(
+    "publication-recovery-aggregate-boundary",
+    publication_recovery_aggregate_boundary_case,
+)
+run_bounded(
+    "publication-recovery-production-ceiling",
+    publication_recovery_production_ceiling_case,
+)
 run_bounded("json-numeric-boundary", json_numeric_boundary_case)
 run_bounded("provenance-finite-number", provenance_finite_number_case)
 run_bounded("success-record-before-effect", success_record_write_case, False)

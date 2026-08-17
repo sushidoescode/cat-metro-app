@@ -1902,6 +1902,93 @@ check(
 )
 
 
+def aggregate_world_bounds_work_is_pretransformed_and_inclusive():
+    base_document = document("valid")
+    base_binary = binary_payload("valid")
+    base_primitive = base_document["meshes"][0]["primitives"][0]
+
+    exact_document = copy.deepcopy(base_document)
+    exact_document["meshes"][0]["primitives"] = [
+        copy.deepcopy(base_primitive) for _ in range(3)
+    ]
+    exact_path = fixture_root / "aggregate-world-bounds-exact.glb"
+    write_document(exact_path, exact_document, base_binary)
+
+    over_document = copy.deepcopy(base_document)
+    over_document["meshes"][0]["primitives"] = [
+        copy.deepcopy(base_primitive) for _ in range(2)
+    ]
+    over_document["nodes"].append({"mesh": 0})
+    selected_scene = over_document.get("scene", 0)
+    over_document["scenes"][selected_scene]["nodes"] = [0, 1]
+    over_path = fixture_root / "aggregate-world-bounds-plus-one-instance.glb"
+    write_document(over_path, over_document, base_binary)
+
+    exact_instances = (
+        len(exact_document["scenes"][exact_document.get("scene", 0)]["nodes"])
+        * len(exact_document["meshes"][0]["primitives"])
+    )
+    over_instances = (
+        len(over_document["scenes"][over_document.get("scene", 0)]["nodes"])
+        * len(over_document["meshes"][0]["primitives"])
+    )
+    assert exact_instances == 3
+    assert over_instances == exact_instances + 1
+    exact_work = exact_instances * 8
+
+    restore_limit = set_temporary_constant("MAX_WORLD_BOUNDS_WORK", exact_work)
+    real_transform = module._transform_point
+    try:
+        exact = module.inspect_glb(exact_path)
+        assert exact["primitives"] == 3
+
+        corner_transforms = 0
+
+        def observing_transform(*args, **kwargs):
+            nonlocal corner_transforms
+            corner_transforms += 1
+            return real_transform(*args, **kwargs)
+
+        module._transform_point = observing_transform
+        rejection = None
+        try:
+            module.inspect_glb(over_path)
+        except module.GlbError as exc:
+            rejection = exc
+        if rejection is None:
+            raise AssertionError(
+                "aggregate world-bounds work was accepted after "
+                f"{corner_transforms} corner transforms"
+            )
+        folded = str(rejection).lower()
+        assert "world" in folded and "bound" in folded and "work" in folded, (
+            str(rejection)
+        )
+        assert corner_transforms == 0, (
+            "aggregate world-bounds work was rejected after "
+            f"{corner_transforms} corner transforms"
+        )
+    finally:
+        module._transform_point = real_transform
+        restore_limit()
+
+
+check(
+    "aggregate selected-node primitive world-bounds work is rejected before transforms",
+    aggregate_world_bounds_work_is_pretransformed_and_inclusive,
+)
+
+
+def world_bounds_work_production_ceiling_is_pinned():
+    assert getattr(module, "MAX_WORLD_BOUNDS_WORK", None) == 8_000_000
+
+
+check(
+    "aggregate world-bounds work production ceiling is 8000000 transforms",
+    world_bounds_work_production_ceiling_is_pinned,
+)
+
+
 def aggregate_geometry_work_is_predecoded_and_inclusive():
     base_document = document("valid")
     base_binary = binary_payload("valid")
