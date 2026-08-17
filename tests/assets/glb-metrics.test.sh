@@ -1627,8 +1627,11 @@ def success_record_redacts_risky_paths_and_external_uris():
     marker = "NEUTRAL_PRIVATE_SENTINEL"
     risky_path = fixture_root / f"metrics\ncredential-{marker}.glb"
     risky_uri = f"https://example.invalid/{marker}/image.png"
+    risky_extension = f"VENDOR_credential_{marker}"
     risky_document = document("external")
     risky_document["images"][0]["uri"] = risky_uri
+    risky_document["extensionsUsed"] = [risky_extension]
+    risky_document["extensionsRequired"] = [risky_extension]
     write_document(risky_path, risky_document, binary_payload("external"))
 
     completed = subprocess.run(
@@ -1649,6 +1652,8 @@ def success_record_redacts_risky_paths_and_external_uris():
     record = json.loads(completed.stdout)
     assert record["path"] == "[redacted]"
     assert record["external_uris"] == ["[redacted]"]
+    assert record["extensions_used"] == ["[redacted]"]
+    assert record["extensions_required"] == ["[redacted]"]
 
     benign_path = fixture_root / "external.glb"
     benign = subprocess.run(
@@ -1664,6 +1669,20 @@ def success_record_redacts_risky_paths_and_external_uris():
     benign_record = json.loads(benign.stdout)
     assert benign_record["path"] == str(benign_path)
     assert benign_record["external_uris"] == ["fixture-external.png"]
+
+    benign_extension_path = fixture_root / "extension.glb"
+    benign_extension = subprocess.run(
+        [sys.executable, str(script), str(benign_extension_path)],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=2.0,
+    )
+    assert benign_extension.returncode == 0 and benign_extension.stderr == ""
+    benign_extension_record = json.loads(benign_extension.stdout)
+    assert benign_extension_record["extensions_used"] == ["VENDOR_unreviewed"]
 
 
 check(
