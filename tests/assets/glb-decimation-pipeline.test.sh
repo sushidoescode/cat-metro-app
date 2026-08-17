@@ -7145,16 +7145,20 @@ def temporary_cleanup_terminal_case(force: bool, after_effect: bool) -> None:
         assert "cleanup" in stderr.lower()
         residue = Path(held[0].inner.name)
         assert residue.is_dir()
-        expected_entries = {residue}
+        expected_entries = {residue.name}
         if force:
             assert case.old_pair is not None
             assert case.final_glb.read_bytes() == case.old_pair[0]
             assert case.final_json.read_bytes() == case.old_pair[1]
-            expected_entries.update({case.final_glb, case.final_json})
+            expected_entries.update({case.final_glb.name, case.final_json.name})
         else:
             assert not case.final_glb.exists()
             assert not case.final_json.exists()
-        assert set(case.output.iterdir()) == expected_entries
+        actual_entries = {path.name for path in case.output.iterdir()}
+        assert actual_entries == expected_entries, (
+            sorted(actual_entries),
+            sorted(expected_entries),
+        )
         assert not any(
             ".backup-" in path.name or ".retired-" in path.name
             for path in case.output.iterdir()
