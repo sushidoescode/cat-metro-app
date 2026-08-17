@@ -18,10 +18,17 @@ docs/design/assets/CAT-MANIFEST.json
   +  unity/Assets/Art/Generated/incoming/decimated/<manifest out>.json
 ```
 
-Sources and source sidecars are immutable inputs. The orchestrator processes
-assets in manifest order after preflighting the complete queue. The batch is not
-all-or-nothing: if a later asset fails, an earlier accepted derivative pair
-remains accepted and later assets are not started.
+Sources and source sidecars are immutable inputs. The orchestrator preflights
+and privately snapshots the complete queue, then processes assets in manifest
+order. A catchable pre-commit failure is batch-terminal: unless an after-effect cleanup
+report can be normalized to an exact committed run with no private-root
+residue, the orchestrator rolls every completed publication back in reverse
+manifest order and does not start another asset. An absent destination returns
+to no public final pair, or to an exact privately retired pair if deletion is
+unavailable; a forced destination returns to its exact old public pair. This
+normalization is not one filesystem-atomic transaction. An operating-system
+kill, power loss, filesystem fault, or uncatchable termination still requires
+the recovery procedure below.
 
 ## Commands and paths
 
@@ -191,6 +198,15 @@ All manifest entries and source custody records are preflighted before Blender
 runs. An expected validation failure exits nonzero and prints a concise
 `glb-decimation: <diagnostic>` line on standard error.
 
+Before the Blender version probe, the orchestrator performs a full-queue path
+and filesystem-identity census over every source GLB, source sidecar, and
+present final member. It rejects cross-entry path or identity reuse, then
+bounded-reads each regular single-link source GLB and source sidecar pair into
+a private mode-0700 snapshot. Blender and provenance construction use that
+snapshot, not a later reopen of the mutable source path. The orchestrator
+reverifies both the immutable originals and private snapshots immediately
+before publication.
+
 Manifest IDs are validated before even the Blender version probe. They must be
 nonempty, have no leading/trailing whitespace, and be printable single-line
 strings; ordinary printable Unicode, spaces, and mixed case remain valid. An
@@ -252,6 +268,44 @@ The GLB parser additionally rejects malformed headers/chunks, invalid JSON,
 bad accessor/buffer relationships, invalid scene references or cycles,
 non-finite geometry/transforms, and other unsupported glTF structure before
 its metrics are trusted.
+
+### Parser and aggregate work ceilings
+
+Every ceiling in this subsection is inclusive: exact equality is accepted;
+the first unit beyond it is rejected before the named expensive work begins.
+An otherwise-invalid value still fails its semantic validation. In particular,
+a non-integer token at its character ceiling must still decode to a finite
+number.
+
+- The shared strict decoder accepts JSON integer tokens through 4,300 digits
+  excluding a leading minus, and non-integer tokens through 4,300 characters
+  including sign, decimal point, and exponent syntax. NaN, Infinity, and
+  duplicate object keys are rejected. Inspected GLB documents additionally
+  have a 16 MiB GLB JSON chunk and 256 nesting levels; the depth limit describes
+  GLB document/property inspection, not arbitrary manifest or sidecar nesting.
+- Geometry inspection permits 8,000,000 combined POSITION-value and
+  index-reference units across all meshes, including unselected meshes.
+  Unindexed primitives charge their POSITION count twice. Repeated primitives
+  and shared accessors are charged per primitive occurrence, before any
+  POSITION decode.
+- Sparse validation permits 8,000,000 sparse values from sparse.count across
+  all accessors, including unreferenced accessors, before any sparse index is
+  read.
+- Image inspection permits 8 MiB per embedded image payload and 64 MiB
+  aggregate embedded-image work. The aggregate charges bufferView byteLength,
+  data-URI encoded characters, and every repeated image entry is charged again;
+  rejection precedes image decoding or hashing.
+- Selected-scene world bounds permit 8,000,000 world-bounds corner transforms,
+  charged as eight per selected node/primitive instance, before any corner is
+  transformed.
+- World-position iteration permits 8,000,000 selected-instance POSITION
+  values, precharged before an iterator is returned. Reusing one mesh through
+  multiple selected nodes charges every instance.
+- The silhouette renderer separately permits 8,000,000 combined selected
+  index-reference and POSITION-value units across selected mesh instances
+  before strict inspection. Its strict all-mesh geometry ceiling separately
+  includes unselected meshes, closing the formerly deferred unselected-mesh
+  path.
 
 ### Bounds formulas and tolerances
 
@@ -427,6 +481,16 @@ rejected transaction, not an accepted derivative. If the pair cannot be
 retired and verified exactly, the command fails closed and the whole directory
 requires the recovery procedure below.
 
+Retirement itself is a sequential two-member move. If the first retirement
+rename succeeds but the second fails, the normalizer re-forms the exact
+two-member private pair from bounded receipts before public cleanup, drawing
+each member only from its verified staged, final, or retired holder. If that
+later public/staged cleanup cannot be verified, the command fails closed for
+the recovery inventory. Likewise, if one retired-member unlink succeeds and
+its mate cannot be removed during rollback, the removed member is re-created
+from its bounded receipt so the rejected transaction remains an exact private
+pair rather than half-deleted evidence.
+
 If both destination members already exist, the default path refuses them
 before Blender. If exactly one exists, the lineage is inconsistent and is also
 refused. It never guesses which member should win.
@@ -443,7 +507,21 @@ orchestrator:
 3. renames the staged GLB and JSON into their final names;
 4. verifies both candidate hashes at the finals and both old hashes at the
    backups; and
-5. removes both backups independently, with one bounded retry.
+5. retains the backups and exact old-byte receipts for batch-terminal commit.
+
+The CLI applies a 128 MiB aggregate rollback-retention budget across all old
+GLB/JSON pairs replaced by one managed `--force` run. The hard cap is checked
+before either old member is read or either public name is renamed; both current
+sizes must fit the remaining budget. Equality is accepted; a pair that would
+exceed the remaining budget is neither read nor renamed, earlier completed
+publications are rolled back, and later assets are not started. An absent
+destination in a mixed force run consumes zero retention bytes.
+
+Exact old bytes remain retained until every asset and private-root cleanup has
+succeeded. Only then does the batch commit by verifying and removing each old
+backup pair. Recovery bytes remain available until every backup cleanup has
+succeeded, so a later backup-cleanup failure restores the whole batch,
+including an earlier pair whose backup names were already removed.
 
 A hash-read error before the first backup leaves the old finals in place. In
 rollback, an unreadable identity is treated as unknown, never as proof that a
@@ -467,12 +545,14 @@ Temporary staging is removed when the Python context unwinds normally,
 including expected validation exceptions. A cleanup report that arrives after
 publication is normalized to success only when every private root is absent
 and every intended final pair is the exact committed candidate. Otherwise the
-run reverses completed publications in reverse order: an absent destination
-returns to no public pair (or an exact privately retired candidate pair when a
-member cannot be removed), while a forced destination restores its exact old
-public pair with no backup residue. An operating-system kill, power loss,
-filesystem fault, or uncatchable process termination can interrupt that
-normalization. There is no automatic startup recovery scan.
+run reverses completed publications in reverse manifest order: an absent
+destination returns to no public pair (or an exact privately retired candidate
+pair when a member cannot be removed), while a forced destination restores its
+exact old public pair with no backup residue. Rollback attempts every completed
+pair independently even if an earlier rollback attempt fails, then reports the
+aggregate failure. An operating-system kill, power loss, filesystem fault, or
+uncatchable process termination can interrupt that normalization. There is no
+automatic startup recovery scan.
 
 ### Recovery after a nonzero exit or interrupted process
 
@@ -515,15 +595,44 @@ find "$output" -type f -exec shasum -a 256 {} \;
 
 ## Logs, exit status, and offline posture
 
-For each asset, the orchestrator calls for one start line before launching
-Blender and one acceptance line after terminal publication. Validated IDs
-cannot add a line or control character. Counts are decimal integers without
-grouping:
+Start/progress records are attempted immediately before each Blender call and
+are flushed as work begins, so they can remain in the transcript when a later
+asset fails. No success record is attempted before whole-batch terminal commit:
+every intended publication is exact, all private roots are absent, and all
+old-backup commits have succeeded. A failure before terminal commit emits no
+success record. Validated IDs cannot add a line or control character. Counts
+are decimal integers without grouping:
 
 ```text
 glb-decimation: asset=cat-red-tabby-sitting category=cat target=15000 source_triangles=1428306
 glb-decimation: asset=cat-red-tabby-sitting output_triangles=15000 output_vertices=9460
 ```
+
+For this reason, success-record writes are best effort after exact commit.
+A stream failure before the write is suppressed only when that asset's final
+pair still observes exact; this can leave exit 0 and exact final pairs with no
+success line. A failure reported after a write can leave that line present.
+Because records are emitted sequentially, a later record-write failure followed
+by a failed exact-publication observation can return nonzero after earlier
+success lines were already written. Inspect the final and recovery state:
+neither nonzero nor record cardinality alone proves rollback or acceptance.
+
+Every decimator public record and diagnostic is one line of at most 512 bytes.
+HTTP(S) substrings become [redacted-uri]; remaining credential-shaped content
+collapses to fixed text, nonprintable characters are escaped, and overlong
+content is truncated without splitting UTF-8. This same boundary covers both
+standard-output progress/success records and standard-error diagnostics.
+
+The two inspection CLIs have matching safe public surfaces. Metrics failures
+write one diagnostic-only line of at most 512 bytes and no success JSON. On
+success, the one-line success JSON recursively redacts unsafe string values,
+including risky path and extension values, and redacts unsafe external URIs
+while preserving benign relative leaves. Each public string is limited. The
+complete metrics success JSON is not subject to a 512-byte total limit.
+Silhouette failures write one diagnostic-only line of at most 512 bytes. Its
+silhouette success record is one printable line of at most 512 bytes and
+redacts unsafe or overlong source and output paths; if the combined record is
+still too long, both paths are redacted.
 
 Each child's standard output and standard error are captured separately and
 are not replayed. The version and asset calls each enforce an independent
@@ -587,9 +696,14 @@ Complete every item; code-green and exit 0 are necessary but not sufficient.
   newer release, modified bundle, alternate exporter, or compression add-on.
 - [ ] Run the explicit command above in an offline, no-key session. Confirm no
   GUI opens, save the complete output, and require `real_rc == 0`.
-- [ ] Account for one start-format and one acceptance-format record per
-  successful manifest entry. Require no raw Blender output in the public
-  transcript, and never use a start record by itself as success authority.
+- [ ] Account for one start/progress record for every Blender asset call that
+  began. Under a writable capture, expect one post-commit success record per
+  manifest entry, but treat those records as best-effort reporting: a missing
+  line after exit 0 does not invalidate exact finals. A failure before terminal
+  commit must contain no success record; after reporting begins, a nonzero
+  result can retain earlier success lines. Classify the final and recovery
+  state rather than record cardinality. Require no raw Blender output in the
+  public transcript, and never use a start record by itself as success authority.
 - [ ] Confirm the output root contains exactly 15 GLBs and their 15 JSON
   sidecars, with no `.glb-decimation-*`, `.*.backup-*`, `.*.retired-*`, split
   pair, symlink, external file, or unexplained residue.
