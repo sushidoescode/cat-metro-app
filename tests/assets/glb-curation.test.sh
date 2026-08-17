@@ -195,6 +195,9 @@ source_metrics_fixture = {
     "external_uris": [],
     "extensions_used": [],
     "extensions_required": [],
+    "vertices": 100,
+    "referenced_vertices": 100,
+    "degenerate_triangles": 0,
     "image_payload_sha256": ["1" * 64, "2" * 64],
     "material_texture_bindings": [
         {
@@ -208,6 +211,7 @@ source_metrics_fixture = {
 candidate_metrics_fixture = {
     **source_metrics_fixture,
     "triangles": curator.EXPECTED_CURATED_TRIANGLES["cat-blue-siamese-loaf"],
+    "unique_triangles": curator.EXPECTED_CURATED_TRIANGLES["cat-blue-siamese-loaf"],
     "image_payload_sha256": ["2" * 64, "1" * 64],
 }
 candidate_report_fixture = {
@@ -350,6 +354,27 @@ with tempfile.TemporaryDirectory(prefix="catmetro-curation-preexisting-") as raw
     assert final_glb.read_bytes() == b"old-glb"
     assert final_json.read_bytes() == b"old-json"
     assert not journal.exists()
+
+with tempfile.TemporaryDirectory(prefix="catmetro-curation-final-anchor-") as raw:
+    root = Path(raw)
+    final_glb, final_json, staged_glb, staged_json, backup_dir, journal = make_pair(root)
+    try:
+        curator.publish_pair(
+            staged_glb=staged_glb,
+            staged_sidecar=staged_json,
+            final_glb=final_glb,
+            final_sidecar=final_json,
+            backup_dir=backup_dir,
+            journal_path=journal,
+            expected_final_glb_sha="0" * 64,
+        )
+    except curator.CurationError as exc:
+        assert "final GLB changed" in str(exc)
+    else:
+        raise AssertionError("changed final anchor unexpectedly passed")
+    assert final_glb.read_bytes() == b"old-glb"
+    assert final_json.read_bytes() == b"old-json"
+    assert not backup_dir.exists() and not journal.exists()
 
 with tempfile.TemporaryDirectory(prefix="catmetro-curation-after-effect-") as raw:
     root = Path(raw)
@@ -639,7 +664,7 @@ if [[ -n ${GLB_CURATION_SOURCE_BASELINE_ROOT:-} && -n ${GLB_CURATION_ARTIFACT_RO
     read -r asset_id backup_member <<<"$specification"
     filename="$asset_id.glb"
     input_dir="$scratch/$asset_id/input"
-    backup_parent="$scratch/$asset_id/backups"
+    backup_parent="$input_dir/curation-backups"
     mkdir -p -- "$input_dir" "$backup_parent"
     cp -- "$GLB_CURATION_SOURCE_BASELINE_ROOT/$backup_member/$filename" "$input_dir/$filename"
     cp -- "$GLB_CURATION_SOURCE_BASELINE_ROOT/$backup_member/$filename.json" "$input_dir/$filename.json"

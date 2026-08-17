@@ -9,6 +9,7 @@ import sys
 sys.dont_write_bytecode = True
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -18,7 +19,9 @@ import stat
 import subprocess
 import tempfile
 import uuid
-from collections.abc import Callable, Mapping
+from collections import Counter
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -34,6 +37,10 @@ WAVE_ID = "cat-yellow-longhair-wave"
 ALLOWED_SOURCE_SHA256 = {
     LOAF_ID: "e3015351ec9bda2aebeafcc0ff23f5aa35512af4234c168d79cac750118070e3",
     WAVE_ID: "8d7190fd24f552f874bf1d733f2870c44a24c27d6b50cfe1e32095f625fcc57c",
+}
+ALLOWED_SOURCE_SIDECAR_SHA256 = {
+    LOAF_ID: "ce8ea067634f88ee9fc967ea5a0dbc58df890477d3e1dc1905cc3f77a92dcec4",
+    WAVE_ID: "e65414b151fa1dd868e9086c0e274ac61743aef8f8f26bc7bcaa6f49f99c8936",
 }
 ASSET_FILENAMES = {
     LOAF_ID: "cat-blue-siamese-loaf.glb",
@@ -59,6 +66,7 @@ REQUIRED_SOURCE_FIELDS = {
 MAX_METADATA_BYTES = 1_048_576
 MAX_SOURCE_BYTES = 128 * 1024 * 1024
 BLENDER_TIMEOUT_SECONDS = 1_800
+TRANSACTION_SCHEMA_VERSION = 1
 _LOWER_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _CHILD_ENVIRONMENT_PASSTHROUGH = (
     "PATH",
@@ -71,6 +79,31 @@ _CHILD_ENVIRONMENT_PASSTHROUGH = (
 
 class CurationError(RuntimeError):
     """Raised when source curation cannot complete without weakening custody."""
+
+
+@contextmanager
+def source_root_lock(input_root: Path) -> Iterator[None]:
+    """Hold an advisory exclusive lock on the source directory inode."""
+
+    root = Path(input_root)
+    try:
+        status = root.lstat()
+    except FileNotFoundError as exc:
+        raise CurationError("source input directory is missing") from exc
+    if not stat.S_ISDIR(status.st_mode) or root.is_symlink():
+        raise CurationError("source input directory must be a real directory")
+    descriptor = os.open(root, os.O_RDONLY)
+    try:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise CurationError("source input directory is locked by another curation") from exc
+        yield
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
 
 
 def _regular_single_link(path: Path, label: str) -> os.stat_result:
@@ -227,15 +260,163 @@ def _restore_from_backup(
     backup: Path,
     final: Path,
     replace_fn: Callable[[os.PathLike[str], os.PathLike[str]], object],
+    fsync_directory_fn: Callable[[Path], None] = _fsync_directory,
 ) -> None:
     restore = final.parent / f".{final.name}.rollback-{uuid.uuid4().hex}"
     try:
         _copy_new(backup, restore)
         replace_fn(restore, final)
-        _fsync_directory(final.parent)
+        fsync_directory_fn(final.parent)
     finally:
         if restore.exists() and not restore.is_symlink():
             restore.unlink()
+
+
+def _transaction_next_path(journal_path: Path) -> Path:
+    return journal_path.with_name(f".{journal_path.name}.next")
+
+
+def _write_transaction_journal(
+    journal_path: Path,
+    record: Mapping[str, object],
+    *,
+    replace_existing: bool,
+    fsync_directory_fn: Callable[[Path], None] = _fsync_directory,
+) -> None:
+    if journal_path.parent.is_symlink() or not journal_path.parent.is_dir():
+        raise CurationError("transaction journal parent must be a real directory")
+    if replace_existing:
+        _regular_single_link(journal_path, "transaction journal")
+        next_path = _transaction_next_path(journal_path)
+        if next_path.exists() or next_path.is_symlink():
+            raise CurationError("transaction journal update residue exists")
+        try:
+            _write_private_json(next_path, record)
+            os.replace(next_path, journal_path)
+            fsync_directory_fn(journal_path.parent)
+        finally:
+            if next_path.exists() and not next_path.is_symlink():
+                next_path.unlink()
+        return
+    if journal_path.exists() or journal_path.is_symlink():
+        raise CurationError("transaction journal already exists")
+    _write_private_json(journal_path, record)
+    fsync_directory_fn(journal_path.parent)
+
+
+def _load_transaction_journal(journal_path: Path) -> dict[str, object]:
+    _regular_single_link(journal_path, "transaction journal")
+    if journal_path.stat().st_size > MAX_METADATA_BYTES:
+        raise CurationError("transaction journal exceeds its byte limit")
+    try:
+        value = json.loads(journal_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise CurationError("transaction journal is invalid JSON") from exc
+    if not isinstance(value, dict):
+        raise CurationError("transaction journal root must be an object")
+    required = {
+        "schema_version",
+        "state",
+        "final_directory",
+        "final_glb",
+        "final_sidecar",
+        "backup_directory",
+        "original_glb_sha256",
+        "original_sidecar_sha256",
+        "candidate_glb_sha256",
+        "candidate_sidecar_sha256",
+    }
+    if set(value) != required:
+        raise CurationError("transaction journal fields do not match schema")
+    if value["schema_version"] != TRANSACTION_SCHEMA_VERSION:
+        raise CurationError("transaction journal schema is unsupported")
+    if value["state"] not in {"prepared", "committed"}:
+        raise CurationError("transaction journal state is invalid")
+    for field in (
+        "final_directory",
+        "final_glb",
+        "final_sidecar",
+        "backup_directory",
+    ):
+        if not isinstance(value[field], str) or not value[field]:
+            raise CurationError(f"transaction journal {field} is invalid")
+    for field in (
+        "original_glb_sha256",
+        "original_sidecar_sha256",
+        "candidate_glb_sha256",
+        "candidate_sidecar_sha256",
+    ):
+        if not isinstance(value[field], str) or _LOWER_SHA256.fullmatch(value[field]) is None:
+            raise CurationError(f"transaction journal {field} is invalid")
+    return value
+
+
+def _remove_transaction_files(
+    journal_path: Path,
+    fsync_directory_fn: Callable[[Path], None] = _fsync_directory,
+) -> None:
+    for path in (journal_path, _transaction_next_path(journal_path)):
+        if path.is_symlink():
+            raise CurationError("transaction cleanup refuses a symbolic link")
+        if path.exists():
+            _regular_single_link(path, "transaction residue")
+            path.unlink()
+    fsync_directory_fn(journal_path.parent)
+
+
+def recover_interrupted_pair(
+    *,
+    journal_path: Path,
+    final_glb: Path,
+    final_sidecar: Path,
+) -> bool:
+    """Normalize a durable prepared/committed transaction after process death."""
+
+    if not journal_path.exists() and not journal_path.is_symlink():
+        next_path = _transaction_next_path(journal_path)
+        if next_path.exists() or next_path.is_symlink():
+            raise CurationError("orphan transaction journal update exists")
+        return False
+    record = _load_transaction_journal(journal_path)
+    final_directory = final_glb.parent.resolve(strict=True)
+    if final_sidecar.parent.resolve(strict=True) != final_directory:
+        raise CurationError("recovery final pair must share one directory")
+    if record["final_directory"] != str(final_directory):
+        raise CurationError("transaction journal final directory mismatch")
+    if record["final_glb"] != final_glb.name or record["final_sidecar"] != final_sidecar.name:
+        raise CurationError("transaction journal final filename mismatch")
+    backup_directory = Path(record["backup_directory"])
+    if not backup_directory.is_absolute():
+        raise CurationError("transaction backup path must be absolute")
+    backup_status = backup_directory.lstat()
+    if not stat.S_ISDIR(backup_status.st_mode) or backup_directory.is_symlink():
+        raise CurationError("transaction backup directory must be real")
+    resolved_backup = backup_directory.resolve(strict=True)
+    try:
+        resolved_backup.relative_to(final_directory)
+    except ValueError as exc:
+        raise CurationError("transaction backup escapes the source directory") from exc
+    backup_glb = resolved_backup / final_glb.name
+    backup_sidecar = resolved_backup / final_sidecar.name
+    if _sha256_file(backup_glb, MAX_SOURCE_BYTES, "transaction backup GLB") != record["original_glb_sha256"]:
+        raise CurationError("transaction backup GLB hash mismatch")
+    if _sha256_file(backup_sidecar, MAX_METADATA_BYTES, "transaction backup sidecar") != record["original_sidecar_sha256"]:
+        raise CurationError("transaction backup sidecar hash mismatch")
+
+    if record["state"] == "prepared":
+        _restore_from_backup(backup_glb, final_glb, os.replace)
+        _restore_from_backup(backup_sidecar, final_sidecar, os.replace)
+        if _sha256_file(final_glb, MAX_SOURCE_BYTES, "recovered source GLB") != record["original_glb_sha256"]:
+            raise CurationError("recovered source GLB hash mismatch")
+        if _sha256_file(final_sidecar, MAX_METADATA_BYTES, "recovered source sidecar") != record["original_sidecar_sha256"]:
+            raise CurationError("recovered source sidecar hash mismatch")
+    else:
+        if _sha256_file(final_glb, MAX_SOURCE_BYTES, "committed source GLB") != record["candidate_glb_sha256"]:
+            raise CurationError("committed source GLB hash mismatch")
+        if _sha256_file(final_sidecar, MAX_METADATA_BYTES, "committed source sidecar") != record["candidate_sidecar_sha256"]:
+            raise CurationError("committed source sidecar hash mismatch")
+    _remove_transaction_files(journal_path)
+    return True
 
 
 def publish_pair(
@@ -245,9 +426,17 @@ def publish_pair(
     final_glb: Path,
     final_sidecar: Path,
     backup_dir: Path,
+    journal_path: Path | None = None,
     replace_fn: Callable[[os.PathLike[str], os.PathLike[str]], object] = os.replace,
+    rollback_replace_fn: Callable[[os.PathLike[str], os.PathLike[str]], object] = os.replace,
+    fsync_directory_fn: Callable[[Path], None] = _fsync_directory,
+    pair_validator: Callable[[Path, Path], None] | None = None,
+    expected_final_glb_sha: str | None = None,
+    expected_final_sidecar_sha: str | None = None,
+    expected_staged_glb_sha: str | None = None,
+    expected_staged_sidecar_sha: str | None = None,
 ) -> None:
-    """Back up and pair-promote a source GLB/sidecar with complete rollback."""
+    """Back up and pair-promote a source pair with rollback and crash recovery."""
 
     for path, label in (
         (staged_glb, "staged GLB"),
@@ -260,22 +449,51 @@ def publish_pair(
         raise CurationError("final source pair must share one directory")
     if staged_glb.parent != staged_sidecar.parent:
         raise CurationError("staged source pair must share one directory")
+    if journal_path is None:
+        journal_path = final_glb.parent / f".{final_glb.name}.transaction.json"
+    if journal_path.parent != final_glb.parent or journal_path.is_symlink():
+        raise CurationError("transaction journal must stay beside the final pair")
+    if journal_path.exists() or _transaction_next_path(journal_path).exists():
+        raise CurationError("transaction journal already exists")
     if backup_dir.exists() or backup_dir.is_symlink():
         raise CurationError("backup directory already exists")
     if not backup_dir.parent.is_dir() or backup_dir.parent.is_symlink():
         raise CurationError("backup parent must be an existing real directory")
+    try:
+        backup_dir.parent.resolve(strict=True).relative_to(
+            final_glb.parent.resolve(strict=True)
+        )
+    except ValueError as exc:
+        raise CurationError("backup directory must stay under the source directory") from exc
 
     backup_glb = backup_dir / final_glb.name
     backup_sidecar = backup_dir / final_sidecar.name
+    original_glb_sha = _sha256_file(final_glb, MAX_SOURCE_BYTES, "final GLB")
+    original_sidecar_sha = _sha256_file(
+        final_sidecar, MAX_METADATA_BYTES, "final sidecar"
+    )
+    candidate_glb_sha = _sha256_file(staged_glb, MAX_SOURCE_BYTES, "staged GLB")
+    candidate_sidecar_sha = _sha256_file(
+        staged_sidecar, MAX_METADATA_BYTES, "staged sidecar"
+    )
+    expected_hashes = (
+        (expected_final_glb_sha, original_glb_sha, "final GLB"),
+        (expected_final_sidecar_sha, original_sidecar_sha, "final sidecar"),
+        (expected_staged_glb_sha, candidate_glb_sha, "staged GLB"),
+        (expected_staged_sidecar_sha, candidate_sidecar_sha, "staged sidecar"),
+    )
+    for expected, actual, label in expected_hashes:
+        if expected is not None and expected != actual:
+            raise CurationError(f"{label} changed before publication")
     backup_created = False
     try:
         backup_dir.mkdir(mode=0o700)
         backup_created = True
         _copy_new(final_glb, backup_glb)
         _copy_new(final_sidecar, backup_sidecar)
-        _fsync_directory(backup_dir)
-        _fsync_directory(backup_dir.parent)
-    except (OSError, CurationError) as exc:
+        fsync_directory_fn(backup_dir)
+        fsync_directory_fn(backup_dir.parent)
+    except BaseException as exc:
         if backup_created:
             for member in (backup_glb, backup_sidecar):
                 if member.exists() and not member.is_symlink():
@@ -284,21 +502,74 @@ def publish_pair(
                 backup_dir.rmdir()
             except OSError:
                 pass
-        raise CurationError("could not create complete source backup") from exc
+        if isinstance(exc, (OSError, CurationError)):
+            raise CurationError("could not create complete source backup") from exc
+        raise
+
+    transaction = {
+        "schema_version": TRANSACTION_SCHEMA_VERSION,
+        "state": "prepared",
+        "final_directory": str(final_glb.parent.resolve(strict=True)),
+        "final_glb": final_glb.name,
+        "final_sidecar": final_sidecar.name,
+        "backup_directory": str(backup_dir.resolve(strict=True)),
+        "original_glb_sha256": original_glb_sha,
+        "original_sidecar_sha256": original_sidecar_sha,
+        "candidate_glb_sha256": candidate_glb_sha,
+        "candidate_sidecar_sha256": candidate_sidecar_sha,
+    }
+    _write_transaction_journal(
+        journal_path,
+        transaction,
+        replace_existing=False,
+        fsync_directory_fn=fsync_directory_fn,
+    )
 
     try:
         replace_fn(staged_glb, final_glb)
+        fsync_directory_fn(final_glb.parent)
         replace_fn(staged_sidecar, final_sidecar)
-        _fsync_directory(final_glb.parent)
-    except (OSError, CurationError) as exc:
+        fsync_directory_fn(final_glb.parent)
+        if _sha256_file(final_glb, MAX_SOURCE_BYTES, "published GLB") != candidate_glb_sha:
+            raise CurationError("published GLB hash mismatch")
+        if _sha256_file(final_sidecar, MAX_METADATA_BYTES, "published sidecar") != candidate_sidecar_sha:
+            raise CurationError("published sidecar hash mismatch")
+        if pair_validator is not None:
+            pair_validator(final_glb, final_sidecar)
+        transaction["state"] = "committed"
+        _write_transaction_journal(
+            journal_path,
+            transaction,
+            replace_existing=True,
+            fsync_directory_fn=fsync_directory_fn,
+        )
+        _remove_transaction_files(journal_path, fsync_directory_fn)
+    except BaseException as exc:
         try:
-            _restore_from_backup(backup_glb, final_glb, replace_fn)
-            _restore_from_backup(backup_sidecar, final_sidecar, replace_fn)
-        except (OSError, CurationError) as rollback_exc:
+            _restore_from_backup(
+                backup_glb,
+                final_glb,
+                rollback_replace_fn,
+                fsync_directory_fn,
+            )
+            _restore_from_backup(
+                backup_sidecar,
+                final_sidecar,
+                rollback_replace_fn,
+                fsync_directory_fn,
+            )
+            if _sha256_file(final_glb, MAX_SOURCE_BYTES, "rolled-back GLB") != original_glb_sha:
+                raise CurationError("rolled-back GLB hash mismatch")
+            if _sha256_file(final_sidecar, MAX_METADATA_BYTES, "rolled-back sidecar") != original_sidecar_sha:
+                raise CurationError("rolled-back sidecar hash mismatch")
+            _remove_transaction_files(journal_path, fsync_directory_fn)
+        except BaseException as rollback_exc:
             raise CurationError(
                 "promotion failed and source-pair rollback also failed"
             ) from rollback_exc
-        raise CurationError("promotion failed; original source pair restored") from exc
+        if isinstance(exc, (OSError, CurationError)):
+            raise CurationError("promotion failed; original source pair restored") from exc
+        raise
 
 
 def _candidate_structure(
@@ -343,6 +614,29 @@ def _candidate_structure(
         "extensions_required"
     ):
         raise CurationError("curated source contains an unsupported extension")
+    source_payloads = source_metrics.get("image_payload_sha256")
+    candidate_payloads = candidate_metrics.get("image_payload_sha256")
+    if (
+        not isinstance(source_payloads, list)
+        or not isinstance(candidate_payloads, list)
+        or not all(isinstance(value, str) for value in source_payloads)
+        or not all(isinstance(value, str) for value in candidate_payloads)
+    ):
+        raise CurationError("curated source image payload custody is malformed")
+    if Counter(source_payloads) != Counter(candidate_payloads):
+        raise CurationError("curated source image payload multiset changed")
+    source_bindings = source_metrics.get("material_texture_bindings")
+    candidate_bindings = candidate_metrics.get("material_texture_bindings")
+    if not isinstance(source_bindings, list) or not isinstance(candidate_bindings, list):
+        raise CurationError("curated source material binding custody is malformed")
+    if source_bindings != candidate_bindings:
+        raise CurationError("curated source material texture bindings changed")
+    if candidate_metrics.get("degenerate_triangles") != 0:
+        raise CurationError("curated source contains degenerate triangles")
+    if candidate_metrics.get("referenced_vertices") != candidate_metrics.get("vertices"):
+        raise CurationError("curated source contains unreferenced vertices")
+    if candidate_metrics.get("unique_triangles") != candidate_metrics.get("triangles"):
+        raise CurationError("curated source contains duplicate triangles")
 
 
 def _child_environment() -> dict[str, str]:
@@ -411,6 +705,58 @@ def _resolve_input_member(input_root: Path, member: str) -> Path:
     return path
 
 
+def _inspect_precuration_pair(
+    asset_id: str,
+    source: Path,
+    source_sidecar: Path,
+) -> tuple[str, str, dict[str, object], dict[str, object]]:
+    source_sha = _sha256_file(source, MAX_SOURCE_BYTES, "source GLB")
+    if source_sha != ALLOWED_SOURCE_SHA256[asset_id]:
+        raise CurationError("source is not at the frozen pre-curation SHA-256")
+    source_sidecar_sha = _sha256_file(
+        source_sidecar,
+        MAX_METADATA_BYTES,
+        "source sidecar",
+    )
+    if source_sidecar_sha != ALLOWED_SOURCE_SIDECAR_SHA256[asset_id]:
+        raise CurationError("source sidecar is not at the frozen pre-curation SHA-256")
+    source_record = _load_source_record(source_sidecar)
+    _validate_source_record(
+        asset_id,
+        source_record,
+        source_sha,
+        require_precuration_anchor=True,
+    )
+    try:
+        source_metrics = inspect_glb(source)
+    except (GlbError, OSError, ValueError) as exc:
+        raise CurationError("source GLB inspection failed") from exc
+    if source_metrics.get("sha256") != source_sha:
+        raise CurationError("source GLB inspection hash mismatch")
+    return source_sha, source_sidecar_sha, source_record, source_metrics
+
+
+def _validate_curated_pair(
+    asset_id: str,
+    expected_glb_sha: str,
+    final_glb: Path,
+    final_sidecar: Path,
+) -> None:
+    actual_glb_sha = _sha256_file(final_glb, MAX_SOURCE_BYTES, "published source GLB")
+    if actual_glb_sha != expected_glb_sha:
+        raise CurationError("published source GLB differs from staged candidate")
+    record = _load_source_record(final_sidecar)
+    _validate_source_record(
+        asset_id,
+        record,
+        actual_glb_sha,
+        require_precuration_anchor=False,
+    )
+    expected_note = CURATION_NOTES[asset_id]
+    if expected_note not in record["note"]:
+        raise CurationError("published source sidecar omits the curation note")
+
+
 def _parse_arguments(arguments: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Curate one frozen Cat Metro source GLB transactionally."
@@ -439,13 +785,20 @@ def _safe_remove_stage(stage_directory: Path, input_root: Path) -> None:
         shutil.rmtree(stage_directory)
 
 
+def _remove_orphan_stages(input_root: Path) -> None:
+    for member in input_root.iterdir():
+        if not member.name.startswith(".glb-curation-stage-"):
+            continue
+        if member.is_symlink() or not member.is_dir():
+            raise CurationError("curation-stage residue has an unsafe type")
+        _safe_remove_stage(member, input_root)
+
+
 def curate(arguments: argparse.Namespace) -> dict[str, object]:
     input_root = Path(os.path.abspath(arguments.input_dir)).resolve(strict=True)
     if not input_root.is_dir() or input_root.is_symlink():
         raise CurationError("input directory must be a real directory")
     backup_dir = Path(os.path.abspath(arguments.backup_dir))
-    if backup_dir.exists() or backup_dir.is_symlink():
-        raise CurationError("backup directory already exists")
     backup_parent = backup_dir.parent.resolve(strict=True)
     if not backup_parent.is_dir() or backup_parent.is_symlink():
         raise CurationError("backup parent must be a real directory")
@@ -459,91 +812,126 @@ def curate(arguments: argparse.Namespace) -> dict[str, object]:
 
     asset_id = arguments.asset_id
     filename = ASSET_FILENAMES[asset_id]
-    source = _resolve_input_member(input_root, filename)
-    source_sidecar = _resolve_input_member(input_root, f"{filename}.json")
-    source_sha = _sha256_file(source, MAX_SOURCE_BYTES, "source GLB")
-    if source_sha != ALLOWED_SOURCE_SHA256[asset_id]:
-        raise CurationError("source is not at the frozen pre-curation SHA-256")
-    source_record = _load_source_record(source_sidecar)
-    _validate_source_record(
-        asset_id,
-        source_record,
-        source_sha,
-        require_precuration_anchor=True,
-    )
-    try:
-        source_metrics = inspect_glb(source)
-    except (GlbError, OSError, ValueError) as exc:
-        raise CurationError("source GLB inspection failed") from exc
+    source = input_root / filename
+    source_sidecar = input_root / f"{filename}.json"
+    journal_path = input_root / f".glb-curation-{asset_id}.transaction.json"
 
-    stage_directory = Path(
-        tempfile.mkdtemp(prefix=".glb-curation-stage-", dir=input_root)
-    )
-    try:
-        os.chmod(stage_directory, 0o700)
-        staged_glb = stage_directory / filename
-        staged_report = stage_directory / f"{filename}.curation.json"
-        staged_sidecar = stage_directory / f"{filename}.json"
-        _run_blender(
-            blender,
-            driver,
-            asset_id,
-            source,
-            staged_glb,
-            staged_report,
-            stage_directory,
-        )
-        _regular_single_link(staged_report, "Blender curation report")
-        if staged_report.stat().st_size > MAX_METADATA_BYTES:
-            raise CurationError("Blender curation report exceeds its byte limit")
-        try:
-            report = json.loads(staged_report.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, UnicodeError) as exc:
-            raise CurationError("Blender curation report is invalid") from exc
-        if not isinstance(report, dict):
-            raise CurationError("Blender curation report root must be an object")
-        try:
-            candidate_metrics = inspect_glb(staged_glb)
-        except (GlbError, OSError, ValueError) as exc:
-            raise CurationError("curated source GLB inspection failed") from exc
-        _candidate_structure(asset_id, source_metrics, candidate_metrics, report)
-        curated_sha = _sha256_file(
-            staged_glb, MAX_SOURCE_BYTES, "curated source GLB"
-        )
-        curated_record = build_curated_source_record(
-            asset_id, source_record, curated_sha
-        )
-        _write_private_json(staged_sidecar, curated_record)
-        _validate_source_record(
-            asset_id,
-            curated_record,
-            curated_sha,
-            require_precuration_anchor=False,
-        )
-        publish_pair(
-            staged_glb=staged_glb,
-            staged_sidecar=staged_sidecar,
+    with source_root_lock(input_root):
+        recover_interrupted_pair(
+            journal_path=journal_path,
             final_glb=source,
             final_sidecar=source_sidecar,
-            backup_dir=backup_dir,
         )
-        return {
-            "asset_id": asset_id,
-            "source_sha256_before": source_sha,
-            "source_sha256_after": curated_sha,
-            "backup_dir": str(backup_dir),
-            "triangles_before": source_metrics["triangles"],
-            "triangles_after": candidate_metrics["triangles"],
-            "report": report,
-        }
-    finally:
-        _safe_remove_stage(stage_directory, input_root)
+        _remove_orphan_stages(input_root)
+        if backup_dir.exists() or backup_dir.is_symlink():
+            raise CurationError("backup directory already exists")
+        source = _resolve_input_member(input_root, filename)
+        source_sidecar = _resolve_input_member(input_root, f"{filename}.json")
+        (
+            source_sha,
+            source_sidecar_sha,
+            source_record,
+            source_metrics,
+        ) = _inspect_precuration_pair(asset_id, source, source_sidecar)
+
+        stage_directory = Path(
+            tempfile.mkdtemp(prefix=".glb-curation-stage-", dir=input_root)
+        )
+        try:
+            os.chmod(stage_directory, 0o700)
+            staged_glb = stage_directory / filename
+            staged_report = stage_directory / f"{filename}.curation.json"
+            staged_sidecar = stage_directory / f"{filename}.json"
+            _run_blender(
+                blender,
+                driver,
+                asset_id,
+                source,
+                staged_glb,
+                staged_report,
+                stage_directory,
+            )
+            _regular_single_link(staged_report, "Blender curation report")
+            if staged_report.stat().st_size > MAX_METADATA_BYTES:
+                raise CurationError("Blender curation report exceeds its byte limit")
+            try:
+                report = json.loads(staged_report.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, UnicodeError) as exc:
+                raise CurationError("Blender curation report is invalid") from exc
+            if not isinstance(report, dict):
+                raise CurationError("Blender curation report root must be an object")
+            try:
+                candidate_metrics = inspect_glb(staged_glb)
+            except (GlbError, OSError, ValueError) as exc:
+                raise CurationError("curated source GLB inspection failed") from exc
+            _candidate_structure(asset_id, source_metrics, candidate_metrics, report)
+            curated_sha = _sha256_file(
+                staged_glb, MAX_SOURCE_BYTES, "curated source GLB"
+            )
+            if candidate_metrics.get("sha256") != curated_sha:
+                raise CurationError("curated source inspection hash mismatch")
+            curated_record = build_curated_source_record(
+                asset_id, source_record, curated_sha
+            )
+            _write_private_json(staged_sidecar, curated_record)
+            curated_sidecar_sha = _sha256_file(
+                staged_sidecar,
+                MAX_METADATA_BYTES,
+                "curated source sidecar",
+            )
+            _validate_source_record(
+                asset_id,
+                curated_record,
+                curated_sha,
+                require_precuration_anchor=False,
+            )
+
+            final_source_sha, final_sidecar_sha, _, _ = _inspect_precuration_pair(
+                asset_id,
+                source,
+                source_sidecar,
+            )
+            if final_source_sha != source_sha or final_sidecar_sha != source_sidecar_sha:
+                raise CurationError("source pair changed during Blender curation")
+            publish_pair(
+                staged_glb=staged_glb,
+                staged_sidecar=staged_sidecar,
+                final_glb=source,
+                final_sidecar=source_sidecar,
+                backup_dir=backup_dir,
+                journal_path=journal_path,
+                pair_validator=lambda glb, sidecar: _validate_curated_pair(
+                    asset_id,
+                    curated_sha,
+                    glb,
+                    sidecar,
+                ),
+                expected_final_glb_sha=source_sha,
+                expected_final_sidecar_sha=source_sidecar_sha,
+                expected_staged_glb_sha=curated_sha,
+                expected_staged_sidecar_sha=curated_sidecar_sha,
+            )
+            return {
+                "asset_id": asset_id,
+                "source_sha256_before": source_sha,
+                "source_sidecar_sha256_before": source_sidecar_sha,
+                "source_sha256_after": curated_sha,
+                "backup_dir": str(backup_dir),
+                "triangles_before": source_metrics["triangles"],
+                "triangles_after": candidate_metrics["triangles"],
+                "report": report,
+            }
+        finally:
+            _safe_remove_stage(stage_directory, input_root)
 
 
 def main(arguments: list[str]) -> int:
     try:
         args = _parse_arguments(arguments)
         result = curate(args)
+    except KeyboardInterrupt:
+        print("curate-assets: interrupted; source pair normalized", file=sys.stderr)
+        return 130
     except (CurationError, OSError, ValueError) as exc:
         message = str(exc) or "curation failed"
         if len(message) > 500:

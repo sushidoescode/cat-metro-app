@@ -1,0 +1,23 @@
+{
+  "_meta": {
+    "contract": "GLB-CURATION (state/handoffs/GLB-CURATION-frozen-contract.md)",
+    "scope": "GLB-CURATION exact two assets",
+    "source_manifest": "CAT-MANIFEST.json"
+  },
+  "assets": [
+    {
+      "id": "cat-blue-siamese-loaf",
+      "kind": "cat",
+      "service": "tripo",
+      "out": "cat-blue-siamese-loaf.glb",
+      "prompt": "Cute chibi siamese cat figurine in a cozy loaf pose, paws tucked under, eyes half closed and content, tall pointed ears. Harbor blue coat (hex 3E7CC9), cream chest, white square badge on chest and square collar tag. Slim siamese silhouette. Low-poly hand-painted toy figurine for a wooden desktop model railway diorama, soft rounded shapes, warm cozy lighting, flat toon-friendly colors, charming not childish. Full body, single character."
+    },
+    {
+      "id": "cat-yellow-longhair-wave",
+      "kind": "cat",
+      "service": "tripo",
+      "out": "cat-yellow-longhair-wave.glb",
+      "prompt": "Cute chibi fluffy longhair cat figurine waving one paw in greeting, very round and floofy, big happy eyes. Tabby yellow coat (hex EFC13D), cream ruff, white triangle badge on chest and triangle collar tag. Fluffy longhair silhouette. Low-poly hand-painted toy figurine for a wooden desktop model railway diorama, soft rounded shapes, warm cozy lighting, flat toon-friendly colors, charming not childish. Full body, single character."
+    }
+  ]
+}
