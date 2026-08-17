@@ -46,6 +46,7 @@ MAX_IMAGE_BYTES = 8 * 1024 * 1024
 MAX_GEOMETRY_WORK = 8_000_000
 MAX_SPARSE_ACCESSOR_WORK = 8_000_000
 MAX_WORLD_BOUNDS_WORK = 8_000_000
+MAX_WORLD_POSITION_WORK = 8_000_000
 MAX_IMAGE_WORK_BYTES = 64 * 1024 * 1024
 MAX_JSON_INTEGER_DIGITS = 4_300
 MAX_JSON_NUMBER_CHARACTERS = 4_300
@@ -1259,35 +1260,59 @@ def _inspect_document(
                 (True, child, world) for child in reversed(node_children[node_index])
             )
 
-    selected_mesh_instances: list[
-        tuple[int, tuple[float, ...], int, int]
-    ] = []
-    world_bounds_work = 0
-    for node_index, world in iter_scene_nodes():
+    def selected_mesh_layout(node_index: int) -> tuple[int, int] | None:
         node = node_objects[node_index]
         mesh_value = node.get("mesh")
         if mesh_value is None:
-            continue
-        mesh_index = _index(mesh_value, len(meshes), f"nodes[{node_index}].mesh")
+            return None
+        mesh_index = _index(
+            mesh_value,
+            len(meshes),
+            f"nodes[{node_index}].mesh",
+        )
         primitives = _array(
-            _object(meshes[mesh_index], f"meshes[{mesh_index}]").get("primitives"),
+            _object(meshes[mesh_index], f"meshes[{mesh_index}]").get(
+                "primitives"
+            ),
             f"meshes[{mesh_index}].primitives",
         )
-        primitive_total = len(primitives)
+        return mesh_index, len(primitives)
+
+    world_bounds_work = 0
+    world_position_work = 0
+    found_geometry = False
+    for node_index, _ in iter_scene_nodes():
+        layout = selected_mesh_layout(node_index)
+        if layout is None:
+            continue
+        mesh_index, primitive_total = layout
         world_bounds_work += primitive_total * 8
         if world_bounds_work > MAX_WORLD_BOUNDS_WORK:
             raise GlbError(
                 "GLB selected-scene world-bounds work exceeds limit "
                 f"{MAX_WORLD_BOUNDS_WORK}"
             )
-        selected_mesh_instances.append(
-            (node_index, world, mesh_index, primitive_total)
-        )
+        for primitive_number in range(primitive_total):
+            accessor_index = local_position_accessors[
+                (mesh_index, primitive_number)
+            ]
+            world_position_work += validated_accessors[accessor_index][2]
+            if world_position_work > MAX_WORLD_POSITION_WORK:
+                raise GlbError(
+                    "GLB selected-scene world-position work exceeds limit "
+                    f"{MAX_WORLD_POSITION_WORK}"
+                )
+        found_geometry = True
+    if not found_geometry:
+        raise GlbError("selected scene contains no POSITION geometry")
 
     world_minimum = [math.inf, math.inf, math.inf]
     world_maximum = [-math.inf, -math.inf, -math.inf]
-    found_geometry = False
-    for _, world, mesh_index, primitive_total in selected_mesh_instances:
+    for node_index, world in iter_scene_nodes():
+        layout = selected_mesh_layout(node_index)
+        if layout is None:
+            continue
+        mesh_index, primitive_total = layout
         for primitive_number in range(primitive_total):
             minimum, maximum = local_bounds[(mesh_index, primitive_number)]
             for x in (minimum[0], maximum[0]):
@@ -1297,12 +1322,13 @@ def _inspect_document(
                         for axis, coordinate in enumerate(point):
                             world_minimum[axis] = min(world_minimum[axis], coordinate)
                             world_maximum[axis] = max(world_maximum[axis], coordinate)
-            found_geometry = True
-    if not found_geometry:
-        raise GlbError("selected scene contains no POSITION geometry")
 
     def world_position_iterator() -> Iterator[tuple[float, float, float]]:
-        for _, world, mesh_index, primitive_total in selected_mesh_instances:
+        for node_index, world in iter_scene_nodes():
+            layout = selected_mesh_layout(node_index)
+            if layout is None:
+                continue
+            mesh_index, primitive_total = layout
             for primitive_number in range(primitive_total):
                 label = f"meshes[{mesh_index}].primitives[{primitive_number}].POSITION"
                 accessor_index = local_position_accessors[(mesh_index, primitive_number)]
