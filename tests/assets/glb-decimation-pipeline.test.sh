@@ -2589,6 +2589,7 @@ def exercise_persistent_unlink():
     real_replace = os.replace
     real_unlink = os.unlink
     real_remove = os.remove
+    real_path_unlink = Path.unlink
     second_reached = False
     unlink_attempts = 0
 
@@ -2617,11 +2618,17 @@ def exercise_persistent_unlink():
             return unlinking(path, *args, **kwargs)
         return real_remove(path, *args, **kwargs)
 
+    def path_unlinking(self, *args, **kwargs):
+        if Path(self) == case["final_glb"]:
+            return unlinking(self, *args, **kwargs)
+        return real_path_unlink(self, *args, **kwargs)
+
     caught = None
     with (
         mock.patch.object(module.os, "replace", new=replacing),
         mock.patch.object(module.os, "unlink", new=unlinking),
         mock.patch.object(module.os, "remove", new=removing),
+        mock.patch.object(Path, "unlink", new=path_unlinking),
     ):
         try:
             module.promote_pair(
