@@ -1900,7 +1900,7 @@ def _process_asset(
     os.chmod(asset_staging, 0o700)
     staged_glb = asset_staging / asset["out"]
     staged_json = asset_staging / f"{asset['out']}.json"
-    start_record = (
+    _emit_record(
         f"asset={identifier} category={kind} target={policy['target']} "
         f"source_triangles={source_metrics['triangles']}"
     )
@@ -2035,7 +2035,6 @@ def _process_asset(
         "expected_glb_state": _status_fingerprint(accepted_glb_status),
         "expected_json_state": _status_fingerprint(accepted_json_status),
         "prepared": prepared,
-        "start_record": start_record,
         "success_record": (
             f"asset={identifier} output_triangles={output_metrics['triangles']} "
             f"output_vertices={output_metrics['vertices']}"
@@ -2547,12 +2546,11 @@ def _emit_completed_records(
     completed_publications: list[dict[str, object]],
 ) -> None:
     for pending in completed_publications:
-        for name in ("start_record", "success_record"):
-            try:
-                _emit_record(pending[name])
-            except Exception:
-                if not _publication_is_exact(pending):
-                    raise
+        try:
+            _emit_record(pending["success_record"])
+        except Exception:
+            if not _publication_is_exact(pending):
+                raise
 
 
 def _run(argv: list[str]) -> None:
