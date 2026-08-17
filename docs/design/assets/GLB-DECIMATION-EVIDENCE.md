@@ -7,11 +7,10 @@ Run date: **2026-08-16**. The evidence folder retains the frozen
 
 - Frozen contract commit: `bc34c6abf6ecf580465c061c2993a7536aeacf41`.
 - Branch base: `3115ebdddd23f3d7eb6836c2670f6dfc2d0a6fb4`.
-- Integrated, independently reviewed pipeline HEAD and hardened real-run code:
-  `c6ca12f0e9b506ef3140c358d79e88c9e55d22b2`.
-- Exact-head evidence refresh base:
-  `8a8f680a6a314981686c006b754789c6293fe503`; the tracked renderer was
-  rerun from that exact tree without changing the local GLBs or sidecars.
+- Integrated, independently reviewed pipeline and final boundary-hardening
+  reproduction base: `beb9cf7562c15d227427c116c786ec03bd636d71`.
+  The tracked renderer and isolated 15-asset Blender queue were rerun from
+  that exact tree without changing the retained local GLBs or sidecars.
 - The reviewed `--force` queue completed 15/15 with exact category and global
   triangle bands, intact source custody, valid schema-1 sidecars, and no
   staging, backup, or process residue.
@@ -80,19 +79,29 @@ done < <(jq -r '.assets[] | [.id, .out] | @tsv' \
 ```
 
 Renderer SHA-256:
-`273acdf5caf4b275e1efb5d579cb481459f3c7094dc1bbfd931302451fa5aa9f`.
+`e3e82e5e2323e4a5f60a4fb9be2602486986161a764cd0b0ccd65941938ed7b5`.
 Every tracked render used yaw 25°, 520×520 RGB, splat radius 2, and the 1%
 coverage gate. Contact sheets used ImageMagick
 `7.1.2-25 Q16-HDRI aarch64 037e46295:20260604`, five-image `+append` rows,
 and `-append`; `montage` was not used.
 
-The exact-head refresh rendered all 15 source/derivative pairs into an
-isolated temporary directory. All 30 individual PNGs were byte-identical to
-the retained recorded files, so their hashes and coverage values below remain
-unchanged. The three rebuilt contact sheets were pixel-identical to the
-retained sheets; their byte streams differed only in ImageMagick's `tIME` and
-`date:*` text chunks. The table below therefore continues to identify the
-retained recorded sheets rather than temporary rebuilds.
+The final boundary-hardened refresh rendered all 15 source/derivative pairs
+into isolated `/private/tmp/catmetro-glb-final-render-r1`. All 30 individual
+PNGs were byte-identical to the retained recorded files, so their hashes and
+coverage values below remain unchanged. The three rebuilt contact sheets were
+pixel-identical to the retained sheets; their byte streams differed only in
+ImageMagick run metadata. The table below therefore continues to identify the
+retained recorded sheets rather than temporary rebuilds. The current
+comparison grid was viewed at original detail; because every individual PNG
+is byte-identical, the prior visual disposition carries forward unchanged.
+
+The same exact code base also ran the full 15-asset Blender queue into isolated
+`/private/tmp/catmetro-glb-final-derivatives-r1`. All 15 derivative GLBs were
+byte-identical to the retained derivatives. Each fresh sidecar was identical
+after excluding only its expected fresh `tool.timestamp_utc`, and a fresh
+`glb_metrics.py` inspection matched every recorded output metric and derivative
+hash. The retained derivatives, sidecars, and metrics authority therefore did
+not change.
 
 The additional material-lit diagnostic used local untracked script
 `/private/tmp/catmetro_color_render.py`, SHA-256
@@ -304,11 +313,11 @@ Silhouette contact sheets:
 | `.catshots/glb-decimation-2026-08-15/comparison-grid.png` | 2600×3120 | `0ed07846d71b6772273e3c4b6f6eaf72be9a8214326a2b03c1988e1ba1fc4e89` |
 
 The exact-head temporary rebuild hashes were
-`22535b2f7b7550a4ace0aa57248a0e76938f7762fd5660dda43ebfd636b6e4bb`
+`08ab01d710bf5544a230a92f6ab71c2379283bba19b012051dcca4e813e93a26`
 (before),
-`5608643aa49dab9fe194b678afaff55f8853e5d08d544f89b51c0fe5214a9ef5`
+`38f8ac86b91da2c2ec4aff76bac3a618b903b14803faf96bca8d1df49eea3ea2`
 (after), and
-`9df23cd6338e8f94f2daa2b4c1a9d27302be4153edf1bfb0e092d2fb3c2ce78e`
+`12ab3eb952da7b85a4cc4c341d6a9bc09ff05ff9ae0f1ee4c2d961f5b6c34ffe`
 (comparison). Each rebuild had zero pixel difference from its retained sheet
 and identical non-date PNG chunks; only ImageMagick's run-time date metadata
 changed, so these temporary hashes do not replace the recorded-file hashes.
