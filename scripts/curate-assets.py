@@ -889,11 +889,13 @@ def curate(arguments: argparse.Namespace) -> dict[str, object]:
     journal_path = input_root / f".glb-curation-{asset_id}.transaction.json"
 
     with source_root_lock(input_root):
-        recover_interrupted_pair(
-            journal_path=journal_path,
-            final_glb=source,
-            final_sidecar=source_sidecar,
-        )
+        for recovery_asset_id, recovery_filename in ASSET_FILENAMES.items():
+            recover_interrupted_pair(
+                journal_path=input_root
+                / f".glb-curation-{recovery_asset_id}.transaction.json",
+                final_glb=input_root / recovery_filename,
+                final_sidecar=input_root / f"{recovery_filename}.json",
+            )
         _remove_orphan_stages(input_root)
         if backup_dir.exists() or backup_dir.is_symlink():
             raise CurationError("backup directory already exists")

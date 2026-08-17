@@ -118,9 +118,14 @@ python3 scripts/decimate-assets.py \
   --force
 ```
 
-Each sidecar records Blender `5.1.2`, build `ec6e62d40fa9`, operation
-`collapse-decimate`, and a fresh UTC timestamp on 2026-08-17 (the local run
-date remained 2026-08-16). The pinned importer and exporter are bundled
+The 13 untouched derivative sidecars record Blender `5.1.2`, build
+`ec6e62d40fa9`, operation `collapse-decimate`, and their original fresh UTC
+timestamps on 2026-08-17; for that queue, the local run date remained
+2026-08-16. The refreshed loaf and wave sidecars record the same tool identity
+and operation at `2026-08-17T10:33:30Z` and `2026-08-17T10:33:48Z`
+respectively, both on 2026-08-17 local time. The metrics `run_date` remains
+`2026-08-16` because it identifies the original whole-inventory queue, not the
+later per-entry refresh. The pinned importer and exporter are bundled
 `io_scene_gltf2` `5.1.20`. The final importer uses literal
 `merge_vertices=True` and `import_shading="SMOOTH"`; the driver separately
 audits the exact unmerged source triangle count before the seam-safe import.
