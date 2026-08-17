@@ -1770,6 +1770,138 @@ def set_temporary_constant(name, value):
     return restore
 
 
+def aggregate_sparse_work_is_prescanned_and_inclusive():
+    def sparse_document(counts):
+        value = copy.deepcopy(document("valid"))
+        declared_length = value["buffers"][0]["byteLength"]
+        binary = bytearray(binary_payload("valid")[:declared_length])
+
+        def append_view(payload, alignment):
+            binary.extend(b"\0" * (-len(binary) % alignment))
+            offset = len(binary)
+            binary.extend(payload)
+            value["bufferViews"].append(
+                {
+                    "buffer": 0,
+                    "byteOffset": offset,
+                    "byteLength": len(payload),
+                }
+            )
+            return len(value["bufferViews"]) - 1
+
+        maximum_count = max(counts)
+        indices_view = append_view(bytes(range(maximum_count)), 1)
+        values_view = append_view(b"\0" * (maximum_count * 12), 4)
+        added_accessors = []
+        for count in counts:
+            added_accessors.append(len(value["accessors"]))
+            value["accessors"].append(
+                {
+                    "componentType": 5126,
+                    "count": maximum_count,
+                    "type": "VEC3",
+                    "sparse": {
+                        "count": count,
+                        "indices": {
+                            "bufferView": indices_view,
+                            "componentType": 5121,
+                        },
+                        "values": {"bufferView": values_view},
+                    },
+                }
+            )
+        value["buffers"][0]["byteLength"] = len(binary)
+        return value, binary, added_accessors
+
+    exact_document, exact_binary, exact_accessors = sparse_document([4, 4])
+    over_document, over_binary, over_accessors = sparse_document([4, 4, 1])
+    exact_path = fixture_root / "aggregate-sparse-exact.glb"
+    over_path = fixture_root / "aggregate-sparse-plus-one.glb"
+    write_document(exact_path, exact_document, exact_binary)
+    write_document(over_path, over_document, over_binary)
+
+    for value, added in (
+        (exact_document, exact_accessors),
+        (over_document, over_accessors),
+    ):
+        referenced = set()
+        for mesh in value["meshes"]:
+            for primitive in mesh["primitives"]:
+                referenced.update(primitive["attributes"].values())
+                if "indices" in primitive:
+                    referenced.add(primitive["indices"])
+        assert referenced.isdisjoint(added)
+        sparse_views = {
+            (
+                value["accessors"][accessor]["sparse"]["indices"]["bufferView"],
+                value["accessors"][accessor]["sparse"]["values"]["bufferView"],
+            )
+            for accessor in added
+        }
+        assert len(sparse_views) == 1
+
+    exact_work = 8
+    assert sum(
+        exact_document["accessors"][accessor]["sparse"]["count"]
+        for accessor in exact_accessors
+    ) == exact_work
+    assert sum(
+        over_document["accessors"][accessor]["sparse"]["count"]
+        for accessor in over_accessors
+    ) == exact_work + 1
+
+    restore_limit = set_temporary_constant("MAX_SPARSE_ACCESSOR_WORK", exact_work)
+    real_unpack = module.struct.unpack_from
+    try:
+        exact = module.inspect_glb(exact_path)
+        assert exact["triangles"] == 37
+
+        sparse_index_reads = 0
+
+        def observing_unpack(format_string, *args, **kwargs):
+            nonlocal sparse_index_reads
+            if format_string == "<B":
+                sparse_index_reads += 1
+            return real_unpack(format_string, *args, **kwargs)
+
+        module.struct.unpack_from = observing_unpack
+        rejection = None
+        try:
+            module.inspect_glb(over_path)
+        except module.GlbError as exc:
+            rejection = exc
+        if rejection is None:
+            raise AssertionError(
+                "aggregate sparse work was accepted after "
+                f"{sparse_index_reads} sparse-index reads"
+            )
+        folded = str(rejection).lower()
+        assert "sparse" in folded and "work" in folded, str(rejection)
+        assert sparse_index_reads == 0, (
+            "aggregate sparse work was rejected after "
+            f"{sparse_index_reads} sparse-index reads"
+        )
+    finally:
+        module.struct.unpack_from = real_unpack
+        restore_limit()
+
+
+check(
+    "aggregate sparse work counts shared and unreferenced accessors before index reads",
+    aggregate_sparse_work_is_prescanned_and_inclusive,
+)
+
+
+def sparse_work_production_ceiling_is_pinned():
+    assert getattr(module, "MAX_SPARSE_ACCESSOR_WORK", None) == 8_000_000
+
+
+check(
+    "aggregate sparse work production ceiling is 8000000 values",
+    sparse_work_production_ceiling_is_pinned,
+)
+
+
 def aggregate_geometry_work_is_predecoded_and_inclusive():
     base_document = document("valid")
     base_binary = binary_payload("valid")
