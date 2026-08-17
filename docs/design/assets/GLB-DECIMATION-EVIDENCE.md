@@ -9,6 +9,9 @@ Run date: **2026-08-16**. The evidence folder retains the frozen
 - Branch base: `3115ebdddd23f3d7eb6836c2670f6dfc2d0a6fb4`.
 - Integrated, independently reviewed pipeline HEAD and hardened real-run code:
   `c6ca12f0e9b506ef3140c358d79e88c9e55d22b2`.
+- Exact-head evidence refresh base:
+  `8a8f680a6a314981686c006b754789c6293fe503`; the tracked renderer was
+  rerun from that exact tree without changing the local GLBs or sidecars.
 - The reviewed `--force` queue completed 15/15 with exact category and global
   triangle bands, intact source custody, valid schema-1 sidecars, and no
   staging, backup, or process residue.
@@ -77,11 +80,19 @@ done < <(jq -r '.assets[] | [.id, .out] | @tsv' \
 ```
 
 Renderer SHA-256:
-`e4bd092e958e17ce1be000dbb3a58a3394f0bd1f9800fab94b5947504b955eb8`.
+`273acdf5caf4b275e1efb5d579cb481459f3c7094dc1bbfd931302451fa5aa9f`.
 Every tracked render used yaw 25°, 520×520 RGB, splat radius 2, and the 1%
 coverage gate. Contact sheets used ImageMagick
 `7.1.2-25 Q16-HDRI aarch64 037e46295:20260604`, five-image `+append` rows,
 and `-append`; `montage` was not used.
+
+The exact-head refresh rendered all 15 source/derivative pairs into an
+isolated temporary directory. All 30 individual PNGs were byte-identical to
+the retained recorded files, so their hashes and coverage values below remain
+unchanged. The three rebuilt contact sheets were pixel-identical to the
+retained sheets; their byte streams differed only in ImageMagick's `tIME` and
+`date:*` text chunks. The table below therefore continues to identify the
+retained recorded sheets rather than temporary rebuilds.
 
 The additional material-lit diagnostic used local untracked script
 `/private/tmp/catmetro_color_render.py`, SHA-256
@@ -130,6 +141,12 @@ weakened to obtain GREEN:
   bounds remained exact. Only the deliberately fresh provenance timestamps
   changed, so this record updates the 15 sidecar hashes but does not regenerate
   or re-disposition the byte-identical visual evidence.
+- Exact-head evidence regression: test-only commit
+  `a14e64c5341967efab38d36f764c997e2caf4e28` failed on the stale tracked
+  renderer hash and all 15 stale derivative-JSON hashes before this record was
+  corrected. Its CI leg requires the tracked evidence/metrics agreement even
+  when ignored local artifacts are absent; an explicit local root adds the
+  stronger on-disk hash comparison.
 
 The final evidence author reran the three focused asset suites and repository
 check before committing this record. Detailed ignored author/reviewer reports
@@ -235,21 +252,21 @@ inspection. All seven custody booleans in the companion JSON are true.
 
 | Asset | Source GLB SHA-256 | Source JSON SHA-256 | Derivative GLB SHA-256 | Derivative JSON SHA-256 |
 |---|---|---|---|---|
-| `cat-red-tabby` | `d18c2098353cf5688745ef820b0ff8b58c826baa64d95bbec5c3234a3977ebf1` | `f746932debb844dd0db9728ca4033a325de410f1eb27ec413a695ae9df45f009` | `9d6f3e1b0d82f23500779c570943dc2081c6caad7295da7d3fe19c1c50742b59` | `09d8892b57dc152bee4deaa4a62c5f14d2e16dc69290f8968c0a4e72b5408f0f` |
-| `cat-blue-siamese` | `6943b7284d313ef70e1e1f5056b8324bf39e655b8ee571087d0fdfb5f1c0d80a` | `c8c3a24732da9f00dfb53f8a8011bff17044441cbeccfc351b53dfa942d4a070` | `44ceea493949fa7ea92bf40c7bc05e64c4b78e3ca0bb4c08b41fa7d788ee17b7` | `b836c05fb5464b2ba1c5197dc0cf28eecd0b8462903c2354ea3f5b4aa7d90b6e` |
-| `cat-yellow-longhair` | `1530b4a5609aeb62499be627630c735c3fd6fae1368b8f58d21c169e4183a813` | `7916d941b2cf27eb0628e77ccfd95252dc8fe671c11b773ffb89b3c513db39d1` | `36f03503fcbcb918870463222f50d6b17b3c880281ce61f3a15c2cec6963ed3e` | `5f3b450157b9ab6c89a0481201712ecb4600acfbe093755486383eb4995a81a5` |
-| `cat-green-shorthair` | `d1a40bfbc4beaba8ac5169260c8d18e4664212f2e9a656549a76dfd3ecf0790b` | `84bbb56e37c97f70c0500f82803a7359d8e7c451b294fc2524222c2fae487eee` | `96910d69ad0bfe424c410e0b9df6e137222d858a28322a5276add6228e9186e5` | `ca1d5bfe395d9d9a808fbbff51b5aa7eac663463c0b734f0f22fcdf75e46f080` |
-| `cat-wild-alley` | `b1d85cf314bbc295d7ca28af9c41f9c3bddecd81cfb84603a14648b55d5f462c` | `1b9d1a08924982f38bd24ac7fc138331f5f357efc500802cc1cf3d06567a6467` | `3fa010b59c3b5dccbe0eb54453e8d595736cbafa391a9f08effd9d052738479c` | `8b194e44b356a80b0a201231d2d354f218452fbb3ee03344633462c2da2b51ff` |
-| `cat-red-tabby-sitting` | `418eaa31df9b65c975dd85bdac3f04ab73b64827d81248d6248b57c6e2a81b14` | `982049a7b96684a6c9d3723764a51f378a07887439b2a4d3de8d318e7216b575` | `3ea8e01d78cb058223c74f225e89512efc44f74f638c99133d7720675e8655b6` | `f034253d73207a5b4d64fa16275618595075966bb97d75b3f7835ce32270b1ee` |
-| `cat-blue-siamese-loaf` | `e3015351ec9bda2aebeafcc0ff23f5aa35512af4234c168d79cac750118070e3` | `ce8ea067634f88ee9fc967ea5a0dbc58df890477d3e1dc1905cc3f77a92dcec4` | `cc1ff113257d48994a94cfdff52554236034e3e6455d402de195461b8c8fc236` | `a1ee892b4ff188ba0c6bf34dfc9689f5e447135069e797f96e5538e8622abf69` |
-| `cat-yellow-longhair-wave` | `8d7190fd24f552f874bf1d733f2870c44a24c27d6b50cfe1e32095f625fcc57c` | `e65414b151fa1dd868e9086c0e274ac61743aef8f8f26bc7bcaa6f49f99c8936` | `4e20de09cee1dcfa383bb708608f03b5f8c1aa78ca4a510a3064f435f5f87a27` | `492d928608ecb44db32cda6631eb9428d8253d823dd60e279d5453e42bb1a451` |
-| `cat-green-shorthair-sit` | `2db4f94d7c59c36c01f1f1d51780b30a417001b5d91a10caf420e5e5c1d6c5b2` | `beb9e95db53e897809194921156c46da974e8519dca3c627b9787b2ca2b40cf5` | `a5791a945bac21cfe55e7e4cdbcd5cd3233c11997cd0f449972a12768cca93f8` | `9c602489d7238cc6fd07c50e2ee99eee032e4eb5f07116b7e30c9050e842812e` |
-| `cat-conductor` | `f2cc476deccbcb4e72b74bd7d7e0bbd0e4c6bd3103149ce3697b85fa5260a9d1` | `9b66a992a560a590a06f435202b5bb246c3d2006dd6fda3b10ed2e059a28d9c4` | `3b0bdbe1a0af9377bfde62ebf2b633e694881dc81438f2814e717c4c71ab9e7d` | `5e99863bae2e2006ca4fc2db24c76d75559b8fa7643bd2511c71526efa7d0f7d` |
-| `prop-depot-shed` | `5efb54812e9d03c15c8d7c085a840bfabb09fc3312495c3b85af2ffcf8047aed` | `4816eeb87183c47bd60283af934f43215f129c7dd7183be4455cc04d4192ac83` | `68994c2316e7c0b23252569bfc06cbc1155c29dd41798c8effdbbaba638844b1` | `24f1d141ec4d66b7cca9976a5b03916144280844121b43153057d9cc05ad5618` |
-| `prop-toy-engine` | `724bfbccc0087992b4f767037444ad95d24a21733d58923e9f7fbbfaa4b6e4c5` | `c02b9ff1352be0c1c3bdbdb63f95aff951311c00ef7e8179d8e9c94257b7569a` | `f622b390cdf48fccfb382895bef2988df191b523b614e01f03dbd162e052eeaf` | `9f6d3a843506e68823f1d242e900cb51796923642f11017fd77a39b947168ee1` |
-| `prop-station-kiosk` | `5fdeeedf04d3b536fc9d3bf3483fb8837b12559557ff16d2ae0c7521c4260b49` | `0d9706c4263a777200122a86c4426ebd23d06ee0370911d35b6f9b548e6c8d4f` | `25053fb73009bf004aeeebab4a861bb664c91935b59c059f21d2fc8c9b6f52cf` | `95ce38ce057334e930dae672318dacaaa14739816b430658ff49d69eef21c0f7` |
-| `prop-trees` | `d94b1586f4eb44a5e61ac5499dfef4ec8e4ddc2125bdf6fc95b6d7948673d863` | `1aa63811903a869927c134161101aa57c8993adc34661c03f9e1aade049e3f0b` | `e34f39de9a0db8f977370d7f0808f44a28b9641a458ada4957f552c62271c0dd` | `c1478f9511eb19f5cc09d5f089e69a5ec1025ad0ace29771d50d2beb65664eec` |
-| `prop-desk-clutter` | `f42232e108bce9b9b12a5db6b8472412673a0dea9293cd9d896d43874bb4e9d5` | `393aca3bc5af36b19fed58e32dcd4e975542d1beafe85c0fe85a774830946ced` | `d0403b93dc3db30ec3f7e0b825ba7b48f4af7b79094c6b262c7bfa2fb268ec4d` | `08d6c0fbbff9e340cb496531b9ae83bba8e13759ab1c7ffbc024596bafbbf665` |
+| `cat-red-tabby` | `d18c2098353cf5688745ef820b0ff8b58c826baa64d95bbec5c3234a3977ebf1` | `f746932debb844dd0db9728ca4033a325de410f1eb27ec413a695ae9df45f009` | `9d6f3e1b0d82f23500779c570943dc2081c6caad7295da7d3fe19c1c50742b59` | `9ebb3638031225ab8ade57cf794cfbb69b3ee98c3ff82e500aaf0d1f8738f4db` |
+| `cat-blue-siamese` | `6943b7284d313ef70e1e1f5056b8324bf39e655b8ee571087d0fdfb5f1c0d80a` | `c8c3a24732da9f00dfb53f8a8011bff17044441cbeccfc351b53dfa942d4a070` | `44ceea493949fa7ea92bf40c7bc05e64c4b78e3ca0bb4c08b41fa7d788ee17b7` | `743de6f299f0c70f39dc92b7a7eda5ed6e86bf203ec78eefd4b01b20f9293f29` |
+| `cat-yellow-longhair` | `1530b4a5609aeb62499be627630c735c3fd6fae1368b8f58d21c169e4183a813` | `7916d941b2cf27eb0628e77ccfd95252dc8fe671c11b773ffb89b3c513db39d1` | `36f03503fcbcb918870463222f50d6b17b3c880281ce61f3a15c2cec6963ed3e` | `f11a40229f24436206b06d4eee04246ef72c0f10ff3b7c88034d99757be2a4ec` |
+| `cat-green-shorthair` | `d1a40bfbc4beaba8ac5169260c8d18e4664212f2e9a656549a76dfd3ecf0790b` | `84bbb56e37c97f70c0500f82803a7359d8e7c451b294fc2524222c2fae487eee` | `96910d69ad0bfe424c410e0b9df6e137222d858a28322a5276add6228e9186e5` | `9bcd978598e942d139e573ea9cdd3afab7dd86439f0aa56524accc0d9c3b3333` |
+| `cat-wild-alley` | `b1d85cf314bbc295d7ca28af9c41f9c3bddecd81cfb84603a14648b55d5f462c` | `1b9d1a08924982f38bd24ac7fc138331f5f357efc500802cc1cf3d06567a6467` | `3fa010b59c3b5dccbe0eb54453e8d595736cbafa391a9f08effd9d052738479c` | `92f095b97e5c4f03116ac087c6852ebcaeabff611b67051faf2b5f2a96f7260b` |
+| `cat-red-tabby-sitting` | `418eaa31df9b65c975dd85bdac3f04ab73b64827d81248d6248b57c6e2a81b14` | `982049a7b96684a6c9d3723764a51f378a07887439b2a4d3de8d318e7216b575` | `3ea8e01d78cb058223c74f225e89512efc44f74f638c99133d7720675e8655b6` | `f40f32794ef55f2f2e797ea870c63fedd6c2959bd0b0facc7fd50f0f1d21d898` |
+| `cat-blue-siamese-loaf` | `e3015351ec9bda2aebeafcc0ff23f5aa35512af4234c168d79cac750118070e3` | `ce8ea067634f88ee9fc967ea5a0dbc58df890477d3e1dc1905cc3f77a92dcec4` | `cc1ff113257d48994a94cfdff52554236034e3e6455d402de195461b8c8fc236` | `8209d8dcac1e70f31a3070801eeacd3eb3bad19654cb0135ae2c9d7416be4a59` |
+| `cat-yellow-longhair-wave` | `8d7190fd24f552f874bf1d733f2870c44a24c27d6b50cfe1e32095f625fcc57c` | `e65414b151fa1dd868e9086c0e274ac61743aef8f8f26bc7bcaa6f49f99c8936` | `4e20de09cee1dcfa383bb708608f03b5f8c1aa78ca4a510a3064f435f5f87a27` | `a084bae339440e74e3b22b0f578fe1a62fe80c15474f4ffd62f717ad6cb9cfb1` |
+| `cat-green-shorthair-sit` | `2db4f94d7c59c36c01f1f1d51780b30a417001b5d91a10caf420e5e5c1d6c5b2` | `beb9e95db53e897809194921156c46da974e8519dca3c627b9787b2ca2b40cf5` | `a5791a945bac21cfe55e7e4cdbcd5cd3233c11997cd0f449972a12768cca93f8` | `360ea5e28ca3e09b51fc45c8360ebe04e5b0a6fd38c532f636252bead68439fb` |
+| `cat-conductor` | `f2cc476deccbcb4e72b74bd7d7e0bbd0e4c6bd3103149ce3697b85fa5260a9d1` | `9b66a992a560a590a06f435202b5bb246c3d2006dd6fda3b10ed2e059a28d9c4` | `3b0bdbe1a0af9377bfde62ebf2b633e694881dc81438f2814e717c4c71ab9e7d` | `83b5329451479e54719cd06a83445ab74f0bc58ef4dc4749b5b6e3cc50473e6b` |
+| `prop-depot-shed` | `5efb54812e9d03c15c8d7c085a840bfabb09fc3312495c3b85af2ffcf8047aed` | `4816eeb87183c47bd60283af934f43215f129c7dd7183be4455cc04d4192ac83` | `68994c2316e7c0b23252569bfc06cbc1155c29dd41798c8effdbbaba638844b1` | `0e6c7f6a9065e12b0f3da93605914672947a2a662175ed788470c81f5d736ae2` |
+| `prop-toy-engine` | `724bfbccc0087992b4f767037444ad95d24a21733d58923e9f7fbbfaa4b6e4c5` | `c02b9ff1352be0c1c3bdbdb63f95aff951311c00ef7e8179d8e9c94257b7569a` | `f622b390cdf48fccfb382895bef2988df191b523b614e01f03dbd162e052eeaf` | `2f1bd6850cbb836d8c569791ffaa6939c5d5f58a42487381c3954f3fb03aec1f` |
+| `prop-station-kiosk` | `5fdeeedf04d3b536fc9d3bf3483fb8837b12559557ff16d2ae0c7521c4260b49` | `0d9706c4263a777200122a86c4426ebd23d06ee0370911d35b6f9b548e6c8d4f` | `25053fb73009bf004aeeebab4a861bb664c91935b59c059f21d2fc8c9b6f52cf` | `416098fc269903c81ffbcf40e6f469821bfbc6c045b3ce2018e76fd2d30e9dc3` |
+| `prop-trees` | `d94b1586f4eb44a5e61ac5499dfef4ec8e4ddc2125bdf6fc95b6d7948673d863` | `1aa63811903a869927c134161101aa57c8993adc34661c03f9e1aade049e3f0b` | `e34f39de9a0db8f977370d7f0808f44a28b9641a458ada4957f552c62271c0dd` | `96b29000ef1e8f03d0982ffbaa1ec3d5a476cfcff8241a1f35b3a29041495b34` |
+| `prop-desk-clutter` | `f42232e108bce9b9b12a5db6b8472412673a0dea9293cd9d896d43874bb4e9d5` | `393aca3bc5af36b19fed58e32dcd4e975542d1beafe85c0fe85a774830946ced` | `d0403b93dc3db30ec3f7e0b825ba7b48f4af7b79094c6b262c7bfa2fb268ec4d` | `e75ba87683bd0f468871608a0c079adf89e46eca86fecda248997b204da713b4` |
 
 ## Silhouette evidence — all 30 individual renders
 
@@ -285,6 +302,24 @@ Silhouette contact sheets:
 | `.catshots/glb-decimation-2026-08-15/before-grid.png` | 2600×1560 | `01edebbbe53ada4db60855b6413d09977ace40226be5e15bb948be29af89bc54` |
 | `.catshots/glb-decimation-2026-08-15/after-grid.png` | 2600×1560 | `4014f185bff0c99222b24e5399a0c1525473ab8fc8e054e47eda0287f4bce584` |
 | `.catshots/glb-decimation-2026-08-15/comparison-grid.png` | 2600×3120 | `0ed07846d71b6772273e3c4b6f6eaf72be9a8214326a2b03c1988e1ba1fc4e89` |
+
+The exact-head temporary rebuild hashes were
+`22535b2f7b7550a4ace0aa57248a0e76938f7762fd5660dda43ebfd636b6e4bb`
+(before),
+`5608643aa49dab9fe194b678afaff55f8853e5d08d544f89b51c0fe5214a9ef5`
+(after), and
+`9df23cd6338e8f94f2daa2b4c1a9d27302be4153edf1bfb0e092d2fb3c2ce78e`
+(comparison). Each rebuild had zero pixel difference from its retained sheet
+and identical non-date PNG chunks; only ImageMagick's run-time date metadata
+changed, so these temporary hashes do not replace the recorded-file hashes.
+
+The exact-head comparison grid and the `prop-toy-engine` source/derivative pair
+were viewed at original detail. No new silhouette loss appeared: cat ears,
+paws, tails, poses, the conductor outline, and the prop roofs, openings,
+canopies, clutter, and train outline remained intelligible. The existing
+14/15 target-scale approval, board-scale-only condition for
+`prop-toy-engine`, and separate source-art shipping rejection therefore remain
+unchanged.
 
 ## Material-lit color evidence and visual verdict
 
@@ -376,6 +411,9 @@ The final evidence gate runs from the evidence worktree at the recorded code
 HEAD, with no Unity, emulator, adb, network, credential, or `.env` access:
 
 ```bash
+bash tests/assets/glb-decimation-evidence.test.sh
+GLB_DECIMATION_ARTIFACT_ROOT=/Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming \
+  bash tests/assets/glb-decimation-evidence.test.sh
 bash tests/assets/glb-metrics.test.sh
 bash tests/assets/glb-silhouette.test.sh
 bash tests/assets/glb-decimation-pipeline.test.sh
@@ -386,20 +424,32 @@ git diff --check
 The companion JSON is additionally checked for exact manifest order, 15/10/5
 inventory, category/global bands, recomputed totals, sidecar hash agreement,
 source custody, empty preservation diagnostics, exact embedded payload and
-texture-role preservation, and current render hashes. Only this Markdown file
-and `GLB-DECIMATION-METRICS.json` belong in the evidence commit; generated GLBs,
-sidecars, and PNGs remain local and untracked.
+texture-role preservation, and current render hashes. The companion JSON
+remains the unmodified machine authority for this remediation; only this
+Markdown record and its tracked validator change. Generated GLBs, sidecars,
+and PNGs remain local and untracked.
 
-Fresh observed results on 2026-08-16:
+Fresh exact-head observed results on 2026-08-16:
 
-- metrics suite: exit 0, silent;
+- tracked evidence validator without local artifacts: exit 0,
+  `glb-decimation evidence: pass assets=15 local_artifacts=skipped`;
+- tracked evidence validator against the explicit ignored local root: exit 0,
+  `glb-decimation evidence: pass assets=15 local_artifacts=checked` (60/60
+  source, source-JSON, derivative, and derivative-JSON hashes agree);
+- metrics suite: exit 0, `glb-metrics test: pass`;
 - silhouette suite: exit 0, `glb-silhouette test: pass` (the logged sparse
-  rejection `coverage 0.000076 below 0.100000` is its intentional negative);
+  rejection `coverage 0.000057 below 0.100000` is its intentional negative);
 - pipeline suite: exit 0, `glb-decimation pipeline test: pass`; Section H's
   compliant fixture and mutation controls passed;
+- exact-head renderer: 30/30 expected PNGs, 30/30 recorded hashes and coverage
+  values, and 30/30 byte-identical comparisons; all coverage exceeds 0.01;
+- rebuilt contact sheets: expected 2600×1560, 2600×1560, and 2600×3120
+  dimensions, zero pixel difference, and identical non-date PNG chunks versus
+  the retained recorded sheets;
 - repository check: exit 0,
   `check: OK (interim harness — real lint+typecheck arrive with the stack)`;
-- independent evidence validator: `assets=15 silhouette_pngs=30 color_pngs=30
+- original companion evidence-generation validator: `assets=15
+  silhouette_pngs=30 color_pngs=30
   reviewed_color_grids=4 custody=15 payload_identity=15`;
 - diff check: pass; transaction residue: none; live Blender/queue processes:
   none.
