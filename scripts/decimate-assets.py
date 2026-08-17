@@ -1417,6 +1417,99 @@ def _restore_old_pair(
         raise DecimationError("forced promotion could not recover the old pair")
 
 
+def _candidate_receipt_from_holders(
+    holders: tuple[Path, ...],
+    label: str,
+    maximum_bytes: int,
+    expected_sha: str,
+) -> bytes:
+    """Return one exact bounded candidate payload from its current holder."""
+    retained = b""
+    for holder in holders:
+        if not _path_exists(holder):
+            continue
+        try:
+            observed_sha, _, retained, _ = _sha256_receipt(
+                holder,
+                label,
+                maximum_bytes,
+            )
+        except (DecimationError, OSError):
+            retained = b""
+            continue
+        if observed_sha == expected_sha:
+            return retained
+        retained = b""
+    retained = b""
+    raise DecimationError(f"{label} exact candidate receipt is unavailable")
+
+
+def _normalize_partial_retirement(
+    staged_glb: Path,
+    staged_json: Path,
+    final_glb: Path,
+    final_json: Path,
+    retired_glb: Path,
+    retired_json: Path,
+    candidate_glb_sha: str,
+    candidate_json_sha: str,
+) -> None:
+    """Normalize an interrupted retirement to one exact private pair."""
+    candidate_glb_bytes = b""
+    candidate_json_bytes = b""
+    try:
+        candidate_glb_bytes = _candidate_receipt_from_holders(
+            (retired_glb, final_glb, staged_glb),
+            "retiring derivative GLB",
+            MAX_DERIVATIVE_GLB_BYTES,
+            candidate_glb_sha,
+        )
+        candidate_json_bytes = _candidate_receipt_from_holders(
+            (retired_json, final_json, staged_json),
+            "retiring derivative JSON",
+            MAX_PROVENANCE_BYTES,
+            candidate_json_sha,
+        )
+        _restore_retired_candidate_pair(
+            retired_glb,
+            retired_json,
+            candidate_glb_sha,
+            candidate_json_sha,
+            candidate_glb_bytes,
+            candidate_json_bytes,
+        )
+        _unlink_pair_bounded(
+            final_glb,
+            final_json,
+            "partial retirement could not remove public candidate names",
+        )
+        _unlink_pair_bounded(
+            staged_glb,
+            staged_json,
+            "partial retirement could not remove staged candidate names",
+        )
+        if (
+            _path_exists(final_glb)
+            or _path_exists(final_json)
+            or not _matches_sha256(
+                retired_glb,
+                candidate_glb_sha,
+                MAX_DERIVATIVE_GLB_BYTES,
+            )
+            or not _matches_sha256(
+                retired_json,
+                candidate_json_sha,
+                MAX_PROVENANCE_BYTES,
+            )
+        ):
+            raise DecimationError(
+                "partial retirement did not produce an exact private pair"
+            )
+    finally:
+        candidate_glb_bytes = b""
+        candidate_json_bytes = b""
+
+
 def _retire_absent_partial_pair(
     staged_glb: Path,
     staged_json: Path,
@@ -1444,10 +1537,25 @@ def _retire_absent_partial_pair(
             MAX_PROVENANCE_BYTES,
         ),
     )
+    rename_failed = False
     for final, staged, retired, _, _ in members:
         source = final if _path_exists(final) else staged
         if _path_exists(source):
-            os.replace(source, retired)
+            try:
+                os.replace(source, retired)
+            except OSError:
+                rename_failed = True
+    if rename_failed:
+        _normalize_partial_retirement(
+            staged_glb,
+            staged_json,
+            final_glb,
+            final_json,
+            retired_glb,
+            retired_json,
+            candidate_glb_sha,
+            candidate_json_sha,
+        )
     if _path_exists(final_glb) or _path_exists(final_json):
         raise DecimationError("absent-destination promotion retained a partial final")
     if not all(
