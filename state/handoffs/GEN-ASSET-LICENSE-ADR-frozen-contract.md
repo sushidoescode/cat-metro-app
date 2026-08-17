@@ -82,17 +82,6 @@ ADR. ADR approval and merge remain human-only.
   ADR will not guess a provider from filenames or prompts when a sidecar is missing or
   inconsistent; any anomaly blocks the shipping proposition until resolved.
 
-## Post-freeze evidence correction — 2026-08-17
-
-Assumption A5's first clause was falsified during the planned custody check: GitHub
-reports `sushidoescode/cat-metro-app` as **public**, not private. The generated tree is
-currently safe because all source GLBs, derivatives, and sidecars remain ignored and
-untracked. Execution therefore uses the stricter branch of criterion 3: raw/decimated
-GLBs stay out of this public repository and every public artifact channel; durable
-private custody plus a deterministic private release-input path are pre-ship gates.
-This correction changes no requested deliverable and does not authorize a storage
-dependency or repository-visibility change.
-
 ## Out of scope
 
 - Generating, downloading, decimating, repairing, importing, wiring, rendering, or
