@@ -8,9 +8,10 @@ Run date: **2026-08-16**. The evidence folder retains the frozen
 - Frozen contract commit: `bc34c6abf6ecf580465c061c2993a7536aeacf41`.
 - Branch base: `3115ebdddd23f3d7eb6836c2670f6dfc2d0a6fb4`.
 - Integrated, independently reviewed pipeline and final boundary-hardening
-  reproduction base: `6d5a0da5b71f61d11ef3e0b0fe187b0e25caacaf`.
-  The tracked renderer and isolated 15-asset Blender queue were rerun from
-  that exact tree without changing the retained local GLBs or sidecars.
+  reproduction base: `96149b5ff5121e89cf14c2a9dda98452e280853c`.
+  The executed renderer and decimation-script bytes are identical to that
+  exact tree; the isolated 15-asset Blender queue reran without changing the
+  retained local GLBs or sidecars.
 - The reviewed `--force` queue completed 15/15 with exact category and global
   triangle bands, intact source custody, valid schema-1 sidecars, and no
   staging, backup, or process residue.
@@ -85,8 +86,8 @@ coverage gate. Contact sheets used ImageMagick
 `7.1.2-25 Q16-HDRI aarch64 037e46295:20260604`, five-image `+append` rows,
 and `-append`; `montage` was not used.
 
-The final boundary-hardened refresh rendered all 15 source/derivative pairs
-into isolated `/private/tmp/catmetro-glb-final-render-r2`. All 30 individual
+The final custody-hardened refresh rendered all 15 source/derivative pairs
+into isolated `/private/tmp/catmetro-glb-final-render-r3`. All 30 individual
 PNGs were byte-identical to the retained recorded files, so their hashes and
 coverage values below remain unchanged. The three rebuilt contact sheets were
 pixel-identical to the retained sheets; their byte streams differed only in
@@ -96,7 +97,7 @@ comparison grid was viewed at original detail; because every individual PNG
 is byte-identical, the prior visual disposition carries forward unchanged.
 
 The same exact code base also ran the full 15-asset Blender queue into isolated
-`/private/tmp/catmetro-glb-final-derivatives-r2`. All 15 derivative GLBs were
+`/private/tmp/catmetro-glb-final-derivatives-r3`. All 15 derivative GLBs were
 byte-identical to the retained derivatives. Each fresh sidecar was identical
 after excluding only its expected fresh `tool.timestamp_utc`, and a fresh
 `glb_metrics.py` inspection matched every recorded output metric and derivative
