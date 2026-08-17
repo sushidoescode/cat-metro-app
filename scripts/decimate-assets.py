@@ -1406,7 +1406,11 @@ def _restore_old_pair(
     # A replace-after-effect race may consume and then alias a backup. Captured
     # pre-transaction bytes remain the recovery authority in that case.
     for backup, final, old_sha, old_bytes, maximum_bytes in members:
-        if _sha256_match_status(final, old_sha, maximum_bytes) is True:
+        final_match = _sha256_match_status(final, old_sha, maximum_bytes)
+        if final_match is True:
+            continue
+        if final_match is False:
+            _write_old_member(final, old_bytes, old_sha, maximum_bytes)
             continue
         backup_match = _sha256_match_status(
             backup,
