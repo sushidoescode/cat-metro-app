@@ -61,20 +61,33 @@ fixture="$tmp/repo"
 fake_bin="$tmp/fake-bin"
 fake_sdk="$tmp/fake-sdk/8.0.419"
 fake_host="$tmp/host/fxr/8.0.25/libhostfxr.fake"
+fake_pack="$tmp/packs/Microsoft.NETCore.App.Ref/8.0.25/ref/net8.0/System.Runtime.dll"
+fake_workload_manifest="$tmp/sdk-manifests/8.0.400/fake/WorkloadManifest.json"
 fake_home="$tmp/fake-home"
 fake_packages="$fake_home/.nuget/packages"
 fake_package="$fake_packages/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"
+fake_effective_packages="$tmp/effective-packages"
+fake_effective_package="$fake_effective_packages/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"
 fake_nuget_config="$fake_home/.nuget/NuGet/NuGet.Config"
+fake_flap_sentinel="$tmp/flap-once"
 cache="$tmp/cache"
 cache_mutate_session="$tmp/mutate-session"
 cache_mutate="$cache_mutate_session/cache"
+cache_flap_session="$tmp/flap-session"
+cache_flap="$cache_flap_session/cache"
+cache_race_session="$tmp/race-session"
+cache_race="$cache_race_session/cache"
 calls="$tmp/dotnet.calls"
 mkdir -p "$fixture/dotnet/Fake" "$fixture/unity/Assets/Scripts/Domain" "$fake_bin" \
-  "$fake_sdk" "$(dirname "$fake_host")" "$(dirname "$fake_package")" \
+  "$fake_sdk" "$(dirname "$fake_host")" "$(dirname "$fake_pack")" \
+  "$(dirname "$fake_workload_manifest")" "$(dirname "$fake_package")" \
+  "$(dirname "$fake_effective_package")" \
   "$(dirname "$fake_nuget_config")" \
   || fail "could not create self-test fixture"
-mkdir -m 700 "$cache" "$cache_mutate_session" || fail "could not create private caches"
-mkdir -m 700 "$cache_mutate" || fail "could not create mutation cache"
+mkdir -m 700 "$cache" "$cache_mutate_session" "$cache_flap_session" \
+  "$cache_race_session" || fail "could not create private caches"
+mkdir -m 700 "$cache_mutate" "$cache_flap" "$cache_race" \
+  || fail "could not create focused caches"
 
 printf '%s\n' 'Microsoft Visual Studio Solution File, Format Version 12.00' \
   > "$fixture/dotnet/CatMetro.sln"
@@ -84,8 +97,12 @@ printf '%s\n' '{"version":1,"dependencies":{"net8.0":{"Fake.Package":{"type":"Di
   > "$fixture/dotnet/Fake/packages.lock.json"
 printf '%s\n' 'PASS' > "$fake_sdk/Fake.MSBuild.dll"
 printf '%s\n' 'PASS' > "$fake_host"
+printf '%s\n' 'PASS' > "$fake_pack"
+printf '%s\n' 'PASS' > "$fake_workload_manifest"
 printf '%s\n' 'PASS' > "$fake_package"
-printf '%s\n' 'PASS' > "$fake_nuget_config"
+printf '%s\n' 'PASS' > "$fake_effective_package"
+printf '%s\n' '<configuration><config><add key="globalPackagesFolder" value="unused-by-fake" /></config></configuration>' \
+  > "$fake_nuget_config"
 
 cat > "$fake_bin/dotnet" <<'FAKE_DOTNET'
 #!/usr/bin/env bash
@@ -97,6 +114,12 @@ if [ "$#" -eq 1 ] && [ "$1" = "--info" ]; then
   [ -z "${CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR:-}" ] || exit 91
   printf '%s\n' '.NET SDK:' ' Version: 8.0.419' " Base Path: ${FAKE_SDK_ROOT:?}/" \
     'RID: fake-portable' 'Host:' '  Version: 8.0.25'
+  exit 0
+fi
+
+if [ "$#" -ge 5 ] && [ "$1" = 'msbuild' ]; then
+  printf '{"Properties":{"NuGetPackageRoot":"%s/","RestorePackagesPath":""}}\n' \
+    "${FAKE_EFFECTIVE_PACKAGE_ROOT:?}"
   exit 0
 fi
 
@@ -152,7 +175,13 @@ fi
 if grep -q '^FAIL$' "${FAKE_HOST_FILE:?}"; then
   state='FAIL'
 fi
-if grep -q '^FAIL$' "${NUGET_PACKAGES:?}/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"; then
+if grep -q '^FAIL$' "${FAKE_PACK_FILE:?}"; then
+  state='FAIL'
+fi
+if grep -q '^FAIL$' "${FAKE_WORKLOAD_MANIFEST:?}"; then
+  state='FAIL'
+fi
+if grep -q '^FAIL$' "${FAKE_EFFECTIVE_PACKAGE_ROOT:?}/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"; then
   state='FAIL'
 fi
 if grep -q '^FAIL$' "${HOME:?}/.nuget/NuGet/NuGet.Config"; then
@@ -165,6 +194,16 @@ case "$state" in
     ;;
   MUTATE)
     printf '%s\n' 'DONE' > "$fingerprint"
+    ;;
+  FLAP)
+    if [ ! -e "${FAKE_FLAP_SENTINEL:?}" ]; then
+      : > "$FAKE_FLAP_SENTINEL"
+      printf '%s\n' 'PASS' > "$fingerprint"
+      printf '%s\n' 'FLAP' > "$fingerprint"
+    else
+      printf 'FAKE_FAILURE\n' >&2
+      exit 42
+    fi
     ;;
   TERM)
     kill -TERM "$$"
@@ -223,6 +262,10 @@ run_direct() {
       NUGET_PACKAGES="$fake_packages" \
       FAKE_SDK_ROOT="$fake_sdk" \
       FAKE_HOST_FILE="$fake_host" \
+      FAKE_PACK_FILE="$fake_pack" \
+      FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
+      FAKE_EFFECTIVE_PACKAGE_ROOT="$fake_effective_packages" \
+      FAKE_FLAP_SENTINEL="$fake_flap_sentinel" \
       FAKE_DOTNET_LOG="$calls" \
       FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
       CACHE_SECRET_SENTINEL='do-not-store-this-raw-value' \
@@ -241,6 +284,10 @@ run_cached_at() {
       NUGET_PACKAGES="$fake_packages" \
       FAKE_SDK_ROOT="$fake_sdk" \
       FAKE_HOST_FILE="$fake_host" \
+      FAKE_PACK_FILE="$fake_pack" \
+      FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
+      FAKE_EFFECTIVE_PACKAGE_ROOT="$fake_effective_packages" \
+      FAKE_FLAP_SENTINEL="$fake_flap_sentinel" \
       FAKE_DOTNET_LOG="$calls" \
       FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
       CACHE_TEST_VARIANT="$variant" \
@@ -261,6 +308,10 @@ run_inactive_at() {
       NUGET_PACKAGES="$fake_packages" \
       FAKE_SDK_ROOT="$fake_sdk" \
       FAKE_HOST_FILE="$fake_host" \
+      FAKE_PACK_FILE="$fake_pack" \
+      FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
+      FAKE_EFFECTIVE_PACKAGE_ROOT="$fake_effective_packages" \
+      FAKE_FLAP_SENTINEL="$fake_flap_sentinel" \
       FAKE_DOTNET_LOG="$calls" \
       FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
       CACHE_TEST_VARIANT='stable' \
@@ -301,6 +352,10 @@ for wrapper_run in 1 2; do
       NUGET_PACKAGES="$fake_packages" \
       FAKE_SDK_ROOT="$fake_sdk" \
       FAKE_HOST_FILE="$fake_host" \
+      FAKE_PACK_FILE="$fake_pack" \
+      FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
+      FAKE_EFFECTIVE_PACKAGE_ROOT="$fake_effective_packages" \
+      FAKE_FLAP_SENTINEL="$fake_flap_sentinel" \
       FAKE_DOTNET_LOG="$calls" \
       FAKE_ARTIFACT_ROOT="$repo_root/dotnet/CatMetro.Tests/obj/ci-full-solution" \
       CAT_METRO_FULL_SOLUTION_CACHE_DIR="$cache" \
@@ -323,8 +378,6 @@ run_cached_at "$cache" > "$tmp/cache-hit.out" 2> "$tmp/cache-hit.err" \
 [ "$(call_count)" -eq 1 ] || fail "stable miss+hit executed dotnet more than once"
 manifest_count=$(find "$cache/records" -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
 [ "$manifest_count" -eq 1 ] || fail "expected one atomic green record, found $manifest_count"
-stable_manifest=$(find "$cache/records" -type f -name '*.json' 2>/dev/null)
-[ -n "$stable_manifest" ] || fail "could not pin the stable green record"
 if grep -rFq 'do-not-store-this-raw-value' "$cache" 2>/dev/null; then
   fail "raw environment value leaked into the private cache"
 fi
@@ -348,9 +401,12 @@ fi
 [ "$(call_count)" -eq 2 ] || fail "failed command was not executed twice"
 printf '%s\n' 'PASS' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
 run_cached_at "$cache" > "$tmp/restored.out" 2> "$tmp/restored.err" \
-  || fail "byte-restored input did not reuse its original green record"
-[ "$(call_count)" -eq 2 ] || fail "byte restoration did not return to the content key"
-echo "  ok: tracked mutation is red; failures are not cached; byte restore hits"
+  || fail "byte-restored input did not execute green"
+run_cached_at "$cache" > "$tmp/restored-hit.out" 2> "$tmp/restored-hit.err" \
+  || fail "stable byte-restored input did not reuse its new green record"
+[ "$(call_count)" -eq 3 ] \
+  || fail "write+restore metadata did not force one conservative real green execution"
+echo "  ok: tracked mutation is red; failures are not cached; byte restore revalidates"
 
 # 4. Nonignored untracked path membership and exact child environment are key inputs.
 reset_calls
@@ -368,7 +424,9 @@ run_cached_at "$cache" 'different-env' > "$tmp/env.out" 2> "$tmp/env.err" \
 echo "  ok: untracked membership and child environment invalidate"
 
 # 5. A corrupt record is never trusted; a real green execution repairs it atomically.
-printf '%s\n' '{broken' > "$stable_manifest"
+while IFS= read -r -d '' manifest; do
+  printf '%s\n' '{broken' > "$manifest"
+done < <(find "$cache/records" -type f -name '*.json' -print0 2>/dev/null)
 reset_calls
 run_cached_at "$cache" > "$tmp/corrupt.out" 2> "$tmp/corrupt.err" \
   || fail "corrupt-record fallback execution failed"
@@ -421,6 +479,10 @@ reset_calls
     NUGET_PACKAGES="$fake_packages" \
     FAKE_SDK_ROOT="$fake_sdk" \
     FAKE_HOST_FILE="$fake_host" \
+    FAKE_PACK_FILE="$fake_pack" \
+    FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
+    FAKE_EFFECTIVE_PACKAGE_ROOT="$fake_effective_packages" \
+    FAKE_FLAP_SENTINEL="$fake_flap_sentinel" \
     FAKE_DOTNET_LOG="$calls" \
     FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
     CACHE_TEST_VARIANT='stable' \
@@ -435,7 +497,9 @@ rc=$?
 printf '%s\n' 'PASS' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
 echo "  ok: post-validation mutation cannot consume stale green"
 
-# 7. Ignored root build policy, selected SDK files, package bytes, and user NuGet config invalidate.
+# 7. Ignored root policy, every consumed .NET pack, the effective package root, and NuGet config
+# are toolchain inputs. In particular, the fake command consumes a globalPackagesFolder that is
+# deliberately different from NUGET_PACKAGES, so hashing the conventional default is insufficient.
 reset_calls
 printf '%s\n' 'FAIL' > "$fixture/Directory.Build.props"
 run_cached_at "$cache" > "$tmp/root-policy.out" 2> "$tmp/root-policy.err"
@@ -453,19 +517,25 @@ run_cached_at "$cache" > "$tmp/root-policy-restored.out" 2> "$tmp/root-policy-re
   || fail "root build-policy removal did not restore the original key"
 [ "$(call_count)" -eq 2 ] || fail "root build-policy removal missed the original record"
 
-for external_input in "$fake_sdk/Fake.MSBuild.dll" "$fake_host" "$fake_package" \
-  "$fake_nuget_config"; do
+for external_input in "$fake_sdk/Fake.MSBuild.dll" "$fake_host" "$fake_pack" \
+  "$fake_workload_manifest" "$fake_effective_package" "$fake_nuget_config"; do
+  cp "$external_input" "$tmp/external-input.original" \
+    || fail "could not preserve external build input $external_input"
   printf '%s\n' 'FAIL' > "$external_input"
   run_cached_at "$cache" > "$tmp/external-fail.out" 2> "$tmp/external-fail.err"
   rc=$?
   [ "$rc" -eq 42 ] || fail "external build input $external_input returned $rc, expected 42"
-  printf '%s\n' 'PASS' > "$external_input"
+  cp "$tmp/external-input.original" "$external_input" \
+    || fail "could not restore external build input $external_input"
   run_cached_at "$cache" > "$tmp/external-restored.out" 2> "$tmp/external-restored.err" \
-    || fail "external build input $external_input did not restore its original key"
+    || fail "external build input $external_input did not execute green after restore"
+  run_cached_at "$cache" > "$tmp/external-restored-hit.out" \
+    2> "$tmp/external-restored-hit.err" \
+    || fail "stable restored external build input $external_input did not hit"
 done
-[ "$(call_count)" -eq 6 ] \
-  || fail "external build inputs were not each executed and restored by content key"
-echo "  ok: ignored root, SDK, package, and NuGet inputs invalidate"
+[ "$(call_count)" -eq 14 ] \
+  || fail "external build inputs were not each executed once per changed metadata key"
+echo "  ok: ignored root, SDK, packs, effective package root, and NuGet inputs invalidate"
 
 # 8. A signal-killed child preserves shell-compatible 128+signal status.
 printf '%s\n' 'TERM' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
@@ -503,6 +573,26 @@ fi
 [ ! -e "$cleanup_session" ] && [ ! -L "$cleanup_session" ] \
   || fail "validated session cleanup left its target"
 [ -f "$external_sentinel/keep.txt" ] || fail "session cleanup followed an external symlink"
+
+# macOS ships Python 3.9 at this path. Keep the top-level gate's cleanup on that interpreter
+# floor; Python 3.9's shutil.rmtree has no public dir_fd keyword.
+if [ -x /usr/bin/python3 ]; then
+  compatibility_session="$cleanup_parent/session.pythoncompat"
+  mkdir -p "$compatibility_session/nested" \
+    || fail "could not create Python compatibility cleanup fixture"
+  chmod 700 "$compatibility_session" \
+    || fail "could not make Python compatibility cleanup fixture private"
+  printf '%s\n' 'REMOVE' > "$compatibility_session/nested/remove.txt"
+  if ! (
+    cd "$fixture" || exit 1
+    /usr/bin/python3 "$helper" --cleanup-session "$compatibility_session"
+  ) > "$tmp/cleanup-python-compat.out" 2> "$tmp/cleanup-python-compat.err"; then
+    cat "$tmp/cleanup-python-compat.err" >&2
+    fail "/usr/bin/python3 could not perform validated session cleanup"
+  fi
+  [ ! -e "$compatibility_session" ] && [ ! -L "$compatibility_session" ] \
+    || fail "/usr/bin/python3 cleanup left its target"
+fi
 echo "  ok: cleanup is exact and does not follow symlinks"
 
 # 10. A top-level SIGTERM is failure and still removes the exact private session.
@@ -574,7 +664,110 @@ run_cached_at "$cache_mutate" > "$tmp/post-mutate-hit.out" 2> "$tmp/post-mutate-
 [ "$(call_count)" -eq 2 ] || fail "stable post-mutation miss+hit count was not two total"
 echo "  ok: mid-run input drift refuses publication"
 
-# 12. The two repeatability wrappers remain direct even when cache controls exist.
+# 12. A command that writes an input, observes the temporary bytes, and restores the original
+# bytes before exit must not publish. Content-only before/after snapshots make this stale-green.
+printf '%s\n' 'FLAP' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
+rm -f -- "$fake_flap_sentinel"
+reset_calls
+run_cached_at "$cache_flap" > "$tmp/flap-producer.out" 2> "$tmp/flap-producer.err" \
+  || fail "transient write+restore producer did not return its observed green result"
+run_direct > "$tmp/flap-direct.out" 2> "$tmp/flap-direct.err"
+rc=$?
+[ "$rc" -eq 42 ] || fail "standalone FLAP control returned $rc, expected 42"
+run_cached_at "$cache_flap" > "$tmp/flap-second.out" 2> "$tmp/flap-second.err"
+rc=$?
+[ "$rc" -eq 42 ] || fail "write+restore producer published stale green (rc=$rc)"
+[ "$(call_count)" -eq 3 ] \
+  || fail "write+restore proof expected producer, direct control, and real second cache call"
+flap_records=$(find "$cache_flap/records" -type f -name '*.json' 2>/dev/null \
+  | wc -l | tr -d ' ')
+[ "$flap_records" -eq 0 ] || fail "write+restore producer left a green record"
+printf '%s\n' 'PASS' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
+rm -f -- "$fake_flap_sentinel"
+echo "  ok: transient write+restore cannot publish stale green"
+
+# 13. The final snapshot globally revalidates early-observed files. This probe mutates the
+# solution only after its per-file hash has completed while a later input is being hashed.
+cat > "$tmp/final-snapshot-race-probe.py" <<'FINAL_SNAPSHOT_RACE_PROBE'
+#!/usr/bin/env python3
+import importlib.util
+import os
+from pathlib import Path
+import sys
+
+sys.dont_write_bytecode = True
+helper, root_raw, cache = sys.argv[1:]
+spec = importlib.util.spec_from_file_location("cat_metro_cache_helper", helper)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+root = Path(root_raw)
+environment = dict(os.environ)
+active = environment["CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE"]
+for name in (
+    "CAT_METRO_FULL_SOLUTION_CACHE_DIR",
+    "CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE",
+    "CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR",
+):
+    environment.pop(name, None)
+
+original_snapshot = module._snapshot
+snapshot_count = 0
+
+def racing_snapshot(snapshot_root, snapshot_environment):
+    global snapshot_count
+    snapshot_count += 1
+    if snapshot_count != 3:
+        return original_snapshot(snapshot_root, snapshot_environment)
+    original_hash = module._hash_file
+
+    def mutate_early_after_late_hash(hash_root, relative, aggregate, *args, **kwargs):
+        result = original_hash(hash_root, relative, aggregate, *args, **kwargs)
+        if hash_root == root and relative == "unity/Assets/Scripts/Domain/Fingerprint.cs":
+            (root / "dotnet/CatMetro.sln").write_text("LATE MUTATION\n")
+        return result
+
+    module._hash_file = mutate_early_after_late_hash
+    try:
+        return original_snapshot(snapshot_root, snapshot_environment)
+    finally:
+        module._hash_file = original_hash
+
+module._snapshot = racing_snapshot
+raise SystemExit(module._cached(root, environment, active, cache, None))
+FINAL_SNAPSHOT_RACE_PROBE
+
+cp "$fixture/dotnet/CatMetro.sln" "$tmp/solution.original" \
+  || fail "could not preserve solution for final-snapshot race"
+reset_calls
+(
+  cd "$fixture" || exit 1
+  PATH="$fake_bin:$PATH" \
+    HOME="$fake_home" \
+    NUGET_PACKAGES="$fake_packages" \
+    FAKE_SDK_ROOT="$fake_sdk" \
+    FAKE_HOST_FILE="$fake_host" \
+    FAKE_PACK_FILE="$fake_pack" \
+    FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
+    FAKE_EFFECTIVE_PACKAGE_ROOT="$fake_effective_packages" \
+    FAKE_FLAP_SENTINEL="$fake_flap_sentinel" \
+    FAKE_DOTNET_LOG="$calls" \
+    FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
+    CACHE_TEST_VARIANT='stable' \
+    CACHE_SECRET_SENTINEL='do-not-store-this-raw-value' \
+    CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE="$cache_race_session" \
+    CAT_METRO_FULL_SOLUTION_CACHE_DIR="$cache_race" \
+    python3 "$tmp/final-snapshot-race-probe.py" "$helper" "$fixture" "$cache_race"
+) > "$tmp/final-snapshot-race.out" 2> "$tmp/final-snapshot-race.err" \
+  || fail "final-snapshot race producer did not preserve its real green result"
+race_records=$(find "$cache_race/records" -type f -name '*.json' 2>/dev/null \
+  | wc -l | tr -d ' ')
+[ "$race_records" -eq 0 ] || fail "late final-snapshot mutation published green"
+cp "$tmp/solution.original" "$fixture/dotnet/CatMetro.sln" \
+  || fail "could not restore solution after final-snapshot race"
+echo "  ok: final snapshot globally revalidates early inputs"
+
+# 14. The two repeatability wrappers remain direct even when cache controls exist.
 reset_calls
 if ! (
   cd "$repo_root" || exit 1
@@ -583,6 +776,10 @@ if ! (
     NUGET_PACKAGES="$fake_packages" \
     FAKE_SDK_ROOT="$fake_sdk" \
     FAKE_HOST_FILE="$fake_host" \
+    FAKE_PACK_FILE="$fake_pack" \
+    FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
+    FAKE_EFFECTIVE_PACKAGE_ROOT="$fake_effective_packages" \
+    FAKE_FLAP_SENTINEL="$fake_flap_sentinel" \
     FAKE_DOTNET_LOG="$calls" \
     FAKE_ARTIFACT_ROOT="$repo_root/dotnet/CatMetro.Tests/obj/ci-full-solution" \
     CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE=1 \
@@ -606,6 +803,10 @@ if ! (
     NUGET_PACKAGES="$fake_packages" \
     FAKE_SDK_ROOT="$fake_sdk" \
     FAKE_HOST_FILE="$fake_host" \
+    FAKE_PACK_FILE="$fake_pack" \
+    FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
+    FAKE_EFFECTIVE_PACKAGE_ROOT="$fake_effective_packages" \
+    FAKE_FLAP_SENTINEL="$fake_flap_sentinel" \
     FAKE_DOTNET_LOG="$calls" \
     FAKE_ARTIFACT_ROOT="$repo_root/dotnet/CatMetro.Tests/obj/ci-full-solution" \
     CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE=1 \
