@@ -45,7 +45,7 @@ def require_lesson_row(
     evidence: tuple[str, ...],
     label: str,
     *,
-    occurrences: int | None = None,
+    occurrences=None,
 ) -> None:
     matches = [
         line
@@ -641,7 +641,7 @@ require_lesson_row(
     "Operator runbook or compact state retains superseded",
     ("tests/assets/glb-decimation-docs.test.sh",),
     "superseded operator-truth lesson",
-    occurrences=3,
+    occurrences=4,
 )
 
 print("glb-decimation-docs.test.sh: pass")
