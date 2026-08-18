@@ -42,17 +42,35 @@ ALLOWED_SOURCE_SIDECAR_SHA256 = {
     LOAF_ID: "ce8ea067634f88ee9fc967ea5a0dbc58df890477d3e1dc1905cc3f77a92dcec4",
     WAVE_ID: "e65414b151fa1dd868e9086c0e274ac61743aef8f8f26bc7bcaa6f49f99c8936",
 }
+WAVE_CORRECTION_SOURCE_SHA256 = (
+    "f91ccb7ff9b527ecef168d4285488ff647023fb70875f5403c31db8e2349d99d"
+)
+WAVE_CORRECTION_SOURCE_SIDECAR_SHA256 = (
+    "bb787a4073833edfd54af3e401cfa00e73b5279592ba2d146b015d3f1ffe90e4"
+)
+ALLOWED_PRECURATION_PAIRS = {
+    LOAF_ID: (
+        (ALLOWED_SOURCE_SHA256[LOAF_ID], ALLOWED_SOURCE_SIDECAR_SHA256[LOAF_ID]),
+    ),
+    WAVE_ID: (
+        (ALLOWED_SOURCE_SHA256[WAVE_ID], ALLOWED_SOURCE_SIDECAR_SHA256[WAVE_ID]),
+        (WAVE_CORRECTION_SOURCE_SHA256, WAVE_CORRECTION_SOURCE_SIDECAR_SHA256),
+    ),
+}
 ASSET_FILENAMES = {
     LOAF_ID: "cat-blue-siamese-loaf.glb",
     WAVE_ID: "cat-yellow-longhair-wave.glb",
 }
 CURATION_NOTES = {
     LOAF_ID: "Cat Metro GLB-CURATION: removed ruled min-Y display plinth",
-    WAVE_ID: "Cat Metro GLB-CURATION: removed ruled min-Y foot fragment",
+    WAVE_ID: "Cat Metro GLB-CURATION: kept largest cat component; removed detached components",
 }
+SUPERSEDED_WAVE_CURATION_NOTE = (
+    "Cat Metro GLB-CURATION: removed ruled min-Y foot fragment"
+)
 EXPECTED_CURATED_TRIANGLES = {
     LOAF_ID: 773_061,
-    WAVE_ID: 1_422_808,
+    WAVE_ID: 1_383_894,
 }
 REQUIRED_SOURCE_FIELDS = {
     "service",
@@ -172,7 +190,8 @@ def _validate_source_record(
         raise CurationError("source sidecar SHA-256 mismatch")
     if (
         require_precuration_anchor
-        and source_record["sha256"] != ALLOWED_SOURCE_SHA256[asset_id]
+        and source_record["sha256"]
+        not in {pair[0] for pair in ALLOWED_PRECURATION_PAIRS[asset_id]}
     ):
         raise CurationError("source sidecar is not at the frozen pre-curation anchor")
     if source_record["service"] != "tripo":
@@ -193,12 +212,19 @@ def build_curated_source_record(
     if _LOWER_SHA256.fullmatch(curated_sha256) is None:
         raise CurationError("curated source SHA-256 must be lowercase hexadecimal")
     original_sha = source_record.get("sha256")
-    if original_sha != ALLOWED_SOURCE_SHA256[asset_id]:
+    if original_sha not in {
+        pair[0] for pair in ALLOWED_PRECURATION_PAIRS[asset_id]
+    }:
         raise CurationError("source record is not at the frozen pre-curation anchor")
     note = source_record.get("note")
     if not isinstance(note, str):
         raise CurationError("source note must be a string")
-    if "Cat Metro GLB-CURATION:" in note:
+    if asset_id == WAVE_ID and original_sha == WAVE_CORRECTION_SOURCE_SHA256:
+        suffix = f"; {SUPERSEDED_WAVE_CURATION_NOTE}"
+        if not note.endswith(suffix):
+            raise CurationError("wave correction source note does not match its anchor")
+        note = note[: -len(suffix)]
+    elif "Cat Metro GLB-CURATION:" in note:
         raise CurationError("source record is already curated")
     updated = dict(source_record)
     updated["sha256"] = curated_sha256
@@ -783,15 +809,13 @@ def _inspect_precuration_pair(
     source_sidecar: Path,
 ) -> tuple[str, str, dict[str, object], dict[str, object]]:
     source_sha = _sha256_file(source, MAX_SOURCE_BYTES, "source GLB")
-    if source_sha != ALLOWED_SOURCE_SHA256[asset_id]:
-        raise CurationError("source is not at the frozen pre-curation SHA-256")
     source_sidecar_sha = _sha256_file(
         source_sidecar,
         MAX_METADATA_BYTES,
         "source sidecar",
     )
-    if source_sidecar_sha != ALLOWED_SOURCE_SIDECAR_SHA256[asset_id]:
-        raise CurationError("source sidecar is not at the frozen pre-curation SHA-256")
+    if (source_sha, source_sidecar_sha) not in ALLOWED_PRECURATION_PAIRS[asset_id]:
+        raise CurationError("source pair is not at an allowed pre-curation SHA-256")
     source_record = _load_source_record(source_sidecar)
     _validate_source_record(
         asset_id,

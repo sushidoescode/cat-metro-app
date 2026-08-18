@@ -22,7 +22,7 @@ if str(_SCRIPT_DIR) not in sys.path:
 from glb_curation_rules import (  # noqa: E402
     CurationRuleError,
     loaf_cutoff,
-    select_wave_fragments,
+    select_non_largest_components,
     validate_loaf_footprints,
 )
 
@@ -34,14 +34,16 @@ LOAF_ID = "cat-blue-siamese-loaf"
 WAVE_ID = "cat-yellow-longhair-wave"
 EXPECTED_SOURCE_TRIANGLES = {
     LOAF_ID: 1_427_775,
-    WAVE_ID: 1_494_090,
 }
 EXPECTED_CURATED_TRIANGLES = {
     LOAF_ID: 773_061,
-    WAVE_ID: 1_422_808,
+    WAVE_ID: 1_383_894,
 }
-EXPECTED_WAVE_COMPONENT_TRIANGLES = [1_383_894, 71_282, 38_914]
-EXPECTED_WAVE_RETAINED_COMPONENT_TRIANGLES = [1_383_894, 38_914]
+EXPECTED_WAVE_INPUT_COMPONENT_TRIANGLES = {
+    1_494_090: [1_383_894, 71_282, 38_914],
+    1_422_808: [1_383_894, 38_914],
+}
+EXPECTED_WAVE_RETAINED_COMPONENT_TRIANGLES = [1_383_894]
 
 
 class DriverArgumentParser(argparse.ArgumentParser):
@@ -312,19 +314,22 @@ def _curate_loaf(mesh_object: object) -> dict[str, object]:
 
 def _curate_wave(mesh_object: object) -> dict[str, object]:
     before_triangles = _triangle_count(mesh_object)
-    if before_triangles != EXPECTED_SOURCE_TRIANGLES[WAVE_ID]:
+    expected_components = EXPECTED_WAVE_INPUT_COMPONENT_TRIANGLES.get(before_triangles)
+    if expected_components is None:
         raise RuntimeError("wave source triangle anchor mismatch")
     positions = _world_positions(mesh_object)
     full_bounds = _bounds(positions)
     components = _components(mesh_object)
     component_records = [component.record() for component in components]
-    if [component.triangles for component in components] != EXPECTED_WAVE_COMPONENT_TRIANGLES:
+    if [component.triangles for component in components] != expected_components:
         raise RuntimeError("wave component triangle anchors mismatch")
-    selected_indexes = select_wave_fragments(component_records, full_bounds)
-    if selected_indexes != [1]:
-        raise RuntimeError("wave fragment selector did not isolate the ruled component")
-    selected_component = components[selected_indexes[0]]
-    _delete_vertices(mesh_object, selected_component.vertices)
+    selected_indexes = select_non_largest_components(component_records, kind="cat")
+    if selected_indexes != list(range(1, len(components))):
+        raise RuntimeError("wave selector did not isolate every non-largest component")
+    selected_vertices = set().union(
+        *(components[index].vertices for index in selected_indexes)
+    )
+    _delete_vertices(mesh_object, selected_vertices)
     after_triangles = _triangle_count(mesh_object)
     if after_triangles != EXPECTED_CURATED_TRIANGLES[WAVE_ID]:
         raise RuntimeError("wave curated triangle anchor mismatch")
@@ -335,15 +340,15 @@ def _curate_wave(mesh_object: object) -> dict[str, object]:
         raise RuntimeError("wave retained components mismatch")
     return {
         "asset_id": WAVE_ID,
-        "operation": "min-y-loose-fragment-strip",
+        "operation": "non-largest-component-strip",
         "triangles_before": before_triangles,
         "triangles_after": after_triangles,
-        "triangles_removed": selected_component.triangles,
-        "selected_vertices": len(selected_component.vertices),
+        "triangles_removed": before_triangles - after_triangles,
+        "selected_vertices": len(selected_vertices),
         "full_bounds": full_bounds,
         "components_before": component_records,
         "components_after": [component.record() for component in retained_components],
-        "selected_component_index": selected_indexes[0],
+        "selected_component_indexes": selected_indexes,
     }
 
 
@@ -377,11 +382,11 @@ def _verify_curated(asset_id: str, mesh_object: object) -> dict[str, object]:
     else:
         components = _components(mesh_object)
         records = [component.record() for component in components]
-        selected_indexes = select_wave_fragments(records, full_bounds)
+        selected_indexes = select_non_largest_components(records, kind="cat")
         if selected_indexes:
-            raise RuntimeError("wave ruled min-Y fragment remains")
-        if len(components) != 2:
-            raise RuntimeError("wave curated component count must be two")
+            raise RuntimeError("wave non-largest component remains")
+        if len(components) != 1:
+            raise RuntimeError("wave curated component count must be one")
         component_count = len(components)
     return {
         "asset_id": asset_id,
