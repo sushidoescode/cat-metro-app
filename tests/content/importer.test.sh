@@ -7,10 +7,13 @@
 # Criterion 13's scripts/test.sh summary-numbers comparison is the PR evidence procedure
 # (handoff A-C2a-10) — this wrapper cannot invoke scripts/test.sh without recursing.
 set -uo pipefail
+full_solution_cache=${CAT_METRO_FULL_SOLUTION_CACHE_DIR-}
+full_solution_artifacts=${CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR-}
+unset CAT_METRO_FULL_SOLUTION_CACHE_DIR CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR
 cd "$(git rev-parse --show-toplevel)"
 fail=0
 
-out="$(dotnet test dotnet/CatMetro.sln -c Release --nologo 2>&1)"; rc=$?
+out="$(CAT_METRO_FULL_SOLUTION_CACHE_DIR="$full_solution_cache" CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR="$full_solution_artifacts" python3 scripts/run-full-solution-test.py 2>&1)"; rc=$?
 if [ "$rc" -ne 0 ]; then
   echo "importer: FAIL — dotnet test not green (rc=$rc)"
   printf '%s\n' "$out" | tail -20

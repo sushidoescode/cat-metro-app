@@ -5,6 +5,9 @@
 # comparison is the PR evidence procedure (CM-C2a criterion 13 precedent, handoff A-C2a-10) —
 # this wrapper cannot invoke scripts/test.sh without recursing.
 set -uo pipefail
+full_solution_cache=${CAT_METRO_FULL_SOLUTION_CACHE_DIR-}
+full_solution_artifacts=${CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR-}
+unset CAT_METRO_FULL_SOLUTION_CACHE_DIR CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR
 cd "$(git rev-parse --show-toplevel)"
 tmp="${TMPDIR:-/tmp}/cm-c6-wrapper-$$"
 mkdir -p "$tmp"
@@ -22,7 +25,9 @@ seed_rx='^DAILY_SEED [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]+ [0-9]+$'
 # Criterion 10: the dotnet leg is green — full suite, UNFILTERED (review F1: a namespace filter
 # matching zero tests still exits 0, making the gate vacuous; the sibling wrappers set the
 # unfiltered precedent, and the source-presence guard above closes the dropped-folder hole).
-if ! dotnet test dotnet/CatMetro.sln -c Release --nologo > "$tmp/test.out" 2>&1; then
+# Only this ordinary leg may consume scripts/test.sh's run-local green attestation. The long
+# horizon fixture and both compared DailyTools runs below remain independent real processes.
+if ! CAT_METRO_FULL_SOLUTION_CACHE_DIR="$full_solution_cache" CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR="$full_solution_artifacts" python3 scripts/run-full-solution-test.py > "$tmp/test.out" 2>&1; then
   tail -20 "$tmp/test.out"
   fail "criterion 10: dotnet test not green"
 fi

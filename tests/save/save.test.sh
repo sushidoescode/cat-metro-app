@@ -3,6 +3,9 @@
 # criteria 13/14 hold. Fail-closed on missing scan roots; each check labelled. The scripts/test.sh
 # summary-numbers comparison is the PR evidence procedure (CM-C2a criterion 13 precedent).
 set -uo pipefail
+full_solution_cache=${CAT_METRO_FULL_SOLUTION_CACHE_DIR-}
+full_solution_artifacts=${CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR-}
+unset CAT_METRO_FULL_SOLUTION_CACHE_DIR CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR
 cd "$(git rev-parse --show-toplevel)"
 tmp="${TMPDIR:-/tmp}/cm-c7-wrapper-$$"
 mkdir -p "$tmp"
@@ -15,7 +18,8 @@ app_root="unity/Assets/Scripts/Application"
   || fail "criterion 15: Save NUnit sources missing (fail-closed)"
 
 # Criterion 15: the dotnet leg is green — full suite, unfiltered (CM-C6 review F1 precedent).
-if ! dotnet test dotnet/CatMetro.sln -c Release --nologo > "$tmp/test.out" 2>&1; then
+# scripts/test.sh may consume its run-local green attestation; standalone execution still runs it.
+if ! CAT_METRO_FULL_SOLUTION_CACHE_DIR="$full_solution_cache" CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR="$full_solution_artifacts" python3 scripts/run-full-solution-test.py > "$tmp/test.out" 2>&1; then
   tail -20 "$tmp/test.out"
   fail "criterion 15: dotnet test not green"
 fi

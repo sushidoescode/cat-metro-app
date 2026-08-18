@@ -14,9 +14,95 @@ if ! bash scripts/selftest/full-solution-cache.selftest.sh; then
   exit 1
 fi
 
+unset CAT_METRO_FULL_SOLUTION_CACHE_DIR
+unset CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR
+repo_root=$(pwd -P)
+artifact_project="$repo_root/dotnet/CatMetro.Tests"
+artifact_obj="$artifact_project/obj"
+artifact_parent="$artifact_obj/ci-full-solution"
+
+# The isolated output must remain below the repo: several NUnit fixtures discover repo-root by
+# walking upward from VSTest's output/current directory. Refuse symlinked or non-ignored paths.
+[ -d "$artifact_project" ] && [ ! -L "$artifact_project" ] || {
+  echo "test: FAIL — full-solution artifact project is not a real directory"
+  exit 1
+}
+if [ -e "$artifact_obj" ] || [ -L "$artifact_obj" ]; then
+  [ -d "$artifact_obj" ] && [ ! -L "$artifact_obj" ] || {
+    echo "test: FAIL — full-solution obj path is not a real directory"
+    exit 1
+  }
+else
+  mkdir "$artifact_obj" || {
+    echo "test: FAIL — could not create full-solution obj directory"
+    exit 1
+  }
+fi
+git check-ignore -q -- "$artifact_parent/.ignore-probe" || {
+  echo "test: FAIL — full-solution session path is not gitignored"
+  exit 1
+}
+if [ -e "$artifact_parent" ] || [ -L "$artifact_parent" ]; then
+  [ -d "$artifact_parent" ] && [ ! -L "$artifact_parent" ] || {
+    echo "test: FAIL — full-solution session parent is not a real directory"
+    exit 1
+  }
+else
+  mkdir "$artifact_parent" || {
+    echo "test: FAIL — could not create full-solution session parent"
+    exit 1
+  }
+fi
+
+session_dir=$(mktemp -d "$artifact_parent/session.XXXXXX") || {
+  echo "test: FAIL — could not create full-solution session"
+  exit 1
+}
+[ -n "$session_dir" ] && [ -d "$session_dir" ] && [ ! -L "$session_dir" ] || {
+  echo "test: FAIL — mktemp returned an invalid full-solution session"
+  exit 1
+}
+chmod 700 "$session_dir" || {
+  echo "test: FAIL — could not make full-solution session private"
+  exit 1
+}
+cache_dir="$session_dir/cache"
+artifact_dir="$session_dir/artifacts"
+mkdir -m 700 "$cache_dir" || {
+  echo "test: FAIL — could not create private full-solution cache"
+  exit 1
+}
+
+cleanup_full_solution_session() {
+  rc=$?
+  trap - EXIT HUP INT TERM
+  if [ -n "${session_dir:-}" ] && [ -d "$session_dir" ] && [ ! -L "$session_dir" ] && [ -d "$artifact_parent" ] && [ ! -L "$artifact_parent" ]; then
+    resolved_parent=$(cd "$artifact_parent" 2>/dev/null && pwd -P)
+    resolved_session=$(cd "$session_dir" 2>/dev/null && pwd -P)
+    if [ -n "$resolved_parent" ] && [ -n "$resolved_session" ] && [ "$(dirname "$resolved_session")" = "$resolved_parent" ]; then
+      case "$resolved_session" in
+        "$resolved_parent"/session.*) rm -rf -- "$resolved_session" ;;
+      esac
+    fi
+  fi
+  exit "$rc"
+}
+trap cleanup_full_solution_session EXIT HUP INT TERM
+
+run_wrapper() {
+  case "$1" in
+    tests/analytics/queue.test.sh|tests/content/importer.test.sh|tests/daily/daily-pipeline.test.sh|tests/save/save.test.sh|tests/taxonomy/taxonomy.test.sh)
+      CAT_METRO_FULL_SOLUTION_CACHE_DIR="$cache_dir" CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR="$artifact_dir" bash "$1"
+      ;;
+    *)
+      env -u CAT_METRO_FULL_SOLUTION_CACHE_DIR -u CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR bash "$1"
+      ;;
+  esac
+}
+
 while IFS= read -r t; do
   found=$((found+1))
-  if bash "$t"; then
+  if run_wrapper "$t"; then
     echo "PASS $t"
   else
     echo "FAIL $t"

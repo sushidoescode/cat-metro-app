@@ -4,6 +4,9 @@
 # would double every match). Fail-closed on missing roots; every guard proven to FIRE against
 # tests/fixtures/taxonomy-bad/Banned.cs (the analytics-bad precedent).
 set -uo pipefail
+full_solution_cache=${CAT_METRO_FULL_SOLUTION_CACHE_DIR-}
+full_solution_artifacts=${CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR-}
+unset CAT_METRO_FULL_SOLUTION_CACHE_DIR CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR
 cd "$(git rev-parse --show-toplevel)"
 fail() { echo "taxonomy.test.sh: FAIL — $1"; exit 1; }
 tax="unity/Assets/Scripts/Application/EventTaxonomy"
@@ -47,10 +50,11 @@ lits=$(grep -rEn --include='*.cs' '\b(2000|1048576|512|64)\b' "$tax" 2>/dev/null
 grep -Eq '\b512\b' "$badfx" || fail "criterion 11: bound-literal pattern failed to fire on the fixture"
 
 # --- criterion 13: the dotnet leg, full and unfiltered (CM-C6 review F1 precedent) ---
+# scripts/test.sh may consume its run-local green attestation; standalone execution still runs it.
 tmp="${TMPDIR:-/tmp}/cm-c9-wrapper-$$"
 mkdir -p "$tmp"
 trap 'rm -rf "$tmp"' EXIT
-if ! dotnet test dotnet/CatMetro.sln -c Release --nologo > "$tmp/test.out" 2>&1; then
+if ! CAT_METRO_FULL_SOLUTION_CACHE_DIR="$full_solution_cache" CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR="$full_solution_artifacts" python3 scripts/run-full-solution-test.py > "$tmp/test.out" 2>&1; then
   tail -15 "$tmp/test.out"
   fail "criterion 13: dotnet test not green"
 fi
