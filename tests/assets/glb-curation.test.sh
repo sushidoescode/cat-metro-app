@@ -845,6 +845,22 @@ if [[ -n ${GLB_CURATION_BASELINE_ROOT:-} && -n ${GLB_CURATION_ARTIFACT_ROOT:-} ]
       --operation verify-curated --asset-id "$asset_id" \
       --source "$GLB_CURATION_ARTIFACT_ROOT/decimated/$filename"
   done
+  for wave_path in \
+    "$GLB_CURATION_ARTIFACT_ROOT/cat-yellow-longhair-wave.glb" \
+    "$GLB_CURATION_ARTIFACT_ROOT/decimated/cat-yellow-longhair-wave.glb"; do
+    wave_output=$("$blender_bin" --background --factory-startup --python "$driver" -- \
+      --operation verify-curated --asset-id cat-yellow-longhair-wave \
+      --source "$wave_path")
+    printf '%s\n' "$wave_output"
+    wave_components=$(PYTHONDONTWRITEBYTECODE=1 python3 -c \
+      'import json, sys; print(json.loads(next(line.removeprefix("blender-curate: ") for line in sys.stdin if line.startswith("blender-curate: {")))["components"])' \
+      <<<"$wave_output")
+    if [[ "$wave_components" != 1 ]]; then
+      printf 'glb-curation test: wave must contain exactly one connected component: %s has %s\n' \
+        "$wave_path" "$wave_components" >&2
+      exit 1
+    fi
+  done
   printf 'glb-curation local geometry: pass baseline=RED curated=GREEN\n'
 else
   printf 'glb-curation local geometry: skipped (ignored artifacts not explicit)\n'
