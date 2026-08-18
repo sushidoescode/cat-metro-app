@@ -533,6 +533,7 @@ def _effective_package_locations(
             "-nologo",
             "-getProperty:NuGetPackageRoot",
             "-getProperty:RestorePackagesPath",
+            "-getProperty:MSBuildProjectDirectory",
         )
         completed = subprocess.run(
             arguments,
@@ -552,12 +553,33 @@ def _effective_package_locations(
         try:
             report = json.loads(completed.stdout.decode("utf-8-sig"))
             properties = report["Properties"]
-            raw_root = properties["NuGetPackageRoot"]
+            raw_default_root = properties["NuGetPackageRoot"]
+            raw_restore_root = properties["RestorePackagesPath"]
+            raw_project_directory = properties["MSBuildProjectDirectory"]
         except (KeyError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
             raise Uncacheable("MSBuild returned an invalid package-root report") from error
-        if not isinstance(raw_root, str) or not raw_root:
+        if (
+            not isinstance(raw_default_root, str)
+            or not raw_default_root
+            or not isinstance(raw_restore_root, str)
+            or not isinstance(raw_project_directory, str)
+            or not raw_project_directory
+        ):
             raise Uncacheable("MSBuild returned an empty effective package root")
-        package_root = Path(raw_root)
+        project_directory = Path(raw_project_directory)
+        if (
+            not project_directory.is_absolute()
+            or Path(os.path.abspath(project_directory)) != project.parent
+            or os.path.abspath(project_directory) != os.path.realpath(project_directory)
+        ):
+            raise Uncacheable("MSBuild returned an invalid project directory")
+        if raw_restore_root:
+            restore_root = Path(raw_restore_root)
+            if not restore_root.is_absolute():
+                restore_root = project_directory / restore_root
+            package_root = Path(os.path.abspath(restore_root))
+        else:
+            package_root = Path(os.path.abspath(raw_default_root))
         if (
             not package_root.is_absolute()
             or os.path.abspath(package_root) != os.path.realpath(package_root)
