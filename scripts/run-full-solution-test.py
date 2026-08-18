@@ -22,6 +22,7 @@ from typing import Iterable
 
 
 CACHE_ENV = "CAT_METRO_FULL_SOLUTION_CACHE_DIR"
+ACTIVE_ENV = "CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE"
 ARTIFACT_ENV = "CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR"
 LOGICAL_ARGS = ("test", "dotnet/CatMetro.sln", "-c", "Release", "--nologo")
 SCHEMA = 1
@@ -45,14 +46,22 @@ EXPLICIT_TREES = (
     "tests/taxonomy",
 )
 WALK_EXCLUDES = frozenset(("bin", "obj", ".git"))
-OUTSIDE_BUILD_FILES = (
+ROOT_BUILD_FILES = (
     "global.json",
     "Directory.Build.props",
     "Directory.Build.targets",
     "Directory.Packages.props",
     "Directory.Packages.targets",
+    "Directory.Build.rsp",
+    "Directory.Solution.props",
+    "Directory.Solution.targets",
+    "MSBuild.rsp",
     ".globalconfig",
+    ".editorconfig",
+    "NuGet.Config",
+    "nuget.config",
 )
+OUTSIDE_BUILD_FILES = ROOT_BUILD_FILES
 
 
 class Uncacheable(RuntimeError):
@@ -214,11 +223,226 @@ def _hash_file(root: Path, relative: str, aggregate: "hashlib._Hash") -> None:
     _frame(aggregate, content.digest())
 
 
+def _external_tree_paths(start: Path) -> tuple[str, ...]:
+    """Enumerate a consumed external tree without following links or special files."""
+    if not start.is_absolute() or os.path.abspath(start) != os.path.realpath(start):
+        raise Uncacheable("an external input tree is not an absolute real path")
+    try:
+        details = os.lstat(start)
+    except OSError as error:
+        raise Uncacheable("an external input tree is missing") from error
+    if not stat.S_ISDIR(details.st_mode) or stat.S_ISLNK(details.st_mode):
+        raise Uncacheable("an external input tree is not a real directory")
+
+    files: list[str] = []
+    stack = [start]
+    while stack:
+        directory = stack.pop()
+        try:
+            entries = sorted(os.scandir(directory), key=lambda entry: os.fsencode(entry.name))
+        except OSError as error:
+            raise Uncacheable("an external input tree is unreadable") from error
+        for entry in entries:
+            try:
+                entry_stat = entry.stat(follow_symlinks=False)
+            except OSError as error:
+                raise Uncacheable("an external input entry is unreadable") from error
+            if stat.S_ISLNK(entry_stat.st_mode):
+                raise Uncacheable("a symlink is reachable from an external input tree")
+            if stat.S_ISDIR(entry_stat.st_mode):
+                stack.append(Path(entry.path))
+            elif stat.S_ISREG(entry_stat.st_mode):
+                relative = Path(entry.path).relative_to(start).as_posix()
+                if _secret_like(relative):
+                    raise Uncacheable("a secret-like external input is reachable")
+                files.append(relative)
+            else:
+                raise Uncacheable("a non-regular external input is reachable")
+    return tuple(sorted(files, key=os.fsencode))
+
+
+def _hash_external_tree(start: Path, label: str, aggregate: "hashlib._Hash") -> None:
+    before = _external_tree_paths(start)
+    _frame(aggregate, os.fsencode(label))
+    for relative in before:
+        _frame(aggregate, os.fsencode(relative))
+        _hash_file(start, relative, aggregate)
+    if _external_tree_paths(start) != before:
+        raise Uncacheable("external input membership changed during fingerprinting")
+
+
+def _hash_optional_external_file(
+    path: Path, label: str, aggregate: "hashlib._Hash"
+) -> None:
+    _frame(aggregate, os.fsencode(label))
+    try:
+        os.lstat(path)
+    except FileNotFoundError:
+        _frame(aggregate, b"missing")
+        return
+    except OSError as error:
+        raise Uncacheable("an external configuration cannot be inspected") from error
+    if not path.is_absolute() or os.path.abspath(path) != os.path.realpath(path):
+        raise Uncacheable("an external configuration is not an absolute real path")
+    _hash_file(path.parent, path.name, aggregate)
+
+
+def _hash_optional_external_tree(
+    path: Path, label: str, aggregate: "hashlib._Hash"
+) -> None:
+    try:
+        os.lstat(path)
+    except FileNotFoundError:
+        _frame(aggregate, os.fsencode(label))
+        _frame(aggregate, b"missing")
+        return
+    except OSError as error:
+        raise Uncacheable("an external configuration tree cannot be inspected") from error
+    _hash_external_tree(path, label, aggregate)
+
+
+def _locked_packages(root: Path) -> tuple[tuple[str, str], ...]:
+    packages: set[tuple[str, str]] = set()
+    lock_paths = sorted(
+        root.glob("dotnet/*/packages.lock.json"), key=lambda path: os.fsencode(path.name)
+    )
+    for lock_path in lock_paths:
+        try:
+            raw = lock_path.read_bytes()
+            document = json.loads(raw)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise Uncacheable("a NuGet lock file cannot be parsed") from error
+        frameworks = document.get("dependencies") if isinstance(document, dict) else None
+        if not isinstance(frameworks, dict):
+            raise Uncacheable("a NuGet lock file has no dependency map")
+        for package_map in frameworks.values():
+            if not isinstance(package_map, dict):
+                raise Uncacheable("a NuGet lock framework is malformed")
+            for package_id, metadata in package_map.items():
+                if not isinstance(package_id, str) or not isinstance(metadata, dict):
+                    raise Uncacheable("a NuGet lock package is malformed")
+                resolved = metadata.get("resolved")
+                package_type = metadata.get("type")
+                if package_type == "Project":
+                    continue
+                if not isinstance(resolved, str) or not resolved:
+                    raise Uncacheable("a NuGet lock package has no resolved version")
+                packages.add((package_id.lower(), resolved.lower()))
+    if not packages:
+        raise Uncacheable("no locked NuGet package identities were found")
+    return tuple(sorted(packages, key=lambda item: (os.fsencode(item[0]), os.fsencode(item[1]))))
+
+
+def _nuget_configuration_paths(environment: dict[str, str]) -> tuple[tuple[Path, str], ...]:
+    home_raw = environment.get("HOME")
+    if not home_raw:
+        raise Uncacheable("HOME is unavailable for NuGet configuration discovery")
+    home = Path(home_raw)
+    candidates: list[tuple[Path, str]] = [
+        (home / ".nuget/NuGet/NuGet.Config", "user-nuget-config"),
+        (home / ".config/NuGet/NuGet.Config", "xdg-default-nuget-config"),
+        (Path("/etc/nuget.config"), "machine-nuget-config-lower"),
+        (Path("/etc/NuGet.Config"), "machine-nuget-config"),
+    ]
+    xdg_raw = environment.get("XDG_CONFIG_HOME")
+    if xdg_raw:
+        candidates.append((Path(xdg_raw) / "NuGet/NuGet.Config", "xdg-nuget-config"))
+    appdata_raw = environment.get("APPDATA")
+    if appdata_raw:
+        candidates.append((Path(appdata_raw) / "NuGet/NuGet.Config", "appdata-nuget-config"))
+    return tuple(candidates)
+
+
+def _hash_external_build_inputs(
+    root: Path,
+    environment: dict[str, str],
+    dotnet_info: str,
+    aggregate: "hashlib._Hash",
+) -> None:
+    external_overrides = (
+        "DOTNET_ADDITIONAL_DEPS",
+        "DOTNET_HOST_PATH",
+        "DOTNET_MSBUILD_SDK_RESOLVER_CLI_DIR",
+        "DOTNET_MSBUILD_SDK_RESOLVER_SDKS_DIR",
+        "DOTNET_SHARED_STORE",
+        "DOTNET_STARTUP_HOOKS",
+        "MSBUILD_EXE_PATH",
+        "MSBuildExtensionsPath",
+        "MSBuildExtensionsPath32",
+        "MSBuildExtensionsPath64",
+        "MSBuildSDKsPath",
+        "NUGET_CREDENTIALPROVIDERS_PATH",
+        "NUGET_FALLBACK_PACKAGES",
+        "NUGET_PLUGIN_PATHS",
+    )
+    if any(environment.get(name) for name in external_overrides):
+        raise Uncacheable("an external .NET/MSBuild override is active")
+
+    base_match = re.search(r"(?im)^\s*Base Path:\s*(.+?)\s*$", dotnet_info)
+    if base_match is None:
+        raise Uncacheable("dotnet --info did not report the selected SDK base path")
+    sdk = Path(base_match.group(1))
+    _hash_external_tree(sdk, "selected-dotnet-sdk", aggregate)
+
+    host_match = re.search(
+        r"(?m)^Host:[ \t]*\r?\n[ \t]*Version:[ \t]*([^\s]+)", dotnet_info
+    )
+    if host_match is None:
+        raise Uncacheable("dotnet --info did not report the selected host version")
+    dotnet_root = sdk.parent.parent
+    _hash_external_tree(
+        dotnet_root / "host/fxr" / host_match.group(1),
+        "selected-dotnet-hostfxr:" + host_match.group(1),
+        aggregate,
+    )
+
+    runtime_pattern = re.compile(r"(?m)^\s*(Microsoft\.[^\s]+)\s+([^\s]+)\s+\[(.+?)\]\s*$")
+    for runtime_name, runtime_version, runtime_parent in runtime_pattern.findall(dotnet_info):
+        runtime = Path(runtime_parent) / runtime_version
+        _hash_external_tree(runtime, "runtime:" + runtime_name + ":" + runtime_version, aggregate)
+
+    packages_raw = environment.get("NUGET_PACKAGES")
+    if packages_raw:
+        package_root = Path(packages_raw)
+    else:
+        home_raw = environment.get("HOME")
+        if not home_raw:
+            raise Uncacheable("NuGet's package root cannot be discovered")
+        package_root = Path(home_raw) / ".nuget/packages"
+    for package_id, version in _locked_packages(root):
+        _hash_external_tree(
+            package_root / package_id / version,
+            "nuget-package:" + package_id + ":" + version,
+            aggregate,
+        )
+
+    for config, label in _nuget_configuration_paths(environment):
+        _hash_optional_external_file(config, label, aggregate)
+    _hash_optional_external_tree(
+        Path(environment["HOME"]) / ".nuget/NuGet/config", "user-nuget-fragments", aggregate
+    )
+    _hash_optional_external_tree(
+        Path("/etc/opt/NuGet/Config"), "machine-nuget-fragments", aggregate
+    )
+    xdg_raw = environment.get("XDG_CONFIG_HOME")
+    if xdg_raw:
+        _hash_optional_external_tree(
+            Path(xdg_raw) / "NuGet/config", "xdg-nuget-fragments", aggregate
+        )
+    appdata_raw = environment.get("APPDATA")
+    if appdata_raw:
+        _hash_optional_external_tree(
+            Path(appdata_raw) / "NuGet/config", "appdata-nuget-fragments", aggregate
+        )
+
+
 def _input_digest(root: Path) -> str:
     _guard_outside_build_files(root)
     git_before = _git_paths(root)
     explicit_before, markers_before = _explicit_paths(root)
-    paths = tuple(sorted(set(git_before).union(explicit_before), key=os.fsencode))
+    paths = tuple(
+        sorted(set(git_before).union(explicit_before, ROOT_BUILD_FILES), key=os.fsencode)
+    )
 
     aggregate = hashlib.sha256()
     _frame(aggregate, b"cat-metro-input-v1")
@@ -230,7 +454,11 @@ def _input_digest(root: Path) -> str:
 
     git_after = _git_paths(root)
     explicit_after, markers_after = _explicit_paths(root)
-    if git_after != git_before or explicit_after != explicit_before or markers_after != markers_before:
+    if (
+        git_after != git_before
+        or explicit_after != explicit_before
+        or markers_after != markers_before
+    ):
         raise Uncacheable("input membership changed during fingerprinting")
     return aggregate.hexdigest()
 
@@ -271,6 +499,7 @@ def _tool_identity(environment: dict[str, str], root: Path) -> tuple[str, str]:
     if version is None or int(version.group(1)) < 8:
         raise Uncacheable("the SDK does not support --artifacts-path")
     _frame(binary_digest, info)
+    _hash_external_build_inputs(root, environment, text, binary_digest)
     return resolved, binary_digest.hexdigest()
 
 
@@ -466,7 +695,8 @@ def _open_lock(path: Path) -> int:
 
 def _run(arguments: tuple[str, ...], environment: dict[str, str], root: Path) -> int:
     try:
-        return subprocess.run(arguments, cwd=root, env=environment, check=False).returncode
+        returncode = subprocess.run(arguments, cwd=root, env=environment, check=False).returncode
+        return returncode if returncode >= 0 else 128 - returncode
     except FileNotFoundError:
         print("full-solution test: dotnet not found", file=sys.stderr)
         return 127
@@ -481,11 +711,19 @@ def _direct(environment: dict[str, str], root: Path) -> int:
 def _cached(
     root: Path,
     environment: dict[str, str],
+    active_control: str,
     cache_control: str,
     artifact_control: str | None,
 ) -> int:
     try:
+        active = _private_directory(active_control)
         cache = _private_directory(cache_control)
+        if cache.parent != active or cache.name != "cache":
+            raise Uncacheable("the cache is not bound to the active harness session")
+        if artifact_control:
+            artifact_candidate = Path(artifact_control)
+            if artifact_candidate.parent != active or artifact_candidate.name != "artifacts":
+                raise Uncacheable("the artifacts path is not bound to the active harness session")
         records = _private_child(cache, "records")
         locks = _private_child(cache, "locks")
         first = _snapshot(root, environment)
@@ -508,7 +746,11 @@ def _cached(
         if before != first:
             return _direct(environment, root)
         if _record_is_valid(record, core):
-            return 0
+            try:
+                hit = _snapshot(root, environment)
+            except (OSError, Uncacheable, ValueError):
+                return _direct(environment, root)
+            return 0 if hit == before else _direct(environment, root)
 
         result = _run(actual, environment, root)
         if result != 0:
@@ -530,27 +772,105 @@ def _cached(
             os.close(lock_descriptor)
 
 
-def main() -> int:
-    if len(sys.argv) != 1:
-        print("usage: run-full-solution-test.py", file=sys.stderr)
-        return 2
+def _repository_root() -> Path:
     try:
         root_output = subprocess.check_output(
             ("git", "rev-parse", "--show-toplevel"), stderr=subprocess.DEVNULL
         )
-        root = Path(os.fsdecode(root_output.rstrip(b"\n"))).resolve(strict=True)
-    except (OSError, subprocess.CalledProcessError):
+        return Path(os.fsdecode(root_output.rstrip(b"\n"))).resolve(strict=True)
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise Uncacheable("not in a Git worktree") from error
+
+
+def _open_real_directory(path: Path, *, parent_fd: int | None = None) -> int:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    descriptor = os.open(os.fspath(path), flags, dir_fd=parent_fd)
+    details = os.fstat(descriptor)
+    if not stat.S_ISDIR(details.st_mode):
+        os.close(descriptor)
+        raise Uncacheable("a cleanup path component is not a directory")
+    return descriptor
+
+
+def _cleanup_session(root: Path, raw: str) -> None:
+    requested = Path(raw)
+    normalized = Path(os.path.abspath(raw))
+    base = root / "dotnet/CatMetro.Tests/obj/ci-full-solution"
+    if not requested.is_absolute() or requested != normalized:
+        raise Uncacheable("cleanup requires an absolute normalized path")
+    if requested.parent != base or re.fullmatch(r"session\.[A-Za-z0-9]+", requested.name) is None:
+        raise Uncacheable("cleanup target is not one exact harness session")
+    if not shutil.rmtree.avoids_symlink_attacks:
+        raise Uncacheable("this Python cannot remove a session without following links")
+
+    relative_probe = (requested / ".ignore-probe").relative_to(root)
+    ignored = subprocess.run(
+        ("git", "-C", os.fspath(root), "check-ignore", "-q", "--", os.fspath(relative_probe)),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if ignored.returncode != 0:
+        raise Uncacheable("cleanup target is not ignored")
+
+    descriptor = _open_real_directory(root)
+    try:
+        for part in ("dotnet", "CatMetro.Tests", "obj", "ci-full-solution"):
+            child = _open_real_directory(Path(part), parent_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        try:
+            details = os.stat(requested.name, dir_fd=descriptor, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        if not stat.S_ISDIR(details.st_mode) or stat.S_ISLNK(details.st_mode):
+            raise Uncacheable("cleanup target is not a real directory")
+        if hasattr(os, "getuid") and details.st_uid != os.getuid():
+            raise Uncacheable("cleanup target has a different owner")
+        if stat.S_IMODE(details.st_mode) & 0o077:
+            raise Uncacheable("cleanup target is not private")
+        shutil.rmtree(requested.name, dir_fd=descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def main() -> int:
+    try:
+        root = _repository_root()
+    except Uncacheable:
         print("full-solution test: not in a Git worktree", file=sys.stderr)
         return 2
 
+    if len(sys.argv) == 3 and sys.argv[1] == "--cleanup-session":
+        try:
+            _cleanup_session(root, sys.argv[2])
+        except (OSError, Uncacheable, ValueError) as error:
+            print("full-solution cleanup: " + str(error), file=sys.stderr)
+            return 2
+        return 0
+    if len(sys.argv) != 1:
+        print(
+            "usage: run-full-solution-test.py [--cleanup-session ABSOLUTE_SESSION]",
+            file=sys.stderr,
+        )
+        return 2
+
     cache_control = os.environ.get(CACHE_ENV)
+    active_control = os.environ.get(ACTIVE_ENV)
     artifact_control = os.environ.get(ARTIFACT_ENV)
     environment = dict(os.environ)
     environment.pop(CACHE_ENV, None)
+    environment.pop(ACTIVE_ENV, None)
     environment.pop(ARTIFACT_ENV, None)
-    if not cache_control:
+    if not cache_control or not active_control:
         return _direct(environment, root)
-    return _cached(root, environment, cache_control, artifact_control)
+    return _cached(root, environment, active_control, cache_control, artifact_control)
 
 
 if __name__ == "__main__":

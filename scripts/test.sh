@@ -15,6 +15,7 @@ if ! bash scripts/selftest/full-solution-cache.selftest.sh; then
 fi
 
 unset CAT_METRO_FULL_SOLUTION_CACHE_DIR
+unset CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE
 unset CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR
 repo_root=$(pwd -P)
 artifact_project="$repo_root/dotnet/CatMetro.Tests"
@@ -74,28 +75,45 @@ mkdir -m 700 "$cache_dir" || {
 }
 
 cleanup_full_solution_session() {
+  if [ -n "${session_dir:-}" ]; then
+    python3 "$repo_root/scripts/run-full-solution-test.py" \
+      --cleanup-session "$session_dir" 2>&1 \
+      || echo "test: WARN — private full-solution session cleanup was refused" >&2
+  fi
+}
+
+finish_full_solution_session() {
   rc=$?
   trap - EXIT HUP INT TERM
-  if [ -n "${session_dir:-}" ] && [ -d "$session_dir" ] && [ ! -L "$session_dir" ] && [ -d "$artifact_parent" ] && [ ! -L "$artifact_parent" ]; then
-    resolved_parent=$(cd "$artifact_parent" 2>/dev/null && pwd -P)
-    resolved_session=$(cd "$session_dir" 2>/dev/null && pwd -P)
-    if [ -n "$resolved_parent" ] && [ -n "$resolved_session" ] && [ "$(dirname "$resolved_session")" = "$resolved_parent" ]; then
-      case "$resolved_session" in
-        "$resolved_parent"/session.*) rm -rf -- "$resolved_session" ;;
-      esac
-    fi
-  fi
+  cleanup_full_solution_session
   exit "$rc"
 }
-trap cleanup_full_solution_session EXIT HUP INT TERM
+
+interrupt_full_solution_session() {
+  rc=$1
+  trap - EXIT HUP INT TERM
+  cleanup_full_solution_session
+  exit "$rc"
+}
+
+trap finish_full_solution_session EXIT
+trap 'interrupt_full_solution_session 129' HUP
+trap 'interrupt_full_solution_session 130' INT
+trap 'interrupt_full_solution_session 143' TERM
 
 run_wrapper() {
   case "$1" in
     tests/analytics/queue.test.sh|tests/content/importer.test.sh|tests/daily/daily-pipeline.test.sh|tests/save/save.test.sh|tests/taxonomy/taxonomy.test.sh)
-      CAT_METRO_FULL_SOLUTION_CACHE_DIR="$cache_dir" CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR="$artifact_dir" bash "$1"
+      CAT_METRO_FULL_SOLUTION_CACHE_DIR="$cache_dir" \
+        CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE="$session_dir" \
+        CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR="$artifact_dir" \
+        bash "$1"
       ;;
     *)
-      env -u CAT_METRO_FULL_SOLUTION_CACHE_DIR -u CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR bash "$1"
+      env -u CAT_METRO_FULL_SOLUTION_CACHE_DIR \
+        -u CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE \
+        -u CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR \
+        bash "$1"
       ;;
   esac
 }

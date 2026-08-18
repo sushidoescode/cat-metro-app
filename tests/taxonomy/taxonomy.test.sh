@@ -5,8 +5,10 @@
 # tests/fixtures/taxonomy-bad/Banned.cs (the analytics-bad precedent).
 set -uo pipefail
 full_solution_cache=${CAT_METRO_FULL_SOLUTION_CACHE_DIR-}
+full_solution_active=${CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE-}
 full_solution_artifacts=${CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR-}
-unset CAT_METRO_FULL_SOLUTION_CACHE_DIR CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR
+unset CAT_METRO_FULL_SOLUTION_CACHE_DIR CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE \
+  CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR
 cd "$(git rev-parse --show-toplevel)"
 fail() { echo "taxonomy.test.sh: FAIL — $1"; exit 1; }
 tax="unity/Assets/Scripts/Application/EventTaxonomy"
@@ -54,7 +56,10 @@ grep -Eq '\b512\b' "$badfx" || fail "criterion 11: bound-literal pattern failed 
 tmp="${TMPDIR:-/tmp}/cm-c9-wrapper-$$"
 mkdir -p "$tmp"
 trap 'rm -rf "$tmp"' EXIT
-if ! CAT_METRO_FULL_SOLUTION_CACHE_DIR="$full_solution_cache" CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR="$full_solution_artifacts" python3 scripts/run-full-solution-test.py > "$tmp/test.out" 2>&1; then
+if ! CAT_METRO_FULL_SOLUTION_CACHE_DIR="$full_solution_cache" \
+  CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE="$full_solution_active" \
+  CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR="$full_solution_artifacts" \
+  python3 scripts/run-full-solution-test.py > "$tmp/test.out" 2>&1; then
   tail -15 "$tmp/test.out"
   fail "criterion 13: dotnet test not green"
 fi

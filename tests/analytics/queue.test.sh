@@ -4,8 +4,10 @@
 # scripts/test.sh summary-numbers comparison is the PR evidence procedure (CM-C2a c13 precedent).
 set -uo pipefail
 full_solution_cache=${CAT_METRO_FULL_SOLUTION_CACHE_DIR-}
+full_solution_active=${CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE-}
 full_solution_artifacts=${CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR-}
-unset CAT_METRO_FULL_SOLUTION_CACHE_DIR CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR
+unset CAT_METRO_FULL_SOLUTION_CACHE_DIR CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE \
+  CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR
 cd "$(git rev-parse --show-toplevel)"
 tmp="${TMPDIR:-/tmp}/cm-c8-wrapper-$$"
 mkdir -p "$tmp"
@@ -19,7 +21,10 @@ an_root="unity/Assets/Scripts/Application/Analytics"
 
 # Criterion 12: the dotnet leg is green — full suite, unfiltered (CM-C6 review F1 precedent).
 # scripts/test.sh may consume its run-local green attestation; standalone execution still runs it.
-if ! CAT_METRO_FULL_SOLUTION_CACHE_DIR="$full_solution_cache" CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR="$full_solution_artifacts" python3 scripts/run-full-solution-test.py > "$tmp/test.out" 2>&1; then
+if ! CAT_METRO_FULL_SOLUTION_CACHE_DIR="$full_solution_cache" \
+  CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE="$full_solution_active" \
+  CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR="$full_solution_artifacts" \
+  python3 scripts/run-full-solution-test.py > "$tmp/test.out" 2>&1; then
   tail -20 "$tmp/test.out"
   fail "criterion 12: dotnet test not green"
 fi

@@ -31,30 +31,50 @@ case "$tmp" in
 esac
 
 cleanup() {
-  rc=$?
   if [ -n "${tmp:-}" ] && [ -d "$tmp" ] && [ ! -L "$tmp" ]; then
     case "$tmp" in
       "$tmp_parent"/cm-full-solution-cache-selftest.*) rm -rf -- "$tmp" ;;
     esac
   fi
+}
+
+finish() {
+  rc=$?
+  trap - EXIT HUP INT TERM
+  cleanup
   exit "$rc"
 }
-trap cleanup EXIT HUP INT TERM
+
+interrupt() {
+  rc=$1
+  trap - EXIT HUP INT TERM
+  cleanup
+  exit "$rc"
+}
+
+trap finish EXIT
+trap 'interrupt 129' HUP
+trap 'interrupt 130' INT
+trap 'interrupt 143' TERM
 
 fixture="$tmp/repo"
 fake_bin="$tmp/fake-bin"
 fake_sdk="$tmp/fake-sdk/8.0.419"
+fake_host="$tmp/host/fxr/8.0.25/libhostfxr.fake"
 fake_home="$tmp/fake-home"
 fake_packages="$fake_home/.nuget/packages"
 fake_package="$fake_packages/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"
 fake_nuget_config="$fake_home/.nuget/NuGet/NuGet.Config"
 cache="$tmp/cache"
-cache_mutate="$tmp/cache-mutate"
+cache_mutate_session="$tmp/mutate-session"
+cache_mutate="$cache_mutate_session/cache"
 calls="$tmp/dotnet.calls"
 mkdir -p "$fixture/dotnet/Fake" "$fixture/unity/Assets/Scripts/Domain" "$fake_bin" \
-  "$fake_sdk" "$(dirname "$fake_package")" "$(dirname "$fake_nuget_config")" \
+  "$fake_sdk" "$(dirname "$fake_host")" "$(dirname "$fake_package")" \
+  "$(dirname "$fake_nuget_config")" \
   || fail "could not create self-test fixture"
-mkdir -m 700 "$cache" "$cache_mutate" || fail "could not create private caches"
+mkdir -m 700 "$cache" "$cache_mutate_session" || fail "could not create private caches"
+mkdir -m 700 "$cache_mutate" || fail "could not create mutation cache"
 
 printf '%s\n' 'Microsoft Visual Studio Solution File, Format Version 12.00' \
   > "$fixture/dotnet/CatMetro.sln"
@@ -63,6 +83,7 @@ printf '%s\n' 'dotnet/**/obj/' 'Directory.Build.props' > "$fixture/.gitignore"
 printf '%s\n' '{"version":1,"dependencies":{"net8.0":{"Fake.Package":{"type":"Direct","requested":"[1.0.0, )","resolved":"1.0.0","contentHash":"fake"}}}}' \
   > "$fixture/dotnet/Fake/packages.lock.json"
 printf '%s\n' 'PASS' > "$fake_sdk/Fake.MSBuild.dll"
+printf '%s\n' 'PASS' > "$fake_host"
 printf '%s\n' 'PASS' > "$fake_package"
 printf '%s\n' 'PASS' > "$fake_nuget_config"
 
@@ -75,7 +96,7 @@ if [ "$#" -eq 1 ] && [ "$1" = "--info" ]; then
   [ -z "${CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE:-}" ] || exit 91
   [ -z "${CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR:-}" ] || exit 91
   printf '%s\n' '.NET SDK:' ' Version: 8.0.419' " Base Path: ${FAKE_SDK_ROOT:?}/" \
-    'RID: fake-portable'
+    'RID: fake-portable' 'Host:' '  Version: 8.0.25'
   exit 0
 fi
 
@@ -128,6 +149,9 @@ fi
 if grep -q '^FAIL$' "${FAKE_SDK_ROOT:?}/Fake.MSBuild.dll"; then
   state='FAIL'
 fi
+if grep -q '^FAIL$' "${FAKE_HOST_FILE:?}"; then
+  state='FAIL'
+fi
 if grep -q '^FAIL$' "${NUGET_PACKAGES:?}/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"; then
   state='FAIL'
 fi
@@ -169,7 +193,8 @@ printf '%s\n' '[commit]' '    gpgSign = true' '[core]' "    hooksPath = $hostile
   > "$hostile_config"
 
 fixture_git() {
-  GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$hostile_config" git -C "$fixture" "$@"
+  GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$hostile_config" \
+    git -C "$fixture" -c commit.gpgSign=false -c core.hooksPath=/dev/null "$@"
 }
 
 fixture_git init -q || fail "could not initialize fixture repository"
@@ -197,6 +222,7 @@ run_direct() {
       HOME="$fake_home" \
       NUGET_PACKAGES="$fake_packages" \
       FAKE_SDK_ROOT="$fake_sdk" \
+      FAKE_HOST_FILE="$fake_host" \
       FAKE_DOTNET_LOG="$calls" \
       FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
       CACHE_SECRET_SENTINEL='do-not-store-this-raw-value' \
@@ -206,6 +232,7 @@ run_direct() {
 
 run_cached_at() {
   selected_cache=$1
+  selected_active=$(dirname "$selected_cache")
   variant=${2:-stable}
   (
     cd "$fixture" || exit 1
@@ -213,11 +240,12 @@ run_cached_at() {
       HOME="$fake_home" \
       NUGET_PACKAGES="$fake_packages" \
       FAKE_SDK_ROOT="$fake_sdk" \
+      FAKE_HOST_FILE="$fake_host" \
       FAKE_DOTNET_LOG="$calls" \
       FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
       CACHE_TEST_VARIANT="$variant" \
       CACHE_SECRET_SENTINEL='do-not-store-this-raw-value' \
-      CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE=1 \
+      CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE="$selected_active" \
       CAT_METRO_FULL_SOLUTION_CACHE_DIR="$selected_cache" \
       python3 "$helper"
   )
@@ -232,6 +260,7 @@ run_inactive_at() {
       HOME="$fake_home" \
       NUGET_PACKAGES="$fake_packages" \
       FAKE_SDK_ROOT="$fake_sdk" \
+      FAKE_HOST_FILE="$fake_host" \
       FAKE_DOTNET_LOG="$calls" \
       FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
       CACHE_TEST_VARIANT='stable' \
@@ -261,6 +290,29 @@ if grep -Fq 'cached-standard' "$calls"; then
   fail "inactive cache controls selected the cached artifacts command"
 fi
 echo "  ok: inherited cache paths without harness activation execute twice"
+
+reset_calls
+for wrapper_run in 1 2; do
+  if ! (
+    cd "$repo_root" || exit 1
+    unset CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE
+    PATH="$fake_bin:$PATH" \
+      HOME="$fake_home" \
+      NUGET_PACKAGES="$fake_packages" \
+      FAKE_SDK_ROOT="$fake_sdk" \
+      FAKE_HOST_FILE="$fake_host" \
+      FAKE_DOTNET_LOG="$calls" \
+      FAKE_ARTIFACT_ROOT="$repo_root/dotnet/CatMetro.Tests/obj/ci-full-solution" \
+      CAT_METRO_FULL_SOLUTION_CACHE_DIR="$cache" \
+      CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
+      bash tests/content/importer.test.sh
+  ) > "$tmp/inactive-wrapper-$wrapper_run.out" \
+    2> "$tmp/inactive-wrapper-$wrapper_run.err"; then
+    fail "standalone importer wrapper run $wrapper_run failed"
+  fi
+done
+[ "$(call_count)" -eq 2 ] || fail "standalone importer wrapper reused inherited cache paths"
+echo "  ok: standalone eligible wrapper executes the real command twice"
 
 # 2. A stable, identical session snapshot executes once, then consumes one green attestation.
 reset_calls
@@ -341,6 +393,7 @@ sys.modules[spec.name] = module
 spec.loader.exec_module(module)
 root = Path(root_raw)
 environment = dict(os.environ)
+active = environment["CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE"]
 for name in (
     "CAT_METRO_FULL_SOLUTION_CACHE_DIR",
     "CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE",
@@ -356,7 +409,7 @@ def mutate_after_validation(path, expected):
     return valid
 
 module._record_is_valid = mutate_after_validation
-raise SystemExit(module._cached(root, environment, cache, None))
+raise SystemExit(module._cached(root, environment, active, cache, None))
 HIT_RACE_PROBE
 
 reset_calls
@@ -366,11 +419,12 @@ reset_calls
     HOME="$fake_home" \
     NUGET_PACKAGES="$fake_packages" \
     FAKE_SDK_ROOT="$fake_sdk" \
+    FAKE_HOST_FILE="$fake_host" \
     FAKE_DOTNET_LOG="$calls" \
     FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
     CACHE_TEST_VARIANT='stable' \
     CACHE_SECRET_SENTINEL='do-not-store-this-raw-value' \
-    CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE=1 \
+    CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE="$tmp" \
     CAT_METRO_FULL_SOLUTION_CACHE_DIR="$cache" \
     python3 "$tmp/hit-race-probe.py" "$helper" "$fixture" "$cache"
 ) > "$tmp/hit-race.out" 2> "$tmp/hit-race.err"
@@ -398,7 +452,8 @@ run_cached_at "$cache" > "$tmp/root-policy-restored.out" 2> "$tmp/root-policy-re
   || fail "root build-policy removal did not restore the original key"
 [ "$(call_count)" -eq 2 ] || fail "root build-policy removal missed the original record"
 
-for external_input in "$fake_sdk/Fake.MSBuild.dll" "$fake_package" "$fake_nuget_config"; do
+for external_input in "$fake_sdk/Fake.MSBuild.dll" "$fake_host" "$fake_package" \
+  "$fake_nuget_config"; do
   printf '%s\n' 'FAIL' > "$external_input"
   run_cached_at "$cache" > "$tmp/external-fail.out" 2> "$tmp/external-fail.err"
   rc=$?
@@ -407,7 +462,7 @@ for external_input in "$fake_sdk/Fake.MSBuild.dll" "$fake_package" "$fake_nuget_
   run_cached_at "$cache" > "$tmp/external-restored.out" 2> "$tmp/external-restored.err" \
     || fail "external build input $external_input did not restore its original key"
 done
-[ "$(call_count)" -eq 5 ] \
+[ "$(call_count)" -eq 6 ] \
   || fail "external build inputs were not each executed and restored by content key"
 echo "  ok: ignored root, SDK, package, and NuGet inputs invalidate"
 
@@ -426,6 +481,7 @@ cleanup_parent="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution"
 cleanup_session="$cleanup_parent/session.cleanup"
 external_sentinel="$tmp/cleanup-external"
 mkdir -p "$cleanup_session" "$external_sentinel" || fail "could not create cleanup fixture"
+chmod 700 "$cleanup_session" || fail "could not make cleanup fixture private"
 printf '%s\n' 'KEEP' > "$external_sentinel/keep.txt"
 ln -s "$external_sentinel" "$cleanup_session/external-link" \
   || fail "could not create cleanup symlink fixture"
@@ -439,14 +495,70 @@ fi
 (
   cd "$fixture" || exit 1
   python3 "$helper" --cleanup-session "$cleanup_session"
-) > "$tmp/cleanup.out" 2> "$tmp/cleanup.err" \
-  || fail "validated session cleanup failed"
+) > "$tmp/cleanup.out" 2> "$tmp/cleanup.err" || {
+  cat "$tmp/cleanup.err" >&2
+  fail "validated session cleanup failed"
+}
 [ ! -e "$cleanup_session" ] && [ ! -L "$cleanup_session" ] \
   || fail "validated session cleanup left its target"
 [ -f "$external_sentinel/keep.txt" ] || fail "session cleanup followed an external symlink"
 echo "  ok: cleanup is exact and does not follow symlinks"
 
-# 10. If the command changes a fingerprinted input while it runs, no record is published.
+# 10. A top-level SIGTERM is failure and still removes the exact private session.
+signal_bin="$tmp/signal-bin"
+signal_ready="$tmp/signal-ready"
+mkdir "$signal_bin" || fail "could not create signal fake-bin"
+cat > "$signal_bin/bash" <<'SIGNAL_BASH'
+#!/bin/bash
+case "${1-}" in
+  scripts/selftest/full-solution-cache.selftest.sh)
+    exit 0
+    ;;
+  tests/analytics/queue.test.sh)
+    : > "${SIGNAL_READY:?}"
+    sleep 1
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+SIGNAL_BASH
+chmod 700 "$signal_bin/bash" || fail "could not activate signal fake bash"
+repo_session_parent="$repo_root/dotnet/CatMetro.Tests/obj/ci-full-solution"
+sessions_before=$(find "$repo_session_parent" -mindepth 1 -maxdepth 1 -type d \
+  -name 'session.*' -print 2>/dev/null | sort)
+PATH="$signal_bin:$PATH" SIGNAL_READY="$signal_ready" \
+  /bin/bash scripts/test.sh > "$tmp/top-signal.out" 2> "$tmp/top-signal.err" &
+signal_pid=$!
+ready=0
+for _attempt in $(seq 1 100); do
+  if [ -f "$signal_ready" ]; then
+    ready=1
+    break
+  fi
+  sleep 0.02
+done
+[ "$ready" -eq 1 ] || {
+  kill -TERM "$signal_pid" 2>/dev/null || true
+  wait "$signal_pid" 2>/dev/null || true
+  fail "top-level signal probe never reached a wrapper"
+}
+kill -TERM "$signal_pid" || fail "could not signal top-level gate"
+wait "$signal_pid"
+rc=$?
+[ "$rc" -eq 143 ] || fail "SIGTERM top-level gate returned $rc, expected 143"
+sessions_after=$(find "$repo_session_parent" -mindepth 1 -maxdepth 1 -type d \
+  -name 'session.*' -print 2>/dev/null | sort)
+if [ "$sessions_after" != "$sessions_before" ]; then
+  cat "$tmp/top-signal.out"
+  cat "$tmp/top-signal.err" >&2
+  printf 'sessions before:\n%s\nsessions after:\n%s\n' "$sessions_before" "$sessions_after" >&2
+  fail "SIGTERM top-level gate leaked a session"
+fi
+echo "  ok: top-level SIGTERM maps to 143 and removes its session"
+
+# 11. If the command changes a fingerprinted input while it runs, no record is published.
 printf '%s\n' 'MUTATE' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
 reset_calls
 run_cached_at "$cache_mutate" > "$tmp/mutate.out" 2> "$tmp/mutate.err" \
@@ -461,11 +573,15 @@ run_cached_at "$cache_mutate" > "$tmp/post-mutate-hit.out" 2> "$tmp/post-mutate-
 [ "$(call_count)" -eq 2 ] || fail "stable post-mutation miss+hit count was not two total"
 echo "  ok: mid-run input drift refuses publication"
 
-# 11. The two repeatability wrappers remain direct even when cache controls exist.
+# 12. The two repeatability wrappers remain direct even when cache controls exist.
 reset_calls
 if ! (
   cd "$repo_root" || exit 1
   PATH="$fake_bin:$PATH" \
+    HOME="$fake_home" \
+    NUGET_PACKAGES="$fake_packages" \
+    FAKE_SDK_ROOT="$fake_sdk" \
+    FAKE_HOST_FILE="$fake_host" \
     FAKE_DOTNET_LOG="$calls" \
     FAKE_ARTIFACT_ROOT="$repo_root/dotnet/CatMetro.Tests/obj/ci-full-solution" \
     CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE=1 \
@@ -485,6 +601,10 @@ reset_calls
 if ! (
   cd "$repo_root" || exit 1
   PATH="$fake_bin:$PATH" \
+    HOME="$fake_home" \
+    NUGET_PACKAGES="$fake_packages" \
+    FAKE_SDK_ROOT="$fake_sdk" \
+    FAKE_HOST_FILE="$fake_host" \
     FAKE_DOTNET_LOG="$calls" \
     FAKE_ARTIFACT_ROOT="$repo_root/dotnet/CatMetro.Tests/obj/ci-full-solution" \
     CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE=1 \
