@@ -68,6 +68,8 @@ fake_packages="$fake_home/.nuget/packages"
 fake_package="$fake_packages/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"
 fake_effective_packages="$tmp/effective-packages"
 fake_effective_package="$fake_effective_packages/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"
+fake_restore_packages="$tmp/restore-packages"
+fake_restore_package="$fake_restore_packages/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"
 fake_nuget_config="$fake_home/.nuget/NuGet/NuGet.Config"
 fake_flap_sentinel="$tmp/flap-once"
 cache="$tmp/cache"
@@ -78,10 +80,12 @@ cache_flap="$cache_flap_session/cache"
 cache_race_session="$tmp/race-session"
 cache_race="$cache_race_session/cache"
 calls="$tmp/dotnet.calls"
-mkdir -p "$fixture/dotnet/Fake" "$fixture/unity/Assets/Scripts/Domain" "$fake_bin" \
+mkdir -p "$fixture/dotnet/Fake" "$fixture/dotnet/Restore" \
+  "$fixture/unity/Assets/Scripts/Domain" "$fake_bin" \
   "$fake_sdk" "$(dirname "$fake_host")" "$(dirname "$fake_pack")" \
   "$(dirname "$fake_workload_manifest")" "$(dirname "$fake_package")" \
   "$(dirname "$fake_effective_package")" \
+  "$(dirname "$fake_restore_package")" \
   "$(dirname "$fake_nuget_config")" \
   || fail "could not create self-test fixture"
 mkdir -m 700 "$cache" "$cache_mutate_session" "$cache_flap_session" \
@@ -93,16 +97,21 @@ printf '%s\n' 'Microsoft Visual Studio Solution File, Format Version 12.00' \
   > "$fixture/dotnet/CatMetro.sln"
 printf '%s\n' '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>' \
   > "$fixture/dotnet/Fake/Fake.csproj"
+printf '%s\n' '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework><RestorePackagesPath>configured-restore-root</RestorePackagesPath></PropertyGroup></Project>' \
+  > "$fixture/dotnet/Restore/Restore.csproj"
 printf '%s\n' 'PASS' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
 printf '%s\n' 'dotnet/**/obj/' 'Directory.Build.props' > "$fixture/.gitignore"
 printf '%s\n' '{"version":1,"dependencies":{"net8.0":{"Fake.Package":{"type":"Direct","requested":"[1.0.0, )","resolved":"1.0.0","contentHash":"fake"}}}}' \
   > "$fixture/dotnet/Fake/packages.lock.json"
+cp "$fixture/dotnet/Fake/packages.lock.json" "$fixture/dotnet/Restore/packages.lock.json" \
+  || fail "could not create restore-override lock fixture"
 printf '%s\n' 'PASS' > "$fake_sdk/Fake.MSBuild.dll"
 printf '%s\n' 'PASS' > "$fake_host"
 printf '%s\n' 'PASS' > "$fake_pack"
 printf '%s\n' 'PASS' > "$fake_workload_manifest"
 printf '%s\n' 'PASS' > "$fake_package"
 printf '%s\n' 'PASS' > "$fake_effective_package"
+printf '%s\n' 'PASS' > "$fake_restore_package"
 printf '%s\n' '<configuration><config><add key="globalPackagesFolder" value="unused-by-fake" /></config></configuration>' \
   > "$fake_nuget_config"
 
@@ -120,8 +129,17 @@ if [ "$#" -eq 1 ] && [ "$1" = "--info" ]; then
 fi
 
 if [ "$#" -ge 5 ] && [ "$1" = 'msbuild' ]; then
-  printf '{"Properties":{"NuGetPackageRoot":"%s/","RestorePackagesPath":""}}\n' \
-    "${FAKE_EFFECTIVE_PACKAGE_ROOT:?}"
+  case "$2" in
+    dotnet/Restore/Restore.csproj)
+      printf '{"Properties":{"NuGetPackageRoot":"%s/","RestorePackagesPath":"%s","MSBuildProjectDirectory":"%s"}}\n' \
+        "${FAKE_EFFECTIVE_PACKAGE_ROOT:?}" "${FAKE_RESTORE_PACKAGE_ROOT:?}" \
+        "${PWD:?}/dotnet/Restore"
+      ;;
+    *)
+      printf '{"Properties":{"NuGetPackageRoot":"%s/","RestorePackagesPath":"","MSBuildProjectDirectory":"%s"}}\n' \
+        "${FAKE_EFFECTIVE_PACKAGE_ROOT:?}" "${PWD:?}/dotnet/Fake"
+      ;;
+  esac
   exit 0
 fi
 
@@ -186,6 +204,9 @@ fi
 if grep -q '^FAIL$' "${FAKE_EFFECTIVE_PACKAGE_ROOT:?}/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"; then
   state='FAIL'
 fi
+if grep -q '^FAIL$' "${FAKE_RESTORE_PACKAGE_ROOT:?}/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"; then
+  state='FAIL'
+fi
 if grep -q '^FAIL$' "${HOME:?}/.nuget/NuGet/NuGet.Config"; then
   state='FAIL'
 fi
@@ -240,7 +261,8 @@ fixture_git() {
 
 fixture_git init -q || fail "could not initialize fixture repository"
 fixture_git add .gitignore dotnet/CatMetro.sln dotnet/Fake/Fake.csproj \
-  dotnet/Fake/packages.lock.json \
+  dotnet/Fake/packages.lock.json dotnet/Restore/Restore.csproj \
+  dotnet/Restore/packages.lock.json \
   unity/Assets/Scripts/Domain/Fingerprint.cs \
   || fail "could not stage fixture inputs"
 fixture_git -c user.name='CI self-test' -c user.email='ci-selftest@example.invalid' \
@@ -268,6 +290,7 @@ run_direct() {
       FAKE_PACK_FILE="$fake_pack" \
       FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
       FAKE_EFFECTIVE_PACKAGE_ROOT="$fake_effective_packages" \
+      FAKE_RESTORE_PACKAGE_ROOT="$fake_restore_packages" \
       FAKE_FLAP_SENTINEL="$fake_flap_sentinel" \
       FAKE_DOTNET_LOG="$calls" \
       FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
@@ -290,6 +313,7 @@ run_cached_at() {
       FAKE_PACK_FILE="$fake_pack" \
       FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
       FAKE_EFFECTIVE_PACKAGE_ROOT="$fake_effective_packages" \
+      FAKE_RESTORE_PACKAGE_ROOT="$fake_restore_packages" \
       FAKE_FLAP_SENTINEL="$fake_flap_sentinel" \
       FAKE_DOTNET_LOG="$calls" \
       FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
@@ -314,6 +338,7 @@ run_inactive_at() {
       FAKE_PACK_FILE="$fake_pack" \
       FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
       FAKE_EFFECTIVE_PACKAGE_ROOT="$fake_effective_packages" \
+      FAKE_RESTORE_PACKAGE_ROOT="$fake_restore_packages" \
       FAKE_FLAP_SENTINEL="$fake_flap_sentinel" \
       FAKE_DOTNET_LOG="$calls" \
       FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
@@ -358,6 +383,7 @@ for wrapper_run in 1 2; do
       FAKE_PACK_FILE="$fake_pack" \
       FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
       FAKE_EFFECTIVE_PACKAGE_ROOT="$fake_effective_packages" \
+      FAKE_RESTORE_PACKAGE_ROOT="$fake_restore_packages" \
       FAKE_FLAP_SENTINEL="$fake_flap_sentinel" \
       FAKE_DOTNET_LOG="$calls" \
       FAKE_ARTIFACT_ROOT="$repo_root/dotnet/CatMetro.Tests/obj/ci-full-solution" \
@@ -489,6 +515,7 @@ reset_calls
     FAKE_PACK_FILE="$fake_pack" \
     FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
     FAKE_EFFECTIVE_PACKAGE_ROOT="$fake_effective_packages" \
+    FAKE_RESTORE_PACKAGE_ROOT="$fake_restore_packages" \
     FAKE_FLAP_SENTINEL="$fake_flap_sentinel" \
     FAKE_DOTNET_LOG="$calls" \
     FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
@@ -536,7 +563,8 @@ if [ "$(call_count)" -ne 2 ]; then
 fi
 
 for external_input in "$fake_sdk/Fake.MSBuild.dll" "$fake_host" "$fake_pack" \
-  "$fake_workload_manifest" "$fake_effective_package" "$fake_nuget_config"; do
+  "$fake_workload_manifest" "$fake_effective_package" "$fake_restore_package" \
+  "$fake_nuget_config"; do
   cp "$external_input" "$tmp/external-input.original" \
     || fail "could not preserve external build input $external_input"
   printf '%s\n' 'FAIL' > "$external_input"
@@ -551,7 +579,7 @@ for external_input in "$fake_sdk/Fake.MSBuild.dll" "$fake_host" "$fake_pack" \
     2> "$tmp/external-restored-hit.err" \
     || fail "stable restored external build input $external_input did not hit"
 done
-[ "$(call_count)" -eq 14 ] \
+[ "$(call_count)" -eq 16 ] \
   || fail "external build inputs were not each executed once per changed metadata key"
 echo "  ok: ignored root, SDK, packs, effective package root, and NuGet inputs invalidate"
 
@@ -826,6 +854,7 @@ reset_calls
     FAKE_PACK_FILE="$fake_pack" \
     FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
     FAKE_EFFECTIVE_PACKAGE_ROOT="$fake_effective_packages" \
+    FAKE_RESTORE_PACKAGE_ROOT="$fake_restore_packages" \
     FAKE_FLAP_SENTINEL="$fake_flap_sentinel" \
     FAKE_DOTNET_LOG="$calls" \
     FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
@@ -855,6 +884,7 @@ if ! (
     FAKE_PACK_FILE="$fake_pack" \
     FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
     FAKE_EFFECTIVE_PACKAGE_ROOT="$fake_effective_packages" \
+    FAKE_RESTORE_PACKAGE_ROOT="$fake_restore_packages" \
     FAKE_FLAP_SENTINEL="$fake_flap_sentinel" \
     FAKE_DOTNET_LOG="$calls" \
     FAKE_ARTIFACT_ROOT="$repo_root/dotnet/CatMetro.Tests/obj/ci-full-solution" \
@@ -882,6 +912,7 @@ if ! (
     FAKE_PACK_FILE="$fake_pack" \
     FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
     FAKE_EFFECTIVE_PACKAGE_ROOT="$fake_effective_packages" \
+    FAKE_RESTORE_PACKAGE_ROOT="$fake_restore_packages" \
     FAKE_FLAP_SENTINEL="$fake_flap_sentinel" \
     FAKE_DOTNET_LOG="$calls" \
     FAKE_ARTIFACT_ROOT="$repo_root/dotnet/CatMetro.Tests/obj/ci-full-solution" \
