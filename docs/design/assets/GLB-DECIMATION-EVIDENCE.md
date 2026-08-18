@@ -16,10 +16,13 @@ PR #94 merges. The clarified wave-component correction was frozen first on
 - Frozen contract commit: `bc34c6abf6ecf580465c061c2993a7536aeacf41`.
 - Branch base: `3115ebdddd23f3d7eb6836c2670f6dfc2d0a6fb4`.
 - Integrated, independently reviewed pipeline, final boundary hardening, and
-  bounded argument-diagnostic reproduction base: `ba3b31c52cb9536711488bef228b5221da908d0e`.
-  The executed renderer and decimation-script bytes are identical to that
-  exact tree; the isolated 15-asset Blender queue reran without changing the
-  retained local GLBs or sidecars.
+  bounded argument-diagnostic reproduction base: `1b2ea7deb2626fc90e4f1a6d7508fcdaf048a72a`.
+  That is the squash commit PR #94 merged as on 2026-08-18; the pre-squash
+  id `ba3b31c52cb9536711488bef228b5221da908d0e` named the same tree and
+  left main's history at merge, so this record now pins the commit a clone
+  can actually resolve. The executed renderer and decimation-script bytes
+  are identical to that exact tree; the isolated 15-asset Blender queue
+  reran without changing the retained local GLBs or sidecars.
 - Decimation driver SHA-256 at the reproduction base:
   `dc0b371b63fe3d91c8f8beba5ff70541cac96636ab756dd0d35c4ce3c0f338a9`.
 - The reviewed `--force` queue completed 15/15 with exact category and global
