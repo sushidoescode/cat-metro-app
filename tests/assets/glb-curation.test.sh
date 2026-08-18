@@ -8,9 +8,10 @@ orchestrator="$repo_root/scripts/curate-assets.py"
 driver="$repo_root/scripts/blender_curate.py"
 metrics="$repo_root/docs/design/assets/GLB-DECIMATION-METRICS.json"
 curation_manifest="$repo_root/docs/design/assets/GLB-CURATION-MANIFEST.json"
+wave_manifest="$repo_root/docs/design/assets/GLB-CURATION-WAVE-MANIFEST.json"
 evidence_root="$repo_root/evals/results/assets/glb-curation-2026-08-17"
 
-for required in "$rules" "$orchestrator" "$driver" "$curation_manifest"; do
+for required in "$rules" "$orchestrator" "$driver" "$curation_manifest" "$wave_manifest"; do
   if [[ ! -f "$required" ]]; then
     printf 'glb-curation test: missing production entrypoint: %s\n' "$required" >&2
     exit 1
@@ -19,7 +20,7 @@ done
 
 PYTHONDONTWRITEBYTECODE=1 python3 - \
   "$repo_root" "$rules" "$orchestrator" "$metrics" \
-  "$curation_manifest" "$evidence_root" <<'PY'
+  "$curation_manifest" "$wave_manifest" "$evidence_root" <<'PY'
 from __future__ import annotations
 
 import hashlib
@@ -36,7 +37,8 @@ rules_path = Path(os.sys.argv[2])
 orchestrator_path = Path(os.sys.argv[3])
 metrics_path = Path(os.sys.argv[4])
 curation_manifest_path = Path(os.sys.argv[5])
-evidence_root = Path(os.sys.argv[6])
+wave_manifest_path = Path(os.sys.argv[6])
+evidence_root = Path(os.sys.argv[7])
 
 
 def load(name: str, path: Path):
@@ -739,6 +741,10 @@ canonical_by_id = {item["id"]: item for item in canonical_manifest["assets"]}
 assert curation_manifest["assets"] == [canonical_by_id[item] for item in selected_ids]
 assert curation_manifest["_meta"]["source_manifest"] == "CAT-MANIFEST.json"
 assert curation_manifest["_meta"]["scope"] == "GLB-CURATION exact two assets"
+wave_manifest = json.loads(wave_manifest_path.read_text(encoding="utf-8"))
+assert wave_manifest["assets"] == [canonical_by_id["cat-yellow-longhair-wave"]]
+assert wave_manifest["_meta"]["source_manifest"] == "CAT-MANIFEST.json"
+assert wave_manifest["_meta"]["scope"] == "GLB-CURATION wave correction exact one asset"
 
 expected_untouched = {
     "cat-red-tabby": "9d6f3e1b0d82f23500779c570943dc2081c6caad7295da7d3fe19c1c50742b59",
