@@ -860,8 +860,8 @@
       "triangle_reduction_percent": 98.059791
     },
     {
-      "byte_reduction": 39935836,
-      "byte_reduction_percent": 98.001359,
+      "byte_reduction": 38831960,
+      "byte_reduction_percent": 97.949792,
       "custody_agreements": {
         "derivative_record_derivative_filename_matches_derivative": true,
         "derivative_record_derivative_sha256_matches_derivative": true,
@@ -872,8 +872,8 @@
         "source_sidecar_claim_matches_source": true
       },
       "derivative_filename": "cat-yellow-longhair-wave.glb",
-      "derivative_sha256": "2eee06883d024631263485b48da067dd8042f66ef81fc669016731fa5fdaa1ef",
-      "derivative_sidecar_sha256": "b961427de158aba8377e3114cc301d4d144ee38e378df984d8140a31cb3d633e",
+      "derivative_sha256": "a3c4a363b06064ecc5dc03509c36ddd5ab91200a41314a3c674cd91ef4386696",
+      "derivative_sidecar_sha256": "9c7bd939fc493caa44d0250531e2137c8c848d5b9bbfc62de320e2dbab16317e",
       "embedded_texture_preservation": {
         "output_payload_bytes": [
           98739,
@@ -924,7 +924,7 @@
       "kind": "cat",
       "output": {
         "animations": 0,
-        "bytes": 814452,
+        "bytes": 812800,
         "cameras": 0,
         "embedded_images": 3,
         "extensions_required": [],
@@ -938,9 +938,9 @@
         "morph_targets": 0,
         "primitives": 1,
         "skins": 0,
-        "triangles": 14998,
+        "triangles": 15000,
         "uv_primitives": 1,
-        "vertices": 9399,
+        "vertices": 9347,
         "world_bounds": {
           "max": [
             0.38525667786598206,
@@ -956,11 +956,11 @@
       },
       "preservation_diagnostics": [],
       "service": "tripo",
-      "sidecar_derivative_sha256": "2eee06883d024631263485b48da067dd8042f66ef81fc669016731fa5fdaa1ef",
+      "sidecar_derivative_sha256": "a3c4a363b06064ecc5dc03509c36ddd5ab91200a41314a3c674cd91ef4386696",
       "sidecar_hash_agreement": true,
       "source": {
         "animations": 0,
-        "bytes": 40750288,
+        "bytes": 39644760,
         "cameras": 0,
         "embedded_images": 3,
         "extensions_required": [],
@@ -974,9 +974,9 @@
         "morph_targets": 0,
         "primitives": 1,
         "skins": 0,
-        "triangles": 1422808,
+        "triangles": 1383894,
         "uv_primitives": 1,
-        "vertices": 726653,
+        "vertices": 706698,
         "world_bounds": {
           "max": [
             0.3852173089981079,
@@ -991,10 +991,10 @@
         }
       },
       "source_filename": "cat-yellow-longhair-wave.glb",
-      "source_sha256": "f91ccb7ff9b527ecef168d4285488ff647023fb70875f5403c31db8e2349d99d",
-      "source_sidecar_sha256": "bb787a4073833edfd54af3e401cfa00e73b5279592ba2d146b015d3f1ffe90e4",
-      "triangle_reduction": 1407810,
-      "triangle_reduction_percent": 98.945887
+      "source_sha256": "bf4626c2a41214444a483bde1920c7fd95a06069feca202df860861edb540d64",
+      "source_sidecar_sha256": "0bedeeb207fcb02277c7b0b1d0bcf8ec8118d4b0cf2e20abbaa3d85b1a64260f",
+      "triangle_reduction": 1368894,
+      "triangle_reduction_percent": 98.916102
     },
     {
       "byte_reduction": 40621388,
@@ -1923,19 +1923,19 @@
   "schema_version": 1,
   "totals": {
     "assets": 15,
-    "byte_reduction": 809808132,
-    "byte_reduction_percent": 97.040337,
+    "byte_reduction": 808704256,
+    "byte_reduction_percent": 97.036609,
     "cats": 10,
-    "output_bytes": 24698584,
-    "output_triangles": 199996,
-    "output_vertices": 145162,
+    "output_bytes": 24696932,
+    "output_triangles": 199998,
+    "output_vertices": 145110,
     "props": 5,
-    "source_bytes": 834506716,
-    "source_triangles": 24626004,
-    "source_vertices": 12702062,
-    "triangle_reduction": 24426008,
-    "triangle_reduction_percent": 99.187867,
-    "vertex_reduction": 12556900,
-    "vertex_reduction_percent": 98.857178
+    "source_bytes": 833401188,
+    "source_triangles": 24587090,
+    "source_vertices": 12682107,
+    "triangle_reduction": 24387092,
+    "triangle_reduction_percent": 99.186573,
+    "vertex_reduction": 12536997,
+    "vertex_reduction_percent": 98.855789
   }
 }
