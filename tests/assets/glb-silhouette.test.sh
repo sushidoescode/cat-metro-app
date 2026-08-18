@@ -158,7 +158,7 @@ if run_silhouette \
 fi
 # Break caught: sparse point evidence is accepted or leaves an apparently valid render.
 test ! -e "$tmp/sparse.png"
-rg -n 'glb-silhouette: coverage [0-9.]+ below 0\.100000' "$tmp/sparse.err"
+grep -nE 'glb-silhouette: coverage [0-9.]+ below 0\.100000' "$tmp/sparse.err"
 
 alias_failures=0
 check_source_alias_rejected() {
@@ -202,7 +202,7 @@ check_source_alias_rejected() {
     echo "glb-silhouette test: $case_name source alias unexpectedly passed" >&2
     alias_failures=$((alias_failures + 1))
   fi
-  if ! rg -q '^glb-silhouette:' "$stderr"; then
+  if ! grep -qE '^glb-silhouette:' "$stderr"; then
     echo "glb-silhouette test: $case_name source alias lacked diagnostic" >&2
     alias_failures=$((alias_failures + 1))
   fi

@@ -2050,7 +2050,7 @@ if [ "$review_section" = all ] || [ "$review_section" = F ]; then
     set -e
     test "$rc" -ne 0 || die "$label accepted the wrong Blender identity"
     test ! -s "$version_stdout" || die "$label wrote an acceptance record"
-    rg -q "^$diagnostic$" "$version_stderr" || {
+    grep -qE "^$diagnostic$" "$version_stderr" || {
       sed -n '1,80p' "$version_stderr" >&2
       die "$label lacked its pinned Blender diagnostic"
     }
@@ -2103,7 +2103,7 @@ if [ "$review_section" = all ] || [ "$review_section" = F ]; then
       find "$output_dir" -mindepth 1 -print >&2
       die "rejected official Blender banner created an output"
     fi
-    rg -q '^glb-decimation: requires Blender 5\.1\.2$' \
+    grep -qE '^glb-decimation: requires Blender 5\.1\.2$' \
       "$version_stderr" || {
       sed -n '1,80p' "$version_stderr" >&2
       die "official Blender banner failed for an unexpected reason"
@@ -2192,10 +2192,10 @@ for sentinel_name in "${sentinel_names[@]}"; do
     set -e
     test "$forbidden_rc" -eq 86 || \
       die "fake Blender accepted $sentinel_name on its $phase phase"
-    rg -q '^fake-blender: forbidden environment sentinel present$' \
+    grep -qE '^fake-blender: forbidden environment sentinel present$' \
       "$tmp/forbidden.stderr" || \
       die "fake Blender lacked its safe environment rejection"
-    if rg -Fq "$sentinel_value" "$tmp/forbidden.stdout" "$tmp/forbidden.stderr"; then
+    if grep -Fq "$sentinel_value" "$tmp/forbidden.stdout" "$tmp/forbidden.stderr"; then
       die "fake Blender logged a forbidden environment value"
     fi
     test "$(line_count "$forbidden_audit")" -eq "$before_audit" || \
@@ -13262,7 +13262,7 @@ run_failure_case() {
   local rc=$?
   set -e
   test "$rc" -ne 0 || die "$name unexpectedly succeeded"
-  if ! rg -q "$expected_pattern" "$stderr"; then
+  if ! grep -qE "$expected_pattern" "$stderr"; then
     sed -n '1,120p' "$stderr" >&2
     die "$name lacked diagnostic $expected_pattern"
   fi
@@ -13482,7 +13482,7 @@ run_decimator success "$force_log" "$case_root/force-default.stdout" "$case_root
 force_default_rc=$?
 set -e
 test "$force_default_rc" -ne 0 || die "default run replaced an existing pair"
-rg -q 'refusing existing derivative' "$case_root/force-default.stderr" || \
+grep -qE 'refusing existing derivative' "$case_root/force-default.stderr" || \
   die "default pair refusal lacked its diagnostic"
 test "$force_old_glb_sha" = "$(sha256_file "$final_glb")" || \
   die "default refusal changed the old GLB"
@@ -13496,7 +13496,7 @@ run_decimator over_budget "$force_log" "$case_root/force-bad.stdout" "$case_root
 force_bad_rc=$?
 set -e
 test "$force_bad_rc" -ne 0 || die "--force promoted an over-budget candidate"
-rg -q 'triangle band' "$case_root/force-bad.stderr" || \
+grep -qE 'triangle band' "$case_root/force-bad.stderr" || \
   die "--force over-budget failure lacked triangle-band diagnostic"
 test "$force_old_glb_sha" = "$(sha256_file "$final_glb")" || \
   die "failed --force changed the old GLB"

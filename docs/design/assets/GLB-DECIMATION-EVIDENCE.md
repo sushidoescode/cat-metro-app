@@ -7,13 +7,13 @@ Run date: **2026-08-16**. The evidence folder retains the frozen
 
 - Frozen contract commit: `bc34c6abf6ecf580465c061c2993a7536aeacf41`.
 - Branch base: `3115ebdddd23f3d7eb6836c2670f6dfc2d0a6fb4`.
-- Integrated, independently reviewed pipeline and final boundary-hardening
-  reproduction base: `96149b5ff5121e89cf14c2a9dda98452e280853c`.
+- Integrated, independently reviewed pipeline, final boundary hardening, and
+  bounded argument-diagnostic reproduction base: `ba3b31c52cb9536711488bef228b5221da908d0e`.
   The executed renderer and decimation-script bytes are identical to that
   exact tree; the isolated 15-asset Blender queue reran without changing the
   retained local GLBs or sidecars.
 - Decimation driver SHA-256 at the reproduction base:
-  `5b97ce8ee569cb175e861ff0fbd13f1a5682bb6e0944f8e96931c556733f1370`.
+  `dc0b371b63fe3d91c8f8beba5ff70541cac96636ab756dd0d35c4ce3c0f338a9`.
 - The reviewed `--force` queue completed 15/15 with exact category and global
   triangle bands, intact source custody, valid schema-1 sidecars, and no
   staging, backup, or process residue.
@@ -98,13 +98,14 @@ retained recorded sheets rather than temporary rebuilds. The current
 comparison grid was viewed at original detail; because every individual PNG
 is byte-identical, the prior visual disposition carries forward unchanged.
 
-The same exact code base also ran the full 15-asset Blender queue into isolated
-`/private/tmp/catmetro-glb-final-derivatives-r3`. All 15 derivative GLBs were
-byte-identical to the retained derivatives. Each fresh sidecar was identical
-after excluding only its expected fresh `tool.timestamp_utc`, and a fresh
-`glb_metrics.py` inspection matched every recorded output metric and derivative
-hash. The retained derivatives, sidecars, and metrics authority therefore did
-not change.
+The parser-hardened reproduction base also ran the full 15-asset Blender queue
+from isolated pre-curation custody into
+`/private/tmp/catmetro-glb-ci-rgfix-r4/decimated`. All 15 derivative GLBs were
+byte-identical to both the r3 and retained derivatives. Each fresh sidecar was
+identical after excluding only its expected fresh `tool.timestamp_utc`, and a
+fresh `glb_metrics.py` inspection matched every recorded output metric and
+derivative hash. The retained derivatives, sidecars, and metrics authority
+therefore did not change.
 
 The additional material-lit diagnostic used local untracked script
 `/private/tmp/catmetro_color_render.py`, SHA-256

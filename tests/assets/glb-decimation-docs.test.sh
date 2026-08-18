@@ -21,9 +21,9 @@ production = Path("scripts/decimate-assets.py").read_text(encoding="utf-8")
 metrics = Path("scripts/glb_metrics.py").read_text(encoding="utf-8")
 silhouette = Path("scripts/glb-silhouette.py").read_text(encoding="utf-8")
 
-EXPECTED_PRODUCTION_BASE = "96149b5ff5121e89cf14c2a9dda98452e280853c"
+EXPECTED_PRODUCTION_BASE = "ba3b31c52cb9536711488bef228b5221da908d0e"
 EXPECTED_DECIMATOR_SHA256 = (
-    "5b97ce8ee569cb175e861ff0fbd13f1a5682bb6e0944f8e96931c556733f1370"
+    "dc0b371b63fe3d91c8f8beba5ff70541cac96636ab756dd0d35c4ce3c0f338a9"
 )
 
 
