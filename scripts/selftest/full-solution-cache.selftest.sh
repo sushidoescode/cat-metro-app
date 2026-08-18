@@ -194,15 +194,17 @@ echo "  ok: stable miss then hit executes once; record contains no raw env value
 # 3. Dirty tracked bytes invalidate; a failing result is executed and never published.
 printf '%s\n' 'FAIL' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
 reset_calls
-if run_cached_at "$cache" > "$tmp/fail-1.out" 2> "$tmp/fail-1.err"; then
+run_cached_at "$cache" > "$tmp/fail-1.out" 2> "$tmp/fail-1.err"
+rc=$?
+if [ "$rc" -eq 0 ]; then
   fail "dirty failing input consumed stale green (first run)"
 fi
-rc=$?
 [ "$rc" -eq 42 ] || fail "dirty failing input returned $rc, expected 42"
-if run_cached_at "$cache" > "$tmp/fail-2.out" 2> "$tmp/fail-2.err"; then
+run_cached_at "$cache" > "$tmp/fail-2.out" 2> "$tmp/fail-2.err"
+rc=$?
+if [ "$rc" -eq 0 ]; then
   fail "failing result was cached green (second run)"
 fi
-rc=$?
 [ "$rc" -eq 42 ] || fail "second failing run returned $rc, expected 42"
 [ "$(call_count)" -eq 2 ] || fail "failed command was not executed twice"
 printf '%s\n' 'PASS' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
