@@ -186,6 +186,8 @@ run_cached_at "$cache" > "$tmp/cache-hit.out" 2> "$tmp/cache-hit.err" \
 [ "$(call_count)" -eq 1 ] || fail "stable miss+hit executed dotnet more than once"
 manifest_count=$(find "$cache/records" -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
 [ "$manifest_count" -eq 1 ] || fail "expected one atomic green record, found $manifest_count"
+stable_manifest=$(find "$cache/records" -type f -name '*.json' 2>/dev/null)
+[ -n "$stable_manifest" ] || fail "could not pin the stable green record"
 if grep -rFq 'do-not-store-this-raw-value' "$cache" 2>/dev/null; then
   fail "raw environment value leaked into the private cache"
 fi
@@ -229,9 +231,7 @@ run_cached_at "$cache" 'different-env' > "$tmp/env.out" 2> "$tmp/env.err" \
 echo "  ok: untracked membership and child environment invalidate"
 
 # 5. A corrupt record is never trusted; a real green execution repairs it atomically.
-manifest=$(find "$cache/records" -type f -name '*.json' | head -1)
-[ -n "$manifest" ] || fail "could not locate green record for corruption proof"
-printf '%s\n' '{broken' > "$manifest"
+printf '%s\n' '{broken' > "$stable_manifest"
 reset_calls
 run_cached_at "$cache" > "$tmp/corrupt.out" 2> "$tmp/corrupt.err" \
   || fail "corrupt-record fallback execution failed"
