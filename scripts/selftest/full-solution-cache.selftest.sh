@@ -386,6 +386,7 @@ import os
 from pathlib import Path
 import sys
 
+sys.dont_write_bytecode = True
 helper, root_raw, cache = sys.argv[1:]
 spec = importlib.util.spec_from_file_location("cat_metro_cache_helper", helper)
 module = importlib.util.module_from_spec(spec)
@@ -620,5 +621,10 @@ if grep -Fq 'run-full-solution-test.py' tests/solver/solver.test.sh; then
   fail "solver wrapper references the cache helper"
 fi
 echo "  ok: determinism and solver each execute two direct detailed processes"
+
+helper_bytecode=$(find "$repo_root/scripts/__pycache__" -maxdepth 1 -type f \
+  -name 'run-full-solution-test.cpython-*.pyc' -print 2>/dev/null || true)
+[ -z "$helper_bytecode" ] || fail "helper import left Python bytecode in the repository"
+echo "  ok: helper import leaves no repository bytecode"
 
 echo "full-solution-cache self-test: OK"
