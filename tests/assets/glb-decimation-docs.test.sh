@@ -37,7 +37,7 @@ def require_lesson_row(
     evidence: tuple[str, ...],
     label: str,
     *,
-    occurrences: int | None = None,
+    occurrences=None,
 ) -> None:
     matches = [
         line
