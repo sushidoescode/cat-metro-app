@@ -27,6 +27,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import stat
 import tempfile
 from pathlib import Path
@@ -924,9 +925,93 @@ assert (
     evidence_root / "derivative-after" / "cat-yellow-longhair-wave.png"
 ).read_bytes()
 
+# The curation contact sheets live in their own evidence section, outside the
+# four decimation sections that glb-decimation-evidence.test.sh guards with
+# reject_unclaimed_pipe_rows. Nothing over there claims these rows, so they are
+# claimed here: every declared row must reconcile against the committed
+# checksum manifest, the bytes on disk, and the PNG's own IHDR dimensions, and
+# no unclaimed pipe row may hide in the section.
+CURATION_EVIDENCE_HEADING = "## Curation render evidence"
+CURATION_EVIDENCE_NEXT_HEADING = "## Reproducible command boundary"
+CURATION_CONTACT_HEADER = (
+    "| Path under `evals/results/assets/glb-curation-2026-08-17/` "
+    "| Dimensions | SHA-256 |"
+)
+CURATION_CONTACT_SEPARATOR = "|---|---:|---|"
+EXPECTED_CURATION_CONTACT_SHEETS = (
+    "source-comparison.png",
+    "changed-derivative-comparison.png",
+    "derivative-before-grid.png",
+    "derivative-after-grid.png",
+    "derivative-comparison-grid.png",
+    "wave-correction-comparison.png",
+)
+contact_pattern = re.compile(
+    r"\| `([^`]+)` \| ([1-9][0-9]*)×([1-9][0-9]*) \| `([0-9a-f]{64})` \|"
+)
+
+
+def png_dimensions(path: Path) -> tuple[int, int]:
+    header = path.read_bytes()[:24]
+    assert header[:8] == b"\x89PNG\r\n\x1a\n", path
+    assert header[12:16] == b"IHDR", path
+    return (
+        int.from_bytes(header[16:20], "big"),
+        int.from_bytes(header[20:24], "big"),
+    )
+
+
+evidence_document = (
+    repo_root / "docs/design/assets/GLB-DECIMATION-EVIDENCE.md"
+).read_text(encoding="utf-8")
+assert evidence_document.count(CURATION_EVIDENCE_HEADING) == 1
+assert evidence_document.count(CURATION_EVIDENCE_NEXT_HEADING) == 1
+curation_section = evidence_document.split(CURATION_EVIDENCE_HEADING, 1)[1].split(
+    CURATION_EVIDENCE_NEXT_HEADING, 1
+)[0]
+section_lines = curation_section.splitlines()
+
+header_index = None
+for index, line in enumerate(section_lines):
+    if line.strip() == CURATION_CONTACT_HEADER:
+        assert header_index is None, "duplicate curation contact table header"
+        header_index = index
+assert header_index is not None, "curation render section declares no contact table"
+assert section_lines[header_index + 1].strip() == CURATION_CONTACT_SEPARATOR
+claimed_lines = {header_index, header_index + 1}
+
+contact_rows = []
+index = header_index + 2
+while index < len(section_lines) and section_lines[index].lstrip().startswith("|"):
+    match = contact_pattern.fullmatch(section_lines[index].strip())
+    assert match is not None, section_lines[index]
+    contact_rows.append(
+        (match.group(1), int(match.group(2)), int(match.group(3)), match.group(4))
+    )
+    claimed_lines.add(index)
+    index += 1
+
+for number, line in enumerate(section_lines):
+    if line.lstrip().startswith("|") and number not in claimed_lines:
+        raise AssertionError(
+            f"unclaimed pipe row in curation render section: {line}"
+        )
+
+assert tuple(row[0] for row in contact_rows) == EXPECTED_CURATION_CONTACT_SHEETS
+assert len({row[0] for row in contact_rows}) == len(contact_rows)
+assert len({row[3] for row in contact_rows}) == len(contact_rows)
+for name, width, height, digest in contact_rows:
+    relative = f"{prefix}{name}"
+    assert relative in recorded_pngs, relative
+    assert recorded_pngs[relative] == digest, (relative, digest)
+    sheet_path = repo_root / relative
+    assert hashlib.sha256(sheet_path.read_bytes()).hexdigest() == digest, relative
+    assert png_dimensions(sheet_path) == (width, height), relative
+
 print(
     "glb-curation unit: pass rules=boundary-pinned transactions=failure-matrix "
-    f"untouched={len(expected_untouched)} evidence_pngs={len(recorded_pngs)}"
+    f"untouched={len(expected_untouched)} evidence_pngs={len(recorded_pngs)} "
+    f"curation_contact_rows={len(contact_rows)}"
 )
 PY
 

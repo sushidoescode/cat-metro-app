@@ -40,10 +40,10 @@ errors = []
 # waiving the reviewed asset facts. An intentional evidence refresh must
 # update the Markdown tables and these anchors in the same reviewed change.
 EXPECTED_MACHINE_AUTHORITY_SHA256 = (
-    "035bf603d56b89d24926e641d21798fe7f0ad984b3773283c8f5881948445189"
+    "6cf1a35377daabbe43f406724d3f63604477626c43ef410bd00c95682b054bc3"
 )
 EXPECTED_SILHOUETTE_TABLE_SHA256 = (
-    "9d6159dc9b0ee5c3ddc4adeb08e2b01c206d207d6ff5b77b408f554f8d992b87"
+    "53889105a4cd12fc68e0a0396fffba1c8a977f598800f988624f1682e21109eb"
 )
 EXPECTED_SILHOUETTE_CONTACT_ROWS = [
     {

@@ -117,6 +117,30 @@ ears, whiskers, and tail and the wave cat, raised paw, feet, and tail remain
 legible. All 13 untouched before/after derivative PNG pairs are byte-identical.
 The evidence README records the looked-at disposition.
 
+## Curation render evidence
+
+Contact sheets committed under `evals/results/assets/glb-curation-2026-08-17/`.
+These are curation artifacts, not part of the decimation queue's silhouette
+record, so they are held here rather than in that section. Every row below is
+reconciled against the committed checksum manifest, the bytes on disk, and the
+PNG's own declared dimensions by `tests/assets/glb-curation.test.sh`, which
+also rejects any unclaimed row in this section.
+
+| Path under `evals/results/assets/glb-curation-2026-08-17/` | Dimensions | SHA-256 |
+|---|---:|---|
+| `source-comparison.png` | 2080×520 | `bc68c694543f65254e94dfaf92f9f2623834eeaf3bf978c846e89cce2650dccc` |
+| `changed-derivative-comparison.png` | 2080×520 | `8d18ff8f208dc3b7a1eb5e492ce4199fdb3a0311dfc11c5f6b3f71f9cd666338` |
+| `derivative-before-grid.png` | 2600×1560 | `1d9f09d3fde235722a1bc982fe1d9b0d3a59492b66464e9ec231afda2f926025` |
+| `derivative-after-grid.png` | 2600×1560 | `81d584f29cc9a02109feb2fe83a87da10befbd64d8e7c735612c1b8eba697dec` |
+| `derivative-comparison-grid.png` | 2600×3120 | `ff24f27ec788129825855ae0e85635198658ea5b3de52b3ec25cc1b4b42afab5` |
+| `wave-correction-comparison.png` | 1040×1040 | `11333100c4b36b1053b24df209204f346af112044e0ced027d4ed76c65322fbc` |
+
+The dedicated correction sheet places source before/after on its top row and
+derivative before/after on its bottom row. Lane C viewed all four constituent
+frames and the sheet at original detail on 2026-08-18: the detached torso-height
+blob is absent after correction, while ears, face, raised paw, torso, feet, and
+curled tail remain intact with no visible seam or amputation.
+
 ## Reproducible command boundary
 
 The accepted real queue used the reviewed worktree scripts and explicit local
@@ -362,16 +386,18 @@ inspection. All seven custody booleans in the companion JSON are true.
 | `prop-trees` | `d94b1586f4eb44a5e61ac5499dfef4ec8e4ddc2125bdf6fc95b6d7948673d863` | `1aa63811903a869927c134161101aa57c8993adc34661c03f9e1aade049e3f0b` | `e34f39de9a0db8f977370d7f0808f44a28b9641a458ada4957f552c62271c0dd` | `96b29000ef1e8f03d0982ffbaa1ec3d5a476cfcff8241a1f35b3a29041495b34` |
 | `prop-desk-clutter` | `f42232e108bce9b9b12a5db6b8472412673a0dea9293cd9d896d43874bb4e9d5` | `393aca3bc5af36b19fed58e32dcd4e975542d1beafe85c0fe85a774830946ced` | `d0403b93dc3db30ec3f7e0b825ba7b48f4af7b79094c6b262c7bfa2fb268ec4d` | `e75ba87683bd0f468871608a0c079adf89e46eca86fecda248997b204da713b4` |
 
-## Silhouette evidence — all 30 current source/derivative renders
+## Silhouette evidence — all 30 individual renders
 
-The table retains the original 13 unchanged source/derivative pairs and uses
-the committed `source-after/` and `derivative-after/` files for the two curated
-rows. Coverage is exact filled-pixel count divided by 270,400, using the
-renderer's warm-paper background semantics. Every file exceeds the 0.01 gate.
-The reviewed pairs preserve intelligible outer silhouettes and intentional
+Before and After remain the source and derivative renders either side of
+decimation. The table retains the original 13 unchanged pairs; for the two
+curated rows they are the committed `source-after/` and `derivative-after/`
+files, that is the post-curation source and its regenerated derivative.
+Coverage is exact filled-pixel count divided by 270,400, using the renderer's
+warm-paper background semantics. Every file exceeds the 0.01 gate. The
+reviewed pairs preserve intelligible outer silhouettes and intentional
 appendages.
 
-| Asset | Source coverage | Source PNG SHA-256 | Derivative coverage | Derivative PNG SHA-256 |
+| Asset | Before coverage | Before PNG SHA-256 | After coverage | After PNG SHA-256 |
 |---|---:|---|---:|---|
 | `cat-red-tabby` | 0.336623520710 | `816e58667aa20ef7748e00637ca9a959409f05054df88f91e983ebc50575ede2` | 0.194622781065 | `e4c365b84e2a4d730402775d95bb0de11534089ce7c380194cfc644ad6b631d4` |
 | `cat-blue-siamese` | 0.212906804734 | `1f5c951980c716e82094d5a81042ef607cb1441d5758c04f3cbf77e1665a041b` | 0.147928994083 | `4dc258bf08c0b067e9d5c7d2a3408091bac2506593f77f119dfec6c958704d22` |
@@ -397,23 +423,6 @@ Original pre-curation silhouette contact sheets:
 | `.catshots/glb-decimation-2026-08-15/after-grid.png` | 2600×1560 | `4014f185bff0c99222b24e5399a0c1525473ab8fc8e054e47eda0287f4bce584` |
 | `.catshots/glb-decimation-2026-08-15/comparison-grid.png` | 2600×3120 | `0ed07846d71b6772273e3c4b6f6eaf72be9a8214326a2b03c1988e1ba1fc4e89` |
 
-Current committed curation contact sheets:
-
-| Path under `evals/results/assets/glb-curation-2026-08-17/` | Dimensions | SHA-256 |
-|---|---:|---|
-| `source-comparison.png` | 2080×520 | `bc68c694543f65254e94dfaf92f9f2623834eeaf3bf978c846e89cce2650dccc` |
-| `changed-derivative-comparison.png` | 2080×520 | `8d18ff8f208dc3b7a1eb5e492ce4199fdb3a0311dfc11c5f6b3f71f9cd666338` |
-| `derivative-before-grid.png` | 2600×1560 | `1d9f09d3fde235722a1bc982fe1d9b0d3a59492b66464e9ec231afda2f926025` |
-| `derivative-after-grid.png` | 2600×1560 | `81d584f29cc9a02109feb2fe83a87da10befbd64d8e7c735612c1b8eba697dec` |
-| `derivative-comparison-grid.png` | 2600×3120 | `ff24f27ec788129825855ae0e85635198658ea5b3de52b3ec25cc1b4b42afab5` |
-| `wave-correction-comparison.png` | 1040×1040 | `11333100c4b36b1053b24df209204f346af112044e0ced027d4ed76c65322fbc` |
-
-The dedicated correction sheet places source before/after on its top row and
-derivative before/after on its bottom row. Lane C viewed all four constituent
-frames and the sheet at original detail on 2026-08-18: the detached torso-height
-blob is absent after correction, while ears, face, raised paw, torso, feet, and
-curled tail remain intact with no visible seam or amputation.
-
 The pre-correction exact-head temporary rebuild hashes were
 `66d8e9dd5a9bb7a06a89491bcd1136fa88dba28e651079f622b148a60fa6ba80`
 (before),
@@ -427,8 +436,8 @@ changed, so these temporary hashes do not replace the recorded-file hashes.
 The current committed comparison grid and both changed source/derivative pairs
 were viewed at original detail. The ruled geometry and both detached wave
 components are absent and no new silhouette loss appeared. The 13 untouched
-derivative PNG pairs are
-byte-identical. The existing 14/15 target-scale decimation approval and
+derivative PNG pairs are byte-identical. The existing 14/15 target-scale
+decimation approval and
 board-scale-only condition for `prop-toy-engine` remain unchanged; the
 remaining source-art shipping rejection is narrowed as recorded below.
 
