@@ -43,17 +43,28 @@ trap cleanup EXIT HUP INT TERM
 
 fixture="$tmp/repo"
 fake_bin="$tmp/fake-bin"
+fake_sdk="$tmp/fake-sdk/8.0.419"
+fake_home="$tmp/fake-home"
+fake_packages="$fake_home/.nuget/packages"
+fake_package="$fake_packages/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"
+fake_nuget_config="$fake_home/.nuget/NuGet/NuGet.Config"
 cache="$tmp/cache"
 cache_mutate="$tmp/cache-mutate"
 calls="$tmp/dotnet.calls"
-mkdir -p "$fixture/dotnet" "$fixture/unity/Assets/Scripts/Domain" "$fake_bin" \
+mkdir -p "$fixture/dotnet/Fake" "$fixture/unity/Assets/Scripts/Domain" "$fake_bin" \
+  "$fake_sdk" "$(dirname "$fake_package")" "$(dirname "$fake_nuget_config")" \
   || fail "could not create self-test fixture"
 mkdir -m 700 "$cache" "$cache_mutate" || fail "could not create private caches"
 
 printf '%s\n' 'Microsoft Visual Studio Solution File, Format Version 12.00' \
   > "$fixture/dotnet/CatMetro.sln"
 printf '%s\n' 'PASS' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
-printf '%s\n' 'dotnet/**/obj/' > "$fixture/.gitignore"
+printf '%s\n' 'dotnet/**/obj/' 'Directory.Build.props' > "$fixture/.gitignore"
+printf '%s\n' '{"version":1,"dependencies":{"net8.0":{"Fake.Package":{"type":"Direct","requested":"[1.0.0, )","resolved":"1.0.0","contentHash":"fake"}}}}' \
+  > "$fixture/dotnet/Fake/packages.lock.json"
+printf '%s\n' 'PASS' > "$fake_sdk/Fake.MSBuild.dll"
+printf '%s\n' 'PASS' > "$fake_package"
+printf '%s\n' 'PASS' > "$fake_nuget_config"
 
 cat > "$fake_bin/dotnet" <<'FAKE_DOTNET'
 #!/usr/bin/env bash
@@ -61,7 +72,10 @@ set -uo pipefail
 
 if [ "$#" -eq 1 ] && [ "$1" = "--info" ]; then
   [ -z "${CAT_METRO_FULL_SOLUTION_CACHE_DIR:-}" ] || exit 91
-  printf '%s\n' '.NET SDK: fake-8.0.419' 'RID: fake-portable'
+  [ -z "${CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE:-}" ] || exit 91
+  [ -z "${CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR:-}" ] || exit 91
+  printf '%s\n' '.NET SDK:' ' Version: 8.0.419' " Base Path: ${FAKE_SDK_ROOT:?}/" \
+    'RID: fake-portable'
   exit 0
 fi
 
@@ -108,6 +122,18 @@ fingerprint='unity/Assets/Scripts/Domain/Fingerprint.cs'
 if [ -f "$fingerprint" ]; then
   state=$(tr -d '\r\n' < "$fingerprint")
 fi
+if [ -f 'Directory.Build.props' ] && grep -q '^FAIL$' 'Directory.Build.props'; then
+  state='FAIL'
+fi
+if grep -q '^FAIL$' "${FAKE_SDK_ROOT:?}/Fake.MSBuild.dll"; then
+  state='FAIL'
+fi
+if grep -q '^FAIL$' "${NUGET_PACKAGES:?}/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"; then
+  state='FAIL'
+fi
+if grep -q '^FAIL$' "${HOME:?}/.nuget/NuGet/NuGet.Config"; then
+  state='FAIL'
+fi
 case "$state" in
   FAIL)
     printf 'FAKE_FAILURE\n' >&2
@@ -115,6 +141,10 @@ case "$state" in
     ;;
   MUTATE)
     printf '%s\n' 'DONE' > "$fingerprint"
+    ;;
+  TERM)
+    kill -TERM "$$"
+    exit 99
     ;;
 esac
 
@@ -127,10 +157,26 @@ exit 0
 FAKE_DOTNET
 chmod 700 "$fake_bin/dotnet" || fail "could not make fake dotnet executable"
 
-git -C "$fixture" init -q || fail "could not initialize fixture repository"
-git -C "$fixture" add .gitignore dotnet/CatMetro.sln unity/Assets/Scripts/Domain/Fingerprint.cs \
+hostile_hooks="$tmp/hostile-hooks"
+hostile_config="$tmp/hostile.gitconfig"
+mkdir "$hostile_hooks" || fail "could not create hostile hook fixture"
+cat > "$hostile_hooks/pre-commit" <<'HOSTILE_HOOK'
+#!/usr/bin/env bash
+exit 86
+HOSTILE_HOOK
+chmod 700 "$hostile_hooks/pre-commit" || fail "could not activate hostile hook fixture"
+printf '%s\n' '[commit]' '    gpgSign = true' '[core]' "    hooksPath = $hostile_hooks" \
+  > "$hostile_config"
+
+fixture_git() {
+  GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$hostile_config" git -C "$fixture" "$@"
+}
+
+fixture_git init -q || fail "could not initialize fixture repository"
+fixture_git add .gitignore dotnet/CatMetro.sln dotnet/Fake/packages.lock.json \
+  unity/Assets/Scripts/Domain/Fingerprint.cs \
   || fail "could not stage fixture inputs"
-git -C "$fixture" -c user.name='CI self-test' -c user.email='ci-selftest@example.invalid' \
+fixture_git -c user.name='CI self-test' -c user.email='ci-selftest@example.invalid' \
   commit -qm 'fixture' || fail "could not commit fixture inputs"
 
 reset_calls() {
@@ -145,7 +191,12 @@ run_direct() {
   (
     cd "$fixture" || exit 1
     unset CAT_METRO_FULL_SOLUTION_CACHE_DIR
+    unset CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE
+    unset CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR
     PATH="$fake_bin:$PATH" \
+      HOME="$fake_home" \
+      NUGET_PACKAGES="$fake_packages" \
+      FAKE_SDK_ROOT="$fake_sdk" \
       FAKE_DOTNET_LOG="$calls" \
       FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
       CACHE_SECRET_SENTINEL='do-not-store-this-raw-value' \
@@ -159,9 +210,31 @@ run_cached_at() {
   (
     cd "$fixture" || exit 1
     PATH="$fake_bin:$PATH" \
+      HOME="$fake_home" \
+      NUGET_PACKAGES="$fake_packages" \
+      FAKE_SDK_ROOT="$fake_sdk" \
       FAKE_DOTNET_LOG="$calls" \
       FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
       CACHE_TEST_VARIANT="$variant" \
+      CACHE_SECRET_SENTINEL='do-not-store-this-raw-value' \
+      CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE=1 \
+      CAT_METRO_FULL_SOLUTION_CACHE_DIR="$selected_cache" \
+      python3 "$helper"
+  )
+}
+
+run_inactive_at() {
+  selected_cache=$1
+  (
+    cd "$fixture" || exit 1
+    unset CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE
+    PATH="$fake_bin:$PATH" \
+      HOME="$fake_home" \
+      NUGET_PACKAGES="$fake_packages" \
+      FAKE_SDK_ROOT="$fake_sdk" \
+      FAKE_DOTNET_LOG="$calls" \
+      FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
+      CACHE_TEST_VARIANT='stable' \
       CACHE_SECRET_SENTINEL='do-not-store-this-raw-value' \
       CAT_METRO_FULL_SOLUTION_CACHE_DIR="$selected_cache" \
       python3 "$helper"
@@ -176,6 +249,18 @@ run_direct > "$tmp/direct-2.out" 2> "$tmp/direct-2.err" \
   || fail "standalone execution 2 failed"
 [ "$(call_count)" -eq 2 ] || fail "standalone path did not execute dotnet twice"
 echo "  ok: standalone path executes twice"
+
+# Cache-control paths inherited without scripts/test.sh's activation capability stay standalone.
+reset_calls
+run_inactive_at "$cache" > "$tmp/inactive-1.out" 2> "$tmp/inactive-1.err" \
+  || fail "inactive standalone execution 1 failed"
+run_inactive_at "$cache" > "$tmp/inactive-2.out" 2> "$tmp/inactive-2.err" \
+  || fail "inactive standalone execution 2 failed"
+[ "$(call_count)" -eq 2 ] || fail "inactive cache controls reused a result outside scripts/test.sh"
+if grep -Fq 'cached-standard' "$calls"; then
+  fail "inactive cache controls selected the cached artifacts command"
+fi
+echo "  ok: inherited cache paths without harness activation execute twice"
 
 # 2. A stable, identical session snapshot executes once, then consumes one green attestation.
 reset_calls
@@ -241,7 +326,127 @@ run_cached_at "$cache" > "$tmp/repaired.out" 2> "$tmp/repaired.err" \
 [ "$(call_count)" -eq 1 ] || fail "repaired record was not atomically reusable"
 echo "  ok: corrupt record forces execution and is repaired"
 
-# 6. If the command changes a fingerprinted input while it runs, no record is published.
+# 6. A cache hit rechecks content after validating its record, closing the pre-hit mutation gap.
+cat > "$tmp/hit-race-probe.py" <<'HIT_RACE_PROBE'
+#!/usr/bin/env python3
+import importlib.util
+import os
+from pathlib import Path
+import sys
+
+helper, root_raw, cache = sys.argv[1:]
+spec = importlib.util.spec_from_file_location("cat_metro_cache_helper", helper)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+root = Path(root_raw)
+environment = dict(os.environ)
+for name in (
+    "CAT_METRO_FULL_SOLUTION_CACHE_DIR",
+    "CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE",
+    "CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR",
+):
+    environment.pop(name, None)
+original = module._record_is_valid
+
+def mutate_after_validation(path, expected):
+    valid = original(path, expected)
+    if valid:
+        (root / "unity/Assets/Scripts/Domain/Fingerprint.cs").write_text("FAIL\n")
+    return valid
+
+module._record_is_valid = mutate_after_validation
+raise SystemExit(module._cached(root, environment, cache, None))
+HIT_RACE_PROBE
+
+reset_calls
+(
+  cd "$fixture" || exit 1
+  PATH="$fake_bin:$PATH" \
+    HOME="$fake_home" \
+    NUGET_PACKAGES="$fake_packages" \
+    FAKE_SDK_ROOT="$fake_sdk" \
+    FAKE_DOTNET_LOG="$calls" \
+    FAKE_ARTIFACT_ROOT="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution" \
+    CACHE_TEST_VARIANT='stable' \
+    CACHE_SECRET_SENTINEL='do-not-store-this-raw-value' \
+    CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE=1 \
+    CAT_METRO_FULL_SOLUTION_CACHE_DIR="$cache" \
+    python3 "$tmp/hit-race-probe.py" "$helper" "$fixture" "$cache"
+) > "$tmp/hit-race.out" 2> "$tmp/hit-race.err"
+rc=$?
+[ "$rc" -eq 42 ] || fail "post-validation mutation returned $rc, expected a real failing run (42)"
+[ "$(call_count)" -eq 1 ] || fail "post-validation mutation did not force exactly one real run"
+printf '%s\n' 'PASS' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
+echo "  ok: post-validation mutation cannot consume stale green"
+
+# 7. Ignored root build policy, selected SDK files, package bytes, and user NuGet config invalidate.
+reset_calls
+printf '%s\n' 'FAIL' > "$fixture/Directory.Build.props"
+run_cached_at "$cache" > "$tmp/root-policy.out" 2> "$tmp/root-policy.err"
+rc=$?
+[ "$rc" -eq 42 ] || fail "ignored root build-policy mutation returned $rc, expected 42"
+[ "$(call_count)" -eq 1 ] || fail "ignored root build-policy mutation did not execute"
+printf '%s\n' 'PASS' > "$fixture/Directory.Build.props"
+run_cached_at "$cache" > "$tmp/root-policy-pass.out" 2> "$tmp/root-policy-pass.err" \
+  || fail "ignored root build-policy green miss failed"
+run_cached_at "$cache" > "$tmp/root-policy-hit.out" 2> "$tmp/root-policy-hit.err" \
+  || fail "ignored root build-policy green hit failed"
+[ "$(call_count)" -eq 2 ] || fail "ignored root build-policy stable key did not hit"
+rm -f -- "$fixture/Directory.Build.props"
+run_cached_at "$cache" > "$tmp/root-policy-restored.out" 2> "$tmp/root-policy-restored.err" \
+  || fail "root build-policy removal did not restore the original key"
+[ "$(call_count)" -eq 2 ] || fail "root build-policy removal missed the original record"
+
+for external_input in "$fake_sdk/Fake.MSBuild.dll" "$fake_package" "$fake_nuget_config"; do
+  printf '%s\n' 'FAIL' > "$external_input"
+  run_cached_at "$cache" > "$tmp/external-fail.out" 2> "$tmp/external-fail.err"
+  rc=$?
+  [ "$rc" -eq 42 ] || fail "external build input $external_input returned $rc, expected 42"
+  printf '%s\n' 'PASS' > "$external_input"
+  run_cached_at "$cache" > "$tmp/external-restored.out" 2> "$tmp/external-restored.err" \
+    || fail "external build input $external_input did not restore its original key"
+done
+[ "$(call_count)" -eq 5 ] \
+  || fail "external build inputs were not each executed and restored by content key"
+echo "  ok: ignored root, SDK, package, and NuGet inputs invalidate"
+
+# 8. A signal-killed child preserves shell-compatible 128+signal status.
+printf '%s\n' 'TERM' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
+reset_calls
+run_direct > "$tmp/term.out" 2> "$tmp/term.err"
+rc=$?
+[ "$rc" -eq 143 ] || fail "SIGTERM child returned $rc, expected 143"
+[ "$(call_count)" -eq 1 ] || fail "SIGTERM child was not executed once"
+printf '%s\n' 'PASS' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
+echo "  ok: child SIGTERM maps to exit 143"
+
+# 9. Session cleanup accepts only one exact ignored session child and never follows leaf links.
+cleanup_parent="$fixture/dotnet/CatMetro.Tests/obj/ci-full-solution"
+cleanup_session="$cleanup_parent/session.cleanup"
+external_sentinel="$tmp/cleanup-external"
+mkdir -p "$cleanup_session" "$external_sentinel" || fail "could not create cleanup fixture"
+printf '%s\n' 'KEEP' > "$external_sentinel/keep.txt"
+ln -s "$external_sentinel" "$cleanup_session/external-link" \
+  || fail "could not create cleanup symlink fixture"
+if (
+  cd "$fixture" || exit 1
+  python3 "$helper" --cleanup-session "$cleanup_parent"
+) > "$tmp/cleanup-broad.out" 2> "$tmp/cleanup-broad.err"; then
+  fail "cleanup accepted the broad session parent"
+fi
+[ -d "$cleanup_session" ] || fail "refused broad cleanup removed its child"
+(
+  cd "$fixture" || exit 1
+  python3 "$helper" --cleanup-session "$cleanup_session"
+) > "$tmp/cleanup.out" 2> "$tmp/cleanup.err" \
+  || fail "validated session cleanup failed"
+[ ! -e "$cleanup_session" ] && [ ! -L "$cleanup_session" ] \
+  || fail "validated session cleanup left its target"
+[ -f "$external_sentinel/keep.txt" ] || fail "session cleanup followed an external symlink"
+echo "  ok: cleanup is exact and does not follow symlinks"
+
+# 10. If the command changes a fingerprinted input while it runs, no record is published.
 printf '%s\n' 'MUTATE' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
 reset_calls
 run_cached_at "$cache_mutate" > "$tmp/mutate.out" 2> "$tmp/mutate.err" \
@@ -256,13 +461,14 @@ run_cached_at "$cache_mutate" > "$tmp/post-mutate-hit.out" 2> "$tmp/post-mutate-
 [ "$(call_count)" -eq 2 ] || fail "stable post-mutation miss+hit count was not two total"
 echo "  ok: mid-run input drift refuses publication"
 
-# 7. The two repeatability wrappers remain direct even when a cache variable exists.
+# 11. The two repeatability wrappers remain direct even when cache controls exist.
 reset_calls
 if ! (
   cd "$repo_root" || exit 1
   PATH="$fake_bin:$PATH" \
     FAKE_DOTNET_LOG="$calls" \
     FAKE_ARTIFACT_ROOT="$repo_root/dotnet/CatMetro.Tests/obj/ci-full-solution" \
+    CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE=1 \
     CAT_METRO_FULL_SOLUTION_CACHE_DIR="$cache" \
     bash tests/domain/determinism.test.sh
 ) > "$tmp/determinism.out" 2> "$tmp/determinism.err"; then
@@ -281,6 +487,7 @@ if ! (
   PATH="$fake_bin:$PATH" \
     FAKE_DOTNET_LOG="$calls" \
     FAKE_ARTIFACT_ROOT="$repo_root/dotnet/CatMetro.Tests/obj/ci-full-solution" \
+    CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE=1 \
     CAT_METRO_FULL_SOLUTION_CACHE_DIR="$cache" \
     bash tests/solver/solver.test.sh
 ) > "$tmp/solver.out" 2> "$tmp/solver.err"; then
