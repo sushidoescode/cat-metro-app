@@ -1,0 +1,1941 @@
+{
+  "assets": [
+    {
+      "byte_reduction": 72489880,
+      "byte_reduction_percent": 96.457963,
+      "custody_agreements": {
+        "derivative_record_derivative_filename_matches_derivative": true,
+        "derivative_record_derivative_sha256_matches_derivative": true,
+        "derivative_record_geometry_matches_inspection": true,
+        "derivative_record_source_provenance_matches_source_sidecar": true,
+        "derivative_record_source_sha256_matches_source": true,
+        "derivative_record_source_sidecar_sha256_matches_source_sidecar": true,
+        "source_sidecar_claim_matches_source": true
+      },
+      "derivative_filename": "cat-red-tabby.glb",
+      "derivative_sha256": "9d6f3e1b0d82f23500779c570943dc2081c6caad7295da7d3fe19c1c50742b59",
+      "derivative_sidecar_sha256": "9ebb3638031225ab8ade57cf794cfbb69b3ee98c3ff82e500aaf0d1f8738f4db",
+      "embedded_texture_preservation": {
+        "output_payload_bytes": [
+          2223077
+        ],
+        "output_payload_sha256": [
+          "a8fa92e0595c23e8a8cfd98b2a71fdc284e28f15c1ee1381f6dfa400e2b19964"
+        ],
+        "output_texture_role_payload_sha256": {
+          "base_color": [
+            "a8fa92e0595c23e8a8cfd98b2a71fdc284e28f15c1ee1381f6dfa400e2b19964"
+          ]
+        },
+        "payload_bytes_identical": true,
+        "source_payload_bytes": [
+          2223077
+        ],
+        "source_payload_sha256": [
+          "a8fa92e0595c23e8a8cfd98b2a71fdc284e28f15c1ee1381f6dfa400e2b19964"
+        ],
+        "source_texture_role_payload_sha256": {
+          "base_color": [
+            "a8fa92e0595c23e8a8cfd98b2a71fdc284e28f15c1ee1381f6dfa400e2b19964"
+          ]
+        },
+        "texture_role_bytes_identical": true
+      },
+      "id": "cat-red-tabby",
+      "kind": "cat",
+      "output": {
+        "animations": 0,
+        "bytes": 2661904,
+        "cameras": 0,
+        "embedded_images": 1,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 1,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 15000,
+        "uv_primitives": 1,
+        "vertices": 10856,
+        "world_bounds": {
+          "max": [
+            0.6680542230606079,
+            0.9517713189125061,
+            0.7748510837554932
+          ],
+          "min": [
+            -0.6663668155670166,
+            -0.9519326686859131,
+            -0.7702644467353821
+          ]
+        }
+      },
+      "preservation_diagnostics": [],
+      "service": "meshy",
+      "sidecar_derivative_sha256": "9d6f3e1b0d82f23500779c570943dc2081c6caad7295da7d3fe19c1c50742b59",
+      "sidecar_hash_agreement": true,
+      "source": {
+        "animations": 0,
+        "bytes": 75151784,
+        "cameras": 0,
+        "embedded_images": 1,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 1,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 1985326,
+        "uv_primitives": 1,
+        "vertices": 1022982,
+        "world_bounds": {
+          "max": [
+            0.6675930023193359,
+            0.9511619806289673,
+            0.7742729783058167
+          ],
+          "min": [
+            -0.667153000831604,
+            -0.9522939920425415,
+            -0.7704730033874512
+          ]
+        }
+      },
+      "source_filename": "cat-red-tabby.glb",
+      "source_sha256": "d18c2098353cf5688745ef820b0ff8b58c826baa64d95bbec5c3234a3977ebf1",
+      "source_sidecar_sha256": "f746932debb844dd0db9728ca4033a325de410f1eb27ec413a695ae9df45f009",
+      "triangle_reduction": 1970326,
+      "triangle_reduction_percent": 99.244457
+    },
+    {
+      "byte_reduction": 72454468,
+      "byte_reduction_percent": 96.516735,
+      "custody_agreements": {
+        "derivative_record_derivative_filename_matches_derivative": true,
+        "derivative_record_derivative_sha256_matches_derivative": true,
+        "derivative_record_geometry_matches_inspection": true,
+        "derivative_record_source_provenance_matches_source_sidecar": true,
+        "derivative_record_source_sha256_matches_source": true,
+        "derivative_record_source_sidecar_sha256_matches_source_sidecar": true,
+        "source_sidecar_claim_matches_source": true
+      },
+      "derivative_filename": "cat-blue-siamese.glb",
+      "derivative_sha256": "44ceea493949fa7ea92bf40c7bc05e64c4b78e3ca0bb4c08b41fa7d788ee17b7",
+      "derivative_sidecar_sha256": "743de6f299f0c70f39dc92b7a7eda5ed6e86bf203ec78eefd4b01b20f9293f29",
+      "embedded_texture_preservation": {
+        "output_payload_bytes": [
+          2168586
+        ],
+        "output_payload_sha256": [
+          "27e88229d9668d00d37c95d16986f798d11c3f7df74e99d1b95410c64a54bf13"
+        ],
+        "output_texture_role_payload_sha256": {
+          "base_color": [
+            "27e88229d9668d00d37c95d16986f798d11c3f7df74e99d1b95410c64a54bf13"
+          ]
+        },
+        "payload_bytes_identical": true,
+        "source_payload_bytes": [
+          2168586
+        ],
+        "source_payload_sha256": [
+          "27e88229d9668d00d37c95d16986f798d11c3f7df74e99d1b95410c64a54bf13"
+        ],
+        "source_texture_role_payload_sha256": {
+          "base_color": [
+            "27e88229d9668d00d37c95d16986f798d11c3f7df74e99d1b95410c64a54bf13"
+          ]
+        },
+        "texture_role_bytes_identical": true
+      },
+      "id": "cat-blue-siamese",
+      "kind": "cat",
+      "output": {
+        "animations": 0,
+        "bytes": 2614864,
+        "cameras": 0,
+        "embedded_images": 1,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 1,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 15000,
+        "uv_primitives": 1,
+        "vertices": 11089,
+        "world_bounds": {
+          "max": [
+            0.5210713744163513,
+            0.9513939619064331,
+            0.619850218296051
+          ],
+          "min": [
+            -0.5199580788612366,
+            -0.9524646997451782,
+            -0.6187940835952759
+          ]
+        }
+      },
+      "preservation_diagnostics": [],
+      "service": "meshy",
+      "sidecar_derivative_sha256": "44ceea493949fa7ea92bf40c7bc05e64c4b78e3ca0bb4c08b41fa7d788ee17b7",
+      "sidecar_hash_agreement": true,
+      "source": {
+        "animations": 0,
+        "bytes": 75069332,
+        "cameras": 0,
+        "embedded_images": 1,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 1,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 1982628,
+        "uv_primitives": 1,
+        "vertices": 1023074,
+        "world_bounds": {
+          "max": [
+            0.5208160281181335,
+            0.9512540102005005,
+            0.6196269989013672
+          ],
+          "min": [
+            -0.5198400020599365,
+            -0.9526339769363403,
+            -0.6187739968299866
+          ]
+        }
+      },
+      "source_filename": "cat-blue-siamese.glb",
+      "source_sha256": "6943b7284d313ef70e1e1f5056b8324bf39e655b8ee571087d0fdfb5f1c0d80a",
+      "source_sidecar_sha256": "c8c3a24732da9f00dfb53f8a8011bff17044441cbeccfc351b53dfa942d4a070",
+      "triangle_reduction": 1967628,
+      "triangle_reduction_percent": 99.243428
+    },
+    {
+      "byte_reduction": 71162992,
+      "byte_reduction_percent": 96.585412,
+      "custody_agreements": {
+        "derivative_record_derivative_filename_matches_derivative": true,
+        "derivative_record_derivative_sha256_matches_derivative": true,
+        "derivative_record_geometry_matches_inspection": true,
+        "derivative_record_source_provenance_matches_source_sidecar": true,
+        "derivative_record_source_sha256_matches_source": true,
+        "derivative_record_source_sidecar_sha256_matches_source_sidecar": true,
+        "source_sidecar_claim_matches_source": true
+      },
+      "derivative_filename": "cat-yellow-longhair.glb",
+      "derivative_sha256": "36f03503fcbcb918870463222f50d6b17b3c880281ce61f3a15c2cec6963ed3e",
+      "derivative_sidecar_sha256": "f11a40229f24436206b06d4eee04246ef72c0f10ff3b7c88034d99757be2a4ec",
+      "embedded_texture_preservation": {
+        "output_payload_bytes": [
+          2074314
+        ],
+        "output_payload_sha256": [
+          "dd720ee9731fe21ecab623c17c5c88e748989ea668b10858febebe6fd74ae10f"
+        ],
+        "output_texture_role_payload_sha256": {
+          "base_color": [
+            "dd720ee9731fe21ecab623c17c5c88e748989ea668b10858febebe6fd74ae10f"
+          ]
+        },
+        "payload_bytes_identical": true,
+        "source_payload_bytes": [
+          2074314
+        ],
+        "source_payload_sha256": [
+          "dd720ee9731fe21ecab623c17c5c88e748989ea668b10858febebe6fd74ae10f"
+        ],
+        "source_texture_role_payload_sha256": {
+          "base_color": [
+            "dd720ee9731fe21ecab623c17c5c88e748989ea668b10858febebe6fd74ae10f"
+          ]
+        },
+        "texture_role_bytes_identical": true
+      },
+      "id": "cat-yellow-longhair",
+      "kind": "cat",
+      "output": {
+        "animations": 0,
+        "bytes": 2515828,
+        "cameras": 0,
+        "embedded_images": 1,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 1,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 15000,
+        "uv_primitives": 1,
+        "vertices": 10940,
+        "world_bounds": {
+          "max": [
+            0.5555739998817444,
+            0.9524000883102417,
+            0.9099836945533752
+          ],
+          "min": [
+            -0.5477094054222107,
+            -0.9522162675857544,
+            -0.9117009043693542
+          ]
+        }
+      },
+      "preservation_diagnostics": [],
+      "service": "meshy",
+      "sidecar_derivative_sha256": "36f03503fcbcb918870463222f50d6b17b3c880281ce61f3a15c2cec6963ed3e",
+      "sidecar_hash_agreement": true,
+      "source": {
+        "animations": 0,
+        "bytes": 73678820,
+        "cameras": 0,
+        "embedded_images": 1,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 1,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 1950756,
+        "uv_primitives": 1,
+        "vertices": 1004037,
+        "world_bounds": {
+          "max": [
+            0.5552150011062622,
+            0.9512330293655396,
+            0.9096909761428833
+          ],
+          "min": [
+            -0.5473139882087708,
+            -0.9525910019874573,
+            -0.910959005355835
+          ]
+        }
+      },
+      "source_filename": "cat-yellow-longhair.glb",
+      "source_sha256": "1530b4a5609aeb62499be627630c735c3fd6fae1368b8f58d21c169e4183a813",
+      "source_sidecar_sha256": "7916d941b2cf27eb0628e77ccfd95252dc8fe671c11b773ffb89b3c513db39d1",
+      "triangle_reduction": 1935756,
+      "triangle_reduction_percent": 99.231067
+    },
+    {
+      "byte_reduction": 70125316,
+      "byte_reduction_percent": 96.616997,
+      "custody_agreements": {
+        "derivative_record_derivative_filename_matches_derivative": true,
+        "derivative_record_derivative_sha256_matches_derivative": true,
+        "derivative_record_geometry_matches_inspection": true,
+        "derivative_record_source_provenance_matches_source_sidecar": true,
+        "derivative_record_source_sha256_matches_source": true,
+        "derivative_record_source_sidecar_sha256_matches_source_sidecar": true,
+        "source_sidecar_claim_matches_source": true
+      },
+      "derivative_filename": "cat-green-shorthair.glb",
+      "derivative_sha256": "96910d69ad0bfe424c410e0b9df6e137222d858a28322a5276add6228e9186e5",
+      "derivative_sidecar_sha256": "9bcd978598e942d139e573ea9cdd3afab7dd86439f0aa56524accc0d9c3b3333",
+      "embedded_texture_preservation": {
+        "output_payload_bytes": [
+          1996968
+        ],
+        "output_payload_sha256": [
+          "cdc59a8fdf235e0a1299f5c9629a1e20754b7865997e8cc9f2cc5ba894efed99"
+        ],
+        "output_texture_role_payload_sha256": {
+          "base_color": [
+            "cdc59a8fdf235e0a1299f5c9629a1e20754b7865997e8cc9f2cc5ba894efed99"
+          ]
+        },
+        "payload_bytes_identical": true,
+        "source_payload_bytes": [
+          1996968
+        ],
+        "source_payload_sha256": [
+          "cdc59a8fdf235e0a1299f5c9629a1e20754b7865997e8cc9f2cc5ba894efed99"
+        ],
+        "source_texture_role_payload_sha256": {
+          "base_color": [
+            "cdc59a8fdf235e0a1299f5c9629a1e20754b7865997e8cc9f2cc5ba894efed99"
+          ]
+        },
+        "texture_role_bytes_identical": true
+      },
+      "id": "cat-green-shorthair",
+      "kind": "cat",
+      "output": {
+        "animations": 0,
+        "bytes": 2455408,
+        "cameras": 0,
+        "embedded_images": 1,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 1,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 15000,
+        "uv_primitives": 1,
+        "vertices": 11469,
+        "world_bounds": {
+          "max": [
+            0.4386053681373596,
+            0.9513892531394958,
+            0.8489246368408203
+          ],
+          "min": [
+            -0.4414800703525543,
+            -0.9527188539505005,
+            -0.8506816029548645
+          ]
+        }
+      },
+      "preservation_diagnostics": [],
+      "service": "meshy",
+      "sidecar_derivative_sha256": "96910d69ad0bfe424c410e0b9df6e137222d858a28322a5276add6228e9186e5",
+      "sidecar_hash_agreement": true,
+      "source": {
+        "animations": 0,
+        "bytes": 72580724,
+        "cameras": 0,
+        "embedded_images": 1,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 1,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 1916166,
+        "uv_primitives": 1,
+        "vertices": 991419,
+        "world_bounds": {
+          "max": [
+            0.4384100139141083,
+            0.951134979724884,
+            0.8489720225334167
+          ],
+          "min": [
+            -0.4410499930381775,
+            -0.952269971370697,
+            -0.8504899740219116
+          ]
+        }
+      },
+      "source_filename": "cat-green-shorthair.glb",
+      "source_sha256": "d1a40bfbc4beaba8ac5169260c8d18e4664212f2e9a656549a76dfd3ecf0790b",
+      "source_sidecar_sha256": "84bbb56e37c97f70c0500f82803a7359d8e7c451b294fc2524222c2fae487eee",
+      "triangle_reduction": 1901166,
+      "triangle_reduction_percent": 99.217187
+    },
+    {
+      "byte_reduction": 72526092,
+      "byte_reduction_percent": 96.663183,
+      "custody_agreements": {
+        "derivative_record_derivative_filename_matches_derivative": true,
+        "derivative_record_derivative_sha256_matches_derivative": true,
+        "derivative_record_geometry_matches_inspection": true,
+        "derivative_record_source_provenance_matches_source_sidecar": true,
+        "derivative_record_source_sha256_matches_source": true,
+        "derivative_record_source_sidecar_sha256_matches_source_sidecar": true,
+        "source_sidecar_claim_matches_source": true
+      },
+      "derivative_filename": "cat-wild-alley.glb",
+      "derivative_sha256": "3fa010b59c3b5dccbe0eb54453e8d595736cbafa391a9f08effd9d052738479c",
+      "derivative_sidecar_sha256": "92f095b97e5c4f03116ac087c6852ebcaeabff611b67051faf2b5f2a96f7260b",
+      "embedded_texture_preservation": {
+        "output_payload_bytes": [
+          2058026
+        ],
+        "output_payload_sha256": [
+          "ca36a7096336b20aaa9aa3c12bd75e6000551726ef85e6212435179374b19a95"
+        ],
+        "output_texture_role_payload_sha256": {
+          "base_color": [
+            "ca36a7096336b20aaa9aa3c12bd75e6000551726ef85e6212435179374b19a95"
+          ]
+        },
+        "payload_bytes_identical": true,
+        "source_payload_bytes": [
+          2058026
+        ],
+        "source_payload_sha256": [
+          "ca36a7096336b20aaa9aa3c12bd75e6000551726ef85e6212435179374b19a95"
+        ],
+        "source_texture_role_payload_sha256": {
+          "base_color": [
+            "ca36a7096336b20aaa9aa3c12bd75e6000551726ef85e6212435179374b19a95"
+          ]
+        },
+        "texture_role_bytes_identical": true
+      },
+      "id": "cat-wild-alley",
+      "kind": "cat",
+      "output": {
+        "animations": 0,
+        "bytes": 2503604,
+        "cameras": 0,
+        "embedded_images": 1,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 1,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 15000,
+        "uv_primitives": 1,
+        "vertices": 11067,
+        "world_bounds": {
+          "max": [
+            0.5182763934135437,
+            0.9517790079116821,
+            0.4361390471458435
+          ],
+          "min": [
+            -0.5145676732063293,
+            -0.9512825012207031,
+            -0.4365009367465973
+          ]
+        }
+      },
+      "preservation_diagnostics": [],
+      "service": "meshy",
+      "sidecar_derivative_sha256": "3fa010b59c3b5dccbe0eb54453e8d595736cbafa391a9f08effd9d052738479c",
+      "sidecar_hash_agreement": true,
+      "source": {
+        "animations": 0,
+        "bytes": 75029696,
+        "cameras": 0,
+        "embedded_images": 1,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 1,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 1985458,
+        "uv_primitives": 1,
+        "vertices": 1023844,
+        "world_bounds": {
+          "max": [
+            0.5182039737701416,
+            0.9511979818344116,
+            0.43640199303627014
+          ],
+          "min": [
+            -0.5149369835853577,
+            -0.9515060186386108,
+            -0.4363729953765869
+          ]
+        }
+      },
+      "source_filename": "cat-wild-alley.glb",
+      "source_sha256": "b1d85cf314bbc295d7ca28af9c41f9c3bddecd81cfb84603a14648b55d5f462c",
+      "source_sidecar_sha256": "1b9d1a08924982f38bd24ac7fc138331f5f357efc500802cc1cf3d06567a6467",
+      "triangle_reduction": 1970458,
+      "triangle_reduction_percent": 99.244507
+    },
+    {
+      "byte_reduction": 40124292,
+      "byte_reduction_percent": 98.062663,
+      "custody_agreements": {
+        "derivative_record_derivative_filename_matches_derivative": true,
+        "derivative_record_derivative_sha256_matches_derivative": true,
+        "derivative_record_geometry_matches_inspection": true,
+        "derivative_record_source_provenance_matches_source_sidecar": true,
+        "derivative_record_source_sha256_matches_source": true,
+        "derivative_record_source_sidecar_sha256_matches_source_sidecar": true,
+        "source_sidecar_claim_matches_source": true
+      },
+      "derivative_filename": "cat-red-tabby-sitting.glb",
+      "derivative_sha256": "3ea8e01d78cb058223c74f225e89512efc44f74f638c99133d7720675e8655b6",
+      "derivative_sidecar_sha256": "f40f32794ef55f2f2e797ea870c63fedd6c2959bd0b0facc7fd50f0f1d21d898",
+      "embedded_texture_preservation": {
+        "output_payload_bytes": [
+          98443,
+          108334,
+          191277
+        ],
+        "output_payload_sha256": [
+          "0b93e3cdc252ad9f4aaf544f8f094efdb59e4b8c781a48bf59d20c26815f8b2b",
+          "5423d957a3c000b305de2ae0bb64a29d7c9591dd6d6342471b028686a9d7eca3",
+          "cdf26eedebfbb2a7560878c20046a87140cb0d90b9b5446c4a2e20bbd7d10d22"
+        ],
+        "output_texture_role_payload_sha256": {
+          "base_color": [
+            "0b93e3cdc252ad9f4aaf544f8f094efdb59e4b8c781a48bf59d20c26815f8b2b"
+          ],
+          "metallic_roughness": [
+            "cdf26eedebfbb2a7560878c20046a87140cb0d90b9b5446c4a2e20bbd7d10d22"
+          ],
+          "normal": [
+            "5423d957a3c000b305de2ae0bb64a29d7c9591dd6d6342471b028686a9d7eca3"
+          ]
+        },
+        "payload_bytes_identical": true,
+        "source_payload_bytes": [
+          98443,
+          108334,
+          191277
+        ],
+        "source_payload_sha256": [
+          "0b93e3cdc252ad9f4aaf544f8f094efdb59e4b8c781a48bf59d20c26815f8b2b",
+          "5423d957a3c000b305de2ae0bb64a29d7c9591dd6d6342471b028686a9d7eca3",
+          "cdf26eedebfbb2a7560878c20046a87140cb0d90b9b5446c4a2e20bbd7d10d22"
+        ],
+        "source_texture_role_payload_sha256": {
+          "base_color": [
+            "0b93e3cdc252ad9f4aaf544f8f094efdb59e4b8c781a48bf59d20c26815f8b2b"
+          ],
+          "metallic_roughness": [
+            "cdf26eedebfbb2a7560878c20046a87140cb0d90b9b5446c4a2e20bbd7d10d22"
+          ],
+          "normal": [
+            "5423d957a3c000b305de2ae0bb64a29d7c9591dd6d6342471b028686a9d7eca3"
+          ]
+        },
+        "texture_role_bytes_identical": true
+      },
+      "id": "cat-red-tabby-sitting",
+      "kind": "cat",
+      "output": {
+        "animations": 0,
+        "bytes": 792700,
+        "cameras": 0,
+        "embedded_images": 3,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 3,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 15000,
+        "uv_primitives": 1,
+        "vertices": 9460,
+        "world_bounds": {
+          "max": [
+            0.3374556005001068,
+            0.5001428723335266,
+            0.3703467547893524
+          ],
+          "min": [
+            -0.33744513988494873,
+            -0.49995434284210205,
+            -0.3706093430519104
+          ]
+        }
+      },
+      "preservation_diagnostics": [],
+      "service": "tripo",
+      "sidecar_derivative_sha256": "3ea8e01d78cb058223c74f225e89512efc44f74f638c99133d7720675e8655b6",
+      "sidecar_hash_agreement": true,
+      "source": {
+        "animations": 0,
+        "bytes": 40916992,
+        "cameras": 0,
+        "embedded_images": 3,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 3,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 1428306,
+        "uv_primitives": 1,
+        "vertices": 730535,
+        "world_bounds": {
+          "max": [
+            0.33728983998298645,
+            0.5,
+            0.3703020215034485
+          ],
+          "min": [
+            -0.33728983998298645,
+            -0.5,
+            -0.3703020215034485
+          ]
+        }
+      },
+      "source_filename": "cat-red-tabby-sitting.glb",
+      "source_sha256": "418eaa31df9b65c975dd85bdac3f04ab73b64827d81248d6248b57c6e2a81b14",
+      "source_sidecar_sha256": "982049a7b96684a6c9d3723764a51f378a07887439b2a4d3de8d318e7216b575",
+      "triangle_reduction": 1413306,
+      "triangle_reduction_percent": 98.949805
+    },
+    {
+      "byte_reduction": 40302788,
+      "byte_reduction_percent": 97.913855,
+      "custody_agreements": {
+        "derivative_record_derivative_filename_matches_derivative": true,
+        "derivative_record_derivative_sha256_matches_derivative": true,
+        "derivative_record_geometry_matches_inspection": true,
+        "derivative_record_source_provenance_matches_source_sidecar": true,
+        "derivative_record_source_sha256_matches_source": true,
+        "derivative_record_source_sidecar_sha256_matches_source_sidecar": true,
+        "source_sidecar_claim_matches_source": true
+      },
+      "derivative_filename": "cat-blue-siamese-loaf.glb",
+      "derivative_sha256": "cc1ff113257d48994a94cfdff52554236034e3e6455d402de195461b8c8fc236",
+      "derivative_sidecar_sha256": "8209d8dcac1e70f31a3070801eeacd3eb3bad19654cb0135ae2c9d7416be4a59",
+      "embedded_texture_preservation": {
+        "output_payload_bytes": [
+          99855,
+          107145,
+          224663
+        ],
+        "output_payload_sha256": [
+          "46930de19a31d606f30ef02b1961e102d6bcadda16b394b2e01852055e250e11",
+          "48403c4d7fa420b0d4d0151bfbfe26015d0631864304ba4323439c46b0e3a6a5",
+          "ae9ac0c6ef34e9d8b47bc01fba39786285c94324bad2e64f48172c49a6951543"
+        ],
+        "output_texture_role_payload_sha256": {
+          "base_color": [
+            "ae9ac0c6ef34e9d8b47bc01fba39786285c94324bad2e64f48172c49a6951543"
+          ],
+          "metallic_roughness": [
+            "48403c4d7fa420b0d4d0151bfbfe26015d0631864304ba4323439c46b0e3a6a5"
+          ],
+          "normal": [
+            "46930de19a31d606f30ef02b1961e102d6bcadda16b394b2e01852055e250e11"
+          ]
+        },
+        "payload_bytes_identical": true,
+        "source_payload_bytes": [
+          99855,
+          107145,
+          224663
+        ],
+        "source_payload_sha256": [
+          "46930de19a31d606f30ef02b1961e102d6bcadda16b394b2e01852055e250e11",
+          "48403c4d7fa420b0d4d0151bfbfe26015d0631864304ba4323439c46b0e3a6a5",
+          "ae9ac0c6ef34e9d8b47bc01fba39786285c94324bad2e64f48172c49a6951543"
+        ],
+        "source_texture_role_payload_sha256": {
+          "base_color": [
+            "ae9ac0c6ef34e9d8b47bc01fba39786285c94324bad2e64f48172c49a6951543"
+          ],
+          "metallic_roughness": [
+            "48403c4d7fa420b0d4d0151bfbfe26015d0631864304ba4323439c46b0e3a6a5"
+          ],
+          "normal": [
+            "46930de19a31d606f30ef02b1961e102d6bcadda16b394b2e01852055e250e11"
+          ]
+        },
+        "texture_role_bytes_identical": true
+      },
+      "id": "cat-blue-siamese-loaf",
+      "kind": "cat",
+      "output": {
+        "animations": 0,
+        "bytes": 858688,
+        "cameras": 0,
+        "embedded_images": 3,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 3,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 14999,
+        "uv_primitives": 1,
+        "vertices": 10472,
+        "world_bounds": {
+          "max": [
+            0.417325884103775,
+            0.4485729932785034,
+            0.4999879002571106
+          ],
+          "min": [
+            -0.41722339391708374,
+            -0.44854575395584106,
+            -0.49988996982574463
+          ]
+        }
+      },
+      "preservation_diagnostics": [],
+      "service": "tripo",
+      "sidecar_derivative_sha256": "cc1ff113257d48994a94cfdff52554236034e3e6455d402de195461b8c8fc236",
+      "sidecar_hash_agreement": true,
+      "source": {
+        "animations": 0,
+        "bytes": 41161476,
+        "cameras": 0,
+        "embedded_images": 3,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 3,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 1427775,
+        "uv_primitives": 1,
+        "vertices": 737325,
+        "world_bounds": {
+          "max": [
+            0.4173875153064728,
+            0.4485988914966583,
+            0.5
+          ],
+          "min": [
+            -0.4173875153064728,
+            -0.4485988914966583,
+            -0.5
+          ]
+        }
+      },
+      "source_filename": "cat-blue-siamese-loaf.glb",
+      "source_sha256": "e3015351ec9bda2aebeafcc0ff23f5aa35512af4234c168d79cac750118070e3",
+      "source_sidecar_sha256": "ce8ea067634f88ee9fc967ea5a0dbc58df890477d3e1dc1905cc3f77a92dcec4",
+      "triangle_reduction": 1412776,
+      "triangle_reduction_percent": 98.949484
+    },
+    {
+      "byte_reduction": 41967412,
+      "byte_reduction_percent": 98.084071,
+      "custody_agreements": {
+        "derivative_record_derivative_filename_matches_derivative": true,
+        "derivative_record_derivative_sha256_matches_derivative": true,
+        "derivative_record_geometry_matches_inspection": true,
+        "derivative_record_source_provenance_matches_source_sidecar": true,
+        "derivative_record_source_sha256_matches_source": true,
+        "derivative_record_source_sidecar_sha256_matches_source_sidecar": true,
+        "source_sidecar_claim_matches_source": true
+      },
+      "derivative_filename": "cat-yellow-longhair-wave.glb",
+      "derivative_sha256": "4e20de09cee1dcfa383bb708608f03b5f8c1aa78ca4a510a3064f435f5f87a27",
+      "derivative_sidecar_sha256": "a084bae339440e74e3b22b0f578fe1a62fe80c15474f4ffd62f717ad6cb9cfb1",
+      "embedded_texture_preservation": {
+        "output_payload_bytes": [
+          98739,
+          142007,
+          181025
+        ],
+        "output_payload_sha256": [
+          "8e85b10b30dd7eb9bd716639d610a7c280436c77f1a196e42126a747b5ef7af3",
+          "ccf3fdbf696d0dfa63c1077871047d69399c3abca88319fa03d4baa9a39832fa",
+          "d84004009adda40a3e8a832d6bbb99ea5d2284f2ca6bdc214fcaa18265abb174"
+        ],
+        "output_texture_role_payload_sha256": {
+          "base_color": [
+            "ccf3fdbf696d0dfa63c1077871047d69399c3abca88319fa03d4baa9a39832fa"
+          ],
+          "metallic_roughness": [
+            "d84004009adda40a3e8a832d6bbb99ea5d2284f2ca6bdc214fcaa18265abb174"
+          ],
+          "normal": [
+            "8e85b10b30dd7eb9bd716639d610a7c280436c77f1a196e42126a747b5ef7af3"
+          ]
+        },
+        "payload_bytes_identical": true,
+        "source_payload_bytes": [
+          98739,
+          142007,
+          181025
+        ],
+        "source_payload_sha256": [
+          "8e85b10b30dd7eb9bd716639d610a7c280436c77f1a196e42126a747b5ef7af3",
+          "ccf3fdbf696d0dfa63c1077871047d69399c3abca88319fa03d4baa9a39832fa",
+          "d84004009adda40a3e8a832d6bbb99ea5d2284f2ca6bdc214fcaa18265abb174"
+        ],
+        "source_texture_role_payload_sha256": {
+          "base_color": [
+            "ccf3fdbf696d0dfa63c1077871047d69399c3abca88319fa03d4baa9a39832fa"
+          ],
+          "metallic_roughness": [
+            "d84004009adda40a3e8a832d6bbb99ea5d2284f2ca6bdc214fcaa18265abb174"
+          ],
+          "normal": [
+            "8e85b10b30dd7eb9bd716639d610a7c280436c77f1a196e42126a747b5ef7af3"
+          ]
+        },
+        "texture_role_bytes_identical": true
+      },
+      "id": "cat-yellow-longhair-wave",
+      "kind": "cat",
+      "output": {
+        "animations": 0,
+        "bytes": 819772,
+        "cameras": 0,
+        "embedded_images": 3,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 3,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 15000,
+        "uv_primitives": 1,
+        "vertices": 9565,
+        "world_bounds": {
+          "max": [
+            0.38476383686065674,
+            0.5001108646392822,
+            0.4086005985736847
+          ],
+          "min": [
+            -0.3851708471775055,
+            -0.5000997185707092,
+            -0.4083852767944336
+          ]
+        }
+      },
+      "preservation_diagnostics": [],
+      "service": "tripo",
+      "sidecar_derivative_sha256": "4e20de09cee1dcfa383bb708608f03b5f8c1aa78ca4a510a3064f435f5f87a27",
+      "sidecar_hash_agreement": true,
+      "source": {
+        "animations": 0,
+        "bytes": 42787184,
+        "cameras": 0,
+        "embedded_images": 3,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 3,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 1494090,
+        "uv_primitives": 1,
+        "vertices": 763568,
+        "world_bounds": {
+          "max": [
+            0.3852173089981079,
+            0.5,
+            0.4085644483566284
+          ],
+          "min": [
+            -0.3852173089981079,
+            -0.5,
+            -0.4085644483566284
+          ]
+        }
+      },
+      "source_filename": "cat-yellow-longhair-wave.glb",
+      "source_sha256": "8d7190fd24f552f874bf1d733f2870c44a24c27d6b50cfe1e32095f625fcc57c",
+      "source_sidecar_sha256": "e65414b151fa1dd868e9086c0e274ac61743aef8f8f26bc7bcaa6f49f99c8936",
+      "triangle_reduction": 1479090,
+      "triangle_reduction_percent": 98.996044
+    },
+    {
+      "byte_reduction": 40621388,
+      "byte_reduction_percent": 98.085301,
+      "custody_agreements": {
+        "derivative_record_derivative_filename_matches_derivative": true,
+        "derivative_record_derivative_sha256_matches_derivative": true,
+        "derivative_record_geometry_matches_inspection": true,
+        "derivative_record_source_provenance_matches_source_sidecar": true,
+        "derivative_record_source_sha256_matches_source": true,
+        "derivative_record_source_sidecar_sha256_matches_source_sidecar": true,
+        "source_sidecar_claim_matches_source": true
+      },
+      "derivative_filename": "cat-green-shorthair-sit.glb",
+      "derivative_sha256": "a5791a945bac21cfe55e7e4cdbcd5cd3233c11997cd0f449972a12768cca93f8",
+      "derivative_sidecar_sha256": "360ea5e28ca3e09b51fc45c8360ebe04e5b0a6fd38c532f636252bead68439fb",
+      "embedded_texture_preservation": {
+        "output_payload_bytes": [
+          99488,
+          125364,
+          171641
+        ],
+        "output_payload_sha256": [
+          "073ec1ce913c32b00206d11bbf549ddbe05f409693f4f4ace29dd54c60fec20e",
+          "728cf4de97383d00561c781f938995a9f856f85442b973e8d8f2fbb3accddbf7",
+          "7e24697e388c2ef89df9a3d4d2c58573699694d06cebbfce353c3bf5d1eb5117"
+        ],
+        "output_texture_role_payload_sha256": {
+          "base_color": [
+            "728cf4de97383d00561c781f938995a9f856f85442b973e8d8f2fbb3accddbf7"
+          ],
+          "metallic_roughness": [
+            "7e24697e388c2ef89df9a3d4d2c58573699694d06cebbfce353c3bf5d1eb5117"
+          ],
+          "normal": [
+            "073ec1ce913c32b00206d11bbf549ddbe05f409693f4f4ace29dd54c60fec20e"
+          ]
+        },
+        "payload_bytes_identical": true,
+        "source_payload_bytes": [
+          99488,
+          125364,
+          171641
+        ],
+        "source_payload_sha256": [
+          "073ec1ce913c32b00206d11bbf549ddbe05f409693f4f4ace29dd54c60fec20e",
+          "728cf4de97383d00561c781f938995a9f856f85442b973e8d8f2fbb3accddbf7",
+          "7e24697e388c2ef89df9a3d4d2c58573699694d06cebbfce353c3bf5d1eb5117"
+        ],
+        "source_texture_role_payload_sha256": {
+          "base_color": [
+            "728cf4de97383d00561c781f938995a9f856f85442b973e8d8f2fbb3accddbf7"
+          ],
+          "metallic_roughness": [
+            "7e24697e388c2ef89df9a3d4d2c58573699694d06cebbfce353c3bf5d1eb5117"
+          ],
+          "normal": [
+            "073ec1ce913c32b00206d11bbf549ddbe05f409693f4f4ace29dd54c60fec20e"
+          ]
+        },
+        "texture_role_bytes_identical": true
+      },
+      "id": "cat-green-shorthair-sit",
+      "kind": "cat",
+      "output": {
+        "animations": 0,
+        "bytes": 792960,
+        "cameras": 0,
+        "embedded_images": 3,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 3,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 15000,
+        "uv_primitives": 1,
+        "vertices": 9517,
+        "world_bounds": {
+          "max": [
+            0.38804665207862854,
+            0.500032901763916,
+            0.32178348302841187
+          ],
+          "min": [
+            -0.38819998502731323,
+            -0.5000772476196289,
+            -0.32186150550842285
+          ]
+        }
+      },
+      "preservation_diagnostics": [],
+      "service": "tripo",
+      "sidecar_derivative_sha256": "a5791a945bac21cfe55e7e4cdbcd5cd3233c11997cd0f449972a12768cca93f8",
+      "sidecar_hash_agreement": true,
+      "source": {
+        "animations": 0,
+        "bytes": 41414348,
+        "cameras": 0,
+        "embedded_images": 3,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 3,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 1446088,
+        "uv_primitives": 1,
+        "vertices": 739458,
+        "world_bounds": {
+          "max": [
+            0.38807961344718933,
+            0.5,
+            0.32179486751556396
+          ],
+          "min": [
+            -0.38807961344718933,
+            -0.5,
+            -0.32179486751556396
+          ]
+        }
+      },
+      "source_filename": "cat-green-shorthair-sit.glb",
+      "source_sha256": "2db4f94d7c59c36c01f1f1d51780b30a417001b5d91a10caf420e5e5c1d6c5b2",
+      "source_sidecar_sha256": "beb9e95db53e897809194921156c46da974e8519dca3c627b9787b2ca2b40cf5",
+      "triangle_reduction": 1431088,
+      "triangle_reduction_percent": 98.962719
+    },
+    {
+      "byte_reduction": 71804644,
+      "byte_reduction_percent": 95.949488,
+      "custody_agreements": {
+        "derivative_record_derivative_filename_matches_derivative": true,
+        "derivative_record_derivative_sha256_matches_derivative": true,
+        "derivative_record_geometry_matches_inspection": true,
+        "derivative_record_source_provenance_matches_source_sidecar": true,
+        "derivative_record_source_sha256_matches_source": true,
+        "derivative_record_source_sidecar_sha256_matches_source_sidecar": true,
+        "source_sidecar_claim_matches_source": true
+      },
+      "derivative_filename": "cat-conductor.glb",
+      "derivative_sha256": "3b0bdbe1a0af9377bfde62ebf2b633e694881dc81438f2814e717c4c71ab9e7d",
+      "derivative_sidecar_sha256": "83b5329451479e54719cd06a83445ab74f0bc58ef4dc4749b5b6e3cc50473e6b",
+      "embedded_texture_preservation": {
+        "output_payload_bytes": [
+          2566812
+        ],
+        "output_payload_sha256": [
+          "1ce41b607317c1432f29507212dec284f113066becc142415fb390c993c29fcf"
+        ],
+        "output_texture_role_payload_sha256": {
+          "base_color": [
+            "1ce41b607317c1432f29507212dec284f113066becc142415fb390c993c29fcf"
+          ]
+        },
+        "payload_bytes_identical": true,
+        "source_payload_bytes": [
+          2566812
+        ],
+        "source_payload_sha256": [
+          "1ce41b607317c1432f29507212dec284f113066becc142415fb390c993c29fcf"
+        ],
+        "source_texture_role_payload_sha256": {
+          "base_color": [
+            "1ce41b607317c1432f29507212dec284f113066becc142415fb390c993c29fcf"
+          ]
+        },
+        "texture_role_bytes_identical": true
+      },
+      "id": "cat-conductor",
+      "kind": "cat",
+      "output": {
+        "animations": 0,
+        "bytes": 3031236,
+        "cameras": 0,
+        "embedded_images": 1,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 1,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 15000,
+        "uv_primitives": 1,
+        "vertices": 11656,
+        "world_bounds": {
+          "max": [
+            0.44438329339027405,
+            0.951443612575531,
+            0.44861894845962524
+          ],
+          "min": [
+            -0.44514012336730957,
+            -0.9517838358879089,
+            -0.45301833748817444
+          ]
+        }
+      },
+      "preservation_diagnostics": [],
+      "service": "meshy",
+      "sidecar_derivative_sha256": "3b0bdbe1a0af9377bfde62ebf2b633e694881dc81438f2814e717c4c71ab9e7d",
+      "sidecar_hash_agreement": true,
+      "source": {
+        "animations": 0,
+        "bytes": 74835880,
+        "cameras": 0,
+        "embedded_images": 1,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 1,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 1960372,
+        "uv_primitives": 1,
+        "vertices": 1015478,
+        "world_bounds": {
+          "max": [
+            0.4440700113773346,
+            0.9512640237808228,
+            0.4483509957790375
+          ],
+          "min": [
+            -0.4446200132369995,
+            -0.9521980285644531,
+            -0.45298799872398376
+          ]
+        }
+      },
+      "source_filename": "cat-conductor.glb",
+      "source_sha256": "f2cc476deccbcb4e72b74bd7d7e0bbd0e4c6bd3103149ce3697b85fa5260a9d1",
+      "source_sidecar_sha256": "9b66a992a560a590a06f435202b5bb246c3d2006dd6fda3b10ed2e059a28d9c4",
+      "triangle_reduction": 1945372,
+      "triangle_reduction_percent": 99.234839
+    },
+    {
+      "byte_reduction": 40522588,
+      "byte_reduction_percent": 98.217243,
+      "custody_agreements": {
+        "derivative_record_derivative_filename_matches_derivative": true,
+        "derivative_record_derivative_sha256_matches_derivative": true,
+        "derivative_record_geometry_matches_inspection": true,
+        "derivative_record_source_provenance_matches_source_sidecar": true,
+        "derivative_record_source_sha256_matches_source": true,
+        "derivative_record_source_sidecar_sha256_matches_source_sidecar": true,
+        "source_sidecar_claim_matches_source": true
+      },
+      "derivative_filename": "prop-depot-shed.glb",
+      "derivative_sha256": "68994c2316e7c0b23252569bfc06cbc1155c29dd41798c8effdbbaba638844b1",
+      "derivative_sidecar_sha256": "0e6c7f6a9065e12b0f3da93605914672947a2a662175ed788470c81f5d736ae2",
+      "embedded_texture_preservation": {
+        "output_payload_bytes": [
+          75509,
+          125705,
+          209897
+        ],
+        "output_payload_sha256": [
+          "b7520c899f742273d299290f9084a04b9b4e79ff24a1333339cf78426c2c4ada",
+          "d2a776b2b91c8ac070bd9db573b8898e879fdc188fdd86b8551a78a6b2f89863",
+          "e14ef3e468a5177222760d756d87b7278908c47511bdd34932338f64d30b9633"
+        ],
+        "output_texture_role_payload_sha256": {
+          "base_color": [
+            "e14ef3e468a5177222760d756d87b7278908c47511bdd34932338f64d30b9633"
+          ],
+          "metallic_roughness": [
+            "b7520c899f742273d299290f9084a04b9b4e79ff24a1333339cf78426c2c4ada"
+          ],
+          "normal": [
+            "d2a776b2b91c8ac070bd9db573b8898e879fdc188fdd86b8551a78a6b2f89863"
+          ]
+        },
+        "payload_bytes_identical": true,
+        "source_payload_bytes": [
+          75509,
+          125705,
+          209897
+        ],
+        "source_payload_sha256": [
+          "b7520c899f742273d299290f9084a04b9b4e79ff24a1333339cf78426c2c4ada",
+          "d2a776b2b91c8ac070bd9db573b8898e879fdc188fdd86b8551a78a6b2f89863",
+          "e14ef3e468a5177222760d756d87b7278908c47511bdd34932338f64d30b9633"
+        ],
+        "source_texture_role_payload_sha256": {
+          "base_color": [
+            "e14ef3e468a5177222760d756d87b7278908c47511bdd34932338f64d30b9633"
+          ],
+          "metallic_roughness": [
+            "b7520c899f742273d299290f9084a04b9b4e79ff24a1333339cf78426c2c4ada"
+          ],
+          "normal": [
+            "d2a776b2b91c8ac070bd9db573b8898e879fdc188fdd86b8551a78a6b2f89863"
+          ]
+        },
+        "texture_role_bytes_identical": true
+      },
+      "id": "prop-depot-shed",
+      "kind": "prop",
+      "output": {
+        "animations": 0,
+        "bytes": 735532,
+        "cameras": 0,
+        "embedded_images": 3,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 3,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 10000,
+        "uv_primitives": 1,
+        "vertices": 8203,
+        "world_bounds": {
+          "max": [
+            0.3090384304523468,
+            0.40241506695747375,
+            0.5000818967819214
+          ],
+          "min": [
+            -0.30901139974594116,
+            -0.4022478461265564,
+            -0.499969482421875
+          ]
+        }
+      },
+      "preservation_diagnostics": [],
+      "service": "tripo",
+      "sidecar_derivative_sha256": "68994c2316e7c0b23252569bfc06cbc1155c29dd41798c8effdbbaba638844b1",
+      "sidecar_hash_agreement": true,
+      "source": {
+        "animations": 0,
+        "bytes": 41258120,
+        "cameras": 0,
+        "embedded_images": 3,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 3,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 1428398,
+        "uv_primitives": 1,
+        "vertices": 740755,
+        "world_bounds": {
+          "max": [
+            0.3090091943740845,
+            0.4023200273513794,
+            0.5
+          ],
+          "min": [
+            -0.3090091943740845,
+            -0.4023200273513794,
+            -0.5
+          ]
+        }
+      },
+      "source_filename": "prop-depot-shed.glb",
+      "source_sha256": "5efb54812e9d03c15c8d7c085a840bfabb09fc3312495c3b85af2ffcf8047aed",
+      "source_sidecar_sha256": "4816eeb87183c47bd60283af934f43215f129c7dd7183be4455cc04d4192ac83",
+      "triangle_reduction": 1418398,
+      "triangle_reduction_percent": 99.299915
+    },
+    {
+      "byte_reduction": 72430708,
+      "byte_reduction_percent": 96.50321,
+      "custody_agreements": {
+        "derivative_record_derivative_filename_matches_derivative": true,
+        "derivative_record_derivative_sha256_matches_derivative": true,
+        "derivative_record_geometry_matches_inspection": true,
+        "derivative_record_source_provenance_matches_source_sidecar": true,
+        "derivative_record_source_sha256_matches_source": true,
+        "derivative_record_source_sidecar_sha256_matches_source_sidecar": true,
+        "source_sidecar_claim_matches_source": true
+      },
+      "derivative_filename": "prop-toy-engine.glb",
+      "derivative_sha256": "f622b390cdf48fccfb382895bef2988df191b523b614e01f03dbd162e052eeaf",
+      "derivative_sidecar_sha256": "2f1bd6850cbb836d8c569791ffaa6939c5d5f58a42487381c3954f3fb03aec1f",
+      "embedded_texture_preservation": {
+        "output_payload_bytes": [
+          2283895
+        ],
+        "output_payload_sha256": [
+          "cebc518211c14d9022a896fe42b5ef9f379d82f3288a2666b84ac7467dc97fcf"
+        ],
+        "output_texture_role_payload_sha256": {
+          "base_color": [
+            "cebc518211c14d9022a896fe42b5ef9f379d82f3288a2666b84ac7467dc97fcf"
+          ]
+        },
+        "payload_bytes_identical": true,
+        "source_payload_bytes": [
+          2283895
+        ],
+        "source_payload_sha256": [
+          "cebc518211c14d9022a896fe42b5ef9f379d82f3288a2666b84ac7467dc97fcf"
+        ],
+        "source_texture_role_payload_sha256": {
+          "base_color": [
+            "cebc518211c14d9022a896fe42b5ef9f379d82f3288a2666b84ac7467dc97fcf"
+          ]
+        },
+        "texture_role_bytes_identical": true
+      },
+      "id": "prop-toy-engine",
+      "kind": "prop",
+      "output": {
+        "animations": 0,
+        "bytes": 2624524,
+        "cameras": 0,
+        "embedded_images": 1,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 1,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 10000,
+        "uv_primitives": 1,
+        "vertices": 8725,
+        "world_bounds": {
+          "max": [
+            0.9511570334434509,
+            0.4381822943687439,
+            0.2557663321495056
+          ],
+          "min": [
+            -0.952491044998169,
+            -0.4401620328426361,
+            -0.25671282410621643
+          ]
+        }
+      },
+      "preservation_diagnostics": [],
+      "service": "meshy",
+      "sidecar_derivative_sha256": "f622b390cdf48fccfb382895bef2988df191b523b614e01f03dbd162e052eeaf",
+      "sidecar_hash_agreement": true,
+      "source": {
+        "animations": 0,
+        "bytes": 75055232,
+        "cameras": 0,
+        "embedded_images": 1,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 1,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 1969352,
+        "uv_primitives": 1,
+        "vertices": 1023697,
+        "world_bounds": {
+          "max": [
+            0.951104998588562,
+            0.4382849931716919,
+            0.2559579908847809
+          ],
+          "min": [
+            -0.9520969986915588,
+            -0.4396379888057709,
+            -0.2569369971752167
+          ]
+        }
+      },
+      "source_filename": "prop-toy-engine.glb",
+      "source_sha256": "724bfbccc0087992b4f767037444ad95d24a21733d58923e9f7fbbfaa4b6e4c5",
+      "source_sidecar_sha256": "c02b9ff1352be0c1c3bdbdb63f95aff951311c00ef7e8179d8e9c94257b7569a",
+      "triangle_reduction": 1959352,
+      "triangle_reduction_percent": 99.492219
+    },
+    {
+      "byte_reduction": 40936832,
+      "byte_reduction_percent": 97.928942,
+      "custody_agreements": {
+        "derivative_record_derivative_filename_matches_derivative": true,
+        "derivative_record_derivative_sha256_matches_derivative": true,
+        "derivative_record_geometry_matches_inspection": true,
+        "derivative_record_source_provenance_matches_source_sidecar": true,
+        "derivative_record_source_sha256_matches_source": true,
+        "derivative_record_source_sidecar_sha256_matches_source_sidecar": true,
+        "source_sidecar_claim_matches_source": true
+      },
+      "derivative_filename": "prop-station-kiosk.glb",
+      "derivative_sha256": "25053fb73009bf004aeeebab4a861bb664c91935b59c059f21d2fc8c9b6f52cf",
+      "derivative_sidecar_sha256": "416098fc269903c81ffbcf40e6f469821bfbc6c045b3ce2018e76fd2d30e9dc3",
+      "embedded_texture_preservation": {
+        "output_payload_bytes": [
+          100968,
+          165796,
+          270932
+        ],
+        "output_payload_sha256": [
+          "852186d75e7131938d719ed956271a940edc74127acb10e09107088986a25754",
+          "991db4928a0f14f3469be3827b12d7a80041163dd3740ad88c8784919d47d004",
+          "e5cb8eeb121f503bd5442cd7813594bac11380b4d8b25d7f634eb90fd3706de5"
+        ],
+        "output_texture_role_payload_sha256": {
+          "base_color": [
+            "e5cb8eeb121f503bd5442cd7813594bac11380b4d8b25d7f634eb90fd3706de5"
+          ],
+          "metallic_roughness": [
+            "852186d75e7131938d719ed956271a940edc74127acb10e09107088986a25754"
+          ],
+          "normal": [
+            "991db4928a0f14f3469be3827b12d7a80041163dd3740ad88c8784919d47d004"
+          ]
+        },
+        "payload_bytes_identical": true,
+        "source_payload_bytes": [
+          100968,
+          165796,
+          270932
+        ],
+        "source_payload_sha256": [
+          "852186d75e7131938d719ed956271a940edc74127acb10e09107088986a25754",
+          "991db4928a0f14f3469be3827b12d7a80041163dd3740ad88c8784919d47d004",
+          "e5cb8eeb121f503bd5442cd7813594bac11380b4d8b25d7f634eb90fd3706de5"
+        ],
+        "source_texture_role_payload_sha256": {
+          "base_color": [
+            "e5cb8eeb121f503bd5442cd7813594bac11380b4d8b25d7f634eb90fd3706de5"
+          ],
+          "metallic_roughness": [
+            "852186d75e7131938d719ed956271a940edc74127acb10e09107088986a25754"
+          ],
+          "normal": [
+            "991db4928a0f14f3469be3827b12d7a80041163dd3740ad88c8784919d47d004"
+          ]
+        },
+        "texture_role_bytes_identical": true
+      },
+      "id": "prop-station-kiosk",
+      "kind": "prop",
+      "output": {
+        "animations": 0,
+        "bytes": 865756,
+        "cameras": 0,
+        "embedded_images": 3,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 3,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 9999,
+        "uv_primitives": 1,
+        "vertices": 8317,
+        "world_bounds": {
+          "max": [
+            0.3344030976295471,
+            0.49987128376960754,
+            0.41503652930259705
+          ],
+          "min": [
+            -0.33451148867607117,
+            -0.4999432861804962,
+            -0.41476795077323914
+          ]
+        }
+      },
+      "preservation_diagnostics": [],
+      "service": "tripo",
+      "sidecar_derivative_sha256": "25053fb73009bf004aeeebab4a861bb664c91935b59c059f21d2fc8c9b6f52cf",
+      "sidecar_hash_agreement": true,
+      "source": {
+        "animations": 0,
+        "bytes": 41802588,
+        "cameras": 0,
+        "embedded_images": 3,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 3,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 1439593,
+        "uv_primitives": 1,
+        "vertices": 749616,
+        "world_bounds": {
+          "max": [
+            0.3343138098716736,
+            0.5,
+            0.4148534834384918
+          ],
+          "min": [
+            -0.3343138098716736,
+            -0.5,
+            -0.4148534834384918
+          ]
+        }
+      },
+      "source_filename": "prop-station-kiosk.glb",
+      "source_sha256": "5fdeeedf04d3b536fc9d3bf3483fb8837b12559557ff16d2ae0c7521c4260b49",
+      "source_sidecar_sha256": "0d9706c4263a777200122a86c4426ebd23d06ee0370911d35b6f9b548e6c8d4f",
+      "triangle_reduction": 1429594,
+      "triangle_reduction_percent": 99.305429
+    },
+    {
+      "byte_reduction": 41831124,
+      "byte_reduction_percent": 98.60512,
+      "custody_agreements": {
+        "derivative_record_derivative_filename_matches_derivative": true,
+        "derivative_record_derivative_sha256_matches_derivative": true,
+        "derivative_record_geometry_matches_inspection": true,
+        "derivative_record_source_provenance_matches_source_sidecar": true,
+        "derivative_record_source_sha256_matches_source": true,
+        "derivative_record_source_sidecar_sha256_matches_source_sidecar": true,
+        "source_sidecar_claim_matches_source": true
+      },
+      "derivative_filename": "prop-trees.glb",
+      "derivative_sha256": "e34f39de9a0db8f977370d7f0808f44a28b9641a458ada4957f552c62271c0dd",
+      "derivative_sidecar_sha256": "96b29000ef1e8f03d0982ffbaa1ec3d5a476cfcff8241a1f35b3a29041495b34",
+      "embedded_texture_preservation": {
+        "output_payload_bytes": [
+          76071,
+          121331,
+          123023
+        ],
+        "output_payload_sha256": [
+          "25b0c47f79f9f88b1f2eebb161961939262a262e5fb6acfa8013aa7782e149ee",
+          "a5aaed6cb89845e1095be7864a1f3f267545604a416fd1c6f8c388be2f8fd364",
+          "b61ea51c01939c3b02191e003672e8ba41967815b6e67dfede7f57a7eec39eb9"
+        ],
+        "output_texture_role_payload_sha256": {
+          "base_color": [
+            "25b0c47f79f9f88b1f2eebb161961939262a262e5fb6acfa8013aa7782e149ee"
+          ],
+          "metallic_roughness": [
+            "a5aaed6cb89845e1095be7864a1f3f267545604a416fd1c6f8c388be2f8fd364"
+          ],
+          "normal": [
+            "b61ea51c01939c3b02191e003672e8ba41967815b6e67dfede7f57a7eec39eb9"
+          ]
+        },
+        "payload_bytes_identical": true,
+        "source_payload_bytes": [
+          76071,
+          121331,
+          123023
+        ],
+        "source_payload_sha256": [
+          "25b0c47f79f9f88b1f2eebb161961939262a262e5fb6acfa8013aa7782e149ee",
+          "a5aaed6cb89845e1095be7864a1f3f267545604a416fd1c6f8c388be2f8fd364",
+          "b61ea51c01939c3b02191e003672e8ba41967815b6e67dfede7f57a7eec39eb9"
+        ],
+        "source_texture_role_payload_sha256": {
+          "base_color": [
+            "25b0c47f79f9f88b1f2eebb161961939262a262e5fb6acfa8013aa7782e149ee"
+          ],
+          "metallic_roughness": [
+            "a5aaed6cb89845e1095be7864a1f3f267545604a416fd1c6f8c388be2f8fd364"
+          ],
+          "normal": [
+            "b61ea51c01939c3b02191e003672e8ba41967815b6e67dfede7f57a7eec39eb9"
+          ]
+        },
+        "texture_role_bytes_identical": true
+      },
+      "id": "prop-trees",
+      "kind": "prop",
+      "output": {
+        "animations": 0,
+        "bytes": 591748,
+        "cameras": 0,
+        "embedded_images": 3,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 3,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 10000,
+        "uv_primitives": 1,
+        "vertices": 6544,
+        "world_bounds": {
+          "max": [
+            0.34778258204460144,
+            0.5001551508903503,
+            0.4608207643032074
+          ],
+          "min": [
+            -0.3479180932044983,
+            -0.499991774559021,
+            -0.4609031081199646
+          ]
+        }
+      },
+      "preservation_diagnostics": [],
+      "service": "tripo",
+      "sidecar_derivative_sha256": "e34f39de9a0db8f977370d7f0808f44a28b9641a458ada4957f552c62271c0dd",
+      "sidecar_hash_agreement": true,
+      "source": {
+        "animations": 0,
+        "bytes": 42422872,
+        "cameras": 0,
+        "embedded_images": 3,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 3,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 1485436,
+        "uv_primitives": 1,
+        "vertices": 758596,
+        "world_bounds": {
+          "max": [
+            0.3477267324924469,
+            0.5,
+            0.46075138449668884
+          ],
+          "min": [
+            -0.3477267324924469,
+            -0.5,
+            -0.46075138449668884
+          ]
+        }
+      },
+      "source_filename": "prop-trees.glb",
+      "source_sha256": "d94b1586f4eb44a5e61ac5499dfef4ec8e4ddc2125bdf6fc95b6d7948673d863",
+      "source_sidecar_sha256": "1aa63811903a869927c134161101aa57c8993adc34661c03f9e1aade049e3f0b",
+      "triangle_reduction": 1475436,
+      "triangle_reduction_percent": 99.326797
+    },
+    {
+      "byte_reduction": 41197492,
+      "byte_reduction_percent": 97.971766,
+      "custody_agreements": {
+        "derivative_record_derivative_filename_matches_derivative": true,
+        "derivative_record_derivative_sha256_matches_derivative": true,
+        "derivative_record_geometry_matches_inspection": true,
+        "derivative_record_source_provenance_matches_source_sidecar": true,
+        "derivative_record_source_sha256_matches_source": true,
+        "derivative_record_source_sidecar_sha256_matches_source_sidecar": true,
+        "source_sidecar_claim_matches_source": true
+      },
+      "derivative_filename": "prop-desk-clutter.glb",
+      "derivative_sha256": "d0403b93dc3db30ec3f7e0b825ba7b48f4af7b79094c6b262c7bfa2fb268ec4d",
+      "derivative_sidecar_sha256": "e75ba87683bd0f468871608a0c079adf89e46eca86fecda248997b204da713b4",
+      "embedded_texture_preservation": {
+        "output_payload_bytes": [
+          114556,
+          125472,
+          299095
+        ],
+        "output_payload_sha256": [
+          "4eeaa54664b07571c6ba500b6b3b8bc94f9a45c53206f8be36562c47f06a7053",
+          "a90b3a7e2e98f5c34074fd5dfc9664177090192ca5bd88038eb3d71f487de2c3",
+          "e3ccab7eacf85187ff72249364d58691e4b6b999f8cab1f9e50a4cc5698d2221"
+        ],
+        "output_texture_role_payload_sha256": {
+          "base_color": [
+            "e3ccab7eacf85187ff72249364d58691e4b6b999f8cab1f9e50a4cc5698d2221"
+          ],
+          "metallic_roughness": [
+            "4eeaa54664b07571c6ba500b6b3b8bc94f9a45c53206f8be36562c47f06a7053"
+          ],
+          "normal": [
+            "a90b3a7e2e98f5c34074fd5dfc9664177090192ca5bd88038eb3d71f487de2c3"
+          ]
+        },
+        "payload_bytes_identical": true,
+        "source_payload_bytes": [
+          114556,
+          125472,
+          299095
+        ],
+        "source_payload_sha256": [
+          "4eeaa54664b07571c6ba500b6b3b8bc94f9a45c53206f8be36562c47f06a7053",
+          "a90b3a7e2e98f5c34074fd5dfc9664177090192ca5bd88038eb3d71f487de2c3",
+          "e3ccab7eacf85187ff72249364d58691e4b6b999f8cab1f9e50a4cc5698d2221"
+        ],
+        "source_texture_role_payload_sha256": {
+          "base_color": [
+            "e3ccab7eacf85187ff72249364d58691e4b6b999f8cab1f9e50a4cc5698d2221"
+          ],
+          "metallic_roughness": [
+            "4eeaa54664b07571c6ba500b6b3b8bc94f9a45c53206f8be36562c47f06a7053"
+          ],
+          "normal": [
+            "a90b3a7e2e98f5c34074fd5dfc9664177090192ca5bd88038eb3d71f487de2c3"
+          ]
+        },
+        "texture_role_bytes_identical": true
+      },
+      "id": "prop-desk-clutter",
+      "kind": "prop",
+      "output": {
+        "animations": 0,
+        "bytes": 852880,
+        "cameras": 0,
+        "embedded_images": 3,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 3,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 10000,
+        "uv_primitives": 1,
+        "vertices": 7870,
+        "world_bounds": {
+          "max": [
+            0.47166576981544495,
+            0.3406144678592682,
+            0.5001531839370728
+          ],
+          "min": [
+            -0.47162485122680664,
+            -0.3405373692512512,
+            -0.5001949667930603
+          ]
+        }
+      },
+      "preservation_diagnostics": [],
+      "service": "tripo",
+      "sidecar_derivative_sha256": "d0403b93dc3db30ec3f7e0b825ba7b48f4af7b79094c6b262c7bfa2fb268ec4d",
+      "sidecar_hash_agreement": true,
+      "source": {
+        "animations": 0,
+        "bytes": 42050372,
+        "cameras": 0,
+        "embedded_images": 3,
+        "extensions_required": [],
+        "extensions_used": [],
+        "external_uris": [],
+        "images": 3,
+        "lights": 0,
+        "material_primitives": 1,
+        "materials": 1,
+        "meshes": 1,
+        "morph_targets": 0,
+        "primitives": 1,
+        "skins": 0,
+        "triangles": 1452256,
+        "uv_primitives": 1,
+        "vertices": 752564,
+        "world_bounds": {
+          "max": [
+            0.47139105200767517,
+            0.34065625071525574,
+            0.5
+          ],
+          "min": [
+            -0.47139105200767517,
+            -0.34065625071525574,
+            -0.5
+          ]
+        }
+      },
+      "source_filename": "prop-desk-clutter.glb",
+      "source_sha256": "f42232e108bce9b9b12a5db6b8472412673a0dea9293cd9d896d43874bb4e9d5",
+      "source_sidecar_sha256": "393aca3bc5af36b19fed58e32dcd4e975542d1beafe85c0fe85a774830946ced",
+      "triangle_reduction": 1442256,
+      "triangle_reduction_percent": 99.311416
+    }
+  ],
+  "base_sha": "3115ebdddd23f3d7eb6836c2670f6dfc2d0a6fb4",
+  "manifest": "docs/design/assets/CAT-MANIFEST.json",
+  "pipeline_head_sha": "c6ca12f0e9b506ef3140c358d79e88c9e55d22b2",
+  "run_date": "2026-08-16",
+  "schema_version": 1,
+  "totals": {
+    "assets": 15,
+    "byte_reduction": 830498016,
+    "byte_reduction_percent": 97.109804,
+    "cats": 10,
+    "output_bytes": 24717404,
+    "output_triangles": 199998,
+    "output_vertices": 145750,
+    "props": 5,
+    "source_bytes": 855215420,
+    "source_triangles": 25352000,
+    "source_vertices": 13076948,
+    "triangle_reduction": 25152002,
+    "triangle_reduction_percent": 99.211115,
+    "vertex_reduction": 12931198,
+    "vertex_reduction_percent": 98.885443
+  }
+}
