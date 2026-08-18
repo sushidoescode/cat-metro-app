@@ -82,6 +82,24 @@ wave_components = [
 selected = rules.select_wave_fragments(wave_components, full_bounds)
 assert selected == [1], selected
 
+assert rules.select_non_largest_components(wave_components, kind="cat") == [1, 2]
+assert rules.select_non_largest_components(
+    [wave_components[0], wave_components[2]], kind="cat"
+) == [1]
+assert rules.select_non_largest_components([wave_components[0]], kind="cat") == []
+for components, kind, expected_message in (
+    (wave_components, "prop", "only applies to cats"),
+    ([wave_components[0], {**wave_components[1], "triangles": 1_383_894}], "cat", "unique largest"),
+):
+    try:
+        rules.select_non_largest_components(components, kind=kind)
+    except rules.CurationRuleError as exc:
+        assert expected_message in str(exc)
+    else:
+        raise AssertionError(
+            f"largest-component guard accepted kind={kind!r} components={components!r}"
+        )
+
 # Equality laws are load-bearing: thinness is strict; min-Y location is inclusive.
 full_unit = {"minimum": (0.0, 0.0, 0.0), "maximum": (1.0, 1.0, 1.0)}
 thin_equal = {"triangles": 10, "minimum": (0.0, 0.0, 0.0), "maximum": (0.07, 0.5, 0.5)}
