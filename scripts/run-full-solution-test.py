@@ -516,6 +516,90 @@ def _project_paths(root: Path, observed: ObservedInputs) -> tuple[Path, ...]:
     return projects
 
 
+def _guard_restore_package_overrides(
+    root: Path, projects: tuple[Path, ...], observed: ObservedInputs
+) -> None:
+    candidates: set[Path] = set(projects)
+    for pattern in ("*.props", "*.targets", "*.rsp"):
+        for candidate in root.glob("dotnet/**/" + pattern):
+            relative_parts = candidate.relative_to(root).parts
+            if "bin" not in relative_parts and "obj" not in relative_parts:
+                candidates.add(candidate)
+    for name in ROOT_BUILD_FILES:
+        candidate = root / name
+        try:
+            os.lstat(candidate)
+        except FileNotFoundError:
+            continue
+        except OSError as error:
+            raise Uncacheable("a root build input cannot be inspected") from error
+        candidates.add(candidate)
+    for candidate in sorted(candidates, key=lambda path: os.fsencode(os.fspath(path))):
+        if b"restorepackagespath" in _read_regular_bytes(candidate, observed).lower():
+            raise Uncacheable("a custom RestorePackagesPath requires direct execution")
+
+
+def _live_global_package_root(
+    root: Path,
+    tool: str,
+    environment: dict[str, str],
+    aggregate: "hashlib._Hash",
+    observed: ObservedInputs,
+) -> Path:
+    # The real command restores the solution, so config discovery begins at dotnet/, not at an
+    # individual project directory. NuGetPackageRoot from MSBuild is often stale generated obj
+    # state; `nuget locals` resolves the live config/environment precedence without importing it.
+    solution_directory = root / "dotnet"
+    try:
+        details = os.lstat(solution_directory)
+    except OSError as error:
+        raise Uncacheable("the solution directory cannot be inspected") from error
+    if not stat.S_ISDIR(details.st_mode) or stat.S_ISLNK(details.st_mode):
+        raise Uncacheable("the solution directory is not a real directory")
+    observed.present(solution_directory, details)
+    arguments = (tool, "nuget", "locals", "global-packages", "--list")
+    completed = subprocess.run(
+        arguments,
+        cwd=solution_directory,
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    _frame(aggregate, b"live-solution-global-packages")
+    _frame(aggregate, os.fsencode(os.fspath(solution_directory)))
+    for argument in arguments:
+        _frame(aggregate, os.fsencode(argument))
+    _frame(aggregate, completed.stdout)
+    _frame(aggregate, completed.stderr)
+    if completed.returncode != 0:
+        raise Uncacheable("NuGet could not report the live global-packages root")
+    try:
+        output = completed.stdout.decode("utf-8-sig")
+    except UnicodeDecodeError as error:
+        raise Uncacheable("NuGet returned a non-text global-packages report") from error
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    matches = [
+        match.group(1).strip()
+        for line in lines
+        for match in [re.fullmatch(r"global-packages:\s*(.+)", line, re.IGNORECASE)]
+        if match is not None
+    ]
+    if len(lines) != 1 or len(matches) != 1 or not matches[0]:
+        raise Uncacheable("NuGet returned an ambiguous global-packages report")
+    reported_root = Path(matches[0])
+    if not reported_root.is_absolute():
+        raise Uncacheable("NuGet returned a relative global-packages root")
+    package_root = Path(os.path.abspath(reported_root))
+    if (
+        not package_root.is_absolute()
+        or os.path.abspath(package_root) != os.path.realpath(package_root)
+        or _secret_like(package_root.as_posix())
+    ):
+        raise Uncacheable("the live global-packages root is not an absolute real path")
+    return package_root
+
+
 def _effective_package_locations(
     root: Path,
     tool: str,
@@ -524,16 +608,22 @@ def _effective_package_locations(
     observed: ObservedInputs,
 ) -> tuple[tuple[Path, str, str], ...]:
     locations: set[tuple[Path, str, str]] = set()
-    for project in _project_paths(root, observed):
+    projects = _project_paths(root, observed)
+    _guard_restore_package_overrides(root, projects, observed)
+    package_root = _live_global_package_root(root, tool, environment, aggregate, observed)
+    for project in projects:
         relative = project.relative_to(root).as_posix()
         arguments = (
             tool,
             "msbuild",
             relative,
             "-nologo",
-            "-getProperty:NuGetPackageRoot",
             "-getProperty:RestorePackagesPath",
             "-getProperty:MSBuildProjectDirectory",
+            "-p:Configuration=Release",
+            "-p:UseArtifactsOutput=true",
+            "-p:ImportProjectExtensionProps=false",
+            "-p:ImportProjectExtensionTargets=false",
         )
         completed = subprocess.run(
             arguments,
@@ -553,15 +643,12 @@ def _effective_package_locations(
         try:
             report = json.loads(completed.stdout.decode("utf-8-sig"))
             properties = report["Properties"]
-            raw_default_root = properties["NuGetPackageRoot"]
             raw_restore_root = properties["RestorePackagesPath"]
             raw_project_directory = properties["MSBuildProjectDirectory"]
         except (KeyError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
             raise Uncacheable("MSBuild returned an invalid package-root report") from error
         if (
-            not isinstance(raw_default_root, str)
-            or not raw_default_root
-            or not isinstance(raw_restore_root, str)
+            not isinstance(raw_restore_root, str)
             or not isinstance(raw_project_directory, str)
             or not raw_project_directory
         ):
@@ -574,18 +661,7 @@ def _effective_package_locations(
         ):
             raise Uncacheable("MSBuild returned an invalid project directory")
         if raw_restore_root:
-            restore_root = Path(raw_restore_root)
-            if not restore_root.is_absolute():
-                restore_root = project_directory / restore_root
-            package_root = Path(os.path.abspath(restore_root))
-        else:
-            package_root = Path(os.path.abspath(raw_default_root))
-        if (
-            not package_root.is_absolute()
-            or os.path.abspath(package_root) != os.path.realpath(package_root)
-            or _secret_like(package_root.as_posix())
-        ):
-            raise Uncacheable("the effective package root is not an absolute real path")
+            raise Uncacheable("a custom RestorePackagesPath requires direct execution")
         lock_path = project.with_name("packages.lock.json")
         for package_id, version in _locked_packages(lock_path, observed):
             locations.add((package_root, package_id, version))
@@ -623,6 +699,34 @@ def _nuget_configuration_paths(environment: dict[str, str]) -> tuple[tuple[Path,
     return tuple(candidates)
 
 
+def _guard_user_workload_roots(
+    environment: dict[str, str], observed: ObservedInputs
+) -> None:
+    cli_home_raw = environment.get("DOTNET_CLI_HOME") or environment.get("HOME")
+    if not cli_home_raw:
+        raise Uncacheable("the .NET CLI home cannot be discovered")
+    cli_home = Path(cli_home_raw)
+    if not cli_home.is_absolute() or os.path.abspath(cli_home) != os.path.realpath(cli_home):
+        raise Uncacheable("the .NET CLI home is not an absolute real path")
+    user_dotnet = cli_home / ".dotnet"
+    for relative in (
+        "packs",
+        "sdk-manifests",
+        "metadata/workloads",
+        "sdk-advertising",
+        "workloads",
+    ):
+        candidate = user_dotnet / relative
+        try:
+            os.lstat(candidate)
+        except FileNotFoundError:
+            observed.absent(candidate)
+            continue
+        except OSError as error:
+            raise Uncacheable("a user workload root cannot be inspected") from error
+        raise Uncacheable("a user-local workload root requires direct execution")
+
+
 def _hash_external_build_inputs(
     root: Path,
     tool: str,
@@ -638,6 +742,9 @@ def _hash_external_build_inputs(
         "DOTNET_MSBUILD_SDK_RESOLVER_SDKS_DIR",
         "DOTNET_SHARED_STORE",
         "DOTNET_STARTUP_HOOKS",
+        "DOTNETSDK_WORKLOAD_PACK_ROOTS",
+        "DOTNETSDK_WORKLOAD_MANIFEST_ROOTS",
+        "DOTNETSDK_WORKLOAD_MANIFEST_IGNORE_DEFAULT_ROOTS",
         "MSBUILD_EXE_PATH",
         "MSBuildExtensionsPath",
         "MSBuildExtensionsPath32",
@@ -649,6 +756,7 @@ def _hash_external_build_inputs(
     )
     if any(environment.get(name) for name in external_overrides):
         raise Uncacheable("an external .NET/MSBuild override is active")
+    _guard_user_workload_roots(environment, observed)
 
     base_match = re.search(r"(?im)^\s*Base Path:\s*(.+?)\s*$", dotnet_info)
     if base_match is None:
