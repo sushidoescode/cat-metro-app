@@ -142,3 +142,36 @@ def select_wave_fragments(
         ):
             selected.append(index)
     return selected
+
+
+def select_non_largest_components(
+    components: object,
+    *,
+    kind: str,
+) -> list[int]:
+    """Return every non-largest component for cat-only source curation."""
+
+    if kind != "cat":
+        raise CurationRuleError("largest-component curation only applies to cats")
+    if (
+        not isinstance(components, Sequence)
+        or isinstance(components, (str, bytes, bytearray))
+        or not components
+    ):
+        raise CurationRuleError("cat components must be a non-empty list")
+    triangle_counts: list[int] = []
+    for index, component in enumerate(components):
+        if not isinstance(component, Mapping):
+            raise CurationRuleError(f"components[{index}] must be an object")
+        triangles = component.get("triangles")
+        if isinstance(triangles, bool) or not isinstance(triangles, int) or triangles < 1:
+            raise CurationRuleError(
+                f"components[{index}].triangles must be a positive integer"
+            )
+        triangle_counts.append(triangles)
+    largest = max(triangle_counts)
+    if triangle_counts.count(largest) != 1:
+        raise CurationRuleError("cat components must have a unique largest component")
+    return [
+        index for index, triangles in enumerate(triangle_counts) if triangles != largest
+    ]

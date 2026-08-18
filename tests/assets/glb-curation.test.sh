@@ -149,6 +149,24 @@ expected_source_sidecars = {
     "cat-yellow-longhair-wave": "e65414b151fa1dd868e9086c0e274ac61743aef8f8f26bc7bcaa6f49f99c8936",
 }
 assert curator.ALLOWED_SOURCE_SIDECAR_SHA256 == expected_source_sidecars
+expected_precuration_pairs = {
+    "cat-blue-siamese-loaf": ((
+        expected_sources["cat-blue-siamese-loaf"],
+        expected_source_sidecars["cat-blue-siamese-loaf"],
+    ),),
+    "cat-yellow-longhair-wave": (
+        (
+            expected_sources["cat-yellow-longhair-wave"],
+            expected_source_sidecars["cat-yellow-longhair-wave"],
+        ),
+        (
+            "f91ccb7ff9b527ecef168d4285488ff647023fb70875f5403c31db8e2349d99d",
+            "bb787a4073833edfd54af3e401cfa00e73b5279592ba2d146b015d3f1ffe90e4",
+        ),
+    ),
+}
+assert curator.ALLOWED_PRECURATION_PAIRS == expected_precuration_pairs
+assert curator.EXPECTED_CURATED_TRIANGLES["cat-yellow-longhair-wave"] == 1_383_894
 
 original_record = {
     "service": "tripo",
@@ -170,8 +188,22 @@ for field in ("service", "task_id", "timestamp_utc", "plan_tier", "prompt"):
 assert updated["sha256"] == new_sha
 assert updated["note"] == (
     "tripo model=v3.1-20260211; Cat Metro GLB-CURATION: "
-    "removed ruled min-Y foot fragment"
+    "kept largest cat component; removed detached components"
 )
+
+correction_record = {
+    **original_record,
+    "sha256": curator.WAVE_CORRECTION_SOURCE_SHA256,
+    "note": (
+        "tripo model=v3.1-20260211; Cat Metro GLB-CURATION: "
+        "removed ruled min-Y foot fragment"
+    ),
+}
+corrected = curator.build_curated_source_record(
+    "cat-yellow-longhair-wave", correction_record, new_sha
+)
+assert corrected["note"] == updated["note"]
+assert corrected["sha256"] == new_sha
 
 for malformed, expected_message in (
     ({key: value for key, value in original_record.items() if key != "prompt"},
