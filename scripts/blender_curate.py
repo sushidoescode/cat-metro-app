@@ -10,6 +10,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import bmesh
 import bpy
 
 
@@ -32,6 +33,7 @@ BLENDER_BUILD_HASH = "ec6e62d40fa9"
 EXIT_CODE = 97
 LOAF_ID = "cat-blue-siamese-loaf"
 WAVE_ID = "cat-yellow-longhair-wave"
+COMPONENT_WELD_DISTANCE = 1e-5
 EXPECTED_SOURCE_TRIANGLES = {
     LOAF_ID: 1_427_775,
 }
@@ -203,6 +205,26 @@ def _components(mesh_object: object) -> list[Component]:
         if left_root != right_root:
             parent[right_root] = left_root
 
+    welded = bmesh.new(use_operators=True)
+    try:
+        welded.from_mesh(mesh)
+        welded.verts.ensure_lookup_table()
+        welded.verts.index_update()
+        bmesh.ops.transform(
+            welded,
+            matrix=mesh_object.matrix_world,
+            verts=welded.verts,
+        )
+        target_map = bmesh.ops.find_doubles(
+            welded,
+            verts=welded.verts,
+            dist=COMPONENT_WELD_DISTANCE,
+        )["targetmap"]
+        for source_vertex, target_vertex in target_map.items():
+            union(source_vertex.index, target_vertex.index)
+    finally:
+        welded.free()
+
     for triangle in mesh.loop_triangles:
         first, second, third = triangle.vertices
         union(first, second)
@@ -348,6 +370,7 @@ def _curate_wave(mesh_object: object) -> dict[str, object]:
         "full_bounds": full_bounds,
         "components_before": component_records,
         "components_after": [component.record() for component in retained_components],
+        "component_weld_distance": COMPONENT_WELD_DISTANCE,
         "selected_component_indexes": selected_indexes,
     }
 
@@ -393,6 +416,7 @@ def _verify_curated(asset_id: str, mesh_object: object) -> dict[str, object]:
         "operation": "verify-curated",
         "triangles": _triangle_count(mesh_object),
         "components": component_count,
+        "component_weld_distance": COMPONENT_WELD_DISTANCE,
         "full_bounds": full_bounds,
         "curated": True,
     }

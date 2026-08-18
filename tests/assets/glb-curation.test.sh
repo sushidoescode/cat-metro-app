@@ -801,12 +801,40 @@ if artifact_root_text:
             sidecar_digest,
             expected_untouched_sidecars[identifier],
         )
+    expected_curated_custody = {
+        "cat-blue-siamese-loaf.glb": "257e59ebac613e3260bfd1161b228ec2be4aa7024969b4b1a3fec2366ffe0097",
+        "cat-blue-siamese-loaf.glb.json": "93fd18c00ec6a1b369bed7849a0bfdb4c00cba5dfe6b16358995998a86bb1f66",
+        "decimated/cat-blue-siamese-loaf.glb": "9a7b2ef923f923a78466f18d8bf0cfb82140aebbd30ba3e7cddd3f814fd2953c",
+        "decimated/cat-blue-siamese-loaf.glb.json": "2265679b91ff5feb5ab5ef7a277af6c3abfe1fda43e4dff2eccb5cceacc684e4",
+        "cat-yellow-longhair-wave.glb": "bf4626c2a41214444a483bde1920c7fd95a06069feca202df860861edb540d64",
+        "cat-yellow-longhair-wave.glb.json": "0bedeeb207fcb02277c7b0b1d0bcf8ec8118d4b0cf2e20abbaa3d85b1a64260f",
+        "decimated/cat-yellow-longhair-wave.glb": "a3c4a363b06064ecc5dc03509c36ddd5ab91200a41314a3c674cd91ef4386696",
+        "decimated/cat-yellow-longhair-wave.glb.json": "9c7bd939fc493caa44d0250531e2137c8c848d5b9bbfc62de320e2dbab16317e",
+        "curation-backups/GLB-CURATION-2026-08-17-16e20e3/loaf-source/cat-blue-siamese-loaf.glb": "e3015351ec9bda2aebeafcc0ff23f5aa35512af4234c168d79cac750118070e3",
+        "curation-backups/GLB-CURATION-2026-08-17-16e20e3/loaf-source/cat-blue-siamese-loaf.glb.json": "ce8ea067634f88ee9fc967ea5a0dbc58df890477d3e1dc1905cc3f77a92dcec4",
+        "curation-backups/GLB-CURATION-2026-08-17-16e20e3/wave-source/cat-yellow-longhair-wave.glb": "8d7190fd24f552f874bf1d733f2870c44a24c27d6b50cfe1e32095f625fcc57c",
+        "curation-backups/GLB-CURATION-2026-08-17-16e20e3/wave-source/cat-yellow-longhair-wave.glb.json": "e65414b151fa1dd868e9086c0e274ac61743aef8f8f26bc7bcaa6f49f99c8936",
+        "curation-backups/GLB-CURATION-2026-08-17-16e20e3/derivatives-before/decimated/cat-blue-siamese-loaf.glb": "cc1ff113257d48994a94cfdff52554236034e3e6455d402de195461b8c8fc236",
+        "curation-backups/GLB-CURATION-2026-08-17-16e20e3/derivatives-before/decimated/cat-blue-siamese-loaf.glb.json": "8209d8dcac1e70f31a3070801eeacd3eb3bad19654cb0135ae2c9d7416be4a59",
+        "curation-backups/GLB-CURATION-2026-08-17-16e20e3/derivatives-before/decimated/cat-yellow-longhair-wave.glb": "4e20de09cee1dcfa383bb708608f03b5f8c1aa78ca4a510a3064f435f5f87a27",
+        "curation-backups/GLB-CURATION-2026-08-17-16e20e3/derivatives-before/decimated/cat-yellow-longhair-wave.glb.json": "a084bae339440e74e3b22b0f578fe1a62fe80c15474f4ffd62f717ad6cb9cfb1",
+        "curation-backups/GLB-CURATION-WAVE-CORRECTION-2026-08-18-841d4a3/cat-yellow-longhair-wave.glb": "f91ccb7ff9b527ecef168d4285488ff647023fb70875f5403c31db8e2349d99d",
+        "curation-backups/GLB-CURATION-WAVE-CORRECTION-2026-08-18-841d4a3/cat-yellow-longhair-wave.glb.json": "bb787a4073833edfd54af3e401cfa00e73b5279592ba2d146b015d3f1ffe90e4",
+        "curation-backups/GLB-CURATION-WAVE-CORRECTION-2026-08-18-841d4a3/derivatives-before/decimated/cat-yellow-longhair-wave.glb": "2eee06883d024631263485b48da067dd8042f66ef81fc669016731fa5fdaa1ef",
+        "curation-backups/GLB-CURATION-WAVE-CORRECTION-2026-08-18-841d4a3/derivatives-before/decimated/cat-yellow-longhair-wave.glb.json": "b961427de158aba8377e3114cc301d4d144ee38e378df984d8140a31cb3d633e",
+    }
+    for relative, expected_sha in expected_curated_custody.items():
+        path = artifact_root / relative
+        status = path.lstat()
+        assert stat.S_ISREG(status.st_mode) and status.st_nlink == 1, relative
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        assert digest == expected_sha, (relative, digest, expected_sha)
 
 checksum_path = evidence_root / "SHA256SUMS"
-expected_checksum_sha256 = "52fbbd6440c0ce6802b5094642155229d781de34ffe7fcd77d3eaafbad85da6c"
+expected_checksum_sha256 = "13f0160d342992f3ad5135d06d68f3e44a810357f34bc1f53ed96347111a2426"
 assert hashlib.sha256(checksum_path.read_bytes()).hexdigest() == expected_checksum_sha256
 checksum_lines = checksum_path.read_text(encoding="utf-8").splitlines()
-assert len(checksum_lines) == 39
+assert len(checksum_lines) == 44
 recorded_pngs = {}
 prefix = "evals/results/assets/glb-curation-2026-08-17/"
 evidence_asset_ids = (
@@ -834,6 +862,11 @@ expected_pngs = {
         "derivative-before-grid.png",
         "derivative-after-grid.png",
         "derivative-comparison-grid.png",
+        "wave-correction-comparison.png",
+        "wave-correction-derivative-before.png",
+        "wave-correction-derivative-after.png",
+        "wave-correction-source-before.png",
+        "wave-correction-source-after.png",
     )
 }
 expected_pngs.update(
@@ -846,7 +879,7 @@ expected_pngs.update(
     for state in ("source-before", "source-after")
     for identifier in ("cat-blue-siamese-loaf", "cat-yellow-longhair-wave")
 )
-assert len(expected_pngs) == 39
+assert len(expected_pngs) == 44
 for line in checksum_lines:
     digest, relative = line.split("  ", 1)
     assert len(digest) == 64 and all(character in "0123456789abcdef" for character in digest)
@@ -870,6 +903,26 @@ for identifier in ("cat-blue-siamese-loaf", "cat-yellow-longhair-wave"):
     before = evidence_root / "derivative-before" / f"{identifier}.png"
     after = evidence_root / "derivative-after" / f"{identifier}.png"
     assert before.read_bytes() != after.read_bytes(), identifier
+assert (
+    evidence_root / "wave-correction-source-before.png"
+).read_bytes() != (
+    evidence_root / "wave-correction-source-after.png"
+).read_bytes()
+assert (
+    evidence_root / "wave-correction-derivative-before.png"
+).read_bytes() != (
+    evidence_root / "wave-correction-derivative-after.png"
+).read_bytes()
+assert (
+    evidence_root / "wave-correction-source-after.png"
+).read_bytes() == (
+    evidence_root / "source-after" / "cat-yellow-longhair-wave.png"
+).read_bytes()
+assert (
+    evidence_root / "wave-correction-derivative-after.png"
+).read_bytes() == (
+    evidence_root / "derivative-after" / "cat-yellow-longhair-wave.png"
+).read_bytes()
 
 print(
     "glb-curation unit: pass rules=boundary-pinned transactions=failure-matrix "
@@ -908,12 +961,18 @@ if [[ -n ${GLB_CURATION_BASELINE_ROOT:-} && -n ${GLB_CURATION_ARTIFACT_ROOT:-} ]
       --operation verify-curated --asset-id cat-yellow-longhair-wave \
       --source "$wave_path")
     printf '%s\n' "$wave_output"
-    wave_components=$(PYTHONDONTWRITEBYTECODE=1 python3 -c \
-      'import json, sys; print(json.loads(next(line.removeprefix("blender-curate: ") for line in sys.stdin if line.startswith("blender-curate: {")))["components"])' \
+    wave_measurement=$(PYTHONDONTWRITEBYTECODE=1 python3 -c \
+      'import json, sys; report=json.loads(next(line.removeprefix("blender-curate: ") for line in sys.stdin if line.startswith("blender-curate: {"))); print("{}\t{}".format(report["components"], report["component_weld_distance"]))' \
       <<<"$wave_output")
+    IFS=$'\t' read -r wave_components wave_weld_distance <<<"$wave_measurement"
     if [[ "$wave_components" != 1 ]]; then
       printf 'glb-curation test: wave must contain exactly one connected component: %s has %s\n' \
         "$wave_path" "$wave_components" >&2
+      exit 1
+    fi
+    if [[ "$wave_weld_distance" != 1e-05 ]]; then
+      printf 'glb-curation test: wave component weld distance drifted: %s\n' \
+        "$wave_weld_distance" >&2
       exit 1
     fi
   done

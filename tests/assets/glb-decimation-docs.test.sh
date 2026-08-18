@@ -410,8 +410,8 @@ forbid(
 )
 
 # The whole-inventory metrics date remains the original queue date, while the
-# two curated derivatives have later tool timestamps. Keep the local-date
-# statement scoped to the 13 historical sidecars rather than all 15.
+# curated derivatives have later tool timestamps. Keep the local-date statement
+# scoped to the 13 historical sidecars rather than all 15.
 for fragment, label in (
     (
         "The 13 untouched derivative sidecars record",
@@ -422,7 +422,7 @@ for fragment, label in (
         "refreshed loaf derivative timestamp is undocumented",
     ),
     (
-        "2026-08-17T10:33:48Z",
+        "2026-08-18T07:14:29Z",
         "refreshed wave derivative timestamp is undocumented",
     ),
     (

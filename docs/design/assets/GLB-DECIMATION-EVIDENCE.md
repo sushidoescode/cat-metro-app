@@ -8,7 +8,8 @@ uniform-NO-plinth ruling under the H-1 evidentiary caveat recorded in frozen
 contract commit `77d66b43d06f18873b105239e63d27e2521542ff`. The branch is stacked on
 `task/GLB-DECIMATION` at exact commit
 `16e20e3fe9793ecaeb0f7865e66a55521eebf7db` and must not open a PR until
-PR #94 merges.
+PR #94 merges. The clarified wave-component correction was frozen first on
+2026-08-18 at `fb3df0b0babd4ab71dd227779486f883dcb58f67`.
 
 ## Result and limits
 
@@ -31,7 +32,7 @@ PR #94 merges.
 - This is **not shipping approval** and is not a hero-quality verdict.
   Separately, the current candidate set remains **SOURCE-ART SHIPPING REJECT**
   for the remaining source-art defects recorded below. The 2026-08-17 curation
-  resolves the ruled loaf display disc and wave min-Y debris only. The
+  resolves the ruled loaf display disc and both detached wave components. The
   generated-asset licence ADR is also still required before any generated
   file ships.
 
@@ -49,15 +50,16 @@ The original decimation renders remain under the main checkout's untracked
 `.catshots/glb-decimation-2026-08-15/` tree. `.catshots/` is **not ignored**;
 the render tree was deliberately left untracked and unstaged.
 
-## 2026-08-17 source-curation evidence
+## 2026-08-17/18 source-curation evidence
 
 The curation operates on ignored source copies transactionally, then invokes
-the existing decimation pipeline for an exact two-entry manifest. Recoverable
-pre-curation sources, source sidecars, derivatives, and derivative sidecars
-are retained at:
+the existing decimation pipeline through committed manifests. Provider
+originals remain at the first path; the first-pass wave source/sidecar and
+derivative/sidecar are retained at the second path:
 
 ```text
 /Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming/curation-backups/GLB-CURATION-2026-08-17-16e20e3
+/Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming/curation-backups/GLB-CURATION-WAVE-CORRECTION-2026-08-18-841d4a3
 ```
 
 - `cat-blue-siamese-loaf`: select glTF-space vertices strictly below
@@ -66,29 +68,35 @@ are retained at:
   least 95% of the full X and Z footprint while the retained geometry spans
   less than 80% on both axes. This selected only the wide min-Y display disc:
   1,427,775 source triangles became 773,061.
-- `cat-yellow-longhair-wave`: seam-safe loose-part analysis found components
-  of 1,383,894, 71,282, and 38,914 triangles. Delete only a component whose
-  thinnest/full-maximum span is below 0.07 and whose minimum Y lies within 1%
-  of full height above min-Y. This selected only the 71,282-triangle foot
-  debris; the 38,914-triangle non-min-Y component remains outside the ruling.
-- The regenerated derivatives contain 14,999 and 14,998 triangles,
+- `cat-yellow-longhair-wave`: the first pass removed the 71,282-triangle
+  min-Y component under the original wording but retained the 38,914-triangle
+  torso-height component. The correction counts seam-safe components with a
+  literal `1e-5` weld, keeps the unique largest cat component, and removes all
+  others. The 1,422,808-triangle first-pass source became the one-component
+  1,383,894-triangle body. Running the same rule directly on the provider
+  original removes both smaller components and produces identical final bytes.
+- The regenerated derivatives contain 14,999 and 15,000 triangles,
   respectively. The other 13 derivative GLBs are byte-identical to their
   pre-curation files. Their GLBs and sidecars are hash-pinned by
   `tests/assets/glb-curation.test.sh`.
 
-The committed exact-two rerun boundary is executable directly:
+The committed correction rerun boundary selects exactly the wave asset:
 
 ```bash
 python3 scripts/decimate-assets.py \
-  --manifest "$PWD/docs/design/assets/GLB-CURATION-MANIFEST.json" \
+  --manifest "$PWD/docs/design/assets/GLB-CURATION-WAVE-MANIFEST.json" \
   --input-dir /Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming \
   --output-dir /Users/sushantsrikrish/cat-metro-app/unity/Assets/Art/Generated/incoming/decimated \
   --blender /opt/homebrew/bin/blender \
   --force
 ```
 
-An isolated rerun from that manifest produced exactly two GLBs plus two
-sidecars; both GLBs were byte-identical to the retained curated derivatives.
+The manifest produced exactly one GLB plus one sidecar. The earlier committed
+two-entry manifest remains the whole first-pass reproduction boundary. An
+isolated 2026-08-18 correction rerun produced GLB
+`a3c4a363b06064ecc5dc03509c36ddd5ab91200a41314a3c674cd91ef4386696`,
+byte-identical to the retained derivative; its sidecar differed only in the
+expected fresh `tool.timestamp_utc`.
 The curation publisher holds an advisory source-root lock, revalidates both
 original GLB/sidecar hashes after Blender, writes a durable prepared/committed
 journal, fsyncs each pair transition, and normalizes an interrupted journal on
@@ -96,12 +104,12 @@ the next locked invocation.
 
 Committed renders and their complete checksum inventory are under
 `evals/results/assets/glb-curation-2026-08-17/`. Lane C viewed the source
-comparison, changed-derivative comparison, and full 15-asset derivative grid
-at original detail. The ruled disc and min-Y debris are absent; the loaf body,
-paws, head, ears, whiskers, and tail and the wave cat, raised paw, feet, and
-tail remain legible. All 13 untouched before/after derivative PNG pairs are
-byte-identical. The evidence README records the looked-at disposition and the
-expected retained non-min-Y wave component.
+comparison, changed-derivative comparison, full 15-asset derivative grid, and
+the dedicated correction before/after sheet at original detail. The ruled
+disc and both wave debris components are absent; the loaf body, paws, head,
+ears, whiskers, and tail and the wave cat, raised paw, feet, and tail remain
+legible. All 13 untouched before/after derivative PNG pairs are byte-identical.
+The evidence README records the looked-at disposition.
 
 ## Reproducible command boundary
 
@@ -121,9 +129,9 @@ python3 scripts/decimate-assets.py \
 The 13 untouched derivative sidecars record Blender `5.1.2`, build
 `ec6e62d40fa9`, operation `collapse-decimate`, and their original fresh UTC
 timestamps on 2026-08-17; for that queue, the local run date remained
-2026-08-16. The refreshed loaf and wave sidecars record the same tool identity
-and operation at `2026-08-17T10:33:30Z` and `2026-08-17T10:33:48Z`
-respectively, both on 2026-08-17 local time. The metrics `run_date` remains
+2026-08-16. The refreshed loaf sidecar records the same tool identity and
+operation at `2026-08-17T10:33:30Z`; the final wave correction records
+`2026-08-18T07:14:29Z`. The metrics `run_date` remains
 `2026-08-16` because it identifies the original whole-inventory queue, not the
 later per-entry refresh. The pinned importer and exporter are bundled
 `io_scene_gltf2` `5.1.20`. The final importer uses literal
@@ -153,7 +161,8 @@ coverage gate. Contact sheets used ImageMagick
 `7.1.2-25 Q16-HDRI aarch64 037e46295:20260604`, five-image `+append` rows,
 and `-append`; `montage` was not used.
 
-The final boundary-hardened refresh rendered all 15 source/derivative pairs
+Before the 2026-08-18 correction, the boundary-hardened refresh rendered all
+15 source/derivative pairs
 into isolated `/private/tmp/catmetro-glb-final-render-r1`. All 30 individual
 PNGs were byte-identical to the retained recorded files, so their hashes and
 coverage values below remain unchanged. The three rebuilt contact sheets were
@@ -163,13 +172,13 @@ retained recorded sheets rather than temporary rebuilds. The current
 comparison grid was viewed at original detail; because every individual PNG
 is byte-identical, the prior visual disposition carries forward unchanged.
 
-The same exact code base also ran the full 15-asset Blender queue into isolated
+That pre-correction code base also ran the full 15-asset Blender queue into isolated
 `/private/tmp/catmetro-glb-final-derivatives-r1`. All 15 derivative GLBs were
 byte-identical to the retained derivatives. Each fresh sidecar was identical
 after excluding only its expected fresh `tool.timestamp_utc`, and a fresh
 `glb_metrics.py` inspection matched every recorded output metric and derivative
-hash. The retained derivatives, sidecars, and metrics authority therefore did
-not change.
+hash. The final wave row, hashes, and renders above supersede that historical
+one-asset result; the other 14 records remain unchanged.
 
 The additional material-lit diagnostic used local untracked script
 `/private/tmp/catmetro_color_render.py`, SHA-256
@@ -239,12 +248,12 @@ schema-1 sidecars, not copied from Blender stdout.
 
 Totals:
 
-- bytes: 834,506,716 → 24,698,584; reduction 809,808,132
-  (**97.040337%**);
-- vertices: 12,702,062 → 145,162; reduction 12,556,900
-  (**98.857178%**);
-- triangles: 24,626,004 → 199,996; reduction 24,426,008
-  (**99.187867%**);
+- bytes: 833,401,188 → 24,696,932; reduction 808,704,256
+  (**97.036609%**);
+- vertices: 12,682,107 → 145,110; reduction 12,536,997
+  (**98.855789%**);
+- triangles: 24,587,090 → 199,998; reduction 24,387,092
+  (**99.186573%**);
 - inventory: 15 assets = 10 cats + 5 props.
 
 | Asset | Kind | Bytes source → output | Vertices source → output | Triangles source → output | Byte reduction | Triangle reduction |
@@ -256,7 +265,7 @@ Totals:
 | `cat-wild-alley` | cat | 75,029,696 → 2,503,604 | 1,023,844 → 11,067 | 1,985,458 → 15,000 | 96.663183% | 99.244507% |
 | `cat-red-tabby-sitting` | cat | 40,916,992 → 792,700 | 730,535 → 9,460 | 1,428,306 → 15,000 | 98.062663% | 98.949805% |
 | `cat-blue-siamese-loaf` | cat | 22,489,668 → 845,188 | 399,354 → 10,050 | 773,061 → 14,999 | 96.241883% | 98.059791% |
-| `cat-yellow-longhair-wave` | cat | 40,750,288 → 814,452 | 726,653 → 9,399 | 1,422,808 → 14,998 | 98.001359% | 98.945887% |
+| `cat-yellow-longhair-wave` | cat | 39,644,760 → 812,800 | 706,698 → 9,347 | 1,383,894 → 15,000 | 97.949792% | 98.916102% |
 | `cat-green-shorthair-sit` | cat | 41,414,348 → 792,960 | 739,458 → 9,517 | 1,446,088 → 15,000 | 98.085301% | 98.962719% |
 | `cat-conductor` | cat | 74,835,880 → 3,031,236 | 1,015,478 → 11,656 | 1,960,372 → 15,000 | 95.949488% | 99.234839% |
 | `prop-depot-shed` | prop | 41,258,120 → 735,532 | 740,755 → 8,203 | 1,428,398 → 10,000 | 98.217243% | 99.299915% |
@@ -336,7 +345,7 @@ inspection. All seven custody booleans in the companion JSON are true.
 | `cat-wild-alley` | `b1d85cf314bbc295d7ca28af9c41f9c3bddecd81cfb84603a14648b55d5f462c` | `1b9d1a08924982f38bd24ac7fc138331f5f357efc500802cc1cf3d06567a6467` | `3fa010b59c3b5dccbe0eb54453e8d595736cbafa391a9f08effd9d052738479c` | `92f095b97e5c4f03116ac087c6852ebcaeabff611b67051faf2b5f2a96f7260b` |
 | `cat-red-tabby-sitting` | `418eaa31df9b65c975dd85bdac3f04ab73b64827d81248d6248b57c6e2a81b14` | `982049a7b96684a6c9d3723764a51f378a07887439b2a4d3de8d318e7216b575` | `3ea8e01d78cb058223c74f225e89512efc44f74f638c99133d7720675e8655b6` | `f40f32794ef55f2f2e797ea870c63fedd6c2959bd0b0facc7fd50f0f1d21d898` |
 | `cat-blue-siamese-loaf` | `257e59ebac613e3260bfd1161b228ec2be4aa7024969b4b1a3fec2366ffe0097` | `93fd18c00ec6a1b369bed7849a0bfdb4c00cba5dfe6b16358995998a86bb1f66` | `9a7b2ef923f923a78466f18d8bf0cfb82140aebbd30ba3e7cddd3f814fd2953c` | `2265679b91ff5feb5ab5ef7a277af6c3abfe1fda43e4dff2eccb5cceacc684e4` |
-| `cat-yellow-longhair-wave` | `f91ccb7ff9b527ecef168d4285488ff647023fb70875f5403c31db8e2349d99d` | `bb787a4073833edfd54af3e401cfa00e73b5279592ba2d146b015d3f1ffe90e4` | `2eee06883d024631263485b48da067dd8042f66ef81fc669016731fa5fdaa1ef` | `b961427de158aba8377e3114cc301d4d144ee38e378df984d8140a31cb3d633e` |
+| `cat-yellow-longhair-wave` | `bf4626c2a41214444a483bde1920c7fd95a06069feca202df860861edb540d64` | `0bedeeb207fcb02277c7b0b1d0bcf8ec8118d4b0cf2e20abbaa3d85b1a64260f` | `a3c4a363b06064ecc5dc03509c36ddd5ab91200a41314a3c674cd91ef4386696` | `9c7bd939fc493caa44d0250531e2137c8c848d5b9bbfc62de320e2dbab16317e` |
 | `cat-green-shorthair-sit` | `2db4f94d7c59c36c01f1f1d51780b30a417001b5d91a10caf420e5e5c1d6c5b2` | `beb9e95db53e897809194921156c46da974e8519dca3c627b9787b2ca2b40cf5` | `a5791a945bac21cfe55e7e4cdbcd5cd3233c11997cd0f449972a12768cca93f8` | `360ea5e28ca3e09b51fc45c8360ebe04e5b0a6fd38c532f636252bead68439fb` |
 | `cat-conductor` | `f2cc476deccbcb4e72b74bd7d7e0bbd0e4c6bd3103149ce3697b85fa5260a9d1` | `9b66a992a560a590a06f435202b5bb246c3d2006dd6fda3b10ed2e059a28d9c4` | `3b0bdbe1a0af9377bfde62ebf2b633e694881dc81438f2814e717c4c71ab9e7d` | `83b5329451479e54719cd06a83445ab74f0bc58ef4dc4749b5b6e3cc50473e6b` |
 | `prop-depot-shed` | `5efb54812e9d03c15c8d7c085a840bfabb09fc3312495c3b85af2ffcf8047aed` | `4816eeb87183c47bd60283af934f43215f129c7dd7183be4455cc04d4192ac83` | `68994c2316e7c0b23252569bfc06cbc1155c29dd41798c8effdbbaba638844b1` | `0e6c7f6a9065e12b0f3da93605914672947a2a662175ed788470c81f5d736ae2` |
@@ -363,7 +372,7 @@ appendages.
 | `cat-wild-alley` | 0.266619822485 | `065373f36ebd527ead3809273c2c3b1e242a99780a182f14ee15dc7c20435c14` | 0.169315828402 | `43d281c384692ec8db097c8d8fbeec587c534b5bd3b0cc64d93673065a522605` |
 | `cat-red-tabby-sitting` | 0.363690828402 | `642ab605fb9ccdd8efbe7e25282810ef47880bdac11473f463b99d3e626fbe00` | 0.198513313609 | `9b5fc0fd1fa3a7f54f2fe406b0293427127394e8cdcf25403466dbe6bdd0c0f9` |
 | `cat-blue-siamese-loaf` | 0.352300295858 | `a08113a1a979a15c612a34135d965bd72d46c17fe83dd9058fab03aa7fd50ce2` | 0.184870562130 | `24b3e8007d9d46a5211f85522ad66ae1ea549d304860ee8a6dcd54be07cb7796` |
-| `cat-yellow-longhair-wave` | 0.395998520710 | `9cc5ae89fd689caeb2201f2f6453a108794f9119d5d6d9eb680366755b3c384c` | 0.210828402367 | `6a9838b5eb96640dc461b272b18b5aca3a869b554986f4d9795a42420e165ce6` |
+| `cat-yellow-longhair-wave` | 0.386453402367 | `a9cf81f8ae3347a395c47ab468434e88dde72d48579117c8d9e0fde070c6fd77` | 0.207825443787 | `88540cb6ef6362e97010cf3e923334614e196f76e9075c8fe341f30b0836d4a5` |
 | `cat-green-shorthair-sit` | 0.359900147929 | `c6464f6a56fb331f9a5098b45e295f556e6986a05a29c5bfc1f8fe9c678ee39b` | 0.192381656805 | `6f22e4bf816c03537eff100f6a9520829c922cd5dd147452ba0104583028b6ec` |
 | `cat-conductor` | 0.254223372781 | `31090cb98888afd5a2e93e571552a8855f371f24324c91cfa759c278830ff108` | 0.156568047337 | `bcef82bc042f636f61e9ef6099f70b26fc0a884b323eb222c9699b087f64fd01` |
 | `prop-depot-shed` | 0.536630917160 | `a4b26f058d072c0b3336ad0933555291e5c37e9b74651b5f3c9d46e20ec6f790` | 0.148010355030 | `d708bdf67344d239c9014a028707b9752d3616fa6de4efba12e21936cc80186d` |
@@ -384,13 +393,20 @@ Current committed curation contact sheets:
 
 | Path under `evals/results/assets/glb-curation-2026-08-17/` | Dimensions | SHA-256 |
 |---|---:|---|
-| `source-comparison.png` | 2080×520 | `193b04304c9615128c96e4f8619664db53d7c0af156ab858debb1885cb99c880` |
-| `changed-derivative-comparison.png` | 2080×520 | `43efbb545691e74621216b815d6c7ca164c9f46f561cb3ede94a9ba76f1dae9b` |
+| `source-comparison.png` | 2080×520 | `bc68c694543f65254e94dfaf92f9f2623834eeaf3bf978c846e89cce2650dccc` |
+| `changed-derivative-comparison.png` | 2080×520 | `8d18ff8f208dc3b7a1eb5e492ce4199fdb3a0311dfc11c5f6b3f71f9cd666338` |
 | `derivative-before-grid.png` | 2600×1560 | `1d9f09d3fde235722a1bc982fe1d9b0d3a59492b66464e9ec231afda2f926025` |
-| `derivative-after-grid.png` | 2600×1560 | `6b49427adc43f2abccfeba374b6bde924ef90ca922b0f388a44bf80cb71baf25` |
-| `derivative-comparison-grid.png` | 2600×3120 | `085e8afef6ad299be8813d41e403608ca4595ad32db9539465ad1b07b4ab6c7d` |
+| `derivative-after-grid.png` | 2600×1560 | `81d584f29cc9a02109feb2fe83a87da10befbd64d8e7c735612c1b8eba697dec` |
+| `derivative-comparison-grid.png` | 2600×3120 | `ff24f27ec788129825855ae0e85635198658ea5b3de52b3ec25cc1b4b42afab5` |
+| `wave-correction-comparison.png` | 1040×1040 | `11333100c4b36b1053b24df209204f346af112044e0ced027d4ed76c65322fbc` |
 
-The exact-head temporary rebuild hashes were
+The dedicated correction sheet places source before/after on its top row and
+derivative before/after on its bottom row. Lane C viewed all four constituent
+frames and the sheet at original detail on 2026-08-18: the detached torso-height
+blob is absent after correction, while ears, face, raised paw, torso, feet, and
+curled tail remain intact with no visible seam or amputation.
+
+The pre-correction exact-head temporary rebuild hashes were
 `08ab01d710bf5544a230a92f6ab71c2379283bba19b012051dcca4e813e93a26`
 (before),
 `38f8ac86b91da2c2ec4aff76bac3a618b903b14803faf96bca8d1df49eea3ea2`
@@ -401,8 +417,9 @@ and identical non-date PNG chunks; only ImageMagick's run-time date metadata
 changed, so these temporary hashes do not replace the recorded-file hashes.
 
 The current committed comparison grid and both changed source/derivative pairs
-were viewed at original detail. The ruled geometry is absent and no new
-silhouette loss appeared. The 13 untouched derivative PNG pairs are
+were viewed at original detail. The ruled geometry and both detached wave
+components are absent and no new silhouette loss appeared. The 13 untouched
+derivative PNG pairs are
 byte-identical. The existing 14/15 target-scale decimation approval and
 board-scale-only condition for `prop-toy-engine` remain unchanged; the
 remaining source-art shipping rejection is narrowed as recorded below.
@@ -464,7 +481,7 @@ Per-asset visual disposition:
 | `cat-wild-alley` | APPROVE decimation only | Star and texture retained; no cracks. The separate source-art rejection remains. |
 | `cat-red-tabby-sitting` | APPROVE | Circle and garment/face remain intact; no crack. Mild smoothing. |
 | `cat-blue-siamese-loaf` | APPROVE | Curated source and regenerated derivative remove the ruled display disc; body and appendage silhouettes remain intact. Mild face/eye faceting remains. |
-| `cat-yellow-longhair-wave` | APPROVE decimation only | Curated source and regenerated derivative remove the ruled min-Y foot debris with no new seam/crack. The separate badge and non-min-Y source-art rejection remains. |
+| `cat-yellow-longhair-wave` | APPROVE decimation only | Curated source and regenerated derivative each contain only the largest cat component; both detached debris components are gone with no new seam/crack. The incorrect badge remains a source-art rejection. |
 | `cat-green-shorthair-sit` | APPROVE | Diamond, color, and silhouette remain intact; the cleanest Tripo result. |
 | `cat-conductor` | APPROVE | Former seams are gone; teal/orange/cream/navy palette, hat, and scarf retained. Minor hero-scale texture blockiness. |
 | `prop-depot-shed` | APPROVE | Seam network is gone; door, roof, and base preserved. Hard edges are slightly softened. |
@@ -482,14 +499,14 @@ set from shipping as current source art:
 - `cat-wild-alley`: peach/orange rather than the required violet; both ears are
   upright, with no bent ear. The star badge itself is present and survives
   decimation.
-- `cat-yellow-longhair-wave`: diamond tag rather than the required triangle;
-  the separate non-min-Y floating oval remains outside the narrow curation
-  ruling.
+- `cat-yellow-longhair-wave`: diamond tag rather than the required triangle.
+  Both detached floating components are now removed.
 
-The uniform-NO-plinth decision is now resolved for this inventory. Lane C
-removed the loaf display disc and the wave min-Y foot debris from the sources
-and regenerated both derivatives. The strict geometry predicates, source and
-derivative before/after hashes, and looked-at renders are recorded above.
+The uniform-NO-plinth decision and corrected wave-component ruling are now
+resolved for this inventory. Lane C removed the loaf display disc and every
+non-largest wave component from the sources and regenerated the selected
+derivatives. The strict geometry predicates, source and derivative
+before/after hashes, and looked-at renders are recorded above.
 
 Therefore **SOURCE-ART SHIPPING REJECT** is independent of the 14/15
 target-scale decimation approval. No generated candidate may be promoted into
