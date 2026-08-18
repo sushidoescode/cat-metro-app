@@ -2,6 +2,8 @@
 # Lane E harness self-test. It is called explicitly by scripts/test.sh and deliberately lives
 # outside tests/**/*.test.sh so the product-wrapper census remains unchanged.
 set -uo pipefail
+unset NUGET_PACKAGES DOTNETSDK_WORKLOAD_PACK_ROOTS \
+  DOTNETSDK_WORKLOAD_MANIFEST_ROOTS DOTNETSDK_WORKLOAD_MANIFEST_IGNORE_DEFAULT_ROOTS
 
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
   echo "full-solution-cache self-test: FAIL — not in a git worktree"
@@ -70,6 +72,8 @@ fake_effective_packages="$tmp/effective-packages"
 fake_effective_package="$fake_effective_packages/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"
 fake_restore_packages="$tmp/restore-packages"
 fake_restore_package="$fake_restore_packages/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"
+fake_env_packages="$tmp/env-packages"
+fake_env_package="$fake_env_packages/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"
 fake_nuget_config="$fake_home/.nuget/NuGet/NuGet.Config"
 fake_flap_sentinel="$tmp/flap-once"
 cache="$tmp/cache"
@@ -79,32 +83,31 @@ cache_flap_session="$tmp/flap-session"
 cache_flap="$cache_flap_session/cache"
 cache_race_session="$tmp/race-session"
 cache_race="$cache_race_session/cache"
+cache_env_session="$tmp/env-session"
+cache_env="$cache_env_session/cache"
 calls="$tmp/dotnet.calls"
-mkdir -p "$fixture/dotnet/Fake" "$fixture/dotnet/Restore" \
+mkdir -p "$fixture/dotnet/Fake/obj" \
   "$fixture/unity/Assets/Scripts/Domain" "$fake_bin" \
   "$fake_sdk" "$(dirname "$fake_host")" "$(dirname "$fake_pack")" \
   "$(dirname "$fake_workload_manifest")" "$(dirname "$fake_package")" \
   "$(dirname "$fake_effective_package")" \
   "$(dirname "$fake_restore_package")" \
+  "$(dirname "$fake_env_package")" \
   "$(dirname "$fake_nuget_config")" \
   || fail "could not create self-test fixture"
 mkdir -m 700 "$cache" "$cache_mutate_session" "$cache_flap_session" \
-  "$cache_race_session" || fail "could not create private caches"
-mkdir -m 700 "$cache_mutate" "$cache_flap" "$cache_race" \
+  "$cache_race_session" "$cache_env_session" || fail "could not create private caches"
+mkdir -m 700 "$cache_mutate" "$cache_flap" "$cache_race" "$cache_env" \
   || fail "could not create focused caches"
 
 printf '%s\n' 'Microsoft Visual Studio Solution File, Format Version 12.00' \
   > "$fixture/dotnet/CatMetro.sln"
 printf '%s\n' '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>' \
   > "$fixture/dotnet/Fake/Fake.csproj"
-printf '%s\n' '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework><RestorePackagesPath>configured-restore-root</RestorePackagesPath></PropertyGroup></Project>' \
-  > "$fixture/dotnet/Restore/Restore.csproj"
 printf '%s\n' 'PASS' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
 printf '%s\n' 'dotnet/**/obj/' 'Directory.Build.props' > "$fixture/.gitignore"
 printf '%s\n' '{"version":1,"dependencies":{"net8.0":{"Fake.Package":{"type":"Direct","requested":"[1.0.0, )","resolved":"1.0.0","contentHash":"fake"}}}}' \
   > "$fixture/dotnet/Fake/packages.lock.json"
-cp "$fixture/dotnet/Fake/packages.lock.json" "$fixture/dotnet/Restore/packages.lock.json" \
-  || fail "could not create restore-override lock fixture"
 printf '%s\n' 'PASS' > "$fake_sdk/Fake.MSBuild.dll"
 printf '%s\n' 'PASS' > "$fake_host"
 printf '%s\n' 'PASS' > "$fake_pack"
@@ -112,8 +115,11 @@ printf '%s\n' 'PASS' > "$fake_workload_manifest"
 printf '%s\n' 'PASS' > "$fake_package"
 printf '%s\n' 'PASS' > "$fake_effective_package"
 printf '%s\n' 'PASS' > "$fake_restore_package"
-printf '%s\n' '<configuration><config><add key="globalPackagesFolder" value="unused-by-fake" /></config></configuration>' \
-  > "$fake_nuget_config"
+printf '%s\n' 'PASS' > "$fake_env_package"
+printf '<configuration><config><add key="globalPackagesFolder" value="%s" /></config></configuration>\n' \
+  "$fake_effective_packages" > "$fake_nuget_config"
+printf '<Project><PropertyGroup><RestorePackagesPath>%s</RestorePackagesPath></PropertyGroup></Project>\n' \
+  "$fake_packages" > "$fixture/dotnet/Fake/obj/Fake.csproj.nuget.g.props"
 
 cat > "$fake_bin/dotnet" <<'FAKE_DOTNET'
 #!/usr/bin/env bash
@@ -129,17 +135,38 @@ if [ "$#" -eq 1 ] && [ "$1" = "--info" ]; then
 fi
 
 if [ "$#" -ge 5 ] && [ "$1" = 'msbuild' ]; then
+  extension_props_disabled=0
+  extension_targets_disabled=0
+  for argument in "$@"; do
+    case "$argument" in
+      -p:ImportProjectExtensionProps=false) extension_props_disabled=1 ;;
+      -p:ImportProjectExtensionTargets=false) extension_targets_disabled=1 ;;
+    esac
+  done
   case "$2" in
     dotnet/Restore/Restore.csproj)
       printf '{"Properties":{"NuGetPackageRoot":"%s/","RestorePackagesPath":"%s","MSBuildProjectDirectory":"%s"}}\n' \
-        "${FAKE_EFFECTIVE_PACKAGE_ROOT:?}" "${FAKE_RESTORE_PACKAGE_ROOT:?}" \
+        "${HOME:?}/.nuget/packages" "${FAKE_RESTORE_PACKAGE_ROOT:?}" \
         "${PWD:?}/dotnet/Restore"
       ;;
     *)
-      printf '{"Properties":{"NuGetPackageRoot":"%s/","RestorePackagesPath":"","MSBuildProjectDirectory":"%s"}}\n' \
-        "${FAKE_EFFECTIVE_PACKAGE_ROOT:?}" "${PWD:?}/dotnet/Fake"
+      stale_restore=${HOME:?}/.nuget/packages
+      if [ "$extension_props_disabled" -eq 1 ] \
+        && [ "$extension_targets_disabled" -eq 1 ]; then
+        stale_restore=''
+      fi
+      printf '{"Properties":{"NuGetPackageRoot":"%s/","RestorePackagesPath":"%s","MSBuildProjectDirectory":"%s"}}\n' \
+        "${HOME:?}/.nuget/packages" "$stale_restore" "${PWD:?}/dotnet/Fake"
       ;;
   esac
+  exit 0
+fi
+
+if [ "$#" -eq 4 ] && [ "$1" = 'nuget' ] && [ "$2" = 'locals' ] \
+  && [ "$3" = 'global-packages' ] && [ "$4" = '--list' ]; then
+  [ "$PWD" = "${FAKE_SOLUTION_DIR:?}" ] || exit 93
+  printf 'global-packages: %s\n' \
+    "${NUGET_PACKAGES:-${FAKE_EFFECTIVE_PACKAGE_ROOT:?}}"
   exit 0
 fi
 
@@ -201,10 +228,12 @@ fi
 if grep -q '^FAIL$' "${FAKE_WORKLOAD_MANIFEST:?}"; then
   state='FAIL'
 fi
-if grep -q '^FAIL$' "${FAKE_EFFECTIVE_PACKAGE_ROOT:?}/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"; then
+effective_package_root=${NUGET_PACKAGES:-${FAKE_EFFECTIVE_PACKAGE_ROOT:?}}
+if grep -q '^FAIL$' "$effective_package_root/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"; then
   state='FAIL'
 fi
-if grep -q '^FAIL$' "${FAKE_RESTORE_PACKAGE_ROOT:?}/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"; then
+if [ -f 'dotnet/Restore/Restore.csproj' ] \
+  && grep -q '^FAIL$' "${FAKE_RESTORE_PACKAGE_ROOT:?}/fake.package/1.0.0/lib/net8.0/Fake.Package.dll"; then
   state='FAIL'
 fi
 if grep -q '^FAIL$' "${HOME:?}/.nuget/NuGet/NuGet.Config"; then
@@ -261,8 +290,7 @@ fixture_git() {
 
 fixture_git init -q || fail "could not initialize fixture repository"
 fixture_git add .gitignore dotnet/CatMetro.sln dotnet/Fake/Fake.csproj \
-  dotnet/Fake/packages.lock.json dotnet/Restore/Restore.csproj \
-  dotnet/Restore/packages.lock.json \
+  dotnet/Fake/packages.lock.json \
   unity/Assets/Scripts/Domain/Fingerprint.cs \
   || fail "could not stage fixture inputs"
 fixture_git -c user.name='CI self-test' -c user.email='ci-selftest@example.invalid' \
@@ -284,8 +312,8 @@ run_direct() {
     unset CAT_METRO_FULL_SOLUTION_ARTIFACT_DIR
     PATH="$fake_bin:$PATH" \
       HOME="$fake_home" \
-      NUGET_PACKAGES="$fake_packages" \
       FAKE_SDK_ROOT="$fake_sdk" \
+      FAKE_SOLUTION_DIR="$fixture/dotnet" \
       FAKE_HOST_FILE="$fake_host" \
       FAKE_PACK_FILE="$fake_pack" \
       FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
@@ -303,12 +331,24 @@ run_cached_at() {
   selected_cache=$1
   selected_active=$(dirname "$selected_cache")
   variant=${2:-stable}
+  package_override=${3-}
+  workload_override=${4-}
   (
     cd "$fixture" || exit 1
+    if [ -n "$package_override" ]; then
+      export NUGET_PACKAGES="$package_override"
+    else
+      unset NUGET_PACKAGES
+    fi
+    if [ -n "$workload_override" ]; then
+      export DOTNETSDK_WORKLOAD_PACK_ROOTS="$workload_override"
+    else
+      unset DOTNETSDK_WORKLOAD_PACK_ROOTS
+    fi
     PATH="$fake_bin:$PATH" \
       HOME="$fake_home" \
-      NUGET_PACKAGES="$fake_packages" \
       FAKE_SDK_ROOT="$fake_sdk" \
+      FAKE_SOLUTION_DIR="$fixture/dotnet" \
       FAKE_HOST_FILE="$fake_host" \
       FAKE_PACK_FILE="$fake_pack" \
       FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
@@ -332,8 +372,8 @@ run_inactive_at() {
     unset CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE
     PATH="$fake_bin:$PATH" \
       HOME="$fake_home" \
-      NUGET_PACKAGES="$fake_packages" \
       FAKE_SDK_ROOT="$fake_sdk" \
+      FAKE_SOLUTION_DIR="$fixture/dotnet" \
       FAKE_HOST_FILE="$fake_host" \
       FAKE_PACK_FILE="$fake_pack" \
       FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
@@ -375,10 +415,10 @@ for wrapper_run in 1 2; do
   if ! (
     cd "$repo_root" || exit 1
     unset CAT_METRO_FULL_SOLUTION_CACHE_ACTIVE
-    PATH="$fake_bin:$PATH" \
+      PATH="$fake_bin:$PATH" \
       HOME="$fake_home" \
-      NUGET_PACKAGES="$fake_packages" \
       FAKE_SDK_ROOT="$fake_sdk" \
+      FAKE_SOLUTION_DIR="$fixture/dotnet" \
       FAKE_HOST_FILE="$fake_host" \
       FAKE_PACK_FILE="$fake_pack" \
       FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
@@ -509,8 +549,8 @@ reset_calls
   cd "$fixture" || exit 1
   PATH="$fake_bin:$PATH" \
     HOME="$fake_home" \
-    NUGET_PACKAGES="$fake_packages" \
     FAKE_SDK_ROOT="$fake_sdk" \
+    FAKE_SOLUTION_DIR="$fixture/dotnet" \
     FAKE_HOST_FILE="$fake_host" \
     FAKE_PACK_FILE="$fake_pack" \
     FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
@@ -563,8 +603,7 @@ if [ "$(call_count)" -ne 2 ]; then
 fi
 
 for external_input in "$fake_sdk/Fake.MSBuild.dll" "$fake_host" "$fake_pack" \
-  "$fake_workload_manifest" "$fake_effective_package" "$fake_restore_package" \
-  "$fake_nuget_config"; do
+  "$fake_workload_manifest" "$fake_effective_package" "$fake_nuget_config"; do
   cp "$external_input" "$tmp/external-input.original" \
     || fail "could not preserve external build input $external_input"
   printf '%s\n' 'FAIL' > "$external_input"
@@ -579,9 +618,72 @@ for external_input in "$fake_sdk/Fake.MSBuild.dll" "$fake_host" "$fake_pack" \
     2> "$tmp/external-restored-hit.err" \
     || fail "stable restored external build input $external_input did not hit"
 done
-[ "$(call_count)" -eq 16 ] \
+[ "$(call_count)" -eq 14 ] \
   || fail "external build inputs were not each executed once per changed metadata key"
-echo "  ok: ignored root, SDK, packs, effective package root, and NuGet inputs invalidate"
+
+# NUGET_PACKAGES outranks configured/default roots in the live solution restore context.
+reset_calls
+run_cached_at "$cache_env" stable "$fake_env_packages" \
+  > "$tmp/env-packages-miss.out" 2> "$tmp/env-packages-miss.err" \
+  || fail "NUGET_PACKAGES producer failed"
+run_cached_at "$cache_env" stable "$fake_env_packages" \
+  > "$tmp/env-packages-hit.out" 2> "$tmp/env-packages-hit.err" \
+  || fail "NUGET_PACKAGES stable hit failed"
+[ "$(call_count)" -eq 1 ] || fail "NUGET_PACKAGES stable key did not hit"
+printf '%s\n' 'FAIL' > "$fake_env_package"
+run_cached_at "$cache_env" stable "$fake_env_packages" \
+  > "$tmp/env-packages-fail.out" 2> "$tmp/env-packages-fail.err"
+rc=$?
+[ "$rc" -eq 42 ] || fail "NUGET_PACKAGES mutation returned $rc, expected 42"
+printf '%s\n' 'PASS' > "$fake_env_package"
+run_cached_at "$cache_env" stable "$fake_env_packages" \
+  > "$tmp/env-packages-restored.out" 2> "$tmp/env-packages-restored.err" \
+  || fail "NUGET_PACKAGES restore did not execute green"
+run_cached_at "$cache_env" stable "$fake_env_packages" \
+  > "$tmp/env-packages-restored-hit.out" 2> "$tmp/env-packages-restored-hit.err" \
+  || fail "NUGET_PACKAGES restored key did not hit"
+[ "$(call_count)" -eq 3 ] || fail "NUGET_PACKAGES bytes were not fingerprinted"
+
+# The real artifacts-path restore has no default-obj extension imports. A project-level custom
+# RestorePackagesPath is rare and conditional; decline caching instead of claiming a mismatched
+# property probe can model every Release/artifacts condition.
+mkdir "$fixture/dotnet/Restore" || fail "could not create restore-override project fixture"
+printf '%s\n' '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework><RestorePackagesPath Condition="'"'"'$(Configuration)'"'"'=='"'"'Release'"'"'">configured-restore-root</RestorePackagesPath></PropertyGroup></Project>' \
+  > "$fixture/dotnet/Restore/Restore.csproj"
+cp "$fixture/dotnet/Fake/packages.lock.json" "$fixture/dotnet/Restore/packages.lock.json" \
+  || fail "could not create restore-override lock fixture"
+reset_calls
+run_cached_at "$cache" > "$tmp/restore-override-1.out" 2> "$tmp/restore-override-1.err" \
+  || fail "restore-override direct execution 1 failed"
+run_cached_at "$cache" > "$tmp/restore-override-2.out" 2> "$tmp/restore-override-2.err" \
+  || fail "restore-override direct execution 2 failed"
+[ "$(call_count)" -eq 2 ] || fail "custom RestorePackagesPath was cached"
+rm -f -- "$fixture/dotnet/Restore/Restore.csproj" \
+  "$fixture/dotnet/Restore/packages.lock.json"
+rmdir "$fixture/dotnet/Restore" || fail "could not remove restore-override project fixture"
+
+# Alternate workload roots are not traversed by the standard dotnet-root fingerprint. Fail
+# direct when an override or user-local workload installation exists.
+mkdir "$tmp/workload-override" || fail "could not create workload override fixture"
+reset_calls
+run_cached_at "$cache" stable '' "$tmp/workload-override" \
+  > "$tmp/workload-override-1.out" 2> "$tmp/workload-override-1.err" \
+  || fail "workload override direct execution 1 failed"
+run_cached_at "$cache" stable '' "$tmp/workload-override" \
+  > "$tmp/workload-override-2.out" 2> "$tmp/workload-override-2.err" \
+  || fail "workload override direct execution 2 failed"
+[ "$(call_count)" -eq 2 ] || fail "alternate workload root was cached"
+
+mkdir -p "$fake_home/.dotnet/packs" || fail "could not create user workload root fixture"
+reset_calls
+run_cached_at "$cache" > "$tmp/user-workload-1.out" 2> "$tmp/user-workload-1.err" \
+  || fail "user workload root direct execution 1 failed"
+run_cached_at "$cache" > "$tmp/user-workload-2.out" 2> "$tmp/user-workload-2.err" \
+  || fail "user workload root direct execution 2 failed"
+[ "$(call_count)" -eq 2 ] || fail "user-local workload root was cached"
+rmdir "$fake_home/.dotnet/packs" "$fake_home/.dotnet" \
+  || fail "could not remove user workload root fixture"
+echo "  ok: SDK, packs, live NuGet roots, restore overrides, and workloads fail safe"
 
 # 8. A signal-killed child preserves shell-compatible 128+signal status.
 printf '%s\n' 'TERM' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
@@ -848,8 +950,8 @@ reset_calls
   cd "$fixture" || exit 1
   PATH="$fake_bin:$PATH" \
     HOME="$fake_home" \
-    NUGET_PACKAGES="$fake_packages" \
     FAKE_SDK_ROOT="$fake_sdk" \
+    FAKE_SOLUTION_DIR="$fixture/dotnet" \
     FAKE_HOST_FILE="$fake_host" \
     FAKE_PACK_FILE="$fake_pack" \
     FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
@@ -878,8 +980,8 @@ if ! (
   cd "$repo_root" || exit 1
   PATH="$fake_bin:$PATH" \
     HOME="$fake_home" \
-    NUGET_PACKAGES="$fake_packages" \
     FAKE_SDK_ROOT="$fake_sdk" \
+    FAKE_SOLUTION_DIR="$fixture/dotnet" \
     FAKE_HOST_FILE="$fake_host" \
     FAKE_PACK_FILE="$fake_pack" \
     FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
@@ -906,8 +1008,8 @@ if ! (
   cd "$repo_root" || exit 1
   PATH="$fake_bin:$PATH" \
     HOME="$fake_home" \
-    NUGET_PACKAGES="$fake_packages" \
     FAKE_SDK_ROOT="$fake_sdk" \
+    FAKE_SOLUTION_DIR="$fixture/dotnet" \
     FAKE_HOST_FILE="$fake_host" \
     FAKE_PACK_FILE="$fake_pack" \
     FAKE_WORKLOAD_MANIFEST="$fake_workload_manifest" \
