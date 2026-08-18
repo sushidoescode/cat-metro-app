@@ -74,6 +74,77 @@ class Snapshot:
     tool_path: str
 
 
+StatIdentity = tuple[int, int, int, int, int, int]
+
+
+def _stat_identity(details: os.stat_result) -> StatIdentity:
+    return (
+        details.st_dev,
+        details.st_ino,
+        details.st_mode,
+        details.st_size,
+        details.st_mtime_ns,
+        details.st_ctime_ns,
+    )
+
+
+@dataclass
+class ObservedInputs:
+    """Inputs seen during one snapshot, revalidated together before it may be trusted."""
+
+    files: dict[Path, StatIdentity]
+    missing: set[Path]
+    git_manifests: list[tuple[Path, tuple[str, ...]]]
+    explicit_manifests: list[
+        tuple[Path, tuple[tuple[str, ...], tuple[str, ...]]]
+    ]
+    external_manifests: list[tuple[Path, tuple[str, ...]]]
+
+    @classmethod
+    def empty(cls) -> "ObservedInputs":
+        return cls({}, set(), [], [], [])
+
+    def present(self, path: Path, details: os.stat_result) -> None:
+        identity = _stat_identity(details)
+        previous = self.files.setdefault(path, identity)
+        if previous != identity or path in self.missing:
+            raise Uncacheable("an observed input changed during fingerprinting")
+
+    def absent(self, path: Path) -> None:
+        if path in self.files:
+            raise Uncacheable("an observed input disappeared during fingerprinting")
+        self.missing.add(path)
+
+    def verify(self) -> None:
+        # Recheck every early-observed object only after source, toolchain, packages, and
+        # configuration have all been fingerprinted. Per-file stability alone permits a late
+        # write to an early-sorted file to escape an otherwise equal final snapshot.
+        for path in sorted(self.files, key=lambda item: os.fsencode(os.fspath(item))):
+            try:
+                details = os.lstat(path)
+            except OSError as error:
+                raise Uncacheable("an observed input vanished before snapshot commit") from error
+            if _stat_identity(details) != self.files[path]:
+                raise Uncacheable("an observed input changed before snapshot commit")
+        for path in sorted(self.missing, key=lambda item: os.fsencode(os.fspath(item))):
+            try:
+                os.lstat(path)
+            except FileNotFoundError:
+                continue
+            except OSError as error:
+                raise Uncacheable("a missing-input marker cannot be revalidated") from error
+            raise Uncacheable("a previously missing input appeared before snapshot commit")
+        for root, expected in self.git_manifests:
+            if _git_paths(root) != expected:
+                raise Uncacheable("Git input membership changed before snapshot commit")
+        for root, expected in self.explicit_manifests:
+            if _explicit_paths(root, None) != expected:
+                raise Uncacheable("explicit input membership changed before snapshot commit")
+        for root, expected in self.external_manifests:
+            if _external_tree_paths(root, None) != expected:
+                raise Uncacheable("external input membership changed before snapshot commit")
+
+
 def _frame(hasher: "hashlib._Hash", value: bytes) -> None:
     hasher.update(len(value).to_bytes(8, "big"))
     hasher.update(value)
@@ -111,7 +182,9 @@ def _git_paths(root: Path) -> tuple[str, ...]:
     return tuple(sorted(paths, key=os.fsencode))
 
 
-def _explicit_paths(root: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
+def _explicit_paths(
+    root: Path, observed: ObservedInputs | None
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
     files: set[str] = set()
     markers: list[str] = []
 
@@ -120,10 +193,14 @@ def _explicit_paths(root: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
         try:
             start_stat = os.lstat(start)
         except FileNotFoundError:
+            if observed is not None:
+                observed.absent(start)
             markers.append("missing:" + relative_root)
             continue
         if not stat.S_ISDIR(start_stat.st_mode) or stat.S_ISLNK(start_stat.st_mode):
             raise Uncacheable("an explicit input root is not a real directory")
+        if observed is not None:
+            observed.present(start, start_stat)
 
         stack = [start]
         while stack:
@@ -143,6 +220,8 @@ def _explicit_paths(root: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
                 if stat.S_ISLNK(entry_stat.st_mode):
                     raise Uncacheable("a symlink is reachable from an input tree")
                 if stat.S_ISDIR(entry_stat.st_mode):
+                    if observed is not None:
+                        observed.present(Path(entry.path), entry_stat)
                     if entry.name not in WALK_EXCLUDES:
                         stack.append(Path(entry.path))
                 elif stat.S_ISREG(entry_stat.st_mode):
@@ -153,7 +232,7 @@ def _explicit_paths(root: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
     return tuple(sorted(files, key=os.fsencode)), tuple(sorted(markers))
 
 
-def _guard_outside_build_files(root: Path) -> None:
+def _guard_outside_build_files(root: Path, observed: ObservedInputs) -> None:
     # MSBuild searches parent directories. An out-of-repo build policy is not owned by this task,
     # so detect it without reading it and fall back to the ordinary command.
     for parent in root.parents:
@@ -162,6 +241,7 @@ def _guard_outside_build_files(root: Path) -> None:
             try:
                 candidate_stat = os.lstat(candidate)
             except FileNotFoundError:
+                observed.absent(candidate)
                 continue
             except OSError as error:
                 raise Uncacheable("could not inspect an ancestor build policy") from error
@@ -170,13 +250,19 @@ def _guard_outside_build_files(root: Path) -> None:
             raise Uncacheable("an out-of-repo build policy is active")
 
 
-def _hash_file(root: Path, relative: str, aggregate: "hashlib._Hash") -> None:
+def _hash_file(
+    root: Path,
+    relative: str,
+    aggregate: "hashlib._Hash",
+    observed: ObservedInputs,
+) -> None:
     if _secret_like(relative):
         raise Uncacheable("refusing to read a secret-like input")
     path = root / relative
     try:
         before = os.lstat(path)
     except FileNotFoundError:
+        observed.absent(path)
         _frame(aggregate, b"missing")
         return
     except OSError as error:
@@ -210,7 +296,14 @@ def _hash_file(root: Path, relative: str, aggregate: "hashlib._Hash") -> None:
         after = os.lstat(path)
     except OSError as error:
         raise Uncacheable("an input changed while being read") from error
-    stable_fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns")
+    stable_fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
     if any(getattr(before, field) != getattr(opened, field) for field in stable_fields):
         raise Uncacheable("an input changed before it was read")
     if any(getattr(opened, field) != getattr(after_read, field) for field in stable_fields):
@@ -218,12 +311,18 @@ def _hash_file(root: Path, relative: str, aggregate: "hashlib._Hash") -> None:
     if any(getattr(after_read, field) != getattr(after, field) for field in stable_fields):
         raise Uncacheable("an input changed after it was read")
 
+    observed.present(path, after)
     _frame(aggregate, b"regular")
-    _frame(aggregate, str(stat.S_IMODE(before.st_mode)).encode("ascii"))
+    _frame(
+        aggregate,
+        ":".join(str(value) for value in _stat_identity(after)).encode("ascii"),
+    )
     _frame(aggregate, content.digest())
 
 
-def _external_tree_paths(start: Path) -> tuple[str, ...]:
+def _external_tree_paths(
+    start: Path, observed: ObservedInputs | None
+) -> tuple[str, ...]:
     """Enumerate a consumed external tree without following links or special files."""
     if not start.is_absolute() or os.path.abspath(start) != os.path.realpath(start):
         raise Uncacheable("an external input tree is not an absolute real path")
@@ -233,6 +332,8 @@ def _external_tree_paths(start: Path) -> tuple[str, ...]:
         raise Uncacheable("an external input tree is missing") from error
     if not stat.S_ISDIR(details.st_mode) or stat.S_ISLNK(details.st_mode):
         raise Uncacheable("an external input tree is not a real directory")
+    if observed is not None:
+        observed.present(start, details)
 
     files: list[str] = []
     stack = [start]
@@ -250,6 +351,8 @@ def _external_tree_paths(start: Path) -> tuple[str, ...]:
             if stat.S_ISLNK(entry_stat.st_mode):
                 raise Uncacheable("a symlink is reachable from an external input tree")
             if stat.S_ISDIR(entry_stat.st_mode):
+                if observed is not None:
+                    observed.present(Path(entry.path), entry_stat)
                 stack.append(Path(entry.path))
             elif stat.S_ISREG(entry_stat.st_mode):
                 relative = Path(entry.path).relative_to(start).as_posix()
@@ -261,76 +364,221 @@ def _external_tree_paths(start: Path) -> tuple[str, ...]:
     return tuple(sorted(files, key=os.fsencode))
 
 
-def _hash_external_tree(start: Path, label: str, aggregate: "hashlib._Hash") -> None:
-    before = _external_tree_paths(start)
+def _hash_external_tree(
+    start: Path,
+    label: str,
+    aggregate: "hashlib._Hash",
+    observed: ObservedInputs,
+) -> None:
+    before = _external_tree_paths(start, observed)
+    observed.external_manifests.append((start, before))
     _frame(aggregate, os.fsencode(label))
     for relative in before:
         _frame(aggregate, os.fsencode(relative))
-        _hash_file(start, relative, aggregate)
-    if _external_tree_paths(start) != before:
+        _hash_file(start, relative, aggregate, observed)
+    if _external_tree_paths(start, None) != before:
         raise Uncacheable("external input membership changed during fingerprinting")
 
 
 def _hash_optional_external_file(
-    path: Path, label: str, aggregate: "hashlib._Hash"
+    path: Path,
+    label: str,
+    aggregate: "hashlib._Hash",
+    observed: ObservedInputs,
 ) -> None:
     _frame(aggregate, os.fsencode(label))
     try:
         os.lstat(path)
     except FileNotFoundError:
+        observed.absent(path)
         _frame(aggregate, b"missing")
         return
     except OSError as error:
         raise Uncacheable("an external configuration cannot be inspected") from error
     if not path.is_absolute() or os.path.abspath(path) != os.path.realpath(path):
         raise Uncacheable("an external configuration is not an absolute real path")
-    _hash_file(path.parent, path.name, aggregate)
+    _hash_file(path.parent, path.name, aggregate, observed)
 
 
 def _hash_optional_external_tree(
-    path: Path, label: str, aggregate: "hashlib._Hash"
+    path: Path,
+    label: str,
+    aggregate: "hashlib._Hash",
+    observed: ObservedInputs,
 ) -> None:
     try:
         os.lstat(path)
     except FileNotFoundError:
+        observed.absent(path)
         _frame(aggregate, os.fsencode(label))
         _frame(aggregate, b"missing")
         return
     except OSError as error:
         raise Uncacheable("an external configuration tree cannot be inspected") from error
-    _hash_external_tree(path, label, aggregate)
+    _hash_external_tree(path, label, aggregate, observed)
 
 
-def _locked_packages(root: Path) -> tuple[tuple[str, str], ...]:
+def _read_regular_bytes(
+    path: Path, observed: ObservedInputs, *, maximum: int = 16 * 1024 * 1024
+) -> bytes:
+    try:
+        before = os.lstat(path)
+    except OSError as error:
+        raise Uncacheable("a structured input cannot be inspected") from error
+    if not stat.S_ISREG(before.st_mode) or stat.S_ISLNK(before.st_mode):
+        raise Uncacheable("a structured input is not a regular file")
+    if before.st_size > maximum:
+        raise Uncacheable("a structured input exceeds its read limit")
+
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        raise Uncacheable("a structured input cannot be opened safely") from error
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode) or opened.st_size > maximum:
+            raise Uncacheable("an opened structured input is invalid")
+        chunks: list[bytes] = []
+        size = 0
+        while True:
+            block = os.read(descriptor, 64 * 1024)
+            if not block:
+                break
+            size += len(block)
+            if size > maximum:
+                raise Uncacheable("a structured input grew past its read limit")
+            chunks.append(block)
+        after_read = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    try:
+        after = os.lstat(path)
+    except OSError as error:
+        raise Uncacheable("a structured input vanished while being read") from error
+    identity = _stat_identity(before)
+    if (
+        _stat_identity(opened) != identity
+        or _stat_identity(after_read) != identity
+        or _stat_identity(after) != identity
+    ):
+        raise Uncacheable("a structured input changed while being read")
+    observed.present(path, after)
+    return b"".join(chunks)
+
+
+def _locked_packages(
+    lock_path: Path, observed: ObservedInputs
+) -> tuple[tuple[str, str], ...]:
     packages: set[tuple[str, str]] = set()
-    lock_paths = sorted(
-        root.glob("dotnet/*/packages.lock.json"), key=lambda path: os.fsencode(path.name)
-    )
-    for lock_path in lock_paths:
-        try:
-            raw = lock_path.read_bytes()
-            document = json.loads(raw)
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise Uncacheable("a NuGet lock file cannot be parsed") from error
-        frameworks = document.get("dependencies") if isinstance(document, dict) else None
-        if not isinstance(frameworks, dict):
-            raise Uncacheable("a NuGet lock file has no dependency map")
-        for package_map in frameworks.values():
-            if not isinstance(package_map, dict):
-                raise Uncacheable("a NuGet lock framework is malformed")
-            for package_id, metadata in package_map.items():
-                if not isinstance(package_id, str) or not isinstance(metadata, dict):
-                    raise Uncacheable("a NuGet lock package is malformed")
-                resolved = metadata.get("resolved")
-                package_type = metadata.get("type")
-                if package_type == "Project":
-                    continue
-                if not isinstance(resolved, str) or not resolved:
-                    raise Uncacheable("a NuGet lock package has no resolved version")
-                packages.add((package_id.lower(), resolved.lower()))
-    if not packages:
-        raise Uncacheable("no locked NuGet package identities were found")
+    try:
+        document = json.loads(_read_regular_bytes(lock_path, observed))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise Uncacheable("a NuGet lock file cannot be parsed") from error
+    frameworks = document.get("dependencies") if isinstance(document, dict) else None
+    if not isinstance(frameworks, dict):
+        raise Uncacheable("a NuGet lock file has no dependency map")
+    for package_map in frameworks.values():
+        if not isinstance(package_map, dict):
+            raise Uncacheable("a NuGet lock framework is malformed")
+        for package_id, metadata in package_map.items():
+            if not isinstance(package_id, str) or not isinstance(metadata, dict):
+                raise Uncacheable("a NuGet lock package is malformed")
+            resolved = metadata.get("resolved")
+            package_type = metadata.get("type")
+            if package_type == "Project":
+                continue
+            if not isinstance(resolved, str) or not resolved:
+                raise Uncacheable("a NuGet lock package has no resolved version")
+            packages.add((package_id.lower(), resolved.lower()))
     return tuple(sorted(packages, key=lambda item: (os.fsencode(item[0]), os.fsencode(item[1]))))
+
+
+def _project_paths(root: Path, observed: ObservedInputs) -> tuple[Path, ...]:
+    projects = tuple(
+        sorted(
+            root.glob("dotnet/*/*.csproj"),
+            key=lambda path: os.fsencode(path.relative_to(root).as_posix()),
+        )
+    )
+    if not projects:
+        raise Uncacheable("no .NET project files were found")
+    for project in projects:
+        try:
+            details = os.lstat(project)
+        except OSError as error:
+            raise Uncacheable("a .NET project cannot be inspected") from error
+        if not stat.S_ISREG(details.st_mode) or stat.S_ISLNK(details.st_mode):
+            raise Uncacheable("a .NET project is not a regular file")
+        observed.present(project, details)
+    return projects
+
+
+def _effective_package_locations(
+    root: Path,
+    tool: str,
+    environment: dict[str, str],
+    aggregate: "hashlib._Hash",
+    observed: ObservedInputs,
+) -> tuple[tuple[Path, str, str], ...]:
+    locations: set[tuple[Path, str, str]] = set()
+    for project in _project_paths(root, observed):
+        relative = project.relative_to(root).as_posix()
+        arguments = (
+            tool,
+            "msbuild",
+            relative,
+            "-nologo",
+            "-getProperty:NuGetPackageRoot",
+            "-getProperty:RestorePackagesPath",
+        )
+        completed = subprocess.run(
+            arguments,
+            cwd=root,
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        _frame(aggregate, b"effective-package-root")
+        for argument in arguments:
+            _frame(aggregate, os.fsencode(argument))
+        _frame(aggregate, completed.stdout)
+        _frame(aggregate, completed.stderr)
+        if completed.returncode != 0:
+            raise Uncacheable("MSBuild could not report the effective package root")
+        try:
+            report = json.loads(completed.stdout.decode("utf-8-sig"))
+            properties = report["Properties"]
+            raw_root = properties["NuGetPackageRoot"]
+        except (KeyError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise Uncacheable("MSBuild returned an invalid package-root report") from error
+        if not isinstance(raw_root, str) or not raw_root:
+            raise Uncacheable("MSBuild returned an empty effective package root")
+        package_root = Path(raw_root)
+        if (
+            not package_root.is_absolute()
+            or os.path.abspath(package_root) != os.path.realpath(package_root)
+            or _secret_like(package_root.as_posix())
+        ):
+            raise Uncacheable("the effective package root is not an absolute real path")
+        lock_path = project.with_name("packages.lock.json")
+        for package_id, version in _locked_packages(lock_path, observed):
+            locations.add((package_root, package_id, version))
+    if not locations:
+        raise Uncacheable("no effective locked NuGet package locations were found")
+    return tuple(
+        sorted(
+            locations,
+            key=lambda item: (
+                os.fsencode(os.fspath(item[0])),
+                os.fsencode(item[1]),
+                os.fsencode(item[2]),
+            ),
+        )
+    )
 
 
 def _nuget_configuration_paths(environment: dict[str, str]) -> tuple[tuple[Path, str], ...]:
@@ -355,9 +603,11 @@ def _nuget_configuration_paths(environment: dict[str, str]) -> tuple[tuple[Path,
 
 def _hash_external_build_inputs(
     root: Path,
+    tool: str,
     environment: dict[str, str],
     dotnet_info: str,
     aggregate: "hashlib._Hash",
+    observed: ObservedInputs,
 ) -> None:
     external_overrides = (
         "DOTNET_ADDITIONAL_DEPS",
@@ -382,7 +632,7 @@ def _hash_external_build_inputs(
     if base_match is None:
         raise Uncacheable("dotnet --info did not report the selected SDK base path")
     sdk = Path(base_match.group(1))
-    _hash_external_tree(sdk, "selected-dotnet-sdk", aggregate)
+    _hash_external_tree(sdk, "selected-dotnet-sdk", aggregate, observed)
 
     host_match = re.search(
         r"(?m)^Host:[ \t]*\r?\n[ \t]*Version:[ \t]*([^\s]+)", dotnet_info
@@ -394,52 +644,79 @@ def _hash_external_build_inputs(
         dotnet_root / "host/fxr" / host_match.group(1),
         "selected-dotnet-hostfxr:" + host_match.group(1),
         aggregate,
+        observed,
+    )
+    _hash_external_tree(dotnet_root / "packs", "selected-dotnet-packs", aggregate, observed)
+    _hash_optional_external_tree(
+        dotnet_root / "sdk-manifests", "dotnet-workload-manifests", aggregate, observed
+    )
+    _hash_optional_external_tree(
+        dotnet_root / "metadata/workloads", "dotnet-workload-metadata", aggregate, observed
     )
 
     runtime_pattern = re.compile(r"(?m)^\s*(Microsoft\.[^\s]+)\s+([^\s]+)\s+\[(.+?)\]\s*$")
     for runtime_name, runtime_version, runtime_parent in runtime_pattern.findall(dotnet_info):
         runtime = Path(runtime_parent) / runtime_version
-        _hash_external_tree(runtime, "runtime:" + runtime_name + ":" + runtime_version, aggregate)
-
-    packages_raw = environment.get("NUGET_PACKAGES")
-    if packages_raw:
-        package_root = Path(packages_raw)
-    else:
-        home_raw = environment.get("HOME")
-        if not home_raw:
-            raise Uncacheable("NuGet's package root cannot be discovered")
-        package_root = Path(home_raw) / ".nuget/packages"
-    for package_id, version in _locked_packages(root):
         _hash_external_tree(
-            package_root / package_id / version,
-            "nuget-package:" + package_id + ":" + version,
+            runtime,
+            "runtime:" + runtime_name + ":" + runtime_version,
             aggregate,
+            observed,
         )
 
+    # Hash configuration before asking MSBuild to evaluate each project's effective package
+    # root. A configured globalPackagesFolder or RestorePackagesPath may differ from both HOME
+    # and NUGET_PACKAGES; the evaluated NuGetPackageRoot is the directory the real build consumes.
     for config, label in _nuget_configuration_paths(environment):
-        _hash_optional_external_file(config, label, aggregate)
+        _hash_optional_external_file(config, label, aggregate, observed)
     _hash_optional_external_tree(
-        Path(environment["HOME"]) / ".nuget/NuGet/config", "user-nuget-fragments", aggregate
+        Path(environment["HOME"]) / ".nuget/NuGet/config",
+        "user-nuget-fragments",
+        aggregate,
+        observed,
     )
     _hash_optional_external_tree(
-        Path("/etc/opt/NuGet/Config"), "machine-nuget-fragments", aggregate
+        Path("/etc/opt/NuGet/Config"), "machine-nuget-fragments", aggregate, observed
+    )
+    _hash_optional_external_tree(
+        Path("/Library/Application Support/NuGet/Config"),
+        "macos-machine-nuget-fragments",
+        aggregate,
+        observed,
     )
     xdg_raw = environment.get("XDG_CONFIG_HOME")
     if xdg_raw:
         _hash_optional_external_tree(
-            Path(xdg_raw) / "NuGet/config", "xdg-nuget-fragments", aggregate
+            Path(xdg_raw) / "NuGet/config", "xdg-nuget-fragments", aggregate, observed
         )
     appdata_raw = environment.get("APPDATA")
     if appdata_raw:
         _hash_optional_external_tree(
-            Path(appdata_raw) / "NuGet/config", "appdata-nuget-fragments", aggregate
+            Path(appdata_raw) / "NuGet/config", "appdata-nuget-fragments", aggregate, observed
+        )
+
+    for package_root, package_id, version in _effective_package_locations(
+        root, tool, environment, aggregate, observed
+    ):
+        _hash_external_tree(
+            package_root / package_id / version,
+            "nuget-package:"
+            + os.fspath(package_root)
+            + ":"
+            + package_id
+            + ":"
+            + version,
+            aggregate,
+            observed,
         )
 
 
-def _input_digest(root: Path) -> str:
-    _guard_outside_build_files(root)
+def _input_digest(root: Path, observed: ObservedInputs) -> str:
+    _guard_outside_build_files(root, observed)
     git_before = _git_paths(root)
-    explicit_before, markers_before = _explicit_paths(root)
+    observed.git_manifests.append((root, git_before))
+    explicit_before, markers_before = _explicit_paths(root, observed)
+    observed.explicit_manifests.append((root, (explicit_before, markers_before)))
     paths = tuple(
         sorted(set(git_before).union(explicit_before, ROOT_BUILD_FILES), key=os.fsencode)
     )
@@ -450,10 +727,10 @@ def _input_digest(root: Path) -> str:
         _frame(aggregate, os.fsencode(marker))
     for relative in paths:
         _frame(aggregate, os.fsencode(relative))
-        _hash_file(root, relative, aggregate)
+        _hash_file(root, relative, aggregate, observed)
 
     git_after = _git_paths(root)
-    explicit_after, markers_after = _explicit_paths(root)
+    explicit_after, markers_after = _explicit_paths(root, None)
     if (
         git_after != git_before
         or explicit_after != explicit_before
@@ -472,14 +749,16 @@ def _environment_digest(environment: dict[str, str]) -> str:
     return aggregate.hexdigest()
 
 
-def _tool_identity(environment: dict[str, str], root: Path) -> tuple[str, str]:
+def _tool_identity(
+    environment: dict[str, str], root: Path, observed: ObservedInputs
+) -> tuple[str, str]:
     located = shutil.which("dotnet", path=environment.get("PATH"))
     if not located:
         raise Uncacheable("dotnet is not on PATH")
     resolved = os.path.realpath(located)
     binary_digest = hashlib.sha256()
     _frame(binary_digest, os.fsencode(resolved))
-    _hash_file(Path(resolved).parent, Path(resolved).name, binary_digest)
+    _hash_file(Path(resolved).parent, Path(resolved).name, binary_digest, observed)
 
     completed = subprocess.run(
         (resolved, "--info"),
@@ -499,13 +778,16 @@ def _tool_identity(environment: dict[str, str], root: Path) -> tuple[str, str]:
     if version is None or int(version.group(1)) < 8:
         raise Uncacheable("the SDK does not support --artifacts-path")
     _frame(binary_digest, info)
-    _hash_external_build_inputs(root, environment, text, binary_digest)
+    _hash_external_build_inputs(root, resolved, environment, text, binary_digest, observed)
     return resolved, binary_digest.hexdigest()
 
 
 def _snapshot(root: Path, environment: dict[str, str]) -> Snapshot:
-    tool_path, tool_digest = _tool_identity(environment, root)
-    source_digest = _input_digest(root)
+    observed = ObservedInputs.empty()
+    # Validate repository inputs before invoking toolchain probes, then retain every observed
+    # identity through a final global pass so neither phase can mutate the other invisibly.
+    source_digest = _input_digest(root, observed)
+    tool_path, tool_digest = _tool_identity(environment, root, observed)
     system = {
         "cwd": os.fsencode(os.fspath(root)).hex(),
         "locale": locale.setlocale(locale.LC_ALL, None),
@@ -521,6 +803,7 @@ def _snapshot(root: Path, environment: dict[str, str]) -> Snapshot:
         "tool": tool_digest,
     }
     encoded = json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    observed.verify()
     return Snapshot(hashlib.sha256(encoded).hexdigest(), tool_path)
 
 
@@ -798,6 +1081,55 @@ def _open_real_directory(path: Path, *, parent_fd: int | None = None) -> int:
     return descriptor
 
 
+def _remove_tree_at(
+    parent_fd: int,
+    name: str,
+    expected_identity: tuple[int, int],
+    *,
+    require_private: bool = False,
+) -> None:
+    """Remove one real directory tree relative to a held parent fd (Python 3.9 compatible)."""
+    descriptor = _open_real_directory(Path(name), parent_fd=parent_fd)
+    try:
+        opened = os.fstat(descriptor)
+        opened_identity = (opened.st_dev, opened.st_ino)
+        if opened_identity != expected_identity:
+            raise Uncacheable("a cleanup directory was substituted before it was opened")
+        if require_private:
+            if hasattr(os, "getuid") and opened.st_uid != os.getuid():
+                raise Uncacheable("the opened cleanup target has a different owner")
+            if stat.S_IMODE(opened.st_mode) & 0o077:
+                raise Uncacheable("the opened cleanup target is not private")
+        with os.scandir(descriptor) as entries:
+            for entry in entries:
+                try:
+                    details = entry.stat(follow_symlinks=False)
+                except OSError as error:
+                    raise Uncacheable("a cleanup entry cannot be inspected") from error
+                if stat.S_ISDIR(details.st_mode) and not stat.S_ISLNK(details.st_mode):
+                    _remove_tree_at(
+                        descriptor, entry.name, (details.st_dev, details.st_ino)
+                    )
+                else:
+                    try:
+                        os.unlink(entry.name, dir_fd=descriptor)
+                    except OSError as error:
+                        raise Uncacheable("a cleanup entry cannot be removed safely") from error
+        try:
+            current = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+            if (
+                not stat.S_ISDIR(current.st_mode)
+                or stat.S_ISLNK(current.st_mode)
+                or (current.st_dev, current.st_ino) != opened_identity
+            ):
+                raise Uncacheable("a cleanup directory was substituted before removal")
+            os.rmdir(name, dir_fd=parent_fd)
+        except OSError as error:
+            raise Uncacheable("a cleanup directory cannot be removed safely") from error
+    finally:
+        os.close(descriptor)
+
+
 def _cleanup_session(root: Path, raw: str) -> None:
     requested = Path(raw)
     normalized = Path(os.path.abspath(raw))
@@ -806,9 +1138,6 @@ def _cleanup_session(root: Path, raw: str) -> None:
         raise Uncacheable("cleanup requires an absolute normalized path")
     if requested.parent != base or re.fullmatch(r"session\.[A-Za-z0-9]+", requested.name) is None:
         raise Uncacheable("cleanup target is not one exact harness session")
-    if not shutil.rmtree.avoids_symlink_attacks:
-        raise Uncacheable("this Python cannot remove a session without following links")
-
     relative_probe = (requested / ".ignore-probe").relative_to(root)
     ignored = subprocess.run(
         ("git", "-C", os.fspath(root), "check-ignore", "-q", "--", os.fspath(relative_probe)),
@@ -835,7 +1164,12 @@ def _cleanup_session(root: Path, raw: str) -> None:
             raise Uncacheable("cleanup target has a different owner")
         if stat.S_IMODE(details.st_mode) & 0o077:
             raise Uncacheable("cleanup target is not private")
-        shutil.rmtree(requested.name, dir_fd=descriptor)
+        _remove_tree_at(
+            descriptor,
+            requested.name,
+            (details.st_dev, details.st_ino),
+            require_private=True,
+        )
     finally:
         os.close(descriptor)
 

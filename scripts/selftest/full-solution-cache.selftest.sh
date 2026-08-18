@@ -91,6 +91,8 @@ mkdir -m 700 "$cache_mutate" "$cache_flap" "$cache_race" \
 
 printf '%s\n' 'Microsoft Visual Studio Solution File, Format Version 12.00' \
   > "$fixture/dotnet/CatMetro.sln"
+printf '%s\n' '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>' \
+  > "$fixture/dotnet/Fake/Fake.csproj"
 printf '%s\n' 'PASS' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
 printf '%s\n' 'dotnet/**/obj/' 'Directory.Build.props' > "$fixture/.gitignore"
 printf '%s\n' '{"version":1,"dependencies":{"net8.0":{"Fake.Package":{"type":"Direct","requested":"[1.0.0, )","resolved":"1.0.0","contentHash":"fake"}}}}' \
@@ -237,7 +239,8 @@ fixture_git() {
 }
 
 fixture_git init -q || fail "could not initialize fixture repository"
-fixture_git add .gitignore dotnet/CatMetro.sln dotnet/Fake/packages.lock.json \
+fixture_git add .gitignore dotnet/CatMetro.sln dotnet/Fake/Fake.csproj \
+  dotnet/Fake/packages.lock.json \
   unity/Assets/Scripts/Domain/Fingerprint.cs \
   || fail "could not stage fixture inputs"
 fixture_git -c user.name='CI self-test' -c user.email='ci-selftest@example.invalid' \
@@ -375,7 +378,11 @@ run_cached_at "$cache" > "$tmp/cache-miss.out" 2> "$tmp/cache-miss.err" \
   || fail "cache miss execution failed"
 run_cached_at "$cache" > "$tmp/cache-hit.out" 2> "$tmp/cache-hit.err" \
   || fail "cache hit failed"
-[ "$(call_count)" -eq 1 ] || fail "stable miss+hit executed dotnet more than once"
+if [ "$(call_count)" -ne 1 ]; then
+  cat "$tmp/cache-miss.err" "$tmp/cache-hit.err" >&2
+  cat "$calls" >&2
+  fail "stable miss+hit executed dotnet more than once"
+fi
 manifest_count=$(find "$cache/records" -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
 [ "$manifest_count" -eq 1 ] || fail "expected one atomic green record, found $manifest_count"
 if grep -rFq 'do-not-store-this-raw-value' "$cache" 2>/dev/null; then
@@ -495,6 +502,13 @@ rc=$?
 [ "$rc" -eq 42 ] || fail "post-validation mutation returned $rc, expected a real failing run (42)"
 [ "$(call_count)" -eq 1 ] || fail "post-validation mutation did not force exactly one real run"
 printf '%s\n' 'PASS' > "$fixture/unity/Assets/Scripts/Domain/Fingerprint.cs"
+run_cached_at "$cache" > "$tmp/hit-race-restored.out" 2> "$tmp/hit-race-restored.err" \
+  || fail "post-validation mutation restore did not execute green"
+run_cached_at "$cache" > "$tmp/hit-race-restored-hit.out" \
+  2> "$tmp/hit-race-restored-hit.err" \
+  || fail "post-validation mutation restore did not establish a stable hit"
+[ "$(call_count)" -eq 2 ] \
+  || fail "post-validation mutation restore did not execute exactly one new producer"
 echo "  ok: post-validation mutation cannot consume stale green"
 
 # 7. Ignored root policy, every consumed .NET pack, the effective package root, and NuGet config
@@ -515,7 +529,11 @@ run_cached_at "$cache" > "$tmp/root-policy-hit.out" 2> "$tmp/root-policy-hit.err
 rm -f -- "$fixture/Directory.Build.props"
 run_cached_at "$cache" > "$tmp/root-policy-restored.out" 2> "$tmp/root-policy-restored.err" \
   || fail "root build-policy removal did not restore the original key"
-[ "$(call_count)" -eq 2 ] || fail "root build-policy removal missed the original record"
+if [ "$(call_count)" -ne 2 ]; then
+  cat "$calls" >&2
+  find "$cache/records" -type f -name '*.json' -print >&2 2>/dev/null || true
+  fail "root build-policy removal missed the original record"
+fi
 
 for external_input in "$fake_sdk/Fake.MSBuild.dll" "$fake_host" "$fake_pack" \
   "$fake_workload_manifest" "$fake_effective_package" "$fake_nuget_config"; do
@@ -593,6 +611,64 @@ if [ -x /usr/bin/python3 ]; then
   [ ! -e "$compatibility_session" ] && [ ! -L "$compatibility_session" ] \
     || fail "/usr/bin/python3 cleanup left its target"
 fi
+
+# An attacker with the same uid must not be able to swap a same-named real directory between
+# validation and fd-open. The opened dev/inode must still match the entry that was approved.
+rename_session="$cleanup_parent/session.rename"
+rename_substitute="$cleanup_parent/session.substitute"
+rename_held="$cleanup_parent/held-original"
+mkdir -p "$rename_session" "$rename_substitute" \
+  || fail "could not create cleanup rename-race fixtures"
+chmod 700 "$rename_session" "$rename_substitute" \
+  || fail "could not make cleanup rename-race fixtures private"
+printf '%s\n' 'ORIGINAL' > "$rename_session/original.txt"
+printf '%s\n' 'SUBSTITUTE' > "$rename_substitute/substitute.txt"
+cat > "$tmp/cleanup-rename-race-probe.py" <<'CLEANUP_RENAME_RACE_PROBE'
+#!/usr/bin/env python3
+import importlib.util
+import os
+from pathlib import Path
+import sys
+
+sys.dont_write_bytecode = True
+helper, target_raw, substitute_raw, held_raw = sys.argv[1:]
+spec = importlib.util.spec_from_file_location("cat_metro_cache_helper", helper)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+target = Path(target_raw)
+substitute = Path(substitute_raw)
+held = Path(held_raw)
+original_open = module._open_real_directory
+swapped = False
+
+def swap_before_target_open(path, *, parent_fd=None):
+    global swapped
+    if not swapped and parent_fd is not None and os.fspath(path) == target.name:
+        os.rename(target, held)
+        os.rename(substitute, target)
+        swapped = True
+    return original_open(path, parent_fd=parent_fd)
+
+module._open_real_directory = swap_before_target_open
+try:
+    module._cleanup_session(module._repository_root(), os.fspath(target))
+except module.Uncacheable:
+    raise SystemExit(0)
+raise SystemExit(1)
+CLEANUP_RENAME_RACE_PROBE
+if ! (
+  cd "$fixture" || exit 1
+  python3 "$tmp/cleanup-rename-race-probe.py" "$helper" "$rename_session" \
+    "$rename_substitute" "$rename_held"
+) > "$tmp/cleanup-rename-race.out" 2> "$tmp/cleanup-rename-race.err"; then
+  cat "$tmp/cleanup-rename-race.err" >&2
+  fail "cleanup accepted a same-name directory substitution"
+fi
+[ -f "$rename_held/original.txt" ] \
+  || fail "cleanup rename-race removed the originally validated directory"
+[ -f "$rename_session/substitute.txt" ] \
+  || fail "cleanup rename-race removed the substituted directory"
 echo "  ok: cleanup is exact and does not follow symlinks"
 
 # 10. A top-level SIGTERM is failure and still removes the exact private session.
