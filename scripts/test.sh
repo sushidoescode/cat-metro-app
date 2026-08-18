@@ -7,6 +7,13 @@ set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 found=0; failed=0
 
+# Lane E: the run-local full-solution attestation is part of the harness, but not another
+# product wrapper. Keep the tests/**/*.test.sh discovery/pass census byte-for-byte comparable.
+if ! bash scripts/selftest/full-solution-cache.selftest.sh; then
+  echo "test: FAIL — full-solution cache self-test"
+  exit 1
+fi
+
 while IFS= read -r t; do
   found=$((found+1))
   if bash "$t"; then
