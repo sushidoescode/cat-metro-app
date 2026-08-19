@@ -42,3 +42,8 @@ unity/Assets/Art/Generated/incoming.meta
 *.pfx
 *.bks
 *.key
+
+# Unity MCP: generated client config carries a live bearer token — never commit it
+# (the Editor's UserSettings/mcp.json is already covered by unity/UserSettings/ above)
+.mcp.json
+unity/.mcp.json
