@@ -13,6 +13,9 @@ from pathlib import Path
 
 runbook = Path("docs/design/assets/DECIMATION.md").read_text(encoding="utf-8")
 state = Path("state/PROJECT_STATE.md").read_text(encoding="utf-8")
+curation_handoff = Path("state/handoffs/GLB-CURATION.md").read_text(
+    encoding="utf-8"
+)
 lessons = Path("docs/lessons.md").read_text(encoding="utf-8")
 evidence = Path("docs/design/assets/GLB-DECIMATION-EVIDENCE.md").read_text(
     encoding="utf-8"
@@ -21,7 +24,7 @@ production = Path("scripts/decimate-assets.py").read_text(encoding="utf-8")
 metrics = Path("scripts/glb_metrics.py").read_text(encoding="utf-8")
 silhouette = Path("scripts/glb-silhouette.py").read_text(encoding="utf-8")
 
-EXPECTED_PRODUCTION_BASE = "ba3b31c52cb9536711488bef228b5221da908d0e"
+EXPECTED_PRODUCTION_BASE = "1b2ea7deb2626fc90e4f1a6d7508fcdaf048a72a"
 EXPECTED_DECIMATOR_SHA256 = (
     "dc0b371b63fe3d91c8f8beba5ff70541cac96636ab756dd0d35c4ce3c0f338a9"
 )
@@ -37,7 +40,13 @@ def forbid(text: str, fragment: str, label: str) -> None:
         raise SystemExit(f"glb-decimation-docs.test.sh: FAIL — {label}")
 
 
-def require_lesson_row(stem: str, evidence: tuple[str, ...], label: str) -> None:
+def require_lesson_row(
+    stem: str,
+    evidence: tuple[str, ...],
+    label: str,
+    *,
+    occurrences=None,
+) -> None:
     matches = [
         line
         for line in lessons.splitlines()
@@ -51,6 +60,11 @@ def require_lesson_row(stem: str, evidence: tuple[str, ...], label: str) -> None
     if len(columns) < 7 or columns[5] != "enforced":
         raise SystemExit(
             f"glb-decimation-docs.test.sh: FAIL — {label} is not enforced"
+        )
+    if occurrences is not None and columns[4] != str(occurrences):
+        raise SystemExit(
+            "glb-decimation-docs.test.sh: FAIL — "
+            f"{label} occurrence count={columns[4]}, expected={occurrences}"
         )
     for fragment in evidence:
         require(matches[0], fragment, f"{label} omits evidence {fragment}")
@@ -526,6 +540,68 @@ require(
     "project state omits interruption-safe batch rollback",
 )
 
+# The whole-inventory metrics date remains the original queue date, while the
+# curated derivatives have later tool timestamps. Keep the local-date statement
+# scoped to the 13 historical sidecars rather than all 15.
+for fragment, label in (
+    (
+        "The 13 untouched derivative sidecars record",
+        "historical sidecar date scope is undocumented",
+    ),
+    (
+        "2026-08-17T10:33:30Z",
+        "refreshed loaf derivative timestamp is undocumented",
+    ),
+    (
+        "2026-08-18T07:14:29Z",
+        "refreshed wave derivative timestamp is undocumented",
+    ),
+    (
+        "metrics `run_date` remains `2026-08-16`",
+        "whole-inventory run-date meaning is undocumented",
+    ),
+):
+    require(evidence, fragment, label)
+forbid(
+    evidence,
+    "Each sidecar records Blender `5.1.2`",
+    "evidence still applies the historical local date to all 15 sidecars",
+)
+
+# The addendum-corrected wave must be the only current curation truth in both
+# compact state and the lane handoff. The first-pass bytes remain named only as
+# recovery custody, never as the shipping result.
+for document, label in (
+    (state, "project state"),
+    (curation_handoff, "curation handoff"),
+):
+    for fragment, fact in (
+        ("bf4626c2a41214444a483bde1920c7fd95a06069feca202df860861edb540d64", "corrected source hash"),
+        ("a3c4a363b06064ecc5dc03509c36ddd5ab91200a41314a3c674cd91ef4386696", "corrected derivative hash"),
+        ("1,383,894", "corrected source triangle count"),
+        ("15,000", "corrected derivative triangle count"),
+        ("44 PNGs", "corrected evidence inventory"),
+        ("GLB-CURATION-WAVE-CORRECTION-2026-08-18-841d4a3", "correction backup custody"),
+        ("7aaf680", "reviewed implementation/evidence head"),
+    ):
+        require(document, fragment, f"{label} omits {fact}")
+
+require(
+    state,
+    "exactly 1 connected component in both curated source and regenerated derivative",
+    "project state omits the corrected connected-component terminal",
+)
+require(
+    curation_handoff,
+    "exactly 1 connected component",
+    "curation handoff omits the corrected connected-component terminal",
+)
+forbid(
+    curation_handoff,
+    "wave rank-3 non-min-Y component remains intentionally",
+    "curation handoff still presents the removed component as intentional",
+)
+
 # Human-caught defect classes are ratcheted to the behavior tests that now pin
 # them, rather than being left only as one-off implementation history.
 require_lesson_row(
@@ -560,6 +636,12 @@ require_lesson_row(
     "A sequential two-member move or removal is treated as atomic",
     ("tests/assets/glb-decimation-pipeline.test.sh",),
     "sequential two-member normalization lesson",
+)
+require_lesson_row(
+    "Operator runbook or compact state retains superseded",
+    ("tests/assets/glb-decimation-docs.test.sh",),
+    "superseded operator-truth lesson",
+    occurrences=4,
 )
 
 print("glb-decimation-docs.test.sh: pass")
