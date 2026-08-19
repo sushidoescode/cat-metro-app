@@ -5,8 +5,8 @@
 - **Branch:** `task/GLB-CURATION`
 - **Frozen base:** `origin/task/GLB-DECIMATION` at
   `16e20e3fe9793ecaeb0f7865e66a55521eebf7db`
-- **PR status:** HOLD. Do not open the curation PR until a human/orchestrator
-  confirms PR #94 has merged.
+- **PR status:** OPEN. #94 merged as squash `1b2ea7d` on 2026-08-18; this branch was
+  rebased onto it and PR #98 is open against `main` at head `6d7cf05`, suite 28/28.
 
 ## Contract
 
