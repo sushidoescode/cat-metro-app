@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using CatMetro.Application.Session;
 using CatMetro.Content;
+using CatMetro.Presentation.Cats;
 using UnityEngine;
 
 namespace CatMetro.Presentation.Board
@@ -44,6 +45,30 @@ namespace CatMetro.Presentation.Board
         private Transform[] _switchArm;
         private readonly Dictionary<int, GameObject> _trains = new Dictionary<int, GameObject>();
 
+        // CM-CATS-WIRE: one identity holder per bounded train slot, created with the slot's
+        // capsule and reused for the view's whole life — the slot pool IS the model pool, so a
+        // warm frame allocates nothing. The catalog independently guards the combined twelve;
+        // this surface guards its own nine.
+        private readonly Dictionary<int, CatModelInstance> _catSlots =
+            new Dictionary<int, CatModelInstance>();
+        private CatModelCatalog _catalog;
+
+        // Placement CONSTANTS, never measurements: the contract forbids positioning against a
+        // model's base or bounds, so the board states the authored convention it assumes rather
+        // than reading geometry back at runtime. The board set is authored ~1.9 units tall and
+        // origin-centred, and it replaces a capsule 0.7 units tall (2 units inside the 0.35 slot
+        // scale), so this holder scale lands a cat at a comparable on-board size.
+        private const float CatHolderScale = 1.2f;
+        // The board camera is ORTHOGRAPHIC and the cats are unlit, so flattening the view axis
+        // is visually free — and it is what lets a cat sit cleanly in front of the node cube it
+        // stands on instead of intersecting it. The offset moves the whole slab forward past
+        // that cube's front face.
+        private const float CatDepthSquash = 0.35f;
+        private static readonly Vector3 CatModelOffset = new Vector3(0f, 0f, -1f);
+        // A dead-on cat is a weak silhouette; a slight turn reads as a cat at a glance, which is
+        // the actual acceptance criterion. Yaw only — the board's read is a flat XY plane.
+        private const float CatYawDegrees = -22f;
+
         public int SwitchCount => _switchNode.Length;
         public string NodeId(int nodeIndex) => _nodeIds[nodeIndex];
         public Vector3 NodeWorldPos(int nodeIndex) => transform.TransformPoint(_nodePos[nodeIndex]);
@@ -56,6 +81,10 @@ namespace CatMetro.Presentation.Board
             go.transform.SetParent(parent, false);
             var view = go.AddComponent<BoardView>();
             view._session = session;
+            // CM-CATS-WIRE: resolved ONCE, from the scene root this view already shares with
+            // the home screen. Null is the ordinary case (A4) — the ignored derivatives are not
+            // in a clean clone, so a CI runner and a fresh checkout both boot to capsules.
+            view._catalog = CatModelCatalog.FindFor(go.transform);
             view.BuildElements(level);
             return view;
         }
@@ -283,9 +312,19 @@ namespace CatMetro.Presentation.Board
                     var id = go.AddComponent<BoardElementId>();
                     id.Id = "train-" + t; id.Kind = "train";
                     _trains[t] = go;
+                    // The holder is a CHILD of the capsule root: the root is a CreatePrimitive
+                    // capsule and therefore carries a collider, and AC1's component wall is
+                    // asserted over the marker's own subtree.
+                    _catSlots[t] = CatModelInstance.CreateHolder(go.transform, false);
                 }
                 go.SetActive(true);
-                go.GetComponent<Renderer>().material.color = ColorForCode(trains[t].Color);
+                var capsule = go.GetComponent<Renderer>();
+                ApplyCatModel(t, capsule, trains[t].Color);
+                // The colour cue belongs to whatever is actually visible. Under a resolved cat
+                // the capsule renderer is off, so this `.material` write never happens and no
+                // per-instance material clone is created (AC2's shared-asset limb).
+                if (capsule.enabled)
+                    capsule.material.color = ColorForCode(trains[t].Color);
                 if (trains[t].State == CatMetro.Domain.TrainState.OnEdge)
                 {
                     int e = trains[t].EdgeId;
@@ -299,6 +338,88 @@ namespace CatMetro.Presentation.Board
                     go.transform.localPosition = _nodePos[trains[t].NodeId] + new Vector3(0f, 0f, -0.2f);
                 }
             }
+        }
+
+        // CM-CATS-WIRE AC1/AC2, the board half. Every live slot records WHICH cat the closed
+        // map named for its colour, whether or not that cat could be shown; a slot that cannot
+        // resolve one keeps the exact capsule it had before, quietly. Nothing here reads or
+        // writes simulation state (P-6) — CatColor stays the only input (A3).
+        //
+        // Warm cost is a dictionary lookup and a reference compare. A model is instantiated only
+        // when a slot first resolves or when a recycled slot changes colour, never per frame.
+        private void ApplyCatModel(int slot, Renderer capsule, byte color)
+        {
+            CatModelInstance marker;
+            if (!_catSlots.TryGetValue(slot, out marker) || marker == null) return;
+
+            string manifestId = CatModelManifestMap.BoardManifestId(color);
+            if (marker.Model != null)
+            {
+                if (marker.ManifestId == manifestId) return; // warm and still correct
+                // A bounded slot recycled onto another colour: hand the cat back rather than
+                // leave a red tabby standing on a blue train, and free its share of the ceiling.
+                if (_catalog != null) _catalog.Release(marker.Model);
+                marker.RecordFallback(manifestId);
+            }
+
+            if (_catalog != null && BoardModelCount() < CatModelManifestMap.BoardInstanceLimit)
+            {
+                int triangles;
+                float displayScale;
+                var model = _catalog.Acquire(manifestId, marker.transform,
+                    out triangles, out displayScale);
+                if (model != null)
+                {
+                    // The squash lives on the UNROTATED holder so it stays aligned with the view
+                    // axis; the yaw lives on the model. Putting both on one transform would tilt
+                    // the flattening axis and skew the silhouette.
+                    float side = CatHolderScale * displayScale;
+                    marker.transform.localScale =
+                        new Vector3(side, side, side * CatDepthSquash);
+                    model.transform.localPosition = CatModelOffset;
+                    // PRE-multiplied, never assigned: the prefab's own authored orientation is
+                    // the asset's business (a model may be authored facing any way), and this
+                    // only adds the board's presentation turn on top of it.
+                    model.transform.localRotation = Quaternion.Euler(0f, CatYawDegrees, 0f)
+                        * model.transform.localRotation;
+                    marker.RecordModel(manifestId, model, triangles, displayScale);
+                    capsule.enabled = false;
+                    return;
+                }
+            }
+
+            // Over the surface ceiling, no catalog, or no entry for this id: the ordinary
+            // capsule, still coloured, still interpolated, still tappable exactly as before.
+            marker.RecordFallback(manifestId);
+            capsule.enabled = true;
+        }
+
+        // COUNTED, not tallied. A running counter drifts the moment something destroys a slot
+        // out from under this view, and a drifted ceiling silently costs the board a cat that it
+        // is entitled to. The walk is over the bounded train array (a handful of slots), it
+        // allocates nothing, and it is reached only when a catalog exists and a slot is not
+        // already warm — so a clean clone, the ordinary case, never pays for it at all.
+        private int BoardModelCount()
+        {
+            int live = 0;
+            foreach (var marker in _catSlots.Values)
+                if (marker != null && marker.Model != null) live++;
+            return live;
+        }
+
+        // Retry and LoadNext destroy this whole view and build a new one. Handing the cats back
+        // here keeps the catalog's bounded budget honest across a rebuild rather than letting
+        // each retry quietly spend another nine slots. (The catalog also prunes destroyed
+        // instances defensively; this is the prompt, deterministic half of the same law.)
+        private void OnDestroy()
+        {
+            if (_catalog == null) return;
+            foreach (var marker in _catSlots.Values)
+            {
+                if (marker == null || marker.Model == null) continue;
+                _catalog.Release(marker.Model);
+            }
+            _catSlots.Clear();
         }
 
         private static Color ColorFor(string name)

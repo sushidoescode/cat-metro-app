@@ -154,12 +154,22 @@ namespace CatMetro.Tests.PlayMode
             return null;
         }
 
+        // CM-CATS-WIRE: the SAME declared phase-2 migration as HomeScreenTests.cs. The frozen
+        // contract names that file's walk; this is the duplicate of it the header above records
+        // ("duplicated here rather than shared"), walking the shipped-boot tree instead. The
+        // districts gain their identity marker on EVERY path, catalog or not, so migrating one
+        // copy and not the other would leave the shipped leg red for a question the contract has
+        // already answered. Both move together — recorded on the PR as a named amendment.
+        // The interactivity and animation assertions below are untouched, and the control
+        // immediately before the test proves the widened list still catches a forbidden type.
         private static readonly System.Type[] Whitelist =
         {
             typeof(Transform), typeof(RectTransform), typeof(Canvas),
             typeof(CanvasRenderer), typeof(UnityEngine.UI.CanvasScaler),
             typeof(UnityEngine.UI.Image), typeof(TextMeshProUGUI),
             typeof(CatMetro.Presentation.Screens.HomeScreenView),
+            typeof(CatMetro.Presentation.Cats.CatModelInstance),
+            typeof(MeshFilter), typeof(MeshRenderer),
         };
 
         private static Component FirstOffWhitelist(GameObject root)
@@ -172,6 +182,32 @@ namespace CatMetro.Tests.PlayMode
                 if (!ok) return c;
             }
             return null;
+        }
+
+        // CM-CATS-WIRE: this copy's own negative control, matching HomeScreenTests.cs's. A
+        // widened whitelist is exactly how a wall quietly stops being a wall, so both halves are
+        // pinned: the three new types pass, and a hierarchy that merely LOOKS like a cat model
+        // is still caught the moment it carries a forbidden component.
+        [UnityTest]
+        public IEnumerator ModelTypes_AreWhitelisted_ButTheWallStillRejectsAnImportedCollider()
+        {
+            var decoy = new GameObject("shipped-cat-whitelist-control");
+            try
+            {
+                decoy.AddComponent<MeshFilter>();
+                decoy.AddComponent<MeshRenderer>();
+                decoy.AddComponent<CatMetro.Presentation.Cats.CatModelInstance>();
+                Assert.That(FirstOffWhitelist(decoy), Is.Null,
+                    "the widening is real: a render-only cat model passes the walk");
+
+                var child = new GameObject("shipped-cat-whitelist-control-child");
+                child.transform.SetParent(decoy.transform, false);
+                child.AddComponent<BoxCollider>();
+                Assert.That(FirstOffWhitelist(decoy), Is.InstanceOf<Collider>(),
+                    "the widening is bounded: an imported collider is still off-whitelist");
+            }
+            finally { Object.Destroy(decoy); }
+            yield return null;
         }
 
         [UnityTest]
