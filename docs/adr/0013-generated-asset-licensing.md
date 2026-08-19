@@ -280,10 +280,10 @@ reviewed proposal.
 | `cat-wild-alley` | Meshy | `b1d85cf314bbc295d7ca28af9c41f9c3bddecd81cfb84603a14648b55d5f462c` | `1b9d1a08924982f38bd24ac7fc138331f5f357efc500802cc1cf3d06567a6467` | `3fa010b59c3b5dccbe0eb54453e8d595736cbafa391a9f08effd9d052738479c` | `92f095b97e5c4f03116ac087c6852ebcaeabff611b67051faf2b5f2a96f7260b` |
 | `cat-yellow-longhair` | Meshy | `1530b4a5609aeb62499be627630c735c3fd6fae1368b8f58d21c169e4183a813` | `7916d941b2cf27eb0628e77ccfd95252dc8fe671c11b773ffb89b3c513db39d1` | `36f03503fcbcb918870463222f50d6b17b3c880281ce61f3a15c2cec6963ed3e` | `f11a40229f24436206b06d4eee04246ef72c0f10ff3b7c88034d99757be2a4ec` |
 | `prop-toy-engine` | Meshy | `724bfbccc0087992b4f767037444ad95d24a21733d58923e9f7fbbfaa4b6e4c5` | `c02b9ff1352be0c1c3bdbdb63f95aff951311c00ef7e8179d8e9c94257b7569a` | `f622b390cdf48fccfb382895bef2988df191b523b614e01f03dbd162e052eeaf` | `2f1bd6850cbb836d8c569791ffaa6939c5d5f58a42487381c3954f3fb03aec1f` |
-| `cat-blue-siamese-loaf` | Tripo | `e3015351ec9bda2aebeafcc0ff23f5aa35512af4234c168d79cac750118070e3` | `ce8ea067634f88ee9fc967ea5a0dbc58df890477d3e1dc1905cc3f77a92dcec4` | `cc1ff113257d48994a94cfdff52554236034e3e6455d402de195461b8c8fc236` | `8209d8dcac1e70f31a3070801eeacd3eb3bad19654cb0135ae2c9d7416be4a59` |
+| `cat-blue-siamese-loaf` | Tripo | `257e59ebac613e3260bfd1161b228ec2be4aa7024969b4b1a3fec2366ffe0097` | `93fd18c00ec6a1b369bed7849a0bfdb4c00cba5dfe6b16358995998a86bb1f66` | `9a7b2ef923f923a78466f18d8bf0cfb82140aebbd30ba3e7cddd3f814fd2953c` | `2265679b91ff5feb5ab5ef7a277af6c3abfe1fda43e4dff2eccb5cceacc684e4` |
 | `cat-green-shorthair-sit` | Tripo | `2db4f94d7c59c36c01f1f1d51780b30a417001b5d91a10caf420e5e5c1d6c5b2` | `beb9e95db53e897809194921156c46da974e8519dca3c627b9787b2ca2b40cf5` | `a5791a945bac21cfe55e7e4cdbcd5cd3233c11997cd0f449972a12768cca93f8` | `360ea5e28ca3e09b51fc45c8360ebe04e5b0a6fd38c532f636252bead68439fb` |
 | `cat-red-tabby-sitting` | Tripo | `418eaa31df9b65c975dd85bdac3f04ab73b64827d81248d6248b57c6e2a81b14` | `982049a7b96684a6c9d3723764a51f378a07887439b2a4d3de8d318e7216b575` | `3ea8e01d78cb058223c74f225e89512efc44f74f638c99133d7720675e8655b6` | `f40f32794ef55f2f2e797ea870c63fedd6c2959bd0b0facc7fd50f0f1d21d898` |
-| `cat-yellow-longhair-wave` | Tripo | `8d7190fd24f552f874bf1d733f2870c44a24c27d6b50cfe1e32095f625fcc57c` | `e65414b151fa1dd868e9086c0e274ac61743aef8f8f26bc7bcaa6f49f99c8936` | `4e20de09cee1dcfa383bb708608f03b5f8c1aa78ca4a510a3064f435f5f87a27` | `a084bae339440e74e3b22b0f578fe1a62fe80c15474f4ffd62f717ad6cb9cfb1` |
+| `cat-yellow-longhair-wave` | Tripo | `bf4626c2a41214444a483bde1920c7fd95a06069feca202df860861edb540d64` | `0bedeeb207fcb02277c7b0b1d0bcf8ec8118d4b0cf2e20abbaa3d85b1a64260f` | `a3c4a363b06064ecc5dc03509c36ddd5ab91200a41314a3c674cd91ef4386696` | `9c7bd939fc493caa44d0250531e2137c8c848d5b9bbfc62de320e2dbab16317e` |
 | `prop-depot-shed` | Tripo | `5efb54812e9d03c15c8d7c085a840bfabb09fc3312495c3b85af2ffcf8047aed` | `4816eeb87183c47bd60283af934f43215f129c7dd7183be4455cc04d4192ac83` | `68994c2316e7c0b23252569bfc06cbc1155c29dd41798c8effdbbaba638844b1` | `0e6c7f6a9065e12b0f3da93605914672947a2a662175ed788470c81f5d736ae2` |
 | `prop-desk-clutter` | Tripo | `f42232e108bce9b9b12a5db6b8472412673a0dea9293cd9d896d43874bb4e9d5` | `393aca3bc5af36b19fed58e32dcd4e975542d1beafe85c0fe85a774830946ced` | `d0403b93dc3db30ec3f7e0b825ba7b48f4af7b79094c6b262c7bfa2fb268ec4d` | `e75ba87683bd0f468871608a0c079adf89e46eca86fecda248997b204da713b4` |
 | `prop-station-kiosk` | Tripo | `5fdeeedf04d3b536fc9d3bf3483fb8837b12559557ff16d2ae0c7521c4260b49` | `0d9706c4263a777200122a86c4426ebd23d06ee0370911d35b6f9b548e6c8d4f` | `25053fb73009bf004aeeebab4a861bb664c91935b59c059f21d2fc8c9b6f52cf` | `416098fc269903c81ffbcf40e6f469821bfbc6c045b3ce2018e76fd2d30e9dc3` |
@@ -308,8 +308,45 @@ carry:
    `tripo_public: false`, plus acceptance of Tripo's service-use/display license;
 7. the no-attribution decision, private-custody location class, and signed ADR-0013 proposal head;
    and
-8. the unchanged source, source-sidecar, derivative, and derivative-sidecar SHA-256 values in the
-   approval manifest above.
+8. the source, source-sidecar, derivative, and derivative-sidecar SHA-256 values in the approval
+   manifest above, as they stand at signature. Thirteen of the fifteen assets carry
+   provider-delivered source bytes. Two — `cat-blue-siamese-loaf` and `cat-yellow-longhair-wave` —
+   carry **Cat-Metro-curated** source bytes and are governed by the curated-source clause below.
+
+### Curated sources — two assets no longer carry provider-delivered source bytes
+
+This clause was added on 2026-08-19, after the manifest above was first pinned, because the facts
+changed underneath it. It is recorded rather than silently absorbed.
+
+On 2026-08-17 the human ruled uniform no-plinth. Executing that ruling (PR #98, merged `0387ccb`),
+the curation lane geometry-edited two sources and re-decimated them: `cat-blue-siamese-loaf` lost a
+display base disc, and `cat-yellow-longhair-wave` lost a detached debris component that was not part
+of the cat. **All eight manifest values for those two assets therefore changed**, and the rows above
+were re-pinned on 2026-08-19 to bytes re-measured from disk. The other thirteen assets are untouched.
+
+Two consequences this ADR must not paper over:
+
+1. **The curation lane overwrote the `sha256` field inside those two source sidecars** with the
+   post-edit hash. The bytes Tripo actually delivered are therefore recorded in no sidecar. They
+   survive byte-exact only in gitignored, machine-local backup directories
+   (`unity/Assets/Art/Generated/incoming/curation-backups/`), verified to reproduce this ADR's
+   originally-pinned values. **This ADR's own reproduction anchor for those two assets exists in no
+   ref and has no backup.** Losing that directory makes the curation unreproducible and these two
+   rows unverifiable.
+2. **The §3 release-complete field list has no field distinguishing provider-delivered bytes from
+   Cat-Metro-modified bytes.** For thirteen assets the licensing chain reads "these exact bytes came
+   from an evidenced paid provider task". For these two it reads "these bytes descend from something
+   we assert the provider produced, whose recorded hash we then overwrote".
+
+**OPEN — HUMAN DECISION REQUIRED BEFORE SIGNATURE. This clause deliberately does not decide it.**
+May Cat Metro geometry-edit a provider-delivered source at all and still ship it under this ADR? If
+yes, this ADR needs (a) a sidecar field preserving the provider-delivered hash separately from the
+post-edit hash, and (b) a durable custody requirement for the pre-curation originals, since the
+current single gitignored copy is the whole chain. If no, the two curated assets leave the shipping
+roster and the manifest reverts to thirteen rows. Note the clock on option (a): Meshy's terms delete
+non-Enterprise API output three days after generation, so provider-side re-acquisition is already
+gone — both curated assets are Tripo, so this is a constraint on any *future* curation, not a defect
+in these two.
 
 Task IDs and provider parameters may retain their current provider-specific shapes only in private
 provenance; they may not be dropped into an unstructured note alone. The private receipt may point to
@@ -422,9 +459,9 @@ binary:
 1. an independent review is complete; the human expressly amends frozen-contract assumption A5 from
    private to public-repository reality and signs every proposition below against the exact reviewed
    commit;
-2. the fifteen source, source-sidecar, and derivative hashes are revalidated; the human may reduce
-   and derivative-sidecar hashes against the approval manifest; the human may reduce the shipping
-   roster through visual curation, but adding/replacing/changing a model requires an amendment;
+2. the fifteen source, source-sidecar, derivative, and derivative-sidecar hashes are revalidated
+   against the approval manifest; the human may reduce the shipping roster through visual curation,
+   but adding/replacing/changing a model requires an amendment;
 3. release-complete sidecars/receipts satisfy §3, including task-linked paid evidence, provider
    visibility/training state, input-rights attestation, reproducible terms evidence, and the signed
    proposal head;
