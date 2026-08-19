@@ -274,23 +274,24 @@ namespace CatMetro.Presentation.Screens
                 _districtCats[i] = marker;
 
                 GameObject model = null;
-                int triangles = 0;
-                float displayScale = 1f;
+                var placement = new CatModelCatalog.Placement { DisplayScale = 1f };
                 if (_catalog != null
                     && placed < CatModelManifestMap.HomeInstanceLimit)
-                    model = _catalog.Acquire(manifestId, marker.transform,
-                        out triangles, out displayScale);
+                    model = _catalog.Acquire(manifestId, marker.transform, out placement);
 
                 if (model == null)
                 {
                     marker.RecordFallback(manifestId);
                     continue;
                 }
-                // PRE-multiplied, never assigned — the prefab's authored orientation survives
-                // and this only adds the district's presentation turn on top of it.
-                model.transform.localRotation = Quaternion.Euler(0f, DistrictCatYaw, 0f)
+                // The catalog's per-asset facing correction FIRST, then the district's own
+                // presentation turn — both plain yaws, so they simply add. A parked district is
+                // the player's first sight of a cat; all three must meet their eye, and the
+                // generated set does not agree on a forward axis on its own.
+                model.transform.localRotation =
+                    Quaternion.Euler(0f, DistrictCatYaw + placement.FacingYaw, 0f)
                     * model.transform.localRotation;
-                marker.RecordModel(manifestId, model, triangles, displayScale);
+                marker.RecordModel(manifestId, model, placement);
                 placed++;
                 // A successful replacement disables ONLY this district's own fallback paint.
                 _districtPaint[i].enabled = false;

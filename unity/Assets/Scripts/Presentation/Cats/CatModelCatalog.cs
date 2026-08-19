@@ -43,6 +43,15 @@ namespace CatMetro.Presentation.Cats
             // refuse a later entry, but it can never put a wrong cat on screen. Author it from
             // the decimation metrics record.
             public long SourceBytes;
+            // The asset's own forward axis, corrected in DATA. The generated set does not agree
+            // on one: the conductor and the standing board cats face opposite the two sitting
+            // Home poses. Leaving that to each asset's authored rotation produced a Home where
+            // one cat greeted the player and two showed their backs — and on this project mixed
+            // reads as a bug, the same way the plinth ruling was decided. This is a presentation
+            // constant, not a geometric assertion: nothing here measures the model. Degrees of
+            // yaw added before the surface's own presentation turn; 0 means "already correct".
+            public float FacingYaw;
+
             // AC2's "readable silhouettes" limb needs one authored knob. The generated set does
             // NOT share a size convention — the board cats stand ~1.9 units tall while two of
             // the three Home cats are normalised to ~1.0 — and the contract forbids deriving
@@ -50,6 +59,15 @@ namespace CatMetro.Presentation.Cats
             // beside the reference, exactly like the reference itself. 0 means "not authored"
             // and is treated as 1; a serialized float has no other way to spell "unset".
             public float DisplayScale;
+        }
+
+        // What a surface needs to place a cat once it has one. Grouped rather than piled up as
+        // out-parameters so adding the next presentation constant does not reshape every caller.
+        public struct Placement
+        {
+            public int TriangleCount;
+            public float DisplayScale;
+            public float FacingYaw;
         }
 
         [SerializeField] private Entry[] _authored;
@@ -190,6 +208,7 @@ namespace CatMetro.Presentation.Cats
                 TriangleCount = triangleCount,
                 SourceBytes = sourceBytes,
                 DisplayScale = 1f,
+                FacingYaw = 0f,
             });
         }
 
@@ -203,11 +222,9 @@ namespace CatMetro.Presentation.Cats
         // instruction to keep the slot's existing visual, and it is never an error.
         // Instantiating from a prefab reference SHARES that prefab's meshes and materials; the
         // caller must not write to `.material` on the result, which would clone them.
-        public GameObject Acquire(string manifestId, Transform parent,
-            out int triangleCount, out float displayScale)
+        public GameObject Acquire(string manifestId, Transform parent, out Placement placement)
         {
-            triangleCount = 0;
-            displayScale = 1f;
+            placement = new Placement { DisplayScale = 1f };
             EnsureIndex();
             if (string.IsNullOrEmpty(manifestId)) return null;
             Entry entry;
@@ -221,8 +238,12 @@ namespace CatMetro.Presentation.Cats
             instance.name = CatModelInstance.HolderName + ":" + manifestId;
             instance.SetActive(true);
             _live.Add(new Live { Instance = instance, Triangles = entry.TriangleCount });
-            triangleCount = entry.TriangleCount;
-            displayScale = SafeDisplayScale(entry);
+            placement = new Placement
+            {
+                TriangleCount = entry.TriangleCount,
+                DisplayScale = SafeDisplayScale(entry),
+                FacingYaw = entry.FacingYaw,
+            };
             return instance;
         }
 

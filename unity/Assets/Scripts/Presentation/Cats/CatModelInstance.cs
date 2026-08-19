@@ -31,6 +31,10 @@ namespace CatMetro.Presentation.Cats
         // without asking the catalog again.
         public float DisplayScale { get; private set; }
 
+        // The asset's authored facing correction, in degrees of yaw. Kept for read-back and
+        // diagnostics; it is applied once at spawn, not re-applied per layout.
+        public float FacingYaw { get; private set; }
+
         // The spawned instance, or null on fallback. Held so a slot whose mapping changes can
         // hand the old instance back to the catalog instead of leaking it.
         public GameObject Model { get; private set; }
@@ -69,17 +73,19 @@ namespace CatMetro.Presentation.Cats
             UsesFallback = true;
             TriangleCount = 0;
             DisplayScale = 1f;
+            FacingYaw = 0f;
             Model = null;
             transform.localScale = Vector3.one;
         }
 
         internal void RecordModel(string manifestId, GameObject model,
-            int triangleCount, float displayScale)
+            CatModelCatalog.Placement placement)
         {
             ManifestId = manifestId;
             UsesFallback = false;
-            TriangleCount = triangleCount;
-            DisplayScale = displayScale;
+            TriangleCount = placement.TriangleCount;
+            DisplayScale = placement.DisplayScale;
+            FacingYaw = placement.FacingYaw;
             Model = model;
         }
     }

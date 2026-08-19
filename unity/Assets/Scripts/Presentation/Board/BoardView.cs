@@ -364,25 +364,24 @@ namespace CatMetro.Presentation.Board
 
             if (_catalog != null && BoardModelCount() < CatModelManifestMap.BoardInstanceLimit)
             {
-                int triangles;
-                float displayScale;
-                var model = _catalog.Acquire(manifestId, marker.transform,
-                    out triangles, out displayScale);
+                CatModelCatalog.Placement placement;
+                var model = _catalog.Acquire(manifestId, marker.transform, out placement);
                 if (model != null)
                 {
                     // The squash lives on the UNROTATED holder so it stays aligned with the view
                     // axis; the yaw lives on the model. Putting both on one transform would tilt
                     // the flattening axis and skew the silhouette.
-                    float side = CatHolderScale * displayScale;
+                    float side = CatHolderScale * placement.DisplayScale;
                     marker.transform.localScale =
                         new Vector3(side, side, side * CatDepthSquash);
                     model.transform.localPosition = CatModelOffset;
-                    // PRE-multiplied, never assigned: the prefab's own authored orientation is
-                    // the asset's business (a model may be authored facing any way), and this
-                    // only adds the board's presentation turn on top of it.
-                    model.transform.localRotation = Quaternion.Euler(0f, CatYawDegrees, 0f)
+                    // The catalog's per-asset facing correction FIRST, then the board's own
+                    // presentation turn — both plain yaws, so they simply add. PRE-multiplied
+                    // rather than assigned so whatever the prefab is authored with survives.
+                    model.transform.localRotation =
+                        Quaternion.Euler(0f, CatYawDegrees + placement.FacingYaw, 0f)
                         * model.transform.localRotation;
-                    marker.RecordModel(manifestId, model, triangles, displayScale);
+                    marker.RecordModel(manifestId, model, placement);
                     capsule.enabled = false;
                     return;
                 }
