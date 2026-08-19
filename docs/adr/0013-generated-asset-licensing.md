@@ -16,8 +16,14 @@ not the high-density sources:
 
 | Set | Count | Providers/categories | Bytes |
 |---|---:|---|---:|
-| source GLBs | 15 | Meshy 7 · Tripo 8 | 855,215,420 (815.60 MiB) |
-| decimated GLBs | 15 | 10 cats · 5 props | 24,717,404 (23.57 MiB / 24.72 MB) |
+| source GLBs | 15 | Meshy 7 · Tripo 8 | 833,401,188 (794.79 MiB) |
+| decimated GLBs | 15 | 10 cats · 5 props | 24,696,932 (23.55 MiB / 24.70 MB) |
+
+These totals were re-measured from disk on 2026-08-19 and are **post-curation**. They supersede the
+pre-curation figures 855,215,420 (815.60 MiB) and 24,717,404 (23.57 MiB) carried by earlier revisions
+of this ADR; the entire difference is attributable to the two curated assets described under
+"Curated sources" below. Substituting the pre-curation originals from the custody backups reproduces
+the superseded figures exactly, which is what identifies them as pre-curation rather than erroneous.
 
 The exact candidate roster is:
 
@@ -318,11 +324,37 @@ carry:
 This clause was added on 2026-08-19, after the manifest above was first pinned, because the facts
 changed underneath it. It is recorded rather than silently absorbed.
 
-On 2026-08-17 the human ruled uniform no-plinth. Executing that ruling (PR #98, merged `0387ccb`),
-the curation lane geometry-edited two sources and re-decimated them: `cat-blue-siamese-loaf` lost a
-display base disc, and `cat-yellow-longhair-wave` lost a detached debris component that was not part
-of the cat. **All eight manifest values for those two assets therefore changed**, and the rows above
-were re-pinned on 2026-08-19 to bytes re-measured from disk. The other thirteen assets are untouched.
+On 2026-08-17 a uniform no-plinth ruling was **relayed by the orchestrator session as the human's
+in-session decision**. That relay is H-1-class evidence under this repository's convention —
+authoritative for the lane's execution, but **not independent human attestation**: the same session
+relayed the ruling, wrote this clause, and merged the PR that executed it. No human-authored commit
+or comment records the ruling. **The human must confirm or correct it before signature** (see the
+OPEN decision below), because it is the factual predicate for the only irreversible act here.
+
+Executing that ruling (PR #98, merged `0387ccb`), the curation lane geometry-edited two sources and
+re-decimated them. **The scale of both edits is larger than a first reading suggests, and is stated
+here in measured numbers rather than description.** All figures below were re-measured from the
+provider-original backups and the current files on 2026-08-19.
+
+**`cat-blue-siamese-loaf` — the more invasive edit.** The provider source was a **single connected
+component** both before (1,427,775 triangles) and after (773,061). The display base was **fused to
+the body, not detached**, so its removal was a cut through connected mesh: **654,714 triangles
+removed, 45.9% of the provider-delivered geometry**, with the bounding box contracting on all three
+axes (Y from −0.4486 to −0.3768; X from −0.4174..0.4174 to −0.3813..0.2394).
+
+**`cat-yellow-longhair-wave` — two components removed across two passes, not one.** The provider
+source had **three** connected components: the cat (1,383,894 tris, 92.62%), a component at minimum
+Y beneath the feet (71,282 tris, 4.77%) whose own curation sidecar note describes it as a *foot*
+fragment, and a component floating at body height (38,914 tris, 2.60%). Pass 1 (2026-08-17) removed
+the first; pass 2 (2026-08-18) removed the second, under a separate frozen contract, after the
+orchestrator observed the survivor rendering as a floating blob. **Total removed: 110,196 triangles,
+7.375% of provider geometry**, across two dates and producing **three** distinct source byte states —
+an intermediate state existed that this ADR does not pin and never shipped. The rule finally applied
+was categorical (keep the unique largest component, remove every other), not a judgement that any
+particular component was "not the cat".
+
+**All eight manifest values for those two assets therefore changed**, and the rows above were
+re-pinned on 2026-08-19 to bytes re-measured from disk. The other thirteen assets are untouched.
 
 Two consequences this ADR must not paper over:
 
@@ -339,11 +371,22 @@ Two consequences this ADR must not paper over:
    we assert the provider produced, whose recorded hash we then overwrote".
 
 **OPEN — HUMAN DECISION REQUIRED BEFORE SIGNATURE. This clause deliberately does not decide it.**
-May Cat Metro geometry-edit a provider-delivered source at all and still ship it under this ADR? If
-yes, this ADR needs (a) a sidecar field preserving the provider-delivered hash separately from the
-post-edit hash, and (b) a durable custody requirement for the pre-curation originals, since the
-current single gitignored copy is the whole chain. If no, the two curated assets leave the shipping
-roster and the manifest reverts to thirteen rows. Note the clock on option (a): Meshy's terms delete
+May Cat Metro geometry-edit a provider-delivered source at all and still ship it under this ADR?
+Price the answer against the measured numbers above, not against the word "curation": the loaf lost
+**45.9%** of its provider geometry through a cut in connected mesh, and the wave lost **7.375%**
+across two components and two passes.
+
+If **yes**, this ADR needs three things, not two: (a) a sidecar field preserving the
+provider-delivered hash separately from the post-edit hash; (b) a durable custody requirement for the
+pre-curation originals, since a single gitignored machine-local directory is currently the entire
+reproduction chain; and (c) **an amendment to §1's allowed-modification list**, which enumerates
+decimation, scaling, recoloring, material, animation, prefab and composition work and does **not**
+authorise deleting source geometry — the edits described above are outside it as written.
+
+If **no**, the two curated assets leave the shipping roster and the manifest reverts to thirteen rows.
+
+A second, separable question rides with it: **was the uniform no-plinth ruling actually made, in the
+terms executed?** Only the human can answer that; the record is an agent relay (see above). Note the clock on option (a): Meshy's terms delete
 non-Enterprise API output three days after generation, so provider-side re-acquisition is already
 gone — both curated assets are Tripo, so this is a constraint on any *future* curation, not a defect
 in these two.
@@ -384,7 +427,7 @@ a courtesy-credit decision.
 
 ## Alternatives seriously considered
 
-- **Commit the 23.57 MiB derivative set to the public repository.** This would give clean checkouts a
+- **Commit the 23.55 MiB derivative set to the public repository.** This would give clean checkouts a
   simple, reproducible build and both providers appear to permit paid-output distribution. It lost
   because it intentionally republishes the reusable raw models, may subject them to repository-level
   outbound expectations, destroys practical exclusivity, and repeats the custody class that the
@@ -398,7 +441,7 @@ a courtesy-credit decision.
   credits, network availability, and owner credentials would enter the trusted release path; the
   original hash-pinned output might be impossible to reproduce.
 - **Ship the high-density sources.** This avoids derivative lineage questions. It lost on the
-  approved geometry/performance boundary and would add roughly 815.60 MiB before Unity processing.
+  approved geometry/performance boundary and would add roughly 794.79 MiB before Unity processing.
 - **Omit generated assets and retain greybox/Polyfork-only art.** This has the smallest generated
   licensing surface and remains the fail-safe if the human rejects either provider, custody, or
   provenance condition. It lost as the proposal because the explicit task is to license the curated
