@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using CatMetro.Presentation.Hud;
+using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Input;
 using CatMetro.Presentation.Theme;
 
@@ -61,6 +62,31 @@ namespace CatMetro.Presentation.Screens
         private RectTransform _ring;
         private RectTransform _dailyPin;
         private TMP_Text _dailyLabel;
+        // CM-CATS-WIRE: the three non-interactive parked districts, their existing silhouette
+        // paint, and one identity holder each. The pins are NOT here — they are excluded by the
+        // contract's "Exact surfaces" and nothing below touches them.
+        private RectTransform[] _districts;
+        private Image[] _districtPaint;
+        private CatModelInstance[] _districtCats;
+        private CatModelCatalog _catalog;
+        private Vector2 _districtSizeLaidOut;
+        // Placement CONSTANTS derived from the district's own UI rect, never from the model's
+        // geometry (the contract forbids positioning against a model's base or bounds). One
+        // authored unit reads as this fraction of the district's shorter side; the per-entry
+        // DisplayScale on the catalog carries whatever the individual asset needs on top.
+        private const float DistrictCatFill = 0.92f;
+        // The Home canvas is ScreenSpaceCamera on an ORTHOGRAPHIC camera, so its plane sits at
+        // camera z + 1 with only 0.7 world units of room before the near plane, and every UI
+        // Image is drawn AFTER the opaque pass with ZTest LEqual. A cat left on the canvas plane
+        // is therefore repainted by Home's own full-bleed background and never seen. These two
+        // constants put it strictly in front of that plane and flatten its depth so the whole
+        // model fits in the gap — free under an orthographic camera with unlit models, and both
+        // expressed as fractions of the district rect so they hold at any resolution.
+        private const float DistrictCatLift = 0.12f;
+        private const float DistrictCatDepthSquash = 0.06f;
+        // A slight turn reads as a cat far better than a dead-on view.
+        private const float DistrictCatYaw = -20f;
+
         private Rect _pinRectPx;
         private Rect _dailyPinRectPx;
         private float _phase;
@@ -129,12 +155,20 @@ namespace CatMetro.Presentation.Screens
                 Strings.UiStrings.Get("home.title"), 48f, Palette.InkNavy); // key-only, never a literal
 
             // Parked-district silhouettes: scenery, not buttons (S-01 — curiosity, no locks).
-            MakeSilhouette(go.transform, "ParkedDistrictA",
-                new Vector2(0.08f, 0.55f), new Vector2(0.46f, 0.72f));
-            MakeSilhouette(go.transform, "ParkedDistrictB",
-                new Vector2(0.54f, 0.60f), new Vector2(0.92f, 0.78f));
-            MakeSilhouette(go.transform, "ParkedDistrictC",
-                new Vector2(0.16f, 0.32f), new Vector2(0.62f, 0.48f));
+            view._districtPaint = new[]
+            {
+                MakeSilhouette(go.transform, CatModelManifestMap.DistrictA,
+                    new Vector2(0.08f, 0.55f), new Vector2(0.46f, 0.72f)),
+                MakeSilhouette(go.transform, CatModelManifestMap.DistrictB,
+                    new Vector2(0.54f, 0.60f), new Vector2(0.92f, 0.78f)),
+                MakeSilhouette(go.transform, CatModelManifestMap.DistrictC,
+                    new Vector2(0.16f, 0.32f), new Vector2(0.62f, 0.48f)),
+            };
+            // CM-CATS-WIRE: the district silhouettes are the Home half of the cat wiring. A
+            // resolved district shows its cat and switches its own paint off; an unresolved one
+            // keeps the paint it has always had. Partial is a first-class outcome — one cat and
+            // two silhouettes is a correct Home, not a half-failed one.
+            view.ApplyDistrictCats();
 
             // The raised-ring shape twin sits BEHIND the pin (sibling order = draw order).
             // BEAUTIFUL-MENU: the ring is the single warm CTA glow (ticket orange); the pin
@@ -199,7 +233,7 @@ namespace CatMetro.Presentation.Screens
             return img;
         }
 
-        private static void MakeSilhouette(Transform parent, string name,
+        private static Image MakeSilhouette(Transform parent, string name,
             Vector2 anchorMin, Vector2 anchorMax)
         {
             var go = new GameObject(name);
@@ -219,6 +253,78 @@ namespace CatMetro.Presentation.Screens
             // still far below the L001 pin's full-strength navy, so the single CTA keeps its
             // visual primacy (S-01's "one pulsing affordance" law).
             img.color = Palette.WithAlpha(Palette.DepotNavy, 0.44f);
+            return img;
+        }
+
+        // Resolved ONCE, from the scene root this screen already shares with the board view.
+        // Null is the ordinary case (A4): the generated derivatives are local ignored files, so
+        // a clean clone and a CI runner both keep the existing silhouettes. No throw, no log.
+        private void ApplyDistrictCats()
+        {
+            _districts = new RectTransform[_districtPaint.Length];
+            _districtCats = new CatModelInstance[_districtPaint.Length];
+            _catalog = CatModelCatalog.FindFor(transform);
+            int placed = 0;
+            for (int i = 0; i < _districtPaint.Length; i++)
+            {
+                var district = (RectTransform)_districtPaint[i].transform;
+                _districts[i] = district;
+                string manifestId = CatModelManifestMap.HomeManifestId(district.name);
+                var marker = CatModelInstance.CreateHolder(district, true);
+                _districtCats[i] = marker;
+
+                GameObject model = null;
+                var placement = new CatModelCatalog.Placement { DisplayScale = 1f };
+                if (_catalog != null
+                    && placed < CatModelManifestMap.HomeInstanceLimit)
+                    model = _catalog.Acquire(manifestId, marker.transform, out placement);
+
+                if (model == null)
+                {
+                    marker.RecordFallback(manifestId);
+                    continue;
+                }
+                // The catalog's per-asset facing correction FIRST, then the district's own
+                // presentation turn — both plain yaws, so they simply add. A parked district is
+                // the player's first sight of a cat; all three must meet their eye, and the
+                // generated set does not agree on a forward axis on its own.
+                model.transform.localRotation =
+                    Quaternion.Euler(0f, DistrictCatYaw + placement.FacingYaw, 0f)
+                    * model.transform.localRotation;
+                marker.RecordModel(manifestId, model, placement);
+                placed++;
+                // A successful replacement disables ONLY this district's own fallback paint.
+                _districtPaint[i].enabled = false;
+            }
+        }
+
+        // Sizing runs off the district's own UI rect, never off the model's geometry. A
+        // fractional-anchor rect is (0,0) until the canvas has laid out at least once, so a fit
+        // computed in Create() would be a resolution-dependent third invisibility mode; this
+        // runs live, like LayoutPin()'s Screen read, and re-applies only when the measured size
+        // actually changes — no per-frame work once settled.
+        //
+        // Scale and depth both go on the UNROTATED holder: the squash must stay aligned with the
+        // view axis, and the model carries the yaw. The lift is applied in canvas units on the
+        // holder, so it is unaffected by the fit scale.
+        private void LayoutDistrictCats()
+        {
+            if (_districtCats == null || _districts == null || _districts.Length == 0) return;
+            var size = _districts[0].rect.size;
+            if (size.x <= 0f || size.y <= 0f) return;
+            if (size == _districtSizeLaidOut) return;
+            _districtSizeLaidOut = size;
+            for (int i = 0; i < _districtCats.Length; i++)
+            {
+                var marker = _districtCats[i];
+                if (marker == null || marker.Model == null) continue;
+                var rect = _districts[i].rect;
+                float shortSide = Mathf.Min(rect.width, rect.height);
+                float side = shortSide * DistrictCatFill * marker.DisplayScale;
+                var holder = marker.transform;
+                holder.localScale = new Vector3(side, side, side * DistrictCatDepthSquash);
+                holder.localPosition = new Vector3(0f, 0f, -shortSide * DistrictCatLift);
+            }
         }
 
         private static RectTransform MakeChip(Transform parent, string name, Color color)
@@ -244,6 +350,7 @@ namespace CatMetro.Presentation.Screens
             _shown = true;
             gameObject.SetActive(true);
             LayoutPin();
+            LayoutDistrictCats();
             RegisterPin();
             RegisterDailyPin();
         }
@@ -260,6 +367,14 @@ namespace CatMetro.Presentation.Screens
         {
             UnregisterPin(); // R1-F3 lifetime law
             UnregisterDailyPin();
+            // The same budget law the board obeys: a destroyed screen returns its cats so the
+            // catalog's ceiling counts what is actually on screen.
+            if (_catalog == null || _districtCats == null) return;
+            foreach (var marker in _districtCats)
+            {
+                if (marker == null || marker.Model == null) continue;
+                _catalog.Release(marker.Model);
+            }
         }
 
         // CM-UX-07 W-1 (R2-3, audit M-3): mirrors OnDestroy — a deactivated-but-not-destroyed
@@ -364,6 +479,7 @@ namespace CatMetro.Presentation.Screens
         // never enters the sim (P-6).
         private void Update()
         {
+            LayoutDistrictCats();
             if (_pin == null) return;
             float scale = 1f;
             bool off = _motionOff != null && _motionOff();
