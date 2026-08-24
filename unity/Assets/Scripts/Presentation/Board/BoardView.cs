@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using CatMetro.Application.Session;
 using CatMetro.Content;
+using CatMetro.Presentation.Props;
 using UnityEngine;
 
 namespace CatMetro.Presentation.Board
@@ -51,14 +52,31 @@ namespace CatMetro.Presentation.Board
         public Vector3 SwitchWorldPos(int switchIndex) =>
             transform.TransformPoint(_nodePos[_switchNode[switchIndex]]); // F11: world, not local
 
-        public static BoardView Build(ImportedLevel level, Transform parent, GameSession session)
+        public static BoardView Build(ImportedLevel level, Transform parent, GameSession session,
+            PropModelCatalog propCatalog = null)
         {
             var go = new GameObject("Board");
             go.transform.SetParent(parent, false);
             var view = go.AddComponent<BoardView>();
             view._session = session;
             view.BuildElements(level);
+            BoardPropDecorator.Decorate(level, view.transform,
+                propCatalog ?? PropModelCatalog.LoadResources(), view.PropAnchorLocalPosition);
             return view;
+        }
+
+        // The prop lane resolves through NodeWorldPos so the scene lane's visual-node transform
+        // remains the single source of truth after its isometric/tabletop pass lands.
+        private Vector3 PropAnchorLocalPosition(string nodeId)
+        {
+            for (int i = 0; i < _nodeIds.Length; i++)
+                if (_nodeIds[i] == nodeId)
+                {
+                    var position = transform.InverseTransformPoint(NodeWorldPos(i));
+                    position.z = BoardPropDecorator.ResolveContactPlaneLocalZ(transform);
+                    return position;
+                }
+            throw new System.ArgumentException("unknown prop anchor " + nodeId);
         }
 
         private void BuildElements(ImportedLevel level)
