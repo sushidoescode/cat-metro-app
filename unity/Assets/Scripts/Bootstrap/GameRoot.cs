@@ -237,13 +237,13 @@ namespace CatMetro.Bootstrap
             var camGo = new GameObject("Camera");
             camGo.transform.SetParent(transform, false);
             Cam = camGo.AddComponent<Camera>();
-            Cam.orthographic = true;
-            Cam.orthographicSize = 7f;
-            camGo.transform.position = new Vector3(3f, 5.5f, -10f);
-            CauseCam = camGo.AddComponent<CauseCameraController>();
-            CauseCam.Wire(Cam); // captures the S-02 rest pose (review B5)
-
             View = BoardView.Build(level, transform, Session);
+            // LOOK steps 4-5: the camera stays axis-aligned so the existing screen-space
+            // input/failure geometry remains exact; the complete board diorama is tilted as
+            // one presentation space, then framed from its actual renderer bounds.
+            BoardSceneLook.Apply(transform, Cam, View);
+            CauseCam = camGo.AddComponent<CauseCameraController>();
+            CauseCam.Wire(Cam, -View.transform.forward); // captures the fitted play pose
             // CM-UX-07 criterion 3 (#36 F1/F5): a Wire-only binding dies at first Retry, since
             // Retry rebuilds View — bound again there too.
             View.MotionOffSource = () => MotionOff;
@@ -454,12 +454,14 @@ namespace CatMetro.Bootstrap
             Session = new GameSession(level);
             if (View != null) Destroy(View.gameObject);
             View = BoardView.Build(level, transform, Session);
+            BoardSceneLook.Apply(transform, Cam, View);
+            CauseCam.CapturePlayPose(-View.transform.forward);
             View.MotionOffSource = () => MotionOff; // criterion 3: rebind on the REBUILT view
             Input.Wire(Session, View, Cam);
             if (Preview != null) Destroy(Preview.gameObject);
             Preview = WavePreviewStrip.Create(transform, Session, Cam);
             Banner.Hide();
-            CauseCam.Reset(); // clears the ring AND restores the rest pose (review B5)
+            CauseCam.Reset(); // clears the ring AND restores this level's fitted play pose
             _halted = false;
             ScreenState = "Playing";
         }

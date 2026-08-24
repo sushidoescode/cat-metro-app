@@ -60,8 +60,10 @@ namespace CatMetro.Tests.PlayMode
             foreach (var n in dto.Nodes.ToArray())
             {
                 var view = elements.Single(e => e.Id == n.Id && e.Kind != "edge" && e.Kind != "switch");
-                Assert.That(view.transform.position.x, Is.EqualTo(n.X).Within(0.001));
-                Assert.That(view.transform.position.y, Is.EqualTo(n.Y).Within(0.001));
+                var authoredPosition = _root.View.transform.InverseTransformPoint(
+                    view.transform.position);
+                Assert.That(authoredPosition.x, Is.EqualTo(n.X).Within(0.001));
+                Assert.That(authoredPosition.y, Is.EqualTo(n.Y).Within(0.001));
             }
         }
 

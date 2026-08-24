@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using CatMetro.Application.Session;
 using CatMetro.Content;
 using CatMetro.Presentation.Props;
+using CatMetro.Presentation.Theme;
 using UnityEngine;
 
 namespace CatMetro.Presentation.Board
@@ -49,6 +50,23 @@ namespace CatMetro.Presentation.Board
         public int SwitchCount => _switchNode.Length;
         public string NodeId(int nodeIndex) => _nodeIds[nodeIndex];
         public Vector3 NodeWorldPos(int nodeIndex) => transform.TransformPoint(_nodePos[nodeIndex]);
+        public Vector3 PresentationCenterLocal
+        {
+            get
+            {
+                if (_nodePos == null || _nodePos.Length == 0) return Vector3.zero;
+                float minX = _nodePos[0].x, maxX = _nodePos[0].x;
+                float minY = _nodePos[0].y, maxY = _nodePos[0].y;
+                for (int i = 1; i < _nodePos.Length; i++)
+                {
+                    minX = Mathf.Min(minX, _nodePos[i].x);
+                    maxX = Mathf.Max(maxX, _nodePos[i].x);
+                    minY = Mathf.Min(minY, _nodePos[i].y);
+                    maxY = Mathf.Max(maxY, _nodePos[i].y);
+                }
+                return new Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 0f);
+            }
+        }
         public Vector3 SwitchWorldPos(int switchIndex) =>
             transform.TransformPoint(_nodePos[_switchNode[switchIndex]]); // F11: world, not local
 
@@ -60,6 +78,7 @@ namespace CatMetro.Presentation.Board
             var view = go.AddComponent<BoardView>();
             view._session = session;
             view.BuildElements(level);
+            BoardSurface.Build(level, view.transform);
             BoardPropDecorator.Decorate(level, view.transform,
                 propCatalog ?? PropModelCatalog.LoadResources(), view.PropAnchorLocalPosition);
             return view;
@@ -315,10 +334,10 @@ namespace CatMetro.Presentation.Board
         {
             switch (name)
             {
-                case "red": return new Color(0.85f, 0.2f, 0.2f);
-                case "blue": return new Color(0.2f, 0.4f, 0.9f);
-                case "yellow": return new Color(0.9f, 0.8f, 0.2f);
-                case "green": return new Color(0.2f, 0.75f, 0.3f);
+                case "red": return Palette.SignalRed;
+                case "blue": return Palette.HarborBlue;
+                case "yellow": return Palette.TabbyYellow;
+                case "green": return Palette.GardenGreen;
                 default: return Color.magenta;
             }
         }
@@ -327,10 +346,10 @@ namespace CatMetro.Presentation.Board
         {
             switch (code)
             {
-                case CatMetro.Domain.CatColor.Red: return new Color(0.85f, 0.2f, 0.2f);
-                case CatMetro.Domain.CatColor.Blue: return new Color(0.2f, 0.4f, 0.9f);
-                case CatMetro.Domain.CatColor.Yellow: return new Color(0.9f, 0.8f, 0.2f);
-                case CatMetro.Domain.CatColor.Green: return new Color(0.2f, 0.75f, 0.3f);
+                case CatMetro.Domain.CatColor.Red: return Palette.SignalRed;
+                case CatMetro.Domain.CatColor.Blue: return Palette.HarborBlue;
+                case CatMetro.Domain.CatColor.Yellow: return Palette.TabbyYellow;
+                case CatMetro.Domain.CatColor.Green: return Palette.GardenGreen;
                 default: return Color.magenta;
             }
         }
