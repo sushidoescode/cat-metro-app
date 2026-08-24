@@ -310,7 +310,7 @@ namespace CatMetro.Presentation.Board
                     // "train" inventory id; everything under it is decoration (no
                     // BoardElementId, no collider), and its localPosition keeps the capsule's
                     // exact head-anchor contract on the shared spline.
-                    consist = ToyTrainView.Create(transform, "train:" + t);
+                    consist = ToyTrainView.Create(transform, "train:" + t, _edgeFrom, _edgeTo);
                     var id = consist.gameObject.AddComponent<BoardElementId>();
                     id.Id = "train-" + t; id.Kind = "train";
                     _trains[t] = consist;
@@ -325,7 +325,7 @@ namespace CatMetro.Presentation.Board
                 }
                 else
                 {
-                    consist.PlaceAtNode(_trackPaths, _nodePos[trains[t].NodeId]);
+                    consist.PlaceAtNode(_trackPaths, trains[t].NodeId, _nodePos[trains[t].NodeId]);
                 }
             }
         }

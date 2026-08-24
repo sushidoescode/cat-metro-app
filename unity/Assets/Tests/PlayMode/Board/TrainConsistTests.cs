@@ -108,6 +108,38 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(Vector2.Distance(actual, graph.Path(1).Evaluate(0f)),
                 Is.GreaterThan(0.3f),
                 "no teleport-bunch: the carriage must NOT clamp to the new edge's start");
+
+            // Review finding 2: at 60fps the head renders MANY frames on the new edge; a
+            // same-edge frame must not clobber the previous-edge memory (a mutant that
+            // records history unconditionally would put the carriage AHEAD of the engine
+            // here, at the far end of the edge the head just entered).
+            _view.UpdateFrom(_session);
+            Assert.That(Vector3.Distance(CarriageBoardLocal(), expected), Is.LessThan(0.001f),
+                "a repeated frame on the new edge still trails on the arrival edge");
+        }
+
+        [UnityTest]
+        public IEnumerator CatchUpFrameSkippingAnEdge_ClampsInsteadOfTrailingForeignTrack()
+        {
+            yield return BuildBoard();
+            PlaceOnEdge(edge: 1, progressTicks: 11); // deep into E2, heading for RED
+            _view.UpdateFrom(_session);
+            // A pause/resume catch-up frame: the sim ran many ticks and the head reappears
+            // on E3 — an edge E2 does not feed (E2 ends at RED, E3 starts at J1).
+            PlaceOnEdge(edge: 2, progressTicks: 0);
+            _view.UpdateFrom(_session);
+
+            var graph = BuildTrackGraph();
+            Vector3 actual = CarriageBoardLocal();
+            Assert.That(Vector3.Distance(actual, graph.Path(2).Evaluate(0f) + HeadLift),
+                Is.LessThan(0.001f),
+                "non-adjacent history is discarded through the BoardView seam — the carriage " +
+                "takes the spawn clamp at the new edge's start");
+            TrackSpline foreign = graph.Path(1);
+            Assert.That(Vector2.Distance(actual, foreign.EvaluateDistanceFraction(
+                    (foreign.Length - CarriageOffset) / foreign.Length)),
+                Is.GreaterThan(1f),
+                "and it must be nowhere near the foreign edge's end the stale memory named");
         }
 
         [UnityTest]

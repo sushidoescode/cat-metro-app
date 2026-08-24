@@ -7,7 +7,7 @@ namespace CatMetro.Tests.EditMode.Presentation
     // LOOK step 6: the consist's edge-boundary law, pinned as pure math. The head rides the
     // current edge; a trailing vehicle sits `offset` arc-length units behind it, continuing
     // onto the ONE remembered previous edge when the offset crosses the edge start, and
-    // clamping (loudly, via Sample.Clamped) when it falls off known history entirely.
+    // clamping (flagged via Sample.Clamped) when it falls off known history entirely.
     public sealed class TrainConsistLayoutTests
     {
         [Test]

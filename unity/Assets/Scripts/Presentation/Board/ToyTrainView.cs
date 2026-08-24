@@ -29,11 +29,10 @@ namespace CatMetro.Presentation.Board
         // the 0.5 track gauge (ToyTrackMeshBuilder.RailOffset * 2).
         public const float CarriageOffset = 0.48f;
 
-        // The pinned head anchor lift off the board plane (the old capsule's -0.2), and the
-        // rail-top plane measured from that anchor (rail crowns sit at board z +0.035, so
-        // +0.235 in anchor-local z — +z points down into the table).
+        // The pinned head anchor lift off the board plane (the old capsule's -0.2). Part
+        // z-offsets below are anchor-local: +z points down into the table, and the rail
+        // crowns (board z +0.035) sit at +0.235, which is where the chassis parts bottom out.
         private const float HeadAnchorZ = -0.2f;
-        private const float RailTopZ = 0.235f;
 
         private static Material _navyMaterial;
         private static Material _creamMaterial;
@@ -46,6 +45,11 @@ namespace CatMetro.Presentation.Board
         private Transform _carriage;
         private MeshRenderer[] _catRenderers; // head + ears — tinted per cat via property block
 
+        // The authored graph's edge endpoints (BoardView's own arrays) — the authority that
+        // decides whether remembered history is a path the train could actually have rolled.
+        private int[] _edgeFrom;
+        private int[] _edgeTo;
+
         // Presentation-side memory the sim doesn't carry: the edge the head is (or was last)
         // on, one edge of history behind it, and the last applied heading for parked frames.
         private short _seenTrainId;
@@ -55,11 +59,14 @@ namespace CatMetro.Presentation.Board
         private Color _appliedCatColor;
         private bool _catColorApplied;
 
-        public static ToyTrainView Create(Transform parent, string name)
+        public static ToyTrainView Create(Transform parent, string name,
+            int[] edgeFrom, int[] edgeTo)
         {
             var root = new GameObject(name);
             root.transform.SetParent(parent, false);
             var view = root.AddComponent<ToyTrainView>();
+            view._edgeFrom = edgeFrom;
+            view._edgeTo = edgeTo;
             view.BuildConsist();
             return view;
         }
@@ -91,7 +98,14 @@ namespace CatMetro.Presentation.Board
         {
             if (edgeIndex != _currentEdge)
             {
-                _previousEdge = _currentEdge; // record the edge the head just left
+                // Record the edge the head just left — but only when the graph agrees the
+                // head could have rolled straight through (its end feeds this edge's start).
+                // A multi-tick catch-up frame (pause/resume hitch) can skip a whole edge
+                // between renders; trailing along non-adjacent history would put the
+                // carriage somewhere the train never was, so it clamps instead.
+                _previousEdge = _currentEdge >= 0
+                    && _edgeTo[_currentEdge] == _edgeFrom[edgeIndex]
+                    ? _currentEdge : -1;
                 _currentEdge = edgeIndex;
             }
             var path = paths.Path(edgeIndex);
@@ -105,14 +119,16 @@ namespace CatMetro.Presentation.Board
         }
 
         // Parked at a node: the head anchor is the node itself and the consist trails back
-        // along the edge it arrived on (still remembered as _currentEdge — the spline's end
-        // point IS the node position, so the two anchors agree exactly). A source-queued train
-        // that never travelled has no history: the whole consist parks on the node point and
-        // pulls apart on its first edge frame, reading as a depot departure.
-        public void PlaceAtNode(TrackSplineGraph paths, Vector3 nodeLocal)
+        // along the edge it arrived on — but only when that remembered edge actually ENDS at
+        // this node (then the spline's end point IS the node position, so the two anchors
+        // agree exactly). A catch-up frame can land the head at a node the remembered edge
+        // never touches; foreign history is discarded and the whole consist parks on the node
+        // point — the same documented clamp a source-queued train gets, pulling apart on its
+        // first edge frame like a depot departure.
+        public void PlaceAtNode(TrackSplineGraph paths, int nodeIndex, Vector3 nodeLocal)
         {
             transform.localPosition = nodeLocal + new Vector3(0f, 0f, HeadAnchorZ);
-            if (_currentEdge >= 0)
+            if (_currentEdge >= 0 && _edgeTo[_currentEdge] == nodeIndex)
             {
                 var arrival = paths.Path(_currentEdge);
                 _headingDegrees = HeadingDegrees(arrival.TangentDistanceFraction(1f));
@@ -120,6 +136,8 @@ namespace CatMetro.Presentation.Board
                 PlaceTrailing(paths, _currentEdge, arrival.Length, nodeLocal);
                 return;
             }
+            _currentEdge = -1;  // the head is provably somewhere this history never led
+            _previousEdge = -1;
             _engine.localRotation = Quaternion.Euler(0f, 0f, _headingDegrees);
             _carriage.localPosition = Vector3.zero;
             _carriage.localRotation = _engine.localRotation;
