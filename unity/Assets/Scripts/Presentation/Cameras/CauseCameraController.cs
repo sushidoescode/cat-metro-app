@@ -21,17 +21,33 @@ namespace CatMetro.Presentation.Cameras
         private bool _panning;
         private GameObject _ring;
         private Vector3 _restPose; // review B5: retry returns the camera HERE
+        private Quaternion _restRotation;
+        private float _restOrthographicSize;
+        private Vector3 _boardFacingNormal = Vector3.back;
+        private float _ringAlpha;
+        private static Mesh _cylinderMesh;
 
         public string TargetNodeId { get; private set; } = "";
         public bool IsFramed => !_panning;
         public bool RingVisible => _ring != null && _ring.activeSelf;
-        public float RingAlpha => _ring != null
-            ? _ring.GetComponent<Renderer>().material.color.a : 0f;
+        public float RingAlpha => _ring != null ? _ringAlpha : 0f;
 
-        public void Wire(UnityEngine.Camera cam)
+        public void Wire(UnityEngine.Camera cam, Vector3 boardFacingNormal)
         {
             _camera = cam;
-            _restPose = cam.transform.position; // the S-02 play framing (review B5)
+            CapturePlayPose(boardFacingNormal);
+        }
+
+        // LoadLevel re-fits the camera because every authored board has different bounds.
+        // Capture that new play pose before Reset so Retry never returns to the prior level.
+        public void CapturePlayPose(Vector3 boardFacingNormal)
+        {
+            if (_camera == null) return;
+            _restPose = _camera.transform.position;
+            _restRotation = _camera.transform.rotation;
+            _restOrthographicSize = _camera.orthographicSize;
+            _boardFacingNormal = boardFacingNormal.sqrMagnitude > 0.0001f
+                ? boardFacingNormal.normalized : Vector3.back;
         }
 
         public Vector3 RingWorldPos => _ring != null ? _ring.transform.position : Vector3.zero;
@@ -63,7 +79,12 @@ namespace CatMetro.Presentation.Cameras
             if (_ring != null) _ring.SetActive(false);
             // Review B5: the retried run plays on the S-02 framing, never on the fail framing
             // or an interrupted pan position.
-            if (_camera != null) _camera.transform.position = _restPose;
+            if (_camera != null)
+            {
+                _camera.transform.position = _restPose;
+                _camera.transform.rotation = _restRotation;
+                _camera.orthographicSize = _restOrthographicSize;
+            }
         }
 
         private void Update()
@@ -77,21 +98,46 @@ namespace CatMetro.Presentation.Cameras
             if (t >= 1f) _panning = false;
         }
 
+        private void OnDestroy()
+        {
+            // The ring is world-rooted so it never rides the camera, but it is still owned by
+            // this controller. Release it with GameRoot instead of leaking an inactive marker
+            // and renderer material across level-test fixtures or scene teardown.
+            if (_ring == null) return;
+            if (UnityEngine.Application.isPlaying) Destroy(_ring);
+            else DestroyImmediate(_ring);
+            _ring = null;
+        }
+
         private void ShowRing(Vector3 worldPos)
         {
             if (_ring == null)
             {
-                _ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-                _ring.GetComponent<Renderer>().sharedMaterial = Board.GreyboxMaterial.Shared;
-                _ring.name = "CauseRing";
+                _ring = new GameObject("CauseRing");
+                var filter = _ring.AddComponent<MeshFilter>();
+                if (_cylinderMesh == null)
+                    _cylinderMesh = Resources.GetBuiltinResource<Mesh>("Cylinder.fbx");
+                filter.sharedMesh = _cylinderMesh;
+                var renderer = _ring.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = Board.GreyboxMaterial.Shared;
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
                 // Review B1: NEVER parented to the camera — the controller lives on the camera
                 // object, so a camera-parented ring rides the cut/pan and ends 3.5 units off
                 // the causal node. World-positioned, unparented: it stays ON the node.
                 _ring.transform.localScale = new Vector3(1.4f, 0.02f, 1.4f);
-                _ring.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-                _ring.GetComponent<Renderer>().material.color = new Color(1f, 0.35f, 0.1f, 0.85f);
+                var color = new Color(1f, 0.35f, 0.1f, 0.85f);
+                var properties = new MaterialPropertyBlock();
+                properties.SetColor("_BaseColor", color);
+                properties.SetColor("_Color", color);
+                renderer.SetPropertyBlock(properties);
+                _ringAlpha = color.a;
             }
-            _ring.transform.position = worldPos + new Vector3(0f, 0f, -0.6f);
+            _ring.transform.rotation = Quaternion.FromToRotation(Vector3.up, _boardFacingNormal);
+            // Keep the ring screen-centred on the node (the failure-review information law)
+            // while pulling it toward this axis-aligned camera to avoid depth fighting. Its
+            // normal still follows the board, so the marker reads as part of the diorama.
+            _ring.transform.position = worldPos - _camera.transform.forward * 0.6f;
             _ring.SetActive(true);
         }
     }
