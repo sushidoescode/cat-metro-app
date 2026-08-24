@@ -39,6 +39,7 @@ namespace CatMetro.Presentation.Board
         private int[] _edgeFrom;
         private int[] _edgeTo;
         private int[] _edgeTravel;
+        private TrackSplineGraph _trackPaths;
         private int[][] _switchRouteTargetNode; // per switch, per route: target node index
         private int[] _switchNode;
         private Transform[] _switchArm;
@@ -117,18 +118,10 @@ namespace CatMetro.Presentation.Board
                 _edgeFrom[i] = nodeIndex[edges[i].From];
                 _edgeTo[i] = nodeIndex[edges[i].To];
                 _edgeTravel[i] = edges[i].TravelTicks;
-                var a = _nodePos[_edgeFrom[i]];
-                var b = _nodePos[_edgeTo[i]];
-                var prim = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                prim.GetComponent<Renderer>().sharedMaterial = GreyboxMaterial.Shared;
-                prim.name = "edge:" + edges[i].Id;
-                prim.transform.SetParent(transform, false);
-                prim.transform.localPosition = (a + b) * 0.5f + new Vector3(0f, 0f, 0.2f);
-                prim.transform.localScale = new Vector3(0.12f, (b - a).magnitude, 0.12f);
-                prim.transform.up = (b - a).normalized;
-                var id = prim.AddComponent<BoardElementId>();
-                id.Id = edges[i].Id; id.Kind = "edge";
             }
+            _trackPaths = TrackSplineGraph.Build(_nodePos, _edgeFrom, _edgeTo);
+            for (int i = 0; i < edges.Length; i++)
+                ToyTrackMeshBuilder.Build(edges[i].Id, _trackPaths.Path(i), transform);
 
             var switches = dto.Switches.ToArray();
             _switchNode = new int[switches.Length];
@@ -290,8 +283,7 @@ namespace CatMetro.Presentation.Board
                 {
                     int e = trains[t].EdgeId;
                     float progress = Mathf.Min(1f, (trains[t].ProgressTicks + alpha) / _edgeTravel[e]);
-                    go.transform.localPosition = Vector3.Lerp(
-                        _nodePos[_edgeFrom[e]], _nodePos[_edgeTo[e]], progress)
+                    go.transform.localPosition = _trackPaths.Path(e).EvaluateDistanceFraction(progress)
                         + new Vector3(0f, 0f, -0.2f);
                 }
                 else
