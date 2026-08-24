@@ -17,7 +17,7 @@ namespace CatMetro.Presentation.Board
     // carrying its own heading so the consist bends through curves.
     //
     // House rules: parts are built like BoardSurface.CreatePart — new GameObject + builtin
-    // mesh + the shared greybox pipeline — never GameObject.CreatePrimitive (no colliders on
+    // mesh + the shared greybox pipeline — never the primitive factory (no colliders on
     // visual-only objects; switch taps must pass through) and never a BoardElementId (the root
     // carries the one authored "train" id; decoration stays out of the inventory). Builtin
     // meshes and the statically cached tinted materials (ToyTrackMeshBuilder's shape) mean a

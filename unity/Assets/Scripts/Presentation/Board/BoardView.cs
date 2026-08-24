@@ -45,7 +45,7 @@ namespace CatMetro.Presentation.Board
         private int[][] _switchRouteTargetNode; // per switch, per route: target node index
         private int[] _switchNode;
         private Transform[] _switchArm;
-        private readonly Dictionary<int, GameObject> _trains = new Dictionary<int, GameObject>();
+        private readonly Dictionary<int, ToyTrainView> _trains = new Dictionary<int, ToyTrainView>();
 
         public int SwitchCount => _switchNode.Length;
         public string NodeId(int nodeIndex) => _nodeIds[nodeIndex];
@@ -300,32 +300,32 @@ namespace CatMetro.Presentation.Board
                 bool live = trains[t].Id != 0 && trains[t].State != CatMetro.Domain.TrainState.None;
                 if (!live)
                 {
-                    if (_trains.TryGetValue(t, out var dead)) dead.SetActive(false);
+                    if (_trains.TryGetValue(t, out var dead)) dead.gameObject.SetActive(false);
                     continue;
                 }
-                if (!_trains.TryGetValue(t, out var go) || go == null)
+                if (!_trains.TryGetValue(t, out var consist) || consist == null)
                 {
-                    go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                    go.GetComponent<Renderer>().sharedMaterial = GreyboxMaterial.Shared;
-                    go.name = "train:" + t;
-                    go.transform.SetParent(transform, false);
-                    go.transform.localScale = Vector3.one * 0.35f;
-                    var id = go.AddComponent<BoardElementId>();
+                    // LOOK step 6: a train renders as a toy consist (ToyTrainView) — engine +
+                    // carriage + seated cat — instead of a capsule. The root alone carries the
+                    // "train" inventory id; everything under it is decoration (no
+                    // BoardElementId, no collider), and its localPosition keeps the capsule's
+                    // exact head-anchor contract on the shared spline.
+                    consist = ToyTrainView.Create(transform, "train:" + t);
+                    var id = consist.gameObject.AddComponent<BoardElementId>();
                     id.Id = "train-" + t; id.Kind = "train";
-                    _trains[t] = go;
+                    _trains[t] = consist;
                 }
-                go.SetActive(true);
-                go.GetComponent<Renderer>().material.color = ColorForCode(trains[t].Color);
+                consist.gameObject.SetActive(true);
+                consist.SyncSlot(trains[t].Id, ColorForCode(trains[t].Color));
                 if (trains[t].State == CatMetro.Domain.TrainState.OnEdge)
                 {
                     int e = trains[t].EdgeId;
                     float progress = Mathf.Min(1f, (trains[t].ProgressTicks + alpha) / _edgeTravel[e]);
-                    go.transform.localPosition = _trackPaths.Path(e).EvaluateDistanceFraction(progress)
-                        + new Vector3(0f, 0f, -0.2f);
+                    consist.PlaceOnEdge(_trackPaths, e, _trackPaths.Path(e).Length * progress);
                 }
                 else
                 {
-                    go.transform.localPosition = _nodePos[trains[t].NodeId] + new Vector3(0f, 0f, -0.2f);
+                    consist.PlaceAtNode(_trackPaths, _nodePos[trains[t].NodeId]);
                 }
             }
         }
