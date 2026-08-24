@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using CatMetro.Application.Session;
 using CatMetro.Content;
+using CatMetro.Presentation.Props;
+using CatMetro.Presentation.Theme;
 using UnityEngine;
 
 namespace CatMetro.Presentation.Board
@@ -39,6 +41,7 @@ namespace CatMetro.Presentation.Board
         private int[] _edgeFrom;
         private int[] _edgeTo;
         private int[] _edgeTravel;
+        private TrackSplineGraph _trackPaths;
         private int[][] _switchRouteTargetNode; // per switch, per route: target node index
         private int[] _switchNode;
         private Transform[] _switchArm;
@@ -47,17 +50,52 @@ namespace CatMetro.Presentation.Board
         public int SwitchCount => _switchNode.Length;
         public string NodeId(int nodeIndex) => _nodeIds[nodeIndex];
         public Vector3 NodeWorldPos(int nodeIndex) => transform.TransformPoint(_nodePos[nodeIndex]);
+        public Vector3 PresentationCenterLocal
+        {
+            get
+            {
+                if (_nodePos == null || _nodePos.Length == 0) return Vector3.zero;
+                float minX = _nodePos[0].x, maxX = _nodePos[0].x;
+                float minY = _nodePos[0].y, maxY = _nodePos[0].y;
+                for (int i = 1; i < _nodePos.Length; i++)
+                {
+                    minX = Mathf.Min(minX, _nodePos[i].x);
+                    maxX = Mathf.Max(maxX, _nodePos[i].x);
+                    minY = Mathf.Min(minY, _nodePos[i].y);
+                    maxY = Mathf.Max(maxY, _nodePos[i].y);
+                }
+                return new Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 0f);
+            }
+        }
         public Vector3 SwitchWorldPos(int switchIndex) =>
             transform.TransformPoint(_nodePos[_switchNode[switchIndex]]); // F11: world, not local
 
-        public static BoardView Build(ImportedLevel level, Transform parent, GameSession session)
+        public static BoardView Build(ImportedLevel level, Transform parent, GameSession session,
+            PropModelCatalog propCatalog = null)
         {
             var go = new GameObject("Board");
             go.transform.SetParent(parent, false);
             var view = go.AddComponent<BoardView>();
             view._session = session;
             view.BuildElements(level);
+            BoardSurface.Build(level, view.transform);
+            BoardPropDecorator.Decorate(level, view.transform,
+                propCatalog ?? PropModelCatalog.LoadResources(), view.PropAnchorLocalPosition);
             return view;
+        }
+
+        // The prop lane resolves through NodeWorldPos so the scene lane's visual-node transform
+        // remains the single source of truth after its isometric/tabletop pass lands.
+        private Vector3 PropAnchorLocalPosition(string nodeId)
+        {
+            for (int i = 0; i < _nodeIds.Length; i++)
+                if (_nodeIds[i] == nodeId)
+                {
+                    var position = transform.InverseTransformPoint(NodeWorldPos(i));
+                    position.z = BoardPropDecorator.ResolveContactPlaneLocalZ(transform);
+                    return position;
+                }
+            throw new System.ArgumentException("unknown prop anchor " + nodeId);
         }
 
         private void BuildElements(ImportedLevel level)
@@ -117,18 +155,10 @@ namespace CatMetro.Presentation.Board
                 _edgeFrom[i] = nodeIndex[edges[i].From];
                 _edgeTo[i] = nodeIndex[edges[i].To];
                 _edgeTravel[i] = edges[i].TravelTicks;
-                var a = _nodePos[_edgeFrom[i]];
-                var b = _nodePos[_edgeTo[i]];
-                var prim = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                prim.GetComponent<Renderer>().sharedMaterial = GreyboxMaterial.Shared;
-                prim.name = "edge:" + edges[i].Id;
-                prim.transform.SetParent(transform, false);
-                prim.transform.localPosition = (a + b) * 0.5f + new Vector3(0f, 0f, 0.2f);
-                prim.transform.localScale = new Vector3(0.12f, (b - a).magnitude, 0.12f);
-                prim.transform.up = (b - a).normalized;
-                var id = prim.AddComponent<BoardElementId>();
-                id.Id = edges[i].Id; id.Kind = "edge";
             }
+            _trackPaths = TrackSplineGraph.Build(_nodePos, _edgeFrom, _edgeTo);
+            for (int i = 0; i < edges.Length; i++)
+                ToyTrackMeshBuilder.Build(edges[i].Id, _trackPaths.Path(i), transform);
 
             var switches = dto.Switches.ToArray();
             _switchNode = new int[switches.Length];
@@ -290,8 +320,7 @@ namespace CatMetro.Presentation.Board
                 {
                     int e = trains[t].EdgeId;
                     float progress = Mathf.Min(1f, (trains[t].ProgressTicks + alpha) / _edgeTravel[e]);
-                    go.transform.localPosition = Vector3.Lerp(
-                        _nodePos[_edgeFrom[e]], _nodePos[_edgeTo[e]], progress)
+                    go.transform.localPosition = _trackPaths.Path(e).EvaluateDistanceFraction(progress)
                         + new Vector3(0f, 0f, -0.2f);
                 }
                 else
@@ -305,10 +334,10 @@ namespace CatMetro.Presentation.Board
         {
             switch (name)
             {
-                case "red": return new Color(0.85f, 0.2f, 0.2f);
-                case "blue": return new Color(0.2f, 0.4f, 0.9f);
-                case "yellow": return new Color(0.9f, 0.8f, 0.2f);
-                case "green": return new Color(0.2f, 0.75f, 0.3f);
+                case "red": return Palette.SignalRed;
+                case "blue": return Palette.HarborBlue;
+                case "yellow": return Palette.TabbyYellow;
+                case "green": return Palette.GardenGreen;
                 default: return Color.magenta;
             }
         }
@@ -317,10 +346,10 @@ namespace CatMetro.Presentation.Board
         {
             switch (code)
             {
-                case CatMetro.Domain.CatColor.Red: return new Color(0.85f, 0.2f, 0.2f);
-                case CatMetro.Domain.CatColor.Blue: return new Color(0.2f, 0.4f, 0.9f);
-                case CatMetro.Domain.CatColor.Yellow: return new Color(0.9f, 0.8f, 0.2f);
-                case CatMetro.Domain.CatColor.Green: return new Color(0.2f, 0.75f, 0.3f);
+                case CatMetro.Domain.CatColor.Red: return Palette.SignalRed;
+                case CatMetro.Domain.CatColor.Blue: return Palette.HarborBlue;
+                case CatMetro.Domain.CatColor.Yellow: return Palette.TabbyYellow;
+                case CatMetro.Domain.CatColor.Green: return Palette.GardenGreen;
                 default: return Color.magenta;
             }
         }

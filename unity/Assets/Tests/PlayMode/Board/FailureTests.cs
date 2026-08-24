@@ -224,7 +224,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(SceneManager.GetActiveScene().handle, Is.EqualTo(handleBefore));
             // review B5: the retried run plays on the S-02 rest framing, not the fail framing
             Assert.That(_root.Cam.transform.position,
-                Is.EqualTo(new Vector3(3f, 5.5f, -10f)).Within(0.01f),
+                Is.EqualTo(restPose).Within(0.01f),
                 "retry restores the play camera");
             // review N1: the factory paths never double-wire — exactly one of everything
             Assert.That(Object.FindObjectsByType<Camera>(FindObjectsSortMode.None).Length,

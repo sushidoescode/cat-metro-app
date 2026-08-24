@@ -26,5 +26,14 @@ namespace CatMetro.Presentation.Board
                 return _shared;
             }
         }
+
+        public static UnityEngine.Material CreateTinted(string name, UnityEngine.Color color)
+        {
+            var basis = Shared;
+            if (basis == null) return null;
+            var material = new UnityEngine.Material(basis) { name = name };
+            material.color = color;
+            return material;
+        }
     }
 }

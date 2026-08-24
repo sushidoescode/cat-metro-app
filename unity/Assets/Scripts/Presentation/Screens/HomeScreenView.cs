@@ -7,25 +7,10 @@ using CatMetro.Presentation.Theme;
 
 namespace CatMetro.Presentation.Screens
 {
-    // CM-UX-06 criteria 3/4/5/6: the greybox session-1 Home. One pulsing L001 pin (72dp,
-    // thumb-band-centered via pure HomeLayout math; live Screen reads only here, the
-    // RetryCtaView precedent), parked-district silhouettes, csv-keyed title — and by DEFAULT
-    // nothing else: no shop, no badges (S-01 layout intent; HomeScreenTests.cs's tree walk is
-    // the monetization tripwire, still exercised via the same zero-argument Create() every
-    // existing caller/test uses), and neither TG-3 variant of the bonus-district tile exists.
-    // CM-DAILYWIRE correction (discovered mid-implementation, recorded in the frozen contract's
-    // FA-4 revision): product_spec §18 gates Daily behind "after L007 win," and S-01's own
-    // "no daily entry rendered in session 1" law is the SAME rule from the other direction —
-    // this class honors both by never constructing the Daily pin unless the caller explicitly
-    // opts in (dailyEntryUnlocked, default false — the CM-UX-07 "zero screen objects
-    // constructed" precedent, not merely hidden). GameRoot passes true only when
-    // DailyEntryUnlocked is set (currently a dev/test-only seam — see Known debt: the real
-    // L007-win check needs the save layer, unwired for any level today).
-    // Render-only by law (P-1): the pin's hit routes through the INJECTED ChromeRegions
-    // registry — this view is the tranche's first registrar and honors the R1-F3 lifetime
-    // law (unregister on Hide AND OnDestroy). Motion posture (P-5, A11Y-S01-2): the pulse is
-    // easing and vanishes under the injected motion-off delegate; the raised-ring shape twin
-    // renders in BOTH modes — motion never carries the information.
+    // LOOK step 7 Home: a framed toy-route/depot stage around three non-interactive cat
+    // holders, with one wide, csv-labelled L001 action. The default remains commerce-free;
+    // Daily is constructed only when explicitly unlocked. Hit regions retain the existing
+    // unregister lifecycle, and motion-off keeps the action's static raised-ring cue.
     public sealed class HomeScreenView : MonoBehaviour
     {
         private const string PinRegionId = "home.pin.l001";
@@ -57,12 +42,17 @@ namespace CatMetro.Presentation.Screens
         private bool _shown; // #46 review F4: Show()-left-shown intent, survives OnDisable/OnEnable
         private Image _background; // BEAUTIFUL-MENU: the warm-paper tabletop ground
         private TMP_Text _title;
+        private RectTransform _heroShadow;
+        private RectTransform _hero;
+        private Image[] _markers;
         private RectTransform _pin;
         private RectTransform _ring;
+        private TMP_Text _primaryLabel;
         private RectTransform _dailyPin;
         private TMP_Text _dailyLabel;
         private Rect _pinRectPx;
         private Rect _dailyPinRectPx;
+        private Rect _heroRectPx;
         private float _phase;
 
         public Rect PinPaintedRectPx => _pinRectPx;
@@ -89,6 +79,19 @@ namespace CatMetro.Presentation.Screens
         public Rect DailyPinPaintedRectPx => _dailyPinRectPx;
         public RectTransform DailyPinTransform => _dailyPin;
         public string DailyLabelText => _dailyLabel != null ? _dailyLabel.text : "";
+        public Rect HeroRectPx => _heroRectPx;
+        public string PrimaryLabelText => _primaryLabel != null ? _primaryLabel.text : "";
+        public int MarkerCount => _markers != null ? _markers.Length : 0;
+        public Color[] MarkerColors
+        {
+            get
+            {
+                if (_markers == null) return new Color[0];
+                var colors = new Color[_markers.Length];
+                for (int i = 0; i < _markers.Length; i++) colors[i] = _markers[i].color;
+                return colors;
+            }
+        }
 
         // dailyEntryUnlocked (CM-DAILYWIRE, default false): every EXISTING caller/test uses the
         // zero-argument form, so HomeScreenTests.cs's S-01 tree walk and exactly-one-region
@@ -105,19 +108,10 @@ namespace CatMetro.Presentation.Screens
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
 
-            // BEAUTIFUL-MENU: the warm-paper tabletop ground (full-bleed, drawn FIRST so it
-            // sits behind everything) + an inset cream base board with the shared rounded
-            // UiChrome material — the diorama "cardboard edge." Both are plain Images, so the
-            // HomeScreenTests render-only whitelist still holds; names avoid every tripwire word.
+            // Warm paper is the desk; the inset cream board and its low navy lip make the
+            // screen read as one physical card instead of a collection floating in a void.
             view._background = MakeSurface(go.transform, "Background",
                 Vector2.zero, Vector2.one, Palette.WarmPaper, rounded: false);
-            // MENU-POLISH: the §7 "base-board bevel with a visible cardboard edge" + "soft
-            // contact shadow" — the cue that sells the miniature. Drawn BEHIND the board and
-            // offset DOWNWARD so it peeks out under the bottom lip (thickness/contact shadow)
-            // with only a hairline at the sides and NONE above the top edge: a symmetric rim
-            // reads as a UI panel border, not a board sitting on a desk. Alpha is deliberately
-            // strong — a first pass at 0.28 computed to ~#BEBEBF over warm paper and washed out
-            // to a light grey frame (verified on device, the exact failure this replaces).
             MakeSurface(go.transform, "BoardEdge",
                 new Vector2(0.034f, 0.034f), new Vector2(0.966f, 0.944f),
                 Palette.WithAlpha(Palette.DepotNavy, 0.55f), rounded: true);
@@ -128,19 +122,84 @@ namespace CatMetro.Presentation.Screens
                 new Vector2(0.08f, 0.87f), new Vector2(0.92f, 0.97f),
                 Strings.UiStrings.Get("home.title"), 48f, Palette.InkNavy); // key-only, never a literal
 
-            // Parked-district silhouettes: scenery, not buttons (S-01 — curiosity, no locks).
-            MakeSilhouette(go.transform, "ParkedDistrictA",
-                new Vector2(0.08f, 0.55f), new Vector2(0.46f, 0.72f));
-            MakeSilhouette(go.transform, "ParkedDistrictB",
-                new Vector2(0.54f, 0.60f), new Vector2(0.92f, 0.78f));
-            MakeSilhouette(go.transform, "ParkedDistrictC",
-                new Vector2(0.16f, 0.32f), new Vector2(0.62f, 0.48f));
+            // A single depot route-card gives the three existing cat holders somewhere to
+            // belong. Every child is render-only geometry; the central rails and sleepers are
+            // a miniature promise of the board beneath Home, not extra controls.
+            view._heroShadow = MakeChip(go.transform, "HeroShadow",
+                Palette.WithAlpha(Palette.DepotNavy, 0.30f));
+            view._hero = MakeChip(go.transform, "HeroCard", Palette.DepotNavy);
+            MakeSurface(view._hero, "HeroDeck", new Vector2(0.025f, 0.018f),
+                new Vector2(0.975f, 0.982f), Palette.CreamCard, rounded: false);
+            MakeSurface(view._hero, "RouteAccent", new Vector2(0.025f, 0.91f),
+                new Vector2(0.975f, 0.982f), Palette.MetroTeal, rounded: false);
+
+            MakeSurface(view._hero, "RouteBed", new Vector2(0.43f, 0.13f),
+                new Vector2(0.57f, 0.89f), Palette.WithAlpha(Palette.DepotNavy, 0.16f), false);
+            MakeSurface(view._hero, "RailNorth", new Vector2(0.465f, 0.13f),
+                new Vector2(0.482f, 0.89f), Palette.InkNavy, false);
+            MakeSurface(view._hero, "RailSouth", new Vector2(0.518f, 0.13f),
+                new Vector2(0.535f, 0.89f), Palette.InkNavy, false);
+            for (int i = 0; i < 9; i++)
+            {
+                float y = 0.17f + i * 0.082f;
+                MakeSurface(view._hero, "Sleeper" + i.ToString("00"),
+                    new Vector2(0.405f, y), new Vector2(0.595f, y + 0.014f),
+                    Palette.WarmPaper, false);
+            }
+
+            MakeSurface(view._hero, "BranchA", new Vector2(0.34f, 0.725f),
+                new Vector2(0.50f, 0.745f), Palette.InkNavy, false);
+            MakeSurface(view._hero, "BranchB", new Vector2(0.50f, 0.515f),
+                new Vector2(0.66f, 0.535f), Palette.InkNavy, false);
+            MakeSurface(view._hero, "BranchC", new Vector2(0.34f, 0.305f),
+                new Vector2(0.50f, 0.325f), Palette.InkNavy, false);
+
+            MakeSurface(view._hero, "CatBayA", new Vector2(0.07f, 0.64f),
+                new Vector2(0.37f, 0.84f), Palette.WithAlpha(Palette.SignalRed, 0.18f), false);
+            MakeSurface(view._hero, "CatBayB", new Vector2(0.63f, 0.43f),
+                new Vector2(0.93f, 0.63f), Palette.WithAlpha(Palette.HarborBlue, 0.18f), false);
+            MakeSurface(view._hero, "CatBayC", new Vector2(0.07f, 0.22f),
+                new Vector2(0.37f, 0.42f), Palette.WithAlpha(Palette.TabbyYellow, 0.22f), false);
+
+            // Exact names and Image types are retained for the cat-art lane: admitted models
+            // replace only these fallback paints and continue to use their rects as holders.
+            MakeSilhouette(view._hero, "ParkedDistrictA",
+                new Vector2(0.11f, 0.665f), new Vector2(0.33f, 0.815f));
+            MakeSilhouette(view._hero, "ParkedDistrictB",
+                new Vector2(0.67f, 0.455f), new Vector2(0.89f, 0.605f));
+            MakeSilhouette(view._hero, "ParkedDistrictC",
+                new Vector2(0.11f, 0.245f), new Vector2(0.33f, 0.395f));
+
+            MakeSurface(view._hero, "DepotSpur", new Vector2(0.50f, 0.125f),
+                new Vector2(0.68f, 0.145f), Palette.InkNavy, false);
+            MakeSurface(view._hero, "DepotPlatform", new Vector2(0.63f, 0.07f),
+                new Vector2(0.91f, 0.18f), Palette.DepotNavy, false);
+            MakeSurface(view._hero, "DepotDeck", new Vector2(0.66f, 0.095f),
+                new Vector2(0.88f, 0.145f), Palette.WarmPaper, false);
+            MakeSurface(view._hero, "DepotCanopy", new Vector2(0.66f, 0.145f),
+                new Vector2(0.88f, 0.18f), Palette.TicketOrange, false);
+
+            view._markers = new[]
+            {
+                MakeSurface(view._hero, "RouteMarkerA", new Vector2(0.465f, 0.715f),
+                    new Vector2(0.535f, 0.755f), Palette.SignalRed, false),
+                MakeSurface(view._hero, "RouteMarkerB", new Vector2(0.465f, 0.505f),
+                    new Vector2(0.535f, 0.545f), Palette.HarborBlue, false),
+                MakeSurface(view._hero, "RouteMarkerC", new Vector2(0.465f, 0.295f),
+                    new Vector2(0.535f, 0.335f), Palette.TabbyYellow, false),
+            };
 
             // The raised-ring shape twin sits BEHIND the pin (sibling order = draw order).
             // BEAUTIFUL-MENU: the ring is the single warm CTA glow (ticket orange); the pin
             // stays ink navy — both from the Palette source, replacing inline literals.
             view._ring = MakeChip(go.transform, "PinRingL001", Palette.TicketOrange);
             view._pin = MakeChip(go.transform, "PinL001", Palette.InkNavy);
+            view._primaryLabel = MakeText(view._pin, "PlayLabel", Vector2.zero, Vector2.one,
+                Strings.UiStrings.Get("intro.play"), 42f, Palette.WarmPaper);
+            view._primaryLabel.enableAutoSizing = true;
+            view._primaryLabel.fontSizeMin = 24f;
+            view._primaryLabel.fontSizeMax = 42f;
+            view._primaryLabel.fontStyle = FontStyles.Bold;
 
             // CM-DAILYWIRE: the Daily entry — a second, static (no pulse) chip beside the L001
             // pin, following the same MakeChip + csv-keyed label pattern as the rest of Home.
@@ -174,11 +233,12 @@ namespace CatMetro.Presentation.Screens
             tmp.alignment = TextAlignmentOptions.Center;
             tmp.fontSize = size;
             tmp.color = color;
+            tmp.raycastTarget = false;
             return tmp;
         }
 
-        // BEAUTIFUL-MENU: a full-rect surface (background / base board). Plain Image so the
-        // whitelist holds; 'rounded' opts into the shared UiChrome material for a soft edge.
+        // Plain Images keep the Home tree render-only. The shared material is currently the
+        // project's explicit UI/Default material; the flag means "use shared chrome paint."
         private static Image MakeSurface(Transform parent, string name,
             Vector2 anchorMin, Vector2 anchorMax, Color color, bool rounded)
         {
@@ -196,10 +256,11 @@ namespace CatMetro.Presentation.Screens
                 if (mat != null) img.material = mat;
             }
             img.color = color;
+            img.raycastTarget = false;
             return img;
         }
 
-        private static void MakeSilhouette(Transform parent, string name,
+        private static Image MakeSilhouette(Transform parent, string name,
             Vector2 anchorMin, Vector2 anchorMax)
         {
             var go = new GameObject(name);
@@ -212,13 +273,9 @@ namespace CatMetro.Presentation.Screens
             var img = go.AddComponent<Image>();
             var mat = UiChromeMaterial.Shared;
             if (mat != null) img.material = mat;
-            // BEAUTIFUL-MENU: parked scenery in low-alpha depot navy over the cream board
-            // (S-01: curiosity, not locks) — was a flat neutral grey.
-            // MENU-POLISH: 0.30 washed out to light taupe over CreamCard (the taste note);
-            // 0.44 gives the parked districts real presence while staying clearly SCENERY —
-            // still far below the L001 pin's full-strength navy, so the single CTA keeps its
-            // visual primacy (S-01's "one pulsing affordance" law).
-            img.color = Palette.WithAlpha(Palette.DepotNavy, 0.44f);
+            img.color = Palette.WithAlpha(Palette.DepotNavy, 0.18f);
+            img.raycastTarget = false;
+            return img;
         }
 
         private static RectTransform MakeChip(Transform parent, string name, Color color)
@@ -230,6 +287,7 @@ namespace CatMetro.Presentation.Screens
             var mat = UiChromeMaterial.Shared;
             if (mat != null) img.material = mat;
             img.color = color;
+            img.raycastTarget = false;
             return rect;
         }
 
@@ -243,7 +301,7 @@ namespace CatMetro.Presentation.Screens
         {
             _shown = true;
             gameObject.SetActive(true);
-            LayoutPin();
+            LayoutForViewport(Screen.safeArea, Screen.dpi);
             RegisterPin();
             RegisterDailyPin();
         }
@@ -332,15 +390,23 @@ namespace CatMetro.Presentation.Screens
             }
         }
 
-        // The live binding site (A-UX1-5 law): Screen.safeArea/dpi are read HERE and handed
-        // to pure math; px placement via bottom-left anchoring, the RetryCtaView pattern.
-        private void LayoutPin()
+        // Pure layout injection keeps the capture and the runtime on the same law. Show() is
+        // the only live Screen binding because the shipped orientation is portrait-locked.
+        public void LayoutForViewport(Rect safeArea, float dpi)
         {
-            var safeArea = Screen.safeArea;
-            float dpi = Screen.dpi;
-            _pinRectPx = HomeLayout.PinRect(safeArea, dpi);
+            bool hasDaily = _dailyPin != null;
+            _pinRectPx = HomeLayout.PrimaryPinRect(safeArea, dpi, hasDaily);
             ApplyPx(_pin, _pinRectPx);
-            ApplyPx(_ring, HomeLayout.RingRect(safeArea, dpi));
+            ApplyPx(_ring, HomeLayout.RingRect(safeArea, dpi, hasDaily));
+
+            _heroRectPx = HomeLayout.HeroRect(safeArea, dpi);
+            ApplyPx(_hero, _heroRectPx);
+            float shadowDx = 4f * HudBands.PxPerDp(dpi);
+            float shadowDy = 6f * HudBands.PxPerDp(dpi);
+            ApplyPx(_heroShadow, new Rect(_heroRectPx.x + shadowDx,
+                _heroRectPx.y - shadowDy, _heroRectPx.width, _heroRectPx.height));
+            ApplyPx(_title.rectTransform, HomeLayout.HeaderRect(safeArea, dpi));
+
             // Guarded: null when Create() ran with dailyEntryUnlocked false (S-01).
             if (_dailyPin != null)
             {
@@ -370,7 +436,9 @@ namespace CatMetro.Presentation.Screens
             if (!off)
             {
                 _phase += Time.unscaledDeltaTime * 5f;
-                scale = 1f + 0.08f * Mathf.Sin(_phase);
+                // A wide CTA needs only a breathing cue; the old 8% square-pin pulse made the
+                // new full-width action lunge outside its safe-area margins.
+                scale = 1f + 0.025f * Mathf.Sin(_phase);
             }
             _pin.localScale = new Vector3(scale, scale, 1f);
         }
