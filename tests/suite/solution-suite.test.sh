@@ -43,12 +43,29 @@ done
 
 # Two INDEPENDENT processes. The pair is what makes the determinism claims
 # below meaningful, so it must stay a pair.
+#
+# Each run goes through scripts/test_cache.py, which records a run keyed on
+# everything that can change its result and replays it while those inputs are
+# unchanged. --slot keeps the pair a PAIR: slot 1 and slot 2 record two
+# genuinely distinct `dotnet test` processes, so the comparisons below still
+# compare two real runs. Collapsing them onto one record would make h1 == h2
+# trivially true, which is a fake green, not a fast one.
+#
+# On a cold tree (every CI run, since any commit changes the key) both slots
+# miss and execute for real -- the cache costs ~1.5s of fingerprinting and
+# changes nothing. Warm, a local re-run replays both. CATMETRO_NO_TEST_CACHE=1
+# forces real execution.
+#
+# No 2>&1 here: the helper already merges the child's stderr into its stdout, so
+# the captured text matches the old `dotnet test ... 2>&1` exactly, while the
+# helper's own hit/miss diagnostics stay on the terminal where a human sees them.
 run_once() {
-  dotnet test dotnet/CatMetro.sln -c Release --nologo --logger "console;verbosity=detailed" 2>&1
+  python3 scripts/test_cache.py --slot "$1" -- \
+    dotnet test dotnet/CatMetro.sln -c Release --nologo --logger "console;verbosity=detailed"
 }
 
-out1="$(run_once)"; rc1=$?
-out2="$(run_once)"; rc2=$?
+out1="$(run_once 1)"; rc1=$?
+out2="$(run_once 2)"; rc2=$?
 
 # --- the suite-green assertion itself ---------------------------------------
 if [ "$rc1" -ne 0 ] || [ "$rc2" -ne 0 ]; then
