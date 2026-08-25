@@ -166,6 +166,12 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Preview.FaceCount, Is.EqualTo(4));
         }
 
+        // The drain window, and the ride each cat gets. TRAVEL_TICKS_MAX is the longest edge the
+        // importer will accept (ContentBounds: travelTicks is bounded [1,40]) — an earlier
+        // attempt at this fixture asked for 400 and simply failed to import.
+        private const int DrainTravelTicks = ContentBounds.TRAVEL_TICKS_MAX;
+        private const int DrainWindowTicks = 12;
+
         [UnityTest]
         public IEnumerator Queue_Shrinks_AsCatsAreEmitted()
         {
@@ -175,15 +181,27 @@ namespace CatMetro.Tests.PlayMode
             // pinned NEW-Q4 limitation (rejection is out of CM-C1 scope). That pin is real and
             // must not be caught or suppressed; the fix is a fixture that cannot reach it.
             //
-            // DrainFixture gives the cats a 400-tick ride, so within this window they are still
-            // far out on the first edge. The test then measures exactly what it claims to —
-            // that EMISSION drains the queue — with routing kept out of the question entirely.
+            // DrainFixture cannot reach it TWICE OVER, and both reasons are load-bearing:
+            //   1. Distance. A train entering an edge at tick t arrives at t + travelTicks, so
+            //      with the longest legal edge no cat can finish even the FIRST of the two
+            //      edges inside this window, let alone stand in a berth. Asserted below.
+            //   2. Routing. The fixture's switch sits at initialRoute 0 (J1 -> E2 -> RED) and
+            //      the wave is RED, so a cat that DID arrive would be accepted — a legitimate
+            //      delivery, never the pinned rejection path. Overrunning the window would
+            //      break the Deliveries assertion loudly; it could not detonate the Domain.
+            // What is left is exactly what the test claims to measure: EMISSION drains the
+            // queue, with routing kept out of the question entirely.
+            Assert.That(DrainWindowTicks, Is.LessThan(DrainTravelTicks),
+                "precondition: the window is shorter than a single edge, so a cat emitted at "
+                + "any tick >= 0 is still in flight when the measurement ends");
+
             _root = GameRoot.LaunchWith(Import(DrainFixture()));
             yield return null;
             Assert.That(_root.Preview.FaceCount, Is.EqualTo(2), "both cats still to come");
 
             // Emissions are at tick 2 and tick 5; 12 ticks clears both.
-            _root.Session.AdvanceMs(12 * CatMetro.Application.Session.TickInterpolator.TICK_MS);
+            _root.Session.AdvanceMs(
+                DrainWindowTicks * CatMetro.Application.Session.TickInterpolator.TICK_MS);
             yield return null;
 
             Assert.That(_root.Preview.FaceCount, Is.Zero, "emitted cats leave the capsule");
@@ -457,11 +475,13 @@ namespace CatMetro.Tests.PlayMode
     { ""tick"": 5,  ""sourceNode"": ""SRC"", ""color"": ""red"",  ""count"": 1, ""spacingTicks"": 10 },
     { ""tick"": 20, ""sourceNode"": ""SRC"", ""color"": ""red"",  ""count"": 1, ""spacingTicks"": 10 } ]");
 
-        // Cats that emit almost immediately but ride for a very long time, so the queue can
-        // be observed draining without any cat arriving anywhere.
+        // Cats that emit almost immediately but ride for as long as the schema permits, so the
+        // queue can be observed draining without any cat arriving anywhere. The ride is
+        // ContentBounds.TRAVEL_TICKS_MAX, not an arbitrary large number: the importer rejects
+        // travelTicks outside [1,40] with a BoundViolation and the fixture never loads.
         private static string DrainFixture() => FixtureJson(@"[
     { ""tick"": 2, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 2, ""spacingTicks"": 3 } ]",
-            travelTicks: 400);
+            travelTicks: DrainTravelTicks);
 
         // More cats than the capsule can show, to exercise the "+N" tail.
         private static string FloodFixture() => FixtureJson(@"[
