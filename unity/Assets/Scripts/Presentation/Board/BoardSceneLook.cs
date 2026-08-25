@@ -95,13 +95,14 @@ namespace CatMetro.Presentation.Board
         private static void ApplyLighting(Transform owner)
         {
             // A three-band ambient fill keeps the navy readable without introducing another
-            // per-object light. The ground is cooler/darker than the warm sky so the slab keeps
-            // its toy-like volume even in shadow.
+            // per-object light. Warm amber sky over a cool navy ground is the late-afternoon
+            // split from the target renders; intensity sits below 1 so the key's raking is
+            // what separates lit faces from shaded ones instead of the fill flattening both.
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.62f, 0.54f, 0.46f);
-            RenderSettings.ambientEquatorColor = new Color(0.44f, 0.38f, 0.34f);
-            RenderSettings.ambientGroundColor = new Color(0.30f, 0.31f, 0.34f);
-            RenderSettings.ambientIntensity = 1f;
+            RenderSettings.ambientSkyColor = new Color(0.58f, 0.47f, 0.36f);
+            RenderSettings.ambientEquatorColor = new Color(0.40f, 0.34f, 0.31f);
+            RenderSettings.ambientGroundColor = new Color(0.25f, 0.26f, 0.33f);
+            RenderSettings.ambientIntensity = 0.92f;
 
             var existing = owner.Find(KeyLightName);
             var key = existing == null
@@ -109,14 +110,22 @@ namespace CatMetro.Presentation.Board
                 : existing.GetComponent<Light>();
             if (existing == null) key.transform.SetParent(owner, false);
             key.type = LightType.Directional;
-            key.color = new Color(1f, 0.82f, 0.67f);
-            key.intensity = 1.05f;
+            key.color = new Color(1f, 0.78f, 0.56f);
+            key.intensity = 1.18f;
             key.shadows = LightShadows.Soft;
-            key.shadowStrength = 0.38f;
+            key.shadowStrength = 0.55f;
             key.shadowBias = 0.08f;
             key.shadowNormalBias = 0.25f;
             key.shadowNearPlane = 0.2f;
-            key.transform.localRotation = Quaternion.Euler(35f, -30f, 2f);
+            // Geometry note: the board is tilted Euler(38,-32,-4), so its visible surface
+            // normal is ~(0.42, 0.62, -0.67). The old key at Euler(35,-30,2) sat within
+            // ~2.5 degrees of that normal — square-on light, which is why the diorama read
+            // flat-lit with near-zero shadow length. This pose keeps the light high-right in
+            // frame but ~28 degrees off the board normal, so it rakes: shadows stretch to
+            // roughly half an object's height toward frame-left and vertical faces split
+            // into lit and shaded sides. Renderer positions are untouched, so the 24-unit
+            // shadow-distance law in RuntimeSceneRigTests still holds.
+            key.transform.localRotation = Quaternion.Euler(19f, -56f, 0f);
         }
     }
 

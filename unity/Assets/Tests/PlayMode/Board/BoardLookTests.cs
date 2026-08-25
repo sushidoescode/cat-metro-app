@@ -103,6 +103,68 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator DeskGrain_IsItsOwnBroadSheet_AndWarmthFallsOffTowardTheEdges()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            var wood = _root.View.transform.Find("BoardBody/WoodTop").GetComponent<Renderer>();
+            var desk = _root.View.transform.Find("DeskSurface/DeskTop").GetComponent<Renderer>();
+            var woodProperties = new MaterialPropertyBlock();
+            var deskProperties = new MaterialPropertyBlock();
+            wood.GetPropertyBlock(woodProperties);
+            desk.GetPropertyBlock(deskProperties);
+
+            var deskTexture = deskProperties.GetTexture("_BaseMap") as Texture2D;
+            Assert.That(deskTexture, Is.Not.Null);
+            Assert.That(deskTexture, Is.Not.SameAs(woodProperties.GetTexture("_BaseMap")),
+                "the desk needs its own broader grain, not the board's repeating tile");
+            Vector4 st = deskProperties.GetVector("_BaseMap_ST");
+            Assert.That(st.x, Is.EqualTo(1f).Within(0.001f),
+                "one untiled sheet — a repeating tile cannot carry a radial falloff");
+            Assert.That(st.y, Is.EqualTo(1f).Within(0.001f));
+            Assert.That(deskTexture.wrapMode, Is.EqualTo(TextureWrapMode.Clamp),
+                "clamped edges keep the vignette from wrapping back to a bright seam");
+
+            Color centre = deskTexture.GetPixelBilinear(0.5f, 0.5f);
+            Color corner = deskTexture.GetPixelBilinear(0.04f, 0.04f);
+            Assert.That(centre.maxColorComponent,
+                Is.GreaterThan(corner.maxColorComponent + 0.2f),
+                "warmth must pool around the board and fall away toward the desk edges");
+            Assert.That(centre.r - centre.b, Is.GreaterThan(corner.r - corner.b),
+                "the falloff cools as it darkens, like lamp light leaving the desk");
+        }
+
+        [UnityTest]
+        public IEnumerator KeyLight_RakesTheTiltedBoardLikeLateAfternoon()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            var key = _root.GetComponentsInChildren<Light>(true)
+                .Single(light => light.name == "Diorama Warm Key");
+            Vector3 toSource = -key.transform.forward;
+            Assert.That(toSource.y, Is.GreaterThan(0.1f), "the key still hangs above the desk");
+            Assert.That(toSource.x, Is.GreaterThan(0.2f),
+                "late-afternoon light enters from frame right, matching the target renders");
+
+            Vector3 boardNormal = -_root.View.transform.forward;
+            float incidence = Vector3.Angle(toSource, boardNormal);
+            Assert.That(incidence, Is.InRange(18f, 55f),
+                "the key must rake across the tilted board — square-on light flattens every "
+                + "face and collapses shadow length to nothing");
+
+            Assert.That(key.color.r - key.color.b, Is.GreaterThan(0.3f),
+                "amber key, not noon white");
+            Assert.That(key.shadowStrength, Is.InRange(0.4f, 0.8f),
+                "shadows must read on the desk yet stay airy");
+            Assert.That(RenderSettings.ambientSkyColor.r - RenderSettings.ambientSkyColor.b,
+                Is.GreaterThan(RenderSettings.ambientGroundColor.r
+                    - RenderSettings.ambientGroundColor.b),
+                "warm sky over cool ground keeps shaded faces from going muddy");
+        }
+
+        [UnityTest]
         public IEnumerator WarmBackground_ReplacesTheDefaultSkybox()
         {
             _root = GameRoot.Launch();
