@@ -11,7 +11,7 @@
       "queue"
     ],
     "newMechanic": null,
-    "teachingGoal": "Everything the Market taught: read the waves, rush them home -- and never park a cat on the dead-end siding",
+    "teachingGoal": "Everything the Market taught, plus a third berth: the junction cycles red, blue, green -- plan your taps around the loop",
     "minActionWindowTicks": 12,
     "authoredBy": "llm+validator"
   },
@@ -60,6 +60,11 @@
         "id": "BLU",
         "x": 5,
         "y": 2
+      },
+      {
+        "id": "GRN",
+        "x": 3,
+        "y": 1
       }
     ],
     "edges": [
@@ -104,6 +109,12 @@
         "from": "J1",
         "to": "BLU",
         "travelTicks": 7
+      },
+      {
+        "id": "E8",
+        "from": "J1",
+        "to": "GRN",
+        "travelTicks": 7
       }
     ]
   },
@@ -112,7 +123,8 @@
       "nodeId": "SRC",
       "allowedColors": [
         "red",
-        "blue"
+        "blue",
+        "green"
       ]
     }
   ],
@@ -130,6 +142,13 @@
         "blue"
       ],
       "capacity": 10
+    },
+    {
+      "nodeId": "GRN",
+      "accepts": [
+        "green"
+      ],
+      "capacity": 6
     }
   ],
   "switches": [
@@ -147,7 +166,8 @@
       "nodeId": "J1",
       "routes": [
         "E6",
-        "E7"
+        "E7",
+        "E8"
       ],
       "initialRoute": 0
     }
@@ -180,12 +200,19 @@
       "color": "blue",
       "count": 2,
       "spacingTicks": 10
+    },
+    {
+      "tick": 140,
+      "sourceNode": "SRC",
+      "color": "green",
+      "count": 2,
+      "spacingTicks": 10
     }
   ],
   "win": {
-    "deliveries": 9,
+    "deliveries": 11,
     "timeLimitTicks": 190,
-    "perfectMaxSwitches": 3,
+    "perfectMaxSwitches": 5,
     "stars": {
       "two": 750,
       "three": 1050

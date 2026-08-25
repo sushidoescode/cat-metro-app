@@ -11,7 +11,7 @@
       "queue"
     ],
     "newMechanic": null,
-    "teachingGoal": "A whole rush of cats arrives at once -- set the route before they hit the platform, not during",
+    "teachingGoal": "A whole rush of cats arrives at once -- set the route before they hit the platform, and green newcomers ride the blue berth",
     "minActionWindowTicks": 12,
     "authoredBy": "llm+validator"
   },
@@ -100,7 +100,8 @@
       "nodeId": "SRC",
       "allowedColors": [
         "red",
-        "blue"
+        "blue",
+        "green"
       ]
     }
   ],
@@ -115,7 +116,8 @@
     {
       "nodeId": "BLU",
       "accepts": [
-        "blue"
+        "blue",
+        "green"
       ],
       "capacity": 8
     }
@@ -161,10 +163,17 @@
       "color": "blue",
       "count": 3,
       "spacingTicks": 1
+    },
+    {
+      "tick": 78,
+      "sourceNode": "SRC",
+      "color": "green",
+      "count": 2,
+      "spacingTicks": 1
     }
   ],
   "win": {
-    "deliveries": 7,
+    "deliveries": 9,
     "timeLimitTicks": 110,
     "perfectMaxSwitches": 1,
     "stars": {
