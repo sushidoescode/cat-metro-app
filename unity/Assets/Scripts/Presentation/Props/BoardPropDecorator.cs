@@ -361,9 +361,20 @@ namespace CatMetro.Presentation.Props
         private const float KeylineSize = 1.08f;
         private const float KeylineDepth = 0.11f;
 
-        // The secondary accept row, hung under the primary plate on the same board apron.
-        private const float AcceptRowY = -1.62f;
-        private const float AcceptPitch = 0.46f;
+        // The secondary accept row runs BESIDE the primary plate, on its row and in its Z band,
+        // so the badge reads as one strip of destinations the way real platform signage does.
+        //
+        // Not below it, which is where the first cut put it. Two things rule that out. The
+        // primary keyline already reaches local y -1.54 (0.92 board units under the node) and
+        // BoardSurface.Margin is only 1.05, so a row clearing it vertically would hang off the
+        // cream rim. And at the clearance the keylines actually need, the two cream halos
+        // overlapped at an identical Z and z-fought. Sideways, the primary stays at x = 0
+        // untouched — which is also why a single-accept station renders exactly as it always
+        // has, down to the pixel.
+        //
+        // AcceptFirstX = primary keyline half (0.54) + chip keyline half (0.24) + a 0.08 gap.
+        private const float AcceptFirstX = 0.86f;
+        private const float AcceptPitch = 0.52f;
         private const float AcceptSize = 0.4f;
         private const float AcceptKeylineSize = 0.48f;
         private const float AcceptGlyphSize = 0.22f;
@@ -433,20 +444,20 @@ namespace CatMetro.Presentation.Props
             {
                 string extra = accepted[i];
                 var extraShape = CatLine.ShapeOf(extra);
-                float x = (i - 1 - (accepted.Length - 2) * 0.5f) * AcceptPitch;
+                float x = AcceptFirstX + (i - 1) * AcceptPitch;
 
                 var chipKeyline = CreatePlateGeometry("station:keyline-accept-" + (i - 1),
-                    stationAnchor, extraShape, new Vector3(x, AcceptRowY, KeylineZ),
+                    stationAnchor, extraShape, new Vector3(x, PlateY, KeylineZ),
                     AcceptKeylineSize, KeylineDepth);
                 Tint(chipKeyline, KeylineCream);
 
                 var chip = CreatePlateGeometry("station:plate-accept-" + (i - 1),
-                    stationAnchor, extraShape, new Vector3(x, AcceptRowY, PlateZ),
+                    stationAnchor, extraShape, new Vector3(x, PlateY, PlateZ),
                     AcceptSize, PlateDepth);
                 Tint(chip, CatLine.ColorOf(extra));
 
                 AddAcceptGlyph(stationAnchor, label, "station:symbol-accept-" + (i - 1),
-                    new Vector3(x, AcceptRowY, GlyphZ), CatLine.GlyphOf(extra));
+                    new Vector3(x, PlateY, GlyphZ), CatLine.GlyphOf(extra));
             }
         }
 

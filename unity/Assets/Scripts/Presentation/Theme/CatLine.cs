@@ -72,6 +72,17 @@ namespace CatMetro.Presentation.Theme
                 // colour alone, which is exactly what the badge exists to avoid. Red and blue
                 // keep the two the board already painted, so nothing a player has learned and
                 // nothing an existing capture pinned changes.
+                //
+                // The fallback deliberately does NOT invent a fifth shape, and that is only
+                // safe because it never travels alone. An unknown line is a content bug, and
+                // it is already unmistakable on both channels that CAN shout: ColorOf returns
+                // magenta and the glyph comes out "?". So the pair a player sees is "magenta
+                // circle", never "red circle" — a red station wears SignalRed, so the shape
+                // channel can never be the thing that makes a bug look like a real
+                // destination. LevelImporter rejects an unknown colour outright, so the only
+                // value that reaches this line is "" from a station with an empty accepts
+                // list. PropPlacementTests.UnknownLine_IsLoudOnTheChannelsThatCanBeLoud pins
+                // that pair; do not quietly tidy the magenta away and leave the circle behind.
                 default: return DestinationShape.Circle;
             }
         }

@@ -440,6 +440,43 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(chips.All(x => x.GetComponent<Renderer>().enabled), Is.True,
                 "chips are line-owned overlays, so kiosk suppression must not hide them");
 
+            // Review finding: the first cut hung this row BELOW the plate, where the two cream
+            // keylines overlapped by 0.16 at an identical Z and z-fought — invisible to every
+            // assertion above, all of which check meshes, colours and names but never a
+            // position. The chip must clear the primary keyline's footprint outright.
+            var primaryKeyline = station.transform.Find("station:keyline-generated");
+            var chipKeyline = station.transform.Find("station:keyline-accept-0");
+            float clearance = (primaryKeyline.localScale.x + chipKeyline.localScale.x) * 0.5f;
+            Assert.That(Mathf.Abs(chipKeyline.localPosition.x - primaryKeyline.localPosition.x),
+                Is.GreaterThan(clearance),
+                "the accept chip's keyline must not overlap the primary keyline beside it");
+            Assert.That(chipKeyline.localPosition.y,
+                Is.EqualTo(primaryKeyline.localPosition.y).Within(0.0001f),
+                "and it shares the plate's row, so the badge reads as one strip of signage");
+            Assert.That(primaryKeyline.localPosition.x, Is.EqualTo(0f).Within(0.0001f),
+                "the primary never moves to make room — that is what keeps a single-accept"
+                + " station identical to what it rendered before chips existed");
+        }
+
+        [Test]
+        public void UnknownLine_IsLoudOnTheChannelsThatCanBeLoud()
+        {
+            // Review finding: ShapeOf's fallback is Circle, which is also red's shape. That is
+            // only safe because the other two channels shout, so pin the PAIR — otherwise
+            // someone tidies the magenta away and an unknown line quietly starts rendering as
+            // a plausible red station.
+            Assert.That(CatLine.ShapeOf(""), Is.EqualTo(CatLine.ShapeOf("red")),
+                "documented: there is no fifth shape for the shape channel to fall back to");
+            Assert.That(CatLine.ColorOf(""), Is.EqualTo(Color.magenta),
+                "so the colour channel carries the whole signal and must stay unmistakable");
+            Assert.That(CatLine.ColorOf(""), Is.Not.EqualTo(CatLine.ColorOf("red")),
+                "a magenta circle is a bug; a red circle is a destination");
+            Assert.That(CatLine.GlyphOf(""), Is.EqualTo("?"));
+
+            foreach (string line in CatLine.Names)
+                Assert.That(CatLine.ColorOf(line), Is.Not.EqualTo(Color.magenta),
+                    "positive control: a real line never wears the bug colour (" + line + ")");
+
             // Positive/negative control in the same fixture: the single-accept berth beside it
             // grows no chips at all, so the row is evidence of a second line and not decoration.
             Assert.That(AcceptChips(Station(view, "RED")).Length, Is.Zero);
