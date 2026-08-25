@@ -128,16 +128,32 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator Queue_Shrinks_AsCatsAreEmitted()
         {
-            _root = GameRoot.Launch();
+            // NOT L001. Its switch is authored initialRoute 1 (J1 -> E3 -> BLU) while its only
+            // wave is RED — the mis-route IS the puzzle, so driving L001 forward without
+            // flipping the switch lands a red cat in a blue berth at ~tick 30 and trips the
+            // pinned NEW-Q4 limitation (rejection is out of CM-C1 scope). That pin is real and
+            // must not be caught or suppressed; the fix is a fixture that cannot reach it.
+            //
+            // DrainFixture gives the cats a 400-tick ride, so within this window they are still
+            // far out on the first edge. The test then measures exactly what it claims to —
+            // that EMISSION drains the queue — with routing kept out of the question entirely.
+            _root = GameRoot.LaunchWith(Import(DrainFixture()));
             yield return null;
-            Assert.That(_root.Preview.FaceCount, Is.EqualTo(2));
+            Assert.That(_root.Preview.FaceCount, Is.EqualTo(2), "both cats still to come");
 
-            // Past both emissions (tick 8 and tick 28) — the queue empties.
-            _root.Session.AdvanceMs(40 * CatMetro.Application.Session.TickInterpolator.TICK_MS);
+            // Emissions are at tick 2 and tick 5; 12 ticks clears both.
+            _root.Session.AdvanceMs(12 * CatMetro.Application.Session.TickInterpolator.TICK_MS);
             yield return null;
 
-            Assert.That(_root.Preview.FaceCount, Is.Zero, "consumed cats leave the capsule");
+            Assert.That(_root.Preview.FaceCount, Is.Zero, "emitted cats leave the capsule");
             Assert.That(_root.Preview.FaceSummary, Is.Empty);
+            Assert.That(_root.Preview.RemainingCats, Is.Zero);
+
+            // Proves the drain was emission and not delivery — if a cat had reached a berth
+            // this test would be quietly measuring something else.
+            Assert.That(_root.Session.State.Deliveries, Is.Zero,
+                "no cat reached a station in the window");
+            Assert.That(_root.ScreenState, Is.EqualTo("Playing"));
         }
 
         [UnityTest]
@@ -362,13 +378,19 @@ namespace CatMetro.Tests.PlayMode
     { ""tick"": 5,  ""sourceNode"": ""SRC"", ""color"": ""red"",  ""count"": 1, ""spacingTicks"": 10 },
     { ""tick"": 20, ""sourceNode"": ""SRC"", ""color"": ""red"",  ""count"": 1, ""spacingTicks"": 10 } ]");
 
+        // Cats that emit almost immediately but ride for a very long time, so the queue can
+        // be observed draining without any cat arriving anywhere.
+        private static string DrainFixture() => FixtureJson(@"[
+    { ""tick"": 2, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 2, ""spacingTicks"": 3 } ]",
+            travelTicks: 400);
+
         // More cats than the capsule can show, to exercise the "+N" tail.
         private static string FloodFixture() => FixtureJson(@"[
     { ""tick"": 8, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 6, ""spacingTicks"": 4 },
     { ""tick"": 40, ""sourceNode"": ""SRC"", ""color"": ""blue"", ""count"": 6, ""spacingTicks"": 4 } ]");
 
         // The FailureTests board shape (SRC -> J1 -> RED|BLU), with the waves swapped in.
-        private static string FixtureJson(string waves)
+        private static string FixtureJson(string waves, int travelTicks = 12)
         {
             return @"{
   ""schemaVersion"": 2, ""id"": ""T950"", ""name"": ""Hud Wave Fixture"", ""seed"": 950,
@@ -380,9 +402,9 @@ namespace CatMetro.Tests.PlayMode
       { ""id"": ""J1"", ""x"": 3, ""y"": 6 },
       { ""id"": ""RED"", ""x"": 1, ""y"": 2 }, { ""id"": ""BLU"", ""x"": 5, ""y"": 2 } ],
     ""edges"": [
-      { ""id"": ""E1"", ""from"": ""SRC"", ""to"": ""J1"", ""travelTicks"": 10 },
-      { ""id"": ""E2"", ""from"": ""J1"", ""to"": ""RED"", ""travelTicks"": 12 },
-      { ""id"": ""E3"", ""from"": ""J1"", ""to"": ""BLU"", ""travelTicks"": 12 } ] },
+      { ""id"": ""E1"", ""from"": ""SRC"", ""to"": ""J1"", ""travelTicks"": " + travelTicks + @" },
+      { ""id"": ""E2"", ""from"": ""J1"", ""to"": ""RED"", ""travelTicks"": " + travelTicks + @" },
+      { ""id"": ""E3"", ""from"": ""J1"", ""to"": ""BLU"", ""travelTicks"": " + travelTicks + @" } ] },
   ""sources"": [ { ""nodeId"": ""SRC"", ""allowedColors"": [""red"", ""blue""] } ],
   ""stations"": [
     { ""nodeId"": ""RED"", ""accepts"": [""red""], ""capacity"": 6 },
