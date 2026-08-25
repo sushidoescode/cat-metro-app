@@ -141,6 +141,37 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void Build_BallastStaysLighterThanTheBoardItSitsOn()
+        {
+            // The scene-mood lane repainted the board interior to albedo (0.78, 0.63, 0.57)
+            // to land near target-01's rendered (194, 122, 84). A wide ballast bed only
+            // buys contrast while it stays clearly lighter than that; if a later retint
+            // drags the cream down toward the wood, we are back to a track that vanishes
+            // into the board. Not a reference to BoardSurface — that file is another
+            // lane's, so the ceiling is copied here deliberately.
+            const float boardInterior = 0.6576f;
+
+            var path = TrackSplineGraph.Build(
+                new[] { new Vector3(0f, 3f, 0f), Vector3.zero },
+                new[] { 0 }, new[] { 1 }).Path(0);
+            _host = new GameObject("track-contrast-host");
+
+            _track = ToyTrackMeshBuilder.Build("E-contrast", path, _host.transform);
+
+            Material[] materials = _track.GetComponent<MeshRenderer>().sharedMaterials;
+            float ballast = RelativeLuminance(materials[0].color);
+            float rails = RelativeLuminance(materials[1].color);
+
+            Assert.That(ballast - boardInterior, Is.GreaterThan(0.20f),
+                "the ballast bed must read clearly lighter than the board interior");
+            Assert.That(ballast - rails, Is.GreaterThan(0.5f),
+                "the rails must stay dark against the bed they are set into");
+        }
+
+        private static float RelativeLuminance(Color c) =>
+            0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
+
+        [Test]
         public void Build_BallastBedIsOneUnbrokenRibbonWiderThanTheGauge()
         {
             var path = TrackSplineGraph.Build(
