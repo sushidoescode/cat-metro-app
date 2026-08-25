@@ -56,6 +56,11 @@ namespace CatMetro.Presentation.Props
                     AddStationArchitecture(kiosk.transform, anchors[station.NodeId]);
                     SuppressReplacedStationArchitecture(anchors[station.NodeId]);
                 }
+                // LOOK step 5: each platform gets its own lantern, just off the kiosk so the
+                // near-orthographic camera reads them as separate objects.
+                Spawn(ref propsRoot, boardRoot, catalog, PropModelCatalog.LampPostId,
+                    "station-lamp", station.NodeId,
+                    anchorPosition + new Vector3(-0.85f, -0.15f, 0f));
             }
 
             bool hasFirstSource = false;
@@ -112,7 +117,34 @@ namespace CatMetro.Presentation.Props
                 Spawn(ref propsRoot, boardRoot, catalog, PropModelCatalog.ToyEngineId,
                     "parked-engine", firstSourceId,
                     firstSourcePosition + new Vector3(1.15f, 0.1f, 0f));
+                // A signpost by the depot, like the target art's platform signage.
+                Spawn(ref propsRoot, boardRoot, catalog, PropModelCatalog.SignpostId,
+                    "depot-signpost", firstSourceId,
+                    firstSourcePosition + new Vector3(-1.05f, -0.2f, 0f));
             }
+
+            // LOOK step 5 furnish: a short split-rail fence run along the south apron and a
+            // few bushes around the rim fill the board without touching any gameplay anchor.
+            // Deterministic bounds-derived placement keeps Retry/LoadNext rebuilds identical.
+            for (int i = 0; i < 3; i++)
+            {
+                float t = (i + 0.5f) / 3f;
+                Spawn(ref propsRoot, boardRoot, catalog, PropModelCatalog.FenceId,
+                    "fence-line", "",
+                    new Vector3(Mathf.Lerp(minX, maxX, t), minY - 0.5f, contactZ));
+            }
+            Spawn(ref propsRoot, boardRoot, catalog, PropModelCatalog.BushId,
+                "rim-bush", "",
+                new Vector3(Mathf.Lerp(minX, maxX, 0.2f), maxY + 0.35f, contactZ));
+            Spawn(ref propsRoot, boardRoot, catalog, PropModelCatalog.BushId,
+                "rim-bush", "",
+                new Vector3(maxX + 0.3f, Mathf.Lerp(minY, maxY, 0.35f), contactZ));
+            Spawn(ref propsRoot, boardRoot, catalog, PropModelCatalog.BushId,
+                "rim-bush", "",
+                new Vector3(Mathf.Lerp(minX, maxX, 0.8f), minY - 0.3f, contactZ));
+            Spawn(ref propsRoot, boardRoot, catalog, PropModelCatalog.TrailSignpostId,
+                "trail-signpost", "",
+                new Vector3(maxX + 0.4f, minY - 0.35f, contactZ));
 
             return propsRoot;
         }

@@ -112,6 +112,101 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
+        public void FurnishedCatalog_AdmitsAllTenKnownIds()
+        {
+            var catalog = FurnishedCatalog();
+
+            Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(10));
+            Assert.That(catalog.RejectedEntryCount, Is.Zero);
+            foreach (var id in FurnishIds)
+                Assert.That(catalog.TryGet(id, out _), Is.True, id);
+        }
+
+        [Test]
+        public void Decorate_WithFurnishedCatalog_AddsFencesBushesAndStationFurniture()
+        {
+            var level = ImportLevel("L001");
+            var view = BuildBoard(level);
+            var authoredBefore = view.GetComponentsInChildren<BoardElementId>(true)
+                .Select(x => x.Kind + ":" + x.Id).OrderBy(x => x).ToArray();
+
+            var root = BoardPropDecorator.Decorate(level, view.transform, FurnishedCatalog());
+
+            Assert.That(root, Is.Not.Null);
+            var props = root.GetComponentsInChildren<BoardPropInstance>(true);
+            Assert.That(props.Length, Is.EqualTo(16),
+                "L001: 2 kiosks + 2 lamps + 1 depot + trees/clutter/engine + 1 depot signpost"
+                + " + 3 fences + 3 bushes + 1 trail signpost");
+            Assert.That(props.Count(x => x.AssetId == PropModelCatalog.FenceId), Is.EqualTo(3));
+            Assert.That(props.Count(x => x.AssetId == PropModelCatalog.BushId), Is.EqualTo(3));
+            Assert.That(props.Where(x => x.AssetId == PropModelCatalog.LampPostId)
+                .Select(x => x.AnchorId).OrderBy(x => x).ToArray(),
+                Is.EqualTo(new[] { "BLU", "RED" }),
+                "every station platform gets its own lantern");
+            Assert.That(props.Single(x => x.AssetId == PropModelCatalog.SignpostId).AnchorId,
+                Is.EqualTo("SRC"), "the signpost stands by the depot");
+            Assert.That(props.Count(x => x.AssetId == PropModelCatalog.TrailSignpostId),
+                Is.EqualTo(1));
+            Assert.That(props.Where(x => x.AssetId == PropModelCatalog.FenceId)
+                .All(x => x.Role == "fence-line"), Is.True);
+            Assert.That(props.Where(x => x.AssetId == PropModelCatalog.BushId)
+                .All(x => x.Role == "rim-bush"), Is.True);
+
+            float contactZ = BoardPropDecorator.ResolveContactPlaneLocalZ(view.transform);
+            Assert.That(props.Where(x => x.AssetId != PropModelCatalog.DeskClutterId)
+                .All(x => Mathf.Abs(x.transform.localPosition.z - contactZ) < 0.001f), Is.True,
+                "furnish props stand on the board contact plane like every other prop");
+
+            Assert.That(props.All(x => x.GetComponent<BoardElementId>() == null), Is.True,
+                "furnish art must never enter the authored gameplay inventory");
+            Assert.That(view.GetComponentsInChildren<BoardElementId>(true)
+                .Select(x => x.Kind + ":" + x.Id).OrderBy(x => x).ToArray(),
+                Is.EqualTo(authoredBefore));
+
+            var fenceYs = props.Where(x => x.AssetId == PropModelCatalog.FenceId)
+                .Select(x => x.transform.localPosition.y).Distinct().ToArray();
+            Assert.That(fenceYs.Length, Is.EqualTo(1),
+                "the fence run is one straight line along the south apron");
+            var stationYs = props.Where(x => x.AssetId == PropModelCatalog.StationKioskId)
+                .Select(x => x.transform.localPosition.y);
+            Assert.That(fenceYs[0], Is.LessThan(stationYs.Min()),
+                "fences dress the apron below the play area, never the platforms");
+        }
+
+        [Test]
+        public void CoreOnlyCatalog_SpawnsNoFurnishRoles()
+        {
+            var level = ImportLevel("L001");
+            var view = BuildBoard(level);
+
+            var root = BoardPropDecorator.Decorate(level, view.transform, CompleteCatalog());
+
+            var props = root.GetComponentsInChildren<BoardPropInstance>(true);
+            Assert.That(props.Length, Is.EqualTo(6),
+                "a checkout with only the original five props renders exactly as before");
+            foreach (var id in FurnishIds)
+                Assert.That(props.Any(x => x.AssetId == id), Is.False, id);
+        }
+
+        [Test]
+        public void AllAuthoredLevels_ProduceOneStableFurnishedSet()
+        {
+            for (int levelNumber = 1; levelNumber <= 17; levelNumber++)
+            {
+                var level = ImportLevel("L" + levelNumber.ToString("000"));
+                var view = BuildBoard(level);
+                var root = BoardPropDecorator.Decorate(level, view.transform, FurnishedCatalog());
+                var props = root.GetComponentsInChildren<BoardPropInstance>(true);
+
+                Assert.That(props.Length,
+                    Is.EqualTo(level.Dto.Stations.Length * 2 + level.Dto.Sources.Length + 11),
+                    level.Dto.Id + " should add a lamp per station, a depot signpost, three"
+                    + " fences, three bushes, and one trail signpost to the core scenery");
+                Object.DestroyImmediate(view.gameObject);
+            }
+        }
+
+        [Test]
         public void PartialCatalog_IsAQuietFallback_AndStationCodingRemainsProjectOwned()
         {
             var level = ImportLevel("L001");
@@ -360,17 +455,20 @@ namespace CatMetro.Tests.PlayMode
             if (catalog.AdmittedEntryCount == 0)
                 Assert.Pass("optional paid prop bytes are absent in this licence-neutral checkout");
 
-            Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(5),
-                "a local install is atomic: all five props or none");
+            Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(5).Or.EqualTo(10),
+                "local installs are atomic per batch: the core five, optionally plus the"
+                + " five-piece Polyfork furnish set — never a partial batch");
             Assert.That(catalog.RejectedEntryCount, Is.EqualTo(0));
-            foreach (var id in new[]
+            var expectedIds = new List<string>
             {
                 PropModelCatalog.DepotShedId,
                 PropModelCatalog.StationKioskId,
                 PropModelCatalog.TreesId,
                 PropModelCatalog.DeskClutterId,
                 PropModelCatalog.ToyEngineId,
-            })
+            };
+            if (catalog.AdmittedEntryCount == 10) expectedIds.AddRange(FurnishIds);
+            foreach (var id in expectedIds)
             {
                 Assert.That(catalog.TryGet(id, out var entry), Is.True, id);
                 foreach (var renderer in entry.Prefab.GetComponentsInChildren<Renderer>(true))
@@ -386,7 +484,8 @@ namespace CatMetro.Tests.PlayMode
             var level = ImportLevel("L001");
             var host = Own(new GameObject("local-resource-board-host"));
             var view = BoardView.Build(level, host.transform, new GameSession(level));
-            Assert.That(view.GetComponentsInChildren<BoardPropInstance>(true).Length, Is.EqualTo(6));
+            Assert.That(view.GetComponentsInChildren<BoardPropInstance>(true).Length,
+                Is.EqualTo(catalog.AdmittedEntryCount == 10 ? 16 : 6));
         }
 
         private BoardView BuildBoard(ImportedLevel level)
@@ -395,6 +494,15 @@ namespace CatMetro.Tests.PlayMode
             return BoardView.Build(level, host.transform, new GameSession(level),
                 PropModelCatalog.Empty);
         }
+
+        private static readonly string[] FurnishIds =
+        {
+            PropModelCatalog.FenceId,
+            PropModelCatalog.BushId,
+            PropModelCatalog.LampPostId,
+            PropModelCatalog.SignpostId,
+            PropModelCatalog.TrailSignpostId,
+        };
 
         private PropModelCatalog CompleteCatalog()
         {
@@ -407,6 +515,21 @@ namespace CatMetro.Tests.PlayMode
                 Entry(PropModelCatalog.DeskClutterId, prefab),
                 Entry(PropModelCatalog.ToyEngineId, prefab),
             });
+        }
+
+        private PropModelCatalog FurnishedCatalog()
+        {
+            var prefab = RenderPrefab("furnished-catalog-model");
+            var entries = new List<PropModelCatalog.Entry>
+            {
+                Entry(PropModelCatalog.DepotShedId, prefab),
+                Entry(PropModelCatalog.StationKioskId, prefab),
+                Entry(PropModelCatalog.TreesId, prefab),
+                Entry(PropModelCatalog.DeskClutterId, prefab),
+                Entry(PropModelCatalog.ToyEngineId, prefab),
+            };
+            foreach (var id in FurnishIds) entries.Add(Entry(id, prefab));
+            return new PropModelCatalog(entries);
         }
 
         private static PropModelCatalog.Entry Entry(string id, GameObject prefab) =>

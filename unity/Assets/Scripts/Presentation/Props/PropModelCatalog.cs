@@ -13,11 +13,21 @@ namespace CatMetro.Presentation.Props
         public const string DeskClutterId = "prop-desk-clutter";
         public const string ToyEngineId = "prop-toy-engine";
 
+        // LOOK step 5 furnish set, sourced from the Polyfork library. Like the five above,
+        // the bytes are machine-local paid-account content; only the ids and presentation
+        // corrections live in the repo.
+        public const string FenceId = "prop-fence";
+        public const string BushId = "prop-bush";
+        public const string LampPostId = "prop-lamp-post";
+        public const string SignpostId = "prop-signpost";
+        public const string TrailSignpostId = "prop-trail-signpost";
+
         private const string ResourceRoot = "CatMetroProps/";
 
         private static readonly HashSet<string> KnownIds = new HashSet<string>
         {
             DepotShedId, StationKioskId, TreesId, DeskClutterId, ToyEngineId,
+            FenceId, BushId, LampPostId, SignpostId, TrailSignpostId,
         };
 
         private readonly Dictionary<string, Entry> _entries = new Dictionary<string, Entry>();
@@ -70,14 +80,32 @@ namespace CatMetro.Presentation.Props
             // Per-model presentation corrections belong here; the licensed model bytes remain
             // pinned. The bake exports FBX as Y-up, and BoardPropDecorator supplies the shared
             // Y-up -> board-XY rotation separately.
-            return new PropModelCatalog(new[]
+            var entries = new List<Entry>
             {
                 ResourceEntry(DepotShedId, 2.05f, 270f, Vector3.zero),
                 ResourceEntry(StationKioskId, 1.45f, 270f, Vector3.zero),
                 ResourceEntry(TreesId, 1.65f, 90f, Vector3.zero),
                 ResourceEntry(DeskClutterId, 1.7f, 90f, Vector3.zero),
                 ResourceEntry(ToyEngineId, 1.55f, 90f, Vector3.zero),
-            });
+            };
+
+            // The Polyfork furnish set is a second optional batch: all five or none, so a
+            // partially installed machine never shows a half-furnished board. Their FBX metres
+            // are real-world (fence = 2 m), so DisplayScale converts metres to board units.
+            var furnish = new[]
+            {
+                ResourceEntry(FenceId, 0.5f, 0f, Vector3.zero),
+                ResourceEntry(BushId, 0.8f, 0f, Vector3.zero),
+                ResourceEntry(LampPostId, 0.45f, 0f, Vector3.zero),
+                ResourceEntry(SignpostId, 0.5f, 0f, Vector3.zero),
+                ResourceEntry(TrailSignpostId, 0.5f, 0f, Vector3.zero),
+            };
+            bool furnishComplete = true;
+            foreach (var entry in furnish)
+                if (entry.Prefab == null) furnishComplete = false;
+            if (furnishComplete) entries.AddRange(furnish);
+
+            return new PropModelCatalog(entries);
         }
 
         private static Entry ResourceEntry(string assetId, float scale, float yaw, Vector3 offset) =>
