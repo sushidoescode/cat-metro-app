@@ -11,7 +11,7 @@
       "queue"
     ],
     "newMechanic": null,
-    "teachingGoal": "Everything the Market taught, plus a third berth: the junction cycles red, blue, green -- plan your taps around the loop",
+    "teachingGoal": "Everything the Market taught, and the last wave comes up green -- the cool-side berth takes them, so read colour not habit",
     "minActionWindowTicks": 12,
     "authoredBy": "llm+validator"
   },
@@ -60,11 +60,6 @@
         "id": "BLU",
         "x": 5,
         "y": 2
-      },
-      {
-        "id": "GRN",
-        "x": 3,
-        "y": 1
       }
     ],
     "edges": [
@@ -109,12 +104,6 @@
         "from": "J1",
         "to": "BLU",
         "travelTicks": 7
-      },
-      {
-        "id": "E8",
-        "from": "J1",
-        "to": "GRN",
-        "travelTicks": 7
       }
     ]
   },
@@ -139,16 +128,10 @@
     {
       "nodeId": "BLU",
       "accepts": [
-        "blue"
-      ],
-      "capacity": 10
-    },
-    {
-      "nodeId": "GRN",
-      "accepts": [
+        "blue",
         "green"
       ],
-      "capacity": 6
+      "capacity": 10
     }
   ],
   "switches": [
@@ -166,8 +149,7 @@
       "nodeId": "J1",
       "routes": [
         "E6",
-        "E7",
-        "E8"
+        "E7"
       ],
       "initialRoute": 0
     }
@@ -197,22 +179,15 @@
     {
       "tick": 110,
       "sourceNode": "SRC",
-      "color": "blue",
-      "count": 2,
-      "spacingTicks": 10
-    },
-    {
-      "tick": 140,
-      "sourceNode": "SRC",
       "color": "green",
       "count": 2,
       "spacingTicks": 10
     }
   ],
   "win": {
-    "deliveries": 11,
+    "deliveries": 9,
     "timeLimitTicks": 190,
-    "perfectMaxSwitches": 5,
+    "perfectMaxSwitches": 3,
     "stars": {
       "two": 750,
       "three": 1050

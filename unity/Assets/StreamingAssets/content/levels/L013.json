@@ -161,19 +161,19 @@
       "tick": 55,
       "sourceNode": "SRC",
       "color": "blue",
-      "count": 3,
+      "count": 2,
       "spacingTicks": 1
     },
     {
-      "tick": 78,
+      "tick": 57,
       "sourceNode": "SRC",
       "color": "green",
-      "count": 2,
+      "count": 1,
       "spacingTicks": 1
     }
   ],
   "win": {
-    "deliveries": 9,
+    "deliveries": 7,
     "timeLimitTicks": 110,
     "perfectMaxSwitches": 1,
     "stars": {
