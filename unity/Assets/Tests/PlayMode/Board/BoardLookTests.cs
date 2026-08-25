@@ -86,20 +86,64 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(desk.localScale.x, Is.GreaterThan(wood.localScale.x + 12f));
             Assert.That(desk.localScale.y, Is.GreaterThan(wood.localScale.y + 12f),
                 "the warm desk should continue beyond the portrait frame, not end like a second board");
-            var deskBounds = desk.GetComponent<Renderer>().bounds;
             var properties = new MaterialPropertyBlock();
             desk.GetComponent<Renderer>().GetPropertyBlock(properties);
             Assert.That(properties.GetTexture("_BaseMap"), Is.Not.Null,
                 "the oversized desk needs subtle continuous grain without geometry seams");
-            Assert.That(_root.Cam.transform.position.z + _root.Cam.nearClipPlane,
-                Is.LessThan(deskBounds.min.z),
-                "the tilted overscan desk must remain wholly in front of the camera near plane");
+
+            // Replaces an older pin that required the whole slab to sit in front of the near
+            // plane. That was the wrong invariant twice over: it let the slab's far
+            // off-screen corner drag the camera backwards through the shadow budget, and it
+            // still allowed the background to show at the top of the frame (measured: a 52px
+            // wedge on the 2026-08-25 r2 render). What actually matters is the frame.
+            AssertDeskCoversTheFrame(_root, 917f / 2048f);
             float gameplayDepth = Vector3.Dot(
                 _root.View.transform.TransformPoint(_root.View.PresentationCenterLocal)
                     - _root.Cam.transform.position,
                 _root.Cam.transform.forward);
             Assert.That(gameplayDepth, Is.LessThan(24f),
                 "the board must stay inside the URP asset's 25-unit main-light shadow distance");
+        }
+
+        [UnityTest]
+        public IEnumerator DecorativeSlab_DoesNotDriveTheWidthFit()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+            _root.Cam.aspect = 917f / 2048f;
+
+            var slab = _root.View.transform.Find("BoardBody");
+            var desk = _root.View.transform.Find("DeskSurface");
+            Assert.That(slab, Is.Not.Null);
+
+            Bounds slabBounds = default, content = default;
+            bool foundSlab = false, foundContent = false;
+            foreach (var renderer in _root.View.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!renderer.enabled) continue;
+                if (desk != null && renderer.transform.IsChildOf(desk)) continue;
+                if (renderer.transform.IsChildOf(slab))
+                {
+                    if (!foundSlab) { slabBounds = renderer.bounds; foundSlab = true; }
+                    else slabBounds.Encapsulate(renderer.bounds);
+                    continue;
+                }
+                if (!foundContent) { content = renderer.bounds; foundContent = true; }
+                else content.Encapsulate(renderer.bounds);
+            }
+            Assert.That(foundSlab && foundContent, Is.True, "board needs a slab and content");
+
+            if (slabBounds.size.x <= content.size.x + 0.1f)
+                Assert.Pass("slab is no wider than its content here — nothing to bleed");
+
+            // Had the slab still been fitted into the horizontal safe band, this is the size
+            // it would have forced. The toy is the content; the border around it is scenery,
+            // and target-01 runs that border off both edges of the frame.
+            float slabDrivenSize = slabBounds.size.x * 0.5f
+                / (9f / 19.5f * 0.88f) * 1.05f;
+            Assert.That(_root.Cam.orthographicSize, Is.LessThan(slabDrivenSize - 0.01f),
+                "the decorative slab must not set the zoom — it cost the diorama real size "
+                + "to satisfy a margin no safe-frame law asks about");
         }
 
         [UnityTest]
@@ -120,11 +164,16 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(deskTexture, Is.Not.SameAs(woodProperties.GetTexture("_BaseMap")),
                 "the desk needs its own broader grain, not the board's repeating tile");
             Vector4 st = deskProperties.GetVector("_BaseMap_ST");
-            Assert.That(st.x, Is.EqualTo(1f).Within(0.001f),
-                "one untiled sheet — a repeating tile cannot carry a radial falloff");
-            Assert.That(st.y, Is.EqualTo(1f).Within(0.001f));
+            Assert.That(st.x, Is.GreaterThan(1.2f),
+                "the sheet maps to a bounded world span rather than stretching with the slab, "
+                + "so the slab can overhang the frame without thinning the grain or dragging "
+                + "the warmth falloff off screen");
+            Assert.That(st.z, Is.EqualTo(0.5f - 0.5f * st.x).Within(0.001f),
+                "the warm pool stays centred on the board");
+            Assert.That(st.w, Is.EqualTo(0.5f - 0.5f * st.y).Within(0.001f));
             Assert.That(deskTexture.wrapMode, Is.EqualTo(TextureWrapMode.Clamp),
-                "clamped edges keep the vignette from wrapping back to a bright seam");
+                "clamp is load-bearing: past the sheet it holds the dark cool edge texel, "
+                + "which is what the desk beyond the lamp pool should be");
 
             // Region averages, not single texels: the sheet now carries real grain valleys
             // and plank seams, so one texel is a lottery. The law governs the neighbourhood.
@@ -135,6 +184,44 @@ namespace CatMetro.Tests.PlayMode
                 "warmth must pool around the board and fall away toward the desk edges");
             Assert.That(centre.r - centre.b, Is.GreaterThan(corner.r - corner.b),
                 "the falloff cools as it darkens, like lamp light leaving the desk");
+        }
+
+        /// <summary>
+        /// No frame corner may show background instead of desk, and no corner of the desk
+        /// that IS on screen may fall behind the near plane. Both are evaluated on the desk's
+        /// camera-facing plane: solve where the corner's view ray meets that plane, then ask
+        /// the slab's own local space whether the hit is still on the slab (|local| &lt; 0.5).
+        /// </summary>
+        private static void AssertDeskCoversTheFrame(GameRoot root, float aspect)
+        {
+            var camera = root.Cam;
+            camera.aspect = aspect;
+            var desk = root.View.transform.Find("DeskSurface/DeskTop");
+            Assert.That(desk, Is.Not.Null);
+            Vector3 normal = desk.forward;
+            Assert.That(Mathf.Abs(normal.z), Is.GreaterThan(0.01f),
+                "an edge-on desk plane cannot be solved for coverage");
+            Vector3 face = desk.TransformPoint(new Vector3(0f, 0f, -0.5f));
+            Vector3 eye = camera.transform.position;
+
+            for (int corner = 0; corner < 4; corner++)
+            {
+                float x = eye.x + ((corner & 1) == 0 ? -1f : 1f) * camera.orthographicSize
+                    * aspect;
+                float y = eye.y + ((corner & 2) == 0 ? -1f : 1f) * camera.orthographicSize;
+                float z = face.z
+                    - (normal.x * (x - face.x) + normal.y * (y - face.y)) / normal.z;
+                Vector3 local = desk.InverseTransformPoint(new Vector3(x, y, z));
+                string where = "frame corner " + corner;
+                // 0.5 is the slab edge; the design slack computes to ~0.31 at worst, so 0.45
+                // catches a real regression without pinning the overscan to a single value.
+                Assert.That(Mathf.Abs(local.x), Is.LessThan(0.45f),
+                    where + " falls off the desk horizontally — background would show");
+                Assert.That(Mathf.Abs(local.y), Is.LessThan(0.45f),
+                    where + " falls off the desk vertically — this is the cream band");
+                Assert.That(z - (eye.z + camera.nearClipPlane), Is.GreaterThan(0.25f),
+                    where + " of the desk is clipped by the camera near plane");
+            }
         }
 
         private static Color AverageDeskSample(Texture2D texture, float u, float v)

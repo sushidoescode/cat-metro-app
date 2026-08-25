@@ -19,10 +19,31 @@ namespace CatMetro.Presentation.Board
         private const float RimDepth = 0.10f;
         private const float DeskFront = 1.38f;
         private const float DeskDepth = 0.50f;
-        private const float DeskOverscan = 20f;
+        // Sized so the desk's camera-facing face still contains the whole frame after the
+        // board tilt swings it: the tilt maps the desk's +Z stand-off into ~1.0 units of
+        // downward screen shift and foreshortens its local Y by cos(38 deg), so the slab has
+        // to overhang the frame by much more than the frame's own size. Solved against the
+        // largest level (L008) at the widest supported portrait aspect (4:3) and the pre-fit
+        // (larger) frame with 10% safety: needs 33.9. 38 keeps ~4 units of slack. The old 20
+        // left a wedge of background across the top of the frame — measured at 52px of 2048
+        // on the 2026-08-25 r2 render, exactly where this face fell short.
+        private const float DeskOverscan = 38f;
+        // The grain sheet is mapped to a fixed world span instead of stretching with the slab
+        // above, so growing the slab cannot dilute the planks or push the warmth falloff off
+        // screen. Beyond the sheet, Clamp repeats its darkest, coolest edge texel — which is
+        // exactly what the far desk should be.
+        private const float DeskSheetSpan = 26f;
 
-        // Muted walnut: warm enough to read as a toy tabletop without competing with line hues.
-        private static readonly Color WarmWood = new Color(0.68f, 0.50f, 0.34f);
+        // The playable surface, solved from pixels rather than taste. Sampling the 2026-08-25
+        // r2 render against docs/reference/target-01-tabletop.png: our board interior rendered
+        // (176,103,53), r/b 3.32, luma 119; the target's is (194,122,84), r/b 2.31, luma 139 —
+        // ours was both darker and far more orange, which is why navy rail on it read as line
+        // art on brown instead of track on a pale bed. Inverting this rig's measured linear
+        // light transfer (r 1.035, g 0.642, b 0.337 — the amber key does the warming) for the
+        // target's colour gives an albedo near (0.76, 0.59, 0.54). This is that, nudged one
+        // step toward the target's lighter upper board. Desaturated on purpose: the key
+        // supplies the warmth, and an already-orange albedo compounds into terracotta.
+        private static readonly Color WarmWood = new Color(0.78f, 0.63f, 0.57f);
         // Walnut for the room-scale desk. Calibrated against the 2026-08-25 slot render:
         // the amber key plus warm ambient multiply channel ratios by roughly (1.15 r/g,
         // 1.84 r/b), so a red-leaning albedo (the old 0.55/0.36/0.22, r/b 2.5) rendered as
@@ -55,12 +76,21 @@ namespace CatMetro.Presentation.Board
             // rearward slab is the room-scale desk; the board remains the finite rimmed toy.
             var desk = new GameObject("DeskSurface").transform;
             desk.SetParent(parent, false);
-            // One untiled sheet (not the board's repeating tile): the desk needs broad plank
-            // grain plus a radial warmth falloff, and a repeating tile cannot carry falloff.
+            // One sheet, mapped once over DeskSheetSpan world units centred on the board (not
+            // stretched across the whole slab): the desk needs broad plank grain plus a radial
+            // warmth falloff, and a repeating tile cannot carry falloff. Outside that span the
+            // Clamp wrap holds the sheet's dark edge, so the slab can overhang as far as the
+            // frame needs without thinning the grain or dragging the vignette off screen.
+            float deskWidth = width + DeskOverscan;
+            float deskHeight = height + DeskOverscan;
+            var deskST = new Vector4(deskWidth / DeskSheetSpan, deskHeight / DeskSheetSpan,
+                0f, 0f);
+            deskST.z = 0.5f - 0.5f * deskST.x;
+            deskST.w = 0.5f - 0.5f * deskST.y;
             CreatePart("DeskTop", desk,
                 new Vector3(center.x, center.y - 0.15f, DeskFront + DeskDepth * 0.5f),
-                new Vector3(width + DeskOverscan, height + DeskOverscan, DeskDepth), WarmDesk,
-                grain: DeskGrain(), grainTiling: Vector2.one);
+                new Vector3(deskWidth, deskHeight, DeskDepth), WarmDesk,
+                grain: DeskGrain(), grainST: deskST);
 
             // Scene/prop seam: generated FBXs were floored before export, so their holder
             // origin is their feet. Publish the exact camera-facing wood plane before the
@@ -79,7 +109,8 @@ namespace CatMetro.Presentation.Board
             CreatePart("WoodTop", body,
                 new Vector3(center.x, center.y, WoodFront + WoodDepth * 0.5f),
                 new Vector3(width, height, WoodDepth), WarmWood,
-                grain: WoodGrain(), grainTiling: new Vector2(width / 6f, height / 6f));
+                grain: WoodGrain(),
+                grainST: new Vector4(width / 6f, height / 6f, 0f, 0f));
 
             var rim = new GameObject("CreamRim").transform;
             rim.SetParent(body, false);
@@ -103,7 +134,7 @@ namespace CatMetro.Presentation.Board
         // on the project's URP shader. A property block supplies each tint without allocating
         // renderer-local material instances across Retry and LoadNext rebuilds.
         private static Transform CreatePart(string name, Transform parent, Vector3 position,
-            Vector3 scale, Color color, Texture2D grain = null, Vector2? grainTiling = null)
+            Vector3 scale, Color color, Texture2D grain = null, Vector4? grainST = null)
         {
             var part = new GameObject(name);
             part.transform.SetParent(parent, false);
@@ -123,11 +154,11 @@ namespace CatMetro.Presentation.Board
                 properties.SetColor("_Color", color);
                 if (grain != null)
                 {
-                    Vector2 tiling = grainTiling ?? Vector2.one;
+                    Vector4 st = grainST ?? new Vector4(1f, 1f, 0f, 0f);
                     properties.SetTexture("_BaseMap", grain);
                     properties.SetTexture("_MainTex", grain);
-                    properties.SetVector("_BaseMap_ST",
-                        new Vector4(tiling.x, tiling.y, 0f, 0f));
+                    properties.SetVector("_BaseMap_ST", st);
+                    properties.SetVector("_MainTex_ST", st);
                 }
                 renderer.SetPropertyBlock(properties);
             }

@@ -22,6 +22,17 @@ namespace CatMetro.Presentation.Board
         // only 0.0036. Do not widen these without re-deriving both bands.
         private const float SafeWidth = 0.88f;
         private const float SafeHeight = 0.76f;
+        // The fit reaches this far in when a level's content is small. Lowered from 7 with
+        // the content-driven width fit below: that fit asks for ~20-25% less size than the
+        // slab-driven one did, so a floor of 7 would have become the binding constraint on
+        // most levels and silently cancelled the change.
+        private const float MinOrthoSize = 5f;
+        // Widest portrait aspect the desk's near-plane clearance is solved for. 4:3 covers
+        // every phone (the pinned one is 917/2048 ~ 0.448) and tablets too. Solving at 16:9
+        // left a 4:3 frame's lower corners 0.1-0.3 units behind the near plane; solving here
+        // costs ~1.2 units of camera pull-back, which the smaller frame now affords.
+        private const float DeskCoverageAspect = 0.75f;
+        private const float DeskNearClearance = 1f;
         private static readonly Quaternion BoardTilt = Quaternion.Euler(38f, -32f, -4f);
 
         public static void Apply(Transform owner, Camera camera, BoardView board)
@@ -52,50 +63,89 @@ namespace CatMetro.Presentation.Board
 
         private static void FitCamera(Camera camera, BoardView board)
         {
-            Bounds visibleBounds = default;
-            bool found = false;
+            // Two unions, because the frame owes them different things.
+            //   frameBounds   — everything except the desk. Nothing here may leave the frame
+            //                   vertically, so the toy's rim still reads as a finite edge.
+            //   contentBounds — the same minus the decorative slab (BoardBody). This is what
+            //                   the RuntimeSceneRigTests safe-frame law actually governs:
+            //                   node markers and prop renderers.
+            // The slab is ~1.25x wider on screen than the content it carries, so fitting the
+            // slab into the horizontal safe band shrank the whole diorama to satisfy a border
+            // no law asks about. Target-01 lets the board run off both edges; so do we now.
+            Bounds frameBounds = default, contentBounds = default;
+            bool foundFrame = false, foundContent = false;
             var deskSurface = board.transform.Find("DeskSurface");
+            var slab = board.transform.Find("BoardBody");
             foreach (var renderer in board.GetComponentsInChildren<Renderer>(true))
             {
                 if (!renderer.enabled) continue;
                 if (deskSurface != null && renderer.transform.IsChildOf(deskSurface)) continue;
-                if (!found)
-                {
-                    visibleBounds = renderer.bounds;
-                    found = true;
-                }
-                else visibleBounds.Encapsulate(renderer.bounds);
+                if (!foundFrame) { frameBounds = renderer.bounds; foundFrame = true; }
+                else frameBounds.Encapsulate(renderer.bounds);
+                if (slab != null && renderer.transform.IsChildOf(slab)) continue;
+                if (!foundContent) { contentBounds = renderer.bounds; foundContent = true; }
+                else contentBounds.Encapsulate(renderer.bounds);
             }
 
-            if (!found)
+            if (!foundFrame)
             {
                 Vector3 center = board.transform.TransformPoint(board.PresentationCenterLocal);
-                visibleBounds = new Bounds(center, Vector3.one);
+                frameBounds = new Bounds(center, Vector3.one);
+            }
+            // A board with no gameplay renderers at all still has to frame something.
+            if (!foundContent) contentBounds = frameBounds;
+
+            float requiredForHeight = frameBounds.size.y * 0.5f / SafeHeight;
+            float requiredForWidth = contentBounds.size.x * 0.5f
+                / (TargetPortraitAspect * SafeWidth);
+            float size = Mathf.Max(MinOrthoSize,
+                Mathf.Max(requiredForHeight, requiredForWidth) * 1.05f);
+            float safeCenterY = (0.13f + 0.86f) * 0.5f;
+            // Centre X on the content the law governs, not on the slab that may be lopsided
+            // around it; centre Y on the full frame so the rim stays inside top and bottom.
+            float cameraX = contentBounds.center.x;
+            float cameraY = frameBounds.center.y - (safeCenterY - 0.5f) * 2f * size;
+
+            float cameraZ = -10f;
+            float farthestZ = frameBounds.max.z;
+            foreach (var renderer in board.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!renderer.enabled) continue;
+                if (deskSurface != null && renderer.transform.IsChildOf(deskSurface)) continue;
+                cameraZ = Mathf.Min(cameraZ, renderer.bounds.min.z - DeskNearClearance);
             }
 
-            float requiredForHeight = visibleBounds.size.y * 0.5f / SafeHeight;
-            float requiredForWidth = visibleBounds.size.x * 0.5f
-                / (TargetPortraitAspect * SafeWidth);
-            float size = Mathf.Max(7f, Mathf.Max(requiredForHeight, requiredForWidth) * 1.05f);
-            float safeCenterY = (0.13f + 0.86f) * 0.5f;
-            float cameraZ = -10f;
-            float farthestZ = visibleBounds.max.z;
-            if (deskSurface != null)
+            // The desk is a huge tilted slab, so its bounding box dips toward the camera far
+            // outside the frame. Pulling the camera back to clear that off-screen corner cost
+            // real shadow-distance budget (it put the board ~20 units deep) while clearing the
+            // *visible* desk by only ~0.06 units at the pinned aspect — accidental, not safe.
+            // Solve the near plane against the desk plane where it is actually on screen.
+            var deskTop = deskSurface != null ? deskSurface.Find("DeskTop") : null;
+            if (deskTop != null)
             {
-                foreach (var renderer in deskSurface.GetComponentsInChildren<Renderer>(true))
+                Vector3 normal = deskTop.forward;
+                if (Mathf.Abs(normal.z) > 0.01f)
                 {
-                    cameraZ = Mathf.Min(cameraZ, renderer.bounds.min.z - 1f);
-                    farthestZ = Mathf.Max(farthestZ, renderer.bounds.max.z);
+                    Vector3 face = deskTop.TransformPoint(new Vector3(0f, 0f, -0.5f));
+                    for (int corner = 0; corner < 4; corner++)
+                    {
+                        float x = cameraX + ((corner & 1) == 0 ? -1f : 1f)
+                            * size * DeskCoverageAspect;
+                        float y = cameraY + ((corner & 2) == 0 ? -1f : 1f) * size;
+                        float z = face.z
+                            - (normal.x * (x - face.x) + normal.y * (y - face.y)) / normal.z;
+                        cameraZ = Mathf.Min(cameraZ, z - DeskNearClearance);
+                    }
                 }
             }
+            if (deskSurface != null)
+                foreach (var renderer in deskSurface.GetComponentsInChildren<Renderer>(true))
+                    farthestZ = Mathf.Max(farthestZ, renderer.bounds.max.z);
 
             camera.orthographic = true;
             camera.orthographicSize = size;
             camera.transform.rotation = Quaternion.identity;
-            camera.transform.position = new Vector3(
-                visibleBounds.center.x,
-                visibleBounds.center.y - (safeCenterY - 0.5f) * 2f * size,
-                cameraZ);
+            camera.transform.position = new Vector3(cameraX, cameraY, cameraZ);
             camera.nearClipPlane = 0.1f;
             camera.farClipPlane = Mathf.Max(50f, farthestZ - cameraZ + 1f);
             camera.allowHDR = false;
