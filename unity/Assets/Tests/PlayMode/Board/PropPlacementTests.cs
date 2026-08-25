@@ -195,13 +195,17 @@ namespace CatMetro.Tests.PlayMode
         [Test]
         public void AllAuthoredLevels_ProduceOneStableFurnishedSet()
         {
-            for (int levelNumber = 1; levelNumber <= 17; levelNumber++)
+            foreach (string id in AuthoredLevelIds())
             {
-                var level = ImportLevel("L" + levelNumber.ToString("000"));
+                var level = ImportLevel(id);
                 var view = BuildBoard(level);
                 var root = BoardPropDecorator.Decorate(level, view.transform, FurnishedCatalog());
                 var props = root.GetComponentsInChildren<BoardPropInstance>(true);
 
+                // A RELATION, not a constant that happens to match. Sources.Length is a real
+                // term: the decorator spawns a depot per source, and L018/L019 are the corpus's
+                // first two-source boards, so widening this sweep is what gives that path its
+                // first coverage anywhere in the repo.
                 Assert.That(props.Length,
                     Is.EqualTo(level.Dto.Stations.Length * 2 + level.Dto.Sources.Length + 11),
                     level.Dto.Id + " should add a lamp per station, a depot signpost, three"
@@ -1044,13 +1048,16 @@ namespace CatMetro.Tests.PlayMode
         [Test]
         public void AllAuthoredLevels_ProduceOneStableScenerySet()
         {
-            for (int levelNumber = 1; levelNumber <= 17; levelNumber++)
+            foreach (string id in AuthoredLevelIds())
             {
-                var level = ImportLevel("L" + levelNumber.ToString("000"));
+                var level = ImportLevel(id);
                 var view = BuildBoard(level);
                 var root = BoardPropDecorator.Decorate(level, view.transform, CompleteCatalog());
                 var props = root.GetComponentsInChildren<BoardPropInstance>(true);
 
+                // Relational for the same reason as the furnished sweep: one depot per source,
+                // so a two-source board must produce one more prop than a one-source board of
+                // the same station count, and this assertion has to move with it.
                 Assert.That(props.Length,
                     Is.EqualTo(level.Dto.Stations.Length + level.Dto.Sources.Length + 3),
                     level.Dto.Id + " should have one kiosk per station, one depot per source, "
@@ -1226,6 +1233,49 @@ namespace CatMetro.Tests.PlayMode
             _owned.Add(go);
             return go;
         }
+
+        // Derived from the corpus, never a literal bound. Both sweeps below are named
+        // AllAuthoredLevels and used to loop `levelNumber <= 17`, which was true when it was
+        // written and quietly stopped being true: feat/level-variety adds L018 and L019, so a
+        // hardcoded bound would skip the two newest boards while still reading as full
+        // coverage. That is the same class of measurement bug this branch has spent its time
+        // fixing, so it is not worth re-committing here in a smaller form.
+        private static string[] AuthoredLevelIds()
+        {
+            string staged = Path.Combine(UnityEngine.Application.streamingAssetsPath,
+                "content", "levels");
+            Assert.That(Directory.Exists(staged), Is.True,
+                "the staged corpus must be readable to be swept: " + staged);
+            var ids = LevelIdsIn(staged);
+
+            // Fail closed with a floor. A sweep that finds nothing — or finds a handful
+            // because it is pointed at the wrong directory — must not report full coverage.
+            Assert.That(ids.Length, Is.GreaterThanOrEqualTo(17),
+                "anti-vacuity: the corpus held 17 authored levels when this was written, so"
+                + " finding fewer means this is reading the wrong place rather than that"
+                + " levels were deleted");
+
+            // StreamingAssets holds tracked COPIES that scripts/stage-content.sh syncs from
+            // content/levels. Deriving from the staged copy alone would still rot: a level
+            // authored but never staged gets swept straight past, which is the identical
+            // silent under-coverage wearing a different hat.
+            string authored = Path.Combine(UnityEngine.Application.dataPath,
+                "..", "..", "content", "levels");
+            Assert.That(Directory.Exists(authored), Is.True,
+                "the authored corpus must be readable to compare against: " + authored);
+            Assert.That(ids, Is.EqualTo(LevelIdsIn(authored)),
+                "the staged corpus has drifted from the authored one — run"
+                + " scripts/stage-content.sh. Sweeping the stale copy would silently be"
+                + " testing yesterday's levels while claiming to cover them all.");
+            return ids;
+        }
+
+        private static string[] LevelIdsIn(string directory) =>
+            Directory.GetFiles(directory, "L*.json")
+                .Where(x => Path.GetExtension(x) == ".json") // never the .meta siblings
+                .Select(Path.GetFileNameWithoutExtension)
+                .OrderBy(x => x, System.StringComparer.Ordinal)
+                .ToArray();
 
         private static ImportedLevel ImportLevel(string id)
         {
