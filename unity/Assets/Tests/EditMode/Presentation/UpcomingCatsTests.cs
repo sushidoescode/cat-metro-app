@@ -14,6 +14,15 @@ namespace CatMetro.Tests
         private static WaveDto Wave(int tick, string color, int count, int spacing) =>
             new WaveDto(tick, "SRC", color, count, spacing);
 
+        // These cases build WaveDto DIRECTLY, so nothing here is bounds-checked the way
+        // LevelImporter checks authored JSON — a fixture can silently describe a level the
+        // content pipeline would reject. ContentBounds.WAVE_COUNT_MAX is the real cap on an
+        // authored wave, so the "more cats than fit" cases bind to it rather than picking a
+        // large literal. Keep it that way: a projection exercised on impossible input is a
+        // trap, because the day UpcomingCats starts honouring the bound the failure reads as
+        // a regression in the new code rather than as a test asserting on unreachable data.
+        private const int MaxAuthoredWaveCount = ContentBounds.WAVE_COUNT_MAX;
+
         private static string Summarise(List<UpcomingCat> cats)
         {
             var parts = new List<string>();
@@ -76,7 +85,9 @@ namespace CatMetro.Tests
         [Test]
         public void TheCapTrimsTheTail_KeepingTheSoonestCats()
         {
-            var waves = new[] { Wave(0, "red", 10, 5) };
+            // A full legal wave (8 cats at 0,5,...,35) against a display cap of 3 — the cap is
+            // what has to bite here, and 8 clears it comfortably.
+            var waves = new[] { Wave(0, "red", MaxAuthoredWaveCount, 5) };
 
             Assert.That(Summarise(UpcomingCats.Next(waves, 0, 3)),
                 Is.EqualTo("red@0|red@5|red@10"));
@@ -87,11 +98,13 @@ namespace CatMetro.Tests
         [Test]
         public void RemainingCountIgnoresTheDisplayCap()
         {
-            var waves = new[] { Wave(0, "red", 10, 5), Wave(3, "blue", 4, 5) };
+            var waves = new[] { Wave(0, "red", MaxAuthoredWaveCount, 5), Wave(3, "blue", 4, 5) };
 
             Assert.That(UpcomingCats.Next(waves, 0, 3).Count, Is.EqualTo(3));
-            Assert.That(UpcomingCats.RemainingCount(waves, 0), Is.EqualTo(14),
-                "the overflow tail needs the true remainder, not the capped one");
+            Assert.That(UpcomingCats.RemainingCount(waves, 0),
+                Is.EqualTo(MaxAuthoredWaveCount + 4),
+                "the overflow tail needs the true remainder, not the capped one — every cat of "
+                + "both waves, four times the display cap of 3");
         }
 
         [Test]
