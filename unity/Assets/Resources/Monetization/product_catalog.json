@@ -1,0 +1,34 @@
+{
+  "products": [
+    {
+      "id": "cm_all_access",
+      "storeType": "non_consumable",
+      "entitlements": ["all_access", "theme_sakura", "theme_neon"]
+    },
+    {
+      "id": "cm_supporter_pack",
+      "storeType": "non_consumable",
+      "entitlements": ["supporter", "all_access", "theme_sakura", "theme_neon"]
+    },
+    {
+      "id": "cm_theme_sakura",
+      "storeType": "non_consumable",
+      "entitlements": ["theme_sakura"]
+    },
+    {
+      "id": "cm_theme_neon",
+      "storeType": "non_consumable",
+      "entitlements": ["theme_neon"]
+    },
+    {
+      "id": "cm_rewind_5",
+      "storeType": "consumable",
+      "entitlements": []
+    },
+    {
+      "id": "cm_rewind_20",
+      "storeType": "consumable",
+      "entitlements": []
+    }
+  ]
+}
