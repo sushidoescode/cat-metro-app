@@ -197,22 +197,18 @@ namespace CatMetro.Presentation.Board
                         _teachCleared = new bool[switches.Length];
                         _teachDiscBaseScale = switchGo.transform.localScale;
                     }
-                    var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
                     // Human ruling 2026-08-06 (#36 review finding 2): the ring carries the
                     // motion-off information, so it must READ as a ring — a distinct darker
                     // tint (the chrome ink-navy), one static cached instance of the greybox
                     // shader (same pipeline, no new Resources entry, no per-retry leak).
-                    ring.GetComponent<Renderer>().sharedMaterial = TeachRingMaterial();
-                    ring.name = "teachring:" + switches[s].Id;
-                    ring.transform.SetParent(transform, false);
-                    ring.transform.localPosition =
-                        _nodePos[_switchNode[s]] + new Vector3(0f, 0f, -0.35f);
-                    // SWITCH-LEVERS: widened so the ring still reads as a ring AROUND the toy
-                    // base (footprint 0.52 x 0.78) — the 0.8 disc-era diameter would be
-                    // swallowed. Static, same material, same z: every CM-UX-03 pin holds.
-                    ring.transform.localScale = new Vector3(1.1f, 0.04f, 1.1f);
-                    ring.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-                    _teachRing[s] = ring.transform;
+                    // SWITCH-LEVERS 2026-08-25: the solid cylinder read as a heavy dark puck
+                    // under the toy, so it is now a true ANNULUS — which is what "must READ as
+                    // a ring" asked for — sized to leave a wood gap around the base. The tint
+                    // the ruling named is unchanged. Every CM-UX-03 pin holds: one transform,
+                    // one renderer, static, its own material, the greybox shader.
+                    _teachRing[s] = ToySwitchView.BuildTeachRing(switches[s].Id, transform,
+                        _nodePos[_switchNode[s]] + new Vector3(0f, 0f, -0.35f),
+                        TeachRingMaterial());
                     _teachDisc[s] = switchGo.transform;
                 }
             }
@@ -222,18 +218,15 @@ namespace CatMetro.Presentation.Board
         private static Material _teachRingMat; // one cached tinted instance per domain
 
         // The DEVFIX criterion-5 static gate counts CreatePrimitive calls against
-        // GreyboxMaterial binds one-to-one — this helper deliberately names the provider
-        // EXACTLY once (the ring's bind), copying its material so the shader (and the gate's
-        // live shader-equality walk) stay identical while the tint differentiates the ring.
+        // GreyboxMaterial binds one-to-one. The ring is no longer a primitive, so this helper
+        // no longer names the provider directly either — CreateTinted keeps the pairing
+        // balanced and yields the same cached copy of the greybox material (identical shader
+        // for the gate's live shader-equality walk, distinct tint for the ring).
         private static Material TeachRingMaterial()
         {
             if (_teachRingMat == null)
-            {
-                var basis = GreyboxMaterial.Shared;
-                if (basis == null) return null; // the provider already logged loudly
-                _teachRingMat = new Material(basis);
-                _teachRingMat.color = new Color(0.13f, 0.19f, 0.29f); // the chrome ink-navy
-            }
+                _teachRingMat = GreyboxMaterial.CreateTinted(
+                    "Teach Ring — Ink Navy", Palette.InkNavy); // the tint the ruling named
             return _teachRingMat;
         }
 

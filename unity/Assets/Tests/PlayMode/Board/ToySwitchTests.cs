@@ -56,7 +56,7 @@ namespace CatMetro.Tests.PlayMode
             AssertColor(baseMaterials[1].color, ToySwitchView.BaseTopColor,
                 "lighter teal base top");
             AssertColor(FindByName(sw.gameObject, "Stem").GetComponent<Renderer>()
-                .sharedMaterial.color, Palette.CreamCard, "cream stem");
+                .sharedMaterial.color, ToySwitchView.StemWoodColor, "wooden dowel stem");
             AssertColor(FindByName(sw.gameObject, "Knob").GetComponent<Renderer>()
                 .sharedMaterial.color, Palette.TicketOrange, "orange lever head");
             AssertColor(FindByName(sw.gameObject, "Arrow").GetComponent<Renderer>()
@@ -128,6 +128,40 @@ namespace CatMetro.Tests.PlayMode
             AssertAimsAt(sw, view, expectedAfter, "the lever re-aims on the tap frame");
             yield return null;
             AssertAimsAt(sw, view, expectedAfter, "and holds after the frame renders");
+        }
+
+        // 2026-08-25 render review: the teach affordance was a solid navy cylinder and read as
+        // a heavy dark puck under the toy. Through the REAL board seam it must now be a ring
+        // with the board's wood showing through, while every CM-UX-03 pin still holds
+        // (TeachAffordanceTests owns those; this is the geometry half).
+        [UnityTest]
+        public IEnumerator TeachRing_IsAnAnnulus_NotAPuckUnderTheToy()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            var ring = FindByName(_root.View.gameObject, "teachring:S1");
+            Assert.That(ring, Is.Not.Null, "L001 is an onboarding board — positive control");
+            Assert.That(_root.View.TeachAffordancePresent(0), Is.True,
+                "the affordance still teaches after the restyle");
+
+            var mesh = ring.GetComponent<MeshFilter>().sharedMesh;
+            Assert.That(mesh, Is.Not.Null);
+            float closest = float.MaxValue;
+            foreach (var v in mesh.vertices)
+                closest = Mathf.Min(closest, new Vector2(v.x, v.y).magnitude);
+            Assert.That(closest, Is.EqualTo(ToySwitchView.TeachRingInnerRadius).Within(1e-3f),
+                "the centre is empty — the board's wood shows through the ring");
+
+            // the base's widest reach stays inside that hole, so the gap never closes
+            var sw = FindByName(_root.View.gameObject, "switch:S1");
+            float widest = 0f;
+            foreach (var v in sw.GetComponent<MeshFilter>().sharedMesh.vertices)
+                widest = Mathf.Max(widest, new Vector2(v.x, v.y).magnitude);
+            Assert.That(widest, Is.LessThan(ToySwitchView.TeachRingInnerRadius),
+                "the toy never overlaps its own ring");
+            Assert.That(ring.GetComponentsInChildren<Collider>(true), Is.Empty,
+                "decoration must not intercept the switch tap");
         }
 
         [UnityTest]

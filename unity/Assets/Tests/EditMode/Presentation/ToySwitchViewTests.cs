@@ -78,8 +78,12 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(pivot, Is.Not.Null);
             Assert.That(pivot.localRotation, Is.EqualTo(ToySwitchView.LeverLocalRotation),
                 "the lever's lean is the constant toy tilt — direction comes from the yaw");
-            AssertColor(pivot.Find("Stem").GetComponent<Renderer>().sharedMaterial.color,
-                Palette.CreamCard);
+            var stem = pivot.Find("Stem");
+            AssertColor(stem.GetComponent<Renderer>().sharedMaterial.color,
+                ToySwitchView.StemWoodColor);
+            Assert.That(stem.GetComponent<MeshFilter>().sharedMesh, Is.Not.Null,
+                "the dowel uses the builtin cylinder — a null here means the resource name "
+                + "drifted and the lever would render as a floating knob");
             AssertColor(pivot.Find("Knob").GetComponent<Renderer>().sharedMaterial.color,
                 Palette.TicketOrange);
             AssertColor(view.transform.Find("Arrow").GetComponent<Renderer>().sharedMaterial.color,
@@ -143,6 +147,69 @@ namespace CatMetro.Tests.EditMode.Presentation
                     "arrow front-face vertex " + i + " must face the camera (-Z), not be culled");
         }
 
+        // 2026-08-25 render review: the teach ring was a SOLID cylinder and read as a heavy
+        // dark puck. It is now a true annulus. Every CM-UX-03 pin is re-proven here at the
+        // geometry level — one transform, one renderer, no children (the band-gate test counts
+        // onboarding as exactly alternation + 2 of each).
+        [Test]
+        public void BuildTeachRing_IsAHollowAnnulus_OneRendererNoChildren()
+        {
+            _host = new GameObject("switch-test-host");
+            var material = GreyboxMaterial.CreateTinted("ring-test", Palette.InkNavy);
+            try
+            {
+                var ring = ToySwitchView.BuildTeachRing("S-test", _host.transform,
+                    new Vector3(0f, 0f, -0.35f), material);
+
+                Assert.That(ring.name, Is.EqualTo("teachring:S-test"),
+                    "the name the RingCount probe matches");
+                Assert.That(ring.parent, Is.SameAs(_host.transform));
+                Assert.That(ring.childCount, Is.Zero, "one transform, exactly");
+                Assert.That(ring.GetComponentsInChildren<Renderer>(true).Length, Is.EqualTo(1),
+                    "one renderer, exactly");
+                Assert.That(ring.GetComponent<Renderer>().sharedMaterial, Is.SameAs(material),
+                    "the ring keeps its own material — distinct from the base, same shader");
+                Assert.That(ring.GetComponentsInChildren<Collider>(true), Is.Empty);
+                Assert.That(ring.GetComponentsInChildren<BoardElementId>(true), Is.Empty,
+                    "the affordance stays out of the authored gameplay inventory");
+                Assert.That(ring.GetComponent<Animator>(), Is.Null);
+                Assert.That(ring.GetComponent<Animation>(), Is.Null);
+
+                // the hole is real: no vertex anywhere near the centre
+                var mesh = ring.GetComponent<MeshFilter>().sharedMesh;
+                foreach (var v in mesh.vertices)
+                {
+                    float radius = new Vector2(v.x, v.y).magnitude;
+                    Assert.That(radius,
+                        Is.InRange(ToySwitchView.TeachRingInnerRadius - 1e-4f,
+                            ToySwitchView.TeachRingOuterRadius + 1e-4f),
+                        "every vertex sits in the band — a solid disc would fill the centre");
+                }
+                foreach (var n in mesh.normals)
+                    Assert.That(n.z, Is.LessThan(-0.9f),
+                        "the ring faces the camera (-Z) — the winding law of this toy");
+            }
+            finally { Object.DestroyImmediate(material); }
+        }
+
+        // The wood gap that keeps the ring from reading as a puck: the hole must clear the
+        // base's widest footprint, whichever way the switch is routed.
+        [Test]
+        public void TeachRingHole_ClearsTheBasesWidestFootprint_LeavingAWoodGap()
+        {
+            _host = new GameObject("switch-test-host");
+            var view = ToySwitchView.Build("S-test", _host.transform, Vector3.zero);
+            float widest = 0f;
+            foreach (var v in view.GetComponent<MeshFilter>().sharedMesh.vertices)
+                widest = Mathf.Max(widest, new Vector2(v.x, v.y).magnitude);
+
+            Assert.That(ToySwitchView.TeachRingInnerRadius, Is.GreaterThan(widest + 0.02f),
+                "board wood shows between the toy and its ring at every routing angle");
+            Assert.That(ToySwitchView.TeachRingOuterRadius,
+                Is.GreaterThan(ToySwitchView.TeachRingInnerRadius),
+                "a band with real width still reads from across the board");
+        }
+
         [Test]
         public void BaseTopColor_IsTheTokenDerivedLighterTeal()
         {
@@ -154,6 +221,18 @@ namespace CatMetro.Tests.EditMode.Presentation
             float top = ToySwitchView.BaseTopColor.r + ToySwitchView.BaseTopColor.g
                 + ToySwitchView.BaseTopColor.b;
             Assert.That(top, Is.GreaterThan(walls + 0.1f), "the top face reads lighter");
+        }
+
+        [Test]
+        public void StemWoodColor_IsATokenDerivedWarmDowelTone()
+        {
+            var expected = Color.Lerp(Palette.TicketOrange, Palette.InkNavy, 0.32f);
+            AssertColor(ToySwitchView.StemWoodColor, expected);
+            // intent: a warm wood, not the cream bar that read grey in the 2026-08-25 render
+            Assert.That(ToySwitchView.StemWoodColor.r,
+                Is.GreaterThan(ToySwitchView.StemWoodColor.b + 0.2f), "warm, not neutral");
+            Assert.That(ToySwitchView.StemWoodColor.r,
+                Is.LessThan(Palette.CreamCard.r), "darker than the cream it replaced");
         }
 
         [Test]

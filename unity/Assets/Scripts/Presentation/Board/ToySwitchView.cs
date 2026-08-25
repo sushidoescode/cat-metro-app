@@ -39,9 +39,19 @@ namespace CatMetro.Presentation.Board
         private const float BaseTopZ = -0.16f;
         private const float BaseBottomZ = 0.10f;
 
+        // teach ring (CM-UX-03's affordance, built here so its geometry lives with the toy it
+        // rings). 2026-08-25 render review: a SOLID navy cylinder read as a heavy dark puck
+        // with no equivalent in target-01. A true annulus teaches the same thing — the shape
+        // the human ruling actually asked for — and lets the board's wood show through.
+        // The hole is wider than the base's widest footprint, so a wood gap always separates
+        // the ring from the toy no matter which way the switch is routed.
+        public const float TeachRingInnerRadius = 0.47f;
+        public const float TeachRingOuterRadius = 0.60f;
+        private const int TeachRingSegments = 48;
+
         // lever
         private const float PivotY = -0.06f; // hinge slightly rear of the base centre
-        private const float StemThickness = 0.09f;
+        private const float StemThickness = 0.10f;
         private const float StemLength = 0.40f;
         private const float KnobWidth = 0.24f;
         private const float KnobDepth = 0.26f;
@@ -60,7 +70,9 @@ namespace CatMetro.Presentation.Board
 
         private static Mesh _baseMesh;   // shared across instances and rebuilds
         private static Mesh _arrowMesh;
+        private static Mesh _teachRingMesh;
         private static Mesh _cubeMesh;
+        private static Mesh _dowelMesh;
         private static Material _baseMaterial;
         private static Material _baseTopMaterial;
         private static Material _leverMaterial;
@@ -72,6 +84,13 @@ namespace CatMetro.Presentation.Board
         // Palette tokens, never a literal; tests pin the exact mix.
         public static Color BaseTopColor =>
             Color.Lerp(Palette.MetroTeal, Palette.WarmPaper, 0.25f);
+
+        // 2026-08-25 render review: target-01's lever rides a wooden dowel, and the flat cream
+        // bar read as a grey sliver. A warm mid-tone mixed from two Palette tokens — the repo
+        // has no wood token and BoardSurface's wood is a private literal, so this stays
+        // token-derived like BaseTopColor rather than inventing a fifth hardcoded colour.
+        public static Color StemWoodColor =>
+            Color.Lerp(Palette.TicketOrange, Palette.InkNavy, 0.32f);
 
         public Transform LeverPivot { get; private set; }
 
@@ -103,12 +122,16 @@ namespace CatMetro.Presentation.Board
             pivot.localRotation = LeverLocalRotation;
             view.LeverPivot = pivot;
 
-            AddCubePart("Stem", pivot,
+            // the dowel: a builtin cylinder laid along the lever axis (its mesh runs +Y, height
+            // 2, so the part is rotated a quarter turn and scaled to half-length)
+            AddPart("Stem", pivot, DowelMesh(),
                 new Vector3(0f, 0f, -StemLength * 0.5f),
-                new Vector3(StemThickness, StemThickness, StemLength), StemMaterial());
-            AddCubePart("Knob", pivot,
+                new Vector3(StemThickness, StemLength * 0.5f, StemThickness),
+                Quaternion.Euler(90f, 0f, 0f), StemMaterial());
+            AddPart("Knob", pivot, CubeMesh(),
                 new Vector3(0f, 0f, -(StemLength + KnobLength * 0.5f - KnobSeat)),
-                new Vector3(KnobWidth, KnobDepth, KnobLength), LeverMaterial());
+                new Vector3(KnobWidth, KnobDepth, KnobLength),
+                Quaternion.identity, LeverMaterial());
 
             var arrow = new GameObject("Arrow");
             arrow.transform.SetParent(root.transform, false);
@@ -127,14 +150,30 @@ namespace CatMetro.Presentation.Board
             transform.localRotation = Quaternion.Euler(0f, 0f, YawDegrees(boardPlaneDir));
         }
 
-        private static void AddCubePart(string name, Transform parent, Vector3 localPosition,
-            Vector3 scale, Material material)
+        // CM-UX-03's ring, built from this file so the affordance and the toy it rings share
+        // one geometry idiom. Deliberately ONE GameObject with ONE renderer and no children:
+        // the band-gate test counts the onboarding board's transforms and renderers as
+        // exactly alternation + 2, and a multi-part ring would break that count.
+        public static Transform BuildTeachRing(string switchId, Transform parent,
+            Vector3 localPosition, Material material)
+        {
+            var ring = new GameObject("teachring:" + switchId);
+            ring.transform.SetParent(parent, false);
+            ring.transform.localPosition = localPosition;
+            ring.AddComponent<MeshFilter>().sharedMesh = TeachRingMesh();
+            ring.AddComponent<MeshRenderer>().sharedMaterial = material;
+            return ring.transform;
+        }
+
+        private static void AddPart(string name, Transform parent, Mesh mesh,
+            Vector3 localPosition, Vector3 scale, Quaternion localRotation, Material material)
         {
             var part = new GameObject(name);
             part.transform.SetParent(parent, false);
             part.transform.localPosition = localPosition;
+            part.transform.localRotation = localRotation;
             part.transform.localScale = scale;
-            part.AddComponent<MeshFilter>().sharedMesh = CubeMesh();
+            part.AddComponent<MeshFilter>().sharedMesh = mesh;
             part.AddComponent<MeshRenderer>().sharedMaterial = material;
         }
 
@@ -143,6 +182,48 @@ namespace CatMetro.Presentation.Board
             if (_cubeMesh == null)
                 _cubeMesh = Resources.GetBuiltinResource<Mesh>("Cube.fbx");
             return _cubeMesh;
+        }
+
+        private static Mesh DowelMesh()
+        {
+            if (_dowelMesh == null)
+                _dowelMesh = Resources.GetBuiltinResource<Mesh>("Cylinder.fbx");
+            return _dowelMesh;
+        }
+
+        // Flat annulus in the board plane, camera-facing, no thickness needed: nothing ever
+        // sees its back. Same winding law as the rest of the toy — camera-facing triangles
+        // enumerate the CCW rim in reverse.
+        private static Mesh TeachRingMesh()
+        {
+            if (_teachRingMesh != null) return _teachRingMesh;
+            var vertices = new Vector3[TeachRingSegments * 2];
+            for (int i = 0; i < TeachRingSegments; i++)
+            {
+                float angle = i * 2f * Mathf.PI / TeachRingSegments;
+                float cos = Mathf.Cos(angle);
+                float sin = Mathf.Sin(angle);
+                vertices[i * 2] = new Vector3(
+                    cos * TeachRingInnerRadius, sin * TeachRingInnerRadius, 0f);
+                vertices[i * 2 + 1] = new Vector3(
+                    cos * TeachRingOuterRadius, sin * TeachRingOuterRadius, 0f);
+            }
+            var triangles = new System.Collections.Generic.List<int>(TeachRingSegments * 6);
+            for (int i = 0; i < TeachRingSegments; i++)
+            {
+                int inner = i * 2;
+                int outer = inner + 1;
+                int nextInner = ((i + 1) % TeachRingSegments) * 2;
+                int nextOuter = nextInner + 1;
+                AddTriangle(triangles, inner, nextOuter, outer);
+                AddTriangle(triangles, inner, nextInner, nextOuter);
+            }
+            _teachRingMesh = new Mesh { name = "Toy switch teach ring" };
+            _teachRingMesh.SetVertices(vertices);
+            _teachRingMesh.SetTriangles(triangles, 0);
+            _teachRingMesh.RecalculateNormals();
+            _teachRingMesh.RecalculateBounds();
+            return _teachRingMesh;
         }
 
         private static Material BaseMaterial()
