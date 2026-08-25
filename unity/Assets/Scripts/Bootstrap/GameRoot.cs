@@ -395,6 +395,7 @@ namespace CatMetro.Bootstrap
             "L001", "L002", "L003", "L004", "L005",
             "L006", "L007", "L008", "L009", "L010",
             "L011", "L012", "L013", "L014", "L015", "L016", "L017",
+            "L018", "L019",
         };
         private const bool WrapAtEndOfBand = true;
 

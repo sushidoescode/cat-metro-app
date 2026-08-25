@@ -86,11 +86,23 @@ namespace CatMetro.Tests.EditMode.Presentation
         [Test]
         public void EveryAuthoredLevel_BuildsContinuousForwardMovingTrackPaths()
         {
-            for (int levelNumber = 1; levelNumber <= 17; levelNumber++)
+            // Derived from the corpus on disk, never a hardcoded count. This loop used to stop
+            // at 17 and so silently skipped L018/L019 the day they were authored — authoring a
+            // level now widens the sweep by itself. The floor below is the only number here,
+            // and it guards against the opposite rot: an empty or unreadable directory making
+            // a "sweeps every level" test pass vacuously.
+            string levelsDir = Path.Combine(UnityEngine.Application.streamingAssetsPath,
+                "content", "levels");
+            string[] levelPaths = Directory.GetFiles(levelsDir, "L*.json")
+                .Where(file => Path.GetExtension(file) == ".json")
+                .OrderBy(file => file, System.StringComparer.Ordinal)
+                .ToArray();
+            Assert.That(levelPaths.Length, Is.GreaterThanOrEqualTo(19),
+                "the authored corpus must not shrink below its 19 known levels: " + levelsDir);
+
+            foreach (string path in levelPaths)
             {
-                string levelId = $"L{levelNumber:000}";
-                string path = Path.Combine(UnityEngine.Application.streamingAssetsPath,
-                    "content", "levels", levelId + ".json");
+                string levelId = Path.GetFileNameWithoutExtension(path);
                 var imported = LevelImporter.Import(File.ReadAllBytes(path));
                 Assert.That(imported.Ok, Is.True,
                     imported.Ok ? string.Empty : levelId + ": " + imported.Error);
