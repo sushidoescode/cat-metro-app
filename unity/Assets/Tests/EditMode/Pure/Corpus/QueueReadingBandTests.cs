@@ -21,6 +21,26 @@ namespace CatMetro.Tests.Corpus
 
         public static string RepoRoot() => CatMetro.Tests.Domain.Fixtures.RepoRoot();
 
+        // Every authored campaign level, DERIVED from the corpus on disk rather than listed.
+        // Two literal L001-L017 lists used to live in this file — the teaching-goal distinctness
+        // net and the corpus-gate member list — and both silently stopped covering the campaign
+        // the day L018/L019 were authored: they validated clean and were simply never asked.
+        // Deriving means authoring a level widens both sweeps by itself. The floor below is the
+        // only number left here, and it guards the opposite rot: an empty or unreadable
+        // directory would otherwise make a "whole campaign" gate pass vacuously.
+        public static string[] CampaignIds()
+        {
+            var dir = Path.Combine(RepoRoot(), "content", "levels");
+            var ids = Directory.GetFiles(dir, "L*.json")
+                .Where(file => Path.GetExtension(file) == ".json")
+                .Select(file => Path.GetFileNameWithoutExtension(file))
+                .OrderBy(id => id, System.StringComparer.Ordinal)
+                .ToArray();
+            Assert.That(ids.Length, Is.GreaterThanOrEqualTo(19),
+                "the authored campaign must not shrink below its 19 known levels: " + dir);
+            return ids;
+        }
+
         public static byte[] Bytes(string id) =>
             File.ReadAllBytes(Path.Combine(RepoRoot(), "content", "levels", id + ".json"));
 
@@ -157,41 +177,51 @@ namespace CatMetro.Tests.Corpus
             }
         }
 
-        // Wider than CM-C11's own L001-L010 check (criterion 1's spirit extended): this band
-        // lands after both the onboarding and alternation bands, so the distinctness net widens
-        // to all seventeen shipped campaign levels, not just this band's seven.
+        // The distinctness net covers the WHOLE authored campaign, not just this band's seven —
+        // two levels that teach the same thing are a real content bug wherever they sit. The id
+        // set is derived, so a newly authored level joins the net the day it lands.
         [Test]
-        public void TeachingGoals_AreDistinctAcrossAllSeventeenCampaignLevels()
+        public void TeachingGoals_AreDistinctAcrossEveryCampaignLevel()
         {
-            var ids = new[]
-            {
-                "L001", "L002", "L003", "L004", "L005", "L006", "L007", "L008", "L009", "L010",
-                "L011", "L012", "L013", "L014", "L015", "L016", "L017",
-            };
+            var ids = QueueBandFixtures.CampaignIds();
             var goals = ids.Select(id =>
                 LevelImporter.Import(File.ReadAllBytes(
                     Path.Combine(QueueBandFixtures.RepoRoot(), "content", "levels", id + ".json")))
                     .Value.Dto.Meta.TeachingGoal).ToList();
-            Assert.That(goals, Is.Unique, "criterion 1: teachingGoal must be pairwise distinct across L001-L017");
+            // Name the colliding levels rather than dumping the whole list: a duplicate is a
+            // finding about the two levels involved, and the report should say which they are.
+            var duplicates = ids.Zip(goals, (id, goal) => new { id, goal })
+                .GroupBy(pair => pair.goal)
+                .Where(group => group.Count() > 1)
+                .Select(group => string.Join("+", group.Select(pair => pair.id).ToArray())
+                    + " share \"" + group.Key + "\"")
+                .ToArray();
+            Assert.That(goals, Is.Unique,
+                "teachingGoal must be pairwise distinct across the whole authored campaign ("
+                + ids.Length + " levels) — duplicates: " + string.Join(" | ", duplicates));
         }
     }
 
-    // Criteria 3/4/5-shaped: the corpus gate over L001-L017 (the whole shipped campaign to date).
+    // The corpus gate over the WHOLE authored campaign — the member list is derived from disk
+    // (QueueBandFixtures.CampaignIds), so it is 19 levels today and grows on its own. It used to
+    // be a hardcoded L001-L017, which meant L018/L019 were validated by nothing once they landed.
     // Runs the real console validator in-process against the shipped bytes — same shape as
     // AlternationBandGateTests / CorpusAndReportTests.cs.
-    // [Timeout] finding (this session's own Unity EditMode batch run, not present in the dotnet
-    // leg): the class-shared `Shared` Lazy<CorpusReport> pays its one-time cost (17 BFS-exact
-    // solves) on whichever test happens to run first — Unity's NUnit runs fixture methods
-    // alphabetically, so that landed on Campaign_CorpusCount_Is17Of30Pending, which measured
-    // 422s in one run and 519.8s in the round-1 reviewer's own independent run (87% of the
-    // original 600000ms cap) and exceeded NUnit's 180000ms default per-test timeout while every
-    // other test in this class (reading the already-memoized value) passed in microseconds.
-    // AlternationBandGateTests (L001-L010, 10 levels) stays under the default; this band's 17
-    // levels do not. Resized 600000->900000 at the round-1 review's Minor-4 (the 422s/519.8s
-    // spread shows real cross-run variance; 900000 keeps generous margin without hoisting the
-    // solve to OneTimeSetUp, which would be a larger structural change for a timing-only finding).
-    // A class-level Timeout raises the wall-clock budget only — it asserts nothing new and
-    // weakens no existing assertion.
+    // [Timeout] finding (a Unity EditMode batch run, not present in the dotnet leg): the
+    // class-shared `Shared` Lazy<CorpusReport> pays its one-time cost (one BFS-exact solve per
+    // level) on whichever test happens to run first — Unity's NUnit runs fixture methods
+    // alphabetically, so that lands on Campaign_CorpusCount_*, which at 17 levels measured 422s
+    // and 519.8s across two runs and exceeded NUnit's 180000ms default per-test timeout, while
+    // every other test in this class (reading the already-memoized value) passed in microseconds.
+    // AlternationBandGateTests (L001-L010) stays under the default; this fixture does not.
+    // WALL-CLOCK BUDGET, and why 900000 stands: 900000 was sized against 17 levels. The whole
+    // 19-level corpus runs green in 6m32s (392s) on the dotnet leg, and scaling Unity's own worst
+    // 17-level number gives ~581s for 19 — 65% of the cap, so the budget holds unchanged.
+    // But the derived member list means this cost now grows WITHOUT anyone editing this file:
+    // the same scaling crosses 900000ms at roughly 29-30 levels, which is exactly the planned
+    // campaign length. Whoever takes the corpus past ~28 levels should re-measure and raise this
+    // rather than assume it still fits. A class-level Timeout is a wall-clock budget only — it
+    // asserts nothing and weakens no assertion.
     [TestFixture]
     [Timeout(900000)]
     public class QueueReadingBandGateTests
@@ -204,11 +234,9 @@ namespace CatMetro.Tests.Corpus
             var configResult = CatMetro.Content.Validation.ValidatorConfig.Parse(File.ReadAllBytes(
                 Path.Combine(QueueBandFixtures.RepoRoot(), "config", "validator_thresholds.json")));
             Assert.That(configResult.Ok, Is.True, $"{configResult.Error}");
-            var ids = new[]
-            {
-                "L001", "L002", "L003", "L004", "L005", "L006", "L007", "L008", "L009", "L010",
-                "L011", "L012", "L013", "L014", "L015", "L016", "L017",
-            };
+            // Derived, not listed: this member list is what "the corpus gate" actually gates,
+            // so a level missing from it is a level nobody validates.
+            var ids = QueueBandFixtures.CampaignIds();
             var members = ids
                 .Select(id => new CatMetro.Content.Validation.CorpusMember(
                     "content/levels/" + id + ".json", QueueBandFixtures.Bytes(id), true))
@@ -222,11 +250,15 @@ namespace CatMetro.Tests.Corpus
             Shared.Value.Levels.Single(l => l.LevelId == id);
 
         [Test]
-        public void FullSeventeenLevelCorpus_ExitsClean()
+        public void FullCampaignCorpus_ExitsClean()
         {
+            // Names the LEVEL as well as the stage: a blocking verdict is a finding about one
+            // specific level, and a bare "Solver: ..." sends the reader hunting for which.
             Assert.That(Shared.Value.ExitFailure, Is.False,
-                string.Join("\n", Shared.Value.Levels.SelectMany(l => l.Verdicts).Where(v => v.Blocks)
-                    .Select(v => v.Stage + ": " + v.Detail)));
+                string.Join("\n", Shared.Value.Levels
+                    .SelectMany(level => level.Verdicts.Where(v => v.Blocks)
+                        .Select(v => level.LevelId + " " + v.Stage + ": " + v.Detail))
+                    .ToArray()));
         }
 
         [TestCaseSource(typeof(QueueBandFixtures), nameof(QueueBandFixtures.Ids))]
@@ -310,10 +342,15 @@ namespace CatMetro.Tests.Corpus
         }
 
         [Test]
-        public void Campaign_CorpusCount_Is17Of30Pending()
+        public void Campaign_CorpusCount_MatchesTheAuthoredCorpus_Of30Pending()
         {
+            // The "17/30" this used to pin was the corpus SIZE, not a product decision: 30 is
+            // the planned campaign length, the numerator is simply how many levels exist. It
+            // silently went stale at L018/L019, so the numerator is now derived the same way
+            // the member list is — the two can no longer disagree.
+            var expected = QueueBandFixtures.CampaignIds().Length + "/30";
             var count = Shared.Value.CampaignVerdicts.Single(v => v.Value == "tag=CM-R09.1");
-            Assert.That(count.Detail, Does.Contain("17/30"));
+            Assert.That(count.Detail, Does.Contain(expected), count.Detail);
             Assert.That(count.Blocks, Is.False);
         }
 
