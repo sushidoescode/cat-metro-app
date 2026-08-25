@@ -10,12 +10,9 @@ set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 fail=0
 
-out="$(dotnet test dotnet/CatMetro.sln -c Release --nologo 2>&1)"; rc=$?
-if [ "$rc" -ne 0 ]; then
-  echo "importer: FAIL — dotnet test not green (rc=$rc)"
-  printf '%s\n' "$out" | tail -20
-  fail=1
-fi
+# Criterion 13's dotnet leg has MOVED to tests/suite/solution-suite.test.sh.
+# It captured the full unfiltered suite output into "$out" and then used it only
+# inside the failure branch — ~529s to recompute a boolean.
 
 # Review F8: the criterion says "the tree" — scan all of unity/Assets (tests included), and
 # count occurrences, not matching lines.
@@ -32,5 +29,5 @@ if [ -n "$lit" ]; then
   fail=1
 fi
 
-[ "$fail" -eq 0 ] && echo "importer: OK — suite green, one settings site, no stray bound literals"
+[ "$fail" -eq 0 ] && echo "importer: OK — one settings site, no stray bound literals (13-suite-green rides tests/suite/solution-suite.test.sh)"
 exit "$fail"
