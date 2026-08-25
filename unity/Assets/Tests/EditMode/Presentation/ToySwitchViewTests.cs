@@ -67,6 +67,11 @@ namespace CatMetro.Tests.EditMode.Presentation
             var baseRenderer = view.GetComponent<Renderer>();
             Assert.That(baseRenderer, Is.Not.Null, "the ROOT carries the base renderer "
                 + "(the teach-ring material comparison reads it)");
+            // two-tone base (2026-08-25 render review): MetroTeal walls stay sharedMaterial[0]
+            // — the instance the teach-ring comparison reads — with the lighter top on [1]
+            Assert.That(baseRenderer.sharedMaterials.Length, Is.EqualTo(2));
+            AssertColor(baseRenderer.sharedMaterials[0].color, Palette.MetroTeal);
+            AssertColor(baseRenderer.sharedMaterials[1].color, ToySwitchView.BaseTopColor);
             AssertColor(baseRenderer.sharedMaterial.color, Palette.MetroTeal);
 
             var pivot = view.LeverPivot;
@@ -80,9 +85,9 @@ namespace CatMetro.Tests.EditMode.Presentation
             AssertColor(view.transform.Find("Arrow").GetComponent<Renderer>().sharedMaterial.color,
                 Palette.TicketOrange);
             foreach (var renderer in view.GetComponentsInChildren<Renderer>(true))
-                Assert.That(renderer.sharedMaterial.shader,
-                    Is.EqualTo(GreyboxMaterial.Shared.shader),
-                    renderer.name + " must stay on the committed pipeline shader");
+                foreach (var material in renderer.sharedMaterials)
+                    Assert.That(material.shader, Is.EqualTo(GreyboxMaterial.Shared.shader),
+                        renderer.name + " must stay on the committed pipeline shader");
 
             Assert.That(view.GetComponentsInChildren<Collider>(true), Is.Empty,
                 "taps resolve through screen-space discs — the toy must add no collider");
@@ -91,7 +96,7 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
-        public void ArrowMesh_PointsAlongPlusY_FlatWithTheTipOnTheCentreline()
+        public void ArrowMesh_PointsAlongPlusY_AsAClosedSolidTile()
         {
             _host = new GameObject("switch-test-host");
             var view = ToySwitchView.Build("S-test", _host.transform, Vector3.zero);
@@ -100,14 +105,55 @@ namespace CatMetro.Tests.EditMode.Presentation
             var vertices = mesh.vertices;
             var tip = vertices[0];
             foreach (var v in vertices)
-            {
                 if (v.y > tip.y) tip = v;
-                Assert.That(v.z, Is.EqualTo(0f).Within(1e-5f), "the arrow is a flat decal");
-            }
-            Assert.That(tip.y, Is.GreaterThan(0.2f), "the head reaches forward");
+            Assert.That(tip.y, Is.GreaterThan(0.3f), "the head reaches forward, phone-bold");
             Assert.That(tip.x, Is.EqualTo(0f).Within(1e-5f), "the tip sits on the centreline");
             Assert.That(mesh.bounds.min.y, Is.GreaterThan(-0.4f),
                 "the tail stays on the base block");
+            // 2026-08-25 render review: the flat single-sided decal was culled invisible; the
+            // arrow is now a thin closed solid no winding or mirrored transform can hide.
+            Assert.That(mesh.bounds.size.z,
+                Is.EqualTo(ToySwitchView.ArrowThickness).Within(1e-5f),
+                "the arrow is an extruded tile, not a single-sided decal");
+            Assert.That(mesh.triangles.Length, Is.EqualTo(60),
+                "front + back + one wall quad per outline edge — a closed solid");
+        }
+
+        // The regression pin the first cut lacked (2026-08-25 render review: every
+        // camera-facing triangle was backface-culled): the camera looks from -Z, so the base
+        // top face and the arrow front face must carry normals pointing at it.
+        [Test]
+        public void Meshes_CameraFacingFaces_ActuallyFaceTheCamera()
+        {
+            _host = new GameObject("switch-test-host");
+            var view = ToySwitchView.Build("S-test", _host.transform, Vector3.zero);
+
+            var baseMesh = view.GetComponent<MeshFilter>().sharedMesh;
+            Assert.That(baseMesh.subMeshCount, Is.EqualTo(2),
+                "walls submesh + the lighter top-face submesh");
+            var baseNormals = baseMesh.normals;
+            for (int i = 0; i < 8; i++) // vertices 0..7 are the split top face
+                Assert.That(baseNormals[i].z, Is.LessThan(-0.9f),
+                    "base top-face vertex " + i + " must face the camera (-Z), not be culled");
+
+            var arrowMesh = view.transform.Find("Arrow").GetComponent<MeshFilter>().sharedMesh;
+            var arrowNormals = arrowMesh.normals;
+            for (int i = 0; i < 7; i++) // vertices 0..6 are the split front face
+                Assert.That(arrowNormals[i].z, Is.LessThan(-0.9f),
+                    "arrow front-face vertex " + i + " must face the camera (-Z), not be culled");
+        }
+
+        [Test]
+        public void BaseTopColor_IsTheTokenDerivedLighterTeal()
+        {
+            var expected = Color.Lerp(Palette.MetroTeal, Palette.WarmPaper, 0.25f);
+            AssertColor(ToySwitchView.BaseTopColor, expected);
+            // intent, not just formula: lighter than the walls so the raked key cannot crush
+            // the face the player reads (2026-08-25 render review finding 2)
+            float walls = Palette.MetroTeal.r + Palette.MetroTeal.g + Palette.MetroTeal.b;
+            float top = ToySwitchView.BaseTopColor.r + ToySwitchView.BaseTopColor.g
+                + ToySwitchView.BaseTopColor.b;
+            Assert.That(top, Is.GreaterThan(walls + 0.1f), "the top face reads lighter");
         }
 
         [Test]

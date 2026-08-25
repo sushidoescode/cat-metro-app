@@ -48,8 +48,13 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(sw, Is.Not.Null, "the pinned root name survives the restyle");
             Assert.That(sw.GetComponent<ToySwitchView>(), Is.Not.Null);
 
-            AssertColor(sw.GetComponent<Renderer>().sharedMaterial.color, Palette.MetroTeal,
-                "teal base");
+            // two-tone base: MetroTeal walls first (the teach-ring comparison reads
+            // sharedMaterial), the lighter token-derived top face second
+            var baseMaterials = sw.GetComponent<Renderer>().sharedMaterials;
+            Assert.That(baseMaterials.Length, Is.EqualTo(2), "walls + lighter top face");
+            AssertColor(baseMaterials[0].color, Palette.MetroTeal, "teal base walls");
+            AssertColor(baseMaterials[1].color, ToySwitchView.BaseTopColor,
+                "lighter teal base top");
             AssertColor(FindByName(sw.gameObject, "Stem").GetComponent<Renderer>()
                 .sharedMaterial.color, Palette.CreamCard, "cream stem");
             AssertColor(FindByName(sw.gameObject, "Knob").GetComponent<Renderer>()
@@ -57,9 +62,9 @@ namespace CatMetro.Tests.PlayMode
             AssertColor(FindByName(sw.gameObject, "Arrow").GetComponent<Renderer>()
                 .sharedMaterial.color, Palette.TicketOrange, "orange direction arrow");
             foreach (var renderer in sw.GetComponentsInChildren<Renderer>(true))
-                Assert.That(renderer.sharedMaterial.shader,
-                    Is.EqualTo(GreyboxMaterial.Shared.shader),
-                    renderer.name + " stays on the committed pipeline shader");
+                foreach (var material in renderer.sharedMaterials)
+                    Assert.That(material.shader, Is.EqualTo(GreyboxMaterial.Shared.shader),
+                        renderer.name + " stays on the committed pipeline shader");
 
             Assert.That(sw.GetComponentsInChildren<Collider>(true), Is.Empty,
                 "input is screen-space disc resolution — the toy adds no collider surface");

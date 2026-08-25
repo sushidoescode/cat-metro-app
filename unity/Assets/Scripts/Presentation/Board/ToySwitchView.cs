@@ -7,11 +7,12 @@ namespace CatMetro.Presentation.Board
     // an arrow showing where it will send the train" — replacing the greybox disc + clock-hand
     // arm. One toy assembly per switch:
     //
-    //   switch:{id}     the ROOT — teal chamfered base block (this object's own renderer),
+    //   switch:{id}     the ROOT — teal chamfered base block (this object's own renderer;
+    //                   two-tone: MetroTeal walls, lighter BaseTopColor top face)
     //     LeverPivot    hinge at the base top, tilted LeverTiltDegrees toward local +Y
     //       Stem        cream shaft (builtin cube)
     //       Knob        chunky orange head (builtin cube)
-    //     Arrow         flat orange arrow on the base top, pointing local +Y
+    //     Arrow         chunky orange arrow tile on the base top, pointing local +Y
     //
     // Route display is ONE rotation: BoardView calls SetDirection with the board-plane
     // direction toward the committed route's target node, and the whole assembly yaws so its
@@ -47,20 +48,30 @@ namespace CatMetro.Presentation.Board
         private const float KnobLength = 0.20f;
         private const float KnobSeat = 0.03f; // overlap into the stem so no gap shows
 
-        // arrow, floating just above the base top
-        private const float ArrowLift = 0.015f;
-        private const float ArrowShaftHalfWidth = 0.055f;
+        // arrow, floating just above the base top — bold, phone-readable (2026-08-25 render
+        // review finding 3: the first cut read mushy at board scale)
+        private const float ArrowLift = 0.02f;
+        public const float ArrowThickness = 0.03f;
+        private const float ArrowShaftHalfWidth = 0.07f;
         private const float ArrowTailY = -0.30f;
-        private const float ArrowHeadBaseY = 0.10f;
-        private const float ArrowHeadHalfWidth = 0.15f;
-        private const float ArrowTipY = 0.34f;
+        private const float ArrowHeadBaseY = 0.06f;
+        private const float ArrowHeadHalfWidth = 0.19f;
+        private const float ArrowTipY = 0.36f;
 
         private static Mesh _baseMesh;   // shared across instances and rebuilds
         private static Mesh _arrowMesh;
         private static Mesh _cubeMesh;
         private static Material _baseMaterial;
+        private static Material _baseTopMaterial;
         private static Material _leverMaterial;
         private static Material _stemMaterial;
+
+        // 2026-08-25 render review finding 2: under the scene-mood raked key the flat teal
+        // crushed dark, so the base is two-tone like a painted toy — MetroTeal walls, this
+        // lighter token-derived teal on the top face the player actually reads. A Lerp of two
+        // Palette tokens, never a literal; tests pin the exact mix.
+        public static Color BaseTopColor =>
+            Color.Lerp(Palette.MetroTeal, Palette.WarmPaper, 0.25f);
 
         public Transform LeverPivot { get; private set; }
 
@@ -80,7 +91,11 @@ namespace CatMetro.Presentation.Board
             var view = root.AddComponent<ToySwitchView>();
 
             root.AddComponent<MeshFilter>().sharedMesh = BaseMesh();
-            root.AddComponent<MeshRenderer>().sharedMaterial = BaseMaterial();
+            // submesh 0 = walls + underside (MetroTeal), submesh 1 = the lighter top face;
+            // sharedMaterial (singular) stays the MetroTeal instance the teach-ring
+            // comparison reads.
+            root.AddComponent<MeshRenderer>().sharedMaterials =
+                new[] { BaseMaterial(), BaseTopMaterial() };
 
             var pivot = new GameObject("LeverPivot").transform;
             pivot.SetParent(root.transform, false);
@@ -138,6 +153,14 @@ namespace CatMetro.Presentation.Board
             return _baseMaterial;
         }
 
+        private static Material BaseTopMaterial()
+        {
+            if (_baseTopMaterial == null)
+                _baseTopMaterial = GreyboxMaterial.CreateTinted(
+                    "Toy Switch — Teal Base Top", BaseTopColor);
+            return _baseTopMaterial;
+        }
+
         private static Material LeverMaterial()
         {
             if (_leverMaterial == null)
@@ -154,12 +177,19 @@ namespace CatMetro.Presentation.Board
             return _stemMaterial;
         }
 
-        // Chamfered octagonal prism, the ToyTrackMeshBuilder sleeper pattern: front face on the
-        // camera side (smaller Z), back face toward the table, walls between.
+        // Chamfered octagonal prism. WINDING LAW (2026-08-25 render review: the first cut
+        // copied the sleeper fan verbatim and every camera-facing triangle was culled — the
+        // sleeper builder maps footprint.x through the LATERAL axis, which mirrors its
+        // polygon): the camera looks from -Z toward +Z, and Unity front faces wind CLOCKWISE
+        // as seen by the camera, so camera-facing triangles here enumerate the CCW footprint
+        // in REVERSE. Vertices are split per face so RecalculateNormals yields true flat
+        // facets — the top face gets an honest camera-facing normal instead of a smeared
+        // 45-degree average, which is what let the raked key light crush it.
+        // Submesh 0 = walls + underside (MetroTeal), submesh 1 = top face (BaseTopColor).
         private static Mesh BaseMesh()
         {
             if (_baseMesh != null) return _baseMesh;
-            var footprint = new[]
+            var footprint = new[] // counter-clockwise in board XY
             {
                 new Vector2(-BaseHalfWidth + BaseCorner, -BaseHalfLength),
                 new Vector2(BaseHalfWidth - BaseCorner, -BaseHalfLength),
@@ -170,53 +200,91 @@ namespace CatMetro.Presentation.Board
                 new Vector2(-BaseHalfWidth, BaseHalfLength - BaseCorner),
                 new Vector2(-BaseHalfWidth, -BaseHalfLength + BaseCorner),
             };
-            var vertices = new Vector3[footprint.Length * 2];
-            for (int face = 0; face < 2; face++)
+            int n = footprint.Length;
+            var vertices = new System.Collections.Generic.List<Vector3>(2 * n + 4 * n);
+            for (int i = 0; i < n; i++) // 0..7: top face only
+                vertices.Add(new Vector3(footprint[i].x, footprint[i].y, BaseTopZ));
+            for (int i = 0; i < n; i++) // 8..15: underside only
+                vertices.Add(new Vector3(footprint[i].x, footprint[i].y, BaseBottomZ));
+
+            var topTriangles = new System.Collections.Generic.List<int>(18);
+            var wallTriangles = new System.Collections.Generic.List<int>(66);
+            for (int i = 1; i < n - 1; i++)
             {
-                float z = face == 0 ? BaseTopZ : BaseBottomZ;
-                for (int i = 0; i < footprint.Length; i++)
-                    vertices[face * footprint.Length + i] =
-                        new Vector3(footprint[i].x, footprint[i].y, z);
+                // top face toward the camera: CCW footprint enumerated in reverse
+                AddTriangle(topTriangles, 0, i + 1, i);
+                // underside toward the table: forward enumeration faces +Z
+                AddTriangle(wallTriangles, 8, 8 + i, 8 + i + 1);
             }
-            var triangles = new System.Collections.Generic.List<int>(96);
-            for (int i = 1; i < footprint.Length - 1; i++)
+            for (int edge = 0; edge < n; edge++)
             {
-                AddTriangle(triangles, 0, i, i + 1);
-                AddTriangle(triangles, 8, 8 + i + 1, 8 + i);
+                int next = (edge + 1) % n;
+                int a = vertices.Count; // per-edge vertices: crisp facet normals
+                vertices.Add(new Vector3(footprint[edge].x, footprint[edge].y, BaseTopZ));
+                vertices.Add(new Vector3(footprint[next].x, footprint[next].y, BaseTopZ));
+                vertices.Add(new Vector3(footprint[next].x, footprint[next].y, BaseBottomZ));
+                vertices.Add(new Vector3(footprint[edge].x, footprint[edge].y, BaseBottomZ));
+                AddTriangle(wallTriangles, a, a + 2, a + 3);
+                AddTriangle(wallTriangles, a, a + 1, a + 2);
             }
-            for (int i = 0; i < footprint.Length; i++)
-            {
-                int next = (i + 1) % footprint.Length;
-                AddTriangle(triangles, i, 8 + i, 8 + next);
-                AddTriangle(triangles, i, 8 + next, next);
-            }
+
             _baseMesh = new Mesh { name = "Toy switch base" };
             _baseMesh.SetVertices(vertices);
-            _baseMesh.SetTriangles(triangles, 0);
+            _baseMesh.subMeshCount = 2;
+            _baseMesh.SetTriangles(wallTriangles, 0);
+            _baseMesh.SetTriangles(topTriangles, 1);
             _baseMesh.RecalculateNormals();
             _baseMesh.RecalculateBounds();
             return _baseMesh;
         }
 
-        // Flat arrow in the board plane pointing +Y: shaft quad plus head triangle, camera-side
-        // face only (the board is never seen from behind).
+        // Bold arrow pointing +Y — shaft quad plus a wide head triangle, EXTRUDED into a thin
+        // solid tile (2026-08-25 render review: the single-sided flat decal was backface-culled
+        // and invisible; a closed solid cannot be hidden by any winding or mirrored transform).
+        // Same winding law as BaseMesh: camera-facing triangles enumerate the CCW outline in
+        // reverse; the front face sits ArrowThickness toward the camera.
         private static Mesh ArrowMesh()
         {
             if (_arrowMesh != null) return _arrowMesh;
-            var vertices = new[]
+            var outline = new[] // counter-clockwise in board XY
             {
-                new Vector3(-ArrowShaftHalfWidth, ArrowTailY, 0f),     // 0
-                new Vector3(ArrowShaftHalfWidth, ArrowTailY, 0f),      // 1
-                new Vector3(ArrowShaftHalfWidth, ArrowHeadBaseY, 0f),  // 2
-                new Vector3(ArrowHeadHalfWidth, ArrowHeadBaseY, 0f),   // 3
-                new Vector3(0f, ArrowTipY, 0f),                        // 4
-                new Vector3(-ArrowHeadHalfWidth, ArrowHeadBaseY, 0f),  // 5
-                new Vector3(-ArrowShaftHalfWidth, ArrowHeadBaseY, 0f), // 6
+                new Vector2(-ArrowShaftHalfWidth, ArrowTailY),     // 0
+                new Vector2(ArrowShaftHalfWidth, ArrowTailY),      // 1
+                new Vector2(ArrowShaftHalfWidth, ArrowHeadBaseY),  // 2
+                new Vector2(ArrowHeadHalfWidth, ArrowHeadBaseY),   // 3
+                new Vector2(0f, ArrowTipY),                        // 4
+                new Vector2(-ArrowHeadHalfWidth, ArrowHeadBaseY),  // 5
+                new Vector2(-ArrowShaftHalfWidth, ArrowHeadBaseY), // 6
             };
-            var triangles = new System.Collections.Generic.List<int>(9);
-            AddTriangle(triangles, 0, 1, 2);
-            AddTriangle(triangles, 0, 2, 6);
-            AddTriangle(triangles, 5, 3, 4);
+            int n = outline.Length;
+            var vertices = new System.Collections.Generic.List<Vector3>(2 * n + 4 * n);
+            for (int i = 0; i < n; i++) // 0..6: front face (camera side)
+                vertices.Add(new Vector3(outline[i].x, outline[i].y, -ArrowThickness));
+            for (int i = 0; i < n; i++) // 7..13: back face (rests on the base top)
+                vertices.Add(new Vector3(outline[i].x, outline[i].y, 0f));
+
+            var triangles = new System.Collections.Generic.List<int>(60);
+            // front face toward the camera: reversed enumeration
+            AddTriangle(triangles, 0, 2, 1);
+            AddTriangle(triangles, 0, 6, 2);
+            AddTriangle(triangles, 5, 4, 3);
+            // back face toward the table: forward enumeration
+            AddTriangle(triangles, 7, 8, 9);
+            AddTriangle(triangles, 7, 9, 13);
+            AddTriangle(triangles, 12, 10, 11);
+            // walls, split vertices per edge for crisp facets
+            for (int edge = 0; edge < n; edge++)
+            {
+                int next = (edge + 1) % n;
+                int a = vertices.Count;
+                vertices.Add(new Vector3(outline[edge].x, outline[edge].y, -ArrowThickness));
+                vertices.Add(new Vector3(outline[next].x, outline[next].y, -ArrowThickness));
+                vertices.Add(new Vector3(outline[next].x, outline[next].y, 0f));
+                vertices.Add(new Vector3(outline[edge].x, outline[edge].y, 0f));
+                AddTriangle(triangles, a, a + 2, a + 3);
+                AddTriangle(triangles, a, a + 1, a + 2);
+            }
+
             _arrowMesh = new Mesh { name = "Toy switch arrow" };
             _arrowMesh.SetVertices(vertices);
             _arrowMesh.SetTriangles(triangles, 0);
