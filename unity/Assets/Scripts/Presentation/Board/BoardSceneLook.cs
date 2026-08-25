@@ -33,7 +33,11 @@ namespace CatMetro.Presentation.Board
         // costs ~1.2 units of camera pull-back, which the smaller frame now affords.
         private const float DeskCoverageAspect = 0.75f;
         private const float DeskNearClearance = 1f;
-        private static readonly Quaternion BoardTilt = Quaternion.Euler(38f, -32f, -4f);
+        // Public because the diorama tilt is the ONLY thing that decides which way a board-local
+        // feature faces the (identity-rotated, orthographic) camera. ToyTrainView derives the
+        // cat's fixed facing from it rather than hardcoding a yaw that would silently rot if
+        // this tilt were ever re-authored.
+        public static readonly Quaternion BoardTilt = Quaternion.Euler(38f, -32f, -4f);
 
         public static void Apply(Transform owner, Camera camera, BoardView board)
         {
