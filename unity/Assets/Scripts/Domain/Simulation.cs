@@ -6,7 +6,7 @@ namespace CatMetro.Domain
     // The ONE step implementation (ADR-0002 §2): solver, validator, runtime and capture rig all
     // call this symbol. Implements the authoritative per-tick order of operations at
     // docs/plan/specs/product_spec.md:218-227. Step 7 (score/combo) is deferred with scoring
-    // (pin NEW-Q5 / Q-C); steps 5-6 carry the criterion-14 pin guards.
+    // (pin NEW-Q5 / Q-C); step 5 carries NEW-Q4 plus NEW-Q35's ratified W-auto acceptance.
     //
     // Micro-semantics adopted as handoff assumption A-C1-8 (golden fixture exercises none of them):
     //   (i)  an edge mouth is occupied iff any train on that edge has ProgressTicks == 0;
@@ -66,14 +66,15 @@ namespace CatMetro.Domain
                 int slot = AllocateTrain(ref state);
                 state.Trains[slot].Id = (short)(slot + 1); // 1-based; 0 = empty slot (A-C1-10)
                 state.Trains[slot].Color = g.WaveColor[w];
-                state.Trains[slot].NodeId = (short)g.SourceNode;
-                int outEdge = SingleOutgoingEdge(g, g.SourceNode, state);
+                int sourceNode = g.WaveSourceNode[w];
+                state.Trains[slot].NodeId = (short)sourceNode;
+                int outEdge = SingleOutgoingEdge(g, sourceNode, state);
                 if (outEdge < 0)
                     throw new InvalidOperationException("source node has no outgoing edge — invalid fixture (F10)");
-                if (state.NodeQueueCounts[g.SourceNode] == 0 && MouthFree(state, outEdge))
+                if (state.NodeQueueCounts[sourceNode] == 0 && MouthFree(state, outEdge))
                     EnterEdge(ref state, slot, outEdge, enteredThisTick);
                 else
-                    Enqueue(ref state, g.SourceNode, slot);
+                    Enqueue(ref state, sourceNode, slot);
             }
 
             // step 3 — advance trains that were already on an edge; collect arrivals
@@ -234,6 +235,10 @@ namespace CatMetro.Domain
 
         private static bool Accepts(LevelGraph g, int station, byte color)
         {
+            // NEW-Q35: Wild is a train color and auto-accepts at the first station reached.
+            // A Wild token authored on the station side remains exact-only and therefore does not
+            // accept a concrete train.
+            if (color == CatColor.Wild) return true;
             var accepts = g.StationAccepts[station];
             for (int i = 0; i < accepts.Length; i++)
                 if (accepts[i] == color)

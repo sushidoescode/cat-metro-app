@@ -26,24 +26,27 @@ namespace CatMetro.Tests.Domain
         }
 
         [Test]
-        public void Guard_SecondSource_ThrowsAtConstruction()
+        public void SecondSource_ConstructsAndPreservesPerWaveOrigins()
         {
-            var ex = Assert.Throws<NotSupportedException>(() => new LevelGraph(
+            var graph = new LevelGraph(
                 "FX-2SRC", 3,
                 new[] { 8, 8, 8 },
                 new[] { 0, 1 }, new[] { 2, 2 }, new[] { 5, 5 },
-                new[] { 0, 1 }, // two sources: pinned out of CM-C1 scope
+                new[] { 0, 1 },
                 new int[0][], new int[0], new byte[0],
                 new[] { 2 }, new[] { new[] { CatColor.Red } }, new[] { 6 },
-                new int[0], new byte[0], new int[0], new int[0],
-                1, 100, 8, 1));
-            Assert.That(ex.Message, Does.Contain("second source").IgnoreCase);
+                new[] { 0, 1 }, new[] { CatColor.Red, CatColor.Red },
+                new[] { 1, 1 }, new[] { 1, 1 },
+                2, 100, 8, 2,
+                waveSourceNode: new[] { 0, 1 });
+            Assert.That(graph.SourceNodes, Is.EqualTo(new[] { 0, 1 }));
+            Assert.That(graph.WaveSourceNode, Is.EqualTo(new[] { 0, 1 }));
         }
 
         [Test]
-        public void Guard_WildColorWave_Throws_NEWQ35()
+        public void WildColorWave_ConstructsAndAutoAccepts()
         {
-            var ex = Assert.Throws<NotSupportedException>(() => new LevelGraph(
+            var graph = new LevelGraph(
                 "FX-WILD", 2,
                 new[] { 8, 8 },
                 new[] { 0 }, new[] { 1 }, new[] { 5 },
@@ -51,8 +54,11 @@ namespace CatMetro.Tests.Domain
                 new int[0][], new int[0], new byte[0],
                 new[] { 1 }, new[] { new[] { CatColor.Red } }, new[] { 6 },
                 new[] { 0 }, new[] { CatColor.Wild }, new[] { 1 }, new[] { 1 },
-                1, 100, 8, 1));
-            Assert.That(ex.Message, Does.Contain("NEW-Q35"));
+                1, 100, 8, 1,
+                waveSourceNode: new[] { 0 });
+            var end = ReplayHasher.RunToEnd(graph, 35, new CommandLog());
+            Assert.That(end.Outcome.Kind, Is.EqualTo(OutcomeKind.Won));
+            Assert.That(end.Deliveries, Is.EqualTo(1));
         }
 
         [Test]

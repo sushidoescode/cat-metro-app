@@ -81,8 +81,8 @@ namespace CatMetro.Tests.Validation
         // --- criterion 2: every schema mechanic has a declared, tested disposition ---
         [TestCase("switch", MechanicDisposition.Observable)]
         [TestCase("queue", MechanicDisposition.Observable)]
-        [TestCase("second-source", MechanicDisposition.Unreachable)]
-        [TestCase("wildcard", MechanicDisposition.Unreachable)]
+        [TestCase("second-source", MechanicDisposition.Observable)]
+        [TestCase("wildcard", MechanicDisposition.Observable)]
         [TestCase("cooldown", MechanicDisposition.Unobservable)]
         [TestCase("gate", MechanicDisposition.Unobservable)]
         [TestCase("express", MechanicDisposition.Unobservable)]
