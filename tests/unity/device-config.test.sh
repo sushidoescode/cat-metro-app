@@ -80,14 +80,32 @@ if grep -q 'm_Shader: {fileID: 0}' "$MAT"; then
   fail "criterion 4: null shader reference — that is silent magenta"
 fi
 
-# --- criterion 5 static: primitive count == bind count, proven live ---
-prim=$(grep -ro 'GameObject.CreatePrimitive' unity/Assets/Scripts/Presentation --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-bind=$(grep -ro 'GreyboxMaterial.Shared' unity/Assets/Scripts/Presentation --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-[ "$prim" = "$bind" ] && [ "$prim" != "0" ] \
-  || fail "criterion 5: unbound runtime primitives ($prim CreatePrimitive vs $bind binds)"
-fp=$(grep -ro 'GameObject.CreatePrimitive' "$FIX" --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-fb=$(grep -ro 'GreyboxMaterial.Shared' "$FIX" --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-[ "$fp" != "$fb" ] || fail "criterion 5: the counting gate failed to fire on the fixture"
+# --- criterion 5 static: no unbound runtime primitives, proven live ---
+# The invariant is directional: a CreatePrimitive left on Unity's default material is the
+# silent-grey/magenta defect this gate exists for. Binds WITHOUT CreatePrimitive are now a
+# legitimate idiom (BoardSurface parts and the CauseRing assemble builtin meshes via
+# Resources.GetBuiltinResource and bind GreyboxMaterial.Shared with no CreatePrimitive call),
+# so the old global prim==bind equality fires falsely on correct code. Per-file prims<=binds
+# keeps the defect direction AND removes the old rule's cross-file masking, where a surplus
+# bind in one file could hide a missing bind in another. The typed, renderer-level half of
+# this criterion is PlayMode DeviceConfigTests.AllRuntimeRenderers_BindGreybox (real
+# materials on real renderers, ring asserted explicitly).
+prim_files=$(grep -rl 'GameObject.CreatePrimitive' unity/Assets/Scripts/Presentation --include='*.cs' 2>/dev/null)
+[ -n "$prim_files" ] || fail "criterion 5: no CreatePrimitive callers found (fail-closed — scan root moved?)"
+while IFS= read -r pf; do
+  p=$(grep -o 'GameObject.CreatePrimitive' "$pf" | wc -l | tr -d ' ')
+  b=$(grep -o 'GreyboxMaterial.Shared' "$pf" | wc -l | tr -d ' ')
+  [ "$p" -le "$b" ] || fail "criterion 5: unbound runtime primitives in $pf ($p CreatePrimitive vs $b binds)"
+done <<EOF_PRIM
+$prim_files
+EOF_PRIM
+fired=0
+for ff in "$FIX"/*.cs; do
+  fp=$(grep -o 'GameObject.CreatePrimitive' "$ff" 2>/dev/null | wc -l | tr -d ' ')
+  fb=$(grep -o 'GreyboxMaterial.Shared' "$ff" 2>/dev/null | wc -l | tr -d ' ')
+  [ "$fp" -gt "$fb" ] && fired=1
+done
+[ "$fired" = "1" ] || fail "criterion 5: the per-file counting gate failed to fire on the fixture"
 
 echo "device-config.test.sh: OK (1, 2-yaml, 3, 4, 5-static)"
 exit 0
