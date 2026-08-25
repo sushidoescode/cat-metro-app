@@ -21,7 +21,8 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private static Sprite _capsule;
         private static Sprite _roundedSquare;
         private static Sprite _triangle;
-        private static Sprite _hexagon;
+        private static Sprite _diamond;
+        private static Sprite _star;
         private static Sprite _waveBand;
 
         // A filled circle. Cat heads, eyes, and the circle destination badge.
@@ -44,9 +45,16 @@ namespace CatMetro.Presentation.Hud.WavePreview
         public static Sprite Triangle => _triangle != null ? _triangle
             : (_triangle = Build("HudTriangle", 64, 64, InsideTriangle, Vector4.zero));
 
-        // Flat-top hexagon — the fourth destination shape.
-        public static Sprite Hexagon => _hexagon != null ? _hexagon
-            : (_hexagon = Build("HudHexagon", 64, 64, InsideHexagon, Vector4.zero));
+        // Diamond — a square on its point. Conformance to CAT-MANIFEST.json: the green
+        // shorthair wears a diamond. This was a hexagon until a manifest read caught it.
+        public static Sprite Diamond => _diamond != null ? _diamond
+            : (_diamond = Build("HudDiamond", 64, 64, InsideDiamond, Vector4.zero));
+
+        // Five-pointed star — the WILD cat's badge. Concave, which is why the board's mesh
+        // extruder refuses it (it fans from vertex 0); a coverage rasteriser has no such
+        // constraint, so the HUD is the one surface that can actually draw it.
+        public static Sprite Star => _star != null ? _star
+            : (_star = Build("HudStar", 64, 64, InsideStar, Vector4.zero));
 
         // The decorative wave running through the capsule, straight from the target art: a
         // sine-topped band filling the lower part of the tile. Tiles horizontally, so the
@@ -60,7 +68,8 @@ namespace CatMetro.Presentation.Hud.WavePreview
             {
                 case DestinationShape.Square: return RoundedSquare;
                 case DestinationShape.Triangle: return Triangle;
-                case DestinationShape.Hexagon: return Hexagon;
+                case DestinationShape.Diamond: return Diamond;
+                case DestinationShape.Star: return Star;
                 default: return Disc;
             }
         }
@@ -97,19 +106,50 @@ namespace CatMetro.Presentation.Hud.WavePreview
             return Mathf.Abs(x - 0.5f) <= halfWidth;
         }
 
-        // Regular hexagon, flat top and bottom, points left and right. A regular hexagon is the
-        // intersection of three slabs, one per pair of opposite edges: |p . n| <= apothem for
-        // the three edge normals at 30, 90 and 150 degrees.
-        private static bool InsideHexagon(float x, float y)
+        // Diamond: the L1 (taxicab) ball, which IS a square rotated 45 degrees. Kept SHARP
+        // while the square sprite is rounded — at the ~44px a face badge gets on a phone, a
+        // 45-degree rotation alone is a weak signal, so the crisp-points-versus-soft-corners
+        // contrast is doing real work to keep the two apart.
+        private static bool InsideDiamond(float x, float y)
         {
-            const float r = 0.95f;                 // circumradius in half-tile units
-            const float cos30 = 0.8660254f;
-            float apothem = cos30 * r;
-            float px = (x - 0.5f) * 2f;
-            float py = (y - 0.5f) * 2f;
-            return Mathf.Abs(py) <= apothem
-                && Mathf.Abs(cos30 * px + 0.5f * py) <= apothem
-                && Mathf.Abs(cos30 * px - 0.5f * py) <= apothem;
+            return Mathf.Abs(x - 0.5f) + Mathf.Abs(y - 0.5f) <= 0.47f;
+        }
+
+        // Five-pointed star by point-in-polygon against its ten vertices. A star is CONCAVE,
+        // so the half-plane intersections used for the convex shapes above cannot express it;
+        // a crossing-number test is exact regardless of convexity. The inner radius is a
+        // deliberate 0.50 of the outer rather than the 0.382 of a true pentagram — a thin
+        // star closes up into a blob at badge size.
+        private static readonly Vector2[] StarPoly = BuildStar(0.47f, 0.235f);
+
+        private static Vector2[] BuildStar(float outer, float inner)
+        {
+            var pts = new Vector2[10];
+            for (int i = 0; i < 10; i++)
+            {
+                float r = (i % 2 == 0) ? outer : inner;
+                // +PI/2, not -PI/2: these are TEXTURE coordinates, where v increases UPWARD,
+                // so -PI/2 starts at the BOTTOM and yields an inverted star — a different
+                // symbol entirely, and one that reads as a bug. Verified by rasterising.
+                float a = Mathf.PI / 2f + i * Mathf.PI / 5f; // start at the top point
+                pts[i] = new Vector2(0.5f + r * Mathf.Cos(a), 0.5f + r * Mathf.Sin(a));
+            }
+            return pts;
+        }
+
+        private static bool InsideStar(float x, float y) => InsidePolygon(x, y, StarPoly);
+
+        // Crossing number: count edges the upward ray from (x,y) crosses. Odd means inside.
+        private static bool InsidePolygon(float x, float y, Vector2[] poly)
+        {
+            bool inside = false;
+            for (int i = 0, j = poly.Length - 1; i < poly.Length; j = i++)
+            {
+                if ((poly[i].y > y) == (poly[j].y > y)) continue;
+                float t = (y - poly[i].y) / (poly[j].y - poly[i].y);
+                if (x < poly[i].x + t * (poly[j].x - poly[i].x)) inside = !inside;
+            }
+            return inside;
         }
 
         // Alpha below a sine curve; two full periods across the tile so a tiled Image reads as
