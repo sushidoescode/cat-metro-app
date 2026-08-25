@@ -319,18 +319,23 @@ namespace CatMetro.Tests.PlayMode
             var sheet = properties.GetTexture("_BaseMap") as Texture2D;
             Assert.That(sheet, Is.Not.Null);
 
+            // Guard first: an unbound property block reads back as clear, and a black interior
+            // would satisfy the margin below without meaning anything. GreyboxMaterial failing
+            // to resolve is exactly the silent-bind failure AGENTS.md warns about.
+            Assert.That(Luminance(interior), Is.GreaterThan(0.2f),
+                "the board interior never got its base colour — the margin below is vacuous");
+
             // The separation this branch must not spend. Measured on the Color values
             // themselves with Rec.709 weights: CreamCard sits 0.262 above the board interior,
             // and that gap is what makes the pale ballast ribbon read as track laid on wood
             // rather than as a stripe painted onto it. The grain multiplies the interior, so
             // the case that matters is the BRIGHTEST texel — the one that walks the board
-            // closest to the ribbon. Keeping the sheet's ceiling at or below 1 is what makes
-            // this arithmetic hold for any tuning of the grain, not just today's.
+            // closest to the ribbon. A sheet stored as bytes cannot exceed 1.0, so the ceiling
+            // is structural: no tuning of the grain can push the board past its own ungrained
+            // albedo, and this margin therefore holds for any future sheet, not just today's.
             float brightest = 0f;
             foreach (var texel in sheet.GetPixels32())
                 brightest = Mathf.Max(brightest, texel.r / 255f);
-            Assert.That(brightest, Is.LessThanOrEqualTo(1f),
-                "a sheet that can brighten the interior would close the gap to the ballast");
 
             float board = Luminance(interior) * brightest;
             float ballast = Luminance(Palette.CreamCard);
