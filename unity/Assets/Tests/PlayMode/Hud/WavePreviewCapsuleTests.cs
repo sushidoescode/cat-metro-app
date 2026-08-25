@@ -221,6 +221,44 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator EverySurfaceCarryingLineIdentity_IsExactlyCatLineColorOf()
+        {
+            // Not "close to" and not "a tint of". The board lane sweeps for equality with
+            // CatLine.ColorOf(name), so any darkened or alpha'd variant here — the
+            // Palette.WithAlpha(...) idiom is one edit away — turns the MERGED branch red on
+            // an otherwise correct implementation. The ears briefly were such a variant.
+            // Every surface that says "this cat belongs to this line" is the token itself.
+            _root = GameRoot.LaunchWith(Import(InterleavedFixture()));
+            yield return null;
+
+            foreach (var name in new[] { "red", "blue" })
+            {
+                var face = name == "red" ? _root.Preview.Face(0) : _root.Preview.Face(1);
+                var token = CatLine.ColorOf(name);
+                Assert.That(face.ColorName, Is.EqualTo(name), "precondition");
+                Assert.That(face.HeadColor, Is.EqualTo(token), name + " head");
+                Assert.That(face.EarColor, Is.EqualTo(token), name + " ears — no tinted variant");
+                Assert.That(face.BadgeColor, Is.EqualTo(token), name + " badge");
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator WildCatFaceBadge_RasterisesAStar_WithoutTouchingTheMeshExtruder()
+        {
+            // DestinationShapeMesh.ForShape(Star) THROWS by design — a star is concave and the
+            // extruder fans from vertex 0. The HUD must therefore never reach for the 3D
+            // realiser: its badges come from HudShapeSprites, which has no such constraint.
+            // feat/level-variety ships wild cats in L019, so this is live content.
+            yield return null;
+            Assert.That(CatLine.ShapeOf("wild"), Is.EqualTo(DestinationShape.Star));
+            var sprite = HudShapeSprites.ForShape(DestinationShape.Star);
+            Assert.That(sprite, Is.Not.Null, "the wild badge rasterises rather than throwing");
+            Assert.That(sprite, Is.Not.EqualTo(HudShapeSprites.Disc),
+                "Star must not silently fall through to the default disc");
+            Assert.That(sprite.texture.width, Is.GreaterThan(0));
+        }
+
+        [UnityTest]
         public IEnumerator Capsule_IsPaintedInTheLockedCreamChrome()
         {
             _root = GameRoot.Launch();

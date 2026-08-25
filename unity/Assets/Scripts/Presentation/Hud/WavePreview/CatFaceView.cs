@@ -46,6 +46,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
         public string ColorName { get; private set; } = "";
         public Color HeadColor => _head != null ? _head.color : UnityEngine.Color.clear;
         public Color BadgeColor => _badge != null ? _badge.color : UnityEngine.Color.clear;
+        public Color EarColor => _earLeft != null ? _earLeft.color : UnityEngine.Color.clear;
         public DestinationShape Shape { get; private set; }
         public string Glyph => _glyph != null ? _glyph.text : "";
         // Named FaceRect, not Rect: a member called Rect would shadow the UnityEngine.Rect
@@ -104,11 +105,15 @@ namespace CatMetro.Presentation.Hud.WavePreview
             Shape = CatLine.ShapeOf(ColorName);
 
             _head.color = tint;
-            // Ears sit a shade deeper so they read as separate forms against the head at the
-            // ~40px the capsule actually gives a face on a phone.
-            var earTint = UnityEngine.Color.Lerp(tint, Palette.InkNavy, 0.18f);
-            _earLeft.color = earTint;
-            _earRight.color = earTint;
+            // Ears take the vocabulary colour EXACTLY — no darkened variant. They briefly had
+            // a Lerp toward InkNavy for form separation, which was solving a problem that does
+            // not exist: the ears poke ABOVE the head circle, so they read against the cream
+            // capsule by silhouette, and the target art draws them the same colour as the head
+            // anyway. It also would have been a real hazard — a tinted line colour is no
+            // longer CatLine.ColorOf(name), and the board lane sweeps for exactly that
+            // equality. Every surface here that carries line identity is the token itself.
+            _earLeft.color = tint;
+            _earRight.color = tint;
 
             _badge.color = tint;
             _badge.sprite = HudShapeSprites.ForShape(Shape);
