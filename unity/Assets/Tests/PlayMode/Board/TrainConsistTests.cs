@@ -58,6 +58,29 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator CatHead_SeatedInTheCarriage_ChibiProportions()
+        {
+            yield return BuildBoard();
+            PlaceOnEdge(edge: 1, progressTicks: 6);
+            _view.UpdateFrom(_session);
+
+            // First-render verdict (2026-08-25): a head near the box's full width reads as
+            // a ball ON the carriage. Target-02's cats are 60-70% of the box width with the
+            // lower third hidden by the brim — pin the LAW, not the current magic numbers.
+            var head = TrainRoot().transform.Find("Carriage/Cat/Head");
+            var body = TrainRoot().transform.Find("Carriage/Body");
+            float widthRatio = head.localScale.x / body.localScale.y; // lateral axis is y
+            Assert.That(widthRatio, Is.InRange(0.55f, 0.75f),
+                "the chibi head stays clearly narrower than the open box it sits in");
+
+            float bodyTop = body.localPosition.z - body.localScale.z * 0.5f; // -z is up
+            float headBottom = head.localPosition.z + head.localScale.z * 0.5f;
+            float submerged = (headBottom - bodyTop) / head.localScale.z;
+            Assert.That(submerged, Is.InRange(0.25f, 0.5f),
+                "the brim hides roughly the lower third of the head — seated IN, not ON");
+        }
+
+        [UnityTest]
         public IEnumerator CatTint_MatchesTheTrainsLineColor()
         {
             yield return BuildBoard();

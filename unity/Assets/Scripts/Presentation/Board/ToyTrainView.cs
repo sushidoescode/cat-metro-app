@@ -192,21 +192,26 @@ namespace CatMetro.Presentation.Board
                 new Vector3(0f, 0f, 0.085f), new Vector3(0.34f, 0.28f, 0.18f),
                 Quaternion.identity, CreamMaterial());
 
-            // The passenger: a chibi head sunk a third into the open body so it reads as
-            // seated IN the carriage (target-02's cats), ears as 45-degree diamonds. Tinted
-            // per cat in SyncSlot over a white basis, BoardSurface's property-block way.
+            // The passenger: a chibi head at 68% of the body's width (target-02 reads
+            // 60-70%) with its lower THIRD sunk below the brim, so it sits IN the open box
+            // rather than ON it — first-render verdict 2026-08-25: the earlier 0.26 head
+            // ballooned past the walls and punched through the switch discs (z -0.36);
+            // at this size the whole consist clears them (head top board z -0.332, ear
+            // tips -0.355). Ears are 45-degree diamonds embedded in the sphere's crown.
+            // Tinted per cat in SyncSlot over a white basis, BoardSurface's
+            // property-block way.
             var cat = new GameObject("Cat").transform;
             cat.SetParent(_carriage, false);
             _catRenderers = new[]
             {
                 CreatePart("Head", cat, SphereMesh(),
-                    new Vector3(0f, 0f, -0.075f), new Vector3(0.26f, 0.26f, 0.26f),
+                    new Vector3(0f, 0f, -0.037f), new Vector3(0.19f, 0.19f, 0.19f),
                     Quaternion.identity, CatBasisMaterial()),
                 CreatePart("EarLeft", cat, CubeMesh(),
-                    new Vector3(0f, 0.075f, -0.185f), new Vector3(0.07f, 0.07f, 0.07f),
+                    new Vector3(0f, 0.055f, -0.120f), new Vector3(0.05f, 0.05f, 0.05f),
                     Quaternion.Euler(45f, 0f, 0f), CatBasisMaterial()),
                 CreatePart("EarRight", cat, CubeMesh(),
-                    new Vector3(0f, -0.075f, -0.185f), new Vector3(0.07f, 0.07f, 0.07f),
+                    new Vector3(0f, -0.055f, -0.120f), new Vector3(0.05f, 0.05f, 0.05f),
                     Quaternion.Euler(45f, 0f, 0f), CatBasisMaterial()),
             };
         }
