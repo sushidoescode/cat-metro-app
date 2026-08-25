@@ -407,14 +407,17 @@ namespace CatMetro.Tests.PlayMode
             // and catches a slide back to either extreme.
             Assert.That(key.color.r - key.color.b, Is.InRange(0.12f, 0.30f),
                 "warm key, neither noon white nor amber enough to overwrite the palette");
-            // Upper bound tightened from 0.8. Slot 6 measured navy rails at luminance 47
-            // against target-01's 75, and their key visibility divides out to 0.454 — which
-            // is 1 - shadowStrength exactly, so this constant alone set how dark the whole
-            // shadowed end of the palette went. Above ~0.5 it crushes cool albedos toward
-            // black faster than any albedo change can answer.
-            Assert.That(key.shadowStrength, Is.InRange(0.35f, 0.5f),
-                "shadows must read on the desk yet stay airy — and must not crush the "
-                + "shadowed end of the palette to near-black");
+            // Upper bound restored to 0.8. A previous revision tightened it to 0.5 on the
+            // finding that shadowStrength was crushing the cool end of the palette — navy
+            // rails measured at luminance 47 with a key visibility of 0.454, apparently
+            // 1 - 0.55 exactly. Slot 7 measured the real boot seam and disproved it: the
+            // rails read (51, 59, 73) with a key visibility of ~0.85, so they are barely
+            // shadowed, the 0.454 was numerology on a superseded sample, and moving the
+            // constant moved nothing. The 0.5 ceiling encoded a false belief AND forbade
+            // this branch's own deliberate raking value of 0.55, so it is gone. The lower
+            // bound stays relaxed to admit integration/look-stack's 0.38.
+            Assert.That(key.shadowStrength, Is.InRange(0.35f, 0.8f),
+                "shadows must read on the desk yet stay airy");
             // Inverted, deliberately. This pin used to demand warm sky over cool ground, and
             // that ordering was the bug: the board's visible normal has n.y = 0.616, so every
             // surface the player looks at draws on the SKY band and the cool ground reached

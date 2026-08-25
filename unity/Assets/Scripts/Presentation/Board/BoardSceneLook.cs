@@ -239,37 +239,37 @@ namespace CatMetro.Presentation.Board
             RenderSettings.ambientGroundColor = new Color(0.41f, 0.37f, 0.33f);
             RenderSettings.ambientIntensity = 1.15f;
 
-            // What this light cannot fix, so nobody spends another round trying.
+            // What this light cannot fix, from slot 7's measurement of the real boot seam.
+            // Both figures below are measured off the art, not assumed: target-01's rails are
+            // b-r +27 and its teal b-r +74. Earlier revisions of this note used +25 and +60,
+            // and the teal figure in particular was wrong enough to invert its conclusion.
             //
-            // Slot 6 measured two tokens still off target-01 after the round-1 rebalance:
-            // navy rails at (40, 48, 62) wanting (69, 75, 94), and the MetroTeal wedge at
-            // (78, 167, 167) wanting (51, 115, 111). In linear terms the rails need x2.38 and
-            // the teal x0.43. Both are cool tokens, and they pull opposite ways.
+            // Cream and board land on target. The two that do not:
             //
-            // Solving for a single rig change that serves both — key scaled by a, fill by b,
-            // holding the cream ballast where it now correctly sits — gives a = -2.099. A
-            // negative key. There is no illuminant that does both, and the reason is that the
-            // teal wedge and the cream are BOTH lit (key visibility ~1.0), so any change that
-            // moves the teal moves the cream with it by the same factor. Cream is the one
-            // fixed-albedo reference we have on target, so it holds the exposure, and the
-            // teal's level is pinned to it.
+            //   * RAILS are an albedo problem, and this survived every correction. Measured
+            //     (51, 59, 73) at luminance 58 against target-01's (70, 76, 97) at 76 — they
+            //     need x1.75 in linear. Cream, the one fixed-albedo reference sitting on
+            //     target, needs x1.02, so it holds the exposure and no global lift can give
+            //     the rails their 75% without blowing the cream out. Their key visibility is
+            //     ~0.85, so there is no shadow to lift either (see shadowStrength). Hitting
+            //     (70, 76, 97) under this rig needs an albedo near (64, 73, 105), about 2.3x
+            //     InkNavy in linear. InkNavy is shared with outlines and text where a dark
+            //     navy is correct, so this wants a rail-specific token. The track lane's
+            //     RailNavy was right on LEVEL; only the HUE argument for it went away.
             //
-            // Which means neither is a light defect:
-            //   * Teal's level is an albedo difference. Dividing target-01's teal out by this
-            //     rig's lit illuminant gives an albedo near (19, 112, 116) against our
-            //     MetroTeal (59, 175, 168) — target-01's teal props are simply a much darker,
-            //     more muted teal. Its HUE is already right: scaling our measured teal by the
-            //     0.42 level difference alone lands b-r at +62 against target-01's +60. There
-            //     is no separate saturation error to chase. MetroTeal is in the locked base
-            //     palette (Palette.cs SS7), so this is a palette question, not a rig one.
-            //   * Rails' level is also an albedo difference, on top of the shadowing named at
-            //     shadowStrength. Even at zero shadow the rails reach only ~65 of the 75 they
-            //     want, because InkNavy is darker than target-01's rail colour. Under the
-            //     tuned rig, hitting (69, 75, 94) needs an albedo near (79, 84, 115) — about
-            //     3.0x InkNavy in linear. InkNavy is shared with outlines and text, where a
-            //     dark navy is correct, so this wants a rail-specific token rather than a
-            //     change to InkNavy. That is the track lane's RailNavy proposal, and on LEVEL
-            //     it was right; it was only the HUE argument for it that this rig removed.
+            //   * TEAL is a HUE problem local to that object, not a level problem, and not
+            //     the palette question an earlier revision of this note claimed. Against the
+            //     corrected target its level is already fine — luminance 147 against 155.
+            //     What is off is b-r +102 against +74: it needs (x1.41, x1.11, x0.83), more
+            //     red and LESS blue. The cause is orientation, not the illuminant: the teal
+            //     wedge's effective illuminant divides out 1.41x bluer than the cream's, so
+            //     its normal is collecting far more of the cool sky band than the board's
+            //     does. A global fill change cannot serve it, because cream (+2) and rails
+            //     (+5) both want MORE blue while teal wants 28 points less. Narrowing the
+            //     sky-to-ground hue spread in the trilight above would reduce how much a
+            //     surface's tilt changes its colour, and that is the lever if this is worth
+            //     another pass — but it trades against the warm ground bounce, and nothing
+            //     has measured whether the wedge or the trees are the offender.
 
             var existing = owner.Find(KeyLightName);
             var key = existing == null
@@ -302,16 +302,24 @@ namespace CatMetro.Presentation.Board
             key.color = new Color(1f, 0.936f, 0.805f);
             key.intensity = 0.957f;
             key.shadows = LightShadows.Soft;
-            // Named explicitly because it is a change against integration/look-stack (0.38)
-            // that earlier summaries of this branch did not call out: it went to 0.55 with the
-            // raking-key work below, and 0.55 turned out to crush the shadowed end. Slot 6
-            // measured the navy rails at (40, 48, 62), luminance 47, against target-01's
-            // (69, 75, 94) at 75 — and their effective illuminant divides out to a key
-            // visibility of 0.454, which is 1 - 0.55 to three decimals. The rails are not
-            // dimly lit; they are fully shadowed, and shadowStrength alone set how dark.
-            // 0.45 recovers ~4 luminance units and keeps their hue at b-r +22 (target +25).
-            // It does not recover the other 24 — see the note in ApplyLighting on why that
-            // has to come from a rail albedo and not from this light.
+            // A change against integration/look-stack (0.38) that earlier summaries of this
+            // branch failed to call out: it went to 0.55 with the raking-key work below.
+            //
+            // It is 0.45 here for a reason that turned out to be WRONG, and the correction is
+            // worth more than the constant. Round 2 read a rail sample of (40, 48, 62), whose
+            // effective illuminant divided out to a key visibility of 0.454 — 1 - 0.55 to
+            // three decimals — and concluded the rails were fully shadowed with this constant
+            // setting how dark. Slot 7 then measured the real boot seam: rails at
+            // (51, 59, 73), giving a key visibility of (0.754, 0.845, 0.939). The rails get
+            // roughly 85% of the key. They are barely shadowed at all, the 0.454 match was
+            // numerology on a superseded sample, and taking 0.55 -> 0.45 correctly moved them
+            // by nothing.
+            //
+            // Kept at 0.45 only because that is the value slot 7 measured and found harmless,
+            // so code and last-known-good render agree. It has no remaining justification of
+            // its own. If the raking work's deliberate 0.55 is wanted back, this is a
+            // one-line revert with no measured downside in either direction — the sampled
+            // elements did not respond to it.
             key.shadowStrength = 0.45f;
             key.shadowBias = 0.08f;
             key.shadowNormalBias = 0.25f;
