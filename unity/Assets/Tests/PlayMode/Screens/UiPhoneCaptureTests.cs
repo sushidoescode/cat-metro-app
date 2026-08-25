@@ -69,6 +69,29 @@ namespace CatMetro.Tests.PlayMode
             Capture(dir, "step-7-failure.png");
         }
 
+        // HUD-WAVE: the wave-preview capsule over the live board. Skips Home, because the
+        // shipped Home covers the HUD and holds the sim at tick 0 — the capsule is only worth
+        // photographing with a real upcoming queue behind it.
+        [UnityTest]
+        public IEnumerator CaptureEvidence_WavePreviewCapsule_917x2048_WhenRequested()
+        {
+            var dir = System.Environment.GetEnvironmentVariable("CM_UI_CAPTURE_DIR");
+            if (string.IsNullOrEmpty(dir))
+            {
+                Assert.Pass("capture rig disarmed — set CM_UI_CAPTURE_DIR to emit phone frames");
+                yield break;
+            }
+
+            GameRoot.DevSkipShippedHome = true;
+            _root = GameRoot.Launch();
+            yield return null;
+            yield return null;
+            Assert.That(_root.Preview.FaceCount, Is.GreaterThan(0),
+                "precondition: L001 has upcoming cats to draw as faces");
+            ApplyPhoneLayout(_root.Preview);
+            Capture(dir, "step-7-wave-preview.png");
+        }
+
         [UnityTest]
         public IEnumerator FailureBanner_LayoutsInside917x2048SafeArea_WithoutTextOverflow()
         {
