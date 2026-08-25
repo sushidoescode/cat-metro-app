@@ -10,8 +10,18 @@ namespace CatMetro.Presentation.Board
 
         private const string KeyLightName = "Diorama Warm Key";
         private const float TargetPortraitAspect = 9f / 19.5f;
-        private const float SafeWidth = 0.93f;
-        private const float SafeHeight = 0.78f;
+        // These fractions serve the safe-frame law in RuntimeSceneRigTests.AssertInside:
+        // viewport x in (0.055, 0.945), y in (0.12, 0.87), asserted at the pinned phone
+        // aspect 917/2048 (~0.4478). The fit must assume an aspect before the camera knows
+        // its real surface, and TargetPortraitAspect (~0.4615) is wider than the pinned
+        // one, which squeezes content outward at assertion time. With the 1.05 pad:
+        //   x extremes = 0.5 +/- TargetAspect*SafeWidth / (2*1.05*0.4478) -> [0.068, 0.932]
+        //   y extremes = 0.495 +/- SafeHeight / (2*1.05)                  -> [0.133, 0.857]
+        // ~0.013 inside the law on every edge. The old 0.93/0.78 put x extremes at 0.9565
+        // (outside the law — the furnished-board signpost failure) and passed vertically by
+        // only 0.0036. Do not widen these without re-deriving both bands.
+        private const float SafeWidth = 0.88f;
+        private const float SafeHeight = 0.76f;
         private static readonly Quaternion BoardTilt = Quaternion.Euler(38f, -32f, -4f);
 
         public static void Apply(Transform owner, Camera camera, BoardView board)
