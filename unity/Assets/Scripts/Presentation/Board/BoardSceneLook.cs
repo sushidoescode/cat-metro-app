@@ -163,15 +163,53 @@ namespace CatMetro.Presentation.Board
 
         private static void ApplyLighting(Transform owner)
         {
-            // A three-band ambient fill keeps the navy readable without introducing another
-            // per-object light. Warm amber sky over a cool navy ground is the late-afternoon
-            // split from the target renders; intensity sits below 1 so the key's raking is
-            // what separates lit faces from shaded ones instead of the fill flattening both.
+            // Cool fill under a warm key. This is the inverse of what stood here — amber sky
+            // over cool ground — and the inversion is the fix for a class-level bug, not a
+            // taste change.
+            //
+            // What was wrong. Measured off the 2026-08-25 r3 render by fitting two COPLANAR
+            // surfaces of known albedo (the WoodTop and the CreamRim share the board's normal,
+            // so albedo is the only variable between them), the whole rig reduces to
+            //
+            //     rendered_linear = S * (albedo_linear + 0.0254)
+            //
+            // with S = (1.17, 0.678, 0.354) — blue attenuated to 0.303 of red. The additive
+            // 0.0254 is itself proportional to S in all three channels, so it is the light's
+            // own colour, not a neutral floor. Consequences, all measured on that render:
+            // CreamCard rendered (255, 200, 138) with red CLIPPED and b-r -117; InkNavy rails
+            // rendered (57, 52, 51); the MetroTeal switch wedge rendered (121, 130, 94), an
+            // olive. target-01 does none of this: its cream reads (243, 226, 197) unclipped
+            // with b-r -46, its rails (69, 75, 95) and its navy roofs (52, 58, 80) at b-r +28,
+            // its teal (51, 120, 115) at b-r +64. Dividing the target's cream by a CreamCard
+            // albedo puts its illuminant near (1.00, 0.91, 0.78): warm, but nowhere near the
+            // amber stamp ours was applying. The target's warmth lives in its ALBEDOS — its
+            // board divides out to roughly (207, 144, 101) — while its light stays close to
+            // neutral. Ours had it backwards, and a light that starved of blue cannot render
+            // any cool albedo cool. docs/LOOK.md names navy and teal in the palette, so this
+            // was defeating the art direction at the class level, not just on the rails.
+            //
+            // Why the ambient was the wrong half of it. The board's visible normal is
+            // (0.418, 0.616, -0.668) — n.y = 0.616, so every surface the player looks at is
+            // upward-facing and draws almost entirely on the SKY band. The cool ground colour
+            // was only ever reaching downward faces, which is to say nothing. Cooling the fill
+            // means cooling the sky.
+            //
+            // What this is. Sky and equator go to a cool blue-grey; the ground stays warm,
+            // which is physically what it is — bounce off a wooden desk. Intensity rises to
+            // 1.15 to hold the fill's share of the total. With the key below, the illuminant
+            // becomes S = (1.063, 0.890, 0.738), i.e. blue at 0.694 of red against 0.303.
+            // Predicted from the measured transfer: InkNavy renders (59, 62, 74), b-r +15;
+            // MetroTeal (77, 170, 151), b-r +74; CreamCard (252, 225, 193), b-r -59 and no
+            // longer clipping. The warm mood is not spent — it moves into the wood albedos
+            // (re-solved in BoardSurface so the board still renders (204, 130, 87), which is
+            // target-01's board to within three units) and into the warm/cool split that a
+            // cool fill under a warm key finally makes possible. Before this, lit and shaded
+            // faces were both amber, which is the flatness the raking key was fighting alone.
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.58f, 0.47f, 0.36f);
-            RenderSettings.ambientEquatorColor = new Color(0.40f, 0.34f, 0.31f);
-            RenderSettings.ambientGroundColor = new Color(0.25f, 0.26f, 0.33f);
-            RenderSettings.ambientIntensity = 0.92f;
+            RenderSettings.ambientSkyColor = new Color(0.55f, 0.59f, 0.66f);
+            RenderSettings.ambientEquatorColor = new Color(0.44f, 0.47f, 0.53f);
+            RenderSettings.ambientGroundColor = new Color(0.41f, 0.37f, 0.33f);
+            RenderSettings.ambientIntensity = 1.15f;
 
             var existing = owner.Find(KeyLightName);
             var key = existing == null
@@ -179,8 +217,16 @@ namespace CatMetro.Presentation.Board
                 : existing.GetComponent<Light>();
             if (existing == null) key.transform.SetParent(owner, false);
             key.type = LightType.Directional;
-            key.color = new Color(1f, 0.78f, 0.56f);
-            key.intensity = 1.18f;
+            // Warm, but no longer amber enough to stamp its own hue on every albedo in the
+            // game. The old (1, 0.78, 0.56) is (1, 0.571, 0.274) once Unity linearises it —
+            // a key with barely a quarter of its red in blue — and since the key carries
+            // ~85% of the illumination, that single number is what made navy render brown and
+            // teal render olive. (1, 0.90, 0.78) linearises to (1, 0.787, 0.565): still
+            // unmistakably late-afternoon against a cool fill, but it lets a cool albedo stay
+            // cool. Intensity drops 1.18 -> 1.02 because the fill above now carries more of
+            // the total; together they land the illuminant at (1.063, 0.890, 0.738).
+            key.color = new Color(1f, 0.90f, 0.78f);
+            key.intensity = 1.02f;
             key.shadows = LightShadows.Soft;
             key.shadowStrength = 0.55f;
             key.shadowBias = 0.08f;

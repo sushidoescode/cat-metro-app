@@ -50,7 +50,21 @@ namespace CatMetro.Presentation.Board
         // target's colour gives an albedo near (0.76, 0.59, 0.54). This is that, nudged one
         // step toward the target's lighter upper board. Desaturated on purpose: the key
         // supplies the warmth, and an already-orange albedo compounds into terracotta.
-        private static readonly Color WarmWood = new Color(0.78f, 0.63f, 0.57f);
+        // Re-solved when BoardSceneLook's rig was rebalanced to let cool colours render cool.
+        // The old value was correct FOR THE OLD LIGHT: it was a desaturated albedo chosen to
+        // let an amber key supply the warmth. With the key near neutral the warmth has to
+        // live here instead, which is how target-01 does it — dividing its board out by its
+        // own illuminant gives roughly (207, 144, 101).
+        //
+        // Solved, not tasted. rendered = S * (albedo_linear * grain_linear + 0.0254), so
+        // holding the render fixed while S changes gives
+        //     albedo_new = ((rendered / S_new) - 0.0254) / grain_linear
+        // with rendered = (0.6038, 0.2270, 0.0953) linear — the measured board interior on
+        // the 2026-08-25 r3 render — S_new = (1.063, 0.890, 0.738), and grain_linear the new
+        // sheet's median texel, 0.9571 sRGB = 0.9052 linear. Result: (0.799, 0.538, 0.375),
+        // which re-renders to (204, 130, 87) against the measured (204, 131, 87) and
+        // target-01's (202, 134, 89). The board does not move; only the light does.
+        private static readonly Color WarmWood = new Color(0.799f, 0.538f, 0.375f);
         // Walnut for the room-scale desk. Calibrated against the 2026-08-25 slot render:
         // the amber key plus warm ambient multiply channel ratios by roughly (1.15 r/g,
         // 1.84 r/b), so a red-leaning albedo (the old 0.55/0.36/0.22, r/b 2.5) rendered as
@@ -58,7 +72,13 @@ namespace CatMetro.Presentation.Board
         // target-01's rich brown the albedo must be a desaturated walnut and let the light
         // supply the warmth. The DeskGrain sheet multiplies this toward ~1.05x at the board
         // and ~0.46x cooler at the frame corners.
-        private static readonly Color WarmDesk = new Color(0.47f, 0.36f, 0.30f);
+        // Re-solved through the same inversion as WarmWood, for the same reason: the rig's
+        // amber is gone, so the walnut has to be walnut in the albedo. rendered stays at the
+        // measured (120, 74, 46); grain_linear is the desk sheet's median near the board
+        // (0.8225 * 1.05 lum = 0.8636 sRGB). The desk's own warm-centre/cool-edge falloff
+        // survives untouched, and now reads more clearly than it did under a light that was
+        // already staining the whole slab amber.
+        private static readonly Color WarmDesk = new Color(0.495f, 0.299f, 0.137f);
         private static Mesh _cubeMesh;
         private static Texture2D _woodGrain;
         private static Texture2D _deskGrain;

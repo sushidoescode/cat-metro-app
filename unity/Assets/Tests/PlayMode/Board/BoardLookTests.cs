@@ -364,14 +364,78 @@ namespace CatMetro.Tests.PlayMode
                 "the key must rake across the tilted board — square-on light flattens every "
                 + "face and collapses shadow length to nothing");
 
-            Assert.That(key.color.r - key.color.b, Is.GreaterThan(0.3f),
-                "amber key, not noon white");
+            // Moved from "> 0.3". The key must stay warm, but 0.3 was a floor on the very
+            // saturation that broke the palette: (1, 0.78, 0.56) linearises to (1, 0.571,
+            // 0.274), and with the key carrying ~85% of the illumination that quarter-blue
+            // stamped amber onto every albedo in the game — InkNavy rails measured (57, 52,
+            // 51) and the MetroTeal wedge (121, 130, 94), an olive. Warmth belongs in the
+            // wood albedos and in the split against a cool fill, not in a key saturated
+            // enough to overwrite docs/LOOK.md's navy and teal. The band keeps it amber-ish
+            // and catches a slide back to either extreme.
+            Assert.That(key.color.r - key.color.b, Is.InRange(0.12f, 0.30f),
+                "warm key, neither noon white nor amber enough to overwrite the palette");
             Assert.That(key.shadowStrength, Is.InRange(0.4f, 0.8f),
                 "shadows must read on the desk yet stay airy");
-            Assert.That(RenderSettings.ambientSkyColor.r - RenderSettings.ambientSkyColor.b,
-                Is.GreaterThan(RenderSettings.ambientGroundColor.r
-                    - RenderSettings.ambientGroundColor.b),
-                "warm sky over cool ground keeps shaded faces from going muddy");
+            // Inverted, deliberately. This pin used to demand warm sky over cool ground, and
+            // that ordering was the bug: the board's visible normal has n.y = 0.616, so every
+            // surface the player looks at draws on the SKY band and the cool ground reached
+            // nothing but downward faces. Cool fill from above, warm bounce off the wooden
+            // desk below — which is also what the two actually are.
+            Assert.That(RenderSettings.ambientGroundColor.r
+                    - RenderSettings.ambientGroundColor.b,
+                Is.GreaterThan(RenderSettings.ambientSkyColor.r
+                    - RenderSettings.ambientSkyColor.b),
+                "cool fill above, warm desk bounce below — a warm sky is what left shaded "
+                + "faces with nowhere cool to live");
+        }
+
+        [UnityTest]
+        public IEnumerator Illuminant_CanRenderACoolAlbedoCool()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            var key = _root.GetComponentsInChildren<Light>(true)
+                .Single(light => light.name == "Diorama Warm Key");
+
+            // Evaluate the rig where it is actually looked at: the board's visible normal.
+            // Unity's own ambient probe does the trilight-to-SH work, so this reads the real
+            // fill rather than a model of it.
+            Vector3 boardNormal = -_root.View.transform.forward;
+            var results = new Color[1];
+            RenderSettings.ambientProbe.Evaluate(new[] { boardNormal }, results);
+            Color fill = results[0];
+            Assert.That(fill.maxColorComponent, Is.GreaterThan(0.01f),
+                "ambient probe evaluated to black — the trilight settings never reached it, "
+                + "and nothing below this line means anything");
+            Assert.That(fill.b, Is.GreaterThan(fill.r),
+                "the fill is the only cool light in the rig; if it is warm too, a shaded or "
+                + "upward-facing surface has nowhere cool to live and every navy in the game "
+                + "renders brown");
+
+            // Key irradiance on that same normal, in linear space, plus the fill: this is the
+            // S in the transfer measured off the 2026-08-25 r3 render,
+            //     rendered_linear = S * (albedo_linear + 0.0254)
+            // fitted from two coplanar known albedos (WoodTop and CreamRim share the board's
+            // normal). S was (1.17, 0.678, 0.354) — blue at 0.303 of red — which is why no
+            // albedo in the colour cube could render as target-01's navy rails (69, 75, 95)
+            // or its teal (51, 120, 115). This rig solves to about (1.063, 0.890, 0.738).
+            Color keyLinear = key.color.linear;
+            float incidence = Mathf.Max(0f, Vector3.Dot(-key.transform.forward, boardNormal));
+            float scale = key.intensity * incidence;
+            float red = keyLinear.r * scale + fill.r;
+            float blue = keyLinear.b * scale + fill.b;
+            Assert.That(red, Is.GreaterThan(0.01f), "the key contributes no red at all");
+            Assert.That(blue / red, Is.GreaterThan(0.55f),
+                "the illuminant must carry enough blue for a cool albedo to survive it — at "
+                + "0.303 it could not, and docs/LOOK.md names navy and teal in the palette");
+            // Deliberately loose on this side. Whether Evaluate returns the same convention
+            // the shader samples (the 1/pi is the usual disagreement) changes the fill's
+            // magnitude but not its direction, so a tight bound here would pin a convention
+            // rather than the look. The exact pin on warmth is the key's own r - b band in
+            // KeyLight_RakesTheTiltedBoardLikeLateAfternoon.
+            Assert.That(blue / red, Is.LessThan(0.98f),
+                "and it must still be warm: the late-afternoon character is the point");
         }
 
         [UnityTest]
