@@ -34,6 +34,59 @@ namespace CatMetro.Presentation.Board
         // crowns (board z +0.035) sit at +0.235, which is where the chassis parts bottom out.
         private const float HeadAnchorZ = -0.2f;
 
+        // ── Cat geometry ────────────────────────────────────────────────────────────────
+        // Sized from the 2026-08-25 render verdict, which showed a smooth coloured ball: the
+        // 0.05 ears cleared the 0.19 crown by 0.023 (12% of head diameter) and, at the fitted
+        // gameplay zoom (~93 px per board unit, head = 17.7 px), broke the head's projected
+        // silhouette by at most 2.3 px — and that only on ONE side. The board tilt puts
+        // table-up 48 degrees off the view axis, so as a train turns, the ears' lateral axis
+        // swings through the view direction and the far ear projects INSIDE the head's disc
+        // (measured worst case: 3.4 px inside, i.e. wholly buried). Two fixes, together:
+        //
+        //  1. The cat holds a FIXED board yaw facing the camera (CatBoardYaw) instead of
+        //     turning with the carriage. That makes the ear axis exactly perpendicular to the
+        //     view at every heading, so both ears project at full width, always — the
+        //     heading-dependent burial is gone by construction, not by tuning.
+        //  2. Ears grow to a flat 0.115 wedge set out at 0.080. Silhouette excess goes
+        //     2.3 px (best case) -> 6.9 px (every case); projected area outside the head disc
+        //     goes 8.7 px^2 -> 39.6 px^2 per ear.
+        //
+        // Height is the constrained axis, not width: the switch discs are a slab from board z
+        // -0.48 to -0.32, so an ear tall enough to clear the crown on its own would have to
+        // reach board z -0.408, past the disc mid-plane. So the ears lean on lateral spread
+        // (unconstrained, and it projects at ~full strength once the yaw is fixed) and only
+        // reach board z -0.371 — into the disc's lower half, where a tip is simply occluded
+        // by the opaque disc as the cat passes under it.
+        //
+        // A face does the rest of the work: at a 17.7 px head, two near-black eyes and a pale
+        // muzzle read by CONTRAST, which costs no silhouette and no headroom at all. Target-02
+        // reads exactly this way at thumbnail size.
+        private const float HeadDiameter = 0.19f;
+        private const float HeadCenterZ = -0.037f;
+        private const float EarThickness = 0.038f; // along travel; ears are flat wedges
+        private const float EarSize = 0.115f;      // the 45-degree diamond's box size
+        private const float EarLateral = 0.080f;
+        private const float EarCenterZ = -0.090f;
+        private const float EyeSize = 0.048f;
+        private static readonly Vector3 EyeOffset = new Vector3(0.0528f, 0.0369f, -0.0844f);
+        private static readonly Vector3 MuzzleOffset = new Vector3(0.0768f, 0f, -0.0658f);
+        private static readonly Vector3 MuzzleScale = new Vector3(0.050f, 0.068f, 0.044f);
+
+        /// <summary>
+        /// Board-local yaw that turns a cat's +x face toward the camera. Derived from the
+        /// diorama tilt so it tracks any re-authoring of it (see BoardSceneLook.BoardTilt).
+        /// </summary>
+        public static float CameraFacingYawDegrees(Quaternion boardTilt)
+        {
+            // The camera is identity-rotated and orthographic, so it looks along world +z.
+            Vector3 viewLocal = Quaternion.Inverse(boardTilt) * Vector3.forward;
+            // Face back along it, flattened into the board plane.
+            return Mathf.Atan2(-viewLocal.y, -viewLocal.x) * Mathf.Rad2Deg;
+        }
+
+        /// <summary>The fixed board-local yaw every seated cat holds (about -131.4 degrees).</summary>
+        public static float CatBoardYaw => CameraFacingYawDegrees(BoardSceneLook.BoardTilt);
+
         private static Material _navyMaterial;
         private static Material _creamMaterial;
         private static Material _catBasisMaterial;
@@ -43,6 +96,7 @@ namespace CatMetro.Presentation.Board
 
         private Transform _engine;
         private Transform _carriage;
+        private Transform _cat;
         private MeshRenderer[] _catRenderers; // head + ears — tinted per cat via property block
 
         // The authored graph's edge endpoints (BoardView's own arrays) — the authority that
@@ -140,7 +194,7 @@ namespace CatMetro.Presentation.Board
             _previousEdge = -1;
             _engine.localRotation = Quaternion.Euler(0f, 0f, _headingDegrees);
             _carriage.localPosition = Vector3.zero;
-            _carriage.localRotation = _engine.localRotation;
+            SetCarriageHeading(_headingDegrees);
         }
 
         private void PlaceTrailing(TrackSplineGraph paths, int headEdge, float headDistance,
@@ -153,8 +207,18 @@ namespace CatMetro.Presentation.Board
             float fraction = path.Length > 0f ? sample.Distance / path.Length : 0f;
             // The root is unrotated, so a board-local delta IS the child's local pose.
             _carriage.localPosition = path.EvaluateDistanceFraction(fraction) - headPosition;
-            _carriage.localRotation = Quaternion.Euler(0f, 0f,
-                HeadingDegrees(path.TangentDistanceFraction(fraction)));
+            SetCarriageHeading(HeadingDegrees(path.TangentDistanceFraction(fraction)));
+        }
+
+        // The carriage turns with the track; the CAT does not. Counter-rotating the cat by the
+        // carriage's own heading leaves it at a fixed board-local yaw — the one that squares
+        // its face and ear axis to the diorama camera — so a passenger reads identically on a
+        // straight, through a curve, and parked at a node. This is the structural half of the
+        // invisible-ears fix: without it, no ear size survives every heading.
+        private void SetCarriageHeading(float degrees)
+        {
+            _carriage.localRotation = Quaternion.Euler(0f, 0f, degrees);
+            _cat.localRotation = Quaternion.Euler(0f, 0f, CatBoardYaw - degrees);
         }
 
         // Vehicles are modelled along +x; travel tangents live in the board's XY plane.
@@ -194,26 +258,47 @@ namespace CatMetro.Presentation.Board
 
             // The passenger: a chibi head at 68% of the body's width (target-02 reads
             // 60-70%) with its lower THIRD sunk below the brim, so it sits IN the open box
-            // rather than ON it — first-render verdict 2026-08-25: the earlier 0.26 head
-            // ballooned past the walls and punched through the switch discs (z -0.36);
-            // at this size the whole consist clears them (head top board z -0.332, ear
-            // tips -0.355). Ears are 45-degree diamonds embedded in the sphere's crown.
-            // Tinted per cat in SyncSlot over a white basis, BoardSurface's
-            // property-block way.
-            var cat = new GameObject("Cat").transform;
-            cat.SetParent(_carriage, false);
+            // rather than ON it — the seating the 2026-08-25 render confirmed, left alone.
+            // Head and ears carry the line tint; the face is deliberately OUTSIDE the tinted
+            // set, so the eyes stay near-black and the muzzle cream whatever colour the cat
+            // is. Ears are 45-degree diamonds anchored in the head, splayed up and out.
+            _cat = new GameObject("Cat").transform;
+            _cat.SetParent(_carriage, false);
             _catRenderers = new[]
             {
-                CreatePart("Head", cat, SphereMesh(),
-                    new Vector3(0f, 0f, -0.037f), new Vector3(0.19f, 0.19f, 0.19f),
+                CreatePart("Head", _cat, SphereMesh(),
+                    new Vector3(0f, 0f, HeadCenterZ),
+                    new Vector3(HeadDiameter, HeadDiameter, HeadDiameter),
                     Quaternion.identity, CatBasisMaterial()),
-                CreatePart("EarLeft", cat, CubeMesh(),
-                    new Vector3(0f, 0.055f, -0.120f), new Vector3(0.05f, 0.05f, 0.05f),
+                CreatePart("EarLeft", _cat, CubeMesh(),
+                    new Vector3(0f, EarLateral, EarCenterZ),
+                    new Vector3(EarThickness, EarSize, EarSize),
                     Quaternion.Euler(45f, 0f, 0f), CatBasisMaterial()),
-                CreatePart("EarRight", cat, CubeMesh(),
-                    new Vector3(0f, -0.055f, -0.120f), new Vector3(0.05f, 0.05f, 0.05f),
+                CreatePart("EarRight", _cat, CubeMesh(),
+                    new Vector3(0f, -EarLateral, EarCenterZ),
+                    new Vector3(EarThickness, EarSize, EarSize),
                     Quaternion.Euler(45f, 0f, 0f), CatBasisMaterial()),
             };
+
+            // The face. Because the cat holds a fixed camera-facing yaw, these sit at a known
+            // screen position for every train on every heading — so they can be placed once,
+            // square to the camera, instead of hedged against rotation. Each is a builtin
+            // sphere sunk into the head so it reads as a dome on the surface, never a decal
+            // that could z-fight. Reuses the engine's two cached materials: no new material,
+            // no property block, nothing to tear down.
+            CreatePart("EyeLeft", _cat, SphereMesh(),
+                new Vector3(EyeOffset.x, EyeOffset.y, EyeOffset.z),
+                new Vector3(EyeSize, EyeSize, EyeSize),
+                Quaternion.identity, NavyMaterial());
+            CreatePart("EyeRight", _cat, SphereMesh(),
+                new Vector3(EyeOffset.x, -EyeOffset.y, EyeOffset.z),
+                new Vector3(EyeSize, EyeSize, EyeSize),
+                Quaternion.identity, NavyMaterial());
+            CreatePart("Muzzle", _cat, SphereMesh(),
+                MuzzleOffset, MuzzleScale,
+                Quaternion.identity, CreamMaterial());
+
+            SetCarriageHeading(0f); // a consist faces the camera before its first placement
         }
 
         // BoardSurface.CreatePart's shape: builtin mesh, no collider, project material only.

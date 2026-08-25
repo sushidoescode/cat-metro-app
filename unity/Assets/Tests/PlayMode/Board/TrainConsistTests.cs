@@ -80,6 +80,180 @@ namespace CatMetro.Tests.PlayMode
                 "the brim hides roughly the lower third of the head — seated IN, not ON");
         }
 
+        // ── The invisible-ears regression, pinned ───────────────────────────────────────
+        // 2026-08-25: two consecutive validated renders showed a smooth coloured ball in a
+        // wagon. The ears WERE outside the head sphere — 0.023 above the crown — so every
+        // world-space check passed. What failed was the only thing that matters: under the
+        // diorama tilt they projected at most 2.3 px outside the head's on-screen silhouette,
+        // and on the far side 3.4 px INSIDE it. So the laws below are stated in the projection
+        // the camera actually performs, not in board-space clearance, and they are checked at
+        // several headings because heading is what buried the far ear.
+
+        // World units of on-screen clearance beyond the head's silhouette. At the fitted
+        // gameplay zoom the board renders ~93 px per board unit (measured off the 917x2048
+        // capture: a 0.90 sleeper spans 72 px, sleeper pitch 0.42 spans 32.7 px), so a
+        // 17.7 px head needs an ear standing at least ~4.7 px clear to read as an ear.
+        private const float MinEarSilhouetteClearance = 0.05f;
+
+        // Board z of the switch-disc slab's mid-plane. Ears must stay UNDER it: a cat passes
+        // beneath a signal, it does not grow through one. This is the ceiling that makes
+        // "just make the ears taller" the wrong fix, and why the ears win on lateral spread.
+        private const float SwitchDiscMidPlaneZ = -0.40f;
+
+        [UnityTest]
+        public IEnumerator CatEars_StandClearOfTheHeadSilhouette_AtEveryHeading()
+        {
+            yield return BuildBoard();
+            foreach (int edge in new[] { 0, 1, 2 }) // three distinct authored headings
+            {
+                PlaceOnEdge(edge: edge, progressTicks: 4);
+                _view.UpdateFrom(_session);
+                var cat = TrainRoot().transform.Find("Carriage/Cat");
+                var head = cat.Find("Head");
+                foreach (string ear in new[] { "EarLeft", "EarRight" })
+                {
+                    float clearance = EarSilhouetteClearance(head, cat.Find(ear));
+                    Assert.That(clearance, Is.GreaterThan(MinEarSilhouetteClearance),
+                        $"on edge {edge}, {ear} must break the head's PROJECTED silhouette — " +
+                        "a world-space bump that the camera sees end-on is an invisible ear");
+                }
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator CatEars_AreChunky_AndStayUnderTheSwitchDiscs()
+        {
+            yield return BuildBoard();
+            PlaceOnEdge(edge: 1, progressTicks: 6);
+            _view.UpdateFrom(_session);
+
+            var cat = TrainRoot().transform.Find("Carriage/Cat");
+            var head = cat.Find("Head");
+            var ear = cat.Find("EarLeft");
+            float earToHead = ear.localScale.y / head.localScale.x;
+            Assert.That(earToHead, Is.InRange(0.5f, 0.8f),
+                "target-02's ears are a large fraction of the head — a token nub cannot read " +
+                "at a 17.7 px head no matter where it is placed");
+
+            float tipZ = EarExtremeBoardZ(ear);
+            Assert.That(tipZ, Is.GreaterThan(SwitchDiscMidPlaneZ + 0.01f),
+                "ears must stay under the switch-disc mid-plane — legibility comes from " +
+                "lateral spread, NOT from growing up through the signals");
+        }
+
+        [UnityTest]
+        public IEnumerator SeatedCat_HoldsAFixedCameraFacingYaw_WhateverTheTrackDoes()
+        {
+            yield return BuildBoard();
+            Vector3 toCamera = -(Quaternion.Inverse(BoardSceneLook.BoardTilt) * Vector3.forward);
+            float bestPossible = new Vector2(toCamera.x, toCamera.y).magnitude;
+
+            foreach (int edge in new[] { 0, 1, 2 })
+            {
+                PlaceOnEdge(edge: edge, progressTicks: 4);
+                _view.UpdateFrom(_session);
+                var cat = TrainRoot().transform.Find("Carriage/Cat");
+                // Vehicles are modelled along +x, so the cat's own +x is the way it looks.
+                Vector3 facing = _view.transform.InverseTransformDirection(cat.right);
+                float yaw = Mathf.Atan2(facing.y, facing.x) * Mathf.Rad2Deg;
+                Assert.That(Mathf.DeltaAngle(yaw, ToyTrainView.CatBoardYaw), Is.EqualTo(0f)
+                        .Within(0.01f),
+                    $"on edge {edge} the cat must hold the SAME board yaw — a cat that turns " +
+                    "with the carriage swings one ear behind the head at some headings");
+                Assert.That(Vector3.Dot(facing.normalized, toCamera.normalized),
+                    Is.GreaterThan(bestPossible * 0.99f),
+                    "and that yaw must be the one that squares the face to the camera");
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator SeatedCat_HasAFace_ThatNeverTakesTheLineTint()
+        {
+            yield return BuildBoard();
+            PlaceOnEdge(edge: 1, progressTicks: 6, color: CatColor.Red);
+            _view.UpdateFrom(_session);
+
+            var cat = TrainRoot().transform.Find("Carriage/Cat");
+            foreach (string feature in new[] { "EyeLeft", "EyeRight", "Muzzle" })
+            {
+                var part = cat.Find(feature);
+                Assert.That(part, Is.Not.Null,
+                    $"the cat needs {feature} — at a 17.7 px head the face is what reads, " +
+                    "and target-02's cats are eyes-and-muzzle first");
+                Assert.That(part.GetComponent<MeshFilter>().sharedMesh, Is.Not.Null,
+                    feature + " must resolve its builtin mesh");
+            }
+
+            // The face is deliberately OUTSIDE the tinted renderer set: a red cat with red
+            // eyes is a red ball again. Contrast is the whole point of adding it.
+            var eye = cat.Find("EyeLeft").GetComponent<MeshRenderer>();
+            AssertCatColor(eye.sharedMaterial.color, Palette.InkNavy,
+                "eyes stay ink-navy whatever colour the cat is");
+            AssertCatColor(cat.Find("Muzzle").GetComponent<MeshRenderer>().sharedMaterial.color,
+                Palette.CreamCard, "the muzzle stays cream whatever colour the cat is");
+
+            // The mutant this kills: adding the face to _catRenderers. Then SyncSlot's block
+            // would stamp the line colour onto the eyes and the cat is a plain ball again.
+            // An unset block reads back (0,0,0,0), which is nowhere near any line colour.
+            var block = new MaterialPropertyBlock();
+            eye.GetPropertyBlock(block);
+            Assert.That(Vector4.Distance(block.GetColor("_BaseColor"), CatHeadColor()),
+                Is.GreaterThan(0.1f),
+                "no per-slot tint may reach the eyes — SyncSlot tints head and ears only");
+
+            Assert.That(Luminance(CatHeadColor()) - Luminance(Palette.InkNavy),
+                Is.GreaterThan(0.2f),
+                "and the eyes must stay far darker than the head they sit on, or the face " +
+                "stops reading at gameplay zoom");
+        }
+
+        // The projection the diorama camera performs: an orthographic, identity-rotated camera
+        // looks along world +z, so in BOARD-local space it looks along the tilt's inverse of
+        // that. A point's on-screen distance from the head's centre is the length of its
+        // offset with the view component removed; the head's silhouette is a circle of the
+        // head's own radius. Anything whose offset projects shorter than that radius is inside
+        // the head's disc on screen, however far out of the sphere it sticks in world space.
+        private float EarSilhouetteClearance(Transform head, Transform ear)
+        {
+            Vector3 view = (Quaternion.Inverse(BoardSceneLook.BoardTilt) * Vector3.forward)
+                .normalized;
+            Vector3 centre = _view.transform.InverseTransformPoint(head.position);
+            float radius = head.localScale.x * 0.5f;
+            float best = float.NegativeInfinity;
+            foreach (Vector3 corner in UnitCubeCorners())
+            {
+                Vector3 offset =
+                    _view.transform.InverseTransformPoint(ear.TransformPoint(corner)) - centre;
+                Vector3 onScreen = offset - Vector3.Dot(offset, view) * view;
+                best = Mathf.Max(best, onScreen.magnitude - radius);
+            }
+            return best;
+        }
+
+        // Board-local z of the ear's highest corner (-z is up out of the table).
+        private float EarExtremeBoardZ(Transform ear)
+        {
+            float top = float.PositiveInfinity;
+            foreach (Vector3 corner in UnitCubeCorners())
+                top = Mathf.Min(top,
+                    _view.transform.InverseTransformPoint(ear.TransformPoint(corner)).z);
+            return top;
+        }
+
+        private static Vector3[] UnitCubeCorners()
+        {
+            var corners = new Vector3[8];
+            for (int i = 0; i < 8; i++)
+                corners[i] = new Vector3(
+                    (i & 1) == 0 ? -0.5f : 0.5f,
+                    (i & 2) == 0 ? -0.5f : 0.5f,
+                    (i & 4) == 0 ? -0.5f : 0.5f);
+            return corners;
+        }
+
+        private static float Luminance(Color c) =>
+            0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
+
         [UnityTest]
         public IEnumerator CatTint_MatchesTheTrainsLineColor()
         {
