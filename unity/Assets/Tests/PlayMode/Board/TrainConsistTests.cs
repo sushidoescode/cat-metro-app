@@ -64,7 +64,7 @@ namespace CatMetro.Tests.PlayMode
             PlaceOnEdge(edge: 1, progressTicks: 6, color: CatColor.Red);
             _view.UpdateFrom(_session);
 
-            Assert.That(CatHeadColor(), Is.EqualTo(Palette.SignalRed),
+            AssertCatColor(CatHeadColor(), Palette.SignalRed,
                 "the seated cat wears the train's line color, from Palette tokens");
         }
 
@@ -176,7 +176,7 @@ namespace CatMetro.Tests.PlayMode
             PlaceOnEdge(edge: 1, progressTicks: 0, id: 2, color: CatColor.Blue);
             _view.UpdateFrom(_session);
 
-            Assert.That(CatHeadColor(), Is.EqualTo(Palette.HarborBlue),
+            AssertCatColor(CatHeadColor(), Palette.HarborBlue,
                 "a reused slot re-tints for its NEW occupant");
             var graph = BuildTrackGraph();
             Assert.That(Vector3.Distance(CarriageBoardLocal(),
@@ -236,6 +236,21 @@ namespace CatMetro.Tests.PlayMode
             var block = new MaterialPropertyBlock();
             head.GetComponent<MeshRenderer>().GetPropertyBlock(block);
             return block.GetColor("_BaseColor");
+        }
+
+        // The property-block round trip is not bit-exact in this Linear-color-space project
+        // (ProjectSettings m_ActiveColorSpace: 1): SetColor stores the float32 sRGB->linear
+        // conversion and GetColor approximates the inverse, an ulp-level wobble the first
+        // device run caught with exact Color equality (identical 3-decimal prints, unequal
+        // bits). No Color32/255-step exists anywhere in the tint path, so 2e-3 per channel
+        // covers the conversion with room while staying ~15x under the closest palette pair
+        // (SignalRed vs AlarmCoral, 8/255 apart in red).
+        private static void AssertCatColor(Color actual, Color expected, string message)
+        {
+            Assert.That(actual.r, Is.EqualTo(expected.r).Within(0.002f), message + " (r)");
+            Assert.That(actual.g, Is.EqualTo(expected.g).Within(0.002f), message + " (g)");
+            Assert.That(actual.b, Is.EqualTo(expected.b).Within(0.002f), message + " (b)");
+            Assert.That(actual.a, Is.EqualTo(expected.a).Within(0.002f), message + " (a)");
         }
 
         private static TrackSplineGraph BuildTrackGraph()
