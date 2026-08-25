@@ -456,6 +456,32 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(primaryKeyline.localPosition.x, Is.EqualTo(0f).Within(0.0001f),
                 "the primary never moves to make room — that is what keeps a single-accept"
                 + " station identical to what it rendered before chips existed");
+
+            // The chips grow sideways toward the board edge, and BoardSurface.Margin is only
+            // 1.05 — so "does it still fit on the wood" is a real question and this is the
+            // only test that can ask it. RuntimeSceneRigTests owns the equivalent framing
+            // check but runs L008, which has no multi-accept berth.
+            var wood = view.transform.Find("BoardBody/WoodTop");
+            Assert.That(wood, Is.Not.Null, "precondition: the tabletop exists to fit onto");
+            Bounds surface = wood.GetComponent<Renderer>().bounds;
+            foreach (var chip in chips.Concat(new[] { chipKeyline }))
+            {
+                Bounds b = chip.GetComponent<Renderer>().bounds;
+                Assert.That(b.min.x, Is.GreaterThan(surface.min.x), chip.name + " off left");
+                Assert.That(b.max.x, Is.LessThan(surface.max.x), chip.name + " off right");
+                Assert.That(b.min.y, Is.GreaterThan(surface.min.y), chip.name + " off bottom");
+                Assert.That(b.max.y, Is.LessThan(surface.max.y), chip.name + " off top");
+            }
+
+            // AddComponent<MeshRenderer>() binds NOTHING, where CreatePrimitive used to hand
+            // back Unity's default material for free. Every badge renderer must therefore be
+            // bound explicitly — a miss renders the magenta error shader, and DeviceConfigTests'
+            // scene-wide material walk only ever runs L001.
+            foreach (var part in station.GetComponentsInChildren<Renderer>(true))
+                if (part.gameObject.name.StartsWith("station:")
+                    && part.GetComponent<TextMesh>() == null)
+                    Assert.That(part.sharedMaterial, Is.Not.Null,
+                        part.gameObject.name + " must bind a material explicitly");
         }
 
         [Test]
@@ -836,7 +862,11 @@ namespace CatMetro.Tests.PlayMode
             foreach (var renderer in station.GetComponentsInChildren<Renderer>(true))
             {
                 if (!renderer.enabled) continue;
-                if (renderer.gameObject.name == "station:keyline-generated") continue;
+                // Prefix, not exact name: a cream keyline is decoration by this helper's own
+                // logic, and a multi-accept berth grows "station:keyline-accept-N" beside the
+                // primary. Matching only the exact name would quietly fold that halo into the
+                // signature as if it were line coding the first time this meets such a level.
+                if (renderer.gameObject.name.StartsWith("station:keyline")) continue;
                 var material = renderer.material;
                 parts.Add(renderer.GetType().Name + ":" + material.color);
             }
