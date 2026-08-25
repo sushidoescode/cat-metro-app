@@ -425,6 +425,12 @@ namespace CatMetro.Presentation.Props
                 shape, new Vector3(0f, PlateY, PlateZ), PlateSize, PlateDepth);
             // The primary plate keeps wearing the station's OWN line material, exactly as it
             // did before — that is what makes the fallback cube and the badge the same signal.
+            //
+            // Note the asymmetry with the chips below, because it decides how each is read
+            // back: this plate carries a real per-station material and NO property block, so
+            // its colour is sharedMaterial.color. The chips carry GreyboxMaterial.Shared plus
+            // a property block, so theirs is only in the block. Reading either the other way
+            // returns a plausible wrong colour rather than failing.
             plate.sharedMaterial = fallback.sharedMaterial != null
                 ? fallback.sharedMaterial : GreyboxMaterial.Shared;
 

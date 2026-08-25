@@ -341,6 +341,50 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
+        public void ColourHasOneDecisionSite_OnBothKeyTypes()
+        {
+            // Colour is reached by two different keys: station badges hold a line NAME, trains
+            // and cats hold a Domain colour CODE. Both used to have their own table inside
+            // BoardView, and the byte one was the dangerous half — a fifth line lands in
+            // CatLine, the plate and the HUD badge pick it up for free, and trains of that
+            // colour keep rendering magenta with nothing to catch it. This is a behavioural
+            // pin rather than a structural scan because it has to survive someone reinstating
+            // a table that merely LOOKS right.
+            const BindingFlags all = BindingFlags.NonPublic | BindingFlags.Static;
+            var colorFor = typeof(BoardView).GetMethod("ColorFor", all);
+            var colorForCode = typeof(BoardView).GetMethod("ColorForCode", all);
+            Assert.That(colorFor, Is.Not.Null, "precondition: the name-keyed door exists");
+            Assert.That(colorForCode, Is.Not.Null, "precondition: the byte-keyed door exists");
+
+            foreach (string line in CatLine.Names)
+                Assert.That((Color)colorFor.Invoke(null, new object[] { line }),
+                    Is.EqualTo(CatLine.ColorOf(line)),
+                    "the board must not hold its own name-keyed colour for " + line);
+
+            // 0..6 spans None, every line, the reserved Wild, and one code past the end — so
+            // a line added to CatLine without the byte door following fails right here.
+            for (int code = 0; code <= 6; code++)
+                Assert.That((Color)colorForCode.Invoke(null, new object[] { (byte)code }),
+                    Is.EqualTo(CatLine.ColorOf((byte)code)),
+                    "the board must not hold its own byte-keyed colour for code " + code);
+
+            // The alignment that lets the byte door be an index instead of a second table.
+            Assert.That(CatLine.NameOfCode(CatMetro.Domain.CatColor.Red), Is.EqualTo("red"));
+            Assert.That(CatLine.NameOfCode(CatMetro.Domain.CatColor.Blue), Is.EqualTo("blue"));
+            Assert.That(CatLine.NameOfCode(CatMetro.Domain.CatColor.Yellow),
+                Is.EqualTo("yellow"));
+            Assert.That(CatLine.NameOfCode(CatMetro.Domain.CatColor.Green), Is.EqualTo("green"));
+            Assert.That(CatLine.Names.Count, Is.EqualTo(4),
+                "if a fifth line is authored, NameOfCode's 1-based index must still line up"
+                + " with Domain.CatColor — re-read both before changing this number");
+
+            // Codes that are not lines stay loud rather than picking one.
+            Assert.That(CatLine.ColorOf(CatMetro.Domain.CatColor.None), Is.EqualTo(Color.magenta));
+            Assert.That(CatLine.ColorOf(CatMetro.Domain.CatColor.Wild), Is.EqualTo(Color.magenta),
+                "Wild is construction-guarded, so it must never resolve to a real line");
+        }
+
+        [Test]
         public void RedAndBlue_RenderExactlyWhatTheyRenderedBeforeTheVocabulary()
         {
             // Existing captures and pins hold these two. Circle stayed the builtin cylinder
@@ -954,6 +998,20 @@ namespace CatMetro.Tests.PlayMode
             return string.Join("|", parts);
         }
 
+        // TWO read-backs live in this file and they are NOT interchangeable — swapping them
+        // fails silently, with a plausible-looking colour, which is the worst way to fail.
+        //
+        //   PropertyColor(r)        — for anything wearing GreyboxMaterial.Shared plus a
+        //                             MaterialPropertyBlock: the accept chips, the kiosk wood
+        //                             base, the line roof. Their sharedMaterial.color is
+        //                             Greybox's own white and says nothing about the line.
+        //   r.sharedMaterial.color  — for the PRIMARY station plate only. It inherits the
+        //                             station anchor's real per-station material (BoardView
+        //                             tinted it) and carries no property block at all, so
+        //                             PropertyColor returns an unset black.
+        //
+        // On URP/Lit, `.color` IS _BaseColor — the shader tags it [MainColor]. The stale
+        // _Color line in Greybox.mat is an unread leftover; do not reach for it.
         private static Color PropertyColor(Renderer renderer)
         {
             var properties = new MaterialPropertyBlock();

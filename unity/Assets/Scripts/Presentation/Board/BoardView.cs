@@ -338,16 +338,11 @@ namespace CatMetro.Presentation.Board
         // single source for colour the way CatLine.ShapeOf already is for shape.
         private static Color ColorFor(string name) => CatLine.ColorOf(name);
 
-        private static Color ColorForCode(byte code)
-        {
-            switch (code)
-            {
-                case CatMetro.Domain.CatColor.Red: return Palette.SignalRed;
-                case CatMetro.Domain.CatColor.Blue: return Palette.HarborBlue;
-                case CatMetro.Domain.CatColor.Yellow: return Palette.TabbyYellow;
-                case CatMetro.Domain.CatColor.Green: return Palette.GardenGreen;
-                default: return Color.magenta;
-            }
-        }
+        // The byte-keyed half of the same story. This was the LAST colour table outside the
+        // vocabulary, and the one that would have bitten: a fifth line lands in CatLine, the
+        // station plate and the HUD badge pick it up for free, and trains of that colour go on
+        // rendering magenta with nothing to catch it. Routed through the vocabulary too, so
+        // adding a line is one edit in CatLine and every surface follows.
+        private static Color ColorForCode(byte code) => CatLine.ColorOf(code);
     }
 }

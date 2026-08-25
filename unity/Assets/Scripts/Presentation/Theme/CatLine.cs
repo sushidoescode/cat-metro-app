@@ -47,6 +47,21 @@ namespace CatMetro.Presentation.Theme
 
         public static IReadOnlyList<string> Names => AllNames;
 
+        // The byte-keyed door into the SAME table, for the surfaces that hold a Domain colour
+        // code rather than a name — trains and cats. Domain.CatColor is 1-based with None at 0
+        // (LevelGraph.cs:7-15) and AllNames is in precisely that order, so this is an INDEX,
+        // not a second table, which is the entire point of it existing here. Anything off the
+        // end — None, and the reserved construction-guarded Wild — falls through to the
+        // unknown-line answer, so an unsupported code goes loud instead of picking a line.
+        //
+        // The 1-based alignment is load-bearing and deliberately NOT re-encoded as a switch;
+        // PropPlacementTests.ColourHasOneDecisionSite_OnBothKeyTypes pins it against the real
+        // CatColor constants so a reorder fails there instead of painting trains magenta.
+        public static string NameOfCode(byte code) =>
+            code >= 1 && code <= AllNames.Length ? AllNames[code - 1] : "";
+
+        public static Color ColorOf(byte code) => ColorOf(NameOfCode(code));
+
         public static Color ColorOf(string name)
         {
             switch (name)
