@@ -216,6 +216,25 @@ namespace CatMetro.Content.Validation
         }
     }
 
+    internal static class SourceStationColorCompatibility
+    {
+        public static bool Matches(SourceDto source, StationDto station)
+        {
+            var sourceColors = source.AllowedColors.Span;
+            for (int i = 0; i < sourceColors.Length; i++)
+                if (sourceColors[i] == "wild")
+                    return true;
+
+            var stationColors = station.Accepts.Span;
+            for (int i = 0; i < sourceColors.Length; i++)
+                for (int j = 0; j < stationColors.Length; j++)
+                    if (sourceColors[i] == stationColors[j])
+                        return true;
+
+            return false;
+        }
+    }
+
     public static class StaticAnalysisStage
     {
         // Stage 2 (A-C5-8): colour-compatible reachability, orphan switches, junction spacing
@@ -228,15 +247,14 @@ namespace CatMetro.Content.Validation
             var edges = dto.Edges.ToArray();
             var nodeById = nodes.ToDictionary(n => n.Id);
 
-            // Reachability: BFS from each colour-compatible source. A station whose accept set
-            // intersects NO source's colours is a deliberate decoy (L001's BLU teaches the wrong
+            // Reachability: BFS from each colour-compatible source. A station compatible with NO
+            // source is a deliberate decoy (L001's BLU teaches the wrong
             // route) — no cat can ever need it, so it cannot FAIL — but review F6: silence hides
             // the accepts-typo class, so it WARNS instead of passing vacuously.
             foreach (var station in dto.Stations.ToArray())
             {
-                var accepts = new HashSet<string>(station.Accepts.ToArray());
                 bool anyCompatibleSource = dto.Sources.ToArray()
-                    .Any(s => s.AllowedColors.ToArray().Any(accepts.Contains));
+                    .Any(s => SourceStationColorCompatibility.Matches(s, station));
                 if (!anyCompatibleSource)
                 {
                     warns.Add("station " + station.NodeId
@@ -246,7 +264,7 @@ namespace CatMetro.Content.Validation
                 bool reachable = false;
                 foreach (var source in dto.Sources.ToArray())
                 {
-                    if (!source.AllowedColors.ToArray().Any(accepts.Contains)) continue;
+                    if (!SourceStationColorCompatibility.Matches(source, station)) continue;
                     var seen = new HashSet<string> { source.NodeId };
                     var queue = new Queue<string>();
                     queue.Enqueue(source.NodeId);
@@ -326,8 +344,7 @@ namespace CatMetro.Content.Validation
                 var dist = Dijkstra(source.NodeId, edges);
                 foreach (var station in dto.Stations.ToArray())
                 {
-                    if (!source.AllowedColors.ToArray()
-                            .Any(new HashSet<string>(station.Accepts.ToArray()).Contains)) continue;
+                    if (!SourceStationColorCompatibility.Matches(source, station)) continue;
                     if (dist.TryGetValue(station.NodeId, out int d) && d < best) best = d;
                 }
             }

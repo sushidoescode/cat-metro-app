@@ -25,13 +25,20 @@ namespace CatMetro.Content.Validation
         public readonly bool RouteChanged;      // any switch away from its authored initial route
         public readonly int RouteChangedAtTick; // first such tick; -1 when never
         public readonly int SwitchesUsed;       // final commanded-toggle count
+        public readonly int[] EmittingSourceNodes; // distinct declared origins, in authored order
+        public readonly int WildDeliveries;
+        public readonly int FirstWildDeliveryAtTick; // -1 when no Wild train was delivered
 
         public ExerciseRecord(int maxQueued, int maxQueuedAtTick, bool routeChanged,
-            int routeChangedAtTick, int switchesUsed)
+            int routeChangedAtTick, int switchesUsed, int[] emittingSourceNodes,
+            int wildDeliveries, int firstWildDeliveryAtTick)
         {
             MaxQueued = maxQueued; MaxQueuedAtTick = maxQueuedAtTick;
             RouteChanged = routeChanged; RouteChangedAtTick = routeChangedAtTick;
             SwitchesUsed = switchesUsed;
+            EmittingSourceNodes = emittingSourceNodes ?? new int[0];
+            WildDeliveries = wildDeliveries;
+            FirstWildDeliveryAtTick = firstWildDeliveryAtTick;
         }
     }
 
@@ -46,8 +53,8 @@ namespace CatMetro.Content.Validation
             {
                 ["switch"] = MechanicDisposition.Observable,
                 ["queue"] = MechanicDisposition.Observable,
-                ["second-source"] = MechanicDisposition.Unreachable,
-                ["wildcard"] = MechanicDisposition.Unreachable,
+                ["second-source"] = MechanicDisposition.Observable,
+                ["wildcard"] = MechanicDisposition.Observable,
                 ["cooldown"] = MechanicDisposition.Unobservable,
                 ["gate"] = MechanicDisposition.Unobservable,
                 ["express"] = MechanicDisposition.Unobservable,
@@ -59,6 +66,11 @@ namespace CatMetro.Content.Validation
             int maxQueued = 0, maxQueuedAt = -1;
             bool routeChanged = false;
             int routeChangedAt = -1, switchesUsed = 0;
+            var observedSourceNodes = new HashSet<int>();
+            var wasActive = new bool[graph.TrainsMax];
+            var priorColor = new byte[graph.TrainsMax];
+            int previousDeliveries = 0;
+            int wildDeliveries = 0, firstWildDeliveryAt = -1;
             ReplayHasher.RunToEnd(graph, seed, log, s =>
             {
                 int tick = s.Tick - 1; // the tick this step processed (sampled after it)
@@ -74,8 +86,41 @@ namespace CatMetro.Content.Validation
                             break;
                         }
                 switchesUsed = s.SwitchesUsed;
+
+                bool deliveredThisTick = s.Deliveries > previousDeliveries;
+                for (int t = 0; t < s.Trains.Length; t++)
+                {
+                    bool active = s.Trains[t].State != TrainState.None;
+                    if (!wasActive[t] && active)
+                    {
+                        int origin = s.Trains[t].NodeId;
+                        for (int i = 0; i < graph.SourceNodes.Length; i++)
+                            if (origin == graph.SourceNodes[i])
+                            {
+                                observedSourceNodes.Add(origin);
+                                break;
+                            }
+                    }
+                    else if (wasActive[t] && !active && deliveredThisTick
+                        && priorColor[t] == CatColor.Wild)
+                    {
+                        wildDeliveries++;
+                        if (firstWildDeliveryAt < 0) firstWildDeliveryAt = tick;
+                    }
+
+                    wasActive[t] = active;
+                    priorColor[t] = active ? s.Trains[t].Color : CatColor.None;
+                }
+                previousDeliveries = s.Deliveries;
             });
-            return new ExerciseRecord(maxQueued, maxQueuedAt, routeChanged, routeChangedAt, switchesUsed);
+
+            var emittingSourceNodes = new List<int>();
+            for (int i = 0; i < graph.SourceNodes.Length; i++)
+                if (observedSourceNodes.Contains(graph.SourceNodes[i])
+                    && !emittingSourceNodes.Contains(graph.SourceNodes[i]))
+                    emittingSourceNodes.Add(graph.SourceNodes[i]);
+            return new ExerciseRecord(maxQueued, maxQueuedAt, routeChanged, routeChangedAt,
+                switchesUsed, emittingSourceNodes.ToArray(), wildDeliveries, firstWildDeliveryAt);
         }
 
         // The per-campaign-level liveness verdict. Rides CampaignVerdicts labelled
@@ -111,8 +156,8 @@ namespace CatMetro.Content.Validation
                     "SKIPPED(no winning log)", prefix + "exercised=false; evidence=none", false);
 
             var rec = Observe(graph, (ulong)dto.Seed, solve.OptimalLog);
-            bool exercised;
-            string evidence;
+            bool exercised = false;
+            string evidence = "none";
             if (mech == "queue")
             {
                 exercised = rec.MaxQueued > 0;
@@ -120,12 +165,31 @@ namespace CatMetro.Content.Validation
                     ? "maxQueued=" + rec.MaxQueued + "@tick " + rec.MaxQueuedAtTick
                     : "none";
             }
-            else // "switch" (A-DM-3: observational, with stage 5 as the causal backstop)
+            else if (mech == "switch") // A-DM-3: observational, with stage 5 as the causal backstop
             {
                 exercised = rec.RouteChanged && rec.SwitchesUsed >= 1;
                 evidence = exercised
                     ? "toggles=" + rec.SwitchesUsed + ",routeChangedAtTick=" + rec.RouteChangedAtTick
                     : "none";
+            }
+            else if (mech == "second-source")
+            {
+                exercised = rec.EmittingSourceNodes.Length >= 2;
+                var names = new List<string>();
+                var nodes = dto.Nodes.Span;
+                for (int i = 0; i < rec.EmittingSourceNodes.Length; i++)
+                {
+                    int node = rec.EmittingSourceNodes[i];
+                    if (node >= 0 && node < nodes.Length) names.Add(nodes[node].Id);
+                }
+                evidence = "sources=" + (names.Count == 0 ? "none" : string.Join(",", names));
+            }
+            else if (mech == "wildcard")
+            {
+                exercised = rec.WildDeliveries >= 1;
+                evidence = exercised
+                    ? "wildDeliveries=" + rec.WildDeliveries + "@tick " + rec.FirstWildDeliveryAtTick
+                    : "wildDeliveries=0";
             }
             string value = prefix + "exercised=" + (exercised ? "true" : "false")
                 + "; evidence=" + evidence;

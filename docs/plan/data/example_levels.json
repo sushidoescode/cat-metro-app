@@ -54,11 +54,11 @@
       "switches": [ { "id": "S1", "nodeId": "J1", "routes": ["ER", "EU"], "initialRoute": 0 } ],
       "waves": [
         { "tick": 8, "sourceNode": "SA", "color": "red", "count": 3, "spacingTicks": 14 },
-        { "tick": 22, "sourceNode": "SB", "color": "blue", "count": 3, "spacingTicks": 14 },
-        { "tick": 100, "sourceNode": "SA", "color": "red", "count": 2, "spacingTicks": 12 },
-        { "tick": 112, "sourceNode": "SB", "color": "blue", "count": 2, "spacingTicks": 12 }
+        { "tick": 50, "sourceNode": "SB", "color": "blue", "count": 3, "spacingTicks": 14 },
+        { "tick": 106, "sourceNode": "SA", "color": "red", "count": 2, "spacingTicks": 14 },
+        { "tick": 148, "sourceNode": "SB", "color": "blue", "count": 2, "spacingTicks": 14 }
       ],
-      "win": { "deliveries": 10, "timeLimitTicks": 300, "perfectMaxSwitches": 6, "stars": { "two": 900, "three": 1200 } },
+      "win": { "deliveries": 10, "timeLimitTicks": 300, "perfectMaxSwitches": 4, "stars": { "two": 900, "three": 1200 } },
       "economy": { "baseTickets": 30, "perfectBonus": 20 }
     },
     {
