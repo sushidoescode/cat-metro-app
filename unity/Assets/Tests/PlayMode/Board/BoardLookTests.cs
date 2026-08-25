@@ -407,8 +407,14 @@ namespace CatMetro.Tests.PlayMode
             // and catches a slide back to either extreme.
             Assert.That(key.color.r - key.color.b, Is.InRange(0.12f, 0.30f),
                 "warm key, neither noon white nor amber enough to overwrite the palette");
-            Assert.That(key.shadowStrength, Is.InRange(0.4f, 0.8f),
-                "shadows must read on the desk yet stay airy");
+            // Upper bound tightened from 0.8. Slot 6 measured navy rails at luminance 47
+            // against target-01's 75, and their key visibility divides out to 0.454 — which
+            // is 1 - shadowStrength exactly, so this constant alone set how dark the whole
+            // shadowed end of the palette went. Above ~0.5 it crushes cool albedos toward
+            // black faster than any albedo change can answer.
+            Assert.That(key.shadowStrength, Is.InRange(0.35f, 0.5f),
+                "shadows must read on the desk yet stay airy — and must not crush the "
+                + "shadowed end of the palette to near-black");
             // Inverted, deliberately. This pin used to demand warm sky over cool ground, and
             // that ordering was the bug: the board's visible normal has n.y = 0.616, so every
             // surface the player looks at draws on the SKY band and the cool ground reached

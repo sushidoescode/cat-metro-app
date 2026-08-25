@@ -239,29 +239,91 @@ namespace CatMetro.Presentation.Board
             RenderSettings.ambientGroundColor = new Color(0.41f, 0.37f, 0.33f);
             RenderSettings.ambientIntensity = 1.15f;
 
+            // What this light cannot fix, so nobody spends another round trying.
+            //
+            // Slot 6 measured two tokens still off target-01 after the round-1 rebalance:
+            // navy rails at (40, 48, 62) wanting (69, 75, 94), and the MetroTeal wedge at
+            // (78, 167, 167) wanting (51, 115, 111). In linear terms the rails need x2.38 and
+            // the teal x0.43. Both are cool tokens, and they pull opposite ways.
+            //
+            // Solving for a single rig change that serves both — key scaled by a, fill by b,
+            // holding the cream ballast where it now correctly sits — gives a = -2.099. A
+            // negative key. There is no illuminant that does both, and the reason is that the
+            // teal wedge and the cream are BOTH lit (key visibility ~1.0), so any change that
+            // moves the teal moves the cream with it by the same factor. Cream is the one
+            // fixed-albedo reference we have on target, so it holds the exposure, and the
+            // teal's level is pinned to it.
+            //
+            // Which means neither is a light defect:
+            //   * Teal's level is an albedo difference. Dividing target-01's teal out by this
+            //     rig's lit illuminant gives an albedo near (19, 112, 116) against our
+            //     MetroTeal (59, 175, 168) — target-01's teal props are simply a much darker,
+            //     more muted teal. Its HUE is already right: scaling our measured teal by the
+            //     0.42 level difference alone lands b-r at +62 against target-01's +60. There
+            //     is no separate saturation error to chase. MetroTeal is in the locked base
+            //     palette (Palette.cs SS7), so this is a palette question, not a rig one.
+            //   * Rails' level is also an albedo difference, on top of the shadowing named at
+            //     shadowStrength. Even at zero shadow the rails reach only ~65 of the 75 they
+            //     want, because InkNavy is darker than target-01's rail colour. Under the
+            //     tuned rig, hitting (69, 75, 94) needs an albedo near (79, 84, 115) — about
+            //     3.0x InkNavy in linear. InkNavy is shared with outlines and text, where a
+            //     dark navy is correct, so this wants a rail-specific token rather than a
+            //     change to InkNavy. That is the track lane's RailNavy proposal, and on LEVEL
+            //     it was right; it was only the HUE argument for it that this rig removed.
+
             var existing = owner.Find(KeyLightName);
             var key = existing == null
                 ? new GameObject(KeyLightName).AddComponent<Light>()
                 : existing.GetComponent<Light>();
             if (existing == null) key.transform.SetParent(owner, false);
             key.type = LightType.Directional;
-            // Warm, but no longer amber enough to stamp its own hue on every albedo in the
-            // game. The old (1, 0.78, 0.56) is (1, 0.571, 0.274) once Unity linearises it —
-            // a key with barely a quarter of its red in blue — and since the key carries
-            // ~85% of the illumination, that single number is what made navy render brown and
-            // teal render olive. (1, 0.90, 0.78) linearises to (1, 0.787, 0.565): still
+            // Warm, but not amber enough to stamp its own hue on every albedo in the game.
+            // integration/look-stack's key is (1, 0.82, 0.67) @ 1.05, which Unity linearises
+            // to (1, 0.726, 0.407) — blue at 0.41 of red. Combined with a fill that was ALSO
+            // warm (see ApplyLighting's note), the illuminant reached the board at
+            // (1.17, 0.678, 0.354), blue at 0.303, and no cool albedo could survive it.
+            //
+            // (Earlier revisions of this comment quoted (1, 0.78, 0.56) @ 1.18 as the
+            // baseline. That was this branch's own round-1 value, not the merge base. The
+            // transfer function above was fitted from a capture taken under it, which is why
+            // its predictions landed but its stated baseline was wrong. Corrected here.)
+            //
+            // This value linearises to (1, 0.861, 0.612): blue at 0.61 of red, still
             // unmistakably late-afternoon against a cool fill, but it lets a cool albedo stay
-            // cool. Intensity drops 1.18 -> 1.02 because the fill above now carries more of
-            // the total; together they land the illuminant at (1.063, 0.890, 0.738).
-            key.color = new Color(1f, 0.90f, 0.78f);
-            key.intensity = 1.02f;
+            // cool. Intensity 1.05 -> 0.957 because the fill now carries more of the total.
+            //
+            // Round-2 calibration, from slot 6's measurement of the real game camera. Cream
+            // ballast — CreamCard, a fixed albedo on a lit surface, so it pins the illuminant
+            // without any albedo of mine in the loop — rendered (249, 224, 196) against
+            // target-01's (243, 226, 197), i.e. the rig was 5.4% hot in red and ~2% shy in
+            // green and blue. Correcting by (0.946, 1.020, 1.011) and folding it into the key
+            // took (1, 0.90, 0.78) @ 1.02 to the values below. Predicted result: cream lands
+            // on (243, 226, 197) exactly and the board on (202, 134, 89), both target-01's.
+            key.color = new Color(1f, 0.936f, 0.805f);
+            key.intensity = 0.957f;
             key.shadows = LightShadows.Soft;
-            key.shadowStrength = 0.55f;
+            // Named explicitly because it is a change against integration/look-stack (0.38)
+            // that earlier summaries of this branch did not call out: it went to 0.55 with the
+            // raking-key work below, and 0.55 turned out to crush the shadowed end. Slot 6
+            // measured the navy rails at (40, 48, 62), luminance 47, against target-01's
+            // (69, 75, 94) at 75 — and their effective illuminant divides out to a key
+            // visibility of 0.454, which is 1 - 0.55 to three decimals. The rails are not
+            // dimly lit; they are fully shadowed, and shadowStrength alone set how dark.
+            // 0.45 recovers ~4 luminance units and keeps their hue at b-r +22 (target +25).
+            // It does not recover the other 24 — see the note in ApplyLighting on why that
+            // has to come from a rail albedo and not from this light.
+            key.shadowStrength = 0.45f;
             key.shadowBias = 0.08f;
             key.shadowNormalBias = 0.25f;
             key.shadowNearPlane = 0.2f;
-            // Geometry note: the board is tilted Euler(38,-32,-4), so its visible surface
-            // normal is ~(0.42, 0.62, -0.67). The old key at Euler(35,-30,2) sat within
+            // Geometry note, and the second of this branch's two un-flagged rig changes
+            // against integration/look-stack (the other is shadowStrength above): the key
+            // pose moves Euler(35,-30,2) -> Euler(19,-56,0). That is a raking-light change,
+            // not a nudge, and it is the largest single reason the diorama reads differently
+            // from the base branch.
+            //
+            // The board is tilted Euler(38,-32,-4), so its visible surface
+            // normal is ~(0.42, 0.62, -0.67). The base pose at Euler(35,-30,2) sat within
             // ~2.5 degrees of that normal — square-on light, which is why the diorama read
             // flat-lit with near-zero shadow length. This pose keeps the light high-right in
             // frame but ~28 degrees off the board normal, so it rakes: shadows stretch to

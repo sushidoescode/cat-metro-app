@@ -58,14 +58,19 @@ namespace CatMetro.Presentation.Board
         // board out by its own illuminant gives roughly (207, 144, 101).
         //
         // Solved, not tasted. rendered = S * (albedo_linear * grain_linear + 0.0254), so
-        // holding the render fixed while S changes gives
-        //     albedo_new = ((rendered / S_new) - 0.0254) / grain_linear
-        // with rendered = (0.6038, 0.2270, 0.0953) linear — the measured board interior on
-        // the 2026-08-25 r3 render — S_new = (1.063, 0.890, 0.738), and grain_linear the new
-        // sheet's median texel, 0.9529 sRGB = 0.8963 linear. Result: (0.803, 0.541, 0.376),
-        // which re-renders to (204, 130, 87) against the measured (204, 131, 87) and
-        // target-01's (202, 134, 89). The board does not move; only the light does.
-        private static readonly Color WarmWood = new Color(0.803f, 0.541f, 0.376f);
+        // choosing the render fixes the albedo:
+        //     albedo = ((rendered / S) - 0.0254) / grain_linear
+        // grain_linear is the sheet's median texel, 0.9529 sRGB = 0.8963 linear.
+        //
+        // Round 1 held the board where it already was. Round 2 aims it at target-01 instead,
+        // now that slot 6 has measured the real game camera: the board rendered
+        // (201, 129, 87) against target-01's (202, 134, 89), so it was ~4 luminance units
+        // shy, mostly in green. Solving against the round-2 illuminant — the round-1 value
+        // corrected by the (0.946, 1.020, 1.011) that the cream ballast asked for, see
+        // BoardSceneLook — gives (0.823, 0.555, 0.374), predicted to render (202, 134, 89)
+        // exactly. Contrast against the CreamCard ballast stays at 0.328, well over the
+        // 0.262 floor.
+        private static readonly Color WarmWood = new Color(0.823f, 0.555f, 0.374f);
         // Walnut for the room-scale desk. Calibrated against the 2026-08-25 slot render:
         // the amber key plus warm ambient multiply channel ratios by roughly (1.15 r/g,
         // 1.84 r/b), so a red-leaning albedo (the old 0.55/0.36/0.22, r/b 2.5) rendered as
