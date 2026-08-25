@@ -1,12 +1,15 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Text;
 using NUnit.Framework;
 using UnityEngine;
 using CatMetro.Application.Session;
 using CatMetro.Content;
 using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Props;
+using CatMetro.Presentation.Theme;
 
 namespace CatMetro.Tests.PlayMode
 {
@@ -273,6 +276,261 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(blueRoof.b, Is.GreaterThan(blueRoof.r), "BLU roof carries the blue line");
             Assert.That(sourceVisuals.All(x => !x.enabled), Is.True,
                 "an admitted shed replaces the source placeholder without deleting its gameplay root");
+        }
+
+        // --- STATION-BADGE: the destination vocabulary on the board plate ---
+
+        [Test]
+        public void EveryLine_GetsItsOwnPlateShape_DrivenByCatLineAlone()
+        {
+            var level = Import(FourLineJson());
+            var view = BuildBoard(level);
+            BoardPropDecorator.Decorate(level, view.transform, KioskCatalog());
+            var plates = StationPlates(view);
+
+            // Driven off CatLine.Names, never a list written out here. A fifth line added to
+            // the vocabulary makes this test demand a fifth plate shape from the board with no
+            // edit to the test, which is the property that keeps the two from drifting.
+            foreach (string line in CatLine.Names)
+            {
+                string node = line.Substring(0, 3).ToUpperInvariant();
+                Assert.That(plates.ContainsKey(node), Is.True, "fixture must berth " + line);
+                Assert.That(plates[node], Is.Not.Null,
+                    line + " must grow a project-owned plate under the neutral kiosk");
+                Assert.That(plates[node].GetComponent<MeshFilter>().sharedMesh,
+                    Is.SameAs(DestinationShapeMesh.ForShape(CatLine.ShapeOf(line))),
+                    line + " must take its plate straight from the shared vocabulary");
+            }
+
+            Assert.That(CatLine.Names.Select(CatLine.ShapeOf).Distinct().Count(),
+                Is.EqualTo(CatLine.Names.Count),
+                "every line owns a DISTINCT shape — a shared one puts identity back on colour");
+            Assert.That(CatLine.Names
+                    .Select(x => DestinationShapeMesh.ForShape(CatLine.ShapeOf(x)))
+                    .Distinct().Count(),
+                Is.EqualTo(CatLine.Names.Count),
+                "and each distinct shape is a distinct mesh, so the board really renders four");
+            Assert.That(plates.Values
+                    .Select(x => x.GetComponent<MeshFilter>().sharedMesh.vertexCount)
+                    .Distinct().Count(),
+                Is.EqualTo(CatLine.Names.Count),
+                "four berths on one board are separable by silhouette with colour discarded");
+        }
+
+        [Test]
+        public void PlateShape_HasExactlyOneDecisionSite_AndItIsNotTheDecorator()
+        {
+            // The bug this lane closed was a SECOND shape switch living in the props layer
+            // (`label.text == "R" ? Cylinder : Cube`) that could — and did — disagree with the
+            // vocabulary. Nothing in the board or props layer may hold a shape decision again:
+            // the only member anywhere allowed to yield a DestinationShape is CatLine.ShapeOf.
+            const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic
+                | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly;
+            foreach (var type in new[]
+                     { typeof(BoardPropDecorator), typeof(DestinationShapeMesh) })
+            {
+                Assert.That(type.GetMethods(all)
+                        .Any(x => x.ReturnType == typeof(DestinationShape)), Is.False,
+                    type.Name + " must not decide a shape; CatLine.ShapeOf is the only source");
+                Assert.That(type.GetProperties(all)
+                        .Any(x => x.PropertyType == typeof(DestinationShape)), Is.False,
+                    type.Name + " must not cache a shape decision either");
+            }
+            Assert.That(typeof(CatLine).GetMethod("ShapeOf"), Is.Not.Null,
+                "positive control: the one permitted decision site exists and is public");
+        }
+
+        [Test]
+        public void RedAndBlue_RenderExactlyWhatTheyRenderedBeforeTheVocabulary()
+        {
+            // Existing captures and pins hold these two. Circle stayed the builtin cylinder
+            // laid on its face; square stayed the builtin cube. Both scales are the shipped
+            // literals, and the cylinder's 0.05 is the cube's 0.1 halved because the builtin
+            // cylinder is two units tall — the two plates are the same 0.1 thick.
+            var level = ImportLevel("L001");
+            var view = BuildBoard(level);
+            BoardPropDecorator.Decorate(level, view.transform, KioskCatalog());
+            var plates = StationPlates(view);
+
+            var red = plates["RED"];
+            AssertBuiltinMesh(red, "Cylinder.fbx", "the red plate is still a laid-flat cylinder");
+            Assert.That(red.localRotation.eulerAngles.x, Is.EqualTo(90f).Within(0.01f));
+            AssertScale(red, 0.9f, 0.05f, 0.9f);
+
+            var blue = plates["BLU"];
+            AssertBuiltinMesh(blue, "Cube.fbx", "the blue plate is still a cube");
+            Assert.That(Quaternion.Angle(blue.localRotation, Quaternion.identity),
+                Is.LessThan(0.01f));
+            AssertScale(blue, 0.9f, 0.9f, 0.1f);
+
+            foreach (var plate in plates.Values)
+            {
+                Assert.That(plate.GetComponent<Collider>(), Is.Null,
+                    "badge geometry is decoration — the builtin-mesh idiom adds no collider");
+                Assert.That(plate.GetComponent<BoardElementId>(), Is.Null,
+                    "decoration never claims a board element id");
+            }
+        }
+
+        [Test]
+        public void GeneratedPlateShapes_FaceTheCamera_AndAreClosedSolids()
+        {
+            // Two earlier lanes lost days to backface culling here. The camera looks from -Z,
+            // so a plate whose front facets point away renders as nothing at all — and no test
+            // that only counts vertices can see it.
+            foreach (var shape in new[] { DestinationShape.Triangle, DestinationShape.Hexagon })
+            {
+                var mesh = DestinationShapeMesh.ForShape(shape);
+                var normals = mesh.normals;
+                var vertices = mesh.vertices;
+                int facingCamera = 0;
+                int facingBoard = 0;
+                for (int i = 0; i < normals.Length; i++)
+                {
+                    if (vertices[i].z < -0.49f && normals[i].z < -0.9f) facingCamera++;
+                    if (vertices[i].z > 0.49f && normals[i].z > 0.9f) facingBoard++;
+                }
+                Assert.That(facingCamera, Is.GreaterThan(0),
+                    shape + " must present a camera-facing front face, not a culled one");
+                Assert.That(facingBoard, Is.GreaterThan(0),
+                    shape + " is a closed solid: no winding or mirrored transform can hide it");
+                Assert.That(mesh.bounds.size.x, Is.EqualTo(1f).Within(0.001f),
+                    shape + " is normalised to the builtin cube's box so one scale drives all");
+                Assert.That(mesh.bounds.size.z, Is.EqualTo(1f).Within(0.001f));
+            }
+        }
+
+        [Test]
+        public void MultiAcceptBerth_AdvertisesEveryColourItAccepts_NotJustItsFirst()
+        {
+            // L009's COOL berth takes blue AND yellow and used to badge a bare "B": the yellow
+            // half was unlearnable from the board. Real shipped level, not a fixture.
+            var level = ImportLevel("L009");
+            var cool = level.Dto.Stations.ToArray().Single(x => x.NodeId == "COOL");
+            Assert.That(cool.Accepts.ToArray(), Is.EqualTo(new[] { "blue", "yellow" }),
+                "precondition: L009 still berths two lines at COOL");
+
+            var view = BuildBoard(level);
+            BoardPropDecorator.Decorate(level, view.transform, KioskCatalog());
+            var station = Station(view, "COOL");
+
+            var primary = station.transform.Find("station:plate-generated");
+            Assert.That(primary.GetComponent<MeshFilter>().sharedMesh,
+                Is.SameAs(DestinationShapeMesh.ForShape(CatLine.ShapeOf("blue"))));
+
+            var chips = AcceptChips(station);
+            Assert.That(chips.Length, Is.EqualTo(1),
+                "one chip per FURTHER accepted line; the first is the plate itself");
+            Assert.That(chips[0].GetComponent<MeshFilter>().sharedMesh,
+                Is.SameAs(DestinationShapeMesh.ForShape(CatLine.ShapeOf("yellow"))),
+                "the second line carries its own shape, from the same vocabulary");
+            Color chipColor = PropertyColor(chips[0].GetComponent<Renderer>());
+            Color yellow = CatLine.ColorOf("yellow");
+            Assert.That(chipColor.r, Is.EqualTo(yellow.r).Within(0.001f), "chip line colour r");
+            Assert.That(chipColor.g, Is.EqualTo(yellow.g).Within(0.001f), "chip line colour g");
+            Assert.That(chipColor.b, Is.EqualTo(yellow.b).Within(0.001f), "chip line colour b");
+            Assert.That(chipColor, Is.Not.EqualTo(CatLine.ColorOf("blue")),
+                "the chip is not a second copy of the berth's primary line");
+            Assert.That(station.GetComponentsInChildren<TextMesh>(true)
+                    .Any(x => x.text == CatLine.GlyphOf("yellow")), Is.True,
+                "and its own letter — a chip carries all three channels the plate does");
+            Assert.That(station.transform.Find("station:keyline-accept-0"), Is.Not.Null,
+                "a chip gets the same cream keyline that keeps the plate off the board");
+
+            Assert.That(chips.All(x => x.GetComponent<Renderer>().enabled), Is.True,
+                "chips are line-owned overlays, so kiosk suppression must not hide them");
+
+            // Positive/negative control in the same fixture: the single-accept berth beside it
+            // grows no chips at all, so the row is evidence of a second line and not decoration.
+            Assert.That(AcceptChips(Station(view, "RED")).Length, Is.Zero);
+        }
+
+        // Compared by name and vertex count against a freshly fetched builtin rather than by
+        // reference: whether Unity hands back a cached instance is not what this pin is about,
+        // and a pin that failed on that would be reporting the wrong thing entirely.
+        private static void AssertBuiltinMesh(Transform plate, string builtin, string because)
+        {
+            var expected = Resources.GetBuiltinResource<Mesh>(builtin);
+            var actual = plate.GetComponent<MeshFilter>().sharedMesh;
+            Assert.That(actual, Is.Not.Null, because);
+            Assert.That(actual.name, Is.EqualTo(expected.name), because);
+            Assert.That(actual.vertexCount, Is.EqualTo(expected.vertexCount), because);
+        }
+
+        private static void AssertScale(Transform plate, float x, float y, float z)
+        {
+            Assert.That(plate.localScale.x, Is.EqualTo(x).Within(0.0001f));
+            Assert.That(plate.localScale.y, Is.EqualTo(y).Within(0.0001f));
+            Assert.That(plate.localScale.z, Is.EqualTo(z).Within(0.0001f));
+        }
+
+        private static Dictionary<string, Transform> StationPlates(BoardView view) =>
+            view.GetComponentsInChildren<BoardElementId>(true)
+                .Where(x => x.Kind == "station")
+                .ToDictionary(x => x.Id, x => x.transform.Find("station:plate-generated"));
+
+        private static BoardElementId Station(BoardView view, string id) =>
+            view.GetComponentsInChildren<BoardElementId>(true)
+                .Single(x => x.Kind == "station" && x.Id == id);
+
+        private static Transform[] AcceptChips(BoardElementId station) =>
+            station.GetComponentsInChildren<Transform>(true)
+                .Where(x => x.name.StartsWith("station:plate-accept-"))
+                .OrderBy(x => x.name).ToArray();
+
+        private PropModelCatalog KioskCatalog() => new PropModelCatalog(new[]
+        {
+            Entry(PropModelCatalog.DepotShedId, RenderPrefab("depot")),
+            Entry(PropModelCatalog.StationKioskId, RenderPrefab("kiosk")),
+        });
+
+        private static ImportedLevel Import(string json)
+        {
+            var result = LevelImporter.Import(Encoding.UTF8.GetBytes(json));
+            Assert.That(result.Ok, Is.True, "fixture must import: " + result.Error);
+            return result.Value;
+        }
+
+        // One berth per line in CatLine.Names, so the vocabulary can be exercised whole. No
+        // shipped level has a green destination yet — feat/level-variety is authoring the
+        // first — and this lane does not touch level JSON.
+        private static string FourLineJson()
+        {
+            return @"{
+  ""schemaVersion"": 2, ""id"": ""T940"", ""name"": ""Four Line Fixture"", ""seed"": 940,
+  ""meta"": { ""band"": ""alternation"", ""difficultyTarget"": 0.1, ""mechanics"": [""switch""],
+    ""newMechanic"": null, ""teachingGoal"": ""test fixture"", ""minActionWindowTicks"": 12,
+    ""authoredBy"": ""llm+validator"" },
+  ""board"": { ""nodes"": [
+      { ""id"": ""SRC"", ""x"": 4, ""y"": 10 },
+      { ""id"": ""J1"", ""x"": 4, ""y"": 8 },
+      { ""id"": ""J2"", ""x"": 2, ""y"": 5 }, { ""id"": ""J3"", ""x"": 6, ""y"": 5 },
+      { ""id"": ""RED"", ""x"": 1, ""y"": 2 }, { ""id"": ""BLU"", ""x"": 3, ""y"": 2 },
+      { ""id"": ""YEL"", ""x"": 5, ""y"": 2 }, { ""id"": ""GRE"", ""x"": 7, ""y"": 2 } ],
+    ""edges"": [
+      { ""id"": ""E1"", ""from"": ""SRC"", ""to"": ""J1"", ""travelTicks"": 10 },
+      { ""id"": ""E2"", ""from"": ""J1"", ""to"": ""J2"", ""travelTicks"": 10 },
+      { ""id"": ""E3"", ""from"": ""J1"", ""to"": ""J3"", ""travelTicks"": 10 },
+      { ""id"": ""E4"", ""from"": ""J2"", ""to"": ""RED"", ""travelTicks"": 10 },
+      { ""id"": ""E5"", ""from"": ""J2"", ""to"": ""BLU"", ""travelTicks"": 10 },
+      { ""id"": ""E6"", ""from"": ""J3"", ""to"": ""YEL"", ""travelTicks"": 10 },
+      { ""id"": ""E7"", ""from"": ""J3"", ""to"": ""GRE"", ""travelTicks"": 10 } ] },
+  ""sources"": [ { ""nodeId"": ""SRC"", ""allowedColors"": [""red""] } ],
+  ""stations"": [
+    { ""nodeId"": ""RED"", ""accepts"": [""red""], ""capacity"": 6 },
+    { ""nodeId"": ""BLU"", ""accepts"": [""blue""], ""capacity"": 6 },
+    { ""nodeId"": ""YEL"", ""accepts"": [""yellow""], ""capacity"": 6 },
+    { ""nodeId"": ""GRE"", ""accepts"": [""green""], ""capacity"": 6 } ],
+  ""switches"": [
+    { ""id"": ""S1"", ""nodeId"": ""J1"", ""routes"": [""E2"", ""E3""], ""initialRoute"": 0 },
+    { ""id"": ""S2"", ""nodeId"": ""J2"", ""routes"": [""E4"", ""E5""], ""initialRoute"": 0 },
+    { ""id"": ""S3"", ""nodeId"": ""J3"", ""routes"": [""E6"", ""E7""], ""initialRoute"": 0 } ],
+  ""waves"": [ { ""tick"": 3999, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 1,
+    ""spacingTicks"": 1 } ],
+  ""win"": { ""deliveries"": 99, ""timeLimitTicks"": 4000, ""perfectMaxSwitches"": 1,
+    ""stars"": { ""two"": 200, ""three"": 300 } },
+  ""economy"": { ""baseTickets"": 20, ""perfectBonus"": 10 }
+}";
         }
 
         [Test]
