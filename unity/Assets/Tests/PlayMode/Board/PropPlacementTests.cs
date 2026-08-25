@@ -584,7 +584,16 @@ namespace CatMetro.Tests.PlayMode
                     "code paints " + line + " as #" + ColorUtility.ToHtmlStringRGB(code)
                     + ", which no cat model wears — either Palette drifted from the art or"
                     + " the models were regenerated without the palette following");
-                var art = badges[byHex[matched]];
+                // TryGetValue, not an indexer. This fires in precisely the scenario the gate
+                // exists for — art regenerated wearing a badge the enum has no member for, a
+                // pentagon or a heart or a shield — and a bare KeyNotFoundException would name
+                // neither the line, the hex, nor the unrecognised word.
+                Assert.That(badges.TryGetValue(byHex[matched], out var art), Is.True,
+                    "UNKNOWN BADGE for " + line + ": the manifest badges #" + matched + " as '"
+                    + byHex[matched] + "', which DestinationShape has no member for. The art"
+                    + " was regenerated with a new shape — add it to the enum, to"
+                    + " DestinationShapeMesh (or throw, if it is not a destination), and to"
+                    + " HudShapeSprites, then map it here.");
                 Assert.That(CatLine.ShapeOf(line), Is.EqualTo(art),
                     "SHAPE MISMATCH for " + line + " (#" + matched + "): the cat model wears a "
                     + byHex[matched] + " badge (" + art + ") but CatLine.ShapeOf says "
