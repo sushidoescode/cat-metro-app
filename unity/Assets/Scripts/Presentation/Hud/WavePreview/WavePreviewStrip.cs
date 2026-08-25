@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using CatMetro.Application.Session;
 using CatMetro.Content;
+using CatMetro.Presentation.Theme;
 using UnityEngine;
 
 namespace CatMetro.Presentation.Hud.WavePreview
@@ -111,16 +112,16 @@ namespace CatMetro.Presentation.Hud.WavePreview
             if (_session.State.Tick != _lastRefreshTick) Refresh();
         }
 
-        private static Color ColorFor(string name)
-        {
-            switch (name)
-            {
-                case "red": return new Color(0.85f, 0.2f, 0.2f);
-                case "blue": return new Color(0.2f, 0.4f, 0.9f);
-                case "yellow": return new Color(0.9f, 0.8f, 0.2f);
-                case "green": return new Color(0.2f, 0.75f, 0.3f);
-                default: return Color.magenta;
-            }
-        }
+        // STATION-BADGE: was a third colour table, and the only one holding RAW LITERALS
+        // rather than Palette tokens — so it had already drifted in the shipped build. Its red
+        // was off SignalRed by 0.153, blue off HarborBlue by 0.112, green off GardenGreen by
+        // 0.116: the strip announced an arriving red cat in a visibly different red from the
+        // badge that accepts it, which is exactly the kind of thing three colour tables buy
+        // you. Routed through the vocabulary with the other two.
+        //
+        // feat/hud-wave rewrites this file wholesale and its version routes through
+        // Palette/CatLine too, so on merge take THAT one — the intent is identical and this
+        // edit exists only so the drift is gone now rather than whenever that lands.
+        private static Color ColorFor(string name) => CatLine.ColorOf(name);
     }
 }

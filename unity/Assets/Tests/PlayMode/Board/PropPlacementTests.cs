@@ -341,32 +341,62 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
-        public void ColourHasOneDecisionSite_OnBothKeyTypes()
+        public void NoColourTableSurvivesAnywhereInPresentation_OnEitherKeyType()
         {
-            // Colour is reached by two different keys: station badges hold a line NAME, trains
-            // and cats hold a Domain colour CODE. Both used to have their own table inside
-            // BoardView, and the byte one was the dangerous half — a fifth line lands in
-            // CatLine, the plate and the HUD badge pick it up for free, and trains of that
-            // colour keep rendering magenta with nothing to catch it. This is a behavioural
-            // pin rather than a structural scan because it has to survive someone reinstating
-            // a table that merely LOOKS right.
+            // Named for what it actually proves. Its first cut reflected only into BoardView
+            // and was called ColourHasOneDecisionSite_OnBothKeyTypes, which was a lie by
+            // scope — and the lie had a live victim: WavePreviewStrip held a THIRD colour
+            // table, the only one built from raw literals instead of Palette tokens, and it
+            // had already drifted in the shipped build (red off SignalRed by 0.153). The wave
+            // strip announced an arriving red cat in a different red from the badge that
+            // accepts it, and a BoardView-only test passed the whole time.
+            //
+            // So this DISCOVERS its targets across the Presentation assembly rather than
+            // naming them: any private static shaped like a line-colour lookup must agree with
+            // the vocabulary. A fourth table added later is caught the day it appears, without
+            // anyone remembering to extend this test.
+            // Matched on SIGNATURE, not on being named "ColorFor" — a table named something
+            // unanticipated is exactly what this needs to catch, and at the time of writing
+            // the shape has no innocent occurrences (the only private static Color(string) or
+            // Color(byte) members in the whole assembly are the three line-colour doors).
+            // CatLine's own ColorOf is public, so NonPublic correctly leaves the vocabulary
+            // out of a sweep for things that duplicate it. If this ever fires on a genuinely
+            // unrelated helper, narrow it by name then — do not delete it.
             const BindingFlags all = BindingFlags.NonPublic | BindingFlags.Static;
-            var colorFor = typeof(BoardView).GetMethod("ColorFor", all);
-            var colorForCode = typeof(BoardView).GetMethod("ColorForCode", all);
-            Assert.That(colorFor, Is.Not.Null, "precondition: the name-keyed door exists");
-            Assert.That(colorForCode, Is.Not.Null, "precondition: the byte-keyed door exists");
+            var byName = new List<MethodInfo>();
+            var byCode = new List<MethodInfo>();
+            foreach (var type in typeof(BoardView).Assembly.GetTypes())
+                foreach (var method in type.GetMethods(all))
+                {
+                    if (method.ReturnType != typeof(Color)) continue;
+                    var args = method.GetParameters();
+                    if (args.Length != 1) continue;
+                    if (args[0].ParameterType == typeof(string)) byName.Add(method);
+                    else if (args[0].ParameterType == typeof(byte)) byCode.Add(method);
+                }
 
-            foreach (string line in CatLine.Names)
-                Assert.That((Color)colorFor.Invoke(null, new object[] { line }),
-                    Is.EqualTo(CatLine.ColorOf(line)),
-                    "the board must not hold its own name-keyed colour for " + line);
+            // Anti-vacuity: a sweep that finds nothing must not report success. These two are
+            // the ones known to exist as this is written.
+            Assert.That(byName.Any(x => x.DeclaringType == typeof(BoardView)), Is.True,
+                "positive control: BoardView's name-keyed door is in scope of the sweep");
+            Assert.That(byCode.Any(x => x.DeclaringType == typeof(BoardView)), Is.True,
+                "positive control: BoardView's byte-keyed door is in scope of the sweep");
+
+            foreach (var method in byName)
+                foreach (string line in CatLine.Names)
+                    Assert.That((Color)method.Invoke(null, new object[] { line }),
+                        Is.EqualTo(CatLine.ColorOf(line)),
+                        method.DeclaringType.Name + "." + method.Name + " holds its own colour"
+                        + " for " + line + " instead of asking CatLine");
 
             // 0..6 spans None, every line, the reserved Wild, and one code past the end — so
-            // a line added to CatLine without the byte door following fails right here.
-            for (int code = 0; code <= 6; code++)
-                Assert.That((Color)colorForCode.Invoke(null, new object[] { (byte)code }),
-                    Is.EqualTo(CatLine.ColorOf((byte)code)),
-                    "the board must not hold its own byte-keyed colour for code " + code);
+            // a line added to CatLine without a byte door following fails right here.
+            foreach (var method in byCode)
+                for (int code = 0; code <= 6; code++)
+                    Assert.That((Color)method.Invoke(null, new object[] { (byte)code }),
+                        Is.EqualTo(CatLine.ColorOf((byte)code)),
+                        method.DeclaringType.Name + "." + method.Name + " holds its own colour"
+                        + " for code " + code + " instead of asking CatLine");
 
             // The alignment that lets the byte door be an index instead of a second table.
             Assert.That(CatLine.NameOfCode(CatMetro.Domain.CatColor.Red), Is.EqualTo("red"));
