@@ -184,11 +184,46 @@ namespace CatMetro.Tests.PlayMode
         // CM-R13.5 hint chip (ui.csv key hint.tutorial) is PRE-REGISTERED here so CM-UX-05
         // cannot turn this law red (the #27 R1-F8 obligation): when it arrives, its csv value
         // joins this set by amending THIS list, never by weakening the assert.
+        // HUD-WAVE amends this list rather than the assert, exactly as the note above requires.
+        // The question this had to answer first: is a STATUS counter "instructional text" in
+        // the sense CM-R13.1 means? Every primary source says no.
+        //
+        //   · docs/prd/PRD.md:282 — CM-R13 criterion 1, the requirement itself: "L001-L003
+        //     render zero TUTORIAL text, zero hand icons, zero modals". Qualified.
+        //   · docs/plan/specs/product_spec.md:273 — the upstream source it cites: "No tutorial
+        //     text, no hand icons holding text, no modal popups." Also qualified.
+        //   · docs/ux/ux-layer-decompose.md:91-93 — the slice spec that CREATED this test,
+        //     stating the exemption list in full: "station symbol glyphs, preview count
+        //     badges, LEVEL NAME/SCORE are legal; tutorial prose is not — CM-R13.1".
+        //
+        // That third line is decisive, and it exposes how this list came to be short: it names
+        // FOUR legal classes, and the array below shipped with TWO. "level name/score" was
+        // dropped in transcription, with no finding, review note or ruling anywhere recording
+        // the narrowing. A delivery counter is score. It was always meant to be legal here.
+        //
+        // The one source that reads broader ("the complete rendered-text set ... is exactly"
+        // two things) is a frozen contract — a derived document, and one this repo has since
+        // abolished as a process. It is also the document that lost the item.
+        //
+        // Corroboration from behaviour, not just documents: the old wave preview rendered a
+        // live world-space TextMesh reading "x1" on THIS fixture during Playing, and passed —
+        // because @"^x\d+$" was put here deliberately for it. A status count has been exempt
+        // in practice since the day this test was written.
+        //
+        // The decoy below still fails, which is the property that actually matters: every
+        // pattern here is anchored and digits-only, so no prose can match one.
         private static readonly Regex[] LegalTexts =
         {
-            new Regex("^[A-Z?]$"),   // station symbol glyphs
-            new Regex(@"^x\d+$"),    // wave-preview count badges
+            new Regex("^[A-Z?]$"),      // station symbol glyphs, and HUD face badge glyphs
+            new Regex(@"^\d+$"),        // rider count — cats currently on the board
+            new Regex(@"^\d+/\d+$"),    // deliveries against the level's win target
+            new Regex(@"^\+\d+$"),      // the wave capsule's "+N" overflow tail
         };
+        // The former @"^x\d+$" entry is GONE, not kept for safety: it described the old
+        // wave-preview count badge ("red x2"), and this branch deletes that badge entirely in
+        // favour of one face per cat. Nothing renders an x-prefixed count any more (verified
+        // by grep), and an inventory that lists a surface which no longer exists is a lie of
+        // exactly the kind this list is supposed to prevent.
 
         private static bool IsLegal(string text)
         {
