@@ -48,7 +48,9 @@ namespace CatMetro.Presentation.Hud.WavePreview
         public Color BadgeColor => _badge != null ? _badge.color : UnityEngine.Color.clear;
         public DestinationShape Shape { get; private set; }
         public string Glyph => _glyph != null ? _glyph.text : "";
-        public RectTransform Rect => _rect;
+        // Named FaceRect, not Rect: a member called Rect would shadow the UnityEngine.Rect
+        // TYPE inside this class the moment anyone here needs one.
+        public RectTransform FaceRect => _rect;
 
         public static CatFaceView Create(Transform parent, string name)
         {

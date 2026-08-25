@@ -181,6 +181,10 @@ namespace CatMetro.Presentation.Hud.WavePreview
             _overflow.fontStyle = FontStyles.Bold;
 
             var counters = NewRect(transform, "Counters");
+            // Stretched to the canvas: the counter children are placed in ABSOLUTE canvas
+            // pixels, which only resolves correctly if their parent's bottom-left IS the
+            // canvas bottom-left. A default RectTransform is a 100x100 box at the centre.
+            Stretch(counters);
             // Counter markers deliberately DO NOT reuse the destination shape vocabulary — a
             // triangle or hexagon down here would read as a line badge. Both are discs; the
             // number FORMAT ("n/m" vs "n") is what tells the two counters apart.
@@ -328,36 +332,37 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 _overflow.fontSizeMax = faceSize * 0.62f;
             }
 
-            LayoutCounters(faceSize);
+            LayoutCounters();
         }
 
-        private void LayoutCounters(float faceSize)
+        private void LayoutCounters()
         {
-            float mark = _counterPx.height * 0.72f;
-            float textWidth = _counterPx.height * 2.6f;
-            float gap = _counterPx.height * 0.28f;
-            // Two [mark][text] pairs, centred as one group under the capsule.
+            float row = _counterPx.height;
+            float mark = row * 0.72f;
+            float textWidth = row * 2.6f;
+            float gap = row * 0.28f;
+            // Two [mark][gap/2][text] pairs with one full gap between them, centred as a group.
             float pair = mark + gap * 0.5f + textWidth;
-            float total = pair * 2f + gap * 1.5f;
+            float total = pair * 2f + gap;
             float x = _counterPx.x + _counterPx.width * 0.5f - total * 0.5f;
-            float centreY = _counterPx.y + _counterPx.height * 0.5f;
+            float centreY = _counterPx.y + row * 0.5f;
 
-            x = PlaceCounter(_deliveriesMark, _deliveries, x, centreY, mark, textWidth, gap);
+            x = PlaceCounter(_deliveriesMark, _deliveries, x, centreY, mark, textWidth, gap, row);
             x += gap;
-            PlaceCounter(_ridersMark, _riders, x, centreY, mark, textWidth, gap);
+            PlaceCounter(_ridersMark, _riders, x, centreY, mark, textWidth, gap, row);
 
-            _deliveries.fontSizeMax = _counterPx.height;
-            _riders.fontSizeMax = _counterPx.height;
+            _deliveries.fontSizeMax = row;
+            _riders.fontSizeMax = row;
         }
 
         private static float PlaceCounter(Image mark, TMP_Text label, float x, float centreY,
-            float markSize, float textWidth, float gap)
+            float markSize, float textWidth, float gap, float rowHeight)
         {
             PlacePx(mark.rectTransform,
                 new Rect(x, centreY - markSize * 0.5f, markSize, markSize));
             x += markSize + gap * 0.5f;
             PlacePx((RectTransform)label.transform,
-                new Rect(x, centreY - textWidth * 0.25f, textWidth, textWidth * 0.5f));
+                new Rect(x, centreY - rowHeight * 0.5f, textWidth, rowHeight));
             label.alignment = TextAlignmentOptions.Left;
             return x + textWidth;
         }
