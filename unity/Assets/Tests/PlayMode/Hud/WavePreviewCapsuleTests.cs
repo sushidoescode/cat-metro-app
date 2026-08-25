@@ -43,11 +43,28 @@ namespace CatMetro.Tests.PlayMode
         // --- geometry: the pure laws at the pinned phone aspect ---
 
         [Test]
-        public void Capsule_SitsInsideTheSafeAreaStatusBand_AtThePinnedPhoneAspect()
+        public void Capsule_SitsAtTheTOPOfTheFrame_AsTheTargetArtHasIt()
         {
+            // THE TARGET ART IS THE AUTHORITY ON THE EDGE. docs/reference/target-01-tabletop.png
+            // puts the capsule unambiguously at the TOP — roughly 3-11% down from the top edge,
+            // with the counters beneath it. "The safe-area status band" is silent on which end
+            // of the safe rect it means, so this asserts the edge in the same terms the art is
+            // measured in: distance DOWN from the top of the frame. A capsule anchored to the
+            // bottom passes a "status band" phrasing and fails this.
             var capsule = WavePreviewStrip.CapsuleRect(PhoneSafeArea, CaptureDpi);
-            var band = HudBands.StatusBand(PhoneSafeArea);
+            const float frameHeight = 2048f;
 
+            float topGapFraction = (frameHeight - capsule.yMax) / frameHeight;
+            float bottomEdgeFraction = (frameHeight - capsule.yMin) / frameHeight;
+
+            Assert.That(topGapFraction, Is.LessThan(0.13f),
+                "the capsule's top edge is near the TOP of the frame, as in the target");
+            Assert.That(bottomEdgeFraction, Is.LessThan(0.20f),
+                "the whole capsule sits in the upper fifth — it is not a bottom bar");
+            Assert.That(capsule.center.y, Is.GreaterThan(frameHeight * 0.5f),
+                "unambiguously the top half");
+
+            var band = HudBands.StatusBand(PhoneSafeArea);
             Assert.That(capsule.yMax, Is.LessThanOrEqualTo(band.yMax),
                 "the capsule hangs below the safe-area top, never under a notch");
             Assert.That(capsule.yMin, Is.GreaterThanOrEqualTo(band.yMin),
@@ -56,6 +73,30 @@ namespace CatMetro.Tests.PlayMode
                 "the capsule keeps a horizontal safe-area inset");
             Assert.That(capsule.xMax, Is.LessThan(PhoneSafeArea.xMax),
                 "the capsule keeps a horizontal safe-area inset");
+        }
+
+        [UnityTest]
+        public IEnumerator Capsule_LandsAtTheTop_EvenWhenNoRigInjectsAViewport()
+        {
+            // The regression behind slot 5's "wrong edge" reading. Screen.safeArea is in SCREEN
+            // pixels while a Screen Space - Camera canvas is sized by its CAMERA's pixel rect,
+            // so a capture into a RenderTexture fed the law a ~619x489 batchmode screen rect
+            // against a 917x2048 canvas — putting the capsule 75% down the frame at 55% width.
+            // The layout now derives its viewport from the CANVAS, so a rig that forgets to
+            // inject still gets the capsule on the correct edge.
+            _root = GameRoot.Launch();
+            yield return null;
+
+            var canvas = (RectTransform)_root.Preview.GetComponent<Canvas>().transform;
+            var painted = _root.Preview.CapsuleRectPx;
+            Assert.That(canvas.rect.height, Is.GreaterThan(0f), "precondition");
+
+            Assert.That(painted.center.y, Is.GreaterThan(canvas.rect.height * 0.5f),
+                "the capsule is in the TOP half of whatever it is rendering into");
+            Assert.That((canvas.rect.height - painted.yMax) / canvas.rect.height,
+                Is.LessThan(0.13f), "its top edge hugs the top of the canvas");
+            Assert.That(painted.width / canvas.rect.width, Is.EqualTo(0.80f).Within(0.03f),
+                "and it spans the canvas, not a stale smaller screen rect");
         }
 
         [Test]

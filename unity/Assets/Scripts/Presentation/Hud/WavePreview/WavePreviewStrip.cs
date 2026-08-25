@@ -129,7 +129,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
             strip._session = session;
             strip.Build(cam);
             strip.Refresh();
-            strip.Layout(Screen.safeArea, Screen.dpi);
+            strip.Layout();
             return strip;
         }
 
@@ -237,8 +237,10 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 : _session.State.Deliveries.ToString();
             _riders.text = RidersOnBoard().ToString();
 
-            LayoutForViewport(_lastSafeArea.width > 0f ? _lastSafeArea : Screen.safeArea,
-                _lastDpi > 0f ? _lastDpi : Screen.dpi);
+            // Re-place the faces for the queue that just changed. Keep an injected viewport if
+            // one is in force; otherwise derive from the canvas, never from raw Screen pixels.
+            LayoutForViewport(_lastSafeArea.width > 0f ? _lastSafeArea : CanvasSafeArea(),
+                _lastDpi > 0f ? _lastDpi : CanvasDpi());
         }
 
         // The old per-wave read-backs, computed exactly as before so the pinned assertions keep
@@ -404,14 +406,54 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private void LateUpdate()
         {
             if (_session != null && _session.State.Tick != _lastRefreshTick) Refresh();
-            Layout(Screen.safeArea, Screen.dpi);
+            Layout();
             ApplyScreenState();
         }
 
-        private void Layout(Rect safeArea, float dpi)
+        private void Layout()
         {
+            var safeArea = CanvasSafeArea();
+            float dpi = CanvasDpi();
             if (safeArea == _lastSafeArea && dpi == _lastDpi) return;
             LayoutForViewport(safeArea, dpi);
+        }
+
+        // Screen.safeArea is in SCREEN pixels, but a Screen Space - Camera canvas is sized by
+        // its CAMERA's pixel rect — and when that camera renders into a RenderTexture the two
+        // disagree. Feeding screen pixels into canvas-space anchors then puts the HUD nowhere
+        // near where the law says: capture step-2-board.png laid this capsule out against a
+        // ~619x489 batchmode screen rect while the canvas was the 917x2048 render target,
+        // which dropped the capsule to 75% down the frame at 55% of its width. Read as an edge
+        // bug; it is not one — the law is anchored to safeArea.yMax either way. The screen was
+        // simply the wrong ruler.
+        //
+        // So carry the safe area across as FRACTIONS of the screen and apply them to the
+        // canvas rect. On device the two rects are identical and this is a no-op; in any
+        // render target it puts the capsule where the target art says regardless of whether
+        // the capturing rig remembered to inject a viewport.
+        private Rect CanvasSafeArea()
+        {
+            var canvas = _canvasRect != null && _canvasRect.rect.height > 0f
+                ? _canvasRect.rect
+                : new Rect(0f, 0f, Screen.width, Screen.height);
+            float sw = Screen.width, sh = Screen.height;
+            if (sw <= 0f || sh <= 0f) return canvas;
+            var safe = Screen.safeArea;
+            return new Rect(
+                canvas.width * (safe.x / sw),
+                canvas.height * (safe.y / sh),
+                canvas.width * (safe.width / sw),
+                canvas.height * (safe.height / sh));
+        }
+
+        // The dp floors express a PHYSICAL size, so they have to scale with the same ruler —
+        // otherwise a 2048-tall render target gets floors sized for a 489-tall screen.
+        private float CanvasDpi()
+        {
+            float sh = Screen.height;
+            if (_canvasRect == null || sh <= 0f || _canvasRect.rect.height <= 0f)
+                return Screen.dpi;
+            return Screen.dpi * (_canvasRect.rect.height / sh);
         }
 
         // --- small UGUI helpers ---
