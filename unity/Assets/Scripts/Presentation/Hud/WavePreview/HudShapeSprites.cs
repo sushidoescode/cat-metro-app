@@ -1,17 +1,8 @@
 using UnityEngine;
+using CatMetro.Presentation.Theme;
 
 namespace CatMetro.Presentation.Hud.WavePreview
 {
-    // The destination vocabulary the HUD face badges use. See DestinationShapes for the mapping
-    // rule and why it is shaped the way it is.
-    public enum DestinationShape
-    {
-        Circle,
-        Square,
-        Triangle,
-        Hexagon
-    }
-
     // HUD-WAVE: cheap procedural sprites for the wave-preview capsule. Everything the capsule
     // draws is generated here at runtime from arithmetic — no imported art, no per-instance
     // materials. Images bind UiChromeMaterial.Shared and vary only by SPRITE, so the whole

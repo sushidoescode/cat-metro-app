@@ -103,9 +103,11 @@ namespace CatMetro.Tests
     }
 
     // The shared line vocabulary: colour, destination SHAPE and destination LETTER.
+    // Enumerates CatLine.Names rather than a local list, which is what that member is for:
+    // a fifth line is picked up here automatically instead of silently going untested.
     public sealed class CatLineTests
     {
-        private static readonly string[] Lines = { "red", "blue", "yellow", "green" };
+        private static IReadOnlyList<string> Lines => CatLine.Names;
 
         [Test]
         public void EveryLineBindsAPaletteToken()

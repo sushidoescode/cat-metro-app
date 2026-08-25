@@ -1,49 +1,67 @@
+using System.Collections.Generic;
 using UnityEngine;
-using CatMetro.Presentation.Hud.WavePreview;
 
 namespace CatMetro.Presentation.Theme
 {
-    // HUD-WAVE: the line vocabulary in one place — what a cat colour looks like, what SHAPE
-    // stands for it, and what LETTER stands for it.
+    // The line vocabulary in one place — what a cat colour looks like, what SHAPE stands for
+    // it, and what LETTER stands for it. Written by feat/hud-wave for the wave-preview
+    // capsule; adopted here (feat/station-badges) as the BOARD's source too, which is what
+    // makes it a vocabulary rather than a HUD detail.
     //
-    // Why three carriers. The board already runs what BoardView calls "the triple coding":
-    // it tints a station with the line colour and stamps the first letter of the colour name
-    // on it (BoardView.cs — `stationAccept[...].Substring(0, 1).ToUpperInvariant()`), and
-    // BoardPropDecorator picks the plate PRIMITIVE off that letter (`label.text == "R"` gives
-    // a cylinder, anything else a cube). So the board's shape rule today is really only
-    // "red is a circle, everything else is a square" — enough for a two-line level, not a
-    // vocabulary. This extends it to four lines while keeping both cases the board already
-    // paints, so a red cat's HUD badge and its station badge agree, and so does blue's.
+    // Why three carriers. BoardView calls it "the triple coding": the board tints a station
+    // with the line colour, stamps the first letter of the colour name on it, and the prop
+    // layer cuts the plate into that line's SHAPE. Colour alone never carries destination
+    // identity anywhere in this game — which is the whole point for a red/green viewer.
     //
-    // Colour alone never carries destination identity anywhere in this HUD: every face badge
-    // shows shape AND letter as well, which is the whole point for a red/green viewer.
+    // WHY THIS FILE IS THE SINGLE SOURCE. Until 2026-08-25 there was no vocabulary. The board
+    // picked its plate geometry with `label.text == "R" ? Cylinder : Cube` — a BINARY rule
+    // that means "red is a circle, EVERYTHING else is a square". That reads as a shape channel
+    // only while a level has at most two colours; the moment a level authored a GREEN station,
+    // green and blue plates were both cubes and only colour separated them. All 17 shipped
+    // levels used red/blue/yellow, so nobody had hit it, but feat/level-variety was authoring
+    // green destinations straight into it. The letter channel survived either way, so this was
+    // triple coding degrading to double — not to colour-only — but it was still the board, the
+    // thing the player actually looks at.
     //
-    // Glyph derivation is deliberately the SAME expression BoardView uses rather than a second
-    // switch, so the HUD and the board cannot drift apart when a fifth line is authored.
+    // The fix was not to widen that switch. It was to DELETE it, so the HUD badge and the
+    // board plate cannot disagree about what a line looks like. There is now exactly ONE shape
+    // decision in the codebase and it is ShapeOf below. Adding a fifth line is a one-case edit
+    // here and nowhere else, and both surfaces pick it up for free.
     //
-    // ---------------------------------------------------------------------------------------
-    // KNOWN GAP — the BOARD's station shapes, not this file's. Not fixed here on purpose: it
-    // belongs to the props lane. Stated precisely so whoever picks it up does not have to
-    // rediscover it.
+    // Realisation is deliberately NOT here, and is allowed to differ — HudShapeSprites.ForShape
+    // rasterises a DestinationShape into a UGUI sprite, DestinationShapeMesh.ForShape extrudes
+    // it into a board plate. Different media, one vocabulary: both are keyed by exactly what
+    // ShapeOf returns.
     //
-    //   FILE:       unity/Assets/Scripts/Presentation/Props/BoardPropDecorator.cs
-    //   EXPRESSION: bool isRedCircle = label.text == "R";
-    //               ... GameObject.CreatePrimitive(isRedCircle
-    //                       ? PrimitiveType.Cylinder : PrimitiveType.Cube)
-    //
-    // That is a BINARY rule: red gets a cylinder, EVERY other line gets a cube. It reads as a
-    // shape vocabulary only while a level has at most two colours. All 17 authored levels use
-    // red/blue/yellow today, and a feat/level-variety lane is introducing GREEN — at which
-    // point a green station and a blue station are BOTH cubes and only colour separates them.
-    // That is a real colourblind-safety hole, and it is the board (the thing the player is
-    // actually looking at), not the HUD.
-    //
-    // The fix is for that expression to grow toward ShapeOf below — one vocabulary, four
-    // distinct shapes, keeping the two cases it already paints (red -> circle/cylinder,
-    // blue -> square/cube) so nothing a player has learned changes. The HUD is already there.
-    // ---------------------------------------------------------------------------------------
+    // MERGE NOTE for feat/hud-wave: this file exists on that branch too. The public API is
+    // identical (ColorOf / ShapeOf / GlyphOf, same signatures, same results), so its callers
+    // compile unchanged against this copy — take THIS one. The .meta GUID is deliberately the
+    // same on both branches so Unity never sees two scripts. See DestinationShape.cs for the
+    // one companion edit HudShapeSprites.cs needs.
     public static class CatLine
     {
+        // Every line the game has. Domain.CatColor is Red/Blue/Yellow/Green — there is no
+        // fifth line to map. Exposed so callers and tests can ENUMERATE the vocabulary rather
+        // than hard-code a list beside it that silently goes stale when a line is added.
+        private static readonly string[] AllNames = { "red", "blue", "yellow", "green" };
+
+        public static IReadOnlyList<string> Names => AllNames;
+
+        // The byte-keyed door into the SAME table, for the surfaces that hold a Domain colour
+        // code rather than a name — trains and cats. Domain.CatColor is 1-based with None at 0
+        // (LevelGraph.cs:7-15) and AllNames is in precisely that order, so this is an INDEX,
+        // not a second table, which is the entire point of it existing here. Anything off the
+        // end — None, and the reserved construction-guarded Wild — falls through to the
+        // unknown-line answer, so an unsupported code goes loud instead of picking a line.
+        //
+        // The 1-based alignment is load-bearing and deliberately NOT re-encoded as a switch;
+        // PropPlacementTests.ColourHasOneDecisionSite_OnBothKeyTypes pins it against the real
+        // CatColor constants so a reorder fails there instead of painting trains magenta.
+        public static string NameOfCode(byte code) =>
+            code >= 1 && code <= AllNames.Length ? AllNames[code - 1] : "";
+
+        public static Color ColorOf(byte code) => ColorOf(NameOfCode(code));
+
         public static Color ColorOf(string name)
         {
             switch (name)
@@ -52,26 +70,40 @@ namespace CatMetro.Presentation.Theme
                 case "blue": return Palette.HarborBlue;
                 case "yellow": return Palette.TabbyYellow;
                 case "green": return Palette.GardenGreen;
-                // Domain.CatColor is Red/Blue/Yellow/Green — there is no fifth line to map.
                 default: return Color.magenta; // BoardView's convention: a loud content bug
             }
         }
 
+        // THE shape decision. Nothing else in the codebase may hold one.
         public static DestinationShape ShapeOf(string name)
         {
             switch (name)
             {
-                case "red": return DestinationShape.Circle;    // board: cylinder plate
-                case "blue": return DestinationShape.Square;   // board: cube plate
+                case "red": return DestinationShape.Circle;    // board: builtin cylinder plate
+                case "blue": return DestinationShape.Square;   // board: builtin cube plate
                 case "yellow": return DestinationShape.Triangle;
                 case "green": return DestinationShape.Hexagon;
                 // Every line gets its OWN shape — a shared shape would put identity back on
-                // colour alone, which is exactly what the badge exists to avoid.
+                // colour alone, which is exactly what the badge exists to avoid. Red and blue
+                // keep the two the board already painted, so nothing a player has learned and
+                // nothing an existing capture pinned changes.
+                //
+                // The fallback deliberately does NOT invent a fifth shape, and that is only
+                // safe because it never travels alone. An unknown line is a content bug, and
+                // it is already unmistakable on both channels that CAN shout: ColorOf returns
+                // magenta and the glyph comes out "?". So the pair a player sees is "magenta
+                // circle", never "red circle" — a red station wears SignalRed, so the shape
+                // channel can never be the thing that makes a bug look like a real
+                // destination. LevelImporter rejects an unknown colour outright, so the only
+                // value that reaches this line is "" from a station with an empty accepts
+                // list. PropPlacementTests.UnknownLine_IsLoudOnTheChannelsThatCanBeLoud pins
+                // that pair; do not quietly tidy the magenta away and leave the circle behind.
                 default: return DestinationShape.Circle;
             }
         }
 
-        // The board's own glyph rule, not a copy of its results.
+        // The board's own glyph rule, not a copy of its results:
+        // BoardView stamps `Accepts[0].Substring(0, 1).ToUpperInvariant()`.
         public static string GlyphOf(string name)
         {
             return string.IsNullOrEmpty(name)
