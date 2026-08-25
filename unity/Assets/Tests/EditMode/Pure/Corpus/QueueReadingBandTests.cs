@@ -214,14 +214,19 @@ namespace CatMetro.Tests.Corpus
     // and 519.8s across two runs and exceeded NUnit's 180000ms default per-test timeout, while
     // every other test in this class (reading the already-memoized value) passed in microseconds.
     // AlternationBandGateTests (L001-L010) stays under the default; this fixture does not.
-    // WALL-CLOCK BUDGET, and why 900000 stands: 900000 was sized against 17 levels. The whole
-    // 19-level corpus runs green in 6m32s (392s) on the dotnet leg, and scaling Unity's own worst
-    // 17-level number gives ~581s for 19 — 65% of the cap, so the budget holds unchanged.
-    // But the derived member list means this cost now grows WITHOUT anyone editing this file:
-    // the same scaling crosses 900000ms at roughly 29-30 levels, which is exactly the planned
-    // campaign length. Whoever takes the corpus past ~28 levels should re-measure and raise this
-    // rather than assume it still fits. A class-level Timeout is a wall-clock budget only — it
-    // asserts nothing and weakens no assertion.
+    // WALL-CLOCK BUDGET, and why 900000 stands unchanged at 19 levels. Measured, not assumed:
+    // on the dotnet leg the validator takes 177-180s over 19 members against 172-175s over 17,
+    // so L018/L019 cost 1-2% — in the noise. Unity's runtime ran the same 17-level work at
+    // 422s/519.8s, i.e. ~2.4-3.0x the dotnet figure, which puts 19 levels at roughly 430-530s
+    // under Unity: essentially unchanged, and ~1.7x headroom against the cap at the worst
+    // observed number.
+    // The thing to watch is NOT the level count. Solve cost is per-level and varies with board
+    // complexity — L018/L019 happened to be cheap (25.6k/22.2k nodes explored) — so a single
+    // expensive level can cost more than ten cheap ones. Since the member list is now derived,
+    // that cost arrives without anyone editing this file. Re-measure when a level lands with a
+    // notably larger search, rather than trusting a count-based extrapolation.
+    // A class-level Timeout is a wall-clock budget only — it asserts nothing and weakens
+    // no assertion.
     [TestFixture]
     [Timeout(900000)]
     public class QueueReadingBandGateTests
