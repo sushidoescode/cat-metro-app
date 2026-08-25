@@ -67,9 +67,21 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(props.Length,
                     Is.EqualTo(root.Session.Level.Dto.Stations.Length
                         + root.Session.Level.Dto.Sources.Length + 3),
-                    "the licensed local install exercises the full wide prop layout");
-            else Assert.That(props.Length, Is.Zero,
-                "a licence-neutral checkout uses the primitive fallback atomically");
+                    "the licensed core batch exercises the full wide prop layout");
+            else if (localCatalog.AdmittedEntryCount == 10)
+                Assert.That(props.Length,
+                    Is.EqualTo(root.Session.Level.Dto.Stations.Length * 2
+                        + root.Session.Level.Dto.Sources.Length + 11),
+                    "the Polyfork furnish batch adds a lamp per station, a depot signpost,"
+                    + " three fences, three bushes, and one trail signpost");
+            else
+            {
+                Assert.That(localCatalog.AdmittedEntryCount, Is.Zero,
+                    "prop batches admit atomically — the core five and the furnish five,"
+                    + " whole or absent, never partial");
+                Assert.That(props.Length, Is.Zero,
+                    "a licence-neutral checkout uses the primitive fallback atomically");
+            }
             foreach (var prop in props)
                 foreach (var renderer in prop.GetComponentsInChildren<Renderer>(true))
                     if (renderer.enabled) AssertBoundsInside(camera, renderer.bounds, prop.AssetId);
