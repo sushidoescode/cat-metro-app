@@ -126,13 +126,24 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(deskTexture.wrapMode, Is.EqualTo(TextureWrapMode.Clamp),
                 "clamped edges keep the vignette from wrapping back to a bright seam");
 
-            Color centre = deskTexture.GetPixelBilinear(0.5f, 0.5f);
-            Color corner = deskTexture.GetPixelBilinear(0.04f, 0.04f);
+            // Region averages, not single texels: the sheet now carries real grain valleys
+            // and plank seams, so one texel is a lottery. The law governs the neighbourhood.
+            Color centre = AverageDeskSample(deskTexture, 0.5f, 0.5f);
+            Color corner = AverageDeskSample(deskTexture, 0.07f, 0.07f);
             Assert.That(centre.maxColorComponent,
                 Is.GreaterThan(corner.maxColorComponent + 0.2f),
                 "warmth must pool around the board and fall away toward the desk edges");
             Assert.That(centre.r - centre.b, Is.GreaterThan(corner.r - corner.b),
                 "the falloff cools as it darkens, like lamp light leaving the desk");
+        }
+
+        private static Color AverageDeskSample(Texture2D texture, float u, float v)
+        {
+            Color sum = Color.clear;
+            for (int du = -1; du <= 1; du++)
+                for (int dv = -1; dv <= 1; dv++)
+                    sum += texture.GetPixelBilinear(u + du * 0.04f, v + dv * 0.04f);
+            return sum / 9f;
         }
 
         [UnityTest]

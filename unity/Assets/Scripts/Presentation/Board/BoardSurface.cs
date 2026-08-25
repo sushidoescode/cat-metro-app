@@ -23,10 +23,14 @@ namespace CatMetro.Presentation.Board
 
         // Muted walnut: warm enough to read as a toy tabletop without competing with line hues.
         private static readonly Color WarmWood = new Color(0.68f, 0.50f, 0.34f);
-        // Mid walnut for the room-scale desk. The DeskGrain sheet multiplies this toward
-        // ~1.05x at the board and ~0.5x cooler at the frame corners, so the flat constant
-        // needs to sit at the *lit* desk tone, not the vignetted edge tone.
-        private static readonly Color WarmDesk = new Color(0.55f, 0.36f, 0.22f);
+        // Walnut for the room-scale desk. Calibrated against the 2026-08-25 slot render:
+        // the amber key plus warm ambient multiply channel ratios by roughly (1.15 r/g,
+        // 1.84 r/b), so a red-leaning albedo (the old 0.55/0.36/0.22, r/b 2.5) rendered as
+        // burnt-orange terracotta (measured r/b ~4.6 vs the target desk's ~2.5). To land on
+        // target-01's rich brown the albedo must be a desaturated walnut and let the light
+        // supply the warmth. The DeskGrain sheet multiplies this toward ~1.05x at the board
+        // and ~0.46x cooler at the frame corners.
+        private static readonly Color WarmDesk = new Color(0.47f, 0.36f, 0.30f);
         private static Mesh _cubeMesh;
         private static Texture2D _woodGrain;
         private static Texture2D _deskGrain;
@@ -164,23 +168,32 @@ namespace CatMetro.Presentation.Board
             return _woodGrain;
         }
 
-        // The room-scale desk sheet. Three jobs in one texture, all judged against
-        // docs/reference/target-01-tabletop.png:
-        //   1. Plank grain ~5x broader than the board tile, so the surround reads as a real
-        //      desk rather than a flat colour field.
-        //   2. Radial warmth falloff — bright warm wood at the board fading to a darker,
+        // The room-scale desk sheet. Four jobs in one texture, all judged against
+        // docs/reference/target-01-tabletop.png at phone scale (the sheet spans ~40 world
+        // units; the portrait frame shows ~6.3, so one texel covers ~11 screen px):
+        //   1. Planks. 27 boards across the sheet (~1.5 world units each) with soft dark
+        //      seams ~2 texels wide (~20 screen px) and per-plank phase/value variation,
+        //      so the desk reads as built furniture, not a colour field. The first sheet
+        //      had no plank structure and read as smooth terracotta in the slot render.
+        //      Odd plank count on purpose: it keeps u=0.5 mid-plank, so the look test's
+        //      centre probe never lands on a seam.
+        //   2. Grain. Narrow dark valleys (~0.6 world units apart, cubed-falloff profile)
+        //      against broad light plank bodies — the first sheet's low-amplitude sine
+        //      washed out to faint streaks.
+        //   3. Radial warmth falloff — bright warm wood at the board fading to a darker,
         //      cooler edge, the target's lamp-pool vignette.
-        //   3. Fake depth of field — grain contrast fades with radius, so the desk softens
-        //      toward the frame edges. True URP DoF post needs a Volume + depth texture and
-        //      meaningful mobile cost on this ortho rig; baking the defocus into the one
-        //      sheet costs nothing per frame. Tradeoff: the falloff is static (it cannot
-        //      react to lighting changes) and covers only the desk, which overscans well
-        //      past the portrait frame anyway.
+        //   4. Fake depth of field — grain and seam contrast fade with radius, so the desk
+        //      softens toward the frame edges. True URP DoF post needs a Volume + depth
+        //      texture and meaningful mobile cost on this ortho rig; baking the defocus
+        //      into the one sheet costs nothing per frame. Tradeoff: the falloff is static
+        //      (it cannot react to lighting changes) and covers only the desk, which
+        //      overscans well past the portrait frame anyway.
         // Stays CPU-readable (one 512px copy) so the look tests can pin the falloff law.
         private static Texture2D DeskGrain()
         {
             if (_deskGrain != null) return _deskGrain;
             const int size = 512;
+            const float planks = 27f;
             _deskGrain = new Texture2D(size, size, TextureFormat.RGB24, true)
             {
                 name = "Cat Metro Desk Grain",
@@ -201,17 +214,29 @@ namespace CatMetro.Presentation.Board
                     float fall = Mathf.SmoothStep(0f, 1f,
                         Mathf.Clamp01((radius - 0.22f) / 0.72f));
                     float focus = 1f - 0.75f * fall;
-                    float bend = 0.045f * Mathf.Sin(v * Mathf.PI * 3f)
-                        + 0.06f * (Mathf.PerlinNoise(u * 2.2f, v * 2.2f) - 0.5f);
-                    float band = 0.5f + 0.5f * Mathf.Sin((u + bend) * Mathf.PI * 13f
-                        + 0.9f * Mathf.Sin(v * Mathf.PI * 2.3f));
-                    band = Mathf.Pow(band, 1.6f);
-                    float streak = Mathf.PerlinNoise(u * 46f, v * 3.1f);
-                    float value = 0.74f
-                        + (band * 0.22f + (streak - 0.5f) * 0.10f) * focus;
-                    float lum = Mathf.Lerp(1.05f, 0.50f, fall);
-                    float warm = Mathf.Lerp(1.04f, 0.90f, fall);
-                    float cool = Mathf.Lerp(0.96f, 1.06f, fall);
+
+                    float plankU = u * planks;
+                    int plank = Mathf.FloorToInt(plankU);
+                    float hash = Mathf.Abs(Mathf.Sin(plank * 12.9898f) * 43758.547f) % 1f;
+                    float acrossPlank = plankU - plank;
+                    float edgeTexels = Mathf.Min(acrossPlank, 1f - acrossPlank)
+                        * (size / planks);
+                    float seam = Mathf.Clamp01(1f - edgeTexels / 1.2f);
+                    float seamMul = 1f - seam * 0.32f * (1f - 0.7f * fall);
+
+                    float bend = (Mathf.PerlinNoise(u * 2.2f, v * 2.2f) - 0.5f) * 3f
+                        + 0.8f * Mathf.Sin(v * Mathf.PI * 3f);
+                    float band = 0.5f + 0.5f * Mathf.Sin(u * Mathf.PI * 64f
+                        + hash * 17f + bend + 0.9f * Mathf.Sin(v * Mathf.PI * 2.3f));
+                    float valley = (1f - band) * (1f - band) * (1f - band);
+                    float streak = Mathf.PerlinNoise(u * 40f, v * 3.1f);
+                    float value = (0.78f + (band * 0.14f - valley * 0.22f
+                        + (streak - 0.5f) * 0.10f + (hash - 0.5f) * 0.08f) * focus)
+                        * seamMul;
+
+                    float lum = Mathf.Lerp(1.05f, 0.46f, fall);
+                    float warm = Mathf.Lerp(1.02f, 0.90f, fall);
+                    float cool = Mathf.Lerp(0.97f, 1.06f, fall);
                     pixels[y * size + x] = new Color32(
                         (byte)Mathf.RoundToInt(Mathf.Clamp01(value * lum * warm) * 255f),
                         (byte)Mathf.RoundToInt(Mathf.Clamp01(value * lum) * 255f),
