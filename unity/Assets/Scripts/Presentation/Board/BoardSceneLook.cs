@@ -22,6 +22,16 @@ namespace CatMetro.Presentation.Board
         // only 0.0036. Do not widen these without re-deriving both bands.
         private const float SafeWidth = 0.88f;
         private const float SafeHeight = 0.76f;
+        // Public because the diorama tilt is the ONLY thing that decides which way a board-local
+        // feature faces the (identity-rotated, orthographic) camera. ToyTrainView derives the
+        // cat's fixed facing from it rather than hardcoding a yaw that would silently rot if
+        // this tilt were ever re-authored.
+        public static readonly Quaternion BoardTilt = Quaternion.Euler(38f, -32f, -4f);
+
+        // Declared below BoardTilt on purpose: feat/cats-on-trains inserts its comment block
+        // at exactly that line, and an insertion of our own at the same point turns two
+        // compatible edits into a merge conflict.
+        //
         // The fit reaches this far in when a level's content is small. Lowered from 7 with
         // the content-driven width fit below: that fit asks for ~20-25% less size than the
         // slab-driven one did, so a floor of 7 would have become the binding constraint on
@@ -33,11 +43,6 @@ namespace CatMetro.Presentation.Board
         // costs ~1.2 units of camera pull-back, which the smaller frame now affords.
         private const float DeskCoverageAspect = 0.75f;
         private const float DeskNearClearance = 1f;
-        // Public because the diorama tilt is the ONLY thing that decides which way a board-local
-        // feature faces the (identity-rotated, orthographic) camera. ToyTrainView derives the
-        // cat's fixed facing from it rather than hardcoding a yaw that would silently rot if
-        // this tilt were ever re-authored.
-        public static readonly Quaternion BoardTilt = Quaternion.Euler(38f, -32f, -4f);
 
         public static void Apply(Transform owner, Camera camera, BoardView board)
         {
