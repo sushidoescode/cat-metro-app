@@ -273,6 +273,38 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void Build_SleeperTicksReadAsTieMarksNotProudBars()
+        {
+            var path = TrackSplineGraph.Build(
+                new[] { new Vector3(0f, 5f, 0f), Vector3.zero },
+                new[] { 0 }, new[] { 1 }).Path(0);
+            _host = new GameObject("track-ticks-host");
+
+            _track = ToyTrackMeshBuilder.Build("E-ticks", path, _host.transform);
+
+            Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
+            Vector3[] vertices = mesh.vertices;
+            int[] cream = mesh.GetTriangles(0);
+            List<int[]> islands = ConnectedVertexComponents(cream);
+            int[] bed = islands.OrderByDescending(island => island.Length).First();
+
+            Assert.That(islands.Count, Is.GreaterThan(4),
+                "the bed must still carry a run of separate sleeper ticks");
+
+            // -z is up: the ticks are the highest cream thing, the bed's crown is next.
+            float tickTop = cream.Min(index => vertices[index].z);
+            float bedCrown = bed.Min(index => vertices[index].z);
+            float bedEdge = bed.Where(index => vertices[index].z <= bedCrown + 0.05f)
+                .Max(index => vertices[index].z);
+
+            Assert.That(bedCrown - tickTop, Is.InRange(0.004f, 0.016f),
+                "a tie mark is a shading tick over the bed's crown, not a step — the "
+                + "first render had 0.022 here and it read as chunky proud bars");
+            Assert.That(bedEdge - tickTop, Is.LessThan(0.025f),
+                "and it has to stay shallow at the bed's flat-top edge too");
+        }
+
+        [Test]
         public void Build_HighestSurfaceIsTheRailCrownTheTrainRidesOn()
         {
             var path = TrackSplineGraph.Build(

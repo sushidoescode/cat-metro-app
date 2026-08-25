@@ -43,14 +43,26 @@ namespace CatMetro.Presentation.Board
                                                  // not a hover
 
         // ---- Sleeper ticks --------------------------------------------------------
-        // Sunk blocks, not free-standing sleepers: only the top 0.03 clears the bed.
-        // The skirt runs well below the bed's top surface so no crack can open at the
-        // join, and the whole block stays closed so the mesh encloses a real volume.
+        // Sunk blocks, not free-standing sleepers. The first render had them 0.030 proud
+        // and they read as chunky bars casting hard shadows, where target-01's ties are
+        // barely-there impressions; the board also renders ~1.4x larger in area than the
+        // captures these were first sized against, so proudness carries further than the
+        // raw number suggests. Now 0.010 clear of the bed's crown and 0.018 clear of its
+        // flat-top edge — a shading tick, not a step.
+        //
+        // The end inset also keeps ticks out of the zone where a NEIGHBOURING edge's bed
+        // overlaps this one. A tick stands above its own bed, so it stands above the
+        // neighbour's too and pokes through its top face as a stair-stepped sliver. A
+        // neighbouring bed reaches a median 0.68 (max 1.01) in from an edge end, so 0.72
+        // clears it on 56% of edges outright and the shallower proudness shrinks what is
+        // left; fully clearing it would need 1.0+, which strips short edges back to a
+        // single tick. Properly fixing the rest needs the builder to know its neighbours,
+        // which the one-edge-at-a-time API does not carry.
         private const float SleeperLength = 0.88f;  // inside the bed's 0.94 flat top
         private const float SleeperWidth = 0.16f;
         private const float SleeperSpacing = 0.34f;
-        private const float SleeperEndInset = 0.45f;
-        private const float SleeperTopZ = 0.075f;
+        private const float SleeperEndInset = 0.72f;
+        private const float SleeperTopZ = 0.087f;
         private const float SleeperSkirtZ = 0.25f;
         private const float SleeperCorner = 0.035f;
 
