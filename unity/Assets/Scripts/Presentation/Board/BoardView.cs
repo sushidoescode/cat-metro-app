@@ -330,17 +330,13 @@ namespace CatMetro.Presentation.Board
             }
         }
 
-        private static Color ColorFor(string name)
-        {
-            switch (name)
-            {
-                case "red": return Palette.SignalRed;
-                case "blue": return Palette.HarborBlue;
-                case "yellow": return Palette.TabbyYellow;
-                case "green": return Palette.GardenGreen;
-                default: return Color.magenta;
-            }
-        }
+        // STATION-BADGE: one colour decision, not two. This was a private duplicate of
+        // CatLine.ColorOf — same four cases, same magenta fallback — and the duplication was
+        // load-bearing in a way nothing revealed: the station badge's PRIMARY plate inherits
+        // THIS material, so editing CatLine's fallback alone would have left an unmapped berth
+        // rendering as a plausible red station from here. Delegating makes the vocabulary the
+        // single source for colour the way CatLine.ShapeOf already is for shape.
+        private static Color ColorFor(string name) => CatLine.ColorOf(name);
 
         private static Color ColorForCode(byte code)
         {

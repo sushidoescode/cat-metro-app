@@ -482,6 +482,10 @@ namespace CatMetro.Tests.PlayMode
                     && part.GetComponent<TextMesh>() == null)
                     Assert.That(part.sharedMaterial, Is.Not.Null,
                         part.gameObject.name + " must bind a material explicitly");
+
+            // Positive/negative control in the same fixture: the single-accept berth beside it
+            // grows no chips at all, so the row is evidence of a second line and not decoration.
+            Assert.That(AcceptChips(Station(view, "RED")).Length, Is.Zero);
         }
 
         [Test]
@@ -502,10 +506,52 @@ namespace CatMetro.Tests.PlayMode
             foreach (string line in CatLine.Names)
                 Assert.That(CatLine.ColorOf(line), Is.Not.EqualTo(Color.magenta),
                     "positive control: a real line never wears the bug colour (" + line + ")");
+        }
 
-            // Positive/negative control in the same fixture: the single-accept berth beside it
-            // grows no chips at all, so the row is evidence of a second line and not decoration.
-            Assert.That(AcceptChips(Station(view, "RED")).Length, Is.Zero);
+        [Test]
+        public void EmptyAcceptsBerth_BadgesTheBugLoudly_ThroughTheRealMaterialPath()
+        {
+            // The only unknown line that can actually REACH the fallback is "" from a station
+            // with an empty accepts list: LevelImporter rejects any other unknown colour
+            // outright, and ReqArr caps that array's size without requiring a minimum.
+            //
+            // This is the end-to-end pin, and it exists because the test above is not enough
+            // on its own. The primary plate never calls CatLine.ColorOf — it inherits the
+            // station anchor's material, which BoardView tinted. BoardView used to hold its
+            // own private copy of the colour switch, so the two could have drifted and the
+            // badge could have gone red while CatLine still said magenta. BoardView.ColorFor
+            // now delegates, and this asserts the result at the surface a player sees.
+            var result = LevelImporter.Import(Encoding.UTF8.GetBytes(EmptyAcceptsJson()));
+            if (!result.Ok)
+                Assert.Ignore("content refuses an empty accepts list outright (" + result.Error
+                    + "), which makes the unknown-line fallback unreachable — a better answer"
+                    + " than a loud badge, and worth recording rather than asserting past");
+
+            var level = result.Value;
+            var view = BuildBoard(level);
+            BoardPropDecorator.Decorate(level, view.transform, KioskCatalog());
+            var station = Station(view, "NUL");
+
+            var plate = station.transform.Find("station:plate-generated");
+            Assert.That(plate, Is.Not.Null, "an unmapped berth still gets a badge");
+            Color worn = plate.GetComponent<Renderer>().sharedMaterial.color;
+            Assert.That(worn.r, Is.EqualTo(1f).Within(0.01f), "bug colour r");
+            Assert.That(worn.g, Is.EqualTo(0f).Within(0.01f), "bug colour g");
+            Assert.That(worn.b, Is.EqualTo(1f).Within(0.01f), "bug colour b");
+            Assert.That(plate.GetComponent<MeshFilter>().sharedMesh,
+                Is.SameAs(DestinationShapeMesh.ForShape(DestinationShape.Circle)),
+                "the shape channel has no fifth shape and falls back to red's circle — which"
+                + " is only safe because the colour above is magenta, not SignalRed");
+            Assert.That(station.GetComponentsInChildren<TextMesh>(true).Any(x => x.text == "?"),
+                Is.True, "and the letter channel says unknown too");
+
+            // The whole point: a magenta circle and a red circle must not be the same badge.
+            var red = Station(view, "RED").transform.Find("station:plate-generated");
+            Assert.That(red.GetComponent<MeshFilter>().sharedMesh,
+                Is.SameAs(plate.GetComponent<MeshFilter>().sharedMesh),
+                "positive control: they really do share a shape, so colour is the separator");
+            Assert.That(red.GetComponent<Renderer>().sharedMaterial.color,
+                Is.Not.EqualTo(worn), "and it separates them");
         }
 
         // Compared by name and vertex count against a freshly fetched builtin rather than by
@@ -588,6 +634,38 @@ namespace CatMetro.Tests.PlayMode
     { ""id"": ""S1"", ""nodeId"": ""J1"", ""routes"": [""E2"", ""E3""], ""initialRoute"": 0 },
     { ""id"": ""S2"", ""nodeId"": ""J2"", ""routes"": [""E4"", ""E5""], ""initialRoute"": 0 },
     { ""id"": ""S3"", ""nodeId"": ""J3"", ""routes"": [""E6"", ""E7""], ""initialRoute"": 0 } ],
+  ""waves"": [ { ""tick"": 3999, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 1,
+    ""spacingTicks"": 1 } ],
+  ""win"": { ""deliveries"": 99, ""timeLimitTicks"": 4000, ""perfectMaxSwitches"": 1,
+    ""stars"": { ""two"": 200, ""three"": 300 } },
+  ""economy"": { ""baseTickets"": 20, ""perfectBonus"": 10 }
+}";
+        }
+
+        // A berth that accepts nothing. Not a level anyone would author — it is the one shape
+        // of content bug that reaches CatLine's unknown-line fallback, because ReqArr caps the
+        // accepts array without requiring a minimum.
+        private static string EmptyAcceptsJson()
+        {
+            return @"{
+  ""schemaVersion"": 2, ""id"": ""T941"", ""name"": ""Empty Accepts Fixture"", ""seed"": 941,
+  ""meta"": { ""band"": ""alternation"", ""difficultyTarget"": 0.1, ""mechanics"": [""switch""],
+    ""newMechanic"": null, ""teachingGoal"": ""test fixture"", ""minActionWindowTicks"": 12,
+    ""authoredBy"": ""llm+validator"" },
+  ""board"": { ""nodes"": [
+      { ""id"": ""SRC"", ""x"": 3, ""y"": 9 },
+      { ""id"": ""J1"", ""x"": 3, ""y"": 6 },
+      { ""id"": ""RED"", ""x"": 1, ""y"": 2 }, { ""id"": ""NUL"", ""x"": 5, ""y"": 2 } ],
+    ""edges"": [
+      { ""id"": ""E1"", ""from"": ""SRC"", ""to"": ""J1"", ""travelTicks"": 10 },
+      { ""id"": ""E2"", ""from"": ""J1"", ""to"": ""RED"", ""travelTicks"": 10 },
+      { ""id"": ""E3"", ""from"": ""J1"", ""to"": ""NUL"", ""travelTicks"": 10 } ] },
+  ""sources"": [ { ""nodeId"": ""SRC"", ""allowedColors"": [""red""] } ],
+  ""stations"": [
+    { ""nodeId"": ""RED"", ""accepts"": [""red""], ""capacity"": 6 },
+    { ""nodeId"": ""NUL"", ""accepts"": [], ""capacity"": 6 } ],
+  ""switches"": [
+    { ""id"": ""S1"", ""nodeId"": ""J1"", ""routes"": [""E2"", ""E3""], ""initialRoute"": 0 } ],
   ""waves"": [ { ""tick"": 3999, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 1,
     ""spacingTicks"": 1 } ],
   ""win"": { ""deliveries"": 99, ""timeLimitTicks"": 4000, ""perfectMaxSwitches"": 1,
