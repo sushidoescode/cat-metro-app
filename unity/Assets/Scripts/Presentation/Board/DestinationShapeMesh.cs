@@ -13,7 +13,8 @@ namespace CatMetro.Presentation.Board
     // generated ones. They are byte-for-byte what the board rendered before the vocabulary
     // existed (GameObject.CreatePrimitive uses these same two assets), so red plates and blue
     // plates are unchanged and the captures and PropPlacement pins that hold them still hold.
-    // Triangle and Hexagon have no builtin equivalent, so they are extruded here.
+    // Triangle and Diamond have no builtin equivalent, so they are extruded here. Star has no
+    // plate at all and throws — see the case for why.
     //
     // WINDING LAW — this codebase has lost time to backface culling twice, most recently the
     // 2026-08-25 switch-lever render review where every camera-facing triangle was culled.
@@ -34,13 +35,10 @@ namespace CatMetro.Presentation.Board
     // first station torn down by a Retry would blank the plates of all the others.
     public static class DestinationShapeMesh
     {
-        // Half-height of a regular hexagon of circumradius 0.5: sqrt(3) / 4.
-        private const float HexApothem = 0.4330127f;
-
         private static Mesh _cylinder;
         private static Mesh _cube;
         private static Mesh _triangle;
-        private static Mesh _hexagon;
+        private static Mesh _diamond;
 
         public static Mesh ForShape(DestinationShape shape)
         {
@@ -52,9 +50,22 @@ namespace CatMetro.Presentation.Board
                 case DestinationShape.Triangle:
                     return _triangle != null ? _triangle
                         : (_triangle = Extrude("Station plate — triangle", TriangleOutline()));
-                case DestinationShape.Hexagon:
-                    return _hexagon != null ? _hexagon
-                        : (_hexagon = Extrude("Station plate — hexagon", HexagonOutline()));
+                case DestinationShape.Diamond:
+                    return _diamond != null ? _diamond
+                        : (_diamond = Extrude("Station plate — diamond", DiamondOutline()));
+                case DestinationShape.Star:
+                    // Deliberately loud. A star is the WILD cat's badge and wild is not a
+                    // destination — a wild cat auto-accepts at whatever berth it reaches, so
+                    // no station ever wears one and asking for this mesh is a programming
+                    // error, not a content one. It throws rather than falling through for a
+                    // second reason: a star is CONCAVE, and Extrude fans from vertex 0, so it
+                    // would hand back a self-overlapping tangle that renders as something
+                    // plausible-but-wrong. Silent geometry garbage is the exact failure this
+                    // file's winding law already exists to prevent.
+                    throw new System.ArgumentException(
+                        "DestinationShape.Star has no station plate: wild is a cat colour, not"
+                        + " a destination. Use HudShapeSprites.ForShape for the face badge.",
+                        nameof(shape));
                 default:
                     return _cylinder != null ? _cylinder
                         : (_cylinder = Resources.GetBuiltinResource<Mesh>("Cylinder.fbx"));
@@ -87,16 +98,15 @@ namespace CatMetro.Presentation.Board
             new Vector2(0f, 0.5f),
         };
 
-        // Flat top and bottom, points left and right — the same orientation HudShapeSprites
-        // rasterises, so a green cat's badge and a green station's plate read as one shape.
-        private static Vector2[] HexagonOutline() => new[] // counter-clockwise in board XY
+        // A square on its point, filling the unit box corner to corner — the badge the green
+        // shorthair wears in CAT-MANIFEST.json, so a green cat and a green plate read as one
+        // shape. Convex, so the fan in Extrude is valid.
+        private static Vector2[] DiamondOutline() => new[] // counter-clockwise in board XY
         {
             new Vector2(0.5f, 0f),
-            new Vector2(0.25f, HexApothem),
-            new Vector2(-0.25f, HexApothem),
+            new Vector2(0f, 0.5f),
             new Vector2(-0.5f, 0f),
-            new Vector2(-0.25f, -HexApothem),
-            new Vector2(0.25f, -HexApothem),
+            new Vector2(0f, -0.5f),
         };
 
         // Convex outline -> closed prism spanning -0.5..0.5 in Z, matching the builtin cube's

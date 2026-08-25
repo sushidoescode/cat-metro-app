@@ -40,25 +40,35 @@ namespace CatMetro.Presentation.Theme
     // one companion edit HudShapeSprites.cs needs.
     public static class CatLine
     {
-        // Every line the game has. Domain.CatColor is Red/Blue/Yellow/Green — there is no
-        // fifth line to map. Exposed so callers and tests can ENUMERATE the vocabulary rather
-        // than hard-code a list beside it that silently goes stale when a line is added.
-        private static readonly string[] AllNames = { "red", "blue", "yellow", "green" };
+        // Every DESTINATION line the game has. Exposed so callers and tests can ENUMERATE the
+        // vocabulary rather than hard-code a list beside it that silently goes stale.
+        //
+        // Wild is deliberately NOT here, and the distinction is load-bearing rather than
+        // pedantic. A wild cat auto-accepts at whatever berth it reaches, so it has no
+        // destination — no station ever advertises "wild", and LevelImporter pins wild out of
+        // station accepts entirely. Putting it in this list would make the shape tests demand
+        // a wild station plate and tempt someone into authoring a berth that cannot exist.
+        private static readonly string[] LineNames = { "red", "blue", "yellow", "green" };
 
-        public static IReadOnlyList<string> Names => AllNames;
+        // The same names PLUS wild, in Domain.CatColor order, because a CAT can be wild even
+        // though a STATION cannot. This is the code-keyed table; LineNames is the semantic one.
+        // Keep this mirroring CatColor 1..5 exactly — NameOfCode indexes it directly.
+        private static readonly string[] CodeNames = { "red", "blue", "yellow", "green", "wild" };
+
+        public static IReadOnlyList<string> Names => LineNames;
 
         // The byte-keyed door into the SAME table, for the surfaces that hold a Domain colour
         // code rather than a name — trains and cats. Domain.CatColor is 1-based with None at 0
-        // (LevelGraph.cs:7-15) and AllNames is in precisely that order, so this is an INDEX,
+        // (LevelGraph.cs:7-15) and CodeNames is in precisely that order, so this is an INDEX,
         // not a second table, which is the entire point of it existing here. Anything off the
-        // end — None, and the reserved construction-guarded Wild — falls through to the
-        // unknown-line answer, so an unsupported code goes loud instead of picking a line.
+        // end — None at 0, anything past Wild — falls through to the unknown answer, so an
+        // unsupported code goes loud instead of quietly picking a line.
         //
         // The 1-based alignment is load-bearing and deliberately NOT re-encoded as a switch;
-        // PropPlacementTests.ColourHasOneDecisionSite_OnBothKeyTypes pins it against the real
-        // CatColor constants so a reorder fails there instead of painting trains magenta.
+        // PropPlacementTests pins it against the real CatColor constants so a reorder fails
+        // there instead of painting trains magenta.
         public static string NameOfCode(byte code) =>
-            code >= 1 && code <= AllNames.Length ? AllNames[code - 1] : "";
+            code >= 1 && code <= CodeNames.Length ? CodeNames[code - 1] : "";
 
         public static Color ColorOf(byte code) => ColorOf(NameOfCode(code));
 
@@ -70,6 +80,12 @@ namespace CatMetro.Presentation.Theme
                 case "blue": return Palette.HarborBlue;
                 case "yellow": return Palette.TabbyYellow;
                 case "green": return Palette.GardenGreen;
+                // Not a line — a wild CAT's coat. Conformance to CAT-MANIFEST.json, which
+                // generated cat-wild-alley in catnip violet (A06BD8) with a star badge; those
+                // bytes are paid for and pinned, so this value is a record, not a choice.
+                // Violet would read as a fifth line on its own; the star is what says
+                // "goes anywhere", which is why the shape channel carries the real signal.
+                case "wild": return Palette.CatnipViolet;
                 default: return Color.magenta; // BoardView's convention: a loud content bug
             }
         }
@@ -79,10 +95,20 @@ namespace CatMetro.Presentation.Theme
         {
             switch (name)
             {
+                // Every case here is CONFORMANCE to docs/design/assets/CAT-MANIFEST.json — the
+                // badge each cat model was generated wearing. Those bytes are pinned by the
+                // licensing record, so art wins and this table follows.
                 case "red": return DestinationShape.Circle;    // board: builtin cylinder plate
                 case "blue": return DestinationShape.Square;   // board: builtin cube plate
                 case "yellow": return DestinationShape.Triangle;
-                case "green": return DestinationShape.Hexagon;
+                // Diamond, NOT hexagon. This said hexagon until a manifest read caught it,
+                // which would have shipped a green cat wearing a diamond badge walking to a
+                // hexagonal plate — a mismatch in the one channel this vocabulary exists to
+                // make trustworthy. No green level had shipped yet, so nothing had shown it.
+                case "green": return DestinationShape.Diamond;
+                // Wild is not a destination; this is its CAT badge, for the HUD face only.
+                // DestinationShapeMesh.ForShape(Star) throws — no station wears a star.
+                case "wild": return DestinationShape.Star;
                 // Every line gets its OWN shape — a shared shape would put identity back on
                 // colour alone, which is exactly what the badge exists to avoid. Red and blue
                 // keep the two the board already painted, so nothing a player has learned and

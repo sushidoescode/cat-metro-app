@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
 using CatMetro.Application.Session;
@@ -310,11 +311,17 @@ namespace CatMetro.Tests.PlayMode
                     .Distinct().Count(),
                 Is.EqualTo(CatLine.Names.Count),
                 "and each distinct shape is a distinct mesh, so the board really renders four");
+            // Reference distinctness, NOT vertex-count distinctness. The first cut counted
+            // vertices as a cheap proxy for "different silhouette", and the manifest
+            // correction retired that proxy: a diamond is a square on its point, so green and
+            // blue plates now have an identical 24 vertices and genuinely different outlines.
+            // Which is also the open question flagged in the PR — a rotated square is the
+            // weakest separation in the set, and blue-versus-green is exactly the pair a
+            // colourblind player leans on shape for.
             Assert.That(plates.Values
-                    .Select(x => x.GetComponent<MeshFilter>().sharedMesh.vertexCount)
-                    .Distinct().Count(),
+                    .Select(x => x.GetComponent<MeshFilter>().sharedMesh).Distinct().Count(),
                 Is.EqualTo(CatLine.Names.Count),
-                "four berths on one board are separable by silhouette with colour discarded");
+                "four berths on one board render four different meshes");
         }
 
         [Test]
@@ -405,13 +412,35 @@ namespace CatMetro.Tests.PlayMode
                 Is.EqualTo("yellow"));
             Assert.That(CatLine.NameOfCode(CatMetro.Domain.CatColor.Green), Is.EqualTo("green"));
             Assert.That(CatLine.Names.Count, Is.EqualTo(4),
-                "if a fifth line is authored, NameOfCode's 1-based index must still line up"
-                + " with Domain.CatColor — re-read both before changing this number");
+                "Names is the DESTINATION list and wild is not a destination, so this stays 4"
+                + " even though CodeNames has five entries. If a fifth real LINE is authored,"
+                + " re-read Domain.CatColor and both arrays together before touching this —"
+                + " NameOfCode indexes CodeNames directly and a new line cannot simply be"
+                + " appended after wild without breaking the 1-based alignment");
 
-            // Codes that are not lines stay loud rather than picking one.
-            Assert.That(CatLine.ColorOf(CatMetro.Domain.CatColor.None), Is.EqualTo(Color.magenta));
-            Assert.That(CatLine.ColorOf(CatMetro.Domain.CatColor.Wild), Is.EqualTo(Color.magenta),
-                "Wild is construction-guarded, so it must never resolve to a real line");
+            // Wild is a real cat colour, so it is NOT the unknown sentinel — but it must never
+            // be mistakable for a line either, or a player hunts for the berth it matches.
+            Assert.That(CatLine.ColorOf(CatMetro.Domain.CatColor.Wild),
+                Is.EqualTo(Palette.CatnipViolet),
+                "conformance to CAT-MANIFEST.json: cat-wild-alley was generated in catnip"
+                + " violet, and those bytes are pinned by the licensing record");
+            foreach (string line in CatLine.Names)
+                Assert.That(CatLine.ColorOf(CatMetro.Domain.CatColor.Wild),
+                    Is.Not.EqualTo(CatLine.ColorOf(line)),
+                    "wild must not wear " + line + "'s colour — it has no destination, so a"
+                    + " line colour on it would send the player looking for a berth");
+            Assert.That(CatLine.ShapeOf("wild"), Is.EqualTo(DestinationShape.Star));
+            foreach (string line in CatLine.Names)
+                Assert.That(CatLine.ShapeOf("wild"), Is.Not.EqualTo(CatLine.ShapeOf(line)),
+                    "and the star is what actually says 'goes anywhere', so it cannot collide"
+                    + " with " + line + "'s shape");
+
+            // What REMAINS the genuine unknown sentinel after wild stopped being magenta.
+            Assert.That(CatLine.ColorOf(CatMetro.Domain.CatColor.None), Is.EqualTo(Color.magenta),
+                "code 0 is still 'no colour', not a cat");
+            Assert.That(CatLine.ColorOf((byte)6), Is.EqualTo(Color.magenta),
+                "and anything past wild is still unmapped");
+            Assert.That(CatLine.ColorOf(""), Is.EqualTo(Color.magenta));
         }
 
         [Test]
@@ -452,7 +481,7 @@ namespace CatMetro.Tests.PlayMode
             // Two earlier lanes lost days to backface culling here. The camera looks from -Z,
             // so a plate whose front facets point away renders as nothing at all — and no test
             // that only counts vertices can see it.
-            foreach (var shape in new[] { DestinationShape.Triangle, DestinationShape.Hexagon })
+            foreach (var shape in new[] { DestinationShape.Triangle, DestinationShape.Diamond })
             {
                 var mesh = DestinationShapeMesh.ForShape(shape);
                 var normals = mesh.normals;
@@ -472,6 +501,106 @@ namespace CatMetro.Tests.PlayMode
                     shape + " is normalised to the builtin cube's box so one scale drives all");
                 Assert.That(mesh.bounds.size.z, Is.EqualTo(1f).Within(0.001f));
             }
+        }
+
+        [Test]
+        public void WildHasNoStationPlate_AndAskingForOneThrowsInsteadOfReturningGarbage()
+        {
+            // A star is CONCAVE and Extrude fans from vertex 0, so a fallthrough here would
+            // hand back a self-overlapping tangle that renders as something plausible but
+            // wrong. Silent geometry garbage is the failure this repo has already eaten twice,
+            // so the unbuildable case is loud by construction.
+            Assert.Throws<System.ArgumentException>(
+                () => DestinationShapeMesh.ForShape(DestinationShape.Star),
+                "wild is a cat colour, not a destination — no station wears a star");
+
+            // Positive control: every shape a real LINE maps to is buildable, so the throw
+            // above is about wild specifically and not a hole in the builder.
+            foreach (string line in CatLine.Names)
+                Assert.That(DestinationShapeMesh.ForShape(CatLine.ShapeOf(line)), Is.Not.Null,
+                    line + " is a destination and must have a plate");
+        }
+
+        [Test]
+        public void VocabularyMatchesTheCatManifest()
+        {
+            // The systemic fix, and the one worth more than any correction it forced. Every
+            // cat model was GENERATED wearing a badge — a shape on its chest and a matching
+            // tag on its collar — and those bytes are paid for and pinned by the licensing
+            // record. The code table is therefore downstream of the manifest, and nothing was
+            // checking that. Green had already drifted: the manifest says diamond, the code
+            // said hexagon, and no green level had shipped to reveal it.
+            //
+            // Fails closed on a missing file. A conformance gate that reports OK after reading
+            // nothing is the fail-open pattern this repo removed once already.
+            string path = Path.Combine(UnityEngine.Application.dataPath,
+                "..", "..", "docs", "design", "assets", "CAT-MANIFEST.json");
+            Assert.That(File.Exists(path), Is.True,
+                "the art record must be readable to be conformed to: " + path);
+            string manifest = File.ReadAllText(path);
+
+            // Art speaks English ("a white diamond badge on its chest"); code speaks enum.
+            // Translating between them is this test's whole job, so the map lives here.
+            var badges = new Dictionary<string, DestinationShape>
+            {
+                { "circle", DestinationShape.Circle },
+                { "square", DestinationShape.Square },
+                { "triangle", DestinationShape.Triangle },
+                { "diamond", DestinationShape.Diamond },
+                { "star", DestinationShape.Star },
+            };
+
+            // Every cat prompt pins its coat as a hex and its badge as a word. Pull both from
+            // each prompt that carries them; poses of the same cat repeat, and must agree.
+            var byHex = new Dictionary<string, string>();
+            foreach (Match prompt in Regex.Matches(manifest, "\"prompt\"\\s*:\\s*\"([^\"]*)\""))
+            {
+                string text = prompt.Groups[1].Value;
+                var hex = Regex.Match(text, @"hex ([0-9A-Fa-f]{6})");
+                var badge = Regex.Match(text, @"white (\w+) badge");
+                if (!hex.Success || !badge.Success) continue; // e.g. the conductor, unbadged
+                string key = hex.Groups[1].Value.ToUpperInvariant();
+                string shape = badge.Groups[1].Value.ToLowerInvariant();
+                if (byHex.TryGetValue(key, out var seen))
+                    Assert.That(shape, Is.EqualTo(seen),
+                        "the manifest disagrees with itself for " + key
+                        + ": poses of one cat must wear one badge");
+                else byHex[key] = shape;
+            }
+            Assert.That(byHex.Count, Is.GreaterThanOrEqualTo(5),
+                "anti-vacuity: the four lines plus wild must all be found in the manifest,"
+                + " otherwise the parse has silently stopped matching and this passes on air");
+
+            // The conformance itself, stated per line so a failure names the culprit.
+            // Matched on CHANNEL VALUES within a tolerance rather than on a formatted hex
+            // string: the palette is authored as n/255 floats and how Unity rounds those back
+            // to bytes is not what this test is about — a pin that failed on a rounding mode
+            // would be reporting the wrong thing entirely.
+            foreach (string line in CatLine.Names.Concat(new[] { "wild" }))
+            {
+                Color code = CatLine.ColorOf(line);
+                string matched = byHex.Keys.FirstOrDefault(x => HexMatches(x, code));
+                Assert.That(matched, Is.Not.Null,
+                    "code paints " + line + " as #" + ColorUtility.ToHtmlStringRGB(code)
+                    + ", which no cat model wears — either Palette drifted from the art or"
+                    + " the models were regenerated without the palette following");
+                var art = badges[byHex[matched]];
+                Assert.That(CatLine.ShapeOf(line), Is.EqualTo(art),
+                    "SHAPE MISMATCH for " + line + " (#" + matched + "): the cat model wears a "
+                    + byHex[matched] + " badge (" + art + ") but CatLine.ShapeOf says "
+                    + CatLine.ShapeOf(line) + ". Model bytes are pinned by the licensing"
+                    + " record, so the code moves, not the art.");
+            }
+        }
+
+        private static bool HexMatches(string hex, Color color)
+        {
+            int r = System.Convert.ToInt32(hex.Substring(0, 2), 16);
+            int g = System.Convert.ToInt32(hex.Substring(2, 2), 16);
+            int b = System.Convert.ToInt32(hex.Substring(4, 2), 16);
+            return Mathf.Abs(color.r * 255f - r) <= 1.5f
+                && Mathf.Abs(color.g * 255f - g) <= 1.5f
+                && Mathf.Abs(color.b * 255f - b) <= 1.5f;
         }
 
         [Test]
