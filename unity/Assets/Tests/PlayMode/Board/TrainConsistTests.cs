@@ -67,15 +67,26 @@ namespace CatMetro.Tests.PlayMode
             // First-render verdict (2026-08-25): a head near the box's full width reads as
             // a ball ON the carriage. Target-02's cats are 60-70% of the box width with the
             // lower third hidden by the brim — pin the LAW, not the current magic numbers.
+            // r3: these were computed from localScale, which is NOT a size — it is a size only
+            // once multiplied by the mesh's own bounds. Against pSphere1 (~3.33 units across)
+            // the head scored 0.679 here while RENDERING at 2.26x the box's width. Both laws
+            // now measure the size the part actually occupies in the world.
             var head = TrainRoot().transform.Find("Carriage/Cat/Head");
             var body = TrainRoot().transform.Find("Carriage/Body");
-            float widthRatio = head.localScale.x / body.localScale.y; // lateral axis is y
+            Vector3 headSize = RenderedWorldSize(head);
+            Vector3 bodySize = RenderedWorldSize(body);
+
+            Assert.That(headSize.x, Is.EqualTo(ToyTrainView.HeadDiameter).Within(0.002f),
+                "the head must RENDER at the diameter its constant names — builtin meshes are " +
+                "not unit-sized, and assuming they are is what buried the whole face");
+
+            float widthRatio = headSize.x / bodySize.y; // lateral axis is y
             Assert.That(widthRatio, Is.InRange(0.55f, 0.75f),
                 "the chibi head stays clearly narrower than the open box it sits in");
 
-            float bodyTop = body.localPosition.z - body.localScale.z * 0.5f; // -z is up
-            float headBottom = head.localPosition.z + head.localScale.z * 0.5f;
-            float submerged = (headBottom - bodyTop) / head.localScale.z;
+            float bodyTop = body.localPosition.z - bodySize.z * 0.5f; // -z is up
+            float headBottom = head.localPosition.z + headSize.z * 0.5f;
+            float submerged = (headBottom - bodyTop) / headSize.z;
             Assert.That(submerged, Is.InRange(0.25f, 0.5f),
                 "the brim hides roughly the lower third of the head — seated IN, not ON");
         }
@@ -99,6 +110,44 @@ namespace CatMetro.Tests.PlayMode
         // beneath a signal, it does not grow through one. This is the ceiling that makes
         // "just make the ears taller" the wrong fix, and why the ears win on lateral spread.
         private const float SwitchDiscMidPlaneZ = -0.40f;
+
+        // THE law the first 27 tests were all missing. Every one of them computed in authored
+        // space — localScale, local offsets, my own arithmetic — and authored space did not
+        // match the rendered hierarchy, so they passed unanimously while the render showed a
+        // bare ball. This one measures the shipped GameObjects: each feature's real mesh
+        // bounds, through its real world transform, against the head's real rendered radius.
+        // It fails loudly on any mesh-scale surprise, in either direction, forever.
+        [UnityTest]
+        public IEnumerator CatFeatures_ProtrudeOutsideTheRenderedHead_NotJustTheAuthoredOne()
+        {
+            yield return BuildBoard();
+            PlaceOnEdge(edge: 1, progressTicks: 6);
+            _view.UpdateFrom(_session);
+
+            var cat = TrainRoot().transform.Find("Carriage/Cat");
+            var head = cat.Find("Head");
+            float headRadius = RenderedWorldSize(head).x * 0.5f;
+
+            // Ears carry the silhouette, so they must stand well proud; the eyes and muzzle are
+            // deliberately shallow domes and only have to break the surface at all.
+            var required = new (string Name, float Margin)[]
+            {
+                ("EarLeft", 0.05f), ("EarRight", 0.05f),
+                ("EyeLeft", 0.004f), ("EyeRight", 0.004f), ("Muzzle", 0.004f),
+            };
+            foreach (var (name, margin) in required)
+            {
+                var feature = cat.Find(name);
+                float farthest = 0f;
+                foreach (Vector3 corner in MeshBoundsCorners(feature))
+                    farthest = Mathf.Max(farthest,
+                        Vector3.Distance(feature.TransformPoint(corner), head.position));
+                Assert.That(farthest, Is.GreaterThan(headRadius + margin),
+                    $"{name} must protrude outside the head AS RENDERED (farthest {farthest:F4} " +
+                    $"vs head radius {headRadius:F4}) — on 2026-08-25 every feature was correct " +
+                    "and correctly placed, and all of them were sealed inside an oversized head");
+            }
+        }
 
         [UnityTest]
         public IEnumerator CatEars_StandClearOfTheHeadSilhouette_AtEveryHeading()
@@ -130,7 +179,9 @@ namespace CatMetro.Tests.PlayMode
             var cat = TrainRoot().transform.Find("Carriage/Cat");
             var head = cat.Find("Head");
             var ear = cat.Find("EarLeft");
-            float earToHead = ear.localScale.y / head.localScale.x;
+            // Rendered, not authored: ear and head carry DIFFERENT builtin meshes (cube vs
+            // sphere), so a localScale ratio here compared two incommensurate numbers.
+            float earToHead = RenderedWorldSize(ear).y / RenderedWorldSize(head).x;
             Assert.That(earToHead, Is.InRange(0.5f, 0.8f),
                 "target-02's ears are a large fraction of the head — a token nub cannot read " +
                 "at a 17.7 px head no matter where it is placed");
@@ -218,9 +269,9 @@ namespace CatMetro.Tests.PlayMode
             Vector3 view = (Quaternion.Inverse(BoardSceneLook.BoardTilt) * Vector3.forward)
                 .normalized;
             Vector3 centre = _view.transform.InverseTransformPoint(head.position);
-            float radius = head.localScale.x * 0.5f;
+            float radius = RenderedWorldSize(head).x * 0.5f;
             float best = float.NegativeInfinity;
-            foreach (Vector3 corner in UnitCubeCorners())
+            foreach (Vector3 corner in MeshBoundsCorners(ear))
             {
                 Vector3 offset =
                     _view.transform.InverseTransformPoint(ear.TransformPoint(corner)) - centre;
@@ -234,21 +285,36 @@ namespace CatMetro.Tests.PlayMode
         private float EarExtremeBoardZ(Transform ear)
         {
             float top = float.PositiveInfinity;
-            foreach (Vector3 corner in UnitCubeCorners())
+            foreach (Vector3 corner in MeshBoundsCorners(ear))
                 top = Mathf.Min(top,
                     _view.transform.InverseTransformPoint(ear.TransformPoint(corner)).z);
             return top;
         }
 
-        private static Vector3[] UnitCubeCorners()
+        // r3: these helpers used to hardcode a +/-0.5 unit cube, making exactly the assumption
+        // that the production code was being punished for. Corners now come from the mesh the
+        // part actually carries, so the tests cannot repeat the bug they exist to catch.
+        private static Vector3[] MeshBoundsCorners(Transform part)
         {
+            Bounds b = part.GetComponent<MeshFilter>().sharedMesh.bounds;
             var corners = new Vector3[8];
             for (int i = 0; i < 8; i++)
-                corners[i] = new Vector3(
-                    (i & 1) == 0 ? -0.5f : 0.5f,
-                    (i & 2) == 0 ? -0.5f : 0.5f,
-                    (i & 4) == 0 ? -0.5f : 0.5f);
+                corners[i] = b.center + Vector3.Scale(b.extents, new Vector3(
+                    (i & 1) == 0 ? -1f : 1f,
+                    (i & 2) == 0 ? -1f : 1f,
+                    (i & 4) == 0 ? -1f : 1f));
             return corners;
+        }
+
+        // The size a part actually occupies in the world: its mesh's intrinsic size scaled by
+        // the transform chain. This, never localScale, is what a proportion law must measure.
+        private static Vector3 RenderedWorldSize(Transform part)
+        {
+            Vector3 mesh = part.GetComponent<MeshFilter>().sharedMesh.bounds.size;
+            Vector3 scale = part.lossyScale;
+            return new Vector3(mesh.x * Mathf.Abs(scale.x),
+                mesh.y * Mathf.Abs(scale.y),
+                mesh.z * Mathf.Abs(scale.z));
         }
 
         private static float Luminance(Color c) =>

@@ -61,7 +61,19 @@ namespace CatMetro.Presentation.Board
         // A face does the rest of the work: at a 17.7 px head, two near-black eyes and a pale
         // muzzle read by CONTRAST, which costs no silhouette and no headroom at all. Target-02
         // reads exactly this way at thumbnail size.
-        private const float HeadDiameter = 0.19f;
+        //
+        // r3 postscript — none of the above rendered, for a reason none of it was to blame for.
+        // Every size below is a WORLD size and reaches the transform through
+        // ScaleForWorldSize, because the builtin sphere mesh is ~3.33 units across, not 1.
+        // The head was therefore rendering at 0.633 rather than 0.19 and enclosed the whole
+        // face: the r3 slot measured the farthest feature 0.17 from the head centre against a
+        // head extent of 0.31. The ear placement was right the whole time (that same 0.17 is
+        // exactly where this file puts the ear's outer corner); only the head was wrong.
+
+        // Public so a test can assert the head RENDERS at the diameter this constant names.
+        // That assertion is the one that would have caught the r3 mesh-scale bug on frame one:
+        // every law was computed in authored space, which did not match the rendered hierarchy.
+        public const float HeadDiameter = 0.19f;
         private const float HeadCenterZ = -0.037f;
         private const float EarThickness = 0.038f; // along travel; ears are flat wedges
         private const float EarSize = 0.115f;      // the 45-degree diamond's box size
@@ -70,7 +82,7 @@ namespace CatMetro.Presentation.Board
         private const float EyeSize = 0.048f;
         private static readonly Vector3 EyeOffset = new Vector3(0.0528f, 0.0369f, -0.0844f);
         private static readonly Vector3 MuzzleOffset = new Vector3(0.0768f, 0f, -0.0658f);
-        private static readonly Vector3 MuzzleScale = new Vector3(0.050f, 0.068f, 0.044f);
+        private static readonly Vector3 MuzzleSize = new Vector3(0.050f, 0.068f, 0.044f);
 
         /// <summary>
         /// Board-local yaw that turns a cat's +x face toward the camera. Derived from the
@@ -234,8 +246,12 @@ namespace CatMetro.Presentation.Board
             CreatePart("Chassis", _engine, CubeMesh(),
                 new Vector3(0f, 0f, 0.200f), new Vector3(0.46f, 0.30f, 0.07f),
                 Quaternion.identity, NavyMaterial());
+            // 0.28 long, not 0.14: the old localScale of 0.14 was written against the builtin
+            // cylinder being 2 units tall on y. That convention is now stated as the world
+            // size it always meant, so the part renders identically while no longer depending
+            // on a reader knowing the mesh's intrinsic length.
             CreatePart("Boiler", _engine, CylinderMesh(),
-                new Vector3(0.08f, 0f, 0.065f), new Vector3(0.20f, 0.14f, 0.20f),
+                new Vector3(0.08f, 0f, 0.065f), new Vector3(0.20f, 0.28f, 0.20f),
                 Quaternion.Euler(0f, 0f, 90f), CreamMaterial()); // cylinder length onto +x
             CreatePart("Cab", _engine, CubeMesh(),
                 new Vector3(-0.12f, 0f, 0.055f), new Vector3(0.18f, 0.26f, 0.22f),
@@ -244,7 +260,7 @@ namespace CatMetro.Presentation.Board
                 new Vector3(-0.12f, 0f, -0.08f), new Vector3(0.22f, 0.30f, 0.05f),
                 Quaternion.identity, NavyMaterial());
             CreatePart("Funnel", _engine, CylinderMesh(),
-                new Vector3(0.15f, 0f, -0.085f), new Vector3(0.09f, 0.05f, 0.09f),
+                new Vector3(0.15f, 0f, -0.085f), new Vector3(0.09f, 0.10f, 0.09f),
                 Quaternion.Euler(90f, 0f, 0f), NavyMaterial()); // cylinder axis off the board
 
             _carriage = new GameObject("Carriage").transform;
@@ -295,25 +311,46 @@ namespace CatMetro.Presentation.Board
                 new Vector3(EyeSize, EyeSize, EyeSize),
                 Quaternion.identity, NavyMaterial());
             CreatePart("Muzzle", _cat, SphereMesh(),
-                MuzzleOffset, MuzzleScale,
+                MuzzleOffset, MuzzleSize,
                 Quaternion.identity, CreamMaterial());
 
             SetCarriageHeading(0f); // a consist faces the camera before its first placement
         }
 
-        // BoardSurface.CreatePart's shape: builtin mesh, no collider, project material only.
+        // BoardSurface.CreatePart's shape: builtin mesh, no collider, project material only —
+        // but taking the size the part should OCCUPY IN THE WORLD, never a raw localScale.
+        // See ScaleForWorldSize: a localScale only means what you think it means when the mesh
+        // happens to be unit-sized, and one of the three we use is not.
         private static MeshRenderer CreatePart(string name, Transform parent, Mesh mesh,
-            Vector3 position, Vector3 scale, Quaternion rotation, Material material)
+            Vector3 position, Vector3 worldSize, Quaternion rotation, Material material)
         {
             var part = new GameObject(name);
             part.transform.SetParent(parent, false);
             part.transform.localPosition = position;
             part.transform.localRotation = rotation;
-            part.transform.localScale = scale;
+            part.transform.localScale = ScaleForWorldSize(mesh, worldSize);
             part.AddComponent<MeshFilter>().sharedMesh = mesh;
             var renderer = part.AddComponent<MeshRenderer>();
             if (material != null) renderer.sharedMaterial = material;
             return renderer;
+        }
+
+        // Builtin meshes are NOT unit-sized, and assuming they are is what made the cat a bare
+        // ball for three rounds. Resources.GetBuiltinResource<Mesh>("Sphere.fbx") returns
+        // pSphere1, whose bounds are ~3.33 units across; the 2026-08-25 r3 slot measured a
+        // head authored at 0.19 rendering 0.633 across, which swallowed every ear, eye and
+        // muzzle whole (the features were correct all along — a head-off capture showed them
+        // present, coloured and correctly arranged). Cube.fbx is unit and Cylinder.fbx is
+        // 2 long on y, so dividing by the mesh's own bounds is a no-op for the parts that were
+        // already right and a correction for the ones that were not. Deriving at runtime means
+        // this holds for whatever mesh Unity actually hands back, in any future version.
+        private static Vector3 ScaleForWorldSize(Mesh mesh, Vector3 worldSize)
+        {
+            Vector3 intrinsic = mesh.bounds.size;
+            return new Vector3(
+                intrinsic.x > 1e-6f ? worldSize.x / intrinsic.x : worldSize.x,
+                intrinsic.y > 1e-6f ? worldSize.y / intrinsic.y : worldSize.y,
+                intrinsic.z > 1e-6f ? worldSize.z / intrinsic.z : worldSize.z);
         }
 
         private static Material NavyMaterial()
