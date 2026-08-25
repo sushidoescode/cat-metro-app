@@ -203,9 +203,13 @@ namespace CatMetro.Tests.PlayMode
                 var props = root.GetComponentsInChildren<BoardPropInstance>(true);
 
                 // A RELATION, not a constant that happens to match. Sources.Length is a real
-                // term: the decorator spawns a depot per source, and L018/L019 are the corpus's
-                // first two-source boards, so widening this sweep is what gives that path its
-                // first coverage anywhere in the repo.
+                // term — the decorator spawns a depot per source — but on THIS branch it is
+                // unexercised, and not merely because no level uses two: LevelImporter throws
+                // PinnedMechanic on a second source, so a two-source board cannot even import
+                // here. feat/level-variety's CM-C14a harvest lifts that pin (it modifies both
+                // LevelImporter and LevelGraph), and its L018/L019 are the corpus's first
+                // two-source boards. This assertion is written to be correct across THAT
+                // merge, which is where the source term finally gets tested.
                 Assert.That(props.Length,
                     Is.EqualTo(level.Dto.Stations.Length * 2 + level.Dto.Sources.Length + 11),
                     level.Dto.Id + " should add a lamp per station, a depot signpost, three"
@@ -1057,7 +1061,8 @@ namespace CatMetro.Tests.PlayMode
 
                 // Relational for the same reason as the furnished sweep: one depot per source,
                 // so a two-source board must produce one more prop than a one-source board of
-                // the same station count, and this assertion has to move with it.
+                // the same station count. Also unexercised until feat/level-variety lifts the
+                // second-source pin — see that sweep for the detail.
                 Assert.That(props.Length,
                     Is.EqualTo(level.Dto.Stations.Length + level.Dto.Sources.Length + 3),
                     level.Dto.Id + " should have one kiosk per station, one depot per source, "
@@ -1259,6 +1264,11 @@ namespace CatMetro.Tests.PlayMode
             // content/levels. Deriving from the staged copy alone would still rot: a level
             // authored but never staged gets swept straight past, which is the identical
             // silent under-coverage wearing a different hat.
+            //
+            // These level JSONs are the only mirror in the repo that CAN drift like this. The
+            // dotnet leg compiles the Unity C# in place — `<Compile Include=
+            // "../../unity/Assets/Scripts/**/*.cs" />` — rather than copying it, so there is
+            // no second copy of the sources to fall behind.
             string authored = Path.Combine(UnityEngine.Application.dataPath,
                 "..", "..", "content", "levels");
             Assert.That(Directory.Exists(authored), Is.True,
