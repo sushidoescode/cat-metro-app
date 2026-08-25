@@ -34,11 +34,12 @@ namespace CatMetro.Presentation.Board
         // exactly what the far desk should be.
         private const float DeskSheetSpan = 26f;
         // World units per repeat of the board's own grain sheet. Picked so the board's figure
-        // is finer than the furniture it sits on: 9 grain bands per 4.5 units is 0.50 units a
-        // band against the desk's 26/27 = 0.96, so the toy reads as a smaller, closer piece of
-        // wood rather than a chip off the same plank. Unlike the desk sheet this one repeats,
-        // so the pitch is a fixed world size on every level instead of stretching with the
-        // board — which is what planks actually are.
+        // is finer than the furniture it sits on: 8 grain bands per 4.5 units is 0.5625 units
+        // a band against the desk's 26/27 = 0.96, so the toy reads as a smaller, closer piece
+        // of wood rather than a chip off the same plank. Unlike the desk sheet this one
+        // repeats, so the pitch is a fixed world size on every level instead of stretching
+        // with the board — which is what planks actually are. The band count has a hard
+        // constraint on top of taste; see WoodGrain.
         private const float BoardSheetSpan = 4.5f;
 
         // The playable surface, solved from pixels rather than taste. Sampling the 2026-08-25
@@ -47,24 +48,24 @@ namespace CatMetro.Presentation.Board
         // ours was both darker and far more orange, which is why navy rail on it read as line
         // art on brown instead of track on a pale bed. Inverting this rig's measured linear
         // light transfer (r 1.035, g 0.642, b 0.337 — the amber key does the warming) for the
-        // target's colour gives an albedo near (0.76, 0.59, 0.54). This is that, nudged one
-        // step toward the target's lighter upper board. Desaturated on purpose: the key
-        // supplies the warmth, and an already-orange albedo compounds into terracotta.
-        // Re-solved when BoardSceneLook's rig was rebalanced to let cool colours render cool.
-        // The old value was correct FOR THE OLD LIGHT: it was a desaturated albedo chosen to
-        // let an amber key supply the warmth. With the key near neutral the warmth has to
-        // live here instead, which is how target-01 does it — dividing its board out by its
-        // own illuminant gives roughly (207, 144, 101).
+        // target's colour gave a desaturated albedo near (0.78, 0.63, 0.57), on the reasoning
+        // that the key supplies the warmth and an already-orange albedo compounds into
+        // terracotta.
+        //
+        // That value was right FOR THAT LIGHT and is superseded: BoardSceneLook's rig has been
+        // rebalanced so cool colours can render cool, which took the amber out of the key. The
+        // warmth has to live in the albedo now, which is how target-01 does it — dividing its
+        // board out by its own illuminant gives roughly (207, 144, 101).
         //
         // Solved, not tasted. rendered = S * (albedo_linear * grain_linear + 0.0254), so
         // holding the render fixed while S changes gives
         //     albedo_new = ((rendered / S_new) - 0.0254) / grain_linear
         // with rendered = (0.6038, 0.2270, 0.0953) linear — the measured board interior on
         // the 2026-08-25 r3 render — S_new = (1.063, 0.890, 0.738), and grain_linear the new
-        // sheet's median texel, 0.9571 sRGB = 0.9052 linear. Result: (0.799, 0.538, 0.375),
+        // sheet's median texel, 0.9529 sRGB = 0.8963 linear. Result: (0.803, 0.541, 0.376),
         // which re-renders to (204, 130, 87) against the measured (204, 131, 87) and
         // target-01's (202, 134, 89). The board does not move; only the light does.
-        private static readonly Color WarmWood = new Color(0.799f, 0.538f, 0.375f);
+        private static readonly Color WarmWood = new Color(0.803f, 0.541f, 0.376f);
         // Walnut for the room-scale desk. Calibrated against the 2026-08-25 slot render:
         // the amber key plus warm ambient multiply channel ratios by roughly (1.15 r/g,
         // 1.84 r/b), so a red-leaning albedo (the old 0.55/0.36/0.22, r/b 2.5) rendered as
@@ -199,11 +200,23 @@ namespace CatMetro.Presentation.Board
         // target-01's board is visibly grained.
         //
         // Four things changed, all of them about reading as wood rather than about strength:
-        //   1. Pitch. 9 grain bands per BoardSheetSpan = 0.50 world units a band, against the
-        //      desk's 0.96. At the fitted ortho size the board's local +X projects at ~101 px
-        //      per unit on a 917px frame (0.8705 foreshortening x 115.7 px/world-unit,
-        //      measured off the 2026-08-25 r3 render), so a band is ~50px and a grain valley
-        //      pair ~13px. Fine figure, not corduroy.
+        //   1. Pitch. 8 grain bands per BoardSheetSpan = 0.5625 world units a band, against
+        //      the desk's 0.96. At the fitted ortho size the board's local +X projects at
+        //      ~101 px per unit on a 917px frame (0.8705 foreshortening x 115.7
+        //      px/world-unit, measured off the 2026-08-25 r3 render), so a band is ~57px and
+        //      a grain valley pair ~13px. Fine figure, not corduroy.
+        //      The count MUST divide `size` exactly, and that is not cosmetic. It was 9,
+        //      giving 256/9 = 28.4 texels a band: every interior band boundary then falls
+        //      BETWEEN texels, so no texel reaches the seam notch's bottom — except the one
+        //      at u = 0, where `across` is exactly 0 and `seam` hits its maximum. That made
+        //      the wrap column the single darkest seam in the sheet and put a visible line
+        //      across the board once per tile. Measured: wrap step 0.0980 against a worst
+        //      interior plank seam of 0.0617, i.e. 1.59x. At 8 bands every boundary is
+        //      texel-aligned and identical, and the wrap step falls to 0.0344 — 1.11x the
+        //      average interior step and 0.44x the worst plank seam. Note this is the
+        //      opposite of DeskGrain's "odd plank count on purpose": that one is Clamped and
+        //      mapped once, so it never wraps and only cares about where its centre probe
+        //      lands. Do not copy its rationale here.
         //   2. Structure. Narrow cubed-falloff valleys and thin plank seams instead of a
         //      smooth sine. Sharp features read as grain at far lower amplitude than a slow
         //      wave does, which is how this stays subtle enough for the pale ballast ribbon
@@ -211,18 +224,26 @@ namespace CatMetro.Presentation.Board
         //   3. Tileable. Every term is period-1 in u and v — integer-frequency sines, and a
         //      wrapped value noise in place of Mathf.PerlinNoise, which has no period. The
         //      desk sheet gets away with Perlin only because it is Clamped and mapped once.
+        //      Being period-1 is necessary but NOT sufficient: see the texel-alignment note
+        //      under 1, which is what actually bit. Verify a change here by measuring the
+        //      wrap step, not by reasoning about periodicity — and measure it in float32.
+        //      `hash` is Mathf.Abs(Mathf.Sin(band * 12.9898f) * 43758.547f) % 1f, and at a
+        //      magnitude near 43758 a float32 resolves ~0.004, so the fraction it keeps is
+        //      nothing like the double-precision one. Band 7 hashes to 0.988 in float32 and
+        //      0.166 in float64 — a 15.6 radian difference in the ripple phase it feeds.
         //   4. Normalised to a 0.99 ceiling. The sheet may only darken, so it cannot close
         //      the gap that separates the CreamCard ballast from the board — see
         //      BoardLookTests.BoardGrain_NeverErodesTheBallastContrast for the arithmetic.
-        // Mean texel lands at 0.9379 against the old sheet's 0.9375, so the board's average
+        // Mean texel lands at 0.9369 against the old sheet's 0.9375, so the board's average
         // brightness — and with it the measured colour solve above — survives the change;
-        // the median rises to 0.9571 because the darkening is now concentrated in thin lines.
+        // the median rises to 0.9529 because the darkening is now concentrated in thin lines.
+        // Both figures are float32, matching what Unity actually builds.
         // Stays CPU-readable (one 256px copy, ~196KB) so the look tests can pin the ceiling.
         private static Texture2D WoodGrain()
         {
             if (_woodGrain != null) return _woodGrain;
             const int size = 256;
-            const float bands = 9f;
+            const float bands = 8f;
             _woodGrain = new Texture2D(size, size, TextureFormat.RGB24, true)
             {
                 name = "Cat Metro Board Grain",

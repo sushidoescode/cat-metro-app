@@ -257,14 +257,28 @@ namespace CatMetro.Tests.PlayMode
                 "the board sheet holds a fixed world pitch by repeating, so a small level and "
                 + "a large one get the same size of plank rather than a stretched one");
 
-            // World units per grain band: the sheet carries 9 bands and _BaseMap_ST.x maps it
-            // across the top's local width, so the pitch is width / (ST.x * 9). The desk's is
-            // DeskSheetSpan / 27 = 0.96; finer than that is the whole point of a second sheet.
+            const int bands = 8;
+
+            // World units per grain band: the sheet carries `bands` of them and _BaseMap_ST.x
+            // maps it across the top's local width, so the pitch is width / (ST.x * bands).
+            // The desk's is DeskSheetSpan / 27 = 0.96; finer than that is the whole point of
+            // a second sheet.
             Vector4 st = woodProperties.GetVector("_BaseMap_ST");
-            float pitch = wood.localScale.x / (st.x * 9f);
+            float pitch = wood.localScale.x / (st.x * bands);
             Assert.That(pitch, Is.InRange(0.25f, 0.90f),
                 "board grain must be finer than the desk's 0.96-unit planks without "
                 + "collapsing into corduroy at phone scale");
+
+            // The root cause of the seam this file's wrap check first caught, pinned directly
+            // rather than only through its symptom. Texels per band must be whole. It was
+            // 256/9 = 28.4, so every interior band boundary fell BETWEEN texels and none of
+            // them reached the seam notch's bottom — except the column at u = 0, where
+            // `across` is exactly 0 and `seam` saturates. That made the wrap column the single
+            // darkest seam in the sheet and drew a line across the board once per tile.
+            Assert.That(sheet.width % bands, Is.Zero,
+                "texels per band must divide evenly, or the only column landing exactly on a "
+                + "seam notch bottom is the one at the tile wrap — measured at 1.59x the "
+                + "worst interior plank seam when this was 256/9");
 
             var texels = sheet.GetPixels32();
             float low = 1f, high = 0f;
@@ -280,10 +294,24 @@ namespace CatMetro.Tests.PlayMode
                 "a low-contrast sheet satisfies every structural pin above and still renders "
                 + "as the flat gradient this replaces");
 
-            // The sheet repeats, so every term in it has to be period-1 or the board shows a
-            // hard line wherever the tile wraps. Compare the step across the wrap with the
-            // average step between neighbouring columns/rows: a term that does not tile
-            // (Mathf.PerlinNoise, as the desk sheet uses) drives this ratio well above 1.
+            // The sheet repeats, so the board shows a hard line wherever the tile wraps unless
+            // the wrap is indistinguishable from an ordinary column step. Compare the step
+            // across the wrap with the average step between neighbouring columns/rows.
+            //
+            // This check earns its keep: it failed on the first build of this sheet and the
+            // defect was real, not a misfire. Being period-1 in u — which every term here is —
+            // turned out to be necessary but not sufficient; the texel alignment pinned above
+            // is what actually bit. Measured on the built sheet: u wraps at 1.11x the average
+            // interior step (0.0344 against 0.0311) and 0.44x the worst interior plank seam,
+            // v at 0.61x. The broken 256/9 sheet measured 3.12x on u.
+            //
+            // If you change this sheet, MEASURE the wrap the way this test does; do not
+            // reason about it. And measure in float32: `hash` is
+            // Mathf.Abs(Mathf.Sin(band * 12.9898f) * 43758.547f) % 1f, and near 43758 a
+            // float32 resolves only ~0.004, so a double-precision model of it is a different
+            // sheet. Band 7 hashes 0.988 in float32 against 0.166 in float64 — 15.6 radians
+            // apart in the ripple phase it feeds. That mismatch is exactly why this failure
+            // was reported as passing before the slot ran it.
             int size = sheet.width;
             float seamU = 0f, insideU = 0f, seamV = 0f, insideV = 0f;
             for (int i = 0; i < size; i++)
