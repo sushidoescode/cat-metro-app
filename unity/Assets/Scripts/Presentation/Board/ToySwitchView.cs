@@ -10,7 +10,7 @@ namespace CatMetro.Presentation.Board
     //   switch:{id}     the ROOT — teal chamfered base block (this object's own renderer;
     //                   two-tone: MetroTeal walls, lighter BaseTopColor top face)
     //     LeverPivot    hinge at the base top, tilted LeverTiltDegrees toward local +Y
-    //       Stem        cream shaft (builtin cube)
+    //       Stem        wooden dowel (builtin cylinder)
     //       Knob        chunky orange head (builtin cube)
     //     Arrow         chunky orange arrow tile on the base top, pointing local +Y
     //
@@ -254,7 +254,7 @@ namespace CatMetro.Presentation.Board
         {
             if (_stemMaterial == null)
                 _stemMaterial = GreyboxMaterial.CreateTinted(
-                    "Toy Switch — Cream Stem", Palette.CreamCard);
+                    "Toy Switch — Wood Stem", StemWoodColor);
             return _stemMaterial;
         }
 
