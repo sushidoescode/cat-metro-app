@@ -33,6 +33,13 @@ namespace CatMetro.Presentation.Board
         // screen. Beyond the sheet, Clamp repeats its darkest, coolest edge texel — which is
         // exactly what the far desk should be.
         private const float DeskSheetSpan = 26f;
+        // World units per repeat of the board's own grain sheet. Picked so the board's figure
+        // is finer than the furniture it sits on: 9 grain bands per 4.5 units is 0.50 units a
+        // band against the desk's 26/27 = 0.96, so the toy reads as a smaller, closer piece of
+        // wood rather than a chip off the same plank. Unlike the desk sheet this one repeats,
+        // so the pitch is a fixed world size on every level instead of stretching with the
+        // board — which is what planks actually are.
+        private const float BoardSheetSpan = 4.5f;
 
         // The playable surface, solved from pixels rather than taste. Sampling the 2026-08-25
         // r2 render against docs/reference/target-01-tabletop.png: our board interior rendered
@@ -110,7 +117,7 @@ namespace CatMetro.Presentation.Board
                 new Vector3(center.x, center.y, WoodFront + WoodDepth * 0.5f),
                 new Vector3(width, height, WoodDepth), WarmWood,
                 grain: WoodGrain(),
-                grainST: new Vector4(width / 6f, height / 6f, 0f, 0f));
+                grainST: new Vector4(width / BoardSheetSpan, height / BoardSheetSpan, 0f, 0f));
 
             var rim = new GameObject("CreamRim").transform;
             rim.SetParent(body, false);
@@ -165,13 +172,40 @@ namespace CatMetro.Presentation.Board
             return part.transform;
         }
 
+        // The board's own grain, at board scale. Same procedural-sheet technique as DeskGrain
+        // — one CPU-built greyscale sheet multiplying the albedo — retuned for the smaller,
+        // nearer object. The sheet it replaces was a single ten-cycle sine spanning 6 world
+        // units at 10% amplitude, which is why the WoodTop read as a smooth gradient while
+        // target-01's board is visibly grained.
+        //
+        // Four things changed, all of them about reading as wood rather than about strength:
+        //   1. Pitch. 9 grain bands per BoardSheetSpan = 0.50 world units a band, against the
+        //      desk's 0.96. At the fitted ortho size the board's local +X projects at ~101 px
+        //      per unit on a 917px frame (0.8705 foreshortening x 115.7 px/world-unit,
+        //      measured off the 2026-08-25 r3 render), so a band is ~50px and a grain valley
+        //      pair ~13px. Fine figure, not corduroy.
+        //   2. Structure. Narrow cubed-falloff valleys and thin plank seams instead of a
+        //      smooth sine. Sharp features read as grain at far lower amplitude than a slow
+        //      wave does, which is how this stays subtle enough for the pale ballast ribbon
+        //      to keep sitting on top of it rather than fighting it.
+        //   3. Tileable. Every term is period-1 in u and v — integer-frequency sines, and a
+        //      wrapped value noise in place of Mathf.PerlinNoise, which has no period. The
+        //      desk sheet gets away with Perlin only because it is Clamped and mapped once.
+        //   4. Normalised to a 0.99 ceiling. The sheet may only darken, so it cannot close
+        //      the gap that separates the CreamCard ballast from the board — see
+        //      BoardLookTests.BoardGrain_NeverErodesTheBallastContrast for the arithmetic.
+        // Mean texel lands at 0.9379 against the old sheet's 0.9375, so the board's average
+        // brightness — and with it the measured colour solve above — survives the change;
+        // the median rises to 0.9571 because the darkening is now concentrated in thin lines.
+        // Stays CPU-readable (one 256px copy, ~196KB) so the look tests can pin the ceiling.
         private static Texture2D WoodGrain()
         {
             if (_woodGrain != null) return _woodGrain;
-            const int size = 128;
+            const int size = 256;
+            const float bands = 9f;
             _woodGrain = new Texture2D(size, size, TextureFormat.RGB24, true)
             {
-                name = "Cat Metro Subtle Wood Grain",
+                name = "Cat Metro Board Grain",
                 wrapMode = TextureWrapMode.Repeat,
                 filterMode = FilterMode.Trilinear,
                 hideFlags = HideFlags.HideAndDontSave,
@@ -180,23 +214,62 @@ namespace CatMetro.Presentation.Board
             for (int y = 0; y < size; y++)
             {
                 float v = y / (float)size;
-                float bend = 0.035f * Mathf.Sin(v * Mathf.PI * 4f);
                 for (int x = 0; x < size; x++)
                 {
                     float u = x / (float)size;
-                    float broad = 0.5f + 0.5f * Mathf.Sin(
-                        (u + bend) * Mathf.PI * 10f
-                        + 0.45f * Mathf.Sin(v * Mathf.PI * 2f));
-                    float noise = Mathf.PerlinNoise(u * 8f, v * 1.4f);
-                    float value = Mathf.Clamp01(0.90f + broad * 0.075f
-                        + (noise - 0.5f) * 0.025f);
-                    byte channel = (byte)Mathf.RoundToInt(value * 255f);
+                    float bandU = u * bands;
+                    int band = Mathf.FloorToInt(bandU);
+                    float hash = Mathf.Abs(Mathf.Sin(band * 12.9898f) * 43758.547f) % 1f;
+                    float across = bandU - band;
+                    float edgeTexels = Mathf.Min(across, 1f - across) * (size / bands);
+                    float seam = Mathf.Clamp01(1f - edgeTexels / 1.4f);
+
+                    // Wander the grain along the band so the lines are wood, not pinstripe.
+                    // Both terms wrap, so the phase they feed the ripple stays seamless.
+                    float wobble = (TileNoise(u, v, 4) - 0.5f) * 2.2f
+                        + 0.55f * Mathf.Sin(v * Mathf.PI * 2f + hash * 19f);
+                    // 36 cycles across the sheet: an integer count, so u wraps cleanly.
+                    float ripple = 0.5f + 0.5f * Mathf.Sin(u * Mathf.PI * 72f
+                        + hash * 19f + wobble);
+                    float valley = (1f - ripple) * (1f - ripple) * (1f - ripple);
+                    float fleck = TileNoise(u, v, 32);
+                    float value = 0.99f - 0.110f * valley - 0.014f * fleck - 0.016f * hash;
+                    value *= 1f - seam * 0.09f;
+                    byte channel = (byte)Mathf.RoundToInt(Mathf.Clamp01(value) * 255f);
                     pixels[y * size + x] = new Color32(channel, channel, channel, 255);
                 }
             }
             _woodGrain.SetPixels32(pixels);
-            _woodGrain.Apply(updateMipmaps: true, makeNoLongerReadable: true);
+            _woodGrain.Apply(updateMipmaps: true, makeNoLongerReadable: false);
             return _woodGrain;
+        }
+
+        // Wrapped value noise on an integer lattice, using the same hash idiom the band
+        // variation uses. Exists because the board sheet repeats and Mathf.PerlinNoise does
+        // not tile: a Perlin term would put a hard discontinuity across the board wherever
+        // the sheet wraps.
+        private static float TileNoise(float u, float v, int cells)
+        {
+            float x = u * cells;
+            float y = v * cells;
+            int x0 = Mathf.FloorToInt(x);
+            int y0 = Mathf.FloorToInt(y);
+            float fx = x - x0;
+            float fy = y - y0;
+            fx = fx * fx * (3f - 2f * fx);
+            fy = fy * fy * (3f - 2f * fy);
+            float a = LatticeHash(x0, y0, cells);
+            float b = LatticeHash(x0 + 1, y0, cells);
+            float c = LatticeHash(x0, y0 + 1, cells);
+            float d = LatticeHash(x0 + 1, y0 + 1, cells);
+            return Mathf.Lerp(Mathf.Lerp(a, b, fx), Mathf.Lerp(c, d, fx), fy);
+        }
+
+        private static float LatticeHash(int x, int y, int cells)
+        {
+            int wx = ((x % cells) + cells) % cells;
+            int wy = ((y % cells) + cells) % cells;
+            return Mathf.Abs(Mathf.Sin(wx * 12.9898f + wy * 78.233f) * 43758.547f) % 1f;
         }
 
         // The room-scale desk sheet. Four jobs in one texture, all judged against

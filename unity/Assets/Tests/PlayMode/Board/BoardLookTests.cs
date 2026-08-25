@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.TestTools;
 using CatMetro.Bootstrap;
 using CatMetro.Presentation.Board;
+using CatMetro.Presentation.Theme;
 
 namespace CatMetro.Tests.PlayMode
 {
@@ -232,6 +233,117 @@ namespace CatMetro.Tests.PlayMode
                     sum += texture.GetPixelBilinear(u + du * 0.04f, v + dv * 0.04f);
             return sum / 9f;
         }
+
+        [UnityTest]
+        public IEnumerator BoardGrain_IsItsOwnFinerSheetThanTheDesk()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            var wood = _root.View.transform.Find("BoardBody/WoodTop");
+            var desk = _root.View.transform.Find("DeskSurface/DeskTop");
+            var woodProperties = new MaterialPropertyBlock();
+            var deskProperties = new MaterialPropertyBlock();
+            wood.GetComponent<Renderer>().GetPropertyBlock(woodProperties);
+            desk.GetComponent<Renderer>().GetPropertyBlock(deskProperties);
+
+            var sheet = woodProperties.GetTexture("_BaseMap") as Texture2D;
+            Assert.That(sheet, Is.Not.Null,
+                "the playable surface needs grain of its own — target-01's board is visibly "
+                + "wood, and ours read as a smooth gradient");
+            Assert.That(sheet, Is.Not.SameAs(deskProperties.GetTexture("_BaseMap")),
+                "the board is a smaller, nearer object than the furniture it sits on");
+            Assert.That(sheet.wrapMode, Is.EqualTo(TextureWrapMode.Repeat),
+                "the board sheet holds a fixed world pitch by repeating, so a small level and "
+                + "a large one get the same size of plank rather than a stretched one");
+
+            // World units per grain band: the sheet carries 9 bands and _BaseMap_ST.x maps it
+            // across the top's local width, so the pitch is width / (ST.x * 9). The desk's is
+            // DeskSheetSpan / 27 = 0.96; finer than that is the whole point of a second sheet.
+            Vector4 st = woodProperties.GetVector("_BaseMap_ST");
+            float pitch = wood.localScale.x / (st.x * 9f);
+            Assert.That(pitch, Is.InRange(0.25f, 0.90f),
+                "board grain must be finer than the desk's 0.96-unit planks without "
+                + "collapsing into corduroy at phone scale");
+
+            var texels = sheet.GetPixels32();
+            float low = 1f, high = 0f;
+            foreach (var texel in texels)
+            {
+                float value = texel.r / 255f;
+                low = Mathf.Min(low, value);
+                high = Mathf.Max(high, value);
+            }
+            // The sheet this replaces spanned 0.075 and read as a gradient; this one spans
+            // ~0.196, concentrated in narrow valleys and seams rather than a slow sine.
+            Assert.That(high - low, Is.GreaterThan(0.15f),
+                "a low-contrast sheet satisfies every structural pin above and still renders "
+                + "as the flat gradient this replaces");
+
+            // The sheet repeats, so every term in it has to be period-1 or the board shows a
+            // hard line wherever the tile wraps. Compare the step across the wrap with the
+            // average step between neighbouring columns/rows: a term that does not tile
+            // (Mathf.PerlinNoise, as the desk sheet uses) drives this ratio well above 1.
+            int size = sheet.width;
+            float seamU = 0f, insideU = 0f, seamV = 0f, insideV = 0f;
+            for (int i = 0; i < size; i++)
+            {
+                seamU += Mathf.Abs(Texel(texels, size, 0, i) - Texel(texels, size, size - 1, i));
+                seamV += Mathf.Abs(Texel(texels, size, i, 0) - Texel(texels, size, i, size - 1));
+                for (int j = 1; j < size; j++)
+                {
+                    insideU += Mathf.Abs(Texel(texels, size, j, i) - Texel(texels, size, j - 1, i));
+                    insideV += Mathf.Abs(Texel(texels, size, i, j) - Texel(texels, size, i, j - 1));
+                }
+            }
+            seamU /= size;
+            seamV /= size;
+            insideU /= size * (size - 1);
+            insideV /= size * (size - 1);
+            Assert.That(seamU, Is.LessThan(insideU * 2f),
+                "the tile does not wrap cleanly across u — the board will show a seam");
+            Assert.That(seamV, Is.LessThan(insideV * 2f),
+                "the tile does not wrap cleanly across v");
+        }
+
+        [UnityTest]
+        public IEnumerator BoardGrain_NeverErodesTheBallastContrast()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            var wood = _root.View.transform.Find("BoardBody/WoodTop").GetComponent<Renderer>();
+            var properties = new MaterialPropertyBlock();
+            wood.GetPropertyBlock(properties);
+            Color interior = properties.GetColor("_BaseColor");
+            var sheet = properties.GetTexture("_BaseMap") as Texture2D;
+            Assert.That(sheet, Is.Not.Null);
+
+            // The separation this branch must not spend. Measured on the Color values
+            // themselves with Rec.709 weights: CreamCard sits 0.262 above the board interior,
+            // and that gap is what makes the pale ballast ribbon read as track laid on wood
+            // rather than as a stripe painted onto it. The grain multiplies the interior, so
+            // the case that matters is the BRIGHTEST texel — the one that walks the board
+            // closest to the ribbon. Keeping the sheet's ceiling at or below 1 is what makes
+            // this arithmetic hold for any tuning of the grain, not just today's.
+            float brightest = 0f;
+            foreach (var texel in sheet.GetPixels32())
+                brightest = Mathf.Max(brightest, texel.r / 255f);
+            Assert.That(brightest, Is.LessThanOrEqualTo(1f),
+                "a sheet that can brighten the interior would close the gap to the ballast");
+
+            float board = Luminance(interior) * brightest;
+            float ballast = Luminance(Palette.CreamCard);
+            Assert.That(ballast - board, Is.GreaterThanOrEqualTo(0.262f),
+                "worst-case grained board must stay at least the measured 0.262 below the "
+                + "CreamCard ballast — that margin is why the track reads as track");
+        }
+
+        private static float Texel(Color32[] texels, int size, int x, int y)
+            => texels[y * size + x].r / 255f;
+
+        private static float Luminance(Color c)
+            => 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
 
         [UnityTest]
         public IEnumerator KeyLight_RakesTheTiltedBoardLikeLateAfternoon()
