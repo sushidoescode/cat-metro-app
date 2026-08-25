@@ -13,6 +13,19 @@ namespace CatMetro.Tests.EditMode.Presentation
     // arithmetic: the root is unrotated, so carriage.localPosition IS the board-local delta.
     public sealed class ToyTrainViewHistoryTests
     {
+        // Tolerance for assertions whose EXPECTED side is analytic (-CarriageOffset) while
+        // the actual side rides TrackSpline's arc-length lookup: a straight spline passes
+        // the flatness test immediately, so subdivision stops at the minimum depth (2^4 = 16
+        // arc samples) and ParameterAtDistanceFraction interpolates linearly between them.
+        // With handle 0.9 (0.3 x the 3-long edges) the parametric speed varies 2.7..3.15,
+        // bounding each lookup's position error near 1.3e-3 (linear-interp bound
+        // ds^2/8 * max|t''| * max speed); a carriage delta stacks two lookups (~2.6e-3;
+        // 1.13e-3 observed in the first Unity run). 5e-3 covers that bound with headroom
+        // while staying ~76x below the 0.38 signature a broken history guard would produce
+        // (clamp at the current edge's start vs trail on the previous edge). Assertions
+        // whose both sides are exact t=0 evaluations keep the tight 1e-3.
+        private const float SplineLookupTolerance = 0.005f;
+
         private GameObject _host;
         private ToyTrainView _view;
         private TrackSplineGraph _paths;
@@ -51,7 +64,7 @@ namespace CatMetro.Tests.EditMode.Presentation
 
             Assert.That(Vector3.Distance(Carriage().localPosition,
                     new Vector3(-ToyTrainView.CarriageOffset, 0f, 0f)),
-                Is.LessThan(0.001f),
+                Is.LessThan(SplineLookupTolerance),
                 "with sim-adjacent history the carriage trails through the junction");
         }
 
@@ -64,8 +77,10 @@ namespace CatMetro.Tests.EditMode.Presentation
 
             Assert.That(Vector3.Distance(Carriage().localPosition,
                     new Vector3(-ToyTrainView.CarriageOffset, 0f, 0f)),
-                Is.LessThan(0.001f),
-                "a same-edge frame must not overwrite the previous-edge memory");
+                Is.LessThan(SplineLookupTolerance),
+                "a same-edge frame must not overwrite the previous-edge memory (a clobbering " +
+                "guard clamps at the current edge's start, 0.38 from this expectation — far " +
+                "outside the arc-lookup tolerance)");
         }
 
         [Test]
@@ -88,7 +103,7 @@ namespace CatMetro.Tests.EditMode.Presentation
 
             Assert.That(Vector3.Distance(Carriage().localPosition,
                     new Vector3(-ToyTrainView.CarriageOffset, 0f, 0f)),
-                Is.LessThan(0.001f),
+                Is.LessThan(SplineLookupTolerance),
                 "parking at the edge's own end node keeps the consist trailing back along it");
         }
 
