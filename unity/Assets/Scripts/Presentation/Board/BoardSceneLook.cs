@@ -112,6 +112,34 @@ namespace CatMetro.Presentation.Board
             float safeCenterY = (0.13f + 0.86f) * 0.5f;
             // Centre X on the content the law governs, not on the slab that may be lopsided
             // around it; centre Y on the full frame so the rim stays inside top and bottom.
+            //
+            // KNOWN, MEASURED, NOT FIXED HERE: the slab bleeds off the LEFT frame edge only,
+            // where target-01 bleeds both. It is a consequence of this line, and the fix is
+            // not available on the camera side. Measured off the 2026-08-25 r3 render (L001):
+            // the rim's two long edges sit 600px apart, which against their 5.186-unit
+            // horizontal separation puts the frame at 115.7 px/world-unit and the fit at
+            // orthographicSize 8.85. The slab's AABB is 8.137 units = 941px against a 917px
+            // frame, so centred it would clear each edge by only 12px. But the board's centre
+            // projects to screen x 411 against the frame's 458.5 — contentBounds is offset
+            // 0.41 units from the slab it sits on, because props spread asymmetrically. Left
+            // overhang becomes 12 + 47.5 = 60px (bleeds, and the rim does clip at x=0 for
+            // rows 588-680); right becomes 12 - 47.5, so it falls ~35px short and the rim
+            // stops at x=857.
+            //
+            // Re-centring on the slab is the obvious fix and it breaches the safe-frame law:
+            // 0.41 units is 0.0517 of viewport width here, against the 0.013 of slack the
+            // derivation above leaves on each edge — 4x over. That law was breached once this
+            // week already and SafeWidth/SafeHeight are the fix.
+            //
+            // What would work is a wider slab, which is free against the width fit now that
+            // contentBounds excludes BoardBody. The slab's AABB has to reach
+            // 2 * (3.965 + 0.41) = 8.75 units, and d(AABB.x)/d(Margin) = 2.27, so
+            // BoardSurface.Margin would go 1.05 -> ~1.32 bare, ~1.56 with headroom. Vertically
+            // that is affordable (requiredForHeight * 1.05 reaches 6.05 against the fitted
+            // 8.85; it would have to reach 12.8 to take over the fit). Two reasons it is not
+            // done here: it widens the toy's wood border by ~50%, which moves overall board
+            // fill — reserved for the human — and the 0.41 offset is per-level, so one
+            // constant would be an unverifiable guess on the other 16 levels.
             float cameraX = contentBounds.center.x;
             float cameraY = frameBounds.center.y - (safeCenterY - 0.5f) * 2f * size;
 
