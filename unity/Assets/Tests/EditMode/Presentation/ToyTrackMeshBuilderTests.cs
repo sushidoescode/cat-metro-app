@@ -141,6 +141,189 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void Build_BallastBedIsOneUnbrokenRibbonWiderThanTheGauge()
+        {
+            var path = TrackSplineGraph.Build(
+                new[] { new Vector3(0f, 5f, 0f), Vector3.zero },
+                new[] { 0 }, new[] { 1 }).Path(0);
+            _host = new GameObject("track-ribbon-host");
+
+            _track = ToyTrackMeshBuilder.Build("E-ribbon", path, _host.transform);
+
+            Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
+            Vector3[] vertices = mesh.vertices;
+            int[] bed = LargestComponent(mesh.GetTriangles(0));
+
+            // The edge runs down -y, so the sweep's lateral axis is +x.
+            for (float distance = 0.05f; distance <= path.Length - 0.05f; distance += 0.1f)
+            {
+                Vector3 centre = path.EvaluateDistanceFraction(distance / path.Length);
+                bool covered = false;
+                float left = 0f;
+                float right = 0f;
+                foreach (int index in bed)
+                {
+                    Vector3 vertex = vertices[index];
+                    if (Mathf.Abs(vertex.y - centre.y) > 0.25f) continue;
+                    covered = true;
+                    left = Mathf.Min(left, vertex.x);
+                    right = Mathf.Max(right, vertex.x);
+                }
+                Assert.That(covered, Is.True,
+                    "the ballast bed must be unbroken along the whole edge — a row of "
+                    + "separate sleepers is what read as thin lines on bare board");
+                Assert.That(right, Is.GreaterThanOrEqualTo(0.5f), "at distance " + distance);
+                Assert.That(left, Is.LessThanOrEqualTo(-0.5f), "at distance " + distance);
+            }
+        }
+
+        [Test]
+        public void Build_AdjacentEdgesButtTheirBedsTogetherAtTheSharedNode()
+        {
+            var shared = new Vector3(0f, 2f, 0f);
+            var graph = TrackSplineGraph.Build(
+                new[] { new Vector3(0f, 4f, 0f), shared, new Vector3(2f, 0f, 0f) },
+                new[] { 0, 1 }, new[] { 1, 2 });
+            _host = new GameObject("track-joint-host");
+
+            for (int edge = 0; edge < 2; edge++)
+            {
+                GameObject built = ToyTrackMeshBuilder.Build(
+                    "E" + edge, graph.Path(edge), _host.transform);
+                Mesh mesh = built.GetComponent<MeshFilter>().sharedMesh;
+                Vector3[] vertices = mesh.vertices;
+
+                float nearest = float.PositiveInfinity;
+                foreach (int index in LargestComponent(mesh.GetTriangles(0)))
+                    nearest = Mathf.Min(nearest, Vector2.Distance(
+                        new Vector2(vertices[index].x, vertices[index].y),
+                        new Vector2(shared.x, shared.y)));
+
+                Assert.That(nearest, Is.LessThan(0.01f),
+                    "E" + edge + " must carry its bed all the way to the shared node, or "
+                    + "the ribbon breaks at every junction");
+            }
+        }
+
+        [Test]
+        public void Build_NavyRailsAreInsetIntoTheCreamBedNotLaidOnTopOfIt()
+        {
+            var path = TrackSplineGraph.Build(
+                new[] { new Vector3(0f, 4f, 0f), Vector3.zero },
+                new[] { 0 }, new[] { 1 }).Path(0);
+            _host = new GameObject("track-inset-host");
+
+            _track = ToyTrackMeshBuilder.Build("E-inset", path, _host.transform);
+
+            Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
+            Vector3[] vertices = mesh.vertices;
+            int[] bed = LargestComponent(mesh.GetTriangles(0));
+            int[] rails = mesh.GetTriangles(1);
+
+            // Board-local -z is up, so a top surface is a band of SMALL z.
+            float railCrown = rails.Min(index => vertices[index].z);
+            float railUnderside = rails.Max(index => vertices[index].z);
+            float bedHighest = bed.Min(index => vertices[index].z);
+            float bedTop = bed.Where(index => vertices[index].z <= bedHighest + 0.05f)
+                .Max(index => vertices[index].z);
+
+            Assert.That(railCrown, Is.LessThan(bedTop),
+                "the rails must stand proud of the bed or there is no navy to read");
+            Assert.That(bedTop - railCrown, Is.InRange(0.04f, 0.10f),
+                "a shallow proud lip reads as inset; a tall one is lines on stilts again");
+            Assert.That(railUnderside - bedTop, Is.GreaterThan(0.04f),
+                "the ballast must close over the rail's underside");
+            Assert.That((railUnderside - bedTop) / (railUnderside - railCrown),
+                Is.GreaterThan(0.4f),
+                "at least 40% of each rail must sit down inside the ballast");
+            Assert.That(rails.Max(index => Mathf.Abs(vertices[index].x)),
+                Is.LessThan(bed.Max(index => Mathf.Abs(vertices[index].x)) - 0.1f),
+                "the ribbon must still show cream outboard of both rails");
+        }
+
+        [Test]
+        public void Build_HighestSurfaceIsTheRailCrownTheTrainRidesOn()
+        {
+            var path = TrackSplineGraph.Build(
+                new[] { new Vector3(0f, 4f, 0f), Vector3.zero },
+                new[] { 0 }, new[] { 1 }).Path(0);
+            _host = new GameObject("track-contract-host");
+
+            _track = ToyTrackMeshBuilder.Build("E-contract", path, _host.transform);
+
+            Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
+            Vector3[] vertices = mesh.vertices;
+
+            // ToyTrainView pins its head anchor at board z -0.2 and bottoms every chassis
+            // part out at anchor-local +0.235 — exactly RailCrownZ. Widening the bed must
+            // never lift cream geometry through the plane the consist rides on.
+            Assert.That(ToyTrackMeshBuilder.RailOffset * 2f, Is.EqualTo(0.5f).Within(0.0001f),
+                "the consist is built to a 0.5 gauge");
+            Assert.That(mesh.bounds.min.z,
+                Is.EqualTo(ToyTrackMeshBuilder.RailCrownZ).Within(0.0001f),
+                "the rail crown is the highest thing on the track, and it is a contract");
+            Assert.That(mesh.GetTriangles(0).Min(index => vertices[index].z),
+                Is.GreaterThan(ToyTrackMeshBuilder.RailCrownZ),
+                "no cream surface may rise through the running plane or the train sinks");
+        }
+
+        [Test]
+        public void Build_EverySubmeshEnclosesPositiveVolumeThroughATightTurnout()
+        {
+            _host = new GameObject("track-volume-host");
+
+            _track = ToyTrackMeshBuilder.Build("E4", TightTurnout(), _host.transform);
+
+            Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
+            Vector3[] vertices = mesh.vertices;
+            for (int submesh = 0; submesh < mesh.subMeshCount; submesh++)
+            {
+                int[] triangles = mesh.GetTriangles(submesh);
+                double volume = 0.0;
+                for (int triangle = 0; triangle < triangles.Length; triangle += 3)
+                    volume += Vector3.Dot(vertices[triangles[triangle]],
+                        Vector3.Cross(vertices[triangles[triangle + 1]],
+                            vertices[triangles[triangle + 2]]));
+                Assert.That(volume, Is.GreaterThan(0.0),
+                    "submesh " + submesh + " encloses negative volume, so its faces are "
+                    + "mirrored inward and backface culling erases them");
+            }
+        }
+
+        [Test]
+        public void Build_TopSurfacesFaceTheCameraEvenThroughATightTurnout()
+        {
+            _host = new GameObject("track-facing-host");
+
+            _track = ToyTrackMeshBuilder.Build("E4", TightTurnout(), _host.transform);
+
+            Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
+            Vector3[] vertices = mesh.vertices;
+            for (int submesh = 0; submesh < mesh.subMeshCount; submesh++)
+            {
+                int[] triangles = mesh.GetTriangles(submesh);
+                float highest = triangles.Min(index => vertices[index].z);
+                int checkedLids = 0;
+                for (int triangle = 0; triangle < triangles.Length; triangle += 3)
+                {
+                    Vector3 a = vertices[triangles[triangle]];
+                    Vector3 b = vertices[triangles[triangle + 1]];
+                    Vector3 c = vertices[triangles[triangle + 2]];
+                    if (Mathf.Max(a.z, Mathf.Max(b.z, c.z)) > highest + 0.04f) continue;
+                    Vector3 normal = Vector3.Cross(b - a, c - a);
+                    if (Mathf.Abs(normal.z) < 0.5f * normal.magnitude) continue;
+                    checkedLids++;
+                    // The board's camera sits on the -z side: a lid you can see points at it.
+                    Assert.That(normal.z, Is.LessThan(0f),
+                        "a top face of submesh " + submesh + " points into the table — a "
+                        + "swept ribbon that folds on a tight curve inverts exactly here");
+                }
+                Assert.That(checkedLids, Is.GreaterThan(8),
+                    "submesh " + submesh + " must expose a real top surface to check");
+            }
+        }
+
+        [Test]
         public void DestroyingTrackOwner_ReleasesGeneratedMeshImmediatelyInEditMode()
         {
             var path = TrackSplineGraph.Build(
@@ -158,6 +341,28 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(generated == null, Is.True,
                 "edit-time board rebuilds must not retain generated mesh allocations");
         }
+
+        // The switch route from E4 of the existing cusp pin: node 1 leaves heading -y and
+        // has to whip round to a node level with it, so this is the tightest curvature the
+        // authored levels produce (radius ~0.17, well inside the bed's half width).
+        private static TrackSpline TightTurnout() =>
+            TrackSplineGraph.Build(
+                new[]
+                {
+                    new Vector3(3f, 9f, 0f),
+                    new Vector3(3f, 6f, 0f),
+                    new Vector3(1f, 1f, 0f),
+                    new Vector3(5f, 1f, 0f),
+                    new Vector3(5f, 6f, 0f),
+                },
+                new[] { 0, 1, 1, 1 }, new[] { 1, 2, 3, 4 }).Path(3);
+
+        // Submesh 0 holds the swept bed plus one island per sleeper tick; the bed is the
+        // big one.
+        private static int[] LargestComponent(int[] triangles) =>
+            ConnectedVertexComponents(triangles)
+                .OrderByDescending(component => component.Length)
+                .First();
 
         private static List<int[]> ConnectedVertexComponents(int[] triangles)
         {
