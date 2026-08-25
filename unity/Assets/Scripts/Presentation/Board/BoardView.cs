@@ -44,7 +44,7 @@ namespace CatMetro.Presentation.Board
         private TrackSplineGraph _trackPaths;
         private int[][] _switchRouteTargetNode; // per switch, per route: target node index
         private int[] _switchNode;
-        private Transform[] _switchArm;
+        private ToySwitchView[] _switchView;
         private readonly Dictionary<int, GameObject> _trains = new Dictionary<int, GameObject>();
 
         public int SwitchCount => _switchNode.Length;
@@ -162,7 +162,7 @@ namespace CatMetro.Presentation.Board
 
             var switches = dto.Switches.ToArray();
             _switchNode = new int[switches.Length];
-            _switchArm = new Transform[switches.Length];
+            _switchView = new ToySwitchView[switches.Length];
             _switchRouteTargetNode = new int[switches.Length][];
             for (int s = 0; s < switches.Length; s++)
             {
@@ -172,22 +172,17 @@ namespace CatMetro.Presentation.Board
                 for (int r = 0; r < routes.Length; r++)
                     _switchRouteTargetNode[s][r] = _edgeTo[edgeIndex[routes[r]]];
 
-                var disc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-                disc.GetComponent<Renderer>().sharedMaterial = GreyboxMaterial.Shared;
-                disc.name = "switch:" + switches[s].Id;
-                disc.transform.SetParent(transform, false);
-                disc.transform.localPosition = _nodePos[_switchNode[s]] + new Vector3(0f, 0f, -0.4f);
-                disc.transform.localScale = new Vector3(0.5f, 0.08f, 0.5f);
-                disc.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-                var id = disc.AddComponent<BoardElementId>();
+                // SWITCH-LEVERS: the toy assembly (teal base, tilted orange lever, arrow)
+                // replaces the disc + arm. Its root keeps the disc's exact contract: the
+                // "switch:{id}" name, the one BoardElementId (added HERE, unchanged), a root
+                // renderer for the teach-ring comparison, and the same anchor position — the
+                // tap target is SwitchWorldPos, which never moved.
+                var toySwitch = ToySwitchView.Build(switches[s].Id, transform,
+                    _nodePos[_switchNode[s]] + new Vector3(0f, 0f, -0.4f));
+                var switchGo = toySwitch.gameObject;
+                var id = switchGo.AddComponent<BoardElementId>();
                 id.Id = switches[s].Id; id.Kind = "switch";
-
-                var arm = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                arm.GetComponent<Renderer>().sharedMaterial = GreyboxMaterial.Shared;
-                arm.name = "arm";
-                arm.transform.SetParent(disc.transform.parent, false);
-                arm.transform.localScale = new Vector3(0.1f, 0.9f, 0.1f);
-                _switchArm[s] = arm.transform;
+                _switchView[s] = toySwitch;
 
                 // CM-UX-03: onboarding-band teach affordance — a STATIC raised ring behind
                 // the disc (shape carries the information; no BoardElementId, so the merged
@@ -200,7 +195,7 @@ namespace CatMetro.Presentation.Board
                         _teachRing = new Transform[switches.Length];
                         _teachDisc = new Transform[switches.Length];
                         _teachCleared = new bool[switches.Length];
-                        _teachDiscBaseScale = disc.transform.localScale;
+                        _teachDiscBaseScale = switchGo.transform.localScale;
                     }
                     var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
                     // Human ruling 2026-08-06 (#36 review finding 2): the ring carries the
@@ -212,10 +207,13 @@ namespace CatMetro.Presentation.Board
                     ring.transform.SetParent(transform, false);
                     ring.transform.localPosition =
                         _nodePos[_switchNode[s]] + new Vector3(0f, 0f, -0.35f);
-                    ring.transform.localScale = new Vector3(0.8f, 0.04f, 0.8f);
+                    // SWITCH-LEVERS: widened so the ring still reads as a ring AROUND the toy
+                    // base (footprint 0.52 x 0.78) — the 0.8 disc-era diameter would be
+                    // swallowed. Static, same material, same z: every CM-UX-03 pin holds.
+                    ring.transform.localScale = new Vector3(1.1f, 0.04f, 1.1f);
                     ring.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
                     _teachRing[s] = ring.transform;
-                    _teachDisc[s] = disc.transform;
+                    _teachDisc[s] = switchGo.transform;
                 }
             }
             RefreshSwitches();
@@ -278,14 +276,13 @@ namespace CatMetro.Presentation.Board
 
         public void RefreshSwitches()
         {
-            for (int s = 0; s < _switchArm.Length; s++)
+            for (int s = 0; s < _switchView.Length; s++)
             {
-                var origin = transform.TransformPoint(
-                    _nodePos[_switchNode[s]] + new Vector3(0f, 0f, -0.4f)); // F11: world space
-                var target = transform.TransformPoint(_nodePos[_switchRouteTargetNode[s][CommittedRoute(s)]]);
-                var dir = (target - transform.TransformPoint(_nodePos[_switchNode[s]])).normalized;
-                _switchArm[s].position = origin + dir * 0.5f;
-                _switchArm[s].up = dir;
+                // Board-local math: node positions all live in this view's XY plane, so the
+                // toy's yaw is a pure local rotation — correct under any parent transform.
+                var dir = _nodePos[_switchRouteTargetNode[s][CommittedRoute(s)]]
+                    - _nodePos[_switchNode[s]];
+                _switchView[s].SetDirection(new Vector2(dir.x, dir.y).normalized);
             }
         }
 
