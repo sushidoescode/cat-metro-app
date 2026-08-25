@@ -20,6 +20,28 @@ namespace CatMetro.Presentation.Theme
     //
     // Glyph derivation is deliberately the SAME expression BoardView uses rather than a second
     // switch, so the HUD and the board cannot drift apart when a fifth line is authored.
+    //
+    // ---------------------------------------------------------------------------------------
+    // KNOWN GAP — the BOARD's station shapes, not this file's. Not fixed here on purpose: it
+    // belongs to the props lane. Stated precisely so whoever picks it up does not have to
+    // rediscover it.
+    //
+    //   FILE:       unity/Assets/Scripts/Presentation/Props/BoardPropDecorator.cs
+    //   EXPRESSION: bool isRedCircle = label.text == "R";
+    //               ... GameObject.CreatePrimitive(isRedCircle
+    //                       ? PrimitiveType.Cylinder : PrimitiveType.Cube)
+    //
+    // That is a BINARY rule: red gets a cylinder, EVERY other line gets a cube. It reads as a
+    // shape vocabulary only while a level has at most two colours. All 17 authored levels use
+    // red/blue/yellow today, and a feat/level-variety lane is introducing GREEN — at which
+    // point a green station and a blue station are BOTH cubes and only colour separates them.
+    // That is a real colourblind-safety hole, and it is the board (the thing the player is
+    // actually looking at), not the HUD.
+    //
+    // The fix is for that expression to grow toward ShapeOf below — one vocabulary, four
+    // distinct shapes, keeping the two cases it already paints (red -> circle/cylinder,
+    // blue -> square/cube) so nothing a player has learned changes. The HUD is already there.
+    // ---------------------------------------------------------------------------------------
     public static class CatLine
     {
         public static Color ColorOf(string name)

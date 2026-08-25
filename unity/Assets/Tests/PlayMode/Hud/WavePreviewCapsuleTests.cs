@@ -260,6 +260,63 @@ namespace CatMetro.Tests.PlayMode
                 "the HUD sits under the banner (90), chrome (100), results (110), screens (120)");
         }
 
+        // --- the outcome states hide the HUD OUTRIGHT, not by z-order ---
+
+        [Test]
+        public void VisibleInState_HidesTheHudOnceTheRunIsOver()
+        {
+            // "What is coming next" is a meaningless question after the run ends.
+            Assert.That(WavePreviewStrip.VisibleInState("Won"), Is.False);
+            Assert.That(WavePreviewStrip.VisibleInState("FailureReview"), Is.False);
+            // Halted is a PAUSE, not an ending — the queue still matters.
+            Assert.That(WavePreviewStrip.VisibleInState("Playing"), Is.True);
+            Assert.That(WavePreviewStrip.VisibleInState("Halted"), Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator Capsule_HidesItself_WhenTheRunIsWonOrFailed()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+            Assert.That(_root.Preview.IsVisible, Is.True, "visible while playing");
+
+            var state = "Playing";
+            _root.Preview.BindScreenState(() => state);
+
+            state = "FailureReview";
+            yield return null;
+            Assert.That(_root.Preview.IsVisible, Is.False,
+                "the HUD leaves the screen on FailureReview — it does not merely sort under "
+                + "the banner, which would break the moment either view's order changed");
+
+            state = "Won";
+            yield return null;
+            Assert.That(_root.Preview.IsVisible, Is.False);
+
+            state = "Playing";
+            yield return null;
+            Assert.That(_root.Preview.IsVisible, Is.True, "and comes back for the next run");
+        }
+
+        [UnityTest]
+        public IEnumerator Capsule_HidingDoesNotDependOnSortingOrder()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            var state = "Won";
+            _root.Preview.BindScreenState(() => state);
+            yield return null;
+
+            // Force the HUD to sort ABOVE the banner. If hiding were a z-order trick this
+            // would put the dead preview back on top of the outcome copy.
+            _root.Preview.GetComponent<Canvas>().sortingOrder = 999;
+            yield return null;
+
+            Assert.That(_root.Preview.IsVisible, Is.False,
+                "hiding is a state decision, independent of who sorts above whom");
+        }
+
         // --- the legacy read-backs other suites pin ---
 
         [UnityTest]

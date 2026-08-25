@@ -52,6 +52,8 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private GameSession _session;
         private Canvas _canvas;
         private RectTransform _canvasRect;
+        private RectTransform _hudRoot;
+        private System.Func<string> _screenState;
         private Image _capsule;
         private Image _wave;
         private RectTransform _waveClip;
@@ -153,7 +155,12 @@ namespace CatMetro.Presentation.Hud.WavePreview
             // NO GraphicRaycaster on purpose — the strip is information only.
             _canvasRect = (RectTransform)_canvas.transform;
 
-            _capsule = AddImage(transform, "Capsule", HudShapeSprites.Capsule);
+            // Everything paintable hangs off ONE root so the outcome states can hide the HUD
+            // with a single SetActive, while this component keeps ticking.
+            _hudRoot = NewRect(transform, "Hud");
+            Stretch(_hudRoot);
+
+            _capsule = AddImage(_hudRoot, "Capsule", HudShapeSprites.Capsule);
             _capsule.type = Image.Type.Sliced;   // rounded corners survive any width
             _capsule.color = Palette.WarmPaper;
 
@@ -170,7 +177,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
             _wave.color = Palette.CreamCard;
             Stretch(_wave.rectTransform);
 
-            _faceRow = NewRect(transform, "Faces");
+            _faceRow = NewRect(_hudRoot, "Faces");
             for (int i = 0; i < MaxFaces; i++)
             {
                 var face = CatFaceView.Create(_faceRow, "face" + i);
@@ -180,7 +187,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
             _overflow = AddLabel(_faceRow, "Overflow", Palette.InkNavy);
             _overflow.fontStyle = FontStyles.Bold;
 
-            var counters = NewRect(transform, "Counters");
+            var counters = NewRect(_hudRoot, "Counters");
             // Stretched to the canvas: the counter children are placed in ABSOLUTE canvas
             // pixels, which only resolves correctly if their parent's bottom-left IS the
             // canvas bottom-left. A default RectTransform is a 100x100 box at the centre.
@@ -274,6 +281,31 @@ namespace CatMetro.Presentation.Hud.WavePreview
             for (int i = 0; i < trains.Length; i++)
                 if (trains[i].Id != 0 && trains[i].State != CatMetro.Domain.TrainState.None) n++;
             return n;
+        }
+
+        // The screen-state seam, mirroring ScreenChromeController.Attach. GameRoot binds it;
+        // an unbound strip stays visible, which is what the LaunchWith fixture seam wants.
+        public void BindScreenState(System.Func<string> screenState)
+        {
+            _screenState = screenState;
+            ApplyScreenState();
+        }
+
+        public bool IsVisible => _hudRoot != null && _hudRoot.gameObject.activeSelf;
+
+        // The pure state law. The wave preview answers "what is coming next", which is a
+        // meaningless question once the run is over — so Won and FailureReview hide it
+        // OUTRIGHT rather than relying on the banner's sorting order to cover it. Two views
+        // edited by different lanes must not depend on each other's z-order to stay correct.
+        // Halted keeps the HUD: the run is paused, not finished.
+        public static bool VisibleInState(string state) =>
+            state != "Won" && state != "FailureReview";
+
+        private void ApplyScreenState()
+        {
+            if (_hudRoot == null) return;
+            bool show = _screenState == null || VisibleInState(_screenState());
+            if (_hudRoot.gameObject.activeSelf != show) _hudRoot.gameObject.SetActive(show);
         }
 
         // The preview sits in the top 0-15% band of the viewport. Originally this asked the
@@ -373,6 +405,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
         {
             if (_session != null && _session.State.Tick != _lastRefreshTick) Refresh();
             Layout(Screen.safeArea, Screen.dpi);
+            ApplyScreenState();
         }
 
         private void Layout(Rect safeArea, float dpi)
