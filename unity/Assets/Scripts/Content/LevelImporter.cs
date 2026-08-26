@@ -525,7 +525,12 @@ namespace CatMetro.Content
                         stationNode, stationAccepts, stationCapacity,
                         waveTick, waveColor, waveCount, waveSpacing,
                         win.Deliveries, win.TimeLimitTicks,
-                        qCapBound: ContentBounds.QUEUE_CAPACITY_MAX, trainsMax: trainsMax);
+                        qCapBound: ContentBounds.QUEUE_CAPACITY_MAX, trainsMax: trainsMax,
+                        // The one line that stops `perfectMaxSwitches` dying in the DTO. It has
+                        // been authored in all 17 levels and read by nothing since the corpus
+                        // was written; the Domain can now see it. Mis-delivery stays on the
+                        // CM-C1 pin for imported content — flipping it is a content decision.
+                        perfectMaxSwitches: win.PerfectMaxSwitches);
                 }
                 catch (NotSupportedException ex)
                 {
