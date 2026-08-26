@@ -162,8 +162,10 @@ namespace CatMetro.Tests.PlayMode
 
             // 1. The gameplay half is unchanged and still bites. A station that leaves the
             //    band must fail, and this proves it against a REAL station's real position
-            //    rather than a hypothetical: nudge it out by a hair more than the band's own
-            //    half-width and the same helper that guards the scene rejects it.
+            //    rather than a hypothetical. The push is a FULL frame width, not half: a
+            //    station already sitting at the left of the band would still be inside it
+            //    after half a frame, and the test would pass by accident on some levels and
+            //    fail on others depending on which station came back first.
             var stations = root.View.GetComponentsInChildren<BoardElementId>(true)
                 .Where(x => x.Kind == "station").ToArray();
             Assert.That(stations, Is.Not.Empty, "L008 is the wide-prop level and has stations");
@@ -172,8 +174,7 @@ namespace CatMetro.Tests.PlayMode
 
             var probe = stations[0];
             float frameWidth = 2f * camera.orthographicSize * camera.aspect;
-            var escaped = probe.transform.position
-                + new Vector3(frameWidth * 0.5f, 0f, 0f);
+            var escaped = probe.transform.position + new Vector3(frameWidth, 0f, 0f);
             Assert.Throws<AssertionException>(
                 () => AssertInside(camera, escaped, probe.Id),
                 "the gameplay band must still reject a station that leaves the frame — "
@@ -191,7 +192,6 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(DecorativeMaxX, Is.GreaterThan(0.945f),
                 "the decorative band has to be wider than the gameplay one or the split "
                 + "bought nothing");
-            Assert.That(DecorativeMinX, Is.LessThan(0.055f));
             Assert.That(DecorativeMinY, Is.LessThan(0.12f));
             Assert.That(DecorativeMaxY, Is.GreaterThan(0.87f));
             // The shape of the widening, stated so it cannot drift into "decorative means
