@@ -11,8 +11,16 @@ namespace CatMetro.Services.Purchases
         // these: a refund, a chargeback, or a lapsed subscription must be able to take one away.
         Store,
 
-        // Lent by watching a rewarded ad. Expires on a wall clock. The ad lane grants these; it
-        // does not get its own entitlement concept.
+        // Lent by watching a rewarded ad served by a network we integrated ourselves, and
+        // granted locally. Expires on a wall clock. The ad lane grants these; it does not get
+        // its own entitlement concept.
+        //
+        // Note this is the SECOND of two ad paths. RevenueCat's own Ad Monetization feature
+        // grants a time-limited entitlement server-side (AdMob server-side verification) and
+        // delivers it through CustomerInfo like any other entitlement, so that path arrives as
+        // GrantSource.Store with a non-zero expiry and needs nothing special here. The
+        // convergence is therefore true at two levels: RevenueCat converges its own ad grants
+        // with purchases before we ever see them, and this ledger converges anything else.
         RewardedAd,
 
         // Granted from the RevenueCat dashboard (promotional entitlement) or by a support
@@ -114,9 +122,14 @@ namespace CatMetro.Services.Purchases
             // than store a grant that can never be active.
             if (expiresAtUnixSeconds <= nowUnixSeconds) return false;
 
-            // Owned outright — the lease adds nothing. Report false so the ad lane can decline
-            // to offer the ad in the first place rather than selling the player nothing.
-            if (_store.TryGetValue(entitlementId, out var owned) && owned.IsActiveAt(nowUnixSeconds))
+            // Already covered by the store for at least as long — the lease adds nothing. Report
+            // false so the ad lane can decline to offer the ad rather than selling the player
+            // nothing. Note the expiry comparison rather than a plain "is it active": a
+            // RevenueCat ad reward grants a SHORT entitlement (30 minutes minimum) through
+            // CustomerInfo, and a longer lease on top of that is a real improvement, not a
+            // no-op. Only a permanent grant, or a longer-running one, makes the lease pointless.
+            if (_store.TryGetValue(entitlementId, out var owned) && owned.IsActiveAt(nowUnixSeconds) &&
+                (owned.IsPermanent || owned.ExpiresAtUnixSeconds >= expiresAtUnixSeconds))
                 return false;
 
             // Extending an existing lease only ever moves the expiry forward. A shorter lease
@@ -131,22 +144,33 @@ namespace CatMetro.Services.Purchases
             return true;
         }
 
-        // Drops leases that have run out. Cheap to call every few seconds; only fires Changed if
-        // something actually died. Nothing depends on this being called — IsActive already
-        // ignores expired leases — it exists so the ledger does not grow without bound and so
-        // the UI learns about an expiry promptly rather than on the next unrelated event.
+        // Drops any grant that has run out, from EITHER limb. Cheap to call every few seconds;
+        // only fires Changed if something actually died.
+        //
+        // Nothing depends on this being called — IsActive already ignores expired grants — but
+        // it matters for a specific reason RevenueCat calls out: when a time-limited entitlement
+        // lapses, "RevenueCat doesn't notify your app the moment it expires… Check the
+        // entitlement's active status at the point where you gate access, not once when the
+        // reward is granted and never again." A player can sit on the wardrobe screen while a
+        // 30-minute grant runs out. This is what makes the UI notice.
         public bool PruneExpired(long nowUnixSeconds)
         {
+            bool changed = Prune(_leases, nowUnixSeconds) | Prune(_store, nowUnixSeconds);
+            if (changed) Changed?.Invoke();
+            return changed;
+        }
+
+        private static bool Prune(Dictionary<string, EntitlementGrant> map, long nowUnixSeconds)
+        {
             List<string> dead = null;
-            foreach (var kv in _leases)
+            foreach (var kv in map)
             {
                 if (!kv.Value.IsActiveAt(nowUnixSeconds))
                     (dead ??= new List<string>()).Add(kv.Key);
             }
 
             if (dead == null) return false;
-            for (int i = 0; i < dead.Count; i++) _leases.Remove(dead[i]);
-            Changed?.Invoke();
+            for (int i = 0; i < dead.Count; i++) map.Remove(dead[i]);
             return true;
         }
 
@@ -176,13 +200,21 @@ namespace CatMetro.Services.Purchases
             return result;
         }
 
-        // Seconds of lease remaining, or 0 if this entitlement is not on a lease (owned outright
-        // counts as 0 — an owned thing has no countdown). Presentation uses this for the little
-        // "2h left" chip on a leased cosmetic.
-        public long LeaseSecondsRemaining(string entitlementId, long nowUnixSeconds)
+        // Seconds until this entitlement lapses, or 0 if it never will (owned outright — an
+        // owned thing has no countdown) or is not active at all. Presentation uses this for the
+        // little "2h left" chip.
+        //
+        // Deliberately source-blind: a 30-minute entitlement granted by RevenueCat's own
+        // server-verified ad reward arrives as an expiring STORE grant, and a locally granted
+        // lease arrives as a RewardedAd grant. Both are countdowns and both report here, because
+        // the UI's question is "how long have I got?", not "who gave me this?".
+        public long SecondsUntilExpiry(string entitlementId, long nowUnixSeconds)
         {
             if (string.IsNullOrEmpty(entitlementId)) return 0L;
-            if (_store.TryGetValue(entitlementId, out var owned) && owned.IsActiveAt(nowUnixSeconds)) return 0L;
+
+            if (_store.TryGetValue(entitlementId, out var owned) && owned.IsActiveAt(nowUnixSeconds))
+                return owned.IsPermanent ? 0L : owned.ExpiresAtUnixSeconds - nowUnixSeconds;
+
             if (!_leases.TryGetValue(entitlementId, out var leased)) return 0L;
             if (!leased.IsActiveAt(nowUnixSeconds)) return 0L;
             return leased.ExpiresAtUnixSeconds - nowUnixSeconds;

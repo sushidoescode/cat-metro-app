@@ -75,8 +75,10 @@ namespace CatMetro.Services.Purchases
         // one answer. Callers cannot tell which, and that is the design.
         public bool IsUnlocked(string entitlementId) => _ledger.IsActive(entitlementId, _clock());
 
-        public long LeaseSecondsRemaining(string entitlementId)
-            => _ledger.LeaseSecondsRemaining(entitlementId, _clock());
+        // Seconds until this unlock lapses, or 0 if it never will. Source-blind: it counts down
+        // a locally granted ad lease and a RevenueCat-granted timed entitlement identically.
+        public long SecondsUntilExpiry(string entitlementId)
+            => _ledger.SecondsUntilExpiry(entitlementId, _clock());
 
         // ---- shop -----------------------------------------------------------------------
 

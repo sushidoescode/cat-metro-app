@@ -1,0 +1,26 @@
+{
+    "name": "CatMetro.Integrations.RevenueCat",
+    "rootNamespace": "CatMetro.Integrations.RevenueCat",
+    "references": [
+        "CatMetro.Services",
+        "CatMetro.Integrations",
+        "revenuecat.purchases-unity"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "CATMETRO_REVENUECAT"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.revenuecat.purchases-unity",
+            "expression": "",
+            "define": "CATMETRO_REVENUECAT"
+        }
+    ],
+    "noEngineReferences": false
+}

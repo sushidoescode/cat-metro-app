@@ -1,0 +1,22 @@
+{
+  "_README": [
+    "COPY THIS FILE to revenuecat_config.json (same folder) and paste in the real key.",
+    "revenuecat_config.json is gitignored and MUST NEVER be committed.",
+    "",
+    "Where the key comes from: RevenueCat dashboard -> Project Settings -> API keys ->",
+    "the PUBLIC app-specific key for the Google Play app. It starts with 'goog_'.",
+    "",
+    "Public SDK keys ('goog_', 'appl_') are designed to ship inside the app binary.",
+    "SECRET keys ('sk_') must never appear in a Unity project at all - they can grant",
+    "entitlements to anyone, and an APK is not a secret.",
+    "",
+    "useTestStore: set true ONLY with a RevenueCat Test Store key, which lets you complete",
+    "a purchase on a device with no Play Console products and no closed track. The game",
+    "refuses to use a Test Store key in a release build, because RevenueCat forbids",
+    "shipping one to a store."
+  ],
+
+  "googleApiKey": "REPLACE_ME_WITH_THE_GOOGLE_PUBLIC_SDK_KEY",
+  "appleApiKey": "",
+  "useTestStore": false
+}
