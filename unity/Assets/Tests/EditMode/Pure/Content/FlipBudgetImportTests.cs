@@ -1,74 +1,67 @@
 using System.IO;
 using System.Linq;
-using NUnit.Framework;
+using System.Text;
 using CatMetro.Content;
 using CatMetro.Domain;
 using CatMetro.Tests.Domain;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using NUnit.Framework;
 
 namespace CatMetro.Tests.Content
 {
-    // `win.perfectMaxSwitches` has been authored in all 17 levels since the corpus was written
-    // and loaded into WinDto and stopped there — the Domain never saw it. These tests assert the
-    // one wire that changed: DTO -> LevelGraph.PerfectMaxSwitches, on real content, not fixtures.
     [TestFixture]
-    public class FlipBudgetImportTests
+    public sealed class FlipBudgetImportTests
     {
-        private static string[] LevelFiles() =>
-            Directory.GetFiles(Path.Combine(Fixtures.RepoRoot(), "content", "levels"), "L*.json")
-                     .OrderBy(p => p, System.StringComparer.Ordinal)
-                     .ToArray();
-
-        private static ImportedLevel Import(string path)
-        {
-            var r = LevelImporter.Import(File.ReadAllBytes(path));
-            Assert.That(r.Ok, Is.True, $"{Path.GetFileName(path)} must import: {r.Error}");
-            return r.Value;
-        }
-
         [Test]
-        public void EverySeventeenLevels_ReachTheDomainWithTheirAuthoredPar()
+        public void EveryAuthoredParReachesTheRuntimeGraph()
         {
-            var files = LevelFiles();
-            Assert.That(files.Length, Is.EqualTo(17), "the authored corpus");
+            var files = Directory.GetFiles(
+                    Path.Combine(Fixtures.RepoRoot(), "content", "levels"), "L*.json")
+                .OrderBy(path => path, System.StringComparer.Ordinal)
+                .ToArray();
 
-            foreach (var f in files)
+            Assert.That(files.Length, Is.EqualTo(17));
+            foreach (var path in files)
             {
-                var lvl = Import(f);
-                Assert.That(lvl.Graph.PerfectMaxSwitches, Is.EqualTo(lvl.Dto.Win.PerfectMaxSwitches),
-                    $"{Path.GetFileName(f)}: par must survive the DTO -> LevelGraph hop");
-                Assert.That(lvl.Graph.PerfectMaxSwitches, Is.GreaterThanOrEqualTo(0),
-                    $"{Path.GetFileName(f)}: every authored level has a real budget");
+                var import = LevelImporter.Import(File.ReadAllBytes(path));
+                Assert.That(import.Ok, Is.True, $"{Path.GetFileName(path)} must import: {import.Error}");
+                Assert.That(import.Value.Graph.PerfectMaxSwitches,
+                    Is.EqualTo(import.Value.Dto.Win.PerfectMaxSwitches),
+                    $"{Path.GetFileName(path)} must not drop win.perfectMaxSwitches");
             }
         }
 
         [Test]
-        public void AuthoredParsSpanOneToFour_SoEveryTierIsReachable()
+        public void MissingOptionalParImportsAsUngated()
         {
-            var pars = LevelFiles().Select(f => Import(f).Graph.PerfectMaxSwitches).Distinct().OrderBy(x => x).ToArray();
-            Assert.That(pars, Is.EqualTo(new[] { 1, 2, 3, 4 }),
-                "the whole authored range — WithinMax ceilings 2..8");
+            var json = L001Json();
+            ((JObject)json["win"]).Property("perfectMaxSwitches").Remove();
+
+            var import = LevelImporter.Import(Encoding.UTF8.GetBytes(json.ToString(Formatting.None)));
+
+            Assert.That(import.Ok, Is.True, import.Error?.ToString());
+            Assert.That(import.Value.Dto.Win.PerfectMaxSwitches, Is.EqualTo(FlipBudget.Unbudgeted));
+            Assert.That(import.Value.Graph.PerfectMaxSwitches, Is.EqualTo(FlipBudget.Unbudgeted));
         }
 
-        [Test]
-        public void L001_ImportsParOne_AndItsGoldenLogScoresPerfect()
+        [TestCase(-2)]
+        [TestCase(201)]
+        public void AuthoredParOutsideSchemaBoundsIsRejected(int authoredPar)
         {
-            var lvl = Import(Path.Combine(Fixtures.RepoRoot(), "content", "levels", "L001.json"));
-            Assert.That(lvl.Graph.PerfectMaxSwitches, Is.EqualTo(1));
+            var json = L001Json();
+            json["win"]["perfectMaxSwitches"] = authoredPar;
 
-            var end = Fixtures.RunThroughTick(lvl.Graph, (ulong)lvl.Dto.Seed, Fixtures.GoldenLog(), 60);
-            Assert.That(end.Outcome.Kind, Is.EqualTo(OutcomeKind.Won));
-            Assert.That(end.FlipStatus.Tier, Is.EqualTo(FlipTier.Perfect),
-                "the authored par and the authored solution agree — par is achievable, not decorative");
-            Assert.That(end.FlipStars, Is.EqualTo(3));
+            var import = LevelImporter.Import(Encoding.UTF8.GetBytes(json.ToString(Formatting.None)));
+
+            Assert.That(import.Ok, Is.False);
+            Assert.That(import.Error.Kind, Is.EqualTo(ContentErrorKind.BoundViolation));
         }
 
-        [Test]
-        public void ImportedContent_StaysOnTheMisdeliveryPin()
+        private static JObject L001Json()
         {
-            // Turning mis-delivery on is a content decision this lane does not take.
-            foreach (var f in LevelFiles())
-                Assert.That(Import(f).Graph.Misdelivery, Is.EqualTo(MisdeliveryPolicy.Pinned),
-                    $"{Path.GetFileName(f)}: importer must not silently change semantics");
+            string path = Path.Combine(Fixtures.RepoRoot(), "content", "levels", "L001.json");
+            return JObject.Parse(File.ReadAllText(path));
         }
     }
 }

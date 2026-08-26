@@ -44,29 +44,11 @@ namespace CatMetro.Domain
 
         public LevelGraph Graph;           // not part of the digest; the immutable board
 
+        public FlipBudgetStatus FlipStatus => FlipBudget.Evaluate(Graph.PerfectMaxSwitches, SwitchesUsed);
+
         // Rng stream selector for the level seed; constant so (levelId, seed, commandLog) stays
         // the whole determinism input set (ADR-0002 §8).
         public const ulong RngSequence = 54;
-
-        // ---- Read-only derived views. NOT digest fields. -------------------------------------
-        // These are computed properties over SwitchesUsed + Graph.PerfectMaxSwitches, both of
-        // which already exist. Nothing here is stored, so WriteDigest and DigestLength are
-        // untouched and every golden replay hash still matches. This is the surface the HUD
-        // binds to (via GameSession); see Domain/FlipBudget.cs.
-
-        /// <summary>Live flip-budget snapshot: par, flips used, remaining, tier, stars.</summary>
-        public FlipBudgetStatus FlipStatus => FlipBudget.Evaluate(this);
-
-        /// <summary>
-        /// The Perfect Flow stamp from product_spec.md:238 — won, zero rejections, zero
-        /// Overloads, within par. Specified in 2026, evaluated for the first time here.
-        /// </summary>
-        public bool IsPerfectFlow => FlipBudget.IsPerfectFlow(
-            Graph != null ? Graph.PerfectMaxSwitches : FlipBudget.Unbudgeted,
-            SwitchesUsed, Rejections, Overloads, Outcome.Kind == OutcomeKind.Won);
-
-        /// <summary>Stars actually earned right now: 3/2/1 on a win by flip tier, 0 otherwise.</summary>
-        public int FlipStars => FlipBudget.StarsFor(FlipStatus.Tier, Outcome.Kind == OutcomeKind.Won);
 
         public static SimulationState CreateInitial(LevelGraph graph, ulong seed)
         {

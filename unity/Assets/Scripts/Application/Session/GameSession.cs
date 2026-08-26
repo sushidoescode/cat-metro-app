@@ -29,6 +29,11 @@ namespace CatMetro.Application.Session
         public CommandLog Log { get; }
         public TrainSlot[] PrevTrains { get; private set; }
         public double Alpha => _clock.Alpha;
+        // Read-only HUD snapshot. During play it counts every committed tap immediately; after
+        // the run ends it freezes at the number the simulation actually applied.
+        public FlipBudgetStatus FlipStatus => FlipBudget.Evaluate(
+            Level.Graph.PerfectMaxSwitches,
+            State.Outcome.Kind == OutcomeKind.Running ? Log.Entries.Count : State.SwitchesUsed);
 
         public void EnqueueToggle(int switchId) =>
             Log.Append(new ToggleSwitchCommand((ushort)switchId, State.Tick));
@@ -45,40 +50,6 @@ namespace CatMetro.Application.Session
                 if (e.SwitchId == switchId && e.Tick >= State.Tick - 1) n++;
             return n;
         }
-
-        // ---- FLIP BUDGET: the read-only surface the HUD binds to -----------------------------
-        // The HUD lane owns WavePreviewStrip.cs and is not touched by this lane. These five
-        // members are the whole contract. Nothing here mutates the run.
-        //
-        // Bind the COMMITTED variants, not the applied ones. A tap stamps a command that Step
-        // does not apply until the next tick boundary, so `State.SwitchesUsed` lags the player's
-        // finger by up to one tick. The lever art already solves this the same way via
-        // PendingToggleCount — "the visual must not lie" (see the note above that method).
-        // Painting FlipsApplied would make the counter visibly stutter on every tap.
-
-        /// <summary>Authored par for this level, or FlipBudget.Unbudgeted (-1) if none.</summary>
-        public int FlipPar => Level.Graph.PerfectMaxSwitches;
-
-        /// <summary>Flips the simulation has actually applied. Lags a tap by up to one tick.</summary>
-        public int FlipsApplied => State.SwitchesUsed;
-
-        /// <summary>Flips applied PLUS taps already committed but not yet stepped. Paint this one.</summary>
-        public int FlipsCommitted
-        {
-            get
-            {
-                int pending = 0;
-                foreach (var e in Log.Entries)
-                    if (e.Tick >= State.Tick - 1) pending++;
-                return State.SwitchesUsed + pending;
-            }
-        }
-
-        /// <summary>Budget snapshot over <see cref="FlipsCommitted"/> — par, remaining, tier, stars.</summary>
-        public FlipBudgetStatus FlipStatus => FlipBudget.Evaluate(FlipPar, FlipsCommitted);
-
-        /// <summary>Stars earned as things stand: 3/2/1 on a win by flip tier, 0 otherwise.</summary>
-        public int FlipStars => FlipBudget.StarsFor(FlipStatus.Tier, State.Outcome.Kind == OutcomeKind.Won);
 
         public void AdvanceMs(double dtMs)
         {
