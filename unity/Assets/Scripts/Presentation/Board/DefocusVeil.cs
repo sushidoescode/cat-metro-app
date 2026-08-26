@@ -55,8 +55,21 @@ namespace CatMetro.Presentation.Board
     ///
     /// The veil is a child of the CAMERA and never of BoardView, which keeps it out of both
     /// unions in FitCamera (it would otherwise feed its own size back into the fit) and out
-    /// of every renderer sweep in RuntimeSceneRigTests. VeilIsNotInTheBoardHierarchy pins
-    /// that so a later refactor cannot quietly move it.
+    /// of every renderer sweep in RuntimeSceneRigTests.
+    /// DefocusVeil_IsAnAuthoredTransparentMaterialOutsideTheBoard pins that so a later
+    /// refactor cannot quietly move it.
+    ///
+    /// KNOWN AND NOT FIXED HERE. Being a camera child means the bands pan with
+    /// CauseCameraController.FrameNode, which recentres the camera on a single node without
+    /// changing orthographicSize. The hole is solved for the REST pose, so during a cause
+    /// frame a renderer near the far or near edge of the board can drift into a band. It is a
+    /// soft tint and not an occlusion — the inner third of the band is under 2% alpha by the
+    /// cubed ramp, so the worst case is roughly a 13% darkening at one edge of the board while
+    /// the cause ring is already the thing being looked at — and it lasts only as long as the
+    /// framing does. The fix is to hide the veil while the camera is framed, which means
+    /// reaching into a file another lane owns, so it is recorded rather than done. Enlarging
+    /// the hole by the maximum pan distance is not the cheap alternative it looks like: the
+    /// pan is bounded by the board's own extent and would consume the entire band.
     /// </summary>
     public static class DefocusVeil
     {
@@ -274,6 +287,16 @@ namespace CatMetro.Presentation.Board
             vertices[v] = inner1; uvs[v++] = new Vector2(hi, 0f);
             vertices[v] = outer1; uvs[v++] = new Vector2(hi, 1f);
             vertices[v] = outer0; uvs[v++] = new Vector2(lo, 1f);
+            // Winding, checked against Unity's own Quad rather than reasoned about, because
+            // reasoning about it gets the sign wrong. The built-in Quad has normals (0,0,-1)
+            // — it faces a camera that looks down +Z, which is exactly our case — vertices
+            // (-.5,-.5) (.5,.5) (.5,-.5) (-.5,.5) and triangles 0,1,2 / 0,3,1. Its first
+            // triangle's XY cross, (b-a) x (c-a), is NEGATIVE. So a front face here is a
+            // negative cross, and that is what these two produce. The bottom band's vertices
+            // arrive in reverse x order so both bands land on the same sign.
+            // Veil.mat sets _Cull 0 as well: a back-facing veil is invisible while every test
+            // that checks geometry and clearance still passes, and that is not a failure mode
+            // worth leaving one sign error away.
             triangles[t++] = b; triangles[t++] = b + 2; triangles[t++] = b + 1;
             triangles[t++] = b; triangles[t++] = b + 3; triangles[t++] = b + 2;
         }

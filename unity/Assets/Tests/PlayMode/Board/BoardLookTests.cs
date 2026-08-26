@@ -300,6 +300,22 @@ namespace CatMetro.Tests.PlayMode
                 "two bands, top and bottom — a side band could only occupy the outer 2.4% of "
                 + "the viewport and would be invisible full-width overdraw");
 
+            // A back-facing veil renders as nothing at all while every geometry and clearance
+            // check below still passes, so the winding gets its own assertion. The reference
+            // is Unity's built-in Quad, which faces a camera looking down +Z exactly as ours
+            // does: its first triangle's XY cross product is negative, so ours must be too.
+            var verts = mesh.vertices;
+            var tris = mesh.triangles;
+            for (int i = 0; i < tris.Length; i += 3)
+            {
+                Vector3 a = verts[tris[i]], b = verts[tris[i + 1]], c = verts[tris[i + 2]];
+                float cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+                Assert.That(cross, Is.LessThan(0f),
+                    "veil triangle " + (i / 3) + " winds away from the camera");
+            }
+            foreach (var normal in mesh.normals)
+                Assert.That(normal.z, Is.LessThan(0f), "the veil faces the camera");
+
             float bandBottomTop = float.NegativeInfinity;  // top of the LOWER band
             float bandTopBottom = float.PositiveInfinity;  // bottom of the UPPER band
             foreach (var vertex in mesh.vertices)
