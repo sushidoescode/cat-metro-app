@@ -112,10 +112,20 @@ namespace CatMetro.Domain
                 int station = StationIndex(g, node);
                 if (station >= 0)
                 {
-                    // step 5 — match only; non-match is pinned out (NEW-Q4, criterion 14)
+                    // step 5 — match, or resolve the non-match under the level's policy.
+                    // Default is still the NEW-Q4 pin (criterion 14): it throws, and the solver
+                    // counts the branch in PinnedPruned. RefuseAndSendHome is opt-in per level —
+                    // the cat is declined, leaves the board, and the run carries on. It touches
+                    // only Rejections, which has been in the digest layout since CM-C1 reserved
+                    // for exactly this, so no golden hash moves. See Domain/Misdelivery.cs.
                     if (!Accepts(g, station, state.Trains[t].Color))
-                        throw new NotSupportedException(
-                            "pinned NEW-Q4: a non-matching cat arrived at a station — rejection/reverse traversal is out of CM-C1 scope (state/backlog.md Q-B, criterion 14)");
+                    {
+                        if (g.Misdelivery == MisdeliveryPolicy.Pinned)
+                            throw Misdelivery.PinnedException();
+                        state.Rejections++;
+                        state.Trains[t] = default; // refused slot is zeroed, same as a delivery
+                        continue;
+                    }
                     state.Deliveries++;
                     state.Trains[t] = default; // delivered slot is zeroed (A-C1-10)
                     continue;
