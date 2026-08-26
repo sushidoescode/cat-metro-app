@@ -173,16 +173,21 @@ namespace CatMetro.Tests.PlayMode
                 AssertInside(camera, station.transform.position, station.Id);
 
             var probe = stations[0];
+            // The guard and the predicate have to agree on a point that is genuinely in the
+            // scene, or the negative cases below would be proving something the scene is not
+            // actually checked against.
+            AssertInside(camera, probe.transform.position, probe.Id);
+            Assert.That(IsInsideGameplayBand(camera, probe.transform.position), Is.True,
+                "the predicate and the guard must read the same band");
+
             float frameWidth = 2f * camera.orthographicSize * camera.aspect;
             var escaped = probe.transform.position + new Vector3(frameWidth, 0f, 0f);
-            Assert.Throws<AssertionException>(
-                () => AssertInside(camera, escaped, probe.Id),
+            Assert.That(IsInsideGameplayBand(camera, escaped), Is.False,
                 "the gameplay band must still reject a station that leaves the frame — "
                 + "widening what may bleed did not widen this");
             var sunk = probe.transform.position
                 + new Vector3(0f, 2f * camera.orthographicSize, 0f);
-            Assert.Throws<AssertionException>(
-                () => AssertInside(camera, sunk, probe.Id),
+            Assert.That(IsInsideGameplayBand(camera, sunk), Is.False,
                 "and it must still reject one that leaves vertically");
 
             // 2. The decorative half is a rule of its own, not the absence of one. It is
@@ -343,13 +348,45 @@ namespace CatMetro.Tests.PlayMode
             }
         }
 
+        // The gameplay band, as four named numbers rather than four literals, so the guard
+        // below and the predicate beside it cannot drift apart.
+        private const float GameplayMinX = 0.055f;
+        private const float GameplayMaxX = 0.945f;
+        private const float GameplayMinY = 0.12f;
+        private const float GameplayMaxY = 0.87f;
+
+        /// <summary>
+        /// The same test the guard applies, as a bool, so the NEGATIVE case can be asserted
+        /// directly instead of by catching the guard's own AssertionException.
+        ///
+        /// Catching it would work on the NUnit that ships here and is still the wrong shape.
+        /// From NUnit 3.6 onward a failing Assert.That records an AssertionResult into
+        /// CurrentResult.AssertionResults BEFORE it throws, and that recorded failure can fail
+        /// the whole test even though Assert.Throws swallowed the exception — a test that
+        /// reports failed while showing a constraint that looks satisfied. This project ships
+        /// com.unity.ext.nunit@d8c07649098d, whose nunit.framework.dll is version 3.5.0.0:
+        /// RecordAssertion, AssertionResults, RecordTestCompletion, MultipleAssertLevel and
+        /// AssertionStatus are all absent from that assembly (AssertionException,
+        /// TestExecutionContext, CurrentResult and SetResult are present, so that is a real
+        /// absence and not a failed search). So the trap is not armed today. It arms itself
+        /// silently the day anyone bumps that package, which is reason enough not to depend on
+        /// it: the predicate below is version-proof and tests the same four constants.
+        /// </summary>
+        private static bool IsInsideGameplayBand(Camera camera, Vector3 world)
+        {
+            Vector3 viewport = camera.WorldToViewportPoint(world);
+            return viewport.z > 0f
+                && viewport.x >= GameplayMinX && viewport.x <= GameplayMaxX
+                && viewport.y >= GameplayMinY && viewport.y <= GameplayMaxY;
+        }
+
         private static void AssertInside(Camera camera, Vector3 world, string label)
         {
             Vector3 viewport = camera.WorldToViewportPoint(world);
             Assert.That(viewport.z, Is.GreaterThan(0f), label + " behind camera");
-            Assert.That(viewport.x, Is.InRange(0.055f, 0.945f),
+            Assert.That(viewport.x, Is.InRange(GameplayMinX, GameplayMaxX),
                 label + " outside the portrait horizontal safe frame");
-            Assert.That(viewport.y, Is.InRange(0.12f, 0.87f),
+            Assert.That(viewport.y, Is.InRange(GameplayMinY, GameplayMaxY),
                 label + " outside the portrait vertical safe frame");
         }
 
