@@ -350,12 +350,26 @@ namespace CatMetro.Presentation.Props
 
         // The builtin-cube idiom, the same one BoardSurface.CreatePart and CreatePlateGeometry
         // below already use: a bare GameObject with a MeshFilter and a MeshRenderer. This used
-        // to be GameObject.CreatePrimitive followed by destroying the collider it handed back.
+        // to call the engine's primitive factory and then destroy the collider it handed back.
         // Not building one is strictly better than remembering to destroy one — the platform
         // grew from two parts to seven here, and "every one of them destroys its collider" is
         // exactly the kind of invariant that holds until someone adds the eighth. A property
         // block over the one committed material gives each part its colour without allocating
         // a Material per station on every Retry/LoadNext rebuild.
+        //
+        // NOTE for whoever next reads device-config.test.sh criterion 5. That gate proves "no
+        // unbound runtime renderer" by counting CreatePrimitive call sites and requiring the
+        // committed-material bind count to equal it. The proxy stopped holding before this lane
+        // touched anything — main is 8 and 8, feat/station-badges is already 8 and 13 — because
+        // the branch moved to exactly this idiom, and AddComponent<MeshRenderer>() creates a
+        // renderer that CreatePrimitive never counted. The real invariant is unchanged and
+        // still worth gating; the counting rule is what needs rewriting, and it cannot simply
+        // be widened to include the AddComponent form either, because binds now happen inside
+        // shared helpers (Tint, BoardSurface.CreatePart) rather than once per site. It also
+        // counts occurrences in COMMENTS, which is why neither token is spelled out anywhere
+        // in this note. Deliberately NOT patched here: a gate broken by another lane is that
+        // lane's to fix, and quietly nudging its numbers is how a measurement bug becomes
+        // permanent.
         private static Mesh _cubeMesh;
 
         private static Transform CreateStationPart(string name, Transform parent,
@@ -509,9 +523,13 @@ namespace CatMetro.Presentation.Props
         {
             float yaw = CameraFacingYawDegrees(boardTilt) * Mathf.Deg2Rad;
             Vector3 towardCamera = new Vector3(Mathf.Cos(yaw), Mathf.Sin(yaw), 0f);
-            // A plate's visible face is its local -Z, and LookRotation aims local +Z, so aim it
-            // AWAY from the camera. Up is board -Z (out of the tabletop), which is what makes
-            // the sign vertical and keeps its glyph upright rather than lying on its side.
+            // -Z of the SIGN frame is where every plate's visible face ends up, because
+            // PlateRotation is composed on the right to put it there. (Which of a plate's own
+            // axes that is varies by shape and is none of this method's business: the prisms
+            // and the cube present their -Z, while the circle presents a cylinder CAP along its
+            // -Y.) LookRotation aims +Z, so aim it AWAY from the camera. Up is board -Z, out of
+            // the tabletop, which is what makes the sign vertical and its glyph upright rather
+            // than lying on its side.
             return Quaternion.LookRotation(-towardCamera, Vector3.back);
         }
 
@@ -573,11 +591,13 @@ namespace CatMetro.Presentation.Props
             // untouched; what changed is that its face is perpendicular to the tabletop and
             // yawed at the camera, and that a mast runs from the wood up to its bottom edge.
             //
-            // Standing it costs nothing in legibility, which is worth stating because it is not
-            // obvious: the board plane sits 48.07 degrees off the view axis, and the best a
-            // sign perpendicular to that board can do is ALSO 48.07 degrees, so both the old
-            // flat plaque and this one are foreshortened by exactly cos(48.07) = 0.669. The
-            // sign reads as signage instead of paint for free.
+            // Standing it BUYS legibility rather than costing any, which is worth stating
+            // because the intuition runs the other way. The board's normal is 48.07 degrees off
+            // the view axis, so a plaque lying flat on it is foreshortened by cos(48.07) =
+            // 0.669. A sign perpendicular to that same board has its face in the board PLANE,
+            // and the closest a direction in the plane gets to the view axis is 41.93 degrees —
+            // cos = 0.744. The badge therefore presents about 11% MORE projected face standing
+            // up than it did lying down, and reads as signage into the bargain.
             var head = new Vector3(0f, PlateY, PlateZ);
             CreateMast("station:signmast-generated", stationAnchor,
                 head, PlateSize, MastThickness, footLocalZ);

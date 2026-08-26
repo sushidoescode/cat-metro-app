@@ -463,15 +463,22 @@ namespace CatMetro.Tests.PlayMode
             BoardPropDecorator.Decorate(level, view.transform, KioskCatalog());
             var plates = StationPlates(view);
 
+            // STATION-PLATFORM moved the two rotation lines, and moved them rather than
+            // relaxing them. The plates now STAND on posts, so a plate's localRotation is
+            // StationSignRotation composed with its shape rotation and neither of the shipped
+            // euler literals can hold. AssertShapeRotation factors the standing turn back out
+            // and demands the remainder be EXACTLY DestinationShapeMesh.PlateRotation for that
+            // shape — which is strictly stronger than the checks it replaces, because it also
+            // catches a plate that picked up a rotation of its own on top (the euler-x check
+            // could not: 90 degrees of x with an arbitrary z still passed it).
             var red = plates["RED"];
-            AssertBuiltinMesh(red, "Cylinder.fbx", "the red plate is still a laid-flat cylinder");
-            Assert.That(red.localRotation.eulerAngles.x, Is.EqualTo(90f).Within(0.01f));
+            AssertBuiltinMesh(red, "Cylinder.fbx", "the red plate is still a cylinder");
+            AssertShapeRotation(red, "red");
             AssertScale(red, 0.9f, 0.05f, 0.9f);
 
             var blue = plates["BLU"];
             AssertBuiltinMesh(blue, "Cube.fbx", "the blue plate is still a cube");
-            Assert.That(Quaternion.Angle(blue.localRotation, Quaternion.identity),
-                Is.LessThan(0.01f));
+            AssertShapeRotation(blue, "blue");
             AssertScale(blue, 0.9f, 0.9f, 0.1f);
 
             foreach (var plate in plates.Values)
@@ -482,6 +489,389 @@ namespace CatMetro.Tests.PlayMode
                     "decoration never claims a board element id");
             }
         }
+
+        // --- STATION-PLATFORM: LOOK step 4, the berth as a raised platform under a canopy ---
+
+        // The shipped diorama projection, so a dimension can be asserted in PIXELS rather than
+        // in board units nobody can picture. The camera is orthographic and identity-rotated,
+        // so at 917x2048 a board unit is 1024 / orthographicSize pixels. BoardSceneLook's fit
+        // gives 95.9 px on L001 and 82.1 on L008, the widest authored board — 82 is used
+        // throughout because a dimension that reads at the WORST zoom reads everywhere, and
+        // the cat lane independently measured ~93 for the median board, which lands between.
+        //
+        // The ~4 px floor is not invented here either: the r6 orchestrator render is what
+        // found that board detail below roughly that size stops reading at all.
+        private const float WorstZoomPixelsPerBoardUnit = 82f;
+        private const float ReadableFloorPixels = 4f;
+
+        // Derived from the REAL tilt rather than restated, so a re-authored diorama angle
+        // changes what these tests demand instead of silently invalidating them.
+        private static float ScreenYPerBoardZ() =>
+            Mathf.Abs((RealDioramaTilt() * Vector3.forward).y);
+
+        private static float ScreenXPerBoardXY() =>
+            Mathf.Abs((RealDioramaTilt() * Vector3.right).x)
+            + Mathf.Abs((RealDioramaTilt() * Vector3.up).x);
+
+        [Test]
+        public void StationPlatform_IsARaisedDeckOnAPlinth_NotASlabPaintedOnTheWood()
+        {
+            var level = ImportLevel("L001");
+            var view = BuildBoard(level);
+            BoardPropDecorator.Decorate(level, view.transform, KioskCatalog());
+
+            foreach (var kiosk in Kiosks(view).Values)
+            {
+                var plinth = kiosk.transform.Find("station:wood-base");
+                var deck = kiosk.transform.Find("station:wood-deck");
+                Assert.That(plinth, Is.Not.Null, "the platform still meets the wood on a plinth");
+                Assert.That(deck, Is.Not.Null,
+                    "and is capped by a deck — one box cannot show a raised edge to itself");
+
+                // -Z is toward the camera, so "on top of" means a SMALLER z. The two courses
+                // must meet EXACTLY: a gap floats the deck, an overlap z-fights along the seam,
+                // and the seam is the whole point of splitting the slab in two.
+                float plinthTop = plinth.localPosition.z - plinth.localScale.z * 0.5f;
+                float deckBottom = deck.localPosition.z + deck.localScale.z * 0.5f;
+                Assert.That(deckBottom, Is.EqualTo(plinthTop).Within(0.0001f),
+                    "the deck sits ON the plinth");
+                Assert.That(plinth.localPosition.z + plinth.localScale.z * 0.5f,
+                    Is.EqualTo(0f).Within(0.0001f),
+                    "and the plinth's own foot is the tabletop the kiosk was placed on");
+
+                Assert.That(deck.localScale.x, Is.GreaterThan(plinth.localScale.x),
+                    "the deck overhangs the plinth: that lip's shadow is what the eye reads as"
+                    + " raised, not the height by itself");
+                Assert.That(deck.localScale.y, Is.GreaterThan(plinth.localScale.y));
+
+                float rise = -(deck.localPosition.z - deck.localScale.z * 0.5f);
+                Assert.That(rise * ScreenYPerBoardZ() * WorstZoomPixelsPerBoardUnit,
+                    Is.GreaterThan(12f),
+                    "the platform must stand at least 12 px off the board at the worst authored"
+                    + " zoom. The single 0.11 slab this replaces came to 5.6 px and read as a"
+                    + " colour painted on the wood in the r6 render");
+                foreach (var course in new[] { plinth, deck })
+                {
+                    Color wood = PropertyColor(course.GetComponent<Renderer>());
+                    Assert.That(wood.r, Is.GreaterThan(wood.g), course.name + " is toy wood");
+                    Assert.That(wood.g, Is.GreaterThan(wood.b), course.name + " is toy wood");
+                }
+                Assert.That(PropertyColor(deck.GetComponent<Renderer>()).r,
+                    Is.GreaterThan(PropertyColor(plinth.GetComponent<Renderer>()).r),
+                    "the deck is the PALER course — a deck darker than the plinth under it"
+                    + " reads as a hole rather than as a lit top surface");
+            }
+        }
+
+        [Test]
+        public void StationCanopy_IsHeldUpOnFourPosts_WithDaylightUnderIt()
+        {
+            var level = ImportLevel("L001");
+            var view = BuildBoard(level);
+            BoardPropDecorator.Decorate(level, view.transform, KioskCatalog());
+
+            foreach (var entry in Kiosks(view))
+            {
+                var kiosk = entry.Value;
+                var deck = kiosk.transform.Find("station:wood-deck");
+                var roof = kiosk.transform.Find("station:line-roof");
+                var posts = kiosk.GetComponentsInChildren<Transform>(true)
+                    .Where(x => x.name.StartsWith("station:roof-post-"))
+                    .OrderBy(x => x.name, System.StringComparer.Ordinal).ToArray();
+                Assert.That(posts.Length, Is.EqualTo(4),
+                    "a canopy stands on a leg at each corner; the reference boards show four");
+
+                float deckTop = deck.localPosition.z - deck.localScale.z * 0.5f;
+                float roofUnder = roof.localPosition.z + roof.localScale.z * 0.5f;
+                Assert.That((deckTop - roofUnder) * ScreenYPerBoardZ()
+                        * WorstZoomPixelsPerBoardUnit, Is.GreaterThan(18f),
+                    "there must be real daylight between deck and roof — that gap is the whole"
+                    + " difference between a shelter a cat waits under and a coloured plate"
+                    + " lying on the kiosk's roofline, which is what shipped");
+
+                foreach (var post in posts)
+                {
+                    Assert.That(post.localPosition.z + post.localScale.z * 0.5f,
+                        Is.EqualTo(deckTop).Within(0.0001f), post.name + " foot is on the deck");
+                    Assert.That(post.localPosition.z - post.localScale.z * 0.5f,
+                        Is.EqualTo(roofUnder).Within(0.0001f),
+                        post.name + " head is under the roof — a post derived independently of"
+                        + " the roof it holds either floats it or is buried in the deck");
+                    Assert.That(Mathf.Abs(post.localPosition.x - roof.localPosition.x),
+                        Is.LessThan(roof.localScale.x * 0.5f), post.name + " stands under the roof");
+                    Assert.That(Mathf.Abs(post.localPosition.y - roof.localPosition.y),
+                        Is.LessThan(roof.localScale.y * 0.5f), post.name + " stands under the roof");
+                    Assert.That(post.localScale.x * ScreenXPerBoardXY()
+                            * WorstZoomPixelsPerBoardUnit,
+                        Is.GreaterThan(ReadableFloorPixels), post.name + " must be wide enough"
+                        + " to survive the worst authored zoom");
+                }
+                Assert.That(posts.Select(x => Mathf.Round(x.localPosition.x * 1000f) + ","
+                        + Mathf.Round(x.localPosition.y * 1000f)).Distinct().Count(),
+                    Is.EqualTo(4), "four DISTINCT corners, not one leg authored four times");
+
+                // The canopy is still the line channel, and still takes its colour from the
+                // vocabulary by way of the station's own material — never from a table here.
+                // Channel-wise with a tolerance, like the chip assertions: this colour has been
+                // round-tripped through a real Material, and how URP rounds a float colour back
+                // out is not what this pin is about.
+                Color roofColor = PropertyColor(roof.GetComponent<Renderer>());
+                Color line = CatLine.ColorOf(LineOf(level, entry.Key));
+                Assert.That(roofColor.r, Is.EqualTo(line.r).Within(0.01f), entry.Key + " roof r");
+                Assert.That(roofColor.g, Is.EqualTo(line.g).Within(0.01f), entry.Key + " roof g");
+                Assert.That(roofColor.b, Is.EqualTo(line.b).Within(0.01f), entry.Key + " roof b");
+            }
+        }
+
+        [Test]
+        public void StationBadge_StandsOnAPostFromTheTabletop_InsteadOfLyingOnTheBoard()
+        {
+            var level = ImportLevel("L001");
+            var view = BuildBoard(level);
+            BoardPropDecorator.Decorate(level, view.transform, KioskCatalog());
+            float contactZ = BoardPropDecorator.ResolveContactPlaneLocalZ(view.transform);
+
+            foreach (var station in Stations(view))
+            {
+                var plate = station.transform.Find("station:plate-generated");
+                var mast = station.transform.Find("station:signmast-generated");
+                Assert.That(mast, Is.Not.Null,
+                    "the badge is signage on a post now, not paint on the board");
+                Assert.That(mast.GetComponent<Renderer>().enabled, Is.True,
+                    "and the kiosk suppression sweep must not hide the post out from under it"
+                    + " — a disabled renderer passes every mesh, colour and name check there is");
+
+                // Converted back into BOARD space rather than compared against a literal: the
+                // station anchor is scaled 0.6 and the scene lane is free to nest it, so a
+                // constant here would be measuring the wrong space and still look right.
+                float footBoardZ = view.transform.InverseTransformPoint(
+                    mast.TransformPoint(new Vector3(0f, 0f, 0.5f))).z;
+                Assert.That(footBoardZ, Is.EqualTo(contactZ).Within(0.01f),
+                    "a post that stops short of the tabletop is a floating sign, which is the"
+                    + " thing this whole change exists to stop being");
+
+                float half = plate.localScale.x * 0.5f; // PlateScale puts `size` in x for every shape
+                Assert.That(mast.localPosition.z - mast.localScale.z * 0.5f,
+                    Is.EqualTo(plate.localPosition.z + half).Within(0.0001f),
+                    "and it stops exactly at the plate's bottom edge — short of that the sign"
+                    + " floats off its own pole, past it the pole punches through the badge");
+
+                Assert.That(mast.localScale.z * 0.6f * ScreenYPerBoardZ()
+                        * WorstZoomPixelsPerBoardUnit, Is.GreaterThan(20f),
+                    "the pole has to be tall enough to read as a pole (0.6 is the station"
+                    + " anchor's scale, which is the space these numbers are in)");
+                Assert.That(mast.localScale.x * 0.6f * ScreenXPerBoardXY()
+                        * WorstZoomPixelsPerBoardUnit, Is.GreaterThan(ReadableFloorPixels),
+                    "and thick enough not to disappear at the worst authored zoom");
+
+                Assert.That(station.GetComponentsInChildren<Transform>(true)
+                        .Count(x => x.name.StartsWith("station:signmast")), Is.EqualTo(1),
+                    "one post per sign, and a single-accept berth posts exactly one sign");
+            }
+        }
+
+        [Test]
+        public void StationSigns_StandPerpendicularToTheBoard_AndNoOtherYawFacesTheCameraBetter()
+        {
+            var level = Import(FourLineJson());
+            var view = BuildBoard(level);
+            BoardPropDecorator.Decorate(level, view.transform, KioskCatalog());
+            // Without the production tilt every claim below is being made in a space the
+            // shipped game never renders. BoardSceneLook applies this after BoardView.Build.
+            view.transform.localRotation = RealDioramaTilt();
+
+            // A sign stands OUT of the tabletop. Asserted on the rotation itself because a
+            // plate's own local up is not the sign's: the circle plate is a cylinder laid on
+            // its face, so its local +Y is the disc's axis, not the direction the glyph reads.
+            Assert.That(Vector3.Distance(
+                    BoardPropDecorator.StationSignRotation * Vector3.up, Vector3.back),
+                Is.LessThan(0.001f),
+                "the sign's up is the board's out-of-table axis: perpendicular to the wood like"
+                + " a real signpost, not tipped back to cheat a better angle at the camera");
+
+            // The best a board-perpendicular sign can do, swept rather than asserted as a
+            // number. This is the assertion that would have caught a sign yawed the wrong way,
+            // which is not a slightly-worse angle but a NEGATIVE one — a face pointed into the
+            // board, backface-culled, rendering nothing at all.
+            Quaternion board = view.transform.rotation;
+            float best = float.MinValue;
+            for (int deg = 0; deg < 360; deg++)
+            {
+                float radians = deg * Mathf.Deg2Rad;
+                Vector3 candidate = board * new Vector3(
+                    Mathf.Cos(radians), Mathf.Sin(radians), 0f);
+                best = Mathf.Max(best, Vector3.Dot(candidate, Vector3.back));
+            }
+            Assert.That(best, Is.EqualTo(0.744f).Within(0.01f),
+                "positive control on the diorama's geometry, not on this lane's code. The"
+                + " board's NORMAL is 48.07 degrees off the view axis (cos 0.669, which is what"
+                + " a plaque lying flat presents); the closest any direction IN the board plane"
+                + " gets is 41.93 degrees, cos 0.744. Standing the badge up therefore shows"
+                + " about 11% MORE face than lying it down, which is the opposite of the"
+                + " trade-off it looks like it should be");
+
+            // Asserted on the SIGN's facing axis, deliberately not on any plate's local -Z. That
+            // shortcut is true for the cube and the two extruded prisms and FALSE for the
+            // circle — PlateRotation lays the builtin cylinder on its face, so the red badge's
+            // visible surface is a cap along its local -Y. A test that assumed -Z would have
+            // passed for three lines out of four and reported the red one as pointing out of
+            // the tabletop. Which face each shape presents is the vocabulary's business; that
+            // it ends up on this axis is this lane's, and the normals test below proves the
+            // meshes really are on it.
+            Vector3 signFacing = view.transform.TransformDirection(
+                BoardPropDecorator.StationSignRotation * Vector3.back);
+            Assert.That(Vector3.Dot(signFacing, Vector3.back), Is.GreaterThan(best - 0.002f),
+                "the badge must take the best camera-facing yaw available, not merely a"
+                + " positive one — the wrong sign here gives -0.744 and renders nothing");
+            Assert.That(StationPlates(view).Count, Is.EqualTo(CatLine.Names.Count),
+                "positive control: all four lines really did grow a badge to be turned");
+        }
+
+        [Test]
+        public void EveryStationPlate_ShowsCameraFacingNormals_AndStaysAClosedSolid()
+        {
+            // The composed-transform twin of GeneratedPlateShapes_FaceTheCamera. That test
+            // checks the MESHES, which STATION-PLATFORM did not touch; this one checks what
+            // survives the standing rotation those meshes are now placed under, which is where
+            // this change could break them. Both matter: this codebase has lost days twice to
+            // camera-facing triangles that were culled, once in a builder and once in a
+            // transform, and only the first kind is visible in mesh data.
+            var level = Import(FourLineJson());
+            var view = BuildBoard(level);
+            BoardPropDecorator.Decorate(level, view.transform, KioskCatalog());
+            view.transform.localRotation = RealDioramaTilt();
+
+            foreach (var entry in StationPlates(view))
+            {
+                var plate = entry.Value;
+                var mesh = plate.GetComponent<MeshFilter>().sharedMesh;
+                int towardCamera = 0;
+                int awayFromCamera = 0;
+                // TransformDirection, not the inverse-transpose: every face normal in these
+                // four meshes is axis-aligned in the plate's own space, and an axis-aligned
+                // normal survives a per-axis scale unrotated. A skewed normal would not, and
+                // if one ever appears here this is the line to revisit.
+                foreach (var normal in mesh.normals)
+                {
+                    float d = Vector3.Dot(
+                        plate.TransformDirection(normal).normalized, Vector3.back);
+                    if (d > 0.6f) towardCamera++;
+                    if (d < -0.6f) awayFromCamera++;
+                }
+                Assert.That(towardCamera, Is.GreaterThan(0),
+                    entry.Key + "'s badge presents no camera-facing facet once it is stood up —"
+                    + " it renders as nothing, and no test that counts vertices can see it");
+                Assert.That(awayFromCamera, Is.GreaterThan(0),
+                    entry.Key + "'s badge is still a closed solid, so no winding or mirrored"
+                    + " transform can turn it inside out");
+            }
+        }
+
+        [Test]
+        public void StationSignYaw_TracksTheRealDioramaTilt_RatherThanACopyThatCanDrift()
+        {
+            // BoardSceneLook.BoardTilt is private on this branch and BoardSceneLook belongs to
+            // the scene lane, so the props lane holds a mirror of the value. A mirror is only
+            // safe if something fails when it stops matching — otherwise re-authoring the
+            // diorama angle turns every station sign away from the camera, which costs a whole
+            // render slot to notice and looks like nothing at all until then.
+            const BindingFlags all = BindingFlags.Static | BindingFlags.NonPublic
+                | BindingFlags.Public;
+            var mirror = typeof(BoardPropDecorator).GetField("DioramaTilt", all);
+            Assert.That(mirror, Is.Not.Null,
+                "the props lane must still name its mirrored tilt DioramaTilt");
+            Assert.That(Quaternion.Angle((Quaternion)mirror.GetValue(null), RealDioramaTilt()),
+                Is.LessThan(0.01f),
+                "BoardSceneLook re-authored the board tilt and BoardPropDecorator.DioramaTilt"
+                + " did not follow. Copy the new value across (or, once feat/cat-pins makes"
+                + " BoardTilt public, delete the mirror and read it directly).");
+
+            // The derivation itself, against the number the cat lane states for the same tilt
+            // from its own independent implementation. Two lanes agreeing on -131.4 is what
+            // makes this a property of the diorama rather than of either file.
+            Assert.That(BoardPropDecorator.CameraFacingYawDegrees(RealDioramaTilt()),
+                Is.EqualTo(-131.4f).Within(0.3f),
+                "the board-local yaw that faces the camera under Euler(38, -32, -4)");
+            Assert.That(Quaternion.Angle(BoardPropDecorator.StationSignRotation,
+                    BoardPropDecorator.StandingSignRotation(RealDioramaTilt())),
+                Is.LessThan(0.01f),
+                "and the rotation the signs actually wear is that derivation, not a literal");
+        }
+
+        [Test]
+        public void EveryStationPart_IsDecorationOnly_AndBindsItsOwnMaterial()
+        {
+            // L009 because its COOL berth accepts two lines, so it grows the largest part set
+            // any authored level produces — the one most likely to have a straggler.
+            var level = ImportLevel("L009");
+            var view = BuildBoard(level);
+            BoardPropDecorator.Decorate(level, view.transform, KioskCatalog());
+
+            var parts = view.GetComponentsInChildren<Transform>(true)
+                .Where(IsStationDecoration).ToArray();
+            // Anti-vacuity, and matched to the relation rather than to a count: a platform is a
+            // plinth, a deck, four posts and a canopy before any badge parts at all.
+            Assert.That(parts.Length,
+                Is.GreaterThanOrEqualTo(7 * level.Dto.Stations.Length),
+                "the sweep must actually be finding the platform parts");
+
+            foreach (var part in parts)
+            {
+                Assert.That(part.GetComponent<Collider>(), Is.Null,
+                    part.name + " is decoration — the builtin-mesh idiom builds no collider,"
+                    + " which is why there is none to remember to destroy");
+                Assert.That(part.GetComponent<BoardElementId>(), Is.Null,
+                    part.name + " must never enter the authored gameplay inventory");
+                Assert.That(part.localScale.x, Is.GreaterThan(0f), part.name + " scale x");
+                Assert.That(part.localScale.y, Is.GreaterThan(0f), part.name + " scale y");
+                Assert.That(part.localScale.z, Is.GreaterThan(0f),
+                    part.name + " scale z — a NEGATIVE scale mirrors the mesh through that axis"
+                    + " and flips its winding, which is exactly how this codebase has twice"
+                    + " ended up rendering camera-facing geometry as nothing");
+                if (part.GetComponent<TextMesh>() != null) continue;
+                var renderer = part.GetComponent<Renderer>();
+                Assert.That(renderer, Is.Not.Null, part.name + " draws something");
+                Assert.That(renderer.sharedMaterial, Is.Not.Null,
+                    part.name + " must bind a material explicitly: AddComponent<MeshRenderer>()"
+                    + " binds NOTHING and renders the magenta error shader");
+            }
+        }
+
+        // The decoration prefixes, listed rather than matched on "station:" — BoardView names
+        // the gameplay ANCHOR itself "station:RED", and that one legitimately carries both a
+        // collider and a BoardElementId. A sweep that caught it would fail for the one reason
+        // that is not a bug.
+        private static readonly string[] StationDecorationPrefixes =
+        {
+            "station:wood-base", "station:wood-deck", "station:roof-post-", "station:line-roof",
+            "station:plate-", "station:keyline-", "station:symbol-", "station:signmast-",
+        };
+
+        private static bool IsStationDecoration(Transform part) =>
+            StationDecorationPrefixes.Any(prefix => part.name.StartsWith(prefix));
+
+        private static Quaternion RealDioramaTilt()
+        {
+            var field = typeof(BoardSceneLook).GetField("BoardTilt",
+                BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+            Assert.That(field, Is.Not.Null,
+                "BoardSceneLook must still publish its diorama tilt as a static BoardTilt for"
+                + " the props lane to be able to track it at all");
+            return (Quaternion)field.GetValue(null);
+        }
+
+        private static Dictionary<string, BoardPropInstance> Kiosks(BoardView view) =>
+            view.GetComponentsInChildren<BoardPropInstance>(true)
+                .Where(x => x.AssetId == PropModelCatalog.StationKioskId)
+                .ToDictionary(x => x.AnchorId);
+
+        private static BoardElementId[] Stations(BoardView view) =>
+            view.GetComponentsInChildren<BoardElementId>(true)
+                .Where(x => x.Kind == "station")
+                .OrderBy(x => x.Id, System.StringComparer.Ordinal).ToArray();
+
+        private static string LineOf(ImportedLevel level, string nodeId) =>
+            level.Dto.Stations.ToArray().Single(x => x.NodeId == nodeId).Accepts.Span[0];
 
         [Test]
         public void GeneratedPlateShapes_FaceTheCamera_AndAreClosedSolids()
@@ -673,9 +1063,33 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(chipKeyline.localPosition.y,
                 Is.EqualTo(primaryKeyline.localPosition.y).Within(0.0001f),
                 "and it shares the plate's row, so the badge reads as one strip of signage");
-            Assert.That(primaryKeyline.localPosition.x, Is.EqualTo(0f).Within(0.0001f),
+            // STATION-PLATFORM: this used to pin the primary KEYLINE at x = 0. It cannot any
+            // more, and the reason is worth having in the file rather than in a diff. The three
+            // badge layers are stacked along the SIGN's facing axis now instead of along board
+            // -Z, and that axis has a board-x component, so the halo sits a hair off centre in
+            // x by construction. The thing the old line was really protecting — "a second
+            // accepted line never shoves the primary sideways" — belongs on the PLATE, which is
+            // the part the player reads and which genuinely has not moved at all.
+            Assert.That(primary.localPosition.x, Is.EqualTo(0f).Within(0.0001f),
                 "the primary never moves to make room — that is what keeps a single-accept"
                 + " station identical to what it rendered before chips existed");
+            Assert.That(primary.localPosition.y, Is.EqualTo(-1f).Within(0.0001f),
+                "and it holds the shipped row height too");
+
+            // The keyline is BEHIND the plate and nowhere else. Decomposed against the sign's
+            // own axes, because "behind" stopped being a board direction when the badge stood
+            // up: a halo displaced sideways or vertically instead would peek out of one edge of
+            // its own plate, and a halo at zero offset would z-fight with it. Neither is
+            // visible to any assertion above, which all check meshes, colours, names and sizes.
+            var sign = BoardPropDecorator.StationSignRotation;
+            Vector3 offset = primaryKeyline.localPosition - primary.localPosition;
+            Assert.That(Vector3.Dot(offset, sign * Vector3.right), Is.EqualTo(0f).Within(0.0001f),
+                "the keyline is not displaced across the sign's face");
+            Assert.That(Vector3.Dot(offset, sign * Vector3.up), Is.EqualTo(0f).Within(0.0001f),
+                "nor up or down it");
+            Assert.That(Vector3.Dot(offset, sign * Vector3.back), Is.LessThan(-0.001f),
+                "it sits BEHIND the plate, which is what makes it read as a halo around the"
+                + " silhouette rather than a second plate in front of the first");
 
             // The chips grow sideways toward the board edge, and BoardSurface.Margin is only
             // 1.05 — so "does it still fit on the wood" is a real question and this is the
@@ -684,7 +1098,15 @@ namespace CatMetro.Tests.PlayMode
             var wood = view.transform.Find("BoardBody/WoodTop");
             Assert.That(wood, Is.Not.Null, "precondition: the tabletop exists to fit onto");
             Bounds surface = wood.GetComponent<Renderer>().bounds;
-            foreach (var chip in chips.Concat(new[] { chipKeyline }))
+            // The masts are in this sweep for a reason that is not decoration: a post runs from
+            // the badge all the way DOWN to the wood, so it reaches further toward the board's
+            // near rim than anything the chip lane had to fit, and it is the one new part that
+            // could hang off the edge.
+            var masts = station.GetComponentsInChildren<Transform>(true)
+                .Where(x => x.name.StartsWith("station:signmast")).ToArray();
+            Assert.That(masts.Length, Is.EqualTo(2),
+                "a two-line berth posts two signs, so it stands two masts");
+            foreach (var chip in chips.Concat(new[] { chipKeyline }).Concat(masts))
             {
                 Bounds b = chip.GetComponent<Renderer>().bounds;
                 Assert.That(b.min.x, Is.GreaterThan(surface.min.x), chip.name + " off left");
@@ -784,6 +1206,21 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(actual, Is.Not.Null, because);
             Assert.That(actual.name, Is.EqualTo(expected.name), because);
             Assert.That(actual.vertexCount, Is.EqualTo(expected.vertexCount), because);
+        }
+
+        // Keyed by LINE, not by a DestinationShape written out here: the expected rotation has
+        // to come from the same vocabulary the board asked, or this test becomes the second
+        // shape decision site the whole branch exists to prevent.
+        private static void AssertShapeRotation(Transform plate, string line)
+        {
+            var expected = DestinationShapeMesh.PlateRotation(CatLine.ShapeOf(line));
+            var standingRemoved = Quaternion.Inverse(BoardPropDecorator.StationSignRotation)
+                * plate.localRotation;
+            Assert.That(Quaternion.Angle(standingRemoved, expected), Is.LessThan(0.01f),
+                line + "'s plate must be exactly the vocabulary's shape rotation with the ONE"
+                + " shared standing turn composed on its left — no per-plate correction, and"
+                + " not the operands the other way round (which for a circle looks identical"
+                + " and for a triangle silently moves the apex)");
         }
 
         private static void AssertScale(Transform plate, float x, float y, float z)
@@ -1168,7 +1605,17 @@ namespace CatMetro.Tests.PlayMode
                 // logic, and a multi-accept berth grows "station:keyline-accept-N" beside the
                 // primary. Matching only the exact name would quietly fold that halo into the
                 // signature as if it were line coding the first time this meets such a level.
-                if (renderer.gameObject.name.StartsWith("station:keyline")) continue;
+                //
+                // station:signmast is decoration by exactly the same argument — it is the post
+                // the badge stands on, made of toy wood, and it carries none of the three
+                // channels (colour, shape, letter) this signature exists to compare. Note it
+                // would not even report the wood: a mast wears GreyboxMaterial.Shared plus a
+                // property block, so renderer.material.color is Greybox's white. Folding a
+                // constant white into every station's signature would not make this helper
+                // WRONG, only vacuous in one more place — which is worse, because it still
+                // reads as coverage.
+                if (renderer.gameObject.name.StartsWith("station:keyline")
+                    || renderer.gameObject.name.StartsWith("station:signmast")) continue;
                 var material = renderer.material;
                 parts.Add(renderer.GetType().Name + ":" + material.color);
             }
