@@ -66,6 +66,60 @@ namespace CatMetro.Presentation.Board
         private const float SleeperSkirtZ = 0.25f;
         private const float SleeperCorner = 0.035f;
 
+        // ---- Puzzle-piece joins ---------------------------------------------------
+        // target-01 builds its track from wooden toy segments joined by interlocking
+        // tab-and-socket connectors: a hairline seam cut clean across the cream bed
+        // with a mushroom lobe in the middle. It is the detail that says "toy" rather
+        // than "model railway", so it earns its triangles.
+        //
+        // ONE outline draws both halves. The lobe is a TAB on the piece behind the
+        // seam and the matching SOCKET on the piece in front of it — that is what a
+        // tab-and-socket join is when you look down on it, so there is nothing to
+        // model twice. The lobe points along +tangent, which puts every piece's tab
+        // at its downstream end exactly like a real peg-and-hole wooden rail.
+        //
+        // PLACEMENT is anchored to the edge's END, not its start, and this matters.
+        // Adjacent edges butt their beds with no inset, so a seam sitting AT a shared
+        // node would double up, and at a turnout the outgoing branches have not yet
+        // separated — measured on the corpus, three start-anchored seams land 0.338
+        // apart at L001's switch, which is one third of a bed width and reads as a
+        // smear. End-anchoring puts exactly one seam at each node that has an edge
+        // arriving, so all 17 levels produce zero seam collisions. (The one merge
+        // node L018/L019 introduce is the single exception — see the note on
+        // JoinInset.)
+        //
+        // JoinInset is sized off the neighbouring-bed overlap, not off taste: a seam
+        // stands 0.010 proud of ITS OWN bed, so wherever a neighbour's bed lies over
+        // it the lobe pokes through as a stair-stepped sliver — the same failure the
+        // sleeper ticks document. Sweeping the corpus, 0.72 leaves 31 of 76 seams
+        // buried under a neighbour; 0.90 clears every one of them with 0.070 to
+        // spare. That same clearance is why end-anchoring cannot smear: if no
+        // neighbour's bed reaches the seam, no neighbour's seam can either.
+        private const float JoinSeamHalfWidth = 0.03f;   // ~5.6 px at 917x2048
+        private const float JoinNeckHalfWidth = 0.06f;
+        private const float JoinHeadRadius = 0.115f;
+        private const float JoinHeadCentre = 0.15f;
+        private const int JoinArcSteps = 14;
+        private const float JoinSkirtZ = 0.20f;
+
+        // Relief, not depth: the seam is ADDED as a proud hairline rather than cut
+        // into the bed. At this scale the choice is invisible — 0.010 of relief
+        // projects to about one pixel, so a groove and a rib produce the same
+        // one-pixel light/shadow pair — and additive geometry cannot fold the swept
+        // ribbon, cannot break it, and leaves the sweep's fold verification standing
+        // untouched. Carving would mean subdividing the sweep's top face, which is
+        // the one thing on this branch that is expensively known to be correct.
+        // 0.010 above the bed is exactly the sleeper ticks' relief over the crown,
+        // which is the empirical proof it reads: those ticks are legible in the
+        // r6 capture.
+        private const float JoinProud = 0.010f;
+
+        // PUBLIC so the tests can pin placement without copying the numbers.
+        public const float JoinInset = 0.90f;
+        public const float JoinMinimumLength = 3f * JoinInset;
+
+        private const float JoinHalfSpan = BedHalfWidth - BedChamfer; // reach the chamfer
+
         private const float SampleSpacing = 0.16f;
 
         // How close a swept ring may reach toward its own centre of curvature. Below 1.0
@@ -112,6 +166,7 @@ namespace CatMetro.Presentation.Board
             // ribbon instead of a row of separate track pieces.
             AppendSweep(path, BedSection, vertices, bedTriangles);
             AppendSleeperTicks(path, vertices, bedTriangles);
+            AppendJoinSeam(path, vertices, bedTriangles);
             AppendSweep(path.CreateLateralRail(-RailOffset), RailSection,
                 vertices, railTriangles);
             AppendSweep(path.CreateLateralRail(RailOffset), RailSection,
@@ -300,6 +355,182 @@ namespace CatMetro.Presentation.Board
                 int next = (i + 1) % footprint.Length;
                 AddTriangle(triangles, start + i, start + 8 + i, start + 8 + next);
                 AddTriangle(triangles, start + i, start + 8 + next, start + next);
+            }
+        }
+
+        // Where this edge's seam sits, as a distance along the spline, or -1 when the
+        // edge is too short to carry one. Short edges going without is deliberate:
+        // the seam has to clear the neighbouring bed (0.90) AND still read as a piece
+        // boundary rather than a mark stranded mid-run, so it must land in the final
+        // third. Below 3 x JoinInset those two demands cannot both be met, and a
+        // wrong seam is worse than no seam. 43 of the corpus's 76 edges qualify and
+        // every one of the 17 levels keeps at least two.
+        public static float JoinDistance(TrackSpline path) =>
+            path.Length < JoinMinimumLength ? -1f : path.Length - JoinInset;
+
+        // The bed's cambered top at a lateral offset. Smaller z is higher, so the
+        // crown at lateral 0 is the highest point and it falls away to the flat-top
+        // edge. The seam has to ride this or it would sink into the bed at the centre
+        // and float off it at the rim.
+        private static float BedTopAt(float lateralOffset)
+        {
+            float flat = BedHalfWidth - BedChamfer;
+            float a = Mathf.Min(Mathf.Abs(lateralOffset), flat);
+            return (BedTopZ - BedCrownRise) + BedCrownRise * (a / flat);
+        }
+
+        // The seam centreline in footprint space (x = lateral, y = tangent), walked
+        // from one rim of the bed to the other: straight in, up the neck, right round
+        // the head, back down the far side of the neck, straight out.
+        private static Vector2[] JoinSeamOutline()
+        {
+            var outline = new List<Vector2>(JoinArcSteps + 6);
+            float half = Mathf.Sqrt(Mathf.Max(0f,
+                JoinHeadRadius * JoinHeadRadius - JoinNeckHalfWidth * JoinNeckHalfWidth));
+            float neckTop = JoinHeadCentre - half;
+
+            outline.Add(new Vector2(-JoinHalfSpan, 0f));
+            outline.Add(new Vector2(-JoinNeckHalfWidth, 0f));
+            outline.Add(new Vector2(-JoinNeckHalfWidth, neckTop));
+
+            float a0 = Mathf.Atan2(-half, -JoinNeckHalfWidth);
+            float a1 = Mathf.Atan2(-half, JoinNeckHalfWidth);
+            float sweep = (a1 - 2f * Mathf.PI) - a0;   // over the TOP of the head
+            for (int step = 1; step < JoinArcSteps; step++)
+            {
+                float angle = a0 + sweep * step / JoinArcSteps;
+                outline.Add(new Vector2(
+                    JoinHeadRadius * Mathf.Cos(angle),
+                    JoinHeadCentre + JoinHeadRadius * Mathf.Sin(angle)));
+            }
+
+            outline.Add(new Vector2(JoinNeckHalfWidth, neckTop));
+            outline.Add(new Vector2(JoinNeckHalfWidth, 0f));
+            outline.Add(new Vector2(JoinHalfSpan, 0f));
+            return outline.ToArray();
+        }
+
+        // Ring-to-ring turn rate around a station, measured the same way AppendSweep
+        // measures it, so the seam can be clamped by the same rule the ribbon uses.
+        private static float LocalTurnRate(TrackSpline path, float fraction)
+        {
+            if (path.Length <= 0f) return 0f;
+            float step = SampleSpacing / path.Length;
+            float from = Mathf.Max(0f, fraction - step);
+            float to = Mathf.Min(1f, fraction + step);
+            Vector3 t0 = path.TangentDistanceFraction(from);
+            Vector3 t1 = path.TangentDistanceFraction(to);
+            float span = Vector3.Distance(
+                path.EvaluateDistanceFraction(from), path.EvaluateDistanceFraction(to));
+            if (span < 0.000001f) return 0f;
+            return Mathf.Atan2(t0.x * t1.y - t0.y * t1.x, t0.x * t1.x + t0.y * t1.y) / span;
+        }
+
+        // A closed prism over the seam ribbon: top lid, underside, two side walls and
+        // two end caps.
+        //
+        // WINDING. Same trap as AppendChamferedSleeper, and it has cost this repo a
+        // day already: the footprint's x maps through LATERAL and its y through
+        // TANGENT, and lateral x tangent = -forward, so the basis is MIRRORED against
+        // the board plane. A strip listed left-then-right in footprint order
+        // therefore has to be enumerated in REVERSE to face the camera. The lids
+        // below look backwards on the page for exactly that reason — do not "fix"
+        // them. The pins are the seam island's own signed volume and its lid normals.
+        private static void AppendJoinSeam(TrackSpline path,
+            List<Vector3> vertices, List<int> triangles)
+        {
+            float distance = JoinDistance(path);
+            if (distance < 0f) return;
+
+            float fraction = distance / path.Length;
+            Vector3 centre = path.EvaluateDistanceFraction(fraction);
+            Vector3 tangent = path.TangentDistanceFraction(fraction);
+            Vector3 lateral = new Vector3(-tangent.y, tangent.x, 0f).normalized;
+            float rate = LocalTurnRate(path, fraction);
+
+            Vector2[] outline = JoinSeamOutline();
+            int count = outline.Length;
+            var left = new Vector2[count];
+            var right = new Vector2[count];
+            OffsetChains(outline, JoinSeamHalfWidth, left, right);
+
+            int start = vertices.Count;
+            for (int face = 0; face < 2; face++)
+            {
+                for (int side = 0; side < 2; side++)
+                {
+                    Vector2[] chain = side == 0 ? left : right;
+                    for (int i = 0; i < count; i++)
+                    {
+                        // The ribbon never reaches past where the bed itself tucks on
+                        // a hairpin. It does not bite on anything authored today, but
+                        // a seam hanging off the side of a tucked bed is exactly the
+                        // artefact this branch already paid to remove once.
+                        float offset = chain[i].x;
+                        if (rate != 0f && offset * rate > 0f)
+                        {
+                            float limit = CurveTuckSafety / Mathf.Abs(rate);
+                            if (Mathf.Abs(offset) > limit)
+                                offset = Mathf.Sign(offset) * limit;
+                        }
+                        float z = face == 0 ? BedTopAt(offset) - JoinProud : JoinSkirtZ;
+                        vertices.Add(centre + lateral * offset
+                            + tangent * chain[i].y + Vector3.forward * z);
+                    }
+                }
+            }
+
+            int topLeft = start;
+            int topRight = start + count;
+            int lowLeft = start + 2 * count;
+            int lowRight = start + 3 * count;
+
+            for (int i = 0; i < count - 1; i++)
+            {
+                AddTriangle(triangles, topLeft + i, topLeft + i + 1, topRight + i);
+                AddTriangle(triangles, topRight + i, topLeft + i + 1, topRight + i + 1);
+
+                AddTriangle(triangles, lowLeft + i, lowRight + i, lowLeft + i + 1);
+                AddTriangle(triangles, lowRight + i, lowRight + i + 1, lowLeft + i + 1);
+
+                AddTriangle(triangles, topLeft + i, lowLeft + i, topLeft + i + 1);
+                AddTriangle(triangles, lowLeft + i, lowLeft + i + 1, topLeft + i + 1);
+
+                AddTriangle(triangles, topRight + i, topRight + i + 1, lowRight + i);
+                AddTriangle(triangles, lowRight + i, topRight + i + 1, lowRight + i + 1);
+            }
+
+            AddTriangle(triangles, topLeft, topRight, lowLeft);
+            AddTriangle(triangles, topRight, lowRight, lowLeft);
+            AddTriangle(triangles, topLeft + count - 1, lowLeft + count - 1, topRight + count - 1);
+            AddTriangle(triangles, topRight + count - 1, lowLeft + count - 1, lowRight + count - 1);
+        }
+
+        // Offsets a polyline both ways using averaged joint normals. The sharpest
+        // corner on the seam is the neck-to-head bend at ~59 degrees, which widens the
+        // ribbon there by 1/cos(29.5) = 1.15 — a rounded-looking corner, not a spike.
+        // The head's inner offset stays at radius 0.085, so the strip cannot cross
+        // itself and the prism stays a valid closed solid.
+        private static void OffsetChains(Vector2[] points, float halfWidth,
+            Vector2[] left, Vector2[] right)
+        {
+            int count = points.Length;
+            for (int i = 0; i < count; i++)
+            {
+                Vector2 direction;
+                if (i == 0) direction = points[1] - points[0];
+                else if (i == count - 1) direction = points[count - 1] - points[count - 2];
+                else
+                {
+                    Vector2 before = (points[i] - points[i - 1]).normalized;
+                    Vector2 after = (points[i + 1] - points[i]).normalized;
+                    direction = before + after;
+                }
+                if (direction.sqrMagnitude < 0.000001f) direction = Vector2.right;
+                direction.Normalize();
+                var normal = new Vector2(-direction.y, direction.x);
+                left[i] = points[i] - normal * halfWidth;
+                right[i] = points[i] + normal * halfWidth;
             }
         }
 
