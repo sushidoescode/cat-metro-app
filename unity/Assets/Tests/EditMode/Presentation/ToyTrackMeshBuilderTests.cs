@@ -387,6 +387,259 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void Build_LongEdgeCarriesOnePuzzleJoinInItsFinalThird()
+        {
+            var path = TrackSplineGraph.Build(
+                new[] { new Vector3(0f, 4f, 0f), Vector3.zero },
+                new[] { 0 }, new[] { 1 }).Path(0);
+            _host = new GameObject("track-join-host");
+
+            _track = ToyTrackMeshBuilder.Build("E-join", path, _host.transform);
+
+            Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
+            int[] seam = SeamIsland(mesh);
+
+            Assert.That(seam, Is.Not.Empty, "a long edge must carry a puzzle join");
+
+            // Where the seam LINE crosses, not where the island's centroid sits — the
+            // lobe is most of the outline's vertices and drags a plain centroid ~0.13
+            // downstream of the seam itself.
+            float distance = NearestDistanceAlong(path, SeamLineCentre(mesh, path, seam));
+            Assert.That(distance / path.Length, Is.GreaterThan(2f / 3f),
+                "the seam marks where this piece hands over to the next one, so it "
+                + "belongs hard against the node — a seam in the middle of a run "
+                + "reads as a scratch, not a join");
+            Assert.That(path.Length - distance,
+                Is.EqualTo(ToyTrackMeshBuilder.JoinInset).Within(0.05f),
+                "and it sits exactly JoinInset back from the edge's end");
+        }
+
+        [Test]
+        public void Build_ShortEdgeGetsNoJoinRatherThanOneStrandedMidRun()
+        {
+            // The seam has to clear the neighbouring bed that overlaps this one at a
+            // shared node (JoinInset) AND still land in the final third. Below
+            // 3 x JoinInset those cannot both hold, and a seam floating at the middle
+            // of a short run is worse than no seam at all.
+            var path = TrackSplineGraph.Build(
+                new[] { new Vector3(0f, 2f, 0f), Vector3.zero },
+                new[] { 0 }, new[] { 1 }).Path(0);
+            Assert.That(path.Length, Is.LessThan(ToyTrackMeshBuilder.JoinMinimumLength));
+            _host = new GameObject("track-shortjoin-host");
+
+            _track = ToyTrackMeshBuilder.Build("E-short", path, _host.transform);
+
+            Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
+            Assert.That(SeamIsland(mesh), Is.Empty,
+                "a short edge must go without rather than carry a stranded seam");
+            foreach (int[] island in ConnectedVertexComponents(mesh.GetTriangles(0)))
+                Assert.That(island.Length == 16 || island.Length > 16 * 3, Is.True,
+                    "submesh 0 should hold only the bed and 16-vertex sleeper ticks here");
+        }
+
+        [Test]
+        public void Build_JoinSeamCrossesTheBedAndItsLobeActuallyInterlocks()
+        {
+            var path = TrackSplineGraph.Build(
+                new[] { new Vector3(0f, 4f, 0f), Vector3.zero },
+                new[] { 0 }, new[] { 1 }).Path(0);
+            _host = new GameObject("track-joinshape-host");
+
+            _track = ToyTrackMeshBuilder.Build("E-joinshape", path, _host.transform);
+
+            Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
+            int[] seam = SeamIsland(mesh);
+
+            // Measure in the seam's OWN frame rather than in board x/y. Which way the
+            // spline happens to run is not the point being tested, and reading it
+            // backwards silently inverts "head" and "neck".
+            List<Vector2> outline = SeamFootprint(mesh, path, seam);
+            float lateral = outline.Max(p => p.x) - outline.Min(p => p.x);
+            float forward = outline.Max(p => p.y);
+
+            Assert.That(lateral, Is.GreaterThan(0.9f),
+                "the seam must read right across the bed, not just between the rails");
+            Assert.That(forward, Is.GreaterThan(0.25f),
+                "a straight butt joint is not a puzzle piece — a lobe has to stand "
+                + "off the seam line, and it points along +tangent so every piece "
+                + "carries its tab at the downstream end");
+
+            // The interlock, stated as geometry: the head has to be wider than the
+            // mouth of the neck it hangs off, or the two pieces would pull straight
+            // apart and it would be a wiggly butt joint, not a tab and socket.
+            float headWidth = SpanBetween(outline, forward - 0.15f, float.PositiveInfinity);
+            float neckOpening = NeckOpening(outline, 0.005f, 0.045f);
+            Assert.That(neckOpening, Is.GreaterThan(0f), "the neck must be a real gap");
+            Assert.That(headWidth, Is.GreaterThan(neckOpening * 1.4f),
+                "the lobe must be a tab-and-socket head, wider than its own neck");
+        }
+
+        [Test]
+        public void Build_JoinSeamEnclosesPositiveVolumeAndItsLidFacesTheCamera()
+        {
+            // NOT the centroid check Build_SleeperFacesAreWoundOutwardForBackfaceCulling
+            // uses: that proxy only holds for a convex island, and the seam is a long
+            // non-convex ribbon whose mushroom neck has inner walls that legitimately
+            // face inward. Signed volume is the statement that actually holds for any
+            // closed solid, and the lid normals are what backface culling reads.
+            _host = new GameObject("track-joinwinding-host");
+
+            _track = ToyTrackMeshBuilder.Build("E4", SeamedTightTurnout(), _host.transform);
+
+            Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
+            Vector3[] vertices = mesh.vertices;
+            int[] seam = SeamIsland(mesh);
+            Assert.That(seam, Is.Not.Empty);
+
+            var members = new HashSet<int>(seam);
+            int[] triangles = mesh.GetTriangles(0);
+            double volume = 0.0;
+            float highest = seam.Min(index => vertices[index].z);
+            int checkedLids = 0;
+            for (int triangle = 0; triangle < triangles.Length; triangle += 3)
+            {
+                if (!members.Contains(triangles[triangle])) continue;
+                Vector3 a = vertices[triangles[triangle]];
+                Vector3 b = vertices[triangles[triangle + 1]];
+                Vector3 c = vertices[triangles[triangle + 2]];
+                volume += Vector3.Dot(a, Vector3.Cross(b, c));
+
+                if (Mathf.Max(a.z, Mathf.Max(b.z, c.z)) > highest + 0.004f) continue;
+                Vector3 normal = Vector3.Cross(b - a, c - a);
+                if (Mathf.Abs(normal.z) < 0.5f * normal.magnitude) continue;
+                checkedLids++;
+                Assert.That(normal.z, Is.LessThan(0f),
+                    "a seam lid points into the table — the footprint basis is "
+                    + "mirrored, so the strip must be enumerated in reverse");
+            }
+
+            Assert.That(volume, Is.GreaterThan(0.0),
+                "the seam island encloses negative volume, so its faces are mirrored "
+                + "inward and backface culling erases the whole join");
+            Assert.That(checkedLids, Is.GreaterThan(8),
+                "the seam must expose a real top surface to check");
+        }
+
+        [Test]
+        public void Build_JoinSeamSitsAtTheTickReliefAndNeverBreaksTheRunningPlane()
+        {
+            var path = TrackSplineGraph.Build(
+                new[] { new Vector3(0f, 4f, 0f), Vector3.zero },
+                new[] { 0 }, new[] { 1 }).Path(0);
+            _host = new GameObject("track-joinrelief-host");
+
+            _track = ToyTrackMeshBuilder.Build("E-joinrelief", path, _host.transform);
+
+            Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
+            Vector3[] vertices = mesh.vertices;
+            int[] seam = SeamIsland(mesh);
+            int[] bed = LargestComponent(mesh.GetTriangles(0));
+
+            float seamTop = seam.Min(index => vertices[index].z);
+            float bedCrown = bed.Min(index => vertices[index].z);
+
+            Assert.That(seamTop, Is.GreaterThan(ToyTrackMeshBuilder.RailCrownZ),
+                "the seam must stay below the plane the consist rides on");
+            Assert.That(mesh.bounds.min.z,
+                Is.EqualTo(ToyTrackMeshBuilder.RailCrownZ).Within(0.0001f),
+                "and adding it must not disturb the rail-crown contract");
+            Assert.That(bedCrown - seamTop, Is.InRange(0.004f, 0.016f),
+                "the seam is a hairline at the same relief as a tie mark — at this "
+                + "scale that is about one pixel, which is the whole reason it can be "
+                + "embossed instead of cut");
+            Assert.That(seamTop, Is.GreaterThanOrEqualTo(bedCrown - 0.016f),
+                "and it must never become the highest cream thing on the track");
+        }
+
+        [Test]
+        public void Build_SeamedHairpinKeepsPositiveVolumeAndCameraFacingLids()
+        {
+            // TightTurnout() is only 2.17 long, so it carries no seam and the existing
+            // fold pins never see one. This is the corpus's tightest curving edge that
+            // IS long enough (L008 E4, radius ~0.19 at its hardest, 4.12 long).
+            _host = new GameObject("track-seamedhairpin-host");
+            TrackSpline path = SeamedTightTurnout();
+            Assert.That(path.Length,
+                Is.GreaterThan(ToyTrackMeshBuilder.JoinMinimumLength));
+
+            _track = ToyTrackMeshBuilder.Build("E4", path, _host.transform);
+
+            Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
+            Vector3[] vertices = mesh.vertices;
+            Assert.That(SeamIsland(mesh), Is.Not.Empty, "this hairpin must carry a seam");
+
+            for (int submesh = 0; submesh < mesh.subMeshCount; submesh++)
+            {
+                int[] triangles = mesh.GetTriangles(submesh);
+                double volume = 0.0;
+                for (int triangle = 0; triangle < triangles.Length; triangle += 3)
+                    volume += Vector3.Dot(vertices[triangles[triangle]],
+                        Vector3.Cross(vertices[triangles[triangle + 1]],
+                            vertices[triangles[triangle + 2]]));
+                Assert.That(volume, Is.GreaterThan(0.0),
+                    "submesh " + submesh + " inverted once the seam was added");
+
+                float highest = triangles.Min(index => vertices[index].z);
+                for (int triangle = 0; triangle < triangles.Length; triangle += 3)
+                {
+                    Vector3 a = vertices[triangles[triangle]];
+                    Vector3 b = vertices[triangles[triangle + 1]];
+                    Vector3 c = vertices[triangles[triangle + 2]];
+                    if (Mathf.Max(a.z, Mathf.Max(b.z, c.z)) > highest + 0.04f) continue;
+                    Vector3 normal = Vector3.Cross(b - a, c - a);
+                    if (Mathf.Abs(normal.z) < 0.5f * normal.magnitude) continue;
+                    Assert.That(normal.z, Is.LessThan(0f),
+                        "a top face of submesh " + submesh + " points into the table");
+                }
+            }
+        }
+
+        [Test]
+        public void Build_ThreeEdgesAtATurnoutDoNotPileTheirSeamsUpOnTheNode()
+        {
+            // L001's switch. Anchoring the seam to each edge's END puts exactly one at
+            // the node an edge arrives at; anchoring it to the START would put three
+            // seams 0.338 apart here, well inside one 1.08 bed width, and they would
+            // smear into each other while the branches are still overlapping.
+            var junction = new Vector3(3f, 6f, 0f);
+            var graph = TrackSplineGraph.Build(
+                new[]
+                {
+                    new Vector3(3f, 9f, 0f), junction,
+                    new Vector3(1f, 2f, 0f), new Vector3(5f, 2f, 0f),
+                },
+                new[] { 0, 1, 1 }, new[] { 1, 2, 3 });
+            _host = new GameObject("track-turnoutseam-host");
+
+            var centres = new List<Vector3>();
+            for (int edge = 0; edge < 3; edge++)
+            {
+                GameObject built = ToyTrackMeshBuilder.Build(
+                    "E" + edge, graph.Path(edge), _host.transform);
+                Mesh mesh = built.GetComponent<MeshFilter>().sharedMesh;
+                Vector3[] vertices = mesh.vertices;
+                int[] seam = SeamIsland(mesh);
+                Assert.That(seam, Is.Not.Empty, "E" + edge + " should carry a seam");
+                Vector3 centroid = Vector3.zero;
+                foreach (int index in seam) centroid += vertices[index];
+                centres.Add(centroid / seam.Length);
+            }
+
+            for (int a = 0; a < centres.Count; a++)
+                for (int b = a + 1; b < centres.Count; b++)
+                    Assert.That(Vector3.Distance(centres[a], centres[b]),
+                        Is.GreaterThan(1.08f),
+                        "two seams closer than a bed width read as one smeared mark");
+
+            int atJunction = centres.Count(
+                centre => Vector3.Distance(centre, junction)
+                    < ToyTrackMeshBuilder.JoinInset + 0.2f);
+            Assert.That(atJunction, Is.EqualTo(1),
+                "exactly one piece boundary belongs at a turnout, on the edge that "
+                + "arrives — not one per branch leaving it");
+        }
+
+        [Test]
         public void DestroyingTrackOwner_ReleasesGeneratedMeshImmediatelyInEditMode()
         {
             var path = TrackSplineGraph.Build(
@@ -419,6 +672,111 @@ namespace CatMetro.Tests.EditMode.Presentation
                     new Vector3(5f, 6f, 0f),
                 },
                 new[] { 0, 1, 1, 1 }, new[] { 1, 2, 3, 4 }).Path(3);
+
+        // The tightest curving edge in the authored corpus that is also long enough to
+        // carry a seam: L008 E4, J2 -> BLU, radius ~0.19 at its hardest and 4.12 long.
+        private static TrackSpline SeamedTightTurnout() =>
+            TrackSplineGraph.Build(
+                new[]
+                {
+                    new Vector3(3f, 9f, 0f),
+                    new Vector3(3f, 7f, 0f),
+                    new Vector3(1f, 3f, 0f),
+                    new Vector3(5f, 7f, 0f),
+                    new Vector3(5f, 3f, 0f),
+                    new Vector3(7f, 7f, 0f),
+                },
+                new[] { 0, 1, 1, 3, 3 }, new[] { 1, 2, 3, 4, 5 }).Path(3);
+
+        // Submesh 0 holds, in descending size: the swept bed, then the join seam if the
+        // edge earned one, then a 16-vertex island per sleeper tick. The bed is always
+        // the biggest — the shortest seamed edge still sweeps 18 rings of 7 — so the
+        // seam is the second island, and its absence is what a short edge looks like.
+        private static int[] SeamIsland(Mesh mesh)
+        {
+            List<int[]> islands = ConnectedVertexComponents(mesh.GetTriangles(0))
+                .OrderByDescending(island => island.Length)
+                .ToList();
+            if (islands.Count < 2 || islands[1].Length <= 16) return new int[0];
+            return islands[1];
+        }
+
+        private static float NearestDistanceAlong(TrackSpline path, Vector3 point)
+        {
+            float best = 0f;
+            float nearest = float.PositiveInfinity;
+            for (int step = 0; step <= 400; step++)
+            {
+                float fraction = step / 400f;
+                float away = Vector3.Distance(path.EvaluateDistanceFraction(fraction), point);
+                if (away >= nearest) continue;
+                nearest = away;
+                best = fraction * path.Length;
+            }
+            return best;
+        }
+
+        // The seam's vertices projected into its own (lateral, tangent) frame at the
+        // station the builder placed it, with the origin on the seam line.
+        private static List<Vector2> SeamFootprint(Mesh mesh, TrackSpline path, int[] seam)
+        {
+            float fraction = ToyTrackMeshBuilder.JoinDistance(path) / path.Length;
+            Vector3 centre = path.EvaluateDistanceFraction(fraction);
+            Vector3 tangent = path.TangentDistanceFraction(fraction);
+            var lateral = new Vector3(-tangent.y, tangent.x, 0f).normalized;
+
+            Vector3[] vertices = mesh.vertices;
+            var footprint = new List<Vector2>(seam.Length);
+            foreach (int index in seam)
+            {
+                Vector3 offset = vertices[index] - centre;
+                footprint.Add(new Vector2(
+                    Vector3.Dot(offset, lateral), Vector3.Dot(offset, tangent)));
+            }
+            return footprint;
+        }
+
+        // The midpoint of the seam's two outboard arms. Those sit at the bed rim with
+        // the seam line running through them, so they locate the join itself rather
+        // than the lobe hanging off it.
+        private static Vector3 SeamLineCentre(Mesh mesh, TrackSpline path, int[] seam)
+        {
+            float fraction = ToyTrackMeshBuilder.JoinDistance(path) / path.Length;
+            Vector3 centre = path.EvaluateDistanceFraction(fraction);
+            Vector3 tangent = path.TangentDistanceFraction(fraction);
+            var lateral = new Vector3(-tangent.y, tangent.x, 0f).normalized;
+
+            Vector3[] vertices = mesh.vertices;
+            Vector3 total = Vector3.zero;
+            int counted = 0;
+            foreach (int index in seam)
+            {
+                if (Mathf.Abs(Vector3.Dot(vertices[index] - centre, lateral)) < 0.4f) continue;
+                total += vertices[index];
+                counted++;
+            }
+            Assert.That(counted, Is.GreaterThan(0), "the seam must reach the bed's rim");
+            return total / counted;
+        }
+
+        private static float SpanBetween(List<Vector2> footprint, float from, float to)
+        {
+            List<float> band = footprint
+                .Where(p => p.y >= from && p.y <= to)
+                .Select(p => p.x).ToList();
+            return band.Count == 0 ? 0f : band.Max() - band.Min();
+        }
+
+        // The gap the neck leaves between its two walls — the mouth the tab has to be
+        // too fat to slip back out of.
+        private static float NeckOpening(List<Vector2> footprint, float from, float to)
+        {
+            List<Vector2> band = footprint.Where(p => p.y >= from && p.y <= to).ToList();
+            List<float> left = band.Where(p => p.x < 0f).Select(p => p.x).ToList();
+            List<float> right = band.Where(p => p.x > 0f).Select(p => p.x).ToList();
+            if (left.Count == 0 || right.Count == 0) return 0f;
+            return right.Min() - left.Max();
+        }
 
         // Submesh 0 holds the swept bed plus one island per sleeper tick; the bed is the
         // big one.
