@@ -141,7 +141,12 @@ namespace CatMetro.Presentation.Board
             {
                 if (existing != null)
                 {
-                    if (Application.isPlaying) Object.Destroy(existing.gameObject);
+                    // UnityEngine.Application, spelled out. A bare `Application` here binds to
+                    // the CatMetro.Application NAMESPACE, not the class: simple-name lookup
+                    // walks the enclosing namespaces before it consults a file-level using, so
+                    // the sibling namespace wins and this is a CS0234. ToyTrackMeshBuilder,
+                    // whose teardown shape this copies, qualifies it for the same reason.
+                    if (UnityEngine.Application.isPlaying) Object.Destroy(existing.gameObject);
                     else Object.DestroyImmediate(existing.gameObject);
                 }
                 return null;
@@ -388,7 +393,9 @@ namespace CatMetro.Presentation.Board
         private void OnDestroy()
         {
             if (Mesh == null) return;
-            if (Application.IsPlaying(gameObject)) Destroy(Mesh);
+            // Qualified for the same reason as the one in Apply: CatMetro.Application is a
+            // namespace in this assembly and it shadows the bare name.
+            if (UnityEngine.Application.IsPlaying(gameObject)) Destroy(Mesh);
             else DestroyImmediate(Mesh);
             Mesh = null;
         }
