@@ -43,6 +43,37 @@ unity/Assets/Art/Generated/incoming.meta
 *.bks
 *.key
 
+# Build artifacts. scripts/build-apk.sh, build-ios.sh and the AAB builder all write here.
+# This was previously unignored, which was survivable while the only output was one APK and
+# is not once iOS lands: Unity emits an Xcode PROJECT — thousands of files, including a
+# full copy of the built Data payload and therefore of the licensed Meshy/Tripo/Polyfork
+# meshes. A single `git add -A` would commit the paid art as a build artifact.
+build/
+*.ipa
+*.xcarchive/
+*.dSYM/
+
+# Apple signing material — same Never-in-repo / Never-agent-reachable posture as the Android
+# upload keystore above (docs/security/threat-model.md). *.p12 / *.pem / *.key are already
+# covered by the keystore block; these are the Apple-specific formats it does not catch.
+#   *.p8              App Store Connect API key (AuthKey_XXXXXXXXXX.p8) — signs uploads and
+#                     authenticates the ASC API. Apple lets you download it exactly ONCE and
+#                     will not reissue it. Leaking it is an account-level compromise; the
+#                     only remedy is revoking the key in App Store Connect > Users and
+#                     Access > Integrations.
+#   *.mobileprovision Provisioning profiles: embed the team ID, app ID and device UDIDs.
+#   *.cer             Distribution/development certificates as downloaded from Apple.
+*.p8
+*.mobileprovision
+*.provisionprofile
+*.cer
+*.certSigningRequest
+
+# Xcode local state and the export descriptor (carries your team ID; machine-specific)
+xcuserdata/
+*.xcuserstate
+ExportOptions.plist
+
 # Unity MCP: generated client config carries a live bearer token — never commit it
 # (the Editor's UserSettings/mcp.json is already covered by unity/UserSettings/ above)
 .mcp.json
