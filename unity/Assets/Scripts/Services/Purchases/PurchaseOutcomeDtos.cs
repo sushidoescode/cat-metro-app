@@ -80,16 +80,22 @@ namespace CatMetro.Services.Purchases
         // Non-null only on Failure/UnknownUnsettled. For logs, never for display: store error
         // text is not written for players.
         public readonly string DiagnosticMessage;
+        // RevenueCat returns authoritative CustomerInfo with a successful native purchase.
+        // Carry it across the seam so the coat can paint on the return frame without waiting
+        // for a redundant request. PurchaseService still applies it through the one ledger path.
+        public readonly EntitlementSnapshot? ConfirmedEntitlements;
 
         public bool IsGrantable => Outcome == PurchaseOutcome.SuccessCandidate;
 
         public PurchaseResult(PurchaseOutcome outcome, string productId,
-            LocalizedPrice localizedPrice = default, string diagnosticMessage = null)
+            LocalizedPrice localizedPrice = default, string diagnosticMessage = null,
+            EntitlementSnapshot? confirmedEntitlements = null)
         {
             Outcome = outcome;
             ProductId = productId;
             LocalizedPrice = localizedPrice;
             DiagnosticMessage = diagnosticMessage;
+            ConfirmedEntitlements = confirmedEntitlements;
         }
 
         public static PurchaseResult Unavailable(string productId, string why)
@@ -105,13 +111,15 @@ namespace CatMetro.Services.Purchases
         // rather than implying an error.
         public readonly int RestoredEntitlementCount;
         public readonly string DiagnosticMessage;
+        public readonly EntitlementSnapshot? ConfirmedEntitlements;
 
         public RestoreResult(RestoreOutcome outcome, int restoredEntitlementCount = 0,
-            string diagnosticMessage = null)
+            string diagnosticMessage = null, EntitlementSnapshot? confirmedEntitlements = null)
         {
             Outcome = outcome;
             RestoredEntitlementCount = restoredEntitlementCount;
             DiagnosticMessage = diagnosticMessage;
+            ConfirmedEntitlements = confirmedEntitlements;
         }
     }
 

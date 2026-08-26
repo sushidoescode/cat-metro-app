@@ -13,16 +13,19 @@ badfx="tests/fixtures/taxonomy-bad/Banned.cs"
 [ -d "$tax" ] || fail "criterion 8: taxonomy root missing (fail-closed)"
 [ -f "$badfx" ] || fail "negative fixture missing (fail-closed)"
 
-# --- criterion 7: ONE construction site; ZERO SDK namespaces in shipped code ---
+# --- criterion 7: ONE construction site; SDK types stay in the integration assembly ---
 sites=$(grep -rl --include='*.cs' 'new AnalyticsEvent(' "$scripts_root" 2>/dev/null || true)
 count=$(printf '%s\n' "$sites" | grep -c . || true)
 [ "$count" = "1" ] || fail "criterion 7: expected exactly 1 'new AnalyticsEvent(' file under $scripts_root, found $count: $sites"
 printf '%s\n' "$sites" | grep -q "EventTaxonomy/Taxonomy.cs" \
   || fail "criterion 7: the one construction site is not the taxonomy builder: $sites"
 grep -q 'new AnalyticsEvent(' "$badfx" || fail "criterion 7: construction pattern failed to fire on the fixture"
-SDK='Firebase|OneSignalSDK|GoogleMobileAds|RevenueCat'
-sdk=$(grep -rEn --include='*.cs' "$SDK" "$scripts_root" 2>/dev/null || true)
-[ -z "$sdk" ] || fail "criterion 7: SDK namespace token in shipped code: $sdk"
+SDK='Firebase|OneSignalSDK|GoogleMobileAds|Purchases\.(PurchasesConfiguration|Package|Offering|Offerings|CustomerInfo|Error|PurchaseResult|StoreKitVersion)|AddComponent<Purchases>|(^|[^[:alnum:]_.])Purchases[[:space:]]+[A-Za-z_]'
+outside_integration_roots=(unity/Assets/Scripts/Domain unity/Assets/Scripts/Content \
+  unity/Assets/Scripts/Services unity/Assets/Scripts/Application unity/Assets/Scripts/Bootstrap \
+  unity/Assets/Scripts/Presentation)
+sdk=$(grep -rEn --include='*.cs' "$SDK" "${outside_integration_roots[@]}" 2>/dev/null || true)
+[ -z "$sdk" ] || fail "criterion 7: SDK type outside the dedicated integration root: $sdk"
 grep -Eq "$SDK" "$badfx" || fail "criterion 7: SDK pattern failed to fire on the fixture"
 
 # --- criterion 8: the metrics-only wall, re-applied over the new root ---

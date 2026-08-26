@@ -70,6 +70,65 @@ namespace CatMetro.Tests.Purchases
             Assert.That(keys.IsConfigured, Is.True, keys.Problem);
         }
 
+        [Test]
+        public void ATestStoreKey_IsRefusedEvenWhenTheHumanFlagSaysProduction()
+        {
+            var keys = MonetizationKeys.Parse(
+                @"{ ""googleApiKey"": ""test_real_test_store_key"", ""useTestStore"": false }",
+                StorePlatform.GooglePlay, isDebugBuild: false);
+
+            Assert.That(keys.IsConfigured, Is.False,
+                "the key prefix, not a hand-authored boolean, determines whether purchases are fake");
+            Assert.That(keys.Problem, Does.Contain("Test Store"));
+        }
+
+        [Test]
+        public void ATestStoreKey_RequiresTheExplicitDebugFlag()
+        {
+            var keys = MonetizationKeys.Parse(
+                @"{ ""googleApiKey"": ""test_real_test_store_key"", ""useTestStore"": false }",
+                StorePlatform.GooglePlay, isDebugBuild: true);
+
+            Assert.That(keys.IsConfigured, Is.False);
+            Assert.That(keys.Problem, Does.Contain("useTestStore"));
+        }
+
+        [TestCase(StorePlatform.GooglePlay, "appl_wrong_platform")]
+        [TestCase(StorePlatform.Apple, "goog_wrong_platform")]
+        [TestCase(StorePlatform.GooglePlay, "not_a_revenuecat_key")]
+        public void AProductionKey_MustMatchTheBuildPlatform(StorePlatform platform, string key)
+        {
+            string field = platform == StorePlatform.Apple ? "appleApiKey" : "googleApiKey";
+            var keys = MonetizationKeys.Parse("{ \"" + field + "\": \"" + key + "\" }",
+                platform, isDebugBuild: false);
+
+            Assert.That(keys.IsConfigured, Is.False);
+            Assert.That(keys.Problem, Does.Contain(platform == StorePlatform.Apple ? "appl_" : "goog_"));
+        }
+
+        [TestCase(StorePlatform.GooglePlay, "googleApiKey")]
+        [TestCase(StorePlatform.Apple, "appleApiKey")]
+        public void ASecretRevenueCatKey_IsAlwaysRefused(StorePlatform platform, string field)
+        {
+            var keys = MonetizationKeys.Parse(
+                "{ \"" + field + "\": \"sk_this_must_stay_server_side\" }",
+                platform, isDebugBuild: true);
+
+            Assert.That(keys.IsConfigured, Is.False);
+            Assert.That(keys.Problem, Does.Contain("secret"));
+        }
+
+        [Test]
+        public void AProductionKey_CannotBeMislabelledAsTestStoreInDebug()
+        {
+            var keys = MonetizationKeys.Parse(
+                @"{ ""googleApiKey"": ""goog_realkey"", ""useTestStore"": true }",
+                StorePlatform.GooglePlay, isDebugBuild: true);
+
+            Assert.That(keys.IsConfigured, Is.False);
+            Assert.That(keys.Problem, Does.Contain("useTestStore"));
+        }
+
         // ---- the survivable failures -----------------------------------------------------
 
         [Test]
@@ -148,6 +207,8 @@ namespace CatMetro.Tests.Purchases
                     Assert.That(value.StartsWith("sk_"), Is.False,
                         "a RevenueCat SECRET key is committed in " + where +
                         " — rotate it immediately; it can grant entitlements to anyone");
+                    Assert.That(value.StartsWith("test_"), Is.False,
+                        "a RevenueCat Test Store key is committed in " + where);
                 }
             }
         }

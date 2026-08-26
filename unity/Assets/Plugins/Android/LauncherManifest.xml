@@ -5,6 +5,7 @@
      satisfied a fortiori (nothing is backed up), so NO backup-rules XML exists by design.
      The merged-manifest proof (gradle output) rides criterion 8's human device build. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools"
           android:installLocation="preferExternal">
     <supports-screens
         android:smallScreens="true" android:normalScreens="true"
@@ -12,5 +13,13 @@
         android:anyDensity="true" />
     <application android:allowBackup="false"
                  android:label="@string/app_name"
-                 android:icon="@mipmap/app_icon" />
+                 android:icon="@mipmap/app_icon">
+        <!-- RevenueCat purchase sheets may hand control to a banking app. Their Android SDK
+             requires standard or singleTop so Android returns the result to this activity;
+             Unity 6 generates singleTask, which can cancel that purchase result. Override the
+             generated GameActivity at manifest-merge time and verify the final APK. -->
+        <activity android:name="com.unity3d.player.UnityPlayerGameActivity"
+                  android:launchMode="standard"
+                  tools:replace="android:launchMode" />
+    </application>
 </manifest>

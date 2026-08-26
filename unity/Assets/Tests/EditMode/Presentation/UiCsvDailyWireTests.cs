@@ -6,10 +6,8 @@ using CatMetro.Presentation.Strings;
 
 namespace CatMetro.Tests.Presentation
 {
-    // CM-DAILYWIRE: this slice's OWN csv discipline (the P-4 per-slice guard, the
-    // UiCsvUx06Tests precedent). The merged UiCsvDisciplineTests/UiCsvUx06Tests pin rows 0-11
-    // byte-exact and are left completely untouched; this file pins the two rows THIS contract
-    // appends.
+    // Pins the two daily rows this feature owns without claiming later features may not append
+    // more localized copy after them.
     public sealed class UiCsvDailyWireTests
     {
         private const string CsvPath = "Assets/Resources/Strings/ui.csv";
@@ -21,12 +19,11 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void ThisSlice_AppendsExactlyTwoRows_BytePinned()
+        public void DailyRows_StayBytePinnedAtTheirAppendPositions()
         {
             var rows = Rows();
-            // 12 merged rows (UiCsvUx06Tests' own anchor) + this slice's 2 = 14.
-            Assert.That(rows.Length, Is.EqualTo(14),
-                "12 merged rows + this slice's 2 — append-only, never edits");
+            Assert.That(rows.Length, Is.GreaterThanOrEqualTo(14),
+                "the two daily rows remain present even when later features append strings");
             Assert.That(rows[12], Is.EqualTo("home.daily.label,Daily Line"), "DRAFT");
             Assert.That(rows[13], Is.EqualTo("results.daily.done,Home"), "DRAFT");
         }

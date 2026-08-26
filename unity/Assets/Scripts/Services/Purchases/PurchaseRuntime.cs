@@ -6,9 +6,8 @@ namespace CatMetro.Services.Purchases
     //
     // CatMetro.Presentation references CatMetro.Services; CatMetro.Integrations references
     // CatMetro.Services. Neither references the other, so Integrations publishes the built
-    // service here on boot and Presentation reads it. GameRoot is deliberately untouched — this
-    // lane shares the composition root with six other lanes and editing it would be a merge
-    // conflict for no benefit, since nothing about purchases needs to happen inside the game
+    // service here on boot and Presentation reads it. GameRoot composes the visible Wardrobe but
+    // remains unaware of RevenueCat SDK types, and nothing about purchases enters the game
     // session's tick loop.
     //
     // `Current` is never null. Before Integrations installs anything it is a fully degraded

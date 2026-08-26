@@ -7,6 +7,8 @@ public static class GuardedPolicy
 #endif
     public static object Unbound()
     {
-        return UnityEngine.GameObject.CreatePrimitive(UnityEngine.PrimitiveType.Cube);
+        var primitive = UnityEngine.GameObject.CreatePrimitive(UnityEngine.PrimitiveType.Cube);
+        primitive.GetComponent<UnityEngine.Renderer>().sharedMaterial = null;
+        return primitive;
     }
 }

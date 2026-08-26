@@ -114,6 +114,34 @@ namespace CatMetro.Tests.Purchases
         }
 
         [Test]
+        public void ALongerRewardedLease_CanExtendAShortTimedStoreGrant()
+        {
+            long now = 100L;
+            var ledger = new EntitlementLedger();
+            ledger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant(EntitlementIds.OutfitConductor, GrantSource.Store, 200L)
+            });
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), clock: () => now,
+                ledger: ledger);
+
+            Assert.That(svc.CanOfferAdFor(EntitlementIds.OutfitConductor), Is.True,
+                "a 3600-second reward is honest when current timed access has only 100 seconds left");
+            Assert.That(svc.GrantRewardedAdEntitlement(EntitlementIds.OutfitConductor),
+                Is.EqualTo(AdGrantOutcome.Granted),
+                "TASK 11's only grant API must reach the ledger's supported extension path");
+            Assert.That(svc.SecondsUntilExpiry(EntitlementIds.OutfitConductor), Is.EqualTo(3600),
+                "the source-blind countdown reports the longest active access limb");
+
+            now = 300L;
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.True,
+                "the shared entitlement remains active after the shorter store grant expires");
+            CollectionAssert.Contains(ledger.ActiveEntitlements(now),
+                EntitlementIds.OutfitConductor,
+                "an expired store limb must not hide the still-active lease from aggregate reads");
+        }
+
+        [Test]
         public void WatchingASecondAd_WhileALeaseIsRunning_IsNotOffered()
         {
             var (svc, _, clock) = PFixtures.Service();

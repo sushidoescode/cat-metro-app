@@ -8,12 +8,13 @@ namespace CatMetro.Tests.Purchases
     // A scriptable IPurchaseBackend. Everything is synchronous — the real SDK delivers its
     // callbacks on the Unity main thread, so tests that assert immediately after a call are
     // testing the same ordering the device sees, without a coroutine or a WaitUntil.
-    public sealed class FakePurchaseBackend : IPurchaseBackend
+    public sealed class FakePurchaseBackend : IPurchaseBackend, IPurchaseBackendReadiness
     {
         private readonly List<StoreProductView> _products = new List<StoreProductView>();
         private readonly List<EntitlementGrant> _entitlements = new List<EntitlementGrant>();
 
         public BackendAvailability Availability { get; set; } = BackendAvailability.Ready;
+        public event Action Ready;
 
         // When false, RefreshEntitlements reports a NON-authoritative snapshot — the offline /
         // unreachable case. This is the flag the whole degradation story turns on.
@@ -54,6 +55,12 @@ namespace CatMetro.Tests.Purchases
             var d = _deferred;
             _deferred = null;
             d?.Invoke();
+        }
+
+        public void SignalReady()
+        {
+            Availability = BackendAvailability.Ready;
+            Ready?.Invoke();
         }
 
         private void Deliver(Action action)

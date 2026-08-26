@@ -57,23 +57,38 @@ namespace CatMetro.Services.Purchases
                        ?? string.Empty).Trim();
             bool testStore = (bool?)root["useTestStore"] ?? false;
 
-            if (key.StartsWith(Placeholder))
+            if (key.StartsWith(Placeholder, System.StringComparison.Ordinal))
                 return new MonetizationKeys(key, testStore, "config still holds the example placeholder key");
 
             if (key.Length == 0)
                 return new MonetizationKeys(key, testStore,
                     "config has no API key for " + platform);
 
-            // THE GUARD THAT MATTERS. RevenueCat, verbatim: "You must NEVER submit an app to the
-            // App Store or Google Play that is configured with a Test Store API key." A Test
-            // Store key makes every purchase fake, so shipping one means a store listing where
-            // nobody can actually buy anything and no revenue is ever recorded.
-            //
-            // Refusing to configure at all is the safe failure: cosmetics stay locked, which is
-            // visibly wrong in testing, rather than purchases silently succeeding for free.
-            if (testStore && !isDebugBuild)
+            if (key.StartsWith("sk_", System.StringComparison.Ordinal))
+                return new MonetizationKeys(key, testStore,
+                    "refusing a RevenueCat secret key — Unity may contain only public SDK keys");
+
+            // THE GUARD THAT MATTERS. RevenueCat says never submit an app configured with a
+            // Test Store API key. The prefix is authoritative: trusting only the editable flag
+            // lets a real `test_` key masquerade as production and makes every live purchase fake.
+            // Refusing to configure is the safe failure: cosmetics stay visibly locked instead
+            // of fake purchases silently succeeding in the store build.
+            bool isTestStoreKey = key.StartsWith("test_", System.StringComparison.Ordinal);
+            if (isTestStoreKey && !isDebugBuild)
                 return new MonetizationKeys(key, true,
                     "refusing a Test Store key in a release build — RevenueCat forbids shipping one");
+
+            if (isTestStoreKey != testStore)
+                return new MonetizationKeys(key, testStore,
+                    "useTestStore must be true exactly when the SDK key starts with test_");
+
+            if (!isTestStoreKey)
+            {
+                string requiredPrefix = platform == StorePlatform.Apple ? "appl_" : "goog_";
+                if (!key.StartsWith(requiredPrefix, System.StringComparison.Ordinal))
+                    return new MonetizationKeys(key, false,
+                        "config key for " + platform + " must start with " + requiredPrefix);
+            }
 
             return new MonetizationKeys(key, testStore, null);
         }

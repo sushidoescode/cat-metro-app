@@ -80,14 +80,26 @@ if grep -q 'm_Shader: {fileID: 0}' "$MAT"; then
   fail "criterion 4: null shader reference — that is silent magenta"
 fi
 
-# --- criterion 5 static: primitive count == bind count, proven live ---
-prim=$(grep -ro 'GameObject.CreatePrimitive' unity/Assets/Scripts/Presentation --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-bind=$(grep -ro 'GreyboxMaterial.Shared' unity/Assets/Scripts/Presentation --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-[ "$prim" = "$bind" ] && [ "$prim" != "0" ] \
-  || fail "criterion 5: unbound runtime primitives ($prim CreatePrimitive vs $bind binds)"
-fp=$(grep -ro 'GameObject.CreatePrimitive' "$FIX" --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-fb=$(grep -ro 'GreyboxMaterial.Shared' "$FIX" --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-[ "$fp" != "$fb" ] || fail "criterion 5: the counting gate failed to fire on the fixture"
+# --- criterion 5 static: every primitive-owning component contains non-null binding logic ---
+# The PlayMode artifact test walks every renderer created at runtime. This static companion only
+# provides a coarse per-file tripwire; it does not claim to associate each source expression with
+# its assignment. The fixture includes a fake null assignment so that cannot satisfy the tripwire.
+primitive_files=$(grep -rl --include='*.cs' 'GameObject.CreatePrimitive' \
+  unity/Assets/Scripts/Presentation 2>/dev/null || true)
+[ -n "$primitive_files" ] || fail "criterion 5: no runtime primitive creation sites found"
+while IFS= read -r file; do
+  bind=$(grep -E 'sharedMaterial(s)?[[:space:]]*=' "$file" \
+    | grep -Ev '=[[:space:]]*null([;[:space:]]|$)' || true)
+  [ -n "$bind" ] || fail "criterion 5: primitive-owning file has no non-null material bind: $file"
+done <<< "$primitive_files"
+fixture_primitive=$(grep -rl --include='*.cs' 'GameObject.CreatePrimitive' "$FIX" 2>/dev/null || true)
+[ -n "$fixture_primitive" ] || fail "criterion 5: primitive fixture missing"
+if printf '%s\n' "$fixture_primitive" | while IFS= read -r file; do
+  grep -E 'sharedMaterial(s)?[[:space:]]*=' "$file" \
+    | grep -Evq '=[[:space:]]*null([;[:space:]]|$)' || exit 1
+done; then
+  fail "criterion 5: the non-null material gate failed to fire on the fixture"
+fi
 
-echo "device-config.test.sh: OK (1, 2-yaml, 3, 4, 5-static)"
+echo "device-config.test.sh: OK (1, 2-yaml, 3, 4, 5-static-tripwire)"
 exit 0

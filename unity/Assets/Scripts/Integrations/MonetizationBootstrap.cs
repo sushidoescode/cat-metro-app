@@ -38,11 +38,9 @@ namespace CatMetro.Integrations
         }
     }
 
-    // Boots the purchase layer with no changes to GameRoot.
-    //
-    // GameRoot is the composition root for the game SESSION, and nothing about purchases belongs
-    // in a tick loop — so this uses RuntimeInitializeOnLoadMethod instead. That also keeps this
-    // lane out of a file six other lanes are editing.
+    // Boots the purchase service and store backend independently of GameRoot. GameRoot composes
+    // the visible Wardrobe surface, but it never owns SDK setup and no purchase work enters the
+    // game session tick loop.
     public static class MonetizationBootstrap
     {
         public const string CatalogResourcePath = "Monetization/product_catalog";

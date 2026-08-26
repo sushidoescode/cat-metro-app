@@ -41,6 +41,7 @@ namespace CatMetro.Tests.PlayMode
         [SetUp]
         public void SetUp()
         {
+            GameRoot.DevSkipShippedHome = false;
             GameRoot.BootToHome = false;
             _tmpDir = Path.Combine(Path.GetTempPath(),
                 "cm-dailywire-" + System.Guid.NewGuid().ToString("N"));
@@ -57,6 +58,7 @@ namespace CatMetro.Tests.PlayMode
         [TearDown]
         public void TearDown()
         {
+            GameRoot.DevSkipShippedHome = false;
             GameRoot.BootToHome = false;
             GameRoot.DailyEntryUnlocked = false;
             DevLevelOverride.DirectoryOverride = null; // CM-BOOT-HOME re-seam hygiene
@@ -134,7 +136,10 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Home.DailyLabelText, Is.EqualTo(
                 CatMetro.Presentation.Strings.UiStrings.Get("home.daily.label")),
                 "the label resolves through the csv key, never a literal");
-            int regionBaseline = _root.Input.Regions.Count;
+            Assert.That(_root.Input.Regions.IsRegistered("home.pin.l001"), Is.True);
+            Assert.That(_root.Input.Regions.IsRegistered("home.pin.daily"), Is.True);
+            Assert.That(_root.Input.Regions.IsRegistered("wardrobe.entry"), Is.True,
+                "Wardrobe is a legitimate third Home target, not noise in a count");
 
             // The tap IS the trigger (HomeScreenView.DailySelected -> GameRoot.SelectDaily) —
             // no test hand-invokes SelectDaily here, so this proves the real registered region
@@ -145,13 +150,10 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Home.IsVisible, Is.False, "Home hides once Daily is selected");
             Assert.That(_root.IsDailySession, Is.True,
                 "the real tap reached SelectDaily(), not a no-op");
-            // F2 (review fix round): EXACTLY two regions gone (the L001 pin + the Daily pin),
-            // not merely "fewer than before" — Is.LessThan would also pass if only one
-            // unregistered (a real ghost-region bug) or if some unrelated third region
-            // vanished too, proving nothing precise.
-            Assert.That(_root.Input.Regions.Count, Is.EqualTo(regionBaseline - 2),
-                "both Home pins (L001 + Daily), and only those two, unregister once Home "
-                + "hides — a ghost region would leave this count higher");
+            Assert.That(_root.Input.Regions.IsRegistered("home.pin.l001"), Is.False);
+            Assert.That(_root.Input.Regions.IsRegistered("home.pin.daily"), Is.False);
+            Assert.That(_root.Input.Regions.IsRegistered("wardrobe.entry"), Is.False,
+                "all painted Home targets unregister when Daily enters gameplay");
         }
 
         // --- criteria 2/3/8: the real pipeline runs for the injected date, loads through the

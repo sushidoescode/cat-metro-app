@@ -41,20 +41,11 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void NewRows_ExactlyTheSevenPinned_Appended()
+        public void OwnedAppendedRows_StayBytePinned()
         {
             var rows = Rows();
-            // R1-L6: the exact count is SLICE-SCOPED evidence, amended only by declared
-            // contract evolution (raise the count + pin your own rows; rows 0-6 untouchable).
-            // Adoption-merge resolutions (2026-08-06, #39 and CM-UX-06): append order follows
-            // MERGE order — hint.tutorial row 7 (transitively pinned, #39 F9), results.next
-            // row 8, then CM-UX-06's three (home.title/intro.play/intro.goal) at rows 9-11,
-            // byte-pinned in UiCsvUx06Tests (indices shifted at adoption). CM-DAILYWIRE's own
-            // two rows (home.daily.label/results.daily.done) land at rows 12-13, byte-pinned in
-            // UiCsvDailyWireTests, per this same R1-L6 evolution clause. Count = 5 + 9.
-            Assert.That(rows.Length, Is.EqualTo(FrozenBaseRows.Length + 9),
-                "CM-UX-02's two + CM-UX-05's one + CM-UX-04's one + CM-UX-06's three + "
-                + "CM-DAILYWIRE's two");
+            Assert.That(rows.Length, Is.GreaterThanOrEqualTo(FrozenBaseRows.Length + 9),
+                "owned rows stay pinned while later features may append their own strings");
             Assert.That(rows[5], Is.EqualTo("retry.cta,Try again"), "LOCKED");
             Assert.That(rows[6], Is.EqualTo("halt.notice,Signal fault — the line stopped"),
                 "DRAFT, byte-pinned including U+2014");

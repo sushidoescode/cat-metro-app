@@ -54,6 +54,22 @@ namespace CatMetro.Services.Purchases
         void RefreshEntitlements(Action<EntitlementSnapshot> onDone);
     }
 
+    // Optional lifecycle signal for backends whose native SDK configures after attachment.
+    // PurchaseService owns the reaction so every integration gets the same first offerings and
+    // entitlement refresh, and so a replaced backend cannot update the active shop later.
+    public interface IPurchaseBackendReadiness
+    {
+        event Action Ready;
+    }
+
+    // Optional push path for authoritative CustomerInfo returned by a PURCHASE OR RESTORE after
+    // that transaction's local callback window. Ordinary refresh responses must never use this
+    // event: they may have been requested before a newer purchase and retain their request epoch.
+    public interface IPurchaseBackendTransactionUpdates
+    {
+        event Action<EntitlementSnapshot> TransactionEntitlementsConfirmed;
+    }
+
     // The backend used when there is no store to talk to: no SDK compiled in, running in the
     // Editor, or no API key configured. Answers everything immediately and safely, which is what
     // makes "the game must never hard-fail because a purchase system is unreachable" true by

@@ -42,8 +42,12 @@ namespace CatMetro.Integrations.RevenueCat
             Debug.Log("[Monetization] RevenueCat SDK present but not used in the Editor " +
                       "(its callbacks never fire there); running on the null backend.");
             return;
-#else
+#elif UNITY_ANDROID || UNITY_IOS
             PurchaseBackendFactory.Register(_ => RevenueCatBehaviour.Create());
+#else
+            Debug.Log("[Monetization] RevenueCat purchases are enabled only for Android and iOS; " +
+                      "running on the null backend for this player target.");
+            return;
 #endif
         }
     }
@@ -52,11 +56,14 @@ namespace CatMetro.Integrations.RevenueCat
     //
     // A MonoBehaviour because two things here need frames: the SDK must be configured a frame
     // after its own Start() runs (see Configure below), and every call needs a timeout.
-    public sealed class RevenueCatBehaviour : MonoBehaviour, IPurchaseBackend
+    public sealed class RevenueCatBehaviour : MonoBehaviour, IPurchaseBackend,
+        IPurchaseBackendReadiness, IPurchaseBackendTransactionUpdates
     {
-        // If the store has not answered in this long, we answer for it. RevenueCat has no
-        // timeout of its own, and a callback that never fires is a permanent spinner.
-        private const float CallTimeoutSeconds = 30f;
+        // Queries should release the UI promptly, while an OS purchase sheet can legitimately
+        // remain open during banking-app or parental verification. These are LOCAL watchdogs;
+        // they never free an SDK callback slot, which only the native callback may do.
+        private const float QueryTimeoutSeconds = 30f;
+        private const float InteractiveTimeoutSeconds = 300f;
 
         private Purchases _purchases;
         private MonetizationKeys _config;
@@ -66,7 +73,18 @@ namespace CatMetro.Integrations.RevenueCat
         private readonly Dictionary<string, Purchases.Package> _packagesByProductId =
             new Dictionary<string, Purchases.Package>(StringComparer.Ordinal);
 
+        // purchases-unity 9.9 stores one callback per operation in Purchases. Starting a second
+        // native call after our watchdog fired would overwrite the still-live first callback.
+        // A timed-out slot therefore stays occupied until native code really answers (or this
+        // process restarts).
+        private bool _offeringsSlotOccupied;
+        private bool _customerInfoSlotOccupied;
+        private bool _purchaseSlotOccupied;
+        private bool _restoreSlotOccupied;
+
         public BackendAvailability Availability { get; private set; } = BackendAvailability.Initializing;
+        public event Action Ready;
+        public event Action<EntitlementSnapshot> TransactionEntitlementsConfirmed;
 
         internal static IPurchaseBackend Create()
         {
@@ -90,13 +108,21 @@ namespace CatMetro.Integrations.RevenueCat
         {
             // Purchases is a MonoBehaviour in the GLOBAL namespace (its asmdef sets
             // rootNamespace to ""), so there is no using directive for it.
-            _purchases = gameObject.AddComponent<Purchases>();
+            try
+            {
+                _purchases = gameObject.AddComponent<Purchases>();
 
-            // Must be set before the SDK's own Start() runs, or it self-configures from the
-            // Inspector fields — which are empty here, because we build this GameObject at
-            // runtime rather than authoring it into a scene. Setting it now is safe: AddComponent
-            // runs Awake immediately, Start only at the end of this frame.
-            _purchases.useRuntimeSetup = true;
+                // Must be set before the SDK's own Start() runs, or it self-configures from the
+                // Inspector fields — which are empty here, because we build this GameObject at
+                // runtime rather than authoring it into a scene. Setting it now is safe:
+                // AddComponent runs Awake immediately, Start only at the end of this frame.
+                _purchases.useRuntimeSetup = true;
+            }
+            catch (Exception e)
+            {
+                FailConfiguration("creating the Purchases component", e);
+                yield break;
+            }
 
             // THE ORDERING HAZARD. Purchases.Configure() dereferences a wrapper field that is
             // assigned in Purchases.Start(). Calling Configure before that — from our Awake, or
@@ -104,12 +130,44 @@ namespace CatMetro.Integrations.RevenueCat
             // the error RevenueCat's Editor warning is describing. One frame is the fix.
             yield return null;
 
-            var builder = Purchases.PurchasesConfiguration.Builder.Init(_config.ApiKey);
-            _purchases.Configure(builder.Build());
+            try
+            {
+                var builder = Purchases.PurchasesConfiguration.Builder.Init(_config.ApiKey)
+                    // The 9.9 Unity builder's zero-value is StoreKit1, despite `Default` being a
+                    // named enum member. Make the settled StoreKit 2 direction explicit; Android's
+                    // wrapper ignores this field. RevenueCat falls back only on iOS devices where
+                    // StoreKit 2 is unavailable.
+                    .SetStoreKitVersion(Purchases.StoreKitVersion.StoreKit2);
+                _purchases.Configure(builder.Build());
+            }
+            catch (Exception e)
+            {
+                FailConfiguration("configuring the native SDK", e);
+                yield break;
+            }
 
             Availability = BackendAvailability.Ready;
+            try
+            {
+                Ready?.Invoke();
+            }
+            catch (Exception e)
+            {
+                // A consumer refresh failure cannot retroactively make native configuration
+                // false. SDK calls have their own guards and will degrade independently.
+                Debug.LogError("[Monetization] ready subscriber threw: " + e);
+            }
             Debug.Log("[Monetization] RevenueCat configured" +
                       (_config.UseTestStore ? " against the TEST STORE (not a real store)" : ""));
+        }
+
+        private void FailConfiguration(string stage, Exception error)
+        {
+            Availability = BackendAvailability.Unreachable;
+            if (_purchases != null) Destroy(_purchases);
+            _purchases = null;
+            Debug.LogError("[Monetization] RevenueCat failed while " + stage +
+                           "; continuing without a store. " + error);
         }
 
         // ---- IPurchaseBackend -------------------------------------------------------------
@@ -118,21 +176,43 @@ namespace CatMetro.Integrations.RevenueCat
         {
             var once = Guard(onDone, Array.Empty<StoreProductView>());
             if (_purchases == null) { once(Array.Empty<StoreProductView>()); return; }
+            if (_offeringsSlotOccupied) { once(Array.Empty<StoreProductView>()); return; }
 
-            _purchases.GetOfferings((offerings, error) =>
+            _offeringsSlotOccupied = true;
+            try
             {
-                if (error != null || offerings == null)
+                _purchases.GetOfferings((offerings, error) =>
                 {
-                    // Transient, not fatal: keep the shop on screen and let the player retry.
-                    Availability = BackendAvailability.Unreachable;
-                    Debug.LogWarning("[Monetization] GetOfferings failed: " + Describe(error));
-                    once(Array.Empty<StoreProductView>());
-                    return;
-                }
+                    _offeringsSlotOccupied = false;
+                    try
+                    {
+                        if (error != null || offerings == null)
+                        {
+                            // Transient, not fatal: keep the shop on screen and let the player retry.
+                            Availability = BackendAvailability.Unreachable;
+                            Debug.LogWarning("[Monetization] GetOfferings failed: " + Describe(error));
+                            once(Array.Empty<StoreProductView>());
+                            return;
+                        }
 
-                Availability = BackendAvailability.Ready;
-                once(ReadOffering(offerings));
-            });
+                        Availability = BackendAvailability.Ready;
+                        once(ReadOffering(offerings));
+                    }
+                    catch (Exception e)
+                    {
+                        Availability = BackendAvailability.Unreachable;
+                        Debug.LogError("[Monetization] GetOfferings callback failed: " + e);
+                        once(Array.Empty<StoreProductView>());
+                    }
+                });
+            }
+            catch (Exception e)
+            {
+                _offeringsSlotOccupied = false;
+                Availability = BackendAvailability.Unreachable;
+                Debug.LogError("[Monetization] GetOfferings threw: " + e);
+                once(Array.Empty<StoreProductView>());
+            }
         }
 
         private IReadOnlyList<StoreProductView> ReadOffering(Purchases.Offerings offerings)
@@ -145,8 +225,10 @@ namespace CatMetro.Integrations.RevenueCat
             // Current only if the named offering is missing, which at least degrades to
             // "something" rather than nothing.
             Purchases.Offering offering = null;
+            bool usingNamedOffering = false;
             if (offerings.All != null)
-                offerings.All.TryGetValue(RevenueCatNames.CosmeticsOffering, out offering);
+                usingNamedOffering = offerings.All.TryGetValue(
+                    RevenueCatNames.CosmeticsOffering, out offering);
             offering ??= offerings.Current;
 
             if (offering == null)
@@ -155,6 +237,13 @@ namespace CatMetro.Integrations.RevenueCat
                                  RevenueCatNames.CosmeticsOffering + "' and no current offering; " +
                                  "check the RevenueCat dashboard");
                 return result;
+            }
+
+            if (!usingNamedOffering)
+            {
+                Debug.LogWarning("[Monetization] named offering '" +
+                                 RevenueCatNames.CosmeticsOffering + "' is missing; using current '" +
+                                 offering.Identifier + "' as a temporary fallback");
             }
 
             // Cosmetics use CUSTOM package identifiers, not the $rc_* durations, so the typed
@@ -176,6 +265,9 @@ namespace CatMetro.Integrations.RevenueCat
                     new LocalizedPrice(product.PriceString)));
             }
 
+            Debug.Log("[Monetization] RevenueCat offering '" + offering.Identifier +
+                      "' loaded " + result.Count + " product(s)");
+
             return result;
         }
 
@@ -183,11 +275,18 @@ namespace CatMetro.Integrations.RevenueCat
         {
             var once = Guard(onDone,
                 new PurchaseResult(PurchaseOutcome.UnknownUnsettled, productId, default,
-                    "the store did not answer within " + CallTimeoutSeconds + "s"));
+                    "the store did not answer within " + InteractiveTimeoutSeconds + "s"),
+                InteractiveTimeoutSeconds);
 
             if (_purchases == null)
             {
                 once(PurchaseResult.Unavailable(productId, "RevenueCat is not configured yet"));
+                return;
+            }
+
+            if (_purchaseSlotOccupied || _restoreSlotOccupied)
+            {
+                once(new PurchaseResult(PurchaseOutcome.Busy, productId));
                 return;
             }
 
@@ -205,10 +304,33 @@ namespace CatMetro.Integrations.RevenueCat
             // PurchasePackage rather than PurchaseProduct. PurchaseProduct's `type` parameter
             // DEFAULTS TO "subs", so buying a one-time cosmetic through it without passing
             // "inapp" would ask the store for a subscription that does not exist.
-            _purchases.PurchasePackage(package, result =>
+            _purchaseSlotOccupied = true;
+            try
             {
-                once(Translate(result, productId));
-            });
+                _purchases.PurchasePackage(package, result =>
+                {
+                    _purchaseSlotOccupied = false;
+                    try
+                    {
+                        var translated = Translate(result, productId);
+                        if (!once(translated))
+                            PublishLateEntitlements(translated.ConfirmedEntitlements);
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogError("[Monetization] purchase callback failed: " + e);
+                        once(new PurchaseResult(PurchaseOutcome.Failure, productId, default,
+                            "RevenueCat purchase callback could not be read"));
+                    }
+                });
+            }
+            catch (Exception e)
+            {
+                _purchaseSlotOccupied = false;
+                Debug.LogError("[Monetization] PurchasePackage threw: " + e);
+                once(new PurchaseResult(PurchaseOutcome.Failure, productId, default,
+                    "RevenueCat could not open the store purchase"));
+            }
         }
 
         // The 9.9.0 callback shape: ONE PurchaseResult. RevenueCat's installation page still
@@ -230,9 +352,13 @@ namespace CatMetro.Integrations.RevenueCat
                 return new PurchaseResult(outcome, productId, default, Describe(result.Error));
             }
 
-            // Success as far as the store is concerned. Entitlements are still re-read from
-            // CustomerInfo by PurchaseService before anything unlocks — hence SuccessCandidate.
-            return new PurchaseResult(PurchaseOutcome.SuccessCandidate, productId);
+            // Success as far as the store is concerned. CustomerInfo remains the authority —
+            // never the product id — hence SuccessCandidate even though that authoritative
+            // snapshot normally travels in this same native callback.
+            return new PurchaseResult(PurchaseOutcome.SuccessCandidate, productId,
+                confirmedEntitlements: result.CustomerInfo == null
+                    ? null
+                    : new EntitlementSnapshot(true, ReadEntitlements(result.CustomerInfo)));
         }
 
         // Google Play defers a purchase when payment needs another step — a slow card, parental
@@ -243,7 +369,8 @@ namespace CatMetro.Integrations.RevenueCat
         public void Restore(Action<RestoreResult> onDone)
         {
             var once = Guard(onDone,
-                new RestoreResult(RestoreOutcome.Failure, 0, "the store did not answer in time"));
+                new RestoreResult(RestoreOutcome.Failure, 0, "the store did not answer in time"),
+                InteractiveTimeoutSeconds);
 
             if (_purchases == null)
             {
@@ -251,43 +378,101 @@ namespace CatMetro.Integrations.RevenueCat
                 return;
             }
 
+            if (_restoreSlotOccupied || _purchaseSlotOccupied)
+            {
+                once(new RestoreResult(RestoreOutcome.Busy));
+                return;
+            }
+
             // RestorePurchases, not SyncPurchases: this is only ever reached from a button the
             // player pressed, and RevenueCat is explicit that RestorePurchases "should not be
             // triggered programmatically, since it may cause OS level sign-in prompts to appear".
-            _purchases.RestorePurchases((info, error) =>
+            _restoreSlotOccupied = true;
+            try
             {
-                if (error != null)
+                _purchases.RestorePurchases((info, error) =>
                 {
-                    once(new RestoreResult(RestoreOutcome.Failure, 0, Describe(error)));
-                    return;
-                }
+                    _restoreSlotOccupied = false;
+                    try
+                    {
+                        if (error != null || info == null)
+                        {
+                            once(new RestoreResult(RestoreOutcome.Failure, 0,
+                                error != null ? Describe(error) : "restore returned no CustomerInfo"));
+                            return;
+                        }
 
-                // The count is recomputed by PurchaseService from the ledger afterwards, so the
-                // number shown to the player matches what actually unlocked.
-                once(new RestoreResult(RestoreOutcome.Completed));
-            });
+                        // The count is recomputed by PurchaseService from the snapshot, so the
+                        // number shown to the player matches what actually came from the store.
+                        var restored = new RestoreResult(RestoreOutcome.Completed,
+                            confirmedEntitlements: new EntitlementSnapshot(true,
+                                ReadEntitlements(info)));
+                        if (!once(restored))
+                            PublishLateEntitlements(restored.ConfirmedEntitlements);
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogError("[Monetization] restore callback failed: " + e);
+                        once(new RestoreResult(RestoreOutcome.Failure, 0,
+                            "RevenueCat restore callback could not be read"));
+                    }
+                });
+            }
+            catch (Exception e)
+            {
+                _restoreSlotOccupied = false;
+                Debug.LogError("[Monetization] RestorePurchases threw: " + e);
+                once(new RestoreResult(RestoreOutcome.Failure, 0,
+                    "RevenueCat could not open restore purchases"));
+            }
         }
 
         public void RefreshEntitlements(Action<EntitlementSnapshot> onDone)
         {
             var once = Guard(onDone, EntitlementSnapshot.Unreachable());
             if (_purchases == null) { once(EntitlementSnapshot.Unreachable()); return; }
+            if (_customerInfoSlotOccupied) { once(EntitlementSnapshot.Unreachable()); return; }
 
-            _purchases.GetCustomerInfo((info, error) =>
+            _customerInfoSlotOccupied = true;
+            try
             {
-                if (error != null || info == null)
+                _purchases.GetCustomerInfo((info, error) =>
                 {
-                    Availability = BackendAvailability.Unreachable;
-                    // Unreachable(), NOT an empty authoritative snapshot. An empty authoritative
-                    // snapshot would tell the ledger to revoke everything the player has paid
-                    // for, every time the network hiccups.
-                    once(EntitlementSnapshot.Unreachable());
-                    return;
-                }
+                    _customerInfoSlotOccupied = false;
+                    try
+                    {
+                        if (error != null || info == null)
+                        {
+                            Availability = BackendAvailability.Unreachable;
+                            // Unreachable(), NOT an empty authoritative snapshot. An empty authoritative
+                            // snapshot would tell the ledger to revoke everything the player has paid
+                            // for, every time the network hiccups.
+                            once(EntitlementSnapshot.Unreachable());
+                            return;
+                        }
 
-                Availability = BackendAvailability.Ready;
-                once(new EntitlementSnapshot(true, ReadEntitlements(info)));
-            });
+                        Availability = BackendAvailability.Ready;
+                        var snapshot = new EntitlementSnapshot(true, ReadEntitlements(info));
+                        // Unlike a completed purchase/restore, this query can carry data captured
+                        // before a newer transaction. Its service request epoch is the only safe
+                        // ordering token, so a response after the guard fired is simply ignored.
+                        once(snapshot);
+                    }
+                    catch (Exception e)
+                    {
+                        Availability = BackendAvailability.Unreachable;
+                        Debug.LogError("[Monetization] GetCustomerInfo callback failed: " + e);
+                        once(EntitlementSnapshot.Unreachable());
+                    }
+                });
+            }
+            catch (Exception e)
+            {
+                _customerInfoSlotOccupied = false;
+                Availability = BackendAvailability.Unreachable;
+                Debug.LogError("[Monetization] GetCustomerInfo threw: " + e);
+                once(EntitlementSnapshot.Unreachable());
+            }
         }
 
         private static IReadOnlyList<EntitlementGrant> ReadEntitlements(Purchases.CustomerInfo info)
@@ -324,14 +509,15 @@ namespace CatMetro.Integrations.RevenueCat
         // IPurchaseBackend promises every callback runs exactly once. Two things threaten that:
         // a callback that never arrives (the Editor noop wrapper, a wedged store), and one that
         // arrives after we have already given up. This wraps both.
-        private Action<T> Guard<T>(Action<T> onDone, T timeoutValue)
+        private Func<T, bool> Guard<T>(Action<T> onDone, T timeoutValue,
+            float timeoutSeconds = QueryTimeoutSeconds)
         {
             bool fired = false;
             Coroutine watchdog = null;
 
-            void Fire(T value)
+            bool Fire(T value)
             {
-                if (fired) return;
+                if (fired) return false;
                 fired = true;
                 if (watchdog != null) StopCoroutine(watchdog);
                 try
@@ -344,16 +530,39 @@ namespace CatMetro.Integrations.RevenueCat
                     // callback dispatch, where it would be swallowed or take the channel down.
                     Debug.LogError("[Monetization] callback threw: " + e);
                 }
+
+                return true;
             }
 
-            watchdog = StartCoroutine(Timeout(() => Fire(timeoutValue)));
+            watchdog = StartCoroutine(Timeout(timeoutSeconds, () => { Fire(timeoutValue); }));
             return Fire;
         }
 
-        private static IEnumerator Timeout(Action onTimeout)
+        private static IEnumerator Timeout(float seconds, Action onTimeout)
         {
-            yield return new WaitForSecondsRealtime(CallTimeoutSeconds);
+            yield return new WaitForSecondsRealtime(seconds);
             onTimeout();
+        }
+
+        private void PublishLateEntitlements(EntitlementSnapshot? candidate)
+        {
+            if (!candidate.HasValue) return;
+            PublishLateEntitlements(candidate.Value);
+        }
+
+        private void PublishLateEntitlements(EntitlementSnapshot snapshot)
+        {
+            if (!snapshot.IsAuthoritative) return;
+            try
+            {
+                TransactionEntitlementsConfirmed?.Invoke(snapshot);
+            }
+            catch (Exception e)
+            {
+                // The store callback has already been consumed; a subscriber must not break
+                // RevenueCat's native dispatch or leave the slot marked occupied.
+                Debug.LogError("[Monetization] entitlement update subscriber threw: " + e);
+            }
         }
 
         private static string Describe(Purchases.Error error)

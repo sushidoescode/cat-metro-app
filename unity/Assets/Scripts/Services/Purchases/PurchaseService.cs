@@ -31,12 +31,20 @@ namespace CatMetro.Services.Purchases
         private readonly EntitlementLedger _ledger;
         private readonly Func<long> _clock;
         private IPurchaseBackend _backend;
+        private IPurchaseBackendReadiness _readinessBackend;
+        private IPurchaseBackendTransactionUpdates _transactionUpdatesBackend;
 
         private readonly Dictionary<string, StoreProductView> _storeProducts =
             new Dictionary<string, StoreProductView>(StringComparer.Ordinal);
+        private readonly Queue<Action> _productRefreshQueue = new Queue<Action>();
+        private readonly Queue<EntitlementRefreshRequest> _entitlementRefreshQueue =
+            new Queue<EntitlementRefreshRequest>();
 
         private bool _purchaseInFlight;
         private bool _restoreInFlight;
+        private bool _productRefreshInFlight;
+        private bool _entitlementRefreshInFlight;
+        private long _entitlementEpoch;
 
         // Diagnostics. Read by the device self-test and worth logging on launch: a shop that is
         // empty because the catalogue failed to parse and a shop that is empty because the store
@@ -55,9 +63,10 @@ namespace CatMetro.Services.Purchases
             Func<long> clock = null, EntitlementLedger ledger = null)
         {
             _catalog = catalog ?? PurchaseCatalog.Empty;
-            _backend = backend ?? new NullPurchaseBackend();
             _clock = clock ?? (() => DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             _ledger = ledger ?? new EntitlementLedger();
+            _backend = new NullPurchaseBackend();
+            AttachBackend(backend);
         }
 
         // Lets Integrations swap a live RevenueCat backend in after an async configure without
@@ -65,7 +74,20 @@ namespace CatMetro.Services.Purchases
         // "go back to degraded", which is what a failed configure should do.
         public void AttachBackend(IPurchaseBackend backend)
         {
+            if (_readinessBackend != null)
+                _readinessBackend.Ready -= OnBackendReady;
+            if (_transactionUpdatesBackend != null)
+                _transactionUpdatesBackend.TransactionEntitlementsConfirmed -=
+                    OnTransactionEntitlementsConfirmed;
+
             _backend = backend ?? new NullPurchaseBackend();
+            _readinessBackend = _backend as IPurchaseBackendReadiness;
+            if (_readinessBackend != null)
+                _readinessBackend.Ready += OnBackendReady;
+            _transactionUpdatesBackend = _backend as IPurchaseBackendTransactionUpdates;
+            if (_transactionUpdatesBackend != null)
+                _transactionUpdatesBackend.TransactionEntitlementsConfirmed +=
+                    OnTransactionEntitlementsConfirmed;
             _storeProducts.Clear();
         }
 
@@ -120,34 +142,13 @@ namespace CatMetro.Services.Purchases
             int pending = 2;
             void Done() { if (--pending == 0) onDone?.Invoke(); }
 
-            _backend.FetchProducts(products =>
-            {
-                _storeProducts.Clear();
-                if (products != null)
-                {
-                    for (int i = 0; i < products.Count; i++)
-                    {
-                        var p = products[i];
-                        // Ignore anything the store offers that our catalogue does not declare.
-                        // A stray product in the store console must not become a purchasable
-                        // item that grants nothing.
-                        if (_catalog.TryGetProduct(p.ProductId, out _)) _storeProducts[p.ProductId] = p;
-                    }
-                }
-
-                Done();
-            });
-
+            RefreshProducts(Done);
             RefreshEntitlements(Done);
         }
 
         public void RefreshEntitlements(Action onDone = null)
         {
-            _backend.RefreshEntitlements(snapshot =>
-            {
-                ApplySnapshot(snapshot);
-                onDone?.Invoke();
-            });
+            RefreshEntitlementsWithSnapshot((_, __) => onDone?.Invoke());
         }
 
         public void Purchase(string productId, Action<PurchaseResult> onDone)
@@ -161,7 +162,7 @@ namespace CatMetro.Services.Purchases
                 return;
             }
 
-            if (_purchaseInFlight)
+            if (_purchaseInFlight || _restoreInFlight)
             {
                 onDone?.Invoke(new PurchaseResult(PurchaseOutcome.Busy, productId));
                 return;
@@ -179,14 +180,16 @@ namespace CatMetro.Services.Purchases
                 }
 
                 // The store says yes — but entitlements are only ever believed from CustomerInfo,
-                // never inferred from a purchase callback. This second hop is what makes the
-                // purchase path and the restore path identical downstream, and it is why a
-                // refund later actually takes the coat off the cat.
-                _backend.RefreshEntitlements(snapshot =>
+                // never inferred from the product id. Prefer the authoritative snapshot carried
+                // by this callback; refresh only when an integration cannot provide it. Both
+                // purchase and restore still converge on ApplySnapshot and the same ledger.
+                if (TryApplyConfirmedSnapshot(result.ConfirmedEntitlements))
                 {
-                    ApplySnapshot(snapshot);
                     onDone?.Invoke(result);
-                });
+                    return;
+                }
+
+                RefreshEntitlements(() => onDone?.Invoke(result));
             });
         }
 
@@ -194,7 +197,7 @@ namespace CatMetro.Services.Purchases
         // it. Not optional, and not a debug affordance.
         public void Restore(Action<RestoreResult> onDone)
         {
-            if (_restoreInFlight)
+            if (_restoreInFlight || _purchaseInFlight)
             {
                 onDone?.Invoke(new RestoreResult(RestoreOutcome.Busy));
                 return;
@@ -211,14 +214,27 @@ namespace CatMetro.Services.Purchases
                     return;
                 }
 
-                _backend.RefreshEntitlements(snapshot =>
+                if (TryApplyConfirmedSnapshot(result.ConfirmedEntitlements))
                 {
-                    ApplySnapshot(snapshot);
-                    // Report the count WE can see after applying, not whatever the backend
-                    // guessed: the number shown to the player should match the number of
-                    // cosmetics that just unlocked.
                     onDone?.Invoke(new RestoreResult(RestoreOutcome.Completed,
-                        CountActiveCatalogEntitlements()));
+                        CountCatalogEntitlements(result.ConfirmedEntitlements.Value)));
+                    return;
+                }
+
+                RefreshEntitlementsWithSnapshot((snapshot, accepted) =>
+                {
+                    if (!accepted)
+                    {
+                        onDone?.Invoke(new RestoreResult(RestoreOutcome.Failure, 0,
+                            "restore completed but entitlements could not be confirmed"));
+                        return;
+                    }
+
+                    // Count exactly what the authoritative CustomerInfo restored. The merged
+                    // access ledger may also contain an ad lease, which is wearable but was not
+                    // a restored purchase.
+                    onDone?.Invoke(new RestoreResult(RestoreOutcome.Completed,
+                        CountCatalogEntitlements(snapshot)));
                 });
             });
         }
@@ -240,8 +256,6 @@ namespace CatMetro.Services.Purchases
             if (!definition.IsAdGrantable) return AdGrantOutcome.NotAdGrantable;
 
             long now = _clock();
-            if (_ledger.IsActive(entitlementId, now)) return AdGrantOutcome.AlreadyUnlocked;
-
             return _ledger.GrantLease(entitlementId, now + definition.AdLeaseSeconds, now)
                 ? AdGrantOutcome.Granted
                 : AdGrantOutcome.AlreadyUnlocked;
@@ -250,12 +264,105 @@ namespace CatMetro.Services.Purchases
         // Lets the ad lane ask "is showing an ad for this worth the player's thirty seconds?"
         // before it loads one.
         public bool CanOfferAdFor(string entitlementId)
-            => _catalog.TryGetEntitlement(entitlementId, out var d) && d.IsAdGrantable &&
-               !_ledger.IsActive(entitlementId, _clock());
+        {
+            if (!_catalog.TryGetEntitlement(entitlementId, out var definition) ||
+                !definition.IsAdGrantable)
+                return false;
+
+            long now = _clock();
+            return _ledger.CanGrantLease(entitlementId,
+                now + definition.AdLeaseSeconds, now);
+        }
 
         public bool PruneExpiredLeases() => _ledger.PruneExpired(_clock());
 
         // ---- internals ------------------------------------------------------------------
+
+        private void OnBackendReady() => Refresh();
+
+        private void OnTransactionEntitlementsConfirmed(EntitlementSnapshot snapshot)
+            => TryApplyConfirmedSnapshot(snapshot);
+
+        // purchases-unity 9.9 keeps one native callback slot per operation. Calling the same
+        // operation again before it completes overwrites that slot and strands the first caller
+        // until our 30-second timeout. Queue at the engine-free seam so launch, resume, wardrobe,
+        // purchase confirmation, and restore confirmation can never overlap at the SDK boundary.
+        private void RefreshProducts(Action onDone)
+        {
+            _productRefreshQueue.Enqueue(onDone);
+            PumpProductRefreshes();
+        }
+
+        private void PumpProductRefreshes()
+        {
+            if (_productRefreshInFlight || _productRefreshQueue.Count == 0) return;
+
+            _productRefreshInFlight = true;
+            var onDone = _productRefreshQueue.Dequeue();
+            _backend.FetchProducts(products =>
+            {
+                _storeProducts.Clear();
+                if (products != null)
+                {
+                    for (int i = 0; i < products.Count; i++)
+                    {
+                        var p = products[i];
+                        // Ignore anything the store offers that our catalogue does not declare.
+                        // A stray product in the store console must not become a purchasable
+                        // item that grants nothing.
+                        if (_catalog.TryGetProduct(p.ProductId, out _))
+                            _storeProducts[p.ProductId] = p;
+                    }
+                }
+
+                _productRefreshInFlight = false;
+                try { onDone?.Invoke(); }
+                finally { PumpProductRefreshes(); }
+            });
+        }
+
+        private void PumpEntitlementRefreshes()
+        {
+            if (_entitlementRefreshInFlight) return;
+
+            while (_entitlementRefreshQueue.Count > 0 &&
+                   _entitlementRefreshQueue.Peek().Epoch != _entitlementEpoch)
+            {
+                var stale = _entitlementRefreshQueue.Dequeue();
+                stale.OnDone?.Invoke(EntitlementSnapshot.Unreachable(), false);
+            }
+
+            if (_entitlementRefreshQueue.Count == 0) return;
+
+            _entitlementRefreshInFlight = true;
+            var request = _entitlementRefreshQueue.Dequeue();
+            _backend.RefreshEntitlements(snapshot =>
+            {
+                bool accepted = snapshot.IsAuthoritative && request.Epoch == _entitlementEpoch;
+                if (accepted) ApplySnapshot(snapshot);
+                _entitlementRefreshInFlight = false;
+                try { request.OnDone?.Invoke(snapshot, accepted); }
+                finally { PumpEntitlementRefreshes(); }
+            });
+        }
+
+        private void RefreshEntitlementsWithSnapshot(Action<EntitlementSnapshot, bool> onDone)
+        {
+            _entitlementRefreshQueue.Enqueue(
+                new EntitlementRefreshRequest(_entitlementEpoch, onDone));
+            PumpEntitlementRefreshes();
+        }
+
+        private bool TryApplyConfirmedSnapshot(EntitlementSnapshot? candidate)
+        {
+            if (!candidate.HasValue || !candidate.Value.IsAuthoritative) return false;
+
+            // Invalidate any CustomerInfo requested before this native transaction completed.
+            // If that old request returns later, it cannot revoke the newer purchase truth.
+            _entitlementEpoch++;
+            ApplySnapshot(candidate.Value);
+            return true;
+        }
 
         private void ApplySnapshot(EntitlementSnapshot snapshot)
         {
@@ -270,13 +377,34 @@ namespace CatMetro.Services.Purchases
             _ledger.ReplaceStoreGrants(snapshot.Grants);
         }
 
-        private int CountActiveCatalogEntitlements()
+        private int CountCatalogEntitlements(EntitlementSnapshot snapshot)
         {
             long now = _clock();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             int count = 0;
-            for (int i = 0; i < _catalog.Entitlements.Count; i++)
-                if (_ledger.IsActive(_catalog.Entitlements[i].Id, now)) count++;
+            var grants = snapshot.Grants;
+            if (grants == null) return 0;
+            for (int i = 0; i < grants.Count; i++)
+            {
+                var grant = grants[i];
+                if (grant.Source == GrantSource.RewardedAd || !grant.IsActiveAt(now)) continue;
+                if (!_catalog.TryGetEntitlement(grant.EntitlementId, out _)) continue;
+                if (seen.Add(grant.EntitlementId)) count++;
+            }
             return count;
+        }
+
+        private readonly struct EntitlementRefreshRequest
+        {
+            public readonly long Epoch;
+            public readonly Action<EntitlementSnapshot, bool> OnDone;
+
+            public EntitlementRefreshRequest(long epoch,
+                Action<EntitlementSnapshot, bool> onDone)
+            {
+                Epoch = epoch;
+                OnDone = onDone;
+            }
         }
     }
 }

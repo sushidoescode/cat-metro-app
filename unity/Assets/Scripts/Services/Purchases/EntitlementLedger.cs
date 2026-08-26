@@ -116,6 +116,20 @@ namespace CatMetro.Services.Purchases
         // invalid, so callers can tell "already yours" from "granted".
         public bool GrantLease(string entitlementId, long expiresAtUnixSeconds, long nowUnixSeconds)
         {
+            if (!CanGrantLease(entitlementId, expiresAtUnixSeconds, nowUnixSeconds)) return false;
+
+            _leases[entitlementId] = new EntitlementGrant(entitlementId, GrantSource.RewardedAd,
+                expiresAtUnixSeconds);
+            Changed?.Invoke();
+            return true;
+        }
+
+        // PurchaseService uses the exact same decision before loading an ad. Keeping the dry-run
+        // here prevents TASK 11 from offering thirty seconds of advertising for a lease this
+        // ledger would reject, while still allowing a long reward to extend short timed access.
+        internal bool CanGrantLease(string entitlementId, long expiresAtUnixSeconds,
+            long nowUnixSeconds)
+        {
             if (string.IsNullOrEmpty(entitlementId)) return false;
 
             // Already expired on arrival: a clock skew or a zero-length lease. Refuse rather
@@ -138,9 +152,6 @@ namespace CatMetro.Services.Purchases
                 existing.ExpiresAtUnixSeconds >= expiresAtUnixSeconds)
                 return false;
 
-            _leases[entitlementId] = new EntitlementGrant(entitlementId, GrantSource.RewardedAd,
-                expiresAtUnixSeconds);
-            Changed?.Invoke();
             return true;
         }
 
@@ -195,7 +206,12 @@ namespace CatMetro.Services.Purchases
             foreach (var kv in _store)
                 if (kv.Value.IsActiveAt(nowUnixSeconds)) result.Add(kv.Key);
             foreach (var kv in _leases)
-                if (kv.Value.IsActiveAt(nowUnixSeconds) && !_store.ContainsKey(kv.Key)) result.Add(kv.Key);
+            {
+                bool activeStoreGrant = _store.TryGetValue(kv.Key, out var owned) &&
+                                        owned.IsActiveAt(nowUnixSeconds);
+                if (kv.Value.IsActiveAt(nowUnixSeconds) && !activeStoreGrant)
+                    result.Add(kv.Key);
+            }
             result.Sort(StringComparer.Ordinal); // deterministic for tests and for UI ordering
             return result;
         }
@@ -212,12 +228,18 @@ namespace CatMetro.Services.Purchases
         {
             if (string.IsNullOrEmpty(entitlementId)) return 0L;
 
+            long latestExpiry = 0L;
             if (_store.TryGetValue(entitlementId, out var owned) && owned.IsActiveAt(nowUnixSeconds))
-                return owned.IsPermanent ? 0L : owned.ExpiresAtUnixSeconds - nowUnixSeconds;
+            {
+                if (owned.IsPermanent) return 0L;
+                latestExpiry = owned.ExpiresAtUnixSeconds;
+            }
 
-            if (!_leases.TryGetValue(entitlementId, out var leased)) return 0L;
-            if (!leased.IsActiveAt(nowUnixSeconds)) return 0L;
-            return leased.ExpiresAtUnixSeconds - nowUnixSeconds;
+            if (_leases.TryGetValue(entitlementId, out var leased) &&
+                leased.IsActiveAt(nowUnixSeconds) && leased.ExpiresAtUnixSeconds > latestExpiry)
+                latestExpiry = leased.ExpiresAtUnixSeconds;
+
+            return latestExpiry == 0L ? 0L : latestExpiry - nowUnixSeconds;
         }
 
         // ---- persistence seam -----------------------------------------------------------
