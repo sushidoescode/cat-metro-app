@@ -113,7 +113,7 @@ namespace CatMetro.Presentation.Board
         /// not the SafeHeight bound, so the hole is only as large as it has to be.
         /// </summary>
         public static Transform Apply(Camera camera, float orthographicSize,
-            float contentHalfHeight, float holeHalfWidth)
+            float contentHalfHeight)
         {
             if (camera == null) return null;
 
@@ -124,7 +124,7 @@ namespace CatMetro.Presentation.Board
             var existing = camera.transform.Find(VeilName);
             // No vertical room means no veil: the falloff would land on the toy. Tear any
             // previous one down rather than leaving a stale band from the last level.
-            if (holeHalfHeight >= outerHalfHeight || holeHalfWidth >= outerHalfWidth)
+            if (holeHalfHeight >= outerHalfHeight)
             {
                 if (existing != null)
                 {
@@ -134,7 +134,7 @@ namespace CatMetro.Presentation.Board
                 return null;
             }
 
-            var material = Material();
+            var material = SharedMaterial();
             if (material == null) return null;
 
             Transform veil = existing;
@@ -160,8 +160,18 @@ namespace CatMetro.Presentation.Board
             // the geometry the others are still drawing.
             var owner = veil.GetComponent<GeneratedVeilMeshOwner>();
             var filter = veil.GetComponent<MeshFilter>();
+            // The bands span 4:3 so they always reach the frame edge, but the sheet is laid
+            // out against the camera's REAL aspect so the foreground lobe lands where it is
+            // meant to on the actual phone. A stale or odd aspect only slides the lobe; it
+            // cannot uncover a frame edge, which is the failure that would be visible.
+            float aspect = camera.aspect;
+            // Not Mathf.Clamp alone: NaN fails every comparison inside it and would sail
+            // through into the UV solve, and a camera with no surface yet reports 0.
+            if (!(aspect > 0.35f)) aspect = 917f / 2048f;
+            else if (aspect > 0.75f) aspect = 0.75f;
+            float visibleHalfWidth = orthographicSize * aspect;
             owner.Mesh = BuildMesh(owner.Mesh, outerHalfWidth, outerHalfHeight,
-                holeHalfWidth, holeHalfHeight);
+                holeHalfHeight, visibleHalfWidth);
             filter.sharedMesh = owner.Mesh;
 
             var renderer = veil.GetComponent<MeshRenderer>();
@@ -183,7 +193,7 @@ namespace CatMetro.Presentation.Board
             return veil;
         }
 
-        public static Material Material()
+        public static Material SharedMaterial()
         {
             if (_material == null)
             {
@@ -198,10 +208,19 @@ namespace CatMetro.Presentation.Board
             return _material;
         }
 
-        // Four quads: top band, bottom band, and two side bands between them. The centre is
+        // TWO quads: a top band and a bottom band, spanning the full 4:3 width. The centre is
         // not covered by any triangle, so the diorama pays nothing — no overdraw, no blend,
         // no chance of the veil tinting a station roof.
-        private static Mesh BuildMesh(Mesh mesh, float ow, float oh, float hw, float hh)
+        //
+        // There are deliberately NO side bands. The width fit puts gameplay across 86.4% of
+        // the frame by construction, so a side band could only occupy the outer ~2.4% of the
+        // viewport — 22px on the pinned 917px frame — and the falloff would have to complete
+        // inside that or read as a hard dark line. Ramped normally it computes to an alpha of
+        // about 1e-6 there, i.e. two invisible full-width quads of pure overdraw. The vertical
+        // is where the frame actually has room (the toy uses ~63% of the height), which is
+        // also where target-01 puts its falloff: the near desk and its cup at the bottom, the
+        // far desk fading at the top.
+        private static Mesh BuildMesh(Mesh mesh, float ow, float oh, float hh, float visibleHw)
         {
             if (mesh == null)
             {
@@ -209,24 +228,22 @@ namespace CatMetro.Presentation.Board
                 mesh.MarkDynamic();
             }
             mesh.Clear();
-            var vertices = new Vector3[16];
-            var uvs = new Vector2[16];
-            var triangles = new int[24];
+            var vertices = new Vector3[8];
+            var uvs = new Vector2[8];
+            var triangles = new int[12];
             int v = 0, t = 0;
 
-            // Each band's own v axis runs from the hole outward, so one ramp serves all four.
+            // Both bands run their own v from the hole outward, so one ramp serves both. u is
+            // laid out so that the VISIBLE frame [-visibleHw, +visibleHw] covers the sheet's
+            // half, and the 4:3 overhang runs off the ends where Clamp holds the plain edge.
             AddQuad(vertices, uvs, triangles, ref v, ref t,
                 new Vector3(-ow, hh, 0f), new Vector3(ow, hh, 0f),
-                new Vector3(ow, oh, 0f), new Vector3(-ow, oh, 0f), lobe: false);
+                new Vector3(ow, oh, 0f), new Vector3(-ow, oh, 0f),
+                PlainHalfMin, PlainHalfMax, ow, visibleHw);
             AddQuad(vertices, uvs, triangles, ref v, ref t,
                 new Vector3(ow, -hh, 0f), new Vector3(-ow, -hh, 0f),
-                new Vector3(-ow, -oh, 0f), new Vector3(ow, -oh, 0f), lobe: true);
-            AddQuad(vertices, uvs, triangles, ref v, ref t,
-                new Vector3(-hw, -hh, 0f), new Vector3(-hw, hh, 0f),
-                new Vector3(-ow, hh, 0f), new Vector3(-ow, -hh, 0f), lobe: false);
-            AddQuad(vertices, uvs, triangles, ref v, ref t,
-                new Vector3(hw, hh, 0f), new Vector3(hw, -hh, 0f),
-                new Vector3(ow, -hh, 0f), new Vector3(ow, hh, 0f), lobe: false);
+                new Vector3(-ow, -oh, 0f), new Vector3(ow, -oh, 0f),
+                LobeHalfMax, LobeHalfMin, ow, visibleHw);
 
             mesh.vertices = vertices;
             mesh.uv = uvs;
@@ -234,7 +251,7 @@ namespace CatMetro.Presentation.Board
             // The camera looks down +Z and the quads face it, so every normal is -Z. Stated
             // rather than recalculated: RecalculateNormals on a flat fan can flip on a
             // degenerate band, and the lit path is switched off by the black albedo anyway.
-            var normals = new Vector3[16];
+            var normals = new Vector3[8];
             for (int i = 0; i < normals.Length; i++) normals[i] = new Vector3(0f, 0f, -1f);
             mesh.normals = normals;
             mesh.RecalculateBounds();
@@ -242,17 +259,21 @@ namespace CatMetro.Presentation.Board
         }
 
         // inner0/inner1 sit on the hole edge (v = 0); outer1/outer0 on the frame edge (v = 1).
+        // u0/u1 are the sheet columns the VISIBLE frame maps to; the band is `ow` wide and the
+        // frame `visibleHw`, so the ends overshoot that range and Clamp holds the edge column.
         private static void AddQuad(Vector3[] vertices, Vector2[] uvs, int[] triangles,
             ref int v, ref int t, Vector3 inner0, Vector3 inner1, Vector3 outer1,
-            Vector3 outer0, bool lobe)
+            Vector3 outer0, float u0, float u1, float ow, float visibleHw)
         {
-            float u0 = lobe ? LobeHalfMin : PlainHalfMin;
-            float u1 = lobe ? LobeHalfMax : PlainHalfMax;
+            float over = ow / Mathf.Max(visibleHw, 0.0001f);
+            float mid = (u0 + u1) * 0.5f;
+            float lo = mid + (u0 - mid) * over;
+            float hi = mid + (u1 - mid) * over;
             int b = v;
-            vertices[v] = inner0; uvs[v++] = new Vector2(u0, 0f);
-            vertices[v] = inner1; uvs[v++] = new Vector2(u1, 0f);
-            vertices[v] = outer1; uvs[v++] = new Vector2(u1, 1f);
-            vertices[v] = outer0; uvs[v++] = new Vector2(u0, 1f);
+            vertices[v] = inner0; uvs[v++] = new Vector2(lo, 0f);
+            vertices[v] = inner1; uvs[v++] = new Vector2(hi, 0f);
+            vertices[v] = outer1; uvs[v++] = new Vector2(hi, 1f);
+            vertices[v] = outer0; uvs[v++] = new Vector2(lo, 1f);
             triangles[t++] = b; triangles[t++] = b + 2; triangles[t++] = b + 1;
             triangles[t++] = b; triangles[t++] = b + 3; triangles[t++] = b + 2;
         }

@@ -123,8 +123,11 @@ namespace CatMetro.Presentation.Board
             // out, the leftmost gameplay renderer is the depot shed, silhouette at world x
             // 0.895; applying the same 0.307 inflation puts its AABB near 0.588, so
             //   contentBounds.size.x 6.834 -> 6.126, and size 8.834 -> 7.919: a 1.116x fill.
-            // Board coverage of the frame goes 26.5% -> 32.7% on that alone, and 46.3% once
+            // Board coverage of the frame goes 26.5% -> 32.7% on that alone, and 48.1% once
             // BoardSurface's anisotropic margin (which this split is what pays for) lands.
+            // The cat scales only with the camera, so it goes 3.2-3.6% -> 3.57-4.02% of frame
+            // width against the target's 5-6%: the slab does nothing for cat legibility, and
+            // nothing on the camera side can, because the gameplay band is already full.
             //
             // This WIDENS what may leave frame. Trees, bushes, the desk clutter and the
             // parked engine may now cross the band that stations, sources, node markers,
@@ -254,8 +257,7 @@ namespace CatMetro.Presentation.Board
             // camera, taking the larger side so an off-centre toy still clears the band.
             float contentHalfHeight = Mathf.Max(
                 Mathf.Abs(frameBounds.max.y - cameraY), Mathf.Abs(cameraY - frameBounds.min.y));
-            DefocusVeil.Apply(camera, size, contentHalfHeight,
-                size * TargetPortraitAspect * SafeWidth * 1.05f);
+            DefocusVeil.Apply(camera, size, contentHalfHeight);
         }
 
         private static bool IsUnderAny(Transform candidate, List<Transform> roots)

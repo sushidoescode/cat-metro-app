@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.TestTools;
 using CatMetro.Bootstrap;
 using CatMetro.Presentation.Board;
+using CatMetro.Presentation.Props;
 using CatMetro.Presentation.Theme;
 
 namespace CatMetro.Tests.PlayMode
@@ -185,6 +186,246 @@ namespace CatMetro.Tests.PlayMode
                 "warmth must pool around the board and fall away toward the desk edges");
             Assert.That(centre.r - centre.b, Is.GreaterThan(corner.r - corner.b),
                 "the falloff cools as it darkens, like lamp light leaving the desk");
+        }
+
+        private const float PinnedPhoneAspect = 917f / 2048f;
+
+        [UnityTest]
+        public IEnumerator BoardBody_MarginIsAnisotropicAndStillClearsTheDeskClutter()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            var nodes = _root.Session.Level.Dto.Nodes.ToArray();
+            float minX = nodes.Min(n => n.X), maxX = nodes.Max(n => n.X);
+            float minY = nodes.Min(n => n.Y), maxY = nodes.Max(n => n.Y);
+            var top = _root.View.transform.Find("BoardBody/WoodTop");
+            Assert.That(top, Is.Not.Null);
+
+            float side = (top.localScale.x - (maxX - minX)) * 0.5f;
+            float far = top.localPosition.y + top.localScale.y * 0.5f - maxY;
+            float near = minY - (top.localPosition.y - top.localScale.y * 0.5f);
+
+            // The frame is 2.23:1 and the toy is roughly square, so the whole fill gap is
+            // vertical. Under the diorama tilt a unit of the board's local Y buys 1.5722 of
+            // screen height for 0.5326 of width, while a unit of local X buys 1.7375 of width
+            // for 0.1099 of height — local Y is 2.95x the better axis and the margin has to
+            // say so. If these three ever collapse back to one number the fill goes with it.
+            Assert.That(far, Is.GreaterThan(side + 0.5f),
+                "the far margin is the efficient axis and must be the largest");
+            Assert.That(side, Is.GreaterThan(near + 0.5f),
+                "the side margin is bought with frame the slab does not have to pay for");
+
+            // The near margin is a wall, not a preference. BoardPropDecorator seats the desk
+            // clutter at (node minY - 1.4) on the desk contact plane, which is BEHIND the
+            // board's wood face — a near margin of 1.4 or more buries the mug inside the slab.
+            Assert.That(near, Is.LessThan(1.4f),
+                "a near margin at or past 1.4 swallows the desk clutter BoardPropDecorator "
+                + "places at minY - 1.4");
+            Assert.That(near, Is.GreaterThanOrEqualTo(1.0f),
+                "and it still has to be a rim, not a hairline");
+
+            var clutter = _root.View.GetComponentsInChildren<BoardPropInstance>(true)
+                .FirstOrDefault(x => x.Role == PropRole.DeskClutter);
+            if (clutter != null)
+                Assert.That(clutter.transform.localPosition.y,
+                    Is.LessThan(top.localPosition.y - top.localScale.y * 0.5f),
+                    "the desk clutter has to sit beyond the board's near rim, on the desk");
+        }
+
+        [UnityTest]
+        public IEnumerator BoardBody_BleedsOffBothSideEdgesAndFillsTheFrame()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+            var camera = _root.Cam;
+            camera.aspect = PinnedPhoneAspect;
+            var top = _root.View.transform.Find("BoardBody/WoodTop");
+            Assert.That(top, Is.Not.Null);
+
+            // The slab's camera-facing face, projected. The tilt makes it a parallelogram, so
+            // measure its actual area rather than a bounding box: shoelace over the four
+            // corners, in viewport units, which makes the number a fraction of the frame.
+            var corners = new Vector2[4];
+            var local = new[]
+            {
+                new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(0.5f, -0.5f, -0.5f),
+                new Vector3(0.5f, 0.5f, -0.5f), new Vector3(-0.5f, 0.5f, -0.5f),
+            };
+            for (int i = 0; i < 4; i++)
+            {
+                Vector3 viewport = camera.WorldToViewportPoint(top.TransformPoint(local[i]));
+                corners[i] = new Vector2(viewport.x, viewport.y);
+            }
+            float area = 0f;
+            for (int i = 0; i < 4; i++)
+            {
+                Vector2 a = corners[i], b = corners[(i + 1) % 4];
+                area += a.x * b.y - b.x * a.y;
+            }
+            area = Mathf.Abs(area) * 0.5f;
+
+            // Measured baseline, off .catshots/orchestrator-2026-08-25-r6 at orthographicSize
+            // 8.834: the slab was 37.10 of the frame's 139.77 square world units, 26.5%. The
+            // law split plus the anisotropic margin computes to 53.5% unclipped and 48.1%
+            // once the side bleed is cut off. 0.45 is a floor under that, well clear of the
+            // 0.265 it replaces.
+            Assert.That(area, Is.GreaterThan(0.45f),
+                "the board's projected area collapsed back toward the 26.5% we started from");
+
+            float minX = corners.Min(c => c.x), maxX = corners.Max(c => c.x);
+            float minY = corners.Min(c => c.y), maxY = corners.Max(c => c.y);
+            // Target-01 runs its board off the left AND right edges. Ours does now too, and
+            // that is the whole point of the slab being outside the safe-frame law.
+            Assert.That(minX, Is.LessThan(-0.15f), "the slab must bleed off the left edge");
+            Assert.That(maxX, Is.GreaterThan(1.02f), "and off the right edge, not merely touch it");
+            // Vertically it must NOT, because that is what keeps the toy reading as a finite
+            // object on a desk rather than as a floor.
+            Assert.That(minY, Is.GreaterThan(0.02f), "the near rim stays in frame");
+            Assert.That(maxY, Is.LessThan(0.98f), "and so does the far rim");
+        }
+
+        [UnityTest]
+        public IEnumerator DefocusVeil_BandsNeverTouchTheDiorama()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+            var camera = _root.Cam;
+
+            var veil = camera.transform.Find(DefocusVeil.VeilName);
+            Assert.That(veil, Is.Not.Null, "the depth-of-field stand-in should have been built");
+            var mesh = veil.GetComponent<MeshFilter>().sharedMesh;
+            Assert.That(mesh, Is.Not.Null);
+            Assert.That(mesh.vertexCount, Is.EqualTo(8),
+                "two bands, top and bottom — a side band could only occupy the outer 2.4% of "
+                + "the viewport and would be invisible full-width overdraw");
+
+            float bandBottomTop = float.NegativeInfinity;  // top of the LOWER band
+            float bandTopBottom = float.PositiveInfinity;  // bottom of the UPPER band
+            foreach (var vertex in mesh.vertices)
+            {
+                float y = veil.TransformPoint(vertex).y;
+                if (y < camera.transform.position.y)
+                    bandBottomTop = Mathf.Max(bandBottomTop, y);
+                else bandTopBottom = Mathf.Min(bandTopBottom, y);
+            }
+            Assert.That(bandBottomTop, Is.LessThan(bandTopBottom), "the bands must not meet");
+
+            // This is the legibility guarantee, and it is structural rather than a tuning
+            // choice: the hole is cut from the measured extent of frameBounds plus a pad, so
+            // NOTHING in the diorama — gameplay or scenery, slab included — is under a veil
+            // triangle. Not a transparent one. None.
+            var deskSurface = _root.View.transform.Find("DeskSurface");
+            int sweptRenderers = 0;
+            foreach (var renderer in _root.View.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!renderer.enabled) continue;
+                if (deskSurface != null && renderer.transform.IsChildOf(deskSurface)) continue;
+                sweptRenderers++;
+                Assert.That(renderer.bounds.min.y, Is.GreaterThan(bandBottomTop),
+                    renderer.name + " overlaps the lower defocus band");
+                Assert.That(renderer.bounds.max.y, Is.LessThan(bandTopBottom),
+                    renderer.name + " overlaps the upper defocus band");
+            }
+            Assert.That(sweptRenderers, Is.GreaterThan(4), "the sweep found almost nothing to check");
+        }
+
+        [UnityTest]
+        public IEnumerator DefocusVeil_SheetFadesFromNothingAtTheHoleToACoolEdgeAndACreamLobe()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            // The falloff, sampled on the plain half of the sheet. A cubed smoothstep, so the
+            // first third of the band is under 2% opacity: if the ramp were visible where it
+            // meets the hole the veil would announce itself as a rectangle around the toy.
+            Assert.That((int)DefocusVeil.Texel(0.75f, 0f).a, Is.LessThanOrEqualTo(1),
+                "the veil must be fully transparent where it meets the diorama");
+            Assert.That((int)DefocusVeil.Texel(0.75f, 0.3f).a, Is.LessThanOrEqualTo(4),
+                "and still invisible a third of the way out");
+            Assert.That((int)DefocusVeil.Texel(0.75f, 1f).a, Is.InRange(120, 136),
+                "reaching EdgeAlpha 0.5 at the frame edge");
+            Assert.That((int)DefocusVeil.Texel(0.75f, 0.6f).a,
+                Is.GreaterThan((int)DefocusVeil.Texel(0.75f, 0.4f).a),
+                "the ramp is monotonic outward");
+
+            Color edge = DefocusVeil.Texel(0.75f, 1f);
+            Assert.That(edge.b - edge.r, Is.GreaterThan(0f),
+                "the frame edge cools as it darkens, continuing DeskGrain's own falloff law");
+            Assert.That(Vector3.Distance(
+                    new Vector3(edge.r, edge.g, edge.b),
+                    new Vector3(Palette.DepotNavy.r, Palette.DepotNavy.g, Palette.DepotNavy.b)),
+                Is.LessThan(0.05f), "and it is a Palette token, not a hand-mixed grey");
+
+            // The out-of-focus foreground lobe, which is the cue target-01's coffee cup
+            // supplies and the one thing a sharp orthographic camera cannot produce.
+            Color32 core = DefocusVeil.Texel(DefocusVeil.LobeU, 1f);
+            Assert.That((int)core.a, Is.GreaterThan(220),
+                "the lobe's core has to occlude the desk to read as a near object");
+            Color coreColor = core;
+            Assert.That(Vector3.Distance(
+                    new Vector3(coreColor.r, coreColor.g, coreColor.b),
+                    new Vector3(Palette.CreamCard.r, Palette.CreamCard.g, Palette.CreamCard.b)),
+                Is.LessThan(0.18f), "the lobe is cream, like target-01's cup");
+
+            // Soft-edged over hundreds of screen pixels, which is what defocus looks like and
+            // what a hard-edged decal does not. Between the core and clear of the lobe the
+            // alpha has to fall back to the plain ramp without a contour.
+            Assert.That(DefocusVeil.Texel(DefocusVeil.LobeU + DefocusVeil.LobeRadiusU * 0.8f,
+                1f).a, Is.LessThan((int)core.a - 40),
+                "the lobe must fall off, not stop");
+            Assert.That(DefocusVeil.Texel(DefocusVeil.LobeU + DefocusVeil.LobeRadiusU * 1.2f,
+                1f).a, Is.InRange(120, 140),
+                "and land back on the plain falloff with no step");
+            Assert.That((int)DefocusVeil.Texel(0.75f, 1f).a,
+                Is.LessThan((int)DefocusVeil.Texel(DefocusVeil.LobeU, 1f).a),
+                "the plain half of the sheet carries no lobe");
+        }
+
+        [UnityTest]
+        public IEnumerator DefocusVeil_IsAnAuthoredTransparentMaterialOutsideTheBoard()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+            var veil = _root.Cam.transform.Find(DefocusVeil.VeilName);
+            Assert.That(veil, Is.Not.Null);
+
+            // Not under BoardView, and this is load-bearing twice over: FitCamera unions
+            // renderer bounds under the board, so a veil in there would feed its own size
+            // back into the fit; and RuntimeSceneRigTests sweeps the same hierarchy, so it
+            // would be asked to obey a safe-frame law written for gameplay.
+            Assert.That(veil.IsChildOf(_root.View.transform), Is.False,
+                "the veil must never live under BoardView");
+            Assert.That(veil.parent, Is.EqualTo(_root.Cam.transform));
+
+            var renderer = veil.GetComponent<MeshRenderer>();
+            Assert.That(renderer.shadowCastingMode,
+                Is.EqualTo(UnityEngine.Rendering.ShadowCastingMode.Off));
+            Assert.That(renderer.receiveShadows, Is.False,
+                "a lens effect must not join the diorama's lighting rig");
+
+            // The material is AUTHORED, not built at runtime. A runtime-built transparent
+            // URP/Lit works in the editor and is stripped on device, because no build-time
+            // material would reference the _SURFACE_TYPE_TRANSPARENT variant — the same class
+            // of silent device-only failure AGENTS.md records for URP base colour.
+            var material = DefocusVeil.SharedMaterial();
+            Assert.That(material, Is.Not.Null,
+                "Resources/" + DefocusVeil.MaterialResourcePath + " must exist as an asset");
+            Assert.That(material, Is.SameAs(
+                Resources.Load<Material>(DefocusVeil.MaterialResourcePath)),
+                "the veil must use the loaded asset itself, never a clone of it");
+            Assert.That(material.shader.name, Is.EqualTo("Universal Render Pipeline/Lit"),
+                "the project has one shader and the veil does not get to add a second");
+            Assert.That(material.GetFloat("_Surface"), Is.EqualTo(1f),
+                "surface type Transparent");
+            Assert.That(material.GetFloat("_ZWrite"), Is.EqualTo(0f));
+            Assert.That(material.renderQueue, Is.GreaterThanOrEqualTo(3000),
+                "the veil draws after the diorama it sits in front of");
+            Assert.That(material.IsKeywordEnabled("_SURFACE_TYPE_TRANSPARENT"), Is.True);
+            Assert.That(material.IsKeywordEnabled("_EMISSION"), Is.True,
+                "the veil's colour is emission so it cannot drift when the key light is "
+                + "recalibrated — a defocused desk should not change hue because the key "
+                + "moved three degrees");
         }
 
         /// <summary>

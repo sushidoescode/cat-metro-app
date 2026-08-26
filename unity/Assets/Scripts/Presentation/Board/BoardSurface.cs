@@ -27,14 +27,22 @@ namespace CatMetro.Presentation.Board
         // tall while already overhanging it horizontally. Local Y is therefore the efficient
         // axis, at 2.95x the screen height per unit of frame width spent.
         //
-        // MarginSide 1.80. Measured sweep of clipped slab coverage on L001 at the post-split
+        // MarginSide 2.05. Measured sweep of clipped slab coverage on L001 at the post-split
         // orthographicSize 7.919, holding MarginFar 3.05:
         //   1.05 -> 39.4%   1.30 -> 41.9%   1.55 -> 44.2%   1.80 -> 46.3%
         //   2.05 -> 48.1%   2.30 -> 49.6%   2.80 -> 52.0%
-        // It keeps paying, but the slab's screen width is already 9.56 against a 7.09 frame
-        // at 1.80 (35% off-frame, both edges — target-01 bleeds both edges too). Past that
-        // the extra wood is nearly all outside the frame and the toy stops reading as a
-        // finite object, which is the same thing SafeHeight is protecting vertically.
+        // The returns flatten but never stop, so the choice is not the knee — it is the
+        // first value that clears BOTH frame edges with room to spare. At 1.80 the slab's
+        // far corner lands 0.17 units past the right edge, which is 20px and inside the
+        // uncertainty on where the camera centres; at 2.05 it is 0.39 units and unambiguous,
+        // so the board bleeds left AND right as target-01's does rather than bleeding left
+        // and merely touching right. There is no upper law here — losing the side rims off
+        // frame is what the target does — but the vertical rims stay in frame, and those are
+        // the ones that make the toy read as a finite object.
+        //
+        // Losing the horizontal rims is also what makes the desk's own defocus falloff
+        // matter more than it did: see DefocusVeil, which continues that falloff past the
+        // slab into the top and bottom of the frame.
         //
         // MarginFar 3.05, capped by the height fit, not by taste. requiredForHeight takes
         // over from requiredForWidth when frameBounds.size.y exceeds size/0.69079; on the
@@ -49,7 +57,7 @@ namespace CatMetro.Presentation.Board
         // lane right now. 1.05 leaves 0.35 units of clearance. Raising this is the single
         // most valuable follow-up once the prop lane can move the clutter: target-01's own
         // big wood band is at its NEAR edge, running off the bottom of frame.
-        private const float MarginSide = 1.80f;
+        private const float MarginSide = 2.05f;
         private const float MarginFar = 3.05f;
         private const float MarginNear = 1.05f;
         private const float WoodFront = 0.35f;

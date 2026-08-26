@@ -70,9 +70,18 @@ namespace CatMetro.Tests.PlayMode
                     "the licensed local install exercises the full wide prop layout");
             else Assert.That(props.Length, Is.Zero,
                 "a licence-neutral checkout uses the primitive fallback atomically");
+            // The law is split. A prop that stands in for a board element the player has to
+            // read and act on keeps the gameplay band; scenery gets the wider decorative one.
+            // See PropRole, and SafeFrameLaw_SplitsGameplayFromDecorativeWithTeeth below for
+            // the proof that the gameplay half still bites.
             foreach (var prop in props)
                 foreach (var renderer in prop.GetComponentsInChildren<Renderer>(true))
-                    if (renderer.enabled) AssertBoundsInside(camera, renderer.bounds, prop.AssetId);
+                {
+                    if (!renderer.enabled) continue;
+                    if (prop.IsDecorative)
+                        AssertBoundsInsideDecorativeBand(camera, renderer.bounds, prop.AssetId);
+                    else AssertBoundsInside(camera, renderer.bounds, prop.AssetId);
+                }
 
             var deskSurface = root.View.transform.Find("DeskSurface");
             foreach (var renderer in root.View.GetComponentsInChildren<Renderer>(true))
@@ -141,6 +150,168 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(root.GetComponentsInChildren<Light>(true)
                 .Count(x => x.name == "Diorama Warm Key"), Is.EqualTo(1),
                 "Retry and LoadNext reuse the scene key");
+        }
+
+        [Test]
+        public void SafeFrameLaw_SplitsGameplayFromDecorativeWithTeeth()
+        {
+            var root = GameRoot.LaunchWith(ImportLevel("L008"));
+            _owned.Add(root.gameObject);
+            var camera = root.Cam;
+            camera.aspect = PhoneAspect;
+
+            // 1. The gameplay half is unchanged and still bites. A station that leaves the
+            //    band must fail, and this proves it against a REAL station's real position
+            //    rather than a hypothetical: nudge it out by a hair more than the band's own
+            //    half-width and the same helper that guards the scene rejects it.
+            var stations = root.View.GetComponentsInChildren<BoardElementId>(true)
+                .Where(x => x.Kind == "station").ToArray();
+            Assert.That(stations, Is.Not.Empty, "L008 is the wide-prop level and has stations");
+            foreach (var station in stations)
+                AssertInside(camera, station.transform.position, station.Id);
+
+            var probe = stations[0];
+            float frameWidth = 2f * camera.orthographicSize * camera.aspect;
+            var escaped = probe.transform.position
+                + new Vector3(frameWidth * 0.5f, 0f, 0f);
+            Assert.Throws<AssertionException>(
+                () => AssertInside(camera, escaped, probe.Id),
+                "the gameplay band must still reject a station that leaves the frame — "
+                + "widening what may bleed did not widen this");
+            var sunk = probe.transform.position
+                + new Vector3(0f, 2f * camera.orthographicSize, 0f);
+            Assert.Throws<AssertionException>(
+                () => AssertInside(camera, sunk, probe.Id),
+                "and it must still reject one that leaves vertically");
+
+            // 2. The decorative half is a rule of its own, not the absence of one. It is
+            //    wider horizontally on purpose — target-01 runs its scenery off both side
+            //    edges — and barely wider vertically, because the top and bottom of the
+            //    frame are where the toy's rim has to keep reading as a finite edge.
+            Assert.That(DecorativeMaxX, Is.GreaterThan(0.945f),
+                "the decorative band has to be wider than the gameplay one or the split "
+                + "bought nothing");
+            Assert.That(DecorativeMinX, Is.LessThan(0.055f));
+            Assert.That(DecorativeMinY, Is.LessThan(0.12f));
+            Assert.That(DecorativeMaxY, Is.GreaterThan(0.87f));
+            // The shape of the widening, stated so it cannot drift into "decorative means
+            // unconstrained". Horizontally the band leaves the FRAME: target-01 runs its
+            // trees and fences off both side edges and so may we. Vertically it does not:
+            // the top and bottom of the frame are where the toy's rim has to keep reading as
+            // a finite edge, which is the whole reason SafeHeight exists.
+            Assert.That(DecorativeMinX, Is.LessThan(0f),
+                "scenery may bleed off the side edges");
+            Assert.That(DecorativeMaxX, Is.GreaterThan(1f));
+            Assert.That(DecorativeMinY, Is.GreaterThan(0f),
+                "but nothing decorative may leave the frame vertically");
+            Assert.That(DecorativeMaxY, Is.LessThan(1f));
+
+            var props = root.View.GetComponentsInChildren<BoardPropInstance>(true);
+            if (PropModelCatalog.LoadResources().AdmittedEntryCount != 5)
+            {
+                Assert.That(props, Is.Empty,
+                    "a licence-neutral checkout has no props to classify");
+                return;
+            }
+            Assert.That(props.Any(x => x.IsDecorative), Is.True,
+                "the split is only meaningful if this level actually carries scenery");
+            Assert.That(props.Any(x => !x.IsDecorative), Is.True,
+                "and only honest if it still carries props the gameplay band governs");
+            foreach (var prop in props)
+                Assert.That(PropRole.IsDecorative(prop.Role) || PropRole.IsGameplay(prop.Role),
+                    Is.True, prop.Role + " is on neither side of the split — a role the "
+                    + "decorator emits must land in PropRole or it silently gets the "
+                    + "gameplay band by default");
+
+            // 3. Every decorative renderer obeys its own band, and the ones that actually
+            //    bleed do so sideways.
+            foreach (var prop in props.Where(x => x.IsDecorative))
+                foreach (var renderer in prop.GetComponentsInChildren<Renderer>(true))
+                    if (renderer.enabled)
+                        AssertBoundsInsideDecorativeBand(camera, renderer.bounds, prop.AssetId);
+        }
+
+        [Test]
+        public void DecorativePropsLeaveTheWidthFit_ButNeverTheVerticalFit()
+        {
+            var root = GameRoot.LaunchWith(ImportLevel("L008"));
+            _owned.Add(root.gameObject);
+            var camera = root.Cam;
+            camera.aspect = PhoneAspect;
+            if (PropModelCatalog.LoadResources().AdmittedEntryCount != 5) Assert.Ignore(
+                "needs the licensed local prop install");
+
+            // The fit solved its size from gameplay alone, so the union of the GAMEPLAY
+            // renderers is what fills the horizontal band — the decorative ones are allowed
+            // to be wider than it, and on L001 the perimeter trees are exactly that.
+            var deskSurface = root.View.transform.Find("DeskSurface");
+            var slab = root.View.transform.Find("BoardBody");
+            var decorative = root.View.GetComponentsInChildren<BoardPropInstance>(true)
+                .Where(x => x.IsDecorative).Select(x => x.transform).ToArray();
+            Bounds gameplay = default, everything = default;
+            bool foundGameplay = false, foundAll = false;
+            foreach (var renderer in root.View.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!renderer.enabled) continue;
+                if (deskSurface != null && renderer.transform.IsChildOf(deskSurface)) continue;
+                if (!foundAll) { everything = renderer.bounds; foundAll = true; }
+                else everything.Encapsulate(renderer.bounds);
+                if (slab != null && renderer.transform.IsChildOf(slab)) continue;
+                if (decorative.Any(d => renderer.transform.IsChildOf(d))) continue;
+                if (!foundGameplay) { gameplay = renderer.bounds; foundGameplay = true; }
+                else gameplay.Encapsulate(renderer.bounds);
+            }
+            Assert.That(foundGameplay, Is.True);
+            float half = camera.orthographicSize * camera.aspect;
+            float used = gameplay.size.x / (2f * half);
+            Assert.That(used, Is.InRange(0.80f, 0.945f),
+                "the gameplay union should still be filling the horizontal band — if it "
+                + "collapses, the fit stopped being content-driven");
+
+            // Vertically nothing changed: the whole diorama, slab included, still has to sit
+            // inside the frame so the toy's rim reads as a finite edge top and bottom.
+            foreach (var renderer in root.View.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!renderer.enabled) continue;
+                if (deskSurface != null && renderer.transform.IsChildOf(deskSurface)) continue;
+                Vector3 lo = camera.WorldToViewportPoint(renderer.bounds.min);
+                Vector3 hi = camera.WorldToViewportPoint(renderer.bounds.max);
+                Assert.That(Mathf.Min(lo.y, hi.y), Is.GreaterThan(-0.02f),
+                    renderer.name + " fell off the bottom of the frame");
+                Assert.That(Mathf.Max(lo.y, hi.y), Is.LessThan(1.02f),
+                    renderer.name + " ran off the top of the frame");
+            }
+        }
+
+        // The decorative band. Horizontally 0.12 of the frame wider than the gameplay one on
+        // each side, because target-01 runs its trees and fences off both edges and a tree
+        // that decides the size of the whole diorama is the bug this split fixes. Vertically
+        // it is only 0.10/0.11 wider, and deliberately so: SafeHeight exists to keep the
+        // toy's rim reading as a finite edge, and scenery sailing off the top or bottom would
+        // defeat that just as thoroughly as the slab doing it.
+        private const float DecorativeMinX = -0.12f;
+        private const float DecorativeMaxX = 1.12f;
+        private const float DecorativeMinY = 0.02f;
+        private const float DecorativeMaxY = 0.98f;
+
+        private static void AssertBoundsInsideDecorativeBand(Camera camera, Bounds bounds,
+            string label)
+        {
+            Vector3 min = bounds.min;
+            Vector3 max = bounds.max;
+            for (int mask = 0; mask < 8; mask++)
+            {
+                var corner = new Vector3(
+                    (mask & 1) == 0 ? min.x : max.x,
+                    (mask & 2) == 0 ? min.y : max.y,
+                    (mask & 4) == 0 ? min.z : max.z);
+                Vector3 viewport = camera.WorldToViewportPoint(corner);
+                Assert.That(viewport.z, Is.GreaterThan(0f), label + " behind camera");
+                Assert.That(viewport.x, Is.InRange(DecorativeMinX, DecorativeMaxX),
+                    label + " is decorative and may bleed sideways, but not this far");
+                Assert.That(viewport.y, Is.InRange(DecorativeMinY, DecorativeMaxY),
+                    label + " is decorative and still may not leave the frame vertically");
+            }
         }
 
         private static void AssertBoundsInside(Camera camera, Bounds bounds, string label)
