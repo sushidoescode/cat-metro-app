@@ -95,10 +95,23 @@ namespace CatMetro.Presentation.Board
         // buried under a neighbour; 0.90 clears every one of them with 0.070 to
         // spare. That same clearance is why end-anchoring cannot smear: if no
         // neighbour's bed reaches the seam, no neighbour's seam can either.
-        private const float JoinSeamHalfWidth = 0.03f;   // ~5.6 px at 917x2048
-        private const float JoinNeckHalfWidth = 0.06f;
-        private const float JoinHeadRadius = 0.115f;
-        private const float JoinHeadCentre = 0.15f;
+        // SIZED OFF THE RENDER, not off the model. Measured on the r6 capture at
+        // 917x2048: the bed's 1.08 width covers 99 px and the 0.50 rail gauge covers
+        // 47.5 px, so roughly 93 px per world unit ACROSS the track. Along the track
+        // the camera's tilt compresses that: the 0.34 sleeper pitch covers ~13.5 px
+        // against the 31.6 it would get unforeshortened, a factor of 0.43.
+        //
+        // That asymmetry is the whole reason these numbers are what they are. A seam
+        // runs ACROSS the bed, so its WIDTH is measured along the track and takes the
+        // full 0.43 squash. The first pass used 0.06 and would have rendered 2.4 px
+        // wide — under the ~3 px where a line still survives resolve. 0.09 lands at
+        // 3.6 px: finer than a sleeper tick's 6.4 px, which is right for a seam, and
+        // still there. The lobe is sized the same way and comes out 37 px across by
+        // 16 px deep, comfortably legible against a board that fills ~26% of frame.
+        private const float JoinSeamHalfWidth = 0.045f;  // 0.09 wide -> ~3.6 px
+        private const float JoinNeckHalfWidth = 0.09f;   // 0.09 gap  -> ~8.4 px
+        private const float JoinHeadRadius = 0.155f;     // 0.40 wide -> ~37 px
+        private const float JoinHeadCentre = 0.20f;      // 0.40 deep -> ~16 px
         private const int JoinArcSteps = 14;
         private const float JoinSkirtZ = 0.20f;
 
@@ -295,6 +308,23 @@ namespace CatMetro.Presentation.Board
             }
         }
 
+        // A real wooden piece has no tie printed across its connector, and geometry
+        // agrees: a tick's flat top sits at SleeperTopZ and the seam's cambered top
+        // touches exactly that height at the crown, so a tick crossing the seam would
+        // put two cream surfaces on one plane and z-fight. Clearing the window costs
+        // one tick per seam across the whole corpus and leaves at least four standing
+        // on every seamed edge.
+        private static bool JoinBlocksTick(TrackSpline path, float distance)
+        {
+            float seam = JoinDistance(path);
+            if (seam < 0f) return false;
+            // The lobe points UPSTREAM, so the window it clears runs back from the
+            // seam line, not forward from it.
+            float reach = JoinHeadCentre + JoinHeadRadius + JoinSeamHalfWidth;
+            return distance >= seam - reach - SleeperWidth * 0.5f
+                && distance <= seam + JoinSeamHalfWidth + SleeperWidth * 0.5f;
+        }
+
         private static void AppendSleeperTicks(TrackSpline path,
             List<Vector3> vertices, List<int> triangles)
         {
@@ -305,6 +335,7 @@ namespace CatMetro.Presentation.Board
                 float distance = count == 1
                     ? path.Length * 0.5f
                     : SleeperEndInset + usableLength * sleeper / (count - 1);
+                if (JoinBlocksTick(path, distance)) continue;
                 float fraction = path.Length > 0f ? distance / path.Length : 0f;
                 Vector3 centre = path.EvaluateDistanceFraction(fraction);
                 Vector3 tangent = path.TangentDistanceFraction(fraction);
@@ -407,7 +438,23 @@ namespace CatMetro.Presentation.Board
             outline.Add(new Vector2(JoinNeckHalfWidth, neckTop));
             outline.Add(new Vector2(JoinNeckHalfWidth, 0f));
             outline.Add(new Vector2(JoinHalfSpan, 0f));
-            return outline.ToArray();
+
+            // Turn the whole thing through 180 degrees so the lobe points AWAY from
+            // the node, upstream. Pointing it downstream put its tip 0.90 - 0.40 =
+            // 0.50 from the node, back inside the reach of the neighbouring bed that
+            // JoinInset exists to clear; upstream it sits 1.30 clear and the corpus's
+            // worst clearance goes from 0.070 to 0.334. Every piece then carries its
+            // tab at its upstream end and its socket at the downstream one, which is
+            // the same peg-and-hole alternation, just handed the other way.
+            //
+            // It has to be a ROTATION, not a mirror: (x, y) -> (-x, -y) has
+            // determinant +1 and preserves the footprint's handedness. Negating y
+            // alone would flip it, and a flipped footprint on an already-mirrored
+            // basis inverts every lid.
+            var rotated = new Vector2[outline.Count];
+            for (int i = 0; i < outline.Count; i++)
+                rotated[i] = new Vector2(-outline[i].x, -outline[i].y);
+            return rotated;
         }
 
         // Ring-to-ring turn rate around a station, measured the same way AppendSweep

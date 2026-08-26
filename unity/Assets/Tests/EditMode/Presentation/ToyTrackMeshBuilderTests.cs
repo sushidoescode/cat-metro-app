@@ -455,20 +455,21 @@ namespace CatMetro.Tests.EditMode.Presentation
             // backwards silently inverts "head" and "neck".
             List<Vector2> outline = SeamFootprint(mesh, path, seam);
             float lateral = outline.Max(p => p.x) - outline.Min(p => p.x);
-            float forward = outline.Max(p => p.y);
+            // Measured as a magnitude: the lobe points upstream today, and which way
+            // it hangs is a placement decision, not what this test is about.
+            float reach = outline.Max(p => Mathf.Abs(p.y));
 
             Assert.That(lateral, Is.GreaterThan(0.9f),
                 "the seam must read right across the bed, not just between the rails");
-            Assert.That(forward, Is.GreaterThan(0.25f),
+            Assert.That(reach, Is.GreaterThan(0.25f),
                 "a straight butt joint is not a puzzle piece — a lobe has to stand "
-                + "off the seam line, and it points along +tangent so every piece "
-                + "carries its tab at the downstream end");
+                + "off the seam line");
 
             // The interlock, stated as geometry: the head has to be wider than the
             // mouth of the neck it hangs off, or the two pieces would pull straight
             // apart and it would be a wiggly butt joint, not a tab and socket.
-            float headWidth = SpanBetween(outline, forward - 0.15f, float.PositiveInfinity);
-            float neckOpening = NeckOpening(outline, 0.005f, 0.045f);
+            float headWidth = SpanBetween(outline, reach - 0.15f, float.PositiveInfinity);
+            float neckOpening = NeckOpening(outline, 0.01f, 0.06f);
             Assert.That(neckOpening, Is.GreaterThan(0f), "the neck must be a real gap");
             Assert.That(headWidth, Is.GreaterThan(neckOpening * 1.4f),
                 "the lobe must be a tab-and-socket head, wider than its own neck");
@@ -595,6 +596,39 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void Build_NoSleeperTickCrossesTheJoinAndSharesItsPlane()
+        {
+            // A tick's flat top sits at SleeperTopZ and the seam's cambered top meets
+            // exactly that height at the crown, so a tick crossing the seam would put
+            // two cream surfaces on one plane and z-fight. A real wooden piece has no
+            // tie printed across its connector either.
+            var path = TrackSplineGraph.Build(
+                new[] { new Vector3(0f, 4f, 0f), Vector3.zero },
+                new[] { 0 }, new[] { 1 }).Path(0);
+            _host = new GameObject("track-jointick-host");
+
+            _track = ToyTrackMeshBuilder.Build("E-jointick", path, _host.transform);
+
+            Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
+            Vector3[] vertices = mesh.vertices;
+            int[] seam = SeamIsland(mesh);
+            List<int[]> ticks = ConnectedVertexComponents(mesh.GetTriangles(0))
+                .Where(island => island.Length == 16).ToList();
+
+            Assert.That(ticks.Count, Is.GreaterThan(3),
+                "clearing the seam must not strip the edge of its tie rhythm");
+
+            Bounds seamBounds = IslandBounds(vertices, seam);
+            foreach (int[] tick in ticks)
+            {
+                Bounds tickBounds = IslandBounds(vertices, tick);
+                Assert.That(seamBounds.Intersects(tickBounds), Is.False,
+                    "a sleeper tick overlaps the join, so two cream tops share the "
+                    + "0.087 plane and will z-fight");
+            }
+        }
+
+        [Test]
         public void Build_ThreeEdgesAtATurnoutDoNotPileTheirSeamsUpOnTheNode()
         {
             // L001's switch. Anchoring the seam to each edge's END puts exactly one at
@@ -614,15 +648,15 @@ namespace CatMetro.Tests.EditMode.Presentation
             var centres = new List<Vector3>();
             for (int edge = 0; edge < 3; edge++)
             {
+                TrackSpline path = graph.Path(edge);
                 GameObject built = ToyTrackMeshBuilder.Build(
-                    "E" + edge, graph.Path(edge), _host.transform);
+                    "E" + edge, path, _host.transform);
                 Mesh mesh = built.GetComponent<MeshFilter>().sharedMesh;
-                Vector3[] vertices = mesh.vertices;
                 int[] seam = SeamIsland(mesh);
                 Assert.That(seam, Is.Not.Empty, "E" + edge + " should carry a seam");
-                Vector3 centroid = Vector3.zero;
-                foreach (int index in seam) centroid += vertices[index];
-                centres.Add(centroid / seam.Length);
+                // The seam LINE again, not the island centroid — the lobe hangs
+                // upstream and drags a centroid ~0.19 off the join itself.
+                centres.Add(SeamLineCentre(mesh, path, seam));
             }
 
             for (int a = 0; a < centres.Count; a++)
@@ -759,10 +793,19 @@ namespace CatMetro.Tests.EditMode.Presentation
             return total / counted;
         }
 
+        // Bands are taken on |y| so the measurements do not care which way the lobe
+        // happens to hang off the seam line.
+        private static Bounds IslandBounds(Vector3[] vertices, int[] island)
+        {
+            var bounds = new Bounds(vertices[island[0]], Vector3.zero);
+            foreach (int index in island) bounds.Encapsulate(vertices[index]);
+            return bounds;
+        }
+
         private static float SpanBetween(List<Vector2> footprint, float from, float to)
         {
             List<float> band = footprint
-                .Where(p => p.y >= from && p.y <= to)
+                .Where(p => Mathf.Abs(p.y) >= from && Mathf.Abs(p.y) <= to)
                 .Select(p => p.x).ToList();
             return band.Count == 0 ? 0f : band.Max() - band.Min();
         }
@@ -771,7 +814,8 @@ namespace CatMetro.Tests.EditMode.Presentation
         // too fat to slip back out of.
         private static float NeckOpening(List<Vector2> footprint, float from, float to)
         {
-            List<Vector2> band = footprint.Where(p => p.y >= from && p.y <= to).ToList();
+            List<Vector2> band = footprint
+                .Where(p => Mathf.Abs(p.y) >= from && Mathf.Abs(p.y) <= to).ToList();
             List<float> left = band.Where(p => p.x < 0f).Select(p => p.x).ToList();
             List<float> right = band.Where(p => p.x > 0f).Select(p => p.x).ToList();
             if (left.Count == 0 || right.Count == 0) return 0f;
