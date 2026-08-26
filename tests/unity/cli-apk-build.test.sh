@@ -74,9 +74,9 @@ aab_code="$(grep -vE '^[[:space:]]*#' "$aab_sh")"
 grep -Eq '(^|[[:space:]])-quit\b' <<<"$aab_code" \
   && fail "-quit makes Unity exit before the build finishes (same trap as -runTests)"
 
-# An agent must never run a Play upload (AGENTS.md, non-negotiable). The wrapper may print
-# upload INSTRUCTIONS but must not invoke an upload tool.
-grep -Eq '\b(bundletool|fastlane|gradlew?[[:space:]]+publish|google-play-cli|supply)\b' "$aab_sh" \
+# An agent must never run a Play upload (AGENTS.md, non-negotiable). Local bundletool
+# validate/dump calls are artifact inspection, not upload. Reject actual publishing clients.
+grep -Eq '\b(fastlane|gradlew?[[:space:]]+publish|google-play-cli|supply)\b' "$aab_sh" \
   && fail "build-aab.sh must never invoke an upload tool — uploading is human-only"
 
 # --- Build outputs and keystore-password files are ignored ---

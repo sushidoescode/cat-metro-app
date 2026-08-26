@@ -2,7 +2,7 @@
 # CM-C5 fast-leg wrapper (criteria 15 & 17), discovered by scripts/test.sh. Every check is
 # labelled; any failure exits 1 with the label.
 set -uo pipefail
-cd "$(git rev-parse --show-toplevel)"
+cd "$(git rev-parse --show-toplevel)" || exit 1
 tmp="${TMPDIR:-/tmp}/cm-c5-wrapper-$$"
 mkdir -p "$tmp"
 trap 'rm -rf "$tmp"' EXIT
@@ -13,6 +13,13 @@ fail() { echo "validator.test.sh: FAIL — $1"; exit 1; }
 
 # 17a: the gate run leaves every input byte-identical (SHA-256 before/after)...
 before=$(shasum -a 256 content/levels/*.json docs/plan/data/stress_boards.json docs/plan/data/level_schema.json config/validator_thresholds.json | shasum -a 256)
+# 17c: snapshot the exact tracked state before the run. Comparing the final tree to HEAD would
+# falsely blame the validator for intentional pre-existing work; comparing exact binary diffs
+# before/after proves attribution and also catches edits to a path that was already dirty.
+before_git_diff="$tmp/tracked-before.diff"
+after_git_diff="$tmp/tracked-after.diff"
+git diff HEAD --binary -- content docs/plan config/validator_thresholds.json > "$before_git_diff" \
+  || fail "criterion 17c: could not snapshot tracked inputs before the gate"
 # ...and 15a: it exits 0 on the current corpus, writing the JSON report.
 if ! bash scripts/validate-content.sh --out "$tmp/report.json" > "$tmp/gate.out" 2>&1; then
   cat "$tmp/gate.out"
@@ -21,9 +28,13 @@ fi
 after=$(shasum -a 256 content/levels/*.json docs/plan/data/stress_boards.json docs/plan/data/level_schema.json config/validator_thresholds.json | shasum -a 256)
 [ "$before" = "$after" ] || fail "criterion 17a: the gate run modified an input file"
 
-# 17c: no content path appears modified to git after a gate run.
-dirty=$(git diff --name-only -- content docs/plan config/validator_thresholds.json)
-[ -z "$dirty" ] || fail "criterion 17c: gate run left tracked changes: $dirty"
+# 17c: the exact tracked diff is unchanged by the gate run.
+git diff HEAD --binary -- content docs/plan config/validator_thresholds.json > "$after_git_diff" \
+  || fail "criterion 17c: could not snapshot tracked inputs after the gate"
+if ! cmp -s "$before_git_diff" "$after_git_diff"; then
+  diff -u "$before_git_diff" "$after_git_diff" | head -80 || true
+  fail "criterion 17c: gate run changed the tracked input diff"
+fi
 
 # 16: the machine-readable report exists and carries the load-bearing markers.
 [ -s "$tmp/report.json" ] || fail "criterion 16: no JSON report written"
