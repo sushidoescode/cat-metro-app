@@ -1,60 +1,35 @@
 {
+  "schemaVersion": 2,
+  "note": "Every placement lends an entitlement from product_catalog.json, for that entitlement's own adLeaseSeconds. There is no separate reward vocabulary: an ad can only lend something a purchase could sell. `enabled` is owned by the ads lane and stays false until an ad network is actually wired.",
+
   "placements": [
     {
-      "id": "rewind_failure",
-      "reward": "one_rewind",
-      "caps": { "session": 2, "localDate": 5 },
-      "sdkCallEnabled": false,
-      "disabledReason": "NEW-Q45 plus device gate"
-    },
-    {
-      "id": "double_tickets",
-      "reward": "ticket_double",
-      "caps": { "localDate": 3 },
-      "sdkCallEnabled": false,
-      "disabledReason": "NEW-Q45 plus device gate"
-    },
-    {
-      "id": "daily_gift_double",
-      "reward": "gift_double",
+      "id": "wardrobe_try_conductor",
+      "entitlement": "outfit_conductor",
       "caps": { "localDate": 1 },
-      "sdkCallEnabled": false,
-      "disabledReason": "NEW-Q45 plus device gate"
+      "enabled": false,
+      "disabledReason": "no ad network wired yet; the ads lane flips this"
     },
     {
-      "id": "streak_saver",
-      "reward": "streak_repair",
+      "id": "wardrobe_try_engineer",
+      "entitlement": "outfit_engineer",
       "caps": { "localDate": 1 },
-      "sdkCallEnabled": false,
-      "disabledReason": "NEW-Q45 plus device gate"
+      "enabled": false,
+      "disabledReason": "no ad network wired yet; the ads lane flips this"
     },
     {
-      "id": "theme_rental",
-      "reward": "selected_theme_3_eligible_completed_levels",
-      "caps": { "perThemeLocalDate": 1 },
-      "sdkCallEnabled": false,
-      "disabledReason": "NEW-Q45 plus device gate"
+      "id": "wardrobe_try_scarf",
+      "entitlement": "accessory_scarf",
+      "caps": { "localDate": 1 },
+      "enabled": false,
+      "disabledReason": "no ad network wired yet; the ads lane flips this"
     },
     {
-      "id": "cat_skin_trial",
-      "reward": "selected_skin_3_eligible_completed_levels",
-      "caps": { "totalSkinLeaseLocalDate": 1 },
-      "sdkCallEnabled": false,
-      "disabledReason": "NEW-Q45 plus device gate plus ADR-0006 supersession"
-    },
-    {
-      "id": "livery_trial",
-      "reward": "selected_livery_3_eligible_completed_levels",
-      "caps": { "totalLiveryLeaseLocalDate": 1 },
-      "sdkCallEnabled": false,
-      "disabledReason": "NEW-Q45 plus device gate plus ADR-0006 supersession"
-    },
-    {
-      "id": "district_guest_route",
-      "reward": "signed_practice_route",
-      "caps": { "perDistrictLocalDate": 1, "session": 1 },
-      "sdkCallEnabled": false,
-      "disabledReason": "NEW-Q45 plus device gate plus ADR-0006 supersession"
+      "id": "wardrobe_try_goggles",
+      "entitlement": "accessory_goggles",
+      "caps": { "localDate": 1, "session": 1 },
+      "enabled": false,
+      "disabledReason": "no ad network wired yet; the ads lane flips this"
     }
   ]
 }
