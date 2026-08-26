@@ -8,6 +8,7 @@ using CatMetro.Presentation.Cameras;
 using CatMetro.Presentation.Diagnostics;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Hud.WavePreview;
+using CatMetro.Services;
 using UnityEngine;
 
 namespace CatMetro.Bootstrap
@@ -36,6 +37,14 @@ namespace CatMetro.Bootstrap
         public WavePreviewStrip Preview { get; private set; }
         public Camera Cam { get; private set; }
         public string ScreenState { get; private set; } = "Playing";
+        private GameAnalyticsRuntime _analyticsRuntime;
+        private NetworkReachability _lastNetworkReachability;
+        private bool _networkReachabilityKnown;
+        public IAnalytics Analytics => _analyticsRuntime?.Sink;
+        // Read-only identity handoff for a future personless server bridge. The current official
+        // commerce-to-analytics bridge creates a Person, so the no-person-profiles release must
+        // not set that customer attribute or enable that bridge without a separately verified fix.
+        public string AnalyticsAnonymousId => _analyticsRuntime?.AnonymousId;
 
         // CM-LOADNEXT: read-only so tests/UI can observe progression without a second source of
         // truth for "what level is this." Null only before the first Wire() (never observable
@@ -90,6 +99,8 @@ namespace CatMetro.Bootstrap
         public CatMetro.Presentation.Screens.ScreenStack Stack { get; private set; }
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
+        public static System.Func<GameAnalyticsRuntime> AnalyticsRuntimeFactory;
+
         // CM-BOOT-HOME criterion 3: RETIRED as the compose gate (ComposeScreenFlow no longer
         // reads this — it is unconditional on real boot now, gated only by SkipHome() below).
         // Kept, dev-only, ONLY because out-of-scope LaunchWith-seam fixtures still reference it
@@ -152,7 +163,8 @@ namespace CatMetro.Bootstrap
 
         // Test seam for fixture boards (CM-C2b criterion 5's scripted overflow and CM-C3's
         // failure fixtures) — same wiring, no file.
-        public static GameRoot LaunchWith(ImportedLevel level)
+        public static GameRoot LaunchWith(ImportedLevel level,
+            GameAnalyticsRuntime analyticsRuntime = null)
         {
             _factoryConstructing = true;
             GameRoot root;
@@ -165,7 +177,10 @@ namespace CatMetro.Bootstrap
             {
                 _factoryConstructing = false;
             }
+            root._analyticsRuntime = analyticsRuntime;
             root.Wire(level);
+            if (analyticsRuntime != null)
+                analyticsRuntime.BeginCampaignLevel(level, retry: false, fromScreen: "direct");
             return root;
         }
 
@@ -180,6 +195,7 @@ namespace CatMetro.Bootstrap
         private void InitializeFromSeam(string levelPath)
         {
             if (Session != null) return;
+            InitializeAnalytics();
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             // CM-DEVCAP3: evaluated BEFORE the level-override early-return so the boot-to-home
             // file's own read/parse/log side effects fire on either sub-path (dev level override
@@ -213,6 +229,19 @@ namespace CatMetro.Bootstrap
             // false in a shipped build). LaunchWith (the ~12 gameplay fixtures' seam) bypasses
             // InitializeFromSeam entirely and never reaches this line — they get NO Home.
             if (!SkipHome()) ComposeScreenFlow();
+        }
+
+        private void InitializeAnalytics()
+        {
+            if (_analyticsRuntime != null) return;
+#if UNITY_EDITOR
+            if (AnalyticsRuntimeFactory != null)
+                _analyticsRuntime = AnalyticsRuntimeFactory();
+#endif
+            if (_analyticsRuntime == null)
+                _analyticsRuntime = GameAnalyticsRuntime.CreateProduction();
+            _lastNetworkReachability = UnityEngine.Application.internetReachability;
+            _networkReachabilityKnown = true;
         }
 
         // CM-BOOT-HOME criterion 3: true only in a dev/test build that explicitly opts OUT of
@@ -366,6 +395,8 @@ namespace CatMetro.Bootstrap
                 Intro.Hide();
                 Home.Hide(); // idempotent — already hidden by the push above
                 while (Stack.TryPop(out _)) { }
+                _analyticsRuntime?.BeginCampaignLevel(_level, retry: false,
+                    fromScreen: "intro");
             };
 
             Home.Show();
@@ -470,6 +501,7 @@ namespace CatMetro.Bootstrap
         {
             if (Session == null) return;
             LoadLevel(_level);
+            _analyticsRuntime?.RetryLevel(_level, _dailySession);
         }
 
         // CM-LOADNEXT: the NextRequested seam's Bootstrap-owned half (CM-UX-04 criterion 5 —
@@ -499,6 +531,8 @@ namespace CatMetro.Bootstrap
             // (InitializeFromSeam's own precedent, GameRoot.cs above).
             Debug.Log("SEAM_LOADED " + nextPath);
             LoadLevel(imported.Value);
+            _analyticsRuntime?.BeginCampaignLevel(_level, retry: false,
+                fromScreen: "results");
             // CM-UX-05 forward obligation (state/handoffs/CM-UX-05.md): a NEW level resets the
             // per-level hint attempt-run; Retry() of the SAME level must not (that accumulation
             // is the mechanic) — LoadLevel() stays silent on this by design so Retry() keeps its
@@ -565,11 +599,14 @@ namespace CatMetro.Bootstrap
             // return-home restore target to the Daily board instead of the true pre-Daily
             // campaign level.
             if (_dailySession) return;
-            var resolved = ResolveDailyBoard();
+            long dailyUnixSeconds = DailyClockUnixSeconds();
+            string dateKey = DailyLineSeed.DateKeyFromUnixSeconds(dailyUnixSeconds);
+            var resolved = ResolveDailyBoard(dailyUnixSeconds);
             if (resolved == null) return;
             _preDailyLevel = _level;
             LoadLevel(resolved);
             _dailySession = true;
+            _analyticsRuntime?.BeginDailyLevel(_level, dateKey);
             var results = GetComponent<ResultsPanel>();
             if (results != null) results.SetCtaTextKey("results.daily.done");
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
@@ -584,9 +621,8 @@ namespace CatMetro.Bootstrap
         // Pure orchestration over the real engine API — no parallel validator, no shortcut
         // admission. Returns null on ANY failure (request-level or a blocked date record); the
         // caller (SelectDaily) treats null uniformly as "nothing to load."
-        private ImportedLevel ResolveDailyBoard()
+        private ImportedLevel ResolveDailyBoard(long unixSeconds)
         {
-            long unixSeconds = DailyClockUnixSeconds();
             string dateKey = DailyLineSeed.DateKeyFromUnixSeconds(unixSeconds);
             var request = new DailyRunRequest(
                 DailyRuntimeInputs.SchemaBytes,
@@ -627,6 +663,8 @@ namespace CatMetro.Bootstrap
 
         private void Update()
         {
+            _analyticsRuntime?.Tick();
+            PollAnalyticsConnectivity();
             if (Session == null || _halted) return;
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             // CM-DAILYWIRE F3 (review fix round): the one-frame input lockout. Request frame
@@ -687,6 +725,7 @@ namespace CatMetro.Bootstrap
             if (outcome.Kind == CatMetro.Domain.OutcomeKind.Won && ScreenState != "Won")
             {
                 ScreenState = "Won";
+                _analyticsRuntime?.CompleteLevel(_level, Session.State);
                 Banner.ShowKey("win.banner");
                 // CM-DAILYWIRE criterion 9 (A-DL-6): surfaced the moment a REAL Daily win
                 // happens — the admitted board's own DTO reward, never a guessed/pinned amount.
@@ -717,6 +756,36 @@ namespace CatMetro.Bootstrap
                 else
                     Banner.ShowKey(key);
             }
+        }
+
+        private void PollAnalyticsConnectivity()
+        {
+            if (_analyticsRuntime == null) return;
+            var current = UnityEngine.Application.internetReachability;
+            if (_networkReachabilityKnown
+                && _lastNetworkReachability == NetworkReachability.NotReachable
+                && current != NetworkReachability.NotReachable)
+                _analyticsRuntime.OnNetworkReachable();
+            _lastNetworkReachability = current;
+            _networkReachabilityKnown = true;
+        }
+
+        private void OnApplicationPause(bool paused)
+        {
+            if (paused) _analyticsRuntime?.OnBackground();
+            else _analyticsRuntime?.OnForeground();
+        }
+
+        private void OnApplicationFocus(bool hasFocus)
+        {
+            if (hasFocus) _analyticsRuntime?.OnForeground();
+            else _analyticsRuntime?.OnBackground();
+        }
+
+        private void OnDestroy()
+        {
+            _analyticsRuntime?.Dispose();
+            _analyticsRuntime = null;
         }
     }
 }
