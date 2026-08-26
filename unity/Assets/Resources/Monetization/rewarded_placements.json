@@ -1,0 +1,60 @@
+{
+  "placements": [
+    {
+      "id": "rewind_failure",
+      "reward": "one_rewind",
+      "caps": { "session": 2, "localDate": 5 },
+      "sdkCallEnabled": false,
+      "disabledReason": "NEW-Q45 plus device gate"
+    },
+    {
+      "id": "double_tickets",
+      "reward": "ticket_double",
+      "caps": { "localDate": 3 },
+      "sdkCallEnabled": false,
+      "disabledReason": "NEW-Q45 plus device gate"
+    },
+    {
+      "id": "daily_gift_double",
+      "reward": "gift_double",
+      "caps": { "localDate": 1 },
+      "sdkCallEnabled": false,
+      "disabledReason": "NEW-Q45 plus device gate"
+    },
+    {
+      "id": "streak_saver",
+      "reward": "streak_repair",
+      "caps": { "localDate": 1 },
+      "sdkCallEnabled": false,
+      "disabledReason": "NEW-Q45 plus device gate"
+    },
+    {
+      "id": "theme_rental",
+      "reward": "selected_theme_3_eligible_completed_levels",
+      "caps": { "perThemeLocalDate": 1 },
+      "sdkCallEnabled": false,
+      "disabledReason": "NEW-Q45 plus device gate"
+    },
+    {
+      "id": "cat_skin_trial",
+      "reward": "selected_skin_3_eligible_completed_levels",
+      "caps": { "totalSkinLeaseLocalDate": 1 },
+      "sdkCallEnabled": false,
+      "disabledReason": "NEW-Q45 plus device gate plus ADR-0006 supersession"
+    },
+    {
+      "id": "livery_trial",
+      "reward": "selected_livery_3_eligible_completed_levels",
+      "caps": { "totalLiveryLeaseLocalDate": 1 },
+      "sdkCallEnabled": false,
+      "disabledReason": "NEW-Q45 plus device gate plus ADR-0006 supersession"
+    },
+    {
+      "id": "district_guest_route",
+      "reward": "signed_practice_route",
+      "caps": { "perDistrictLocalDate": 1, "session": 1 },
+      "sdkCallEnabled": false,
+      "disabledReason": "NEW-Q45 plus device gate plus ADR-0006 supersession"
+    }
+  ]
+}
