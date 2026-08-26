@@ -107,7 +107,18 @@ namespace CatMetro.Presentation.Hud.WavePreview
         // The face box the capsule allocates at the current viewport — the ruler every face's
         // internal geometry is a fraction of, exposed so the badge-separation law can be
         // asserted in real pixels rather than re-derived in the test.
-        public float FaceSizePx => _capsulePx.height * FaceSizeFraction;
+        public float FaceSizePx => FaceSize(_capsulePx.height);
+
+        // Static so a geometry test can derive the face box from a CapsuleRect without building
+        // a strip — and so the 0.62 lives in exactly one place rather than being re-typed into
+        // every test that needs it.
+        public static float FaceSize(float capsuleHeightPx) => capsuleHeightPx * FaceSizeFraction;
+
+        // Centre-to-centre spacing of two adjacent faces, as a pure law on the face box.
+        public static float FacePitch(float faceSizePx) => faceSizePx * (1f + FaceGapFraction);
+
+        // The "+N" tail, or "" when the whole queue fits.
+        public string OverflowText => _overflow != null ? _overflow.text : "";
 
         public CatFaceView Face(int index) =>
             index >= 0 && index < _faces.Count ? _faces[index] : null;

@@ -226,6 +226,57 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Preview.RemainingCats,
                 Is.GreaterThan(WavePreviewStrip.MaxFaces),
                 "precondition: the fixture really does overflow the capsule");
+            Assert.That(_root.Preview.OverflowText, Is.EqualTo(
+                "+" + (_root.Preview.RemainingCats - WavePreviewStrip.MaxFaces)),
+                "the hidden remainder is counted in the tail, not silently dropped");
+        }
+
+        // The validation capture showed ONE face and the read was "our cap is too low". It is
+        // not: MaxFaces is 6 and has been. L001 authors a single red wave of 2 at tick 8 with
+        // spacing 20, so its cats emit at tick 8 and tick 28 — and the capture was taken between
+        // those, with one cat already riding (the riders counter read 1) and exactly one still
+        // to come. The capsule was telling the truth about a level that genuinely had one cat
+        // pending. These cases pin the whole range so that reading cannot be made again.
+        [UnityTest]
+        public IEnumerator FaceCount_IsTheDerivedQueue_AtOneTwoAndThree(
+            [Values(1, 2, 3)] int cats)
+        {
+            _root = GameRoot.LaunchWith(Import(QueueFixture(cats)));
+            yield return null;
+
+            Assert.That(_root.Preview.FaceCount, Is.EqualTo(cats),
+                "one face per pending cat — never a per-WAVE chip, never a cap of one");
+            Assert.That(_root.Preview.RemainingCats, Is.EqualTo(cats));
+            Assert.That(_root.Preview.FaceSummary,
+                Is.EqualTo(string.Join("|", System.Linq.Enumerable.Repeat("red", cats))));
+            Assert.That(_root.Preview.OverflowText, Is.Empty,
+                "a queue that fits shows no tail");
+
+            // The unused face slots are switched OFF, not merely drawn empty — a live but blank
+            // face would still occupy its place in the row and push the group off centre.
+            for (int i = cats; i < WavePreviewStrip.MaxFaces; i++)
+                Assert.That(_root.Preview.Face(i).gameObject.activeSelf, Is.False,
+                    "slot " + i + " is inactive");
+        }
+
+        [UnityTest]
+        public IEnumerator TheFaceRow_StaysInsideTheCapsule_AtEveryQueueLength(
+            [Values(1, 2, 3, 6)] int cats)
+        {
+            _root = GameRoot.LaunchWith(Import(QueueFixture(cats)));
+            yield return null;
+
+            _root.Preview.LayoutForViewport(PhoneSafeArea, CaptureDpi);
+            var capsule = _root.Preview.CapsuleRectPx;
+            float face = _root.Preview.FaceSizePx;
+
+            // Row width measured on the INK: the leading head's left edge to the trailing
+            // badge's right edge, which is wider than the nominal boxes.
+            float width = (cats - 1) * WavePreviewStrip.FacePitch(face)
+                + CatFaceView.InkLeftOfCentre(face) + CatFaceView.InkRightOfCentre(face);
+
+            Assert.That(width, Is.LessThan(capsule.width),
+                cats + " faces fit inside the capsule with room to spare");
         }
 
         // --- counters ---
@@ -242,10 +293,69 @@ namespace CatMetro.Tests.PlayMode
                 "no cats are riding before the first wave emits");
         }
 
+        [UnityTest]
+        public IEnumerator CounterGlyphs_AreATrophyAndAPeopleMark_NotColouredDots()
+        {
+            // They were two discs in two accent colours, which says "here are two counts of
+            // something" and leaves the player to learn which is which. The target art names
+            // them: a trophy for progress against the win condition, a crowd for cats aboard.
+            _root = GameRoot.Launch();
+            yield return null;
+
+            Assert.That(_root.Preview.DeliveriesMarkSprite,
+                Is.SameAs(HudShapeSprites.Trophy), "deliveries is marked by a trophy");
+            Assert.That(_root.Preview.RidersMarkSprite,
+                Is.SameAs(HudShapeSprites.People), "riders is marked by a group of people");
+
+            Assert.That(_root.Preview.DeliveriesMarkSprite,
+                Is.Not.SameAs(HudShapeSprites.Disc), "no longer a bare dot");
+            Assert.That(_root.Preview.RidersMarkSprite,
+                Is.Not.SameAs(_root.Preview.DeliveriesMarkSprite),
+                "and the two counters no longer differ only by tint");
+        }
+
+        [UnityTest]
+        public IEnumerator CounterGlyphs_BindPaletteTokens_AndMatchTheirNumerals()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+
+            // One cream for the whole row. The counters sit on the bare diorama with no card
+            // behind them, so a tinted mark beside a cream numeral reads as two objects.
+            Assert.That(_root.Preview.DeliveriesMarkColor, Is.EqualTo(Palette.WarmPaper));
+            Assert.That(_root.Preview.RidersMarkColor, Is.EqualTo(Palette.WarmPaper));
+        }
+
+        [UnityTest]
+        public IEnumerator CounterGlyphs_RasteriseWithRealInk_AtTheirOnScreenSize()
+        {
+            // A procedural glyph that silently rasterises to nothing would still pass every
+            // structural assertion above and ship a blank counter row. At the pinned phone
+            // frame the mark is ~41px, so read the sprites' own coverage back and require a
+            // plausible amount of it — enough to be a shape, far from a filled square.
+            yield return null;
+
+            foreach (var sprite in new[] { HudShapeSprites.Trophy, HudShapeSprites.People })
+            {
+                var pixels = sprite.texture.GetPixels32();
+                int inked = 0;
+                foreach (var p in pixels) if (p.a > 128) inked++;
+                float coverage = (float)inked / pixels.Length;
+
+                // Rasterising these offline gives trophy 0.44 and people 0.66, so the bounds
+                // are set to catch the two failures that matter — an empty tile and a solid
+                // block — without pinning the artwork so tightly that a tweak turns them red.
+                Assert.That(coverage, Is.GreaterThan(0.12f),
+                    sprite.name + " draws real ink, not an empty tile");
+                Assert.That(coverage, Is.LessThan(0.80f),
+                    sprite.name + " is a glyph, not a filled block");
+            }
+        }
+
         // --- accessibility: colour is never the only carrier ---
 
         [UnityTest]
-        public IEnumerator EachFace_CarriesAShapeAndALetter_NotJustAColour()
+        public IEnumerator EachFace_CarriesAShape_NotJustAColour()
         {
             _root = GameRoot.LaunchWith(Import(InterleavedFixture()));
             yield return null;
@@ -257,15 +367,98 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(blue.ColorName, Is.EqualTo("blue"));
 
             // Shape — and the two shapes are the ones the BOARD already paints for these
-            // lines (BoardPropDecorator: "R" gets a cylinder plate, anything else a cube).
+            // lines, because both surfaces key off CatLine.ShapeOf.
             Assert.That(red.Shape, Is.EqualTo(DestinationShape.Circle));
             Assert.That(blue.Shape, Is.EqualTo(DestinationShape.Square));
             Assert.That(red.Shape, Is.Not.EqualTo(blue.Shape),
                 "shape alone distinguishes the two destinations");
 
-            // Letter — the same glyph BoardView stamps on the station.
+            // And the shape is REALISED, not merely reported. Shape is a field a bug could
+            // set correctly while the badge still painted the default disc for everyone; the
+            // sprites are the thing a colourblind player actually sees differ.
+            Assert.That(red.BadgeSprite, Is.Not.Null);
+            Assert.That(red.BadgeSprite, Is.Not.EqualTo(blue.BadgeSprite),
+                "the two badges rasterise to DIFFERENT symbols, not one disc in two colours");
+
+            // The letter is still the vocabulary's — the BOARD stamps it on station plates.
+            // The HUD badge no longer paints it: at 31.7px a ~4px cream stroke inside a cream
+            // ring reads as a trademark mark, not as a destination. See CatFaceView.Bind.
             Assert.That(red.Glyph, Is.EqualTo("R"));
             Assert.That(blue.Glyph, Is.EqualTo("B"));
+            Assert.That(_root.Preview.GetComponentsInChildren<TMPro.TMP_Text>(true),
+                Has.None.Matches<TMPro.TMP_Text>(t => t.text == "R" || t.text == "B"),
+                "no letter is painted anywhere inside the capsule's faces");
+        }
+
+        // --- the badge is BESIDE the face, not printed on it ---
+
+        [Test]
+        public void Badge_ClearsTheHead_SoTheSymbolIsNeverPrintedOnTheFace()
+        {
+            // The defect this replaces: badge offset (0.30, -0.30) at 0.46 size against a 0.86
+            // head put the badge CENTRE at 0.424 of the face box and the head EDGE at 0.43, so
+            // the badge lay across the cat's chin and lost its own outline into the head fill.
+            // Asserted as a pure law at the pinned phone frame, in real pixels.
+            var capsule = WavePreviewStrip.CapsuleRect(PhoneSafeArea, CaptureDpi);
+            float face = WavePreviewStrip.FaceSize(capsule.height);
+
+            Assert.That(face, Is.EqualTo(85.7f).Within(0.5f),
+                "precondition: the face box is ~86px on a 917x2048 phone");
+            Assert.That(CatFaceView.BadgeClearance(face), Is.GreaterThan(0f),
+                "the badge FILL and the head FILL do not intersect at all");
+
+            // And the symbol is big enough to be worth separating. Below roughly 4px of
+            // internal detail a rasterised triangle or star is a coloured blob.
+            Assert.That(CatFaceView.BadgeDiameter(face), Is.GreaterThan(24f),
+                "the badge is ~32px — every shape in the vocabulary resolves at that size");
+            Assert.That(CatFaceView.HeadDiameter(face), Is.GreaterThan(
+                CatFaceView.BadgeDiameter(face)),
+                "the badge stays subordinate to the cat it belongs to");
+        }
+
+        [UnityTest]
+        public IEnumerator Badge_IsASiblingOfTheHead_NotAChildOfIt()
+        {
+            // Structure, not just geometry: a badge parented UNDER the head inherits the head's
+            // rect and can never be tucked outside it, however the fractions are tuned.
+            _root = GameRoot.Launch();
+            yield return null;
+
+            var face = _root.Preview.Face(0);
+            Assert.That(face, Is.Not.Null, "precondition: L001 has an upcoming cat");
+            Assert.That(face.BadgeRect, Is.Not.Null);
+            Assert.That(face.HeadRect, Is.Not.Null);
+
+            Assert.That(face.BadgeRect.parent, Is.SameAs(face.HeadRect.parent),
+                "badge and head are siblings under the face");
+            Assert.That(face.BadgeRect.parent, Is.SameAs(face.FaceRect),
+                "and that shared parent is the face itself");
+
+            // The laid-out rects agree with the law: centres far enough apart to clear.
+            float gap = Vector2.Distance(face.BadgeRect.anchoredPosition,
+                            face.HeadRect.anchoredPosition)
+                        - (face.BadgeRect.sizeDelta.x + face.HeadRect.sizeDelta.x) * 0.5f;
+            Assert.That(gap, Is.GreaterThan(0f),
+                "as laid out, not merely as computed, the badge clears the head");
+        }
+
+        [Test]
+        public void AFacesBadge_NeverReachesItsNeighboursHead()
+        {
+            // The badge hangs outside the face BOX, so row pitch has to clear the ink, not the
+            // box. Pitch is faceSize * 1.28; the badge reaches 0.625 of faceSize to the right
+            // and the next head starts 1.28 - 0.38 = 0.90 along.
+            var capsule = WavePreviewStrip.CapsuleRect(PhoneSafeArea, CaptureDpi);
+            float face = WavePreviewStrip.FaceSize(capsule.height);
+
+            float badgeEdge = CatFaceView.InkRightOfCentre(face);
+            float neighbourHeadEdge =
+                WavePreviewStrip.FacePitch(face) - CatFaceView.InkLeftOfCentre(face);
+
+            Assert.That(badgeEdge, Is.LessThan(neighbourHeadEdge),
+                "a cat's badge stops short of the next cat's head");
+            Assert.That(neighbourHeadEdge - badgeEdge, Is.GreaterThan(8f),
+                "and leaves visible daylight, not a hairline");
         }
 
         [UnityTest]
@@ -482,6 +675,19 @@ namespace CatMetro.Tests.PlayMode
         private static string DrainFixture() => FixtureJson(@"[
     { ""tick"": 2, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 2, ""spacingTicks"": 3 } ]",
             travelTicks: DrainTravelTicks);
+
+        // Exactly `cats` red cats still to come at tick 0, for the 1/2/3 queue-length cases.
+        // Count is bounded [1,8] by ContentBounds.WAVE_COUNT_MAX and spacing [1,40], so this
+        // stays inside the importer for every value the tests ask for; the guard below fails
+        // loudly rather than letting a widened [Values] list import as something else.
+        private static string QueueFixture(int cats)
+        {
+            Assert.That(cats, Is.InRange(ContentBounds.WAVE_COUNT_MIN,
+                ContentBounds.WAVE_COUNT_MAX), "fixture must stay inside the importer's bounds");
+            return FixtureJson(@"[
+    { ""tick"": 5, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": " + cats
+                + @", ""spacingTicks"": 10 } ]", travelTicks: DrainTravelTicks);
+        }
 
         // More cats than the capsule can show, to exercise the "+N" tail.
         private static string FloodFixture() => FixtureJson(@"[

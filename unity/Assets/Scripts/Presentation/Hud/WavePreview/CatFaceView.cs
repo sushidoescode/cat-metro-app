@@ -109,6 +109,15 @@ namespace CatMetro.Presentation.Hud.WavePreview
         public static float HeadDiameter(float faceSizePx) => HeadSize * faceSizePx;
         public static float BadgeDiameter(float faceSizePx) => BadgeSize * faceSizePx;
 
+        // How far the face's ink actually reaches on each side of its own centre. The badge
+        // hangs OUTSIDE the nominal face box, so these — not the box — are what a neighbouring
+        // face has to clear. Without them a row-spacing test would measure the wrong thing and
+        // pass while the badge sat on the next cat's cheek.
+        public static float InkRightOfCentre(float faceSizePx) =>
+            (BadgeOffsetX + BadgeSize * 0.5f) * faceSizePx;
+
+        public static float InkLeftOfCentre(float faceSizePx) => HeadSize * 0.5f * faceSizePx;
+
         public static CatFaceView Create(Transform parent, string name)
         {
             var go = new GameObject(name);
