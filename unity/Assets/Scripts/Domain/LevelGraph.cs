@@ -43,15 +43,7 @@ namespace CatMetro.Domain
         public readonly int TimeLimitTicks;
         public readonly int QCapBound;              // digest padding: queue slots per node (A-C1-7 i)
         public readonly int TrainsMax;              // digest padding: fixed train array bound (A-C1-7 ii)
-
-        // Authored `win.perfectMaxSwitches` — par for the flip budget (see Domain/FlipBudget.cs).
-        // FlipBudget.Unbudgeted (-1) means the level authored none. LevelGraph is explicitly NOT
-        // part of the digest, so this costs no golden hash.
         public readonly int PerfectMaxSwitches;
-
-        // What a non-matching arrival does at step 5 (see Domain/Misdelivery.cs). Defaults to the
-        // CM-C1 pin so existing fixtures — and the solver's PinnedPruned accounting — are unchanged.
-        public readonly MisdeliveryPolicy Misdelivery;
 
         public LevelGraph(
             string levelId,
@@ -64,11 +56,10 @@ namespace CatMetro.Domain
             int winDeliveries, int timeLimitTicks,
             int qCapBound, int trainsMax,
             int[] waveSourceNode = null,
-            // Trailing + defaulted on purpose: every existing fixture keeps compiling untouched,
-            // and a level that says nothing behaves exactly as it did before this lane.
-            int perfectMaxSwitches = FlipBudget.Unbudgeted,
-            MisdeliveryPolicy misdelivery = MisdeliveryPolicy.Pinned)
+            int perfectMaxSwitches = FlipBudget.Unbudgeted)
         {
+            if (perfectMaxSwitches < FlipBudget.Unbudgeted)
+                throw new ArgumentOutOfRangeException(nameof(perfectMaxSwitches));
             LevelId = levelId;
             NodeCount = nodeCount;
             NodeQueueCapacity = nodeQueueCapacity;
@@ -131,10 +122,7 @@ namespace CatMetro.Domain
             TimeLimitTicks = timeLimitTicks;
             QCapBound = qCapBound;
             TrainsMax = trainsMax;
-            // Any negative par normalises to the single Unbudgeted sentinel so downstream code
-            // has one "no budget" value to test, not a range.
-            PerfectMaxSwitches = perfectMaxSwitches < 0 ? FlipBudget.Unbudgeted : perfectMaxSwitches;
-            Misdelivery = misdelivery;
+            PerfectMaxSwitches = perfectMaxSwitches;
         }
     }
 }
