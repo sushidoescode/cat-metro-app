@@ -3,8 +3,8 @@
 //
 // WHAT THIS PRODUCES, AND WHAT IT DOES NOT.
 // Unity's iOS target does not emit an installable binary. It emits an *Xcode project*
-// directory. Turning that into a .ipa is `xcodebuild archive` + `xcodebuild
-// -exportArchive`, and uploading it is Transporter or `xcrun altool`. Those three steps
+// directory. Turning that into a .ipa is an Xcode archive/export, and uploading it is an
+// Organizer or Transporter action. Those three steps
 // are HUMAN-ONLY in this repo — they touch signing identities and a live App Store
 // Connect account. This file's job ends the moment the Xcode project exists on disk.
 // Runbook: docs/release/ios-release-runbook.md
@@ -18,9 +18,10 @@
 // Why this WARNS about a missing team ID rather than refusing, unlike the AAB builder's
 // hard refusal on debug signing: a debug-signed .aab is *never* uploadable, so producing
 // one and exiting 0 would be a lie. An Xcode project with no team ID is different — it is
-// still a perfectly good project, and setting the team once in Xcode's Signing &
-// Capabilities tab is the normal, documented workflow. Refusing here would block a step
-// that legitimately happens downstream.
+// still a perfectly good project, and checking the team in each freshly generated project's
+// Xcode Signing & Capabilities tab is the normal workflow unless the human configures a
+// persistent local alternative. Refusing here would block a step that legitimately happens
+// downstream.
 //
 // The bundle identifier IS a hard refusal, because that one is not recoverable downstream
 // without cost: an archive built under the wrong bundle ID cannot be uploaded against the
@@ -44,6 +45,14 @@ public static class CatMetroCliIosBuild
         "com.DefaultCompany.",
     };
 
+    static readonly string[] FileArtifactExtensions =
+    {
+        ".ipa",
+        ".app",
+        ".xcarchive",
+        ".xcodeproj",
+    };
+
     public static void BuildIos()
     {
         string outPath = Environment.GetEnvironmentVariable("CM_IOS_OUT");
@@ -65,15 +74,27 @@ public static class CatMetroCliIosBuild
             return;
         }
 
-        // Unity writes an Xcode project *directory* here, not a file. A path carrying a
-        // file extension is almost always someone copying the APK/AAB invocation, and the
-        // failure mode if we let it through is a directory literally named "CatMetro.ipa"
-        // containing an Xcode project — confusing at exactly the wrong moment.
-        if (!string.IsNullOrEmpty(Path.GetExtension(outPath)))
+        // Unity writes an Xcode project *directory* here, not a file. Refuse the common
+        // downstream artifact extensions, while still allowing useful versioned directory
+        // names such as ios-0.1.0.
+        string extension = Path.GetExtension(outPath);
+        foreach (string fileExtension in FileArtifactExtensions)
         {
-            Debug.LogError("CLI_IOS_RESULT Failed reason=output-must-be-a-directory-not-a-file out="
-                + outPath + " — Unity emits an Xcode project directory; the .ipa comes later, "
-                + "from xcodebuild");
+            if (string.Equals(extension, fileExtension, StringComparison.OrdinalIgnoreCase))
+            {
+                Debug.LogError("CLI_IOS_RESULT Failed reason=output-must-be-a-directory-not-a-file out="
+                    + outPath + " — Unity emits an Xcode project directory; the .ipa comes later, "
+                    + "from xcodebuild");
+                EditorApplication.Exit(1);
+                return;
+            }
+        }
+
+        if (Directory.Exists(outPath) && Directory.GetFileSystemEntries(outPath).Length != 0)
+        {
+            Debug.LogError("CLI_IOS_RESULT Failed reason=output-directory-not-empty out="
+                + outPath + " — use a fresh directory so stale Xcode files cannot make a "
+                + "failed build look successful");
             EditorApplication.Exit(1);
             return;
         }

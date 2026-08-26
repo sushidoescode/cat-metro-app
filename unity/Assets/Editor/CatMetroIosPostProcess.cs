@@ -29,13 +29,11 @@ public static class CatMetroIosPostProcess
     // encryption provided by the operating system (HTTPS/TLS via URLSession or the
     // equivalent) and does not require an ERN or a year-end self-classification report.
     //
-    // That assertion is true for Cat Metro as of 2026-08-25:
-    //   - the game does no networking of its own at all;
-    //   - the SDKs on the roadmap (RevenueCat/StoreKit, OneSignal, Unity LevelPlay) all
-    //     talk plain HTTPS through the OS stack, which is the exempt case;
-    //   - there is no bundled proprietary crypto, no custom cipher, no VPN or
-    //     end-to-end-encrypted messaging, and nothing calling into a third-party crypto
-    //     library for anything other than TLS.
+    // That assertion matches the dependencies inspected on 2026-08-25: no bundled
+    // proprietary crypto, custom cipher, VPN, end-to-end-encrypted messaging, or other
+    // non-exempt cryptography was found. Roadmap SDKs are NOT part of that evidence. Re-audit
+    // the final archive after adding RevenueCat, ads, notifications, analytics, crash tooling,
+    // or any other SDK; an SDK name or an HTTPS endpoint is not proof of its implementation.
     //
     // FLIP THIS TO true, and then go and read Apple's export-compliance documentation
     // properly, if any of that stops being true — in particular if we ever ship our own
@@ -56,12 +54,13 @@ public static class CatMetroIosPostProcess
         string plistPath = Path.Combine(pathToBuiltProject, "Info.plist");
         if (!File.Exists(plistPath))
         {
-            // Never fail the build over this. The build itself succeeded; the human just
-            // has to answer the export-compliance question in App Store Connect by hand,
-            // which is a 10-second interactive step, not a lost build.
+            // Keep the generated project available for inspection rather than replacing the
+            // original build result with a postprocess failure. The final-binary determination
+            // remains a human release gate; missing this key is not evidence for either answer.
             Debug.LogWarning("CM_IOS_POSTPROCESS skipped reason=no-Info.plist path=" + plistPath
                 + " — App Store Connect will ask for the export-compliance declaration "
-                + "interactively on upload instead. Answer: no, only exempt encryption.");
+                + "interactively on upload instead. Determine the answer against the final "
+                + "binary and SDK set; no automatic answer is safe when this step was skipped.");
             return;
         }
 
