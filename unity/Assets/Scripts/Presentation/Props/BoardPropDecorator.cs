@@ -58,7 +58,7 @@ namespace CatMetro.Presentation.Props
                     // The full accept list travels with the anchor: the badge is the only
                     // surface that can tell a player a berth takes more than one line.
                     SuppressReplacedStationArchitecture(anchors[station.NodeId],
-                        station.Accepts);
+                        station.Accepts, boardRoot);
                 }
                 // LOOK step 5: each platform gets its own lantern, just off the kiosk so the
                 // near-orthographic camera reads them as separate objects.
@@ -230,6 +230,34 @@ namespace CatMetro.Presentation.Props
             return identity;
         }
 
+        // --- LOOK step 4: the station as a raised wooden platform under a line canopy ---
+        //
+        // ALL of these are BOARD units (the kiosk holder is unscaled), and every one of them
+        // was chosen against the shipped zoom rather than by eye. The diorama camera is
+        // orthographic with the board on Quaternion.Euler(38, -32, -4), so at 917x2048 a board
+        // unit is 1024 / orthographicSize pixels: 82 px on the widest authored level (L008),
+        // 93 px on the median one — which is the same ~93 px/unit the cat lane measured
+        // independently for ToyTrainView. Board +Z (into the table) projects to screen
+        // (-0.418, -0.616), so a THICKNESS t reads as 0.616 * t * 82 px at worst. Anything
+        // under ~4 px does not read at all, which is what the r6 render found; 0.05 units is
+        // therefore the floor for any dimension here and nothing below sits near it.
+        private const float PlinthDepth = 0.18f;   // 9.1 px of riser at the worst zoom
+        private const float PlinthInset = 0.14f;   // the deck overhangs the plinth all round
+        private const float DeckDepth = 0.10f;     // 5.0 px
+        private const float PostThickness = 0.09f; // 8.4 px wide (board X and Y both project)
+        private const float PostInset = 0.07f;
+        private const float CanopyDepth = 0.10f;   // 5.0 px
+        private const float CanopyModelClearance = 0.06f;
+        private const float MinCanopyRise = 0.45f; // >= 22.7 px of daylight under the roof
+
+        // Toy-wood course: a darker plinth, a paler deck on top of it, darker posts again. The
+        // three-value ramp is what makes the platform read as a stack of parts rather than one
+        // painted box, and it is the same warm walnut family BoardSurface already uses for the
+        // tabletop, so a station cannot be mistaken for a line colour.
+        private static readonly Color PlinthWood = new Color(0.64f, 0.43f, 0.29f);
+        private static readonly Color DeckWood = new Color(0.86f, 0.74f, 0.56f);
+        private static readonly Color PostWood = new Color(0.45f, 0.30f, 0.20f);
+
         private static void AddStationArchitecture(Transform kiosk, Transform stationAnchor)
         {
             var fallback = stationAnchor.GetComponent<Renderer>();
@@ -240,21 +268,56 @@ namespace CatMetro.Presentation.Props
             Bounds bounds = LocalRendererBounds(kiosk, model);
             float baseWidth = Mathf.Clamp(bounds.size.x * 1.05f, 0.9f, 2.1f);
             float baseDepth = Mathf.Clamp(bounds.size.y * 1.05f, 0.75f, 1.7f);
-            CreateStationPart("station:wood-base", kiosk,
-                PrimitiveType.Cube,
-                new Vector3(bounds.center.x, bounds.center.y, -0.055f),
-                new Vector3(baseWidth, baseDepth, 0.11f),
-                new Color(0.64f, 0.43f, 0.29f));
 
-            // The generated kiosk remains neutral licensed artwork. This thin project-owned
-            // cap makes the station's route colour unmistakable without editing the pinned FBX
-            // or relying on its baked blue sign for gameplay semantics.
+            // The platform, in two courses. It used to be ONE 0.11-thick box, which is 5.6 px
+            // of riser at the worst zoom and read as a coloured rectangle painted on the wood
+            // rather than as something standing on it. A plinth carries the height and a deck
+            // caps it, overhanging on every side, so the shadow line between the two is what
+            // the eye actually reads as "raised" — that line is the whole trick in target-02.
+            // The name station:wood-base is unchanged because it is still the course that meets
+            // the tabletop, and the existing pins name it.
+            CreateStationPart("station:wood-base", kiosk,
+                new Vector3(bounds.center.x, bounds.center.y, -PlinthDepth * 0.5f),
+                new Vector3(baseWidth - PlinthInset * 2f, baseDepth - PlinthInset * 2f,
+                    PlinthDepth),
+                PlinthWood);
+            float deckTopZ = -(PlinthDepth + DeckDepth); // -Z is toward the camera
+            CreateStationPart("station:wood-deck", kiosk,
+                new Vector3(bounds.center.x, bounds.center.y, deckTopZ + DeckDepth * 0.5f),
+                new Vector3(baseWidth, baseDepth, DeckDepth), DeckWood);
+
+            // The generated kiosk remains neutral licensed artwork. This project-owned canopy
+            // makes the station's route colour unmistakable without editing the pinned FBX or
+            // relying on its baked blue sign for gameplay semantics.
+            //
+            // It is now held UP on posts instead of capping the model. Same plate, same colour,
+            // same clearance over the artwork — but with daylight under it the station reads as
+            // a shelter a cat waits beneath, which is what both reference boards show and what
+            // a plate lying on the roofline cannot say. The underside is whichever is higher of
+            // "just clear of the kiosk" and "far enough off the deck to see under", so a short
+            // generated kiosk still gets a canopy you can see daylight beneath.
             float roofWidth = Mathf.Clamp(bounds.size.x * 0.82f, 0.75f, 1.65f);
             float roofDepth = Mathf.Clamp(bounds.size.y * 0.72f, 0.6f, 1.35f);
+            float canopyZ = Mathf.Min(bounds.min.z - CanopyModelClearance,
+                deckTopZ - MinCanopyRise);
             CreateStationPart("station:line-roof", kiosk,
-                PrimitiveType.Cube,
-                new Vector3(bounds.center.x, bounds.center.y, bounds.min.z - 0.035f),
-                new Vector3(roofWidth, roofDepth, 0.07f), lineColor);
+                new Vector3(bounds.center.x, bounds.center.y, canopyZ - CanopyDepth * 0.5f),
+                new Vector3(roofWidth, roofDepth, CanopyDepth), lineColor);
+
+            // Four posts, at the canopy's corners, spanning exactly deck-top to canopy-
+            // underside. Derived rather than authored: a constant height would either float the
+            // roof off the posts or bury them in the deck the first time a kiosk's bounds
+            // changed, and neither is visible to a test that only checks that parts exist.
+            float postX = roofWidth * 0.5f - PostInset;
+            float postY = roofDepth * 0.5f - PostInset;
+            float postRise = deckTopZ - canopyZ;
+            for (int i = 0; i < 4; i++)
+                CreateStationPart("station:roof-post-" + i, kiosk,
+                    new Vector3(
+                        bounds.center.x + ((i & 1) == 0 ? -postX : postX),
+                        bounds.center.y + ((i & 2) == 0 ? -postY : postY),
+                        (deckTopZ + canopyZ) * 0.5f),
+                    new Vector3(PostThickness, PostThickness, postRise), PostWood);
         }
 
         private static Bounds LocalRendererBounds(Transform holder, Transform model)
@@ -285,29 +348,26 @@ namespace CatMetro.Presentation.Props
                 : new Bounds(Vector3.zero, new Vector3(1.2f, 1f, 1.2f));
         }
 
-        // One primitive site and one committed-material bind preserves the project's runtime
-        // primitive gate; property blocks give each platform its own colour without a material
-        // allocation on every Retry/LoadNext rebuild.
+        // The builtin-cube idiom, the same one BoardSurface.CreatePart and CreatePlateGeometry
+        // below already use: a bare GameObject with a MeshFilter and a MeshRenderer. This used
+        // to be GameObject.CreatePrimitive followed by destroying the collider it handed back.
+        // Not building one is strictly better than remembering to destroy one — the platform
+        // grew from two parts to seven here, and "every one of them destroys its collider" is
+        // exactly the kind of invariant that holds until someone adds the eighth. A property
+        // block over the one committed material gives each part its colour without allocating
+        // a Material per station on every Retry/LoadNext rebuild.
+        private static Mesh _cubeMesh;
+
         private static Transform CreateStationPart(string name, Transform parent,
-            PrimitiveType primitiveType, Vector3 localPosition, Vector3 localScale, Color color)
+            Vector3 localPosition, Vector3 localScale, Color color)
         {
-            var part = GameObject.CreatePrimitive(primitiveType);
-            part.name = name;
+            var part = new GameObject(name);
             part.transform.SetParent(parent, false);
             part.transform.localPosition = localPosition;
             part.transform.localScale = localScale;
-            var collider = part.GetComponent<Collider>();
-            if (collider != null)
-            {
-                if (UnityEngine.Application.isPlaying) UnityEngine.Object.Destroy(collider);
-                else UnityEngine.Object.DestroyImmediate(collider);
-            }
-            var renderer = part.GetComponent<Renderer>();
-            renderer.sharedMaterial = GreyboxMaterial.Shared;
-            var properties = new MaterialPropertyBlock();
-            properties.SetColor("_BaseColor", color);
-            properties.SetColor("_Color", color);
-            renderer.SetPropertyBlock(properties);
+            if (_cubeMesh == null) _cubeMesh = Resources.GetBuiltinResource<Mesh>("Cube.fbx");
+            part.AddComponent<MeshFilter>().sharedMesh = _cubeMesh;
+            Tint(part.AddComponent<MeshRenderer>(), color);
             return part.transform;
         }
 
@@ -321,11 +381,12 @@ namespace CatMetro.Presentation.Props
         }
 
         private static void SuppressReplacedStationArchitecture(Transform stationAnchor,
-            ReadOnlyMemory<string> accepts)
+            ReadOnlyMemory<string> accepts, Transform boardRoot)
         {
             // The kiosk supplies the neutral building. Keep only line-owned overlays: the
             // main branch's text symbol and the diorama branch's colored plate/keyline/symbol.
-            EnsureProjectOwnedStationPlate(stationAnchor, accepts);
+            EnsureProjectOwnedStationPlate(stationAnchor, accepts,
+                SignFootLocalZ(stationAnchor, boardRoot));
             var renderers = stationAnchor.GetComponentsInChildren<Renderer>(true);
             bool hasLinePlate = false;
             foreach (var renderer in renderers)
@@ -340,21 +401,47 @@ namespace CatMetro.Presentation.Props
             {
                 if (renderer.GetComponent<TextMesh>() != null) continue;
                 string name = renderer.gameObject.name;
+                // station:signmast joins the keep-list for a reason worth stating: this sweep
+                // hides EVERYTHING it does not recognise, silently. The mast is the post the
+                // badge stands on, so forgetting it here would leave a sign hanging in the air
+                // with no test able to see it — every existing assertion checks meshes, colours
+                // and names, and a disabled renderer passes all three.
                 if (name.StartsWith("station:plate") || name.StartsWith("station:keyline")
-                    || name.StartsWith("station:symbol"))
+                    || name.StartsWith("station:symbol") || name.StartsWith("station:signmast"))
                     continue;
                 renderer.enabled = false;
             }
         }
 
+        // The tabletop, expressed in the station anchor's own space. A sign post has to REACH
+        // the wood, and the anchor is scaled (BoardView builds it at 0.6) and may be nested
+        // under whatever final layout the scene lane authors, so the plane cannot be a constant
+        // here. This is the same contact-plane seam every other prop already stands on.
+        private static float SignFootLocalZ(Transform stationAnchor, Transform boardRoot)
+        {
+            if (boardRoot == null || stationAnchor == null) return 0f;
+            Vector3 inBoard = boardRoot.InverseTransformPoint(stationAnchor.position);
+            inBoard.z = ResolveContactPlaneLocalZ(boardRoot);
+            return stationAnchor.InverseTransformPoint(boardRoot.TransformPoint(inBoard)).z;
+        }
+
         // --- the station badge: the only surface that tells a player where a berth goes ---
 
-        // Depths, unchanged from the shipped badge: the cream keyline sits BEHIND the coloured
-        // plate and reads as a halo around it, and the glyph sits in front of both. More
-        // negative is nearer the camera.
-        private const float PlateZ = -1.35f;
-        private const float KeylineZ = -1.32f;
-        private const float GlyphZ = -1.44f;
+        // STATION-PLATFORM: the badge stands UP on a post now, so "depth" stopped being a board
+        // axis and became the sign's own facing axis. The layer order is unchanged and so are
+        // its magnitudes — the cream keyline sits 0.03 BEHIND the coloured plate and reads as a
+        // halo around it, the glyph sits 0.09 in FRONT of both — but they are measured along
+        // the direction the sign faces rather than along board -Z.
+        //
+        // That substitution is the whole of the risk in standing the badge up, and it is
+        // invisible: keeping the shipped z literals would have left three parts that are now
+        // COPLANAR in depth separated only VERTICALLY by 0.03, which is a z-fight and a
+        // keyline peeking out of the top of its own plate. Nothing that checks meshes, colours,
+        // names or scales can see that, which is why the offsets moved axis here rather than
+        // staying put and being tuned later.
+        private const float PlateZ = -1.35f;                // the sign HEAD's height off the board
+        private const float KeylineFacingOffset = -0.03f;   // behind the plate
+        private const float GlyphFacingOffset = 0.09f;      // in front of it
         private const float PlateY = -1f;
         private const float PlateSize = 0.9f;
         private const float PlateDepth = 0.1f;
@@ -379,6 +466,68 @@ namespace CatMetro.Presentation.Props
         private const float AcceptKeylineSize = 0.48f;
         private const float AcceptGlyphSize = 0.22f;
 
+        // The post the badge stands on. Anchor-local, and the anchor is at 0.6, so 0.15 here is
+        // 0.09 board units — 8.4 px wide at the worst authored zoom, the same slender-but-
+        // present read the reference art's sign poles have. The chip masts are thinner (0.11 ->
+        // 0.066 board -> 6.1 px) because a chip is a smaller sign and a pole as thick as the
+        // primary's would out-weigh the badge it carries. Both stay well clear of the ~4 px
+        // floor the r6 render established for board detail.
+        private const float MastThickness = 0.15f;
+        private const float ChipMastThickness = 0.11f;
+        // Pale toy wood: light enough to separate from the navy roof and the warm tabletop
+        // both, which is how target-01's platform sign poles read.
+        private static readonly Color MastWood = new Color(0.78f, 0.66f, 0.50f);
+
+        // The diorama tilt, MIRRORED from BoardSceneLook rather than decided again. That field
+        // is private on this branch and BoardSceneLook belongs to the scene lane, so this copy
+        // exists — and PropPlacementTests pins it against the real one by reflection, so
+        // re-authoring the tilt without this following fails there instead of quietly turning
+        // every station sign away from the camera, which is the failure mode that costs a whole
+        // render slot to notice. feat/cat-pins makes the field public; when that merges, delete
+        // this and read BoardSceneLook.BoardTilt directly.
+        private static readonly Quaternion DioramaTilt = Quaternion.Euler(38f, -32f, -4f);
+
+        /// <summary>
+        /// Board-local yaw that turns a +x face toward the camera. Same derivation the cat lane
+        /// uses in ToyTrainView.CameraFacingYawDegrees, and deliberately the same shape of
+        /// answer: a FIXED board yaw, not a per-frame billboard.
+        /// </summary>
+        public static float CameraFacingYawDegrees(Quaternion boardTilt)
+        {
+            // The camera is identity-rotated and orthographic, so it looks along world +z.
+            Vector3 viewLocal = Quaternion.Inverse(boardTilt) * Vector3.forward;
+            // Face back along it, flattened into the board plane.
+            return Mathf.Atan2(-viewLocal.y, -viewLocal.x) * Mathf.Rad2Deg;
+        }
+
+        /// <summary>
+        /// Turns a board-PARALLEL plate into a sign standing out of the tabletop and facing the
+        /// diorama camera. Composed on the left of DestinationShapeMesh.PlateRotation, so the
+        /// shape's own orientation is still the vocabulary's and this only stands it up.
+        /// </summary>
+        public static Quaternion StandingSignRotation(Quaternion boardTilt)
+        {
+            float yaw = CameraFacingYawDegrees(boardTilt) * Mathf.Deg2Rad;
+            Vector3 towardCamera = new Vector3(Mathf.Cos(yaw), Mathf.Sin(yaw), 0f);
+            // A plate's visible face is its local -Z, and LookRotation aims local +Z, so aim it
+            // AWAY from the camera. Up is board -Z (out of the tabletop), which is what makes
+            // the sign vertical and keeps its glyph upright rather than lying on its side.
+            return Quaternion.LookRotation(-towardCamera, Vector3.back);
+        }
+
+        /// <summary>
+        /// The one rotation every station sign wears. Its face ends up pointing along board
+        /// (-0.662, -0.750, 0) — the SAME direction ToyTrainView's seated cats face, since both
+        /// are answering "which way is the camera". Only the model axis differs: a cat presents
+        /// its +x face and so carries the bare yaw (-131.4 degrees), while a plate presents its
+        /// -z face and so needs the standing turn composed in as well.
+        /// </summary>
+        public static Quaternion StationSignRotation => StandingSignRotation(DioramaTilt);
+
+        // The sign's own facing direction in the anchor's space, which is where the three badge
+        // layers are stacked. Board Z is no longer "toward the camera" once the badge stands up.
+        private static Vector3 SignFacing => StationSignRotation * Vector3.back;
+
         // The shipped keyline cream, hoisted verbatim rather than swapped for a Palette token.
         // It is deliberately warmer and darker than Palette.CreamCard because the board top IS
         // CreamCard — a keyline in the token would vanish into the surface it has to separate
@@ -387,7 +536,7 @@ namespace CatMetro.Presentation.Props
         private static readonly Color KeylineCream = new Color(0.94f, 0.88f, 0.75f);
 
         private static void EnsureProjectOwnedStationPlate(Transform stationAnchor,
-            ReadOnlyMemory<string> accepts)
+            ReadOnlyMemory<string> accepts, float footLocalZ)
         {
             foreach (var renderer in stationAnchor.GetComponentsInChildren<Renderer>(true))
                 if (renderer.enabled && renderer.gameObject.name.StartsWith("station:plate"))
@@ -417,12 +566,28 @@ namespace CatMetro.Presentation.Props
             // Put the shape plaque on the clear board apron in front of the kiosk. Centering it
             // on the line-coloured roof makes the red circle and blue square both read as the
             // same rectangle in the production near-orthographic view.
+            //
+            // LOOK step 4: it now STANDS on a post there instead of lying on the wood. The
+            // plaque's centre has not moved by a millimetre — same x, same y, same height off
+            // the board — so the composition, the on-wood fit and the chip row are all
+            // untouched; what changed is that its face is perpendicular to the tabletop and
+            // yawed at the camera, and that a mast runs from the wood up to its bottom edge.
+            //
+            // Standing it costs nothing in legibility, which is worth stating because it is not
+            // obvious: the board plane sits 48.07 degrees off the view axis, and the best a
+            // sign perpendicular to that board can do is ALSO 48.07 degrees, so both the old
+            // flat plaque and this one are foreshortened by exactly cos(48.07) = 0.669. The
+            // sign reads as signage instead of paint for free.
+            var head = new Vector3(0f, PlateY, PlateZ);
+            CreateMast("station:signmast-generated", stationAnchor,
+                head, PlateSize, MastThickness, footLocalZ);
+
             var keyline = CreatePlateGeometry("station:keyline-generated", stationAnchor,
-                shape, new Vector3(0f, PlateY, KeylineZ), KeylineSize, KeylineDepth);
+                shape, head + SignFacing * KeylineFacingOffset, KeylineSize, KeylineDepth);
             Tint(keyline, KeylineCream);
 
             var plate = CreatePlateGeometry("station:plate-generated", stationAnchor,
-                shape, new Vector3(0f, PlateY, PlateZ), PlateSize, PlateDepth);
+                shape, head, PlateSize, PlateDepth);
             // The primary plate keeps wearing the station's OWN line material, exactly as it
             // did before — that is what makes the fallback cube and the badge the same signal.
             //
@@ -434,7 +599,8 @@ namespace CatMetro.Presentation.Props
             plate.sharedMaterial = fallback.sharedMaterial != null
                 ? fallback.sharedMaterial : GreyboxMaterial.Shared;
 
-            label.transform.localPosition = new Vector3(0f, PlateY, GlyphZ);
+            label.transform.localPosition = head + SignFacing * GlyphFacingOffset;
+            label.transform.localRotation = StationSignRotation;
             label.characterSize = 0.5f;
             label.anchor = TextAnchor.MiddleCenter;
             label.alignment = TextAlignment.Center;
@@ -451,20 +617,44 @@ namespace CatMetro.Presentation.Props
                 string extra = accepted[i];
                 var extraShape = CatLine.ShapeOf(extra);
                 float x = AcceptFirstX + (i - 1) * AcceptPitch;
+                // The row still runs along board +X, NOT along the standing sign's own width.
+                // Board +X projects to screen (0.869, -0.055) — almost exactly horizontal — so
+                // the chips read as a level row of signage beside the primary, and every
+                // clearance the chip lane worked out in anchor units carries over unchanged.
+                var chipHead = new Vector3(x, PlateY, PlateZ);
+                CreateMast("station:signmast-accept-" + (i - 1), stationAnchor,
+                    chipHead, AcceptSize, ChipMastThickness, footLocalZ);
 
                 var chipKeyline = CreatePlateGeometry("station:keyline-accept-" + (i - 1),
-                    stationAnchor, extraShape, new Vector3(x, PlateY, KeylineZ),
+                    stationAnchor, extraShape, chipHead + SignFacing * KeylineFacingOffset,
                     AcceptKeylineSize, KeylineDepth);
                 Tint(chipKeyline, KeylineCream);
 
                 var chip = CreatePlateGeometry("station:plate-accept-" + (i - 1),
-                    stationAnchor, extraShape, new Vector3(x, PlateY, PlateZ),
-                    AcceptSize, PlateDepth);
+                    stationAnchor, extraShape, chipHead, AcceptSize, PlateDepth);
                 Tint(chip, CatLine.ColorOf(extra));
 
                 AddAcceptGlyph(stationAnchor, label, "station:symbol-accept-" + (i - 1),
-                    new Vector3(x, PlateY, GlyphZ), CatLine.GlyphOf(extra));
+                    chipHead + SignFacing * GlyphFacingOffset, CatLine.GlyphOf(extra));
             }
+        }
+
+        // The post under a sign. It runs from the tabletop to the BOTTOM EDGE of the plate it
+        // carries, which is why it takes the plate's size rather than a height of its own: the
+        // sign head is what decides where the mast stops, and a mast with an authored length
+        // would either float off the plate or spear through it the moment either moved. A
+        // degenerate span (a head at or below the wood) draws nothing rather than an inverted
+        // box, because a negative localScale.z MIRRORS the cube and flips its winding — the
+        // exact backface-culling failure this codebase has already eaten twice.
+        private static void CreateMast(string name, Transform parent, Vector3 head,
+            float headSize, float thickness, float footLocalZ)
+        {
+            float topZ = head.z + headSize * 0.5f; // the sign stands up, so its half-height is +z
+            float rise = footLocalZ - topZ;
+            if (rise <= 0f) return;
+            CreateStationPart(name, parent,
+                new Vector3(head.x, head.y, (footLocalZ + topZ) * 0.5f),
+                new Vector3(thickness, thickness, rise), MastWood);
         }
 
         // Builtin-mesh idiom (BoardSurface / CauseCameraController): a bare GameObject with a
@@ -478,7 +668,14 @@ namespace CatMetro.Presentation.Props
             var part = new GameObject(name);
             part.transform.SetParent(parent, false);
             part.transform.localPosition = localPosition;
-            part.transform.localRotation = DestinationShapeMesh.PlateRotation(shape);
+            // Composed, in this order and no other. PlateRotation is the SHAPE's own
+            // orientation and still comes wholly from the vocabulary; StationSignRotation is
+            // applied on its left, in the parent's frame, and only stands the finished plate
+            // up. Swapping the operands would yaw the shape inside its own plane instead —
+            // which for the circle plate looks identical and for the triangle silently puts the
+            // apex somewhere else, so the order is pinned by a test rather than by this comment.
+            part.transform.localRotation =
+                StationSignRotation * DestinationShapeMesh.PlateRotation(shape);
             part.transform.localScale = DestinationShapeMesh.PlateScale(shape, size, depth);
             part.AddComponent<MeshFilter>().sharedMesh = DestinationShapeMesh.ForShape(shape);
             return part.AddComponent<MeshRenderer>();
@@ -504,6 +701,7 @@ namespace CatMetro.Presentation.Props
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             go.transform.localPosition = localPosition;
+            go.transform.localRotation = StationSignRotation;
             var text = go.AddComponent<TextMesh>();
             text.font = model.font;
             text.text = glyph;
