@@ -12,7 +12,46 @@ namespace CatMetro.Presentation.Board
     /// </summary>
     public static class BoardSurface
     {
-        private const float Margin = 1.05f;
+        // The wood beyond the outermost node, per edge. It used to be one 1.05 constant. It
+        // is three now because the three edges cost completely different amounts of frame,
+        // and because the slab is the ONE part of the diorama the safe-frame law does not
+        // govern — RuntimeSceneRigTests asserts node markers and BoardPropInstance renderers
+        // and never touches BoardBody, and BoardSceneLook.FitCamera excludes BoardBody from
+        // the width fit. So growing the slab moves board fill without moving the camera.
+        //
+        // Under the 38/-32/-4 tilt, one unit of margin buys, in world units of screen:
+        //   local X (MarginSide): width +2*|M00| = 1.7375   height +2*|M10| = 0.1099
+        //   local Y (MarginFar) : width +2*|M01| = 0.5326   height +2*|M11| = 1.5722
+        // The portrait frame is 2.23:1 and the toy is ~1:1, so the whole 26.5% -> 70% gap is
+        // vertical: on the r6 render the slab spans 8.27 of the frame's 17.67 world units
+        // tall while already overhanging it horizontally. Local Y is therefore the efficient
+        // axis, at 2.95x the screen height per unit of frame width spent.
+        //
+        // MarginSide 1.80. Measured sweep of clipped slab coverage on L001 at the post-split
+        // orthographicSize 7.919, holding MarginFar 3.05:
+        //   1.05 -> 39.4%   1.30 -> 41.9%   1.55 -> 44.2%   1.80 -> 46.3%
+        //   2.05 -> 48.1%   2.30 -> 49.6%   2.80 -> 52.0%
+        // It keeps paying, but the slab's screen width is already 9.56 against a 7.09 frame
+        // at 1.80 (35% off-frame, both edges — target-01 bleeds both edges too). Past that
+        // the extra wood is nearly all outside the frame and the toy stops reading as a
+        // finite object, which is the same thing SafeHeight is protecting vertically.
+        //
+        // MarginFar 3.05, capped by the height fit, not by taste. requiredForHeight takes
+        // over from requiredForWidth when frameBounds.size.y exceeds size/0.69079; on the
+        // tallest authored levels (L012, L015) that ratio reaches 0.971 at 3.05 and 0.999 at
+        // 3.55. 3.05 keeps ~3% of headroom on the worst level. If it ever did bind, the
+        // failure is graceful — the camera pulls back and fill drops, no law is breached.
+        //
+        // MarginNear 1.05, unchanged, and this one is a hard wall rather than a choice.
+        // BoardPropDecorator seats the desk clutter at (node minY - 1.4) on the DESK contact
+        // plane at z 1.38, which is BEHIND the board's wood face at z 0.35. A near margin of
+        // 1.4 or more would bury the mug inside the slab, and that file belongs to another
+        // lane right now. 1.05 leaves 0.35 units of clearance. Raising this is the single
+        // most valuable follow-up once the prop lane can move the clutter: target-01's own
+        // big wood band is at its NEAR edge, running off the bottom of frame.
+        private const float MarginSide = 1.80f;
+        private const float MarginFar = 3.05f;
+        private const float MarginNear = 1.05f;
         private const float WoodFront = 0.35f;
         private const float WoodDepth = 0.70f;
         private const float RimWidth = 0.24f;
@@ -98,9 +137,18 @@ namespace CatMetro.Presentation.Board
             float maxX = nodes.Max(node => node.X);
             float minY = nodes.Min(node => node.Y);
             float maxY = nodes.Max(node => node.Y);
-            float width = maxX - minX + Margin * 2f;
-            float height = maxY - minY + Margin * 2f;
+            float width = maxX - minX + MarginSide * 2f;
+            float height = maxY - minY + MarginNear + MarginFar;
+            // `center` stays the AUTHORED node centre. Two things depend on that and must not
+            // follow the slab: the desk's radial warmth pool (its lamp light belongs over the
+            // play area, not over the slab's new centre of mass) and the two contact-plane
+            // markers BoardPropDecorator reads, whose x/y are unused but whose identity as
+            // "the middle of the level" is the thing the prop lane reasons about.
             var center = new Vector2((minX + maxX) * 0.5f, (minY + maxY) * 0.5f);
+            // The slab is no longer symmetric about the play area: it reaches MarginFar away
+            // from the camera and only MarginNear toward it, so its own centre sits half the
+            // difference behind the node centre.
+            var bodyCenter = new Vector2(center.x, minY - MarginNear + height * 0.5f);
 
             var body = new GameObject("BoardBody").transform;
             body.SetParent(parent, false);
@@ -137,10 +185,10 @@ namespace CatMetro.Presentation.Board
             deskContactPlane.localPosition = new Vector3(center.x, center.y, DeskFront);
 
             CreatePart("NavyBase", body,
-                new Vector3(center.x, center.y, 1.18f),
+                new Vector3(bodyCenter.x, bodyCenter.y, 1.18f),
                 new Vector3(width + 0.24f, height + 0.24f, 0.34f), Palette.InkNavy);
             CreatePart("WoodTop", body,
-                new Vector3(center.x, center.y, WoodFront + WoodDepth * 0.5f),
+                new Vector3(bodyCenter.x, bodyCenter.y, WoodFront + WoodDepth * 0.5f),
                 new Vector3(width, height, WoodDepth), WarmWood,
                 grain: WoodGrain(),
                 grainST: new Vector4(width / BoardSheetSpan, height / BoardSheetSpan, 0f, 0f));
@@ -149,16 +197,16 @@ namespace CatMetro.Presentation.Board
             rim.SetParent(body, false);
             float rimZ = WoodFront - RimDepth * 0.5f - 0.01f;
             CreatePart("Top", rim,
-                new Vector3(center.x, center.y + height * 0.5f - RimWidth * 0.5f, rimZ),
+                new Vector3(bodyCenter.x, bodyCenter.y + height * 0.5f - RimWidth * 0.5f, rimZ),
                 new Vector3(width, RimWidth, RimDepth), Palette.CreamCard);
             CreatePart("Bottom", rim,
-                new Vector3(center.x, center.y - height * 0.5f + RimWidth * 0.5f, rimZ),
+                new Vector3(bodyCenter.x, bodyCenter.y - height * 0.5f + RimWidth * 0.5f, rimZ),
                 new Vector3(width, RimWidth, RimDepth), Palette.CreamCard);
             CreatePart("Left", rim,
-                new Vector3(center.x - width * 0.5f + RimWidth * 0.5f, center.y, rimZ),
+                new Vector3(bodyCenter.x - width * 0.5f + RimWidth * 0.5f, bodyCenter.y, rimZ),
                 new Vector3(RimWidth, height - RimWidth * 2f, RimDepth), Palette.CreamCard);
             CreatePart("Right", rim,
-                new Vector3(center.x + width * 0.5f - RimWidth * 0.5f, center.y, rimZ),
+                new Vector3(bodyCenter.x + width * 0.5f - RimWidth * 0.5f, bodyCenter.y, rimZ),
                 new Vector3(RimWidth, height - RimWidth * 2f, RimDepth), Palette.CreamCard);
             return body;
         }

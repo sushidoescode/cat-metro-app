@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using CatMetro.Presentation.Props;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -22,11 +24,30 @@ namespace CatMetro.Presentation.Board
         // only 0.0036. Do not widen these without re-deriving both bands.
         private const float SafeWidth = 0.88f;
         private const float SafeHeight = 0.76f;
+        // THE COMPOSITION ALTERNATIVE, isolated here as a one-line flip so a render can
+        // compare it: set this to -16f. Reducing the yaw is the other documented way to buy
+        // horizontal fill, and it does NOT pay what an earlier lane reported. The mechanism,
+        // with the tilt matrix written out (Unity applies Euler ZXY, so M = Ry*Rx*Rz):
+        //
+        //   yaw -32:  |M00| 0.86874   |M01| 0.26630   |M02| 0.41758
+        //   yaw -16:  |M00| 0.97080   |M01| 0.10220   |M02| 0.21720
+        //
+        // A renderer's world-x half-extent is |M00|ex + |M01|ey + |M02|ez, so lowering the
+        // yaw makes the board's long local-Y axis 2.6x cheaper in frame width — but it also
+        // makes local X 12% MORE expensive, and the stations sit at the extremes of local X.
+        // On L001 those cancel almost exactly: the post-split gameplay contentBounds goes
+        // 6.126 -> 6.048, a 1.013x fill, against the 1.116x the law split alone buys.
+        // (Reconstructing the pre-split figure the same way gives ~1.10x, not the ~1.23x an
+        // earlier lane reported; that number cannot be right for a 4-wide, 7-tall board.)
+        // The yaw lever pays on tall, NARROW levels, costs fill on wide ones such as L008,
+        // and it moves the key-light incidence law in ApplyLighting, which is calibrated
+        // against this exact 38/-32/-4. That is why it is the alternative and not the choice.
+        private const float DioramaYaw = -32f;
         // Public because the diorama tilt is the ONLY thing that decides which way a board-local
         // feature faces the (identity-rotated, orthographic) camera. ToyTrainView derives the
         // cat's fixed facing from it rather than hardcoding a yaw that would silently rot if
         // this tilt were ever re-authored.
-        public static readonly Quaternion BoardTilt = Quaternion.Euler(38f, -32f, -4f);
+        public static readonly Quaternion BoardTilt = Quaternion.Euler(38f, DioramaYaw, -4f);
 
         // Declared below BoardTilt on purpose: feat/cats-on-trains inserts its comment block
         // at exactly that line, and an insertion of our own at the same point turns two
@@ -75,16 +96,49 @@ namespace CatMetro.Presentation.Board
             // Two unions, because the frame owes them different things.
             //   frameBounds   — everything except the desk. Nothing here may leave the frame
             //                   vertically, so the toy's rim still reads as a finite edge.
-            //   contentBounds — the same minus the decorative slab (BoardBody). This is what
-            //                   the RuntimeSceneRigTests safe-frame law actually governs:
-            //                   node markers and prop renderers.
+            //   contentBounds — GAMEPLAY only: the same minus the decorative slab (BoardBody)
+            //                   and minus every renderer under a decorative prop. This is
+            //                   what the RuntimeSceneRigTests horizontal safe-frame law
+            //                   governs after the split described below.
             // The slab is ~1.25x wider on screen than the content it carries, so fitting the
             // slab into the horizontal safe band shrank the whole diorama to satisfy a border
             // no law asks about. Target-01 lets the board run off both edges; so do we now.
+            //
+            // THE LAW SPLIT, and what it is worth. Measured off
+            // .catshots/orchestrator-2026-08-25-r6/rigA-board-train-midedge.png (L001), whose
+            // three unclipped rim corners solve the projection exactly at 115.92 px per world
+            // unit, cameraX 3.297, cameraY 5.192, orthographicSize 8.834 — reproducing the
+            // 115.7 and 8.85 this file already quoted from the r3 render:
+            //
+            //   contentBounds was world x [-0.120, 6.714], size 6.834.
+            //   The RIGHT extreme is the BLU station kiosk: its blue roof's silhouette ends
+            //   at world x 6.571 and its AABB reaches 6.714. That is gameplay and it stays.
+            //   The LEFT extreme is the perimeter-trees cluster. Its foliage silhouette
+            //   begins at world x 0.187 and NOTHING else outside the slab is left of it, so
+            //   the 0.307 gap down to -0.120 is that cluster's own AABB inflation (renderer
+            //   bounds are world-axis-aligned, and every board child is tilted 38/-32/-4, so
+            //   an AABB always overreaches its silhouette).
+            //
+            // A decorative tree was therefore setting the size of the entire diorama. With it
+            // out, the leftmost gameplay renderer is the depot shed, silhouette at world x
+            // 0.895; applying the same 0.307 inflation puts its AABB near 0.588, so
+            //   contentBounds.size.x 6.834 -> 6.126, and size 8.834 -> 7.919: a 1.116x fill.
+            // Board coverage of the frame goes 26.5% -> 32.7% on that alone, and 46.3% once
+            // BoardSurface's anisotropic margin (which this split is what pays for) lands.
+            //
+            // This WIDENS what may leave frame. Trees, bushes, the desk clutter and the
+            // parked engine may now cross the band that stations, sources, node markers,
+            // switches and trains still may not. RuntimeSceneRigTests states both halves
+            // explicitly: the gameplay band is unchanged and still fails if a node or a
+            // station leaves it, and the decorative band is its own, wider, asserted rule
+            // rather than an absence of one.
             Bounds frameBounds = default, contentBounds = default;
             bool foundFrame = false, foundContent = false;
             var deskSurface = board.transform.Find("DeskSurface");
             var slab = board.transform.Find("BoardBody");
+            var decorative = new List<Transform>();
+            foreach (var prop in board.GetComponentsInChildren<BoardPropInstance>(true))
+                if (prop.IsDecorative) decorative.Add(prop.transform);
             foreach (var renderer in board.GetComponentsInChildren<Renderer>(true))
             {
                 if (!renderer.enabled) continue;
@@ -92,6 +146,7 @@ namespace CatMetro.Presentation.Board
                 if (!foundFrame) { frameBounds = renderer.bounds; foundFrame = true; }
                 else frameBounds.Encapsulate(renderer.bounds);
                 if (slab != null && renderer.transform.IsChildOf(slab)) continue;
+                if (IsUnderAny(renderer.transform, decorative)) continue;
                 if (!foundContent) { contentBounds = renderer.bounds; foundContent = true; }
                 else contentBounds.Encapsulate(renderer.bounds);
             }
@@ -101,7 +156,9 @@ namespace CatMetro.Presentation.Board
                 Vector3 center = board.transform.TransformPoint(board.PresentationCenterLocal);
                 frameBounds = new Bounds(center, Vector3.one);
             }
-            // A board with no gameplay renderers at all still has to frame something.
+            // A board with no gameplay renderers at all still has to frame something. This
+            // is reachable in two ways now, not one: a board with no renderers, and — more
+            // realistically — a level whose only non-slab renderers were decorative.
             if (!foundContent) contentBounds = frameBounds;
 
             float requiredForHeight = frameBounds.size.y * 0.5f / SafeHeight;
@@ -186,7 +243,26 @@ namespace CatMetro.Presentation.Board
             camera.nearClipPlane = 0.1f;
             camera.farClipPlane = Mathf.Max(50f, farthestZ - cameraZ + 1f);
             camera.allowHDR = false;
+            // Inert today: Assets/Settings/CatMetro_URP.asset has m_MSAA: 1, i.e. one sample.
+            // Left set so the camera does not have to be revisited if that asset ever moves.
             camera.allowMSAA = true;
+
+            // Depth-of-field stand-in. Sized from what the fit just solved, so the hole it
+            // cuts is exactly the region gameplay can occupy and no triangle ever lands on
+            // the diorama. See DefocusVeil for why real URP DoF is unavailable here rather
+            // than merely expensive. Half-height is measured off frameBounds about the final
+            // camera, taking the larger side so an off-centre toy still clears the band.
+            float contentHalfHeight = Mathf.Max(
+                Mathf.Abs(frameBounds.max.y - cameraY), Mathf.Abs(cameraY - frameBounds.min.y));
+            DefocusVeil.Apply(camera, size, contentHalfHeight,
+                size * TargetPortraitAspect * SafeWidth * 1.05f);
+        }
+
+        private static bool IsUnderAny(Transform candidate, List<Transform> roots)
+        {
+            for (int i = 0; i < roots.Count; i++)
+                if (roots[i] != null && candidate.IsChildOf(roots[i])) return true;
+            return false;
         }
 
         private static void ApplyLighting(Transform owner)
