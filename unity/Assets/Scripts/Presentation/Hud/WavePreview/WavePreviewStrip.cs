@@ -95,6 +95,20 @@ namespace CatMetro.Presentation.Hud.WavePreview
         public Color WaveColor => _wave != null ? _wave.color : Color.clear;
         public IReadOnlyList<CatFaceView> Faces => _faces;
 
+        // The counter glyphs, so a test can assert they are the trophy and the people mark
+        // rather than the coloured dots they used to be — and that both bind palette tokens.
+        public Sprite DeliveriesMarkSprite =>
+            _deliveriesMark != null ? _deliveriesMark.sprite : null;
+        public Sprite RidersMarkSprite => _ridersMark != null ? _ridersMark.sprite : null;
+        public Color DeliveriesMarkColor =>
+            _deliveriesMark != null ? _deliveriesMark.color : Color.clear;
+        public Color RidersMarkColor => _ridersMark != null ? _ridersMark.color : Color.clear;
+
+        // The face box the capsule allocates at the current viewport — the ruler every face's
+        // internal geometry is a fraction of, exposed so the badge-separation law can be
+        // asserted in real pixels rather than re-derived in the test.
+        public float FaceSizePx => _capsulePx.height * FaceSizeFraction;
+
         public CatFaceView Face(int index) =>
             index >= 0 && index < _faces.Count ? _faces[index] : null;
 
@@ -192,14 +206,23 @@ namespace CatMetro.Presentation.Hud.WavePreview
             // pixels, which only resolves correctly if their parent's bottom-left IS the
             // canvas bottom-left. A default RectTransform is a 100x100 box at the centre.
             Stretch(counters);
-            // Counter markers deliberately DO NOT reuse the destination shape vocabulary — a
-            // triangle or hexagon down here would read as a line badge. Both are discs; the
-            // number FORMAT ("n/m" vs "n") is what tells the two counters apart.
-            _deliveriesMark = AddImage(counters, "DeliveredMark", HudShapeSprites.Disc);
-            _deliveriesMark.color = Palette.MetroTeal;
+            // Counter markers still DO NOT reuse the destination shape vocabulary — a triangle
+            // or a diamond down here would read as a line badge — but they are no longer bare
+            // discs either. They were, and the number FORMAT ("n/m" vs "n") was left to carry
+            // the whole distinction: a teal dot and an orange dot, which says "two counts of
+            // something" and makes the player learn which is which. The target art names them
+            // outright, so these do too: a TROPHY for deliveries against the win condition, a
+            // group of PEOPLE for cats currently riding.
+            //
+            // Both are WarmPaper, not the accent tokens. The counters sit on the diorama with
+            // no card behind them, so the glyph and its numeral have to read as one object;
+            // colouring the mark and not the number split them into two. The target draws the
+            // whole row in one cream, and cream on the dark tabletop is the contrast that works.
+            _deliveriesMark = AddImage(counters, "DeliveredMark", HudShapeSprites.Trophy);
+            _deliveriesMark.color = Palette.WarmPaper;
             _deliveries = AddLabel(counters, "Delivered", Palette.WarmPaper);
-            _ridersMark = AddImage(counters, "RidersMark", HudShapeSprites.Disc);
-            _ridersMark.color = Palette.TicketOrange;
+            _ridersMark = AddImage(counters, "RidersMark", HudShapeSprites.People);
+            _ridersMark.color = Palette.WarmPaper;
             _riders = AddLabel(counters, "Riders", Palette.WarmPaper);
         }
 

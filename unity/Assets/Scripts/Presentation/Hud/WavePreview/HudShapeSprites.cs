@@ -24,6 +24,8 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private static Sprite _diamond;
         private static Sprite _star;
         private static Sprite _waveBand;
+        private static Sprite _trophy;
+        private static Sprite _people;
 
         // A filled circle. Cat heads, eyes, and the circle destination badge.
         public static Sprite Disc => _disc != null ? _disc
@@ -61,6 +63,21 @@ namespace CatMetro.Presentation.Hud.WavePreview
         // sprite is wide and the Image repeats it.
         public static Sprite WaveBand => _waveBand != null ? _waveBand
             : (_waveBand = Build("HudWaveBand", 256, 64, InsideWaveBand, Vector4.zero));
+
+        // The DELIVERIES counter's glyph. target-01 draws a trophy here, not a coloured dot —
+        // a dot says "some number of something", a trophy says "how far through the win
+        // condition you are" without a legend. Measured off the target it gets ~42px on a
+        // 917x2048 phone (counter row 57.6px x the 0.72 mark fraction), which is what the
+        // proportions below are drawn for: the cup/stem/base SILHOUETTE carries the identity
+        // and survives any downscale, while the handles are a 4.2px secondary cue.
+        public static Sprite Trophy => _trophy != null ? _trophy
+            : (_trophy = Build("HudTrophy", 64, 64, InsideTrophy, Vector4.zero));
+
+        // The RIDERS counter's glyph: three figures, one forward and two behind. Reads as a
+        // crowd rather than as three resolvable people — at 42px the heads sit ~2px apart, so
+        // the group silhouette is the signal and that is exactly how the target art draws it.
+        public static Sprite People => _people != null ? _people
+            : (_people = Build("HudPeople", 64, 64, InsidePeople, Vector4.zero));
 
         public static Sprite ForShape(DestinationShape shape)
         {
@@ -158,6 +175,60 @@ namespace CatMetro.Presentation.Hud.WavePreview
         {
             float curve = 0.62f + 0.17f * Mathf.Sin(x * 2f * Mathf.PI * 2f);
             return y <= curve;
+        }
+
+        // A trophy, assembled from four stacked slabs plus two handle arcs. Coordinates are
+        // TEXTURE space, so y increases UPWARD — the same convention the star's comment above
+        // warns about, and the same one that silently inverts a shape if you assume otherwise.
+        private static bool InsideTrophy(float x, float y)
+        {
+            float dx = Mathf.Abs(x - 0.5f);
+
+            if (y >= 0.06f && y <= 0.17f && dx <= 0.25f) return true;   // foot
+            if (y > 0.17f && y <= 0.36f && dx <= 0.075f) return true;   // stem
+            if (y > 0.36f && y <= 0.43f && dx <= 0.17f) return true;    // plinth under the bowl
+
+            // Handles: an annulus arc on each side. The half-plane test keeps only the OUTER
+            // part of the ring, so the inner half does not print a second line across the bowl.
+            for (int s = -1; s <= 1; s += 2)
+            {
+                float hx = 0.5f + s * 0.285f;
+                const float hy = 0.68f;
+                float d = Mathf.Sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy));
+                if (d >= 0.105f && d <= 0.205f && (x - hx) * s >= -0.06f && y <= 0.86f)
+                    return true;
+            }
+
+            // Bowl: a cup that tapers to a rounded bottom, with the rim flaring straight so the
+            // lip reads as a lip rather than as the top of a cone.
+            if (y > 0.43f && y <= 0.94f)
+            {
+                float t = (y - 0.43f) / (0.94f - 0.43f);
+                float half = y > 0.86f ? 0.31f
+                    : 0.31f * Mathf.Sqrt(Mathf.Max(0f, t * 0.85f + 0.15f));
+                if (dx <= half) return true;
+            }
+            return false;
+        }
+
+        // Three figures — a head disc over a shoulder arch, the centre one larger and forward.
+        private static bool InsidePeople(float x, float y)
+        {
+            return Figure(x, y, 0.170f, 0.685f, 0.140f, 0.175f, 0.05f, 0.49f)
+                || Figure(x, y, 0.830f, 0.685f, 0.140f, 0.175f, 0.05f, 0.49f)
+                || Figure(x, y, 0.500f, 0.790f, 0.170f, 0.225f, 0.03f, 0.59f);
+        }
+
+        // One figure: a head disc, plus a body whose half-width is widest at the SHOULDERS
+        // (bottom, t = 0) and narrows toward the neck (top, t = 1).
+        private static bool Figure(float x, float y, float cx, float headY, float headR,
+            float bodyHalf, float bodyBottom, float bodyTop)
+        {
+            float hx = x - cx, hy = y - headY;
+            if (hx * hx + hy * hy <= headR * headR) return true;
+            if (y < bodyBottom || y > bodyTop) return false;
+            float t = (y - bodyBottom) / (bodyTop - bodyBottom);
+            return Mathf.Abs(x - cx) <= bodyHalf * (1f - 0.45f * t * t);
         }
 
         private static Sprite Build(string name, int width, int height,
