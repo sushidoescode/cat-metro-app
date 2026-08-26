@@ -320,6 +320,339 @@ namespace CatMetro.Tests.PlayMode
         private static float Luminance(Color c) =>
             0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
 
+        // ── The destination pin ─────────────────────────────────────────────────────────────
+        // target-01's chief readability device: a white card above each riding cat carrying
+        // that cat's destination symbol. Colour says which LINE a cat belongs to; only the pin
+        // says where it is GOING, and for a red/green viewer the pin says it alone. Every law
+        // below is stated in the projection the camera performs or in the rendered hierarchy,
+        // for the reason the ear tests carry in their own header: 27 authored-space tests once
+        // passed unanimously while the render showed a bare ball.
+
+        // Board units to screen pixels at the fitted gameplay zoom. BoardSceneLook.FitCamera is
+        // orthographic and floors orthographicSize at 7, so px per board unit is (height/2) /
+        // size: an L001-class level on a 917x2048 capture renders 1024/7 = 146, and a level big
+        // enough to need size ~11 renders ~93. 93 is the honest WORST case and the figure the
+        // ear work measured, so every readability law here is stated against it.
+        private const float GameplayPixelsPerBoardUnit = 93f;
+
+        // The lowest board z any switch furniture reaches. The disc is a cylinder centred at
+        // -0.4, scaled 0.08 on its 2-unit axis, so the slab runs -0.48..-0.32; on onboarding
+        // levels the teach ring hangs lower still, centred -0.35 by 0.04, so -0.31 is the real
+        // floor of that airspace. The pin must stay UNDER all of it: a card that reaches into
+        // the slab punches through a disc every time a train rolls past a switch.
+        private const float SwitchFurnitureBottomZ = -0.31f;
+
+        // Board z of the rail crowns — where the consist's own chassis bottoms out. The pin's
+        // lower corner must stay above this or the track clips the card's bottom edge.
+        private const float RailCrownZ = 0.035f;
+
+        [UnityTest]
+        public IEnumerator Pin_FloatsAboveTheCat_Untappable_AndInventoryFree()
+        {
+            yield return BuildBoard();
+            PlaceOnEdge(edge: 1, progressTicks: 6);
+            _view.UpdateFrom(_session);
+
+            var pin = Pin();
+            Assert.That(pin, Is.Not.Null,
+                "an occupied carriage carries a destination pin — without it a passenger's " +
+                "destination is unreadable in play, which is the whole point of the device");
+            Assert.That(pin.Find("Card"), Is.Not.Null, "the pin needs its white card");
+            Assert.That(pin.Find("Symbol"), Is.Not.Null, "and the symbol that card carries");
+            foreach (var filter in pin.GetComponentsInChildren<MeshFilter>(true))
+                Assert.That(filter.sharedMesh, Is.Not.Null,
+                    filter.name + " must resolve a mesh (a null here renders nothing at all)");
+            Assert.That(pin.GetComponentsInChildren<Collider>(true), Is.Empty,
+                "the pin is decoration: it floats over the board and must never swallow a " +
+                "switch tap on its way past");
+            Assert.That(pin.GetComponentsInChildren<BoardElementId>(true), Is.Empty,
+                "and it is not authored inventory — the train ROOT carries the only id");
+        }
+
+        // THE law that keeps one vocabulary. If anyone ever writes a second colour-to-shape
+        // decision — a switch in ToyTrainView, a lookup keyed off the tint, a "red is a circle
+        // and everything else is a square" shortcut of the kind CatLine was written to delete —
+        // it will disagree with CatLine.ShapeOf on at least one line and this fails. The
+        // reference-equality check is deliberate: the pin must carry the SAME mesh instance the
+        // shared realiser hands out, not an equivalent one built somewhere else.
+        [UnityTest]
+        public IEnumerator PinSymbol_IsTheShapeTheSharedVocabularyGivesThatLine()
+        {
+            yield return BuildBoard();
+            var seen = new System.Collections.Generic.List<Mesh>();
+            foreach (var (code, line) in new (byte, string)[]
+            {
+                (CatColor.Red, "red"), (CatColor.Blue, "blue"), (CatColor.Yellow, "yellow"),
+                (CatColor.Green, "green"), (CatColor.Wild, "wild"),
+            })
+            {
+                PlaceOnEdge(edge: 1, progressTicks: 6, color: code);
+                _view.UpdateFrom(_session);
+
+                DestinationShape shape = CatLine.ShapeOf(line);
+                Mesh expected = shape == DestinationShape.Star
+                    ? CatPinMeshBuilder.StarBadge()
+                    : DestinationShapeMesh.ForShape(shape);
+                Assert.That(PinSymbolMesh(), Is.SameAs(expected),
+                    $"the {line} pin must carry the mesh CatLine.ShapeOf({line}) = {shape} " +
+                    "resolves to — a second shape decision anywhere would show up here first");
+                seen.Add(PinSymbolMesh());
+            }
+            Assert.That(seen, Is.Unique,
+                "and every line needs its OWN shape: if two lines share a mesh, destination " +
+                "identity has quietly fallen back onto colour alone");
+        }
+
+        // A wild cat rides (CatColor.Wild = 5, and LevelGraph guards construction, not travel),
+        // so the pin has to draw a star. DestinationShapeMesh.ForShape(Star) throws by design —
+        // its extruder fans from vertex 0 and a star is concave — and this pins that the pin
+        // solved that by triangulating differently, NOT by weakening the guard next door.
+        [UnityTest]
+        public IEnumerator WildCat_RidesUnderAStar_AndTheConvexExtruderStillRefusesOne()
+        {
+            yield return BuildBoard();
+            PlaceOnEdge(edge: 1, progressTicks: 6, color: CatColor.Wild);
+            _view.UpdateFrom(_session);
+
+            Assert.That(CatLine.ShapeOf("wild"), Is.EqualTo(DestinationShape.Star));
+            Assert.That(PinSymbolMesh(), Is.SameAs(CatPinMeshBuilder.StarBadge()),
+                "a wild passenger's pin is the centre-fanned star, not a fallback circle");
+            AssertCatColor(CatHeadColor(), Palette.CatnipViolet,
+                "and the wild cat itself wears catnip violet — BoardView.ColorForCode had no " +
+                "wild case and used to ride it out as loud magenta");
+
+            Assert.That(() => DestinationShapeMesh.ForShape(DestinationShape.Star),
+                Throws.ArgumentException,
+                "the convex extruder must STILL refuse a star — the pin got its star from a " +
+                "centre fan, and 'fix' that guard and station plates silently go to garbage");
+        }
+
+        [UnityTest]
+        public IEnumerator Pin_HoldsItselfSquareToTheCamera_AtEveryHeading()
+        {
+            yield return BuildBoard();
+            foreach (int edge in new[] { 0, 1, 2 }) // three distinct authored headings
+            {
+                PlaceOnEdge(edge: edge, progressTicks: 4);
+                _view.UpdateFrom(_session);
+
+                Quaternion asSeen = CameraSpaceRotation(Pin());
+                Assert.That(Vector3.Dot(asSeen * Vector3.forward, Vector3.forward),
+                    Is.GreaterThan(0.9999f),
+                    $"on edge {edge} the pin's face must point straight down the view axis — " +
+                    "a card left lying in the board plane renders at cos 48 = 67% height and " +
+                    "its circle reads as an ellipse");
+                Assert.That(Vector3.Dot(asSeen * Vector3.up, Vector3.up),
+                    Is.GreaterThan(0.9999f),
+                    $"on edge {edge} the pin must also be UPRIGHT on screen — a triangle that " +
+                    "rolls with the track stops pointing at the sky and stops being a triangle");
+            }
+        }
+
+        // The offset is counter-rotated as well as the rotation. Without that the card would
+        // swing around its cat like a bucket on a rope as the train turned, and a pin whose
+        // position depends on heading is a pin the player has to hunt for.
+        [UnityTest]
+        public IEnumerator Pin_SitsDIRECTLYAboveItsOwnCat_AtEveryHeading()
+        {
+            yield return BuildBoard();
+            foreach (int edge in new[] { 0, 1, 2 })
+            {
+                PlaceOnEdge(edge: edge, progressTicks: 4);
+                _view.UpdateFrom(_session);
+
+                Vector2 head = ScreenPoint(TrainRoot().transform.Find("Carriage/Cat/Head"));
+                Vector2 pin = ScreenPoint(Pin());
+                Assert.That(pin.x - head.x, Is.EqualTo(0f).Within(0.001f),
+                    $"on edge {edge} the pin must sit dead above its cat, not off to one side " +
+                    "— the board-plane offset is SOLVED for zero screen drift, so any wander " +
+                    "here means the heading counter-rotation was dropped");
+                Assert.That(pin.y - head.y, Is.EqualTo(0.26f).Within(0.001f),
+                    $"on edge {edge} the pin must hold the same screen rise at every heading");
+            }
+        }
+
+        // The clearance the whole placement exists to buy. A card held square to a camera 48
+        // degrees off the board plane spans a LOT of board z on its own, and the airspace
+        // straight above a cat's head belongs to the switch discs — the same ceiling that made
+        // "just make the ears taller" the wrong fix. Measured on the shipped meshes' real
+        // vertices through their real transforms, so rounded corners count as rounded.
+        [UnityTest]
+        public IEnumerator Pin_ClearsTheSwitchDiscSlab_AndTheRailCrowns()
+        {
+            yield return BuildBoard();
+            foreach (int edge in new[] { 0, 1, 2 })
+            {
+                PlaceOnEdge(edge: edge, progressTicks: 4);
+                _view.UpdateFrom(_session);
+
+                float highest = float.PositiveInfinity, lowest = float.NegativeInfinity;
+                foreach (float z in PinBoardZs())
+                {
+                    highest = Mathf.Min(highest, z); // -z is up out of the table
+                    lowest = Mathf.Max(lowest, z);
+                }
+                Assert.That(highest, Is.GreaterThan(SwitchFurnitureBottomZ + 0.01f),
+                    $"on edge {edge} the pin's top corner (board z {highest:F4}) must stay " +
+                    $"clear UNDER the switch furniture at {SwitchFurnitureBottomZ} — a card " +
+                    "that reaches into that slab punches through a disc at every switch");
+                Assert.That(lowest, Is.LessThan(RailCrownZ - 0.01f),
+                    $"on edge {edge} the pin's bottom corner (board z {lowest:F4}) must stay " +
+                    $"above the rail crowns at {RailCrownZ}, or the track clips the card");
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator Pin_ReadsAtGameplayZoom_OutSizingTheHeadItLabels()
+        {
+            yield return BuildBoard();
+            PlaceOnEdge(edge: 1, progressTicks: 6);
+            _view.UpdateFrom(_session);
+
+            float cardPx = RenderedWorldSize(Pin().Find("Card")).x * GameplayPixelsPerBoardUnit;
+            float symbolPx =
+                RenderedWorldSize(Pin().Find("Symbol")).x * GameplayPixelsPerBoardUnit;
+            float headPx = RenderedWorldSize(TrainRoot().transform.Find("Carriage/Cat/Head")).x
+                * GameplayPixelsPerBoardUnit;
+
+            Assert.That(headPx, Is.EqualTo(17.7f).Within(0.5f),
+                "sanity on the yardstick itself: the head renders 17.7 px at the worst zoom");
+            Assert.That(cardPx, Is.GreaterThan(headPx),
+                $"the card ({cardPx:F1} px) must out-read the head ({headPx:F1} px) it labels " +
+                "— in target-01 the pin is about as large as the cat, and ours starts smaller");
+            Assert.That(symbolPx, Is.GreaterThan(12f),
+                $"the symbol ({symbolPx:F1} px) carries the entire destination channel");
+            Assert.That(cardPx - symbolPx, Is.GreaterThan(4f),
+                "and the card must still show white around the symbol, or it stops reading " +
+                "as a card and the symbol loses the contrast it is mounted on for");
+
+            // The finest detail any of the five symbols carries, and the constraint that fixed
+            // the symbol at 0.17 rather than something daintier. Under ~4 px a star stops
+            // reading as a star and the wild cat's badge becomes an anonymous blob.
+            float starPointPx = 0.5f * (1f - CatPinMeshBuilder.StarInnerRadius)
+                * ToyTrainView.PinSymbolSize * GameplayPixelsPerBoardUnit;
+            Assert.That(starPointPx, Is.GreaterThan(4f),
+                $"a star point renders {starPointPx:F1} px at the worst gameplay zoom");
+        }
+
+        // WINDING. This codebase has lost time to backface culling twice, most recently a whole
+        // render review where every camera-facing triangle was culled. The generated cards are
+        // the only new geometry here, so this checks the thing that actually goes wrong: that
+        // their front caps face the CAMERA once the pin is posed, measured through the shipped
+        // transform rather than asserted about the source array.
+        [UnityTest]
+        public IEnumerator PinCardMeshes_FrontCapsFaceTheCamera_NotAwayFromIt()
+        {
+            yield return BuildBoard();
+            PlaceOnEdge(edge: 1, progressTicks: 6, color: CatColor.Wild); // a star on the card
+            _view.UpdateFrom(_session);
+
+            foreach (string part in new[] { "Card", "Symbol" })
+            {
+                var piece = Pin().Find(part);
+                var mesh = piece.GetComponent<MeshFilter>().sharedMesh;
+                Quaternion asSeen = CameraSpaceRotation(piece);
+                Vector3[] vertices = mesh.vertices;
+                Vector3[] normals = mesh.normals;
+                int frontCap = 0;
+                for (int i = 0; i < vertices.Length; i++)
+                {
+                    if (vertices[i].z > -0.4999f) continue; // front cap only
+                    frontCap++;
+                    // The camera looks along world +z, so a face pointing back AT it has a
+                    // negative z. A mirrored winding flips exactly this sign and nothing else.
+                    Assert.That((asSeen * normals[i]).z, Is.LessThan(-0.99f),
+                        $"{part} vertex {i} is on the front cap but its normal points AWAY " +
+                        "from the camera — the cap was wound forwards; camera-facing " +
+                        "triangles enumerate the CCW outline in REVERSE");
+                }
+                Assert.That(frontCap, Is.GreaterThan(0),
+                    part + " must actually have a front cap to check");
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator Pin_IsPaletteBound_WhiteCardUnderTheLineColour()
+        {
+            yield return BuildBoard();
+            PlaceOnEdge(edge: 1, progressTicks: 6, color: CatColor.Blue);
+            _view.UpdateFrom(_session);
+
+            AssertCatColor(Pin().Find("Card").GetComponent<MeshRenderer>().sharedMaterial.color,
+                Palette.WarmPaper,
+                "the card is the palette's WarmPaper — brighter than the carriage's CreamCard " +
+                "on purpose, because being the brightest thing on the board is what separates " +
+                "a floating pin from the cream body underneath it");
+
+            var block = new MaterialPropertyBlock();
+            Pin().Find("Symbol").GetComponent<MeshRenderer>().GetPropertyBlock(block);
+            AssertCatColor(block.GetColor("_BaseColor"), Palette.HarborBlue,
+                "and the symbol wears the same line colour the cat does, from one vocabulary");
+        }
+
+        // Teardown law. The card and star prototypes are SHARED statics flagged HideAndDontSave,
+        // the DestinationShapeMesh idiom — not per-consist meshes. Getting this wrong is not
+        // merely wasteful: every train on the board carries these, so the first consist torn
+        // down by a Retry would blank every other pin on its way out.
+        [UnityTest]
+        public IEnumerator PinCardMeshes_AreSharedPrototypes_ThatSurviveAConsistBeingTornDown()
+        {
+            yield return BuildBoard();
+            PlaceOnEdge(edge: 1, progressTicks: 6);
+            _view.UpdateFrom(_session);
+            var card = Pin().Find("Card").GetComponent<MeshFilter>().sharedMesh;
+            Assert.That(card, Is.SameAs(CatPinMeshBuilder.Card()),
+                "a consist mounts the shared card prototype, it does not build its own");
+            Assert.That(card.hideFlags, Is.EqualTo(HideFlags.HideAndDontSave),
+                "the prototype must outlive a scene unload between PlayMode cases");
+
+            Object.DestroyImmediate(_host);
+            _host = null;
+            _view = null;
+            yield return null;
+            Assert.That(CatPinMeshBuilder.Card(), Is.Not.Null,
+                "and tearing a consist down must not destroy the mesh every other pin uses");
+            Assert.That(CatPinMeshBuilder.Card(), Is.SameAs(card),
+                "the surviving prototype is the SAME instance, not a quietly rebuilt one");
+        }
+
+        private Transform Pin() => TrainRoot().transform.Find("Carriage/Pin");
+
+        private Mesh PinSymbolMesh() =>
+            Pin().Find("Symbol").GetComponent<MeshFilter>().sharedMesh;
+
+        // Where a part lands ON SCREEN. The diorama camera is orthographic and identity-rotated,
+        // so once a board-local point is turned by the tilt, world x and y ARE screen x and y.
+        // Applied explicitly rather than read off a live camera because these cases build a
+        // BoardView without running BoardSceneLook.Apply.
+        private Vector2 ScreenPoint(Transform part)
+        {
+            Vector3 tilted = BoardSceneLook.BoardTilt
+                * _view.transform.InverseTransformPoint(part.position);
+            return new Vector2(tilted.x, tilted.y);
+        }
+
+        // A part's rotation as the camera sees it: strip the host's own transform, then apply
+        // the diorama tilt. Identity here means "square to the camera".
+        private Quaternion CameraSpaceRotation(Transform part) =>
+            BoardSceneLook.BoardTilt
+            * Quaternion.Inverse(_view.transform.rotation) * part.rotation;
+
+        // Board z of every vertex the pin actually renders. Real vertices, not bounds corners:
+        // the card's corners are ROUNDED, so its box overstates the envelope by 0.013 and a
+        // clearance figure computed off the box would be quietly pessimistic in a place where
+        // every thousandth is spoken for.
+        private System.Collections.Generic.IEnumerable<float> PinBoardZs()
+        {
+            foreach (var filter in Pin().GetComponentsInChildren<MeshFilter>(true))
+            {
+                Vector3[] vertices = filter.sharedMesh.vertices;
+                for (int i = 0; i < vertices.Length; i++)
+                    yield return _view.transform.InverseTransformPoint(
+                        filter.transform.TransformPoint(vertices[i])).z;
+            }
+        }
+
         [UnityTest]
         public IEnumerator CatTint_MatchesTheTrainsLineColor()
         {

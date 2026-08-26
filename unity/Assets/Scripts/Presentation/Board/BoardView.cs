@@ -316,7 +316,10 @@ namespace CatMetro.Presentation.Board
                     _trains[t] = consist;
                 }
                 consist.gameObject.SetActive(true);
-                consist.SyncSlot(trains[t].Id, ColorForCode(trains[t].Color));
+                // The CODE, not a resolved Color: the consist paints the cat AND cuts its
+                // destination pin from it, and both have to come off the one CatLine vocabulary
+                // or the pin's shape and the cat's colour can drift apart.
+                consist.SyncSlot(trains[t].Id, trains[t].Color);
                 if (trains[t].State == CatMetro.Domain.TrainState.OnEdge)
                 {
                     int e = trains[t].EdgeId;
