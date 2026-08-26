@@ -103,6 +103,9 @@ namespace CatMetro.Presentation.Hud.WavePreview
         public Color DeliveriesMarkColor =>
             _deliveriesMark != null ? _deliveriesMark.color : Color.clear;
         public Color RidersMarkColor => _ridersMark != null ? _ridersMark.color : Color.clear;
+        public Color DeliveriesTextColor =>
+            _deliveries != null ? _deliveries.color : Color.clear;
+        public Color RidersTextColor => _riders != null ? _riders.color : Color.clear;
 
         // The face box the capsule allocates at the current viewport — the ruler every face's
         // internal geometry is a fraction of, exposed so the badge-separation law can be

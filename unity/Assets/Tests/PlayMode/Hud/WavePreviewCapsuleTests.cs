@@ -321,9 +321,18 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
 
             // One cream for the whole row. The counters sit on the bare diorama with no card
-            // behind them, so a tinted mark beside a cream numeral reads as two objects.
+            // behind them, so a tinted mark beside a cream numeral reads as two objects — which
+            // is what the teal and orange dots did. Glyph and numeral share ONE token, and the
+            // assertion is written as that equality rather than as two independent checks so it
+            // keeps its meaning if the row is ever restyled to a different cream.
             Assert.That(_root.Preview.DeliveriesMarkColor, Is.EqualTo(Palette.WarmPaper));
             Assert.That(_root.Preview.RidersMarkColor, Is.EqualTo(Palette.WarmPaper));
+            Assert.That(_root.Preview.DeliveriesMarkColor,
+                Is.EqualTo(_root.Preview.DeliveriesTextColor),
+                "the trophy and its numeral are one object");
+            Assert.That(_root.Preview.RidersMarkColor,
+                Is.EqualTo(_root.Preview.RidersTextColor),
+                "the people mark and its numeral are one object");
         }
 
         [UnityTest]
