@@ -452,12 +452,24 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
-        public void RedAndBlue_RenderExactlyWhatTheyRenderedBeforeTheVocabulary()
+        public void RedAndBlue_OccupyTheSameBoardFootprint()
         {
-            // Existing captures and pins hold these two. Circle stayed the builtin cylinder
-            // laid on its face; square stayed the builtin cube. Both scales are the shipped
-            // literals, and the cylinder's 0.05 is the cube's 0.1 halved because the builtin
-            // cylinder is two units tall — the two plates are the same 0.1 thick.
+            // Circle is still the builtin cylinder laid on its face and square still the
+            // builtin cube — the mesh choice is what the captures pin, and it is untouched.
+            //
+            // What these assert is the rendered SIZE, and they assert it because the previous
+            // version of this test could not. It pinned localScale == (0.9, 0.05, 0.9) for the
+            // red plate and passed for the whole life of the badge while the red plate rendered
+            // at TWICE the blue one's width — visible in the 2026-08-25 r6 board capture, where
+            // the two station roofs (same cube, same size) project to within 0.05% of each
+            // other under the orthographic camera while the red disc measures 1.99x the blue
+            // square. PlateScale halved only the cylinder's Y, on the belief that the builtin
+            // cylinder is 2 units tall but 1 across; it is 2 across too.
+            //
+            // A pinned scale FACTOR says nothing about how big a thing renders unless the mesh
+            // is unit-sized, which is precisely the assumption that keeps failing here (see
+            // Sphere.fbx at ~3.33). So these multiply localScale back through the mesh's own
+            // bounds and check the footprint the board actually gets.
             var level = ImportLevel("L001");
             var view = BuildBoard(level);
             BoardPropDecorator.Decorate(level, view.transform, KioskCatalog());
@@ -466,13 +478,28 @@ namespace CatMetro.Tests.PlayMode
             var red = plates["RED"];
             AssertBuiltinMesh(red, "Cylinder.fbx", "the red plate is still a laid-flat cylinder");
             Assert.That(red.localRotation.eulerAngles.x, Is.EqualTo(90f).Within(0.01f));
-            AssertScale(red, 0.9f, 0.05f, 0.9f);
+            AssertFootprint(red, 0.9f, 0.9f, 0.1f,
+                "the red plate is a 0.9 disc standing 0.1 off the board, whatever the builtin"
+                + " cylinder's intrinsic size turns out to be");
 
             var blue = plates["BLU"];
             AssertBuiltinMesh(blue, "Cube.fbx", "the blue plate is still a cube");
             Assert.That(Quaternion.Angle(blue.localRotation, Quaternion.identity),
                 Is.LessThan(0.01f));
-            AssertScale(blue, 0.9f, 0.9f, 0.1f);
+            AssertFootprint(blue, 0.9f, 0.9f, 0.1f,
+                "and the blue plate is that same 0.9 by 0.1 — unchanged, as its captures pin");
+
+            // The property that was actually violated, stated as a property rather than as two
+            // literals that happen to agree. Nothing was making this claim, which is exactly
+            // how a double-width red disc survived: each shape was pinned against its own
+            // number, so no assertion ever compared one plate to the other.
+            var redSize = PlateFootprint(red);
+            var blueSize = PlateFootprint(blue);
+            Assert.That(redSize.x, Is.EqualTo(blueSize.x).Within(0.001f),
+                "circle and square are one badge in two shapes: SHAPE is the channel, size is"
+                + " not, or the board reads one destination as louder than the other");
+            Assert.That(redSize.y, Is.EqualTo(blueSize.y).Within(0.001f), "same plate height");
+            Assert.That(redSize.z, Is.EqualTo(blueSize.z).Within(0.001f), "same standoff depth");
 
             foreach (var plate in plates.Values)
             {
@@ -481,6 +508,42 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(plate.GetComponent<BoardElementId>(), Is.Null,
                     "decoration never claims a board element id");
             }
+        }
+
+        [Test]
+        public void EveryPlateShape_RendersTheSizeItWasAskedFor()
+        {
+            // The general form of the bug above, and the assertion whose absence let it ship.
+            // Every shape was pinned against its own literal scale, so the suite could not see
+            // that one of them rendered at a different size from the rest — the one thing a
+            // shape channel must never do, since a plate twice its neighbour's size reads as a
+            // louder destination and there is no such thing in the game.
+            //
+            // Both sides come from the mesh's own bounds, so this holds for whatever geometry
+            // Unity hands back rather than for the sizes this repo currently believes in. That
+            // matters more than it sounds: the belief has now been wrong three times
+            // (Sphere.fbx ~3.33 across, Cylinder.fbx 2 tall, Cylinder.fbx 2 across).
+            const float size = 0.9f;
+            const float depth = 0.1f;
+            int checked_ = 0;
+            foreach (string line in CatLine.Names)
+            {
+                var shape = CatLine.ShapeOf(line);
+                var mesh = DestinationShapeMesh.ForShape(shape);
+                var turned = DestinationShapeMesh.PlateRotation(shape) * Vector3.Scale(
+                    mesh.bounds.size, DestinationShapeMesh.PlateScale(shape, size, depth));
+                Assert.That(Mathf.Abs(turned.x), Is.EqualTo(size).Within(0.001f),
+                    line + "'s " + shape + " plate must render " + size + " wide");
+                Assert.That(Mathf.Abs(turned.y), Is.EqualTo(size).Within(0.001f),
+                    line + "'s " + shape + " plate must render " + size + " tall");
+                Assert.That(Mathf.Abs(turned.z), Is.EqualTo(depth).Within(0.001f),
+                    line + "'s " + shape + " plate must stand " + depth + " off the board");
+                checked_++;
+            }
+            // Fails closed: a vocabulary that went empty would otherwise pass this vacuously.
+            Assert.That(checked_, Is.GreaterThan(1),
+                "at least two lines must exist for 'the same size as each other' to mean"
+                + " anything at all");
         }
 
         [Test]
@@ -666,7 +729,13 @@ namespace CatMetro.Tests.PlayMode
             // position. The chip must clear the primary keyline's footprint outright.
             var primaryKeyline = station.transform.Find("station:keyline-generated");
             var chipKeyline = station.transform.Find("station:keyline-accept-0");
-            float clearance = (primaryKeyline.localScale.x + chipKeyline.localScale.x) * 0.5f;
+            // Footprint, not localScale: COOL's primary is a square today, so a scale factor
+            // happens to equal a width here — but a circle-primary berth with chips would have
+            // compared 1.08 against a keyline that really spanned 2.16 and reported clearance
+            // it did not have. Measure what is drawn; the neighbouring plate bug was exactly
+            // this arithmetic trusted one file over.
+            float clearance =
+                (PlateFootprint(primaryKeyline).x + PlateFootprint(chipKeyline).x) * 0.5f;
             Assert.That(Mathf.Abs(chipKeyline.localPosition.x - primaryKeyline.localPosition.x),
                 Is.GreaterThan(clearance),
                 "the accept chip's keyline must not overlap the primary keyline beside it");
@@ -786,11 +855,26 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(actual.vertexCount, Is.EqualTo(expected.vertexCount), because);
         }
 
-        private static void AssertScale(Transform plate, float x, float y, float z)
+        // The size a plate actually OCCUPIES in its anchor's frame: the mesh's own bounds,
+        // scaled by localScale and turned by localRotation so a laid-flat cylinder and an
+        // upright cube are described in the same axes. Deliberately NOT localScale — the
+        // helper this replaced compared scale factors, which are only a size when the mesh is
+        // unit-sized, and it therefore reported a healthy red plate that rendered at 2x.
+        private static Vector3 PlateFootprint(Transform plate)
         {
-            Assert.That(plate.localScale.x, Is.EqualTo(x).Within(0.0001f));
-            Assert.That(plate.localScale.y, Is.EqualTo(y).Within(0.0001f));
-            Assert.That(plate.localScale.z, Is.EqualTo(z).Within(0.0001f));
+            Vector3 intrinsic = plate.GetComponent<MeshFilter>().sharedMesh.bounds.size;
+            Vector3 turned = plate.localRotation * Vector3.Scale(intrinsic, plate.localScale);
+            return new Vector3(
+                Mathf.Abs(turned.x), Mathf.Abs(turned.y), Mathf.Abs(turned.z));
+        }
+
+        private static void AssertFootprint(
+            Transform plate, float x, float y, float z, string because)
+        {
+            var actual = PlateFootprint(plate);
+            Assert.That(actual.x, Is.EqualTo(x).Within(0.001f), because);
+            Assert.That(actual.y, Is.EqualTo(y).Within(0.001f), because);
+            Assert.That(actual.z, Is.EqualTo(z).Within(0.001f), because);
         }
 
         private static Dictionary<string, Transform> StationPlates(BoardView view) =>

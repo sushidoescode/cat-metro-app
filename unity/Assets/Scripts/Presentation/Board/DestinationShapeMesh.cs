@@ -11,10 +11,11 @@ namespace CatMetro.Presentation.Board
     //
     // Circle and Square deliberately return Unity's BUILTIN Cylinder/Cube meshes rather than
     // generated ones. They are byte-for-byte what the board rendered before the vocabulary
-    // existed (GameObject.CreatePrimitive uses these same two assets), so red plates and blue
-    // plates are unchanged and the captures and PropPlacement pins that hold them still hold.
-    // Triangle and Diamond have no builtin equivalent, so they are extruded here. Star has no
-    // plate at all and throws — see the case for why.
+    // existed (GameObject.CreatePrimitive uses these same two assets), so the MESH choice is
+    // unchanged and the pins that hold it still hold. Their SIZE is a separate matter and the
+    // circle's was wrong from the start — see PlateScale, which no longer trusts a builtin to
+    // be the size it looks like. Triangle and Diamond have no builtin equivalent, so they are
+    // extruded here. Star has no plate at all and throws — see the case for why.
     //
     // WINDING LAW — this codebase has lost time to backface culling twice, most recently the
     // 2026-08-25 switch-lever render review where every camera-facing triangle was culled.
@@ -80,15 +81,41 @@ namespace CatMetro.Presentation.Board
                 ? Quaternion.Euler(90f, 0f, 0f) : Quaternion.identity;
 
         // `size` is the plate's width and height in the anchor's local units; `depth` is how
-        // thick it stands off the board. The builtin cylinder is 2 units tall before scaling,
-        // so its depth halves — which is why the shipped red plate reads (0.9, 0.05, 0.9)
-        // against the blue plate's (0.9, 0.9, 0.1) and the two are in fact the same 0.1 thick.
-        // The extruded prisms are normalised to the builtin cube's -0.5..0.5 box so they take
-        // the cube's scale semantics unchanged.
-        public static Vector3 PlateScale(DestinationShape shape, float size, float depth) =>
-            shape == DestinationShape.Circle
-                ? new Vector3(size, depth * 0.5f, size)
+        // thick it stands off the board. Both are the size the plate should OCCUPY once drawn,
+        // never a raw localScale multiplier — a scale factor only means what it says when the
+        // mesh happens to be unit-sized, and two of the meshes reachable from here are not.
+        //
+        // Measured, not assumed. This returned `depth * 0.5f` on Y alone, on the belief that
+        // the builtin cylinder is 2 units tall but 1 unit across. It is 2 units ACROSS as well,
+        // so every circle plate rendered at twice the width of the square beside it. The
+        // 2026-08-25 r6 board capture is the evidence: the camera is orthographic, so a shared
+        // pixels-per-board-unit is a property of the frame, and the two station roofs there
+        // (same cube, same size) project to within 0.05% of each other — while the red disc
+        // measures 1.99x the blue square that was asked for the identical 0.9.
+        //
+        // That is the THIRD builtin mesh in this repo to not be the size the code assumed;
+        // Sphere.fbx is ~3.33 across and sealed the cats' ears, eyes and muzzle inside their
+        // heads for three rounds while the suite stayed green. So the correction is not another
+        // constant to be wrong about later: the divisor is the mesh's OWN bounds, read at
+        // runtime, which stays right for whatever Unity actually hands back in any version.
+        // This is ToyTrainView.ScaleForWorldSize's shape, deliberately.
+        //
+        // Star throws here, out of ForShape, exactly as it does when the mesh itself is asked
+        // for — a shape with no plate has no plate size either.
+        public static Vector3 PlateScale(DestinationShape shape, float size, float depth)
+        {
+            // PlateRotation lays the circle on its face, so the cylinder's own Y is the axis
+            // that becomes the plate's DEPTH and its X/Z carry the width. Every other plate is
+            // already a prism in the board's XY plane: X/Y carry the width, Z the depth.
+            Vector3 worldSize = shape == DestinationShape.Circle
+                ? new Vector3(size, depth, size)
                 : new Vector3(size, size, depth);
+            Vector3 intrinsic = ForShape(shape).bounds.size;
+            return new Vector3(
+                intrinsic.x > 1e-6f ? worldSize.x / intrinsic.x : worldSize.x,
+                intrinsic.y > 1e-6f ? worldSize.y / intrinsic.y : worldSize.y,
+                intrinsic.z > 1e-6f ? worldSize.z / intrinsic.z : worldSize.z);
+        }
 
         // Apex up, inscribed in the unit box — maximally unlike the square beside it.
         private static Vector2[] TriangleOutline() => new[] // counter-clockwise in board XY
