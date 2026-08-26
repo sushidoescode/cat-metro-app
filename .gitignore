@@ -42,6 +42,19 @@ unity/Assets/Art/Generated/incoming.meta
 *.pfx
 *.bks
 *.key
+# STORE-RELEASE: the extension list above misses the file that carries the keystore
+# PASSWORD rather than the key itself. Gradle's conventional name is keystore.properties,
+# and Unity writes local.properties next to it.
+keystore.properties
+local.properties
+
+# STORE-RELEASE: build outputs. scripts/build-apk.sh and scripts/build-aab.sh write here,
+# and a release .aab is 100MB+ — nothing in this tree was ignored before, so a stray
+# `git add -A` could have committed one. (The line-10 TODO promised `build/` and never
+# delivered it.)
+build/
+*.aab
+*.apk
 
 # Unity MCP: generated client config carries a live bearer token — never commit it
 # (the Editor's UserSettings/mcp.json is already covered by unity/UserSettings/ above)
