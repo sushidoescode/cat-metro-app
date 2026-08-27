@@ -1,66 +1,92 @@
 using System;
-using System.Globalization;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace CatMetro.Services
 {
-    // Provider-neutral boundary. Platform adapters own the SDK-specific scheduling details.
-    public interface IMessaging
+    public enum MessagingPermission
     {
+        Unknown,
+        Denied,
+        Authorized
+    }
+
+    public enum MessagingRoute
+    {
+        Daily
+    }
+
+    public sealed class DailyReminderSlot : IEquatable<DailyReminderSlot>
+    {
+        public static readonly DailyReminderSlot Morning = new DailyReminderSlot("morning");
+        public static readonly DailyReminderSlot Afternoon = new DailyReminderSlot("afternoon");
+        public static readonly DailyReminderSlot Evening = new DailyReminderSlot("evening");
+
+        public string TagValue { get; }
+
+        private DailyReminderSlot(string tagValue)
+        {
+            TagValue = tagValue;
+        }
+
+        public static DailyReminderSlot FromTagValue(string tagValue)
+        {
+            switch (tagValue)
+            {
+                case "afternoon": return Afternoon;
+                case "evening": return Evening;
+                case "morning": return Morning;
+                default: return Morning;
+            }
+        }
+
+        public bool Equals(DailyReminderSlot other) =>
+            other != null && string.Equals(TagValue, other.TagValue, StringComparison.Ordinal);
+
+        public override bool Equals(object obj) => Equals(obj as DailyReminderSlot);
+
+        public override int GetHashCode() => TagValue.GetHashCode();
+    }
+
+    public interface IMessaging : IDisposable
+    {
+        bool IsAvailable { get; }
+        string SubscriptionId { get; }
+        MessagingPermission Permission { get; }
+        bool CanRequestPermission { get; }
+        event Action<MessagingRoute> LinkOpened;
+        Task<MessagingPermission> PromptAsync(bool fallbackToSettings,
+            CancellationToken cancellationToken);
         void Schedule(DailyChallengeNotification notification);
         void Cancel(string notificationId);
     }
 
-    // Unix timestamps are expressed in seconds so platform adapters can translate them without
-    // importing their SDKs into the pure services assembly.
     public sealed class DailyChallengeNotification
     {
         public string NotificationId { get; }
-        public string TemplateId { get; }
-        public string Variant { get; }
         public string Title { get; }
         public string Body { get; }
         public string DeepLink { get; }
+        public MessagingRoute Route { get; }
         public string ChannelId { get; }
-        public string DateKey { get; }
-        public long DeliverAtUtc { get; }
-        public long ExpiresAtUtc { get; }
-        public string CollapseKey { get; }
+        public DailyReminderSlot Slot { get; }
 
-        private DailyChallengeNotification(string dateKey, long deliverAtUtc, long expiresAtUtc)
+        private DailyChallengeNotification(DailyReminderSlot slot)
         {
-            NotificationId = "daily-ready:" + dateKey;
-            TemplateId = "daily_challenge";
-            Variant = "A";
+            NotificationId = "daily-ready";
             Title = "Today's Line is ready";
-            Body = "Same map for everyone. One minute to set your score.";
+            Body = "A fresh little route is waiting when you feel like playing.";
             DeepLink = "catmetro://daily";
+            Route = MessagingRoute.Daily;
             ChannelId = "daily";
-            DateKey = dateKey;
-            DeliverAtUtc = deliverAtUtc;
-            ExpiresAtUtc = expiresAtUtc;
-            CollapseKey = NotificationId;
+            Slot = slot;
         }
 
-        public static DailyChallengeNotification Create(string dateKey, long deliverAtUtc, long expiresAtUtc)
+        public static DailyChallengeNotification Create(DailyReminderSlot slot)
         {
-            if (!IsUtcDateKey(dateKey))
-                throw new ArgumentException("dateKey must be a real UTC date in yyyy-MM-dd form", nameof(dateKey));
-            if (deliverAtUtc < 0)
-                throw new ArgumentException("deliverAtUtc must be nonnegative", nameof(deliverAtUtc));
-            if (expiresAtUtc < 0)
-                throw new ArgumentException("expiresAtUtc must be nonnegative", nameof(expiresAtUtc));
-            if (expiresAtUtc <= deliverAtUtc)
-                throw new ArgumentException("expiresAtUtc must be after deliverAtUtc", nameof(expiresAtUtc));
-
-            return new DailyChallengeNotification(dateKey, deliverAtUtc, expiresAtUtc);
+            if (slot == null)
+                throw new ArgumentNullException(nameof(slot));
+            return new DailyChallengeNotification(slot);
         }
-
-        private static bool IsUtcDateKey(string dateKey) =>
-            dateKey != null && dateKey.Length == 10 && DateTime.TryParseExact(
-                dateKey,
-                "yyyy-MM-dd",
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-                out _);
     }
 }
