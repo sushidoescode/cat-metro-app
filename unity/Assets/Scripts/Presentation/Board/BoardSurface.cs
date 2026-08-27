@@ -88,8 +88,8 @@ namespace CatMetro.Presentation.Board
             return body;
         }
 
-        // One primitive site and one explicit project-material bind keep every runtime renderer
-        // on the project's URP shader. A property block supplies each tint without allocating
+        // One explicit runtime renderer and project-material bind keep every generated part on
+        // the project's URP shader. A property block supplies each tint without allocating
         // renderer-local material instances across Retry and LoadNext rebuilds.
         private static Transform CreatePart(string name, Transform parent, Vector3 position,
             Vector3 scale, Color color, bool woodGrain = false)

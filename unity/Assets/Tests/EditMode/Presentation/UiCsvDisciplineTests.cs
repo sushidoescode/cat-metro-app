@@ -50,11 +50,11 @@ namespace CatMetro.Tests.Presentation
             // MERGE order — hint.tutorial row 7 (transitively pinned, #39 F9), results.next
             // row 8, then CM-UX-06's three (home.title/intro.play/intro.goal) at rows 9-11,
             // byte-pinned in UiCsvUx06Tests (indices shifted at adoption). CM-DAILYWIRE's own
-            // two rows (home.daily.label/results.daily.done) land at rows 12-13, byte-pinned in
-            // UiCsvDailyWireTests, per this same R1-L6 evolution clause. Count = 5 + 9.
-            Assert.That(rows.Length, Is.EqualTo(FrozenBaseRows.Length + 9),
+            // six rows (entry, return, tally, practice, error, loading) land at rows 12-17,
+            // byte-pinned in UiCsvDailyWireTests under the same evolution clause. Count = 5 + 13.
+            Assert.That(rows.Length, Is.EqualTo(FrozenBaseRows.Length + 13),
                 "CM-UX-02's two + CM-UX-05's one + CM-UX-04's one + CM-UX-06's three + "
-                + "CM-DAILYWIRE's two");
+                + "Daily Live's six");
             Assert.That(rows[5], Is.EqualTo("retry.cta,Try again"), "LOCKED");
             Assert.That(rows[6], Is.EqualTo("halt.notice,Signal fault — the line stopped"),
                 "DRAFT, byte-pinned including U+2014");

@@ -6,35 +6,55 @@ using CatMetro.Services;
 
 namespace CatMetro.Tests.Save
 {
-    // CM-C7 criterion 7: ordered migration table; downgrade refused (file untouched, read-only
-    // in-memory default profile, save_migrated(...success=false) recorded). A-C7-4: the v1->v2
-    // step is a STUB — no real v2 schema is invented.
+    // Ordered migrations preserve unknown data; downgrade remains a read-only refusal. Daily
+    // Live is the first real schema migration and must upgrade v1 saves additively.
     public sealed class SaveMigrationTests
     {
         [Test]
-        public void MigrationTable_AppliesStepsInOrder_V1ToV2Stub()
+        public void MigrationTable_AppliesRegisteredStepsInOrder_V2ToV3()
         {
             var table = new MigrationTable()
-                .Register(1, 2, payload =>
+                .Register(2, 3, payload =>
                 {
-                    payload["stubV2Marker"] = true; // stub step: additive only
+                    payload["stubV3Marker"] = true;
                     return payload;
                 });
-            var migrated = table.Migrate(SaveDefaults.FreshPayload(), 1, 2);
+            var migrated = table.Migrate(SaveDefaults.FreshPayload(), 2, 3);
 
             Assert.That(migrated, Is.Not.Null);
-            Assert.That((bool)migrated["stubV2Marker"], Is.True);
-            Assert.That((int)migrated["saveVersion"], Is.EqualTo(2),
+            Assert.That((bool)migrated["stubV3Marker"], Is.True);
+            Assert.That((int)migrated["saveVersion"], Is.EqualTo(3),
                 "the table stamps the target version after each step");
             Assert.That(migrated["ledger"], Is.Not.Null,
                 "a migration step never deletes a key it does not understand (ADR-0006:72)");
         }
 
         [Test]
-        public void MigrationTable_GapReturnsNull_NeverGuesses()
+        public void MigrationTable_DefaultV1ToV2_AddsDailyFields_AndPreservesUnknownData()
         {
-            var table = new MigrationTable(); // no steps registered
-            Assert.That(table.Migrate(SaveDefaults.FreshPayload(), 1, 2), Is.Null);
+            var legacy = SaveDefaults.FreshPayload();
+            legacy["saveVersion"] = 1;
+            var daily = (JObject)legacy["daily"];
+            daily.Remove("trustedDateKey");
+            daily.Remove("completedKeys");
+            daily.Remove("lifetimeCompletions");
+            legacy["futureExperiment"] = new JObject { ["kept"] = true };
+
+            var migrated = new MigrationTable().Migrate(legacy, 1, 2);
+
+            Assert.That(migrated, Is.Not.Null);
+            Assert.That((int)migrated["saveVersion"], Is.EqualTo(2));
+            Assert.That((string)migrated["daily"]["trustedDateKey"], Is.Empty);
+            Assert.That(migrated["daily"]["completedKeys"], Is.InstanceOf<JArray>());
+            Assert.That((int)migrated["daily"]["lifetimeCompletions"], Is.Zero);
+            Assert.That((bool)migrated["futureExperiment"]["kept"], Is.True);
+        }
+
+        [Test]
+        public void MigrationTable_GapAfterCurrentVersion_ReturnsNull_NeverGuesses()
+        {
+            var table = new MigrationTable();
+            Assert.That(table.Migrate(SaveDefaults.FreshPayload(), 2, 3), Is.Null);
         }
 
         [Test]
@@ -42,8 +62,8 @@ namespace CatMetro.Tests.Save
         {
             using var root = new SFixtures.TempRoot();
             var store = SFixtures.Store(root);
-            // a file from "the future": saveVersion 2 > build's 1
-            var future = SFixtures.FileWithVersion(2);
+            // A file from the future remains byte-identical and forces read-only mode.
+            var future = SFixtures.FileWithVersion(3);
             SFixtures.WriteRaw(store.SavePath, future);
 
             var result = store.Load();
@@ -53,7 +73,7 @@ namespace CatMetro.Tests.Save
                 "the newer file's bytes are left untouched");
             Assert.That(store.ReadOnlyMode, Is.True);
             Assert.That(store.ReportedEvents.Any(e => e.Name == "save_migrated"
-                && e.Detail.Contains("from=2") && e.Detail.Contains("to=1")
+                && e.Detail.Contains("from=3") && e.Detail.Contains("to=2")
                 && e.Detail.Contains("success=false")), Is.True);
 
             // read-only means commits refuse: the file's bytes stay byte-identical after both

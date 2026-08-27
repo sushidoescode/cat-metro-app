@@ -5,8 +5,8 @@ using CatMetro.Application.Save;
 
 namespace CatMetro.Tests.Save
 {
-    // CM-C7 criteria 2 + 3: the payload v1 key set is EXACTLY ADR-0006 §2 — and the three OPEN
-    // sub-shapes are absent, not guessed.
+    // The v2 payload remains additive over ADR-0006's v1 shape. Daily Live owns the four new
+    // fields; the unrelated open sub-shapes remain absent rather than guessed.
     public sealed class SavePayloadTests
     {
         private static readonly string[] TopLevel =
@@ -20,6 +20,18 @@ namespace CatMetro.Tests.Save
         {
             var keys = SaveDefaults.FreshPayload().Properties().Select(p => p.Name).ToArray();
             Assert.That(keys, Is.EquivalentTo(TopLevel), "no more, no fewer (criterion 2)");
+        }
+
+        [Test]
+        public void FreshPayload_IsV2_WithLifetimeDailyProgressDefaults()
+        {
+            var payload = SaveDefaults.FreshPayload();
+
+            Assert.That((int)payload["saveVersion"], Is.EqualTo(2));
+            Assert.That((int)payload["daily"]["lifetimeCompletions"], Is.Zero);
+            Assert.That((string)payload["daily"]["trustedDateKey"], Is.Empty);
+            Assert.That(payload["daily"]["completedKeys"], Is.InstanceOf<JArray>());
+            Assert.That(((JArray)payload["daily"]["completedKeys"]).Count, Is.Zero);
         }
 
         // Review F5: criterion 2 says "the SERIALISED payload's top-level keys" — assert the
@@ -81,7 +93,11 @@ namespace CatMetro.Tests.Save
             Assert.That(((JObject)p["progress"]).Properties().Select(x => x.Name),
                 Is.EquivalentTo(new[] { "levels", "districtsUnlocked", "tutorialDone" }));
             Assert.That(((JObject)p["daily"]).Properties().Select(x => x.Name),
-                Is.EquivalentTo(new[] { "lastDateKey", "streakDays", "playedKeys" }));
+                Is.EquivalentTo(new[]
+                {
+                    "lastDateKey", "streakDays", "playedKeys", "trustedDateKey",
+                    "completedKeys", "lifetimeCompletions",
+                }));
             Assert.That(((JObject)p["economy"]).Properties().Select(x => x.Name),
                 Is.EquivalentTo(new[] { "tickets", "rewindBalance", "freeRewindDateKey" }));
             Assert.That(((JObject)p["entitlements"]).Properties().Select(x => x.Name),

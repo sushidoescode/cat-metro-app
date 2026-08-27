@@ -9,8 +9,9 @@ namespace CatMetro.Presentation.Screens
 {
     // LOOK step 7 Home: a framed toy-route/depot stage around three non-interactive cat
     // holders, with one wide, csv-labelled L001 action. The default remains commerce-free;
-    // Daily is constructed only when explicitly unlocked. Hit regions retain the existing
-    // unregister lifecycle, and motion-off keeps the action's static raised-ring cue.
+    // Daily is constructed only when progress/config unlocks it, including a threshold crossed
+    // during the current run. Hit regions retain the existing unregister lifecycle, and
+    // motion-off keeps the action's static raised-ring cue.
     public sealed class HomeScreenView : MonoBehaviour
     {
         private const string PinRegionId = "home.pin.l001";
@@ -23,14 +24,9 @@ namespace CatMetro.Presentation.Screens
         // RegisterPin/UnregisterPin/OnDisable/OnEnable lifetime law the L001 pin already obeys
         // (a second call site into the same helpers, never a parallel implementation).
         private const string DailyPinRegionId = "home.pin.daily";
-        // CM-BOOT-HOME: deliberately left at the OLD ParentPriority(0), NOT raised alongside
-        // PinRegionPriority above — Daily is explicitly out of scope for this contract
-        // (criterion 5, commerce-free shipped path) and this pin is never constructed at all
-        // when dailyUnlocked is false (GameRoot.ComposeScreenFlow), which is unconditionally the
-        // case in a shipped build — so the priority-debt fix's live-tap-bug risk never reaches
-        // it. Left as a named, flagged follow-up rather than silently widened past this
-        // contract's declared scope.
-        private const int DailyPinRegionPriority = 0; // explicit per A-UX1-3
+        // Daily now ships on Home, so it shares Home's raised priority and cannot lose a tap to
+        // a lower painted layer while the screen is visible.
+        private const int DailyPinRegionPriority = ChromeRegions.HomeScreenPriority;
 
         public System.Action LevelSelected;
         public System.Action DailySelected;
@@ -50,6 +46,8 @@ namespace CatMetro.Presentation.Screens
         private TMP_Text _primaryLabel;
         private RectTransform _dailyPin;
         private TMP_Text _dailyLabel;
+        private TMP_Text _dailyTally;
+        private TMP_Text _dailyStatus;
         private Rect _pinRectPx;
         private Rect _dailyPinRectPx;
         private Rect _heroRectPx;
@@ -79,6 +77,9 @@ namespace CatMetro.Presentation.Screens
         public Rect DailyPinPaintedRectPx => _dailyPinRectPx;
         public RectTransform DailyPinTransform => _dailyPin;
         public string DailyLabelText => _dailyLabel != null ? _dailyLabel.text : "";
+        public string DailyTallyText => _dailyTally != null ? _dailyTally.text : "";
+        public string DailyStatusText => _dailyStatus != null ? _dailyStatus.text : "";
+        public bool DailyTallyVisible => _dailyTally != null && _dailyTally.gameObject.activeSelf;
         public Rect HeroRectPx => _heroRectPx;
         public string PrimaryLabelText => _primaryLabel != null ? _primaryLabel.text : "";
         public int MarkerCount => _markers != null ? _markers.Length : 0;
@@ -93,11 +94,11 @@ namespace CatMetro.Presentation.Screens
             }
         }
 
-        // dailyEntryUnlocked (CM-DAILYWIRE, default false): every EXISTING caller/test uses the
-        // zero-argument form, so HomeScreenTests.cs's S-01 tree walk and exactly-one-region
-        // count keep exercising the untouched session-1 tree. Only GameRoot, when
-        // DailyEntryUnlocked is explicitly set, passes true.
-        public static HomeScreenView Create(Transform canvasParent, bool dailyEntryUnlocked = false)
+        // dailyEntryUnlocked (CM-DAILYWIRE, default false): the session-1 tree stays free of
+        // Daily objects until the save/config gate opens. GameRoot may also call UnlockDaily
+        // after a campaign win crosses that same threshold in the current run.
+        public static HomeScreenView Create(Transform canvasParent,
+            bool dailyEntryUnlocked = false, int lifetimeDailyCompletions = 0)
         {
             var go = new GameObject("HomeScreen");
             go.transform.SetParent(canvasParent, false);
@@ -201,21 +202,66 @@ namespace CatMetro.Presentation.Screens
             view._primaryLabel.fontSizeMax = 42f;
             view._primaryLabel.fontStyle = FontStyles.Bold;
 
-            // CM-DAILYWIRE: the Daily entry — a second, static (no pulse) chip beside the L001
-            // pin, following the same MakeChip + csv-keyed label pattern as the rest of Home.
-            // NEVER constructed when dailyEntryUnlocked is false (S-01 — the CM-UX-07
-            // "zero objects constructed" law, not merely inactive/hidden).
-            if (dailyEntryUnlocked)
-            {
-                view._dailyPin = MakeChip(go.transform, "PinDaily",
-                    new Color(0.10f, 0.32f, 0.24f, 0.95f));
-                view._dailyLabel = MakeText(view._dailyPin.transform, "PinDailyLabel",
-                    Vector2.zero, Vector2.one,
-                    Strings.UiStrings.Get("home.daily.label"), 22f, Palette.WarmPaper); // key-only, never a literal
-            }
+            if (dailyEntryUnlocked) view.UnlockDaily(lifetimeDailyCompletions);
 
             go.SetActive(false);
             return view;
+        }
+
+        // Opens the same save/config-gated surface both at boot and when the threshold is
+        // crossed during play. Idempotent so a duplicate outcome observation cannot stack
+        // render objects or input regions.
+        public void UnlockDaily(int lifetimeDailyCompletions)
+        {
+            if (_dailyPin == null)
+            {
+                _dailyPin = MakeChip(transform, "PinDaily",
+                    new Color(0.10f, 0.32f, 0.24f, 0.95f));
+                _dailyLabel = MakeText(_dailyPin.transform, "PinDailyLabel",
+                    new Vector2(0.05f, 0.57f), new Vector2(0.95f, 0.96f),
+                    Strings.UiStrings.Get("home.daily.label"), 18f, Palette.WarmPaper); // key-only, never a literal
+                _dailyLabel.enableAutoSizing = true;
+                _dailyLabel.fontSizeMin = 10f;
+                _dailyLabel.fontSizeMax = 18f;
+                _dailyLabel.fontStyle = FontStyles.Bold;
+                _dailyTally = MakeText(_dailyPin.transform, "LifetimeTally",
+                    new Vector2(0.06f, 0.05f), new Vector2(0.94f, 0.57f),
+                    "", 12f, Palette.WarmPaper);
+                _dailyTally.enableAutoSizing = true;
+                _dailyTally.fontSizeMin = 7f;
+                _dailyTally.fontSizeMax = 12f;
+                _dailyStatus = MakeText(_dailyPin.transform, "DailyStatus",
+                    new Vector2(0.06f, 0.05f), new Vector2(0.94f, 0.57f),
+                    "", 11f, Palette.WarmPaper);
+                _dailyStatus.enableAutoSizing = true;
+                _dailyStatus.fontSizeMin = 7f;
+                _dailyStatus.fontSizeMax = 11f;
+                _dailyStatus.gameObject.SetActive(false);
+            }
+
+            SetDailyLifetimeCompletions(lifetimeDailyCompletions);
+            LayoutForViewport(Screen.safeArea, Screen.dpi);
+            if (_shown && isActiveAndEnabled) RegisterDailyPin();
+        }
+
+        public void SetDailyLifetimeCompletions(int count)
+        {
+            if (_dailyTally == null) return;
+            int safeCount = Mathf.Max(0, count);
+            _dailyTally.text = Strings.UiStrings.Get("home.daily.tally")
+                .Replace("{count}", safeCount.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        // Cache fallback work and failures stay on Home. Surface that state in the existing
+        // Daily chip so the tap never appears dead; null/empty clears it and restores the tally.
+        public void SetDailyStatusKey(string key)
+        {
+            if (_dailyStatus == null || _dailyTally == null) return;
+            bool hasStatus = !string.IsNullOrEmpty(key);
+            _dailyStatus.text = hasStatus ? Strings.UiStrings.Get(key) : "";
+            _dailyStatus.gameObject.SetActive(hasStatus);
+            _dailyTally.gameObject.SetActive(!hasStatus);
         }
 
         private static TMP_Text MakeText(Transform parent, string name,
