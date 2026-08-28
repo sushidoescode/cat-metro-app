@@ -43,6 +43,7 @@ namespace CatMetro.Domain
         public readonly int TimeLimitTicks;
         public readonly int QCapBound;              // digest padding: queue slots per node (A-C1-7 i)
         public readonly int TrainsMax;              // digest padding: fixed train array bound (A-C1-7 ii)
+        public readonly int PerfectMaxSwitches;
 
         public LevelGraph(
             string levelId,
@@ -54,8 +55,11 @@ namespace CatMetro.Domain
             int[] waveTick, byte[] waveColor, int[] waveCount, int[] waveSpacingTicks,
             int winDeliveries, int timeLimitTicks,
             int qCapBound, int trainsMax,
-            int[] waveSourceNode = null)
+            int[] waveSourceNode = null,
+            int perfectMaxSwitches = FlipBudget.Unbudgeted)
         {
+            if (perfectMaxSwitches < FlipBudget.Unbudgeted)
+                throw new ArgumentOutOfRangeException(nameof(perfectMaxSwitches));
             LevelId = levelId;
             NodeCount = nodeCount;
             NodeQueueCapacity = nodeQueueCapacity;
@@ -118,6 +122,7 @@ namespace CatMetro.Domain
             TimeLimitTicks = timeLimitTicks;
             QCapBound = qCapBound;
             TrainsMax = trainsMax;
+            PerfectMaxSwitches = perfectMaxSwitches;
         }
     }
 }

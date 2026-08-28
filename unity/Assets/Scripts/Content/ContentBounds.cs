@@ -17,6 +17,8 @@ namespace CatMetro.Content
         public const int TRAVEL_TICKS_MAX = 40;                // docs/plan/data/level_schema.json:51
         public const int TIME_LIMIT_TICKS_MIN = 20;            // docs/plan/data/level_schema.json:125
         public const int TIME_LIMIT_TICKS_MAX = 4000;          // docs/plan/data/level_schema.json:125
+        public const int PERFECT_MAX_SWITCHES_MIN = 0;         // docs/plan/data/level_schema.json:126
+        public const int PERFECT_MAX_SWITCHES_MAX = 200;       // docs/plan/data/level_schema.json:126
         public const int QUEUE_CAPACITY_MIN = 1;               // docs/plan/data/level_schema.json:40
         public const int QUEUE_CAPACITY_MAX = 8;               // docs/plan/data/level_schema.json:40
         public const int STATION_CAPACITY_MIN = 1;             // docs/plan/data/level_schema.json:76

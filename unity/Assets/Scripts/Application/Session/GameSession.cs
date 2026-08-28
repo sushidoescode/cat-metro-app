@@ -29,6 +29,11 @@ namespace CatMetro.Application.Session
         public CommandLog Log { get; }
         public TrainSlot[] PrevTrains { get; private set; }
         public double Alpha => _clock.Alpha;
+        // Read-only HUD snapshot. During play it counts every committed tap immediately; after
+        // the run ends it freezes at the number the simulation actually applied.
+        public FlipBudgetStatus FlipStatus => FlipBudget.Evaluate(
+            Level.Graph.PerfectMaxSwitches,
+            State.Outcome.Kind == OutcomeKind.Running ? Log.Entries.Count : State.SwitchesUsed);
 
         public void EnqueueToggle(int switchId) =>
             Log.Append(new ToggleSwitchCommand((ushort)switchId, State.Tick));

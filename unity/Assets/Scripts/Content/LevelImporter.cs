@@ -375,10 +375,17 @@ namespace CatMetro.Content
 
                 var winObj = AsObj(Req(o, "win"), "win");
                 var starsObj = AsObj(Req(winObj, "stars"), "win.stars");
+                int perfectMaxSwitches = FlipBudget.Unbudgeted;
+                if (winObj.Property("perfectMaxSwitches") != null)
+                    perfectMaxSwitches = ReqIntIn(
+                        winObj,
+                        "perfectMaxSwitches",
+                        ContentBounds.PERFECT_MAX_SWITCHES_MIN,
+                        ContentBounds.PERFECT_MAX_SWITCHES_MAX);
                 var win = new WinDto(
                     ReqIntIn(winObj, "deliveries", 1, int.MaxValue),
                     ReqIntIn(winObj, "timeLimitTicks", ContentBounds.TIME_LIMIT_TICKS_MIN, ContentBounds.TIME_LIMIT_TICKS_MAX),
-                    (int)ReqInt(winObj, "perfectMaxSwitches"),
+                    perfectMaxSwitches,
                     new StarsDto((int)ReqInt(starsObj, "two"), (int)ReqInt(starsObj, "three")));
 
                 var econObj = AsObj(Req(o, "economy"), "economy");
@@ -530,7 +537,8 @@ namespace CatMetro.Content
                         waveTick, waveColor, waveCount, waveSpacing,
                         win.Deliveries, win.TimeLimitTicks,
                         qCapBound: ContentBounds.QUEUE_CAPACITY_MAX, trainsMax: trainsMax,
-                        waveSourceNode: waveSourceNode);
+                        waveSourceNode: waveSourceNode,
+                        perfectMaxSwitches: win.PerfectMaxSwitches);
                 }
                 catch (NotSupportedException ex)
                 {
