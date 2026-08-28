@@ -96,7 +96,8 @@ namespace CatMetro.Tests.Save
             using var root = new SFixtures.TempRoot();
             var fs = new SFixtures.RecordingFs();
             var store = SFixtures.Store(root, fs);
-            var future = SFixtures.FileWithVersion(3);
+            var futureVersion = checked((ushort)(SaveDefaults.SAVE_VERSION + 1));
+            var future = SFixtures.FileWithVersion(futureVersion);
             SFixtures.WriteRaw(store.SavePath, future);
             Assert.That(store.Load(), Is.EqualTo(CatMetro.Services.LoadResult.RefusedDowngrade));
             fs.Calls.Clear();
