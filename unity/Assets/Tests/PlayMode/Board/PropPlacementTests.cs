@@ -797,21 +797,13 @@ namespace CatMetro.Tests.PlayMode
         [Test]
         public void StationSignYaw_TracksTheRealDioramaTilt_RatherThanACopyThatCanDrift()
         {
-            // BoardSceneLook.BoardTilt is private on this branch and BoardSceneLook belongs to
-            // the scene lane, so the props lane holds a mirror of the value. A mirror is only
-            // safe if something fails when it stops matching — otherwise re-authoring the
-            // diorama angle turns every station sign away from the camera, which costs a whole
-            // render slot to notice and looks like nothing at all until then.
-            const BindingFlags all = BindingFlags.Static | BindingFlags.NonPublic
-                | BindingFlags.Public;
-            var mirror = typeof(BoardPropDecorator).GetField("DioramaTilt", all);
-            Assert.That(mirror, Is.Not.Null,
-                "the props lane must still name its mirrored tilt DioramaTilt");
-            Assert.That(Quaternion.Angle((Quaternion)mirror.GetValue(null), RealDioramaTilt()),
+            // The props lane now reads the scene lane's public tilt directly. Re-authoring the
+            // diorama therefore changes the signs through one canonical value instead of a
+            // mirror that could silently drift.
+            Assert.That(Quaternion.Angle(BoardPropDecorator.StationSignRotation,
+                    BoardPropDecorator.StandingSignRotation(BoardSceneLook.BoardTilt)),
                 Is.LessThan(0.01f),
-                "BoardSceneLook re-authored the board tilt and BoardPropDecorator.DioramaTilt"
-                + " did not follow. Copy the new value across (or, once feat/cat-pins makes"
-                + " BoardTilt public, delete the mirror and read it directly).");
+                "the station signs must derive directly from BoardSceneLook.BoardTilt");
 
             // The derivation itself, against the number the cat lane states for the same tilt
             // from its own independent implementation. Two lanes agreeing on -131.4 is what

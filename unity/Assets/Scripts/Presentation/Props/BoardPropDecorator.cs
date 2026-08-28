@@ -492,15 +492,6 @@ namespace CatMetro.Presentation.Props
         // both, which is how target-01's platform sign poles read.
         private static readonly Color MastWood = new Color(0.78f, 0.66f, 0.50f);
 
-        // The diorama tilt, MIRRORED from BoardSceneLook rather than decided again. That field
-        // is private on this branch and BoardSceneLook belongs to the scene lane, so this copy
-        // exists — and PropPlacementTests pins it against the real one by reflection, so
-        // re-authoring the tilt without this following fails there instead of quietly turning
-        // every station sign away from the camera, which is the failure mode that costs a whole
-        // render slot to notice. feat/cat-pins makes the field public; when that merges, delete
-        // this and read BoardSceneLook.BoardTilt directly.
-        private static readonly Quaternion DioramaTilt = Quaternion.Euler(38f, -32f, -4f);
-
         /// <summary>
         /// Board-local yaw that turns a +x face toward the camera. Same derivation the cat lane
         /// uses in ToyTrainView.CameraFacingYawDegrees, and deliberately the same shape of
@@ -540,7 +531,8 @@ namespace CatMetro.Presentation.Props
         /// its +x face and so carries the bare yaw (-131.4 degrees), while a plate presents its
         /// -z face and so needs the standing turn composed in as well.
         /// </summary>
-        public static Quaternion StationSignRotation => StandingSignRotation(DioramaTilt);
+        public static Quaternion StationSignRotation =>
+            StandingSignRotation(BoardSceneLook.BoardTilt);
 
         // The sign's own facing direction in the anchor's space, which is where the three badge
         // layers are stacked. Board Z is no longer "toward the camera" once the badge stands up.
