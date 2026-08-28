@@ -87,8 +87,9 @@ namespace CatMetro.Presentation.Board
         // half-width (0.14) plus head radius (0.095) leaves 0.065 board units clear.
         public const float PlatformSideOffset = 0.30f;
         // Queue cards are 0.24 units wide. At the widest framing (93 px/unit) and worst board
-        // foreshortening (0.668), 0.42 units projects to 26.1 px versus a 22.3 px card, leaving
-        // a visible ~3.8 px gap between simultaneous source waiters.
+        // foreshortening (0.668), 0.42 BOARD UNITS projects to 26.1 px versus a 22.3 px card,
+        // leaving a visible ~3.8 px gap between simultaneous source waiters. The same numeric
+        // value as CatModelCatalog.PresenterScale is coincidental; that scale is dimensionless.
         public const float PlatformQueueSpacing = 0.42f;
 
         private static float PlatformLaneOffset(int lane)
@@ -405,7 +406,8 @@ namespace CatMetro.Presentation.Board
         /// train root, engine, carriage, or destination-pin placement contracts.
         /// </summary>
         public void ApplyPresentation(CatPresentationState state, float visualTime, bool motionOff) =>
-            ApplyPresentationInternal(state, 0f, false, visualTime, motionOff, false);
+            ApplyPresentationInternal(state, 0f, false, visualTime, motionOff,
+                false, 0f, false);
 
         /// <summary>
         /// Applies the cat's presentation-owned seat-to-platform path. Platform blend is copied
@@ -416,15 +418,28 @@ namespace CatMetro.Presentation.Board
             float visualTime, bool motionOff) =>
             ApplyPresentationInternal(state, platformBlend,
                 state == CatPresentationState.Alight || state == CatPresentationState.Celebrate,
-                visualTime, motionOff, true);
+                visualTime, motionOff, true, 0f, false);
 
         public void ApplyPresentation(CatPresentationState state, float platformBlend,
             bool movingToPlatform, float visualTime, bool motionOff) =>
             ApplyPresentationInternal(state, platformBlend, movingToPlatform,
-                visualTime, motionOff, true);
+                visualTime, motionOff, true, 0f, false);
+
+        /// <summary>
+        /// Applies a presentation-owned path rate as well as its current blend. The rate remains
+        /// geometry-free in CatPresentationTrack; this view measures the current seat-to-anchor
+        /// distance in board units, including a source queue lane, before driving the in-place
+        /// Walk clip. Existing callers without the rate retain nominal one-times playback.
+        /// </summary>
+        public void ApplyPresentation(CatPresentationState state, float platformBlend,
+            bool movingToPlatform, float visualTime, bool motionOff,
+            float platformBlendSpeed) =>
+            ApplyPresentationInternal(state, platformBlend, movingToPlatform,
+                visualTime, motionOff, true, platformBlendSpeed, true);
 
         private void ApplyPresentationInternal(CatPresentationState state, float platformBlend,
-            bool movingToPlatform, float visualTime, bool motionOff, bool usePlatformPath)
+            bool movingToPlatform, float visualTime, bool motionOff, bool usePlatformPath,
+            float platformBlendSpeed, bool scaleWalkPlayback)
         {
             _presentationState = state;
             bool hidden = state == CatPresentationState.Hidden;
@@ -435,7 +450,7 @@ namespace CatMetro.Presentation.Board
                 ResetVisualPose();
                 _hasPlatformAnchor = false;
                 SetBodyLegVisibility(false);
-                if (motionOff) PlayRig(CatPresentationState.Hidden, true);
+                if (motionOff) PlayRig(CatPresentationState.Hidden, true, 0f);
                 return;
             }
 
@@ -470,6 +485,32 @@ namespace CatMetro.Presentation.Board
                 _hasPlatformAnchor = false;
             }
 
+            // Relative seat/platform transition speed only: carriage advection is intentionally
+            // excluded because it carries the cat rather than representing walking intent. The
+            // actual current path length still includes stable queue-lane displacement and grows
+            // as a moving carriage separates from its fixed source anchor.
+            float desiredTravelSpeed = CatModelCatalog.WalkTravelSpeedAtOneX;
+            if (scaleWalkPlayback && state == CatPresentationState.Walk)
+            {
+                desiredTravelSpeed = 0f;
+                float safeBlendSpeed = float.IsNaN(platformBlendSpeed)
+                    || float.IsInfinity(platformBlendSpeed)
+                    ? 0f : Mathf.Max(0f, platformBlendSpeed);
+                if (resolvePlatformPath && _hasPlatformAnchor)
+                {
+                    Transform board = transform.parent;
+                    Vector3 seatBoard = board.InverseTransformPoint(
+                        _carriage.TransformPoint(_catBaseLocalPosition));
+                    Vector3 anchorBoard = board.InverseTransformPoint(
+                        _platformAnchorWorldPosition);
+                    desiredTravelSpeed = Vector3.Distance(seatBoard, anchorBoard)
+                        * safeBlendSpeed;
+                    if (float.IsNaN(desiredTravelSpeed)
+                        || float.IsInfinity(desiredTravelSpeed))
+                        desiredTravelSpeed = 0f;
+                }
+            }
+
             Vector3 pathLocalPosition = _catBaseLocalPosition;
             if (resolvePlatformPath && _hasPlatformAnchor)
             {
@@ -487,7 +528,7 @@ namespace CatMetro.Presentation.Board
                     _cat.localPosition = pathLocalPosition;
                     _pin.localPosition = _pinBaseLocalPosition + pathOffset;
                 }
-                PlayRig(state, true);
+                PlayRig(state, true, desiredTravelSpeed);
                 return;
             }
 
@@ -522,7 +563,7 @@ namespace CatMetro.Presentation.Board
                 _eyeLeftBaseLocalScale.y * pose.EyeYScale, _eyeLeftBaseLocalScale.z);
             _eyeRight.localScale = new Vector3(_eyeRightBaseLocalScale.x,
                 _eyeRightBaseLocalScale.y * pose.EyeYScale, _eyeRightBaseLocalScale.z);
-            PlayRig(state, false);
+            PlayRig(state, false, desiredTravelSpeed);
         }
 
         private void FaceAlongPlatformPath(bool movingToPlatform, Vector3 seatWorldPosition)
@@ -912,7 +953,8 @@ namespace CatMetro.Presentation.Board
                 ApplyCatTint(CatLine.ColorOf(_appliedColorCode));
         }
 
-        private void PlayRig(CatPresentationState state, bool motionOff)
+        private void PlayRig(CatPresentationState state, bool motionOff,
+            float desiredTravelSpeed)
         {
             if (!_rigAdmitted || _rigAnimator == null) return;
             _rigAnimator.applyRootMotion = false;
@@ -931,7 +973,17 @@ namespace CatMetro.Presentation.Board
             }
 
             _rigMotionSuppressed = false;
-            _rigAnimator.speed = 1f;
+            float playbackSpeed = 1f;
+            if (state == CatPresentationState.Walk)
+            {
+                float safeTravelSpeed = float.IsNaN(desiredTravelSpeed)
+                    || float.IsInfinity(desiredTravelSpeed)
+                    ? 0f : Mathf.Max(0f, desiredTravelSpeed);
+                playbackSpeed = safeTravelSpeed / CatModelCatalog.WalkTravelSpeedAtOneX;
+            }
+            // A stored source anchor can separate farther from a moving carriage without a
+            // presentation-state transition, so retime before the same-state early return.
+            _rigAnimator.speed = playbackSpeed;
             if (_lastRigState == state) return;
             _rigAnimator.Play(_rigAnimator.GetLayerName(0) + "." + CatModelCatalog.ClipFor(state), 0, 0f);
             _rigAnimator.Update(0f); // presentation sampling only; root motion stays disabled.

@@ -16,7 +16,13 @@ namespace CatMetro.Presentation.Cats
         public const string AlightClip = "Cat_Alight";
         public const string CelebrateClip = "Cat_Celebrate";
         public const float NormalizedStandingHeight = 1f;
-        public const float PresenterScale = 0.34f;
+        // TASK 17 measured this display scale from the admitted one-unit rig. Its value happens
+        // to match ToyTrainView's 0.42 board-unit queue spacing, but the two contracts are
+        // independent: this is a dimensionless presentation scale.
+        public const float PresenterScale = 0.42f;
+        // TASK 17 measured the source walk at PresenterScale: 0.238969 normalized standing
+        // heights/second * 0.42 board units/height = 0.100367 board units/second at playback 1x.
+        public const float WalkTravelSpeedAtOneX = 0.100367f;
 
         private static readonly string[] RequiredClipNames =
         {
