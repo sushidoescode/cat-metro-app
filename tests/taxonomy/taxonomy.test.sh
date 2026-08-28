@@ -49,14 +49,10 @@ lits=$(grep -rEn --include='*.cs' '\b(2000|1048576|512|64)\b' "$tax" 2>/dev/null
 [ -z "$lits" ] || fail "criterion 11: queue-bound literal under the taxonomy root: $lits"
 grep -Eq '\b512\b' "$badfx" || fail "criterion 11: bound-literal pattern failed to fire on the fixture"
 
-# --- criterion 13: the dotnet leg, full and unfiltered (CM-C6 review F1 precedent) ---
-tmp="${TMPDIR:-/tmp}/cm-c9-wrapper-$$"
-mkdir -p "$tmp"
-trap 'rm -rf "$tmp"' EXIT
-if ! dotnet test dotnet/CatMetro.sln -c Release --nologo > "$tmp/test.out" 2>&1; then
-  tail -15 "$tmp/test.out"
-  fail "criterion 13: dotnet test not green"
-fi
+# --- criterion 13: the dotnet leg has MOVED ---
+# It ran the unfiltered solution suite here purely to recompute "the suite is
+# green" (~529s, output discarded on success). That assertion now lives once, in
+# tests/suite/solution-suite.test.sh.
 
-echo "taxonomy.test.sh: OK (7, 8-static, 9, 11-static, 13)"
+echo "taxonomy.test.sh: OK (7, 8-static, 9, 11-static; 13-suite-green rides tests/suite/solution-suite.test.sh)"
 exit 0

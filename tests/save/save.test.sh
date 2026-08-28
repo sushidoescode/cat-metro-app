@@ -4,9 +4,6 @@
 # summary-numbers comparison is the PR evidence procedure (CM-C2a criterion 13 precedent).
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
-tmp="${TMPDIR:-/tmp}/cm-c7-wrapper-$$"
-mkdir -p "$tmp"
-trap 'rm -rf "$tmp"' EXIT
 fail() { echo "save.test.sh: FAIL — $1"; exit 1; }
 app_root="unity/Assets/Scripts/Application"
 
@@ -14,11 +11,10 @@ app_root="unity/Assets/Scripts/Application"
 [ -n "$(ls unity/Assets/Tests/EditMode/Pure/Save/*.cs 2>/dev/null)" ] \
   || fail "criterion 15: Save NUnit sources missing (fail-closed)"
 
-# Criterion 15: the dotnet leg is green — full suite, unfiltered (CM-C6 review F1 precedent).
-if ! dotnet test dotnet/CatMetro.sln -c Release --nologo > "$tmp/test.out" 2>&1; then
-  tail -20 "$tmp/test.out"
-  fail "criterion 15: dotnet test not green"
-fi
+# Criterion 15's dotnet leg has MOVED to tests/suite/solution-suite.test.sh —
+# it recomputed "the suite is green" at ~529s a time and discarded the output on
+# success. The source-presence guard above STAYS: it is this contract's own
+# fail-closed check that the Save cases still exist to be run.
 
 # Criterion 13, kept in step with ADR-0003's table as engine rows land (CM-C2b armed the first
 # one): the ENGINE-FREE assemblies (Domain/Content/Services/Application) may never name
@@ -64,5 +60,5 @@ printf '%s\n' "$decommented" | grep -q 'Flush(flushToDisk: true)' \
 printf '%s\n' "$decommented" | grep -q 'File\.Replace' \
   || fail "criterion 4: File.Replace call missing from the real filesystem seam"
 
-echo "save.test.sh: OK (4-shape, 13, 14, 15)"
+echo "save.test.sh: OK (4-shape, 13, 14, 15-sources; 15-suite-green rides tests/suite/solution-suite.test.sh)"
 exit 0

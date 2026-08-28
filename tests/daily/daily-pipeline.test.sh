@@ -19,13 +19,10 @@ seed_rx='^DAILY_SEED [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]+ [0-9]+$'
 [ -n "$(ls unity/Assets/Tests/EditMode/Pure/Content/Daily/*.cs 2>/dev/null)" ] \
   || fail "criterion 10: Daily NUnit sources missing (fail-closed)"
 
-# Criterion 10: the dotnet leg is green — full suite, UNFILTERED (review F1: a namespace filter
-# matching zero tests still exits 0, making the gate vacuous; the sibling wrappers set the
-# unfiltered precedent, and the source-presence guard above closes the dropped-folder hole).
-if ! dotnet test dotnet/CatMetro.sln -c Release --nologo > "$tmp/test.out" 2>&1; then
-  tail -20 "$tmp/test.out"
-  fail "criterion 10: dotnet test not green"
-fi
+# Criterion 10's UNFILTERED leg has MOVED to tests/suite/solution-suite.test.sh,
+# which carries the review F1 non-vacuity guard (a filter matching zero tests
+# still exits 0) centrally. The source-presence guard above stays here. The
+# FILTERED long-horizon run below is genuinely different work and stays too.
 
 # Daily Line's two dated 90x2 proofs are intentionally absent from ordinary solution and Unity
 # discovery. Compile them behind their dedicated symbol and execute the exact fixture once here,
