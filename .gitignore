@@ -34,7 +34,8 @@ unity/Assets/Art/Generated/incoming/
 unity/Assets/Art/Generated.meta
 unity/Assets/Art/Generated/incoming.meta
 
-# Upload keystore + password are Never-in-repo / Never-agent-reachable (docs/security/threat-model.md:235); if one ever lands here anyway, treat it as compromised and use Play's upload-key reset (docs/release/release-checklist.md §2 "Loss recovery") to rotate — a history rewrite alone is not sufficient.
+# Upload keys and passwords are never repository or agent material. If one lands here, treat it as
+# compromised and use Play's upload-key reset; rewriting Git history alone is not sufficient.
 *.keystore
 *.jks
 *.p12
@@ -42,6 +43,19 @@ unity/Assets/Art/Generated/incoming.meta
 *.pfx
 *.bks
 *.key
+# STORE-RELEASE: the extension list above misses the file that carries the keystore
+# PASSWORD rather than the key itself. Gradle's conventional name is keystore.properties,
+# and Unity writes local.properties next to it.
+keystore.properties
+local.properties
+
+# STORE-RELEASE: build outputs. scripts/build-apk.sh and scripts/build-aab.sh write here,
+# and a release .aab is 100MB+ — nothing in this tree was ignored before, so a stray
+# `git add -A` could have committed one. (The line-10 TODO promised `build/` and never
+# delivered it.)
+build/
+*.aab
+*.apk
 
 # Build artifacts. scripts/build-apk.sh, build-ios.sh and the AAB builder all write here.
 # This was previously unignored, which was survivable while the only output was one APK and

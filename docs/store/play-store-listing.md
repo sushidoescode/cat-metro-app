@@ -1,16 +1,26 @@
-# Google Play listing — current-build-safe
+# Google Play listing — exact-candidate template
 
-Status: paste-ready against the STORE-PACK truth baseline frozen on 2026-08-10.
-Only the three fenced fields under **Paste-ready fields** are publication copy.
+Status: **template, not paste-ready by itself**. `scripts/build-aab.sh` replaces
+`__CAMPAIGN_LEVEL_COUNT__` with the campaign count reported by `GameRoot.LevelBand`, verifies every
+named level exists inside the exact AAB, and writes a sibling `*-play-listing.md`. That generated file
+is count-bound candidate copy, not automatic clearance for the release-gated monetization claims.
+Paste its fields only after the exact binary passes every gate in the table below.
+
+This deliberately keeps TASK 15 (`feat/level-variety`) as a sequencing dependency rather than a
+release-branch merge dependency. A production build cut after TASK 15 lands on `main` is expected to
+render 19, but only the exact-AAB receipt proves the publishable number. Never change it by hand.
+TASK 15 landing on `main` is mandatory before the production cut; a lower artifact-derived count does
+not waive that sequencing requirement.
 
 ## Counting convention
 
-Counts cover the field text only, including spaces and punctuation. The full-description count also
-includes each line feed as one character. Markdown fences and the terminal line feed before a closing
-fence are excluded. All paste-ready characters are ASCII, so Unicode code-point and UTF-16 code-unit
-counts are identical.
+Generated counts cover field text only, including spaces and punctuation. Multiline fields count
+each line feed once. Markdown fences and the terminal line feed before a closing fence are excluded.
+All publication characters are ASCII, so Unicode code-point and UTF-16 code-unit counts are
+identical. The build refuses a rendered field over its Play limit and prints the exact counts; also
+recount after any manual Console edit.
 
-## Paste-ready fields
+## Candidate fields — paste only after release gates clear
 
 ### App title
 
@@ -35,13 +45,13 @@ Route cat commuters with one thumb. A tabletop train puzzle with no forced ads.
 ### Full description
 
 - Google Play limit: 4,000 characters
-- Exact count: 1,132 characters, including 21 line feeds
-- Headroom: 2,868 characters
+- Exact count: generated from the exact AAB
+- Headroom: generated from the exact AAB
 
 ```text
 Cat Metro is a one-thumb train puzzle about routing cat commuters through a tiny tabletop metro. Tap a junction, throw the switch, and guide each cat to the matching color-and-symbol station.
 
-Fair by design: no forced ads, no energy, no loot boxes, every level solvable free.
+Fair by design: no forced ads, no energy timers, no loot boxes. Campaign play is free.
 
 HOW IT PLAYS
 - Tap junctions to change each route
@@ -49,8 +59,8 @@ HOW IT PLAYS
 - Follow color-and-symbol station signs
 - Match every cat to the right station
 
-FIVE HANDCRAFTED LEVELS
-Play five campaign puzzles. Every level passes the project's content validation and solver gates. Each cat puzzle grows from clear first routes into tighter switching challenges.
+__CAMPAIGN_LEVEL_COUNT__ HANDCRAFTED LEVELS
+Play __CAMPAIGN_LEVEL_COUNT__ campaign puzzles, from clear first routes into tighter switching challenges.
 
 BUILT TO BE READ
 Stations pair color with a symbol. The next-wave preview shows what is coming before the next routing decision.
@@ -60,20 +70,33 @@ Cat Metro pairs a focused route puzzle with a small tabletop-railway premise. Sw
 
 No energy timer limits play. Read the next wave, throw the switch, and guide every cat home.
 
-One thumb. Small railway. Five solvable puzzles.
+One thumb. Small railway. __CAMPAIGN_LEVEL_COUNT__ handcrafted puzzles.
+```
+
+### What's new
+
+- Google Play limit: 500 characters
+- Exact count: generated from the exact AAB
+
+```text
+First release of Cat Metro.
+
+__CAMPAIGN_LEVEL_COUNT__ handcrafted campaign levels, a next-wave preview so you can plan ahead, and stations that pair color with a symbol so every route stays readable.
+
+No forced ads. No energy timers. No loot boxes. Campaign play is free.
 ```
 
 ## Current claim gates
 
-Only `VERIFIED` claims appear in the paste-ready fields.
+Only claims whose publication gates are stated below appear in the generated fields. Build-derived
+copy still requires the listed release gate before it is pasted.
 
-| Claim used in the listing | Status | Evidence at the 2026-08-10 freeze | Publication rule |
+| Claim used in the listing | Status | Exact-candidate evidence | Publication rule |
 |---|---|---|---|
 | One-thumb junction switching routes cat commuters to matching stations | `VERIFIED` | Implemented gameplay loop and truth baseline | May remain in current copy |
 | Next-wave preview | `VERIFIED` | Implemented gameplay loop and truth baseline | May remain in current copy; queue readability and overflow/failure need separate real-level receipts |
-| Five handcrafted campaign levels in normal player progression | `VERIFIED` | `GameRoot.LevelBand` exposes L001–L005 on the frozen anchor | Recount the normal player path on the exact release candidate |
-| Every listed level passes content validation and solver gates | `VERIFIED` | Repository validation and solver gates cover L001–L005 | Do not generalize the listing count to authored but unreachable files |
-| No forced ads, energy, or loot-box system; every current level is solvable free | `VERIFIED` | Frozen-tree feature census and solver evidence | Keep the positioning line verbatim |
+| Exact campaign count in normal player progression | `BUILD-DERIVED` | The AAB log reports `GameRoot.LevelBand`; the wrapper verifies every named JSON exists inside that same bundle before rendering the copy | Paste only the generated sibling listing; never type a count into this template |
+| No forced ads, energy timers, or loot-box system; campaign play is free | `RELEASE-GATED` | Exact-candidate feature census plus purchase/product review | Keep only if monetization lands as named cosmetics without a campaign pay gate |
 | Color plus symbol coding for stations | `VERIFIED` | Implemented gameplay and truth baseline | Describe the encoding; do not claim a completed accessibility audit |
 | Tabletop metro and model-railway premise | `VERIFIED` | Approved product premise | Describe the premise only; do not claim the current build matches an uncaptured art target |
 
@@ -96,8 +119,8 @@ reclassified as `VERIFIED` in the cross-pack claim ledger.
 
 ## Release-editor checks
 
-1. Paste only the three fenced fields above.
-2. Recount after every text edit; the short description has one character of headroom.
-3. Re-run every claim against the exact release-candidate commit, not a plan or sibling branch.
+1. Build the exact candidate and paste only from its generated `*-play-listing.md` sibling.
+2. Confirm the AAB SHA-256 and campaign receipt at the top of that generated file.
+3. Re-run every claim against the exact release candidate, not a plan or sibling branch.
 4. Keep competitor names, research figures, experiment plans, and future features out of public copy.
 5. If a gate does not clear, delete the affected sentence rather than softening it into a present-tense implication.

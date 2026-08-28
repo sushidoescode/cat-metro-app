@@ -8,6 +8,9 @@
 #   bash scripts/build-apk.sh [output.apk]
 #
 # The APK is ARM64, development, debug-signed — sideloadable, never a Play upload.
+# Google Play accepts only .aab for new apps: for a store upload use scripts/build-aab.sh.
+# The builder forces EditorUserBuildSettings.buildAppBundle=false, because that flag persists
+# in unity/Library and an inherited `true` silently emits a bundle named .apk.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

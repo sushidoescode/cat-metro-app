@@ -3,7 +3,7 @@
 # every missing scan root/asset; every gate proven to FIRE against a negative fixture. The
 # PlayMode legs run through editmode.test.sh's editor half; this file is editor-free.
 set -uo pipefail
-cd "$(git rev-parse --show-toplevel)"
+cd "$(git rev-parse --show-toplevel)" || exit 1
 fail() { echo "device-config.test.sh: FAIL — $1"; exit 1; }
 QS="unity/ProjectSettings/QualitySettings.asset"
 GS="unity/ProjectSettings/GraphicsSettings.asset"
