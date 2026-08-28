@@ -4,7 +4,11 @@
 set -euo pipefail
 
 silhouette_script=${SILHOUETTE_SCRIPT:-scripts/glb-silhouette.py}
-tmp=$(mktemp -d)
+# Explicit template: macOS /usr/bin/mktemp ignores $TMPDIR without one and falls back to the
+# confstr darwin temp dir, which sandboxed agent runs cannot write. Both BSD and GNU mktemp
+# honor the template form; a temp failure aborts loudly with an attributable message.
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/glb-silhouette.XXXXXXXX") \
+  || { echo "glb-silhouette test: FAIL — cannot create temp dir under ${TMPDIR:-/tmp}" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
 
 write_fixture() {
@@ -255,6 +259,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 - \
 from __future__ import annotations
 
 import copy
+import ctypes
 import hashlib
 import importlib.util
 import json
@@ -355,6 +360,49 @@ def open_targets_path(
     )
 
 
+_libproc_handle: ctypes.CDLL | bool | None = None
+
+
+class _rusage_info_v2(ctypes.Structure):
+    _fields_ = [("ri_uuid", ctypes.c_uint8 * 16)] + [
+        (name, ctypes.c_uint64)
+        for name in (
+            "ri_user_time", "ri_system_time", "ri_pkg_idle_wkups",
+            "ri_interrupt_wkups", "ri_pageins", "ri_wired_size",
+            "ri_resident_size", "ri_phys_footprint", "ri_proc_start_abstime",
+            "ri_proc_exit_abstime", "ri_child_user_time",
+            "ri_child_system_time", "ri_child_pkg_idle_wkups",
+            "ri_child_interrupt_wkups", "ri_child_pageins",
+            "ri_child_elapsed_abstime", "ri_diskio_bytesread",
+            "ri_diskio_byteswritten",
+        )
+    ]
+
+
+def darwin_resident_bytes(pid: int) -> int | None:
+    """The same number `ps -o rss=` reports, read in-process via libproc.
+
+    Sandboxed agent environments deny exec of /bin/ps outright, which would
+    otherwise disarm the RSS bound on the measurement tool rather than on the
+    behavior under test. proc_pid_rusage(pid, RUSAGE_INFO_V2=2) needs no
+    subprocess and returns the live resident size for our own child.
+    """
+    global _libproc_handle
+    if sys.platform != "darwin":
+        return None
+    if _libproc_handle is None:
+        try:
+            _libproc_handle = ctypes.CDLL("libproc.dylib")
+        except OSError:
+            _libproc_handle = False
+    if _libproc_handle is False:
+        return None
+    info = _rusage_info_v2()
+    if _libproc_handle.proc_pid_rusage(pid, 2, ctypes.byref(info)) != 0:
+        return None
+    return int(info.ri_resident_size)
+
+
 def invoke_with_rss_limit(
     program: Path,
     source: Path,
@@ -381,21 +429,41 @@ def invoke_with_rss_limit(
     )
     ps = shutil.which("ps")
     assert ps is not None
+    ps_usable = True
     deadline = time.monotonic() + timeout
     peak_rss = 0
     exceeded_memory = False
     exceeded_time = False
     try:
         while process.poll() is None:
-            measurement = subprocess.run(
-                [ps, "-o", "rss=", "-p", str(process.pid)],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            value = measurement.stdout.strip()
-            if value.isdigit():
-                peak_rss = max(peak_rss, int(value) * 1024)
+            sample: int | None = None
+            if ps_usable:
+                try:
+                    measurement = subprocess.run(
+                        [ps, "-o", "rss=", "-p", str(process.pid)],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                except PermissionError:
+                    # sandbox denies exec of /bin/ps; fall back in-process
+                    ps_usable = False
+                else:
+                    value = measurement.stdout.strip()
+                    if value.isdigit():
+                        sample = int(value) * 1024
+            if sample is None and not ps_usable:
+                sample = darwin_resident_bytes(process.pid)
+                if sample is None and process.poll() is None:
+                    # fail-closed: never let the RSS bound run unarmed
+                    process.kill()
+                    process.wait()
+                    raise AssertionError(
+                        "no usable RSS measurement source "
+                        "(ps exec denied and libproc unavailable)"
+                    )
+            if sample is not None:
+                peak_rss = max(peak_rss, sample)
             if peak_rss > maximum_rss:
                 exceeded_memory = True
                 process.kill()

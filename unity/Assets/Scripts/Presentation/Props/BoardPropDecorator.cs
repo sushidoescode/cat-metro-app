@@ -381,7 +381,9 @@ namespace CatMetro.Presentation.Props
             part.transform.localScale = localScale;
             if (_cubeMesh == null) _cubeMesh = Resources.GetBuiltinResource<Mesh>("Cube.fbx");
             part.AddComponent<MeshFilter>().sharedMesh = _cubeMesh;
-            Tint(part.AddComponent<MeshRenderer>(), color);
+            var renderer = part.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = GreyboxMaterial.Shared;
+            Tint(renderer, color);
             return part.transform;
         }
 
@@ -690,7 +692,9 @@ namespace CatMetro.Presentation.Props
                 StationSignRotation * DestinationShapeMesh.PlateRotation(shape);
             part.transform.localScale = DestinationShapeMesh.PlateScale(shape, size, depth);
             part.AddComponent<MeshFilter>().sharedMesh = DestinationShapeMesh.ForShape(shape);
-            return part.AddComponent<MeshRenderer>();
+            var renderer = part.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = GreyboxMaterial.Shared;
+            return renderer;
         }
 
         private static void Tint(Renderer renderer, Color color)

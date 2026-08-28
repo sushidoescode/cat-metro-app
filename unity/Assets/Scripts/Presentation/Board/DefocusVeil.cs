@@ -163,6 +163,7 @@ namespace CatMetro.Presentation.Board
                 veil.SetParent(camera.transform, false);
                 go.AddComponent<MeshFilter>();
                 var created = go.AddComponent<MeshRenderer>();
+                created.sharedMaterial = material;
                 created.shadowCastingMode = ShadowCastingMode.Off;
                 created.receiveShadows = false;
                 created.lightProbeUsage = LightProbeUsage.Off;
