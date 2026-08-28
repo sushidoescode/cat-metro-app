@@ -184,6 +184,20 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void EmptyMappedWalkClip_IsRejectedDespiteAnAnimatedSameNamedDecoy()
+        {
+            using (var fixture = new ConformingRigFixture(
+                emptyMappedWalkWithAnimatedDuplicate: true))
+            {
+                var catalog = new CatModelCatalog(fixture.Prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain("Cat_Walk"));
+                Assert.That(catalog.RejectionReason, Does.Contain("positive-length"));
+            }
+        }
+
+        [Test]
         public void ConformingRig_IsAdmittedAndToyTrainMapsItsAxesScaleAndRequiredPlayback()
         {
             using (var fixture = new ConformingRigFixture())
@@ -326,7 +340,8 @@ namespace CatMetro.Tests.EditMode.Presentation
                 new List<StateMachineBehaviour>();
 
             public ConformingRigFixture(bool animateWalk = true,
-                bool swapWalkAndBoard = false, bool addStateBehaviour = false)
+                bool swapWalkAndBoard = false, bool addStateBehaviour = false,
+                bool emptyMappedWalkWithAnimatedDuplicate = false)
             {
                 Prefab = new GameObject("ConformingBoardCatRig");
                 var body = new GameObject("RigBody");
@@ -339,7 +354,10 @@ namespace CatMetro.Tests.EditMode.Presentation
                 _controller = new AnimatorController();
                 _controller.AddLayer("Base Layer");
                 AddState("Cat_IdleSit");
-                AnimatorState walk = AddState("Cat_Walk", animateWalk);
+                if (emptyMappedWalkWithAnimatedDuplicate)
+                    AddState("walk_decoy", true, "Cat_Walk");
+                AnimatorState walk = AddState("Cat_Walk",
+                    emptyMappedWalkWithAnimatedDuplicate ? false : animateWalk);
                 AnimatorState board = AddState("Cat_Board");
                 AddState("Cat_Alight");
                 AnimatorState celebrate = AddState("Cat_Celebrate");
@@ -370,9 +388,10 @@ namespace CatMetro.Tests.EditMode.Presentation
                 for (int i = 0; i < _clips.Count; i++) Object.DestroyImmediate(_clips[i]);
             }
 
-            private AnimatorState AddState(string literalName, bool animateChild = false)
+            private AnimatorState AddState(string literalName, bool animateChild = false,
+                string clipName = null)
             {
-                var clip = new AnimationClip { name = literalName };
+                var clip = new AnimationClip { name = clipName ?? literalName };
                 if (animateChild)
                     clip.SetCurve("RigBody", typeof(Transform), "localPosition.x",
                         AnimationCurve.Linear(0f, 0f, 0.4f, 0.02f));

@@ -130,7 +130,6 @@ namespace CatMetro.Presentation.Cats
             }
 
             var clips = animators[0].runtimeAnimatorController.animationClips;
-            AnimationClip walkClip = null;
             foreach (string required in RequiredClipNames)
             {
                 AnimationClip clip = Array.Find(clips, candidate => candidate != null && candidate.name == required);
@@ -139,13 +138,6 @@ namespace CatMetro.Presentation.Cats
                     rejectionReason = "Cat rig controller is missing clip " + required + ".";
                     return false;
                 }
-                if (required == WalkClip) walkClip = clip;
-            }
-            if (walkClip.empty || walkClip.length <= 0f)
-            {
-                rejectionReason = "Cat rig clip " + WalkClip
-                    + " must contain a positive-length child animation.";
-                return false;
             }
             foreach (AnimationClip clip in clips)
             {
@@ -219,6 +211,13 @@ namespace CatMetro.Presentation.Cats
                     {
                         rejectionReason = "Cat rig state " + required
                             + " must sample clip " + required + ".";
+                        return false;
+                    }
+                    if (required == WalkClip
+                        && (sampled[0].clip.empty || sampled[0].clip.length <= 0f))
+                    {
+                        rejectionReason = "Cat rig state " + WalkClip
+                            + " must sample a positive-length child animation.";
                         return false;
                     }
                 }
