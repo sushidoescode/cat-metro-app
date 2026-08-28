@@ -48,9 +48,13 @@ obtaining before the deadline. That administrative confirmation does not change
 the technical design.
 
 The shipped-artifact proof is not a source scan. A configured device test must
-show a rewarded LevelPlay impression and its loaded, displayed, revenue, and
-placement data in RevenueCat's Ads sandbox view. The human supplies dashboard
-access and records that evidence.
+show a rewarded LevelPlay impression, record the raw ILR/currency/precision and
+mapped micros in device logs, and show the corresponding lifecycle/revenue
+event and available dimensions in RevenueCat's Ads sandbox view. Test inventory
+may report zero revenue; nonzero live ILR is separate optional evidence, not an
+engineering blocker. The human supplies dashboard access and records the
+evidence. The dashboard is not claimed to expose raw micros or precision unless
+the configured product actually displays those fields.
 
 Primary sources:
 
@@ -62,11 +66,29 @@ Primary sources:
 
 ## Branch Dependency
 
-This branch starts from `integration/look-stack` and must merge
-`feat/revenuecat` before implementation. The RevenueCat branch supplies the
-product catalog, four placement rows, `PurchaseService`, `EntitlementLedger`,
-RevenueCat package, purchase backend, and Wardrobe surface. This branch extends
-those seams rather than copying them.
+TASK 19 owns integration of `feat/revenuecat` and the other active Shipaton
+branches onto `main`. This branch must wait until TASK 19 confirms that
+`feat/revenuecat` is an ancestor of the integrated `main`, then consume that
+post-integration `main`. It must not merge `feat/revenuecat` directly. The
+RevenueCat work supplies the product catalog, four placement rows,
+`PurchaseService`, `EntitlementLedger`, RevenueCat package, purchase backend,
+and Wardrobe surface. This branch extends those seams rather than copying them.
+
+Six active branches touch `GameRoot.cs`, so this branch declares its complete
+`GameRoot` delta in advance. Against TASK 19's integrated version, change only
+the production save construction and installation in the daily-save bootstrap:
+
+```diff
+-    parsedBounds.Value, new MigrationTable());
++    parsedBounds.Value, MigrationTable.CreateDefault());
+ _saveStore.Load();
++SaveRuntime.Install(_saveStore);
+```
+
+There is no ads-specific `GameRoot` field, pause callback, destroy callback, or
+screen-composition edit. Ads and lease persistence subscribe to `SaveRuntime`
+outside `GameRoot`, so TASK 19 can resolve this file from the exact two-line
+contract above.
 
 ## Player Experience
 
@@ -209,23 +231,75 @@ stores only local rewarded-ad leases in the existing `SaveStore` payload. It
 does not persist CustomerInfo/store/promotional grants, because RevenueCat must
 remain authoritative for refunds, expirations, and restores.
 
-The save schema advances from version 1 to version 2 and adds:
+The save schema advances from version 1 to version 2 and adds isolated lease
+and rewarded-cap subshapes:
 
 ```json
-"entitlements": {
-  "appUserId": "",
-  "active": [],
-  "fetchedAtUtc": 0,
-  "localLeases": [
-    { "entitlementId": "outfit_conductor", "expiresAtUnixSeconds": 1780000000 }
-  ]
+{
+  "entitlements": {
+    "appUserId": "",
+    "active": [],
+    "fetchedAtUtc": 0,
+    "localLeases": [
+      { "entitlementId": "outfit_conductor", "expiresAtUnixSeconds": 1780000000 }
+    ]
+  },
+  "caps": {
+    "rewarded": {
+      "dateKey": "",
+      "counters": {}
+    }
+  }
 }
 ```
 
-The v1-to-v2 migration adds an empty `localLeases` array only when absent and
-preserves every unknown field. Loading accepts only known, ad-grantable
-entitlements with a positive future expiry and imports them through
-`EntitlementLedger.ImportLeases` before Wardrobe composition.
+The v1-to-v2 migration adds an empty `localLeases` array and empty
+`caps.rewarded` object only when absent and preserves every unknown field. It
+does not add placement IDs to or reset the existing fixed five-key
+`caps.counters` object. Loading accepts only known, ad-grantable entitlements
+with a positive future expiry and imports them through
+`EntitlementLedger.ImportLeases` before Wardrobe composition. A known v1
+container with a non-object shape fails migration rather than being silently
+replaced; valid unknown sibling fields are untouched.
+
+### Save schema v2 migration contract for TASK 13
+
+This branch owns save schema version 2. There is exactly one registered
+`1 -> 2` migration, exposed by `MigrationTable.CreateDefault()` and implemented
+by `SaveSchemaV2.MigrateFromV1(JObject payload)`. It is additive, idempotent,
+uses set-if-absent semantics, adds `entitlements.localLeases` plus the isolated
+`caps.rewarded` counter container, and never discards an unknown field.
+
+TASK 13 must not independently bump version 1 to 2 or register a second
+`1 -> 2` step. Before the first public v2 build, TASK 13 may add its presentation
+defaults to `SaveSchemaV2.MigrateFromV1` and `SaveDefaults.FreshPayload` as part
+of the same migration. Its persisted selection belongs in a top-level
+`cosmetics` object; owned item IDs remain authoritative in the entitlement
+ledger and must not be copied there. After any public v2 release, a new required
+schema change uses v3 (or handles a missing optional key at read time), because
+an already-v2 file will never rerun the v1 migration.
+
+The shared v2 shape owned here is:
+
+```json
+{
+  "saveVersion": 2,
+  "entitlements": {
+    "localLeases": []
+  },
+  "caps": {
+    "rewarded": {
+      "dateKey": "",
+      "counters": {}
+    }
+  }
+}
+```
+
+Existing `entitlements` members, legacy `caps.counters`, and all unrelated
+top-level members are preserved. Neither TASK 13 nor this branch creates a
+second save file, `PlayerPrefs` authority, a second entitlement store, or a
+separate version counter.
 
 Grant durability is ordered deliberately:
 
@@ -243,16 +317,21 @@ the UI never calls an unlock durable when it exists only in RAM. A crash after
 disk commit but before the in-memory publish is safe: the lease appears on the
 next boot.
 
-The same `SaveStore` records local-date cap counters. Session caps remain
-memory-only. Cap checks happen before `Show`; counters advance only after a
-durable granted outcome. A cap-write failure is logged without taking away the
-earned item. The lease itself is the user-value transaction and has priority.
+The same `SaveStore` records local-date cap counters under `caps.rewarded`.
+Session caps remain memory-only. Cap checks happen before `Show`; counters
+advance only after a durable granted outcome. Lease and cap use two ordered
+commits deliberately: a cap-write failure or crash between them can lose that
+day's counter, but it never takes away the already durable earned item, and the
+current session still consumes the opportunity. The lease is the user-value
+transaction and has priority; the design does not claim anti-farming durability
+under a disk fault.
 
-`GameRoot` owns the production `SaveStore` using `EngineStorageRoot` and
-`RealSaveFileSystem`, loads it before composing the screen flow, attaches the
-lease persistence adapter to `PurchaseRuntime.Current`, and commits on pause.
-No `PlayerPrefs`, second file, cached CustomerInfo authority, or ad-specific
-unlock flag is introduced.
+TASK 19's integrated `GameRoot` owns and loads the production `SaveStore` using
+`EngineStorageRoot` and `RealSaveFileSystem`. Immediately after load it installs
+that same instance through `SaveRuntime.Install`. The lease/cap adapter observes
+that shared runtime and owns its save-on-pause component; it does not add more
+`GameRoot` lifecycle methods. No `PlayerPrefs`, second file, cached CustomerInfo
+authority, or ad-specific unlock flag is introduced.
 
 ## Configuration and Human Setup
 
@@ -263,7 +342,8 @@ Commit an example config and ignore the real resource file. The human supplies:
 - rewarded ad-unit ID for each platform
 - these four exact LevelPlay placement names
 - selected mediation network credentials and matching adapters in LevelPlay
-- RevenueCat public Apple/Google SDK keys through the Task 1 setup
+- RevenueCat public Apple/Google SDK keys through the integration landed by
+  TASK 19
 - RevenueCat Ads beta access enabled for the project
 - privacy/CMP decisions and the App Store/Play data disclosures
 
