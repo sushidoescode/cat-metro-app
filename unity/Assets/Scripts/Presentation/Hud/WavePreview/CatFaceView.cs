@@ -87,6 +87,8 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private Quaternion _earLeftRotationBaseline = Quaternion.identity;
         private Quaternion _earRightRotationBaseline = Quaternion.identity;
         private bool _hasLayout;
+        private bool _renderCallbackBound;
+        private Canvas.WillRenderCanvases _renderCallback;
 
         public string ColorName { get; private set; } = "";
         public Color HeadColor => _head != null ? _head.color : UnityEngine.Color.clear;
@@ -135,21 +137,47 @@ namespace CatMetro.Presentation.Hud.WavePreview
             // Face names come from this preview's fixed pool (face0..face5), so this cadence
             // remains stable across rebuilds without ever reading a gameplay/session seed.
             _microMotion = new CatMicroMotion(PresentationSeed(gameObject.name));
-        }
-
-        private void Update()
-        {
-            ApplyVisualTime(Time.unscaledTime);
+            _renderCallback = ApplyRuntimeMotion;
         }
 
         private void OnEnable()
         {
+            SubscribeRenderCallback();
             ResetNeutralGeometry();
         }
 
         private void OnDisable()
         {
+            UnsubscribeRenderCallback();
             ResetNeutralGeometry();
+        }
+
+        private void OnDestroy()
+        {
+            UnsubscribeRenderCallback();
+        }
+
+        private void SubscribeRenderCallback()
+        {
+            if (_renderCallbackBound) return;
+            if (_renderCallback == null) _renderCallback = ApplyRuntimeMotion;
+            Canvas.willRenderCanvases += _renderCallback;
+            _renderCallbackBound = true;
+        }
+
+        private void UnsubscribeRenderCallback()
+        {
+            if (!_renderCallbackBound) return;
+            Canvas.willRenderCanvases -= _renderCallback;
+            _renderCallbackBound = false;
+        }
+
+        // WavePreviewStrip can rebuild its authoritative layout in LateUpdate when the session
+        // tick changes. Sampling here happens after that layout and immediately before UGUI
+        // renders, so the sampled pose is the one the player sees in the current frame.
+        private void ApplyRuntimeMotion()
+        {
+            ApplyVisualTime(Time.unscaledTime);
         }
 
         public static CatFaceView Create(Transform parent, string name)
