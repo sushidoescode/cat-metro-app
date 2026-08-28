@@ -13,8 +13,7 @@ namespace CatMetro.Content
     // The one import pipeline (CM-C2a): bytes -> [size cap] -> [UTF-8 decode, BOM-tolerant] ->
     // [depth pre-scan BEFORE deserialization, criterion 6] -> [JToken parse: syntax, duplicate
     // keys, trailing content] -> [schemaVersion] -> [typed DTO walk: integer strictness, missing
-    // fields] -> [caps + duplicate ids + bounds + referential integrity] -> [pin pre-checks:
-    // second source, wild color — typed failures naming the pin, criterion 10] -> [LevelGraph +
+    // fields] -> [caps + duplicate ids + bounds + referential/color integrity] -> [LevelGraph +
     // id maps]. Total and non-throwing: every failure is a ContentResult error (A-C2a-3).
     // Bare bound literals are banned outside ContentBounds (criterion 5): every number below
     // comes from the constants class.
@@ -421,28 +420,31 @@ namespace CatMetro.Content
                     if (!sourceNodeIds.Contains(w.SourceNode))
                         throw new WalkException(ContentErrorKind.DanglingReference, $"wave sourceNode '{w.SourceNode}'");
 
-                // pin pre-checks (criterion 10): typed failures naming the pin; the shipped
-                // LevelGraph guards then never fire for imported content. Review F4: the wild
-                // pin applies ANYWHERE a color appears — waves, station accepts, source
-                // allowedColors — and unknown colors are rejected in the same sweep, so no
-                // imported level can detonate the Domain's NEW-Q4/NEW-Q35 guards mid-run.
-                if (sources.Length > 1)
-                    throw new WalkException(ContentErrorKind.PinnedMechanic,
-                        "second source is pinned out of CM-C1 scope (state/backlog.md, criterion 14)");
-                foreach (var w in waves)
-                    if (ColorCode(w.Color, "wave") == CatColor.Wild)
-                        throw new WalkException(ContentErrorKind.PinnedMechanic,
-                            "pinned NEW-Q35: the wild color's resolution boundary is undecided (wave)");
+                // CM-C14a: second-source and Wild are enabled. Keep one total color sweep so an
+                // unknown token remains a typed bounds failure in every schema color position.
                 foreach (var s in stations)
                     foreach (var c in s.Accepts.Span)
-                        if (ColorCode(c, "station accepts") == CatColor.Wild)
-                            throw new WalkException(ContentErrorKind.PinnedMechanic,
-                                "pinned NEW-Q35: the wild color's resolution boundary is undecided (station accepts)");
+                        ColorCode(c, "station accepts");
                 foreach (var s in sources)
                     foreach (var c in s.AllowedColors.Span)
-                        if (ColorCode(c, "source allowedColors") == CatColor.Wild)
-                            throw new WalkException(ContentErrorKind.PinnedMechanic,
-                                "pinned NEW-Q35: the wild color's resolution boundary is undecided (source allowedColors)");
+                        ColorCode(c, "source allowedColors");
+                foreach (var w in waves)
+                {
+                    byte waveCode = ColorCode(w.Color, "wave");
+                    SourceDto authoredSource = null;
+                    foreach (var s in sources)
+                        if (s.NodeId == w.SourceNode) { authoredSource = s; break; }
+                    bool allowed = false;
+                    foreach (var c in authoredSource.AllowedColors.Span)
+                        if (ColorCode(c, "source allowedColors") == waveCode)
+                        {
+                            allowed = true;
+                            break;
+                        }
+                    if (!allowed)
+                        throw new WalkException(ContentErrorKind.BoundViolation,
+                            $"wave color '{w.Color}' is not in source '{w.SourceNode}' allowedColors");
+                }
 
                 // dense mapping (criterion 9): authored order IS the index order (A-C1-10)
                 var dto = new LevelDto(schemaVersion, id, name, seed, meta,
@@ -503,6 +505,7 @@ namespace CatMetro.Content
                     stationCapacity[i] = stations[i].Capacity;
                 }
                 var waveTick = new int[waves.Length];
+                var waveSourceNode = new int[waves.Length];
                 var waveColor = new byte[waves.Length];
                 var waveCount = new int[waves.Length];
                 var waveSpacing = new int[waves.Length];
@@ -510,6 +513,7 @@ namespace CatMetro.Content
                 for (int i = 0; i < waves.Length; i++)
                 {
                     waveTick[i] = waves[i].Tick;
+                    waveSourceNode[i] = nodeIndex[waves[i].SourceNode];
                     waveColor[i] = ColorCode(waves[i].Color, "wave");
                     waveCount[i] = waves[i].Count;
                     waveSpacing[i] = waves[i].SpacingTicks;
@@ -525,12 +529,12 @@ namespace CatMetro.Content
                         stationNode, stationAccepts, stationCapacity,
                         waveTick, waveColor, waveCount, waveSpacing,
                         win.Deliveries, win.TimeLimitTicks,
-                        qCapBound: ContentBounds.QUEUE_CAPACITY_MAX, trainsMax: trainsMax);
+                        qCapBound: ContentBounds.QUEUE_CAPACITY_MAX, trainsMax: trainsMax,
+                        waveSourceNode: waveSourceNode);
                 }
                 catch (NotSupportedException ex)
                 {
-                    // Defensive: the pin pre-checks above make this unreachable for imported
-                    // content, but the guard must never escape (criterion 10).
+                    // Defensive: any remaining Domain pin must stay typed at the importer seam.
                     return Fail(ContentErrorKind.PinnedMechanic, ex.Message);
                 }
                 catch (ArgumentException ex)

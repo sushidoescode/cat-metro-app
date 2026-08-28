@@ -146,12 +146,13 @@ bandv = next((v for v in report["campaign"] if v["value"] == "tag=CM-R09.3"), No
 if bandv is None or bandv["code"] != "Pass":
     fail("campaign band-table verdict not Pass: " + (bandv["detail"] if bandv else "MISSING"))
 count = next((v for v in report["campaign"] if v["value"] == "tag=CM-R09.1"), None)
-# 17/30 is the expected post-merge count for THIS band alone (10 onboarding+alternation levels
-# already shipped + these 7). Note for the merge record (per this contract's task brief): merging
-# alongside CM-C11's own wrapper, which independently pins "10/30" against the pre-this-band tree,
-# is a declared, expected divergence at merge time — not a defect in either wrapper.
-if count is None or "17/30" not in count["detail"]:
-    fail("campaign count row does not read 17/30: " + (count["detail"] if count else "MISSING"))
+# 19/30 since the LEVEL-VARIETY lane landed L018 (two-source) and L019 (wildcard) on top of the
+# 17 onboarding+alternation+queue-reading levels. Note for the merge record (per this contract's
+# task brief): merging alongside CM-C11's own wrapper, which independently pins the count against
+# its own tree state, is a declared, expected divergence at merge time — not a defect in either
+# wrapper.
+if count is None or "19/30" not in count["detail"]:
+    fail("campaign count row does not read 19/30: " + (count["detail"] if count else "MISSING"))
 
 print("queue-reading-band.test.sh: python report checks OK")
 PYEOF
