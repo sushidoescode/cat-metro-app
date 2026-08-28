@@ -31,6 +31,7 @@ TODO` with dated evidence rather than marking a step complete from memory.
 | Repository | DONE | Unity is pinned to `6000.3.16f1`. OneSignal Android and iOS packages are pinned to `5.3.3`; EDM4U is pinned once at `1.2.188`. |
 | Repository | DONE | Exact installed-editor `mainTemplate.gradle` and `gradleTemplate.properties` are committed and only Custom Main Gradle Template plus Custom Gradle Properties Template are enabled. |
 | Repository | DONE | OneSignal location is disabled in `unity/ProjectSettings/OneSignalSettings.json`. |
+| Repository | DONE | The required OneSignal 5.3.3 linker-preservation output is committed at `unity/Assets/OneSignal/link.xml`; release validation must verify it in stripped Android and iOS target builds. |
 | Repository | DONE | `onesignal.json` contains an empty `appId`; missing configuration fails closed without blocking play. |
 | Repository | DONE | Runtime code writes only `daily_opt_in` and `daily_reminder_slot`, accepts only route `daily`, and queues accepted clicks onto Unity's main loop. |
 | Repository | DONE | Reminders default Off. Morning is only the preselected slot. The one automatic soft prompt is earned after the first durable counted Daily win. |

@@ -6,7 +6,7 @@ using CatMetro.Presentation.Strings;
 
 namespace CatMetro.Tests.Presentation
 {
-    // Pins the two daily rows this feature owns without claiming later features may not append
+    // Pins the six Daily Live rows this feature owns without claiming later features may not append
     // more localized copy after them.
     public sealed class UiCsvDailyWireTests
     {
@@ -22,8 +22,9 @@ namespace CatMetro.Tests.Presentation
         public void DailyLiveRows_AreAppendOnlyAndBytePinned()
         {
             var rows = Rows();
+            // This legacy slice owns rows 0-17. Later slices may only append after them.
             Assert.That(rows.Length, Is.GreaterThanOrEqualTo(18),
-                "all six Daily Live rows remain present when later features append strings");
+                "the frozen Daily Live prefix must remain present; later rows may append");
             Assert.That(rows[12], Is.EqualTo("home.daily.label,Daily Line"), "DRAFT");
             Assert.That(rows[13], Is.EqualTo("results.daily.done,Home"), "DRAFT");
             Assert.That(rows[14], Is.EqualTo(
