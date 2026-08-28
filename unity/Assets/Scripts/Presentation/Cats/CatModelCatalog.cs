@@ -213,10 +213,9 @@ namespace CatMetro.Presentation.Cats
                             + " must sample clip " + required + ".";
                         return false;
                     }
-                    if (required == WalkClip
-                        && (sampled[0].clip.empty || sampled[0].clip.length <= 0f))
+                    if (sampled[0].clip.empty || sampled[0].clip.length <= 0f)
                     {
-                        rejectionReason = "Cat rig state " + WalkClip
+                        rejectionReason = "Cat rig state " + required
                             + " must sample a positive-length child animation.";
                         return false;
                     }
