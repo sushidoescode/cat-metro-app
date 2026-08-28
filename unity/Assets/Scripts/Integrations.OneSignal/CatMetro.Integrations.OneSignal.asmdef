@@ -1,0 +1,17 @@
+{
+    "name": "CatMetro.Integrations.OneSignal",
+    "rootNamespace": "CatMetro.Integrations.OneSignal",
+    "references": [
+        "CatMetro.Services",
+        "OneSignal.Core"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
