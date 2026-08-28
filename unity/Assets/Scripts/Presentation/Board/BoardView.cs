@@ -336,9 +336,15 @@ namespace CatMetro.Presentation.Board
                         {
                             // Cancel, rather than merely hide, so re-enabling motion cannot
                             // resume an old departure sequence from its elapsed timestamp.
-                            if (motionOff) _catTracks[t] = new CatPresentationTrack();
-                            dead.ApplyPresentation(CatPresentationState.Hidden, visualTime, true);
-                            dead.gameObject.SetActive(false);
+                            bool cancelDeparture = motionOff
+                                && _catTracks[t].State != CatPresentationState.Hidden;
+                            bool needsHideReset = dead.gameObject.activeSelf || cancelDeparture;
+                            if (cancelDeparture) _catTracks[t] = new CatPresentationTrack();
+                            if (needsHideReset)
+                            {
+                                dead.ApplyPresentation(CatPresentationState.Hidden, visualTime, true);
+                                dead.gameObject.SetActive(false);
+                            }
                         }
                         else
                         {
