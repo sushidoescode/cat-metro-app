@@ -75,18 +75,40 @@ if [ "$rc1" -ne 0 ] || [ "$rc2" -ne 0 ]; then
 fi
 
 # ...and a non-vacuity guard on top of the exit code: a filter matching zero
-# tests also exits 0 (review F1), so a green run must additionally report a
-# positive passed count and no failures.
-summary="$(printf '%s\n' "$out1" | grep -E '^(Passed|Failed)!' | tail -1)"
-passed="$(printf '%s\n' "$summary" | sed -nE 's/.*Passed:[[:space:]]*([0-9]+).*/\1/p')"
-failed="$(printf '%s\n' "$summary" | sed -nE 's/.*Failed:[[:space:]]*([0-9]+).*/\1/p')"
-if [ -z "${passed:-}" ] || [ "$passed" -le 0 ] 2>/dev/null; then
-  echo "solution-suite: FAIL — no positive passed count in the run summary: '${summary:-none}'"
+# tests also exits 0 (review F1), so BOTH runs must report consistent positive
+# counts and no failures. The requested detailed VSTest logger uses a multiline
+# summary (`Test Run Successful.`, `Total tests:`, then indented counts), while
+# some SDKs use the compact `Passed!` line. The parser understands both forms
+# and rejects malformed, mixed, inconsistent, or zero-test summaries.
+parse_summary() {
+  printf '%s\n' "$1" | python3 tests/suite/dotnet-summary.py 2>&1
+}
+
+metrics1="$(parse_summary "$out1")"; parse_rc1=$?
+metrics2="$(parse_summary "$out2")"; parse_rc2=$?
+metrics_pattern='^[0-9]+ [0-9]+ [0-9]+ [0-9]+ [1-9][0-9]*$'
+if [ "$parse_rc1" -ne 0 ] || [ "$parse_rc2" -ne 0 ]; then
+  echo "solution-suite: FAIL — could not prove non-vacuous VSTest summaries"
+  echo "  run1: $metrics1"
+  echo "  run2: $metrics2"
   fail=1
-fi
-if [ -n "${failed:-}" ] && [ "$failed" -ne 0 ] 2>/dev/null; then
-  echo "solution-suite: FAIL — run reported $failed failed test(s)"
+  passed=0
+elif ! [[ "$metrics1" =~ $metrics_pattern ]] || ! [[ "$metrics2" =~ $metrics_pattern ]]; then
+  echo "solution-suite: FAIL — summary parser output was not exactly five integer fields"
+  echo "  run1: $metrics1"
+  echo "  run2: $metrics2"
   fail=1
+  passed=0
+else
+  read -r passed1 failed1 skipped1 total1 runs1 <<< "$metrics1"
+  read -r passed2 failed2 skipped2 total2 runs2 <<< "$metrics2"
+  passed="$passed1"
+  if [ "$metrics1" != "$metrics2" ]; then
+    echo "solution-suite: FAIL — test counts differ across independent processes:"
+    echo "  run1: passed=$passed1 failed=$failed1 skipped=$skipped1 total=$total1 runs=$runs1"
+    echo "  run2: passed=$passed2 failed=$failed2 skipped=$skipped2 total=$total2 runs=$runs2"
+    fail=1
+  fi
 fi
 
 # --- cross-process determinism of the replay hash (was CM-C1 crit 4 + 11b) ---
