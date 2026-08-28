@@ -10,7 +10,7 @@ namespace CatMetro.Tests.Engine.Messaging
 {
     public sealed class OneSignalMessagingTests
     {
-        private const string ValidAppId = "11111111-2222-4333-8444-555555555555";
+        private const string ValidAppId = "abcdefab-cdef-4abc-8def-abcdefabcdef";
 
         [Test]
         public void Initialize_ValidAppIdBecomesAvailableWithoutPrompting()
@@ -34,6 +34,11 @@ namespace CatMetro.Tests.Engine.Messaging
 
         [TestCase("")]
         [TestCase("not-an-app-id")]
+        [TestCase("00000000-0000-0000-0000-000000000000")]
+        [TestCase("{abcdefab-cdef-4abc-8def-abcdefabcdef}")]
+        [TestCase("(abcdefab-cdef-4abc-8def-abcdefabcdef)")]
+        [TestCase("abcdefabcdef4abc8defabcdefabcdef")]
+        [TestCase("{0xabcdefab,0xcdef,0x4abc,{0x8d,0xef,0xab,0xcd,0xef,0xab,0xcd,0xef}}")]
         public void Initialize_InvalidAppIdFailsClosed(string appId)
         {
             var bridge = new FakeOneSignalBridge();
@@ -49,17 +54,44 @@ namespace CatMetro.Tests.Engine.Messaging
         }
 
         [Test]
-        public void RuntimeConfig_AcceptsOnlyANonEmptyParseableAppId()
+        public void Initialize_UppercaseDAppIdIsNormalizedBeforeTheSdkBoundary()
+        {
+            var bridge = new FakeOneSignalBridge();
+            using (var messaging = new OneSignalMessaging(bridge))
+            {
+                messaging.Initialize("ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF");
+
+                Assert.That(messaging.IsAvailable, Is.True);
+                Assert.That(bridge.InitializedAppId, Is.EqualTo(ValidAppId));
+            }
+        }
+
+        [Test]
+        public void RuntimeConfig_NormalizesACanonicalDAppId()
         {
             Assert.That(OneSignalRuntimeConfig.TryGetAppId(
-                "{\"appId\":\"11111111-2222-4333-8444-555555555555\"}", out var appId),
+                "{\"appId\":\"ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF\"}", out var appId),
                 Is.True);
             Assert.That(appId, Is.EqualTo(ValidAppId));
+        }
 
-            Assert.That(OneSignalRuntimeConfig.TryGetAppId("{\"appId\":\"\"}", out _),
-                Is.False);
-            Assert.That(OneSignalRuntimeConfig.TryGetAppId("{\"appId\":\"wrong\"}", out _),
-                Is.False);
+        [TestCase("")]
+        [TestCase("wrong")]
+        [TestCase("00000000-0000-0000-0000-000000000000")]
+        [TestCase("{abcdefab-cdef-4abc-8def-abcdefabcdef}")]
+        [TestCase("(abcdefab-cdef-4abc-8def-abcdefabcdef)")]
+        [TestCase("abcdefabcdef4abc8defabcdefabcdef")]
+        [TestCase("{0xabcdefab,0xcdef,0x4abc,{0x8d,0xef,0xab,0xcd,0xef,0xab,0xcd,0xef}}")]
+        public void RuntimeConfig_RejectsInvalidOrNonCanonicalAppIds(string appId)
+        {
+            Assert.That(OneSignalRuntimeConfig.TryGetAppId(
+                "{\"appId\":\"" + appId + "\"}", out var parsed), Is.False);
+            Assert.That(parsed, Is.Empty);
+        }
+
+        [Test]
+        public void RuntimeConfig_MalformedOrMissingDataFailsClosed()
+        {
             Assert.That(OneSignalRuntimeConfig.TryGetAppId("not-json", out _), Is.False);
             Assert.That(OneSignalRuntimeConfig.TryGetAppId(null, out _), Is.False);
             Assert.That(OneSignalRuntimeConfig.LoadAppId(), Is.Empty,
@@ -86,6 +118,43 @@ namespace CatMetro.Tests.Engine.Messaging
                 Assert.That(result, Is.EqualTo(MessagingPermission.Authorized));
                 Assert.That(bridge.RequestPermissionCount, Is.EqualTo(1));
                 Assert.That(bridge.LastFallbackToSettings, Is.True);
+            }
+        }
+
+        [Test]
+        public async Task PromptAsync_CancelsWhileTheNativeRequestRemainsPending()
+        {
+            var nativeRequest = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var bridge = new FakeOneSignalBridge
+            {
+                PendingPermissionRequest = nativeRequest
+            };
+            using (var messaging = CreateInitialized(bridge))
+            using (var cancellation = new CancellationTokenSource())
+            {
+                var prompt = messaging.PromptAsync(false, cancellation.Token);
+                Assert.That(bridge.RequestPermissionCount, Is.EqualTo(1),
+                    "precondition: the SDK request must be pending before cancellation");
+                Assert.That(nativeRequest.Task.IsCompleted, Is.False);
+
+                try
+                {
+                    cancellation.Cancel();
+                    var winner = await Task.WhenAny(prompt, Task.Delay(1000));
+
+                    Assert.That(winner, Is.SameAs(prompt),
+                        "caller cancellation must not wait for the native dialog task");
+                    Assert.That(prompt.IsCanceled, Is.True);
+                    Assert.CatchAsync<OperationCanceledException>(async () => await prompt);
+
+                    nativeRequest.SetException(new InvalidOperationException("late SDK fault"));
+                    await Task.Yield();
+                }
+                finally
+                {
+                    nativeRequest.TrySetResult(false);
+                }
             }
         }
 
@@ -217,6 +286,7 @@ namespace CatMetro.Tests.Engine.Messaging
             public string SubscriptionId { get; set; } = "test-subscription";
             public bool PermissionRequestResult { get; set; }
             public NativeMessagingPermission NativePermissionAfterRequest { get; set; }
+            public TaskCompletionSource<bool> PendingPermissionRequest { get; set; }
             public int RequestPermissionCount { get; private set; }
             public bool LastFallbackToSettings { get; private set; }
             public int OptInCount { get; private set; }
@@ -240,6 +310,8 @@ namespace CatMetro.Tests.Engine.Messaging
             {
                 RequestPermissionCount++;
                 LastFallbackToSettings = fallbackToSettings;
+                if (PendingPermissionRequest != null)
+                    return PendingPermissionRequest.Task;
                 PermissionGranted = PermissionRequestResult;
                 NativePermission = NativePermissionAfterRequest;
                 return Task.FromResult(PermissionRequestResult);

@@ -74,7 +74,7 @@ namespace CatMetro.Integrations.OneSignal
 
             DetachListener();
             IsAvailable = false;
-            if (!TryNormalizeAppId(appId, out var normalizedAppId))
+            if (!OneSignalAppId.TryNormalize(appId, out var normalizedAppId))
                 return;
 
             _bridge.NotificationClicked += _notificationClicked;
@@ -97,8 +97,8 @@ namespace CatMetro.Integrations.OneSignal
                 return MessagingPermission.Unknown;
 
             cancellationToken.ThrowIfCancellationRequested();
-            var granted = await _bridge.RequestPermissionAsync(fallbackToSettings);
-            cancellationToken.ThrowIfCancellationRequested();
+            var request = _bridge.RequestPermissionAsync(fallbackToSettings);
+            var granted = await AwaitPermissionRequest(request, cancellationToken);
             return MapPermission(granted || _bridge.PermissionGranted,
                 _bridge.NativePermission);
         }
@@ -161,18 +161,36 @@ namespace CatMetro.Integrations.OneSignal
             _listenerAttached = false;
         }
 
-        private static bool TryNormalizeAppId(string appId, out string normalizedAppId)
+        private static async Task<bool> AwaitPermissionRequest(Task<bool> request,
+            CancellationToken cancellationToken)
         {
-            normalizedAppId = string.Empty;
-            if (string.IsNullOrWhiteSpace(appId))
-                return false;
+            if (!cancellationToken.CanBeCanceled)
+                return await request;
 
-            var candidate = appId.Trim();
-            if (!Guid.TryParse(candidate, out _))
-                return false;
+            var cancellation = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            using (cancellationToken.Register(() => cancellation.TrySetResult(false)))
+            {
+                var completed = await Task.WhenAny(request, cancellation.Task);
+                if (completed == request)
+                    return await request;
 
-            normalizedAppId = candidate;
-            return true;
+                ObserveLateFault(request);
+                cancellationToken.ThrowIfCancellationRequested();
+                throw new OperationCanceledException(cancellationToken);
+            }
+        }
+
+        private static void ObserveLateFault(Task request)
+        {
+            _ = request.ContinueWith(completed =>
+                {
+                    _ = completed.Exception;
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted
+                | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
 
         private static MessagingPermission MapPermission(bool granted,

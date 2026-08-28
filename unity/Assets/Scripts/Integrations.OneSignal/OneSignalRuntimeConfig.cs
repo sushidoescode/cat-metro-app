@@ -3,6 +3,24 @@ using UnityEngine;
 
 namespace CatMetro.Integrations.OneSignal
 {
+    internal static class OneSignalAppId
+    {
+        internal static bool TryNormalize(string appId, out string normalizedAppId)
+        {
+            normalizedAppId = string.Empty;
+            if (string.IsNullOrWhiteSpace(appId))
+                return false;
+
+            var candidate = appId.Trim();
+            if (!Guid.TryParseExact(candidate, "D", out var parsed)
+                || parsed == Guid.Empty)
+                return false;
+
+            normalizedAppId = parsed.ToString("D");
+            return true;
+        }
+    }
+
     public static class OneSignalRuntimeConfig
     {
         private const string ResourcePath = "Config/onesignal";
@@ -33,12 +51,7 @@ namespace CatMetro.Integrations.OneSignal
                 if (document == null || string.IsNullOrWhiteSpace(document.appId))
                     return false;
 
-                var candidate = document.appId.Trim();
-                if (!Guid.TryParse(candidate, out _))
-                    return false;
-
-                appId = candidate;
-                return true;
+                return OneSignalAppId.TryNormalize(document.appId, out appId);
             }
             catch (ArgumentException)
             {
