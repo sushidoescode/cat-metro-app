@@ -88,6 +88,7 @@ namespace CatMetro.Presentation.Cats
                 }
 
                 if (component is Animation || component is Collider || component is Rigidbody
+                    || component is Collider2D || component is Rigidbody2D
                     || component is BoardElementId || component is Selectable
                     || component is BaseRaycaster)
                 {
@@ -190,7 +191,7 @@ namespace CatMetro.Presentation.Cats
             }
             finally
             {
-                if (Application.isPlaying) UnityEngine.Object.Destroy(probe);
+                if (UnityEngine.Application.isPlaying) UnityEngine.Object.Destroy(probe);
                 else UnityEngine.Object.DestroyImmediate(probe);
             }
 

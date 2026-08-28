@@ -49,9 +49,12 @@ namespace CatMetro.Presentation.Board
         private Transform[] _switchArm;
         private readonly Dictionary<int, ToyTrainView> _trains = new Dictionary<int, ToyTrainView>();
         private CatPresentationTrack[] _catTracks;
+        private int[] _catOccupantGenerations;
         private TrainSlot[] _currentTrainSlots;
         private TrainSlot[] _previousTrainSlots;
+        private TrainSlot[] _stepPreviousTrainSlots;
         private int _previousDeliveryCount;
+        private int _previousPresentedTick;
         private bool _hasPresentationSnapshot;
 
         public int SwitchCount => _switchNode.Length;
@@ -322,17 +325,38 @@ namespace CatMetro.Presentation.Board
             EnsureCatTracks(sourceTrains.Length);
             var trains = _currentTrainSlots;
             for (int t = 0; t < sourceTrains.Length; t++) trains[t] = sourceTrains[t];
+            var stepPreviousSource = session.PrevTrains;
+            for (int t = 0; t < trains.Length; t++)
+                _stepPreviousTrainSlots[t] = t < stepPreviousSource.Length
+                    ? stepPreviousSource[t] : default;
             int deliveries = session.State.Deliveries;
             bool deliveryCounterAdvanced = _hasPresentationSnapshot
                 && deliveries > _previousDeliveryCount;
+            bool simulationAdvanced = _hasPresentationSnapshot
+                && session.State.Tick > _previousPresentedTick;
             for (int t = 0; t < trains.Length; t++)
             {
                 TrainSlot previous = _hasPresentationSnapshot && t < _previousTrainSlots.Length
                     ? _previousTrainSlots[t] : default;
+                bool previousLive = _hasPresentationSnapshot && IsLive(previous);
+                bool live = IsLive(trains[t]);
                 bool deliveryAdvanced = deliveryCounterAdvanced && DeliveryAdvancedForPresentation(
                     previous, trains[t], _previousDeliveryCount, deliveries);
-                _catTracks[t].Observe(trains[t], deliveryAdvanced, visualTime);
-                bool live = IsLive(trains[t]);
+                bool provableCatchUpReplacement = deliveryCounterAdvanced
+                    && previousLive && live
+                    && (previous.Color != trains[t].Color
+                        || (simulationAdvanced && !IsLive(_stepPreviousTrainSlots[t])));
+                bool newOccupant = live
+                    && (!_hasPresentationSnapshot || !previousLive || provableCatchUpReplacement);
+                if (newOccupant) _catOccupantGenerations[t] = NextGeneration(
+                    _catOccupantGenerations[t]);
+
+                // There is deliberately no guess for a same-colour occupant that both delivers
+                // and refills before GameSession's final pre-step snapshot: State, PrevTrains and
+                // the delivery counter cannot identify that event. Only the provable per-slot
+                // transitions above restart presentation; unrelated live cats keep their phase.
+                _catTracks[t].Observe(trains[t], _catOccupantGenerations[t],
+                    deliveryAdvanced, visualTime);
                 if (!live)
                 {
                     if (_trains.TryGetValue(t, out var dead))
@@ -380,7 +404,8 @@ namespace CatMetro.Presentation.Board
                 // The CODE, not a resolved Color: the consist paints the cat AND cuts its
                 // destination pin from it, and both have to come off the one CatLine vocabulary
                 // or the pin's shape and the cat's colour can drift apart.
-                consist.SyncSlot(trains[t].Id, trains[t].Color);
+                consist.SyncSlot(PresentationOccupantKey(t, _catOccupantGenerations[t]),
+                    trains[t].Color);
                 if (trains[t].State == CatMetro.Domain.TrainState.OnEdge)
                 {
                     int e = trains[t].EdgeId;
@@ -397,6 +422,7 @@ namespace CatMetro.Presentation.Board
             }
             for (int t = 0; t < trains.Length; t++) _previousTrainSlots[t] = trains[t];
             _previousDeliveryCount = deliveries;
+            _previousPresentedTick = session.State.Tick;
             _hasPresentationSnapshot = true;
         }
 
@@ -404,14 +430,30 @@ namespace CatMetro.Presentation.Board
         {
             if (_catTracks != null && _catTracks.Length == count) return;
             var replacement = new CatPresentationTrack[count];
+            var replacementGenerations = new int[count];
             int existing = _catTracks == null ? 0 : Mathf.Min(_catTracks.Length, count);
-            for (int i = 0; i < existing; i++) replacement[i] = _catTracks[i];
+            for (int i = 0; i < existing; i++)
+            {
+                replacement[i] = _catTracks[i];
+                replacementGenerations[i] = _catOccupantGenerations[i];
+            }
             for (int i = existing; i < count; i++) replacement[i] = new CatPresentationTrack();
             _catTracks = replacement;
+            _catOccupantGenerations = replacementGenerations;
             _currentTrainSlots = new TrainSlot[count];
             _previousTrainSlots = new TrainSlot[count];
+            _stepPreviousTrainSlots = new TrainSlot[count];
             _hasPresentationSnapshot = false;
         }
+
+        private static int NextGeneration(int current)
+        {
+            int next = unchecked(current + 1);
+            return next > 0 ? next : 1;
+        }
+
+        private static long PresentationOccupantKey(int slotIndex, int generation) =>
+            ((long)(uint)(slotIndex + 1) << 32) | (uint)generation;
 
         private static bool IsLive(TrainSlot slot) =>
             slot.Id != 0 && slot.State != TrainState.None;
