@@ -24,7 +24,7 @@ namespace CatMetro.Presentation.Cats
         public const float DeliveryWalkDuration = 0.28f;
         public const float CelebrateDuration = 0.48f;
 
-        private short _representedId;
+        private int _representedOccupantGeneration;
         private bool _departureActive;
         private float _stateStartedAt;
 
@@ -33,19 +33,22 @@ namespace CatMetro.Presentation.Cats
         public float StateElapsed { get; private set; }
 
         /// <summary>
-        /// Consumes a copied simulation snapshot. <paramref name="deliveryAdvanced"/> is an
-        /// already-derived presentation input; it is never inferred by mutating simulation data.
+        /// Consumes a copied simulation snapshot plus the presentation-owned generation for
+        /// that fixed Domain slot. <paramref name="deliveryAdvanced"/> is an already-derived
+        /// presentation input; neither input is inferred by mutating simulation data.
         /// </summary>
-        public void Observe(TrainSlot snapshot, bool deliveryAdvanced, float visualTime)
+        public void Observe(TrainSlot snapshot, int occupantGeneration,
+            bool deliveryAdvanced, float visualTime)
         {
             float now = float.IsNaN(visualTime) || float.IsInfinity(visualTime) ? 0f : visualTime;
             bool live = snapshot.Id != 0 && snapshot.State != TrainState.None;
 
             if (live)
             {
-                if (_representedId != snapshot.Id || _departureActive || State == CatPresentationState.Hidden)
+                if (_representedOccupantGeneration != occupantGeneration
+                    || _departureActive || State == CatPresentationState.Hidden)
                 {
-                    _representedId = snapshot.Id;
+                    _representedOccupantGeneration = occupantGeneration;
                     _departureActive = false;
                     Enter(CatPresentationState.Walk, now);
                 }
@@ -58,14 +61,14 @@ namespace CatMetro.Presentation.Cats
             {
                 AdvanceDeparture(now);
             }
-            else if (_representedId != 0 && deliveryAdvanced)
+            else if (_representedOccupantGeneration != 0 && deliveryAdvanced)
             {
                 _departureActive = true;
                 Enter(CatPresentationState.Alight, now);
             }
             else
             {
-                _representedId = 0;
+                _representedOccupantGeneration = 0;
                 Enter(CatPresentationState.Hidden, now);
             }
 
@@ -123,7 +126,7 @@ namespace CatMetro.Presentation.Cats
                     && HasElapsed(now, CelebrateDuration))
                 {
                     _departureActive = false;
-                    _representedId = 0;
+                    _representedOccupantGeneration = 0;
                     Enter(CatPresentationState.Hidden, _stateStartedAt + CelebrateDuration);
                 }
                 return;

@@ -261,9 +261,12 @@ namespace CatMetro.Presentation.Board
         private CatMicroMotion _microMotion = new CatMicroMotion(0u);
         private CatPresentationState _presentationState = CatPresentationState.Hidden;
         private CatPresentationState _lastRigState = CatPresentationState.Hidden;
+        private CatModelCatalog _catCatalog;
         private GameObject _rigInstance;
         private Animator _rigAnimator;
         private bool _rigAdmitted;
+        private bool _rigMotionSuppressed;
+        private int _rigNeutralSampleCount;
         private string _rigFallbackReason = "Rig has not been evaluated.";
 
         // The authored graph's edge endpoints (BoardView's own arrays) — the authority that
@@ -273,7 +276,8 @@ namespace CatMetro.Presentation.Board
 
         // Presentation-side memory the sim doesn't carry: the edge the head is (or was last)
         // on, one edge of history behind it, and the last applied heading for parked frames.
-        private short _seenTrainId;
+        private long _seenOccupantKey;
+        private bool _hasSeenOccupant;
         private int _currentEdge = -1;
         private int _previousEdge = -1;
         private float _headingDegrees;
@@ -283,21 +287,25 @@ namespace CatMetro.Presentation.Board
         public bool RigAdmitted => _rigAdmitted;
         public string RigFallbackReason => _rigFallbackReason;
         public CatPresentationState PresentationState => _presentationState;
+        public long PresentationOccupantKey => _seenOccupantKey;
+        public int RigNeutralSampleCount => _rigNeutralSampleCount;
 
         public static ToyTrainView Create(Transform parent, string name,
-            int[] edgeFrom, int[] edgeTo)
+            int[] edgeFrom, int[] edgeTo, CatModelCatalog catCatalog = null)
         {
             var root = new GameObject(name);
             root.transform.SetParent(parent, false);
             var view = root.AddComponent<ToyTrainView>();
             view._edgeFrom = edgeFrom;
             view._edgeTo = edgeTo;
+            view._catCatalog = catCatalog;
             view.BuildConsist();
             return view;
         }
 
-        // Slot slaved to sim state: a reused slot (new train Id) must not inherit the previous
-        // occupant's edge history, tint or pin shape.
+        // The key is presentation-owned because Domain TrainSlot.Id identifies the fixed slot,
+        // not successive occupants of it. A new key must not inherit the previous occupant's
+        // edge history, micro-motion phase, pose, tint or pin shape.
         //
         // This takes the Domain colour CODE rather than a resolved Color, and that is the
         // whole reason the pin can exist. A Color cannot be turned back into a line without
@@ -307,15 +315,18 @@ namespace CatMetro.Presentation.Board
         // apart. It also fixes a quiet bug in passing — BoardView.ColorForCode has no wild
         // case, so a wild passenger used to ride out MAGENTA; CatLine.ColorOf gives it the
         // catnip violet the manifest pinned.
-        public void SyncSlot(short trainId, byte colorCode)
+        public void SyncSlot(long presentationOccupantKey, byte colorCode)
         {
-            if (trainId != _seenTrainId)
+            if (!_hasSeenOccupant || presentationOccupantKey != _seenOccupantKey)
             {
-                _seenTrainId = trainId;
+                _hasSeenOccupant = true;
+                _seenOccupantKey = presentationOccupantKey;
                 _currentEdge = -1;
                 _previousEdge = -1;
                 _headingDegrees = 0f;
-                _microMotion = new CatMicroMotion((uint)trainId);
+                uint lowKey = (uint)presentationOccupantKey;
+                uint highKey = (uint)(presentationOccupantKey >> 32);
+                _microMotion = new CatMicroMotion(lowKey ^ highKey * 2654435761u);
                 _presentationState = CatPresentationState.Hidden;
                 _lastRigState = CatPresentationState.Hidden;
                 ResetVisualPose();
@@ -694,7 +705,7 @@ namespace CatMetro.Presentation.Board
 
         private void TryInstallRig()
         {
-            var catalog = CatModelCatalog.LoadResources();
+            var catalog = _catCatalog ?? CatModelCatalog.LoadResources();
             _rigFallbackReason = catalog.RejectionReason;
             if (!catalog.TryInstantiate(_cat, out _rigInstance)) return;
 
@@ -710,7 +721,10 @@ namespace CatMetro.Presentation.Board
             _rigAnimator = animators[0];
             _rigAnimator.applyRootMotion = false;
             _rigInstance.transform.localPosition = Vector3.zero;
-            _rigInstance.transform.localRotation = Quaternion.identity;
+            // TASK 17 imports conventional +Y-up, +Z-forward content. This presentation-only
+            // adapter stands it on Cat's -Z tabletop-up axis and points it along Cat's +X face.
+            _rigInstance.transform.localRotation = Quaternion.LookRotation(
+                Vector3.right, Vector3.back);
             _rigInstance.transform.localScale = Vector3.one * CatModelCatalog.PresenterScale;
             _rigAdmitted = true;
             _rigFallbackReason = string.Empty;
@@ -723,13 +737,17 @@ namespace CatMetro.Presentation.Board
             _rigAnimator.applyRootMotion = false;
             if (motionOff)
             {
+                if (_rigMotionSuppressed) return;
+                _rigMotionSuppressed = true;
                 _rigAnimator.Rebind();
                 _rigAnimator.Update(0f);
                 _rigAnimator.speed = 0f;
+                _rigNeutralSampleCount++;
                 _lastRigState = CatPresentationState.Hidden;
                 return;
             }
 
+            _rigMotionSuppressed = false;
             _rigAnimator.speed = 1f;
             if (_lastRigState == state) return;
             _rigAnimator.Play(_rigAnimator.GetLayerName(0) + "." + CatModelCatalog.ClipFor(state), 0, 0f);
@@ -748,7 +766,7 @@ namespace CatMetro.Presentation.Board
 
         private static void DestroyOwned(GameObject instance)
         {
-            if (Application.isPlaying) Destroy(instance);
+            if (UnityEngine.Application.isPlaying) Destroy(instance);
             else DestroyImmediate(instance);
         }
 
