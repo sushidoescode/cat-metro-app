@@ -120,8 +120,8 @@ the Play Console record before upload.
 - [ ] Privacy policy, Data safety, content rating/digital-purchase answers, and listing claims match
       this same RevenueCat-enabled candidate.
 
-RevenueCat is absent at this branch's current baseline; public rollout is blocked until these checks
-pass on the integrated production candidate.
+RevenueCat is integrated but not production-configured or device-proven; public rollout is blocked
+until these checks pass on the exact production candidate.
 
 ## 8. Listing, graphics, and licensing
 

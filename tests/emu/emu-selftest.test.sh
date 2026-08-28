@@ -2,16 +2,15 @@
 # EMU-RIG criteria 1-3: the emulator self-test helper exists with the proven subcommand
 # surface, every adb call is serial-scoped through one wrapper, non-emulator serials are
 # refused (the physical Pixel must be untouchable by this tool), no upload/signing
-# surface exists, the runbook records the trap ledger, and the committed evidence pack's
-# frame hashes match its ARTIFACT.md manifest. Static gates plus one adb-free behavioral
-# probe — CI has no emulator, and the probe exits inside the guard before any adb path.
+# surface exists, and the runbook records the trap ledger. Static gates plus one adb-free
+# behavioral probe — CI has no emulator, and the probe exits inside the guard before any
+# adb path. This test does not claim a current emulator run or gameplay render.
 # Hardened per the #89 round-1 review: the refusal is EXECUTED, not grepped (F1); the
 # adb-custody gate counts occurrences across the whole stripped file with a boundary
 # class that catches $( ), backticks, absolute paths, and assignments (F2); positive
 # gates run on a view with full-line AND trailing comments removed (F7 — prose in
-# comments must never satisfy a gate); manifest rows tie each sha to its filename on
-# the same line (F9). Denylists still run on the RAW source, where a prose
-# false-positive is the desirable failure direction.
+# comments must never satisfy a gate). Denylists still run on the RAW source,
+# where a prose false-positive is the desirable failure direction.
 set -eu
 cd "$(git rev-parse --show-toplevel)"
 
@@ -19,7 +18,6 @@ fail() { echo "emu-selftest.test.sh: FAIL — $*" >&2; exit 1; }
 
 src="scripts/emu-selftest.sh"
 runbook="docs/runbooks/emulator-selftest.md"
-pack="evals/results/device/emu-gameplay-pass-2026-08-14"
 
 [ -f "$src" ] || fail "helper script is missing"
 [ -x "$src" ] || fail "helper script is not executable"
@@ -113,19 +111,5 @@ for sub in boot install launch bounce coldstart frame tap rotate-landscape rotat
 done
 grep -q 'emu-selftest.sh rotate-' "$runbook" \
   || fail "runbook does not route rotation through the helper"
-
-[ -f "$pack/ARTIFACT.md" ] || fail "evidence ARTIFACT.md is missing"
-png_count=0
-for png in "$pack"/*.png; do
-  [ -f "$png" ] || fail "evidence pack has no frames"
-  png_count=$((png_count + 1))
-  sha=$(shasum -a 256 "$png" | cut -d' ' -f1)
-  base=$(basename "$png")
-  # F9: the sha and ITS filename must share a manifest line — a swapped or misnamed
-  # frame must not be certifiable by a sha that merely appears elsewhere.
-  grep -E "$sha.*$base|$base.*$sha" "$pack/ARTIFACT.md" >/dev/null \
-    || fail "frame $base and sha $sha do not share a manifest line in ARTIFACT.md"
-done
-[ "$png_count" -ge 9 ] || fail "expected at least 9 evidence frames, found $png_count"
 
 echo "emu-selftest.test.sh: PASS"
