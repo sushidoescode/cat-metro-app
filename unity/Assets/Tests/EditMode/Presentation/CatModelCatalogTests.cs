@@ -233,6 +233,12 @@ namespace CatMetro.Tests.EditMode.Presentation
                     Assert.That(tint.GetColor("_BaseColor"),
                         Is.EqualTo(CatLine.ColorOf("red")),
                         "the admitted rig must inherit the authoritative cat-line tint");
+                    view.SyncSlot(0x0000000100000002L, CatColor.Blue);
+                    tint.Clear();
+                    rigRenderer.GetPropertyBlock(tint);
+                    Assert.That(tint.GetColor("_BaseColor"),
+                        Is.EqualTo(CatLine.ColorOf("blue")),
+                        "occupant reuse must retint the admitted rig, not retain its old line");
 
                     Bounds standing = BoundsIn(cat,
                         rig.GetComponentInChildren<MeshFilter>(true));

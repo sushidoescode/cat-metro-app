@@ -68,7 +68,7 @@ namespace CatMetro.Domain
                 state.Trains[slot].Color = g.WaveColor[w];
                 int sourceNode = g.WaveSourceNode[w];
                 state.Trains[slot].NodeId = (short)sourceNode;
-                int outEdge = SingleOutgoingEdge(g, sourceNode, state);
+                int outEdge = SelectedOutgoingEdge(state, sourceNode);
                 if (outEdge < 0)
                     throw new InvalidOperationException("source node has no outgoing edge — invalid fixture (F10)");
                 if (state.NodeQueueCounts[sourceNode] == 0 && MouthFree(state, outEdge))
@@ -92,7 +92,7 @@ namespace CatMetro.Domain
             {
                 if (state.NodeQueueCounts[n] == 0) continue;
                 int head = state.NodeQueueSlots[n][0] - 1; // stored ids are 1-based
-                int outEdge = OutgoingEdgeFor(g, state, n);
+                int outEdge = SelectedOutgoingEdge(state, n);
                 if (outEdge >= 0 && MouthFree(state, outEdge))
                 {
                     DequeueHead(ref state, n);
@@ -121,7 +121,7 @@ namespace CatMetro.Domain
                     continue;
                 }
 
-                int route = OutgoingEdgeFor(g, state, node);
+                int route = SelectedOutgoingEdge(state, node);
                 if (route >= 0 && MouthFree(state, route))
                     EnterEdge(ref state, t, route, enteredThisTick);
                 else
@@ -212,8 +212,14 @@ namespace CatMetro.Domain
         // The route out of a node: the node's switch's current route if it has one, else its
         // single outgoing edge, else -1 (terminal). Multiple switch-less outgoing edges do not
         // occur in CM-C1 fixtures.
-        private static int OutgoingEdgeFor(LevelGraph g, SimulationState state, int node)
+        /// <summary>
+        /// Returns the authoritative route currently selected out of a node without mutating
+        /// simulation state. The session runner also uses this exact selector to retain source
+        /// edge metadata for presentation when an emitted train starts in the source queue.
+        /// </summary>
+        public static int SelectedOutgoingEdge(SimulationState state, int node)
         {
+            LevelGraph g = state.Graph;
             for (int s = 0; s < g.SwitchNode.Length; s++)
                 if (g.SwitchNode[s] == node)
                     return g.SwitchRoutes[s][state.SwitchRoutes[s]];
@@ -222,8 +228,6 @@ namespace CatMetro.Domain
                     return e;
             return -1;
         }
-
-        private static int SingleOutgoingEdge(LevelGraph g, int node, SimulationState state) => OutgoingEdgeFor(g, state, node);
 
         private static int StationIndex(LevelGraph g, int node)
         {
