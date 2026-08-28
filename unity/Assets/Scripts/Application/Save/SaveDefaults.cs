@@ -2,7 +2,7 @@ using Newtonsoft.Json.Linq;
 
 namespace CatMetro.Application.Save
 {
-    // The fresh v2 payload extends the ADR-0006 §2 block additively. The three OPEN sub-shapes
+    // The fresh v3 payload extends the ADR-0006 §2 block additively. The three OPEN sub-shapes
     // remain ABSENT, not guessed:
     // no caps.sessionCounters, flags.paywall_placements stays bool, breadcrumbs.purchase is null
     // (when present: exactly {productId, placement, startedAtUtc, state}, state an OPAQUE string
@@ -13,7 +13,7 @@ namespace CatMetro.Application.Save
     public static class SaveDefaults
     {
         public const ushort FORMAT_VERSION = 1;
-        public const ushort SAVE_VERSION = 2;
+        public const ushort SAVE_VERSION = 3;
         public const string MAGIC = "CMSV";
 
         public static JObject FreshPayload()
@@ -86,6 +86,9 @@ namespace CatMetro.Application.Save
                 {
                     ["haptics"] = true, ["motion"] = true, ["audio"] = true,
                     ["equippedThemeId"] = "",
+                    ["dailyReminderEnabled"] = false,
+                    ["dailyReminderPromptSeen"] = false,
+                    ["dailyReminderSlot"] = "morning",
                 },
             };
         }
