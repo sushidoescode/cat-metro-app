@@ -9,11 +9,11 @@ namespace CatMetro.Tests.EditMode.Presentation
         [Test]
         public void ObservingSnapshot_DoesNotMutateTheSimulationSlot()
         {
-            var snapshot = LiveOnEdge(17);
+            var snapshot = LiveOnEdge();
             var before = snapshot;
             var track = new CatPresentationTrack();
 
-            track.Observe(snapshot, false, 3f);
+            track.Observe(snapshot, 1, false, 3f);
 
             Assert.That(snapshot.Id, Is.EqualTo(before.Id));
             Assert.That(snapshot.Color, Is.EqualTo(before.Color));
@@ -27,21 +27,21 @@ namespace CatMetro.Tests.EditMode.Presentation
         public void NewLiveSlot_UsesTheSpawnSequenceBeforeSettlingOnItsSimulationPosition()
         {
             var track = new CatPresentationTrack();
-            var slot = LiveOnEdge(4);
+            var slot = LiveOnEdge();
 
-            track.Observe(slot, false, 10f);
+            track.Observe(slot, 1, false, 10f);
             Assert.That(track.State, Is.EqualTo(CatPresentationState.Walk));
             Assert.That(track.StateElapsed, Is.EqualTo(0f));
 
-            track.Observe(slot, false, 10.22f);
+            track.Observe(slot, 1, false, 10.22f);
             Assert.That(track.State, Is.EqualTo(CatPresentationState.Board));
             Assert.That(track.StateElapsed, Is.EqualTo(0f));
 
-            track.Observe(slot, false, 10.40f);
+            track.Observe(slot, 1, false, 10.40f);
             Assert.That(track.State, Is.EqualTo(CatPresentationState.RideIdle));
 
             slot.State = TrainState.AtNode;
-            track.Observe(slot, false, 10.41f);
+            track.Observe(slot, 1, false, 10.41f);
             Assert.That(track.State, Is.EqualTo(CatPresentationState.WaitingIdle));
         }
 
@@ -49,41 +49,41 @@ namespace CatMetro.Tests.EditMode.Presentation
         public void DeliveredSlot_UsesTheDepartureSequenceThenHides()
         {
             var track = new CatPresentationTrack();
-            var live = LiveOnEdge(8);
+            var live = LiveOnEdge();
             var empty = default(TrainSlot);
 
-            track.Observe(live, false, 0f);
-            track.Observe(empty, true, 1f);
+            track.Observe(live, 1, false, 0f);
+            track.Observe(empty, 1, true, 1f);
             Assert.That(track.State, Is.EqualTo(CatPresentationState.Alight));
 
-            track.Observe(empty, true, 1.18f);
+            track.Observe(empty, 1, true, 1.18f);
             Assert.That(track.State, Is.EqualTo(CatPresentationState.Walk));
 
-            track.Observe(empty, true, 1.46f);
+            track.Observe(empty, 1, true, 1.46f);
             Assert.That(track.State, Is.EqualTo(CatPresentationState.Celebrate));
 
-            track.Observe(empty, true, 1.94f);
+            track.Observe(empty, 1, true, 1.94f);
             Assert.That(track.State, Is.EqualTo(CatPresentationState.Hidden));
         }
 
         [Test]
-        public void ReusedSlot_InterruptsDepartureWithoutInheritingThePreviousPose()
+        public void NewPresentationOccupantGeneration_InterruptsDepartureWithTheSameDomainSlotId()
         {
             var track = new CatPresentationTrack();
-            var oldLive = LiveOnEdge(3);
-            var newLive = LiveOnEdge(9);
+            var oldLive = LiveOnEdge(1);
+            var newLive = LiveOnEdge(1);
 
-            track.Observe(oldLive, false, 0f);
-            track.Observe(default, true, 1f);
+            track.Observe(oldLive, 1, false, 0f);
+            track.Observe(default, 1, true, 1f);
             Assert.That(track.State, Is.EqualTo(CatPresentationState.Alight));
 
-            track.Observe(newLive, false, 1.01f);
+            track.Observe(newLive, 2, false, 1.01f);
 
             Assert.That(track.State, Is.EqualTo(CatPresentationState.Walk));
             Assert.That(track.StateElapsed, Is.EqualTo(0f));
         }
 
-        private static TrainSlot LiveOnEdge(short id) => new TrainSlot
+        private static TrainSlot LiveOnEdge(short id = 1) => new TrainSlot
         {
             Id = id,
             Color = CatColor.Red,

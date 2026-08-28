@@ -5,6 +5,7 @@ using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Props;
 using CatMetro.Tests.Validation;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -29,7 +30,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             _paths = TrackSplineGraph.Build(new[] { Vector3.zero, new Vector3(3f, 0f, 0f) },
                 new[] { 0 }, new[] { 1 });
             _view = ToyTrainView.Create(_host.transform, "train:cat", new[] { 0 }, new[] { 1 });
-            _view.SyncSlot(41, CatMetro.Domain.CatColor.Red);
+            _view.SyncSlot(41L, CatMetro.Domain.CatColor.Red);
             _eyeBaseline = EyeLeft().localScale;
         }
 
@@ -55,13 +56,13 @@ namespace CatMetro.Tests.EditMode.Presentation
         [Test]
         public void DeliveryAdvance_IsDerivedFromCopiedSlotValuesAndCounterWithoutSlotMutation()
         {
-            var previous = new TrainSlot { Id = 41, State = TrainState.AtNode };
+            var previous = new TrainSlot { Id = 1, State = TrainState.AtNode };
             var current = default(TrainSlot);
 
             bool advanced = BoardView.DeliveryAdvancedForPresentation(previous, current, 2, 3);
 
             Assert.That(advanced, Is.True);
-            Assert.That(previous.Id, Is.EqualTo(41));
+            Assert.That(previous.Id, Is.EqualTo(1));
             Assert.That(previous.State, Is.EqualTo(TrainState.AtNode));
             Assert.That(current.Id, Is.EqualTo(0));
         }
@@ -79,10 +80,10 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
-        public void ReusedSlot_InterruptsLingerWithNeutralPoseAndNewTintHistory()
+        public void NewPresentationOccupantKey_InterruptsLingerWithNeutralPoseAndNewTintHistory()
         {
             _view.ApplyPresentation(CatPresentationState.Celebrate, 0.73f, false);
-            _view.SyncSlot(42, CatMetro.Domain.CatColor.Blue);
+            _view.SyncSlot(42L, CatMetro.Domain.CatColor.Blue);
 
             Assert.That(Cat().localPosition, Is.EqualTo(Vector3.zero));
             Assert.That(Head().localRotation, Is.EqualTo(Quaternion.identity));
@@ -100,6 +101,8 @@ namespace CatMetro.Tests.EditMode.Presentation
                 ToyTrainView.PlaceholderBodyWorldSize), Is.LessThan(0.0001f));
             Assert.That(Cat().GetComponentsInChildren<Collider>(true), Is.Empty);
             Assert.That(Cat().GetComponentsInChildren<Rigidbody>(true), Is.Empty);
+            Assert.That(Cat().GetComponentsInChildren<Collider2D>(true), Is.Empty);
+            Assert.That(Cat().GetComponentsInChildren<Rigidbody2D>(true), Is.Empty);
             Assert.That(Cat().GetComponentsInChildren<BoardElementId>(true), Is.Empty);
             Assert.That(Cat().GetComponentsInChildren<Selectable>(true), Is.Empty);
             Assert.That(Cat().GetComponentsInChildren<BaseRaycaster>(true), Is.Empty);
@@ -159,7 +162,7 @@ namespace CatMetro.Tests.EditMode.Presentation
         public void BoardUpdateFrom_DeliveryLingerMotionOffAndResumeDoNotResurrectTheDeadSlot()
         {
             BuildBoard();
-            SetLiveSlot(17, 0);
+            SetLiveSlot(1, 0);
             _board.UpdateFrom(_session, 0f);
             Transform train = BoardTrain();
             Vector3 lastAuthoritativePose = train.localPosition;
@@ -185,16 +188,17 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
-        public void BoardUpdateFrom_NewIdInterruptsDeadLingerAndDoesNotMutateTheSession()
+        public void BoardUpdateFrom_SameSlotIdReuseGetsANewPresentationKeyWithoutMutatingSession()
         {
             BuildBoard();
-            SetLiveSlot(17, 0);
+            SetLiveSlot(1, 0);
             _board.UpdateFrom(_session, 0f);
+            long firstOccupantKey = BoardTrain().GetComponent<ToyTrainView>().PresentationOccupantKey;
             _session.State.Trains[0] = default;
             _session.State.Deliveries = 1;
             _board.UpdateFrom(_session, 0.1f);
 
-            SetLiveSlot(99, 1);
+            SetLiveSlot(1, 1);
             _session.EnqueueToggle(0);
             _session.AdvanceMs(42d);
             byte[] stateDigestBefore = StateDigest(_session);
@@ -207,6 +211,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             var train = BoardTrain().GetComponent<ToyTrainView>();
             Assert.That(train.gameObject.activeSelf, Is.True);
             Assert.That(train.PresentationState, Is.EqualTo(CatPresentationState.Walk));
+            Assert.That(train.PresentationOccupantKey, Is.Not.EqualTo(firstOccupantKey));
             Assert.That(StateDigest(_session), Is.EqualTo(stateDigestBefore));
             AssertTrainSlotsEqual(_session.PrevTrains, previousTrainsBefore);
             Assert.That(_session.Log.FormatVersion, Is.EqualTo(logFormatBefore));
@@ -219,15 +224,68 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(_session.Alpha, Is.EqualTo(alphaBefore));
         }
 
+        [Test]
+        public void BoardUpdateFrom_FinalStepEmptySnapshotProvesSameIdCatchUpReplacement()
+        {
+            BuildBoard(ImmediateReuseLevel());
+            _session.AdvanceMs(125d); // tick 0: slot 0 emits with Domain id 1
+            Assert.That(_session.State.Trains[0].Id, Is.EqualTo(1));
+            _board.UpdateFrom(_session, 0f);
+            long firstOccupantKey = BoardTrain(0).GetComponent<ToyTrainView>()
+                .PresentationOccupantKey;
+
+            // tick 1 delivers the first cat; tick 2 emits the second into the same slot. The
+            // rendered endpoints are both live with id 1, while PrevTrains retains the empty
+            // slot copied immediately before the final (emission) step.
+            _session.AdvanceMs(250d);
+            Assert.That(_session.State.Deliveries, Is.EqualTo(1));
+            Assert.That(_session.PrevTrains[0].Id, Is.EqualTo(0));
+            Assert.That(_session.State.Trains[0].Id, Is.EqualTo(1));
+
+            _board.UpdateFrom(_session, 0.1f);
+
+            var replacement = BoardTrain(0).GetComponent<ToyTrainView>();
+            Assert.That(replacement.PresentationOccupantKey, Is.Not.EqualTo(firstOccupantKey));
+            Assert.That(replacement.PresentationState, Is.EqualTo(CatPresentationState.Walk));
+        }
+
+        [Test]
+        public void BoardUpdateFrom_TwoDeliveredSlotsDepartWhileUnchangedLiveSlotKeepsItsGeneration()
+        {
+            BuildBoard(TwoDeliveriesAndOneRiderLevel());
+            // One source emits on ticks 0, 1 and 2 onto a three-tick edge. After tick 2 the
+            // real simulation has three staggered live slots with fixed ids 1, 2 and 3.
+            _session.AdvanceMs(375d);
+            _board.UpdateFrom(_session, 0f);
+            long ridingKey = BoardTrain(2).GetComponent<ToyTrainView>().PresentationOccupantKey;
+
+            _session.AdvanceMs(250d); // ticks 3 and 4 deliver slots 0 and 1; slot 2 remains live
+            Assert.That(_session.State.Deliveries, Is.EqualTo(2));
+            Assert.That(_session.State.Trains[0].Id, Is.EqualTo(0));
+            Assert.That(_session.State.Trains[1].Id, Is.EqualTo(0));
+            Assert.That(_session.State.Trains[2].Id, Is.EqualTo(3));
+
+            _board.UpdateFrom(_session, 0.3f);
+
+            Assert.That(BoardTrain(0).GetComponent<ToyTrainView>().PresentationState,
+                Is.EqualTo(CatPresentationState.Alight));
+            Assert.That(BoardTrain(1).GetComponent<ToyTrainView>().PresentationState,
+                Is.EqualTo(CatPresentationState.Alight));
+            var rider = BoardTrain(2).GetComponent<ToyTrainView>();
+            Assert.That(rider.PresentationOccupantKey, Is.EqualTo(ridingKey),
+                "a delivery elsewhere must not globally restart a live cat");
+            Assert.That(rider.PresentationState, Is.EqualTo(CatPresentationState.Board));
+        }
+
         private Transform Cat() => _view.transform.Find("Carriage/Cat");
         private Transform Head() => Part("Head");
         private Transform EyeLeft() => Part("EyeLeft");
         private Transform Part(string name) => Cat().Find(name);
 
-        private void BuildBoard()
+        private void BuildBoard(byte[] levelBytes = null)
         {
             _boardHost = new GameObject("board-presentation-host");
-            ImportedLevel level = VFixtures.Import(VFixtures.L001Bytes());
+            ImportedLevel level = VFixtures.Import(levelBytes ?? VFixtures.L001Bytes());
             _session = new GameSession(level);
             _board = BoardView.Build(level, _boardHost.transform, _session, PropModelCatalog.Empty);
         }
@@ -243,7 +301,46 @@ namespace CatMetro.Tests.EditMode.Presentation
             };
         }
 
-        private Transform BoardTrain() => _board.transform.Find("train:0");
+        private Transform BoardTrain(int slot = 0) => _board.transform.Find("train:" + slot);
+
+        private static byte[] ImmediateReuseLevel() => VFixtures.Level(o =>
+        {
+            o["meta"]["mechanics"] = new JArray();
+            o["meta"]["newMechanic"] = null;
+            o["board"]["nodes"] = new JArray(
+                VFixtures.Node("SRC", 0, 1), VFixtures.Node("RED", 0, 0));
+            o["board"]["edges"] = new JArray(VFixtures.Edge("E1", "SRC", "RED", 1));
+            o["sources"] = new JArray(new JObject
+            {
+                ["nodeId"] = "SRC", ["allowedColors"] = new JArray("red"),
+            });
+            o["stations"] = new JArray(VFixtures.Station("RED", 3, "red"));
+            o["switches"] = new JArray();
+            o["waves"] = new JArray(VFixtures.Wave(0, "red", 2, 2));
+            o["win"]["deliveries"] = 2;
+            o["win"]["timeLimitTicks"] = 20;
+        });
+
+        private static byte[] TwoDeliveriesAndOneRiderLevel() => VFixtures.Level(o =>
+        {
+            o["meta"]["mechanics"] = new JArray();
+            o["meta"]["newMechanic"] = null;
+            o["board"]["nodes"] = new JArray(
+                VFixtures.Node("SRC", 0, 3), VFixtures.Node("RED", 0, 0));
+            o["board"]["edges"] = new JArray(VFixtures.Edge("E1", "SRC", "RED", 3));
+            o["sources"] = new JArray(Source("SRC", "red"));
+            o["stations"] = new JArray(VFixtures.Station("RED", 3, "red"));
+            o["switches"] = new JArray();
+            o["waves"] = new JArray(VFixtures.Wave(0, "red", 3, 1));
+            o["win"]["deliveries"] = 3;
+            o["win"]["timeLimitTicks"] = 20;
+        });
+
+        private static JObject Source(string nodeId, string color) => new JObject
+        {
+            ["nodeId"] = nodeId,
+            ["allowedColors"] = new JArray(color),
+        };
 
         private static byte[] StateDigest(GameSession session)
         {
