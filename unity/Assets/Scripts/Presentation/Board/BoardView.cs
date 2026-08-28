@@ -424,7 +424,8 @@ namespace CatMetro.Presentation.Board
                             dead.gameObject.SetActive(true);
                             dead.ApplyPresentation(_catTracks[t].State,
                                 _catTracks[t].PlatformBlend,
-                                _catTracks[t].MovingToPlatform, visualTime, false);
+                                _catTracks[t].MovingToPlatform, visualTime, false,
+                                _catTracks[t].PlatformBlendSpeed);
                         }
                     }
                     continue;
@@ -479,7 +480,7 @@ namespace CatMetro.Presentation.Board
                 // cat transforms. No bob/head motion can feed back into spline placement.
                 consist.ApplyPresentation(_catTracks[t].State,
                     _catTracks[t].PlatformBlend, _catTracks[t].MovingToPlatform,
-                    visualTime, motionOff);
+                    visualTime, motionOff, _catTracks[t].PlatformBlendSpeed);
             }
             for (int t = 0; t < trains.Length; t++)
             {

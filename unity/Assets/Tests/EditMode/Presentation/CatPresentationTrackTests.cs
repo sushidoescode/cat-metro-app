@@ -33,6 +33,8 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(track.State, Is.EqualTo(CatPresentationState.Walk));
             Assert.That(track.StateElapsed, Is.EqualTo(0f));
             Assert.That(track.PlatformBlend, Is.EqualTo(1f));
+            Assert.That(track.PlatformBlendSpeed, Is.EqualTo(2.954545f).Within(0.0001f),
+                "the 0.65 platform-blend walk must finish in 0.22 seconds");
 
             track.Observe(slot, 1, false, 10.11f);
             Assert.That(track.PlatformBlend, Is.GreaterThan(0.35f).And.LessThan(1f));
@@ -41,6 +43,8 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(track.State, Is.EqualTo(CatPresentationState.Board));
             Assert.That(track.StateElapsed, Is.EqualTo(0f));
             Assert.That(track.PlatformBlend, Is.EqualTo(0.35f).Within(0.0001f));
+            Assert.That(track.PlatformBlendSpeed, Is.Zero,
+                "only the Walk state drives walk-cycle playback speed");
 
             track.Observe(slot, 1, false, 10.31f);
             Assert.That(track.PlatformBlend, Is.GreaterThan(0f).And.LessThan(0.35f));
@@ -101,6 +105,8 @@ namespace CatMetro.Tests.EditMode.Presentation
             track.Observe(empty, 1, true, 1.18f);
             Assert.That(track.State, Is.EqualTo(CatPresentationState.Walk));
             Assert.That(track.PlatformBlend, Is.EqualTo(0.45f).Within(0.0001f));
+            Assert.That(track.PlatformBlendSpeed, Is.EqualTo(1.964286f).Within(0.0001f),
+                "the 0.55 delivery blend must finish in 0.28 seconds");
 
             track.Observe(empty, 1, true, 1.32f);
             Assert.That(track.PlatformBlend, Is.GreaterThan(0.45f).And.LessThan(1f));
@@ -130,6 +136,11 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(track.State, Is.EqualTo(CatPresentationState.Alight));
             Assert.That(track.PlatformBlend, Is.EqualTo(interruptedBlend).Within(0.0001f));
             Assert.That(track.MovingToPlatform, Is.True);
+
+            track.Observe(default, 1, true, 0.306f);
+            Assert.That(track.State, Is.EqualTo(CatPresentationState.Walk));
+            Assert.That(track.PlatformBlendSpeed, Is.EqualTo(1.318994f).Within(0.0001f),
+                "an interrupted spawn must retime from its rendered blend, not 0.45");
         }
 
         [Test]
