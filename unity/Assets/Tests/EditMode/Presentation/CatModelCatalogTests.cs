@@ -1,5 +1,6 @@
 using CatMetro.Presentation.Cats;
 using NUnit.Framework;
+using UnityEditor.Animations;
 using UnityEngine;
 
 namespace CatMetro.Tests.EditMode.Presentation
@@ -33,6 +34,46 @@ namespace CatMetro.Tests.EditMode.Presentation
             {
                 Object.DestroyImmediate(prefab);
             }
+        }
+
+        [Test]
+        public void MatchingClipsWithWrongStateNames_RejectTheRigBeforeItCanSilentlyFailPlayback()
+        {
+            var prefab = new GameObject("rig with wrongly named states");
+            var clips = new[]
+            {
+                Clip(CatModelCatalog.IdleSitClip),
+                Clip(CatModelCatalog.WalkClip),
+                Clip(CatModelCatalog.BoardClip),
+                Clip(CatModelCatalog.AlightClip),
+                Clip(CatModelCatalog.CelebrateClip),
+            };
+            var controller = ScriptableObject.CreateInstance<AnimatorController>();
+            controller.AddLayer("Base Layer");
+            foreach (var clip in clips)
+                controller.layers[0].stateMachine.AddState("wrong_" + clip.name).motion = clip;
+            var animator = prefab.AddComponent<Animator>();
+            animator.runtimeAnimatorController = controller;
+            animator.applyRootMotion = false;
+            try
+            {
+                var catalog = new CatModelCatalog(prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain("state"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(prefab);
+                Object.DestroyImmediate(controller);
+                foreach (var clip in clips) Object.DestroyImmediate(clip);
+            }
+        }
+
+        private static AnimationClip Clip(string name)
+        {
+            var clip = new AnimationClip { name = name };
+            return clip;
         }
     }
 }
