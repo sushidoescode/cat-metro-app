@@ -39,6 +39,7 @@ namespace CatMetro.Tests.Engine
         {
             "save.dat", "save.dat.bak", "save.dat.tmp",
             "analytics_queue.dat", "analytics_queue.dat.bak", "analytics_queue.dat.tmp",
+            "analytics_profile.dat", "analytics_profile.dat.bak", "analytics_profile.dat.tmp",
         };
 
         [Test]

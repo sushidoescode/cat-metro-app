@@ -1,14 +1,9 @@
 {
-    "name": "CatMetro.Bootstrap",
-    "rootNamespace": "CatMetro.Bootstrap",
+    "name": "CatMetro.Integrations.Analytics",
+    "rootNamespace": "CatMetro.Integrations.Analytics",
     "references": [
-        "CatMetro.Domain",
-        "CatMetro.Content",
-        "CatMetro.Services",
         "CatMetro.Application",
-        "CatMetro.Presentation",
-        "CatMetro.Integrations.OneSignal",
-        "CatMetro.Integrations.Analytics"
+        "CatMetro.Services"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

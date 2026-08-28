@@ -1,6 +1,9 @@
 using System.Linq;
+using System.Text;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using CatMetro.Application.Analytics;
+using CatMetro.Application.Save;
 using CatMetro.Tests.Save;
 
 namespace CatMetro.Tests.Analytics
@@ -62,7 +65,25 @@ namespace CatMetro.Tests.Analytics
             var drops = q.Notes.Where(n => n.Name == "queue_dropped").ToList();
             Assert.That(drops.Count, Is.EqualTo(1), "one note per overflow event");
             Assert.That(drops[0].Detail, Is.EqualTo("count=1 oldest-first overflow"));
-            Assert.That(q.Snapshot().Sum(e => e.Bytes), Is.LessThanOrEqualTo(700));
+            Assert.That(q.PersistedArtifactBytes, Is.LessThanOrEqualTo(700),
+                "the configured byte limit covers the actual header plus JSON array artifact");
+        }
+
+        [Test]
+        public void ByteBound_CountsHeaderBracketsAndCommas_NotOnlyRecordBodies()
+        {
+            using var root = new SFixtures.TempRoot();
+            var bounds = QFixtures.SmallQueueBounds(maxEvents: 100, maxBytes: 180,
+                eventMaxBytes: 160);
+            var (q, _, fs) = QFixtures.Queue(root, bounds);
+
+            q.Log(QFixtures.Ev("one", size: 25));
+            q.Log(QFixtures.Ev("two", size: 25));
+
+            Assert.That(q.PersistedArtifactBytes, Is.LessThanOrEqualTo(180));
+            Assert.That(fs.ReadAllBytes(q.QueuePath).Length, Is.EqualTo(q.PersistedArtifactBytes));
+            Assert.That(q.Notes.Any(n => n.Name == "queue_dropped"), Is.True,
+                "the artifact overhead must participate in oldest-first overflow");
         }
 
         // Criterion 5: an event that cannot serialise under QUEUE_EVENT_MAX_BYTES is dropped,
@@ -80,6 +101,108 @@ namespace CatMetro.Tests.Analytics
             Assert.That(q.QueuedEventCount, Is.EqualTo(before), "never entered");
             Assert.That(q.Notes.Any(n =>
                 n.Name == "queue_dropped" && n.Detail.Contains("oversize")), Is.True);
+        }
+
+        [Test]
+        public void RestoredCountOverflow_IsBoundedOldestFirstAndRepersisted()
+        {
+            using var root = new SFixtures.TempRoot();
+            var fs = new SFixtures.RecordingFs();
+            var permissive = QFixtures.SmallQueueBounds(maxEvents: 10);
+            var original = new AnalyticsQueue(root, fs, permissive, null);
+            for (int i = 1; i <= 4; i++) original.Log(QFixtures.Ev("e" + i));
+
+            var strict = QFixtures.SmallQueueBounds(maxEvents: 2);
+            var restored = new AnalyticsQueue(root, fs, strict, null);
+
+            Assert.That(restored.Snapshot().Select(x => x.Name),
+                Is.EqualTo(new[] { "e3", "e4" }));
+            Assert.That(ReadPersistedRecords(restored).Select(x => (string)x["name"]),
+                Is.EqualTo(new[] { "e3", "e4" }),
+                "the repaired artifact, not only the in-memory view, must satisfy the cap");
+            Assert.That(restored.Notes.Any(x => x.Detail ==
+                "count=2 oldest-first restored overflow"), Is.True);
+        }
+
+        [Test]
+        public void RestoredByteOverflow_IsBoundedOldestFirstAndRepersisted()
+        {
+            using var root = new SFixtures.TempRoot();
+            var fs = new SFixtures.RecordingFs();
+            var permissive = QFixtures.SmallQueueBounds(maxEvents: 100, maxBytes: 10000,
+                eventMaxBytes: 1000);
+            var original = new AnalyticsQueue(root, fs, permissive, null);
+            original.Log(QFixtures.Ev("big1", size: 200));
+            original.Log(QFixtures.Ev("big2", size: 200));
+            original.Log(QFixtures.Ev("big3", size: 200));
+
+            var strict = QFixtures.SmallQueueBounds(maxEvents: 100, maxBytes: 700,
+                eventMaxBytes: 1000);
+            var restored = new AnalyticsQueue(root, fs, strict, null);
+
+            Assert.That(restored.Snapshot().Select(x => x.Name),
+                Is.EqualTo(new[] { "big2", "big3" }));
+            Assert.That(restored.PersistedArtifactBytes, Is.LessThanOrEqualTo(700));
+            Assert.That(ReadPersistedRecords(restored).Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void RestoredOversizeRecord_IsDiscardedAndRepersisted()
+        {
+            using var root = new SFixtures.TempRoot();
+            var fs = new SFixtures.RecordingFs();
+            var permissive = QFixtures.SmallQueueBounds(maxEvents: 10, eventMaxBytes: 1000);
+            var original = new AnalyticsQueue(root, fs, permissive, null);
+            original.Log(QFixtures.Ev("ok"));
+            original.Log(QFixtures.Ev("legacy-oversize", size: 600));
+
+            var strict = QFixtures.SmallQueueBounds(maxEvents: 10, eventMaxBytes: 512);
+            var restored = new AnalyticsQueue(root, fs, strict, null);
+
+            Assert.That(restored.Snapshot().Select(x => x.Name), Is.EqualTo(new[] { "ok" }));
+            Assert.That(ReadPersistedRecords(restored).Select(x => (string)x["name"]),
+                Is.EqualTo(new[] { "ok" }));
+            Assert.That(restored.Notes.Any(x => x.Detail ==
+                "count=1 oversize restored record"), Is.True);
+        }
+
+        [Test]
+        public void RestoredNoncanonicalArtifact_IsRewrittenAndBoundedFromItsActualBytes()
+        {
+            using var root = new SFixtures.TempRoot();
+            var fs = new SFixtures.RecordingFs();
+            var permissive = QFixtures.SmallQueueBounds(maxEvents: 10, maxBytes: 10000,
+                eventMaxBytes: 1000);
+            var original = new AnalyticsQueue(root, fs, permissive, null);
+            original.Log(QFixtures.Ev("kept"));
+            var records = ReadPersistedRecords(original);
+            ((JObject)records[0])["undeclaredOuterPadding"] = new string('x', 600);
+            var paddedPayload = Encoding.UTF8.GetBytes(
+                records.ToString(Newtonsoft.Json.Formatting.Indented));
+            SFixtures.WriteRaw(original.QueuePath, SaveHeader.Write(AnalyticsQueue.MAGIC, 1,
+                AnalyticsQueue.QUEUE_VERSION, paddedPayload));
+            Assert.That(SFixtures.RawFile(original.QueuePath).Length, Is.GreaterThan(400));
+
+            var strict = QFixtures.SmallQueueBounds(maxEvents: 10, maxBytes: 400,
+                eventMaxBytes: 200);
+            var restored = new AnalyticsQueue(root, fs, strict, null);
+            var rewritten = ReadPersistedRecords(restored);
+
+            Assert.That(restored.Snapshot().Select(x => x.Name), Is.EqualTo(new[] { "kept" }));
+            Assert.That(SFixtures.RawFile(restored.QueuePath).Length,
+                Is.EqualTo(restored.PersistedArtifactBytes).And.LessThanOrEqualTo(400));
+            Assert.That(rewritten.Single()["undeclaredOuterPadding"], Is.Null,
+                "the repaired disk record must be the same canonical shape that was measured");
+            Assert.That(Encoding.UTF8.GetByteCount(rewritten.Single().ToString(
+                Newtonsoft.Json.Formatting.None)), Is.LessThanOrEqualTo(200));
+        }
+
+        private static JArray ReadPersistedRecords(AnalyticsQueue queue)
+        {
+            var header = SaveHeader.TryParse(SFixtures.RawFile(queue.QueuePath),
+                AnalyticsQueue.MAGIC, out var payload);
+            Assert.That(header, Is.Not.Null);
+            return JArray.Parse(Encoding.UTF8.GetString(payload));
         }
     }
 }

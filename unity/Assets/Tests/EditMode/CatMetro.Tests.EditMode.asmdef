@@ -9,6 +9,7 @@
         "CatMetro.Presentation",
         "CatMetro.Bootstrap",
         "CatMetro.Integrations.OneSignal",
+        "CatMetro.Integrations.Analytics",
         "UnityEngine.UI",
         "Unity.TextMeshPro",
         "UnityEngine.TestRunner",

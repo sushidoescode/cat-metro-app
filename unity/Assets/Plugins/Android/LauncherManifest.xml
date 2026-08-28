@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- CM-C2b criterion 11 — RK-17 decided by the human 2026-08-04: BACKUP OFF.
-     allowBackup="false" means no auto-backup surface exists at all: the save-file exploit
-     posture (risks.md RK-17) and ADR-0006 §5's unconditional analytics-queue exclusion are both
-     satisfied a fortiori (nothing is backed up), so NO backup-rules XML exists by design.
-     The merged-manifest proof (gradle output) rides criterion 8's human device build. -->
+<!-- CM-C2b criterion 11 — RK-17 decided by the human 2026-08-04: CLOUD BACKUP OFF.
+     allowBackup="false" disables Android cloud backup, so no backup-rules XML exists. It is not
+     an unconditional device-migration guarantee: Android 12+ documents that some manufacturers'
+     device-to-device transfers ignore this flag. The merged-manifest proof (gradle output) rides
+     criterion 8's human device build. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           android:installLocation="preferExternal">
     <supports-screens

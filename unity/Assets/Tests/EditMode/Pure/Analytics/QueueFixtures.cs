@@ -17,13 +17,26 @@ namespace CatMetro.Tests.Analytics
         {
             public readonly List<List<QueuedAnalyticsEvent>> Batches =
                 new List<List<QueuedAnalyticsEvent>>();
+            public readonly List<System.Action<AnalyticsDeliveryResult>> Completions =
+                new List<System.Action<AnalyticsDeliveryResult>>();
             public bool Available = true;
+            public bool AutoComplete = true;
+            public bool ServerAccepted = true;
+            public int MaxBatchSize { get; set; } = 50;
 
-            public bool Deliver(IReadOnlyList<QueuedAnalyticsEvent> batch)
+            public bool TryDeliver(IReadOnlyList<QueuedAnalyticsEvent> batch,
+                System.Action<AnalyticsDeliveryResult> completed)
             {
+                if (!Available) return false;
                 Batches.Add(batch.ToList());
-                return Available;
+                Completions.Add(completed);
+                if (AutoComplete)
+                    completed(new AnalyticsDeliveryResult(ServerAccepted));
+                return true;
             }
+
+            public void Complete(int attempt, bool accepted) =>
+                Completions[attempt](new AnalyticsDeliveryResult(accepted));
         }
 
         public static AnalyticsEvent Ev(string name, int size = 0)

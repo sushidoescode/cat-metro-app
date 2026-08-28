@@ -52,6 +52,26 @@ namespace CatMetro.Tests.Analytics
                 "the loss is visible (A-C8-7: an exact count is unknowable from corrupt bytes)");
         }
 
+        [TestCase(2, AnalyticsQueue.QUEUE_VERSION)]
+        [TestCase(1, AnalyticsQueue.QUEUE_VERSION + 1)]
+        public void UnsupportedHeaderVersion_RestartsEmpty(int formatVersion, int queueVersion)
+        {
+            using var root = new SFixtures.TempRoot();
+            var (queue, _, _) = QFixtures.Queue(root);
+            queue.Log(QFixtures.Ev("must-not-load"));
+            var parsed = SaveHeader.TryParse(SFixtures.RawFile(queue.QueuePath),
+                AnalyticsQueue.MAGIC, out var payload);
+            Assert.That(parsed, Is.Not.Null);
+            SFixtures.WriteRaw(queue.QueuePath, SaveHeader.Write(AnalyticsQueue.MAGIC,
+                (ushort)formatVersion, (ushort)queueVersion, payload));
+
+            var (restored, _, _) = QFixtures.Queue(root);
+
+            Assert.That(restored.QueuedEventCount, Is.Zero);
+            Assert.That(restored.Notes.Any(x => x.Detail.Contains("unsupported version")),
+                Is.True);
+        }
+
         // Criterion 1's "no second implementation" NUnit half: the write path is the CM-C7 seam
         // (temp+replace on the queue file), never an in-place write.
         [Test]

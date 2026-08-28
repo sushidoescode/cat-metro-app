@@ -36,22 +36,6 @@ namespace CatMetro.Tests.EventTaxonomy
             return (int)o["QUEUE_EVENT_MAX_BYTES"];
         }
 
-        private static int RecordBytesTheWayCmC8ComputesThem(AnalyticsEvent e, long ord)
-        {
-            // The REAL persisted record shape is {id, ord, name, params} (AnalyticsQueue.cs
-            // MakeRecord; DeriveId's id is 16 hex chars) — review L2 corrected an earlier
-            // 3-field computation; round 2 corrected the id width
-            var record = new JObject
-            {
-                ["id"] = "0123456789abcdef", // DeriveId emits 8 bytes as x2 = 16 hex chars (review L2 round 2)
-                ["ord"] = ord,
-                ["name"] = e.Name ?? "",
-                ["params"] = e.Params ?? new JObject(),
-            };
-            return System.Text.Encoding.UTF8.GetByteCount(
-                record.ToString(Newtonsoft.Json.Formatting.None));
-        }
-
         [Test, TestCaseSource(typeof(TaxonomyFixtures), nameof(TaxonomyFixtures.RowNames))]
         public void CanonicalEvent_FitsTheQueueByteBound(string name)
         {
@@ -60,10 +44,33 @@ namespace CatMetro.Tests.EventTaxonomy
                 TaxonomyFixtures.CanonicalParams(row, includeOptional: true),
                 out var e, out var error);
             Assert.That(ok, Is.True, name + ": " + error);
-            int bytes = RecordBytesTheWayCmC8ComputesThem(e, ord: 9_999_999);
+            using var root = new SFixtures.TempRoot();
+            var fs = new SFixtures.RecordingFs();
+            var queue = new CatMetro.Application.Analytics.AnalyticsQueue(root, fs,
+                SFixtures.RepoBounds(), null, () => 1_800_000_000_000L,
+                () => "0123456789abcdef", ownerId: "00112233445566778899aabbccddeeff");
+            queue.Log(e);
+            Assert.That(queue.QueuedEventCount, Is.EqualTo(1),
+                name + " was rejected by the real production-owned queue");
+            var header = CatMetro.Application.Save.SaveHeader.TryParse(
+                SFixtures.RawFile(queue.QueuePath), CatMetro.Application.Analytics.AnalyticsQueue.MAGIC,
+                out var payload);
+            Assert.That(header, Is.Not.Null, name + " queue artifact header");
+            var persisted = (Newtonsoft.Json.Linq.JArray)CatMetro.Content.ContentJson.LoadToken(
+                new System.Text.UTF8Encoding(false, true).GetString(payload));
+            var record = (JObject)persisted.Single();
+            Assert.That(record.Properties().Select(x => x.Name), Is.EquivalentTo(new[]
+            {
+                "id", "ord", "name", "params", "capturedAtUnixMs", "ownerId",
+            }), name + " exact persisted production record shape");
+            int bytes = System.Text.Encoding.UTF8.GetByteCount(
+                record.ToString(Newtonsoft.Json.Formatting.None));
             Assert.That(bytes, Is.LessThan(QueueEventMaxBytes()),
                 name + " canonical record is " + bytes + " bytes — ADR-0006:244-246 says an " +
                 "oversize event is a bug; no free text is permitted in the taxonomy");
+            Assert.That(SFixtures.RawFile(queue.QueuePath).Length,
+                Is.EqualTo(queue.PersistedArtifactBytes),
+                name + " size claim must equal the actual persisted file");
         }
 
         // --- criterion 9's lockstep case: the wrapper's hard-coded dark list cannot drift
