@@ -477,6 +477,7 @@ namespace CatMetro.Bootstrap
             Input.BoardInputActive = () => ScreenState == "Playing" && !ScreensVisible;
             Banner = BannerView.Create(transform);
             Preview = WavePreviewStrip.Create(transform, Session, Cam);
+            BindPreviewCatMotion();
             // HUD-WAVE: the preview hides itself on Won/FailureReview. Explicit state binding,
             // NOT z-order — the banner happens to sort above the HUD, but two views owned by
             // different lanes must not depend on that to stay correct.
@@ -1067,11 +1068,22 @@ namespace CatMetro.Bootstrap
             Input.Wire(Session, View, Cam);
             if (Preview != null) Destroy(Preview.gameObject);
             Preview = WavePreviewStrip.Create(transform, Session, Cam);
+            BindPreviewCatMotion();
             Preview.BindScreenState(() => ScreenState); // rebind on the REBUILT preview
             Banner.Hide();
             CauseCam.Reset(); // clears the ring AND restores this level's fitted play pose
             _halted = false;
             ScreenState = "Playing";
+        }
+
+        // Preview faces are a fixed pool. Discover them only when a new preview is composed,
+        // never in the frame loop, so every face follows the same accessibility source as the
+        // board view without adding a WavePreviewStrip dependency or changing its refresh path.
+        private void BindPreviewCatMotion()
+        {
+            if (Preview == null) return;
+            foreach (var face in Preview.GetComponentsInChildren<CatFaceView>(true))
+                face.BindMotionOff(() => MotionOff);
         }
 
         public void Retry()

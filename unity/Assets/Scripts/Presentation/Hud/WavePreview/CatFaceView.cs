@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Theme;
 
 namespace CatMetro.Presentation.Hud.WavePreview
@@ -45,6 +46,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private const float MuzzleDrop = 0.106f;
         private const float BadgeSize = 0.37f;
         private const float BadgeRingScale = 1.26f;
+        private const float BobFractionOfFace = 0.03f;
 
         // The badge sits OUTSIDE the head, tucked at its lower right — the single biggest
         // legibility win in this file. It used to be one BadgeOffset of 0.30 on both axes with
@@ -75,6 +77,16 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private Image _eyeLeft;
         private Image _eyeRight;
         private Image _muzzle;
+        private CatMicroMotion _microMotion;
+        private System.Func<bool> _motionOffSource;
+        private Vector2 _layoutCentre;
+        private float _layoutSize;
+        private Vector3 _faceScaleBaseline = Vector3.one;
+        private Vector3 _eyeLeftScaleBaseline = Vector3.one;
+        private Vector3 _eyeRightScaleBaseline = Vector3.one;
+        private Quaternion _earLeftRotationBaseline = Quaternion.identity;
+        private Quaternion _earRightRotationBaseline = Quaternion.identity;
+        private bool _hasLayout;
 
         public string ColorName { get; private set; } = "";
         public Color HeadColor => _head != null ? _head.color : UnityEngine.Color.clear;
@@ -117,6 +129,28 @@ namespace CatMetro.Presentation.Hud.WavePreview
             (BadgeOffsetX + BadgeSize * 0.5f) * faceSizePx;
 
         public static float InkLeftOfCentre(float faceSizePx) => HeadSize * 0.5f * faceSizePx;
+
+        private void Awake()
+        {
+            // Face names come from this preview's fixed pool (face0..face5), so this cadence
+            // remains stable across rebuilds without ever reading a gameplay/session seed.
+            _microMotion = new CatMicroMotion(PresentationSeed(gameObject.name));
+        }
+
+        private void Update()
+        {
+            ApplyVisualTime(Time.unscaledTime);
+        }
+
+        private void OnEnable()
+        {
+            ResetNeutralGeometry();
+        }
+
+        private void OnDisable()
+        {
+            ResetNeutralGeometry();
+        }
 
         public static CatFaceView Create(Transform parent, string name)
         {
@@ -188,9 +222,20 @@ namespace CatMetro.Presentation.Hud.WavePreview
             // plates at world scale. Glyph above still reports it for anyone who needs it.
         }
 
+        // GameRoot supplies its existing motion preference source once when a preview is
+        // composed. A detached face deliberately remains animated, matching the old preview.
+        public void BindMotionOff(System.Func<bool> motionOffSource)
+        {
+            _motionOffSource = motionOffSource;
+            if (MotionOff()) ResetNeutralGeometry();
+        }
+
         // Pure placement, driven entirely by the face box size the capsule allocates.
         public void LayoutAt(Vector2 centrePx, float sizePx)
         {
+            // Layout is the authority. Clear the previous sampled pose before collecting this
+            // layout's baselines so a blink/twitch can never become the next neutral geometry.
+            ResetNeutralGeometry();
             Place(_rect, centrePx, new Vector2(sizePx, sizePx));
 
             float ear = sizePx * EarSize;
@@ -219,6 +264,86 @@ namespace CatMetro.Presentation.Hud.WavePreview
             Place(_badge.rectTransform, badgeCentre, new Vector2(badge, badge));
             Place(_badgeRing.rectTransform, badgeCentre,
                 new Vector2(badge * BadgeRingScale, badge * BadgeRingScale));
+
+            _layoutCentre = centrePx;
+            _layoutSize = sizePx;
+            _faceScaleBaseline = _rect.localScale;
+            _eyeLeftScaleBaseline = _eyeLeft.rectTransform.localScale;
+            _eyeRightScaleBaseline = _eyeRight.rectTransform.localScale;
+            _earLeftRotationBaseline = _earLeft.rectTransform.localRotation;
+            _earRightRotationBaseline = _earRight.rectTransform.localRotation;
+            _hasLayout = true;
+            ResetNeutralGeometry();
+        }
+
+        // Explicit time is the test/presentation seam. Runtime calls it with unscaled time so
+        // the HUD respects the same accessibility motion source without touching sim timing.
+        public void ApplyVisualTime(float visualTime)
+        {
+            if (!_hasLayout || _rect == null) return;
+
+            var motion = _microMotion ?? (_microMotion = new CatMicroMotion(
+                PresentationSeed(gameObject.name)));
+            var pose = motion.Evaluate(visualTime, MotionOff(), false);
+            _rect.anchoredPosition = _layoutCentre
+                + Vector2.up * (pose.Bob * _layoutSize * BobFractionOfFace);
+            _rect.localScale = _faceScaleBaseline;
+            _eyeLeft.rectTransform.localScale = ScaleEye(_eyeLeftScaleBaseline, pose.EyeYScale);
+            _eyeRight.rectTransform.localScale = ScaleEye(_eyeRightScaleBaseline, pose.EyeYScale);
+            _earLeft.rectTransform.localRotation = _earLeftRotationBaseline
+                * Quaternion.Euler(0f, 0f, pose.EarTwitchDegrees);
+            _earRight.rectTransform.localRotation = _earRightRotationBaseline
+                * Quaternion.Euler(0f, 0f, -pose.EarTwitchDegrees);
+        }
+
+        private bool MotionOff() => _motionOffSource != null && _motionOffSource();
+
+        private void ResetNeutralGeometry()
+        {
+            if (_hasLayout)
+            {
+                if (_rect != null)
+                {
+                    _rect.anchoredPosition = _layoutCentre;
+                    _rect.localScale = _faceScaleBaseline;
+                }
+                if (_eyeLeft != null) _eyeLeft.rectTransform.localScale = _eyeLeftScaleBaseline;
+                if (_eyeRight != null) _eyeRight.rectTransform.localScale = _eyeRightScaleBaseline;
+                if (_earLeft != null) _earLeft.rectTransform.localRotation = _earLeftRotationBaseline;
+                if (_earRight != null) _earRight.rectTransform.localRotation = _earRightRotationBaseline;
+                return;
+            }
+
+            // Creation and pool deactivation can happen before WavePreviewStrip provides a
+            // viewport. There is no layout baseline yet, so identity is the only truthful
+            // neutral geometry and prevents a pre-layout inactive face inheriting a pose.
+            if (_rect != null)
+            {
+                _rect.anchoredPosition = Vector2.zero;
+                _rect.localScale = Vector3.one;
+            }
+            if (_eyeLeft != null) _eyeLeft.rectTransform.localScale = Vector3.one;
+            if (_eyeRight != null) _eyeRight.rectTransform.localScale = Vector3.one;
+            if (_earLeft != null) _earLeft.rectTransform.localRotation = Quaternion.identity;
+            if (_earRight != null) _earRight.rectTransform.localRotation = Quaternion.identity;
+        }
+
+        private static Vector3 ScaleEye(Vector3 baseline, float eyeYScale) =>
+            new Vector3(baseline.x, baseline.y * eyeYScale, baseline.z);
+
+        private static uint PresentationSeed(string name)
+        {
+            unchecked
+            {
+                uint hash = 2166136261u;
+                if (name == null) return hash;
+                for (int i = 0; i < name.Length; i++)
+                {
+                    hash ^= name[i];
+                    hash *= 16777619u;
+                }
+                return hash;
+            }
         }
 
         // Children are centre-anchored inside the face box, so a child's anchoredPosition is
