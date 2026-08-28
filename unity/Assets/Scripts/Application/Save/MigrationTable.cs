@@ -7,7 +7,8 @@ namespace CatMetro.Application.Save
     // saveVersion to the build's. Downgrade is refused upstream (SaveStore), never attempted
     // here. A migration step never deletes a key it does not understand (ADR-0006:72) — steps
     // receive and return the whole JObject. The production v1->v2 migration adds Daily Live
-    // progress without inferring completions from legacy "played" dates.
+    // progress without inferring completions from legacy "played" dates; v2->v3 adds reminder
+    // defaults without inferring notification consent.
     public sealed class MigrationTable
     {
         public sealed class Step
@@ -30,6 +31,7 @@ namespace CatMetro.Application.Save
         public MigrationTable()
         {
             _steps.Add(new Step(1, 2, MigrateV1ToV2));
+            _steps.Add(new Step(2, 3, MigrateV2ToV3));
         }
 
         private static JObject MigrateV1ToV2(JObject payload)
@@ -46,6 +48,24 @@ namespace CatMetro.Application.Save
             if (daily["trustedDateKey"] == null) daily["trustedDateKey"] = "";
             if (daily["completedKeys"] == null) daily["completedKeys"] = new JArray();
             if (daily["lifetimeCompletions"] == null) daily["lifetimeCompletions"] = 0;
+            return payload;
+        }
+
+        private static JObject MigrateV2ToV3(JObject payload)
+        {
+            var settings = payload["settings"] as JObject;
+            if (settings == null)
+            {
+                settings = new JObject();
+                payload["settings"] = settings;
+            }
+
+            if (settings["dailyReminderEnabled"] == null)
+                settings["dailyReminderEnabled"] = false;
+            if (settings["dailyReminderPromptSeen"] == null)
+                settings["dailyReminderPromptSeen"] = false;
+            if (settings["dailyReminderSlot"] == null)
+                settings["dailyReminderSlot"] = "morning";
             return payload;
         }
 

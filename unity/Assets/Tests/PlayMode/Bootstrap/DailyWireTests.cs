@@ -50,6 +50,7 @@ namespace CatMetro.Tests.PlayMode
             DevLevelOverride.DirectoryOverride = _tmpDir;
             GameRoot.DailyStorageRootOverride = () =>
                 new TestStorageRoot(Path.Combine(_tmpDir, "save"));
+            GameRoot.MessagingFactoryOverride = null;
             // A fresh save is below the shipped configurable threshold. This suite explicitly
             // opts into the dev/test-only seam to exercise the
             // REAL wiring end-to-end; every test resets it in TearDown so it never bleeds into
@@ -63,6 +64,7 @@ namespace CatMetro.Tests.PlayMode
             GameRoot.BootToHome = false;
             GameRoot.DailyEntryUnlocked = false;
             GameRoot.DailyStorageRootOverride = null;
+            GameRoot.MessagingFactoryOverride = null;
             DevLevelOverride.DirectoryOverride = null; // CM-BOOT-HOME re-seam hygiene
             if (!string.IsNullOrEmpty(_tmpDir) && Directory.Exists(_tmpDir))
                 Directory.Delete(_tmpDir, true);
@@ -237,6 +239,12 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Home.DailyPinTransform, Is.Not.Null);
             Assert.That(_root.CurrentLevelId, Is.EqualTo("L008"),
                 "the next campaign level is prepared behind Home");
+            Assert.That(_root.LifetimeDailyCompletions, Is.Zero,
+                "a real campaign win cannot count as a Daily completion");
+            Assert.That(_root.Home.ReminderGearTransform, Is.Null,
+                "a real campaign win cannot arm the earned reminder affordance");
+            Assert.That(_root.Home.ReminderSheet, Is.Null,
+                "the campaign funnel must construct no reminder prompt tree");
 
             _root.DailyClockUnixSeconds = () => PinnedUnixSeconds;
             Assert.That(_root.Input.HandleTapAtScreen(
@@ -613,6 +621,42 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Banner.CurrentKey, Is.EqualTo("daily.practice"));
             Assert.That(_root.Banner.CurrentText,
                 Is.EqualTo("Clock changed — practice run"));
+
+            var level = _root.Session.Level;
+            var solve = CatMetro.Domain.Solver.LevelSolver.Solve(
+                level.Graph, (ulong)level.Dto.Seed);
+            Assert.That(solve.Verdict,
+                Is.EqualTo(CatMetro.Domain.Solver.SolveVerdict.Solved));
+            foreach (var entry in solve.OptimalLog.Entries)
+            {
+                while (_root.Session.State.Tick < entry.Tick
+                    && _root.Session.State.Outcome.Kind
+                        == CatMetro.Domain.OutcomeKind.Running)
+                    _root.Session.AdvanceMs(
+                        CatMetro.Application.Session.TickInterpolator.TICK_MS);
+                _root.Session.EnqueueToggle(entry.SwitchId);
+            }
+            _root.Session.AdvanceMs(
+                400 * CatMetro.Application.Session.TickInterpolator.TICK_MS);
+            yield return null;
+            Assert.That(_root.ScreenState, Is.EqualTo("Won"),
+                "the trusted rollback board is won through the real practice session");
+            yield return null;
+
+            Assert.That(_root.LifetimeDailyCompletions, Is.Zero,
+                "a practice win cannot increment the cumulative Daily tally");
+            var panel = _root.GetComponent<ResultsPanel>();
+            Assert.That(panel.IsVisible, Is.True);
+            Assert.That(_root.Input.HandleTapAtScreen(panel.ChipPaintedRectPx.center),
+                Is.EqualTo(-3));
+            yield return null;
+            yield return null;
+
+            Assert.That(_root.Home.IsVisible, Is.True);
+            Assert.That(_root.Home.ReminderGearTransform, Is.Null,
+                "a real practice win cannot arm the earned reminder affordance");
+            Assert.That(_root.Home.ReminderSheet, Is.Null,
+                "the practice funnel must construct no reminder prompt tree");
         }
 
         // --- F3 (review fix round): a repeat tap at the SAME coordinates, one yield after the

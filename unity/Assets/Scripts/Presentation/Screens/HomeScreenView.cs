@@ -4,6 +4,7 @@ using TMPro;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Input;
 using CatMetro.Presentation.Theme;
+using CatMetro.Services;
 
 namespace CatMetro.Presentation.Screens
 {
@@ -27,14 +28,21 @@ namespace CatMetro.Presentation.Screens
         // Daily now ships on Home, so it shares Home's raised priority and cannot lose a tap to
         // a lower painted layer while the screen is visible.
         private const int DailyPinRegionPriority = ChromeRegions.HomeScreenPriority;
+        private const string ReminderGearRegionId = "home.reminder.gear";
+        private const int ReminderGearRegionPriority = ChromeRegions.HomeScreenPriority;
 
         public System.Action LevelSelected;
         public System.Action DailySelected;
+        public System.Action ReminderAccepted;
+        public System.Action ReminderDismissed;
+        public System.Action<bool> ReminderEnabledChanged;
+        public System.Action<DailyReminderSlot> ReminderSlotChanged;
 
         private ChromeRegions _regions;
         private System.Func<bool> _motionOff;
         private bool _registered;
         private bool _dailyRegistered;
+        private bool _reminderGearRegistered;
         private bool _shown; // #46 review F4: Show()-left-shown intent, survives OnDisable/OnEnable
         private Image _background; // BEAUTIFUL-MENU: the warm-paper tabletop ground
         private TMP_Text _title;
@@ -48,9 +56,12 @@ namespace CatMetro.Presentation.Screens
         private TMP_Text _dailyLabel;
         private TMP_Text _dailyTally;
         private TMP_Text _dailyStatus;
+        private RectTransform _reminderGear;
+        private DailyReminderSheet _reminderSheet;
         private Rect _pinRectPx;
         private Rect _dailyPinRectPx;
         private Rect _heroRectPx;
+        private Rect _reminderGearRectPx;
         private float _phase;
 
         public Rect PinPaintedRectPx => _pinRectPx;
@@ -82,6 +93,9 @@ namespace CatMetro.Presentation.Screens
         public bool DailyTallyVisible => _dailyTally != null && _dailyTally.gameObject.activeSelf;
         public Rect HeroRectPx => _heroRectPx;
         public string PrimaryLabelText => _primaryLabel != null ? _primaryLabel.text : "";
+        public RectTransform ReminderGearTransform => _reminderGear;
+        public Rect ReminderGearRectPx => _reminderGearRectPx;
+        public DailyReminderSheet ReminderSheet => _reminderSheet;
         public int MarkerCount => _markers != null ? _markers.Length : 0;
         public Color[] MarkerColors
         {
@@ -264,6 +278,55 @@ namespace CatMetro.Presentation.Screens
             _dailyTally.gameObject.SetActive(!hasStatus);
         }
 
+        public void ConfigureReminder(bool configurationUnlocked, bool enabled,
+            DailyReminderSlot slot, MessagingPermission permission,
+            bool canRequestPermission, bool providerAvailable)
+        {
+            if (!configurationUnlocked) return;
+            EnsureReminderViews();
+            _reminderSheet.Configure(enabled, slot, permission,
+                canRequestPermission, providerAvailable);
+            LayoutForViewport(Screen.safeArea, Screen.dpi);
+            if (_shown && isActiveAndEnabled) RegisterReminderGear();
+        }
+
+        public void ShowReminderPrompt()
+        {
+            if (_reminderSheet == null || !_shown || !isActiveAndEnabled) return;
+            _reminderSheet.ShowPrompt();
+        }
+
+        public void ShowReminderSettings()
+        {
+            if (_reminderSheet == null || !_shown || !isActiveAndEnabled) return;
+            _reminderSheet.ShowSettings();
+        }
+
+        private void EnsureReminderViews()
+        {
+            if (_reminderSheet != null) return;
+
+            _reminderGear = MakeChip(transform, "ReminderGear", Palette.CreamCard);
+            MakeSurface(_reminderGear, "GearHub", new Vector2(0.24f, 0.24f),
+                new Vector2(0.76f, 0.76f), Palette.InkNavy, true);
+            MakeSurface(_reminderGear, "GearHole", new Vector2(0.42f, 0.42f),
+                new Vector2(0.58f, 0.58f), Palette.WarmPaper, true);
+            for (int i = 0; i < 4; i++)
+            {
+                var tooth = MakeSurface(_reminderGear, "GearTooth" + i,
+                    new Vector2(0.14f, 0.44f), new Vector2(0.86f, 0.56f),
+                    Palette.InkNavy, false);
+                tooth.rectTransform.localEulerAngles = new Vector3(0f, 0f, i * 45f);
+            }
+
+            _reminderSheet = DailyReminderSheet.Create(transform);
+            _reminderSheet.Attach(_regions);
+            _reminderSheet.Accepted = () => ReminderAccepted?.Invoke();
+            _reminderSheet.Dismissed = () => ReminderDismissed?.Invoke();
+            _reminderSheet.EnabledChanged = value => ReminderEnabledChanged?.Invoke(value);
+            _reminderSheet.SlotChanged = value => ReminderSlotChanged?.Invoke(value);
+        }
+
         private static TMP_Text MakeText(Transform parent, string name,
             Vector2 anchorMin, Vector2 anchorMax, string text, float size, Color color)
         {
@@ -341,6 +404,7 @@ namespace CatMetro.Presentation.Screens
         {
             _regions = regions;
             _motionOff = motionOff; // GameRoot.MotionOff binding is CM-UX-07's (P-3)
+            if (_reminderSheet != null) _reminderSheet.Attach(regions);
         }
 
         public void Show()
@@ -350,13 +414,16 @@ namespace CatMetro.Presentation.Screens
             LayoutForViewport(Screen.safeArea, Screen.dpi);
             RegisterPin();
             RegisterDailyPin();
+            RegisterReminderGear();
         }
 
         public void Hide()
         {
             _shown = false;
+            if (_reminderSheet != null) _reminderSheet.Hide();
             UnregisterPin();
             UnregisterDailyPin();
+            UnregisterReminderGear();
             gameObject.SetActive(false);
         }
 
@@ -364,6 +431,7 @@ namespace CatMetro.Presentation.Screens
         {
             UnregisterPin(); // R1-F3 lifetime law
             UnregisterDailyPin();
+            UnregisterReminderGear();
         }
 
         // CM-UX-07 W-1 (R2-3, audit M-3): mirrors OnDestroy — a deactivated-but-not-destroyed
@@ -374,6 +442,7 @@ namespace CatMetro.Presentation.Screens
         {
             UnregisterPin();
             UnregisterDailyPin();
+            UnregisterReminderGear();
         }
 
         // #46 review F4: mirrors OnDisable — a host reactivated directly (SetActive(true), not
@@ -390,6 +459,7 @@ namespace CatMetro.Presentation.Screens
             {
                 RegisterPin();
                 RegisterDailyPin();
+                RegisterReminderGear();
             }
         }
 
@@ -436,6 +506,25 @@ namespace CatMetro.Presentation.Screens
             }
         }
 
+        private void RegisterReminderGear()
+        {
+            if (_reminderGear != null && _regions != null && !_reminderGearRegistered)
+            {
+                _regions.Register(ReminderGearRegionId, () => _reminderGearRectPx,
+                    ShowReminderSettings, ReminderGearRegionPriority);
+                _reminderGearRegistered = true;
+            }
+        }
+
+        private void UnregisterReminderGear()
+        {
+            if (_regions != null && _reminderGearRegistered)
+            {
+                _regions.Unregister(ReminderGearRegionId);
+                _reminderGearRegistered = false;
+            }
+        }
+
         // Pure layout injection keeps the capture and the runtime on the same law. Show() is
         // the only live Screen binding because the shipped orientation is portrait-locked.
         public void LayoutForViewport(Rect safeArea, float dpi)
@@ -459,6 +548,13 @@ namespace CatMetro.Presentation.Screens
                 _dailyPinRectPx = HomeLayout.DailyPinRect(safeArea, dpi);
                 ApplyPx(_dailyPin, _dailyPinRectPx);
             }
+            if (_reminderGear != null)
+            {
+                _reminderGearRectPx = DailyReminderLayout.GearRect(safeArea, dpi);
+                ApplyPx(_reminderGear, _reminderGearRectPx);
+            }
+            if (_reminderSheet != null && _reminderSheet.IsVisible)
+                _reminderSheet.LayoutForViewport(safeArea, dpi);
         }
 
         private static void ApplyPx(RectTransform rect, Rect px)

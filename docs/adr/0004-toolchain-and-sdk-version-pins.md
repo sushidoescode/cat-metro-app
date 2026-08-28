@@ -46,7 +46,7 @@ to correct and requires `grep -rin "api 24\|minsdk 24" → 0`. minSdk 25 = Andro
 | Package | Pin | Notes |
 |---|---|---|
 | purchases-unity (RevenueCat) + RevenueCatUI | **9.7.0** | Re-check at import; cadence is weekly (`docs/plan/EXECUTION_PLAN.md:20-21`). **No Unity IAP** — verify a single `BillingClient` in the merged manifest. |
-| OneSignal Unity | **5.3.2** | Custom events require SDK ≥5.2.0 **and a paid plan** (A-09, `docs/prd/PRD.md:949`) |
+| OneSignal Unity Android + iOS | **5.3.3** | Matches the resolved package manifest/lock; the shipped reminder uses one tag-segment Journey and does not depend on custom-event entry |
 | Google Mobile Ads Unity | **11.3.0** | The AGP9 constraint owner (#4212) |
 | EDM4U | **1.2.188**, exactly one copy | `Force Resolve` in CI; diff the resolved-dependencies file (`docs/plan/specs/architecture.md:106-108`) |
 | AppLovin MAX | **8.6.4** — *fallback only, not shipped by default* | `docs/plan/EXECUTION_PLAN.md:188` |
@@ -180,10 +180,11 @@ ADR-0005, the same change-set updates `AGENTS.md`:**
 recorded as a **ratification action for the human**, not as work already done. The ADR gate is not
 complete until it is applied.
 
-**Spend:** OneSignal Growth is $19/mo, free for 3 months via the Ship Kit perk — claim before
-subscribing (`docs/plan/EXECUTION_PLAN.md:39-40`); a silent downgrade breaks J1/J3 custom events
-(A-09). AdMob/Firebase/RevenueCat at our scale are free tiers. No licence cost is introduced by this
-ADR.
+**OneSignal plan:** the approved reminder uses one Audience Segment Journey, two tags, three local
+Time Window branches, and no custom-event entry. Do not use the July `$19/mo` / three-Journey plan
+claim as a platform requirement. The human must confirm current dashboard availability before
+activation; a plan or label mismatch is not permission to add fallback campaigns. AdMob, Firebase,
+and RevenueCat spend remains outside this pin decision.
 
 **Verification obligations the implementer inherits (do not treat as done):**
 - RK-36 SCA pass at first scaffold (`docs/prd/risks.md:136`).
@@ -206,8 +207,8 @@ ADR.
 - **EDM4U resolves and downloads dependencies at build time.** That is a supply-chain edge: the
   resolved-dependencies file is committed and diffed on every change precisely so a silent
   transitive shift is visible in review.
-- **Each pinned SDK is a trust boundary and a declared data flow.** OneSignal receives tags
-  including `payer_status` (RK-30); AdMob receives ad-request context on a 13+ title carrying
+- **Each pinned SDK is a trust boundary and a declared data flow.** OneSignal receives only
+  `daily_opt_in` and `daily_reminder_slot`; AdMob receives ad-request context on a 13+ title carrying
   `AD_ID`; Crashlytics receives whatever the RK-31 scrubber lets through. The Data Safety form must
   match this exact vendor list.
 - **The AppLovin fallback is dormant code with a live trust boundary** if it is ever imported. It

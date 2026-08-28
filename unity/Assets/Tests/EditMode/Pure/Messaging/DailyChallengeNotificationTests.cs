@@ -1,5 +1,6 @@
 using System;
-using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using CatMetro.Services;
 
@@ -8,56 +9,69 @@ namespace CatMetro.Tests.Messaging
     public sealed class DailyChallengeNotificationTests
     {
         [Test]
-        public void Create_BuildsThePinnedProviderNeutralPayload()
+        public void Create_BuildsTheRecurringJourneyPayload()
         {
-            var notification = DailyChallengeNotification.Create("2026-08-26", 1766188800, 1766275200);
-            var sameDate = DailyChallengeNotification.Create("2026-08-26", 1766188800, 1766275200);
-            var sameDateDifferentWindow = DailyChallengeNotification.Create("2026-08-26", 0, 1);
-            var nextDate = DailyChallengeNotification.Create("2026-08-27", 1766275200, 1766361600);
+            var message = DailyChallengeNotification.Create(DailyReminderSlot.Morning);
 
-            Assert.That(notification.TemplateId, Is.EqualTo("daily_challenge"));
-            Assert.That(notification.Variant, Is.EqualTo("A"));
-            Assert.That(notification.Title, Is.EqualTo("Today's Line is ready"));
-            Assert.That(notification.Body, Is.EqualTo("Same map for everyone. One minute to set your score."));
-            Assert.That(notification.DeepLink, Is.EqualTo("catmetro://daily"));
-            Assert.That(notification.ChannelId, Is.EqualTo("daily"));
-            Assert.That(notification.DateKey, Is.EqualTo("2026-08-26"));
-            Assert.That(notification.DeliverAtUtc, Is.EqualTo(1766188800));
-            Assert.That(notification.ExpiresAtUtc, Is.EqualTo(1766275200));
-            Assert.That(notification.NotificationId, Is.EqualTo("daily-ready:2026-08-26"));
-            Assert.That(notification.CollapseKey, Is.EqualTo("daily-ready:2026-08-26"));
-            Assert.That(notification.NotificationId, Is.EqualTo(sameDate.NotificationId));
-            Assert.That(notification.NotificationId, Is.EqualTo(sameDateDifferentWindow.NotificationId));
-            Assert.That(notification.CollapseKey, Is.EqualTo(sameDate.CollapseKey));
-            Assert.That(notification.CollapseKey, Is.EqualTo(sameDateDifferentWindow.CollapseKey));
-            Assert.That(notification.NotificationId, Is.Not.EqualTo(nextDate.NotificationId));
-            Assert.That(notification.CollapseKey, Is.Not.EqualTo(nextDate.CollapseKey));
-            Assert.That(typeof(DailyChallengeNotification).IsSealed, Is.True);
-            Assert.That(typeof(DailyChallengeNotification).GetProperties().All(p => p.SetMethod == null), Is.True);
-            Assert.That(typeof(IMessaging).GetMethod(nameof(IMessaging.Schedule),
-                new[] { typeof(DailyChallengeNotification) }), Is.Not.Null);
-            Assert.That(typeof(IMessaging).GetMethod(nameof(IMessaging.Cancel), new[] { typeof(string) }), Is.Not.Null);
+            Assert.That(message.NotificationId, Is.EqualTo("daily-ready"));
+            Assert.That(message.Title, Is.EqualTo("Today's Line is ready"));
+            Assert.That(message.Body,
+                Is.EqualTo("A fresh little route is waiting when you feel like playing."));
+            Assert.That(message.DeepLink, Is.EqualTo("catmetro://daily"));
+            Assert.That(message.Route, Is.EqualTo(MessagingRoute.Daily));
+            Assert.That(message.ChannelId, Is.EqualTo("daily"));
+            Assert.That(message.Slot.TagValue, Is.EqualTo("morning"));
         }
 
-        [TestCase("2026-02-29")]
-        [TestCase("2026-8-26")]
-        [TestCase("2026/08/26")]
-        [TestCase("")]
-        [TestCase(null)]
-        public void Create_RejectsAKeyThatIsNotARealUtcDate(string dateKey)
+        [Test]
+        public void ReminderSlot_UsesValueSemanticsAndFailsClosedToMorning()
         {
-            Assert.Throws<ArgumentException>(() =>
-                DailyChallengeNotification.Create(dateKey, 0, 1));
+            Assert.That(DailyReminderSlot.FromTagValue("morning"), Is.EqualTo(DailyReminderSlot.Morning));
+            Assert.That(DailyReminderSlot.FromTagValue("afternoon"), Is.EqualTo(DailyReminderSlot.Afternoon));
+            Assert.That(DailyReminderSlot.FromTagValue("evening"), Is.EqualTo(DailyReminderSlot.Evening));
+            Assert.That(DailyReminderSlot.FromTagValue("unknown"), Is.EqualTo(DailyReminderSlot.Morning));
+            Assert.That(DailyReminderSlot.FromTagValue(null), Is.EqualTo(DailyReminderSlot.Morning));
         }
 
-        [TestCase(-1, 1)]
-        [TestCase(0, -1)]
-        [TestCase(1, 1)]
-        [TestCase(2, 1)]
-        public void Create_RejectsInvalidDeliveryWindow(long deliverAtUtc, long expiresAtUtc)
+        [Test]
+        public async Task MessagingBoundary_ExposesRecurringPayloadAndEveryMember()
         {
-            Assert.Throws<ArgumentException>(() =>
-                DailyChallengeNotification.Create("2026-08-26", deliverAtUtc, expiresAtUtc));
+            using (var messaging = new FakeMessaging())
+            {
+                var message = DailyChallengeNotification.Create(DailyReminderSlot.Evening);
+                messaging.Schedule(message);
+
+                Assert.That(messaging.Scheduled.Slot, Is.EqualTo(DailyReminderSlot.Evening));
+                Assert.That(messaging.Scheduled.Body,
+                    Is.EqualTo("A fresh little route is waiting when you feel like playing."));
+                Assert.That(messaging.Scheduled.Route, Is.EqualTo(MessagingRoute.Daily));
+                Assert.That(messaging.Scheduled.ChannelId, Is.EqualTo("daily"));
+
+                var permission = await messaging.PromptAsync(false, CancellationToken.None);
+                Assert.That(permission, Is.EqualTo(MessagingPermission.Authorized));
+            }
+        }
+
+        private sealed class FakeMessaging : IMessaging
+        {
+            public bool IsAvailable => true;
+            public string SubscriptionId => "fake-subscription";
+            public MessagingPermission Permission => MessagingPermission.Authorized;
+            public bool CanRequestPermission => true;
+            public event Action<MessagingRoute> LinkOpened;
+            public DailyChallengeNotification Scheduled { get; private set; }
+
+            public Task<MessagingPermission> PromptAsync(bool fallbackToSettings,
+                CancellationToken cancellationToken) =>
+                Task.FromResult(MessagingPermission.Authorized);
+
+            public void Schedule(DailyChallengeNotification notification) => Scheduled = notification;
+
+            public void Cancel(string notificationId) { }
+
+            public void Dispose() { }
+
+            public void RaiseLinkOpened(MessagingRoute route) => LinkOpened?.Invoke(route);
         }
     }
 }

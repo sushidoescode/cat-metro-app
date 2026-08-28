@@ -11,22 +11,45 @@ namespace CatMetro.Tests.Save
     public sealed class SaveMigrationTests
     {
         [Test]
-        public void MigrationTable_AppliesRegisteredStepsInOrder_V2ToV3()
+        public void MigrationTable_AppliesRegisteredStepsInOrder_V3ToV4()
         {
             var table = new MigrationTable()
-                .Register(2, 3, payload =>
+                .Register(3, 4, payload =>
                 {
-                    payload["stubV3Marker"] = true;
+                    payload["stubV4Marker"] = true;
                     return payload;
                 });
-            var migrated = table.Migrate(SaveDefaults.FreshPayload(), 2, 3);
+            var migrated = table.Migrate(SaveDefaults.FreshPayload(), 3, 4);
 
             Assert.That(migrated, Is.Not.Null);
-            Assert.That((bool)migrated["stubV3Marker"], Is.True);
-            Assert.That((int)migrated["saveVersion"], Is.EqualTo(3),
+            Assert.That((bool)migrated["stubV4Marker"], Is.True);
+            Assert.That((int)migrated["saveVersion"], Is.EqualTo(4),
                 "the table stamps the target version after each step");
             Assert.That(migrated["ledger"], Is.Not.Null,
                 "a migration step never deletes a key it does not understand (ADR-0006:72)");
+        }
+
+        [Test]
+        public void MigrationTable_DefaultV2ToV3_AddsReminderDefaults_AndPreservesUnknownData()
+        {
+            var v2 = SaveDefaults.FreshPayload();
+            v2["saveVersion"] = 2;
+            var settings = (JObject)v2["settings"];
+            settings.Remove("dailyReminderEnabled");
+            settings.Remove("dailyReminderPromptSeen");
+            settings.Remove("dailyReminderSlot");
+            v2["futureExperiment"] = new JObject { ["kept"] = true };
+
+            var migrated = new MigrationTable().Migrate(v2, 2, 3);
+
+            Assert.That(migrated, Is.Not.Null);
+            Assert.That((int)migrated["saveVersion"], Is.EqualTo(3));
+            Assert.That((bool)migrated["settings"]["dailyReminderEnabled"], Is.False,
+                "migration never infers consent");
+            Assert.That((bool)migrated["settings"]["dailyReminderPromptSeen"], Is.False);
+            Assert.That((string)migrated["settings"]["dailyReminderSlot"], Is.EqualTo("morning"));
+            Assert.That((bool)migrated["futureExperiment"]["kept"], Is.True,
+                "migration must not delete unknown keys");
         }
 
         [Test]
@@ -54,7 +77,7 @@ namespace CatMetro.Tests.Save
         public void MigrationTable_GapAfterCurrentVersion_ReturnsNull_NeverGuesses()
         {
             var table = new MigrationTable();
-            Assert.That(table.Migrate(SaveDefaults.FreshPayload(), 2, 3), Is.Null);
+            Assert.That(table.Migrate(SaveDefaults.FreshPayload(), 3, 4), Is.Null);
         }
 
         [Test]
@@ -63,7 +86,7 @@ namespace CatMetro.Tests.Save
             using var root = new SFixtures.TempRoot();
             var store = SFixtures.Store(root);
             // A file from the future remains byte-identical and forces read-only mode.
-            var future = SFixtures.FileWithVersion(3);
+            var future = SFixtures.FileWithVersion(4);
             SFixtures.WriteRaw(store.SavePath, future);
 
             var result = store.Load();
@@ -73,7 +96,7 @@ namespace CatMetro.Tests.Save
                 "the newer file's bytes are left untouched");
             Assert.That(store.ReadOnlyMode, Is.True);
             Assert.That(store.ReportedEvents.Any(e => e.Name == "save_migrated"
-                && e.Detail.Contains("from=3") && e.Detail.Contains("to=2")
+                && e.Detail.Contains("from=4") && e.Detail.Contains("to=3")
                 && e.Detail.Contains("success=false")), Is.True);
 
             // read-only means commits refuse: the file's bytes stay byte-identical after both
