@@ -17,9 +17,9 @@ Create the same product identifier in each store that will ship:
 - Display name: `Conductor's Coat`
 - Intended launch price: USD 1.99, with the store's normal regional pricing
 
-For Android, the Unity application identifier currently is `com.catmetro.game`. For iOS, set and
-freeze the final bundle identifier in the release lane before creating the App Store Connect app;
-this branch does not currently define one.
+For Android and iOS, the Unity application/bundle identifier currently is `com.catmetro.game`.
+The human must confirm that exact iOS App ID is available and freeze it before creating the App
+Store Connect record and RevenueCat app.
 
 Complete all store metadata and activate/submit the product with the app. A product left in a
 draft or unavailable state will not appear in RevenueCat offerings on a real device.
@@ -44,8 +44,8 @@ In a human-owned RevenueCat project:
    this non-consumable as intended.
 
 Spelling is exact and case-sensitive. A wrong product or entitlement leaves the purchase
-unavailable. If `cosmetics` is missing, the app logs a warning and may temporarily fall back to
-the current offering, but that fallback is not release-ready and must not satisfy the checklist.
+unavailable. If `cosmetics` is missing, the app logs a warning and does not fall back to the
+current offering; changing an unrelated dashboard offering cannot redirect this fixed Wardrobe.
 
 ## 3. Supply the public SDK keys locally
 

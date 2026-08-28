@@ -47,8 +47,9 @@ Sources: [App Review](https://developer.apple.com/app-store/review/),
       and App Store Connect record and immediately submit tax and banking information; do not treat
       submitted information as cleared until each applicable status is active/accepted.
 - [ ] Start the RevenueCat iOS path now: one deterministic named product, purchase, entitlement,
-      cancellation, and restore is the smallest qualifying Shipaton slice. The current repo has no
-      RevenueCat package or live purchase path.
+      cancellation, and restore is the smallest qualifying Shipaton slice. The SDK, purchase
+      service, and Wardrobe path are wired; the human must still supply production config, create
+      the App Store product/offering/entitlement, and prove purchase plus restore on device.
 - [ ] Start the final-SDK privacy inventory and the privacy-policy page. Store answers must describe
       the binary submitted, not the planned stack.
 - [ ] Assign the 1024×1024 App Store icon and screenshot work. Every iOS icon slot is empty in the
@@ -60,19 +61,19 @@ and should start today. It is not on the iOS critical path.
 
 ## Current repository readiness
 
-| Item | Evidence on 2026-08-26 | Status |
+| Item | Evidence on 2026-08-28 | Status |
 |---|---|---|
 | Unity | `6000.3.16f1`; editor and `PlaybackEngines/iOSSupport` installed | Ready |
 | Apple toolchain | Xcode 26.5 selected; iPhoneOS 26.5 SDK installed | Meets Apple’s current Xcode 26 / iOS 26 SDK upload floor |
 | Bundle ID | `com.catmetro.game` | Configured locally; Apple registration unverified |
-| Version/build | `0.1.0` / iOS build `1` | Configured; human chooses the launch marketing version |
+| Version/build | `1.0.0` / iOS build `1` | Configured; human confirms the launch marketing version |
 | Target | Universal iPhone + iPad; device SDK; minimum iOS 15.0 | Configured |
 | Signing | Team ID empty; automatic signing off; no profile | Blocks archive until the human selects a team |
 | Protected-data descriptions | Camera, location, microphone, and Bluetooth descriptions empty | Correct only while the final binary never requests them |
-| Export declaration | Postprocessor writes `ITSAppUsesNonExemptEncryption=false` | Must be re-audited against the final SDK/archive set |
+| Export declaration | Postprocessor leaves `ITSAppUsesNonExemptEncryption` unset and logs `export-compliance=unset` | Human must determine the answer from the final archive/SDK set in App Store Connect |
 | App icons | All iOS/App Store icon texture slots empty | Submission blocker |
 | Privacy manifest | No project-owned `PrivacyInfo.xcprivacy` found | Audit final generated project and every SDK; absence alone is not proof of failure |
-| Monetization | No RevenueCat purchase/ad path found | Shipaton and paid-release blocker |
+| Monetization | RevenueCat purchase/restore path and Conductor's Coat UI are present | Production config, App Store product/entitlement, native link, purchase and restore remain unverified blockers |
 | Generated project | CLI path exists; no Xcode project has been generated in this lane | Not validated in Unity |
 | Package resolution | Manifest asks for URP 17.5.0, Test Framework 1.7.0, and UGUI 2.5.0 while the committed lock records 17.3.0, 1.6.0, and 2.0.0 | Pre-existing reproducibility risk; validate one clean Unity resolution/build and reconcile separately |
 
@@ -276,11 +277,11 @@ References: [manage App Privacy](https://developer.apple.com/help/app-store-conn
 
 ### Export compliance
 
-`CatMetroIosPostProcess` currently writes `ITSAppUsesNonExemptEncryption=false`. Keep that only if
-the **final binary**, including every SDK, uses no non-exempt encryption. HTTPS/TLS through Apple’s
-OS facilities is normally the exempt case, but a source comment is not evidence about a later
-archive. If custom crypto, encrypted payloads, VPN, or non-exempt cryptography is added, redo the
-determination and provide the documentation App Store Connect requests.
+`CatMetroIosPostProcess` does not write `ITSAppUsesNonExemptEncryption`. That omission is
+intentional: the human release owner must determine the answer from the **final binary**, including
+RevenueCat, OneSignal, analytics, and every other shipped SDK. App Store Connect will ask during
+the human-only upload. Record the determination and provide any documentation it requests; do not
+turn a source-only assumption into a plist declaration.
 
 Reference: [export compliance overview](https://developer.apple.com/help/app-store-connect/manage-app-information/overview-of-export-compliance).
 
@@ -355,6 +356,8 @@ Apple references: [submit an app](https://developer.apple.com/help/app-store-con
   certificates, profiles, and store metadata are not visible from the repo.
 - No final SDK/archive exists from which to prove privacy labels, privacy manifests, usage
   descriptions, or export classification.
-- No RevenueCat purchase/ad path exists in the inspected tree yet.
+- The RevenueCat purchase/restore path exists in source, but native iOS linking, production
+  configuration, localized product loading, purchase, cancellation, entitlement refresh, and
+  restore are unverified.
 - No iOS device has exercised boot, StreamingAssets, save persistence, purchase, restore, or ads.
 - Paid-asset permission for public distribution remains a human decision.

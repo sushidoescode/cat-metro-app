@@ -27,6 +27,8 @@ grep -Fq 'UNITY="${CM_UNITY_BIN:-' <<<"$script_code" \
   || fail "fakeable Unity binary seam is missing"
 grep -Fq 'IOS_MODULE="${CM_IOS_MODULE_DIR:-' <<<"$script_code" \
   || fail "fakeable iOS module seam is missing"
+grep -Fq 'CM_IOS_TEST_MODE' <<<"$script_code" \
+  || fail "iOS tool overrides are not guarded by an explicit test mode"
 
 # Static checks cover the Unity-only half that cannot execute headlessly here. Comments are
 # stripped so prose cannot satisfy a positive gate.
@@ -55,10 +57,17 @@ grep -Eq 'PlayerSettings\.[A-Za-z0-9_.]+[[:space:]]*=[^=]' "$builder" \
 grep -q '/\*' "$post" && fail "block comments would evade line-comment stripping"
 post_code="$(sed 's://.*::' "$post")"
 grep -q '^#if UNITY_IOS' <<<"$post_code" || fail "postprocessor is not iOS-only"
-grep -q 'ITSAppUsesNonExemptEncryption' <<<"$post_code" \
-  || fail "export-compliance plist declaration is missing"
-grep -Fq 'Answer: no' <<<"$post_code" \
-  && fail "postprocessor prescribes an export answer when the final binary is unproven"
+grep -Eq 'SetBoolean.*ITSAppUsesNonExemptEncryption|UsesNonExemptEncryption[[:space:]]*=' \
+  <<<"$post_code" \
+  && fail "postprocessor must not encode a legal export answer before the final archive audit"
+grep -Fq 'export-compliance=unset' <<<"$post_code" \
+  || fail "postprocessor does not leave an auditable human-required export marker"
+
+ios_runbook="docs/release/ios-release-runbook.md"
+grep -Fq 'currently writes `ITSAppUsesNonExemptEncryption=false`' "$ios_runbook" \
+  && fail "iOS runbook still tells the release owner an unverified false declaration is automatic"
+grep -Fq 'does not write `ITSAppUsesNonExemptEncryption`' "$ios_runbook" \
+  || fail "iOS runbook does not explain that export compliance remains human-controlled"
 
 grep -Eq '^    iPhone: com\.catmetro\.game$' "$settings" \
   || fail "committed iOS bundle identifier is missing"
@@ -161,6 +170,7 @@ run_build() {
     cd "$invoke_cwd"
     env \
       PATH="$fake_bin:$PATH" \
+      CM_IOS_TEST_MODE=1 \
       CM_UNITY_BIN="$fake_bin/Unity" \
       CM_IOS_MODULE_DIR="$fake_module" \
       CM_FAKE_UNITY_CALL="$case_dir/unity-call" \
@@ -173,6 +183,22 @@ run_build() {
   build_rc=$?
   set -e
 }
+
+# Production release generation must never accept the fake Unity/module seams used below.
+write_settings "com.catmetro.game"
+set +e
+env PATH="$fake_bin:$PATH" \
+  CM_UNITY_BIN="$fake_bin/Unity" \
+  CM_IOS_MODULE_DIR="$fake_module" \
+  bash "$fixture/scripts/build-ios.sh" "$tmp_root/production-override-out" \
+    > "$tmp_root/production-override.log" 2>&1
+production_override_rc=$?
+set -e
+[ "$production_override_rc" -ne 0 ] || fail "production invocation accepted iOS test seams"
+grep -q 'test seam' "$tmp_root/production-override.log" \
+  || fail "production override rejection was not explicit"
+[ ! -e "$tmp_root/production-override-out" ] \
+  || fail "production override reached output creation"
 
 # Missing identity must fail before the expensive Unity process starts.
 write_settings ""

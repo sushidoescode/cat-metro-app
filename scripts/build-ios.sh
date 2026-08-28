@@ -19,6 +19,17 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+IOS_TEST_MODE="${CM_IOS_TEST_MODE:-0}"
+case "$IOS_TEST_MODE" in
+  0|1) ;;
+  *) echo "FAIL: CM_IOS_TEST_MODE must be 0 or 1."; exit 1 ;;
+esac
+if [ "$IOS_TEST_MODE" != "1" ] \
+  && { [ "${CM_UNITY_BIN+x}" = "x" ] || [ "${CM_IOS_MODULE_DIR+x}" = "x" ]; }
+then
+  echo "FAIL: CM_UNITY_BIN and CM_IOS_MODULE_DIR are test seams; production builds use the pinned Unity installation."
+  exit 1
+fi
 UNITY_VERSION="$(grep -oE '^m_EditorVersion: .*' "$ROOT/unity/ProjectSettings/ProjectVersion.txt" 2>/dev/null | awk '{print $2}')"
 UNITY="${CM_UNITY_BIN:-/Applications/Unity/Hub/Editor/${UNITY_VERSION}/Unity.app/Contents/MacOS/Unity}"
 IOS_MODULE="${CM_IOS_MODULE_DIR:-/Applications/Unity/Hub/Editor/${UNITY_VERSION}/PlaybackEngines/iOSSupport}"

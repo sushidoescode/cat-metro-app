@@ -221,29 +221,17 @@ namespace CatMetro.Integrations.RevenueCat
             var result = new List<StoreProductView>();
 
             // Fetched by NAME rather than through Offerings.Current, so that someone flipping
-            // the dashboard's current offering cannot silently empty our shop. Falls back to
-            // Current only if the named offering is missing, which at least degrades to
-            // "something" rather than nothing.
+            // the dashboard's current offering cannot silently redirect this fixed wardrobe to
+            // an unrelated product set. Missing configuration fails closed.
             Purchases.Offering offering = null;
-            bool usingNamedOffering = false;
-            if (offerings.All != null)
-                usingNamedOffering = offerings.All.TryGetValue(
-                    RevenueCatNames.CosmeticsOffering, out offering);
-            offering ??= offerings.Current;
-
-            if (offering == null)
+            if (offerings.All == null || !offerings.All.TryGetValue(
+                    RevenueCatNames.CosmeticsOffering, out offering) || offering == null)
             {
                 Debug.LogWarning("[Monetization] no offering named '" +
-                                 RevenueCatNames.CosmeticsOffering + "' and no current offering; " +
-                                 "check the RevenueCat dashboard");
+                                 RevenueCatNames.CosmeticsOffering +
+                                 "'; purchases remain unavailable until the RevenueCat " +
+                                 "dashboard matches");
                 return result;
-            }
-
-            if (!usingNamedOffering)
-            {
-                Debug.LogWarning("[Monetization] named offering '" +
-                                 RevenueCatNames.CosmeticsOffering + "' is missing; using current '" +
-                                 offering.Identifier + "' as a temporary fallback");
             }
 
             // Cosmetics use CUSTOM package identifiers, not the $rc_* durations, so the typed
