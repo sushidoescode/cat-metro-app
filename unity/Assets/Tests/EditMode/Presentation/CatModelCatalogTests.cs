@@ -10,6 +10,21 @@ using Object = UnityEngine.Object;
 
 namespace CatMetro.Tests.EditMode.Presentation
 {
+    public sealed class CatRigMonoBehaviourProbe : MonoBehaviour
+    {
+        public static int AwakeCount;
+
+        private void Awake() => AwakeCount++;
+    }
+
+    public sealed class CatRigStateBehaviourProbe : StateMachineBehaviour
+    {
+        public static int StateEnterCount;
+
+        public override void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo,
+            int layerIndex) => StateEnterCount++;
+    }
+
     public sealed class CatModelCatalogTests
     {
         [Test]
@@ -73,6 +88,42 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void MonoBehaviourOnOtherwiseConformingRig_IsRejectedBeforeInstantiation()
+        {
+            using (var fixture = new ConformingRigFixture())
+            {
+                fixture.Prefab.AddComponent<CatRigMonoBehaviourProbe>();
+                CatRigMonoBehaviourProbe.AwakeCount = 0;
+
+                var catalog = new CatModelCatalog(fixture.Prefab);
+                bool instantiated = catalog.TryInstantiate(null, out GameObject instance);
+                if (instance != null) Object.DestroyImmediate(instance);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain("MonoBehaviour"));
+                Assert.That(instantiated, Is.False);
+                Assert.That(CatRigMonoBehaviourProbe.AwakeCount, Is.EqualTo(0),
+                    "catalog admission must not clone and awaken an external rig script");
+            }
+        }
+
+        [Test]
+        public void StateMachineBehaviour_IsRejectedBeforeAnyAnimatorSamplingCallback()
+        {
+            using (var fixture = new ConformingRigFixture(addStateBehaviour: true))
+            {
+                CatRigStateBehaviourProbe.StateEnterCount = 0;
+
+                var catalog = new CatModelCatalog(fixture.Prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain("StateMachineBehaviour"));
+                Assert.That(CatRigStateBehaviourProbe.StateEnterCount, Is.EqualTo(0),
+                    "catalog validation must reject controller callbacks before Rebind/Update");
+            }
+        }
+
+        [Test]
         public void MatchingClipsWithWrongStateNames_RejectTheRigBeforeItCanSilentlyFailPlayback()
         {
             var prefab = new GameObject("rig with wrongly named states");
@@ -103,6 +154,32 @@ namespace CatMetro.Tests.EditMode.Presentation
                 Object.DestroyImmediate(prefab);
                 Object.DestroyImmediate(controller);
                 foreach (var clip in clips) Object.DestroyImmediate(clip);
+            }
+        }
+
+        [Test]
+        public void SwappedWalkAndBoardStateMotions_AreRejectedDespiteCompleteLiteralSets()
+        {
+            using (var fixture = new ConformingRigFixture(swapWalkAndBoard: true))
+            {
+                var catalog = new CatModelCatalog(fixture.Prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain("Cat_Walk"));
+                Assert.That(catalog.RejectionReason, Does.Contain("clip"));
+            }
+        }
+
+        [Test]
+        public void EmptyWalkClip_IsRejectedEvenWhenEveryRequiredStateAndClipExists()
+        {
+            using (var fixture = new ConformingRigFixture(animateWalk: false))
+            {
+                var catalog = new CatModelCatalog(fixture.Prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain("Cat_Walk"));
+                Assert.That(catalog.RejectionReason, Does.Contain("positive-length"));
             }
         }
 
@@ -169,7 +246,7 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
-        public void MotionOff_ResamplesTheRigOnlyWhenSuppressionChanges()
+        public void MotionOff_FreezesIdleSitAndResamplesOnlyWhenSuppressionChanges()
         {
             using (var fixture = new ConformingRigFixture())
             {
@@ -180,15 +257,22 @@ namespace CatMetro.Tests.EditMode.Presentation
                         new[] { 0 }, new[] { 1 }, new CatModelCatalog(fixture.Prefab));
                     view.SyncSlot(0x0000000100000001L, CatColor.Red);
                     view.ApplyPresentation(CatPresentationState.RideIdle, 0f, false);
+                    Animator animator = view.GetComponentInChildren<Animator>(true);
 
                     view.ApplyPresentation(CatPresentationState.RideIdle, 0.1f, true);
                     view.ApplyPresentation(CatPresentationState.RideIdle, 0.2f, true);
                     view.ApplyPresentation(CatPresentationState.RideIdle, 0.3f, true);
                     Assert.That(view.RigNeutralSampleCount, Is.EqualTo(1));
+                    Assert.That(animator.GetCurrentAnimatorStateInfo(0)
+                        .IsName("Base Layer.Cat_IdleSit"), Is.True,
+                        "motion-off must not freeze the controller's non-idle default state");
+                    Assert.That(animator.speed, Is.EqualTo(0f));
 
                     view.ApplyPresentation(CatPresentationState.RideIdle, 0.4f, false);
                     view.ApplyPresentation(CatPresentationState.RideIdle, 0.5f, true);
                     Assert.That(view.RigNeutralSampleCount, Is.EqualTo(2));
+                    Assert.That(animator.GetCurrentAnimatorStateInfo(0)
+                        .IsName("Base Layer.Cat_IdleSit"), Is.True);
                 }
                 finally
                 {
@@ -238,8 +322,11 @@ namespace CatMetro.Tests.EditMode.Presentation
         {
             private readonly AnimatorController _controller;
             private readonly List<AnimationClip> _clips = new List<AnimationClip>();
+            private readonly List<StateMachineBehaviour> _stateBehaviours =
+                new List<StateMachineBehaviour>();
 
-            public ConformingRigFixture()
+            public ConformingRigFixture(bool animateWalk = true,
+                bool swapWalkAndBoard = false, bool addStateBehaviour = false)
             {
                 Prefab = new GameObject("ConformingBoardCatRig");
                 var body = new GameObject("RigBody");
@@ -252,10 +339,20 @@ namespace CatMetro.Tests.EditMode.Presentation
                 _controller = new AnimatorController();
                 _controller.AddLayer("Base Layer");
                 AddState("Cat_IdleSit");
-                AddState("Cat_Walk");
-                AddState("Cat_Board");
+                AnimatorState walk = AddState("Cat_Walk", animateWalk);
+                AnimatorState board = AddState("Cat_Board");
                 AddState("Cat_Alight");
-                AddState("Cat_Celebrate");
+                AnimatorState celebrate = AddState("Cat_Celebrate");
+                if (swapWalkAndBoard)
+                {
+                    Motion walkMotion = walk.motion;
+                    walk.motion = board.motion;
+                    board.motion = walkMotion;
+                }
+                _controller.layers[0].stateMachine.defaultState = celebrate;
+                if (addStateBehaviour)
+                    _stateBehaviours.Add(
+                        celebrate.AddStateMachineBehaviour<CatRigStateBehaviourProbe>());
 
                 var animator = Prefab.AddComponent<Animator>();
                 animator.runtimeAnimatorController = _controller;
@@ -267,21 +364,31 @@ namespace CatMetro.Tests.EditMode.Presentation
             public void Dispose()
             {
                 Object.DestroyImmediate(Prefab);
+                for (int i = 0; i < _stateBehaviours.Count; i++)
+                    Object.DestroyImmediate(_stateBehaviours[i]);
                 Object.DestroyImmediate(_controller);
                 for (int i = 0; i < _clips.Count; i++) Object.DestroyImmediate(_clips[i]);
             }
 
-            private void AddState(string literalName)
+            private AnimatorState AddState(string literalName, bool animateChild = false)
             {
                 var clip = new AnimationClip { name = literalName };
+                if (animateChild)
+                    clip.SetCurve("RigBody", typeof(Transform), "localPosition.x",
+                        AnimationCurve.Linear(0f, 0f, 0.4f, 0.02f));
                 _clips.Add(clip);
-                _controller.layers[0].stateMachine.AddState(literalName).motion = clip;
+                AnimatorState state = _controller.layers[0].stateMachine.AddState(literalName);
+                state.motion = clip;
+                return state;
             }
         }
 
         private static AnimationClip Clip(string name)
         {
             var clip = new AnimationClip { name = name };
+            if (name == "Cat_Walk")
+                clip.SetCurve("RigBody", typeof(Transform), "localPosition.x",
+                    AnimationCurve.Linear(0f, 0f, 0.4f, 0.02f));
             return clip;
         }
     }

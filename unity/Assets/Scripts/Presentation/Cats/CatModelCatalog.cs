@@ -1,9 +1,6 @@
 using System;
 using System.Collections.Generic;
-using CatMetro.Presentation.Board;
 using UnityEngine;
-using UnityEngine.EventSystems;
-using UnityEngine.UI;
 
 namespace CatMetro.Presentation.Cats
 {
@@ -87,10 +84,18 @@ namespace CatMetro.Presentation.Cats
                     return false;
                 }
 
+                // External behaviours could run Awake/OnEnable during Instantiate and cross
+                // the presentation-only boundary. Animator derives from Behaviour, not
+                // MonoBehaviour, so the one admitted animation driver remains unaffected.
+                if (component is MonoBehaviour)
+                {
+                    rejectionReason = "Cat rig contains forbidden MonoBehaviour "
+                        + component.GetType().Name + ".";
+                    return false;
+                }
+
                 if (component is Animation || component is Collider || component is Rigidbody
-                    || component is Collider2D || component is Rigidbody2D
-                    || component is BoardElementId || component is Selectable
-                    || component is BaseRaycaster)
+                    || component is Collider2D || component is Rigidbody2D)
                 {
                     rejectionReason = "Cat rig contains forbidden " + component.GetType().Name + ".";
                     return false;
@@ -113,8 +118,19 @@ namespace CatMetro.Presentation.Cats
                 rejectionReason = "Cat rig Animator is missing its controller.";
                 return false;
             }
+            // Inspect before any Rebind/Update: a StateMachineBehaviour can execute callbacks
+            // while the controller is sampled even though it is not a component in the rig
+            // hierarchy and therefore was not covered by the MonoBehaviour scan above.
+            var stateBehaviours = animators[0].GetBehaviours<StateMachineBehaviour>();
+            if (stateBehaviours != null && stateBehaviours.Length > 0)
+            {
+                rejectionReason = "Cat rig controller contains forbidden StateMachineBehaviour "
+                    + stateBehaviours[0].GetType().Name + ".";
+                return false;
+            }
 
             var clips = animators[0].runtimeAnimatorController.animationClips;
+            AnimationClip walkClip = null;
             foreach (string required in RequiredClipNames)
             {
                 AnimationClip clip = Array.Find(clips, candidate => candidate != null && candidate.name == required);
@@ -123,6 +139,13 @@ namespace CatMetro.Presentation.Cats
                     rejectionReason = "Cat rig controller is missing clip " + required + ".";
                     return false;
                 }
+                if (required == WalkClip) walkClip = clip;
+            }
+            if (walkClip.empty || walkClip.length <= 0f)
+            {
+                rejectionReason = "Cat rig clip " + WalkClip
+                    + " must contain a positive-length child animation.";
+                return false;
             }
             foreach (AnimationClip clip in clips)
             {
@@ -132,9 +155,9 @@ namespace CatMetro.Presentation.Cats
                     return false;
                 }
             }
-            if (!HasRequiredStates(animators[0], out string missingState))
+            if (!HasRequiredStateClips(animators[0], out string stateReason))
             {
-                rejectionReason = "Cat rig controller is missing state " + missingState + ".";
+                rejectionReason = stateReason;
                 return false;
             }
 
@@ -164,10 +187,10 @@ namespace CatMetro.Presentation.Cats
             return true;
         }
 
-        // Animator.HasState is only reliable on an initialized Animator. Probe the controller
-        // through a disposable plain GameObject rather than instantiating the imported prefab,
-        // so catalog validation cannot invoke scripts or other behaviour carried by that asset.
-        private static bool HasRequiredStates(Animator source, out string missingState)
+        // Animator state and clip sampling are only reliable on an initialized Animator. Probe
+        // the controller through a disposable plain GameObject rather than instantiating the
+        // imported prefab, so catalog validation cannot invoke asset-owned behaviour.
+        private static bool HasRequiredStateClips(Animator source, out string rejectionReason)
         {
             var probe = new GameObject("Cat rig state probe");
             try
@@ -184,7 +207,18 @@ namespace CatMetro.Presentation.Cats
                     int stateHash = Animator.StringToHash(layerName + "." + required);
                     if (!animator.HasState(0, stateHash))
                     {
-                        missingState = required;
+                        rejectionReason = "Cat rig controller is missing state " + required + ".";
+                        return false;
+                    }
+
+                    animator.Play(stateHash, 0, 0f);
+                    animator.Update(0f);
+                    AnimatorClipInfo[] sampled = animator.GetCurrentAnimatorClipInfo(0);
+                    if (sampled.Length != 1 || sampled[0].clip == null
+                        || sampled[0].clip.name != required)
+                    {
+                        rejectionReason = "Cat rig state " + required
+                            + " must sample clip " + required + ".";
                         return false;
                     }
                 }
@@ -195,7 +229,7 @@ namespace CatMetro.Presentation.Cats
                 else UnityEngine.Object.DestroyImmediate(probe);
             }
 
-            missingState = string.Empty;
+            rejectionReason = string.Empty;
             return true;
         }
 
