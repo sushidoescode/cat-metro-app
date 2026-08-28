@@ -391,6 +391,91 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator EnabledReminder_ExternalPermissionRevocation_ReconcilesOnceOnNextUpdate()
+        {
+            SeedCountedDaily(promptSeen: true, enabled: true);
+            var messaging = new FakeMessaging
+            {
+                PermissionValue = MessagingPermission.Authorized,
+                CanRequestPermissionValue = false,
+            };
+            messaging.DurableStateProbe = DurableState;
+            Launch(messaging);
+            yield return null;
+            _messaging.ClearProviderCalls();
+
+            OpenReminderSettings();
+            Assert.That(_root.Home.ReminderSheet.StatusText,
+                Is.EqualTo("Notifications allowed."));
+            Assert.That(Find(_root.Home.ReminderSheet.transform, "ReminderOn")
+                    .GetComponent<Image>().color,
+                Is.EqualTo(Palette.MetroTeal), "precondition: effective state starts On");
+
+            _messaging.PermissionValue = MessagingPermission.Denied;
+            _messaging.CanRequestPermissionValue = false;
+            ResumeApplicationTwice();
+
+            Assert.That(ReadPreferences().Enabled, Is.True,
+                "external OS revocation must preserve the player's durable reminder intent");
+            Assert.That(_root.Home.ReminderSheet.StatusText,
+                Is.EqualTo("Notifications allowed."),
+                "lifecycle callbacks queue work but cannot mutate Unity UI immediately");
+            Assert.That(_messaging.PromptCalls, Is.Zero);
+            Assert.That(_messaging.ScheduleAttempts, Is.Empty);
+            Assert.That(_messaging.CancelAttempts, Is.Empty);
+
+            yield return null;
+
+            Assert.That(ReadPreferences().Enabled, Is.True);
+            Assert.That(_messaging.PromptCalls, Is.Zero,
+                "permission reconciliation is never a native-prompt site");
+            Assert.That(_messaging.ScheduleAttempts, Is.Empty);
+            CollectionAssert.AreEqual(new[] { "daily-ready" },
+                _messaging.CancelAttempts,
+                "duplicate focus/pause callbacks coalesce into one Journey exit");
+            CollectionAssert.AreEqual(new[] { "cancel:true:morning" },
+                _messaging.ProviderStateAtCall,
+                "provider cleanup must not rewrite the durable player choice");
+            Assert.That(_root.Home.ReminderSheet.StatusText,
+                Is.EqualTo("Notifications are off in device settings."));
+            Assert.That(Find(_root.Home.ReminderSheet.transform, "ReminderOff")
+                    .GetComponent<Image>().color,
+                Is.EqualTo(Palette.MetroTeal),
+                "denied permission repaints the durable choice effectively Off");
+            Assert.That(Find(_root.Home.ReminderSheet.transform, "ReminderOn")
+                    .GetComponent<Image>().color,
+                Is.EqualTo(Palette.CreamCard));
+
+            yield return null;
+            Assert.That(_messaging.CancelAttempts.Count, Is.EqualTo(1),
+                "reconciliation is event-driven, not polled every frame");
+
+            _messaging.ClearProviderCalls();
+            _messaging.PermissionValue = MessagingPermission.Authorized;
+            ResumeApplicationTwice();
+            Assert.That(_messaging.ScheduleAttempts, Is.Empty,
+                "re-authorization also waits for the main-thread Update");
+            yield return null;
+
+            Assert.That(ReadPreferences().Enabled, Is.True);
+            Assert.That(_messaging.PromptCalls, Is.Zero);
+            Assert.That(_messaging.CancelAttempts, Is.Empty);
+            Assert.That(_messaging.ScheduleAttempts.Count, Is.EqualTo(1),
+                "restored OS permission restores the retained Journey intent once");
+            Assert.That(_messaging.ProviderStateAtCall,
+                Is.EqualTo(new[] { "schedule:true:morning" }));
+            Assert.That(_root.Home.ReminderSheet.StatusText,
+                Is.EqualTo("Notifications allowed."));
+            Assert.That(Find(_root.Home.ReminderSheet.transform, "ReminderOn")
+                    .GetComponent<Image>().color,
+                Is.EqualTo(Palette.MetroTeal));
+
+            yield return null;
+            Assert.That(_messaging.ScheduleAttempts.Count, Is.EqualTo(1),
+                "restoration is event-driven, not polled every frame");
+        }
+
+        [UnityTest]
         public IEnumerator SettingsFallback_FocusGrantWinsOnce_WhenPromptTaskCompletesLater()
         {
             SeedCountedDaily(promptSeen: true);

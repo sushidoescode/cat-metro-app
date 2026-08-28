@@ -4,4 +4,5 @@
 class SaveBanned
 {
     private object _client; // RevenueCat BillingClient GoogleMobileAds Purchases.
+    private UnityEngine.Object _engineReference;
 }

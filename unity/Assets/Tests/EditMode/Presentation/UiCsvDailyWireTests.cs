@@ -24,9 +24,9 @@ namespace CatMetro.Tests.Presentation
         public void DailyLiveRows_AreAppendOnlyAndBytePinned()
         {
             var rows = Rows();
-            // 12 merged rows + Daily entry/return/tally/practice/error/loading = 18.
-            Assert.That(rows.Length, Is.EqualTo(18),
-                "12 merged rows + six Daily Live rows — append-only, never edits");
+            // This legacy slice owns rows 0-17. Later slices may only append after them.
+            Assert.That(rows.Length, Is.GreaterThanOrEqualTo(18),
+                "the frozen Daily Live prefix must remain present; later rows may append");
             Assert.That(rows[12], Is.EqualTo("home.daily.label,Daily Line"), "DRAFT");
             Assert.That(rows[13], Is.EqualTo("results.daily.done,Home"), "DRAFT");
             Assert.That(rows[14], Is.EqualTo(

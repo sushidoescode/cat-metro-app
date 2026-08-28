@@ -8,12 +8,23 @@ cd "$(git rev-parse --show-toplevel)"
 fail() { echo "taxonomy.test.sh: FAIL — $1"; exit 1; }
 tax="unity/Assets/Scripts/Application/EventTaxonomy"
 scripts_root="unity/Assets/Scripts"
+sdk_roots=(
+  "$scripts_root/Application"
+  "$scripts_root/Bootstrap"
+  "$scripts_root/Content"
+  "$scripts_root/Domain"
+  "$scripts_root/Presentation"
+  "$scripts_root/Services"
+)
 badfx="tests/fixtures/taxonomy-bad/Banned.cs"
 
 [ -d "$tax" ] || fail "criterion 8: taxonomy root missing (fail-closed)"
 [ -f "$badfx" ] || fail "negative fixture missing (fail-closed)"
+for root in "${sdk_roots[@]}"; do
+  [ -d "$root" ] || fail "criterion 7: SDK scan root missing (fail-closed): $root"
+done
 
-# --- criterion 7: ONE construction site; ZERO SDK namespaces in shipped code ---
+# --- criterion 7: ONE construction site; ZERO SDK namespaces in provider-neutral code ---
 sites=$(grep -rl --include='*.cs' 'new AnalyticsEvent(' "$scripts_root" 2>/dev/null || true)
 count=$(printf '%s\n' "$sites" | grep -c . || true)
 [ "$count" = "1" ] || fail "criterion 7: expected exactly 1 'new AnalyticsEvent(' file under $scripts_root, found $count: $sites"
@@ -21,8 +32,8 @@ printf '%s\n' "$sites" | grep -q "EventTaxonomy/Taxonomy.cs" \
   || fail "criterion 7: the one construction site is not the taxonomy builder: $sites"
 grep -q 'new AnalyticsEvent(' "$badfx" || fail "criterion 7: construction pattern failed to fire on the fixture"
 SDK='Firebase|OneSignalSDK|GoogleMobileAds|RevenueCat'
-sdk=$(grep -rEn --include='*.cs' "$SDK" "$scripts_root" 2>/dev/null || true)
-[ -z "$sdk" ] || fail "criterion 7: SDK namespace token in shipped code: $sdk"
+sdk=$(grep -rEn --include='*.cs' "$SDK" "${sdk_roots[@]}" 2>/dev/null || true)
+[ -z "$sdk" ] || fail "criterion 7: SDK namespace token in provider-neutral code: $sdk"
 grep -Eq "$SDK" "$badfx" || fail "criterion 7: SDK pattern failed to fire on the fixture"
 
 # --- criterion 8: the metrics-only wall, re-applied over the new root ---

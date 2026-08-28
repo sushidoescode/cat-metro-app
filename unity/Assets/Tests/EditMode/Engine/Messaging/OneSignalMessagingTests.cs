@@ -1,10 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CatMetro.Integrations.OneSignal;
 using CatMetro.Services;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace CatMetro.Tests.Engine.Messaging
 {
@@ -94,8 +99,54 @@ namespace CatMetro.Tests.Engine.Messaging
         {
             Assert.That(OneSignalRuntimeConfig.TryGetAppId("not-json", out _), Is.False);
             Assert.That(OneSignalRuntimeConfig.TryGetAppId(null, out _), Is.False);
-            Assert.That(OneSignalRuntimeConfig.LoadAppId(), Is.Empty,
-                "the checked-in public config must start blank");
+        }
+
+        [Test]
+        public void RuntimeConfig_CheckedInPublicConfigIsBlankOrOneCanonicalNonzeroAppId()
+        {
+            var asset = Resources.Load<TextAsset>("Config/onesignal");
+            Assert.That(asset, Is.Not.Null, "the public runtime config must be checked in");
+
+            var document = JObject.Parse(asset.text);
+            Assert.That(document.Properties().Select(property => property.Name),
+                Is.EqualTo(new[] { "appId" }),
+                "the public config may contain only the appId field");
+            Assert.That(document["appId"].Type, Is.EqualTo(JTokenType.String),
+                "the appId placeholder must be a JSON string");
+
+            var configuredAppId = (string)document["appId"];
+            if (configuredAppId.Length == 0)
+            {
+                Assert.That(OneSignalRuntimeConfig.LoadAppId(), Is.Empty,
+                    "an intentional blank placeholder must fail closed");
+                return;
+            }
+
+            Assert.That(Guid.TryParseExact(configuredAppId, "D", out var parsed), Is.True,
+                "a configured public App ID must use canonical D format");
+            Assert.That(parsed, Is.Not.EqualTo(Guid.Empty),
+                "a configured public App ID must be nonzero");
+            Assert.That(configuredAppId, Is.EqualTo(parsed.ToString("D")),
+                "a configured public App ID must already be canonical lowercase text");
+            Assert.That(OneSignalRuntimeConfig.LoadAppId(), Is.EqualTo(configuredAppId));
+        }
+
+        [Test]
+        public void RequiredLinkerFile_BytePinsAllThreeOneSignalPlatformAssemblies()
+        {
+            var path = Path.Combine(Application.dataPath, "OneSignal", "link.xml");
+            Assert.That(File.Exists(path), Is.True,
+                "the OneSignal setup step marks Assets/OneSignal/link.xml as required");
+
+            const string expected =
+                "<linker>\n"
+                + "  <assembly fullname=\"OneSignal.Core\" preserve=\"all\" />\n"
+                + "  <assembly fullname=\"OneSignal.Android\" preserve=\"all\" />\n"
+                + "  <assembly fullname=\"OneSignal.iOS\" preserve=\"all\" />\n"
+                + "</linker>\n";
+            Assert.That(File.ReadAllBytes(path),
+                Is.EqualTo(Encoding.UTF8.GetBytes(expected)),
+                "linker preservation must stay byte-identical to the pinned SDK output");
         }
 
         [Test]
