@@ -16,3 +16,19 @@ home.daily.tally,Dailies completed: {count}
 home.daily.unavailable,Daily unavailable — try again
 daily.practice,Clock changed — practice run
 home.daily.loading,Preparing today's Line…
+reminder.prompt.title,Would you like tomorrow’s Daily Line delivered?
+reminder.prompt.body,One gentle reminder around the time you choose. Nothing expires.
+reminder.action.accept,Remind me
+reminder.action.dismiss,Not now
+reminder.settings.title,Daily reminder
+reminder.settings.on,On
+reminder.settings.off,Off
+reminder.slot.morning,Morning · around 10:00
+reminder.slot.afternoon,Afternoon · around 15:00
+reminder.slot.evening,Evening · around 18:00
+reminder.status.authorized,Notifications allowed.
+reminder.status.denied,Notifications are off in device settings.
+reminder.status.unknown,Notification permission not decided.
+reminder.status.unavailable,Notifications unavailable on this device.
+reminder.settings.open,Open notification settings
+reminder.settings.close,Close

@@ -175,6 +175,49 @@ namespace CatMetro.Tests.PlayMode
             finally { Object.Destroy(decoy); }
         }
 
+        [UnityTest]
+        public IEnumerator ReminderObjects_AreAbsentUntilConfigurationUnlock_ThenGearRoutesSettings()
+        {
+            CreateShown();
+            yield return null;
+
+            _home.ShowReminderPrompt();
+            _home.ShowReminderSettings();
+            Assert.That(FirstReminderNode(_home.gameObject), Is.Null,
+                "pre-unlock show calls cannot create even inactive reminder objects");
+            Assert.That(_regions.Count, Is.EqualTo(1));
+
+            _home.ConfigureReminder(false, false,
+                CatMetro.Services.DailyReminderSlot.Morning,
+                CatMetro.Services.MessagingPermission.Unknown, true, true);
+            Assert.That(FirstReminderNode(_home.gameObject), Is.Null,
+                "locked configuration keeps the complete session-one tree absent");
+
+            _home.ConfigureReminder(true, false,
+                CatMetro.Services.DailyReminderSlot.Morning,
+                CatMetro.Services.MessagingPermission.Unknown, true, true);
+            Assert.That(_home.ReminderGearTransform, Is.Not.Null);
+            Assert.That(_home.ReminderSheet, Is.Not.Null);
+            Assert.That(_regions.Count, Is.EqualTo(2),
+                "unlock adds only the gear while the sheet is closed");
+
+            Assert.That(_regions.TryResolve(_home.ReminderGearRectPx.center, out var open), Is.True);
+            open();
+            Assert.That(_home.ReminderSheet.IsVisible, Is.True,
+                "the Image-built gear opens settings through ChromeRegions");
+        }
+
+        private static string FirstReminderNode(GameObject root)
+        {
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            {
+                string name = t.gameObject.name.ToLowerInvariant();
+                if (name.Contains("reminder") || name.Contains("gear"))
+                    return t.gameObject.name;
+            }
+            return null;
+        }
+
         // --- criterion 6: first registrar — lifetime law + routing seam ---
 
         [UnityTest]
@@ -220,7 +263,7 @@ namespace CatMetro.Tests.PlayMode
             typeof(Transform), typeof(RectTransform), typeof(Canvas),
             typeof(CanvasRenderer), typeof(UnityEngine.UI.CanvasScaler),
             typeof(UnityEngine.UI.Image), typeof(TMPro.TextMeshProUGUI),
-            typeof(HomeScreenView),
+            typeof(HomeScreenView), typeof(DailyReminderSheet),
         };
 
         private static Component FirstOffWhitelist(GameObject root)
