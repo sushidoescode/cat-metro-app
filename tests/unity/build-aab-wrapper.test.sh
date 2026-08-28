@@ -352,6 +352,27 @@ after_success_log_sha="$(shasum -a 256 "$success_unity_log" | awk '{print $1}')"
 [ "$after_success_log_sha" = "$before_success_log_sha" ] \
   || fail "no-clobber gate changed the successful Unity log"
 
+# Logs are release evidence too. A fresh AAB/listing path must not allow either successful or
+# failed-log destination to overwrite an earlier attempt with the same stem.
+for occupied_log_kind in unity-build failed-release-build; do
+  log_collision_out="$case_root/log-collision-$occupied_log_kind-test-proof.aab"
+  occupied_log="${log_collision_out%.aab}-$occupied_log_kind.log"
+  printf 'historical-%s-log\n' "$occupied_log_kind" > "$occupied_log"
+  occupied_log_sha="$(shasum -a 256 "$occupied_log" | awk '{print $1}')"
+  set +e
+  CM_UNITY_BIN="$fake_unity" bash "$case_root/scripts/build-aab.sh" "$log_collision_out" \
+    > "$case_root/log-collision-$occupied_log_kind.log" 2>&1
+  log_collision_rc=$?
+  set -e
+  [ "$log_collision_rc" -ne 0 ] \
+    || fail "wrapper accepted an occupied $occupied_log_kind evidence path"
+  [ ! -e "$log_collision_out" ] \
+    && [ ! -e "${log_collision_out%.aab}-play-listing.md" ] \
+    || fail "log collision published an AAB or listing"
+  [ "$(shasum -a 256 "$occupied_log" | awk '{print $1}')" = "$occupied_log_sha" ] \
+    || fail "wrapper overwrote the historical $occupied_log_kind evidence log"
+done
+
 # A fresh-path Unity failure propagates its exit code, publishes nothing, and preserves a distinct
 # diagnostic log. This is the direct stale-artifact regression: failure can never fall through to
 # artifact discovery or a success message.

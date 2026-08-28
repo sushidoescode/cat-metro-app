@@ -192,10 +192,14 @@ for destination in "$OUT" "$LISTING_OUT" "$LOG_OUT" "$FAILED_LOG_OUT"; do
     exit 1
   fi
 done
-if path_occupied "$OUT" || path_occupied "$LISTING_OUT"; then
-  echo "FAIL: release outputs are immutable; choose a new AAB path or move the existing pair aside."
+if path_occupied "$OUT" || path_occupied "$LISTING_OUT" \
+  || path_occupied "$LOG_OUT" || path_occupied "$FAILED_LOG_OUT"
+then
+  echo "FAIL: release outputs are immutable; choose a new AAB path or move the existing evidence set aside."
   echo "  AAB: $OUT"
   echo "  Listing: $LISTING_OUT"
+  echo "  Success log: $LOG_OUT"
+  echo "  Failure log: $FAILED_LOG_OUT"
   exit 1
 fi
 [ -f "$LISTING_TEMPLATE" ] || {
@@ -219,8 +223,21 @@ published_listing_owned=0
 # shellcheck disable=SC2329
 cleanup() {
   local exit_code=$?
+  local log_destination=""
   trap - EXIT
   set +e
+  if [ -n "$LOG" ] && [ -f "$LOG" ]; then
+    if [ "$exit_code" -eq 0 ]; then
+      log_destination="$LOG_OUT"
+    else
+      log_destination="$FAILED_LOG_OUT"
+    fi
+    if ! ln -- "$LOG" "$log_destination"; then
+      echo "FAIL: could not atomically preserve the Unity log without replacing existing evidence: $log_destination" >&2
+      exit_code=1
+      publication_committed=0
+    fi
+  fi
   if [ "$publication_started" -eq 1 ] && [ "$publication_committed" -eq 0 ]; then
     if [ "$published_aab_owned" -eq 1 ] && [ ! -L "$OUT" ] && [ "$OUT" -ef "$TMP_OUT" ]; then
       rm -f -- "$OUT"
@@ -231,13 +248,6 @@ cleanup() {
       rm -f -- "$LISTING_OUT"
     fi
     echo "Publish rollback: removed the incomplete new AAB/listing pair." >&2
-  fi
-  if [ -n "$LOG" ] && [ -f "$LOG" ]; then
-    if [ "$exit_code" -eq 0 ]; then
-      cp -f -- "$LOG" "$LOG_OUT"
-    else
-      cp -f -- "$LOG" "$FAILED_LOG_OUT"
-    fi
   fi
   if [ -n "$BUILD_TMP" ]; then
     rm -rf -- "$BUILD_TMP"
@@ -258,8 +268,10 @@ fi
 lock_held=1
 # Close the race between the early path check and lock acquisition. This script never replaces a
 # release candidate; use a versioned output path for every attempt.
-if path_occupied "$OUT" || path_occupied "$LISTING_OUT"; then
-  echo "FAIL: release output appeared before lock acquisition; choose a new AAB path."
+if path_occupied "$OUT" || path_occupied "$LISTING_OUT" \
+  || path_occupied "$LOG_OUT" || path_occupied "$FAILED_LOG_OUT"
+then
+  echo "FAIL: release output or evidence path appeared before lock acquisition; choose a new AAB path."
   exit 1
 fi
 BUILD_TMP="$(mktemp -d "$OUT_DIR/.catmetro-aab.XXXXXX")"
@@ -659,8 +671,10 @@ echo "Listing fields: OK (title $title_count/30, short $short_count/80, full $fu
 # then create hard links from the same-filesystem staging files. Link creation is an atomic
 # no-replace operation: an external writer wins with EEXIST rather than being overwritten. The
 # EXIT/signal trap removes only paths still linked to files created by this invocation.
-if path_occupied "$OUT" || path_occupied "$LISTING_OUT"; then
-  echo "Publish: FAIL — immutable output path appeared while the build was running."
+if path_occupied "$OUT" || path_occupied "$LISTING_OUT" \
+  || path_occupied "$LOG_OUT" || path_occupied "$FAILED_LOG_OUT"
+then
+  echo "Publish: FAIL — immutable output or evidence path appeared while the build was running."
   exit 1
 fi
 aab_bytes="$(wc -c < "$TMP_OUT" | tr -d '[:space:]')"
