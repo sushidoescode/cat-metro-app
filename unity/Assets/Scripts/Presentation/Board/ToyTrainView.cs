@@ -1,3 +1,4 @@
+using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Theme;
 using UnityEngine;
 
@@ -80,6 +81,8 @@ namespace CatMetro.Presentation.Board
         private const float EarLateral = 0.080f;
         private const float EarCenterZ = -0.090f;
         private const float EyeSize = 0.048f;
+        public static readonly Vector3 PlaceholderBodyWorldSize = new Vector3(0.124f, 0.108f, 0.102f);
+        private static readonly Vector3 PlaceholderLegWorldSize = new Vector3(0.038f, 0.036f, 0.082f);
         private static readonly Vector3 EyeOffset = new Vector3(0.0528f, 0.0369f, -0.0844f);
         private static readonly Vector3 MuzzleOffset = new Vector3(0.0768f, 0f, -0.0658f);
         private static readonly Vector3 MuzzleSize = new Vector3(0.050f, 0.068f, 0.044f);
@@ -229,9 +232,30 @@ namespace CatMetro.Presentation.Board
         private Transform _carriage;
         private Transform _cat;
         private Transform _pin;
+        private Transform _head;
+        private Transform _earLeft;
+        private Transform _earRight;
+        private Transform _eyeLeft;
+        private Transform _eyeRight;
+        private Transform[] _bodyLegs;
         private MeshFilter _pinSymbolFilter;
         private MeshRenderer _pinSymbol;
-        private MeshRenderer[] _catRenderers; // head + ears — tinted per cat via property block
+        private MeshRenderer[] _catRenderers; // placeholder renderers — tinted per cat via property block
+
+        private Vector3 _catBaseLocalPosition;
+        private Quaternion _catBaseLocalRotation;
+        private Quaternion _headBaseLocalRotation;
+        private Quaternion _earLeftBaseLocalRotation;
+        private Quaternion _earRightBaseLocalRotation;
+        private Vector3 _eyeLeftBaseLocalScale;
+        private Vector3 _eyeRightBaseLocalScale;
+        private CatMicroMotion _microMotion = new CatMicroMotion(0u);
+        private CatPresentationState _presentationState = CatPresentationState.Hidden;
+        private CatPresentationState _lastRigState = CatPresentationState.Hidden;
+        private GameObject _rigInstance;
+        private Animator _rigAnimator;
+        private bool _rigAdmitted;
+        private string _rigFallbackReason = "Rig has not been evaluated.";
 
         // The authored graph's edge endpoints (BoardView's own arrays) — the authority that
         // decides whether remembered history is a path the train could actually have rolled.
@@ -246,6 +270,10 @@ namespace CatMetro.Presentation.Board
         private float _headingDegrees;
         private byte _appliedColorCode;
         private bool _catColorApplied;
+
+        public bool RigAdmitted => _rigAdmitted;
+        public string RigFallbackReason => _rigFallbackReason;
+        public CatPresentationState PresentationState => _presentationState;
 
         public static ToyTrainView Create(Transform parent, string name,
             int[] edgeFrom, int[] edgeTo)
@@ -278,6 +306,10 @@ namespace CatMetro.Presentation.Board
                 _currentEdge = -1;
                 _previousEdge = -1;
                 _headingDegrees = 0f;
+                _microMotion = new CatMicroMotion((uint)trainId);
+                _presentationState = CatPresentationState.Hidden;
+                _lastRigState = CatPresentationState.Hidden;
+                ResetVisualPose();
             }
             if (!_catColorApplied || colorCode != _appliedColorCode)
             {
@@ -291,6 +323,56 @@ namespace CatMetro.Presentation.Board
                     _catRenderers[i].SetPropertyBlock(properties);
                 ApplyPinShape(CatLine.ShapeOf(CatLine.NameOfCode(colorCode)), properties);
             }
+        }
+
+        /// <summary>
+        /// Applies presentation-only decoration after the caller has placed the train root on
+        /// its authoritative spline/node position. This method deliberately never changes the
+        /// train root, engine, carriage, or destination-pin placement contracts.
+        /// </summary>
+        public void ApplyPresentation(CatPresentationState state, float visualTime, bool motionOff)
+        {
+            _presentationState = state;
+            bool hidden = state == CatPresentationState.Hidden;
+            _cat.gameObject.SetActive(!hidden);
+            _pin.gameObject.SetActive(!hidden);
+            if (hidden)
+            {
+                ResetVisualPose();
+                SetBodyLegVisibility(false);
+                if (motionOff) PlayRig(CatPresentationState.Hidden, true);
+                return;
+            }
+
+            SetBodyLegVisibility(state == CatPresentationState.Walk
+                || state == CatPresentationState.Board
+                || state == CatPresentationState.Alight
+                || state == CatPresentationState.Celebrate);
+            if (motionOff)
+            {
+                ResetVisualPose();
+                PlayRig(state, true);
+                return;
+            }
+
+            ResetVisualPose();
+            bool arrival = state == CatPresentationState.Alight || state == CatPresentationState.Celebrate;
+            CatMicroPose pose = _microMotion.Evaluate(visualTime, false, arrival);
+            // ScreenUpOffset carries exactly 0.021 board units of screen-space vertical travel;
+            // it is applied to Cat only, never to the train/root spline anchor.
+            _cat.localPosition = _catBaseLocalPosition
+                + ScreenUpOffset(BoardSceneLook.BoardTilt, pose.Bob * 0.021f, 0f);
+            _head.localRotation = _headBaseLocalRotation
+                * Quaternion.Euler(0f, 0f, pose.ArrivalHeadTurnDegrees);
+            _earLeft.localRotation = _earLeftBaseLocalRotation
+                * Quaternion.Euler(0f, 0f, pose.EarTwitchDegrees);
+            _earRight.localRotation = _earRightBaseLocalRotation
+                * Quaternion.Euler(0f, 0f, -pose.EarTwitchDegrees);
+            _eyeLeft.localScale = new Vector3(_eyeLeftBaseLocalScale.x,
+                _eyeLeftBaseLocalScale.y * pose.EyeYScale, _eyeLeftBaseLocalScale.z);
+            _eyeRight.localScale = new Vector3(_eyeRightBaseLocalScale.x,
+                _eyeRightBaseLocalScale.y * pose.EyeYScale, _eyeRightBaseLocalScale.z);
+            PlayRig(state, false);
         }
 
         // The pin's symbol, in the shape the shared vocabulary gives this cat's line and the
@@ -397,7 +479,8 @@ namespace CatMetro.Presentation.Board
         private void SetCarriageHeading(float degrees)
         {
             _carriage.localRotation = Quaternion.Euler(0f, 0f, degrees);
-            _cat.localRotation = Quaternion.Euler(0f, 0f, CatBoardYaw - degrees);
+            _catBaseLocalRotation = Quaternion.Euler(0f, 0f, CatBoardYaw - degrees);
+            _cat.localRotation = _catBaseLocalRotation;
             // The pin gets the same treatment one dimension up. Undoing the carriage's turn
             // leaves it at a FIXED board-local pose — rotation and offset both — so the card
             // holds still, square to the camera and directly above its cat, on a straight,
@@ -456,21 +539,21 @@ namespace CatMetro.Presentation.Board
             // is. Ears are 45-degree diamonds anchored in the head, splayed up and out.
             _cat = new GameObject("Cat").transform;
             _cat.SetParent(_carriage, false);
-            _catRenderers = new[]
-            {
-                CreatePart("Head", _cat, SphereMesh(),
-                    new Vector3(0f, 0f, HeadCenterZ),
-                    new Vector3(HeadDiameter, HeadDiameter, HeadDiameter),
-                    Quaternion.identity, CatBasisMaterial()),
-                CreatePart("EarLeft", _cat, CubeMesh(),
-                    new Vector3(0f, EarLateral, EarCenterZ),
-                    new Vector3(EarThickness, EarSize, EarSize),
-                    Quaternion.Euler(45f, 0f, 0f), CatBasisMaterial()),
-                CreatePart("EarRight", _cat, CubeMesh(),
-                    new Vector3(0f, -EarLateral, EarCenterZ),
-                    new Vector3(EarThickness, EarSize, EarSize),
-                    Quaternion.Euler(45f, 0f, 0f), CatBasisMaterial()),
-            };
+            var head = CreatePart("Head", _cat, SphereMesh(),
+                new Vector3(0f, 0f, HeadCenterZ),
+                new Vector3(HeadDiameter, HeadDiameter, HeadDiameter),
+                Quaternion.identity, CatBasisMaterial());
+            var earLeft = CreatePart("EarLeft", _cat, CubeMesh(),
+                new Vector3(0f, EarLateral, EarCenterZ),
+                new Vector3(EarThickness, EarSize, EarSize),
+                Quaternion.Euler(45f, 0f, 0f), CatBasisMaterial());
+            var earRight = CreatePart("EarRight", _cat, CubeMesh(),
+                new Vector3(0f, -EarLateral, EarCenterZ),
+                new Vector3(EarThickness, EarSize, EarSize),
+                Quaternion.Euler(45f, 0f, 0f), CatBasisMaterial());
+            _head = head.transform;
+            _earLeft = earLeft.transform;
+            _earRight = earRight.transform;
 
             // The face. Because the cat holds a fixed camera-facing yaw, these sit at a known
             // screen position for every train on every heading — so they can be placed once,
@@ -478,17 +561,34 @@ namespace CatMetro.Presentation.Board
             // sphere sunk into the head so it reads as a dome on the surface, never a decal
             // that could z-fight. Reuses the engine's two cached materials: no new material,
             // no property block, nothing to tear down.
-            CreatePart("EyeLeft", _cat, SphereMesh(),
+            var eyeLeft = CreatePart("EyeLeft", _cat, SphereMesh(),
                 new Vector3(EyeOffset.x, EyeOffset.y, EyeOffset.z),
                 new Vector3(EyeSize, EyeSize, EyeSize),
                 Quaternion.identity, NavyMaterial());
-            CreatePart("EyeRight", _cat, SphereMesh(),
+            var eyeRight = CreatePart("EyeRight", _cat, SphereMesh(),
                 new Vector3(EyeOffset.x, -EyeOffset.y, EyeOffset.z),
                 new Vector3(EyeSize, EyeSize, EyeSize),
                 Quaternion.identity, NavyMaterial());
             CreatePart("Muzzle", _cat, SphereMesh(),
                 MuzzleOffset, MuzzleSize,
                 Quaternion.identity, CreamMaterial());
+            _eyeLeft = eyeLeft.transform;
+            _eyeRight = eyeRight.transform;
+
+            // A small Tier-1 body and legs give walking/alighting cats a readable silhouette.
+            // These use the same builtin meshes and bounds-derived scale as every train part:
+            // no primitive factory, colliders, or owned generated asset.
+            var body = CreatePart("Body", _cat, SphereMesh(),
+                new Vector3(-0.030f, 0f, 0.030f), PlaceholderBodyWorldSize,
+                Quaternion.identity, CatBasisMaterial());
+            var legLeft = CreatePart("LegLeft", _cat, CubeMesh(),
+                new Vector3(-0.035f, 0.048f, 0.092f), PlaceholderLegWorldSize,
+                Quaternion.identity, CatBasisMaterial());
+            var legRight = CreatePart("LegRight", _cat, CubeMesh(),
+                new Vector3(-0.035f, -0.048f, 0.092f), PlaceholderLegWorldSize,
+                Quaternion.identity, CatBasisMaterial());
+            _bodyLegs = new[] { body.transform, legLeft.transform, legRight.transform };
+            _catRenderers = new[] { head, earLeft, earRight, body, legLeft, legRight };
 
             // The destination pin: a white card floating above the passenger with that cat's
             // destination symbol on it. A sibling of the Cat rather than a child of it, because
@@ -514,6 +614,91 @@ namespace CatMetro.Presentation.Board
             _pinSymbolFilter = _pinSymbol.GetComponent<MeshFilter>();
 
             SetCarriageHeading(0f); // a consist faces the camera before its first placement
+            _catBaseLocalPosition = _cat.localPosition;
+            _headBaseLocalRotation = _head.localRotation;
+            _earLeftBaseLocalRotation = _earLeft.localRotation;
+            _earRightBaseLocalRotation = _earRight.localRotation;
+            _eyeLeftBaseLocalScale = _eyeLeft.localScale;
+            _eyeRightBaseLocalScale = _eyeRight.localScale;
+            SetBodyLegVisibility(false);
+            TryInstallRig();
+        }
+
+        private void ResetVisualPose()
+        {
+            _cat.localPosition = _catBaseLocalPosition;
+            _cat.localRotation = _catBaseLocalRotation;
+            _head.localRotation = _headBaseLocalRotation;
+            _earLeft.localRotation = _earLeftBaseLocalRotation;
+            _earRight.localRotation = _earRightBaseLocalRotation;
+            _eyeLeft.localScale = _eyeLeftBaseLocalScale;
+            _eyeRight.localScale = _eyeRightBaseLocalScale;
+        }
+
+        private void SetBodyLegVisibility(bool visible)
+        {
+            for (int i = 0; i < _bodyLegs.Length; i++)
+                _bodyLegs[i].gameObject.SetActive(visible);
+        }
+
+        private void TryInstallRig()
+        {
+            var catalog = CatModelCatalog.LoadResources();
+            _rigFallbackReason = catalog.RejectionReason;
+            if (!catalog.TryInstantiate(_cat, out _rigInstance)) return;
+
+            var animators = _rigInstance.GetComponentsInChildren<Animator>(true);
+            if (animators.Length != 1)
+            {
+                _rigFallbackReason = "Instantiated cat rig must contain exactly one Animator.";
+                DestroyOwned(_rigInstance);
+                _rigInstance = null;
+                return;
+            }
+
+            _rigAnimator = animators[0];
+            _rigAnimator.applyRootMotion = false;
+            _rigInstance.transform.localPosition = Vector3.zero;
+            _rigInstance.transform.localRotation = Quaternion.identity;
+            _rigInstance.transform.localScale = Vector3.one * CatModelCatalog.PresenterScale;
+            _rigAdmitted = true;
+            _rigFallbackReason = string.Empty;
+            SetPlaceholderRenderersVisible(false);
+        }
+
+        private void PlayRig(CatPresentationState state, bool motionOff)
+        {
+            if (!_rigAdmitted || _rigAnimator == null) return;
+            _rigAnimator.applyRootMotion = false;
+            if (motionOff)
+            {
+                _rigAnimator.Rebind();
+                _rigAnimator.Update(0f);
+                _rigAnimator.speed = 0f;
+                _lastRigState = CatPresentationState.Hidden;
+                return;
+            }
+
+            _rigAnimator.speed = 1f;
+            if (_lastRigState == state) return;
+            _rigAnimator.Play(_rigAnimator.GetLayerName(0) + "." + CatModelCatalog.ClipFor(state), 0, 0f);
+            _rigAnimator.Update(0f); // presentation sampling only; root motion stays disabled.
+            _lastRigState = state;
+        }
+
+        private void SetPlaceholderRenderersVisible(bool visible)
+        {
+            for (int i = 0; i < _catRenderers.Length; i++)
+                _catRenderers[i].enabled = visible;
+            _eyeLeft.GetComponent<MeshRenderer>().enabled = visible;
+            _eyeRight.GetComponent<MeshRenderer>().enabled = visible;
+            _cat.Find("Muzzle").GetComponent<MeshRenderer>().enabled = visible;
+        }
+
+        private static void DestroyOwned(GameObject instance)
+        {
+            if (Application.isPlaying) Destroy(instance);
+            else DestroyImmediate(instance);
         }
 
         // BoardSurface.CreatePart's shape: builtin mesh, no collider, project material only —

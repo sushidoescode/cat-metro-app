@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using CatMetro.Application.Session;
 using CatMetro.Content;
+using CatMetro.Domain;
+using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Props;
 using CatMetro.Presentation.Theme;
 using UnityEngine;
@@ -46,6 +48,10 @@ namespace CatMetro.Presentation.Board
         private int[] _switchNode;
         private Transform[] _switchArm;
         private readonly Dictionary<int, ToyTrainView> _trains = new Dictionary<int, ToyTrainView>();
+        private CatPresentationTrack[] _catTracks;
+        private TrainSlot[] _previousTrainSlots;
+        private int _previousDeliveryCount;
+        private bool _hasPresentationSnapshot;
 
         public int SwitchCount => _switchNode.Length;
         public string NodeId(int nodeIndex) => _nodeIds[nodeIndex];
@@ -69,6 +75,14 @@ namespace CatMetro.Presentation.Board
         }
         public Vector3 SwitchWorldPos(int switchIndex) =>
             transform.TransformPoint(_nodePos[_switchNode[switchIndex]]); // F11: world, not local
+
+        /// <summary>
+        /// Pure presentation derivation: delivery is a counter advance paired with this slot
+        /// changing from live to empty. Both slots are caller-owned value snapshots.
+        /// </summary>
+        public static bool DeliveryAdvancedForPresentation(TrainSlot previous, TrainSlot current,
+            int previousDeliveryCount, int currentDeliveryCount) =>
+            IsLive(previous) && !IsLive(current) && currentDeliveryCount > previousDeliveryCount;
 
         public static BoardView Build(ImportedLevel level, Transform parent, GameSession session,
             PropModelCatalog propCatalog = null)
@@ -294,13 +308,45 @@ namespace CatMetro.Presentation.Board
             RefreshSwitches();
             UpdateTeach(session);
             float alpha = (float)session.Alpha;
-            var trains = session.State.Trains;
+            float visualTime = Time.unscaledTime;
+            bool motionOff = MotionOffSource != null && MotionOffSource();
+            // Copy first: presentation tracks must never hold a simulation slot reference or
+            // mutate the session while deriving a delivery transition.
+            var sourceTrains = session.State.Trains;
+            var trains = new TrainSlot[sourceTrains.Length];
+            for (int t = 0; t < sourceTrains.Length; t++) trains[t] = sourceTrains[t];
+            EnsureCatTracks(trains.Length);
+            int deliveries = session.State.Deliveries;
+            bool deliveryCounterAdvanced = _hasPresentationSnapshot
+                && deliveries > _previousDeliveryCount;
             for (int t = 0; t < trains.Length; t++)
             {
-                bool live = trains[t].Id != 0 && trains[t].State != CatMetro.Domain.TrainState.None;
+                TrainSlot previous = _hasPresentationSnapshot && t < _previousTrainSlots.Length
+                    ? _previousTrainSlots[t] : default;
+                bool deliveryAdvanced = deliveryCounterAdvanced && DeliveryAdvancedForPresentation(
+                    previous, trains[t], _previousDeliveryCount, deliveries);
+                _catTracks[t].Observe(trains[t], deliveryAdvanced, visualTime);
+                bool live = IsLive(trains[t]);
                 if (!live)
                 {
-                    if (_trains.TryGetValue(t, out var dead)) dead.gameObject.SetActive(false);
+                    if (_trains.TryGetValue(t, out var dead))
+                    {
+                        // A delivered cat continues at its last authoritative root pose only
+                        // while its presentation track is in a departure phase. A motion-off
+                        // request hides that retained visual in the same frame.
+                        bool retainDeparture = !motionOff
+                            && _catTracks[t].State != CatPresentationState.Hidden;
+                        if (!retainDeparture)
+                        {
+                            dead.ApplyPresentation(CatPresentationState.Hidden, visualTime, true);
+                            dead.gameObject.SetActive(false);
+                        }
+                        else
+                        {
+                            dead.gameObject.SetActive(true);
+                            dead.ApplyPresentation(_catTracks[t].State, visualTime, false);
+                        }
+                    }
                     continue;
                 }
                 if (!_trains.TryGetValue(t, out var consist) || consist == null)
@@ -330,8 +376,27 @@ namespace CatMetro.Presentation.Board
                 {
                     consist.PlaceAtNode(_trackPaths, trains[t].NodeId, _nodePos[trains[t].NodeId]);
                 }
+                // Always place from the copied simulation snapshot before applying visual-only
+                // cat transforms. No bob/head motion can feed back into spline placement.
+                consist.ApplyPresentation(_catTracks[t].State, visualTime, motionOff);
             }
+            _previousTrainSlots = trains;
+            _previousDeliveryCount = deliveries;
+            _hasPresentationSnapshot = true;
         }
+
+        private void EnsureCatTracks(int count)
+        {
+            if (_catTracks != null && _catTracks.Length == count) return;
+            var replacement = new CatPresentationTrack[count];
+            int existing = _catTracks == null ? 0 : Mathf.Min(_catTracks.Length, count);
+            for (int i = 0; i < existing; i++) replacement[i] = _catTracks[i];
+            for (int i = existing; i < count; i++) replacement[i] = new CatPresentationTrack();
+            _catTracks = replacement;
+        }
+
+        private static bool IsLive(TrainSlot slot) =>
+            slot.Id != 0 && slot.State != TrainState.None;
 
         private static Color ColorFor(string name)
         {
