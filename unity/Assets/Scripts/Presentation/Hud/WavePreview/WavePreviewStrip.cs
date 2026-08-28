@@ -31,7 +31,10 @@ namespace CatMetro.Presentation.Hud.WavePreview
             for (int i = 0; i < 2; i++)
             {
                 var chip = GameObject.CreatePrimitive(PrimitiveType.Quad);
-                chip.GetComponent<Renderer>().sharedMaterial = Board.GreyboxMaterial.Shared;
+                var renderer = chip.GetComponent<Renderer>();
+                renderer.sharedMaterial = Board.GreyboxMaterial.Shared;
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
                 Object.Destroy(chip.GetComponent<Collider>()); // ZERO interactive elements
                 chip.name = "chip" + i;
                 chip.transform.SetParent(go.transform, false);
@@ -41,9 +44,12 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 text.transform.localPosition = new Vector3(0f, 0f, -0.01f);
                 text.characterSize = 0.2f;
                 text.anchor = TextAnchor.MiddleCenter;
+                var textRenderer = text.GetComponent<Renderer>();
+                textRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                textRenderer.receiveShadows = false;
                 strip._chips.Add(chip);
                 strip._counts.Add(text);
-                strip._renderers.Add(chip.GetComponent<Renderer>());
+                strip._renderers.Add(renderer);
             }
             strip.Refresh();
             return strip;

@@ -2,6 +2,7 @@ using System.Collections;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using TMPro;
 using CatMetro.Presentation.Input;
 using CatMetro.Presentation.Screens;
 using CatMetro.Presentation.Theme;
@@ -60,6 +61,61 @@ namespace CatMetro.Tests.PlayMode
                 Is.EqualTo(CatMetro.Presentation.Strings.UiStrings.Get("home.title")),
                 "the restyle keeps the csv-keyed title");
             Assert.That(_home.RingVisible, Is.True, "the ring still renders after the restyle");
+        }
+
+        [UnityTest]
+        public IEnumerator RouteCard_UsesTheHeroStage_PaletteMarkers_AndLabelledPrimaryCta()
+        {
+            CreateShown();
+            yield return null;
+
+            Assert.That(Find("HeroCard"), Is.Not.Null,
+                "Home supplies one visually dominant route-card stage");
+            Assert.That(Find("DepotPlatform"), Is.Not.Null,
+                "the stage contains a depot platform, not empty silhouette blocks");
+            Assert.That(Find("RailNorth"), Is.Not.Null,
+                "the stage contains geometric rail structure");
+            Assert.That(Find("Sleeper03"), Is.Not.Null,
+                "the rail has repeated cream sleepers");
+
+            var label = Find("PlayLabel");
+            Assert.That(label, Is.Not.Null, "the primary action is labelled");
+            Assert.That(label.GetComponent<TMP_Text>().text,
+                Is.EqualTo(CatMetro.Presentation.Strings.UiStrings.Get("intro.play")));
+
+            Assert.That(Find("ParkedDistrictA").GetComponent<UnityEngine.UI.Image>(), Is.Not.Null);
+            Assert.That(Find("ParkedDistrictB").GetComponent<UnityEngine.UI.Image>(), Is.Not.Null);
+            Assert.That(Find("ParkedDistrictC").GetComponent<UnityEngine.UI.Image>(), Is.Not.Null,
+                "cat-wire retains all three exact Image holder nodes");
+        }
+
+        [UnityTest]
+        public IEnumerator LayoutForViewport_ReportsTheCaptureHero_Label_AndMarkers()
+        {
+            CreateShown();
+            var safeArea = new Rect(0f, 64f, 917f, 1920f);
+            _home.LayoutForViewport(safeArea, 408f);
+            Canvas.ForceUpdateCanvases();
+
+            Assert.That(_home.HeroRectPx.x, Is.EqualTo(51f).Within(0.01f));
+            Assert.That(_home.HeroRectPx.y, Is.EqualTo(329.2f).Within(0.01f));
+            Assert.That(_home.HeroRectPx.width, Is.EqualTo(815f).Within(0.01f));
+            Assert.That(_home.HeroRectPx.height, Is.EqualTo(1399.8f).Within(0.01f));
+            Assert.That(_home.PrimaryLabelText,
+                Is.EqualTo(CatMetro.Presentation.Strings.UiStrings.Get("intro.play")));
+            Assert.That(_home.MarkerCount, Is.EqualTo(3));
+            CollectionAssert.AreEqual(new[]
+            {
+                Palette.SignalRed, Palette.HarborBlue, Palette.TabbyYellow,
+            }, _home.MarkerColors);
+            yield return null;
+        }
+
+        private Transform Find(string name)
+        {
+            foreach (var transform in _home.GetComponentsInChildren<Transform>(true))
+                if (transform.name == name) return transform;
+            return null;
         }
     }
 }

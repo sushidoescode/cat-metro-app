@@ -11,16 +11,16 @@ namespace CatMetro.Tests.Presentation
     public sealed class HomeLayoutTests
     {
         [Test]
-        public void Reference360x640_Dpi160_PinIs72dpSquare_CenteredInThumbBand()
+        public void Reference360x640_Dpi160_PinIsWidePrimaryCta_InsideThumbBand()
         {
             var safeArea = new Rect(0f, 0f, 360f, 640f); // 1 px per dp at 160 dpi
             var pin = HomeLayout.PinRect(safeArea, 160f);
 
-            Assert.That(pin.width, Is.EqualTo(72f).Within(0.001f), "72dp side at 1 px/dp");
+            Assert.That(pin.width, Is.EqualTo(320f).Within(0.001f),
+                "the primary action spans the safe card width, not a lone square");
             Assert.That(pin.height, Is.EqualTo(72f).Within(0.001f));
-            Assert.That(pin.x, Is.EqualTo(144f).Within(0.001f), "horizontally centered");
-            Assert.That(pin.y, Is.EqualTo(44f).Within(0.001f),
-                "vertically centered in the 160px thumb band");
+            Assert.That(pin.x, Is.EqualTo(20f).Within(0.001f), "20dp side inset");
+            Assert.That(pin.y, Is.EqualTo(16f).Within(0.001f), "16dp above the safe bottom");
 
             Assert.That(HudBands.MeetsMinTargetPx(pin, 160f), Is.True,
                 "the pin clears the 48dp floor (A11Y-S01-4)");
@@ -46,14 +46,14 @@ namespace CatMetro.Tests.Presentation
         [Test]
         public void BottomInset_ShiftsThePinUp_FloorStillHolds()
         {
-            // 48px gesture-nav inset: the safe area starts at y=48; the band — and the pin —
-            // ride it up (the CM-UX-01 safe-area law, ux-flows:32).
+            // 48px gesture-nav inset: the CTA keeps its 16dp breathing room above the safe
+            // bottom rather than treating the raw screen edge as available space.
             var safeArea = new Rect(0f, 48f, 360f, 592f);
             var pin = HomeLayout.PinRect(safeArea, 160f);
-            var band = HudBands.ThumbBand(safeArea); // (0, 48, 360, 148)
+            var band = HudBands.ThumbBand(safeArea);
 
-            Assert.That(pin.y, Is.EqualTo(48f + (148f - 72f) / 2f).Within(0.001f),
-                "centered in the INSET band, never the raw screen");
+            Assert.That(pin.y, Is.EqualTo(64f).Within(0.001f),
+                "16dp above the safe bottom, never the raw screen");
             Assert.That(HudBands.MeetsMinTargetPx(pin, 160f), Is.True);
             Assert.That(pin.yMin, Is.GreaterThanOrEqualTo(band.yMin));
             Assert.That(pin.yMax, Is.LessThanOrEqualTo(band.yMax));
@@ -63,11 +63,76 @@ namespace CatMetro.Tests.Presentation
         public void HighDpi_PinScalesWithTheFloor()
         {
             // Pixel-9-Pro-class row: at ~495 dpi the floor and the pin scale through the SAME
-            // PxPerDp, so the 72dp side clears the 48dp floor at ANY dpi by construction.
+            // PxPerDp, so the CTA height clears the 48dp floor at ANY dpi by construction.
             var safeArea = new Rect(0f, 0f, 1344f, 2992f);
             var pin = HomeLayout.PinRect(safeArea, 495f);
-            Assert.That(pin.width, Is.EqualTo(72f * HudBands.PxPerDp(495f)).Within(0.01f));
+            Assert.That(pin.width, Is.EqualTo(
+                1344f - 40f * HudBands.PxPerDp(495f)).Within(0.01f));
             Assert.That(HudBands.MeetsMinTargetPx(pin, 495f), Is.True);
+        }
+
+        [Test]
+        public void CaptureViewport_HasSafeHeader_DominantHero_AndWidePrimaryCta()
+        {
+            var safeArea = new Rect(0f, 64f, 917f, 1920f);
+            const float dpi = 408f;
+
+            var header = HomeLayout.HeaderRect(safeArea, dpi);
+            var hero = HomeLayout.HeroRect(safeArea, dpi);
+            var cta = HomeLayout.PinRect(safeArea, dpi);
+
+            Assert.That(header, Is.EqualTo(new Rect(51f, 1769.8f, 815f, 214.2f))
+                .Using(RectComparer.Within(0.01f)));
+            Assert.That(hero, Is.EqualTo(new Rect(51f, 329.2f, 815f, 1399.8f))
+                .Using(RectComparer.Within(0.01f)));
+            Assert.That(cta, Is.EqualTo(new Rect(51f, 104.8f, 815f, 183.6f))
+                .Using(RectComparer.Within(0.01f)));
+
+            Assert.That(hero.height, Is.GreaterThan(cta.height * 7f),
+                "the depot stage is the visual focal point");
+            Assert.That(hero.yMax, Is.LessThan(header.yMin));
+            Assert.That(hero.yMin, Is.GreaterThan(cta.yMax));
+            Assert.That(cta.xMin, Is.GreaterThanOrEqualTo(safeArea.xMin));
+            Assert.That(cta.xMax, Is.LessThanOrEqualTo(safeArea.xMax));
+        }
+
+        [Test]
+        public void DailyLayout_SplitsTheCtaRow_WithoutLeavingTheSafeArea()
+        {
+            var safeArea = new Rect(0f, 64f, 917f, 1920f);
+            const float dpi = 408f;
+
+            var primary = HomeLayout.PrimaryPinRect(safeArea, dpi, dailyEntryUnlocked: true);
+            var daily = HomeLayout.DailyPinRect(safeArea, dpi);
+
+            Assert.That(primary.xMax, Is.LessThanOrEqualTo(daily.xMin),
+                "Daily never overlaps the campaign action");
+            Assert.That(primary.xMin, Is.GreaterThanOrEqualTo(safeArea.xMin));
+            Assert.That(daily.xMax, Is.LessThanOrEqualTo(safeArea.xMax));
+            Assert.That(primary.yMin, Is.GreaterThanOrEqualTo(safeArea.yMin));
+            Assert.That(daily.yMax, Is.LessThanOrEqualTo(safeArea.yMax));
+            Assert.That(HudBands.MeetsMinTargetPx(primary, dpi), Is.True);
+            Assert.That(HudBands.MeetsMinTargetPx(daily, dpi), Is.True);
+        }
+
+        private sealed class RectComparer : System.Collections.IComparer
+        {
+            private readonly float _tolerance;
+
+            private RectComparer(float tolerance) => _tolerance = tolerance;
+
+            public static RectComparer Within(float tolerance) => new RectComparer(tolerance);
+
+            public int Compare(object x, object y)
+            {
+                var actual = (Rect)x;
+                var expected = (Rect)y;
+                bool same = Mathf.Abs(actual.x - expected.x) <= _tolerance
+                    && Mathf.Abs(actual.y - expected.y) <= _tolerance
+                    && Mathf.Abs(actual.width - expected.width) <= _tolerance
+                    && Mathf.Abs(actual.height - expected.height) <= _tolerance;
+                return same ? 0 : 1;
+            }
         }
     }
 }

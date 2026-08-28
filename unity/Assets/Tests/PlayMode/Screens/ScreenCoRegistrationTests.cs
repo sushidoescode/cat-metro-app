@@ -100,27 +100,26 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Assert.That(regions.Count, Is.EqualTo(2), "both views registered into ONE registry");
 
-            // tap dead-center of the Play chip — which totally contains the pin's rect
-            var chipCenter = sheet.PlayChipRectPx.center;
-            Assert.That(regions.TryResolve(chipCenter, out var onTap), Is.True);
+            // Use a point from the actual intersection. The Home CTA is now a short fixed-
+            // height action inside the sheet's taller thumb band, so their centers need not
+            // coincide on a tall phone even though the regions still overlap.
+            var overlapPoint = home.PinPaintedRectPx.center;
+            Assert.That(sheet.PlayChipRectPx.Contains(overlapPoint), Is.True,
+                "precondition: the chosen Home point is also covered by the modal chip");
+            Assert.That(regions.TryResolve(overlapPoint, out var onTap), Is.True);
             onTap();
             Assert.That(playRequested, Is.EqualTo(1),
                 "the MODAL wins the overlap — the game must be startable from the sheet");
             Assert.That(levelSelected, Is.EqualTo(0),
                 "the parent screen's pin must not steal the modal's tap");
 
-            // positive control: with the sheet hidden, the SAME point reaches the pin iff it
-            // overlaps the pin rect (containment holds on this host), proving the pin region
-            // is alive and the modal's win was priority, not pin death
+            // Positive control: with the sheet hidden, the SAME point reaches the pin,
+            // proving the pin region is alive and the modal's win was priority, not pin death.
             sheet.Hide();
             yield return null;
             Assert.That(regions.Count, Is.EqualTo(1), "sheet unregistered on hide");
-            // #44 review F-1: the containment is this test's PRECONDITION — asserted, never
-            // an if: a layout change that moves the pin out of the overlap would otherwise
-            // silently drain the red-power of the priority assertions above.
-            Assert.That(home.PinPaintedRectPx.Contains(chipCenter), Is.True,
-                "precondition: the pin is in the overlap — otherwise this test proves nothing");
-            Assert.That(regions.TryResolve(chipCenter, out var pinTap), Is.True);
+            Assert.That(home.PinPaintedRectPx.Contains(overlapPoint), Is.True);
+            Assert.That(regions.TryResolve(overlapPoint, out var pinTap), Is.True);
             pinTap();
             Assert.That(levelSelected, Is.EqualTo(1), "the pin fires once the modal is gone");
         }

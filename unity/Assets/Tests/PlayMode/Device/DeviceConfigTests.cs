@@ -5,12 +5,14 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.TestTools;
 using CatMetro.Bootstrap;
+using CatMetro.Presentation.Props;
 
 namespace CatMetro.Tests.PlayMode
 {
     // CM-C2b-DEVFIX criteria 1-5: URP restored and provably active with pinned mobile-sane
-    // config, boot frame-rate policy, committed URP/Unlit greybox material bound to every
-    // runtime renderer, text surviving the pipeline switch. RED on the pre-fix main by
+    // config, boot frame-rate policy, committed URP/Lit material bound to every project
+    // primitive, admitted URP/Lit props bound to their atlas, and text surviving the pipeline
+    // switch. RED on the pre-fix main by
     // construction: currentRenderPipeline is null, the target frame rate is the engine default,
     // and Resources holds no material. Device-only facts (stripping, label pixels, frame times)
     // are NEVER asserted here — criterion 6 hands those to the human (A-DEVFIX-6).
@@ -69,7 +71,10 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(urp.renderScale, Is.EqualTo(1f).Within(0.001f), "no hidden scaling");
             Assert.That(urp.supportsCameraDepthTexture, Is.False, "no depth pass");
             Assert.That(urp.supportsCameraOpaqueTexture, Is.False, "no opaque copy");
-            Assert.That(urp.supportsMainLightShadows, Is.False, "zero lights cast");
+            Assert.That(urp.supportsMainLightShadows, Is.True,
+                "the single diorama key casts the board's contact shadow");
+            Assert.That(urp.supportsSoftShadows, Is.True,
+                "the contact shadow stays cosy instead of reading as a hard debug silhouette");
             Assert.That(urp.additionalLightsRenderingMode,
                 Is.EqualTo(LightRenderingMode.Disabled), "no additional lights exist");
             Assert.That(urp.useSRPBatcher, Is.True, "the one free win");
@@ -163,6 +168,19 @@ namespace CatMetro.Tests.PlayMode
                     continue;
                 }
                 Assert.That(r.sharedMaterial, Is.Not.Null, r.gameObject.name);
+                var prop = r.GetComponentInParent<BoardPropInstance>();
+                var generatedModel = prop == null ? null : prop.transform.Find("Model");
+                if (generatedModel != null && (r.transform == generatedModel
+                    || r.transform.IsChildOf(generatedModel)))
+                {
+                    Assert.That(r.sharedMaterial.shader.name,
+                        Is.EqualTo("Universal Render Pipeline/Lit"),
+                        r.gameObject.name + " is an admitted generated prop");
+                    Assert.That(r.sharedMaterial.GetTexture("_BaseMap"), Is.Not.Null,
+                        r.gameObject.name + " must explicitly bind its baked atlas");
+                    checkedRenderers++;
+                    continue;
+                }
                 Assert.That(r.sharedMaterial.shader, Is.EqualTo(greybox.shader),
                     r.gameObject.name + " must bind the committed material, not the engine default");
                 checkedRenderers++;
