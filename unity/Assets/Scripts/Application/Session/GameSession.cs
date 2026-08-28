@@ -14,6 +14,11 @@ namespace CatMetro.Application.Session
     {
         private readonly TickInterpolator _clock = new TickInterpolator();
         private readonly List<ToggleSwitchCommand> _due = new List<ToggleSwitchCommand>();
+        private readonly int[] _trainOccupantGenerations;
+        private readonly int[] _trainOccupantSpawnNodes;
+        private readonly int[] _trainOccupantSpawnEdges;
+        private readonly int[] _trainDeliveryGenerations;
+        private readonly int[] _trainDeliveryNodes;
 
         public GameSession(ImportedLevel level)
         {
@@ -21,6 +26,17 @@ namespace CatMetro.Application.Session
             Level = level;
             State = SimulationState.CreateInitial(level.Graph, (ulong)level.Dto.Seed);
             PrevTrains = (TrainSlot[])State.Trains.Clone();
+            _trainOccupantGenerations = new int[State.Trains.Length];
+            _trainOccupantSpawnNodes = new int[State.Trains.Length];
+            _trainOccupantSpawnEdges = new int[State.Trains.Length];
+            _trainDeliveryGenerations = new int[State.Trains.Length];
+            _trainDeliveryNodes = new int[State.Trains.Length];
+            for (int t = 0; t < State.Trains.Length; t++)
+            {
+                _trainOccupantSpawnNodes[t] = -1;
+                _trainOccupantSpawnEdges[t] = -1;
+                _trainDeliveryNodes[t] = -1;
+            }
             Log = new CommandLog();
         }
 
@@ -29,6 +45,36 @@ namespace CatMetro.Application.Session
         public CommandLog Log { get; }
         public TrainSlot[] PrevTrains { get; private set; }
         public double Alpha => _clock.Alpha;
+
+        /// <summary>
+        /// Read-only presentation identity for a fixed simulation slot. It increments after an
+        /// authoritative step changes that slot from empty to live, including refills hidden
+        /// inside a multi-step render hitch. It is runner metadata only: Simulation never reads
+        /// it and it is not part of the replay digest.
+        /// </summary>
+        public int TrainOccupantGeneration(int slotIndex) =>
+            _trainOccupantGenerations[slotIndex];
+
+        /// <summary>
+        /// Exact source anchor observed when the current occupant entered this fixed slot.
+        /// Presentation can reconstruct a source platform after a render hitch without
+        /// inferring it from the train's later position.
+        /// </summary>
+        public int TrainOccupantSpawnNode(int slotIndex) =>
+            _trainOccupantSpawnNodes[slotIndex];
+
+        public int TrainOccupantSpawnEdge(int slotIndex) =>
+            _trainOccupantSpawnEdges[slotIndex];
+
+        /// <summary>
+        /// Read-only runner metadata for presentation catch-up. Generation increments when the
+        /// fixed slot delivers; node is the exact station endpoint observed at that step. Both
+        /// stay outside SimulationState and are never read by Simulation.
+        /// </summary>
+        public int TrainDeliveryGeneration(int slotIndex) =>
+            _trainDeliveryGenerations[slotIndex];
+
+        public int TrainDeliveryNode(int slotIndex) => _trainDeliveryNodes[slotIndex];
 
         public void EnqueueToggle(int switchId) =>
             Log.Append(new ToggleSwitchCommand((ushort)switchId, State.Tick));
@@ -55,9 +101,46 @@ namespace CatMetro.Application.Session
                 _due.Clear();
                 foreach (var e in Log.Entries)
                     if (e.Tick == State.Tick - 1) _due.Add(e); // order-independent Due scan
+                int deliveriesBeforeStep = State.Deliveries;
                 var state = State;
                 Simulation.Step(ref state, _due.ToArray());
+                bool deliveryOccurred = State.Deliveries > deliveriesBeforeStep;
+                for (int t = 0; t < State.Trains.Length; t++)
+                {
+                    if (!IsLive(PrevTrains[t]) && IsLive(State.Trains[t]))
+                    {
+                        _trainOccupantGenerations[t] = NextGeneration(
+                            _trainOccupantGenerations[t]);
+                        int spawnNode = State.Trains[t].State == TrainState.OnEdge
+                            ? State.Graph.EdgeFrom[State.Trains[t].EdgeId]
+                            : State.Trains[t].NodeId;
+                        int spawnEdge = State.Trains[t].State == TrainState.OnEdge
+                            ? State.Trains[t].EdgeId
+                            : Simulation.SelectedOutgoingEdge(State, spawnNode);
+                        bool validSpawnEdge = spawnEdge >= 0
+                            && spawnEdge < State.Graph.EdgeFrom.Length;
+                        _trainOccupantSpawnEdges[t] = validSpawnEdge ? spawnEdge : -1;
+                        _trainOccupantSpawnNodes[t] = spawnNode;
+                    }
+                    if (deliveryOccurred && IsLive(PrevTrains[t]) && !IsLive(State.Trains[t]))
+                    {
+                        _trainDeliveryGenerations[t] = NextGeneration(
+                            _trainDeliveryGenerations[t]);
+                        int edge = PrevTrains[t].EdgeId;
+                        _trainDeliveryNodes[t] = edge >= 0 && edge < State.Graph.EdgeTo.Length
+                            ? State.Graph.EdgeTo[edge] : PrevTrains[t].NodeId;
+                    }
+                }
             }
+        }
+
+        private static bool IsLive(TrainSlot slot) =>
+            slot.Id != 0 && slot.State != TrainState.None;
+
+        private static int NextGeneration(int current)
+        {
+            int next = unchecked(current + 1);
+            return next > 0 ? next : 1;
         }
     }
 }
