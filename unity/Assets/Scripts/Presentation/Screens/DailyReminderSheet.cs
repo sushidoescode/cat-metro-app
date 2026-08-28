@@ -116,7 +116,12 @@ namespace CatMetro.Presentation.Screens
             return sheet;
         }
 
-        public void Attach(ChromeRegions regions) => _regions = regions;
+        public void Attach(ChromeRegions regions)
+        {
+            UnregisterRegions();
+            _regions = regions;
+            if (_shown && isActiveAndEnabled) RegisterRegions();
+        }
 
         public void Configure(bool enabled, DailyReminderSlot slot,
             MessagingPermission permission, bool canRequestPermission, bool providerAvailable)
@@ -138,7 +143,6 @@ namespace CatMetro.Presentation.Screens
         public void ShowPrompt()
         {
             _mode = DailyReminderLayout.SheetMode.Prompt;
-            _selectedSlot = DailyReminderSlot.Morning;
             _title.text = Strings.UiStrings.Get("reminder.prompt.title");
             _body.text = Strings.UiStrings.Get("reminder.prompt.body");
             _shown = true;

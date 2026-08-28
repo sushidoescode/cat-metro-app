@@ -88,6 +88,24 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator Prompt_PreservesConfiguredAfternoonSelection()
+        {
+            CreateConfiguredHome();
+            _home.ConfigureReminder(true, false, DailyReminderSlot.Afternoon,
+                MessagingPermission.Unknown, true, true);
+            _home.ShowReminderPrompt();
+            yield return null;
+
+            var sheet = _home.ReminderSheet;
+            Assert.That(sheet.SelectedSlot, Is.EqualTo(DailyReminderSlot.Afternoon));
+            Assert.That(sheet.AfternoonText, Is.EqualTo("Afternoon · around 15:00"));
+            Assert.That(Find(sheet.gameObject, "ReminderAfternoon").GetComponent<Image>().color,
+                Is.EqualTo(Palette.MetroTeal), "configured Afternoon stays visibly selected");
+            Assert.That(Find(sheet.gameObject, "ReminderMorning").GetComponent<Image>().color,
+                Is.EqualTo(Palette.CreamCard), "ShowPrompt must not silently reset the slot");
+        }
+
+        [UnityTest]
         public IEnumerator Settings_PaintsProviderNeutralState_AndRoutesEveryChoice()
         {
             CreateConfiguredHome();
@@ -227,6 +245,41 @@ namespace CatMetro.Tests.PlayMode
                 MessagingPermission.Authorized, false, true);
             Assert.That(sheet.OpenSettingsVisible, Is.False);
             Assert.That(_regions.Count, Is.EqualTo(withoutFallback));
+        }
+
+        [UnityTest]
+        public IEnumerator ConfigureBeforeAttach_SettingsRegistersControlsAndModalBlocker()
+        {
+            _canvasGo = new GameObject("AttachOrderCanvas");
+            var canvas = _canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            _regions = new ChromeRegions();
+            _home = HomeScreenView.Create(canvas.transform, dailyEntryUnlocked: true,
+                lifetimeDailyCompletions: 1);
+
+            _home.ConfigureReminder(true, false, DailyReminderSlot.Morning,
+                MessagingPermission.Unknown, true, true);
+            _home.Attach(_regions, () => true);
+            int campaign = 0;
+            _home.LevelSelected = () => campaign++;
+            _home.Show();
+            _home.ShowReminderSettings();
+            yield return null;
+
+            var sheet = _home.ReminderSheet;
+            Assert.That(sheet.IsVisible, Is.True);
+            Assert.That(_regions.Count, Is.GreaterThan(3),
+                "the pre-existing sheet receives the later ChromeRegions attachment");
+            Assert.That(_regions.TryResolve(_home.PinPaintedRectPx.center, out var blocked),
+                Is.True);
+            blocked();
+            Assert.That(campaign, Is.Zero,
+                "the sheet blocker wins over Home even when Configure preceded Attach");
+
+            Assert.That(_regions.TryResolve(sheet.CloseRectPx.center, out var close), Is.True);
+            close();
+            Assert.That(sheet.IsVisible, Is.False,
+                "a real settings control also resolves through the late-attached registry");
         }
 
         [UnityTest]

@@ -404,6 +404,7 @@ namespace CatMetro.Presentation.Screens
         {
             _regions = regions;
             _motionOff = motionOff; // GameRoot.MotionOff binding is CM-UX-07's (P-3)
+            if (_reminderSheet != null) _reminderSheet.Attach(regions);
         }
 
         public void Show()
