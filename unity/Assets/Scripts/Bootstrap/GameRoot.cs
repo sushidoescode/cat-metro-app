@@ -1,9 +1,11 @@
+using System.Collections.Concurrent;
 using System.Threading;
 using CatMetro.Application.Retry;
 using CatMetro.Application.Save;
 using CatMetro.Application.Session;
 using CatMetro.Content;
 using CatMetro.Content.Daily;
+using CatMetro.Integrations.OneSignal;
 using CatMetro.Services;
 using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Cameras;
@@ -62,6 +64,18 @@ namespace CatMetro.Bootstrap
 
         private SaveStore _saveStore;
         private DailyProgressTracker _dailyProgress;
+        private DailyReminderPreferences _dailyReminderPreferences;
+        private IMessaging _messaging;
+        private CancellationTokenSource _messagingPermissionCancellation;
+        private System.Threading.Tasks.Task _messagingPermissionTask;
+        private bool _messagingPermissionRequestInFlight;
+        private bool _messagingListenerAttached;
+        private bool _messagingOperationalFailure;
+        private bool _destroying;
+        private bool _reminderPromptPending;
+        private bool _checkReminderAfterHomePresentation;
+        private readonly ConcurrentQueue<MessagingRoute> _pendingMessagingRoutes =
+            new ConcurrentQueue<MessagingRoute>();
         private DailyLiveConfig _dailyLiveConfig;
         private DailyBoardCatalog _dailyCatalog;
         private DailyDateSelection _activeDailySelection;
@@ -141,6 +155,10 @@ namespace CatMetro.Bootstrap
         // Test/dev seam for an isolated save root. Null in normal Editor play and absent from
         // shipped code paths; production always uses EngineStorageRoot.
         public static System.Func<IStorageRoot> DailyStorageRootOverride;
+
+        // Test/dev seam for the provider-neutral runtime boundary. Production constructs the
+        // concrete OneSignal adapter below; PlayMode tests inject a complete IMessaging fake.
+        public static System.Func<IMessaging> MessagingFactoryOverride;
 
 #endif
 
@@ -273,6 +291,9 @@ namespace CatMetro.Bootstrap
                     parsedBounds.Value, new MigrationTable());
                 _saveStore.Load();
                 _dailyProgress = new DailyProgressTracker(_saveStore);
+                _dailyReminderPreferences = new DailyReminderPreferences(_saveStore);
+                _reminderPromptPending = _dailyReminderPreferences.CanOfferPrompt(
+                    _dailyProgress.LifetimeCompletions);
             }
             catch (System.Exception ex)
             {
@@ -282,7 +303,10 @@ namespace CatMetro.Bootstrap
                     + ex.Message);
                 _saveStore = null;
                 _dailyProgress = null;
+                _dailyReminderPreferences = null;
             }
+
+            InitializeMessaging();
 
             try
             {
@@ -301,6 +325,49 @@ namespace CatMetro.Bootstrap
                     + ex.Message);
                 _dailyCatalog = null;
             }
+        }
+
+        private void InitializeMessaging()
+        {
+            if (_messaging != null || _destroying) return;
+
+            OneSignalMessaging productionMessaging = null;
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            if (MessagingFactoryOverride != null)
+            {
+                try
+                {
+                    _messaging = MessagingFactoryOverride();
+                }
+                catch (System.Exception ex)
+                {
+                    _messagingOperationalFailure = true;
+                    Debug.LogWarning("daily reminder provider factory failed: " + ex.Message);
+                }
+            }
+#endif
+            if (_messaging == null)
+            {
+                productionMessaging = new OneSignalMessaging();
+                _messaging = productionMessaging;
+            }
+
+            _messagingPermissionCancellation = new CancellationTokenSource();
+            try
+            {
+                // Subscribe before OneSignal initialization so a cold-launch click delivered
+                // synchronously by the SDK is retained for the first main-thread Update.
+                _messaging.LinkOpened += QueueMessagingRoute;
+                _messagingListenerAttached = true;
+                productionMessaging?.Initialize(OneSignalRuntimeConfig.LoadAppId());
+            }
+            catch (System.Exception ex)
+            {
+                _messagingOperationalFailure = true;
+                Debug.LogWarning("daily reminder provider initialization failed: " + ex.Message);
+            }
+
+            ReconcileReminderProvider();
         }
 
         private IStorageRoot CreateRuntimeStorageRoot()
@@ -454,6 +521,11 @@ namespace CatMetro.Bootstrap
             Home = CatMetro.Presentation.Screens.HomeScreenView.Create(
                 canvasGo.transform, dailyUnlocked, LifetimeDailyCompletions);
             Home.Attach(Input.Regions, () => MotionOff);
+            Home.ReminderAccepted = BeginEnableDailyReminder;
+            Home.ReminderDismissed = ConfigureReminderHome;
+            Home.ReminderEnabledChanged = OnReminderEnabledChanged;
+            Home.ReminderSlotChanged = OnReminderSlotChanged;
+            ConfigureReminderHome();
             Intro = CatMetro.Presentation.Screens.LevelIntroSheet.Create(canvasGo.transform);
             Intro.Attach(Input.Regions);
 
@@ -483,8 +555,229 @@ namespace CatMetro.Bootstrap
                 while (Stack.TryPop(out _)) { }
             };
 
+            ShowHomeForPresentation();
+        }
+
+        private void ShowHomeForPresentation()
+        {
+            if (Home == null || Stack == null) return;
             Home.Show();
             Stack.Push("home");
+            _checkReminderAfterHomePresentation = true;
+        }
+
+        private void ConfigureReminderHome()
+        {
+            if (Home == null || _dailyReminderPreferences == null
+                || LifetimeDailyCompletions <= 0)
+                return;
+
+            ReadMessagingState(out bool available, out MessagingPermission permission,
+                out bool canRequestPermission);
+            bool effectiveEnabled = _dailyReminderPreferences.Enabled
+                && available && permission == MessagingPermission.Authorized;
+            Home.ConfigureReminder(configurationUnlocked: true, effectiveEnabled,
+                _dailyReminderPreferences.Slot, permission, canRequestPermission, available);
+        }
+
+        private void TryPresentEarnedReminderPrompt()
+        {
+            if (!_reminderPromptPending || Home == null || !Home.IsVisible
+                || Stack == null || !string.Equals(Stack.Current, "home",
+                    System.StringComparison.Ordinal)
+                || _dailyReminderPreferences == null)
+                return;
+
+            ReadMessagingState(out bool available, out _, out _);
+            if (!available) return;
+            if (!_dailyReminderPreferences.CanOfferPrompt(LifetimeDailyCompletions))
+            {
+                _reminderPromptPending = false;
+                return;
+            }
+
+            // One attempt per earned Home presentation. A failed save must not paint a prompt
+            // that can repeat, and must not hammer persistence from Update every frame. A later
+            // process derives eligibility again from the still-unseen durable state.
+            _reminderPromptPending = false;
+            if (!_dailyReminderPreferences.TryMarkPromptSeen())
+            {
+                ConfigureReminderHome();
+                return;
+            }
+
+            ConfigureReminderHome();
+            Home.ShowReminderPrompt();
+        }
+
+        private void OnReminderEnabledChanged(bool enabled)
+        {
+            if (enabled) BeginEnableDailyReminder();
+            else ApplyPlayerReminderEnabled(false);
+        }
+
+        private void BeginEnableDailyReminder()
+        {
+            if (_destroying || _messagingPermissionRequestInFlight
+                || _dailyReminderPreferences == null || _messaging == null)
+                return;
+
+            ReadMessagingState(out bool available, out MessagingPermission permission,
+                out bool canRequestPermission);
+            if (!available)
+            {
+                ConfigureReminderHome();
+                return;
+            }
+            if (permission == MessagingPermission.Authorized)
+            {
+                ApplyPlayerReminderEnabled(true);
+                return;
+            }
+
+            var cancellation = _messagingPermissionCancellation;
+            if (cancellation == null || cancellation.IsCancellationRequested) return;
+            bool fallbackToSettings = !canRequestPermission
+                && permission != MessagingPermission.Authorized;
+            _messagingPermissionRequestInFlight = true;
+            _messagingPermissionTask = RequestReminderPermissionAsync(
+                fallbackToSettings, cancellation.Token);
+        }
+
+        private async System.Threading.Tasks.Task RequestReminderPermissionAsync(
+            bool fallbackToSettings, CancellationToken cancellationToken)
+        {
+            try
+            {
+                MessagingPermission result = await _messaging.PromptAsync(
+                    fallbackToSettings, cancellationToken);
+                if (_destroying || cancellationToken.IsCancellationRequested) return;
+                ApplyPlayerReminderEnabled(result == MessagingPermission.Authorized);
+            }
+            catch (System.OperationCanceledException)
+            {
+                // Destruction owns cancellation; no UI/save/provider mutation follows it.
+            }
+            catch (System.Exception ex)
+            {
+                _messagingOperationalFailure = true;
+                Debug.LogWarning("daily reminder permission request failed: " + ex.Message);
+            }
+            finally
+            {
+                _messagingPermissionRequestInFlight = false;
+                if (!_destroying) ConfigureReminderHome();
+            }
+        }
+
+        private void ApplyPlayerReminderEnabled(bool enabled)
+        {
+            if (_destroying || _dailyReminderPreferences == null) return;
+            if (!_dailyReminderPreferences.TrySetEnabled(enabled))
+            {
+                ConfigureReminderHome();
+                return;
+            }
+
+            if (enabled)
+                ScheduleDailyReminder(_dailyReminderPreferences.Slot);
+            else
+                CancelDailyReminder();
+            ConfigureReminderHome();
+        }
+
+        private void OnReminderSlotChanged(DailyReminderSlot slot)
+        {
+            if (_destroying || _dailyReminderPreferences == null || slot == null) return;
+            if (!_dailyReminderPreferences.TrySetSlot(slot))
+            {
+                ConfigureReminderHome();
+                return;
+            }
+
+            ReadMessagingState(out bool available, out MessagingPermission permission, out _);
+            if (_dailyReminderPreferences.Enabled && available
+                && permission == MessagingPermission.Authorized)
+                ScheduleDailyReminder(_dailyReminderPreferences.Slot);
+            ConfigureReminderHome();
+        }
+
+        private void ReconcileReminderProvider()
+        {
+            if (_messaging == null) return;
+            ReadMessagingState(out bool available, out MessagingPermission permission, out _);
+            if (!available) return;
+
+            if (_dailyReminderPreferences != null && _dailyReminderPreferences.Enabled
+                && permission == MessagingPermission.Authorized)
+                ScheduleDailyReminder(_dailyReminderPreferences.Slot);
+            else
+                CancelDailyReminder();
+        }
+
+        private void ScheduleDailyReminder(DailyReminderSlot slot)
+        {
+            try
+            {
+                _messaging?.Schedule(DailyChallengeNotification.Create(
+                    slot ?? DailyReminderSlot.Morning));
+            }
+            catch (System.Exception ex)
+            {
+                _messagingOperationalFailure = true;
+                Debug.LogWarning("daily reminder schedule failed: " + ex.Message);
+            }
+        }
+
+        private void CancelDailyReminder()
+        {
+            try
+            {
+                _messaging?.Cancel("daily-ready");
+            }
+            catch (System.Exception ex)
+            {
+                _messagingOperationalFailure = true;
+                Debug.LogWarning("daily reminder cancel failed: " + ex.Message);
+            }
+        }
+
+        private void ReadMessagingState(out bool available,
+            out MessagingPermission permission, out bool canRequestPermission)
+        {
+            available = false;
+            permission = MessagingPermission.Unknown;
+            canRequestPermission = false;
+            if (_messaging == null || _messagingOperationalFailure) return;
+
+            try
+            {
+                available = _messaging.IsAvailable;
+                if (!available) return;
+                permission = _messaging.Permission;
+                canRequestPermission = _messaging.CanRequestPermission;
+            }
+            catch (System.Exception ex)
+            {
+                _messagingOperationalFailure = true;
+                available = false;
+                permission = MessagingPermission.Unknown;
+                canRequestPermission = false;
+                Debug.LogWarning("daily reminder provider state unavailable: " + ex.Message);
+            }
+        }
+
+        private void QueueMessagingRoute(MessagingRoute route)
+        {
+            // SDK callbacks may arrive off-thread. This handler deliberately touches no Unity
+            // object; SelectDaily remains on the main loop and owns date/practice policy.
+            if (route == MessagingRoute.Daily) _pendingMessagingRoutes.Enqueue(route);
+        }
+
+        private void PumpMessagingRoutes()
+        {
+            while (_pendingMessagingRoutes.TryDequeue(out MessagingRoute route))
+                if (route == MessagingRoute.Daily) SelectDaily();
         }
 
         // CM-C3 criterion 10's reason→key mapping, PURE and test-drivable (review S1): the
@@ -730,11 +1023,12 @@ namespace CatMetro.Bootstrap
             _dailySession = true;
             var results = GetComponent<ResultsPanel>();
             if (results != null) results.SetCtaTextKey("results.daily.done");
-            if (Home != null)
-            {
-                Home.Hide();
-                while (Stack != null && Stack.TryPop(out _)) { }
-            }
+            // A notification route can arrive while either composed screen is current. Hide
+            // both owners before clearing their breadcrumbs so no visible sheet or registered
+            // chrome region survives over the newly loaded Daily board.
+            Home?.Hide();
+            Intro?.Hide();
+            while (Stack != null && Stack.TryPop(out _)) { }
             if (_activeDailyPractice) Banner.ShowKey("daily.practice");
         }
 
@@ -935,6 +1229,7 @@ namespace CatMetro.Bootstrap
         private void Update()
         {
             PumpDailyFallback();
+            PumpMessagingRoutes();
             if (Session == null || _halted) return;
             // The one-frame input lockout. Request frame
             // F (ReturnHomeFromDaily, above) sets _pendingHomeShowFrame = F WITHOUT showing
@@ -950,10 +1245,12 @@ namespace CatMetro.Bootstrap
             {
                 _pendingHomeShowFrame = -1;
                 if (Home != null)
-                {
-                    Home.Show();
-                    Stack.Push("home");
-                }
+                    ShowHomeForPresentation();
+            }
+            if (_checkReminderAfterHomePresentation)
+            {
+                _checkReminderAfterHomePresentation = false;
+                TryPresentEarnedReminderPrompt();
             }
             // CM-BOOT-HOME criterion 2 (the tick-0 hold — the one genuinely new behavior): the
             // trailing "&& !ScreensVisible" mirrors the board-input gate above
@@ -1004,6 +1301,12 @@ namespace CatMetro.Bootstrap
                         var completion = _dailyProgress.RecordDailyCompletion(
                             _activeDailySelection);
                         Home?.SetDailyLifetimeCompletions(completion.LifetimeCompletions);
+                        if (completion.Counted && _dailyReminderPreferences != null)
+                        {
+                            _reminderPromptPending = _dailyReminderPreferences.CanOfferPrompt(
+                                completion.LifetimeCompletions);
+                            ConfigureReminderHome();
+                        }
                     }
                 }
                 else if (_dailyProgress != null
@@ -1051,7 +1354,59 @@ namespace CatMetro.Bootstrap
 
         private void OnDestroy()
         {
+            _destroying = true;
+            var permissionCancellation = _messagingPermissionCancellation;
+            _messagingPermissionCancellation = null;
+            if (permissionCancellation != null)
+            {
+                permissionCancellation.Cancel();
+                permissionCancellation.Dispose();
+            }
+
+            var permissionTask = _messagingPermissionTask;
+            _messagingPermissionTask = null;
+            if (permissionTask != null) ObserveDetachedPermissionTask(permissionTask);
+
+            var messaging = _messaging;
+            _messaging = null;
+            if (messaging != null)
+            {
+                if (_messagingListenerAttached)
+                {
+                    try
+                    {
+                        messaging.LinkOpened -= QueueMessagingRoute;
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Debug.LogWarning("daily reminder listener cleanup failed: " + ex.Message);
+                    }
+                    _messagingListenerAttached = false;
+                }
+                try
+                {
+                    messaging.Dispose();
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogWarning("daily reminder provider disposal failed: " + ex.Message);
+                }
+            }
             CancelPendingDailyFallback();
+        }
+
+        private static void ObserveDetachedPermissionTask(System.Threading.Tasks.Task task)
+        {
+            task.ContinueWith(completed =>
+            {
+                if (completed.IsFaulted)
+                {
+                    System.AggregateException ignored = completed.Exception;
+                    System.GC.KeepAlive(ignored);
+                }
+            }, CancellationToken.None,
+                System.Threading.Tasks.TaskContinuationOptions.ExecuteSynchronously,
+                System.Threading.Tasks.TaskScheduler.Default);
         }
     }
 }

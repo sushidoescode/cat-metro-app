@@ -6,7 +6,8 @@
         "CatMetro.Content",
         "CatMetro.Services",
         "CatMetro.Application",
-        "CatMetro.Presentation"
+        "CatMetro.Presentation",
+        "CatMetro.Integrations.OneSignal"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
