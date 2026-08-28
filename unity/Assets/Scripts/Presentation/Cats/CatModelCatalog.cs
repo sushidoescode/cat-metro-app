@@ -131,6 +131,11 @@ namespace CatMetro.Presentation.Cats
                     return false;
                 }
             }
+            if (!HasRequiredStates(animators[0], out string missingState))
+            {
+                rejectionReason = "Cat rig controller is missing state " + missingState + ".";
+                return false;
+            }
 
             if (prefab.transform.localRotation != Quaternion.identity
                 || prefab.transform.localScale != Vector3.one)
@@ -155,6 +160,41 @@ namespace CatMetro.Presentation.Cats
             }
 
             rejectionReason = string.Empty;
+            return true;
+        }
+
+        // Animator.HasState is only reliable on an initialized Animator. Probe the controller
+        // through a disposable plain GameObject rather than instantiating the imported prefab,
+        // so catalog validation cannot invoke scripts or other behaviour carried by that asset.
+        private static bool HasRequiredStates(Animator source, out string missingState)
+        {
+            var probe = new GameObject("Cat rig state probe");
+            try
+            {
+                var animator = probe.AddComponent<Animator>();
+                animator.runtimeAnimatorController = source.runtimeAnimatorController;
+                animator.applyRootMotion = false;
+                animator.Rebind();
+                animator.Update(0f);
+
+                string layerName = animator.GetLayerName(0);
+                foreach (string required in RequiredClipNames)
+                {
+                    int stateHash = Animator.StringToHash(layerName + "." + required);
+                    if (!animator.HasState(0, stateHash))
+                    {
+                        missingState = required;
+                        return false;
+                    }
+                }
+            }
+            finally
+            {
+                if (Application.isPlaying) UnityEngine.Object.Destroy(probe);
+                else UnityEngine.Object.DestroyImmediate(probe);
+            }
+
+            missingState = string.Empty;
             return true;
         }
 
