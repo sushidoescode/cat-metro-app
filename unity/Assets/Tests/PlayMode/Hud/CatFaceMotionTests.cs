@@ -146,6 +146,29 @@ namespace CatMetro.Tests.PlayMode
             AssertPreviewFacesAreNeutral(_root.Preview);
         }
 
+        [UnityTest]
+        public IEnumerator SessionTickLayout_DoesNotLeaveAnActiveFaceNeutralAtEndOfFrame()
+        {
+            _root = GameRoot.Launch();
+            yield return new WaitForEndOfFrame();
+            var face = FirstActiveFace(_root.Preview);
+
+            _root.MotionOffToggle = true;
+            face.ApplyVisualTime(Time.unscaledTime);
+            Vector2 neutralPosition = face.FaceRect.anchoredPosition;
+            _root.MotionOffToggle = false;
+
+            // A real session change makes WavePreviewStrip.Refresh/Layout run in LateUpdate.
+            // The assertion resumes after rendering, when a pre-render callback has had its
+            // final chance to reapply the visual pose.
+            _root.Session.AdvanceMs(CatMetro.Application.Session.TickInterpolator.TICK_MS);
+            yield return new WaitForEndOfFrame();
+
+            Assert.That(_root.Session.State.Tick, Is.GreaterThan(0));
+            Assert.That(IsAnimated(face, neutralPosition), Is.True,
+                "a LateUpdate layout must not win over the face's final render pose");
+        }
+
         private CatFaceView CreateLaidOutFace()
         {
             _parent = new GameObject("parent", typeof(RectTransform));
@@ -175,6 +198,21 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(laidOutFaceCount, Is.GreaterThan(0),
                 "the real L001 composition exposes at least one laid-out preview face");
         }
+
+        private static CatFaceView FirstActiveFace(WavePreviewStrip preview)
+        {
+            foreach (var face in preview.GetComponentsInChildren<CatFaceView>(true))
+                if (face.gameObject.activeSelf) return face;
+            Assert.Fail("the real preview must expose an active face for this render-order test");
+            return null;
+        }
+
+        private static bool IsAnimated(CatFaceView face, Vector2 neutralPosition) =>
+            face.FaceRect.anchoredPosition != neutralPosition
+            || Eye(face, "eyeL").localScale != Vector3.one
+            || Eye(face, "eyeR").localScale != Vector3.one
+            || Ear(face, "earL").localRotation != Quaternion.Euler(0f, 0f, 18f)
+            || Ear(face, "earR").localRotation != Quaternion.Euler(0f, 0f, -18f);
 
         private static void AssertNeutral(CatFaceView face, Vector2 centre)
         {
