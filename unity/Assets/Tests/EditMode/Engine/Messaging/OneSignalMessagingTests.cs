@@ -134,7 +134,7 @@ namespace CatMetro.Tests.Engine.Messaging
         [Test]
         public void RequiredLinkerFile_BytePinsAllThreeOneSignalPlatformAssemblies()
         {
-            var path = Path.Combine(Application.dataPath, "OneSignal", "link.xml");
+            var path = Path.Combine(UnityEngine.Application.dataPath, "OneSignal", "link.xml");
             Assert.That(File.Exists(path), Is.True,
                 "the OneSignal setup step marks Assets/OneSignal/link.xml as required");
 
