@@ -34,14 +34,14 @@ the second voice). This is the skeleton for the Devpost "Story"/"Inspiration" fi
 | 4 | **SEARCH** (they adapt) | The board gets harder honestly: queues as buffers, a second source, a wildcard commuter. They fail. The camera shows them *why* — the platform that overflowed, and the moment it started. Retry is under a second. |
 | 5 | **FIND** (they get what they wanted) | Somewhere around level twelve the game clicks: they stop reacting and start planning a wave ahead. The Daily Line unlocks and the habit forms — the same board as everyone on Earth, from a shared seed, with no server. |
 | 6 | **TAKE** (they pay a price for it) | The one moment the game asks: after level five, once, ever, a celebratory paywall for All Access. It closes in one tap. If they fail a level twice and open the rewind sheet themselves, the free options sit above the paid ones, under a line that says the level is solvable without them. That line is enforced by a solver in CI. |
-| 7 | **RETURN** (they come back changed) | They come back tomorrow because a notification arrived at 10am that they opted into after their first daily — not because a streak was held hostage. Streaks never gate content — a break costs at most 150 tickets of gift escalation, and a free saver exists. The lapse ladder ends with "no more reminders after this," and keeps that promise with a tag. |
+| 7 | **RETURN** (they come back changed) | After their first counted Daily win, they may choose one gentle reminder around 10:00, 15:00, or 18:00 local time. Reminders default Off, `Not now` is durable, and no streak, lapse, or second notification campaign pressures a return. |
 | 8 | **CHANGE** (they are different now) | They tell someone. Usually with a share card: a route ribbon of their own switch timeline on today's board, which nobody can fake without the same deterministic simulation. |
 
 **The developer's half of the circle (the #BuildInPublic spine):** comfort (a solo dev with an idea) →
 need (ship something real inside a 60-day window) → go (56-day roadmap with six hard gates) → search
-(EDM4U conflicts, three open RevenueCat Paywalls-v2 Android crash issues, a $19/mo plan with a
-3-journey ceiling) → find (constraints became the design: rewarded-only ads, one paywall moment,
-journeys that self-silence) → take (a public failure log, gate readouts posted the day they failed) →
+(EDM4U conflicts, three open RevenueCat Paywalls-v2 Android crash issues, and local-time delivery
+constraints) → find (constraints became the design: rewarded-only ads, one paywall moment, and one
+restrained Daily Line Journey) → take (a public failure log, gate readouts posted the day they failed) →
 return (launch inside the window, numbers published with denominators) → change (a finished game and a
 build log anyone can audit).
 
@@ -53,7 +53,7 @@ build log anyone can audit).
 >
 > You tap junctions to route cat commuters into matching stations before the platforms overflow. Levels run 45 to 90 seconds. Thirty of them across six districts, plus a Daily Line that generates the same board for every player on Earth from a shared seed, with no server involved.
 >
-> The rule shaped everything. There is no interstitial, banner, or app-open ad surface in the build — not throttled, absent. Ads exist in five places and every one of them is a thing the player asked for: an extra rewind, double tickets, a three-level test drive of a theme. The paywall fires once, ever, after level five. It closes in one tap. Nothing is ever offered after a first failure — that rule is enforced by a unit test.
+> The rule shaped everything. There is no interstitial, banner, or app-open ad surface in the build — not throttled, absent. Ads exist in four places and every one of them is a thing the player asked for: an extra rewind, double tickets, a three-level test drive of a theme. The paywall fires once, ever, after level five. It closes in one tap. Nothing is ever offered after a first failure — that rule is enforced by a unit test.
 >
 > And the claim on the rewind sheet — "every level is solvable without rewinds" — is not marketing. A beam-search solver that shares the exact simulation step function runs in CI and refuses to merge a level it cannot prove solvable.
 >
@@ -62,7 +62,7 @@ build log anyone can audit).
 > It is free on Google Play. The whole shop lives in one tab you have to open yourself.
 
 **Decision:** One narrative skeleton feeds every field, every award paragraph, and the video; the developer arc is the #BuildInPublic story and the player arc is the Best Game / Design story.
-**Evidence:** Every beat maps to a shipped, locked system (paywall exposure rules, solver-in-CI, seeded Daily Line, streaks that never gate content, lapse-ladder final message) documented in the sibling specs.
+**Evidence:** Every beat maps to a shipped, locked system (paywall exposure rules, solver-in-CI, seeded Daily Line, and the consent-first one-Journey reminder contract) documented in the sibling specs.
 **Action:** Paste the 300-word version into the Devpost Story field during roadmap week 7 (Sep 12–18); reuse beats 3–6 as the video's middle section.
 **Risk:** A narrative this tidy reads as marketing if no evidence sits beside it.
 **Fallback:** Every claim in the prose has a screenshot in §5's shot-list; if a claim ever loses its exhibit, the claim comes out of the prose, not the other way around.
@@ -82,7 +82,7 @@ fit that suits the genre"* / *"fun and engaging… unique gameplay experience, p
 replayability… How is the game monetized?"*
 
 **Paragraph (submission-ready):**
-> Cat Metro is a deterministic route-switching puzzle: tap junctions to send color- and symbol-coded cat commuters into matching stations before platforms overflow, 45–90 seconds a level. **Great gameplay:** one verb (tap), a pure-C# simulation at 8 ticks per second with a command log, and a beam-search solver sharing the exact step function that proves every level solvable before CI will merge it — the difficulty is authored, measured, and honest. **Art direction:** a premium tabletop diorama — a hand-built model railway of a cat city on a desk — rendered with one lighting rig and one toon shader family, on a locked twelve-color palette where line color is never the only signal (color + symbol + cat silhouette, so the board reads for colorblind players). **Unique gameplay experience, progression, or replayability:** 30 handcrafted levels across 6 districts, a bonus district behind All Access, and a Daily Line that derives the same board for every player on Earth from a shared seed with no server — replayability that costs nothing to run and produces a shareable route-ribbon artifact per player. **How is the game monetized — the fit:** free, with a single $6.99 complete-edition purchase, two $2.99 cosmetic themes, two consumable rewind packs, a shop-only $9.99 supporter tip jar, and five player-initiated rewarded surfaces. No interstitials, no banners, no energy, no loot boxes, no subscription. For a calm 60-second puzzle, that fit is the point: the genre's verified poles are all one-time purchases (Mini Metro $0.99 at 4.63★, Railbound $4.99, Neko Atsume IAP ≤$3.49 at 4.78★ — all verified 2026-07-31), and the genre's verified failure mode is forced interruption (Bus Traffic Fever 3.72★ under forced 30s ads).
+> Cat Metro is a deterministic route-switching puzzle: tap junctions to send color- and symbol-coded cat commuters into matching stations before platforms overflow, 45–90 seconds a level. **Great gameplay:** one verb (tap), a pure-C# simulation at 8 ticks per second with a command log, and a beam-search solver sharing the exact step function that proves every level solvable before CI will merge it — the difficulty is authored, measured, and honest. **Art direction:** a premium tabletop diorama — a hand-built model railway of a cat city on a desk — rendered with one lighting rig and one toon shader family, on a locked twelve-color palette where line color is never the only signal (color + symbol + cat silhouette, so the board reads for colorblind players). **Unique gameplay experience, progression, or replayability:** 30 handcrafted levels across 6 districts, a bonus district behind All Access, and a Daily Line that derives the same board for every player on Earth from a shared seed with no server — replayability that costs nothing to run and produces a shareable route-ribbon artifact per player. **How is the game monetized — the fit:** free, with a single $6.99 complete-edition purchase, two $2.99 cosmetic themes, two consumable rewind packs, a shop-only $9.99 supporter tip jar, and four player-initiated rewarded surfaces. No interstitials, no banners, no energy, no loot boxes, no subscription. For a calm 60-second puzzle, that fit is the point: the genre's verified poles are all one-time purchases (Mini Metro $0.99 at 4.63★, Railbound $4.99, Neko Atsume IAP ≤$3.49 at 4.78★ — all verified 2026-07-31), and the genre's verified failure mode is forced interruption (Bus Traffic Fever 3.72★ under forced 30s ads).
 
 **Exhibits:** gameplay video (§6), screenshots 1–3 and 6 (`growth_aso_plan.md` §5), the 30-level
 progression table with difficulty and first-attempt targets, the solver CI job, the palette and
@@ -107,7 +107,7 @@ rest of your revenue stack… an experience users don't hate"*. **Requires descr
 Ads.**
 
 **Paragraph (submission-ready):**
-> Our entry is an inversion: the cleverest ad placement is the one you refuse to build. Cat Metro ships with **no interstitial, no banner, and no app-open ad surface anywhere in the binary** — not capped, not throttled, absent. Every ad in the game is rewarded and player-initiated, across five surfaces with hard caps: `rewind_failure` (2/session, 5/day), `double_tickets` (3/day), `daily_gift_double` (1/day), `streak_saver` (1/day), and `theme_rental` (3 levels, 1/theme/day). **Clever placements:** each one sits exactly where the player already wants something — a rewind after their own second failure, doubled tickets at the results screen, a three-level test drive of a theme they just previewed on their live board. Three consecutive declines mute ad rows entirely for 24 hours: telling us no is a signal we obey. **Smart integration with the rest of the revenue stack:** we use **RevenueCat Ads** (Ad Monetization, public beta) as the tracking layer over Google Mobile Ads Unity 11.3.0, wired manually through **AdTracker** — `TrackAdLoaded`, `TrackAdDisplayed`, `TrackAdOpened`, `TrackAdRevenue`, `TrackAdFailedToLoad` on every ad event, because the AdMob convenience module is not available for Unity. Verified at the D10 integration spike rather than assumed (RC Ads is in public beta and we do not assume tracked ad revenue reaches the dashboard views until we see it), ad revenue then lands in the same RevenueCat dashboard as IAP revenue, so a single view answers "what is this player worth, and which half came from an ad they chose to watch." **An experience users don't hate:** the verified market data is unambiguous — Arrows – Puzzle Escape reached 103.6M installs in 12 months at 4.83★ but carries "ad every other level" backlash, and Bus Traffic Fever sits at 3.72★ on 15.4M installs under forced 30s ads (all verified 2026-07-31). We built the opposite on purpose, published the opt-in and decline rates, and made "ads only when you ask" the store listing's first paragraph.
+> Our entry is an inversion: the cleverest ad placement is the one you refuse to build. Cat Metro ships with **no interstitial, no banner, and no app-open ad surface anywhere in the binary** — not capped, not throttled, absent. Every ad in the game is rewarded and player-initiated, across four surfaces with hard caps: `rewind_failure` (2/session, 5/day), `double_tickets` (3/day), `daily_gift_double` (1/day), and `theme_rental` (3 levels, 1/theme/day). **Clever placements:** each one sits exactly where the player already wants something — a rewind after their own second failure, doubled tickets at the results screen, a three-level test drive of a theme they just previewed on their live board. Three consecutive declines mute ad rows entirely for 24 hours: telling us no is a signal we obey. **Smart integration with the rest of the revenue stack:** we use **RevenueCat Ads** (Ad Monetization, public beta) as the tracking layer over Google Mobile Ads Unity 11.3.0, wired manually through **AdTracker** — `TrackAdLoaded`, `TrackAdDisplayed`, `TrackAdOpened`, `TrackAdRevenue`, `TrackAdFailedToLoad` on every ad event, because the AdMob convenience module is not available for Unity. Verified at the D10 integration spike rather than assumed (RC Ads is in public beta and we do not assume tracked ad revenue reaches the dashboard views until we see it), ad revenue then lands in the same RevenueCat dashboard as IAP revenue, so a single view answers "what is this player worth, and which half came from an ad they chose to watch." **An experience users don't hate:** the verified market data is unambiguous — Arrows – Puzzle Escape reached 103.6M installs in 12 months at 4.83★ but carries "ad every other level" backlash, and Bus Traffic Fever sits at 3.72★ on 15.4M installs under forced 30s ads (all verified 2026-07-31). We built the opposite on purpose, published the opt-in and decline rates, and made "ads only when you ask" the store listing's first paragraph.
 
 **Exhibits:** RC AdTracker charts in the RC dashboard, the rewind sheet with free options above the
 divider (screenshot 4), the ad-surface UX recordings from roadmap week 6, opt-in/decline rates with
@@ -119,15 +119,17 @@ denominators, the store listing's ads paragraph, and the theme_rental→purchase
 
 ### 2.4 OneSignal (P0) — $25k / $15k / $5k
 
-**Verbatim criteria (brief):** *"a single deployed message is sufficient for eligibility"*; criteria
-**Implementation, User value, Resourcefulness**.
+**Verbatim track brief (re-verified 2026-08-25):** *"Use OneSignal to create thoughtful
+notifications, campaigns, or Journeys that improve the experience and give users a meaningful
+reason to return."*
 
 **Paragraph (submission-ready):**
-> Eligibility takes one message; we are past it in week 2. The entry is about the other three words. **Implementation:** the full surface in one small game — push, in-app messages, tags, custom events, Time Windows, deep links, outcomes, `Login(external_id)`, and the RevenueCat `$onesignalUserId` integration so purchase state flows RC → OneSignal with no server of our own. It is wired through a typed adapter behind an `IMessaging` interface, with a taxonomy-enforced tag registry (an unknown tag or event name is a build error in development) and cold/warm/killed deep-link routing verified on the device matrix. **User value:** messaging that gives before it asks. Journey 3 (hard-level help) sends a free rewind and a route tip and **never sells** — the deep link lands on the level, not a paywall, and the purchase row is suppressed on that attempt. Journey 2 ends with an explicit "no more reminders after this" and keeps the promise with a tag that permanently blocks re-entry past that rung. Streaks never gate content (a break costs at most 150 tickets of gift escalation), the streak-saver is free or rewarded and never sold, and the Android 13 permission budget of two system dialogs is spent only at real value moments — the first soft prompt appears after the player's first completed Daily Line, not at install. **Resourcefulness — the core story:** a 13-touchpoint retention design compressed into the **Growth plan's hard ceiling of 3 active journeys and 6 message steps** (2+3+1). Frequency capping is Enterprise-only, so we rebuilt it client-side in the adapter (an honest ceiling of 2 pushes/day for an engaged streak-holder — a daily nudge plus a streak warning at most — enforced across journeys, scheduled sends *and* local notifications). Quiet hours do not exist on our plan, so every message step sits inside a Time Window. Streak protection is backstopped by Unity local notifications so the system degrades gracefully when push fails. Purchase recovery ships as a +2h local notification needing no plan feature at all. Calendar-known content — event start/end, content patches — never consumes a journey slot; it goes out as scheduled sends. A solo developer on the $19/month plan getting Enterprise-shaped behavior by design.
+> Cat Metro uses OneSignal for one restrained promise: deliver today's Daily Line around a time the player chose. **Implementation:** OneSignal Unity 5.3.3 stays behind a provider-neutral `IMessaging` boundary. The client writes only `daily_opt_in` and `daily_reminder_slot`, accepts only Additional Data `{"route":"daily"}`, and queues the accepted route onto Unity's main loop for cold and warm launches. One recurring Audience Segment Journey branches to local Time Windows at 10:00–10:15, 15:00–15:15, or 18:00–18:15; invalid slots exit without a message, Off exits immediately, and 12-hour re-entry is designed for one eligible send per local day. **User value:** reminders start Off. Morning is only preselected. The one soft prompt is earned after the first durable counted Daily win, `Not now` is permanent unless the player later opens Settings, and native permission appears only after an explicit action. The copy has no urgency: “Today's Line is ready” / “A fresh little route is waiting when you feel like playing.” **Resourcefulness:** restraint is the implementation. Three local-time branches share one exact message, two tags express the whole contract, and unknown routes fail closed. Pair this paragraph with the single-Journey canvas, exact message/data configuration, and real-device foreground/background/killed/resumed proof; remove any delivery claim if that evidence is absent.
 
-**Exhibits:** all three journey canvases, the copy variant table, the outcomes chart with revenue
-linkage, delivery/open rates with denominators, unsubscribe rate, the caps table, an adapter code
-excerpt.
+**Exhibits:** the single Journey canvas and settings, exact three Time Windows, exact message and
+Additional Data, a Test User showing only the two declared tags, delivery/click counts with
+denominators, foreground/background/killed/resumed device evidence, and the provider-neutral
+adapter/test boundary.
 
 ### 2.5 #BuildInPublic (P0) — $30k / $20k / $10k
 
@@ -193,18 +195,18 @@ week-8 copy pass and again at the T-72h re-check.
 
 - **Best Game:** One verb — tap — routing color- and symbol-coded cat commuters in 45–90-second
   levels, every level proven solvable by a solver in CI before it can merge. Monetization fits the
-  genre: a single $6.99 complete edition, $2.99 cosmetic themes, and five player-initiated rewarded
+  genre: a single $6.99 complete edition, $2.99 cosmetic themes, and four player-initiated rewarded
   surfaces — no interstitials, no banners, no energy, no subscription. (Long form: §2.1.)
 - **HAMM:** A five-point price ladder where every price does a different job, a once-ever
   post-level-5 paywall through RC Placements + Paywalls v2 with a pixel-matched fallback, two
   documented negative decisions (theme bundle cut on decoy-confusion grounds; subscriptions rejected
   in writing), and a $6.99-vs-$4.99 test disclosed method-first. (Long form: §2.2.)
 - **Catvertising:** The cleverest placement is the one we refused to build — zero forced ad surfaces
-  in the binary. Five rewarded, player-initiated surfaces with hard caps and a 3-decline→24h mute,
+  in the binary. Four rewarded, player-initiated surfaces with hard caps and a 3-decline→24h mute,
   each tracked through RC AdTracker. (Long form: §2.3.)
-- **OneSignal:** Enterprise-shaped behavior on the $19 plan: 3 journeys / 6 message steps,
-  client-side frequency caps, Time Windows as quiet hours, and a hard-level-help journey that gives a
-  free rewind and never sells. (Long form: §2.4.)
+- **OneSignal:** One gentle recurring Daily Line Journey with three local-time branches, two tags,
+  exact `route=daily` data, consent earned after the first counted Daily win, and visible
+  dashboard/device evidence. (Long form: §2.4.)
 - **#BuildInPublic:** 56 posts in 56 days — gates pre-registered before data existed, failures
   published the same day, every number with its denominator and every benchmark with its vintage,
   including our public correction of the outdated 2022 retention figures. (Long form: §2.5.)
@@ -236,7 +238,7 @@ judge can trust the numbers that *are* good.
 | D1 retention by weekly install cohort | Analytics | "D1 = x% of n installs in cohort {week}", against **GameAnalytics 2025 medians D1 ~22% / D7 ~4% / D30 ~0.7%** | Vintage-labeled. We also publicly note that the widely-quoted puzzle figures (31.85/12.18/5.35) are **2022** data and outdated |
 | D7 retention | Analytics | Same treatment; only for cohorts with a full 7 days elapsed | Partial cohorts are excluded, not annualized |
 | Daily Line participation | Analytics | "daily_started / DAU-with-daily-unlocked", both numbers shown | The denominator is the non-obvious part and it changes the meaning |
-| OneSignal delivery / open / outcomes | OneSignal dashboard | Sends, delivered, opened, and outcome counts — never open rate alone | Open rate without send volume is unreadable at our scale |
+| OneSignal Daily Journey delivery / click | OneSignal Journey report + device matrix | Started, sent, delivered, confirmed where available, clicked, failed, and device-route results — raw counts first | No retention lift or delivery claim exists until the dashboard and real-device evidence has been captured |
 | Store listing experiment results | Play Console | Play's own readout, including "no winner declared" | Play randomizes; we report what it says, including nulls |
 | Levels shipped / validated | CI | "40 levels, 100% solver-validated, n CI runs" | A binary fact with a machine-checkable source |
 
@@ -294,12 +296,12 @@ dashboard shows one. Redact nothing except personal account identifiers and API 
 18. `18_device_no_ad_surfaces` — the level-to-level transition showing no interstitial (a 3-frame strip: win → results → next level).
 
 **D. OneSignal**
-19. `19_os_journey1_canvas` — Journey 1 (Daily Line + streak) canvas, both branches and Time Window steps visible.
-20. `20_os_journey2_canvas` — Journey 2 (lapse ladder) canvas, three rungs and the tag step that sets `lapse_final_sent`.
-21. `21_os_journey3_canvas` — Journey 3 (hard-level help) canvas.
-22. `22_os_delivery_stats` — delivery/open statistics **with send counts**, date range visible.
-23. `23_os_outcomes` — outcomes including `purchase_completed` with value (revenue linkage inside OneSignal's own reporting).
-24. `24_os_iam` — an in-app message as rendered on device (payer thanks or the soft push prompt).
+19. `19_os_daily_journey_canvas` — the one Daily Line Journey canvas with morning, afternoon, evening, and invalid/else exit paths visible.
+20. `20_os_daily_journey_settings` — Audience Segment entry `daily_opt_in == true`, Future additions only Off, exit-on-audience-mismatch, and 12-hour re-entry visible.
+21. `21_os_daily_message` — exact title, body, `{"route":"daily"}` Additional Data, and `catmetro://daily` Launch URL visible without keys.
+22. `22_os_delivery_stats` — Journey delivery/click statistics **with raw send counts** and date range visible; confirmed receipt only if the plan/device actually reports it.
+23. `23_os_test_user_tags` — owned Test User showing only `daily_opt_in` and `daily_reminder_slot`, with no credential or unrelated tag visible.
+24. `24_os_device_matrix` — dated Android/iOS contact sheet covering foreground, background, killed/cold, resumed/warm, permission, Off cleanup, slot edit, and Daily route proof.
 
 **E. Engineering credibility**
 25. `25_ci_level_validation` — the GitHub Actions run showing the solver validating levels, including a deliberately-broken level failing the gate.
@@ -347,9 +349,9 @@ shows** — an RC advocate downloads and plays the build before winners are fina
 | 0:05–0:15 | Real-time play, three deliveries, purr-meter chain climbing, next-wave preview visible, win stamp | `45–90 SECONDS A LEVEL` | "Send the cat down the matching line before the platform overflows. That is Cat Metro, a one-thumb train puzzle. Forty-five to ninety seconds a level. This is real gameplay, first frame, no mockups." |
 | 0:15–0:28 | A jam builds, Overload ring, fail; cause-first camera snaps to the culprit platform, replay scrub; instant retry; clean solve | `THE CAMERA SHOWS YOU WHY` | "When you lose, the camera goes to the cause, not to the score. Retry takes under a second. No life to spend, no ad to sit through, no reason to put the phone down." |
 | 0:28–0:42 | District map pan across all 6 districts; cut to the Daily Line board with date header; two devices side by side showing the identical board; share card with route ribbon | `30 LEVELS · 6 DISTRICTS · A DAILY LINE` | "Thirty handcrafted levels across six districts, plus a new Daily Line every day. Every player on Earth gets the same board, generated from a shared seed, with no server involved." |
-| 0:42–1:05 | Screen recording of a level-to-level transition showing **nothing** appears between levels; then the five rewarded surfaces in quick cuts, each with its cap label; then the RC dashboard AdTracker events ticking in | `NO INTERSTITIALS. NO BANNERS. NO APP-OPEN ADS.` → `ADS ONLY WHEN YOU ASK` | "Now the part I actually care about. Most free puzzle games in this category monetize your patience. Cat Metro has no interstitials, no banners, no app-open ads. Those surfaces do not exist in the build. Ads happen only when you ask for one: an extra rewind, double tickets, a three-level test drive of a premium theme. RevenueCat AdTracker records every one of them." |
+| 0:42–1:05 | Screen recording of a level-to-level transition showing **nothing** appears between levels; then the four rewarded surfaces in quick cuts, each with its cap label; then the RC dashboard AdTracker events ticking in | `NO INTERSTITIALS. NO BANNERS. NO APP-OPEN ADS.` → `ADS ONLY WHEN YOU ASK` | "Now the part I actually care about. Most free puzzle games in this category monetize your patience. Cat Metro has no interstitials, no banners, no app-open ads. Those surfaces do not exist in the build. Ads happen only when you ask for one: an extra rewind, double tickets, a three-level test drive of a premium theme. RevenueCat AdTracker records every one of them." |
 | 1:05–1:30 | The post-level-5 paywall appearing (once), closing in one tap; cut to RC dashboard Placements screen; cut to the rewind sheet with free rows above the divider; cut to the CI log showing the solver validating a level | `ONE PAYWALL. ONCE. EVER.` → `FREE OPTIONS FIRST` → `SOLVER-PROVEN SOLVABLE` | "The paywall fires once, ever, after level five, through RevenueCat Placements and Paywalls v2. All Access is a single purchase, never a subscription. And when you fail, the rewind sheet puts the free options above the paid ones, under a footer that says every level is solvable without them. That footer is true, because a solver proves it in CI before a level is allowed to merge." |
-| 1:30–1:42 | OneSignal journey canvases (three, quick cuts), then the copy table, then a device receiving the daily notification | `3 JOURNEYS · 6 STEPS · $19/MO` | "Retention runs on three OneSignal journeys and six message steps, on the nineteen-dollar plan, with the frequency caps rebuilt in our own code." |
+| 1:30–1:42 | The single OneSignal Daily Line canvas: three local Time Window branches, then the exact two tags and message data, then a real device receiving and opening the Daily | `1 GENTLE JOURNEY · 3 LOCAL WINDOWS` | "One gentle OneSignal Journey delivers the Daily Line around the time you chose, with two tags, three local windows, and no second campaign." |
 | 1:42–1:52 | Fast montage of the build-in-public feed: daily posts, a failed gate post, the numbers thread with denominators circled | `56 DAYS · PUBLISHED DAILY` | "Fifty-six days. One developer. Every number published with its denominator while it happened." |
 | 1:52–1:58 | Wordmark on Cream Card, cat conductor tips its cap, Play CTA, category-target card | `CAT METRO — FREE ON GOOGLE PLAY` → `ENTERED: BEST GAME · HAMM · CATVERTISING · ONESIGNAL · #BUILDINPUBLIC · DESIGN · GRAND PRIZE` | "Cat Metro. Free on Google Play." |
 
@@ -365,7 +367,7 @@ shows** — an RC advocate downloads and plays the build before winners are fina
 >
 > The paywall fires once, ever, after level five, through RevenueCat Placements and Paywalls v2. All Access is a single purchase, never a subscription. And when you fail, the rewind sheet puts the free options above the paid ones, under a footer that says every level is solvable without them. That footer is true, because a solver proves it in CI before a level is allowed to merge.
 >
-> Retention runs on three OneSignal journeys and six message steps, on the nineteen-dollar plan, with the frequency caps rebuilt in our own code.
+> One gentle OneSignal Journey delivers the Daily Line around the time you chose, with two tags, three local windows, and no second campaign.
 >
 > Fifty-six days. One developer. Every number published with its denominator while it happened.
 >
@@ -406,7 +408,7 @@ Paste-ready text, with the operational reasoning kept in this spec.
 > | **The flagship paywall (`post_level_5`, RC Paywalls v2)** | Play levels 1–5 and win L5. It fires once, ever, after the celebration | ~5 min |
 > | **The rewind sheet (`rewind_failure`)** | Fail L006 twice: fail once — **note that nothing is offered, by design; the sheet never appears on a first failure** — then fail a second time with the level at least 40% complete. A ⏪ chip appears next to "Try again"; tap it | ~2 min |
 > | Rewarded ad | Inside the rewind sheet, "Watch an ad for a rewind"; or "Double your tickets" on any results screen | ~2 min |
-> | Daily Line + streak | Unlocks after level 7 | ~8 min total |
+> | Daily Line + reminder settings | Unlock the Daily after level 7; the first durable counted Daily win unlocks settings and earns the one soft prompt | ~8 min total |
 > | Restore purchases | Shop → footer → "Restore purchases" (also in Settings and on every paywall) | instant |
 >
 > **Promo codes (Google Play one-time codes, `cm_all_access`):**
@@ -417,7 +419,7 @@ Paste-ready text, with the operational reasoning kept in this spec.
 >
 > **To verify "no forced ads":** play ten levels in a row. Nothing will interrupt you — there is no interstitial, banner, or app-open ad surface in the build.
 >
-> **Notifications** are opt-in and the first prompt only appears after your first completed Daily Line. Journey messages are time-windowed (nothing sends 21:00–09:00 local) so an automated message will not arrive during a short test session — the journey canvases and delivery statistics are in the evidence gallery instead.
+> **Notifications** default Off; Morning is only preselected. After your first counted Daily Line win, the one soft prompt offers **Remind me** or durable **Not now**. If enabled, one recurring Journey delivers the same gentle Daily message around 10:00, 15:00, or 18:00 local time. It may not arrive during a short judging session; the single-Journey canvas, exact message data, delivery counts, and real-device matrix are in the evidence gallery. No second notification campaign or local backup runs.
 >
 > **If anything at all is broken for you:** {support_email}. I reply the same day during judging.
 
@@ -478,7 +480,7 @@ feature freeze started Sep 24 and the Sep 26–30 window is submission-only (roa
 | 15 | 09:00 | Paste the Devpost **Story** field (§1, 300-word version); read it aloud once for tone. | ☐ |
 | 16 | 09:30 | Paste the seven **award paragraphs** (§2.1–2.7), each tuned to its now-verified criteria wording. | ☐ |
 | 17 | 10:30 | Paste the **judge testing instructions** (§6) with the five live codes and the support email. | ☐ |
-| 18 | 11:00 | Fill "**Built with**": Unity 6000.3.16f1, C#, RevenueCat (purchases-unity 9.7.0, RevenueCatUI, Placements, Paywalls v2, AdTracker), OneSignal Unity 5.3.2, Google Mobile Ads Unity 11.3.0, Firebase Crashlytics, GitHub Actions. | ☐ |
+| 18 | 11:00 | Fill "**Built with**": Unity 6000.3.16f1, C#, RevenueCat (purchases-unity 9.7.0, RevenueCatUI, Placements, Paywalls v2, AdTracker), OneSignal Unity 5.3.3, Google Mobile Ads Unity 11.3.0, Firebase Crashlytics, GitHub Actions. | ☐ |
 | 19 | 11:30 | **Select every targeted category**: Best Game, HAMM, Catvertising, OneSignal, #BuildInPublic, Design, Grand Prize (+ Stripe Funnel Vision / Samsung only if their gates passed). Screenshot the selection. | ☐ |
 | 19b | 11:40 | **Category-question audit (§2.9):** every targeted category's category-specific question has a non-empty, tuned answer — an empty question means the entry is not judged in that category. | ☐ |
 | 19c | 11:50 | **Package-name and video-match audit:** the submitted package name exactly matches the live app (`com.catmetro.game` — the RevenueCat SDK integration is verified programmatically against it), and the final video is re-watched against the live production build: the app must match what the video shows (an RC advocate downloads and plays it before winners are finalized). | ☐ |
@@ -500,7 +502,7 @@ feature freeze started Sep 24 and the Sep 26–30 window is submission-only (roa
 |---|---|---|---|
 | 31 | 09:00 | Confirm the app is still live, installable, and USA-available; confirm crash-free rate and ANR are inside halt criteria. | ☐ |
 | 32 | 10:00 | Confirm all 5 promo codes are still unredeemed and unexpired; replace any that were used. | ☐ |
-| 33 | 11:00 | Confirm OneSignal journeys are active and will run **unattended through judging (Oct 1–13)**; confirm no scheduled send lands during judging with stale event copy. | ☐ |
+| 33 | 11:00 | Confirm exactly one OneSignal Daily Line Journey is active through judging (Oct 1–13): `daily_opt_in == true` entry, Future additions only Off, three exact local Time Windows, invalid/else exit, exit on opt-out, 12-hour re-entry, exact copy/data, and no second/scheduled/local campaign. Capture the canvas and test-device delivery evidence; if any check fails, stop the Journey rather than leaving stale messaging unattended. | ☐ |
 | 34 | 12:00 | Confirm RevenueCat offerings are stable and no experiment is mid-flight in a state that shows a judge an odd price. | ☐ |
 | 35 | **20:00** | **Final metrics refresh**: recapture exhibits 11 (RC revenue, full window) and 22 (OneSignal delivery), and update any number in the submission text that moved materially. This is the only Sep 30 edit that touches copy. | ☐ |
 | 36 | 21:00 | Final submission re-read; confirm submitted status; confirm the video still plays; **stop touching it**. | ☐ |

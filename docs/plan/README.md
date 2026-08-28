@@ -5,6 +5,18 @@ sources on that date (Official Rules, RevenueCat/OneSignal/Google/Unity docs + G
 Play listings, registry RDAP). Facts carry their source and vintage; where no credible current
 benchmark exists, that is stated rather than filled with an invented number.
 
+> [!IMPORTANT]
+> **OneSignal supersession — 27 Aug 2026.** For every Daily reminder, push-permission,
+> OneSignal tag, Journey, FCM, APNs, and notification evidence decision, the authoritative product
+> and runtime design is
+> [`docs/superpowers/specs/2026-08-27-onesignal-daily-reminders-design.md`](../superpowers/specs/2026-08-27-onesignal-daily-reminders-design.md)
+> and the authoritative human setup procedure is
+> [`docs/runbooks/onesignal-push-setup.md`](../runbooks/onesignal-push-setup.md). They supersede the
+> July multi-campaign material and the general read-order rules below for this subject. Any remaining
+> July reference to three Journeys, streak/lapse/help campaigns, local notification backups,
+> purchase or event pushes, extra OneSignal tags, or exact-minute delivery is historical and is not
+> shipped behavior or an instruction.
+
 ## Read in this order
 
 0. **`EXECUTION_PLAN.md`** — START HERE if you are executing: the amended plan of record
@@ -26,7 +38,7 @@ A shareable web version of the report is published as a private Artifact (link i
 | `product_spec.md` | Game design spec: rules, first-session walkthrough, emotion curve, 30-level progression, 100-level framework, difficulty model, juice priorities, accessibility, cut list, vertical-slice acceptance test |
 | `monetization_spec.md` | Three models compared + chosen (B), full purchase-journey map, paywall copy, formal subscription rejection, HAMM narrative |
 | `revenuecat_implementation.md` | Version pins, dashboard setup runbook, wrapper architecture, purchase/restore state machine, 22-row test matrix, failure matrix, 3 risk-path code skeletons |
-| `onesignal_retention.md` | 3-journey architecture under the Growth-plan cap, permission flow, tag/event map, deep links, measurement, award narrative |
+| `onesignal_retention.md` | Approved one-Journey Daily Line contract, two-tag boundary, earned permission flow, exact copy/data, and human evidence obligations |
 | `liveops_spec.md` | Daily Line pipeline, weekly District Cup, 5-week live-ops calendar, feature flags and kill-switches |
 | `growth_aso_plan.md` | Positioning, competitive grid, full store listing, 30-day content calendar, video concepts, outreach templates, capture workflow |
 | `submission_script.md` | Devpost narrative, award-by-award positioning, 2-minute demo storyboard + VO script, judge instructions, final-48h checklist |
@@ -53,8 +65,8 @@ policy/assumption comment lines — skip them or pass `comment='#'`. Single comm
 | `economy_sources_and_sinks.csv` | Ticket economy with Day 1/7/30 balance simulations for three player profiles |
 | `revenue_scenarios.csv` | 3 budgets × 3 outcomes with auditable formulas; scenario ranges, not forecasts |
 | `analytics_event_taxonomy.csv` | 45 events with params, user properties, destinations, privacy class, QA procedure |
-| `onesignal_journeys.csv` | Journey designs with entry/wait/exit/caps/KPIs/harm-risk |
-| `notification_copy.csv` | 31 message variants (3 per priority journey) with tone notes and deep links |
+| `onesignal_journeys.csv` | The single recurring Audience Segment Journey with three local-time branches and one exit/re-entry contract |
+| `notification_copy.csv` | The single approved gentle Daily Line message and deep link |
 | `level_schema.json` | Strict level schema v2 (adds teaching metadata, accessibility floors, star thresholds) |
 | `example_levels.json` | 5 schema-valid levels spanning the launch progression |
 | `roadmap_56_days.csv` | Day-by-day plan with gates, acceptance criteria, dependencies, fallbacks, hour estimates |
