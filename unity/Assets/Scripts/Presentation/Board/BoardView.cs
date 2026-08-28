@@ -49,6 +49,7 @@ namespace CatMetro.Presentation.Board
         private Transform[] _switchArm;
         private readonly Dictionary<int, ToyTrainView> _trains = new Dictionary<int, ToyTrainView>();
         private CatPresentationTrack[] _catTracks;
+        private TrainSlot[] _currentTrainSlots;
         private TrainSlot[] _previousTrainSlots;
         private int _previousDeliveryCount;
         private bool _hasPresentationSnapshot;
@@ -303,19 +304,24 @@ namespace CatMetro.Presentation.Board
             }
         }
 
-        public void UpdateFrom(GameSession session)
+        public void UpdateFrom(GameSession session) => UpdateFrom(session, Time.unscaledTime);
+
+        /// <summary>
+        /// Explicit visual-time seam for deterministic presentation tests. Runtime callers use
+        /// the one-argument overload, which always supplies <see cref="Time.unscaledTime"/>.
+        /// </summary>
+        public void UpdateFrom(GameSession session, float visualTime)
         {
             RefreshSwitches();
             UpdateTeach(session);
             float alpha = (float)session.Alpha;
-            float visualTime = Time.unscaledTime;
             bool motionOff = MotionOffSource != null && MotionOffSource();
             // Copy first: presentation tracks must never hold a simulation slot reference or
             // mutate the session while deriving a delivery transition.
             var sourceTrains = session.State.Trains;
-            var trains = new TrainSlot[sourceTrains.Length];
+            EnsureCatTracks(sourceTrains.Length);
+            var trains = _currentTrainSlots;
             for (int t = 0; t < sourceTrains.Length; t++) trains[t] = sourceTrains[t];
-            EnsureCatTracks(trains.Length);
             int deliveries = session.State.Deliveries;
             bool deliveryCounterAdvanced = _hasPresentationSnapshot
                 && deliveries > _previousDeliveryCount;
@@ -338,6 +344,9 @@ namespace CatMetro.Presentation.Board
                             && _catTracks[t].State != CatPresentationState.Hidden;
                         if (!retainDeparture)
                         {
+                            // Cancel, rather than merely hide, so re-enabling motion cannot
+                            // resume an old departure sequence from its elapsed timestamp.
+                            if (motionOff) _catTracks[t] = new CatPresentationTrack();
                             dead.ApplyPresentation(CatPresentationState.Hidden, visualTime, true);
                             dead.gameObject.SetActive(false);
                         }
@@ -380,7 +389,7 @@ namespace CatMetro.Presentation.Board
                 // cat transforms. No bob/head motion can feed back into spline placement.
                 consist.ApplyPresentation(_catTracks[t].State, visualTime, motionOff);
             }
-            _previousTrainSlots = trains;
+            for (int t = 0; t < trains.Length; t++) _previousTrainSlots[t] = trains[t];
             _previousDeliveryCount = deliveries;
             _hasPresentationSnapshot = true;
         }
@@ -393,6 +402,9 @@ namespace CatMetro.Presentation.Board
             for (int i = 0; i < existing; i++) replacement[i] = _catTracks[i];
             for (int i = existing; i < count; i++) replacement[i] = new CatPresentationTrack();
             _catTracks = replacement;
+            _currentTrainSlots = new TrainSlot[count];
+            _previousTrainSlots = new TrainSlot[count];
+            _hasPresentationSnapshot = false;
         }
 
         private static bool IsLive(TrainSlot slot) =>

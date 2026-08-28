@@ -237,6 +237,7 @@ namespace CatMetro.Presentation.Board
         private Transform _earRight;
         private Transform _eyeLeft;
         private Transform _eyeRight;
+        private Transform _muzzle;
         private Transform[] _bodyLegs;
         private MeshFilter _pinSymbolFilter;
         private MeshRenderer _pinSymbol;
@@ -247,6 +248,14 @@ namespace CatMetro.Presentation.Board
         private Quaternion _headBaseLocalRotation;
         private Quaternion _earLeftBaseLocalRotation;
         private Quaternion _earRightBaseLocalRotation;
+        private Quaternion _eyeLeftBaseLocalRotation;
+        private Quaternion _eyeRightBaseLocalRotation;
+        private Quaternion _muzzleBaseLocalRotation;
+        private Vector3 _earLeftBaseLocalPosition;
+        private Vector3 _earRightBaseLocalPosition;
+        private Vector3 _eyeLeftBaseLocalPosition;
+        private Vector3 _eyeRightBaseLocalPosition;
+        private Vector3 _muzzleBaseLocalPosition;
         private Vector3 _eyeLeftBaseLocalScale;
         private Vector3 _eyeRightBaseLocalScale;
         private CatMicroMotion _microMotion = new CatMicroMotion(0u);
@@ -360,19 +369,34 @@ namespace CatMetro.Presentation.Board
             CatMicroPose pose = _microMotion.Evaluate(visualTime, false, arrival);
             // ScreenUpOffset carries exactly 0.021 board units of screen-space vertical travel;
             // it is applied to Cat only, never to the train/root spline anchor.
+            Vector3 boardBob = ScreenUpOffset(BoardSceneLook.BoardTilt, pose.Bob * 0.021f, 0f);
             _cat.localPosition = _catBaseLocalPosition
-                + ScreenUpOffset(BoardSceneLook.BoardTilt, pose.Bob * 0.021f, 0f);
-            _head.localRotation = _headBaseLocalRotation
-                * Quaternion.Euler(0f, 0f, pose.ArrivalHeadTurnDegrees);
-            _earLeft.localRotation = _earLeftBaseLocalRotation
-                * Quaternion.Euler(0f, 0f, pose.EarTwitchDegrees);
-            _earRight.localRotation = _earRightBaseLocalRotation
-                * Quaternion.Euler(0f, 0f, -pose.EarTwitchDegrees);
+                + Quaternion.Inverse(_carriage.localRotation) * boardBob;
+            Quaternion headTurn = Quaternion.Euler(0f, 0f, pose.ArrivalHeadTurnDegrees);
+            _head.localRotation = headTurn * _headBaseLocalRotation;
+            SetFeaturePose(_earLeft, _earLeftBaseLocalPosition, _earLeftBaseLocalRotation,
+                headTurn, Quaternion.Euler(0f, 0f, pose.EarTwitchDegrees));
+            SetFeaturePose(_earRight, _earRightBaseLocalPosition, _earRightBaseLocalRotation,
+                headTurn, Quaternion.Euler(0f, 0f, -pose.EarTwitchDegrees));
+            SetFeaturePose(_eyeLeft, _eyeLeftBaseLocalPosition, _eyeLeftBaseLocalRotation,
+                headTurn, Quaternion.identity);
+            SetFeaturePose(_eyeRight, _eyeRightBaseLocalPosition, _eyeRightBaseLocalRotation,
+                headTurn, Quaternion.identity);
+            SetFeaturePose(_muzzle, _muzzleBaseLocalPosition, _muzzleBaseLocalRotation,
+                headTurn, Quaternion.identity);
             _eyeLeft.localScale = new Vector3(_eyeLeftBaseLocalScale.x,
                 _eyeLeftBaseLocalScale.y * pose.EyeYScale, _eyeLeftBaseLocalScale.z);
             _eyeRight.localScale = new Vector3(_eyeRightBaseLocalScale.x,
                 _eyeRightBaseLocalScale.y * pose.EyeYScale, _eyeRightBaseLocalScale.z);
             PlayRig(state, false);
+        }
+
+        private void SetFeaturePose(Transform feature, Vector3 baselinePosition,
+            Quaternion baselineRotation, Quaternion headTurn, Quaternion localTwitch)
+        {
+            feature.localPosition = _head.localPosition
+                + headTurn * (baselinePosition - _head.localPosition);
+            feature.localRotation = headTurn * baselineRotation * localTwitch;
         }
 
         // The pin's symbol, in the shape the shared vocabulary gives this cat's line and the
@@ -569,11 +593,22 @@ namespace CatMetro.Presentation.Board
                 new Vector3(EyeOffset.x, -EyeOffset.y, EyeOffset.z),
                 new Vector3(EyeSize, EyeSize, EyeSize),
                 Quaternion.identity, NavyMaterial());
-            CreatePart("Muzzle", _cat, SphereMesh(),
+            var muzzle = CreatePart("Muzzle", _cat, SphereMesh(),
                 MuzzleOffset, MuzzleSize,
                 Quaternion.identity, CreamMaterial());
             _eyeLeft = eyeLeft.transform;
             _eyeRight = eyeRight.transform;
+            _muzzle = muzzle.transform;
+
+            // A sphere's neutral render is rotationally symmetric, so rotate its local basis
+            // without changing its neutral appearance: local Y is now the projected screen-up
+            // direction at the fixed Cat board yaw, making blink collapse read vertically.
+            Quaternion fixedCatYaw = Quaternion.Euler(0f, 0f, CatBoardYaw);
+            Vector3 screenUp = ScreenUpOffset(BoardSceneLook.BoardTilt, 1f, 0f).normalized;
+            Quaternion eyeBasis = Quaternion.FromToRotation(Vector3.up,
+                Quaternion.Inverse(fixedCatYaw) * screenUp);
+            _eyeLeft.localRotation = eyeBasis;
+            _eyeRight.localRotation = eyeBasis;
 
             // A small Tier-1 body and legs give walking/alighting cats a readable silhouette.
             // These use the same builtin meshes and bounds-derived scale as every train part:
@@ -618,6 +653,14 @@ namespace CatMetro.Presentation.Board
             _headBaseLocalRotation = _head.localRotation;
             _earLeftBaseLocalRotation = _earLeft.localRotation;
             _earRightBaseLocalRotation = _earRight.localRotation;
+            _eyeLeftBaseLocalRotation = _eyeLeft.localRotation;
+            _eyeRightBaseLocalRotation = _eyeRight.localRotation;
+            _muzzleBaseLocalRotation = _muzzle.localRotation;
+            _earLeftBaseLocalPosition = _earLeft.localPosition;
+            _earRightBaseLocalPosition = _earRight.localPosition;
+            _eyeLeftBaseLocalPosition = _eyeLeft.localPosition;
+            _eyeRightBaseLocalPosition = _eyeRight.localPosition;
+            _muzzleBaseLocalPosition = _muzzle.localPosition;
             _eyeLeftBaseLocalScale = _eyeLeft.localScale;
             _eyeRightBaseLocalScale = _eyeRight.localScale;
             SetBodyLegVisibility(false);
@@ -631,6 +674,14 @@ namespace CatMetro.Presentation.Board
             _head.localRotation = _headBaseLocalRotation;
             _earLeft.localRotation = _earLeftBaseLocalRotation;
             _earRight.localRotation = _earRightBaseLocalRotation;
+            _eyeLeft.localRotation = _eyeLeftBaseLocalRotation;
+            _eyeRight.localRotation = _eyeRightBaseLocalRotation;
+            _muzzle.localRotation = _muzzleBaseLocalRotation;
+            _earLeft.localPosition = _earLeftBaseLocalPosition;
+            _earRight.localPosition = _earRightBaseLocalPosition;
+            _eyeLeft.localPosition = _eyeLeftBaseLocalPosition;
+            _eyeRight.localPosition = _eyeRightBaseLocalPosition;
+            _muzzle.localPosition = _muzzleBaseLocalPosition;
             _eyeLeft.localScale = _eyeLeftBaseLocalScale;
             _eyeRight.localScale = _eyeRightBaseLocalScale;
         }
