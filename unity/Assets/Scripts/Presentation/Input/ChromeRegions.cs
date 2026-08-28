@@ -63,6 +63,16 @@ namespace CatMetro.Presentation.Input
 
         public int Count => _entries.Count;
 
+        // Diagnostic query for lifecycle tests and device self-tests. Counts cannot prove that
+        // a particular painted target was removed once a screen gains another legitimate entry.
+        public bool IsRegistered(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return false;
+            for (int i = 0; i < _entries.Count; i++)
+                if (_entries[i].Id == id) return true;
+            return false;
+        }
+
         public void Register(string id, Func<Rect> screenRect, Action onTap, int priority)
         {
             if (string.IsNullOrEmpty(id)) throw new ArgumentException("region id is required");

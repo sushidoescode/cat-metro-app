@@ -34,6 +34,13 @@
       },
       "url": "https://registry.npmjs.org"
     },
+    "com.revenuecat.purchases-unity": {
+      "version": "9.9.0",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://package.openupm.com"
+    },
     "com.unity.burst": {
       "version": "1.8.29",
       "depth": 2,

@@ -140,6 +140,7 @@ namespace CatMetro.Bootstrap
         // these properties must exist there too, not just in a DEVELOPMENT_BUILD/editor test.
         public CatMetro.Presentation.Screens.HomeScreenView Home { get; private set; }
         public CatMetro.Presentation.Screens.LevelIntroSheet Intro { get; private set; }
+        public CatMetro.Presentation.Screens.WardrobeScreenView Wardrobe { get; private set; }
         public CatMetro.Presentation.Screens.ScreenStack Stack { get; private set; }
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
@@ -564,6 +565,9 @@ namespace CatMetro.Bootstrap
             ConfigureReminderHome();
             Intro = CatMetro.Presentation.Screens.LevelIntroSheet.Create(canvasGo.transform);
             Intro.Attach(Input.Regions);
+            Wardrobe = CatMetro.Presentation.Screens.WardrobeScreenView.Create(
+                canvasGo.transform, CatMetro.Services.Purchases.PurchaseRuntime.Current);
+            Wardrobe.Attach(Input.Regions);
 
             Home.LevelSelected = () =>
             {
@@ -572,6 +576,7 @@ namespace CatMetro.Bootstrap
                 // top of the stack is current): Home.Hide() also unregisters its pin, which
                 // would otherwise tie-break ahead of Intro's Play chip (both center in the
                 // thumb band at the identical point — the earliest registration wins ties).
+                Wardrobe.Hide();
                 Home.Hide();
                 Intro.Show(_level.Dto.Name, _level.Dto.Win.Deliveries);
                 Stack.Push("intro");
@@ -587,10 +592,23 @@ namespace CatMetro.Bootstrap
             Intro.PlayRequested = () =>
             {
                 Intro.Hide();
+                Wardrobe.Hide();
                 Home.Hide(); // idempotent — already hidden by the push above
                 while (Stack.TryPop(out _)) { }
                 _analyticsRuntime?.BeginCampaignLevel(_level, retry: false,
                     fromScreen: "intro");
+            };
+            Wardrobe.OpenRequested = () =>
+            {
+                Home.Hide();
+                Wardrobe.Open();
+                Stack.Push("wardrobe");
+            };
+            Wardrobe.BackRequested = () =>
+            {
+                Wardrobe.ShowEntry();
+                Home.Show();
+                if (Stack.Current == "wardrobe") Stack.TryPop(out _);
             };
 
             ShowHomeForPresentation();
@@ -600,6 +618,7 @@ namespace CatMetro.Bootstrap
         {
             if (Home == null || Stack == null) return;
             Home.Show();
+            Wardrobe.ShowEntry();
             Stack.Push("home");
             _checkReminderAfterHomePresentation = true;
         }
@@ -1173,6 +1192,7 @@ namespace CatMetro.Bootstrap
 
         private void EnterDaily(ImportedLevel resolved, DailyDateSelection selection, string dateKey)
         {
+            Wardrobe?.Hide();
             _preDailyLevel = _level;
             LoadLevel(resolved);
             _activeDailySelection = selection;
@@ -1406,7 +1426,7 @@ namespace CatMetro.Bootstrap
             {
                 _pendingHomeShowFrame = -1;
                 if (Home != null)
-                    ShowHomeForPresentation();
+                ShowHomeForPresentation();
             }
             if (_checkReminderAfterHomePresentation)
             {

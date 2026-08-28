@@ -33,6 +33,7 @@ namespace CatMetro.Tests.PlayMode
         [SetUp]
         public void SetUp()
         {
+            GameRoot.DevSkipShippedHome = false;
             GameRoot.BootToHome = false;
             _tmpDir = Path.Combine(Path.GetTempPath(), "cm-devcap3-devscreenflow-test", "devcap");
             Directory.CreateDirectory(_tmpDir);
@@ -42,6 +43,7 @@ namespace CatMetro.Tests.PlayMode
         [TearDown]
         public void TearDown()
         {
+            GameRoot.DevSkipShippedHome = false;
             GameRoot.BootToHome = false;
             DevBootOverride.DirectoryOverride = null;
             if (_root != null) Object.Destroy(_root.gameObject);
@@ -170,10 +172,9 @@ namespace CatMetro.Tests.PlayMode
             CollectionAssert.AreEqual(new[] { "home" }, _root.Stack.ToBreadcrumb());
             Assert.That(_root.Session.State.Tick, Is.EqualTo(0),
                 "criterion 2: the sim is held at tick 0 while Home is shown");
-            // F1/F2 fix (round-1 review): baseline region count while only Home's pin is
-            // registered — used below to prove the pin's region is genuinely gone (not just
-            // visually hidden) once LevelSelected fires, without hardcoding a literal count.
-            int regionBaseline = _root.Input.Regions.Count;
+            Assert.That(_root.Input.Regions.IsRegistered("home.pin.l001"), Is.True);
+            Assert.That(_root.Input.Regions.IsRegistered("wardrobe.entry"), Is.True,
+                "the shipped Home surface carries both the level pin and Wardrobe capsule");
 
             var canvasGo = FindByName(_root.gameObject, "ScreensCanvas");
             Assert.That(canvasGo, Is.Not.Null);
@@ -203,24 +204,15 @@ namespace CatMetro.Tests.PlayMode
             CollectionAssert.AreEqual(new[] { "home", "intro" }, _root.Stack.ToBreadcrumb());
             Assert.That(_root.ScreensVisible, Is.True, "still up — the stack is non-empty");
 
-            // F1/F2 fix (round-1 review): the old precondition here compared the SAME rect
-            // computation to itself — LevelIntroSheet.LayoutChip sets the chip rect to
-            // HudBands.ThumbBand(Screen.safeArea) and HomeLayout.PinRect centers the pin in
-            // that IDENTICAL band, so "chip.Contains(pin.center)" reduces to
-            // "band.Contains(band.center)": true by construction for any dpi/safe-area/device,
-            // and its rationale was false besides — Home.Hide() (GameRoot.ComposeScreenFlow)
-            // has already unregistered the pin by this point, so no tie-break ever occurs here.
-            // Replaced with asserts that read SUT state and can fail under the plausible
-            // mutation of deleting `Home.Hide();` (the PR's headline in-slice fix).
             Assert.That(_root.Home.IsVisible, Is.False,
                 "F2 discriminator: LevelSelected must call Home.Hide() — otherwise Home (and "
                 + "its title) is still visible bleeding through the Intro sheet right now");
-            Assert.That(_root.Input.Regions.Count, Is.EqualTo(regionBaseline),
-                "F1 discriminator: the pin's region is genuinely gone, not just visually "
-                + "hidden — Home's pin unregisters (-1) while Intro's chip registers (+1), "
-                + "netting back to the boot baseline; under the delete-Home.Hide mutation this "
-                + "reads baseline + 1 (both regions live — the tie-break geometry this test "
-                + "must actually exercise)");
+            Assert.That(_root.Input.Regions.IsRegistered("home.pin.l001"), Is.False,
+                "the Home pin is genuinely unregistered, not merely hidden");
+            Assert.That(_root.Input.Regions.IsRegistered("wardrobe.entry"), Is.False,
+                "the Wardrobe capsule leaves no ghost target under Intro");
+            Assert.That(_root.Input.Regions.IsRegistered("intro.play"), Is.True,
+                "the one painted Intro target is registered");
 
             // tap Play: both hide, stack empties, board input returns, and CM-BOOT-HOME
             // criterion 2's tick-0 hold lifts — the sim now advances on subsequent frames.

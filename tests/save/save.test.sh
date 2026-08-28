@@ -22,15 +22,31 @@ fi
 
 # Criterion 13, kept in step with ADR-0003's table as engine rows land (CM-C2b armed the first
 # one): the ENGINE-FREE assemblies (Domain/Content/Services/Application) may never name
-# UnityEngine — the engine rows (Bootstrap, Presentation; later Integrations.*/Editor) may.
+# UnityEngine — the engine rows (Bootstrap, Presentation, Integrations, Editor) may. Explicit
+# roots prevent a nested directory named Integrations from hiding a leak in Application.
 # The storage-path APIs stay BOOTSTRAP-ONLY across the entire tree (ADR-0003:102-105).
-eng=$(grep -rEn --include='*.cs' --exclude-dir=Bootstrap --exclude-dir=Presentation '\bUnityEngine\b' unity/Assets/Scripts 2>/dev/null || true)
+engine_free_roots=(unity/Assets/Scripts/Domain unity/Assets/Scripts/Content \
+  unity/Assets/Scripts/Services unity/Assets/Scripts/Application)
+non_bootstrap_roots=("${engine_free_roots[@]}" unity/Assets/Scripts/Integrations \
+  unity/Assets/Scripts/Presentation)
+for root in "${engine_free_roots[@]}"; do
+  [ -d "$root" ] || fail "criterion 13: engine-free scan root missing: $root"
+done
+eng=$(grep -rEn --include='*.cs' '\bUnityEngine\b' "${engine_free_roots[@]}" 2>/dev/null || true)
 [ -z "$eng" ] || fail "criterion 13: engine reference in an engine-free assembly: $eng"
-pathapi=$(grep -rEn --include='*.cs' --exclude-dir=Bootstrap '\b(persistentDataPath|temporaryCachePath)\b' unity/Assets/Scripts 2>/dev/null || true)
+pathapi=$(grep -rEn --include='*.cs' '\b(persistentDataPath|temporaryCachePath)\b' \
+  "${non_bootstrap_roots[@]}" 2>/dev/null || true)
 [ -z "$pathapi" ] || fail "criterion 13: storage-path API outside Bootstrap: $pathapi"
-if grep -rEnq --include='*.cs' --exclude-dir=Bootstrap '#if UNITY_ANDROID' unity/Assets/Scripts 2>/dev/null; then
-  fail "criterion 13: conditional compilation outside Bootstrap"
-fi
+# Platform conditionals belong in engine-facing assemblies. Scan every engine-free root and both
+# #if / #elif forms; an exact `#if UNITY_ANDROID` search misses real compound branches.
+platform_conditional=$(grep -rEn --include='*.cs' \
+  '#(if|elif)[[:space:]]+.*UNITY_[A-Z0-9_]+' \
+  "${engine_free_roots[@]}" 2>/dev/null || true)
+[ -z "$platform_conditional" ] \
+  || fail "criterion 13: platform conditional in an engine-free assembly: $platform_conditional"
+printf '%s\n' '#elif UNITY_ANDROID || UNITY_IOS' \
+  | grep -Eq '#(if|elif)[[:space:]]+.*UNITY_[A-Z0-9_]+' \
+  || fail "criterion 13: platform-conditional pattern missed the compound #elif fixture"
 
 # Criterion 14 (Q-T): the ledger is a data structure — zero monetization tokens under Save.
 mon=$(grep -rEn --include='*.cs' '/billing/|/iap/|/ads/|RevenueCat|Purchases\.|BillingClient|GoogleMobileAds' "$app_root/Save" 2>/dev/null || true)

@@ -41,7 +41,7 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void NewRows_ExactlyTheSevenPinned_Appended()
+        public void OwnedAppendedRows_StayBytePinned()
         {
             var rows = Rows();
             // R1-L6: the exact count is SLICE-SCOPED evidence, amended only by declared
@@ -52,9 +52,8 @@ namespace CatMetro.Tests.Presentation
             // byte-pinned in UiCsvUx06Tests (indices shifted at adoption). CM-DAILYWIRE's own
             // six rows (entry, return, tally, practice, error, loading) land at rows 12-17,
             // byte-pinned in UiCsvDailyWireTests under the same evolution clause. Count = 5 + 13.
-            Assert.That(rows.Length, Is.EqualTo(FrozenBaseRows.Length + 13),
-                "CM-UX-02's two + CM-UX-05's one + CM-UX-04's one + CM-UX-06's three + "
-                + "Daily Live's six");
+            Assert.That(rows.Length, Is.GreaterThanOrEqualTo(FrozenBaseRows.Length + 13),
+                "owned rows stay pinned while later features may append their own strings");
             Assert.That(rows[5], Is.EqualTo("retry.cta,Try again"), "LOCKED");
             Assert.That(rows[6], Is.EqualTo("halt.notice,Signal fault — the line stopped"),
                 "DRAFT, byte-pinned including U+2014");

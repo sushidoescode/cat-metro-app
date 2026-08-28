@@ -32,3 +32,28 @@ reminder.status.unknown,Notification permission not decided.
 reminder.status.unavailable,Notifications unavailable on this device.
 reminder.settings.open,Open notification settings
 reminder.settings.close,Close
+wardrobe.entry,Wardrobe
+wardrobe.title,Profile Wardrobe
+wardrobe.profile,Your profile cat
+wardrobe.product,Conductor's Coat
+wardrobe.back,Back
+wardrobe.buy,Unlock · {price}
+wardrobe.equipped,Coat equipped
+wardrobe.restore,Restore purchases
+wardrobe.restore.running,Restoring…
+wardrobe.store.checking,Checking store…
+wardrobe.store.opening,Opening store…
+wardrobe.store.unavailable,Store unavailable
+wardrobe.status.checking,Checking the railway shop…
+wardrobe.status.locked,A station uniform for your profile cat
+wardrobe.status.equipped,Conductor's Coat equipped!
+wardrobe.status.opening,Opening the store…
+wardrobe.status.cancelled,Purchase cancelled
+wardrobe.status.pending,Purchase pending — the coat unlocks after approval
+wardrobe.status.failed,Purchase unavailable — please try again
+wardrobe.status.unconfirmed,Purchase received — checking the entitlement
+wardrobe.status.restoring,Restoring purchases…
+wardrobe.status.restored,Purchase restored — coat equipped!
+wardrobe.status.none,No purchases found
+wardrobe.status.restore.failed,Restore unavailable — please try again
+wardrobe.status.unavailable,The shop is offline — the game is still ready to play

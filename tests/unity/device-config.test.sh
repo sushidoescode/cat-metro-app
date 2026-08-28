@@ -110,5 +110,5 @@ fi
 echo "$neg" | grep -q 'BalancedButUnbound.cs' \
   || fail "criterion 5: equal-total unbound site was not named: $neg"
 
-echo "device-config.test.sh: OK (1, 2-yaml, 3, 4, 5-static)"
+echo "device-config.test.sh: OK (1, 2-yaml, 3, 4, 5-static-tripwire)"
 exit 0

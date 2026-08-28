@@ -47,3 +47,9 @@ unity/Assets/Art/Generated/incoming.meta
 # (the Editor's UserSettings/mcp.json is already covered by unity/UserSettings/ above)
 .mcp.json
 unity/.mcp.json
+
+# RevenueCat API key. The real config is never committed; the .example sibling documents
+# its shape. Absent config means the game runs with purchases unavailable, which is a
+# working game — see unity/Assets/Scripts/Integrations/MonetizationConfig.cs.
+unity/Assets/Resources/Monetization/revenuecat_config.json
+unity/Assets/Resources/Monetization/revenuecat_config.json.meta

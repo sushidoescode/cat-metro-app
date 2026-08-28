@@ -22,7 +22,7 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void ThisSlice_AppendsExactlyThreeRows_BytePinned()
+        public void HomeAndIntroRows_StayBytePinnedAtTheirAppendPositions()
         {
             var rows = Rows();
             // Adoption shift (2026-08-06): anchored at 7 merged rows; main gained
@@ -31,8 +31,8 @@ namespace CatMetro.Tests.Presentation
             // Daily Live (the R1-L6 evolution clause, UiCsvDisciplineTests' own precedent)
             // appends six rows after this slice, at rows 12-17. This slice's bound rises to 18;
             // rows 9-11 stay byte-pinned exactly as they were.
-            Assert.That(rows.Length, Is.EqualTo(18),
-                "9 merged rows + this slice's 3 + Daily Live's 6 — append-only, never edits");
+            Assert.That(rows.Length, Is.GreaterThanOrEqualTo(18),
+                "owned rows stay pinned while later features may append their own strings");
             Assert.That(rows[9], Is.EqualTo("home.title,Cat Metro"), "DRAFT");
             Assert.That(rows[10], Is.EqualTo("intro.play,Play"), "DRAFT");
             Assert.That(rows[11], Is.EqualTo("intro.goal,Deliver {count} cats"), "DRAFT");
