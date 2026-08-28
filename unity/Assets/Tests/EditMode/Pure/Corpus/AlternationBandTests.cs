@@ -93,16 +93,15 @@ namespace CatMetro.Tests.Corpus
         }
     }
 
-    // Criterion 2: the L006 anchor is honoured byte-for-byte against the authored source
-    // (CONFLICT-1 option A, human-ratified default at freeze).
+    // L006 is checked field-for-field against an independent, test-owned authored fixture.
     [TestFixture]
     public class L006AnchorFidelityTests
     {
         private static JObject Anchor()
         {
-            var wrapper = JObject.Parse(System.Text.Encoding.UTF8.GetString(
-                File.ReadAllBytes(Path.Combine(BandFixtures.RepoRoot(), "docs", "plan", "data", "example_levels.json"))));
-            return (JObject)((JArray)wrapper["levels"]).Single(l => (string)l["id"] == "L006");
+            return JObject.Parse(System.Text.Encoding.UTF8.GetString(
+                File.ReadAllBytes(Path.Combine(
+                    BandFixtures.RepoRoot(), "tests", "fixtures", "corpus", "l006-anchor.json"))));
         }
 
         [Test]

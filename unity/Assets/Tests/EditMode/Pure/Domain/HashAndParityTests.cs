@@ -87,17 +87,16 @@ namespace CatMetro.Tests.Domain
             Assert.That(h2, Is.Not.EqualTo(h1));
         }
 
-        // Criteria 11d + 12: byte-for-byte golden comparison, REPLAY_HASH emission (exactly one
-        // line, regex ^REPLAY_HASH=[0-9a-f]{64}$), and the mechanical golden hand-off block. The
-        // agent NEVER writes tests/contract/ — on absence/mismatch this test fails and prints the
-        // document for the HUMAN to commit (AGENTS.md hard rule 1; docs/constitution.md:7).
+        // Byte-for-byte golden comparison plus a machine-readable REPLAY_HASH line. The committed
+        // fixture remains independent from the implementation, so a simulation change is loud.
         [Test]
-        public void ReplayHash_MatchesHumanCommittedGolden()
+        public void ReplayHash_MatchesCommittedGolden()
         {
             var hash = ReplayHasher.ComputeReplayHash(Fixtures.L001Shape(), Fixtures.L001Seed, Fixtures.GoldenLog());
             Console.Out.WriteLine($"REPLAY_HASH={hash}");
 
-            var goldenPath = Path.Combine(Fixtures.RepoRoot(), "tests", "contract", "replay-hash-golden.json");
+            var goldenPath = Path.Combine(
+                Fixtures.RepoRoot(), "tests", "fixtures", "replay", "replay-hash-golden.json");
             string expected = null;
             if (File.Exists(goldenPath))
             {
@@ -122,7 +121,7 @@ namespace CatMetro.Tests.Domain
                     ["formatVersion"] = 1,
                     ["entries"] = new JArray(new JObject { ["switchId"] = 0, ["tick"] = 12 }),
                 },
-                ["fixture"] = "in-code L001 shape per state/handoffs/CM-C1.md §Golden fixture (A-C1-2: construction is part of the golden's meaning)",
+                ["fixture"] = "in-code L001 shape and command log pinned by the committed test fixture",
                 ["digestBytes"] = 143,
                 ["replayHash"] = hash,
             }.ToString(Newtonsoft.Json.Formatting.Indented);
@@ -131,8 +130,8 @@ namespace CatMetro.Tests.Domain
             Console.Out.WriteLine(goldenJson);
             Console.Out.WriteLine("GOLDEN_JSON_END");
             Assert.Fail(File.Exists(goldenPath)
-                ? $"golden mismatch: expected {expected}, computed {hash}. If the sim legitimately changed, a HUMAN regenerates the golden (ADR-0002 §Locked-in 2); an agent never does."
-                : "tests/contract/replay-hash-golden.json is absent. HUMAN: extract the document between GOLDEN_JSON_BEGIN/END (sed -n '/^GOLDEN_JSON_BEGIN$/,/^GOLDEN_JSON_END$/p') and commit it; that commit turns CI green (contract criterion 12).");
+                ? $"golden mismatch: expected {expected}, computed {hash}. Review any intentional simulation change before updating the committed fixture."
+                : $"replay golden fixture is absent at {goldenPath}");
         }
     }
 

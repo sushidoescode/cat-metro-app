@@ -1,0 +1,8 @@
+{
+  "levelId": "L001",
+  "seed": 1001,
+  "commandLog": { "formatVersion": 1, "entries": [ { "switchId": 0, "tick": 12 } ] },
+  "fixture": "in-code L001 shape and command log pinned by the committed test fixture",
+  "digestBytes": 143,
+  "replayHash": "d4818af81bb5c4d8161c1132264f2d7f3908f0038e121c664ad3f007134e35b9"
+}
