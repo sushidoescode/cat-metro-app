@@ -740,6 +740,8 @@ namespace CatMetro.Presentation.Board
                 if (_rigMotionSuppressed) return;
                 _rigMotionSuppressed = true;
                 _rigAnimator.Rebind();
+                _rigAnimator.Play(_rigAnimator.GetLayerName(0) + "."
+                    + CatModelCatalog.IdleSitClip, 0, 0f);
                 _rigAnimator.Update(0f);
                 _rigAnimator.speed = 0f;
                 _rigNeutralSampleCount++;
