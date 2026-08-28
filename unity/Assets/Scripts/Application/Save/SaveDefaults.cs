@@ -2,8 +2,8 @@ using Newtonsoft.Json.Linq;
 
 namespace CatMetro.Application.Save
 {
-    // The fresh v1 payload — EXACTLY the ADR-0006 §2 block (IRREVERSIBLE; human ADR gate rides
-    // the CM-C7 PR). The three OPEN sub-shapes are ABSENT, not guessed (criterion 3):
+    // The fresh v2 payload extends the ADR-0006 §2 block additively. The three OPEN sub-shapes
+    // remain ABSENT, not guessed:
     // no caps.sessionCounters, flags.paywall_placements stays bool, breadcrumbs.purchase is null
     // (when present: exactly {productId, placement, startedAtUtc, state}, state an OPAQUE string
     // round-tripped untouched — enumerating it would invent an RC API, RK-39).
@@ -12,8 +12,8 @@ namespace CatMetro.Application.Save
     // never throws (ADR-0007 "flags must fail closed").
     public static class SaveDefaults
     {
-        public const ushort FORMAT_VERSION = 1; // A-C7-4
-        public const ushort SAVE_VERSION = 1;   // A-C7-4
+        public const ushort FORMAT_VERSION = 1;
+        public const ushort SAVE_VERSION = 2;
         public const string MAGIC = "CMSV";
 
         public static JObject FreshPayload()
@@ -34,7 +34,11 @@ namespace CatMetro.Application.Save
                 },
                 ["daily"] = new JObject
                 {
+                    // Legacy v1 streak/played fields remain additive-compatible only. Daily
+                    // Live never reads or updates streakDays; its tally is lifetime-only.
                     ["lastDateKey"] = "", ["streakDays"] = 0, ["playedKeys"] = new JArray(),
+                    ["trustedDateKey"] = "", ["completedKeys"] = new JArray(),
+                    ["lifetimeCompletions"] = 0,
                 },
                 ["economy"] = new JObject
                 {

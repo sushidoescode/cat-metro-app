@@ -21,14 +21,22 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void ThisSlice_AppendsExactlyTwoRows_BytePinned()
+        public void DailyLiveRows_AreAppendOnlyAndBytePinned()
         {
             var rows = Rows();
-            // 12 merged rows (UiCsvUx06Tests' own anchor) + this slice's 2 = 14.
-            Assert.That(rows.Length, Is.EqualTo(14),
-                "12 merged rows + this slice's 2 — append-only, never edits");
+            // 12 merged rows + Daily entry/return/tally/practice/error/loading = 18.
+            Assert.That(rows.Length, Is.EqualTo(18),
+                "12 merged rows + six Daily Live rows — append-only, never edits");
             Assert.That(rows[12], Is.EqualTo("home.daily.label,Daily Line"), "DRAFT");
             Assert.That(rows[13], Is.EqualTo("results.daily.done,Home"), "DRAFT");
+            Assert.That(rows[14], Is.EqualTo(
+                "home.daily.tally,Dailies completed: {count}"));
+            Assert.That(rows[15], Is.EqualTo(
+                "home.daily.unavailable,Daily unavailable — try again"));
+            Assert.That(rows[16], Is.EqualTo(
+                "daily.practice,Clock changed — practice run"));
+            Assert.That(rows[17], Is.EqualTo(
+                "home.daily.loading,Preparing today's Line…"));
         }
 
         [Test]
@@ -48,6 +56,14 @@ namespace CatMetro.Tests.Presentation
         {
             Assert.That(UiStrings.Get("home.daily.label"), Is.EqualTo("Daily Line"));
             Assert.That(UiStrings.Get("results.daily.done"), Is.EqualTo("Home"));
+            Assert.That(UiStrings.Get("home.daily.tally"),
+                Is.EqualTo("Dailies completed: {count}"));
+            Assert.That(UiStrings.Get("home.daily.unavailable"),
+                Is.EqualTo("Daily unavailable — try again"));
+            Assert.That(UiStrings.Get("daily.practice"),
+                Is.EqualTo("Clock changed — practice run"));
+            Assert.That(UiStrings.Get("home.daily.loading"),
+                Is.EqualTo("Preparing today's Line…"));
         }
 
         [Test]
@@ -56,7 +72,12 @@ namespace CatMetro.Tests.Presentation
             // P-4: components resolve KEYS. Quoted-literal form so "Home" cannot false-match a
             // bare identifier (GameRoot.Home, HomeScreenView, Stack.Push("home") is lowercase
             // and untouched by this needle) elsewhere in Presentation.
-            var banned = new[] { "\"Daily Line\"", "\"Home\"" };
+            var banned = new[]
+            {
+                "\"Daily Line\"", "\"Home\"", "\"Dailies completed: {count}\"",
+                "\"Daily unavailable — try again\"", "\"Clock changed — practice run\"",
+                "\"Preparing today's Line…\"",
+            };
             foreach (var file in Directory.GetFiles(
                 "Assets/Scripts/Presentation", "*.cs", SearchOption.AllDirectories))
             {

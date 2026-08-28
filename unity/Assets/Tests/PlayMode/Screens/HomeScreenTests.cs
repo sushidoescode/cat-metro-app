@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -18,14 +19,16 @@ namespace CatMetro.Tests.PlayMode
         private ChromeRegions _regions;
         private bool _motionOff;
 
-        private HomeScreenView CreateShown()
+        private HomeScreenView CreateShown(bool dailyEntryUnlocked = false,
+            int lifetimeDailyCompletions = 0)
         {
             _canvasGo = new GameObject("TestCanvas");
             var canvas = _canvasGo.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             _regions = new ChromeRegions();
             _motionOff = false;
-            _home = HomeScreenView.Create(canvas.transform);
+            _home = HomeScreenView.Create(
+                canvas.transform, dailyEntryUnlocked, lifetimeDailyCompletions);
             _home.Attach(_regions, () => _motionOff);
             _home.Show();
             return _home;
@@ -59,6 +62,32 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(CatMetro.Presentation.Hud.HudBands.MeetsMinTargetPx(
                 _home.PinPaintedRectPx, dpi > 0f ? dpi : 160f), Is.True,
                 "the live pin clears the 48dp floor on this host");
+        }
+
+        [UnityTest]
+        public IEnumerator UnlockedDaily_ShowsAndUpdatesACumulativeLifetimeTally()
+        {
+            CreateShown(dailyEntryUnlocked: true, lifetimeDailyCompletions: 12);
+            yield return null;
+
+            Assert.That(_home.DailyTallyText, Is.EqualTo("Dailies completed: 12"));
+            Assert.That(_home.DailyTallyText.ToLowerInvariant(), Does.Not.Contain("streak"));
+            Assert.That(_home.gameObject.GetComponentsInChildren<Transform>(true)
+                .Any(t => t.gameObject.name.ToLowerInvariant().Contains("streak")), Is.False,
+                "the lifetime tally must not introduce a consecutive-day or broken-streak surface");
+
+            _home.SetDailyLifetimeCompletions(13);
+            Assert.That(_home.DailyTallyText, Is.EqualTo("Dailies completed: 13"),
+                "the persisted total can refresh after a Daily win without rebuilding Home");
+
+            _home.SetDailyStatusKey("home.daily.unavailable");
+            Assert.That(_home.DailyStatusText,
+                Is.EqualTo("Daily unavailable — try again"),
+                "a total pipeline failure is visible on Home instead of only logged");
+            _home.SetDailyStatusKey(null);
+            Assert.That(_home.DailyStatusText, Is.Empty);
+            Assert.That(_home.DailyTallyVisible, Is.True,
+                "clearing the transient error restores the lifetime tally");
         }
 
         // --- criterion 4: pulse is easing; the ring is information (A11Y-S01-2) ---

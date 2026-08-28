@@ -12,3 +12,7 @@ intro.play,Play
 intro.goal,Deliver {count} cats
 home.daily.label,Daily Line
 results.daily.done,Home
+home.daily.tally,Dailies completed: {count}
+home.daily.unavailable,Daily unavailable — try again
+daily.practice,Clock changed — practice run
+home.daily.loading,Preparing today's Line…
