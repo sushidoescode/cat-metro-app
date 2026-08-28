@@ -6,9 +6,8 @@ namespace CatMetro.Application.Save
     // CM-C7 criterion 7: an ORDERED list of (from, to, step) applied in sequence from the file's
     // saveVersion to the build's. Downgrade is refused upstream (SaveStore), never attempted
     // here. A migration step never deletes a key it does not understand (ADR-0006:72) — steps
-    // receive and return the whole JObject. The production v1->v2 migration adds Daily Live
-    // progress without inferring completions from legacy "played" dates; v2->v3 adds reminder
-    // defaults without inferring notification consent.
+    // receive and return the whole JObject. Production defaults are explicit: before the first
+    // public v2 build, every lane extends the one shared SaveSchemaV2 v1->v2 union.
     public sealed class MigrationTable
     {
         public sealed class Step
@@ -28,49 +27,15 @@ namespace CatMetro.Application.Save
 
         private readonly List<Step> _steps = new List<Step>();
 
-        public MigrationTable()
-        {
-            _steps.Add(new Step(1, 2, MigrateV1ToV2));
-            _steps.Add(new Step(2, 3, MigrateV2ToV3));
-        }
-
-        private static JObject MigrateV1ToV2(JObject payload)
-        {
-            var daily = payload["daily"] as JObject;
-            if (daily == null)
-            {
-                daily = new JObject();
-                payload["daily"] = daily;
-            }
-
-            // Legacy playedKeys recorded attempts, not wins, so it cannot honestly seed the
-            // lifetime completion tally.
-            if (daily["trustedDateKey"] == null) daily["trustedDateKey"] = "";
-            if (daily["completedKeys"] == null) daily["completedKeys"] = new JArray();
-            if (daily["lifetimeCompletions"] == null) daily["lifetimeCompletions"] = 0;
-            return payload;
-        }
-
-        private static JObject MigrateV2ToV3(JObject payload)
-        {
-            var settings = payload["settings"] as JObject;
-            if (settings == null)
-            {
-                settings = new JObject();
-                payload["settings"] = settings;
-            }
-
-            if (settings["dailyReminderEnabled"] == null)
-                settings["dailyReminderEnabled"] = false;
-            if (settings["dailyReminderPromptSeen"] == null)
-                settings["dailyReminderPromptSeen"] = false;
-            if (settings["dailyReminderSlot"] == null)
-                settings["dailyReminderSlot"] = "morning";
-            return payload;
-        }
+        public static MigrationTable CreateDefault() => new MigrationTable()
+            .Register(1, 2, SaveSchemaV2.MigrateFromV1);
 
         public MigrationTable Register(int from, int to, System.Func<JObject, JObject> apply)
         {
+            foreach (var step in _steps)
+                if (step.From == from)
+                    throw new System.ArgumentException(
+                        "a migration from version " + from + " is already registered");
             _steps.Add(new Step(from, to, apply));
             return this;
         }

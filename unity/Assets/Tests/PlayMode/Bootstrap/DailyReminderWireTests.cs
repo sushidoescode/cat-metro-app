@@ -1011,7 +1011,7 @@ namespace CatMetro.Tests.PlayMode
             if (!bounds.Ok) throw new InvalidOperationException(bounds.Error.ToString());
             var store = new SaveStore(
                 new TestStorageRoot(Path.Combine(_tmpDir, "save")),
-                new RealSaveFileSystem(), bounds.Value, new MigrationTable());
+                new RealSaveFileSystem(), bounds.Value, MigrationTable.CreateDefault());
             store.Load();
             return store;
         }

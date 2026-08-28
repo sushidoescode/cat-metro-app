@@ -162,7 +162,7 @@ namespace CatMetro.Tests.PlayMode
             var bounds = RuntimeBounds.Parse(boundsBytes);
             Assert.That(bounds.Ok, Is.True, bounds.Error?.ToString());
             var store = new SaveStore(storage, new RealSaveFileSystem(),
-                bounds.Value, new MigrationTable());
+                bounds.Value, MigrationTable.CreateDefault());
             store.Load();
             var progress = new DailyProgressTracker(store);
             for (int i = 1; i <= 7; i++)
@@ -186,7 +186,7 @@ namespace CatMetro.Tests.PlayMode
             var bounds = RuntimeBounds.Parse(boundsBytes);
             Assert.That(bounds.Ok, Is.True, bounds.Error?.ToString());
             var store = new SaveStore(storage, new RealSaveFileSystem(),
-                bounds.Value, new MigrationTable());
+                bounds.Value, MigrationTable.CreateDefault());
             store.Load();
             var progress = new DailyProgressTracker(store);
             for (int i = 1; i <= 6; i++)

@@ -67,12 +67,14 @@ namespace CatMetro.Tests.Engine
             }
             try
             {
-                var store = new SaveStore(root, new RealSaveFileSystem(), bounds, new MigrationTable());
+                var store = new SaveStore(root, new RealSaveFileSystem(), bounds,
+                    MigrationTable.CreateDefault());
                 store.Load();
                 store.State.Tickets = 21;
                 store.CommitAtomic();
 
-                var reload = new SaveStore(root, new RealSaveFileSystem(), bounds, new MigrationTable());
+                var reload = new SaveStore(root, new RealSaveFileSystem(), bounds,
+                    MigrationTable.CreateDefault());
                 reload.Load();
                 Assert.That(reload.State.Tickets, Is.EqualTo(21));
 

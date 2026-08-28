@@ -17,8 +17,9 @@ namespace CatMetro.Application.Save
 
         public bool Enabled => BooleanValue(Settings?["dailyReminderEnabled"]);
 
-        // A v3 payload missing or corrupting this one-shot state fails safe: it must never cause
-        // an automatic prompt to reappear. A real v2 save receives false in MigrateV2ToV3.
+        // A current payload missing or corrupting this one-shot state fails safe: it must never
+        // cause an automatic prompt to reappear. A real v1 save receives false in the shared
+        // v1->v2 migration.
         public bool PromptSeen => Settings?["dailyReminderPromptSeen"] is JValue value
             && value.Type == JTokenType.Boolean
             ? value.Value<bool>()

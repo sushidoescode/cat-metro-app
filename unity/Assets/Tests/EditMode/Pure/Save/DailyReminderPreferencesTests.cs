@@ -44,7 +44,7 @@ namespace CatMetro.Tests.Save
 
             Assert.That(preferences.Enabled, Is.False, "a non-boolean must not infer consent");
             Assert.That(preferences.PromptSeen, Is.True,
-                "a malformed v3 prompt state must not create a repeated prompt");
+                "a malformed current-version prompt state must not create a repeated prompt");
             Assert.That(preferences.Slot, Is.EqualTo(DailyReminderSlot.Morning),
                 "an invalid slot must not escape the declared presets");
 
@@ -54,7 +54,7 @@ namespace CatMetro.Tests.Save
             Assert.That(preferences.Slot, Is.EqualTo(DailyReminderSlot.Morning));
             settings.Remove("dailyReminderPromptSeen");
             Assert.That(preferences.PromptSeen, Is.True,
-                "a missing v3 prompt state must not create a repeated prompt");
+                "a missing current-version prompt state must not create a repeated prompt");
         }
 
         [Test]
@@ -83,23 +83,24 @@ namespace CatMetro.Tests.Save
         }
 
         [Test]
-        public void V2Reload_MigratesWithDefaultOffAndKeepsUnknownKeys()
+        public void V1Reload_MigratesToV2WithDefaultOffAndKeepsUnknownKeys()
         {
             using var root = new SFixtures.TempRoot();
             var store = SFixtures.Store(root);
-            var v2 = SaveDefaults.FreshPayload();
-            v2["saveVersion"] = 2;
-            ((JObject)v2["settings"]).Remove("dailyReminderEnabled");
-            ((JObject)v2["settings"]).Remove("dailyReminderPromptSeen");
-            ((JObject)v2["settings"]).Remove("dailyReminderSlot");
-            v2["futureReminderExperiment"] = new JObject { ["kept"] = true };
-            SFixtures.WriteRaw(store.SavePath, SFixtures.FileWithVersion(2, v2));
+            var v1 = SaveDefaults.FreshPayload();
+            v1["saveVersion"] = 1;
+            ((JObject)v1["settings"]).Remove("dailyReminderEnabled");
+            ((JObject)v1["settings"]).Remove("dailyReminderPromptSeen");
+            ((JObject)v1["settings"]).Remove("dailyReminderSlot");
+            v1["futureReminderExperiment"] = new JObject { ["kept"] = true };
+            SFixtures.WriteRaw(store.SavePath, SFixtures.FileWithVersion(1, v1));
 
             Assert.That(store.Load(), Is.EqualTo(CatMetro.Services.LoadResult.Ok));
+            Assert.That((int)store.State.Payload["saveVersion"], Is.EqualTo(2));
             var preferences = new DailyReminderPreferences(store);
             Assert.That(preferences.Enabled, Is.False);
             Assert.That(preferences.PromptSeen, Is.False,
-                "a genuine v2 migration receives an unseen prompt state");
+                "the single v1->v2 migration receives an unseen prompt state");
             Assert.That(preferences.Slot, Is.EqualTo(DailyReminderSlot.Morning));
             Assert.That((bool)store.State.Payload["futureReminderExperiment"]["kept"], Is.True);
         }

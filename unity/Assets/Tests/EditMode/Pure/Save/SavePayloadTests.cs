@@ -5,8 +5,8 @@ using CatMetro.Application.Save;
 
 namespace CatMetro.Tests.Save
 {
-    // The v3 payload remains additive over ADR-0006's v1 shape. Daily Live owns the four new
-    // fields; the unrelated open sub-shapes remain absent rather than guessed.
+    // The v2 payload remains additive over ADR-0006's v1 shape. Daily Live, reminders, local
+    // leases, and rewarded-video caps share this one pre-public upgrade.
     public sealed class SavePayloadTests
     {
         private static readonly string[] TopLevel =
@@ -23,11 +23,12 @@ namespace CatMetro.Tests.Save
         }
 
         [Test]
-        public void FreshPayload_IsV3_WithLifetimeDailyProgressAndReminderDefaults()
+        public void FreshPayload_IsV2_WithEveryReservedDefault()
         {
             var payload = SaveDefaults.FreshPayload();
 
-            Assert.That((int)payload["saveVersion"], Is.EqualTo(3));
+            Assert.That(SaveDefaults.SAVE_VERSION, Is.EqualTo(2));
+            Assert.That((int)payload["saveVersion"], Is.EqualTo(2));
             Assert.That((int)payload["daily"]["lifetimeCompletions"], Is.Zero);
             Assert.That((string)payload["daily"]["trustedDateKey"], Is.Empty);
             Assert.That(payload["daily"]["completedKeys"], Is.InstanceOf<JArray>());
@@ -35,6 +36,11 @@ namespace CatMetro.Tests.Save
             Assert.That((bool)payload["settings"]["dailyReminderEnabled"], Is.False);
             Assert.That((bool)payload["settings"]["dailyReminderPromptSeen"], Is.False);
             Assert.That((string)payload["settings"]["dailyReminderSlot"], Is.EqualTo("morning"));
+            Assert.That(payload["entitlements"]["localLeases"], Is.InstanceOf<JArray>());
+            Assert.That(((JArray)payload["entitlements"]["localLeases"]).Count, Is.Zero);
+            Assert.That((string)payload["caps"]["rewarded"]["dateKey"], Is.Empty);
+            Assert.That(payload["caps"]["rewarded"]["counters"], Is.InstanceOf<JObject>());
+            Assert.That(((JObject)payload["caps"]["rewarded"]["counters"]).Count, Is.Zero);
         }
 
         // Review F5: criterion 2 says "the SERIALISED payload's top-level keys" — assert the
@@ -103,8 +109,12 @@ namespace CatMetro.Tests.Save
                 }));
             Assert.That(((JObject)p["economy"]).Properties().Select(x => x.Name),
                 Is.EquivalentTo(new[] { "tickets", "rewindBalance", "freeRewindDateKey" }));
+            Assert.That(((JObject)p["caps"]).Properties().Select(x => x.Name),
+                Is.EquivalentTo(new[] { "dateKey", "counters", "rewarded" }));
+            Assert.That(((JObject)p["caps"]["rewarded"]).Properties().Select(x => x.Name),
+                Is.EquivalentTo(new[] { "dateKey", "counters" }));
             Assert.That(((JObject)p["entitlements"]).Properties().Select(x => x.Name),
-                Is.EquivalentTo(new[] { "appUserId", "active", "fetchedAtUtc" }));
+                Is.EquivalentTo(new[] { "appUserId", "active", "fetchedAtUtc", "localLeases" }));
             Assert.That(((JObject)p["breadcrumbs"]).Properties().Select(x => x.Name),
                 Is.EquivalentTo(new[] { "screenStack", "purchase" }));
             Assert.That(((JObject)p["settings"]).Properties().Select(x => x.Name),

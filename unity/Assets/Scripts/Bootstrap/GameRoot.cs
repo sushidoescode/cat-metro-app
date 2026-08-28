@@ -309,7 +309,7 @@ namespace CatMetro.Bootstrap
                     throw new System.InvalidOperationException(parsedBounds.Error.ToString());
                 IStorageRoot storage = CreateRuntimeStorageRoot();
                 _saveStore = new SaveStore(storage, new RealSaveFileSystem(),
-                    parsedBounds.Value, new MigrationTable());
+                    parsedBounds.Value, MigrationTable.CreateDefault());
                 _saveStore.Load();
                 _dailyProgress = new DailyProgressTracker(_saveStore);
                 _dailyReminderPreferences = new DailyReminderPreferences(_saveStore);
