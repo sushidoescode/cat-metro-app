@@ -12,7 +12,11 @@ namespace CatMetro.Presentation.Board
         private const float TargetPortraitAspect = 9f / 19.5f;
         private const float SafeWidth = 0.93f;
         private const float SafeHeight = 0.78f;
-        private static readonly Quaternion BoardTilt = Quaternion.Euler(38f, -32f, -4f);
+        // Public because the diorama tilt is the ONLY thing that decides which way a board-local
+        // feature faces the (identity-rotated, orthographic) camera. ToyTrainView derives the
+        // cat's fixed facing from it rather than hardcoding a yaw that would silently rot if
+        // this tilt were ever re-authored.
+        public static readonly Quaternion BoardTilt = Quaternion.Euler(38f, -32f, -4f);
 
         public static void Apply(Transform owner, Camera camera, BoardView board)
         {
