@@ -174,6 +174,11 @@ namespace CatMetro.Tests.EditMode.Presentation
             _board.UpdateFrom(_session, 0.2f);
             Assert.That(train.gameObject.activeSelf, Is.False);
 
+            _board.UpdateFrom(_session, 0.3f);
+            _board.UpdateFrom(_session, 0.4f);
+            Assert.That(train.gameObject.activeSelf, Is.False,
+                "repeated motion-off frames keep the cancelled slot hidden");
+
             _board.MotionOffSource = () => false;
             _board.UpdateFrom(_session, 1f);
             Assert.That(train.gameObject.activeSelf, Is.False);
@@ -190,17 +195,28 @@ namespace CatMetro.Tests.EditMode.Presentation
             _board.UpdateFrom(_session, 0.1f);
 
             SetLiveSlot(99, 1);
-            TrainSlot before = _session.State.Trains[0];
-            int deliveriesBefore = _session.State.Deliveries;
+            _session.EnqueueToggle(0);
+            _session.AdvanceMs(42d);
+            byte[] stateDigestBefore = StateDigest(_session);
+            TrainSlot[] previousTrainsBefore = CopySlots(_session.PrevTrains);
+            ToggleSwitchCommand[] logBefore = CopyLog(_session);
+            int logFormatBefore = _session.Log.FormatVersion;
+            double alphaBefore = _session.Alpha;
             _board.UpdateFrom(_session, 0.2f);
 
             var train = BoardTrain().GetComponent<ToyTrainView>();
             Assert.That(train.gameObject.activeSelf, Is.True);
             Assert.That(train.PresentationState, Is.EqualTo(CatPresentationState.Walk));
-            Assert.That(_session.State.Trains[0].Id, Is.EqualTo(before.Id));
-            Assert.That(_session.State.Trains[0].NodeId, Is.EqualTo(before.NodeId));
-            Assert.That(_session.State.Trains[0].State, Is.EqualTo(before.State));
-            Assert.That(_session.State.Deliveries, Is.EqualTo(deliveriesBefore));
+            Assert.That(StateDigest(_session), Is.EqualTo(stateDigestBefore));
+            AssertTrainSlotsEqual(_session.PrevTrains, previousTrainsBefore);
+            Assert.That(_session.Log.FormatVersion, Is.EqualTo(logFormatBefore));
+            Assert.That(_session.Log.Entries.Count, Is.EqualTo(logBefore.Length));
+            for (int i = 0; i < logBefore.Length; i++)
+            {
+                Assert.That(_session.Log.Entries[i].SwitchId, Is.EqualTo(logBefore[i].SwitchId));
+                Assert.That(_session.Log.Entries[i].Tick, Is.EqualTo(logBefore[i].Tick));
+            }
+            Assert.That(_session.Alpha, Is.EqualTo(alphaBefore));
         }
 
         private Transform Cat() => _view.transform.Find("Carriage/Cat");
@@ -228,6 +244,42 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         private Transform BoardTrain() => _board.transform.Find("train:0");
+
+        private static byte[] StateDigest(GameSession session)
+        {
+            var digest = new byte[session.State.DigestLength()];
+            session.State.WriteDigest(digest);
+            return digest;
+        }
+
+        private static TrainSlot[] CopySlots(TrainSlot[] slots)
+        {
+            var copy = new TrainSlot[slots.Length];
+            for (int i = 0; i < slots.Length; i++) copy[i] = slots[i];
+            return copy;
+        }
+
+        private static ToggleSwitchCommand[] CopyLog(GameSession session)
+        {
+            var copy = new ToggleSwitchCommand[session.Log.Entries.Count];
+            for (int i = 0; i < copy.Length; i++) copy[i] = session.Log.Entries[i];
+            return copy;
+        }
+
+        private static void AssertTrainSlotsEqual(TrainSlot[] actual, TrainSlot[] expected)
+        {
+            Assert.That(actual.Length, Is.EqualTo(expected.Length));
+            for (int i = 0; i < actual.Length; i++)
+            {
+                Assert.That(actual[i].Id, Is.EqualTo(expected[i].Id));
+                Assert.That(actual[i].Color, Is.EqualTo(expected[i].Color));
+                Assert.That(actual[i].EdgeId, Is.EqualTo(expected[i].EdgeId));
+                Assert.That(actual[i].ProgressTicks, Is.EqualTo(expected[i].ProgressTicks));
+                Assert.That(actual[i].NodeId, Is.EqualTo(expected[i].NodeId));
+                Assert.That(actual[i].State, Is.EqualTo(expected[i].State));
+            }
+        }
+
         private static Vector3 WorldMeshSize(Transform part)
         {
             Vector3 bounds = part.GetComponent<MeshFilter>().sharedMesh.bounds.size;
