@@ -340,6 +340,307 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator SettingsFallback_GrantOnResume_EnablesAndSchedulesOnceWithoutSecondTap()
+        {
+            SeedCountedDaily(promptSeen: true);
+            var messaging = new FakeMessaging
+            {
+                PermissionValue = MessagingPermission.Denied,
+                CanRequestPermissionValue = false,
+                PromptResult = MessagingPermission.Unknown,
+            };
+            messaging.DurableStateProbe = DurableState;
+            Launch(messaging);
+            yield return null;
+            _messaging.ClearProviderCalls();
+
+            OpenReminderSettings();
+            Tap(DailyReminderLayout.Calculate(Screen.safeArea, Screen.dpi,
+                DailyReminderLayout.SheetMode.Settings, showSettingsFallback: true)
+                .OpenSettings);
+            yield return null;
+            Assert.That(_messaging.PromptCalls, Is.EqualTo(1));
+            CollectionAssert.AreEqual(new[] { true }, _messaging.PromptFallbackArguments);
+            Assert.That(ReadPreferences().Enabled, Is.False,
+                "the fallback's initial Unknown result cannot infer consent");
+            Assert.That(_messaging.ScheduleAttempts, Is.Empty);
+
+            _messaging.PermissionValue = MessagingPermission.Authorized;
+            ResumeApplicationTwice();
+            Assert.That(ReadPreferences().Enabled, Is.False,
+                "focus callbacks queue work but do not mutate before the main-thread Update");
+            yield return null;
+
+            Assert.That(ReadPreferences().Enabled, Is.True,
+                "the original explicit settings intent completes without a second tap");
+            Assert.That(_messaging.ScheduleAttempts.Count, Is.EqualTo(1));
+            Assert.That(_messaging.ProviderStateAtCall[^1],
+                Is.EqualTo("schedule:true:morning"),
+                "the durable enabled commit precedes Journey scheduling");
+            Assert.That(_root.Home.ReminderSheet.StatusText,
+                Is.EqualTo("Notifications allowed."));
+            Assert.That(Find(_root.Home.ReminderSheet.transform, "ReminderOn")
+                    .GetComponent<Image>().color,
+                Is.EqualTo(Palette.MetroTeal),
+                "the visible settings sheet repaints effectively On");
+
+            ResumeApplicationTwice();
+            yield return null;
+            Assert.That(_messaging.ScheduleAttempts.Count, Is.EqualTo(1),
+                "duplicate focus/resume callbacks cannot schedule twice");
+        }
+
+        [UnityTest]
+        public IEnumerator SettingsFallback_FocusGrantWinsOnce_WhenPromptTaskCompletesLater()
+        {
+            SeedCountedDaily(promptSeen: true);
+            var messaging = new FakeMessaging
+            {
+                PermissionValue = MessagingPermission.Denied,
+                CanRequestPermissionValue = false,
+                HoldPermissionRequest = true,
+            };
+            Launch(messaging);
+            yield return null;
+            _messaging.ClearProviderCalls();
+
+            OpenReminderSettings();
+            Tap(DailyReminderLayout.Calculate(Screen.safeArea, Screen.dpi,
+                DailyReminderLayout.SheetMode.Settings, showSettingsFallback: true)
+                .OpenSettings);
+            Assert.That(_messaging.PromptCalls, Is.EqualTo(1));
+            Assert.That(_messaging.ScheduleAttempts, Is.Empty);
+
+            _messaging.PermissionValue = MessagingPermission.Authorized;
+            ResumeApplicationTwice();
+            yield return null;
+            Assert.That(ReadPreferences().Enabled, Is.True);
+            Assert.That(_messaging.ScheduleAttempts.Count, Is.EqualTo(1));
+
+            _messaging.CompleteHeldPrompt(MessagingPermission.Authorized);
+            yield return null;
+            yield return null;
+            Assert.That(_messaging.ScheduleAttempts.Count, Is.EqualTo(1),
+                "late PromptAsync completion cannot repeat focus reconciliation");
+            Assert.That(ReadPreferences().Enabled, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator SettingsFallback_OffThenAuthorizedOn_SupersedesHeldTaskOutcome()
+        {
+            SeedCountedDaily(promptSeen: true);
+            var messaging = new FakeMessaging
+            {
+                PermissionValue = MessagingPermission.Denied,
+                CanRequestPermissionValue = false,
+                HoldPermissionRequest = true,
+            };
+            Launch(messaging);
+            yield return null;
+            _messaging.ClearProviderCalls();
+
+            OpenReminderSettings();
+            Tap(DailyReminderLayout.Calculate(Screen.safeArea, Screen.dpi,
+                DailyReminderLayout.SheetMode.Settings, showSettingsFallback: true)
+                .OpenSettings);
+            Assert.That(_messaging.PromptCalls, Is.EqualTo(1));
+
+            _messaging.PermissionValue = MessagingPermission.Authorized;
+            ResumeApplicationTwice();
+            yield return null;
+            Assert.That(ReadPreferences().Enabled, Is.True);
+            Assert.That(_messaging.ScheduleAttempts.Count, Is.EqualTo(1));
+
+            _messaging.ClearProviderCalls();
+            Tap(_root.Home.ReminderSheet.OffRectPx);
+            Assert.That(ReadPreferences().Enabled, Is.False);
+            CollectionAssert.AreEqual(new[] { "daily-ready" }, _messaging.CancelAttempts);
+
+            _messaging.ClearProviderCalls();
+            Tap(_root.Home.ReminderSheet.OnRectPx);
+            Assert.That(_messaging.PromptCalls, Is.EqualTo(1),
+                "authorized On must not start a second native request");
+            Assert.That(ReadPreferences().Enabled, Is.True,
+                "the later explicit On must not be blocked by the old held task");
+            Assert.That(_messaging.ScheduleAttempts.Count, Is.EqualTo(1));
+            Assert.That(_messaging.CancelAttempts, Is.Empty);
+
+            _messaging.CompleteHeldPrompt(MessagingPermission.Denied);
+            yield return null;
+            yield return null;
+            Assert.That(ReadPreferences().Enabled, Is.True,
+                "the superseded task's stale denial cannot undo the newer explicit On");
+            Assert.That(_messaging.ScheduleAttempts.Count, Is.EqualTo(1));
+            Assert.That(_messaging.CancelAttempts, Is.Empty);
+        }
+
+        [UnityTest]
+        public IEnumerator SettingsFallback_OffThenDeniedOn_DoesNotStartSecondHeldPrompt()
+        {
+            SeedCountedDaily(promptSeen: true);
+            var messaging = new FakeMessaging
+            {
+                PermissionValue = MessagingPermission.Denied,
+                CanRequestPermissionValue = false,
+                HoldPermissionRequest = true,
+            };
+            Launch(messaging);
+            yield return null;
+            _messaging.ClearProviderCalls();
+
+            OpenReminderSettings();
+            Tap(DailyReminderLayout.Calculate(Screen.safeArea, Screen.dpi,
+                DailyReminderLayout.SheetMode.Settings, showSettingsFallback: true)
+                .OpenSettings);
+            Assert.That(_messaging.PromptCalls, Is.EqualTo(1));
+
+            Tap(_root.Home.ReminderSheet.OffRectPx);
+            Assert.That(ReadPreferences().Enabled, Is.False);
+
+            _messaging.PermissionValue = MessagingPermission.Denied;
+            _messaging.CanRequestPermissionValue = false;
+            Tap(_root.Home.ReminderSheet.OnRectPx);
+            int promptCallsBeforeCompletion = _messaging.PromptCalls;
+
+            _messaging.CompleteHeldPrompt(MessagingPermission.Denied);
+            yield return null;
+            yield return null;
+
+            Assert.That(promptCallsBeforeCompletion, Is.EqualTo(1),
+                "a superseded but physically pending native request still owns the duplicate-request guard");
+            Assert.That(_messaging.PromptCalls, Is.EqualTo(1));
+            Assert.That(ReadPreferences().Enabled, Is.False);
+            Assert.That(_messaging.ScheduleAttempts, Is.Empty);
+        }
+
+        [UnityTest]
+        public IEnumerator SettingsFallback_CancelFailure_DoesNotStrandLaterAuthorizedResume()
+        {
+            SeedCountedDaily(promptSeen: true);
+            var messaging = new FakeMessaging
+            {
+                PermissionValue = MessagingPermission.Denied,
+                CanRequestPermissionValue = false,
+                PromptResult = MessagingPermission.Unknown,
+            };
+            messaging.DurableStateProbe = DurableState;
+            Launch(messaging);
+            yield return null;
+            _messaging.ClearProviderCalls();
+            _messaging.ThrowOnCancel = true;
+
+            OpenReminderSettings();
+            Tap(DailyReminderLayout.Calculate(Screen.safeArea, Screen.dpi,
+                DailyReminderLayout.SheetMode.Settings, showSettingsFallback: true)
+                .OpenSettings);
+            yield return null;
+            Assert.That(ReadPreferences().Enabled, Is.False);
+            CollectionAssert.AreEqual(new[] { "daily-ready" }, _messaging.CancelAttempts);
+            Assert.That(_root.Home.ReminderSheet.StatusText,
+                Is.EqualTo("Notifications unavailable on this device."));
+
+            _messaging.ThrowOnCancel = false;
+            _messaging.ClearProviderCalls();
+            _messaging.PermissionValue = MessagingPermission.Authorized;
+            ResumeApplicationTwice();
+            yield return null;
+
+            Assert.That(ReadPreferences().Enabled, Is.True,
+                "the explicit settings intent survives a transient Cancel failure");
+            Assert.That(_messaging.ScheduleAttempts.Count, Is.EqualTo(1));
+            Assert.That(_messaging.ProviderStateAtCall[^1],
+                Is.EqualTo("schedule:true:morning"));
+            Assert.That(_root.Home.ReminderSheet.StatusText,
+                Is.EqualTo("Notifications allowed."));
+            Assert.That(Find(_root.Home.ReminderSheet.transform, "ReminderOn")
+                    .GetComponent<Image>().color,
+                Is.EqualTo(Palette.MetroTeal));
+        }
+
+        [UnityTest]
+        public IEnumerator SettingsFallback_ExplicitOffClearsPendingResumeEnable()
+        {
+            SeedCountedDaily(promptSeen: true);
+            var messaging = new FakeMessaging
+            {
+                PermissionValue = MessagingPermission.Denied,
+                CanRequestPermissionValue = false,
+                HoldPermissionRequest = true,
+            };
+            Launch(messaging);
+            yield return null;
+            _messaging.ClearProviderCalls();
+
+            OpenReminderSettings();
+            Tap(DailyReminderLayout.Calculate(Screen.safeArea, Screen.dpi,
+                DailyReminderLayout.SheetMode.Settings, showSettingsFallback: true)
+                .OpenSettings);
+            Assert.That(_messaging.PromptCalls, Is.EqualTo(1));
+            _messaging.ClearProviderCalls();
+
+            Tap(_root.Home.ReminderSheet.OffRectPx);
+            Assert.That(ReadPreferences().Enabled, Is.False);
+            CollectionAssert.AreEqual(new[] { "daily-ready" }, _messaging.CancelAttempts);
+            _messaging.PermissionValue = MessagingPermission.Authorized;
+            ResumeApplicationTwice();
+            _messaging.CompleteHeldPrompt(MessagingPermission.Authorized);
+            yield return null;
+            yield return null;
+
+            Assert.That(ReadPreferences().Enabled, Is.False,
+                "explicit Off cancels the earlier settings-enable intent");
+            Assert.That(_messaging.ScheduleAttempts, Is.Empty);
+            CollectionAssert.AreEqual(new[] { "daily-ready" }, _messaging.CancelAttempts);
+        }
+
+        [UnityTest]
+        public IEnumerator SettingsFallback_ResumeCommitRefusal_PerformsNoProviderSideEffect()
+        {
+            SeedCountedDaily(promptSeen: true);
+            var messaging = new FakeMessaging
+            {
+                PermissionValue = MessagingPermission.Denied,
+                CanRequestPermissionValue = false,
+                PromptResult = MessagingPermission.Unknown,
+            };
+            Launch(messaging);
+            yield return null;
+            _messaging.ClearProviderCalls();
+
+            OpenReminderSettings();
+            Tap(DailyReminderLayout.Calculate(Screen.safeArea, Screen.dpi,
+                DailyReminderLayout.SheetMode.Settings, showSettingsFallback: true)
+                .OpenSettings);
+            yield return null;
+            _messaging.ClearProviderCalls();
+
+            string blockedSaveBackup = BlockSaveWrites();
+            _messaging.PermissionValue = MessagingPermission.Authorized;
+            ResumeApplicationTwice();
+            yield return null;
+
+            Assert.That(_messaging.ScheduleAttempts, Is.Empty,
+                "an authorized OS state cannot schedule after the local commit was refused");
+            Assert.That(_messaging.CancelAttempts, Is.Empty);
+            Assert.That(Find(_root.Home.ReminderSheet.transform, "ReminderOff")
+                    .GetComponent<Image>().color,
+                Is.EqualTo(Palette.MetroTeal),
+                "the sheet repaints from the rolled-back durable Off state");
+
+            RestoreSaveWrites(blockedSaveBackup);
+            Assert.That(ReadPreferences().Enabled, Is.False);
+            yield return null;
+            Assert.That(_messaging.ScheduleAttempts, Is.Empty,
+                "there is no frame polling or automatic write retry");
+
+            ResumeApplicationTwice();
+            yield return null;
+            Assert.That(ReadPreferences().Enabled, Is.True,
+                "a later real lifecycle event may retry the retained explicit intent");
+            Assert.That(_messaging.ScheduleAttempts.Count, Is.EqualTo(1));
+        }
+
+        [UnityTest]
         public IEnumerator ProviderScheduleException_DoesNotBreakHome_AndReconcilesNextBoot()
         {
             SeedCountedDaily(promptSeen: true, enabled: true,
@@ -459,8 +760,8 @@ namespace CatMetro.Tests.PlayMode
             SeedCountedDaily(promptSeen: true);
             var messaging = new FakeMessaging
             {
-                PermissionValue = MessagingPermission.Unknown,
-                CanRequestPermissionValue = true,
+                PermissionValue = MessagingPermission.Denied,
+                CanRequestPermissionValue = false,
                 HoldPermissionRequest = true,
             };
             Launch(messaging);
@@ -469,6 +770,7 @@ namespace CatMetro.Tests.PlayMode
             OpenReminderSettings();
             Tap(_root.Home.ReminderSheet.OnRectPx);
             Assert.That(_messaging.PromptCalls, Is.EqualTo(1));
+            CollectionAssert.AreEqual(new[] { true }, _messaging.PromptFallbackArguments);
             Assert.That(_messaging.LastPromptToken.CanBeCanceled, Is.True);
             Tap(_root.Home.ReminderSheet.OnRectPx);
             Assert.That(_messaging.PromptCalls, Is.EqualTo(1),
@@ -514,6 +816,17 @@ namespace CatMetro.Tests.PlayMode
         private void Tap(Rect rect)
         {
             Assert.That(_root.Input.HandleTapAtScreen(rect.center), Is.EqualTo(-3));
+        }
+
+        private void ResumeApplicationTwice()
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                _root.gameObject.SendMessage("OnApplicationFocus", true,
+                    SendMessageOptions.DontRequireReceiver);
+                _root.gameObject.SendMessage("OnApplicationPause", false,
+                    SendMessageOptions.DontRequireReceiver);
+            }
         }
 
         private static Transform Find(Transform root, string name)
@@ -644,6 +957,7 @@ namespace CatMetro.Tests.PlayMode
             public bool HoldPermissionRequest;
             public bool RaiseDailyWhenSubscribed;
             public bool ThrowOnSchedule;
+            public bool ThrowOnCancel;
             public Func<string> DurableStateProbe;
 
             public int PromptCalls { get; private set; }
@@ -709,6 +1023,7 @@ namespace CatMetro.Tests.PlayMode
                 CancelAttempts.Add(notificationId);
                 ProviderStateAtCall.Add("cancel:"
                     + (DurableStateProbe != null ? DurableStateProbe() : "unobserved"));
+                if (ThrowOnCancel) throw new InvalidOperationException("cancel unavailable");
             }
 
             public void Dispose()

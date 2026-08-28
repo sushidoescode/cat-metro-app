@@ -69,8 +69,11 @@ namespace CatMetro.Bootstrap
         private CancellationTokenSource _messagingPermissionCancellation;
         private System.Threading.Tasks.Task _messagingPermissionTask;
         private bool _messagingPermissionRequestInFlight;
+        private int _messagingPermissionRequestGeneration;
         private bool _messagingListenerAttached;
         private bool _messagingOperationalFailure;
+        private bool _settingsEnableIntentPending;
+        private bool _settingsPermissionRecheckPending;
         private bool _destroying;
         private bool _reminderPromptPending;
         private bool _checkReminderAfterHomePresentation;
@@ -613,13 +616,17 @@ namespace CatMetro.Bootstrap
         private void OnReminderEnabledChanged(bool enabled)
         {
             if (enabled) BeginEnableDailyReminder();
-            else ApplyPlayerReminderEnabled(false);
+            else
+            {
+                SupersedePermissionRequest();
+                ClearSettingsEnableIntent();
+                ApplyPlayerReminderEnabled(false);
+            }
         }
 
         private void BeginEnableDailyReminder()
         {
-            if (_destroying || _messagingPermissionRequestInFlight
-                || _dailyReminderPreferences == null || _messaging == null)
+            if (_destroying || _dailyReminderPreferences == null || _messaging == null)
                 return;
 
             ReadMessagingState(out bool available, out MessagingPermission permission,
@@ -631,52 +638,102 @@ namespace CatMetro.Bootstrap
             }
             if (permission == MessagingPermission.Authorized)
             {
+                SupersedePermissionRequest();
+                ClearSettingsEnableIntent();
                 ApplyPlayerReminderEnabled(true);
                 return;
             }
+            if (_messagingPermissionRequestInFlight) return;
 
             var cancellation = _messagingPermissionCancellation;
             if (cancellation == null || cancellation.IsCancellationRequested) return;
             bool fallbackToSettings = !canRequestPermission
                 && permission != MessagingPermission.Authorized;
+            if (fallbackToSettings)
+            {
+                _settingsEnableIntentPending = true;
+                _settingsPermissionRecheckPending = false;
+            }
+            else
+            {
+                ClearSettingsEnableIntent();
+            }
+            int requestGeneration = ++_messagingPermissionRequestGeneration;
             _messagingPermissionRequestInFlight = true;
             _messagingPermissionTask = RequestReminderPermissionAsync(
-                fallbackToSettings, cancellation.Token);
+                fallbackToSettings, cancellation.Token, requestGeneration);
         }
 
         private async System.Threading.Tasks.Task RequestReminderPermissionAsync(
-            bool fallbackToSettings, CancellationToken cancellationToken)
+            bool fallbackToSettings, CancellationToken cancellationToken,
+            int requestGeneration)
         {
             try
             {
                 MessagingPermission result = await _messaging.PromptAsync(
                     fallbackToSettings, cancellationToken);
-                if (_destroying || cancellationToken.IsCancellationRequested) return;
-                ApplyPlayerReminderEnabled(result == MessagingPermission.Authorized);
+                if (_destroying || cancellationToken.IsCancellationRequested
+                    || requestGeneration != _messagingPermissionRequestGeneration)
+                    return;
+                if (fallbackToSettings)
+                {
+                    // Opening OS settings may complete before the player changes permission.
+                    // Retain this explicit enable intent for the next foreground callback unless
+                    // focus reconciliation (or explicit Off) already consumed it.
+                    if (!_settingsEnableIntentPending) return;
+                    if (result == MessagingPermission.Authorized)
+                    {
+                        if (ApplyPlayerReminderEnabled(true))
+                            ClearSettingsEnableIntent();
+                    }
+                    else
+                    {
+                        ApplyPlayerReminderEnabled(false);
+                    }
+                }
+                else
+                {
+                    ClearSettingsEnableIntent();
+                    ApplyPlayerReminderEnabled(result == MessagingPermission.Authorized);
+                }
             }
             catch (System.OperationCanceledException)
             {
                 // Destruction owns cancellation; no UI/save/provider mutation follows it.
+                if (!_destroying
+                    && requestGeneration == _messagingPermissionRequestGeneration)
+                    ClearSettingsEnableIntent();
             }
             catch (System.Exception ex)
             {
-                _messagingOperationalFailure = true;
-                Debug.LogWarning("daily reminder permission request failed: " + ex.Message);
+                if (!_destroying
+                    && requestGeneration == _messagingPermissionRequestGeneration)
+                {
+                    ClearSettingsEnableIntent();
+                    _messagingOperationalFailure = true;
+                    Debug.LogWarning("daily reminder permission request failed: " + ex.Message);
+                }
             }
             finally
             {
+                // Generation supersession makes this completion logically stale, but it does
+                // not end the provider's physical PromptAsync. Keep the duplicate-request guard
+                // until whichever request actually owns it has settled.
                 _messagingPermissionRequestInFlight = false;
-                if (!_destroying) ConfigureReminderHome();
+                if (requestGeneration == _messagingPermissionRequestGeneration)
+                {
+                    if (!_destroying) ConfigureReminderHome();
+                }
             }
         }
 
-        private void ApplyPlayerReminderEnabled(bool enabled)
+        private bool ApplyPlayerReminderEnabled(bool enabled)
         {
-            if (_destroying || _dailyReminderPreferences == null) return;
+            if (_destroying || _dailyReminderPreferences == null) return false;
             if (!_dailyReminderPreferences.TrySetEnabled(enabled))
             {
                 ConfigureReminderHome();
-                return;
+                return false;
             }
 
             if (enabled)
@@ -684,6 +741,57 @@ namespace CatMetro.Bootstrap
             else
                 CancelDailyReminder();
             ConfigureReminderHome();
+            return true;
+        }
+
+        private void ClearSettingsEnableIntent()
+        {
+            _settingsEnableIntentPending = false;
+            _settingsPermissionRecheckPending = false;
+        }
+
+        private void SupersedePermissionRequest()
+        {
+            _messagingPermissionRequestGeneration++;
+        }
+
+        private void QueueSettingsPermissionRecheck()
+        {
+            if (_destroying || !_settingsEnableIntentPending) return;
+            _settingsPermissionRecheckPending = true;
+        }
+
+        private void PumpSettingsPermissionRecheck()
+        {
+            if (!_settingsPermissionRecheckPending) return;
+            _settingsPermissionRecheckPending = false;
+            if (_destroying || !_settingsEnableIntentPending) return;
+
+            ReadMessagingState(out bool available, out MessagingPermission permission, out _,
+                allowOperationalRecovery: true);
+            if (available && permission == MessagingPermission.Authorized)
+            {
+                if (ApplyPlayerReminderEnabled(true))
+                {
+                    SupersedePermissionRequest();
+                    ClearSettingsEnableIntent();
+                }
+                return;
+            }
+
+            // A focus callback is a one-shot observation, not a persistence/provider poll. Keep
+            // the explicit settings intent for a later real foreground transition.
+            ConfigureReminderHome();
+        }
+
+        private void OnApplicationFocus(bool hasFocus)
+        {
+            if (hasFocus) QueueSettingsPermissionRecheck();
+        }
+
+        private void OnApplicationPause(bool pauseStatus)
+        {
+            if (!pauseStatus) QueueSettingsPermissionRecheck();
         }
 
         private void OnReminderSlotChanged(DailyReminderSlot slot)
@@ -721,6 +829,7 @@ namespace CatMetro.Bootstrap
             {
                 _messaging?.Schedule(DailyChallengeNotification.Create(
                     slot ?? DailyReminderSlot.Morning));
+                _messagingOperationalFailure = false;
             }
             catch (System.Exception ex)
             {
@@ -734,6 +843,7 @@ namespace CatMetro.Bootstrap
             try
             {
                 _messaging?.Cancel("daily-ready");
+                _messagingOperationalFailure = false;
             }
             catch (System.Exception ex)
             {
@@ -743,12 +853,15 @@ namespace CatMetro.Bootstrap
         }
 
         private void ReadMessagingState(out bool available,
-            out MessagingPermission permission, out bool canRequestPermission)
+            out MessagingPermission permission, out bool canRequestPermission,
+            bool allowOperationalRecovery = false)
         {
             available = false;
             permission = MessagingPermission.Unknown;
             canRequestPermission = false;
-            if (_messaging == null || _messagingOperationalFailure) return;
+            if (_messaging == null
+                || (_messagingOperationalFailure && !allowOperationalRecovery))
+                return;
 
             try
             {
@@ -1230,6 +1343,7 @@ namespace CatMetro.Bootstrap
         {
             PumpDailyFallback();
             PumpMessagingRoutes();
+            PumpSettingsPermissionRecheck();
             if (Session == null || _halted) return;
             // The one-frame input lockout. Request frame
             // F (ReturnHomeFromDaily, above) sets _pendingHomeShowFrame = F WITHOUT showing
@@ -1355,6 +1469,8 @@ namespace CatMetro.Bootstrap
         private void OnDestroy()
         {
             _destroying = true;
+            SupersedePermissionRequest();
+            ClearSettingsEnableIntent();
             var permissionCancellation = _messagingPermissionCancellation;
             _messagingPermissionCancellation = null;
             if (permissionCancellation != null)
