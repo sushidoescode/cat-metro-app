@@ -23,6 +23,8 @@ namespace CatMetro.Presentation.Cats
         public const float AlightDuration = 0.18f;
         public const float DeliveryWalkDuration = 0.28f;
         public const float CelebrateDuration = 0.48f;
+        private const float BoardStartBlend = 0.35f;
+        private const float DeliveryWalkMinimumBlend = 0.45f;
 
         private int _representedOccupantGeneration;
         private bool _departureActive;
@@ -41,6 +43,22 @@ namespace CatMetro.Presentation.Cats
         /// short local path; this value is never consumed by gameplay.
         /// </summary>
         public float PlatformBlend { get; private set; }
+
+        /// <summary>
+        /// Nonnegative presentation-path blend units per second while walking. BoardView passes
+        /// this read-only rate to the view, which measures the actual seat/platform path in board
+        /// units (including queue-lane displacement). It never changes simulation timing.
+        /// </summary>
+        public float PlatformBlendSpeed
+        {
+            get
+            {
+                if (State != CatPresentationState.Walk) return 0f;
+                return _departureActive
+                    ? Mathf.Max(0f, 1f - _departureWalkStartBlend) / DeliveryWalkDuration
+                    : (1f - BoardStartBlend) / SpawnWalkDuration;
+            }
+        }
 
         /// <summary>
         /// True only for the alight/walk/celebrate half of the path. The view uses it to face
@@ -95,7 +113,8 @@ namespace CatMetro.Presentation.Cats
                 // short edge. Reverse from the last rendered path coordinate instead of
                 // snapping to the seat; the simulation event still starts departure now.
                 _departureAlightStartBlend = Mathf.Clamp01(PlatformBlend);
-                _departureWalkStartBlend = Mathf.Max(0.45f, _departureAlightStartBlend);
+                _departureWalkStartBlend = Mathf.Max(
+                    DeliveryWalkMinimumBlend, _departureAlightStartBlend);
                 _waitingOnPlatform = false;
                 _departureActive = true;
                 Enter(CatPresentationState.Alight, now);
@@ -119,10 +138,10 @@ namespace CatMetro.Presentation.Cats
                     return _departureActive
                         ? Mathf.Lerp(_departureWalkStartBlend, 1f,
                             Mathf.Clamp01(StateElapsed / DeliveryWalkDuration))
-                        : Mathf.Lerp(1f, 0.35f,
+                        : Mathf.Lerp(1f, BoardStartBlend,
                             Mathf.Clamp01(StateElapsed / SpawnWalkDuration));
                 case CatPresentationState.Board:
-                    return Mathf.Lerp(0.35f, 0f,
+                    return Mathf.Lerp(BoardStartBlend, 0f,
                         Mathf.Clamp01(StateElapsed / BoardDuration));
                 case CatPresentationState.Alight:
                     return Mathf.Lerp(_departureAlightStartBlend, _departureWalkStartBlend,

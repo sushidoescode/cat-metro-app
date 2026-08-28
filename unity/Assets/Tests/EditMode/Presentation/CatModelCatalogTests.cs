@@ -5,6 +5,7 @@ using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Theme;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -37,6 +38,8 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(CatModelCatalog.BoardClip, Is.EqualTo("Cat_Board"));
             Assert.That(CatModelCatalog.AlightClip, Is.EqualTo("Cat_Alight"));
             Assert.That(CatModelCatalog.CelebrateClip, Is.EqualTo("Cat_Celebrate"));
+            Assert.That(CatModelCatalog.PresenterScale, Is.EqualTo(0.42f));
+            Assert.That(CatModelCatalog.WalkTravelSpeedAtOneX, Is.EqualTo(0.100367f));
         }
 
         [Test]
@@ -191,6 +194,57 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void NonemptyZeroLengthMappedClip_IsRejectedByThePositiveLengthGate()
+        {
+            using (var fixture = new ConformingRigFixture(
+                zeroLengthMappedClipName: CatModelCatalog.BoardClip))
+            {
+                AnimationClip clip = fixture.ClipNamed(CatModelCatalog.BoardClip);
+                Assert.That(clip.empty, Is.False,
+                    "this fixture must isolate length from the separate empty-clip check");
+                Assert.That(clip.length, Is.Zero);
+
+                var catalog = new CatModelCatalog(fixture.Prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain(CatModelCatalog.BoardClip));
+                Assert.That(catalog.RejectionReason, Does.Contain("positive-length"));
+            }
+        }
+
+        [Test]
+        public void PositiveLengthBindPoseFallbackShape_IsAdmittedByTheStrictGate()
+        {
+            using (var fixture = new ConformingRigFixture(padFallbacksAtBindPose: true))
+            {
+                string[] fallbackNames =
+                {
+                    CatModelCatalog.IdleSitClip,
+                    CatModelCatalog.BoardClip,
+                    CatModelCatalog.AlightClip,
+                    CatModelCatalog.CelebrateClip,
+                };
+                foreach (string fallbackName in fallbackNames)
+                {
+                    AnimationClip clip = fixture.ClipNamed(fallbackName);
+                    Assert.That(clip.empty, Is.False, fallbackName);
+                    Assert.That(clip.length, Is.EqualTo(0.4f).Within(0.0001f), fallbackName);
+                    EditorCurveBinding[] bindings = AnimationUtility.GetCurveBindings(clip);
+                    Assert.That(bindings.Length, Is.EqualTo(1), fallbackName);
+                    AnimationCurve curve = AnimationUtility.GetEditorCurve(clip, bindings[0]);
+                    Assert.That(curve.keys.Length, Is.EqualTo(2), fallbackName);
+                    Assert.That(curve.keys[0].value, Is.Zero, fallbackName);
+                    Assert.That(curve.keys[1].value, Is.Zero, fallbackName);
+                }
+
+                var catalog = new CatModelCatalog(fixture.Prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(1),
+                    catalog.RejectionReason);
+            }
+        }
+
+        [Test]
         public void ConformingRig_IsAdmittedAndToyTrainMapsItsAxesScaleAndRequiredPlayback()
         {
             using (var fixture = new ConformingRigFixture())
@@ -213,7 +267,7 @@ namespace CatMetro.Tests.EditMode.Presentation
 
                     Transform rig = animators[0].transform;
                     Assert.That(rig.localScale,
-                        Is.EqualTo(Vector3.one * 0.34f));
+                        Is.EqualTo(Vector3.one * 0.42f));
                     AssertDirection(rig.localRotation * Vector3.up, Vector3.back,
                         "imported +Y must become cat/tabletop up (-Z)");
                     AssertDirection(rig.localRotation * Vector3.forward, Vector3.right,
@@ -242,9 +296,9 @@ namespace CatMetro.Tests.EditMode.Presentation
 
                     Bounds standing = BoundsIn(cat,
                         rig.GetComponentInChildren<MeshFilter>(true));
-                    Assert.That(standing.min.z, Is.EqualTo(-0.34f).Within(0.0001f));
+                    Assert.That(standing.min.z, Is.EqualTo(-0.42f).Within(0.0001f));
                     Assert.That(standing.max.z, Is.EqualTo(0f).Within(0.0001f));
-                    Assert.That(standing.size.z, Is.EqualTo(0.34f).Within(0.0001f));
+                    Assert.That(standing.size.z, Is.EqualTo(0.42f).Within(0.0001f));
 
                     AssertPlays(view, animators[0], CatPresentationState.WaitingIdle,
                         "Base Layer.Cat_IdleSit");
@@ -256,6 +310,51 @@ namespace CatMetro.Tests.EditMode.Presentation
                         "Base Layer.Cat_Alight");
                     AssertPlays(view, animators[0], CatPresentationState.Celebrate,
                         "Base Layer.Cat_Celebrate");
+                }
+                finally
+                {
+                    Object.DestroyImmediate(host);
+                }
+            }
+        }
+
+        [Test]
+        public void WalkPlayback_UsesActualPlatformPathAndRetimesTheSameState()
+        {
+            using (var fixture = new ConformingRigFixture())
+            {
+                var host = new GameObject("walk-speed-rig-host");
+                try
+                {
+                    host.transform.localScale = new Vector3(2f, 3f, 1f);
+                    var view = ToyTrainView.Create(host.transform, "train:rig",
+                        new[] { 0 }, new[] { 1 }, new CatModelCatalog(fixture.Prefab));
+                    view.SyncSlot(0x0000000100000001L, CatColor.Red);
+                    Animator animator = view.GetComponentInChildren<Animator>(true);
+                    Transform cat = view.transform.Find("Carriage/Cat");
+                    Vector3 seatBoard = host.transform.InverseTransformPoint(cat.position);
+                    view.SetSourcePlatformAnchor(seatBoard, Vector3.down, 0);
+
+                    view.ApplyPresentation(CatPresentationState.Walk, 0.8f, false,
+                        0f, false, 1f);
+                    Assert.That(animator.speed, Is.EqualTo(2.989030f).Within(0.0001f),
+                        "lane zero is 0.30 board units, independent of board transform scale");
+
+                    view.SetSourcePlatformAnchor(seatBoard, Vector3.down, 3);
+                    view.ApplyPresentation(CatPresentationState.Walk, 0.75f, false,
+                        0.005f, false, 1f);
+                    Assert.That(animator.speed, Is.EqualTo(8.887026f).Within(0.0001f),
+                        "lane three is sqrt(0.30^2 + (2 * 0.42)^2) board units");
+
+                    view.ApplyPresentation(CatPresentationState.Walk, 0.7f, false,
+                        0.01f, false, 0.5f);
+                    Assert.That(animator.speed, Is.EqualTo(4.443513f).Within(0.0001f),
+                        "speed changes within one Walk state must not be skipped");
+
+                    view.ApplyPresentation(CatPresentationState.Board, 0.35f, false,
+                        0.02f, false, 10f);
+                    Assert.That(animator.speed, Is.EqualTo(1f),
+                        "desired travel speed affects only the in-place Walk clip");
                 }
                 finally
                 {
@@ -345,7 +444,9 @@ namespace CatMetro.Tests.EditMode.Presentation
                 new List<StateMachineBehaviour>();
 
             public ConformingRigFixture(bool swapWalkAndBoard = false,
-                bool addStateBehaviour = false, string emptyMappedClipName = null)
+                bool addStateBehaviour = false, string emptyMappedClipName = null,
+                bool padFallbacksAtBindPose = false,
+                string zeroLengthMappedClipName = null)
             {
                 Prefab = new GameObject("ConformingBoardCatRig");
                 var body = new GameObject("RigBody");
@@ -357,12 +458,17 @@ namespace CatMetro.Tests.EditMode.Presentation
 
                 _controller = new AnimatorController();
                 _controller.AddLayer("Base Layer");
-                AddRequiredState("Cat_IdleSit", emptyMappedClipName);
-                AnimatorState walk = AddRequiredState("Cat_Walk", emptyMappedClipName);
-                AnimatorState board = AddRequiredState("Cat_Board", emptyMappedClipName);
-                AddRequiredState("Cat_Alight", emptyMappedClipName);
+                AddRequiredState("Cat_IdleSit", emptyMappedClipName, padFallbacksAtBindPose,
+                    zeroLengthMappedClipName);
+                AnimatorState walk = AddRequiredState("Cat_Walk", emptyMappedClipName,
+                    padFallbacksAtBindPose, zeroLengthMappedClipName);
+                AnimatorState board = AddRequiredState("Cat_Board", emptyMappedClipName,
+                    padFallbacksAtBindPose, zeroLengthMappedClipName);
+                AddRequiredState("Cat_Alight", emptyMappedClipName, padFallbacksAtBindPose,
+                    zeroLengthMappedClipName);
                 AnimatorState celebrate = AddRequiredState("Cat_Celebrate",
-                    emptyMappedClipName);
+                    emptyMappedClipName, padFallbacksAtBindPose,
+                    zeroLengthMappedClipName);
                 if (swapWalkAndBoard)
                 {
                     Motion walkMotion = walk.motion;
@@ -381,6 +487,13 @@ namespace CatMetro.Tests.EditMode.Presentation
 
             public GameObject Prefab { get; }
 
+            public AnimationClip ClipNamed(string name)
+            {
+                for (int i = 0; i < _clips.Count; i++)
+                    if (_clips[i].name == name) return _clips[i];
+                return null;
+            }
+
             public void Dispose()
             {
                 Object.DestroyImmediate(Prefab);
@@ -391,12 +504,16 @@ namespace CatMetro.Tests.EditMode.Presentation
             }
 
             private AnimatorState AddState(string literalName, bool animateChild = false,
-                string clipName = null)
+                string clipName = null, bool holdBindPose = false,
+                bool zeroLength = false)
             {
                 var clip = new AnimationClip { name = clipName ?? literalName };
                 if (animateChild)
                     clip.SetCurve("RigBody", typeof(Transform), "localPosition.x",
-                        AnimationCurve.Linear(0f, 0f, 0.4f, 0.02f));
+                        zeroLength
+                            ? new AnimationCurve(new Keyframe(0f, 0f))
+                            : AnimationCurve.Linear(0f, 0f, 0.4f,
+                                holdBindPose ? 0f : 0.02f));
                 _clips.Add(clip);
                 AnimatorState state = _controller.layers[0].stateMachine.AddState(literalName);
                 state.motion = clip;
@@ -404,12 +521,16 @@ namespace CatMetro.Tests.EditMode.Presentation
             }
 
             private AnimatorState AddRequiredState(string literalName,
-                string emptyMappedClipName)
+                string emptyMappedClipName, bool padFallbacksAtBindPose,
+                string zeroLengthMappedClipName)
             {
                 bool emptyMappedClip = literalName == emptyMappedClipName;
                 if (emptyMappedClip)
                     AddState("animated_decoy_" + literalName, true, literalName);
-                return AddState(literalName, !emptyMappedClip);
+                bool fallback = literalName != CatModelCatalog.WalkClip;
+                return AddState(literalName, !emptyMappedClip, null,
+                    padFallbacksAtBindPose && fallback,
+                    literalName == zeroLengthMappedClipName);
             }
         }
 
