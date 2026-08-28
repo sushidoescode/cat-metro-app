@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using CatMetro.Domain;
 using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Cats;
+using CatMetro.Presentation.Theme;
 using NUnit.Framework;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -170,29 +171,21 @@ namespace CatMetro.Tests.EditMode.Presentation
             }
         }
 
-        [Test]
-        public void EmptyWalkClip_IsRejectedEvenWhenEveryRequiredStateAndClipExists()
-        {
-            using (var fixture = new ConformingRigFixture(animateWalk: false))
-            {
-                var catalog = new CatModelCatalog(fixture.Prefab);
-
-                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
-                Assert.That(catalog.RejectionReason, Does.Contain("Cat_Walk"));
-                Assert.That(catalog.RejectionReason, Does.Contain("positive-length"));
-            }
-        }
-
-        [Test]
-        public void EmptyMappedWalkClip_IsRejectedDespiteAnAnimatedSameNamedDecoy()
+        [TestCase("Cat_IdleSit")]
+        [TestCase("Cat_Walk")]
+        [TestCase("Cat_Board")]
+        [TestCase("Cat_Alight")]
+        [TestCase("Cat_Celebrate")]
+        public void EmptyMappedRequiredClip_IsRejectedDespiteAnAnimatedSameNamedDecoy(
+            string requiredState)
         {
             using (var fixture = new ConformingRigFixture(
-                emptyMappedWalkWithAnimatedDuplicate: true))
+                emptyMappedClipName: requiredState))
             {
                 var catalog = new CatModelCatalog(fixture.Prefab);
 
                 Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
-                Assert.That(catalog.RejectionReason, Does.Contain("Cat_Walk"));
+                Assert.That(catalog.RejectionReason, Does.Contain(requiredState));
                 Assert.That(catalog.RejectionReason, Does.Contain("positive-length"));
             }
         }
@@ -233,7 +226,13 @@ namespace CatMetro.Tests.EditMode.Presentation
                         "world-space imported forward must face with the cat");
                     Assert.That(cat.Find("Head").GetComponent<MeshRenderer>().enabled, Is.False);
                     Assert.That(cat.Find("EyeLeft").GetComponent<MeshRenderer>().enabled, Is.False);
-                    Assert.That(rig.GetComponentInChildren<MeshRenderer>(true).enabled, Is.True);
+                    MeshRenderer rigRenderer = rig.GetComponentInChildren<MeshRenderer>(true);
+                    Assert.That(rigRenderer.enabled, Is.True);
+                    var tint = new MaterialPropertyBlock();
+                    rigRenderer.GetPropertyBlock(tint);
+                    Assert.That(tint.GetColor("_BaseColor"),
+                        Is.EqualTo(CatLine.ColorOf("red")),
+                        "the admitted rig must inherit the authoritative cat-line tint");
 
                     Bounds standing = BoundsIn(cat,
                         rig.GetComponentInChildren<MeshFilter>(true));
@@ -339,9 +338,8 @@ namespace CatMetro.Tests.EditMode.Presentation
             private readonly List<StateMachineBehaviour> _stateBehaviours =
                 new List<StateMachineBehaviour>();
 
-            public ConformingRigFixture(bool animateWalk = true,
-                bool swapWalkAndBoard = false, bool addStateBehaviour = false,
-                bool emptyMappedWalkWithAnimatedDuplicate = false)
+            public ConformingRigFixture(bool swapWalkAndBoard = false,
+                bool addStateBehaviour = false, string emptyMappedClipName = null)
             {
                 Prefab = new GameObject("ConformingBoardCatRig");
                 var body = new GameObject("RigBody");
@@ -353,14 +351,12 @@ namespace CatMetro.Tests.EditMode.Presentation
 
                 _controller = new AnimatorController();
                 _controller.AddLayer("Base Layer");
-                AddState("Cat_IdleSit");
-                if (emptyMappedWalkWithAnimatedDuplicate)
-                    AddState("walk_decoy", true, "Cat_Walk");
-                AnimatorState walk = AddState("Cat_Walk",
-                    emptyMappedWalkWithAnimatedDuplicate ? false : animateWalk);
-                AnimatorState board = AddState("Cat_Board");
-                AddState("Cat_Alight");
-                AnimatorState celebrate = AddState("Cat_Celebrate");
+                AddRequiredState("Cat_IdleSit", emptyMappedClipName);
+                AnimatorState walk = AddRequiredState("Cat_Walk", emptyMappedClipName);
+                AnimatorState board = AddRequiredState("Cat_Board", emptyMappedClipName);
+                AddRequiredState("Cat_Alight", emptyMappedClipName);
+                AnimatorState celebrate = AddRequiredState("Cat_Celebrate",
+                    emptyMappedClipName);
                 if (swapWalkAndBoard)
                 {
                     Motion walkMotion = walk.motion;
@@ -400,14 +396,22 @@ namespace CatMetro.Tests.EditMode.Presentation
                 state.motion = clip;
                 return state;
             }
+
+            private AnimatorState AddRequiredState(string literalName,
+                string emptyMappedClipName)
+            {
+                bool emptyMappedClip = literalName == emptyMappedClipName;
+                if (emptyMappedClip)
+                    AddState("animated_decoy_" + literalName, true, literalName);
+                return AddState(literalName, !emptyMappedClip);
+            }
         }
 
         private static AnimationClip Clip(string name)
         {
             var clip = new AnimationClip { name = name };
-            if (name == "Cat_Walk")
-                clip.SetCurve("RigBody", typeof(Transform), "localPosition.x",
-                    AnimationCurve.Linear(0f, 0f, 0.4f, 0.02f));
+            clip.SetCurve("RigBody", typeof(Transform), "localPosition.x",
+                AnimationCurve.Linear(0f, 0f, 0.4f, 0.02f));
             return clip;
         }
     }
