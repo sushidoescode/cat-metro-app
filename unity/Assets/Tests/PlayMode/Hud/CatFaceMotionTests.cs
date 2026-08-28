@@ -188,6 +188,10 @@ namespace CatMetro.Tests.PlayMode
             {
                 if (!face.gameObject.activeSelf) continue;
                 laidOutFaceCount++;
+                // willRenderCanvases may already have sampled an animated pose before this
+                // helper runs. Apply the caller's motion-off source first, then capture the
+                // actual layout centre that every following motion-off sample must preserve.
+                face.ApplyVisualTime(Time.unscaledTime);
                 Vector2 centre = face.FaceRect.anchoredPosition;
                 foreach (float time in new[] { 0.17f, 0.93f, 1.71f })
                 {
