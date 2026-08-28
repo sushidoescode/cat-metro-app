@@ -148,7 +148,10 @@ namespace CatMetro.Presentation.Props
                 new Vector3(Mathf.Lerp(minX, maxX, 0.8f), minY - 0.3f, contactZ));
             Spawn(ref propsRoot, boardRoot, catalog, PropModelCatalog.TrailSignpostId,
                 "trail-signpost", "",
-                new Vector3(maxX + 0.4f, minY - 0.35f, contactZ));
+                // The licensed L008 renderer reached viewport x 1.158 at maxX + 0.4 while
+                // the decorative safe-frame law ends at 1.12. Moving it 0.6 board units
+                // inward preserves the rim-side composition with measured headroom.
+                new Vector3(maxX - 0.2f, minY - 0.35f, contactZ));
 
             return propsRoot;
         }

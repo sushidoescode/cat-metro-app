@@ -553,21 +553,26 @@ namespace CatMetro.Tests.PlayMode
                 var mesh = piece.GetComponent<MeshFilter>().sharedMesh;
                 Quaternion asSeen = CameraSpaceRotation(piece);
                 Vector3[] vertices = mesh.vertices;
-                Vector3[] normals = mesh.normals;
-                int frontCap = 0;
-                for (int i = 0; i < vertices.Length; i++)
+                int[] triangles = mesh.triangles;
+                int frontCapTriangles = 0;
+                for (int i = 0; i < triangles.Length; i += 3)
                 {
-                    if (vertices[i].z > -0.4999f) continue; // front cap only
-                    frontCap++;
+                    Vector3 a = vertices[triangles[i]];
+                    Vector3 b = vertices[triangles[i + 1]];
+                    Vector3 c = vertices[triangles[i + 2]];
+                    if (a.z > -0.4999f || b.z > -0.4999f || c.z > -0.4999f)
+                        continue; // front-cap triangles only; side facets share rim positions
+                    frontCapTriangles++;
+                    Vector3 normal = Vector3.Cross(b - a, c - a).normalized;
                     // The camera looks along world +z, so a face pointing back AT it has a
                     // negative z. A mirrored winding flips exactly this sign and nothing else.
-                    Assert.That((asSeen * normals[i]).z, Is.LessThan(-0.99f),
-                        $"{part} vertex {i} is on the front cap but its normal points AWAY " +
+                    Assert.That((asSeen * normal).z, Is.LessThan(-0.99f),
+                        $"{part} triangle {i / 3} is on the front cap but its normal points AWAY " +
                         "from the camera — the cap was wound forwards; camera-facing " +
                         "triangles enumerate the CCW outline in REVERSE");
                 }
-                Assert.That(frontCap, Is.GreaterThan(0),
-                    part + " must actually have a front cap to check");
+                Assert.That(frontCapTriangles, Is.GreaterThan(0),
+                    part + " must actually have front-cap triangles to check");
             }
         }
 

@@ -54,6 +54,7 @@ namespace CatMetro.Tests.PlayMode
             _sink = new RecordingSink();
             GameRoot.AnalyticsRuntimeFactory = () => new GameAnalyticsRuntime(_sink);
             GameRoot.DevSkipShippedHome = false;
+            GameRoot.DailyEntryUnlocked = false;
         }
 
         [TearDown]
@@ -61,6 +62,7 @@ namespace CatMetro.Tests.PlayMode
         {
             GameRoot.AnalyticsRuntimeFactory = null;
             GameRoot.DevSkipShippedHome = false;
+            GameRoot.DailyEntryUnlocked = false;
             if (_root != null) Object.Destroy(_root.gameObject);
             _root = null;
         }
@@ -149,6 +151,7 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator RealDailyAdmission_EmitsCanonicalDateAndDailyModeStartOnce()
         {
+            GameRoot.DailyEntryUnlocked = true;
             _root = GameRoot.Launch();
             yield return null;
             _root.DailyClockUnixSeconds = () => 1_787_572_800L;

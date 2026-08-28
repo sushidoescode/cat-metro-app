@@ -6,11 +6,11 @@ using NUnit.Framework;
 
 namespace CatMetro.Tests.Presentation
 {
-    // Pins the filmable Wardrobe copy this feature owns without forbidding later append-only rows.
+    // Pins the filmable Wardrobe copy this feature owns without forbidding unrelated slices
+    // before or after it.
     public sealed class UiCsvWardrobeTests
     {
         private const string CsvPath = "Assets/Resources/Strings/ui.csv";
-        private const int FirstWardrobeRow = 14;
 
         private static readonly string[] OwnedRows =
         {
@@ -48,14 +48,18 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void WardrobeRows_StayExactAfterUtf8CsvNormalization()
+        public void WardrobeRows_StayExactAndContiguousAfterUtf8CsvNormalization()
         {
             var rows = Rows();
-            Assert.That(rows.Length, Is.GreaterThanOrEqualTo(FirstWardrobeRow + OwnedRows.Length),
-                "all Wardrobe keys remain present even when later features append strings");
+            var firstWardrobeRow = System.Array.IndexOf(rows, OwnedRows[0]);
+            Assert.That(firstWardrobeRow, Is.GreaterThanOrEqualTo(0),
+                "the Wardrobe slice must retain its literal anchor row");
+            Assert.That(rows.Length,
+                Is.GreaterThanOrEqualTo(firstWardrobeRow + OwnedRows.Length),
+                "all Wardrobe keys remain present as one contiguous owned slice");
             for (int i = 0; i < OwnedRows.Length; i++)
-                Assert.That(rows[FirstWardrobeRow + i], Is.EqualTo(OwnedRows[i]),
-                    "Wardrobe row " + i + " changed or moved");
+                Assert.That(rows[firstWardrobeRow + i], Is.EqualTo(OwnedRows[i]),
+                    "Wardrobe row " + i + " changed or was interrupted");
         }
 
         [Test]

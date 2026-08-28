@@ -452,7 +452,7 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
-        public void RedAndBlue_OccupyTheSameBoardFootprint()
+        public void RedAndBlue_RenderTheSameBadgeFaceAndDepth()
         {
             // Circle is still the builtin cylinder laid on its face and square still the
             // builtin cube — the mesh choice is what the captures pin, and it is untouched.
@@ -469,7 +469,7 @@ namespace CatMetro.Tests.PlayMode
             // A pinned scale FACTOR says nothing about how big a thing renders unless the mesh
             // is unit-sized, which is precisely the assumption that keeps failing here (see
             // Sphere.fbx at ~3.33). So these multiply localScale back through the mesh's own
-            // bounds and check the footprint the board actually gets.
+            // bounds and check the badge face and depth in the shared standing-sign frame.
             var level = ImportLevel("L001");
             var view = BuildBoard(level);
             BoardPropDecorator.Decorate(level, view.transform, KioskCatalog());
@@ -486,22 +486,22 @@ namespace CatMetro.Tests.PlayMode
             var red = plates["RED"];
             AssertBuiltinMesh(red, "Cylinder.fbx", "the red plate is still a cylinder");
             AssertShapeRotation(red, "red");
-            AssertFootprint(red, 0.9f, 0.9f, 0.1f,
+            AssertSignFrameSize(red, 0.9f, 0.9f, 0.1f,
                 "the red plate is a 0.9 disc standing 0.1 off the board, whatever the builtin"
                 + " cylinder's intrinsic size turns out to be");
 
             var blue = plates["BLU"];
             AssertBuiltinMesh(blue, "Cube.fbx", "the blue plate is still a cube");
             AssertShapeRotation(blue, "blue");
-            AssertFootprint(blue, 0.9f, 0.9f, 0.1f,
+            AssertSignFrameSize(blue, 0.9f, 0.9f, 0.1f,
                 "and the blue plate is that same 0.9 by 0.1 — unchanged, as its captures pin");
 
             // The property that was actually violated, stated as a property rather than as two
             // literals that happen to agree. Nothing was making this claim, which is exactly
             // how a double-width red disc survived: each shape was pinned against its own
             // number, so no assertion ever compared one plate to the other.
-            var redSize = PlateFootprint(red);
-            var blueSize = PlateFootprint(blue);
+            var redSize = PlateSizeInSignFrame(red);
+            var blueSize = PlateSizeInSignFrame(blue);
             Assert.That(redSize.x, Is.EqualTo(blueSize.x).Within(0.001f),
                 "circle and square are one badge in two shapes: SHAPE is the channel, size is"
                 + " not, or the board reads one destination as louder than the other");
@@ -677,7 +677,9 @@ namespace CatMetro.Tests.PlayMode
                     "a post that stops short of the tabletop is a floating sign, which is the"
                     + " thing this whole change exists to stop being");
 
-                float half = plate.localScale.x * 0.5f; // PlateScale puts `size` in x for every shape
+                // Measure the rendered face, not a raw scale factor: the builtin cylinder is
+                // two units across, so its correct localScale.x is half the requested size.
+                float half = PlateSizeInSignFrame(plate).y * 0.5f;
                 Assert.That(mast.localPosition.z - mast.localScale.z * 0.5f,
                     Is.EqualTo(plate.localPosition.z + half).Within(0.0001f),
                     "and it stops exactly at the plate's bottom edge — short of that the sign"
@@ -1111,13 +1113,14 @@ namespace CatMetro.Tests.PlayMode
             // position. The chip must clear the primary keyline's footprint outright.
             var primaryKeyline = station.transform.Find("station:keyline-generated");
             var chipKeyline = station.transform.Find("station:keyline-accept-0");
-            // Footprint, not localScale: COOL's primary is a square today, so a scale factor
-            // happens to equal a width here — but a circle-primary berth with chips would have
-            // compared 1.08 against a keyline that really spanned 2.16 and reported clearance
-            // it did not have. Measure what is drawn; the neighbouring plate bug was exactly
-            // this arithmetic trusted one file over.
+            // Physical face width, not localScale: COOL's primary is a square today, so a
+            // scale factor happens to equal a width here — but a circle-primary berth with
+            // chips would have compared 1.08 against a keyline that really spanned 2.16 and
+            // reported clearance it did not have. Measure what is drawn; the neighbouring
+            // plate bug was exactly this arithmetic trusted one file over.
             float clearance =
-                (PlateFootprint(primaryKeyline).x + PlateFootprint(chipKeyline).x) * 0.5f;
+                (PlateSizeInSignFrame(primaryKeyline).x
+                    + PlateSizeInSignFrame(chipKeyline).x) * 0.5f;
             Assert.That(Mathf.Abs(chipKeyline.localPosition.x - primaryKeyline.localPosition.x),
                 Is.GreaterThan(clearance),
                 "the accept chip's keyline must not overlap the primary keyline beside it");
@@ -1284,23 +1287,25 @@ namespace CatMetro.Tests.PlayMode
                 + " and for a triangle silently moves the apex)");
         }
 
-        // The size a plate actually OCCUPIES in its anchor's frame: the mesh's own bounds,
-        // scaled by localScale and turned by localRotation so a laid-flat cylinder and an
-        // upright cube are described in the same axes. Deliberately NOT localScale — the
-        // helper this replaced compared scale factors, which are only a size when the mesh is
-        // unit-sized, and it therefore reported a healthy red plate that rendered at 2x.
-        private static Vector3 PlateFootprint(Transform plate)
+        // The size a plate actually OCCUPIES in the shared sign frame: the mesh's own bounds,
+        // scaled by localScale, with the standing-sign rotation factored back out so a
+        // laid-flat cylinder and an upright cube are described in the same face/depth axes.
+        // Deliberately NOT localScale — a scale factor is only a size for a unit mesh.
+        private static Vector3 PlateSizeInSignFrame(Transform plate)
         {
             Vector3 intrinsic = plate.GetComponent<MeshFilter>().sharedMesh.bounds.size;
-            Vector3 turned = plate.localRotation * Vector3.Scale(intrinsic, plate.localScale);
+            Quaternion shapeRotation =
+                Quaternion.Inverse(BoardPropDecorator.StationSignRotation)
+                * plate.localRotation;
+            Vector3 turned = shapeRotation * Vector3.Scale(intrinsic, plate.localScale);
             return new Vector3(
                 Mathf.Abs(turned.x), Mathf.Abs(turned.y), Mathf.Abs(turned.z));
         }
 
-        private static void AssertFootprint(
+        private static void AssertSignFrameSize(
             Transform plate, float x, float y, float z, string because)
         {
-            var actual = PlateFootprint(plate);
+            var actual = PlateSizeInSignFrame(plate);
             Assert.That(actual.x, Is.EqualTo(x).Within(0.001f), because);
             Assert.That(actual.y, Is.EqualTo(y).Within(0.001f), because);
             Assert.That(actual.z, Is.EqualTo(z).Within(0.001f), because);
