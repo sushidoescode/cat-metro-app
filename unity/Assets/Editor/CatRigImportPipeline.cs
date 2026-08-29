@@ -32,6 +32,9 @@ namespace CatMetro.EditorTools
         private const string ControllerPath = OutputRoot + "/BoardCatRig.controller";
         private const string MaterialPath = OutputRoot + "/BoardCatRig.mat";
         private const string WalkClipName = "Cat_Walk";
+        private const string FallbackBindingPath = "Armature";
+        private const float FallbackFrameRate = 24f;
+        private const float FallbackDuration = 1f / FallbackFrameRate;
         private const float TargetHeight = 1f;
         private const string ExpectedSourceSha256 =
             "9d87464e3954954d5d64e8eb4aee6150a11f9efcdf320a9f82adb96449dca974";
@@ -285,6 +288,7 @@ namespace CatMetro.EditorTools
             AnimatorStateMachine stateMachine = controller.layers[0].stateMachine;
             var expectedNames = new HashSet<string>(FallbackClipNames) { WalkClipName };
             var seenNames = new HashSet<string>();
+            Vector3 fallbackBindPosition = ReadFallbackBindPosition();
             foreach (ChildAnimatorState child in stateMachine.states.ToArray())
                 if (!expectedNames.Contains(child.state.name) || !seenNames.Add(child.state.name))
                     stateMachine.RemoveState(child.state);
@@ -299,9 +303,9 @@ namespace CatMetro.EditorTools
                     clip = new AnimationClip();
                     AssetDatabase.CreateAsset(clip, path);
                 }
-                ClearFallbackClip(clip);
+                CanonicalizeFallbackClip(clip, fallbackBindPosition);
                 clip.name = fallbackName;
-                clip.frameRate = 24f;
+                clip.frameRate = FallbackFrameRate;
                 EditorUtility.SetDirty(clip);
                 AddOrUpdateState(stateMachine, fallbackName, clip);
             }
@@ -358,15 +362,44 @@ namespace CatMetro.EditorTools
             }
         }
 
-        private static void ClearFallbackClip(AnimationClip clip)
+        private static Vector3 ReadFallbackBindPosition()
+        {
+            GameObject source = AssetDatabase.LoadAssetAtPath<GameObject>(SourcePath);
+            Animator animator = source == null
+                ? null : source.GetComponentInChildren<Animator>(true);
+            Transform armature = animator == null
+                ? null : animator.transform.Find(FallbackBindingPath);
+            if (armature == null)
+                throw new InvalidDataException("Imported cat Animator is missing child "
+                    + FallbackBindingPath + " required for fallback clip padding.");
+            return armature.localPosition;
+        }
+
+        private static void CanonicalizeFallbackClip(AnimationClip clip, Vector3 bindPosition)
         {
             foreach (EditorCurveBinding binding in AnimationUtility.GetCurveBindings(clip))
                 AnimationUtility.SetEditorCurve(clip, binding, null);
             foreach (EditorCurveBinding binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 AnimationUtility.SetObjectReferenceCurve(clip, binding, null);
             AnimationUtility.SetAnimationEvents(clip, Array.Empty<AnimationEvent>());
+            // TASK 18 rejects empty or zero-length state clips. One bind-pose keyframe on a
+            // real child at t > 0 keeps the pose motionless while satisfying that contract.
+            // Unity packs Transform position components into a runtime Vector3 curve, so all
+            // three components must be keyed or the missing bind values are sampled as zero.
+            SetFallbackPositionCurve(clip, "m_LocalPosition.x", bindPosition.x);
+            SetFallbackPositionCurve(clip, "m_LocalPosition.y", bindPosition.y);
+            SetFallbackPositionCurve(clip, "m_LocalPosition.z", bindPosition.z);
             clip.legacy = false;
             clip.wrapMode = WrapMode.Default;
+        }
+
+        private static void SetFallbackPositionCurve(AnimationClip clip, string property,
+            float bindValue)
+        {
+            var padBinding = EditorCurveBinding.FloatCurve(FallbackBindingPath,
+                typeof(Transform), property);
+            AnimationUtility.SetEditorCurve(clip, padBinding,
+                new AnimationCurve(new Keyframe(FallbackDuration, bindValue)));
         }
 
         private static void AddOrUpdateState(AnimatorStateMachine stateMachine, string name,
