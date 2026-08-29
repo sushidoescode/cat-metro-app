@@ -108,7 +108,7 @@ namespace CatMetro.Services.Purchases
 
             _store.Clear();
             foreach (var kv in incoming) _store[kv.Key] = kv.Value;
-            Changed?.Invoke();
+            RaiseChanged();
         }
 
         // A rewarded ad (or any other temporary source) lending an entitlement until `expiresAt`.
@@ -120,7 +120,7 @@ namespace CatMetro.Services.Purchases
 
             _leases[entitlementId] = new EntitlementGrant(entitlementId, GrantSource.RewardedAd,
                 expiresAtUnixSeconds);
-            Changed?.Invoke();
+            RaiseChanged();
             return true;
         }
 
@@ -167,7 +167,7 @@ namespace CatMetro.Services.Purchases
         public bool PruneExpired(long nowUnixSeconds)
         {
             bool changed = Prune(_leases, nowUnixSeconds) | Prune(_store, nowUnixSeconds);
-            if (changed) Changed?.Invoke();
+            if (changed) RaiseChanged();
             return changed;
         }
 
@@ -270,7 +270,18 @@ namespace CatMetro.Services.Purchases
                 changed = true;
             }
 
-            if (changed) Changed?.Invoke();
+            if (changed) RaiseChanged();
+        }
+
+        private void RaiseChanged()
+        {
+            var handlers = Changed;
+            if (handlers == null) return;
+            foreach (Action handler in handlers.GetInvocationList())
+            {
+                try { handler(); }
+                catch { }
+            }
         }
 
         private static bool SameKeys(Dictionary<string, EntitlementGrant> a,
