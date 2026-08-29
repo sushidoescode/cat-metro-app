@@ -125,6 +125,26 @@ namespace CatMetro.Tests.Purchases
 
     public static class PFixtures
     {
+        // Explicit in-memory durability seam for tests that exercise a successfully awarded ad
+        // lease. Tests for a missing or refusing seam construct that case directly instead.
+        public sealed class RecordingLeasePersistence : IEntitlementLeasePersistence
+        {
+            public bool Accept { get; set; } = true;
+            public bool ThrowOnPersist { get; set; }
+            public IReadOnlyList<EntitlementGrant> LastLeases { get; private set; }
+            public System.Action<IReadOnlyList<EntitlementGrant>> OnPersist { get; set; }
+
+            public bool TryReplaceRewardedAdLeases(IReadOnlyList<EntitlementGrant> leases)
+            {
+                if (ThrowOnPersist) throw new System.IO.IOException("injected lease persistence fault");
+                LastLeases = leases == null
+                    ? new EntitlementGrant[0]
+                    : new List<EntitlementGrant>(leases).ToArray();
+                OnPersist?.Invoke(LastLeases);
+                return Accept;
+            }
+        }
+
         // A pinned clock. Every test that involves time uses this rather than wall time, so a
         // lease test cannot flake by running across a second boundary.
         public sealed class Clock
@@ -171,7 +191,9 @@ namespace CatMetro.Tests.Purchases
             var cat = catalog ?? TinyCatalog();
             var clock = new Clock();
             var backend = new FakePurchaseBackend { GrantOnPurchase = cat.EntitlementsFor };
-            return (new PurchaseService(cat, backend, clock.Fn), backend, clock);
+            var service = new PurchaseService(cat, backend, clock.Fn);
+            service.AttachLeasePersistence(new RecordingLeasePersistence());
+            return (service, backend, clock);
         }
     }
 }
