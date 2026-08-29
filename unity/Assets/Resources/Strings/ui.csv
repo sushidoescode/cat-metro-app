@@ -12,3 +12,48 @@ intro.play,Play
 intro.goal,Deliver {count} cats
 home.daily.label,Daily Line
 results.daily.done,Home
+home.daily.tally,Dailies completed: {count}
+home.daily.unavailable,Daily unavailable — try again
+daily.practice,Clock changed — practice run
+home.daily.loading,Preparing today's Line…
+reminder.prompt.title,Would you like tomorrow’s Daily Line delivered?
+reminder.prompt.body,One gentle reminder around the time you choose. Nothing expires.
+reminder.action.accept,Remind me
+reminder.action.dismiss,Not now
+reminder.settings.title,Daily reminder
+reminder.settings.on,On
+reminder.settings.off,Off
+reminder.slot.morning,Morning · around 10:00
+reminder.slot.afternoon,Afternoon · around 15:00
+reminder.slot.evening,Evening · around 18:00
+reminder.status.authorized,Notifications allowed.
+reminder.status.denied,Notifications are off in device settings.
+reminder.status.unknown,Notification permission not decided.
+reminder.status.unavailable,Notifications unavailable on this device.
+reminder.settings.open,Open notification settings
+reminder.settings.close,Close
+wardrobe.entry,Wardrobe
+wardrobe.title,Profile Wardrobe
+wardrobe.profile,Your profile cat
+wardrobe.product,Conductor's Coat
+wardrobe.back,Back
+wardrobe.buy,Unlock · {price}
+wardrobe.equipped,Coat equipped
+wardrobe.restore,Restore purchases
+wardrobe.restore.running,Restoring…
+wardrobe.store.checking,Checking store…
+wardrobe.store.opening,Opening store…
+wardrobe.store.unavailable,Store unavailable
+wardrobe.status.checking,Checking the railway shop…
+wardrobe.status.locked,A station uniform for your profile cat
+wardrobe.status.equipped,Conductor's Coat equipped!
+wardrobe.status.opening,Opening the store…
+wardrobe.status.cancelled,Purchase cancelled
+wardrobe.status.pending,Purchase pending — the coat unlocks after approval
+wardrobe.status.failed,Purchase unavailable — please try again
+wardrobe.status.unconfirmed,Purchase received — checking the entitlement
+wardrobe.status.restoring,Restoring purchases…
+wardrobe.status.restored,Purchase restored — coat equipped!
+wardrobe.status.none,No purchases found
+wardrobe.status.restore.failed,Restore unavailable — please try again
+wardrobe.status.unavailable,The shop is offline — the game is still ready to play

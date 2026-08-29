@@ -6,10 +6,8 @@ using CatMetro.Presentation.Strings;
 
 namespace CatMetro.Tests.Presentation
 {
-    // CM-DAILYWIRE: this slice's OWN csv discipline (the P-4 per-slice guard, the
-    // UiCsvUx06Tests precedent). The merged UiCsvDisciplineTests/UiCsvUx06Tests pin rows 0-11
-    // byte-exact and are left completely untouched; this file pins the two rows THIS contract
-    // appends.
+    // Pins the six Daily Live rows this feature owns without claiming later features may not append
+    // more localized copy after them.
     public sealed class UiCsvDailyWireTests
     {
         private const string CsvPath = "Assets/Resources/Strings/ui.csv";
@@ -21,14 +19,22 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void ThisSlice_AppendsExactlyTwoRows_BytePinned()
+        public void DailyLiveRows_AreAppendOnlyAndBytePinned()
         {
             var rows = Rows();
-            // 12 merged rows (UiCsvUx06Tests' own anchor) + this slice's 2 = 14.
-            Assert.That(rows.Length, Is.EqualTo(14),
-                "12 merged rows + this slice's 2 — append-only, never edits");
+            // This legacy slice owns rows 0-17. Later slices may only append after them.
+            Assert.That(rows.Length, Is.GreaterThanOrEqualTo(18),
+                "the frozen Daily Live prefix must remain present; later rows may append");
             Assert.That(rows[12], Is.EqualTo("home.daily.label,Daily Line"), "DRAFT");
             Assert.That(rows[13], Is.EqualTo("results.daily.done,Home"), "DRAFT");
+            Assert.That(rows[14], Is.EqualTo(
+                "home.daily.tally,Dailies completed: {count}"));
+            Assert.That(rows[15], Is.EqualTo(
+                "home.daily.unavailable,Daily unavailable — try again"));
+            Assert.That(rows[16], Is.EqualTo(
+                "daily.practice,Clock changed — practice run"));
+            Assert.That(rows[17], Is.EqualTo(
+                "home.daily.loading,Preparing today's Line…"));
         }
 
         [Test]
@@ -48,6 +54,14 @@ namespace CatMetro.Tests.Presentation
         {
             Assert.That(UiStrings.Get("home.daily.label"), Is.EqualTo("Daily Line"));
             Assert.That(UiStrings.Get("results.daily.done"), Is.EqualTo("Home"));
+            Assert.That(UiStrings.Get("home.daily.tally"),
+                Is.EqualTo("Dailies completed: {count}"));
+            Assert.That(UiStrings.Get("home.daily.unavailable"),
+                Is.EqualTo("Daily unavailable — try again"));
+            Assert.That(UiStrings.Get("daily.practice"),
+                Is.EqualTo("Clock changed — practice run"));
+            Assert.That(UiStrings.Get("home.daily.loading"),
+                Is.EqualTo("Preparing today's Line…"));
         }
 
         [Test]
@@ -56,7 +70,12 @@ namespace CatMetro.Tests.Presentation
             // P-4: components resolve KEYS. Quoted-literal form so "Home" cannot false-match a
             // bare identifier (GameRoot.Home, HomeScreenView, Stack.Push("home") is lowercase
             // and untouched by this needle) elsewhere in Presentation.
-            var banned = new[] { "\"Daily Line\"", "\"Home\"" };
+            var banned = new[]
+            {
+                "\"Daily Line\"", "\"Home\"", "\"Dailies completed: {count}\"",
+                "\"Daily unavailable — try again\"", "\"Clock changed — practice run\"",
+                "\"Preparing today's Line…\"",
+            };
             foreach (var file in Directory.GetFiles(
                 "Assets/Scripts/Presentation", "*.cs", SearchOption.AllDirectories))
             {

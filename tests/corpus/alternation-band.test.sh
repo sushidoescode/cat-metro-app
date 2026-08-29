@@ -151,8 +151,9 @@ bandv = next((v for v in report["campaign"] if v["value"] == "tag=CM-R09.3"), No
 if bandv is None or bandv["code"] != "Pass":
     fail("campaign band-table verdict not Pass: " + (bandv["detail"] if bandv else "MISSING"))
 count = next((v for v in report["campaign"] if v["value"] == "tag=CM-R09.1"), None)
-if count is None or "17/30" not in count["detail"]:
-    fail("campaign count row does not read 17/30: " + (count["detail"] if count else "MISSING"))
+# 19/30 since the LEVEL-VARIETY lane landed L018 (two-source) and L019 (wildcard).
+if count is None or "19/30" not in count["detail"]:
+    fail("campaign count row does not read 19/30: " + (count["detail"] if count else "MISSING"))
 
 print("alternation-band.test.sh: python report checks OK (3,4,5b,8,10)")
 PYEOF

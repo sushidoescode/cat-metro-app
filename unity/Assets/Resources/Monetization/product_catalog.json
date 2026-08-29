@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 2,
+  "note": "Store product ids and entitlement ids must be typed IDENTICALLY into Google Play Console and the RevenueCat dashboard. See docs/runbooks/revenuecat-setup.md. A mismatch is silent: the offering simply comes back without that package.",
+
+  "entitlements": [
+    {
+      "id": "outfit_conductor",
+      "kind": "outfit",
+      "display": "Conductor's Coat",
+      "adLeaseSeconds": 86400
+    },
+    {
+      "id": "outfit_engineer",
+      "kind": "outfit",
+      "display": "Engineer's Dungarees",
+      "adLeaseSeconds": 86400
+    },
+    {
+      "id": "accessory_scarf",
+      "kind": "accessory",
+      "display": "Commuter Scarf",
+      "adLeaseSeconds": 86400
+    },
+    {
+      "id": "accessory_goggles",
+      "kind": "accessory",
+      "display": "Signal Goggles",
+      "adLeaseSeconds": 86400
+    },
+    {
+      "id": "frame_brass",
+      "kind": "frame",
+      "display": "Brass Ticket Frame",
+      "adLeaseSeconds": 0
+    },
+    {
+      "id": "frame_lantern",
+      "kind": "frame",
+      "display": "Lantern Frame",
+      "adLeaseSeconds": 0
+    },
+    {
+      "id": "supporter",
+      "kind": "membership",
+      "display": "Supporter",
+      "adLeaseSeconds": 0
+    }
+  ],
+
+  "products": [
+    {
+      "id": "cm_outfit_conductor",
+      "storeType": "non_consumable",
+      "display": "Conductor's Coat",
+      "entitlements": ["outfit_conductor"]
+    },
+    {
+      "id": "cm_outfit_engineer",
+      "storeType": "non_consumable",
+      "display": "Engineer's Dungarees",
+      "entitlements": ["outfit_engineer"]
+    },
+    {
+      "id": "cm_accessory_scarf",
+      "storeType": "non_consumable",
+      "display": "Commuter Scarf",
+      "entitlements": ["accessory_scarf"]
+    },
+    {
+      "id": "cm_accessory_goggles",
+      "storeType": "non_consumable",
+      "display": "Signal Goggles",
+      "entitlements": ["accessory_goggles"]
+    },
+    {
+      "id": "cm_frame_brass",
+      "storeType": "non_consumable",
+      "display": "Brass Ticket Frame",
+      "entitlements": ["frame_brass"]
+    },
+    {
+      "id": "cm_frame_lantern",
+      "storeType": "non_consumable",
+      "display": "Lantern Frame",
+      "entitlements": ["frame_lantern"]
+    },
+    {
+      "id": "cm_bundle_stationmaster",
+      "storeType": "non_consumable",
+      "display": "Stationmaster Bundle",
+      "entitlements": ["outfit_conductor", "accessory_scarf", "frame_brass", "supporter"]
+    }
+  ]
+}

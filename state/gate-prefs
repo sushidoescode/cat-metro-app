@@ -1,4 +1,0 @@
-# How the human prefers to ingest gate evidence: view=both | html | both
-# md   = terminal/markdown only (default) · html = render state/gate-views/<gate>-<date>.html
-# both = markdown flow + HTML view. Change freely; skills read this at every gate.
-view=md

@@ -67,23 +67,31 @@ namespace CatMetro.Tests.Content
             Assert.That(end.Deliveries, Is.EqualTo(2));
         }
 
-        [Test] // criterion 10 — pin guards surface as typed failures, never escaping exceptions
-        public void PinnedMechanics_TypedFailuresNamingThePin()
+        [Test] // CM-C14a — the former pin sites now map both ratified mechanics
+        public void EnabledMechanics_ImportAndMapWithoutEscapingExceptions()
         {
             ContentResult<ImportedLevel> r = default;
 
-            var second = Mutated(j => ((JArray)j["sources"]).Add(new JObject(
-                new JProperty("nodeId", "J1"), new JProperty("allowedColors", new JArray("red")))));
+            var second = Mutated(j =>
+            {
+                ((JArray)j["sources"]).Add(new JObject(
+                    new JProperty("nodeId", "J1"),
+                    new JProperty("allowedColors", new JArray("red"))));
+                j["waves"][0]["sourceNode"] = "J1";
+            });
             Assert.DoesNotThrow(() => r = LevelImporter.Import(second));
-            Assert.That(r.Ok, Is.False);
-            Assert.That(r.Error.Kind, Is.EqualTo(ContentErrorKind.PinnedMechanic));
-            Assert.That(r.Error.Detail, Does.Contain("second source").IgnoreCase);
+            Assert.That(r.Ok, Is.True, r.Ok ? "" : r.Error.ToString());
+            Assert.That(r.Value.Graph.SourceNodes, Is.EqualTo(new[] { 0, 1 }));
+            Assert.That(r.Value.Graph.WaveSourceNode, Is.EqualTo(new[] { 1 }));
 
-            var wild = Mutated(j => j["waves"][0]["color"] = "wild");
+            var wild = Mutated(j =>
+            {
+                j["sources"][0]["allowedColors"] = new JArray("wild");
+                j["waves"][0]["color"] = "wild";
+            });
             Assert.DoesNotThrow(() => r = LevelImporter.Import(wild));
-            Assert.That(r.Ok, Is.False);
-            Assert.That(r.Error.Kind, Is.EqualTo(ContentErrorKind.PinnedMechanic));
-            Assert.That(r.Error.Detail, Does.Contain("NEW-Q35"));
+            Assert.That(r.Ok, Is.True, r.Ok ? "" : r.Error.ToString());
+            Assert.That(r.Value.Graph.WaveColor, Is.EqualTo(new[] { CatMetro.Domain.CatColor.Wild }));
 
             Assert.DoesNotThrow(() => r = LevelImporter.Import(L001Bytes()));
             Assert.That(r.Ok, Is.True, "L001 raises nothing");
@@ -125,21 +133,23 @@ namespace CatMetro.Tests.Content
             Assert.That(r.Error.Kind, Is.EqualTo(ContentErrorKind.SourceReadFailed), "null task");
         }
 
-        [Test] // review F4 — the wild pin holds ANYWHERE a color appears; unknown colors rejected
-        public void WildAndUnknownColors_RejectedInAcceptsAndAllowedColors()
+        [Test] // CM-C14a — Wild is legal in all schema color positions; unknown stays typed
+        public void WildColors_ImportInAcceptsAndAllowedColors_WhileUnknownIsRejected()
         {
             ContentResult<ImportedLevel> r = default;
 
             var wildAccepts = Mutated(j => j["stations"][0]["accepts"] = new JArray("wild"));
             Assert.DoesNotThrow(() => r = LevelImporter.Import(wildAccepts));
-            Assert.That(r.Ok, Is.False);
-            Assert.That(r.Error.Kind, Is.EqualTo(ContentErrorKind.PinnedMechanic), "wild in station accepts");
-            Assert.That(r.Error.Detail, Does.Contain("NEW-Q35"));
+            Assert.That(r.Ok, Is.True, r.Ok ? "" : r.Error.ToString());
+            Assert.That(r.Value.Graph.StationAccepts[0],
+                Is.EqualTo(new[] { CatMetro.Domain.CatColor.Wild }));
 
-            var wildAllowed = Mutated(j => j["sources"][0]["allowedColors"] = new JArray("wild"));
+            var wildAllowed = Mutated(j =>
+                j["sources"][0]["allowedColors"] = new JArray("red", "wild"));
             Assert.DoesNotThrow(() => r = LevelImporter.Import(wildAllowed));
-            Assert.That(r.Ok, Is.False);
-            Assert.That(r.Error.Kind, Is.EqualTo(ContentErrorKind.PinnedMechanic), "wild in allowedColors");
+            Assert.That(r.Ok, Is.True, r.Ok ? "" : r.Error.ToString());
+            Assert.That(r.Value.Dto.Sources.Span[0].AllowedColors.ToArray(),
+                Is.EqualTo(new[] { "red", "wild" }));
 
             var unknown = Mutated(j => j["sources"][0]["allowedColors"] = new JArray("chartreuse"));
             Assert.DoesNotThrow(() => r = LevelImporter.Import(unknown));

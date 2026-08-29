@@ -18,6 +18,16 @@ t() { # $1 = label, $2 = 0|1 (expected ok), $3 = actual exit code
 [ -f "$script" ] || { echo "FAIL: $script missing"; exit 1; }
 [ -f "$manifest" ] || { echo "FAIL: $manifest missing"; exit 1; }
 
+# One fail-closed temp root for every temp path below. macOS /usr/bin/mktemp ignores $TMPDIR
+# without an explicit template and falls back to the confstr darwin temp dir, which sandboxed
+# agent runs cannot write; both BSD and GNU mktemp honor the template form. Temp acquisition
+# aborts the suite loudly here — silent per-site mktemp failures once cascaded into
+# misleading F1/F6 FAILs (empty extracted-function files), misattributing an environment
+# problem as a custody regression.
+TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/gen-custody.XXXXXXXX") \
+  || { echo "FAIL: cannot create temp dir under ${TMPDIR:-/tmp} (environment, not custody)"; exit 1; }
+trap 'rm -rf "$TMPROOT"' EXIT
+
 # (a) dry-run needs no keys — both subcommands and queue
 out_m=$(env -u MESHY_API_KEY -u TRIPO_API_KEY bash "$script" meshy "a test cat" test-cat.glb --dry-run 2>&1); t "meshy dry-run keyless" 0 $?
 out_t=$(env -u MESHY_API_KEY -u TRIPO_API_KEY bash "$script" tripo "a test cat" test-cat.glb --dry-run 2>&1); t "tripo dry-run keyless" 0 $?
@@ -54,16 +64,17 @@ if echo "$leak2" | grep -Eq "$sm|$st"; then echo "  FAIL: sentinel key leaked in
 # and its whole stdout+stderr is searched for the sentinel. A future debug line in
 # api_curl, or any un-redacted error path, turns this RED. The lead cat is meshy, so
 # TRIPO_API_BASE only affects the tripo probe.
-leak3=$(MESHY_API_KEY="$sm" MESHY_API_BASE="https://127.0.0.1:1" GEN_ASSETS_OUT_DIR="$(mktemp -d)" \
+mkdir -p "$TMPROOT/live-meshy-out" "$TMPROOT/live-tripo-out"
+leak3=$(MESHY_API_KEY="$sm" MESHY_API_BASE="https://127.0.0.1:1" GEN_ASSETS_OUT_DIR="$TMPROOT/live-meshy-out" \
   bash "$script" meshy "a live cat" test-cat.glb 2>&1 || true)
 if echo "$leak3" | grep -Eq "$sm"; then echo "  FAIL: sentinel key leaked on the live meshy path"; fail=1; else echo "  ok: no key leak on live meshy path"; fi
-leak4=$(TRIPO_API_KEY="$st" TRIPO_API_BASE="https://127.0.0.1:1" GEN_ASSETS_OUT_DIR="$(mktemp -d)" \
+leak4=$(TRIPO_API_KEY="$st" TRIPO_API_BASE="https://127.0.0.1:1" GEN_ASSETS_OUT_DIR="$TMPROOT/live-tripo-out" \
   bash "$script" tripo "a live cat" test-cat.glb 2>&1 || true)
 if echo "$leak4" | grep -Eq "$st"; then echo "  FAIL: sentinel key leaked on the live tripo path"; fail=1; else echo "  ok: no key leak on live tripo path"; fi
 
 # (c3) the redactor is not vacuous: extract redact() and prove it masks the key value —
 # if a future edit no-ops the redactor body (a real M4-class mutation), this turns RED.
-redfn=$(mktemp)
+redfn="$TMPROOT/redact.fn"
 sed -n '/^redact()/,/^}/p' "$script" > "$redfn"
 grep -q 'REDACTED' "$redfn" || { echo "  FAIL: could not extract a working redact() (vacuity guard broke)"; fail=1; }
 probe=$(MESHY_API_KEY="$sm" bash -c ". '$redfn'; redact \"leak \$MESHY_API_KEY here\"" 2>&1)
@@ -88,11 +99,11 @@ fi
 # silently revert them with a green suite. Behavioral where possible (source-token checks
 # run on a COMMENT-STRIPPED view — the EMU-RIG lesson: a token in a comment must not satisfy
 # a gate; 'glTF' in this function's own comment would otherwise mask a dropped magic check).
-dlfn=$(mktemp)
+dlfn="$TMPROOT/download_to.fn"
 sed -n '/^download_to()/,/^}/p' "$script" > "$dlfn"
 
 # g1: a stubbed curl must NEVER be reached for an option-injection or non-https url.
-stubdir=$(mktemp -d)
+stubdir="$TMPROOT/stub"; mkdir -p "$stubdir"
 printf '#!/bin/sh\necho CURL_INVOKED\nexit 22\n' > "$stubdir/curl"; chmod +x "$stubdir/curl"
 gout=$(PATH="$stubdir:$PATH" DOWNLOAD_TIMEOUT=5 bash -c '
   err(){ :; }
@@ -110,7 +121,7 @@ else echo "  FAIL: download_to guard probe did not run as expected ($gout)"; fai
 
 # g2: a curl that "succeeds" writing a NON-glTF payload for a valid https url must not let
 # the file land (catches a dropped magic check even though 'glTF' stays in the comment).
-magdir=$(mktemp -d); land="$magdir/out.glb"
+magdir="$TMPROOT/mag"; mkdir -p "$magdir"; land="$magdir/out.glb"
 printf '#!/bin/sh\no=""; while [ $# -gt 0 ]; do [ "$1" = "-o" ] && o="$2"; shift; done\nprintf NOTGLTF > "$o"\nexit 0\n' > "$magdir/curl"; chmod +x "$magdir/curl"
 PATH="$magdir:$PATH" DOWNLOAD_TIMEOUT=5 bash -c 'err(){ :; }; . "'"$dlfn"'"; download_to "https://api.meshy.ai/x.glb" "'"$land"'"' >/dev/null 2>&1
 if [ -e "$land" ]; then echo "  FAIL: a non-glTF payload landed (F6 magic check regressed)"; fail=1

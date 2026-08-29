@@ -15,7 +15,13 @@ case "$review_section" in
      printf 'glb-decimation pipeline test: %s\n' "$die_message" >&2
      exit 2 ;;
 esac
-tmp=$(mktemp -d)
+# Explicit template: macOS /usr/bin/mktemp ignores $TMPDIR without one and falls back to the
+# confstr darwin temp dir, which sandboxed agent runs cannot write. Both BSD and GNU mktemp
+# honor the template form; a temp failure aborts loudly with an attributable message.
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/glb-decimation.XXXXXXXX") || {
+  printf 'glb-decimation pipeline test: cannot create temp dir under %s\n' "${TMPDIR:-/tmp}" >&2
+  exit 1
+}
 marker_name="$(basename "$tmp")-argv-injection-marker"
 marker="$repo/$marker_name"
 marker_cleanup_armed=0

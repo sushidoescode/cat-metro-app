@@ -6,8 +6,8 @@ namespace CatMetro.Application.Save
     // CM-C7 criterion 7: an ORDERED list of (from, to, step) applied in sequence from the file's
     // saveVersion to the build's. Downgrade is refused upstream (SaveStore), never attempted
     // here. A migration step never deletes a key it does not understand (ADR-0006:72) — steps
-    // receive and return the whole JObject. A-C7-4: no real v2 schema exists; tests register a
-    // STUB step.
+    // receive and return the whole JObject. Production defaults are explicit: before the first
+    // public v2 build, every lane extends the one shared SaveSchemaV2 v1->v2 union.
     public sealed class MigrationTable
     {
         public sealed class Step
@@ -27,8 +27,15 @@ namespace CatMetro.Application.Save
 
         private readonly List<Step> _steps = new List<Step>();
 
+        public static MigrationTable CreateDefault() => new MigrationTable()
+            .Register(1, 2, SaveSchemaV2.MigrateFromV1);
+
         public MigrationTable Register(int from, int to, System.Func<JObject, JObject> apply)
         {
+            foreach (var step in _steps)
+                if (step.From == from)
+                    throw new System.ArgumentException(
+                        "a migration from version " + from + " is already registered");
             _steps.Add(new Step(from, to, apply));
             return this;
         }

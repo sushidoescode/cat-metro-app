@@ -22,18 +22,16 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void ThisSlice_AppendsExactlyThreeRows_BytePinned()
+        public void HomeAndIntroRows_StayBytePinnedAtTheirAppendPositions()
         {
             var rows = Rows();
             // Adoption shift (2026-08-06): anchored at 7 merged rows; main gained
             // hint.tutorial + results.next before this slice merged, so 9 merged + 3 = 12
             // and this slice's pins sit at rows 9-11 (merge order governs; the #39 law).
-            // CM-DAILYWIRE (the R1-L6 evolution clause, UiCsvDisciplineTests' own precedent):
-            // appends its own two rows AFTER this slice's three, at rows 12-13 — this slice's
-            // own count bound rises 12 -> 14 to admit them; rows 9-11 stay byte-pinned exactly
-            // as they were.
-            Assert.That(rows.Length, Is.EqualTo(14),
-                "9 merged rows + this slice's 3 + CM-DAILYWIRE's 2 — append-only, never edits");
+            // Daily Live appends six rows after this slice, at rows 12-17. That establishes the
+            // frozen legacy prefix; later slices may append while rows 9-11 remain byte-pinned.
+            Assert.That(rows.Length, Is.GreaterThanOrEqualTo(18),
+                "the frozen legacy prefix must remain present; later rows may append");
             Assert.That(rows[9], Is.EqualTo("home.title,Cat Metro"), "DRAFT");
             Assert.That(rows[10], Is.EqualTo("intro.play,Play"), "DRAFT");
             Assert.That(rows[11], Is.EqualTo("intro.goal,Deliver {count} cats"), "DRAFT");

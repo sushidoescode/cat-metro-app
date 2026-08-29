@@ -3,7 +3,7 @@
 # every missing scan root/asset; every gate proven to FIRE against a negative fixture. The
 # PlayMode legs run through editmode.test.sh's editor half; this file is editor-free.
 set -uo pipefail
-cd "$(git rev-parse --show-toplevel)"
+cd "$(git rev-parse --show-toplevel)" || exit 1
 fail() { echo "device-config.test.sh: FAIL — $1"; exit 1; }
 QS="unity/ProjectSettings/QualitySettings.asset"
 GS="unity/ProjectSettings/GraphicsSettings.asset"
@@ -80,14 +80,35 @@ if grep -q 'm_Shader: {fileID: 0}' "$MAT"; then
   fail "criterion 4: null shader reference — that is silent magenta"
 fi
 
-# --- criterion 5 static: primitive count == bind count, proven live ---
-prim=$(grep -ro 'GameObject.CreatePrimitive' unity/Assets/Scripts/Presentation --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-bind=$(grep -ro 'GreyboxMaterial.Shared' unity/Assets/Scripts/Presentation --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-[ "$prim" = "$bind" ] && [ "$prim" != "0" ] \
-  || fail "criterion 5: unbound runtime primitives ($prim CreatePrimitive vs $bind binds)"
-fp=$(grep -ro 'GameObject.CreatePrimitive' "$FIX" --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-fb=$(grep -ro 'GreyboxMaterial.Shared' "$FIX" --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
-[ "$fp" != "$fb" ] || fail "criterion 5: the counting gate failed to fire on the fixture"
+# --- criterion 5 static: every runtime renderer creation has a site-local material bind ---
+BIND_CHECK=scripts/check-runtime-renderer-bindings.py
+[ -f "$BIND_CHECK" ] || fail "criterion 5: site-local renderer checker missing (fail-closed)"
+if ! rout=$(python3 "$BIND_CHECK" unity/Assets/Scripts/Presentation 2>&1); then
+  fail "criterion 5: unbound runtime renderer: $rout"
+fi
+echo "$rout" | grep -Eq 'OK \([1-9][0-9]* site-local bindings\)' \
+  || fail "criterion 5: renderer checker returned no non-zero proof count: $rout"
 
-echo "device-config.test.sh: OK (1, 2-yaml, 3, 4, 5-static)"
+if neg=$(python3 "$BIND_CHECK" "$FIX" 2>&1); then
+  fail "criterion 5: site-local checker accepted the unassigned-creation fixture: $neg"
+fi
+echo "$neg" | grep -q 'GuardedPolicy.cs' \
+  || fail "criterion 5: original unbound fixture was not named: $neg"
+
+# Adversarial fixture: old global totals are equal, yet one creation is unbound and another is
+# bound twice. This prevents a future reviewer from replacing per-site proof with equal counts.
+BALANCED=tests/fixtures/device-config-balanced-bad
+bc=$(grep -rEo 'GameObject\.CreatePrimitive|AddComponent<MeshRenderer>' \
+  "$BALANCED" --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
+bb=$(grep -rEo '\.sharedMaterials?[[:space:]]*=' \
+  "$BALANCED" --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')
+[ "$bc" = "$bb" ] && [ "$bc" != "0" ] \
+  || fail "criterion 5: balanced adversarial fixture is malformed ($bc creations/$bb binds)"
+if neg=$(python3 "$BIND_CHECK" "$BALANCED" 2>&1); then
+  fail "criterion 5: site-local checker accepted equal-total unbound fixture: $neg"
+fi
+echo "$neg" | grep -q 'BalancedButUnbound.cs' \
+  || fail "criterion 5: equal-total unbound site was not named: $neg"
+
+echo "device-config.test.sh: OK (1, 2-yaml, 3, 4, 5-static-tripwire)"
 exit 0

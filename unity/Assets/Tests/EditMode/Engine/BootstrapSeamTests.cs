@@ -39,6 +39,7 @@ namespace CatMetro.Tests.Engine
         {
             "save.dat", "save.dat.bak", "save.dat.tmp",
             "analytics_queue.dat", "analytics_queue.dat.bak", "analytics_queue.dat.tmp",
+            "analytics_profile.dat", "analytics_profile.dat.bak", "analytics_profile.dat.tmp",
         };
 
         [Test]
@@ -66,12 +67,14 @@ namespace CatMetro.Tests.Engine
             }
             try
             {
-                var store = new SaveStore(root, new RealSaveFileSystem(), bounds, new MigrationTable());
+                var store = new SaveStore(root, new RealSaveFileSystem(), bounds,
+                    MigrationTable.CreateDefault());
                 store.Load();
                 store.State.Tickets = 21;
                 store.CommitAtomic();
 
-                var reload = new SaveStore(root, new RealSaveFileSystem(), bounds, new MigrationTable());
+                var reload = new SaveStore(root, new RealSaveFileSystem(), bounds,
+                    MigrationTable.CreateDefault());
                 reload.Load();
                 Assert.That(reload.State.Tickets, Is.EqualTo(21));
 

@@ -44,6 +44,8 @@ namespace CatMetro.Domain
 
         public LevelGraph Graph;           // not part of the digest; the immutable board
 
+        public FlipBudgetStatus FlipStatus => FlipBudget.Evaluate(Graph.PerfectMaxSwitches, SwitchesUsed);
+
         // Rng stream selector for the level seed; constant so (levelId, seed, commandLog) stays
         // the whole determinism input set (ADR-0002 §8).
         public const ulong RngSequence = 54;

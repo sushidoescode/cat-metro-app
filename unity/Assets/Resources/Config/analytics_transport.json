@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "enabled": false,
+  "projectToken": "",
+  "host": "https://eu.i.posthog.com",
+  "remoteKillSwitchFlag": "cat-metro-analytics-enabled"
+}

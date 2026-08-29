@@ -60,18 +60,36 @@ namespace CatMetro.Tests.Analytics
             Assert.That(reborn.Snapshot().Select(e => e.Id).ToArray(), Is.EqualTo(before));
         }
 
-        // Review B3(a): the id DERIVATION is pinned against an independent implementation —
-        // python sha256("cm-queue-v1|0|level_started|{\"lvl\":7,\"mode\":\"classic\"}") first
-        // 8 bytes = 7f36cdbd8178cbf3 (computed by the CM-C8 review round from the persisted
-        // file alone). A Guid or altered preimage cannot reproduce this.
+        // Id generation is injected so the persisted artifact, rather than a derivation guess,
+        // proves that the enqueue-time value is retained.
         [Test]
-        public void IdDerivation_MatchesTheIndependentlyComputedVector()
+        public void IdGeneration_PersistsTheExactEnqueueValue()
         {
             using var root = new SFixtures.TempRoot();
-            var (q, _, _) = QFixtures.Queue(root);
+            var q = new AnalyticsQueue(root, new SFixtures.RecordingFs(),
+                SFixtures.RepoBounds(), null, null, () => "7f36cdbd8178cbf3");
             var p = new Newtonsoft.Json.Linq.JObject { ["lvl"] = 7, ["mode"] = "classic" };
             q.Log(new CatMetro.Services.AnalyticsEvent("level_started", p));
             Assert.That(q.Snapshot()[0].Id, Is.EqualTo("7f36cdbd8178cbf3"));
+        }
+
+        [Test]
+        public void AckedEmptyRestart_DoesNotReuseAnEarlierEventId()
+        {
+            using var root = new SFixtures.TempRoot();
+            var fs = new SFixtures.RecordingFs();
+            var transport = new QFixtures.RecordingTransport();
+            var first = new AnalyticsQueue(root, fs, SFixtures.RepoBounds(), transport,
+                null, () => "1111111111111111");
+            first.Log(QFixtures.Ev("same"));
+            string oldId = first.Snapshot().Single().Id;
+            first.OnTrigger("app_pause");
+
+            var restarted = new AnalyticsQueue(root, fs, SFixtures.RepoBounds(), null,
+                null, () => "2222222222222222");
+            restarted.Log(QFixtures.Ev("same"));
+
+            Assert.That(restarted.Snapshot().Single().Id, Is.Not.EqualTo(oldId));
         }
 
         // Review B3(b): an acked flush must persist the EMPTY queue — otherwise every launch
@@ -140,7 +158,7 @@ namespace CatMetro.Tests.Analytics
         {
             using var root = new SFixtures.TempRoot();
             var (q, transport, _) = QFixtures.Queue(root);
-            transport.Available = false;
+            transport.ServerAccepted = false;
             q.Log(QFixtures.Ev("a"));
             q.Log(QFixtures.Ev("b"));
 

@@ -9,7 +9,6 @@ driver="$repo_root/scripts/blender_curate.py"
 metrics="$repo_root/docs/design/assets/GLB-DECIMATION-METRICS.json"
 curation_manifest="$repo_root/docs/design/assets/GLB-CURATION-MANIFEST.json"
 wave_manifest="$repo_root/docs/design/assets/GLB-CURATION-WAVE-MANIFEST.json"
-evidence_root="$repo_root/evals/results/assets/glb-curation-2026-08-17"
 
 for required in "$rules" "$orchestrator" "$driver" "$curation_manifest" "$wave_manifest"; do
   if [[ ! -f "$required" ]]; then
@@ -20,14 +19,13 @@ done
 
 PYTHONDONTWRITEBYTECODE=1 python3 - \
   "$repo_root" "$rules" "$orchestrator" "$metrics" \
-  "$curation_manifest" "$wave_manifest" "$evidence_root" <<'PY'
+  "$curation_manifest" "$wave_manifest" <<'PY'
 from __future__ import annotations
 
 import hashlib
 import importlib.util
 import json
 import os
-import re
 import stat
 import tempfile
 from pathlib import Path
@@ -39,7 +37,6 @@ orchestrator_path = Path(os.sys.argv[3])
 metrics_path = Path(os.sys.argv[4])
 curation_manifest_path = Path(os.sys.argv[5])
 wave_manifest_path = Path(os.sys.argv[6])
-evidence_root = Path(os.sys.argv[7])
 
 
 def load(name: str, path: Path):
@@ -831,187 +828,12 @@ if artifact_root_text:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         assert digest == expected_sha, (relative, digest, expected_sha)
 
-checksum_path = evidence_root / "SHA256SUMS"
-expected_checksum_sha256 = "13f0160d342992f3ad5135d06d68f3e44a810357f34bc1f53ed96347111a2426"
-assert hashlib.sha256(checksum_path.read_bytes()).hexdigest() == expected_checksum_sha256
-checksum_lines = checksum_path.read_text(encoding="utf-8").splitlines()
-assert len(checksum_lines) == 44
-recorded_pngs = {}
-prefix = "evals/results/assets/glb-curation-2026-08-17/"
-evidence_asset_ids = (
-    "cat-red-tabby",
-    "cat-blue-siamese",
-    "cat-yellow-longhair",
-    "cat-green-shorthair",
-    "cat-wild-alley",
-    "cat-red-tabby-sitting",
-    "cat-blue-siamese-loaf",
-    "cat-yellow-longhair-wave",
-    "cat-green-shorthair-sit",
-    "cat-conductor",
-    "prop-depot-shed",
-    "prop-toy-engine",
-    "prop-station-kiosk",
-    "prop-trees",
-    "prop-desk-clutter",
-)
-expected_pngs = {
-    f"{prefix}{name}"
-    for name in (
-        "source-comparison.png",
-        "changed-derivative-comparison.png",
-        "derivative-before-grid.png",
-        "derivative-after-grid.png",
-        "derivative-comparison-grid.png",
-        "wave-correction-comparison.png",
-        "wave-correction-derivative-before.png",
-        "wave-correction-derivative-after.png",
-        "wave-correction-source-before.png",
-        "wave-correction-source-after.png",
-    )
-}
-expected_pngs.update(
-    f"{prefix}{state}/{identifier}.png"
-    for state in ("derivative-before", "derivative-after")
-    for identifier in evidence_asset_ids
-)
-expected_pngs.update(
-    f"{prefix}{state}/{identifier}.png"
-    for state in ("source-before", "source-after")
-    for identifier in ("cat-blue-siamese-loaf", "cat-yellow-longhair-wave")
-)
-assert len(expected_pngs) == 44
-for line in checksum_lines:
-    digest, relative = line.split("  ", 1)
-    assert len(digest) == 64 and all(character in "0123456789abcdef" for character in digest)
-    assert relative.startswith(prefix) and relative.endswith(".png")
-    assert relative not in recorded_pngs
-    path = repo_root / relative
-    status = path.lstat()
-    assert stat.S_ISREG(status.st_mode) and status.st_nlink == 1
-    assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
-    recorded_pngs[relative] = digest
-actual_pngs = {
-    str(path.relative_to(repo_root)) for path in evidence_root.rglob("*.png")
-}
-assert set(recorded_pngs) == expected_pngs
-assert actual_pngs == expected_pngs
-for identifier in expected_untouched:
-    before = evidence_root / "derivative-before" / f"{identifier}.png"
-    after = evidence_root / "derivative-after" / f"{identifier}.png"
-    assert before.read_bytes() == after.read_bytes(), identifier
-for identifier in ("cat-blue-siamese-loaf", "cat-yellow-longhair-wave"):
-    before = evidence_root / "derivative-before" / f"{identifier}.png"
-    after = evidence_root / "derivative-after" / f"{identifier}.png"
-    assert before.read_bytes() != after.read_bytes(), identifier
-assert (
-    evidence_root / "wave-correction-source-before.png"
-).read_bytes() != (
-    evidence_root / "wave-correction-source-after.png"
-).read_bytes()
-assert (
-    evidence_root / "wave-correction-derivative-before.png"
-).read_bytes() != (
-    evidence_root / "wave-correction-derivative-after.png"
-).read_bytes()
-assert (
-    evidence_root / "wave-correction-source-after.png"
-).read_bytes() == (
-    evidence_root / "source-after" / "cat-yellow-longhair-wave.png"
-).read_bytes()
-assert (
-    evidence_root / "wave-correction-derivative-after.png"
-).read_bytes() == (
-    evidence_root / "derivative-after" / "cat-yellow-longhair-wave.png"
-).read_bytes()
-
-# The curation contact sheets live in their own evidence section, outside the
-# four decimation sections that glb-decimation-evidence.test.sh guards with
-# reject_unclaimed_pipe_rows. Nothing over there claims these rows, so they are
-# claimed here: every declared row must reconcile against the committed
-# checksum manifest, the bytes on disk, and the PNG's own IHDR dimensions, and
-# no unclaimed pipe row may hide in the section.
-CURATION_EVIDENCE_HEADING = "## Curation render evidence"
-CURATION_EVIDENCE_NEXT_HEADING = "## Reproducible command boundary"
-CURATION_CONTACT_HEADER = (
-    "| Path under `evals/results/assets/glb-curation-2026-08-17/` "
-    "| Dimensions | SHA-256 |"
-)
-CURATION_CONTACT_SEPARATOR = "|---|---:|---|"
-EXPECTED_CURATION_CONTACT_SHEETS = (
-    "source-comparison.png",
-    "changed-derivative-comparison.png",
-    "derivative-before-grid.png",
-    "derivative-after-grid.png",
-    "derivative-comparison-grid.png",
-    "wave-correction-comparison.png",
-)
-contact_pattern = re.compile(
-    r"\| `([^`]+)` \| ([1-9][0-9]*)×([1-9][0-9]*) \| `([0-9a-f]{64})` \|"
-)
-
-
-def png_dimensions(path: Path) -> tuple[int, int]:
-    header = path.read_bytes()[:24]
-    assert header[:8] == b"\x89PNG\r\n\x1a\n", path
-    assert header[12:16] == b"IHDR", path
-    return (
-        int.from_bytes(header[16:20], "big"),
-        int.from_bytes(header[20:24], "big"),
-    )
-
-
-evidence_document = (
-    repo_root / "docs/design/assets/GLB-DECIMATION-EVIDENCE.md"
-).read_text(encoding="utf-8")
-assert evidence_document.count(CURATION_EVIDENCE_HEADING) == 1
-assert evidence_document.count(CURATION_EVIDENCE_NEXT_HEADING) == 1
-curation_section = evidence_document.split(CURATION_EVIDENCE_HEADING, 1)[1].split(
-    CURATION_EVIDENCE_NEXT_HEADING, 1
-)[0]
-section_lines = curation_section.splitlines()
-
-header_index = None
-for index, line in enumerate(section_lines):
-    if line.strip() == CURATION_CONTACT_HEADER:
-        assert header_index is None, "duplicate curation contact table header"
-        header_index = index
-assert header_index is not None, "curation render section declares no contact table"
-assert section_lines[header_index + 1].strip() == CURATION_CONTACT_SEPARATOR
-claimed_lines = {header_index, header_index + 1}
-
-contact_rows = []
-index = header_index + 2
-while index < len(section_lines) and section_lines[index].lstrip().startswith("|"):
-    match = contact_pattern.fullmatch(section_lines[index].strip())
-    assert match is not None, section_lines[index]
-    contact_rows.append(
-        (match.group(1), int(match.group(2)), int(match.group(3)), match.group(4))
-    )
-    claimed_lines.add(index)
-    index += 1
-
-for number, line in enumerate(section_lines):
-    if line.lstrip().startswith("|") and number not in claimed_lines:
-        raise AssertionError(
-            f"unclaimed pipe row in curation render section: {line}"
-        )
-
-assert tuple(row[0] for row in contact_rows) == EXPECTED_CURATION_CONTACT_SHEETS
-assert len({row[0] for row in contact_rows}) == len(contact_rows)
-assert len({row[3] for row in contact_rows}) == len(contact_rows)
-for name, width, height, digest in contact_rows:
-    relative = f"{prefix}{name}"
-    assert relative in recorded_pngs, relative
-    assert recorded_pngs[relative] == digest, (relative, digest)
-    sheet_path = repo_root / relative
-    assert hashlib.sha256(sheet_path.read_bytes()).hexdigest() == digest, relative
-    assert png_dimensions(sheet_path) == (width, height), relative
-
+# The repository cleanup on 2026-08-27 deliberately retired the historical
+# screenshot pack. This suite now claims only code/manifests/recorded metrics
+# by default; explicit local artifact roots add the stronger byte checks above.
 print(
     "glb-curation unit: pass rules=boundary-pinned transactions=failure-matrix "
-    f"untouched={len(expected_untouched)} evidence_pngs={len(recorded_pngs)} "
-    f"curation_contact_rows={len(contact_rows)}"
+    f"untouched={len(expected_untouched)} manifests=current"
 )
 PY
 

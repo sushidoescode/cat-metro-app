@@ -11,7 +11,7 @@
       "queue"
     ],
     "newMechanic": null,
-    "teachingGoal": "Everything the Market taught: read the waves, rush them home -- and never park a cat on the dead-end siding",
+    "teachingGoal": "Everything the Market taught, and the last wave comes up green -- the cool-side berth takes them, so read colour not habit",
     "minActionWindowTicks": 12,
     "authoredBy": "llm+validator"
   },
@@ -112,7 +112,8 @@
       "nodeId": "SRC",
       "allowedColors": [
         "red",
-        "blue"
+        "blue",
+        "green"
       ]
     }
   ],
@@ -127,7 +128,8 @@
     {
       "nodeId": "BLU",
       "accepts": [
-        "blue"
+        "blue",
+        "green"
       ],
       "capacity": 10
     }
@@ -177,7 +179,7 @@
     {
       "tick": 110,
       "sourceNode": "SRC",
-      "color": "blue",
+      "color": "green",
       "count": 2,
       "spacingTicks": 10
     }

@@ -33,8 +33,9 @@ namespace CatMetro.Tests.Save
             Assert.That((char)file[3], Is.EqualTo('V'));
             // offset 4, uint16 LE: formatVersion = 1
             Assert.That(file[4] | (file[5] << 8), Is.EqualTo(1));
-            // offset 6, uint16 LE: saveVersion = 1
-            Assert.That(file[6] | (file[7] << 8), Is.EqualTo(1));
+            // offset 6, uint16 LE: current payload schema version
+            Assert.That(file[6] | (file[7] << 8),
+                Is.EqualTo((int)SaveDefaults.SAVE_VERSION));
             // offset 8, uint32 LE: payloadLength = file length - 16
             uint length = (uint)file[8] | ((uint)file[9] << 8) | ((uint)file[10] << 16) | ((uint)file[11] << 24);
             Assert.That(length, Is.EqualTo((uint)(file.Length - SaveHeader.SIZE)));

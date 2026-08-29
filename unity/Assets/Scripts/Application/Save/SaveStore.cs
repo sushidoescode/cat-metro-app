@@ -32,7 +32,7 @@ namespace CatMetro.Application.Save
             if (root == null || fs == null || bounds == null)
                 throw new System.ArgumentException("root, fs and bounds are required");
             _root = root; _fs = fs; _bounds = bounds;
-            _migrations = migrations ?? new MigrationTable();
+            _migrations = migrations ?? MigrationTable.CreateDefault();
             State = new SaveState(SaveDefaults.FreshPayload());
         }
 

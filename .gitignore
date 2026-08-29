@@ -34,7 +34,8 @@ unity/Assets/Art/Generated/incoming/
 unity/Assets/Art/Generated.meta
 unity/Assets/Art/Generated/incoming.meta
 
-# Upload keystore + password are Never-in-repo / Never-agent-reachable (docs/security/threat-model.md:235); if one ever lands here anyway, treat it as compromised and use Play's upload-key reset (docs/release/release-checklist.md §2 "Loss recovery") to rotate — a history rewrite alone is not sufficient.
+# Upload keys and passwords are never repository or agent material. If one lands here, treat it as
+# compromised and use Play's upload-key reset; rewriting Git history alone is not sufficient.
 *.keystore
 *.jks
 *.p12
@@ -42,8 +43,58 @@ unity/Assets/Art/Generated/incoming.meta
 *.pfx
 *.bks
 *.key
+# STORE-RELEASE: the extension list above misses the file that carries the keystore
+# PASSWORD rather than the key itself. Gradle's conventional name is keystore.properties,
+# and Unity writes local.properties next to it.
+keystore.properties
+local.properties
+
+# STORE-RELEASE: build outputs. scripts/build-apk.sh and scripts/build-aab.sh write here,
+# and a release .aab is 100MB+ — nothing in this tree was ignored before, so a stray
+# `git add -A` could have committed one. (The line-10 TODO promised `build/` and never
+# delivered it.)
+build/
+*.aab
+*.apk
+
+# Build artifacts. scripts/build-apk.sh, build-ios.sh and the AAB builder all write here.
+# This was previously unignored, which was survivable while the only output was one APK and
+# is not once iOS lands: Unity emits an Xcode PROJECT — thousands of files, including a
+# full copy of the built Data payload and therefore of the licensed Meshy/Tripo/Polyfork
+# meshes. A single `git add -A` would commit the paid art as a build artifact.
+build/
+*.ipa
+*.xcarchive/
+*.dSYM/
+
+# Apple signing material — same Never-in-repo / Never-agent-reachable posture as the Android
+# upload keystore above (docs/security/threat-model.md). *.p12 / *.pem / *.key are already
+# covered by the keystore block; these are the Apple-specific formats it does not catch.
+#   *.p8              App Store Connect API key (AuthKey_XXXXXXXXXX.p8) — signs uploads and
+#                     authenticates the ASC API. Apple lets you download it exactly ONCE and
+#                     will not reissue it. Leaking it is an account-level compromise; the
+#                     only remedy is revoking the key in App Store Connect > Users and
+#                     Access > Integrations.
+#   *.mobileprovision Provisioning profiles: embed the team ID, app ID and device UDIDs.
+#   *.cer             Distribution/development certificates as downloaded from Apple.
+*.p8
+*.mobileprovision
+*.provisionprofile
+*.cer
+*.certSigningRequest
+
+# Xcode local state and the export descriptor (carries your team ID; machine-specific)
+xcuserdata/
+*.xcuserstate
+ExportOptions.plist
 
 # Unity MCP: generated client config carries a live bearer token — never commit it
 # (the Editor's UserSettings/mcp.json is already covered by unity/UserSettings/ above)
 .mcp.json
 unity/.mcp.json
+
+# RevenueCat API key. The real config is never committed; the .example sibling documents
+# its shape. Absent config means the game runs with purchases unavailable, which is a
+# working game — see unity/Assets/Scripts/Integrations/MonetizationConfig.cs.
+unity/Assets/Resources/Monetization/revenuecat_config.json
+unity/Assets/Resources/Monetization/revenuecat_config.json.meta
