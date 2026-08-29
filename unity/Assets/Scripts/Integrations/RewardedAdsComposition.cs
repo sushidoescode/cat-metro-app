@@ -76,10 +76,12 @@ namespace CatMetro.Integrations
         {
             if (_disposed || store == null || ReferenceEquals(store, _boundStore)) return;
 
-            // Replacement ordering matters: the old coordinator owns and disposes its provider,
-            // and the public runtime goes safe before any new save/provider work begins.
-            TearDownCoordinator();
+            // Claim this store before tearing down the prior coordinator. Provider/event accessors
+            // are callback-capable; a teardown callback can install a newer store synchronously.
+            // Every later boundary therefore verifies this exact store still owns the attempt.
             _boundStore = store;
+            TearDownCoordinator();
+            if (!OwnsStore(store)) return;
 
             IRewardedAdProvider provider = null;
             RewardedAdCoordinator coordinator = null;
@@ -91,7 +93,9 @@ namespace CatMetro.Integrations
                 // this build, so restore and persistence attachment happen before ad viability.
                 var saveData = new RewardedAdSaveStore(store);
                 _service.RestoreRewardedAdLeases(saveData.ReadLocalLeases());
+                if (!OwnsStore(store)) return;
                 _service.AttachLeasePersistence(saveData);
+                if (!OwnsStore(store)) return;
 
                 if (_placements == null || _providerFactory == null || _reporter == null ||
                     _localDateKey == null)
@@ -99,33 +103,59 @@ namespace CatMetro.Integrations
 
                 provider = _providerFactory();
                 if (provider == null) return;
+                if (!OwnsStore(store))
+                {
+                    SafeDispose(provider);
+                    return;
+                }
 
                 coordinator = new RewardedAdCoordinator(_placements, _service, provider,
                     _reporter, saveData, _localDateKey);
-                RewardedAdRuntime.Install(coordinator);
-                coordinator.Start();
                 _coordinator = coordinator;
+                RewardedAdRuntime.Install(coordinator);
+                if (!OwnsPublished(store, coordinator))
+                {
+                    ReleaseAttempt(coordinator);
+                    return;
+                }
+                coordinator.Start();
+                if (!OwnsPublished(store, coordinator)) ReleaseAttempt(coordinator);
             }
             catch
             {
-                if (coordinator != null)
-                    coordinator.Dispose();
-                else
-                {
-                    try { provider?.Dispose(); }
-                    catch { }
-                }
-                RewardedAdRuntime.ResetForTests();
+                if (coordinator != null) ReleaseAttempt(coordinator);
+                else SafeDispose(provider);
             }
         }
 
         private void TearDownCoordinator()
         {
             var coordinator = _coordinator;
+            if (coordinator == null) return;
             _coordinator = null;
             try { coordinator?.Dispose(); }
             catch { }
-            RewardedAdRuntime.ResetForTests();
+            RewardedAdRuntime.Uninstall(coordinator);
+        }
+
+        private bool OwnsStore(SaveStore store)
+            => !_disposed && ReferenceEquals(_boundStore, store);
+
+        private bool OwnsPublished(SaveStore store, RewardedAdCoordinator coordinator)
+            => OwnsStore(store) && ReferenceEquals(_coordinator, coordinator) &&
+               ReferenceEquals(RewardedAdRuntime.Current, coordinator);
+
+        private void ReleaseAttempt(RewardedAdCoordinator coordinator)
+        {
+            if (ReferenceEquals(_coordinator, coordinator)) _coordinator = null;
+            SafeDispose(coordinator);
+            RewardedAdRuntime.Uninstall(coordinator);
+        }
+
+        private static void SafeDispose(IDisposable disposable)
+        {
+            try { disposable?.Dispose(); }
+            catch { }
         }
     }
 }

@@ -31,6 +31,19 @@ namespace CatMetro.Tests
           }]
         }";
 
+        private const string ThreeAdEntitlementCatalogJson = @"{
+          ""schemaVersion"": 2,
+          ""entitlements"": [
+            { ""id"": ""outfit_conductor"", ""kind"": ""outfit"",
+              ""display"": ""Conductor"", ""adLeaseSeconds"": 3600 },
+            { ""id"": ""outfit_bellhop"", ""kind"": ""outfit"",
+              ""display"": ""Bellhop"", ""adLeaseSeconds"": 3600 },
+            { ""id"": ""outfit_stationmaster"", ""kind"": ""outfit"",
+              ""display"": ""Stationmaster"", ""adLeaseSeconds"": 3600 }
+          ],
+          ""products"": []
+        }";
+
         [SetUp]
         public void SetUp()
         {
@@ -264,6 +277,147 @@ namespace CatMetro.Tests
         }
 
         [Test]
+        public void GenuinelyNewStore_ReplacesOldSaveLeasesBeforeLaterPersistence()
+        {
+            using var firstRoot = new SFixtures.TempRoot();
+            using var secondRoot = new SFixtures.TempRoot();
+            var first = SFixtures.Store(firstRoot);
+            first.Load();
+            SeedLease(first, "outfit_conductor", 5_000L);
+            var second = SFixtures.Store(secondRoot);
+            second.Load();
+            SeedLease(second, "outfit_bellhop", 5_100L);
+            var backend = new BackendReporter();
+            var catalog = PurchaseCatalog.Parse(ThreeAdEntitlementCatalogJson);
+            var service = Service(backend, catalog);
+            var providers = new Queue<Provider>(new[] { new Provider(), new Provider() });
+            using var composition = Composition(service, backend, () => providers.Dequeue());
+            composition.Bind();
+
+            SaveRuntime.Install(first);
+            Assert.That(service.IsUnlocked("outfit_conductor"), Is.True);
+            SaveRuntime.Install(second);
+
+            Assert.That(service.IsUnlocked("outfit_conductor"), Is.False,
+                "the new save must remove the prior save's rewarded lease");
+            Assert.That(service.IsUnlocked("outfit_bellhop"), Is.True,
+                "only the new save's distinct lease is restored");
+            Assert.That(service.GrantRewardedAdEntitlement("outfit_stationmaster"),
+                Is.EqualTo(AdGrantOutcome.Granted));
+            var persisted = new RewardedAdSaveStore(second).ReadLocalLeases();
+            Assert.That(persisted, Has.Count.EqualTo(2));
+            Assert.That(persisted[0].EntitlementId, Is.EqualTo("outfit_bellhop"),
+                "the new save's own lease remains durable");
+            Assert.That(persisted[1].EntitlementId, Is.EqualTo("outfit_stationmaster"),
+                "a later reward must not write the prior save's lease into the new save");
+
+            SaveRuntime.Install(second);
+            Assert.That(providers, Has.Count.EqualTo(0),
+                "same-store installation remains reference-idempotent");
+        }
+
+        [Test]
+        public void RuntimeInstalledCallback_DisposingComposition_CannotLeaveAStartedZombie()
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            store.Load();
+            var provider = new Provider();
+            var backend = new BackendReporter();
+            var service = Service(backend);
+            var composition = Composition(service, backend, () => provider);
+            RewardedAdRuntime.Installed += composition.Dispose;
+
+            composition.Bind();
+            SaveRuntime.Install(store);
+
+            Assert.That(provider.InitializeCalls, Is.Zero,
+                "a coordinator disposed during publication must never be started afterwards");
+            Assert.That(provider.EventAddCalls, Is.Zero);
+            Assert.That(provider.DisposeCalls, Is.EqualTo(1));
+            Assert.That(RewardedAdRuntime.IsInstalled, Is.False);
+            Assert.That(RewardedAdRuntime.Current.CanShow("wardrobe_conductor_trial"), Is.False);
+            composition.Dispose();
+            Assert.That(provider.DisposeCalls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void RuntimeInstalledCallback_InstallingNewStore_PreservesNewReplacementOwnership()
+        {
+            using var firstRoot = new SFixtures.TempRoot();
+            using var secondRoot = new SFixtures.TempRoot();
+            var first = SFixtures.Store(firstRoot);
+            first.Load();
+            var second = SFixtures.Store(secondRoot);
+            second.Load();
+            var firstProvider = new Provider();
+            var secondProvider = new Provider();
+            var providers = new Queue<Provider>(new[] { firstProvider, secondProvider });
+            var backend = new BackendReporter();
+            var service = Service(backend);
+            using var composition = Composition(service, backend, () => providers.Dequeue());
+            int publications = 0;
+            IRewardedAds replacementRuntime = null;
+            RewardedAdRuntime.Installed += () =>
+            {
+                publications++;
+                if (publications == 1)
+                    SaveRuntime.Install(second);
+                else
+                    replacementRuntime = RewardedAdRuntime.Current;
+            };
+            composition.Bind();
+
+            SaveRuntime.Install(first);
+
+            Assert.That(publications, Is.EqualTo(2));
+            Assert.That(firstProvider.InitializeCalls, Is.Zero,
+                "the replaced coordinator must not start after its publication returns");
+            Assert.That(firstProvider.DisposeCalls, Is.EqualTo(1));
+            Assert.That(secondProvider.InitializeCalls, Is.EqualTo(1));
+            Assert.That(secondProvider.DisposeCalls, Is.Zero,
+                "outer cleanup must not dispose the synchronously installed replacement");
+            Assert.That(RewardedAdRuntime.Current, Is.SameAs(replacementRuntime));
+            Assert.That(RewardedAdRuntime.Current.CanShow("wardrobe_conductor_trial"), Is.True);
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void MissingReporterOrProvider_StillRestoresAndPersistsWithTheBoundSave(
+            bool missingReporter)
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            store.Load();
+            SeedLease(store, "outfit_conductor", 5_000L);
+            var backend = new BackendReporter();
+            var catalog = PurchaseCatalog.Parse(ThreeAdEntitlementCatalogJson);
+            var service = Service(backend, catalog);
+            int providerCreates = 0;
+            IAdEventReporter reporter = missingReporter ? null : backend;
+            Func<IRewardedAdProvider> providerFactory = () =>
+            {
+                providerCreates++;
+                return missingReporter ? new Provider() : null;
+            };
+            using var composition = Composition(service, reporter, providerFactory);
+            composition.Bind();
+
+            SaveRuntime.Install(store);
+
+            Assert.That(service.IsUnlocked("outfit_conductor"), Is.True,
+                "degraded ads must still restore the save's rewarded lease");
+            Assert.That(service.GrantRewardedAdEntitlement("outfit_bellhop"),
+                Is.EqualTo(AdGrantOutcome.Granted));
+            var persisted = new RewardedAdSaveStore(store).ReadLocalLeases();
+            Assert.That(persisted, Has.Count.EqualTo(2));
+            Assert.That(persisted[0].EntitlementId, Is.EqualTo("outfit_bellhop"));
+            Assert.That(persisted[1].EntitlementId, Is.EqualTo("outfit_conductor"));
+            Assert.That(RewardedAdRuntime.IsInstalled, Is.False);
+            Assert.That(providerCreates, Is.EqualTo(missingReporter ? 0 : 1));
+        }
+
+        [Test]
         public void MissingReporterOrProvider_LeavesNoOpWithoutCreatingOrLeakingAProvider()
         {
             using var firstRoot = new SFixtures.TempRoot();
@@ -340,17 +494,30 @@ namespace CatMetro.Tests
                 "destroy must remove the static SaveRuntime subscription");
         }
 
-        private static PurchaseService Service(BackendReporter backend)
-            => new PurchaseService(PFixtures.TinyCatalog(), backend, () => 1_000L);
+        private static PurchaseService Service(BackendReporter backend,
+            PurchaseCatalog catalog = null)
+            => new PurchaseService(catalog ?? PFixtures.TinyCatalog(), backend, () => 1_000L);
 
         private static RewardedAdsComposition Composition(PurchaseService service,
             IAdEventReporter reporter, Func<IRewardedAdProvider> providerFactory)
         {
             var placements = RewardedPlacementCatalog.Parse(PlacementsJson,
-                PFixtures.TinyCatalog());
+                service.Catalog);
             Assert.That(placements.Problems, Is.Empty);
             return new RewardedAdsComposition(service, placements, providerFactory, reporter,
                 () => "2026-08-29");
+        }
+
+        private static void SeedLease(SaveStore store, string entitlementId, long expiry)
+        {
+            store.State.Payload["entitlements"]["localLeases"] = new JArray
+            {
+                new JObject
+                {
+                    ["entitlementId"] = entitlementId,
+                    ["expiresAtUnixSeconds"] = expiry,
+                },
+            };
         }
 
         private sealed class Provider : IRewardedAdProvider

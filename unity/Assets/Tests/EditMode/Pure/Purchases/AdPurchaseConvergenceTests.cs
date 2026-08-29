@@ -1,3 +1,6 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
 using CatMetro.Services.Purchases;
 using NUnit.Framework;
 
@@ -139,6 +142,52 @@ namespace CatMetro.Tests.Purchases
         }
 
         [Test]
+        public void RestoringANewSaveSnapshot_ReplacesOnlyRewardedLeases()
+        {
+            const long now = 5_000L;
+            var ledger = new EntitlementLedger();
+            ledger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant("paid", GrantSource.Store),
+                new EntitlementGrant("promo", GrantSource.Promotional),
+            });
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), clock: () => now,
+                ledger: ledger);
+            svc.RestoreRewardedAdLeases(new[]
+            {
+                new EntitlementGrant(EntitlementIds.OutfitConductor,
+                    GrantSource.RewardedAd, now + 100L),
+            });
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.True);
+
+            svc.RestoreRewardedAdLeases(new EntitlementGrant[0]);
+
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False,
+                "the new save is authoritative for local rewarded leases");
+            Assert.That(svc.IsUnlocked("paid"), Is.True);
+            Assert.That(svc.IsUnlocked("promo"), Is.True);
+        }
+
+        [Test]
+        public void ThrowingSaveSnapshot_CannotPartiallyReplaceRewardedLeases()
+        {
+            const long now = 5_000L;
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), clock: () => now);
+            svc.RestoreRewardedAdLeases(new[]
+            {
+                new EntitlementGrant(EntitlementIds.OutfitConductor,
+                    GrantSource.RewardedAd, now + 100L),
+            });
+
+            Assert.Throws<InvalidOperationException>(() => svc.RestoreRewardedAdLeases(
+                new ThrowingLeaseSnapshot(new EntitlementGrant(
+                    EntitlementIds.OutfitConductor, GrantSource.RewardedAd, now + 200L))));
+
+            Assert.That(svc.SecondsUntilExpiry(EntitlementIds.OutfitConductor),
+                Is.EqualTo(100L), "validation must finish before the ledger is mutated");
+        }
+
+        [Test]
         public void RestoreRewardedAdLeases_RejectsInvalidRowsBeforeTheyReachTheLedger()
         {
             const long now = 5_000L;
@@ -245,6 +294,24 @@ namespace CatMetro.Tests.Purchases
                 "bought is bought");
             Assert.That(watched.IsUnlocked(EntitlementIds.OutfitConductor), Is.False,
                 "lent is lent");
+        }
+
+        private sealed class ThrowingLeaseSnapshot : IReadOnlyList<EntitlementGrant>
+        {
+            private readonly EntitlementGrant _first;
+
+            public ThrowingLeaseSnapshot(EntitlementGrant first) => _first = first;
+            public int Count => 2;
+            public EntitlementGrant this[int index] => index == 0
+                ? _first
+                : throw new InvalidOperationException("injected snapshot read fault");
+
+            public IEnumerator<EntitlementGrant> GetEnumerator()
+            {
+                for (int i = 0; i < Count; i++) yield return this[i];
+            }
+
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         }
 
         [Test]
