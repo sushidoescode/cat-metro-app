@@ -9,17 +9,58 @@ namespace CatMetro.Tests.Ads
     public sealed class RewardedAdCoordinatorTests
     {
         [Test]
-        public void Start_SubscribesBeforeObservingAnAlreadyReadyReporter()
+        public void Start_SubscribesBeforeInspectingReporterReadiness()
         {
             var provider = new RewardedAdFixtures.Provider();
-            var reporter = new RewardedAdFixtures.Reporter(ready: true);
+            var reporter = new RewardedAdFixtures.Reporter(ready: false)
+            {
+                ReadyOnSubscribe = true,
+            };
             using var coordinator = RewardedAdFixtures.Coordinator(provider, reporter);
 
             coordinator.Start();
-            reporter.SetReady(true);
 
+            Assert.That(reporter.EventAddCalls, Is.EqualTo(1));
             Assert.That(provider.InitializeCalls, Is.EqualTo(1));
             Assert.That(provider.LoadCalls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Start_ThrowingProviderEventAddDoesNotBubbleAndStillSubscribesReporter()
+        {
+            var provider = new RewardedAdFixtures.Provider { ThrowOnEventAdd = true };
+            var reporter = new RewardedAdFixtures.Reporter();
+            var coordinator = RewardedAdFixtures.Coordinator(provider, reporter);
+
+            Assert.DoesNotThrow(coordinator.Start);
+            Assert.DoesNotThrow(coordinator.Dispose);
+
+            Assert.That(provider.EventAddCalls, Is.EqualTo(1));
+            Assert.That(reporter.EventAddCalls, Is.EqualTo(1));
+            Assert.That(coordinator.CanShow("p0"), Is.False);
+            Assert.That(provider.EventRemoveCalls, Is.Zero,
+                "only a successful event add earns a matching remove");
+            Assert.That(reporter.EventRemoveCalls, Is.EqualTo(1));
+            Assert.That(provider.DisposeCalls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Start_ThrowingReporterEventAddDoesNotBubbleAndFailsClosed()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var reporter = new RewardedAdFixtures.Reporter { ThrowOnEventAdd = true };
+            var coordinator = RewardedAdFixtures.Coordinator(provider, reporter);
+
+            Assert.DoesNotThrow(coordinator.Start);
+            Assert.DoesNotThrow(coordinator.Dispose);
+
+            Assert.That(provider.EventAddCalls, Is.EqualTo(1));
+            Assert.That(reporter.EventAddCalls, Is.EqualTo(1));
+            Assert.That(coordinator.CanShow("p0"), Is.False);
+            Assert.That(provider.EventRemoveCalls, Is.EqualTo(1));
+            Assert.That(reporter.EventRemoveCalls, Is.Zero,
+                "only a successful event add earns a matching remove");
+            Assert.That(provider.DisposeCalls, Is.EqualTo(1));
         }
 
         [Test]
@@ -300,16 +341,18 @@ namespace CatMetro.Tests.Ads
         }
 
         [Test]
-        public void CapsAdvanceOnlyAfterGrantedAndFailedCapPersistenceStillConsumesThisSession()
+        public void FailedLocalDateCapWriteBlocksSameDateAfterLeaseExpiryButNotTheNextDate()
         {
             var provider = new RewardedAdFixtures.Provider();
             var caps = new RewardedAdFixtures.CapStore { Accept = false };
             var persistence = new RewardedAdFixtures.LeasePersistence();
-            var service = RewardedAdFixtures.Service(persistence);
+            var clock = new RewardedAdFixtures.Clock();
+            var localDate = new RewardedAdFixtures.LocalDate();
+            var service = RewardedAdFixtures.Service(persistence, clock.Read);
             var placements = RewardedAdFixtures.Placements(
-                ", \"caps\": { \"session\": 1, \"localDate\": 1 }");
-            using var coordinator = RewardedAdFixtures.Coordinator(provider, caps: caps,
-                service: service, placements: placements);
+                ", \"caps\": { \"localDate\": 1 }");
+            using var coordinator = new RewardedAdCoordinator(placements, service, provider,
+                new RewardedAdFixtures.Reporter(), caps, localDate.Read);
             coordinator.Start();
             coordinator.Show("p0");
             long attempt = provider.Shows.Single().AttemptId;
@@ -320,8 +363,64 @@ namespace CatMetro.Tests.Ads
             Assert.That(service.IsUnlocked("outfit_conductor"), Is.True);
             Assert.That(caps.IncrementCalls, Is.EqualTo(1));
             Assert.That(caps.ReadLocalDateCount("p0", "2026-08-29"), Is.Zero);
+            clock.Advance(3_601L);
             Assert.That(coordinator.CanShow("p0"), Is.False,
-                "a durable lease is never revoked, and the current session cannot farm the write fault");
+                "failed local-date persistence consumes the opportunity after the lease expires");
+
+            localDate.Key = "2026-08-30";
+            Assert.That(coordinator.CanShow("p0"), Is.True,
+                "date-A compensation must not become a permanent placement cap on date B");
+        }
+
+        [Test]
+        public void GrantedRewardAdvancesSessionCapAfterLeaseExpiry()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var clock = new RewardedAdFixtures.Clock();
+            var service = RewardedAdFixtures.Service(clock: clock.Read);
+            var placements = RewardedAdFixtures.Placements(
+                ", \"caps\": { \"session\": 1 }");
+            using var coordinator = RewardedAdFixtures.Coordinator(provider, service: service,
+                placements: placements);
+            coordinator.Start();
+            coordinator.Show("p0");
+            long attempt = provider.Shows.Single().AttemptId;
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, attempt, "p0"));
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Closed, attempt, "p0"));
+
+            clock.Advance(3_601L);
+
+            Assert.That(service.CanOfferAdFor("outfit_conductor"), Is.True,
+                "the lease must be expired so this assertion isolates the session cap");
+            Assert.That(coordinator.CanShow("p0"), Is.False);
+        }
+
+        [Test]
+        public void MissingRewardTimeDateConservativelyBlocksLaterDateInThisSession()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var clock = new RewardedAdFixtures.Clock();
+            var localDate = new RewardedAdFixtures.LocalDate();
+            var service = RewardedAdFixtures.Service(clock: clock.Read);
+            var placements = RewardedAdFixtures.Placements(
+                ", \"caps\": { \"localDate\": 1 }");
+            using var coordinator = new RewardedAdCoordinator(placements, service, provider,
+                new RewardedAdFixtures.Reporter(), new RewardedAdFixtures.CapStore(),
+                localDate.Read);
+            coordinator.Start();
+            coordinator.Show("p0");
+            long attempt = provider.Shows.Single().AttemptId;
+            localDate.ThrowOnRead = true;
+
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, attempt, "p0"));
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Closed, attempt, "p0"));
+            clock.Advance(3_601L);
+            localDate.ThrowOnRead = false;
+            localDate.Key = "2026-08-30";
+
+            Assert.That(service.CanOfferAdFor("outfit_conductor"), Is.True);
+            Assert.That(coordinator.CanShow("p0"), Is.False,
+                "an unscoped failed increment must remain conservative for this coordinator session");
         }
 
         [Test]
@@ -387,6 +486,40 @@ namespace CatMetro.Tests.Ads
 
             Assert.That(provider.DisposeCalls, Is.EqualTo(1));
             Assert.That(service.IsUnlocked("outfit_conductor"), Is.False);
+        }
+
+        [Test]
+        public void ThrowingProviderEventRemoveDoesNotSkipReporterCleanupOrProviderDispose()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var reporter = new RewardedAdFixtures.Reporter();
+            var coordinator = RewardedAdFixtures.Coordinator(provider, reporter);
+            coordinator.Start();
+            provider.ThrowOnEventRemove = true;
+
+            Assert.DoesNotThrow(coordinator.Dispose);
+            Assert.DoesNotThrow(coordinator.Dispose);
+
+            Assert.That(provider.EventRemoveCalls, Is.EqualTo(1));
+            Assert.That(reporter.EventRemoveCalls, Is.EqualTo(1));
+            Assert.That(provider.DisposeCalls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ThrowingReporterEventRemoveDoesNotSkipProviderDispose()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var reporter = new RewardedAdFixtures.Reporter();
+            var coordinator = RewardedAdFixtures.Coordinator(provider, reporter);
+            coordinator.Start();
+            reporter.ThrowOnEventRemove = true;
+
+            Assert.DoesNotThrow(coordinator.Dispose);
+            Assert.DoesNotThrow(coordinator.Dispose);
+
+            Assert.That(provider.EventRemoveCalls, Is.EqualTo(1));
+            Assert.That(reporter.EventRemoveCalls, Is.EqualTo(1));
+            Assert.That(provider.DisposeCalls, Is.EqualTo(1));
         }
     }
 }
