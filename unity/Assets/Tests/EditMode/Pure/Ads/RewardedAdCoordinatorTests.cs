@@ -396,6 +396,35 @@ namespace CatMetro.Tests.Ads
         }
 
         [Test]
+        public void ThrowingLedgerObserver_StillAdvancesSessionCapAfterDurableGrantedRewardExpires()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var clock = new RewardedAdFixtures.Clock();
+            var ledger = new EntitlementLedger();
+            ledger.Changed += () => throw new InvalidOperationException("injected observer fault");
+            var service = new PurchaseService(Purchases.PFixtures.TinyCatalog(), clock: clock.Read,
+                ledger: ledger);
+            service.AttachLeasePersistence(new RewardedAdFixtures.LeasePersistence());
+            var placements = RewardedAdFixtures.Placements(
+                ", \"caps\": { \"session\": 1 }");
+            using var coordinator = RewardedAdFixtures.Coordinator(provider, service: service,
+                placements: placements);
+            coordinator.Start();
+            coordinator.Show("p0");
+            long attempt = provider.Shows.Single().AttemptId;
+
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, attempt, "p0"));
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Closed, attempt, "p0"));
+
+            Assert.That(service.IsUnlocked("outfit_conductor"), Is.True);
+            clock.Advance(3_601L);
+            Assert.That(service.CanOfferAdFor("outfit_conductor"), Is.True,
+                "the lease must be expired so this assertion isolates the session cap");
+            Assert.That(coordinator.CanShow("p0"), Is.False,
+                "a durable granted reward advances the authored session cap despite observer faults");
+        }
+
+        [Test]
         public void MissingRewardTimeDateConservativelyBlocksLaterDateInThisSession()
         {
             var provider = new RewardedAdFixtures.Provider();

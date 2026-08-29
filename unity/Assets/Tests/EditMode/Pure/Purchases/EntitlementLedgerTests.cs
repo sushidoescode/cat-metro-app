@@ -1,3 +1,4 @@
+using System;
 using CatMetro.Services.Purchases;
 using NUnit.Framework;
 
@@ -104,6 +105,70 @@ namespace CatMetro.Tests.Purchases
         }
 
         // ---- change notification ---------------------------------------------------------
+
+        [Test]
+        public void ThrowingChangedObserver_DoesNotEscapeOrBlockOthers_AfterGrantLease()
+        {
+            var ledger = new EntitlementLedger();
+            int observed = 0;
+            ledger.Changed += () => throw new InvalidOperationException("injected observer fault");
+            ledger.Changed += () => observed++;
+            bool granted = false;
+
+            Assert.DoesNotThrow(() => granted = ledger.GrantLease("outfit_conductor", 500, 100));
+
+            Assert.That(granted, Is.True);
+            Assert.That(ledger.IsActive("outfit_conductor", 100), Is.True);
+            Assert.That(observed, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ThrowingChangedObserver_DoesNotEscapeOrBlockOthers_AfterReplaceStoreGrants()
+        {
+            var ledger = new EntitlementLedger();
+            int observed = 0;
+            ledger.Changed += () => throw new InvalidOperationException("injected observer fault");
+            ledger.Changed += () => observed++;
+
+            Assert.DoesNotThrow(() => ledger.ReplaceStoreGrants(new[] { Owned("outfit_conductor") }));
+
+            Assert.That(ledger.IsActive("outfit_conductor", 100), Is.True);
+            Assert.That(observed, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ThrowingChangedObserver_DoesNotEscapeOrBlockOthers_AfterPruneExpired()
+        {
+            var ledger = new EntitlementLedger();
+            ledger.GrantLease("outfit_conductor", 500, 100);
+            int observed = 0;
+            ledger.Changed += () => throw new InvalidOperationException("injected observer fault");
+            ledger.Changed += () => observed++;
+            bool pruned = false;
+
+            Assert.DoesNotThrow(() => pruned = ledger.PruneExpired(500));
+
+            Assert.That(pruned, Is.True);
+            Assert.That(ledger.IsActive("outfit_conductor", 500), Is.False);
+            Assert.That(observed, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ThrowingChangedObserver_DoesNotEscapeOrBlockOthers_AfterImportLeases()
+        {
+            var ledger = new EntitlementLedger();
+            int observed = 0;
+            ledger.Changed += () => throw new InvalidOperationException("injected observer fault");
+            ledger.Changed += () => observed++;
+
+            Assert.DoesNotThrow(() => ledger.ImportLeases(new[]
+            {
+                new EntitlementGrant("outfit_conductor", GrantSource.RewardedAd, 500)
+            }, 100));
+
+            Assert.That(ledger.IsActive("outfit_conductor", 100), Is.True);
+            Assert.That(observed, Is.EqualTo(1));
+        }
 
         [Test]
         public void RedeliveringIdenticalCustomerInfo_DoesNotRaiseChanged()
