@@ -20,7 +20,9 @@ namespace CatMetro.Services.Ads
         private readonly Func<string> _localDateKey;
         private readonly Dictionary<string, int> _sessionGrantCounts =
             new Dictionary<string, int>(StringComparer.Ordinal);
-        private readonly Dictionary<string, int> _failedLocalDateCounts =
+        private readonly Dictionary<LocalDatePlacementKey, int> _failedLocalDateCounts =
+            new Dictionary<LocalDatePlacementKey, int>();
+        private readonly Dictionary<string, int> _unscopedFailedLocalDateCounts =
             new Dictionary<string, int>(StringComparer.Ordinal);
         private readonly HashSet<string> _pendingPlacements =
             new HashSet<string>(StringComparer.Ordinal);
@@ -35,6 +37,8 @@ namespace CatMetro.Services.Ads
         private bool _reporterReady;
         private bool _reporterFailed;
         private bool _providerFailed;
+        private bool _providerSubscribed;
+        private bool _reporterSubscribed;
         private bool _disposed;
 
         public event Action AvailabilityChanged;
@@ -58,8 +62,24 @@ namespace CatMetro.Services.Ads
 
             // Subscribe before observing current readiness: the reporter may already be ready,
             // and a transition between observation and subscription must not be lost.
-            if (_provider != null) _provider.EventReceived += OnProviderEvent;
-            if (_reporter != null) _reporter.ReadinessChanged += OnReporterReadinessChanged;
+            if (_provider != null)
+            {
+                try
+                {
+                    _provider.EventReceived += OnProviderEvent;
+                    _providerSubscribed = true;
+                }
+                catch { _providerFailed = true; }
+            }
+            if (_reporter != null)
+            {
+                try
+                {
+                    _reporter.ReadinessChanged += OnReporterReadinessChanged;
+                    _reporterSubscribed = true;
+                }
+                catch { _reporterFailed = true; }
+            }
             ObserveReporterReadiness(force: true);
         }
 
@@ -144,8 +164,18 @@ namespace CatMetro.Services.Ads
         {
             if (_disposed) return;
             _disposed = true;
-            if (_provider != null) _provider.EventReceived -= OnProviderEvent;
-            if (_reporter != null) _reporter.ReadinessChanged -= OnReporterReadinessChanged;
+            if (_providerSubscribed)
+            {
+                try { _provider.EventReceived -= OnProviderEvent; }
+                catch { }
+                _providerSubscribed = false;
+            }
+            if (_reporterSubscribed)
+            {
+                try { _reporter.ReadinessChanged -= OnReporterReadinessChanged; }
+                catch { }
+                _reporterSubscribed = false;
+            }
             _openAttempt = null;
             _retainedAttempts.Clear();
             _retainedOrder.Clear();
@@ -328,7 +358,12 @@ namespace CatMetro.Services.Ads
                     if (string.IsNullOrEmpty(dateKey)) return true;
                     int durable = _capStore.ReadLocalDateCount(placement.Id, dateKey);
                     if (durable < 0) return true;
-                    int failed = Count(_failedLocalDateCounts, placement.Id);
+                    int failed = Count(_failedLocalDateCounts,
+                        new LocalDatePlacementKey(dateKey, placement.Id));
+                    int unscoped = Count(_unscopedFailedLocalDateCounts, placement.Id);
+                    failed = failed > int.MaxValue - unscoped
+                        ? int.MaxValue
+                        : failed + unscoped;
                     if (durable >= cap.Limit || failed >= cap.Limit - durable) return true;
                     continue;
                 }
@@ -353,14 +388,20 @@ namespace CatMetro.Services.Ads
             if (!hasLocalDateCap) return;
 
             bool committed = false;
+            string dateKey = null;
             try
             {
-                string dateKey = _localDateKey();
+                dateKey = _localDateKey();
                 if (!string.IsNullOrEmpty(dateKey))
                     committed = _capStore.TryIncrementLocalDateCount(placement.Id, dateKey);
             }
             catch { }
-            if (!committed) IncrementSaturated(_failedLocalDateCounts, placement.Id);
+            if (committed) return;
+            if (string.IsNullOrEmpty(dateKey))
+                IncrementSaturated(_unscopedFailedLocalDateCounts, placement.Id);
+            else
+                IncrementSaturated(_failedLocalDateCounts,
+                    new LocalDatePlacementKey(dateKey, placement.Id));
         }
 
         private void SafeLoad()
@@ -391,10 +432,21 @@ namespace CatMetro.Services.Ads
         private static int Count(Dictionary<string, int> counts, string placementId)
             => counts.TryGetValue(placementId, out var count) ? count : 0;
 
+        private static int Count(Dictionary<LocalDatePlacementKey, int> counts,
+            LocalDatePlacementKey key)
+            => counts.TryGetValue(key, out var count) ? count : 0;
+
         private static void IncrementSaturated(Dictionary<string, int> counts, string placementId)
         {
             int current = Count(counts, placementId);
             counts[placementId] = current == int.MaxValue ? int.MaxValue : current + 1;
+        }
+
+        private static void IncrementSaturated(Dictionary<LocalDatePlacementKey, int> counts,
+            LocalDatePlacementKey key)
+        {
+            int current = Count(counts, key);
+            counts[key] = current == int.MaxValue ? int.MaxValue : current + 1;
         }
 
         private void RaiseAvailabilityChanged()
@@ -419,6 +471,37 @@ namespace CatMetro.Services.Ads
             {
                 Id = id;
                 Placement = placement;
+            }
+        }
+
+        private readonly struct LocalDatePlacementKey : IEquatable<LocalDatePlacementKey>
+        {
+            private readonly string _dateKey;
+            private readonly string _placementId;
+
+            public LocalDatePlacementKey(string dateKey, string placementId)
+            {
+                _dateKey = dateKey;
+                _placementId = placementId;
+            }
+
+            public bool Equals(LocalDatePlacementKey other)
+                => string.Equals(_dateKey, other._dateKey, StringComparison.Ordinal) &&
+                   string.Equals(_placementId, other._placementId, StringComparison.Ordinal);
+
+            public override bool Equals(object obj)
+                => obj is LocalDatePlacementKey other && Equals(other);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return ((_dateKey == null ? 0 : StringComparer.Ordinal.GetHashCode(_dateKey)) *
+                            397) ^
+                           (_placementId == null
+                               ? 0
+                               : StringComparer.Ordinal.GetHashCode(_placementId));
+                }
             }
         }
     }

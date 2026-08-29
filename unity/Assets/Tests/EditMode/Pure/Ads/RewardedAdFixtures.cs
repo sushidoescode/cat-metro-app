@@ -9,7 +9,25 @@ namespace CatMetro.Tests.Ads
     {
         public sealed class Provider : IRewardedAdProvider
         {
-            public event Action<RewardedAdEvent> EventReceived;
+            private Action<RewardedAdEvent> _eventReceived;
+
+            public event Action<RewardedAdEvent> EventReceived
+            {
+                add
+                {
+                    EventAddCalls++;
+                    if (ThrowOnEventAdd)
+                        throw new InvalidOperationException("injected provider event-add fault");
+                    _eventReceived += value;
+                }
+                remove
+                {
+                    EventRemoveCalls++;
+                    if (ThrowOnEventRemove)
+                        throw new InvalidOperationException("injected provider event-remove fault");
+                    _eventReceived -= value;
+                }
+            }
 
             public bool IsReady { get; set; } = true;
             public bool ShowAccepted { get; set; } = true;
@@ -17,9 +35,13 @@ namespace CatMetro.Tests.Ads
             public bool ThrowOnInitialize { get; set; }
             public bool ThrowOnLoad { get; set; }
             public bool ThrowOnShow { get; set; }
+            public bool ThrowOnEventAdd { get; set; }
+            public bool ThrowOnEventRemove { get; set; }
             public int InitializeCalls { get; private set; }
             public int LoadCalls { get; private set; }
             public int DisposeCalls { get; private set; }
+            public int EventAddCalls { get; private set; }
+            public int EventRemoveCalls { get; private set; }
             public readonly List<(long AttemptId, string PlacementId)> Shows =
                 new List<(long, string)>();
 
@@ -46,21 +68,42 @@ namespace CatMetro.Tests.Ads
                 return ShowAccepted;
             }
 
-            public void Emit(RewardedAdEvent adEvent) => EventReceived?.Invoke(adEvent);
+            public void Emit(RewardedAdEvent adEvent) => _eventReceived?.Invoke(adEvent);
 
-            public void Dispose()
-            {
-                if (DisposeCalls == 0) DisposeCalls = 1;
-            }
+            public void Dispose() => DisposeCalls++;
         }
 
         public sealed class Reporter : IAdEventReporter
         {
-            public event Action ReadinessChanged;
+            private Action _readinessChanged;
+
+            public event Action ReadinessChanged
+            {
+                add
+                {
+                    EventAddCalls++;
+                    if (ThrowOnEventAdd)
+                        throw new InvalidOperationException("injected reporter event-add fault");
+                    _readinessChanged += value;
+                    if (ReadyOnSubscribe) IsReady = true;
+                }
+                remove
+                {
+                    EventRemoveCalls++;
+                    if (ThrowOnEventRemove)
+                        throw new InvalidOperationException("injected reporter event-remove fault");
+                    _readinessChanged -= value;
+                }
+            }
 
             public bool IsReady { get; private set; }
             public bool ThrowOnReady { get; set; }
             public bool ThrowOnReport { get; set; }
+            public bool ThrowOnEventAdd { get; set; }
+            public bool ThrowOnEventRemove { get; set; }
+            public bool ReadyOnSubscribe { get; set; }
+            public int EventAddCalls { get; private set; }
+            public int EventRemoveCalls { get; private set; }
             public readonly List<RewardedAdEvent> Events = new List<RewardedAdEvent>();
 
             bool IAdEventReporter.IsReady => ThrowOnReady
@@ -72,7 +115,7 @@ namespace CatMetro.Tests.Ads
             public void SetReady(bool ready)
             {
                 IsReady = ready;
-                ReadinessChanged?.Invoke();
+                _readinessChanged?.Invoke();
             }
 
             public void Report(RewardedAdEvent adEvent)
@@ -130,6 +173,22 @@ namespace CatMetro.Tests.Ads
             }
         }
 
+        public sealed class Clock
+        {
+            public long Now { get; set; } = 1_000L;
+            public Func<long> Read => () => Now;
+            public void Advance(long seconds) => Now += seconds;
+        }
+
+        public sealed class LocalDate
+        {
+            public string Key { get; set; } = "2026-08-29";
+            public bool ThrowOnRead { get; set; }
+            public Func<string> Read => () => ThrowOnRead
+                ? throw new InvalidOperationException("injected local-date fault")
+                : Key;
+        }
+
         public static RewardedPlacementCatalog Placements(string caps = "", int count = 2)
         {
             var rows = new List<string>();
@@ -144,9 +203,11 @@ namespace CatMetro.Tests.Ads
                 string.Join(",", rows) + "] }", Purchases.PFixtures.TinyCatalog());
         }
 
-        public static PurchaseService Service(IEntitlementLeasePersistence persistence = null)
+        public static PurchaseService Service(IEntitlementLeasePersistence persistence = null,
+            Func<long> clock = null)
         {
-            var service = new PurchaseService(Purchases.PFixtures.TinyCatalog(), clock: () => 1_000L);
+            var service = new PurchaseService(Purchases.PFixtures.TinyCatalog(),
+                clock: clock ?? (() => 1_000L));
             service.AttachLeasePersistence(persistence ?? new LeasePersistence());
             return service;
         }

@@ -139,12 +139,13 @@ namespace CatMetro.Tests.Save
             store.Load();
             var saveData = new RewardedAdSaveStore(store);
             var capFault = new FaultingCapStore(saveData, fs);
-            var service = new PurchaseService(Purchases.PFixtures.TinyCatalog(), clock: () => 1_000L);
+            var clock = new RewardedAdFixtures.Clock();
+            var service = new PurchaseService(Purchases.PFixtures.TinyCatalog(), clock: clock.Read);
             service.AttachLeasePersistence(saveData);
             var provider = new RewardedAdFixtures.Provider();
             var reporter = new RewardedAdFixtures.Reporter();
             var placements = RewardedAdFixtures.Placements(
-                ", \"caps\": { \"session\": 1, \"localDate\": 1 }");
+                ", \"caps\": { \"localDate\": 1 }");
             using var coordinator = new RewardedAdCoordinator(placements, service, provider,
                 reporter, capFault, () => "2026-08-29");
             coordinator.Start();
@@ -155,6 +156,9 @@ namespace CatMetro.Tests.Save
             provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Closed, attempt, "p0"));
 
             Assert.That(service.IsUnlocked("outfit_conductor"), Is.True);
+            clock.Advance(3_601L);
+            Assert.That(service.CanOfferAdFor("outfit_conductor"), Is.True,
+                "the lease must expire before the coordinator cap assertion");
             Assert.That(coordinator.CanShow("p0"), Is.False,
                 "the failed cap commit still consumes the current session opportunity");
             var reloaded = SFixtures.Store(root);
