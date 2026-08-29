@@ -1,0 +1,161 @@
+using System;
+using System.Collections.Generic;
+using CatMetro.Services.Ads;
+using CatMetro.Services.Purchases;
+
+namespace CatMetro.Tests.Ads
+{
+    public static class RewardedAdFixtures
+    {
+        public sealed class Provider : IRewardedAdProvider
+        {
+            public event Action<RewardedAdEvent> EventReceived;
+
+            public bool IsReady { get; set; } = true;
+            public bool ShowAccepted { get; set; } = true;
+            public bool ThrowOnReady { get; set; }
+            public bool ThrowOnInitialize { get; set; }
+            public bool ThrowOnLoad { get; set; }
+            public bool ThrowOnShow { get; set; }
+            public int InitializeCalls { get; private set; }
+            public int LoadCalls { get; private set; }
+            public int DisposeCalls { get; private set; }
+            public readonly List<(long AttemptId, string PlacementId)> Shows =
+                new List<(long, string)>();
+
+            bool IRewardedAdProvider.IsReady => ThrowOnReady
+                ? throw new InvalidOperationException("injected readiness fault")
+                : IsReady;
+
+            public void Initialize()
+            {
+                InitializeCalls++;
+                if (ThrowOnInitialize) throw new InvalidOperationException("injected init fault");
+            }
+
+            public void Load()
+            {
+                LoadCalls++;
+                if (ThrowOnLoad) throw new InvalidOperationException("injected load fault");
+            }
+
+            public bool TryShow(long attemptId, string placementId)
+            {
+                Shows.Add((attemptId, placementId));
+                if (ThrowOnShow) throw new InvalidOperationException("injected show fault");
+                return ShowAccepted;
+            }
+
+            public void Emit(RewardedAdEvent adEvent) => EventReceived?.Invoke(adEvent);
+
+            public void Dispose()
+            {
+                if (DisposeCalls == 0) DisposeCalls = 1;
+            }
+        }
+
+        public sealed class Reporter : IAdEventReporter
+        {
+            public event Action ReadinessChanged;
+
+            public bool IsReady { get; private set; }
+            public bool ThrowOnReady { get; set; }
+            public bool ThrowOnReport { get; set; }
+            public readonly List<RewardedAdEvent> Events = new List<RewardedAdEvent>();
+
+            bool IAdEventReporter.IsReady => ThrowOnReady
+                ? throw new InvalidOperationException("injected reporter readiness fault")
+                : IsReady;
+
+            public Reporter(bool ready = true) => IsReady = ready;
+
+            public void SetReady(bool ready)
+            {
+                IsReady = ready;
+                ReadinessChanged?.Invoke();
+            }
+
+            public void Report(RewardedAdEvent adEvent)
+            {
+                if (ThrowOnReport) throw new InvalidOperationException("injected report fault");
+                Events.Add(adEvent);
+            }
+        }
+
+        public sealed class CapStore : IRewardedAdCapStore
+        {
+            private readonly Dictionary<string, int> _counts =
+                new Dictionary<string, int>(StringComparer.Ordinal);
+
+            public bool Accept { get; set; } = true;
+            public bool ThrowOnRead { get; set; }
+            public bool ThrowOnIncrement { get; set; }
+            public int IncrementCalls { get; private set; }
+
+            public int ReadLocalDateCount(string placementId, string localDateKey)
+            {
+                if (ThrowOnRead) throw new InvalidOperationException("injected cap read fault");
+                return _counts.TryGetValue(Key(placementId, localDateKey), out var value) ? value : 0;
+            }
+
+            public bool TryIncrementLocalDateCount(string placementId, string localDateKey)
+            {
+                IncrementCalls++;
+                if (ThrowOnIncrement) throw new InvalidOperationException("injected cap write fault");
+                if (!Accept) return false;
+                var key = Key(placementId, localDateKey);
+                int current = _counts.TryGetValue(key, out var value) ? value : 0;
+                _counts[key] = current == int.MaxValue ? int.MaxValue : current + 1;
+                return true;
+            }
+
+            public void Seed(string placementId, string localDateKey, int count)
+                => _counts[Key(placementId, localDateKey)] = count;
+
+            private static string Key(string placementId, string localDateKey)
+                => (placementId ?? "") + "\n" + (localDateKey ?? "");
+        }
+
+        public sealed class LeasePersistence : IEntitlementLeasePersistence
+        {
+            public bool Accept { get; set; } = true;
+            public int Calls { get; private set; }
+            public Action OnPersist { get; set; }
+
+            public bool TryReplaceRewardedAdLeases(IReadOnlyList<EntitlementGrant> leases)
+            {
+                Calls++;
+                OnPersist?.Invoke();
+                return Accept;
+            }
+        }
+
+        public static RewardedPlacementCatalog Placements(string caps = "", int count = 2)
+        {
+            var rows = new List<string>();
+            for (int i = 0; i < count; i++)
+            {
+                rows.Add("{ \"id\": \"p" + i + "\", \"entitlement\": \"outfit_conductor\", " +
+                    "\"enabled\": true" + caps + " }");
+            }
+            rows.Add("{ \"id\": \"disabled\", \"entitlement\": \"outfit_conductor\", " +
+                "\"enabled\": false, \"disabledReason\": \"off\" }");
+            return RewardedPlacementCatalog.Parse("{ \"placements\": [" +
+                string.Join(",", rows) + "] }", Purchases.PFixtures.TinyCatalog());
+        }
+
+        public static PurchaseService Service(IEntitlementLeasePersistence persistence = null)
+        {
+            var service = new PurchaseService(Purchases.PFixtures.TinyCatalog(), clock: () => 1_000L);
+            service.AttachLeasePersistence(persistence ?? new LeasePersistence());
+            return service;
+        }
+
+        public static RewardedAdCoordinator Coordinator(Provider provider = null,
+            Reporter reporter = null, CapStore caps = null, PurchaseService service = null,
+            RewardedPlacementCatalog placements = null)
+            => new RewardedAdCoordinator(placements ?? Placements(), service ?? Service(),
+                provider ?? new Provider(), reporter ?? new Reporter(), caps ?? new CapStore(),
+                () => "2026-08-29");
+    }
+}

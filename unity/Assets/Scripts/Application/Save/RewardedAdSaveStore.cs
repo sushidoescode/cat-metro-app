@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using CatMetro.Services.Ads;
 using CatMetro.Services.Purchases;
 using Newtonsoft.Json.Linq;
 
@@ -7,7 +8,7 @@ namespace CatMetro.Application.Save
 {
     // Stores only local rewarded-ad leases in the existing durable payload. It has no catalogue
     // or clock policy: PurchaseService validates restore rows against the live game data.
-    public sealed class RewardedAdSaveStore : IEntitlementLeasePersistence
+    public sealed class RewardedAdSaveStore : IEntitlementLeasePersistence, IRewardedAdCapStore
     {
         private readonly SaveStore _store;
 
@@ -95,6 +96,84 @@ namespace CatMetro.Application.Save
                 // The load path is total: malformed local save data means no valid local lease.
             }
             return result;
+        }
+
+        public int ReadLocalDateCount(string placementId, string localDateKey)
+        {
+            if (string.IsNullOrEmpty(placementId) || string.IsNullOrEmpty(localDateKey)) return 0;
+            try
+            {
+                var rewarded = _store.State.Payload?["caps"]?["rewarded"] as JObject;
+                if (!(rewarded?["dateKey"] is JValue date) ||
+                    date.Type != JTokenType.String ||
+                    !string.Equals((string)date, localDateKey, StringComparison.Ordinal) ||
+                    !(rewarded["counters"] is JObject counters) ||
+                    !(counters[placementId] is JValue value) ||
+                    value.Type != JTokenType.Integer)
+                    return 0;
+                long count = (long)value;
+                return count < 0L || count > int.MaxValue ? 0 : (int)count;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        public bool TryIncrementLocalDateCount(string placementId, string localDateKey)
+        {
+            if (string.IsNullOrEmpty(placementId) || string.IsNullOrEmpty(localDateKey)) return false;
+            var original = _store.State.Payload;
+            try
+            {
+                var candidate = (JObject)original.DeepClone();
+                var caps = candidate["caps"] as JObject;
+                var rewarded = caps?["rewarded"] as JObject;
+                if (rewarded == null) return false;
+
+                bool sameDate = rewarded["dateKey"] is JValue date &&
+                    date.Type == JTokenType.String &&
+                    string.Equals((string)date, localDateKey, StringComparison.Ordinal);
+                JObject counters;
+                if (!sameDate)
+                {
+                    counters = new JObject();
+                    rewarded["dateKey"] = localDateKey;
+                    rewarded["counters"] = counters;
+                }
+                else
+                {
+                    counters = rewarded["counters"] as JObject;
+                    if (counters == null) return false;
+                }
+
+                int current = ReadNonnegativeInt(counters[placementId]);
+                counters[placementId] = current == int.MaxValue ? int.MaxValue : current + 1;
+                _store.State.Payload = candidate;
+                if (_store.TryCommitAtomic()) return true;
+            }
+            catch
+            {
+                // The already-durable lease may be the original identity here. Restore it exactly
+                // even when this later, deliberately separate cap commit faults.
+            }
+
+            _store.State.Payload = original;
+            return false;
+        }
+
+        private static int ReadNonnegativeInt(JToken token)
+        {
+            try
+            {
+                if (!(token is JValue value) || value.Type != JTokenType.Integer) return 0;
+                long count = (long)value;
+                return count < 0L || count > int.MaxValue ? 0 : (int)count;
+            }
+            catch
+            {
+                return 0;
+            }
         }
     }
 }
