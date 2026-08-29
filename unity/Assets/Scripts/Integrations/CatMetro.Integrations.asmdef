@@ -2,7 +2,8 @@
     "name": "CatMetro.Integrations",
     "rootNamespace": "CatMetro.Integrations",
     "references": [
-        "CatMetro.Services"
+        "CatMetro.Services",
+        "CatMetro.Application"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
