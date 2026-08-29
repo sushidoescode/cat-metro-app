@@ -95,6 +95,32 @@ namespace CatMetro.Tests.Purchases
         }
 
         [Test]
+        public void CandidatePersistence_ExcludesAPermanentRewardedAdRow()
+        {
+            const long now = 1_000L;
+            var catalog = PurchaseCatalog.Parse(@"{
+              'entitlements': [
+                { 'id': 'outfit_conductor', 'kind': 'outfit', 'display': 'Conductor', 'adLeaseSeconds': 3600 },
+                { 'id': 'outfit_bellhop', 'kind': 'outfit', 'display': 'Bellhop', 'adLeaseSeconds': 3600 }
+              ],
+              'products': []
+            }");
+            var ledger = new EntitlementLedger();
+            ledger.ImportLeases(new[]
+            {
+                new EntitlementGrant("outfit_conductor", GrantSource.RewardedAd)
+            }, now);
+            var persistence = new PFixtures.RecordingLeasePersistence();
+            var svc = new PurchaseService(catalog, clock: () => now, ledger: ledger);
+            svc.AttachLeasePersistence(persistence);
+
+            Assert.That(svc.GrantRewardedAdEntitlement("outfit_bellhop"),
+                Is.EqualTo(AdGrantOutcome.Granted));
+            Assert.That(persistence.LastLeases, Has.Count.EqualTo(1));
+            Assert.That(persistence.LastLeases[0].EntitlementId, Is.EqualTo("outfit_bellhop"));
+        }
+
+        [Test]
         public void RestoredRewardedLease_KeepsItsSavedAbsoluteExpiry()
         {
             var clock = new PFixtures.Clock { Now = 5_000L };
@@ -129,6 +155,51 @@ namespace CatMetro.Tests.Purchases
 
             Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False);
             Assert.That(svc.IsUnlocked(EntitlementIds.FrameBrass), Is.False);
+            Assert.That(svc.Ledger.ExportLeases(), Is.Empty);
+        }
+
+        [TestCase(0L)]
+        [TestCase(-1L)]
+        public void RestoreRewardedAdLeases_NeverImportsNonpositiveExpiryUnderANegativeClock(
+            long expiresAtUnixSeconds)
+        {
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), clock: () => -10L);
+
+            svc.RestoreRewardedAdLeases(new[]
+            {
+                new EntitlementGrant(EntitlementIds.OutfitConductor, GrantSource.RewardedAd,
+                    expiresAtUnixSeconds)
+            });
+
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False);
+            Assert.That(svc.Ledger.ExportLeases(), Is.Empty);
+        }
+
+        [Test]
+        public void NegativeClock_DoesNotOfferOrGrantANonpositiveRewardedLease()
+        {
+            var (svc, _, clock) = PFixtures.Service();
+            clock.Now = -10_000L;
+
+            Assert.That(svc.CanOfferAdFor(EntitlementIds.OutfitConductor), Is.False);
+            Assert.That(svc.GrantRewardedAdEntitlement(EntitlementIds.OutfitConductor),
+                Is.EqualTo(AdGrantOutcome.AlreadyUnlocked));
+            Assert.That(svc.Ledger.ExportLeases(), Is.Empty);
+        }
+
+        [Test]
+        public void OverflowedClock_DoesNotOfferOrGrantARewardedLease()
+        {
+            var (svc, _, clock) = PFixtures.Service();
+            clock.Now = long.MaxValue;
+
+            bool canOffer = true;
+            AdGrantOutcome outcome = default;
+            Assert.DoesNotThrow(() => canOffer = svc.CanOfferAdFor(EntitlementIds.OutfitConductor));
+            Assert.DoesNotThrow(() =>
+                outcome = svc.GrantRewardedAdEntitlement(EntitlementIds.OutfitConductor));
+            Assert.That(canOffer, Is.False);
+            Assert.That(outcome, Is.EqualTo(AdGrantOutcome.AlreadyUnlocked));
             Assert.That(svc.Ledger.ExportLeases(), Is.Empty);
         }
 

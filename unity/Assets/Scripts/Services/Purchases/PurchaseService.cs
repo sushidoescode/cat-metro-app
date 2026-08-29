@@ -268,6 +268,8 @@ namespace CatMetro.Services.Purchases
 
             long now = _clock();
             long expiresAt = now + definition.AdLeaseSeconds;
+            if (expiresAt <= 0L || expiresAt <= now)
+                return AdGrantOutcome.AlreadyUnlocked;
             if (!_ledger.CanGrantLease(entitlementId, expiresAt, now))
                 return AdGrantOutcome.AlreadyUnlocked;
 
@@ -297,8 +299,9 @@ namespace CatMetro.Services.Purchases
                 return false;
 
             long now = _clock();
-            return _ledger.CanGrantLease(entitlementId,
-                now + definition.AdLeaseSeconds, now);
+            long expiresAt = now + definition.AdLeaseSeconds;
+            return expiresAt > 0L && expiresAt > now &&
+                _ledger.CanGrantLease(entitlementId, expiresAt, now);
         }
 
         public bool PruneExpiredLeases() => _ledger.PruneExpired(_clock());
@@ -315,6 +318,7 @@ namespace CatMetro.Services.Purchases
             {
                 var lease = leases[i];
                 if (lease.Source != GrantSource.RewardedAd ||
+                    lease.ExpiresAtUnixSeconds <= 0L ||
                     lease.ExpiresAtUnixSeconds <= now ||
                     !_catalog.TryGetEntitlement(lease.EntitlementId, out var definition) ||
                     !definition.IsAdGrantable)
@@ -338,6 +342,8 @@ namespace CatMetro.Services.Purchases
             {
                 var lease = existing[i];
                 if (lease.Source != GrantSource.RewardedAd ||
+                    lease.ExpiresAtUnixSeconds <= 0L ||
+                    lease.ExpiresAtUnixSeconds <= nowUnixSeconds ||
                     !lease.IsActiveAt(nowUnixSeconds) ||
                     lease.EntitlementId == entitlementId)
                     continue;
