@@ -98,3 +98,11 @@ unity/.mcp.json
 # working game — see unity/Assets/Scripts/Integrations/MonetizationConfig.cs.
 unity/Assets/Resources/Monetization/revenuecat_config.json
 unity/Assets/Resources/Monetization/revenuecat_config.json.meta
+
+# Rewarded ads app/ad-unit identifiers are local runtime config. The committed root example is
+# deliberately blank; exact runtime Resources and Unity's generated meta stay local.
+unity/Assets/Resources/Monetization/rewarded_ads_config.json
+unity/Assets/Resources/Monetization/rewarded_ads_config.json.meta
+
+# Local Unity and .NET test reports.
+artifacts/

@@ -1,0 +1,413 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using CatMetro.Application.Save;
+using CatMetro.Integrations;
+using CatMetro.Services.Ads;
+using CatMetro.Services.Purchases;
+using CatMetro.Tests.Purchases;
+using CatMetro.Tests.Save;
+using Newtonsoft.Json.Linq;
+using NUnit.Framework;
+using UnityEngine;
+
+namespace CatMetro.Tests
+{
+    public sealed class RewardedAdsBootstrapTests
+    {
+        private const string ConfiguredJson = @"{
+          ""iosAppKey"": ""ios-key-do-not-log"",
+          ""androidAppKey"": ""android-key-do-not-log"",
+          ""iosRewardedAdUnitId"": ""ios-unit-do-not-log"",
+          ""androidRewardedAdUnitId"": ""android-unit-do-not-log""
+        }";
+
+        private const string PlacementsJson = @"{
+          ""placements"": [{
+            ""id"": ""wardrobe_conductor_trial"",
+            ""entitlement"": ""outfit_conductor"",
+            ""enabled"": true,
+            ""caps"": { ""session"": 2, ""localDate"": 3 }
+          }]
+        }";
+
+        [SetUp]
+        public void SetUp()
+        {
+            PurchaseBackendFactory.ResetForTests();
+            RewardedAdProviderFactory.ResetForTests();
+            MonetizationBootstrap.ResetForTests();
+            SaveRuntime.ResetForTests();
+            PurchaseRuntime.ResetForTests();
+            RewardedAdRuntime.ResetForTests();
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            MonetizationBootstrap.ResetForTests();
+            PurchaseBackendFactory.ResetForTests();
+            RewardedAdProviderFactory.ResetForTests();
+            SaveRuntime.ResetForTests();
+            PurchaseRuntime.ResetForTests();
+            RewardedAdRuntime.ResetForTests();
+        }
+
+        [Test]
+        public void Config_MissingInvalidOrBlankSelectedPair_IsUnconfiguredWithoutThrowing()
+        {
+            RewardedAdsConfig missing = null;
+            RewardedAdsConfig invalid = null;
+            RewardedAdsConfig blankAndroid = null;
+            RewardedAdsConfig blankAndroidUnit = null;
+
+            Assert.DoesNotThrow(() => missing = RewardedAdsConfig.Parse(null,
+                RuntimePlatform.Android));
+            Assert.DoesNotThrow(() => invalid = RewardedAdsConfig.Parse("not json",
+                RuntimePlatform.Android));
+            Assert.DoesNotThrow(() => blankAndroid = RewardedAdsConfig.Parse(
+                @"{""iosAppKey"":""ios"",""iosRewardedAdUnitId"":""ios-unit"","
+                + @"""androidAppKey"":"" "",""androidRewardedAdUnitId"":""""}",
+                RuntimePlatform.Android));
+            Assert.DoesNotThrow(() => blankAndroidUnit = RewardedAdsConfig.Parse(
+                @"{""androidAppKey"":""android"",""androidRewardedAdUnitId"":"" ""}",
+                RuntimePlatform.Android));
+
+            Assert.That(missing.IsConfigured, Is.False);
+            Assert.That(missing.Problem, Does.Contain("null or empty"));
+            Assert.That(invalid.IsConfigured, Is.False);
+            Assert.That(invalid.Problem, Does.Contain("valid JSON"));
+            Assert.That(blankAndroid.IsConfigured, Is.False);
+            Assert.That(blankAndroid.Problem, Does.Contain("Android app key"));
+            Assert.That(blankAndroidUnit.IsConfigured, Is.False);
+            Assert.That(blankAndroidUnit.Problem, Does.Contain("rewarded ad-unit ID"));
+        }
+
+        [Test]
+        public void Config_SelectsOnlyTheRequestedPlatformPair()
+        {
+            var android = RewardedAdsConfig.Parse(ConfiguredJson, RuntimePlatform.Android);
+            var ios = RewardedAdsConfig.Parse(ConfiguredJson, RuntimePlatform.IPhonePlayer);
+            var unsupported = RewardedAdsConfig.Parse(ConfiguredJson, RuntimePlatform.OSXEditor);
+
+            Assert.That(android.IsConfigured, Is.True);
+            Assert.That(android.AppKey, Is.EqualTo("android-key-do-not-log"));
+            Assert.That(android.RewardedAdUnitId, Is.EqualTo("android-unit-do-not-log"));
+            Assert.That(ios.IsConfigured, Is.True);
+            Assert.That(ios.AppKey, Is.EqualTo("ios-key-do-not-log"));
+            Assert.That(ios.RewardedAdUnitId, Is.EqualTo("ios-unit-do-not-log"));
+            Assert.That(unsupported.IsConfigured, Is.False);
+            Assert.That(unsupported.Problem, Does.Contain("unsupported platform"));
+        }
+
+        [Test]
+        public void Config_MissingResourceAndCommittedExample_AreSafeAndUnconfigured()
+        {
+            RewardedAdsConfig loaded = null;
+            Assert.DoesNotThrow(() => loaded = RewardedAdsConfig.Load());
+            Assert.That(loaded.IsConfigured, Is.False);
+            Assert.That(loaded.Problem, Does.Contain(RewardedAdsConfig.ResourcePath));
+
+            string repoRoot = Path.GetFullPath(Path.Combine(UnityEngine.Application.dataPath,
+                "..", ".."));
+            string examplePath = Path.Combine(repoRoot, "config", "rewarded-ads.example.json");
+            Assert.That(File.Exists(examplePath), Is.True,
+                "the non-secret example is the only committed config contract");
+            var example = RewardedAdsConfig.Parse(File.ReadAllText(examplePath),
+                RuntimePlatform.Android);
+            Assert.That(example.IsConfigured, Is.False);
+            Assert.That(example.Problem, Does.Contain("Android app key"));
+        }
+
+        [Test]
+        public void Factories_CatchConstructionFaults_AndResetAllStaticRegistrations()
+        {
+            var config = RewardedAdsConfig.Parse(ConfiguredJson, RuntimePlatform.Android);
+            RewardedAdProviderFactory.Register(_ =>
+                throw new InvalidOperationException("injected provider construction fault"));
+            IRewardedAdProvider provider = null;
+            Assert.DoesNotThrow(() => provider = RewardedAdProviderFactory.Create(config));
+            Assert.That(provider, Is.Null);
+
+            var backend = new BackendReporter();
+            PurchaseBackendFactory.Register(_ => backend);
+            RewardedAdProviderFactory.Register(_ => new Provider());
+            Assert.That(PurchaseBackendFactory.HasFactory, Is.True);
+            Assert.That(PurchaseBackendFactory.Create(new PurchaseService(PFixtures.TinyCatalog())),
+                Is.SameAs(backend));
+            Assert.That(RewardedAdProviderFactory.Create(config), Is.Not.Null);
+
+            PurchaseBackendFactory.ResetForTests();
+            RewardedAdProviderFactory.ResetForTests();
+
+            Assert.That(PurchaseBackendFactory.HasFactory, Is.False);
+            Assert.That(PurchaseBackendFactory.Create(new PurchaseService(PFixtures.TinyCatalog())),
+                Is.Null);
+            Assert.That(RewardedAdProviderFactory.Create(config), Is.Null);
+        }
+
+        [Test]
+        public void Bind_SubscribesBeforeConsumingAnAlreadyInstalledStore_AndRestoresItsLease()
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            store.Load();
+            store.State.Payload["entitlements"]["localLeases"] = new JArray
+            {
+                new JObject
+                {
+                    ["entitlementId"] = "outfit_conductor",
+                    ["expiresAtUnixSeconds"] = 5_000L,
+                },
+            };
+            SaveRuntime.Install(store);
+            var provider = new Provider();
+            var backend = new BackendReporter();
+            var service = Service(backend);
+            PurchaseRuntime.Install(service);
+            using var composition = Composition(service, backend, () => provider);
+
+            composition.Bind();
+
+            Assert.That(service.IsUnlocked("outfit_conductor"), Is.True,
+                "Bind must immediately import a store installed before the observer");
+            Assert.That(provider.InitializeCalls, Is.EqualTo(1));
+            Assert.That(provider.LoadCalls, Is.EqualTo(1));
+            Assert.That(backend.ReporterEventAddCalls, Is.EqualTo(1));
+            Assert.That(RewardedAdRuntime.IsInstalled, Is.True);
+        }
+
+        [Test]
+        public void NewStore_AttachesOneAdapter_StartsOneCoordinator_AndInstallsRuntime()
+        {
+            using var root = new SFixtures.TempRoot();
+            var provider = new Provider();
+            var backend = new BackendReporter();
+            var service = Service(backend);
+            PurchaseRuntime.Install(service);
+            using var composition = Composition(service, backend, () => provider);
+            composition.Bind();
+
+            var store = SFixtures.Store(root);
+            store.Load();
+            SaveRuntime.Install(store);
+
+            Assert.That(provider.InitializeCalls, Is.EqualTo(1));
+            Assert.That(provider.LoadCalls, Is.EqualTo(1));
+            Assert.That(provider.EventAddCalls, Is.EqualTo(1));
+            Assert.That(backend.ReporterEventAddCalls, Is.EqualTo(1));
+            Assert.That(RewardedAdRuntime.IsInstalled, Is.True);
+            Assert.That(RewardedAdRuntime.Current.CanShow("wardrobe_conductor_trial"), Is.True,
+                "CanShow proves the same real save adapter is attached for durable grants");
+        }
+
+        [Test]
+        public void SameStoreAndRepeatedBind_AreIdempotent()
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            store.Load();
+            SaveRuntime.Install(store);
+            var provider = new Provider();
+            var backend = new BackendReporter();
+            var service = Service(backend);
+            int providerCreates = 0;
+            using var composition = Composition(service, backend, () =>
+            {
+                providerCreates++;
+                return provider;
+            });
+
+            composition.Bind();
+            composition.Bind();
+            SaveRuntime.Install(store);
+
+            Assert.That(providerCreates, Is.EqualTo(1));
+            Assert.That(provider.InitializeCalls, Is.EqualTo(1));
+            Assert.That(provider.LoadCalls, Is.EqualTo(1));
+            Assert.That(provider.EventAddCalls, Is.EqualTo(1));
+            Assert.That(backend.ReporterEventAddCalls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void GenuinelyNewStore_DisposesOldCoordinatorAndProvider_BeforeReplacement()
+        {
+            using var firstRoot = new SFixtures.TempRoot();
+            using var secondRoot = new SFixtures.TempRoot();
+            var providers = new Queue<Provider>(new[] { new Provider(), new Provider() });
+            var created = new List<Provider>();
+            var backend = new BackendReporter();
+            var service = Service(backend);
+            using var composition = Composition(service, backend, () =>
+            {
+                var provider = providers.Dequeue();
+                created.Add(provider);
+                return provider;
+            });
+            composition.Bind();
+
+            var first = SFixtures.Store(firstRoot);
+            first.Load();
+            SaveRuntime.Install(first);
+            var firstRuntime = RewardedAdRuntime.Current;
+            var second = SFixtures.Store(secondRoot);
+            second.Load();
+            SaveRuntime.Install(second);
+
+            Assert.That(created, Has.Count.EqualTo(2));
+            Assert.That(created[0].DisposeCalls, Is.EqualTo(1));
+            Assert.That(created[0].EventRemoveCalls, Is.EqualTo(1));
+            Assert.That(created[1].InitializeCalls, Is.EqualTo(1));
+            Assert.That(backend.ReporterEventRemoveCalls, Is.EqualTo(1));
+            Assert.That(backend.ReporterEventAddCalls, Is.EqualTo(2));
+            Assert.That(RewardedAdRuntime.Current, Is.Not.SameAs(firstRuntime));
+        }
+
+        [Test]
+        public void MissingReporterOrProvider_LeavesNoOpWithoutCreatingOrLeakingAProvider()
+        {
+            using var firstRoot = new SFixtures.TempRoot();
+            using var secondRoot = new SFixtures.TempRoot();
+            int forbiddenCreates = 0;
+            var service = Service(new BackendReporter());
+            using (var noReporter = Composition(service, null, () =>
+            {
+                forbiddenCreates++;
+                return new Provider();
+            }))
+            {
+                noReporter.Bind();
+                var first = SFixtures.Store(firstRoot);
+                first.Load();
+                SaveRuntime.Install(first);
+                Assert.That(RewardedAdRuntime.IsInstalled, Is.False);
+            }
+            Assert.That(forbiddenCreates, Is.Zero,
+                "a fixed missing reporter must be rejected before provider construction");
+
+            SaveRuntime.ResetForTests();
+            RewardedAdRuntime.ResetForTests();
+            using var noProvider = Composition(service, new BackendReporter(), () => null);
+            noProvider.Bind();
+            var second = SFixtures.Store(secondRoot);
+            second.Load();
+            SaveRuntime.Install(second);
+            Assert.That(RewardedAdRuntime.IsInstalled, Is.False);
+            Assert.That(RewardedAdRuntime.Current.CanShow("wardrobe_conductor_trial"), Is.False);
+        }
+
+        [Test]
+        public void Pump_PauseCommitsBoundSave_ResumeRefreshes_AndDestroyUnsubscribes()
+        {
+            using var firstRoot = new SFixtures.TempRoot();
+            using var secondRoot = new SFixtures.TempRoot();
+            var fs = new SFixtures.RecordingFs();
+            var store = SFixtures.Store(firstRoot, fs);
+            store.Load();
+            var backend = new BackendReporter();
+            var service = Service(backend);
+            var firstProvider = new Provider();
+            int providerCreates = 0;
+            var composition = Composition(service, backend, () =>
+            {
+                providerCreates++;
+                return firstProvider;
+            });
+            composition.Bind();
+            SaveRuntime.Install(store);
+            var host = new GameObject("[RewardedAdsBootstrapTests]");
+            var pump = host.AddComponent<MonetizationPump>();
+            pump.Bind(service, composition);
+            store.State.Tickets = 9;
+            int refreshesBeforeResume = backend.RefreshEntitlementsCalls;
+
+            pump.OnApplicationPause(true);
+            Assert.That(File.Exists(store.SavePath), Is.True,
+                "pause must use the bound SaveStore's real atomic commit path");
+            Assert.That(fs.Calls.Exists(x => x.StartsWith("Replace:")), Is.True);
+            pump.OnApplicationPause(false);
+            Assert.That(backend.RefreshEntitlementsCalls,
+                Is.EqualTo(refreshesBeforeResume + 1));
+
+            pump.OnDestroy();
+            UnityEngine.Object.DestroyImmediate(host);
+            Assert.That(firstProvider.DisposeCalls, Is.EqualTo(1));
+            Assert.That(RewardedAdRuntime.IsInstalled, Is.False);
+            var second = SFixtures.Store(secondRoot);
+            second.Load();
+            SaveRuntime.Install(second);
+            Assert.That(providerCreates, Is.EqualTo(1),
+                "destroy must remove the static SaveRuntime subscription");
+        }
+
+        private static PurchaseService Service(BackendReporter backend)
+            => new PurchaseService(PFixtures.TinyCatalog(), backend, () => 1_000L);
+
+        private static RewardedAdsComposition Composition(PurchaseService service,
+            IAdEventReporter reporter, Func<IRewardedAdProvider> providerFactory)
+        {
+            var placements = RewardedPlacementCatalog.Parse(PlacementsJson,
+                PFixtures.TinyCatalog());
+            Assert.That(placements.Problems, Is.Empty);
+            return new RewardedAdsComposition(service, placements, providerFactory, reporter,
+                () => "2026-08-29");
+        }
+
+        private sealed class Provider : IRewardedAdProvider
+        {
+            private Action<RewardedAdEvent> _eventReceived;
+
+            public event Action<RewardedAdEvent> EventReceived
+            {
+                add { EventAddCalls++; _eventReceived += value; }
+                remove { EventRemoveCalls++; _eventReceived -= value; }
+            }
+
+            public bool IsReady => true;
+            public int EventAddCalls { get; private set; }
+            public int EventRemoveCalls { get; private set; }
+            public int InitializeCalls { get; private set; }
+            public int LoadCalls { get; private set; }
+            public int DisposeCalls { get; private set; }
+
+            public void Initialize() => InitializeCalls++;
+            public void Load() => LoadCalls++;
+            public bool TryShow(long attemptId, string placementId) => true;
+            public void Dispose() => DisposeCalls++;
+        }
+
+        private sealed class BackendReporter : IPurchaseBackend, IAdEventReporter
+        {
+            private Action _readinessChanged;
+
+            public BackendAvailability Availability => BackendAvailability.Ready;
+            public bool IsReady => true;
+            public int RefreshEntitlementsCalls { get; private set; }
+            public int ReporterEventAddCalls { get; private set; }
+            public int ReporterEventRemoveCalls { get; private set; }
+
+            public event Action ReadinessChanged
+            {
+                add { ReporterEventAddCalls++; _readinessChanged += value; }
+                remove { ReporterEventRemoveCalls++; _readinessChanged -= value; }
+            }
+
+            public void FetchProducts(Action<IReadOnlyList<StoreProductView>> onDone)
+                => onDone?.Invoke(Array.Empty<StoreProductView>());
+
+            public void Purchase(string productId, Action<PurchaseResult> onDone)
+                => onDone?.Invoke(PurchaseResult.Unavailable(productId, "test"));
+
+            public void Restore(Action<RestoreResult> onDone)
+                => onDone?.Invoke(new RestoreResult(RestoreOutcome.Unavailable));
+
+            public void RefreshEntitlements(Action<EntitlementSnapshot> onDone)
+            {
+                RefreshEntitlementsCalls++;
+                onDone?.Invoke(EntitlementSnapshot.Unreachable());
+            }
+
+            public void Report(RewardedAdEvent adEvent) { }
+        }
+    }
+}
