@@ -307,8 +307,10 @@ namespace CatMetro.Services.Purchases
         public bool PruneExpiredLeases() => _ledger.PruneExpired(_clock());
 
         // Save parsing is deliberately permissive, but only a currently valid rewarded lease
-        // for a live ad-grantable catalogue entitlement may enter the ledger. Its persisted
-        // absolute expiry is retained exactly; restoring never starts a new lease duration.
+        // for a live ad-grantable catalogue entitlement may enter the ledger. A SaveStore is the
+        // authority for the complete local lease snapshot, so a new store replaces (not merges)
+        // prior rewarded leases while store/promotional grants remain untouched. Validate the
+        // full input before the single ledger mutation so a throwing source cannot partly swap.
         public void RestoreRewardedAdLeases(IReadOnlyList<EntitlementGrant> leases)
         {
             if (leases == null) return;
@@ -326,7 +328,7 @@ namespace CatMetro.Services.Purchases
                 valid.Add(lease);
             }
 
-            _ledger.ImportLeases(valid, now);
+            _ledger.ReplaceRewardedAdLeases(valid, now);
         }
 
         // ---- internals ------------------------------------------------------------------

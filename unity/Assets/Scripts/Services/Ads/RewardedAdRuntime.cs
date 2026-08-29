@@ -20,6 +20,17 @@ namespace CatMetro.Services.Ads
             Installed?.Invoke();
         }
 
+        // Production teardown is identity-conditional: a callback can synchronously publish a
+        // replacement while an older owner is unwinding, and that older owner must not reset the
+        // newer runtime. Installed observers remain subscribed for the replacement publication.
+        public static bool Uninstall(IRewardedAds rewardedAds)
+        {
+            if (rewardedAds == null || !ReferenceEquals(_current, rewardedAds)) return false;
+            _current = NoRewardedAds.Instance;
+            IsInstalled = false;
+            return true;
+        }
+
         public static void ResetForTests()
         {
             _current = NoRewardedAds.Instance;
