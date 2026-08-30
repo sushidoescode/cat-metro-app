@@ -43,7 +43,9 @@ namespace CatMetro.Services.Purchases
         BackendAvailability Availability { get; }
 
         // Products the store will actually sell, joined against our catalogue by the caller.
-        // An empty list is a legitimate answer and means "the shop is empty right now".
+        // Ready plus a non-null empty list is authoritative and means "the shop is empty right
+        // now". A failure must set Availability non-Ready before returning empty; null is never
+        // authoritative and lets callers preserve their last-good localized-price cache.
         void FetchProducts(Action<IReadOnlyList<StoreProductView>> onDone);
 
         void Purchase(string productId, Action<PurchaseResult> onDone);

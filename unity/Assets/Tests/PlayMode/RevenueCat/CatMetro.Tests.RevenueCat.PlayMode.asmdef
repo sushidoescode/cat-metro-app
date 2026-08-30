@@ -1,0 +1,32 @@
+{
+    "name": "CatMetro.Tests.RevenueCat.PlayMode",
+    "rootNamespace": "CatMetro.Tests.PlayMode.RevenueCat",
+    "references": [
+        "CatMetro.Services",
+        "CatMetro.Integrations.RevenueCat",
+        "revenuecat.purchases-unity",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS",
+        "CATMETRO_REVENUECAT",
+        "UNITY_EDITOR"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.revenuecat.purchases-unity",
+            "expression": "",
+            "define": "CATMETRO_REVENUECAT"
+        }
+    ],
+    "noEngineReferences": false
+}
