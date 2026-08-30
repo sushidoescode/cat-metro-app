@@ -66,6 +66,21 @@ wardrobe.status.restored,Purchases restored
 wardrobe.status.none,No purchases found
 wardrobe.status.restore.failed,Restore unavailable — please try again
 wardrobe.status.unavailable,The shop is offline — the game is still ready to play
+wardrobe.product,Conductor's Coat
+wardrobe.equipped,Coat equipped
+wardrobe.status.locked,A station uniform for your profile cat
+wardrobe.status.equipped,Conductor's Coat equipped!
+wardrobe.status.failed,Purchase unavailable — please try again
+wardrobe.tryon.heading,Today's try-ons
+wardrobe.tryon.conductor,Conductor
+wardrobe.tryon.engineer,Engineer
+wardrobe.tryon.scarf,Scarf
+wardrobe.tryon.goggles,Goggles
+wardrobe.tryon.locked,Locked
+wardrobe.tryon.borrowed,Borrowed today
+wardrobe.tryon.watch,Watch to borrow today
+wardrobe.tryon.unavailable,Try-on unavailable
+wardrobe.tryon.success,Ready to wear!
 cosmetics.cat.red_tabby,Red Tabby
 cosmetics.cat.blue_siamese,Blue Siamese
 cosmetics.cat.yellow_longhair,Yellow Longhair

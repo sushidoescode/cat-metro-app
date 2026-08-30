@@ -1036,8 +1036,9 @@ namespace CatMetro.Tests.Cosmetics
             var clock = new PFixtures.Clock();
             var ledger = new EntitlementLedger();
             var backend = new FakePurchaseBackend { GrantOnPurchase = catalog.EntitlementsFor };
-            return new PurchaseHarness(new PurchaseService(catalog, backend, clock.Fn, ledger),
-                backend, ledger, clock);
+            var service = new PurchaseService(catalog, backend, clock.Fn, ledger);
+            service.AttachLeasePersistence(new PFixtures.RecordingLeasePersistence());
+            return new PurchaseHarness(service, backend, ledger, clock);
         }
 
         private static CosmeticProfileSnapshot DefaultProfile() =>

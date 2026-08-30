@@ -887,13 +887,9 @@ namespace CatMetro.Presentation.Screens
 
         private static Color CatColor(string catId)
         {
-            switch (catId)
-            {
-                case "red_tabby": return Palette.SignalRed;
-                case "blue_siamese": return Palette.HarborBlue;
-                case "yellow_longhair": return Palette.TabbyYellow;
-                default: return Palette.MetroTeal;
-            }
+            int separator = string.IsNullOrEmpty(catId) ? -1 : catId.IndexOf('_');
+            string lineName = separator > 0 ? catId.Substring(0, separator) : catId;
+            return CatLine.ColorOf(lineName);
         }
 
         private static Color SlotColor(CosmeticSlot slot)

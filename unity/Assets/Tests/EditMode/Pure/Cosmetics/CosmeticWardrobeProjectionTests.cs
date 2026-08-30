@@ -363,6 +363,7 @@ namespace CatMetro.Tests.Cosmetics
             if (productId != null) backend.WithProduct(productId, productId, localizedPrice);
             var purchases = new PurchaseService(catalog, backend, () => 1_700_000_000L,
                 new EntitlementLedger());
+            purchases.AttachLeasePersistence(new PFixtures.RecordingLeasePersistence());
             if (productId != null) purchases.Refresh();
             return purchases;
         }
@@ -375,6 +376,7 @@ namespace CatMetro.Tests.Cosmetics
                 backend.WithProduct(productIds[i], productIds[i], "$0.99");
             var purchases = new PurchaseService(catalog, backend, () => 1_700_000_000L,
                 new EntitlementLedger());
+            purchases.AttachLeasePersistence(new PFixtures.RecordingLeasePersistence());
             purchases.Refresh();
             return purchases;
         }
