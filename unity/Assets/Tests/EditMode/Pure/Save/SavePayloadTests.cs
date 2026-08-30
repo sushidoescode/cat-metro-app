@@ -51,10 +51,24 @@ namespace CatMetro.Tests.Save
             Assert.That((int)payload["saveVersion"], Is.EqualTo(3));
             Assert.That(payload["cosmetics"], Is.Null, "cosmetics is not a top-level sibling");
             var cosmetics = (JObject)payload["profile"]["cosmetics"];
+            Assert.That(cosmetics.Properties().Select(p => p.Name), Is.EquivalentTo(new[]
+            {
+                "selectedCatId", "earnedCatIds", "earnedItemIds", "loadouts",
+            }));
             Assert.That((string)cosmetics["selectedCatId"], Is.EqualTo("red_tabby"));
             CollectionAssert.IsEmpty((JArray)cosmetics["earnedCatIds"]);
             CollectionAssert.IsEmpty((JArray)cosmetics["earnedItemIds"]);
-            Assert.That(((JArray)cosmetics["loadouts"]).Count, Is.EqualTo(1));
+            var loadouts = (JArray)cosmetics["loadouts"];
+            Assert.That(loadouts.Count, Is.EqualTo(1));
+            var loadout = (JObject)loadouts[0];
+            Assert.That(loadout.Properties().Select(p => p.Name), Is.EquivalentTo(new[]
+            {
+                "catId", "outfitId", "accessoryId", "frameId",
+            }));
+            Assert.That((string)loadout["catId"], Is.EqualTo("red_tabby"));
+            Assert.That((string)loadout["outfitId"], Is.Empty);
+            Assert.That((string)loadout["accessoryId"], Is.Empty);
+            Assert.That((string)loadout["frameId"], Is.Empty);
         }
 
         // Review F5: criterion 2 says "the SERIALISED payload's top-level keys" — assert the

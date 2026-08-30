@@ -238,6 +238,19 @@ namespace CatMetro.Tests.Save
             legacyCounters["streak_saver"] = 14;
             legacyCounters["theme_rental"] = 15;
             var expectedLegacyCounters = legacyCounters.DeepClone();
+            var expectedDefaultCosmetics = new JObject
+            {
+                ["selectedCatId"] = "red_tabby",
+                ["earnedCatIds"] = new JArray(),
+                ["earnedItemIds"] = new JArray(),
+                ["loadouts"] = new JArray(new JObject
+                {
+                    ["catId"] = "red_tabby",
+                    ["outfitId"] = "",
+                    ["accessoryId"] = "",
+                    ["frameId"] = "",
+                }),
+            };
             SFixtures.WriteRaw(store.SavePath, SFixtures.FileWithVersion(1, legacy));
 
             Assert.That(store.Load(), Is.EqualTo(LoadResult.Ok));
@@ -255,7 +268,9 @@ namespace CatMetro.Tests.Save
             Assert.That(filePayload["entitlements"]["localLeases"], Is.InstanceOf<JArray>());
             Assert.That((string)filePayload["caps"]["rewarded"]["dateKey"], Is.Empty);
             Assert.That(filePayload["caps"]["rewarded"]["counters"], Is.InstanceOf<JObject>());
-            Assert.That(filePayload["profile"]["cosmetics"], Is.InstanceOf<JObject>());
+            Assert.That(JToken.DeepEquals(filePayload["profile"]["cosmetics"],
+                expectedDefaultCosmetics), Is.True,
+                "the serialized artifact must carry the canonical cosmetics default inserted for v1");
             Assert.That(JToken.DeepEquals(filePayload["futureExperiment"], expectedUnknown), Is.True);
             Assert.That(JToken.DeepEquals(filePayload["caps"]["counters"],
                 expectedLegacyCounters), Is.True,
@@ -265,6 +280,9 @@ namespace CatMetro.Tests.Save
             Assert.That(reloaded.Load(), Is.EqualTo(LoadResult.Ok));
             Assert.That(JToken.DeepEquals(reloaded.State.Payload, filePayload), Is.True,
                 "the serialized v3 artifact must reload without another migration or data loss");
+            Assert.That(JToken.DeepEquals(reloaded.State.Payload["profile"]["cosmetics"],
+                expectedDefaultCosmetics), Is.True,
+                "the reloaded artifact must retain the canonical cosmetics default inserted for v1");
         }
 
         [Test]
@@ -320,6 +338,7 @@ namespace CatMetro.Tests.Save
             settings.Remove("dailyReminderSlot");
             ((JObject)legacy["entitlements"]).Remove("localLeases");
             ((JObject)legacy["caps"]).Remove("rewarded");
+            ((JObject)legacy["profile"]).Remove("cosmetics");
             return legacy;
         }
     }
