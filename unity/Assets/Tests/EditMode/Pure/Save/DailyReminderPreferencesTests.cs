@@ -89,6 +89,7 @@ namespace CatMetro.Tests.Save
             var store = SFixtures.Store(root);
             var v1 = SaveDefaults.FreshPayload();
             v1["saveVersion"] = 1;
+            ((JObject)v1["profile"]).Remove("cosmetics");
             ((JObject)v1["settings"]).Remove("dailyReminderEnabled");
             ((JObject)v1["settings"]).Remove("dailyReminderPromptSeen");
             ((JObject)v1["settings"]).Remove("dailyReminderSlot");
