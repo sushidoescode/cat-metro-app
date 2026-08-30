@@ -366,9 +366,15 @@ namespace CatMetro.Integrations.RevenueCat
 
         public void FetchProducts(Action<IReadOnlyList<StoreProductView>> onDone)
         {
-            var once = Guard(onDone, Array.Empty<StoreProductView>());
+            var once = Guard(onDone, Array.Empty<StoreProductView>(), QueryTimeoutSeconds,
+                () => Availability = BackendAvailability.Unreachable);
             if (_purchases == null) { once(Array.Empty<StoreProductView>()); return; }
-            if (_offeringsSlotOccupied) { once(Array.Empty<StoreProductView>()); return; }
+            if (_offeringsSlotOccupied)
+            {
+                Availability = BackendAvailability.Unreachable;
+                once(Array.Empty<StoreProductView>());
+                return;
+            }
 
             _offeringsSlotOccupied = true;
             try
@@ -690,7 +696,7 @@ namespace CatMetro.Integrations.RevenueCat
         // a callback that never arrives (the Editor noop wrapper, a wedged store), and one that
         // arrives after we have already given up. This wraps both.
         private Func<T, bool> Guard<T>(Action<T> onDone, T timeoutValue,
-            float timeoutSeconds = QueryTimeoutSeconds)
+            float timeoutSeconds = QueryTimeoutSeconds, Action onTimeout = null)
         {
             bool fired = false;
             Coroutine watchdog = null;
@@ -714,7 +720,15 @@ namespace CatMetro.Integrations.RevenueCat
                 return true;
             }
 
-            watchdog = StartCoroutine(Timeout(timeoutSeconds, () => { Fire(timeoutValue); }));
+            watchdog = StartCoroutine(Timeout(timeoutSeconds, () =>
+            {
+                try { onTimeout?.Invoke(); }
+                catch (Exception e)
+                {
+                    Debug.LogError("[Monetization] timeout hook threw: " + e);
+                }
+                Fire(timeoutValue);
+            }));
             return Fire;
         }
 
