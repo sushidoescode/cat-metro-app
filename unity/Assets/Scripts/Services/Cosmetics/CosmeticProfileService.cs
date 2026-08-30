@@ -14,6 +14,8 @@ namespace CatMetro.Services.Cosmetics
         private PurchaseService _purchases;
         private string _selectedCatId;
         private CosmeticPortraitSnapshot _currentPortrait;
+        private PurchaseBinding _pendingPurchaseBinding;
+        private long _bindingGeneration;
         private bool _disposed;
 
         public CosmeticCatalog Catalog { get; }
@@ -153,6 +155,7 @@ namespace CatMetro.Services.Cosmetics
         {
             if (_disposed) return;
             _disposed = true;
+            InvalidatePurchaseBinding();
             if (_purchases != null) _purchases.Ledger.Changed -= OnLedgerChanged;
             _purchases = null;
             _access.BindPurchases(null);
@@ -211,6 +214,7 @@ namespace CatMetro.Services.Cosmetics
                 return false;
             }
 
+            InvalidatePurchaseBinding();
             _profile = candidate;
             _selectedCatId = selectedCatId;
             _currentPortrait = currentPortrait;
@@ -220,35 +224,13 @@ namespace CatMetro.Services.Cosmetics
 
         internal PurchaseBinding PreparePurchaseBinding(PurchaseService purchases)
         {
-            if (_disposed) throw new ObjectDisposedException(nameof(CosmeticProfileService));
-            if (ReferenceEquals(_purchases, purchases))
-                return new PurchaseBinding(this, _purchases, purchases, _selectedCatId,
-                    _currentPortrait, false);
-
-            var candidateAccess = new CosmeticAccessResolver(purchases);
-            ComputeCurrentPortrait(_profile, candidateAccess, out var selectedCatId,
-                out var currentPortrait);
-            return new PurchaseBinding(this, _purchases, purchases, selectedCatId,
-                currentPortrait, true);
+            return PurchaseBinding.Prepare(this, purchases);
         }
 
         internal bool CommitPurchaseBinding(PurchaseBinding binding)
         {
-            if (!ReferenceEquals(binding.Owner, this) || _disposed)
-                return false;
-            if (!binding.RequiresCommit) return false;
-            if (!ReferenceEquals(_purchases, binding.PreviousPurchases))
-                throw new InvalidOperationException("stale cosmetic purchase binding");
-
-            if (_purchases != null) _purchases.Ledger.Changed -= OnLedgerChanged;
-            _purchases = binding.Purchases;
-            _access.BindPurchases(binding.Purchases);
-            if (_purchases != null) _purchases.Ledger.Changed += OnLedgerChanged;
-
-            var before = _currentPortrait;
-            _selectedCatId = binding.SelectedCatId;
-            _currentPortrait = binding.CurrentPortrait;
-            return !_currentPortrait.Equals(before);
+            if (binding == null) throw new ArgumentNullException(nameof(binding));
+            return binding.Commit(this);
         }
 
         internal void NotifyPurchaseBindingChanged(bool effectiveChanged)
@@ -259,9 +241,19 @@ namespace CatMetro.Services.Cosmetics
         private void OnLedgerChanged()
         {
             if (_disposed) return;
+            InvalidatePurchaseBinding();
             var before = _currentPortrait;
             RecomputeCurrentPortrait();
             if (!_currentPortrait.Equals(before)) Changed?.Invoke();
+        }
+
+        private void InvalidatePurchaseBinding()
+        {
+            _pendingPurchaseBinding = null;
+            unchecked
+            {
+                _bindingGeneration++;
+            }
         }
 
         private void RecomputeCurrentPortrait()
@@ -368,26 +360,100 @@ namespace CatMetro.Services.Cosmetics
             }
         }
 
-        internal readonly struct PurchaseBinding
+        internal sealed class PurchaseBinding
         {
-            internal CosmeticProfileService Owner { get; }
-            internal PurchaseService PreviousPurchases { get; }
-            internal PurchaseService Purchases { get; }
-            internal string SelectedCatId { get; }
-            internal CosmeticPortraitSnapshot CurrentPortrait { get; }
-            internal bool RequiresCommit { get; }
+            private readonly CosmeticProfileService _owner;
+            private readonly PurchaseService _previousPurchases;
+            private readonly PurchaseService _purchases;
+            private readonly CosmeticProfileSnapshot _profile;
+            private readonly string _selectedCatId;
+            private readonly CosmeticPortraitSnapshot _currentPortrait;
+            private readonly bool _requiresCommit;
+            private readonly long _generation;
 
-            internal PurchaseBinding(CosmeticProfileService owner,
+            private PurchaseBinding(CosmeticProfileService owner,
                 PurchaseService previousPurchases, PurchaseService purchases,
-                string selectedCatId, CosmeticPortraitSnapshot currentPortrait,
-                bool requiresCommit)
+                CosmeticProfileSnapshot profile, string selectedCatId,
+                CosmeticPortraitSnapshot currentPortrait, bool requiresCommit,
+                long generation)
             {
-                Owner = owner;
-                PreviousPurchases = previousPurchases;
-                Purchases = purchases;
-                SelectedCatId = selectedCatId;
-                CurrentPortrait = currentPortrait;
-                RequiresCommit = requiresCommit;
+                _owner = owner;
+                _previousPurchases = previousPurchases;
+                _purchases = purchases;
+                _profile = profile;
+                _selectedCatId = selectedCatId;
+                _currentPortrait = currentPortrait;
+                _requiresCommit = requiresCommit;
+                _generation = generation;
+            }
+
+            internal static PurchaseBinding Prepare(CosmeticProfileService owner,
+                PurchaseService purchases)
+            {
+                if (owner._disposed)
+                    throw new ObjectDisposedException(nameof(CosmeticProfileService));
+                owner._pendingPurchaseBinding = null;
+
+                var previousPurchases = owner._purchases;
+                var profile = owner._profile;
+                long generation = owner._bindingGeneration;
+                if (ReferenceEquals(previousPurchases, purchases))
+                {
+                    var noOp = new PurchaseBinding(owner, previousPurchases, purchases,
+                        profile, owner._selectedCatId, owner._currentPortrait, false,
+                        generation);
+                    owner._pendingPurchaseBinding = noOp;
+                    return noOp;
+                }
+
+                var candidateAccess = new CosmeticAccessResolver(purchases);
+                owner.ComputeCurrentPortrait(profile, candidateAccess,
+                    out var selectedCatId, out var currentPortrait);
+
+                if (owner._disposed)
+                    throw new ObjectDisposedException(nameof(CosmeticProfileService));
+                if (owner._bindingGeneration != generation
+                    || !ReferenceEquals(owner._profile, profile)
+                    || !ReferenceEquals(owner._purchases, previousPurchases))
+                    throw new InvalidOperationException(
+                        "cosmetic state changed during purchase binding preparation");
+
+                var binding = new PurchaseBinding(owner, previousPurchases, purchases,
+                    profile, selectedCatId, currentPortrait, true, generation);
+                owner._pendingPurchaseBinding = binding;
+                return binding;
+            }
+
+            internal bool Commit(CosmeticProfileService owner)
+            {
+                if (!ReferenceEquals(_owner, owner))
+                    throw new InvalidOperationException("foreign cosmetic purchase binding");
+                if (owner._disposed)
+                    throw new ObjectDisposedException(nameof(CosmeticProfileService));
+                if (!ReferenceEquals(owner._pendingPurchaseBinding, this))
+                    throw new InvalidOperationException("expired cosmetic purchase binding");
+                if (owner._bindingGeneration != _generation
+                    || !ReferenceEquals(owner._profile, _profile)
+                    || !ReferenceEquals(owner._purchases, _previousPurchases))
+                {
+                    owner._pendingPurchaseBinding = null;
+                    throw new InvalidOperationException("stale cosmetic purchase binding");
+                }
+
+                owner.InvalidatePurchaseBinding();
+                if (!_requiresCommit) return false;
+
+                if (owner._purchases != null)
+                    owner._purchases.Ledger.Changed -= owner.OnLedgerChanged;
+                owner._purchases = _purchases;
+                owner._access.BindPurchases(_purchases);
+                if (owner._purchases != null)
+                    owner._purchases.Ledger.Changed += owner.OnLedgerChanged;
+
+                var before = owner._currentPortrait;
+                owner._selectedCatId = _selectedCatId;
+                owner._currentPortrait = _currentPortrait;
+                return !owner._currentPortrait.Equals(before);
             }
         }
     }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using CatMetro.Services.Cosmetics;
 using CatMetro.Services.Purchases;
 using CatMetro.Tests.Purchases;
@@ -653,6 +654,164 @@ namespace CatMetro.Tests.Cosmetics
         }
 
         [Test]
+        public void RuntimeInstallCandidateDisposedDuringPrepare_RejectsWithoutPublication()
+        {
+            var owned = CosmeticRuntime.Current;
+            var ownedLedger = PurchaseRuntime.Current.Ledger;
+            var originalPurchases = CreatePurchases();
+            CosmeticProfileService candidate = null;
+            var targetLedger = new EntitlementLedger();
+            targetLedger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant("outfit_conductor", GrantSource.Store),
+            });
+            var targetClock = new CallbackClock(() => candidate.Dispose());
+            var targetPurchases = new PurchaseService(
+                PurchaseCatalog.Parse(PurchaseCatalogJson), clock: targetClock.Fn,
+                ledger: targetLedger);
+            candidate = CreateService(new RecordingPersistence(
+                ProfileWithOutfit("outfit_conductor")), originalPurchases.Service);
+            PurchaseRuntime.Install(targetPurchases);
+
+            Assert.Throws<ObjectDisposedException>(() => CosmeticRuntime.Install(candidate));
+
+            Assert.That(CosmeticRuntime.Current, Is.SameAs(owned));
+            Assert.That(HasLedgerSubscriber(ownedLedger, owned), Is.True,
+                "a rejected prepare cannot dispose the runtime-owned current");
+            Assert.That(HasLedgerSubscriber(targetLedger, candidate), Is.False,
+                "a self-disposed candidate cannot be retained by the target ledger");
+            Assert.That(HasLedgerSubscriber(originalPurchases.Ledger, candidate), Is.False,
+                "self-disposal detaches the candidate's original ledger callback");
+        }
+
+        [Test]
+        public void RuntimeIdentityInstallDisposedCurrent_IsExplicitlyRejected()
+        {
+            var owned = CosmeticRuntime.Current;
+            var ledger = PurchaseRuntime.Current.Ledger;
+            owned.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => CosmeticRuntime.Install(owned));
+
+            Assert.That(CosmeticRuntime.Current, Is.SameAs(owned));
+            Assert.That(HasLedgerSubscriber(ledger, owned), Is.False);
+            Assert.That(PurchaseRuntimeCosmeticsHandlerCount(), Is.EqualTo(1),
+                "identity validation must not corrupt static subscription reconciliation");
+        }
+
+        [Test]
+        public void PreparedPurchaseBinding_IsOneShotEvenForNoOpAuthority()
+        {
+            var purchases = CreatePurchases();
+            var service = CreateService(new RecordingPersistence(DefaultProfile()),
+                purchases.Service);
+            object binding = PreparePurchaseBinding(service, purchases.Service);
+
+            Assert.That(CommitPurchaseBinding(service, binding), Is.False);
+            Assert.Throws<InvalidOperationException>(() =>
+                CommitPurchaseBinding(service, binding));
+        }
+
+        [Test]
+        public void PreparedPurchaseBinding_RejectsAbaAuthorityReplay()
+        {
+            var firstPurchases = CreatePurchases();
+            var secondPurchases = CreatePurchases();
+            var service = CreateService(new RecordingPersistence(DefaultProfile()),
+                firstPurchases.Service);
+            object stale = PreparePurchaseBinding(service, secondPurchases.Service);
+
+            service.BindPurchases(secondPurchases.Service);
+            service.BindPurchases(firstPurchases.Service);
+
+            Assert.Throws<InvalidOperationException>(() =>
+                CommitPurchaseBinding(service, stale));
+            Assert.That(HasLedgerSubscriber(firstPurchases.Ledger, service), Is.True);
+            Assert.That(HasLedgerSubscriber(secondPurchases.Ledger, service), Is.False);
+        }
+
+        [Test]
+        public void PreparedPurchaseBinding_IsInvalidatedByProfileMutation()
+        {
+            var firstPurchases = CreatePurchases();
+            var secondPurchases = CreatePurchases();
+            var service = CreateService(new RecordingPersistence(DefaultProfile()),
+                firstPurchases.Service);
+            object stale = PreparePurchaseBinding(service, secondPurchases.Service);
+
+            Assert.That(service.TrySelectCat("blue_siamese"), Is.True);
+
+            Assert.Throws<InvalidOperationException>(() =>
+                CommitPurchaseBinding(service, stale));
+            Assert.That(service.SelectedCatId, Is.EqualTo("blue_siamese"));
+            Assert.That(HasLedgerSubscriber(firstPurchases.Ledger, service), Is.True);
+            Assert.That(HasLedgerSubscriber(secondPurchases.Ledger, service), Is.False);
+        }
+
+        [Test]
+        public void PreparedPurchaseBinding_IsInvalidatedByLedgerStateChange()
+        {
+            var firstPurchases = CreatePurchases();
+            var secondPurchases = CreatePurchases();
+            var service = CreateService(new RecordingPersistence(DefaultProfile()),
+                firstPurchases.Service);
+            object stale = PreparePurchaseBinding(service, secondPurchases.Service);
+
+            firstPurchases.Ledger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant("supporter", GrantSource.Store),
+            });
+
+            Assert.Throws<InvalidOperationException>(() =>
+                CommitPurchaseBinding(service, stale));
+            Assert.That(HasLedgerSubscriber(firstPurchases.Ledger, service), Is.True);
+            Assert.That(HasLedgerSubscriber(secondPurchases.Ledger, service), Is.False);
+        }
+
+        [Test]
+        public void PreparedPurchaseBinding_RejectsNullAndCrossOwnerTokens()
+        {
+            var purchases = CreatePurchases();
+            var owner = CreateService(new RecordingPersistence(DefaultProfile()),
+                purchases.Service);
+            var other = CreateService(new RecordingPersistence(DefaultProfile()),
+                purchases.Service);
+            object binding = PreparePurchaseBinding(owner, purchases.Service);
+
+            Assert.Throws<ArgumentNullException>(() =>
+                CommitPurchaseBinding(owner, null));
+            Assert.Throws<InvalidOperationException>(() =>
+                CommitPurchaseBinding(other, binding));
+            Assert.That(CommitPurchaseBinding(owner, binding), Is.False,
+                "a cross-owner rejection cannot consume the owner's valid token");
+        }
+
+        [Test]
+        public void PurchaseBindingToken_HasOnlyPrivateConstructionAndPayload()
+        {
+            var prepare = typeof(CosmeticProfileService).GetMethod(
+                "PreparePurchaseBinding", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(prepare, Is.Not.Null);
+            var bindingType = prepare.ReturnType;
+
+            Assert.That(bindingType.IsClass, Is.True,
+                "default value tokens must not be constructible structs");
+            Assert.That(bindingType.IsSealed, Is.True);
+            foreach (var constructor in bindingType.GetConstructors(
+                         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                Assert.That(constructor.IsPrivate, Is.True,
+                    "only the owning profile service may mint a binding token");
+            foreach (var field in bindingType.GetFields(
+                         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                Assert.That(field.IsPrivate, Is.True,
+                    "selected cat, portrait, and purchase payload must remain opaque");
+            Assert.That(bindingType.GetProperties(BindingFlags.Instance
+                                                   | BindingFlags.Public
+                                                   | BindingFlags.NonPublic), Is.Empty);
+            Assert.Throws<MissingMethodException>(() => Activator.CreateInstance(bindingType));
+        }
+
+        [Test]
         public void RuntimeInstallChangedException_LeavesCandidateInstalledBoundAndRebindable()
         {
             var owned = CosmeticRuntime.Current;
@@ -812,6 +971,38 @@ namespace CatMetro.Tests.Cosmetics
             return count;
         }
 
+        private static object PreparePurchaseBinding(CosmeticProfileService service,
+            PurchaseService purchases)
+        {
+            var method = typeof(CosmeticProfileService).GetMethod(
+                "PreparePurchaseBinding", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            return InvokeUnwrapped(method, service, purchases);
+        }
+
+        private static bool CommitPurchaseBinding(CosmeticProfileService service,
+            object binding)
+        {
+            var method = typeof(CosmeticProfileService).GetMethod(
+                "CommitPurchaseBinding", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            return (bool)InvokeUnwrapped(method, service, binding);
+        }
+
+        private static object InvokeUnwrapped(MethodInfo method, object target,
+            params object[] arguments)
+        {
+            try
+            {
+                return method.Invoke(target, arguments);
+            }
+            catch (TargetInvocationException exception) when (exception.InnerException != null)
+            {
+                ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
+                throw;
+            }
+        }
+
         private static int PurchaseRuntimeCosmeticsHandlerCount()
         {
             return PurchaseRuntimeCosmeticsHandlers().Count;
@@ -865,6 +1056,24 @@ namespace CatMetro.Tests.Cosmetics
             {
                 Calls++;
                 if (Throws) throw new InvalidOperationException("clock failed");
+                return 1_700_000_000L;
+            }
+        }
+
+        private sealed class CallbackClock
+        {
+            private readonly Action _callback;
+
+            public CallbackClock(Action callback)
+            {
+                _callback = callback;
+            }
+
+            public Func<long> Fn => Read;
+
+            private long Read()
+            {
+                _callback();
                 return 1_700_000_000L;
             }
         }
