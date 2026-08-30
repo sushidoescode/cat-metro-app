@@ -72,6 +72,7 @@ namespace CatMetro.Bootstrap
         public int? DailyTicketsEarned { get; private set; }
 
         private SaveStore _saveStore;
+        private CatMetro.Services.Cosmetics.CosmeticProfileService _cosmetics;
         private DailyProgressTracker _dailyProgress;
         private DailyReminderPreferences _dailyReminderPreferences;
         private IMessaging _messaging;
@@ -255,6 +256,7 @@ namespace CatMetro.Bootstrap
             {
                 Wire(devLevel);
                 InitializeDailyLiveServices();
+                InitializeCosmetics();
                 // CM-BOOT-HOME criterion 1: compose BEFORE the early return — this dev-level
                 // sub-path is still a REAL boot (SceneBoot/Launch(), never LaunchWith), so it
                 // gets Home exactly like the shipped branch below, unless the dev skip hatch
@@ -272,6 +274,7 @@ namespace CatMetro.Bootstrap
             Debug.Log("SEAM_LOADED " + levelPath);
             Wire(imported.Value);
             InitializeDailyLiveServices();
+            InitializeCosmetics();
             // CM-BOOT-HOME criterion 1 (the new shipped default): every real boot composes Home
             // over the just-wired level, unless the dev skip hatch opts out (SkipHome(), always
             // false in a shipped build). LaunchWith (the ~12 gameplay fixtures' seam) bypasses
@@ -347,6 +350,14 @@ namespace CatMetro.Bootstrap
                     + ex.Message);
                 _dailyCatalog = null;
             }
+        }
+
+        private void InitializeCosmetics()
+        {
+            if (_cosmetics != null) return;
+            _cosmetics = CosmeticComposition.Create(
+                _saveStore, CatMetro.Services.Purchases.PurchaseRuntime.Current);
+            CatMetro.Services.Cosmetics.CosmeticRuntime.Install(_cosmetics);
         }
 
         private void InitializeMessaging()
@@ -559,7 +570,7 @@ namespace CatMetro.Bootstrap
 #endif
             _dailyEntryUnlocked = dailyUnlocked;
             Home = CatMetro.Presentation.Screens.HomeScreenView.Create(
-                canvasGo.transform, dailyUnlocked, LifetimeDailyCompletions);
+                canvasGo.transform, dailyUnlocked, LifetimeDailyCompletions, _cosmetics);
             Home.Attach(Input.Regions, () => MotionOff);
             Home.ReminderAccepted = BeginEnableDailyReminder;
             Home.ReminderDismissed = ConfigureReminderHome;
@@ -569,7 +580,10 @@ namespace CatMetro.Bootstrap
             Intro = CatMetro.Presentation.Screens.LevelIntroSheet.Create(canvasGo.transform);
             Intro.Attach(Input.Regions);
             Wardrobe = CatMetro.Presentation.Screens.WardrobeScreenView.Create(
-                canvasGo.transform, CatMetro.Services.Purchases.PurchaseRuntime.Current);
+                canvasGo.transform,
+                CatMetro.Services.Purchases.PurchaseRuntime.Current,
+                _cosmetics,
+                new CatMetro.Services.Cosmetics.DisabledCosmeticRewardedRoute());
             Wardrobe.Attach(Input.Regions);
 
             Home.LevelSelected = () =>
@@ -873,7 +887,24 @@ namespace CatMetro.Bootstrap
         private void OnApplicationPause(bool pauseStatus)
         {
             if (!pauseStatus) QueueForegroundPermissionRecheck();
-            if (pauseStatus) _analyticsRuntime?.OnBackground();
+            if (pauseStatus)
+            {
+                try
+                {
+                    _saveStore?.TryCommitOnPause();
+                }
+                catch (System.Exception ex)
+                {
+                    string errorType = ex.GetType().Name;
+                    _saveStore?.Report("error_caught",
+                        "domain=save_pause detail=" + errorType);
+                    Debug.LogError("save pause commit failed safely: " + errorType);
+                }
+                finally
+                {
+                    _analyticsRuntime?.OnBackground();
+                }
+            }
             else _analyticsRuntime?.OnForeground();
         }
 
@@ -1616,6 +1647,12 @@ namespace CatMetro.Bootstrap
                 }
             }
             CancelPendingDailyFallback();
+            if (_cosmetics != null)
+            {
+                CatMetro.Services.Cosmetics.CosmeticRuntime.Uninstall(_cosmetics);
+                _cosmetics.Dispose();
+                _cosmetics = null;
+            }
             _analyticsRuntime?.Dispose();
             _analyticsRuntime = null;
         }
