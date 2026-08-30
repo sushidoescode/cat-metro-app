@@ -330,7 +330,7 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator AdAndLedgerCallbacksDuringSubscribeAndAfterHide_CannotLeaveGhostState()
+        public IEnumerator RepeatedOpenHideDisableEnableAndDestroy_BalanceCallbacksAndExactRegions()
         {
             var service = CreateService(new WardrobeBackend(), () => 1_000L);
             CreateRig(service, 917, 2048);
@@ -341,11 +341,22 @@ namespace CatMetro.Tests.PlayMode
             yield return OpenAndLayout(CaptureSafeArea, CaptureDpi);
 
             Assert.That(_ads.AddCount, Is.EqualTo(1));
-            Assert.That(_input.Regions.Count, Is.EqualTo(7));
+            Assert.That(_ads.RemoveCount, Is.EqualTo(0));
+            AssertExactModalRegions(0, 1, 2, 3);
+
+            _view.Open();
+            _view.LayoutForViewport(CaptureSafeArea, CaptureDpi);
+            Canvas.ForceUpdateCanvases();
+            yield return null;
+            Assert.That(_ads.AddCount, Is.EqualTo(1),
+                "repeated Open while active cannot duplicate the ad accessor");
+            Assert.That(_ads.RemoveCount, Is.EqualTo(0));
+            AssertExactModalRegions(0, 1, 2, 3);
+
             _view.Hide();
             yield return null;
             Assert.That(_ads.RemoveCount, Is.EqualTo(1));
-            Assert.That(_input.Regions.Count, Is.EqualTo(0));
+            AssertNoModalRegions();
 
             int canShowAfterHide = _ads.CanShowCalls;
             _ads.RaiseAvailabilityChanged();
@@ -353,23 +364,87 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Assert.That(_ads.CanShowCalls, Is.EqualTo(canShowAfterHide),
                 "post-Hide callbacks cannot refresh presentation");
-            Assert.That(_input.Regions.Count, Is.EqualTo(0),
-                "post-Hide ads/ledger changes cannot resurrect regions");
+            AssertNoModalRegions();
 
             _view.Open();
             _view.LayoutForViewport(CaptureSafeArea, CaptureDpi);
             Canvas.ForceUpdateCanvases();
             yield return null;
+            Assert.That(_ads.AddCount, Is.EqualTo(2));
+            Assert.That(_ads.RemoveCount, Is.EqualTo(1));
             AssertBorrowedState(0, true);
-            Assert.That(_input.Regions.Count, Is.EqualTo(6),
-                "reopen reads the shared ledger and offers only the other three actions");
+            AssertExactModalRegions(1, 2, 3);
+
+            var liveActionPoints = new Vector2[3];
+            for (int i = 1; i < Cards.Length; i++)
+                liveActionPoints[i - 1] = ProjectedScreenRect(
+                    FindCardChild(i, "ActionChip") as RectTransform).center;
 
             _view.gameObject.SetActive(false);
             yield return null;
             Assert.That(_ads.RemoveCount, Is.EqualTo(2));
-            Assert.That(_input.Regions.Count, Is.EqualTo(0));
+            Assert.That(_ads.RemoveCount, Is.EqualTo(_ads.AddCount),
+                "direct disable balances the active subscription");
+            AssertNoModalRegions();
+            AssertPointsMiss(liveActionPoints, "disabled action");
             _ads.RaiseAvailabilityChanged();
-            Assert.That(_input.Regions.Count, Is.EqualTo(0));
+            AssertNoModalRegions();
+
+            _view.gameObject.SetActive(true);
+            yield return null;
+            Assert.That(_ads.AddCount, Is.EqualTo(3),
+                "re-enable installs exactly one fresh accessor");
+            Assert.That(_ads.RemoveCount, Is.EqualTo(2));
+            AssertExactModalRegions(1, 2, 3);
+            int showsBeforeReenableTaps = _ads.ShownPlacements.Count;
+            for (int i = 1; i < Cards.Length; i++)
+            {
+                Vector2 centre = ProjectedScreenRect(
+                    FindCardChild(i, "ActionChip") as RectTransform).center;
+                Assert.That(_input.HandleTapAtScreen(centre), Is.EqualTo(-3));
+                Assert.That(_ads.ShownPlacements[showsBeforeReenableTaps + i - 1],
+                    Is.EqualTo(Cards[i].PlacementId));
+                liveActionPoints[i - 1] = centre;
+            }
+
+            UnityEngine.Object.Destroy(_view.gameObject);
+            yield return null;
+            _view = null;
+            Assert.That(_ads.RemoveCount, Is.EqualTo(3),
+                "destroying the active view removes the final accessor");
+            Assert.That(_ads.RemoveCount, Is.EqualTo(_ads.AddCount));
+            AssertNoModalRegions();
+            AssertPointsMiss(liveActionPoints, "destroyed action");
+
+            int canShowAfterDestroy = _ads.CanShowCalls;
+            Assert.DoesNotThrow(() => _ads.RaiseAvailabilityChanged());
+            Assert.DoesNotThrow(() =>
+                service.GrantRewardedAdEntitlement(Cards[1].EntitlementId));
+            Assert.That(_ads.CanShowCalls, Is.EqualTo(canShowAfterDestroy),
+                "post-destroy ad and ledger callbacks cannot reach the dead view");
+            AssertNoModalRegions();
+        }
+
+        [UnityTest]
+        public IEnumerator ScreenSpaceOverlay_ReadyActionRoutesExactPlacement_AndCardBodyMisses()
+        {
+            CreateRig(CreateService(new WardrobeBackend(), () => 1_000L), 917, 2048,
+                renderMode: RenderMode.ScreenSpaceOverlay);
+            _ads.SetAvailable(Cards[3].PlacementId, true);
+            yield return null;
+            yield return OpenAndLayout(CaptureSafeArea, CaptureDpi);
+
+            var action = ProjectedScreenRect(FindCardChild(3, "ActionChip") as RectTransform);
+            var card = ProjectedScreenRect(FindCard(3));
+            Assert.That(_input.Regions.IsRegistered(RegionId(Cards[3].PlacementId)), Is.True);
+            Assert.That(_input.HandleTapAtScreen(action.center), Is.EqualTo(-3));
+            Assert.That(_ads.ShownPlacements, Is.EqualTo(new[] { Cards[3].PlacementId }),
+                "Overlay routes the actual action to its exact placement once");
+
+            var cardBody = new Vector2(action.center.x, (action.yMax + card.yMax) * 0.5f);
+            Assert.That(_input.HandleTapAtScreen(cardBody), Is.EqualTo(-1),
+                "Overlay does not broaden the rewarded target to the card body");
+            Assert.That(_ads.ShownPlacements.Count, Is.EqualTo(1));
         }
 
         [UnityTest]
@@ -403,6 +478,7 @@ namespace CatMetro.Tests.PlayMode
         }
 
         private void CreateRig(PurchaseService service, int width, int height,
+            RenderMode renderMode = RenderMode.ScreenSpaceCamera,
             bool useProductionOverload = false)
         {
             _cameraHost = new GameObject("WardrobeRewardedCamera");
@@ -416,7 +492,11 @@ namespace CatMetro.Tests.PlayMode
 
             _canvasHost = new GameObject("WardrobeRewardedCanvas");
             var canvas = _canvasHost.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceCamera;
+            canvas.renderMode = renderMode;
+            // Overlay must ignore this deliberately misleading camera if Unity retains it.
+            // Its offset/narrow field of view makes accidental camera projection observable.
+            _camera.transform.position = new Vector3(37f, -29f, -10f);
+            _camera.fieldOfView = 17f;
             canvas.worldCamera = _camera;
             canvas.planeDistance = 1f;
             canvas.sortingOrder = 120;
@@ -487,8 +567,12 @@ namespace CatMetro.Tests.PlayMode
             Camera owningCamera = canvas.renderMode == RenderMode.ScreenSpaceOverlay
                 ? null
                 : canvas.worldCamera;
-            Assert.That(owningCamera, Is.Not.Null,
-                "the production-shaped canvas must own a projection camera");
+            if (canvas.renderMode == RenderMode.ScreenSpaceOverlay)
+                Assert.That(owningCamera, Is.Null,
+                    "Overlay corners are already in screen pixels and must use null projection");
+            else
+                Assert.That(owningCamera, Is.Not.Null,
+                    "the production-shaped canvas must own a projection camera");
 
             var worldCorners = new Vector3[4];
             rect.GetWorldCorners(worldCorners);
@@ -566,6 +650,45 @@ namespace CatMetro.Tests.PlayMode
         {
             for (int i = 0; i < Cards.Length; i++)
                 AssertBorrowedState(i, i == expected);
+        }
+
+        private void AssertExactModalRegions(params int[] rewardedCardIndexes)
+        {
+            Assert.That(_input.Regions.Count, Is.EqualTo(3 + rewardedCardIndexes.Length),
+                "the registry contains only the exact expected modal IDs");
+            Assert.That(_input.Regions.IsRegistered("wardrobe.back"), Is.True);
+            Assert.That(_input.Regions.IsRegistered("wardrobe.buy"), Is.True);
+            Assert.That(_input.Regions.IsRegistered("wardrobe.restore"), Is.True);
+            for (int card = 0; card < Cards.Length; card++)
+            {
+                bool expected = false;
+                for (int i = 0; i < rewardedCardIndexes.Length; i++)
+                    if (rewardedCardIndexes[i] == card) expected = true;
+                Assert.That(_input.Regions.IsRegistered(RegionId(Cards[card].PlacementId)),
+                    Is.EqualTo(expected), Cards[card].PlacementId + " exact region state");
+            }
+        }
+
+        private void AssertNoModalRegions()
+        {
+            Assert.That(_input.Regions.Count, Is.EqualTo(0));
+            Assert.That(_input.Regions.IsRegistered("wardrobe.back"), Is.False);
+            Assert.That(_input.Regions.IsRegistered("wardrobe.buy"), Is.False);
+            Assert.That(_input.Regions.IsRegistered("wardrobe.restore"), Is.False);
+            for (int i = 0; i < Cards.Length; i++)
+                Assert.That(_input.Regions.IsRegistered(RegionId(Cards[i].PlacementId)), Is.False,
+                    Cards[i].PlacementId + " must not leave a ghost region");
+        }
+
+        private void AssertPointsMiss(IReadOnlyList<Vector2> points, string state)
+        {
+            for (int i = 0; i < points.Count; i++)
+            {
+                int result = int.MinValue;
+                Assert.DoesNotThrow(() => result = _input.HandleTapAtScreen(points[i]),
+                    state + " point " + i + " must not dereference a dead provider");
+                Assert.That(result, Is.EqualTo(-1), state + " point " + i + " must miss");
+            }
         }
 
         private void AssertBorrowedState(int index, bool expected)
