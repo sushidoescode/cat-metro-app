@@ -13,7 +13,7 @@ namespace CatMetro.Presentation.Screens
         private const float BuyHeightDp = 72f;
         private const float RestoreHeightDp = 52f;
         private const float StatusHeightDp = 58f;
-        private const float PreviewHeightDp = 156f;
+        private const float PreviewHeightDp = 172f;
         private const float PreviewHeadingHeightDp = 24f;
         private const float PreviewCardGapDp = 8f;
 

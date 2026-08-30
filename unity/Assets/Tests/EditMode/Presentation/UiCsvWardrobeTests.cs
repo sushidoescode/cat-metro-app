@@ -48,7 +48,7 @@ namespace CatMetro.Tests.Presentation
             "wardrobe.tryon.borrowed,Borrowed today",
             "wardrobe.tryon.watch,Watch to borrow today",
             "wardrobe.tryon.unavailable,Try-on unavailable",
-            "wardrobe.tryon.success,Borrowed for today!",
+            "wardrobe.tryon.success,Ready to wear!",
         };
 
         private static string[] Rows()
