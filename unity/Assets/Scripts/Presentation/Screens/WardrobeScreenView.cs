@@ -71,8 +71,13 @@ namespace CatMetro.Presentation.Screens
         private bool _staticRegistered;
         private bool _primaryRegistered;
         private bool _profileSubscribed;
+        private bool _authoritySubscribed;
         private bool _purchaseBusy;
+        private bool _rewardBusy;
         private bool _restoreBusy;
+        private bool _destroyed;
+        private long _sessionGeneration;
+        private long _operationGeneration;
 
         public Rect EntryRectPx => _entryRectPx;
         public Rect BackRectPx => _backRectPx;
@@ -225,11 +230,10 @@ namespace CatMetro.Presentation.Screens
 
         public void ShowEntry()
         {
+            InvalidatePresentationSession();
             ClearPreview();
             _entryShown = true;
             _panelShown = false;
-            _purchaseBusy = false;
-            _restoreBusy = false;
             gameObject.SetActive(true);
             _entry.SetActive(true);
             _panel.SetActive(false);
@@ -241,6 +245,7 @@ namespace CatMetro.Presentation.Screens
 
         public void Open()
         {
+            InvalidatePresentationSession();
             ClearPreview();
             _entryShown = false;
             _panelShown = true;
@@ -253,21 +258,21 @@ namespace CatMetro.Presentation.Screens
             RegisterStaticPanelRegions();
             SetStatus(Text("wardrobe.status.checking"));
             RebuildProjectionAndCards();
+            long session = _sessionGeneration;
             _purchases.Refresh(() =>
             {
-                if (this == null || !_panelShown) return;
+                if (!IsCurrentSession(session)) return;
                 RebuildProjectionAndCards();
-                if (!_purchaseBusy && !_restoreBusy) SetStatus(string.Empty);
+                if (!IsOperationBusy) SetStatus(string.Empty);
             });
         }
 
         public void Hide()
         {
+            InvalidatePresentationSession();
             ClearPreview();
             _entryShown = false;
             _panelShown = false;
-            _purchaseBusy = false;
-            _restoreBusy = false;
             UnregisterEntry();
             UnregisterPanelRegions();
             UnsubscribeProfile();
@@ -278,6 +283,7 @@ namespace CatMetro.Presentation.Screens
 
         private void OnDisable()
         {
+            InvalidatePresentationSession(clearSelection: false);
             UnregisterEntry();
             UnregisterPanelRegions();
             UnsubscribeProfile();
@@ -289,6 +295,7 @@ namespace CatMetro.Presentation.Screens
             if (_panelShown)
             {
                 SubscribeProfile();
+                RebuildProjectionAndCards();
                 RegisterStaticPanelRegions();
                 RegisterCardRegions();
                 RegisterPrimaryRegion();
@@ -297,6 +304,8 @@ namespace CatMetro.Presentation.Screens
 
         private void OnDestroy()
         {
+            _destroyed = true;
+            InvalidatePresentationSession();
             UnregisterEntry();
             UnregisterPanelRegions();
             UnsubscribeProfile();
@@ -306,24 +315,31 @@ namespace CatMetro.Presentation.Screens
         {
             _safeArea = safeArea;
             _dpi = dpi > 0f ? dpi : 160f;
+            int visibleCount = _cards.Count;
+            bool hasPrimaryAction = _selectedRow.HasValue;
             _entryRectPx = WardrobeLayout.EntryRect(safeArea, _dpi);
             _backRectPx = WardrobeLayout.BackRect(safeArea, _dpi);
             _primaryRectPx = WardrobeLayout.PrimaryActionRect(safeArea, _dpi);
-            _restoreRectPx = WardrobeLayout.RestoreRect(safeArea, _dpi);
-            _portraitRectPx = WardrobeLayout.PortraitRect(safeArea, _dpi);
-            _itemsRectPx = WardrobeLayout.ItemsRect(safeArea, _dpi);
+            _restoreRectPx = WardrobeLayout.RestoreRect(safeArea, _dpi, hasPrimaryAction);
+            _portraitRectPx = WardrobeLayout.PortraitRect(safeArea, _dpi, visibleCount,
+                hasPrimaryAction);
+            _itemsRectPx = WardrobeLayout.ItemsRect(safeArea, _dpi, visibleCount,
+                hasPrimaryAction);
             ApplyPx(_entryRect, _entryRectPx);
             ApplyPx(_backRect, _backRectPx);
             ApplyPx(_titleRect, WardrobeLayout.TitleRect(safeArea, _dpi));
             ApplyPx(_catSelectorRect, WardrobeLayout.CatSelectorRect(safeArea, _dpi));
             ApplyPx(_portraitRect, _portraitRectPx);
-            ApplyPx(_tabsRect, WardrobeLayout.TabsRect(safeArea, _dpi));
+            ApplyPx(_tabsRect, WardrobeLayout.TabsRect(safeArea, _dpi, visibleCount,
+                hasPrimaryAction));
             ApplyPx(_itemsRect, _itemsRectPx);
             ApplyPx(_primaryRect, _primaryRectPx);
             ApplyPx(_restoreRect, _restoreRectPx);
-            ApplyPx(_statusRect, WardrobeLayout.StatusRect(safeArea, _dpi));
+            ApplyPx(_statusRect, WardrobeLayout.StatusRect(safeArea, _dpi,
+                hasPrimaryAction));
             LayoutHorizontal(_catTargets, WardrobeLayout.CatSelectorRect(safeArea, _dpi), _dpi);
-            LayoutHorizontal(_tabTargets, WardrobeLayout.TabsRect(safeArea, _dpi), _dpi);
+            LayoutHorizontal(_tabTargets, WardrobeLayout.TabsRect(safeArea, _dpi,
+                visibleCount, hasPrimaryAction), _dpi);
             LayoutCards();
         }
 
@@ -349,6 +365,7 @@ namespace CatMetro.Presentation.Screens
             }
             if (!stillSelected.HasValue)
             {
+                if (_selectedRow.HasValue && IsOperationBusy) InvalidateCurrentOperation();
                 _previewItemId = string.Empty;
                 _selectedRow = null;
                 ApplyAuthoritativePortrait();
@@ -366,8 +383,8 @@ namespace CatMetro.Presentation.Screens
                 _cards.Add(card);
             }
             _emptyLabel.gameObject.SetActive(_cards.Count == 0);
-            LayoutCards();
             UpdatePrimaryAction();
+            ReflowLayout();
             PaintSelectors();
             RegisterCardRegions();
         }
@@ -386,6 +403,7 @@ namespace CatMetro.Presentation.Screens
 
         private void OnCardTapped(CosmeticWardrobeRow row)
         {
+            if (IsOperationBusy) return;
             _previewItemId = row.Item.Id;
             _selectedRow = row;
             _largePortrait.ApplySnapshot(_profile.PreviewPortrait(_profile.SelectedCatId,
@@ -395,6 +413,7 @@ namespace CatMetro.Presentation.Screens
 
         private void OnCatTapped(string catId)
         {
+            if (IsOperationBusy) return;
             ClearPreview();
             if (!_profile.TrySelectCat(catId))
             {
@@ -405,6 +424,7 @@ namespace CatMetro.Presentation.Screens
 
         private void OnTabTapped(CosmeticSlot slot)
         {
+            if (IsOperationBusy) return;
             ClearPreview();
             _selectedSlot = slot;
             RebuildProjectionAndCards();
@@ -412,7 +432,7 @@ namespace CatMetro.Presentation.Screens
 
         private void OnPrimaryTapped()
         {
-            if (_purchaseBusy || _restoreBusy || !_selectedRow.HasValue) return;
+            if (IsOperationBusy || !_selectedRow.HasValue) return;
             var row = _selectedRow.Value;
             if (row.IsEquipped && row.Route != CosmeticWardrobeRoute.Purchase)
             {
@@ -430,20 +450,7 @@ namespace CatMetro.Presentation.Screens
                     BeginPurchase(row);
                     break;
                 case CosmeticWardrobeRoute.Rewarded:
-                    _rewarded.Request(row.Item.RewardedPlacementId, () =>
-                    {
-                        if (this == null) return;
-                        if (_purchases.IsUnlocked(row.Item.EntitlementId))
-                        {
-                            if (!_profile.TryEquip(_profile.SelectedCatId, row.Item.Slot,
-                                    row.Item.Id)) SaveFailed();
-                        }
-                        else
-                        {
-                            SetStatus(Text("wardrobe.status.unconfirmed"));
-                            RebuildProjectionAndCards();
-                        }
-                    });
+                    BeginRewarded(row);
                     break;
                 case CosmeticWardrobeRoute.EarnInstruction:
                     SetStatus(Text(row.Item.EarnInstructionKey));
@@ -453,16 +460,23 @@ namespace CatMetro.Presentation.Screens
 
         private void BeginPurchase(CosmeticWardrobeRow row)
         {
+            long session = _sessionGeneration;
+            long operation = BeginOperation();
+            string catId = _profile.SelectedCatId;
+            var slot = row.Item.Slot;
+            string itemId = row.Item.Id;
+            string entitlementId = row.Item.EntitlementId;
+            string productId = row.Item.ProductId;
             _purchaseBusy = true;
             SetStatus(Text("wardrobe.status.opening"));
             UpdatePrimaryAction();
-            _purchases.Purchase(row.Item.ProductId, result =>
+            _purchases.Purchase(productId, result =>
             {
-                if (this == null) return;
-                _purchaseBusy = false;
-                if (_purchases.IsUnlocked(row.Item.EntitlementId))
+                if (!IsCurrentOperation(session, operation)) return;
+                CompleteCurrentOperation();
+                if (_purchases.IsUnlocked(entitlementId))
                 {
-                    if (!_profile.TryEquip(_profile.SelectedCatId, row.Item.Slot, row.Item.Id))
+                    if (!_profile.TryEquip(catId, slot, itemId))
                         SaveFailed();
                     else SetStatus(Text("wardrobe.state.equipped"));
                     return;
@@ -490,16 +504,46 @@ namespace CatMetro.Presentation.Screens
             });
         }
 
+        private void BeginRewarded(CosmeticWardrobeRow row)
+        {
+            long session = _sessionGeneration;
+            long operation = BeginOperation();
+            string catId = _profile.SelectedCatId;
+            var slot = row.Item.Slot;
+            string itemId = row.Item.Id;
+            string entitlementId = row.Item.EntitlementId;
+            string placementId = row.Item.RewardedPlacementId;
+            _rewardBusy = true;
+            UpdatePrimaryAction();
+            _rewarded.Request(placementId, () =>
+            {
+                if (!IsCurrentOperation(session, operation)) return;
+                CompleteCurrentOperation();
+                if (_purchases.IsUnlocked(entitlementId))
+                {
+                    if (!_profile.TryEquip(catId, slot, itemId)) SaveFailed();
+                    else SetStatus(Text("wardrobe.state.equipped"));
+                }
+                else
+                {
+                    SetStatus(Text("wardrobe.status.unconfirmed"));
+                    RebuildProjectionAndCards();
+                }
+            });
+        }
+
         private void OnRestoreTapped()
         {
-            if (_purchaseBusy || _restoreBusy) return;
+            if (IsOperationBusy) return;
+            long session = _sessionGeneration;
+            long operation = BeginOperation();
             _restoreBusy = true;
             _restoreLabel.text = Text("wardrobe.restore.running");
             SetStatus(Text("wardrobe.status.restoring"));
             _purchases.Restore(result =>
             {
-                if (this == null) return;
-                _restoreBusy = false;
+                if (!IsCurrentOperation(session, operation)) return;
+                CompleteCurrentOperation();
                 _restoreLabel.text = Text("wardrobe.restore");
                 RebuildProjectionAndCards();
                 switch (result.Outcome)
@@ -526,7 +570,7 @@ namespace CatMetro.Presentation.Screens
         private void OnProfileChanged()
         {
             if (!_panelShown) return;
-            SetStatus(string.Empty);
+            if (!IsOperationBusy) SetStatus(string.Empty);
             // Keep the selected card/action, but replace its presentation-only preview with
             // the newly durable authoritative portrait. Cat/tab changes clear selection before
             // their mutation; purchase/equip changes intentionally retain it for Unequip.
@@ -546,6 +590,58 @@ namespace CatMetro.Presentation.Screens
             _previewItemId = string.Empty;
             _selectedRow = null;
             ApplyAuthoritativePortrait();
+        }
+
+        private bool IsOperationBusy => _purchaseBusy || _rewardBusy || _restoreBusy;
+
+        private long BeginOperation()
+        {
+            unchecked { _operationGeneration++; }
+            return _operationGeneration;
+        }
+
+        private void CompleteCurrentOperation()
+        {
+            unchecked { _operationGeneration++; }
+            _purchaseBusy = false;
+            _rewardBusy = false;
+            _restoreBusy = false;
+        }
+
+        private bool IsCurrentSession(long session)
+        {
+            return this != null && !_destroyed && isActiveAndEnabled && _panelShown
+                && session == _sessionGeneration;
+        }
+
+        private bool IsCurrentOperation(long session, long operation)
+        {
+            return IsCurrentSession(session) && operation == _operationGeneration;
+        }
+
+        private void InvalidateCurrentOperation()
+        {
+            CompleteCurrentOperation();
+            if (_restoreLabel != null) _restoreLabel.text = Text("wardrobe.restore");
+            SetStatus(string.Empty);
+        }
+
+        private void InvalidatePresentationSession(bool clearSelection = true)
+        {
+            unchecked { _sessionGeneration++; }
+            InvalidateCurrentOperation();
+            UnregisterPrimaryRegion();
+            if (!clearSelection) return;
+            _previewItemId = string.Empty;
+            _selectedRow = null;
+            if (_primaryRect != null) _primaryRect.gameObject.SetActive(false);
+            if (!_destroyed) ApplyAuthoritativePortrait();
+        }
+
+        private void ReflowLayout()
+        {
+            if (_safeArea.width <= 0f || _safeArea.height <= 0f) return;
+            LayoutForViewport(_safeArea, _dpi);
         }
 
         private void ApplyAuthoritativePortrait()
@@ -631,16 +727,36 @@ namespace CatMetro.Presentation.Screens
 
         private void SubscribeProfile()
         {
-            if (_profileSubscribed) return;
-            _profile.Changed += OnProfileChanged;
-            _profileSubscribed = true;
+            if (!_profileSubscribed)
+            {
+                _profile.Changed += OnProfileChanged;
+                _profileSubscribed = true;
+            }
+            if (!_authoritySubscribed)
+            {
+                _purchases.Ledger.Changed += OnAuthorityChanged;
+                _authoritySubscribed = true;
+            }
         }
 
         private void UnsubscribeProfile()
         {
-            if (!_profileSubscribed) return;
-            _profile.Changed -= OnProfileChanged;
-            _profileSubscribed = false;
+            if (_profileSubscribed)
+            {
+                _profile.Changed -= OnProfileChanged;
+                _profileSubscribed = false;
+            }
+            if (_authoritySubscribed)
+            {
+                _purchases.Ledger.Changed -= OnAuthorityChanged;
+                _authoritySubscribed = false;
+            }
+        }
+
+        private void OnAuthorityChanged()
+        {
+            if (!_destroyed && isActiveAndEnabled && _panelShown)
+                RebuildProjectionAndCards();
         }
 
         private void RegisterEntry()

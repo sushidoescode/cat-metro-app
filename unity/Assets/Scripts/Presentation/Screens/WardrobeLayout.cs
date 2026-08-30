@@ -9,13 +9,14 @@ namespace CatMetro.Presentation.Screens
         private const float GapDp = 8f;
         private const float EntryWidthDp = 156f;
         private const float EntryHeightDp = 52f;
-        private const float BackSideDp = 48f;
+        private const float BackSideDp = 50f;
         private const float CatSelectorHeightDp = 50f;
         private const float TabsHeightDp = 50f;
         private const float PrimaryHeightDp = 56f;
-        private const float RestoreHeightDp = 44f;
+        private const float RestoreHeightDp = 50f;
         private const float StatusHeightDp = 40f;
-        private const float ItemCardHeightDp = 72f;
+        private const float ItemCardHeightDp = 56f;
+        private const float EmptyItemsHeightDp = 48f;
 
         public static Rect EntryRect(Rect safeArea, float dpi)
         {
@@ -57,11 +58,15 @@ namespace CatMetro.Presentation.Screens
         }
 
         public static Rect PortraitRect(Rect safeArea, float dpi)
+            => PortraitRect(safeArea, dpi, 1, true);
+
+        public static Rect PortraitRect(Rect safeArea, float dpi, int visibleCount,
+            bool hasPrimaryAction)
         {
             float px = HudBands.PxPerDp(dpi);
             float inset = SideInsetDp * px;
             var cats = CatSelectorRect(safeArea, dpi);
-            var tabs = TabsRect(safeArea, dpi);
+            var tabs = TabsRect(safeArea, dpi, visibleCount, hasPrimaryAction);
             float y = tabs.yMax + GapDp * px;
             float yMax = cats.yMin - GapDp * px;
             return new Rect(safeArea.x + inset, y,
@@ -69,23 +74,34 @@ namespace CatMetro.Presentation.Screens
         }
 
         public static Rect TabsRect(Rect safeArea, float dpi)
+            => TabsRect(safeArea, dpi, 1, true);
+
+        public static Rect TabsRect(Rect safeArea, float dpi, int visibleCount,
+            bool hasPrimaryAction)
         {
             float px = HudBands.PxPerDp(dpi);
             float inset = SideInsetDp * px;
-            var items = ItemsRect(safeArea, dpi);
+            var items = ItemsRect(safeArea, dpi, visibleCount, hasPrimaryAction);
             return new Rect(safeArea.x + inset, items.yMax + GapDp * px,
                 Mathf.Max(0f, safeArea.width - inset * 2f), TabsHeightDp * px);
         }
 
         public static Rect ItemsRect(Rect safeArea, float dpi)
+            => ItemsRect(safeArea, dpi, 1, true);
+
+        public static Rect ItemsRect(Rect safeArea, float dpi, int visibleCount,
+            bool hasPrimaryAction)
         {
             float px = HudBands.PxPerDp(dpi);
             float inset = SideInsetDp * px;
-            var status = StatusRect(safeArea, dpi);
+            var status = StatusRect(safeArea, dpi, hasPrimaryAction);
             float y = status.yMax + GapDp * px;
-            float height = 120f * px;
+            int count = Mathf.Max(0, visibleCount);
+            float heightDp = count == 0
+                ? EmptyItemsHeightDp
+                : count * ItemCardHeightDp + (count - 1) * GapDp;
             return new Rect(safeArea.x + inset, y,
-                Mathf.Max(0f, safeArea.width - inset * 2f), height);
+                Mathf.Max(0f, safeArea.width - inset * 2f), heightDp * px);
         }
 
         public static Rect ItemCardRect(Rect itemsRect, int visibleIndex, int visibleCount,
@@ -112,17 +128,24 @@ namespace CatMetro.Presentation.Screens
         public static Rect BuyRect(Rect safeArea, float dpi) => PrimaryActionRect(safeArea, dpi);
 
         public static Rect RestoreRect(Rect safeArea, float dpi)
+            => RestoreRect(safeArea, dpi, true);
+
+        public static Rect RestoreRect(Rect safeArea, float dpi, bool hasPrimaryAction)
         {
             float px = HudBands.PxPerDp(dpi);
             var primary = PrimaryActionRect(safeArea, dpi);
-            return new Rect(primary.x, primary.yMax + GapDp * px,
+            float y = hasPrimaryAction ? primary.yMax + GapDp * px : primary.y;
+            return new Rect(primary.x, y,
                 primary.width, RestoreHeightDp * px);
         }
 
         public static Rect StatusRect(Rect safeArea, float dpi)
+            => StatusRect(safeArea, dpi, true);
+
+        public static Rect StatusRect(Rect safeArea, float dpi, bool hasPrimaryAction)
         {
             float px = HudBands.PxPerDp(dpi);
-            var restore = RestoreRect(safeArea, dpi);
+            var restore = RestoreRect(safeArea, dpi, hasPrimaryAction);
             return new Rect(restore.x, restore.yMax + GapDp * px,
                 restore.width, StatusHeightDp * px);
         }
