@@ -5,23 +5,24 @@ namespace CatMetro.Presentation.Screens
 {
     public static class WardrobeLayout
     {
-        private const float SideInsetDp = 20f;
-        private const float GapDp = 12f;
+        private const float SideInsetDp = 12f;
+        private const float GapDp = 8f;
         private const float EntryWidthDp = 156f;
         private const float EntryHeightDp = 52f;
-        private const float BackSideDp = 52f;
-        private const float BuyHeightDp = 72f;
-        private const float RestoreHeightDp = 52f;
-        private const float StatusHeightDp = 58f;
-        private const float PreviewHeightDp = 172f;
-        private const float PreviewHeadingHeightDp = 24f;
-        private const float PreviewCardGapDp = 8f;
+        private const float BackSideDp = 48f;
+        private const float CatSelectorHeightDp = 50f;
+        private const float TabsHeightDp = 50f;
+        private const float PrimaryHeightDp = 56f;
+        private const float RestoreHeightDp = 44f;
+        private const float StatusHeightDp = 40f;
+        private const float ItemCardHeightDp = 72f;
 
         public static Rect EntryRect(Rect safeArea, float dpi)
         {
             float px = HudBands.PxPerDp(dpi);
             float inset = SideInsetDp * px;
-            float width = Mathf.Min(EntryWidthDp * px, Mathf.Max(0f, safeArea.width - inset * 2f));
+            float width = Mathf.Min(EntryWidthDp * px,
+                Mathf.Max(0f, safeArea.width - inset * 2f));
             float height = EntryHeightDp * px;
             var hero = HomeLayout.HeroRect(safeArea, dpi);
             return new Rect(hero.xMax - width - GapDp * px,
@@ -45,19 +46,77 @@ namespace CatMetro.Presentation.Screens
                 Mathf.Max(0f, safeArea.xMax - inset - back.xMax - GapDp * px), back.height);
         }
 
-        public static Rect BuyRect(Rect safeArea, float dpi)
+        public static Rect CatSelectorRect(Rect safeArea, float dpi)
+        {
+            float px = HudBands.PxPerDp(dpi);
+            float inset = SideInsetDp * px;
+            var title = TitleRect(safeArea, dpi);
+            return new Rect(safeArea.x + inset,
+                title.yMin - GapDp * px - CatSelectorHeightDp * px,
+                Mathf.Max(0f, safeArea.width - inset * 2f), CatSelectorHeightDp * px);
+        }
+
+        public static Rect PortraitRect(Rect safeArea, float dpi)
+        {
+            float px = HudBands.PxPerDp(dpi);
+            float inset = SideInsetDp * px;
+            var cats = CatSelectorRect(safeArea, dpi);
+            var tabs = TabsRect(safeArea, dpi);
+            float y = tabs.yMax + GapDp * px;
+            float yMax = cats.yMin - GapDp * px;
+            return new Rect(safeArea.x + inset, y,
+                Mathf.Max(0f, safeArea.width - inset * 2f), Mathf.Max(0f, yMax - y));
+        }
+
+        public static Rect TabsRect(Rect safeArea, float dpi)
+        {
+            float px = HudBands.PxPerDp(dpi);
+            float inset = SideInsetDp * px;
+            var items = ItemsRect(safeArea, dpi);
+            return new Rect(safeArea.x + inset, items.yMax + GapDp * px,
+                Mathf.Max(0f, safeArea.width - inset * 2f), TabsHeightDp * px);
+        }
+
+        public static Rect ItemsRect(Rect safeArea, float dpi)
+        {
+            float px = HudBands.PxPerDp(dpi);
+            float inset = SideInsetDp * px;
+            var status = StatusRect(safeArea, dpi);
+            float y = status.yMax + GapDp * px;
+            float height = 120f * px;
+            return new Rect(safeArea.x + inset, y,
+                Mathf.Max(0f, safeArea.width - inset * 2f), height);
+        }
+
+        public static Rect ItemCardRect(Rect itemsRect, int visibleIndex, int visibleCount,
+            float dpi)
+        {
+            if (visibleIndex < 0 || visibleCount <= 0 || visibleIndex >= visibleCount)
+                return default;
+            float px = HudBands.PxPerDp(dpi);
+            float gap = GapDp * px;
+            float available = Mathf.Max(0f, itemsRect.height - gap * (visibleCount - 1));
+            float height = Mathf.Min(ItemCardHeightDp * px, available / visibleCount);
+            float y = itemsRect.yMax - height - visibleIndex * (height + gap);
+            return new Rect(itemsRect.x, y, itemsRect.width, height);
+        }
+
+        public static Rect PrimaryActionRect(Rect safeArea, float dpi)
         {
             float px = HudBands.PxPerDp(dpi);
             float inset = SideInsetDp * px;
             return new Rect(safeArea.x + inset, safeArea.y + inset,
-                Mathf.Max(0f, safeArea.width - inset * 2f), BuyHeightDp * px);
+                Mathf.Max(0f, safeArea.width - inset * 2f), PrimaryHeightDp * px);
         }
+
+        public static Rect BuyRect(Rect safeArea, float dpi) => PrimaryActionRect(safeArea, dpi);
 
         public static Rect RestoreRect(Rect safeArea, float dpi)
         {
             float px = HudBands.PxPerDp(dpi);
-            var buy = BuyRect(safeArea, dpi);
-            return new Rect(buy.x, buy.yMax + GapDp * px, buy.width, RestoreHeightDp * px);
+            var primary = PrimaryActionRect(safeArea, dpi);
+            return new Rect(primary.x, primary.yMax + GapDp * px,
+                primary.width, RestoreHeightDp * px);
         }
 
         public static Rect StatusRect(Rect safeArea, float dpi)
@@ -66,59 +125,6 @@ namespace CatMetro.Presentation.Screens
             var restore = RestoreRect(safeArea, dpi);
             return new Rect(restore.x, restore.yMax + GapDp * px,
                 restore.width, StatusHeightDp * px);
-        }
-
-        public static Rect PortraitRect(Rect safeArea, float dpi)
-        {
-            float px = HudBands.PxPerDp(dpi);
-            float inset = SideInsetDp * px;
-            var preview = PreviewStripRect(safeArea, dpi);
-            var title = TitleRect(safeArea, dpi);
-            float y = preview.yMax + GapDp * px;
-            float yMax = title.yMin - GapDp * px;
-            return new Rect(safeArea.x + inset, y,
-                Mathf.Max(0f, safeArea.width - inset * 2f), Mathf.Max(0f, yMax - y));
-        }
-
-        public static Rect PortraitRectWithoutPreview(Rect safeArea, float dpi)
-        {
-            float px = HudBands.PxPerDp(dpi);
-            float inset = SideInsetDp * px;
-            var status = StatusRect(safeArea, dpi);
-            var title = TitleRect(safeArea, dpi);
-            float y = status.yMax + GapDp * px;
-            float yMax = title.yMin - GapDp * px;
-            return new Rect(safeArea.x + inset, y,
-                Mathf.Max(0f, safeArea.width - inset * 2f), Mathf.Max(0f, yMax - y));
-        }
-
-        public static Rect PreviewStripRect(Rect safeArea, float dpi)
-        {
-            float px = HudBands.PxPerDp(dpi);
-            float inset = SideInsetDp * px;
-            var status = StatusRect(safeArea, dpi);
-            return new Rect(safeArea.x + inset, status.yMax + GapDp * px,
-                Mathf.Max(0f, safeArea.width - inset * 2f), PreviewHeightDp * px);
-        }
-
-        public static Rect PreviewHeadingRect(Rect safeArea, float dpi)
-        {
-            float px = HudBands.PxPerDp(dpi);
-            var strip = PreviewStripRect(safeArea, dpi);
-            float height = PreviewHeadingHeightDp * px;
-            return new Rect(strip.x, strip.yMax - height, strip.width, height);
-        }
-
-        public static Rect PreviewCardRect(Rect safeArea, float dpi, int index)
-        {
-            float px = HudBands.PxPerDp(dpi);
-            var strip = PreviewStripRect(safeArea, dpi);
-            float gap = PreviewCardGapDp * px;
-            float headingAndGap = (PreviewHeadingHeightDp + PreviewCardGapDp) * px;
-            float width = Mathf.Max(0f, (strip.width - gap * 3f) / 4f);
-            int boundedIndex = Mathf.Clamp(index, 0, 3);
-            return new Rect(strip.x + boundedIndex * (width + gap), strip.y,
-                width, Mathf.Max(0f, strip.height - headingAndGap));
         }
     }
 }

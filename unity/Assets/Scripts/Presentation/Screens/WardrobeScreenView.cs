@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
+using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Input;
 using CatMetro.Presentation.Theme;
-using CatMetro.Services.Ads;
+using CatMetro.Services.Cosmetics;
 using CatMetro.Services.Purchases;
 using TMPro;
 using UnityEngine;
@@ -10,123 +12,105 @@ using UnityEngine.UI;
 
 namespace CatMetro.Presentation.Screens
 {
-    // A deliberately small, filmable purchase surface. It renders one fixed profile cat; profile
-    // selection belongs to TASK 13. Paid, restored, promotional, and rewarded-ad access all paint
-    // through PurchaseService.IsUnlocked, so TASK 11 has no second cosmetic state to invent.
     public sealed class WardrobeScreenView : MonoBehaviour
     {
         private const string EntryRegionId = "wardrobe.entry";
         private const string BackRegionId = "wardrobe.back";
-        private const string BuyRegionId = "wardrobe.buy";
         private const string RestoreRegionId = "wardrobe.restore";
+        private const string PrimaryRegionId = "wardrobe.primary";
         private const int EntryPriority = ChromeRegions.HomeScreenPriority;
         private const int ModalPriority = ChromeRegions.StackedModalPriority;
-
-        private readonly struct TryOnSpec
-        {
-            public readonly string PlacementId;
-            public readonly string EntitlementId;
-            public readonly string NameKey;
-
-            public TryOnSpec(string placementId, string entitlementId, string nameKey)
-            {
-                PlacementId = placementId;
-                EntitlementId = entitlementId;
-                NameKey = nameKey;
-            }
-        }
-
-        private static readonly TryOnSpec[] TryOnSpecs =
-        {
-            new TryOnSpec("wardrobe_try_conductor", EntitlementIds.OutfitConductor,
-                "wardrobe.tryon.conductor"),
-            new TryOnSpec("wardrobe_try_engineer", EntitlementIds.OutfitEngineer,
-                "wardrobe.tryon.engineer"),
-            new TryOnSpec("wardrobe_try_scarf", EntitlementIds.AccessoryScarf,
-                "wardrobe.tryon.scarf"),
-            new TryOnSpec("wardrobe_try_goggles", EntitlementIds.AccessoryGoggles,
-                "wardrobe.tryon.goggles"),
-        };
 
         public Action OpenRequested;
         public Action BackRequested;
 
-        private PurchaseService _service;
-        private IRewardedAds _rewardedAds;
+        private PurchaseService _purchases;
+        private CosmeticProfileService _profile;
+        private ICosmeticRewardedRoute _rewarded;
         private ChromeRegions _regions;
         private GameObject _entry;
         private GameObject _panel;
-        private GameObject _coatGroup;
         private RectTransform _entryRect;
         private RectTransform _backRect;
-        private RectTransform _buyRect;
+        private RectTransform _titleRect;
+        private RectTransform _catSelectorRect;
+        private RectTransform _portraitRect;
+        private RectTransform _tabsRect;
+        private RectTransform _itemsRect;
+        private RectTransform _cardsRoot;
+        private RectTransform _primaryRect;
         private RectTransform _restoreRect;
         private RectTransform _statusRect;
-        private RectTransform _portraitRect;
-        private RectTransform _tryOnStrip;
-        private RectTransform _tryOnHeading;
-        private RectTransform _coatBody;
-        private TMP_Text _entryLabel;
-        private TMP_Text _buyLabel;
+        private TMP_Text _primaryLabel;
         private TMP_Text _restoreLabel;
         private TMP_Text _statusLabel;
-        private Image _entryOwnedDot;
-        private readonly RectTransform[] _tryOnCards = new RectTransform[4];
-        private readonly GameObject[] _borrowedAccents = new GameObject[4];
-        private readonly GameObject[] _lockedLabels = new GameObject[4];
-        private readonly GameObject[] _borrowedLabels = new GameObject[4];
-        private readonly GameObject[] _successLabels = new GameObject[4];
-        private readonly GameObject[] _actionChips = new GameObject[4];
-        private readonly GameObject[] _unavailableLabels = new GameObject[4];
-        private readonly bool[] _rewardedRegionsRegistered = new bool[4];
+        private TMP_Text _emptyLabel;
+        private CosmeticPortraitView _largePortrait;
+        private CosmeticPortraitView _entryPortrait;
+
+        private readonly List<SelectorTarget> _catTargets = new List<SelectorTarget>();
+        private readonly List<SelectorTarget> _tabTargets = new List<SelectorTarget>();
+        private readonly List<CosmeticItemCardView> _cards = new List<CosmeticItemCardView>();
+        private readonly List<string> _registeredItemIds = new List<string>();
+        private IReadOnlyList<CosmeticWardrobeRow> _rows = Array.Empty<CosmeticWardrobeRow>();
+        private CosmeticWardrobeRow? _selectedRow;
+        private CosmeticSlot _selectedSlot = CosmeticSlot.Outfit;
+        private string _previewItemId = string.Empty;
 
         private Rect _entryRectPx;
         private Rect _backRectPx;
-        private Rect _buyRectPx;
+        private Rect _primaryRectPx;
         private Rect _restoreRectPx;
+        private Rect _portraitRectPx;
+        private Rect _itemsRectPx;
+        private Rect _safeArea;
+        private float _dpi;
         private bool _entryShown;
         private bool _panelShown;
         private bool _entryRegistered;
-        private bool _modalRegistered;
-        private bool _ledgerSubscribed;
-        private bool _adsSubscribed;
+        private bool _staticRegistered;
+        private bool _primaryRegistered;
+        private bool _profileSubscribed;
         private bool _purchaseBusy;
         private bool _restoreBusy;
 
         public Rect EntryRectPx => _entryRectPx;
         public Rect BackRectPx => _backRectPx;
-        public Rect BuyRectPx => _buyRectPx;
+        public Rect BuyRectPx => _primaryRectPx;
+        public Rect PrimaryActionRectPx => _primaryRectPx;
         public Rect RestoreRectPx => _restoreRectPx;
+        public Rect PortraitRectPx => _portraitRectPx;
+        public Rect ItemsRectPx => _itemsRectPx;
         public bool EntryVisible => _entry != null && _entry.activeInHierarchy;
         public bool PanelVisible => _panel != null && _panel.activeInHierarchy;
-        public bool ConductorCoatVisible => _coatGroup != null && _coatGroup.activeInHierarchy;
-        public RectTransform ConductorCoatTransform => _coatBody;
-        public string BuyLabelText => _buyLabel != null ? _buyLabel.text : string.Empty;
+        public CosmeticSlot SelectedSlot => _selectedSlot;
+        public IReadOnlyList<CosmeticItemCardView> VisibleCards => _cards.AsReadOnly();
+        public CosmeticPortraitView LargePortrait => _largePortrait;
+        public CosmeticPortraitView EntryPortrait => _entryPortrait;
+        public string BuyLabelText => _primaryLabel != null ? _primaryLabel.text : string.Empty;
+        public string PrimaryActionText => BuyLabelText;
         public string RestoreLabelText => _restoreLabel != null ? _restoreLabel.text : string.Empty;
         public string StatusText => _statusLabel != null ? _statusLabel.text : string.Empty;
 
-        public static WardrobeScreenView Create(Transform canvasParent, PurchaseService service)
-            => Create(canvasParent, service, RewardedAdRuntime.Current,
-                RewardedAdRuntime.IsInstalled);
-
-        public static WardrobeScreenView Create(Transform canvasParent, PurchaseService service,
-            IRewardedAds rewardedAds)
-            => Create(canvasParent, service, rewardedAds ?? RewardedAdRuntime.Current,
-                rewardedAds != null || RewardedAdRuntime.IsInstalled);
-
-        private static WardrobeScreenView Create(Transform canvasParent, PurchaseService service,
-            IRewardedAds rewardedAds, bool buildTryOnStrip)
+        public static WardrobeScreenView Create(Transform canvasParent, PurchaseService purchases)
         {
-            var root = new GameObject("WardrobeSurface");
+            return Create(canvasParent, purchases, CosmeticRuntime.Current,
+                new DisabledCosmeticRewardedRoute());
+        }
+
+        public static WardrobeScreenView Create(Transform canvasParent,
+            PurchaseService purchases, CosmeticProfileService profile,
+            ICosmeticRewardedRoute rewarded)
+        {
+            var root = new GameObject("WardrobeSurface", typeof(RectTransform));
             root.transform.SetParent(canvasParent, false);
+            Stretch((RectTransform)root.transform);
             var view = root.AddComponent<WardrobeScreenView>();
-            view._service = service ?? PurchaseRuntime.Current;
-            view._rewardedAds = rewardedAds ?? RewardedAdRuntime.Current;
-            Stretch(root.AddComponent<RectTransform>());
-
+            view._purchases = purchases ?? PurchaseRuntime.Current;
+            view._profile = profile ?? CosmeticRuntime.Current;
+            view._rewarded = rewarded ?? new DisabledCosmeticRewardedRoute();
             view.BuildEntry(root.transform);
-            view.BuildPanel(root.transform, buildTryOnStrip);
-
+            view.BuildPanel(root.transform);
             view._entry.SetActive(false);
             view._panel.SetActive(false);
             root.SetActive(false);
@@ -135,275 +119,113 @@ namespace CatMetro.Presentation.Screens
 
         private void BuildEntry(Transform parent)
         {
-            _entry = new GameObject("WardrobeCapsule");
+            _entry = new GameObject("WardrobeCapsule", typeof(RectTransform));
             _entry.transform.SetParent(parent, false);
-            _entryRect = _entry.AddComponent<RectTransform>();
+            _entryRect = (RectTransform)_entry.transform;
             Paint(_entry, Palette.DepotNavy, true);
 
-            MakeSurface(_entry.transform, "ProfileCatDot", new Vector2(0.05f, 0.16f),
-                new Vector2(0.31f, 0.84f), Palette.MetroTeal, true);
-            _entryOwnedDot = MakeSurface(_entry.transform, "CoatEquippedDot",
-                new Vector2(0.225f, 0.57f), new Vector2(0.32f, 0.83f), Palette.TicketOrange, true);
-            _entryLabel = MakeText(_entry.transform, "WardrobeLabel", new Vector2(0.32f, 0f),
-                new Vector2(0.95f, 1f), Text("wardrobe.entry"), 25f, Palette.WarmPaper);
-            _entryLabel.fontStyle = FontStyles.Bold;
-            _entryLabel.enableAutoSizing = true;
-            _entryLabel.fontSizeMin = 16f;
-            _entryLabel.fontSizeMax = 25f;
+            var portraitMount = MakeRect(_entry.transform, "EntryPortraitMount",
+                new Vector2(0.035f, 0.08f), new Vector2(0.30f, 0.92f));
+            _entryPortrait = CosmeticPortraitView.Create(portraitMount, _profile,
+                "EntryPortrait");
+            var label = MakeText(_entry.transform, "WardrobeLabel", new Vector2(0.31f, 0f),
+                new Vector2(0.96f, 1f), Text("wardrobe.entry"), 24f, Palette.WarmPaper);
+            label.fontStyle = FontStyles.Bold;
         }
 
-        private void BuildPanel(Transform parent, bool buildTryOnStrip)
+        private void BuildPanel(Transform parent)
         {
-            _panel = new GameObject("WardrobePanel");
+            _panel = new GameObject("WardrobePanel", typeof(RectTransform));
             _panel.transform.SetParent(parent, false);
-            Stretch(_panel.AddComponent<RectTransform>());
-
+            Stretch((RectTransform)_panel.transform);
             MakeSurface(_panel.transform, "WarmDesk", Vector2.zero, Vector2.one,
                 Palette.WarmPaper, false);
-            MakeSurface(_panel.transform, "BoardEdge", new Vector2(0.025f, 0.025f),
-                new Vector2(0.975f, 0.975f), Palette.WithAlpha(Palette.DepotNavy, 0.60f), true);
-            MakeSurface(_panel.transform, "CreamBoard", new Vector2(0.032f, 0.035f),
-                new Vector2(0.968f, 0.968f), Palette.CreamCard, true);
+            MakeSurface(_panel.transform, "BoardEdge", new Vector2(0.018f, 0.015f),
+                new Vector2(0.982f, 0.985f), Palette.DepotNavy, true);
+            MakeSurface(_panel.transform, "CreamBoard", new Vector2(0.027f, 0.022f),
+                new Vector2(0.973f, 0.978f), Palette.CreamCard, true);
 
             _backRect = MakeChip(_panel.transform, "BackChip", Palette.InkNavy);
             var back = MakeText(_backRect, "BackLabel", Vector2.zero, Vector2.one,
-                Text("wardrobe.back"), 22f, Palette.WarmPaper);
+                Text("wardrobe.back"), 21f, Palette.WarmPaper);
             back.fontStyle = FontStyles.Bold;
-
-            var titleRect = MakeRect(_panel.transform, "WardrobeTitle");
-            var title = MakeText(titleRect, "TitleLabel", Vector2.zero, Vector2.one,
-                Text("wardrobe.title"), 42f, Palette.InkNavy);
+            _titleRect = MakeRect(_panel.transform, "WardrobeTitle");
+            var title = MakeText(_titleRect, "TitleLabel", Vector2.zero, Vector2.one,
+                Text("wardrobe.title"), 36f, Palette.InkNavy);
             title.fontStyle = FontStyles.Bold;
-            title.enableAutoSizing = true;
-            title.fontSizeMin = 26f;
-            title.fontSizeMax = 42f;
 
-            _portraitRect = MakeChip(_panel.transform, "ProfileCatCard", Palette.DepotNavy);
-            MakeSurface(_portraitRect, "PortraitInset", new Vector2(0.025f, 0.025f),
-                new Vector2(0.975f, 0.975f), Palette.WarmPaper, true);
-            MakeSurface(_portraitRect, "PortraitGlow", new Vector2(0.10f, 0.08f),
-                new Vector2(0.90f, 0.86f), Palette.WithAlpha(Palette.MetroTeal, 0.17f), true);
+            _catSelectorRect = MakeRect(_panel.transform, "CatSelectorBand");
+            BuildCatSelectors();
 
-            var profileLabel = MakeText(_portraitRect, "ProfileLabel", new Vector2(0.08f, 0.88f),
-                new Vector2(0.92f, 0.98f), Text("wardrobe.profile"), 24f, Palette.InkNavy);
-            profileLabel.fontStyle = FontStyles.Bold;
-            BuildProfileCat(_portraitRect);
+            _portraitRect = MakeChip(_panel.transform, "LargePortraitCard", Palette.DepotNavy);
+            MakeSurface(_portraitRect, "PortraitPaper", new Vector2(0.018f, 0.018f),
+                new Vector2(0.982f, 0.982f), Palette.WarmPaper, true);
+            MakeSurface(_portraitRect, "PortraitGlow", new Vector2(0.05f, 0.05f),
+                new Vector2(0.95f, 0.95f), Palette.WithAlpha(Palette.MetroTeal, 0.14f), true);
+            var largeMount = MakeRect(_portraitRect, "LargePortraitMount",
+                new Vector2(0.18f, 0.08f), new Vector2(0.82f, 0.96f));
+            _largePortrait = CosmeticPortraitView.Create(largeMount, _profile,
+                "LargePortrait");
 
-            var product = MakeText(_portraitRect, "ProductName", new Vector2(0.08f, 0.02f),
-                new Vector2(0.92f, 0.13f), Text("wardrobe.product"), 28f, Palette.InkNavy);
-            product.fontStyle = FontStyles.Bold;
+            _tabsRect = MakeRect(_panel.transform, "TabsBand");
+            BuildTabs();
+            _itemsRect = MakeRect(_panel.transform, "ItemsBand");
+            _cardsRoot = MakeRect(_itemsRect, "CardsRoot", Vector2.zero, Vector2.one);
+            _emptyLabel = MakeText(_itemsRect, "EmptyStateLabel", new Vector2(0.04f, 0.08f),
+                new Vector2(0.96f, 0.92f), Text("wardrobe.empty"), 23f, Palette.DepotNavy);
+            _emptyLabel.fontStyle = FontStyles.Italic;
+            _emptyLabel.gameObject.SetActive(false);
 
             _statusRect = MakeRect(_panel.transform, "WardrobeStatus");
             _statusLabel = MakeText(_statusRect, "StatusLabel", Vector2.zero, Vector2.one,
-                string.Empty, 24f, Palette.InkNavy);
-            _statusLabel.enableAutoSizing = true;
-            _statusLabel.fontSizeMin = 17f;
-            _statusLabel.fontSizeMax = 24f;
-
-            if (buildTryOnStrip) BuildTryOnStrip(_panel.transform);
-
-            _restoreRect = MakeChip(_panel.transform, "RestorePurchasesChip",
-                Palette.WithAlpha(Palette.MetroTeal, 0.95f));
+                string.Empty, 21f, Palette.InkNavy);
+            _primaryRect = MakeChip(_panel.transform, "PrimaryActionChip", Palette.TicketOrange);
+            _primaryLabel = MakeText(_primaryRect, "PrimaryActionLabel", Vector2.zero,
+                Vector2.one, string.Empty, 27f, Palette.DepotNavy);
+            _primaryLabel.fontStyle = FontStyles.Bold;
+            _primaryRect.gameObject.SetActive(false);
+            _restoreRect = MakeChip(_panel.transform, "RestoreChip", Palette.MetroTeal);
             _restoreLabel = MakeText(_restoreRect, "RestoreLabel", Vector2.zero, Vector2.one,
-                Text("wardrobe.restore"), 25f, Palette.DepotNavy);
+                Text("wardrobe.restore"), 23f, Palette.DepotNavy);
             _restoreLabel.fontStyle = FontStyles.Bold;
-
-            _buyRect = MakeChip(_panel.transform, "BuyConductorCoatChip", Palette.TicketOrange);
-            _buyLabel = MakeText(_buyRect, "BuyLabel", Vector2.zero, Vector2.one,
-                Text("wardrobe.store.checking"), 31f, Palette.DepotNavy);
-            _buyLabel.fontStyle = FontStyles.Bold;
-            _buyLabel.enableAutoSizing = true;
-            _buyLabel.fontSizeMin = 20f;
-            _buyLabel.fontSizeMax = 31f;
         }
 
-        private void BuildTryOnStrip(Transform parent)
+        private void BuildCatSelectors()
         {
-            _tryOnStrip = MakeRect(parent, "TryOnStrip");
-            _tryOnHeading = MakeRect(_tryOnStrip, "TryOnHeading");
-            var heading = MakeText(_tryOnHeading, "TryOnHeadingLabel", Vector2.zero, Vector2.one,
-                Text("wardrobe.tryon.heading"), 21f, Palette.InkNavy);
-            heading.fontStyle = FontStyles.Bold;
-            heading.alignment = TextAlignmentOptions.Left;
-            heading.enableAutoSizing = true;
-            heading.fontSizeMin = 14f;
-            heading.fontSizeMax = 21f;
-
-            for (int i = 0; i < TryOnSpecs.Length; i++)
-                BuildTryOnCard(i);
-        }
-
-        private void BuildTryOnCard(int index)
-        {
-            var spec = TryOnSpecs[index];
-            var card = MakeChip(_tryOnStrip, "TryOnCard_" + spec.PlacementId,
-                Palette.WithAlpha(Palette.DepotNavy, 0.92f));
-            _tryOnCards[index] = card;
-
-            MakeSurface(card, "CreamInset", new Vector2(0.025f, 0.025f),
-                new Vector2(0.975f, 0.975f), Palette.CreamCard, true);
-            _borrowedAccents[index] = MakeSurface(card, "BorrowedAccent",
-                new Vector2(0.045f, 0.045f), new Vector2(0.955f, 0.955f),
-                Palette.WithAlpha(Palette.MetroTeal, 0.36f), true).gameObject;
-
-            var name = MakeText(card, "ItemName", new Vector2(0.06f, 0.79f),
-                new Vector2(0.94f, 0.96f), Text(spec.NameKey), 16f, Palette.InkNavy);
-            name.fontStyle = FontStyles.Bold;
-            name.enableAutoSizing = true;
-            name.fontSizeMin = 10f;
-            name.fontSizeMax = 16f;
-
-            var silhouette = MakeRect(card, "Silhouette");
-            silhouette.anchorMin = new Vector2(0.13f, 0.48f);
-            silhouette.anchorMax = new Vector2(0.87f, 0.79f);
-            silhouette.offsetMin = Vector2.zero;
-            silhouette.offsetMax = Vector2.zero;
-            BuildTryOnSilhouette(index, silhouette);
-
-            _lockedLabels[index] = MakeText(card, "LockedLabel", new Vector2(0.06f, 0.39f),
-                new Vector2(0.94f, 0.50f), Text("wardrobe.tryon.locked"), 13f,
-                Palette.InkNavy).gameObject;
-            _borrowedLabels[index] = MakeText(card, "BorrowedLabel", new Vector2(0.04f, 0.39f),
-                new Vector2(0.96f, 0.50f), Text("wardrobe.tryon.borrowed"), 13f,
-                Palette.DepotNavy).gameObject;
-
-            var success = MakeText(card, "SuccessLabel", new Vector2(0.04f, 0.035f),
-                new Vector2(0.96f, 0.39f), Text("wardrobe.tryon.success"), 13f,
-                Palette.DepotNavy);
-            success.fontStyle = FontStyles.Bold;
-            success.enableAutoSizing = true;
-            success.fontSizeMin = 8f;
-            success.fontSizeMax = 13f;
-            _successLabels[index] = success.gameObject;
-
-            var action = MakeChip(card, "ActionChip", Palette.TicketOrange);
-            action.anchorMin = new Vector2(0.055f, 0.035f);
-            action.anchorMax = new Vector2(0.945f, 0.39f);
-            action.offsetMin = Vector2.zero;
-            action.offsetMax = Vector2.zero;
-            var actionLabel = MakeText(action, "ActionLabel", new Vector2(0.04f, 0.02f),
-                new Vector2(0.96f, 0.98f), Text("wardrobe.tryon.watch"), 13f,
-                Palette.DepotNavy);
-            actionLabel.fontStyle = FontStyles.Bold;
-            actionLabel.enableAutoSizing = true;
-            actionLabel.fontSizeMin = 8f;
-            actionLabel.fontSizeMax = 13f;
-            _actionChips[index] = action.gameObject;
-
-            var unavailable = MakeText(card, "UnavailableLabel", new Vector2(0.04f, 0.035f),
-                new Vector2(0.96f, 0.39f), Text("wardrobe.tryon.unavailable"), 12f,
-                Palette.WithAlpha(Palette.InkNavy, 0.72f));
-            unavailable.enableAutoSizing = true;
-            unavailable.fontSizeMin = 8f;
-            unavailable.fontSizeMax = 12f;
-            _unavailableLabels[index] = unavailable.gameObject;
-
-            _borrowedAccents[index].SetActive(false);
-            _borrowedLabels[index].SetActive(false);
-            _successLabels[index].SetActive(false);
-            _actionChips[index].SetActive(false);
-            _unavailableLabels[index].SetActive(false);
-        }
-
-        private static void BuildTryOnSilhouette(int index, RectTransform parent)
-        {
-            switch (index)
+            for (int i = 0; i < _profile.Catalog.Cats.Count; i++)
             {
-                case 0:
-                    MakeSurface(parent, "ConductorCoat", new Vector2(0.20f, 0.08f),
-                        new Vector2(0.80f, 0.70f), Palette.InkNavy, true);
-                    MakeSurface(parent, "ConductorHat", new Vector2(0.12f, 0.68f),
-                        new Vector2(0.88f, 0.84f), Palette.InkNavy, true);
-                    MakeSurface(parent, "ConductorHatCrown", new Vector2(0.25f, 0.78f),
-                        new Vector2(0.75f, 0.98f), Palette.InkNavy, true);
-                    MakeSurface(parent, "ConductorBadge", new Vector2(0.44f, 0.79f),
-                        new Vector2(0.56f, 0.96f), Palette.TicketOrange, true);
-                    break;
-                case 1:
-                    MakeSurface(parent, "EngineerBib", new Vector2(0.21f, 0.08f),
-                        new Vector2(0.79f, 0.78f), Palette.MetroTeal, true);
-                    MakeSurface(parent, "EngineerStrapLeft", new Vector2(0.20f, 0.64f),
-                        new Vector2(0.39f, 0.98f), Palette.TicketOrange, true);
-                    MakeSurface(parent, "EngineerStrapRight", new Vector2(0.61f, 0.64f),
-                        new Vector2(0.80f, 0.98f), Palette.TicketOrange, true);
-                    MakeSurface(parent, "EngineerBuckle", new Vector2(0.41f, 0.40f),
-                        new Vector2(0.59f, 0.61f), Palette.TicketOrange, true);
-                    break;
-                case 2:
-                    var scarfLeft = MakeSurface(parent, "ScarfLeft", new Vector2(0.22f, 0.06f),
-                        new Vector2(0.50f, 0.94f), Palette.TicketOrange, true);
-                    scarfLeft.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -28f);
-                    var scarfRight = MakeSurface(parent, "ScarfRight", new Vector2(0.50f, 0.06f),
-                        new Vector2(0.78f, 0.94f), Palette.TicketOrange, true);
-                    scarfRight.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 28f);
-                    MakeSurface(parent, "ScarfKnot", new Vector2(0.36f, 0.52f),
-                        new Vector2(0.64f, 0.83f), Palette.TabbyYellow, true);
-                    break;
-                default:
-                    MakeSurface(parent, "GoggleLeft", new Vector2(0.05f, 0.27f),
-                        new Vector2(0.45f, 0.76f), Palette.InkNavy, true);
-                    MakeSurface(parent, "GoggleRight", new Vector2(0.55f, 0.27f),
-                        new Vector2(0.95f, 0.76f), Palette.InkNavy, true);
-                    MakeSurface(parent, "GoggleLensLeft", new Vector2(0.13f, 0.37f),
-                        new Vector2(0.40f, 0.69f), Palette.MetroTeal, true);
-                    MakeSurface(parent, "GoggleLensRight", new Vector2(0.60f, 0.37f),
-                        new Vector2(0.87f, 0.69f), Palette.MetroTeal, true);
-                    MakeSurface(parent, "GoggleBridge", new Vector2(0.42f, 0.45f),
-                        new Vector2(0.58f, 0.58f), Palette.InkNavy, true);
-                    break;
+                var cat = _profile.Catalog.Cats[i];
+                var rect = MakeChip(_catSelectorRect, "CatSelector-" + cat.Id,
+                    CatColor(cat.Id));
+                var label = MakeText(rect, "CatLabel-" + cat.Id,
+                    new Vector2(0.04f, 0.05f), new Vector2(0.96f, 0.95f),
+                    Text(cat.DisplayNameKey), 18f, Palette.InkNavy);
+                label.fontStyle = FontStyles.Bold;
+                _catTargets.Add(new SelectorTarget(cat.Id, rect));
             }
         }
 
-        private void BuildProfileCat(Transform parent)
+        private void BuildTabs()
         {
-            // The cat is intentionally chunky and graphic at phone-video scale. TASK 13 may
-            // replace this fixed portrait with the selected cat without changing entitlement flow.
-            var body = MakeSurface(parent, "PlainCatBody", new Vector2(0.31f, 0.15f),
-                new Vector2(0.69f, 0.49f), Palette.MetroTeal, true);
-            body.transform.localRotation = Quaternion.Euler(0f, 0f, 0f);
-            MakeSurface(parent, "CatHead", new Vector2(0.26f, 0.43f),
-                new Vector2(0.74f, 0.82f), Palette.MetroTeal, true);
-            var leftEar = MakeSurface(parent, "CatEarLeft", new Vector2(0.29f, 0.72f),
-                new Vector2(0.41f, 0.87f), Palette.MetroTeal, false);
-            leftEar.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 24f);
-            var rightEar = MakeSurface(parent, "CatEarRight", new Vector2(0.59f, 0.72f),
-                new Vector2(0.71f, 0.87f), Palette.MetroTeal, false);
-            rightEar.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -24f);
-            MakeSurface(parent, "EyeLeft", new Vector2(0.38f, 0.59f),
-                new Vector2(0.425f, 0.64f), Palette.DepotNavy, true);
-            MakeSurface(parent, "EyeRight", new Vector2(0.575f, 0.59f),
-                new Vector2(0.62f, 0.64f), Palette.DepotNavy, true);
-            MakeSurface(parent, "CatNose", new Vector2(0.48f, 0.53f),
-                new Vector2(0.52f, 0.57f), Palette.TicketOrange, true);
+            AddTab("outfit", CosmeticSlot.Outfit, "wardrobe.tab.outfit");
+            AddTab("accessory", CosmeticSlot.Accessory, "wardrobe.tab.accessory");
+            AddTab("frame", CosmeticSlot.Frame, "wardrobe.tab.frame");
+        }
 
-            _coatGroup = new GameObject("ConductorCoat");
-            _coatGroup.transform.SetParent(parent, false);
-            Stretch(_coatGroup.AddComponent<RectTransform>());
-            _coatBody = MakeSurface(_coatGroup.transform, "CoatBody", new Vector2(0.27f, 0.14f),
-                new Vector2(0.73f, 0.49f), Palette.InkNavy, true).rectTransform;
-            var collarLeft = MakeSurface(_coatGroup.transform, "CreamCollarLeft",
-                new Vector2(0.39f, 0.38f), new Vector2(0.50f, 0.49f), Palette.CreamCard, false);
-            collarLeft.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -24f);
-            var collarRight = MakeSurface(_coatGroup.transform, "CreamCollarRight",
-                new Vector2(0.50f, 0.38f), new Vector2(0.61f, 0.49f), Palette.CreamCard, false);
-            collarRight.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 24f);
-            MakeSurface(_coatGroup.transform, "BrassButtonUpper", new Vector2(0.485f, 0.30f),
-                new Vector2(0.515f, 0.335f), Palette.TabbyYellow, true);
-            MakeSurface(_coatGroup.transform, "BrassButtonLower", new Vector2(0.485f, 0.22f),
-                new Vector2(0.515f, 0.255f), Palette.TabbyYellow, true);
-            MakeSurface(_coatGroup.transform, "ConductorHatBrim", new Vector2(0.28f, 0.78f),
-                new Vector2(0.72f, 0.835f), Palette.InkNavy, true);
-            MakeSurface(_coatGroup.transform, "ConductorHatCrown", new Vector2(0.34f, 0.80f),
-                new Vector2(0.66f, 0.91f), Palette.InkNavy, true);
-            MakeSurface(_coatGroup.transform, "ConductorHatBadge", new Vector2(0.475f, 0.83f),
-                new Vector2(0.525f, 0.885f), Palette.TicketOrange, true);
-            _coatGroup.SetActive(false);
+        private void AddTab(string id, CosmeticSlot slot, string key)
+        {
+            var rect = MakeChip(_tabsRect, "Tab-" + id, Palette.MetroTeal);
+            var label = MakeText(rect, "TabLabel-" + id, Vector2.zero, Vector2.one,
+                Text(key), 20f, Palette.DepotNavy);
+            label.fontStyle = FontStyles.Bold;
+            _tabTargets.Add(new SelectorTarget(id, rect, slot));
         }
 
         public void Attach(ChromeRegions regions) => _regions = regions;
 
         public void ShowEntry()
         {
+            ClearPreview();
             _entryShown = true;
             _panelShown = false;
             _purchaseBusy = false;
@@ -411,16 +233,15 @@ namespace CatMetro.Presentation.Screens
             gameObject.SetActive(true);
             _entry.SetActive(true);
             _panel.SetActive(false);
-            UnsubscribeLedger();
-            UnsubscribeAds();
+            UnsubscribeProfile();
+            UnregisterPanelRegions();
             LayoutForViewport(Screen.safeArea, Screen.dpi);
-            RefreshVisuals();
             RegisterEntry();
-            UnregisterModal();
         }
 
         public void Open()
         {
+            ClearPreview();
             _entryShown = false;
             _panelShown = true;
             gameObject.SetActive(true);
@@ -428,29 +249,28 @@ namespace CatMetro.Presentation.Screens
             _panel.SetActive(true);
             LayoutForViewport(Screen.safeArea, Screen.dpi);
             UnregisterEntry();
-            RegisterModal();
-            SubscribeLedger();
-            SubscribeAds();
+            SubscribeProfile();
+            RegisterStaticPanelRegions();
             SetStatus(Text("wardrobe.status.checking"));
-            RefreshVisuals();
-            _service.Refresh(() =>
+            RebuildProjectionAndCards();
+            _purchases.Refresh(() =>
             {
                 if (this == null || !_panelShown) return;
-                RefreshVisuals();
-                SetDefaultStatus();
+                RebuildProjectionAndCards();
+                if (!_purchaseBusy && !_restoreBusy) SetStatus(string.Empty);
             });
         }
 
         public void Hide()
         {
+            ClearPreview();
             _entryShown = false;
             _panelShown = false;
             _purchaseBusy = false;
             _restoreBusy = false;
             UnregisterEntry();
-            UnregisterModal();
-            UnsubscribeLedger();
-            UnsubscribeAds();
+            UnregisterPanelRegions();
+            UnsubscribeProfile();
             if (_entry != null) _entry.SetActive(false);
             if (_panel != null) _panel.SetActive(false);
             gameObject.SetActive(false);
@@ -459,9 +279,8 @@ namespace CatMetro.Presentation.Screens
         private void OnDisable()
         {
             UnregisterEntry();
-            UnregisterModal();
-            UnsubscribeLedger();
-            UnsubscribeAds();
+            UnregisterPanelRegions();
+            UnsubscribeProfile();
         }
 
         private void OnEnable()
@@ -469,81 +288,183 @@ namespace CatMetro.Presentation.Screens
             if (_entryShown) RegisterEntry();
             if (_panelShown)
             {
-                RegisterModal();
-                SubscribeLedger();
-                SubscribeAds();
-                RefreshTryOnVisuals();
+                SubscribeProfile();
+                RegisterStaticPanelRegions();
+                RegisterCardRegions();
+                RegisterPrimaryRegion();
             }
         }
 
         private void OnDestroy()
         {
             UnregisterEntry();
-            UnregisterModal();
-            UnsubscribeLedger();
-            UnsubscribeAds();
+            UnregisterPanelRegions();
+            UnsubscribeProfile();
         }
 
         public void LayoutForViewport(Rect safeArea, float dpi)
         {
-            _entryRectPx = WardrobeLayout.EntryRect(safeArea, dpi);
-            _backRectPx = WardrobeLayout.BackRect(safeArea, dpi);
-            _buyRectPx = WardrobeLayout.BuyRect(safeArea, dpi);
-            _restoreRectPx = WardrobeLayout.RestoreRect(safeArea, dpi);
+            _safeArea = safeArea;
+            _dpi = dpi > 0f ? dpi : 160f;
+            _entryRectPx = WardrobeLayout.EntryRect(safeArea, _dpi);
+            _backRectPx = WardrobeLayout.BackRect(safeArea, _dpi);
+            _primaryRectPx = WardrobeLayout.PrimaryActionRect(safeArea, _dpi);
+            _restoreRectPx = WardrobeLayout.RestoreRect(safeArea, _dpi);
+            _portraitRectPx = WardrobeLayout.PortraitRect(safeArea, _dpi);
+            _itemsRectPx = WardrobeLayout.ItemsRect(safeArea, _dpi);
             ApplyPx(_entryRect, _entryRectPx);
             ApplyPx(_backRect, _backRectPx);
-            ApplyPx(_buyRect, _buyRectPx);
+            ApplyPx(_titleRect, WardrobeLayout.TitleRect(safeArea, _dpi));
+            ApplyPx(_catSelectorRect, WardrobeLayout.CatSelectorRect(safeArea, _dpi));
+            ApplyPx(_portraitRect, _portraitRectPx);
+            ApplyPx(_tabsRect, WardrobeLayout.TabsRect(safeArea, _dpi));
+            ApplyPx(_itemsRect, _itemsRectPx);
+            ApplyPx(_primaryRect, _primaryRectPx);
             ApplyPx(_restoreRect, _restoreRectPx);
-            ApplyPx(_statusRect, WardrobeLayout.StatusRect(safeArea, dpi));
-            ApplyPx(_portraitRect, _tryOnStrip != null
-                ? WardrobeLayout.PortraitRect(safeArea, dpi)
-                : WardrobeLayout.PortraitRectWithoutPreview(safeArea, dpi));
-
-            if (_tryOnStrip != null)
-            {
-                var strip = WardrobeLayout.PreviewStripRect(safeArea, dpi);
-                ApplyPx(_tryOnStrip, strip);
-                ApplyPxRelative(_tryOnHeading,
-                    WardrobeLayout.PreviewHeadingRect(safeArea, dpi), strip);
-                for (int i = 0; i < _tryOnCards.Length; i++)
-                    ApplyPxRelative(_tryOnCards[i],
-                        WardrobeLayout.PreviewCardRect(safeArea, dpi, i), strip);
-            }
-
-            var title = _panel.transform.Find("WardrobeTitle") as RectTransform;
-            if (title != null) ApplyPx(title, WardrobeLayout.TitleRect(safeArea, dpi));
+            ApplyPx(_statusRect, WardrobeLayout.StatusRect(safeArea, _dpi));
+            LayoutHorizontal(_catTargets, WardrobeLayout.CatSelectorRect(safeArea, _dpi), _dpi);
+            LayoutHorizontal(_tabTargets, WardrobeLayout.TabsRect(safeArea, _dpi), _dpi);
+            LayoutCards();
         }
 
-        private void OnBuyTapped()
+        private void RebuildProjectionAndCards()
         {
-            if (_purchaseBusy || _restoreBusy) return;
-            if (HasPermanentCoat())
+            UnregisterCardRegions();
+            for (int i = 0; i < _cards.Count; i++)
             {
-                SetStatus(Text("wardrobe.status.equipped"));
+                if (_cards[i] == null) continue;
+                _cards[i].gameObject.SetActive(false);
+                Destroy(_cards[i].gameObject);
+            }
+            _cards.Clear();
+            _rows = CosmeticWardrobeProjection.Build(_profile.Catalog, _profile, _purchases,
+                _rewarded, _profile.SelectedCatId, _selectedSlot);
+
+            CosmeticWardrobeRow? stillSelected = null;
+            for (int i = 0; i < _rows.Count; i++)
+            {
+                var row = _rows[i];
+                if (string.Equals(row.Item.Id, _previewItemId, StringComparison.Ordinal))
+                    stillSelected = row;
+            }
+            if (!stillSelected.HasValue)
+            {
+                _previewItemId = string.Empty;
+                _selectedRow = null;
+                ApplyAuthoritativePortrait();
+            }
+            else _selectedRow = stillSelected;
+
+            for (int i = 0; i < _rows.Count; i++)
+            {
+                var row = _rows[i];
+                var card = CosmeticItemCardView.Create(_cardsRoot);
+                card.Configure(row.Item.Id, Text(row.Item.DisplayNameKey), CardStatus(row),
+                    row.Price.DisplayText ?? string.Empty, row.Route,
+                    string.Equals(_previewItemId, row.Item.Id, StringComparison.Ordinal),
+                    SlotColor(row.Item.Slot));
+                _cards.Add(card);
+            }
+            _emptyLabel.gameObject.SetActive(_cards.Count == 0);
+            LayoutCards();
+            UpdatePrimaryAction();
+            PaintSelectors();
+            RegisterCardRegions();
+        }
+
+        private void LayoutCards()
+        {
+            if (_itemsRect == null) return;
+            for (int i = 0; i < _cards.Count; i++)
+            {
+                var screenRect = WardrobeLayout.ItemCardRect(_itemsRectPx, i, _cards.Count, _dpi);
+                var localRect = new Rect(screenRect.position - _itemsRectPx.position,
+                    screenRect.size);
+                ApplyPx(_cards[i].RootTransform, localRect);
+            }
+        }
+
+        private void OnCardTapped(CosmeticWardrobeRow row)
+        {
+            _previewItemId = row.Item.Id;
+            _selectedRow = row;
+            _largePortrait.ApplySnapshot(_profile.PreviewPortrait(_profile.SelectedCatId,
+                row.Item.Slot, row.Item.Id));
+            RebuildProjectionAndCards();
+        }
+
+        private void OnCatTapped(string catId)
+        {
+            ClearPreview();
+            if (!_profile.TrySelectCat(catId))
+            {
+                SetStatus(Text("wardrobe.status.save.failed"));
+                RebuildProjectionAndCards();
+            }
+        }
+
+        private void OnTabTapped(CosmeticSlot slot)
+        {
+            ClearPreview();
+            _selectedSlot = slot;
+            RebuildProjectionAndCards();
+        }
+
+        private void OnPrimaryTapped()
+        {
+            if (_purchaseBusy || _restoreBusy || !_selectedRow.HasValue) return;
+            var row = _selectedRow.Value;
+            if (row.IsEquipped && row.Route != CosmeticWardrobeRoute.Purchase)
+            {
+                if (!_profile.TryUnequip(_profile.SelectedCatId, row.Item.Slot)) SaveFailed();
                 return;
             }
 
-            // A transient CustomerInfo/network failure can mark the backend unreachable after
-            // offerings have already supplied a real Package and localized price. In that state
-            // the priced button must still reach RevenueCat; the backend owns the real outcome.
-            if (!_service.TryGetPrice(ProductIds.Gate, out _))
+            switch (row.Route)
             {
-                SetStatus(Text("wardrobe.status.unavailable"));
-                RefreshVisuals();
-                return;
+                case CosmeticWardrobeRoute.Equip:
+                    if (!_profile.TryEquip(_profile.SelectedCatId, row.Item.Slot, row.Item.Id))
+                        SaveFailed();
+                    break;
+                case CosmeticWardrobeRoute.Purchase:
+                    BeginPurchase(row);
+                    break;
+                case CosmeticWardrobeRoute.Rewarded:
+                    _rewarded.Request(row.Item.RewardedPlacementId, () =>
+                    {
+                        if (this == null) return;
+                        if (_purchases.IsUnlocked(row.Item.EntitlementId))
+                        {
+                            if (!_profile.TryEquip(_profile.SelectedCatId, row.Item.Slot,
+                                    row.Item.Id)) SaveFailed();
+                        }
+                        else
+                        {
+                            SetStatus(Text("wardrobe.status.unconfirmed"));
+                            RebuildProjectionAndCards();
+                        }
+                    });
+                    break;
+                case CosmeticWardrobeRoute.EarnInstruction:
+                    SetStatus(Text(row.Item.EarnInstructionKey));
+                    break;
             }
+        }
 
+        private void BeginPurchase(CosmeticWardrobeRow row)
+        {
             _purchaseBusy = true;
-            RefreshVisuals();
             SetStatus(Text("wardrobe.status.opening"));
-            _service.Purchase(ProductIds.Gate, result =>
+            UpdatePrimaryAction();
+            _purchases.Purchase(row.Item.ProductId, result =>
             {
                 if (this == null) return;
                 _purchaseBusy = false;
-                RefreshVisuals();
-                if (HasPermanentCoat())
+                if (_purchases.IsUnlocked(row.Item.EntitlementId))
                 {
-                    SetStatus(Text("wardrobe.status.equipped"));
+                    if (!_profile.TryEquip(_profile.SelectedCatId, row.Item.Slot, row.Item.Id))
+                        SaveFailed();
+                    else SetStatus(Text("wardrobe.state.equipped"));
                     return;
                 }
 
@@ -562,9 +483,10 @@ namespace CatMetro.Presentation.Screens
                         SetStatus(Text("wardrobe.status.opening"));
                         break;
                     default:
-                        SetStatus(Text("wardrobe.status.failed"));
+                        SetStatus(Text("wardrobe.status.unavailable"));
                         break;
                 }
+                RebuildProjectionAndCards();
             });
         }
 
@@ -572,16 +494,17 @@ namespace CatMetro.Presentation.Screens
         {
             if (_purchaseBusy || _restoreBusy) return;
             _restoreBusy = true;
-            RefreshVisuals();
+            _restoreLabel.text = Text("wardrobe.restore.running");
             SetStatus(Text("wardrobe.status.restoring"));
-            _service.Restore(result =>
+            _purchases.Restore(result =>
             {
                 if (this == null) return;
                 _restoreBusy = false;
-                RefreshVisuals();
+                _restoreLabel.text = Text("wardrobe.restore");
+                RebuildProjectionAndCards();
                 switch (result.Outcome)
                 {
-                    case RestoreOutcome.Completed when HasPermanentCoat():
+                    case RestoreOutcome.Completed when result.RestoredEntitlementCount > 0:
                         SetStatus(Text("wardrobe.status.restored"));
                         break;
                     case RestoreOutcome.Completed:
@@ -600,109 +523,124 @@ namespace CatMetro.Presentation.Screens
             });
         }
 
-        private void RefreshVisuals()
+        private void OnProfileChanged()
         {
-            bool unlocked = _service.IsUnlocked(EntitlementIds.OutfitConductor);
-            bool permanent = HasPermanentCoat();
-            if (_coatGroup != null) _coatGroup.SetActive(unlocked);
-            if (_entryOwnedDot != null) _entryOwnedDot.gameObject.SetActive(unlocked);
-
-            if (_restoreLabel != null)
-                _restoreLabel.text = _restoreBusy
-                    ? Text("wardrobe.restore.running")
-                    : Text("wardrobe.restore");
-
-            RefreshTryOnVisuals();
-
-            if (_buyLabel == null) return;
-            if (permanent)
-                _buyLabel.text = Text("wardrobe.equipped");
-            else if (_purchaseBusy)
-                _buyLabel.text = Text("wardrobe.store.opening");
-            else if (_service.TryGetPrice(ProductIds.Gate, out var price))
-                _buyLabel.text = Text("wardrobe.buy").Replace("{price}", price.DisplayText);
-            else if (_service.Availability == BackendAvailability.Initializing)
-                _buyLabel.text = Text("wardrobe.store.checking");
-            else
-                _buyLabel.text = Text("wardrobe.store.unavailable");
+            if (!_panelShown) return;
+            SetStatus(string.Empty);
+            // Keep the selected card/action, but replace its presentation-only preview with
+            // the newly durable authoritative portrait. Cat/tab changes clear selection before
+            // their mutation; purchase/equip changes intentionally retain it for Unequip.
+            ApplyAuthoritativePortrait();
+            RebuildProjectionAndCards();
         }
 
-        private void RefreshTryOnVisuals()
+        private void SaveFailed()
         {
-            if (_tryOnStrip == null || _rewardedAds == null) return;
-            for (int i = 0; i < TryOnSpecs.Length; i++)
-            {
-                bool unlocked = _service.IsUnlocked(TryOnSpecs[i].EntitlementId);
-                bool canShow = _panelShown && !unlocked &&
-                    _rewardedAds.CanShow(TryOnSpecs[i].PlacementId);
+            ClearPreview();
+            RebuildProjectionAndCards();
+            SetStatus(Text("wardrobe.status.save.failed"));
+        }
 
-                _borrowedAccents[i].SetActive(unlocked);
-                _lockedLabels[i].SetActive(!unlocked);
-                _borrowedLabels[i].SetActive(unlocked);
-                _successLabels[i].SetActive(unlocked);
-                _actionChips[i].SetActive(canShow);
-                _unavailableLabels[i].SetActive(_panelShown && !unlocked && !canShow);
-                SyncRewardedRegion(i, canShow);
+        private void ClearPreview()
+        {
+            _previewItemId = string.Empty;
+            _selectedRow = null;
+            ApplyAuthoritativePortrait();
+        }
+
+        private void ApplyAuthoritativePortrait()
+        {
+            if (_largePortrait != null) _largePortrait.ApplySnapshot(_profile.CurrentPortrait);
+        }
+
+        private string CardStatus(CosmeticWardrobeRow row)
+        {
+            if (row.SecondsRemaining > 0)
+            {
+                string state = row.IsEquipped
+                    ? Text("wardrobe.state.equipped")
+                    : Text("wardrobe.state.owned");
+                return state + " · " + Remaining(row.SecondsRemaining);
+            }
+            if (row.IsEquipped) return Text("wardrobe.state.equipped");
+            if (row.IsAccessible)
+            {
+                return Text("wardrobe.state.owned");
+            }
+            if (row.Route == CosmeticWardrobeRoute.Rewarded)
+                return Text("wardrobe.action.rewarded");
+            if (row.Route == CosmeticWardrobeRoute.EarnInstruction)
+                return Text(row.Item.EarnInstructionKey);
+            return string.Empty;
+        }
+
+        private void UpdatePrimaryAction()
+        {
+            UnregisterPrimaryRegion();
+            if (!_selectedRow.HasValue)
+            {
+                _primaryRect.gameObject.SetActive(false);
+                return;
+            }
+            var row = _selectedRow.Value;
+            string text;
+            if (row.IsEquipped && row.Route != CosmeticWardrobeRoute.Purchase)
+                text = Text("wardrobe.action.unequip");
+            else
+            {
+                switch (row.Route)
+                {
+                    case CosmeticWardrobeRoute.Equip:
+                        text = Text("wardrobe.action.equip");
+                        break;
+                    case CosmeticWardrobeRoute.Purchase:
+                        text = _purchaseBusy ? Text("wardrobe.store.opening")
+                            : Text("wardrobe.buy").Replace("{price}", row.Price.DisplayText);
+                        break;
+                    case CosmeticWardrobeRoute.Rewarded:
+                        text = Text("wardrobe.action.rewarded");
+                        break;
+                    case CosmeticWardrobeRoute.EarnInstruction:
+                        text = Text(row.Item.EarnInstructionKey);
+                        break;
+                    default:
+                        _primaryRect.gameObject.SetActive(false);
+                        return;
+                }
+            }
+            _primaryLabel.text = text;
+            _primaryRect.gameObject.SetActive(true);
+            RegisterPrimaryRegion();
+        }
+
+        private void PaintSelectors()
+        {
+            for (int i = 0; i < _catTargets.Count; i++)
+            {
+                var image = _catTargets[i].Rect.GetComponent<Image>();
+                image.color = string.Equals(_catTargets[i].Id, _profile.SelectedCatId,
+                    StringComparison.Ordinal) ? Palette.TicketOrange : CatColor(_catTargets[i].Id);
+            }
+            for (int i = 0; i < _tabTargets.Count; i++)
+            {
+                var image = _tabTargets[i].Rect.GetComponent<Image>();
+                image.color = _tabTargets[i].Slot == _selectedSlot
+                    ? Palette.TicketOrange : Palette.MetroTeal;
             }
         }
 
-        private bool HasPermanentCoat()
-            => _service.IsUnlocked(EntitlementIds.OutfitConductor) &&
-               _service.SecondsUntilExpiry(EntitlementIds.OutfitConductor) == 0L;
-
-        private void SetDefaultStatus()
+        private void SubscribeProfile()
         {
-            SetStatus(_service.IsUnlocked(EntitlementIds.OutfitConductor)
-                ? Text("wardrobe.status.equipped")
-                : _service.Availability == BackendAvailability.Ready
-                    ? Text("wardrobe.status.locked")
-                    : Text("wardrobe.status.unavailable"));
+            if (_profileSubscribed) return;
+            _profile.Changed += OnProfileChanged;
+            _profileSubscribed = true;
         }
 
-        private void OnLedgerChanged()
+        private void UnsubscribeProfile()
         {
-            if (!_panelShown) return;
-            RefreshVisuals();
-            if (!_purchaseBusy && !_restoreBusy) SetDefaultStatus();
-        }
-
-        private void OnAdsAvailabilityChanged()
-        {
-            if (!_panelShown) return;
-            RefreshTryOnVisuals();
-        }
-
-        private void SetStatus(string value)
-        {
-            if (_statusLabel != null) _statusLabel.text = value;
-        }
-
-        private void SubscribeLedger()
-        {
-            if (_ledgerSubscribed) return;
-            _service.Ledger.Changed += OnLedgerChanged;
-            _ledgerSubscribed = true;
-        }
-
-        private void UnsubscribeLedger()
-        {
-            if (!_ledgerSubscribed) return;
-            _service.Ledger.Changed -= OnLedgerChanged;
-            _ledgerSubscribed = false;
-        }
-
-        private void SubscribeAds()
-        {
-            if (_adsSubscribed || _tryOnStrip == null || _rewardedAds == null) return;
-            _rewardedAds.AvailabilityChanged += OnAdsAvailabilityChanged;
-            _adsSubscribed = true;
-        }
-
-        private void UnsubscribeAds()
-        {
-            if (!_adsSubscribed || _rewardedAds == null) return;
-            _rewardedAds.AvailabilityChanged -= OnAdsAvailabilityChanged;
-            _adsSubscribed = false;
+            if (!_profileSubscribed) return;
+            _profile.Changed -= OnProfileChanged;
+            _profileSubscribed = false;
         }
 
         private void RegisterEntry()
@@ -720,100 +658,160 @@ namespace CatMetro.Presentation.Screens
             _entryRegistered = false;
         }
 
-        private void RegisterModal()
+        private void RegisterStaticPanelRegions()
         {
-            if (_regions == null || _modalRegistered || !_panelShown) return;
+            if (_regions == null || _staticRegistered || !_panelShown) return;
             _regions.Register(BackRegionId, () => _backRectPx,
                 () => BackRequested?.Invoke(), ModalPriority);
-            _regions.Register(BuyRegionId, () => _buyRectPx, OnBuyTapped, ModalPriority);
-            _regions.Register(RestoreRegionId, () => _restoreRectPx, OnRestoreTapped, ModalPriority);
-            _modalRegistered = true;
+            _regions.Register(RestoreRegionId, () => _restoreRectPx,
+                OnRestoreTapped, ModalPriority);
+            for (int i = 0; i < _catTargets.Count; i++)
+            {
+                var target = _catTargets[i];
+                _regions.Register("wardrobe.cat." + target.Id,
+                    () => RectFor(target.Rect), () => OnCatTapped(target.Id), ModalPriority);
+            }
+            for (int i = 0; i < _tabTargets.Count; i++)
+            {
+                var target = _tabTargets[i];
+                _regions.Register("wardrobe.tab." + target.Id,
+                    () => RectFor(target.Rect), () => OnTabTapped(target.Slot), ModalPriority);
+            }
+            _staticRegistered = true;
         }
 
-        private void UnregisterModal()
+        private void RegisterCardRegions()
         {
-            UnregisterRewardedRegions();
-            if (_regions == null || !_modalRegistered) return;
+            if (_regions == null || !_panelShown || !_staticRegistered) return;
+            UnregisterCardRegions();
+            for (int i = 0; i < _cards.Count && i < _rows.Count; i++)
+            {
+                var row = _rows[i];
+                var card = _cards[i];
+                string id = "wardrobe.item." + row.Item.Id;
+                _regions.Register(id, () => RectFor(card.RootTransform),
+                    () => OnCardTapped(row), ModalPriority);
+                _registeredItemIds.Add(id);
+            }
+        }
+
+        private void UnregisterCardRegions()
+        {
+            if (_regions != null)
+                for (int i = 0; i < _registeredItemIds.Count; i++)
+                    _regions.Unregister(_registeredItemIds[i]);
+            _registeredItemIds.Clear();
+        }
+
+        private void RegisterPrimaryRegion()
+        {
+            if (_regions == null || _primaryRegistered || !_panelShown
+                || !_primaryRect.gameObject.activeInHierarchy) return;
+            _regions.Register(PrimaryRegionId, () => _primaryRectPx,
+                OnPrimaryTapped, ModalPriority);
+            _primaryRegistered = true;
+        }
+
+        private void UnregisterPrimaryRegion()
+        {
+            if (_regions == null || !_primaryRegistered) return;
+            _regions.Unregister(PrimaryRegionId);
+            _primaryRegistered = false;
+        }
+
+        private void UnregisterPanelRegions()
+        {
+            UnregisterPrimaryRegion();
+            UnregisterCardRegions();
+            if (_regions == null || !_staticRegistered) return;
             _regions.Unregister(BackRegionId);
-            _regions.Unregister(BuyRegionId);
             _regions.Unregister(RestoreRegionId);
-            _modalRegistered = false;
+            for (int i = 0; i < _catTargets.Count; i++)
+                _regions.Unregister("wardrobe.cat." + _catTargets[i].Id);
+            for (int i = 0; i < _tabTargets.Count; i++)
+                _regions.Unregister("wardrobe.tab." + _tabTargets[i].Id);
+            _staticRegistered = false;
         }
 
-        private void SyncRewardedRegion(int index, bool shouldRegister)
+        private static void LayoutHorizontal(IReadOnlyList<SelectorTarget> targets, Rect band,
+            float dpi)
         {
-            if (_regions == null || !_modalRegistered) shouldRegister = false;
-            if (shouldRegister == _rewardedRegionsRegistered[index]) return;
-
-            string id = RewardedRegionId(TryOnSpecs[index].PlacementId);
-            if (shouldRegister)
+            if (targets.Count == 0) return;
+            float gap = 6f * HudBands.PxPerDp(dpi);
+            float width = Mathf.Max(0f, (band.width - gap * (targets.Count - 1)) / targets.Count);
+            for (int i = 0; i < targets.Count; i++)
             {
-                int capturedIndex = index;
-                _regions.Register(id, () => PaintedScreenRectPx(
-                        _actionChips[capturedIndex].transform as RectTransform),
-                    () => _rewardedAds.Show(TryOnSpecs[capturedIndex].PlacementId), ModalPriority);
-                _rewardedRegionsRegistered[index] = true;
-            }
-            else
-            {
-                _regions?.Unregister(id);
-                _rewardedRegionsRegistered[index] = false;
+                var local = new Rect(i * (width + gap), 0f, width, band.height);
+                ApplyPx(targets[i].Rect, local);
             }
         }
 
-        private void UnregisterRewardedRegions()
-        {
-            for (int i = 0; i < _rewardedRegionsRegistered.Length; i++)
-            {
-                if (!_rewardedRegionsRegistered[i]) continue;
-                _regions?.Unregister(RewardedRegionId(TryOnSpecs[i].PlacementId));
-                _rewardedRegionsRegistered[i] = false;
-            }
-        }
-
-        private static string RewardedRegionId(string placementId)
-            => "wardrobe.rewarded." + placementId;
-
-        private static Rect PaintedScreenRectPx(RectTransform rect)
+        private Rect RectFor(RectTransform target)
         {
             var corners = new Vector3[4];
-            rect.GetWorldCorners(corners);
-            var canvas = rect.GetComponentInParent<Canvas>();
-            Camera camera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
-                ? canvas.worldCamera
-                : null;
-
-            Vector2 first = RectTransformUtility.WorldToScreenPoint(camera, corners[0]);
-            float xMin = first.x;
-            float xMax = first.x;
-            float yMin = first.y;
-            float yMax = first.y;
-            for (int i = 1; i < corners.Length; i++)
-            {
-                Vector2 screen = RectTransformUtility.WorldToScreenPoint(camera, corners[i]);
-                xMin = Mathf.Min(xMin, screen.x);
-                xMax = Mathf.Max(xMax, screen.x);
-                yMin = Mathf.Min(yMin, screen.y);
-                yMax = Mathf.Max(yMax, screen.y);
-            }
-            return Rect.MinMaxRect(xMin, yMin, xMax, yMax);
+            target.GetWorldCorners(corners);
+            var canvas = target.GetComponentInParent<Canvas>();
+            Camera camera = canvas == null || canvas.renderMode == RenderMode.ScreenSpaceOverlay
+                ? null : canvas.worldCamera;
+            var bottomLeft = RectTransformUtility.WorldToScreenPoint(camera, corners[0]);
+            var topRight = RectTransformUtility.WorldToScreenPoint(camera, corners[2]);
+            return Rect.MinMaxRect(bottomLeft.x, bottomLeft.y, topRight.x, topRight.y);
         }
 
-        private static string Text(string key) => Strings.UiStrings.Get(key);
-
-        private static void Stretch(RectTransform rect)
+        private static string Remaining(long seconds)
         {
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
+            string value = seconds >= 3600
+                ? Mathf.CeilToInt(seconds / 3600f) + "h"
+                : Mathf.Max(1, Mathf.CeilToInt(seconds / 60f)) + "m";
+            return Text("wardrobe.time.remaining").Replace("{time}", value);
         }
+
+        private static Color CatColor(string catId)
+        {
+            switch (catId)
+            {
+                case "red_tabby": return Palette.SignalRed;
+                case "blue_siamese": return Palette.HarborBlue;
+                case "yellow_longhair": return Palette.TabbyYellow;
+                default: return Palette.MetroTeal;
+            }
+        }
+
+        private static Color SlotColor(CosmeticSlot slot)
+        {
+            switch (slot)
+            {
+                case CosmeticSlot.Outfit: return Palette.InkNavy;
+                case CosmeticSlot.Accessory: return Palette.MetroTeal;
+                case CosmeticSlot.Frame: return Palette.TabbyYellow;
+                default: return Palette.DepotNavy;
+            }
+        }
+
+        private static void SetStatus(TMP_Text label, string value)
+        {
+            if (label != null) label.text = value ?? string.Empty;
+        }
+
+        private void SetStatus(string value) => SetStatus(_statusLabel, value);
+        private static string Text(string key) => Strings.UiStrings.Get(key);
 
         private static RectTransform MakeRect(Transform parent, string name)
         {
-            var go = new GameObject(name);
+            var go = new GameObject(name, typeof(RectTransform));
             go.transform.SetParent(parent, false);
-            return go.AddComponent<RectTransform>();
+            return (RectTransform)go.transform;
+        }
+
+        private static RectTransform MakeRect(Transform parent, string name,
+            Vector2 min, Vector2 max)
+        {
+            var rect = MakeRect(parent, name);
+            rect.anchorMin = min;
+            rect.anchorMax = max;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            return rect;
         }
 
         private static RectTransform MakeChip(Transform parent, string name, Color color)
@@ -823,53 +821,49 @@ namespace CatMetro.Presentation.Screens
             return rect;
         }
 
-        private static Image MakeSurface(Transform parent, string name,
-            Vector2 anchorMin, Vector2 anchorMax, Color color, bool rounded)
+        private static Image MakeSurface(Transform parent, string name, Vector2 min,
+            Vector2 max, Color color, bool rounded)
         {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-            var rect = go.AddComponent<RectTransform>();
-            rect.anchorMin = anchorMin;
-            rect.anchorMax = anchorMax;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-            return Paint(go, color, rounded);
+            var rect = MakeRect(parent, name, min, max);
+            return Paint(rect.gameObject, color, rounded);
         }
 
         private static Image Paint(GameObject go, Color color, bool rounded)
         {
             var image = go.AddComponent<Image>();
-            if (rounded)
-            {
-                var material = UiChromeMaterial.Shared;
-                if (material != null) image.material = material;
-            }
+            if (rounded) image.material = UiChromeMaterial.Shared;
             image.color = color;
             image.raycastTarget = false;
             return image;
         }
 
-        private static TMP_Text MakeText(Transform parent, string name,
-            Vector2 anchorMin, Vector2 anchorMax, string text, float size, Color color)
+        private static TMP_Text MakeText(Transform parent, string name, Vector2 min,
+            Vector2 max, string value, float size, Color color)
         {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-            var rect = go.AddComponent<RectTransform>();
-            rect.anchorMin = anchorMin;
-            rect.anchorMax = anchorMax;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-            var label = go.AddComponent<TextMeshProUGUI>();
-            label.text = text;
+            var rect = MakeRect(parent, name, min, max);
+            var label = rect.gameObject.AddComponent<TextMeshProUGUI>();
+            label.text = value;
             label.alignment = TextAlignmentOptions.Center;
             label.fontSize = size;
+            label.enableAutoSizing = true;
+            label.fontSizeMin = 13f;
+            label.fontSizeMax = size;
             label.color = color;
             label.raycastTarget = false;
             return label;
         }
 
+        private static void Stretch(RectTransform rect)
+        {
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+        }
+
         private static void ApplyPx(RectTransform rect, Rect px)
         {
+            if (rect == null) return;
             rect.anchorMin = Vector2.zero;
             rect.anchorMax = Vector2.zero;
             rect.pivot = new Vector2(0.5f, 0.5f);
@@ -877,15 +871,19 @@ namespace CatMetro.Presentation.Screens
             rect.sizeDelta = px.size;
         }
 
-        private static void ApplyPxRelative(RectTransform rect, Rect px, Rect parentPx)
+        private readonly struct SelectorTarget
         {
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.zero;
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            // With a bottom-left anchor, anchoredPosition is measured from the parent's
-            // bottom-left anchor reference, not from its pivot/centre.
-            rect.anchoredPosition = px.center - parentPx.min;
-            rect.sizeDelta = px.size;
+            public string Id { get; }
+            public RectTransform Rect { get; }
+            public CosmeticSlot Slot { get; }
+
+            public SelectorTarget(string id, RectTransform rect,
+                CosmeticSlot slot = CosmeticSlot.Outfit)
+            {
+                Id = id;
+                Rect = rect;
+                Slot = slot;
+            }
         }
     }
 }
