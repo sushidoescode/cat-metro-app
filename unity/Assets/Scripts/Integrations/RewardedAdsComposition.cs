@@ -17,6 +17,7 @@ namespace CatMetro.Integrations
 
         private SaveStore _boundStore;
         private RewardedAdCoordinator _coordinator;
+        private IMainThreadRewardedAdEventDrain _mainThreadDrain;
         private bool _subscribed;
         private bool _disposed;
 
@@ -56,6 +57,17 @@ namespace CatMetro.Integrations
             catch
             {
                 // Save and store refresh are optional boundaries. Unity lifecycle must continue.
+            }
+        }
+
+        internal void DrainMainThreadAdEvents()
+        {
+            if (_disposed) return;
+            var drain = _mainThreadDrain;
+            try { drain?.DrainMainThreadEvents(); }
+            catch
+            {
+                // A mediation analytics handoff is optional and must not break the frame owner.
             }
         }
 
@@ -111,6 +123,7 @@ namespace CatMetro.Integrations
 
                 coordinator = new RewardedAdCoordinator(_placements, _service, provider,
                     _reporter, saveData, _localDateKey);
+                _mainThreadDrain = provider as IMainThreadRewardedAdEventDrain;
                 _coordinator = coordinator;
                 RewardedAdRuntime.Install(coordinator);
                 if (!OwnsPublished(store, coordinator))
@@ -133,6 +146,7 @@ namespace CatMetro.Integrations
             var coordinator = _coordinator;
             if (coordinator == null) return;
             _coordinator = null;
+            _mainThreadDrain = null;
             try { coordinator?.Dispose(); }
             catch { }
             RewardedAdRuntime.Uninstall(coordinator);
@@ -147,7 +161,11 @@ namespace CatMetro.Integrations
 
         private void ReleaseAttempt(RewardedAdCoordinator coordinator)
         {
-            if (ReferenceEquals(_coordinator, coordinator)) _coordinator = null;
+            if (ReferenceEquals(_coordinator, coordinator))
+            {
+                _coordinator = null;
+                _mainThreadDrain = null;
+            }
             SafeDispose(coordinator);
             RewardedAdRuntime.Uninstall(coordinator);
         }

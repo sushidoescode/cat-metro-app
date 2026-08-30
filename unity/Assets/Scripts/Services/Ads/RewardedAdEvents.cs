@@ -70,6 +70,20 @@ namespace CatMetro.Services.Ads
         bool TryShow(long attemptId, string placementId);
     }
 
+    // Optional provider capability for SDK-owned per-placement caps. The base property remains
+    // available to package-free providers; a placement-aware provider is preferred by policy.
+    public interface IRewardedAdPlacementReadiness
+    {
+        bool IsReadyForPlacement(string placementId);
+    }
+
+    // Worker callbacks enqueue copied neutral values; the existing Unity frame owner calls this
+    // capability before any reporter or other Unity-facing consumer observes them.
+    public interface IMainThreadRewardedAdEventDrain
+    {
+        void DrainMainThreadEvents();
+    }
+
     public interface IAdEventReporter
     {
         event Action ReadinessChanged;

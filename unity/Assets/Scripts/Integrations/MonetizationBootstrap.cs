@@ -170,8 +170,9 @@ namespace CatMetro.Integrations
             _rewardedAds = rewardedAds;
         }
 
-        private void Update()
+        internal void Update()
         {
+            _rewardedAds?.DrainMainThreadAdEvents();
             if (_service == null) return;
             if (Time.unscaledTime < _nextPrune) return;
             _nextPrune = Time.unscaledTime + PruneIntervalSeconds;
