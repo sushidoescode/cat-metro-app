@@ -233,6 +233,11 @@ namespace CatMetro.Services.Cosmetics
             return binding.Commit(this);
         }
 
+        internal void CancelPurchaseBinding(PurchaseBinding binding)
+        {
+            binding?.Cancel(this);
+        }
+
         internal void NotifyPurchaseBindingChanged(bool effectiveChanged)
         {
             if (effectiveChanged) Changed?.Invoke();
@@ -454,6 +459,15 @@ namespace CatMetro.Services.Cosmetics
                 owner._selectedCatId = _selectedCatId;
                 owner._currentPortrait = _currentPortrait;
                 return !owner._currentPortrait.Equals(before);
+            }
+
+            internal void Cancel(CosmeticProfileService owner)
+            {
+                if (!ReferenceEquals(_owner, owner)
+                    || !ReferenceEquals(owner._pendingPurchaseBinding, this))
+                    return;
+
+                owner.InvalidatePurchaseBinding();
             }
         }
     }

@@ -685,6 +685,85 @@ namespace CatMetro.Tests.Cosmetics
         }
 
         [Test]
+        public void RuntimeInstallCosmeticsReentryDuringPrepare_PreservesReentrantWinner()
+        {
+            var oldCurrent = CosmeticRuntime.Current;
+            var oldLedger = PurchaseRuntime.Current.Ledger;
+            var candidatePurchases = CreatePurchases();
+            var candidate = CreateService(new RecordingPersistence(
+                ProfileWithOutfit("outfit_conductor")), candidatePurchases.Service);
+            CosmeticProfileService reentrantWinner = null;
+            var targetLedger = new EntitlementLedger();
+            targetLedger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant("outfit_conductor", GrantSource.Store),
+            });
+            var targetClock = new CallbackClock(() =>
+            {
+                CosmeticRuntime.Uninstall(oldCurrent);
+                reentrantWinner = CosmeticRuntime.Current;
+            });
+            var targetPurchases = new PurchaseService(
+                PurchaseCatalog.Parse(PurchaseCatalogJson), clock: targetClock.Fn,
+                ledger: targetLedger);
+            PurchaseRuntime.Install(targetPurchases);
+
+            Assert.Throws<InvalidOperationException>(() => CosmeticRuntime.Install(candidate));
+
+            Assert.That(reentrantWinner, Is.Not.Null);
+            Assert.That(CosmeticRuntime.Current, Is.SameAs(reentrantWinner));
+            Assert.That(reentrantWinner, Is.Not.SameAs(oldCurrent));
+            Assert.That(reentrantWinner, Is.Not.SameAs(candidate));
+            Assert.That(HasLedgerSubscriber(oldLedger, oldCurrent), Is.False);
+            Assert.That(HasLedgerSubscriber(targetLedger, reentrantWinner), Is.True,
+                "the reentrant degraded publication stays live on the captured authority");
+            Assert.That(HasLedgerSubscriber(targetLedger, candidate), Is.False,
+                "the rejected outer candidate cannot be retained by the target ledger");
+            Assert.That(HasLedgerSubscriber(candidatePurchases.Ledger, candidate), Is.True,
+                "the rejected candidate retains only its pre-transaction authority");
+            Assert.That(PendingPurchaseBinding(candidate), Is.Null,
+                "runtime mismatch must cancel the exact issued binding token");
+            Assert.That(PurchaseRuntimeCosmeticsHandlerCount(), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void RuntimeInstallPurchaseReentryDuringPrepare_PreservesCurrentAndNewAuthority()
+        {
+            var oldCurrent = CosmeticRuntime.Current;
+            var oldLedger = PurchaseRuntime.Current.Ledger;
+            var candidatePurchases = CreatePurchases();
+            var candidate = CreateService(new RecordingPersistence(
+                ProfileWithOutfit("outfit_conductor")), candidatePurchases.Service);
+            var reentrantPurchases = CreatePurchases();
+            var targetLedger = new EntitlementLedger();
+            targetLedger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant("outfit_conductor", GrantSource.Store),
+            });
+            var targetClock = new CallbackClock(() =>
+                PurchaseRuntime.Install(reentrantPurchases.Service));
+            var targetPurchases = new PurchaseService(
+                PurchaseCatalog.Parse(PurchaseCatalogJson), clock: targetClock.Fn,
+                ledger: targetLedger);
+            PurchaseRuntime.Install(targetPurchases);
+
+            Assert.Throws<InvalidOperationException>(() => CosmeticRuntime.Install(candidate));
+
+            Assert.That(CosmeticRuntime.Current, Is.SameAs(oldCurrent));
+            Assert.That(PurchaseRuntime.Current, Is.SameAs(reentrantPurchases.Service));
+            Assert.That(HasLedgerSubscriber(oldLedger, oldCurrent), Is.False);
+            Assert.That(HasLedgerSubscriber(reentrantPurchases.Ledger, oldCurrent), Is.True,
+                "the existing cosmetics current stays authoritative on the reentrant runtime");
+            Assert.That(HasLedgerSubscriber(targetLedger, oldCurrent), Is.False);
+            Assert.That(HasLedgerSubscriber(targetLedger, candidate), Is.False,
+                "the candidate cannot attach to the stale captured purchase runtime");
+            Assert.That(HasLedgerSubscriber(reentrantPurchases.Ledger, candidate), Is.False);
+            Assert.That(HasLedgerSubscriber(candidatePurchases.Ledger, candidate), Is.True);
+            Assert.That(PendingPurchaseBinding(candidate), Is.Null);
+            Assert.That(PurchaseRuntimeCosmeticsHandlerCount(), Is.EqualTo(1));
+        }
+
+        [Test]
         public void RuntimeIdentityInstallDisposedCurrent_IsExplicitlyRejected()
         {
             var owned = CosmeticRuntime.Current;
@@ -710,6 +789,26 @@ namespace CatMetro.Tests.Cosmetics
             Assert.That(CommitPurchaseBinding(service, binding), Is.False);
             Assert.Throws<InvalidOperationException>(() =>
                 CommitPurchaseBinding(service, binding));
+        }
+
+        [Test]
+        public void CancelledPurchaseBinding_CannotBeCommittedOrReplayed()
+        {
+            var firstPurchases = CreatePurchases();
+            var secondPurchases = CreatePurchases();
+            var service = CreateService(new RecordingPersistence(DefaultProfile()),
+                firstPurchases.Service);
+            object binding = PreparePurchaseBinding(service, secondPurchases.Service);
+
+            CancelPurchaseBinding(service, binding);
+
+            Assert.That(PendingPurchaseBinding(service), Is.Null);
+            Assert.Throws<InvalidOperationException>(() =>
+                CommitPurchaseBinding(service, binding));
+            Assert.Throws<InvalidOperationException>(() =>
+                CommitPurchaseBinding(service, binding));
+            Assert.That(HasLedgerSubscriber(firstPurchases.Ledger, service), Is.True);
+            Assert.That(HasLedgerSubscriber(secondPurchases.Ledger, service), Is.False);
         }
 
         [Test]
@@ -989,6 +1088,23 @@ namespace CatMetro.Tests.Cosmetics
             return (bool)InvokeUnwrapped(method, service, binding);
         }
 
+        private static void CancelPurchaseBinding(CosmeticProfileService service,
+            object binding)
+        {
+            var method = typeof(CosmeticProfileService).GetMethod(
+                "CancelPurchaseBinding", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            InvokeUnwrapped(method, service, binding);
+        }
+
+        private static object PendingPurchaseBinding(CosmeticProfileService service)
+        {
+            var field = typeof(CosmeticProfileService).GetField(
+                "_pendingPurchaseBinding", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null);
+            return field.GetValue(service);
+        }
+
         private static object InvokeUnwrapped(MethodInfo method, object target,
             params object[] arguments)
         {
@@ -1062,7 +1178,7 @@ namespace CatMetro.Tests.Cosmetics
 
         private sealed class CallbackClock
         {
-            private readonly Action _callback;
+            private Action _callback;
 
             public CallbackClock(Action callback)
             {
@@ -1073,7 +1189,9 @@ namespace CatMetro.Tests.Cosmetics
 
             private long Read()
             {
-                _callback();
+                var callback = _callback;
+                _callback = null;
+                callback?.Invoke();
                 return 1_700_000_000L;
             }
         }
