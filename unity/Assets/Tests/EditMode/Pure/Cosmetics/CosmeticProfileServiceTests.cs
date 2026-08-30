@@ -185,6 +185,46 @@ namespace CatMetro.Tests.Cosmetics
             Assert.That(changed, Is.Zero);
         }
 
+        [TestCase(ProjectionMutation.SelectCat)]
+        [TestCase(ProjectionMutation.EquipStarterItem)]
+        public void CandidateProjectionClockFailure_RefusesMutationBeforePersistence(
+            ProjectionMutation mutation)
+        {
+            var clock = new FaultingClock();
+            var ledger = new EntitlementLedger();
+            ledger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant("outfit_conductor", GrantSource.Store),
+            });
+            var purchases = new PurchaseService(PurchaseCatalog.Parse(PurchaseCatalogJson),
+                clock: clock.Fn, ledger: ledger);
+            var initial = new CosmeticProfileSnapshot("red_tabby", null, null, new[]
+            {
+                new CosmeticLoadout("red_tabby", "outfit_conductor", "", ""),
+                new CosmeticLoadout("blue_siamese", "outfit_conductor", "", ""),
+            });
+            var persistence = new RecordingPersistence(initial);
+            var service = CreateService(persistence, purchases);
+            var originalProfile = service.Profile;
+            var originalPortrait = service.CurrentPortrait;
+            string originalSelected = service.SelectedCatId;
+            int changed = 0;
+            service.Changed += () => changed++;
+            clock.Throws = true;
+
+            bool result = true;
+            Assert.DoesNotThrow(() => result = mutation == ProjectionMutation.SelectCat
+                ? service.TrySelectCat("blue_siamese")
+                : service.TryEquip("red_tabby", CosmeticSlot.Accessory, "accessory_bow"));
+
+            Assert.That(result, Is.False);
+            Assert.That(persistence.ReplaceCalls, Is.Zero);
+            Assert.That(service.Profile, Is.SameAs(originalProfile));
+            Assert.That(service.SelectedCatId, Is.EqualTo(originalSelected));
+            Assert.That(service.CurrentPortrait, Is.EqualTo(originalPortrait));
+            Assert.That(changed, Is.Zero);
+        }
+
         [Test]
         public void EarnedGrantRoutes_AcceptOnlyDeclaredEarnedRowsAndNonStarterCats()
         {
@@ -563,6 +603,116 @@ namespace CatMetro.Tests.Cosmetics
         }
 
         [Test]
+        public void RuntimeInstallCandidateBindFailure_LeavesOwnedCurrentAliveAndCandidateUnretained()
+        {
+            var owned = CosmeticRuntime.Current;
+            var ownedLedger = PurchaseRuntime.Current.Ledger;
+            var candidatePurchases = CreatePurchases();
+            candidatePurchases.Ledger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant("outfit_conductor", GrantSource.Store),
+            });
+            var candidate = CreateService(new RecordingPersistence(
+                ProfileWithOutfit("outfit_conductor")), candidatePurchases.Service);
+
+            var faultingLedger = new EntitlementLedger();
+            faultingLedger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant("outfit_conductor", GrantSource.Store),
+            });
+            var faultingClock = new FaultingClock { Throws = true };
+            var faultingPurchases = new PurchaseService(
+                PurchaseCatalog.Parse(PurchaseCatalogJson), clock: faultingClock.Fn,
+                ledger: faultingLedger);
+            PurchaseRuntime.Install(faultingPurchases);
+
+            Assert.Throws<InvalidOperationException>(() => CosmeticRuntime.Install(candidate));
+
+            Assert.That(CosmeticRuntime.Current, Is.SameAs(owned));
+            Assert.That(HasLedgerSubscriber(ownedLedger, owned), Is.True,
+                "failed prepare cannot dispose the runtime-owned current");
+            Assert.That(HasLedgerSubscriber(faultingLedger, candidate), Is.False,
+                "failed prepare cannot bind or retain the candidate on the rejected ledger");
+            Assert.That(PurchaseRuntimeCosmeticsHandlerCount(), Is.EqualTo(1),
+                "static reconciliation happens before throwable candidate preparation");
+        }
+
+        [Test]
+        public void RuntimeInstallDisposedCandidate_LeavesOwnedCurrentAlive()
+        {
+            var owned = CosmeticRuntime.Current;
+            var ownedLedger = PurchaseRuntime.Current.Ledger;
+            var candidate = CreateService(new RecordingPersistence(DefaultProfile()));
+            candidate.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => CosmeticRuntime.Install(candidate));
+
+            Assert.That(CosmeticRuntime.Current, Is.SameAs(owned));
+            Assert.That(HasLedgerSubscriber(ownedLedger, owned), Is.True);
+            Assert.That(PurchaseRuntimeCosmeticsHandlerCount(), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void RuntimeInstallChangedException_LeavesCandidateInstalledBoundAndRebindable()
+        {
+            var owned = CosmeticRuntime.Current;
+            var ownedLedger = PurchaseRuntime.Current.Ledger;
+            var candidate = CreateService(new RecordingPersistence(
+                ProfileWithOutfit("outfit_conductor")));
+            Action throwChanged = () => throw new ApplicationException("listener failed");
+            candidate.Changed += throwChanged;
+
+            var unlocked = CreatePurchases();
+            unlocked.Ledger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant("outfit_conductor", GrantSource.Store),
+            });
+            PurchaseRuntime.Install(unlocked.Service);
+
+            Assert.Throws<ApplicationException>(() => CosmeticRuntime.Install(candidate));
+
+            Assert.That(CosmeticRuntime.Current, Is.SameAs(candidate));
+            Assert.That(candidate.CurrentPortrait.OutfitAssetId,
+                Is.EqualTo("outfit.conductor"));
+            Assert.That(HasLedgerSubscriber(unlocked.Ledger, candidate), Is.True);
+            Assert.That(HasLedgerSubscriber(ownedLedger, owned), Is.False,
+                "successful commit disposes the old runtime-owned service before notification");
+            Assert.That(PurchaseRuntimeCosmeticsHandlerCount(), Is.EqualTo(1));
+
+            candidate.Changed -= throwChanged;
+            var locked = CreatePurchases();
+            PurchaseRuntime.Install(locked.Service);
+            Assert.That(candidate.CurrentPortrait.OutfitAssetId, Is.Empty,
+                "the reconciled static handler remains live after listener failure");
+        }
+
+        [Test]
+        public void PurchaseRuntimeInstalled_HasExactlyOneCosmeticsHandlerAcrossInstallAndReset()
+        {
+            var first = CreateService(new RecordingPersistence(DefaultProfile()),
+                PurchaseRuntime.Current);
+            var second = CreateService(new RecordingPersistence(DefaultProfile()),
+                PurchaseRuntime.Current);
+
+            CosmeticRuntime.Install(first);
+            CosmeticRuntime.Install(first);
+            CosmeticRuntime.Install(second);
+            CosmeticRuntime.Install(second);
+
+            Assert.That(PurchaseRuntimeCosmeticsHandlerCount(), Is.EqualTo(1));
+            Assert.DoesNotThrow(InvokePurchaseRuntimeCosmeticsHandler);
+            Assert.That(PurchaseRuntimeCosmeticsHandlerCount(), Is.EqualTo(1));
+
+            PurchaseRuntime.ResetForTests();
+            Assert.That(PurchaseRuntimeCosmeticsHandlerCount(), Is.Zero);
+            CosmeticRuntime.Install(second);
+
+            Assert.That(PurchaseRuntimeCosmeticsHandlerCount(), Is.EqualTo(1));
+            Assert.DoesNotThrow(InvokePurchaseRuntimeCosmeticsHandler);
+            Assert.That(PurchaseRuntimeCosmeticsHandlerCount(), Is.EqualTo(1));
+        }
+
+        [Test]
         public void RuntimeCurrentIsNonNullAndUninstallIsConditionalByReference()
         {
             Assert.That(CosmeticRuntime.Current, Is.Not.Null);
@@ -662,6 +812,32 @@ namespace CatMetro.Tests.Cosmetics
             return count;
         }
 
+        private static int PurchaseRuntimeCosmeticsHandlerCount()
+        {
+            return PurchaseRuntimeCosmeticsHandlers().Count;
+        }
+
+        private static void InvokePurchaseRuntimeCosmeticsHandler()
+        {
+            var handlers = PurchaseRuntimeCosmeticsHandlers();
+            Assert.That(handlers.Count, Is.EqualTo(1));
+            handlers[0].DynamicInvoke();
+        }
+
+        private static List<Delegate> PurchaseRuntimeCosmeticsHandlers()
+        {
+            var field = typeof(PurchaseRuntime).GetField("Installed",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            var callbacks = field?.GetValue(null) as Delegate;
+            var result = new List<Delegate>();
+            if (callbacks == null) return result;
+
+            foreach (var callback in callbacks.GetInvocationList())
+                if (callback.Method.DeclaringType == typeof(CosmeticRuntime))
+                    result.Add(callback);
+            return result;
+        }
+
         private readonly struct PurchaseHarness
         {
             public PurchaseService Service { get; }
@@ -698,6 +874,12 @@ namespace CatMetro.Tests.Cosmetics
             None,
             Refuse,
             Throw,
+        }
+
+        public enum ProjectionMutation
+        {
+            SelectCat,
+            EquipStarterItem,
         }
 
         private sealed class RecordingPersistence : ICosmeticProfilePersistence
