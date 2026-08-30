@@ -5,8 +5,8 @@ using CatMetro.Application.Save;
 
 namespace CatMetro.Tests.Save
 {
-    // The v2 payload remains additive over ADR-0006's v1 shape. Daily Live, reminders, local
-    // leases, and rewarded-video caps share this one pre-public upgrade.
+    // The v3 payload remains additive over ADR-0006's v1 shape. Cosmetics belong to profile;
+    // Daily Live, reminders, local leases, and rewarded-video caps remain unchanged.
     public sealed class SavePayloadTests
     {
         private static readonly string[] TopLevel =
@@ -23,12 +23,12 @@ namespace CatMetro.Tests.Save
         }
 
         [Test]
-        public void FreshPayload_IsV2_WithEveryReservedDefault()
+        public void FreshPayload_IsV3_WithEveryReservedDefault()
         {
             var payload = SaveDefaults.FreshPayload();
 
-            Assert.That(SaveDefaults.SAVE_VERSION, Is.EqualTo(2));
-            Assert.That((int)payload["saveVersion"], Is.EqualTo(2));
+            Assert.That(SaveDefaults.SAVE_VERSION, Is.EqualTo(3));
+            Assert.That((int)payload["saveVersion"], Is.EqualTo(3));
             Assert.That((int)payload["daily"]["lifetimeCompletions"], Is.Zero);
             Assert.That((string)payload["daily"]["trustedDateKey"], Is.Empty);
             Assert.That(payload["daily"]["completedKeys"], Is.InstanceOf<JArray>());
@@ -41,6 +41,20 @@ namespace CatMetro.Tests.Save
             Assert.That((string)payload["caps"]["rewarded"]["dateKey"], Is.Empty);
             Assert.That(payload["caps"]["rewarded"]["counters"], Is.InstanceOf<JObject>());
             Assert.That(((JObject)payload["caps"]["rewarded"]["counters"]).Count, Is.Zero);
+        }
+
+        [Test]
+        public void FreshPayload_IsV3_AndCosmeticsLivesOnlyInsideProfile()
+        {
+            var payload = SaveDefaults.FreshPayload();
+
+            Assert.That((int)payload["saveVersion"], Is.EqualTo(3));
+            Assert.That(payload["cosmetics"], Is.Null, "cosmetics is not a top-level sibling");
+            var cosmetics = (JObject)payload["profile"]["cosmetics"];
+            Assert.That((string)cosmetics["selectedCatId"], Is.EqualTo("red_tabby"));
+            CollectionAssert.IsEmpty((JArray)cosmetics["earnedCatIds"]);
+            CollectionAssert.IsEmpty((JArray)cosmetics["earnedItemIds"]);
+            Assert.That(((JArray)cosmetics["loadouts"]).Count, Is.EqualTo(1));
         }
 
         // Review F5: criterion 2 says "the SERIALISED payload's top-level keys" — assert the
@@ -98,7 +112,10 @@ namespace CatMetro.Tests.Save
         {
             var p = SaveDefaults.FreshPayload();
             Assert.That(((JObject)p["profile"]).Properties().Select(x => x.Name),
-                Is.EquivalentTo(new[] { "createdAtUtc", "lastSeenAtUtc", "sessionCount" }));
+                Is.EquivalentTo(new[]
+                {
+                    "createdAtUtc", "lastSeenAtUtc", "sessionCount", "cosmetics",
+                }));
             Assert.That(((JObject)p["progress"]).Properties().Select(x => x.Name),
                 Is.EquivalentTo(new[] { "levels", "districtsUnlocked", "tutorialDone" }));
             Assert.That(((JObject)p["daily"]).Properties().Select(x => x.Name),
