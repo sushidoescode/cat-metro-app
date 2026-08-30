@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Input;
 using CatMetro.Presentation.Screens;
@@ -59,10 +60,10 @@ namespace CatMetro.Tests.PlayMode
         private TapInput _input;
         private TrackingRewardedAds _ads;
 
-        [TearDown]
-        public void TearDown()
+        [UnityTearDown]
+        public IEnumerator TearDown()
         {
-            RewardedAdRuntime.ResetForTests();
+            if (_view != null) _view.Hide();
             if (_camera != null) _camera.targetTexture = null;
             if (_captureTarget != null)
             {
@@ -72,6 +73,8 @@ namespace CatMetro.Tests.PlayMode
             if (_canvasHost != null) UnityEngine.Object.Destroy(_canvasHost);
             if (_cameraHost != null) UnityEngine.Object.Destroy(_cameraHost);
             if (_inputHost != null) UnityEngine.Object.Destroy(_inputHost);
+            yield return null;
+            RewardedAdRuntime.ResetForTests();
             _canvasHost = null;
             _cameraHost = null;
             _inputHost = null;
@@ -477,6 +480,87 @@ namespace CatMetro.Tests.PlayMode
                 "production composition consumes the installed optional runtime seam");
         }
 
+        [UnityTest]
+        public IEnumerator CaptureEvidence_LockedGrantedAndNoFill_WhenRequested()
+        {
+            string captureDirectory =
+                Environment.GetEnvironmentVariable("CM_REWARDED_CAPTURE_DIR");
+            if (string.IsNullOrWhiteSpace(captureDirectory))
+            {
+                Assert.Pass("Set CM_REWARDED_CAPTURE_DIR to arm rewarded Wardrobe captures.");
+                yield break;
+            }
+
+            captureDirectory = Path.GetFullPath(captureDirectory);
+            Directory.CreateDirectory(captureDirectory);
+            long now = 1_000L;
+            var service = CreateService(new WardrobeBackend(), () => now);
+            CreateRig(service, 917, 2048);
+            SetAllAdsAvailable(true);
+
+            yield return null; // Bind the 917x2048 RenderTexture before screen-space layout.
+            yield return OpenAndLayout(CaptureSafeArea, CaptureDpi);
+
+            var silhouetteNames = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < Cards.Length; i++)
+            {
+                AssertCardText(i, "ItemName", Cards[i].NameKey);
+                for (int part = 0; part < Cards[i].SilhouetteParts.Length; part++)
+                {
+                    var piece = FindCardChild(i,
+                        "Silhouette/" + Cards[i].SilhouetteParts[part]);
+                    Assert.That(piece.gameObject.activeInHierarchy, Is.True);
+                    Assert.That(silhouetteNames.Add(piece.name), Is.True,
+                        piece.name + " must be a distinct named silhouette piece");
+                }
+            }
+            AssertExactModalRegions(0, 1, 2, 3);
+            AssertGeometry(CaptureSafeArea, CaptureDpi, "capture locked");
+            CapturePng(captureDirectory, "wardrobe-rewarded-locked.png");
+
+            Assert.That(service.GrantRewardedAdEntitlement(EntitlementIds.OutfitConductor),
+                Is.EqualTo(AdGrantOutcome.Granted));
+            yield return Layout(CaptureSafeArea, CaptureDpi);
+            AssertBorrowedState(0, true);
+            AssertExactModalRegions(1, 2, 3);
+            AssertGeometry(CaptureSafeArea, CaptureDpi, "capture granted");
+            Assert.That(FindRequired("WardrobePanel/BuyConductorCoatChip")
+                .gameObject.activeInHierarchy, Is.True,
+                "borrowed access never removes the normal purchase path");
+            CapturePng(captureDirectory, "wardrobe-rewarded-granted.png");
+
+            var oldActionCentres = new Vector2[Cards.Length];
+            for (int i = 0; i < Cards.Length; i++)
+                oldActionCentres[i] = ProjectedScreenRect(
+                    FindCardChild(i, "ActionChip") as RectTransform).center;
+            now += 3_601L;
+            Assert.That(service.PruneExpiredLeases(), Is.True);
+            SetAllAdsAvailable(false);
+            _ads.RaiseAvailabilityChanged();
+            yield return Layout(CaptureSafeArea, CaptureDpi);
+
+            AssertBorrowedState(0, false);
+            AssertExactModalRegions();
+            AssertGeometry(CaptureSafeArea, CaptureDpi, "capture no-fill");
+            for (int i = 0; i < Cards.Length; i++)
+            {
+                Assert.That(FindCard(i).gameObject.activeInHierarchy, Is.True);
+                Assert.That(FindCardChild(i, "ActionChip").gameObject.activeSelf, Is.False);
+                Assert.That(_input.HandleTapAtScreen(oldActionCentres[i]), Is.EqualTo(-1),
+                    Cards[i].PlacementId + " old action centre must be a no-fill miss");
+            }
+            AssertContained(ProjectedScreenRect(FindRequired(
+                    "WardrobePanel/BuyConductorCoatChip") as RectTransform),
+                CaptureSafeArea, "capture no-fill Buy");
+            AssertContained(ProjectedScreenRect(FindRequired(
+                    "WardrobePanel/RestorePurchasesChip") as RectTransform),
+                CaptureSafeArea, "capture no-fill Restore");
+            AssertContained(ProjectedScreenRect(FindRequired(
+                    "WardrobePanel/BackChip") as RectTransform),
+                CaptureSafeArea, "capture no-fill Back");
+            CapturePng(captureDirectory, "wardrobe-rewarded-no-fill.png");
+        }
+
         private void CreateRig(PurchaseService service, int width, int height,
             RenderMode renderMode = RenderMode.ScreenSpaceCamera,
             bool useProductionOverload = false)
@@ -532,6 +616,31 @@ namespace CatMetro.Tests.PlayMode
             UnityEngine.Object.Destroy(_captureTarget);
             _captureTarget = new RenderTexture(width, height, 24);
             _camera.targetTexture = _captureTarget;
+        }
+
+        private void CapturePng(string directory, string fileName)
+        {
+            RenderTexture previous = RenderTexture.active;
+            Texture2D texture = null;
+            try
+            {
+                _camera.Render();
+                RenderTexture.active = _captureTarget;
+                texture = new Texture2D(_captureTarget.width, _captureTarget.height,
+                    TextureFormat.RGB24, false);
+                texture.ReadPixels(new Rect(0f, 0f, _captureTarget.width,
+                    _captureTarget.height), 0, 0);
+                texture.Apply();
+                string path = Path.Combine(directory, fileName);
+                File.WriteAllBytes(path, texture.EncodeToPNG());
+                Assert.That(new FileInfo(path).Length, Is.GreaterThan(10 * 1024),
+                    fileName + " must contain nontrivial rendered pixels");
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+                if (texture != null) UnityEngine.Object.Destroy(texture);
+            }
         }
 
         private void SetAllAdsAvailable(bool available)
