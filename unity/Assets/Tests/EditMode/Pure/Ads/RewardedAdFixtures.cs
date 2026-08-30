@@ -18,6 +18,7 @@ namespace CatMetro.Tests.Ads
                     EventAddCalls++;
                     if (ThrowOnEventAdd)
                         throw new InvalidOperationException("injected provider event-add fault");
+                    OnEventAdd?.Invoke();
                     _eventReceived += value;
                 }
                 remove
@@ -37,11 +38,13 @@ namespace CatMetro.Tests.Ads
             public bool ThrowOnShow { get; set; }
             public bool ThrowOnEventAdd { get; set; }
             public bool ThrowOnEventRemove { get; set; }
+            public Action OnEventAdd { get; set; }
             public int InitializeCalls { get; private set; }
             public int LoadCalls { get; private set; }
             public int DisposeCalls { get; private set; }
             public int EventAddCalls { get; private set; }
             public int EventRemoveCalls { get; private set; }
+            public int EventSubscriberCount => _eventReceived?.GetInvocationList().Length ?? 0;
             public readonly List<(long AttemptId, string PlacementId)> Shows =
                 new List<(long, string)>();
 
@@ -84,6 +87,7 @@ namespace CatMetro.Tests.Ads
                     EventAddCalls++;
                     if (ThrowOnEventAdd)
                         throw new InvalidOperationException("injected reporter event-add fault");
+                    OnEventAdd?.Invoke();
                     _readinessChanged += value;
                     if (ReadyOnSubscribe) IsReady = true;
                 }
@@ -102,13 +106,25 @@ namespace CatMetro.Tests.Ads
             public bool ThrowOnEventAdd { get; set; }
             public bool ThrowOnEventRemove { get; set; }
             public bool ReadyOnSubscribe { get; set; }
+            public Action OnEventAdd { get; set; }
+            public Action OnReadyRead { get; set; }
             public int EventAddCalls { get; private set; }
             public int EventRemoveCalls { get; private set; }
+            public int ReadyReadCalls { get; private set; }
+            public int EventSubscriberCount => _readinessChanged?.GetInvocationList().Length ?? 0;
             public readonly List<RewardedAdEvent> Events = new List<RewardedAdEvent>();
 
-            bool IAdEventReporter.IsReady => ThrowOnReady
-                ? throw new InvalidOperationException("injected reporter readiness fault")
-                : IsReady;
+            bool IAdEventReporter.IsReady
+            {
+                get
+                {
+                    ReadyReadCalls++;
+                    OnReadyRead?.Invoke();
+                    return ThrowOnReady
+                        ? throw new InvalidOperationException("injected reporter readiness fault")
+                        : IsReady;
+                }
+            }
 
             public Reporter(bool ready = true) => IsReady = ready;
 

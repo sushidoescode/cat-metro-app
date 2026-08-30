@@ -80,6 +80,138 @@ namespace CatMetro.Tests.Ads
         }
 
         [Test]
+        public void Start_ProviderEventAddReentrantReplacement_RemovesLateAttachmentAndStopsOldStart()
+        {
+            var oldProvider = new RewardedAdFixtures.Provider();
+            var oldReporter = new RewardedAdFixtures.Reporter();
+            var replacementProvider = new RewardedAdFixtures.Provider();
+            var replacement = RewardedAdFixtures.Coordinator(replacementProvider,
+                new RewardedAdFixtures.Reporter());
+            RewardedAdCoordinator old = null;
+            oldProvider.OnEventAdd = () =>
+            {
+                old.Dispose();
+                replacement.Start();
+                RewardedAdRuntime.Install(replacement);
+            };
+            old = RewardedAdFixtures.Coordinator(oldProvider, oldReporter);
+
+            try
+            {
+                old.Start();
+
+                Assert.That(oldProvider.InitializeCalls, Is.Zero,
+                    "the disposed provider must never be initialized after event add returns");
+                Assert.That(oldProvider.DisposeCalls, Is.EqualTo(1));
+                Assert.That(oldProvider.EventAddCalls, Is.EqualTo(1));
+                Assert.That(oldProvider.EventRemoveCalls, Is.EqualTo(2),
+                    "dispose removes subscription intent; add completion removes a late attach");
+                Assert.That(oldProvider.EventSubscriberCount, Is.Zero);
+                Assert.That(oldReporter.EventAddCalls, Is.Zero,
+                    "old Start must stop at the lost provider-subscription boundary");
+                Assert.That(RewardedAdRuntime.Current, Is.SameAs(replacement));
+                Assert.That(replacementProvider.InitializeCalls, Is.EqualTo(1));
+                Assert.That(replacementProvider.DisposeCalls, Is.Zero);
+            }
+            finally
+            {
+                RewardedAdRuntime.Uninstall(replacement);
+                old.Dispose();
+                replacement.Dispose();
+                RewardedAdRuntime.ResetForTests();
+            }
+        }
+
+        [Test]
+        public void Start_ReporterEventAddReentrantReplacement_RemovesLateAttachmentAndStopsOldStart()
+        {
+            var oldProvider = new RewardedAdFixtures.Provider();
+            var oldReporter = new RewardedAdFixtures.Reporter();
+            var replacementProvider = new RewardedAdFixtures.Provider();
+            var replacement = RewardedAdFixtures.Coordinator(replacementProvider,
+                new RewardedAdFixtures.Reporter());
+            RewardedAdCoordinator old = null;
+            oldReporter.OnEventAdd = () =>
+            {
+                old.Dispose();
+                replacement.Start();
+                RewardedAdRuntime.Install(replacement);
+            };
+            old = RewardedAdFixtures.Coordinator(oldProvider, oldReporter);
+
+            try
+            {
+                old.Start();
+
+                Assert.That(oldProvider.InitializeCalls, Is.Zero);
+                Assert.That(oldProvider.DisposeCalls, Is.EqualTo(1));
+                Assert.That(oldProvider.EventAddCalls, Is.EqualTo(1));
+                Assert.That(oldProvider.EventRemoveCalls, Is.EqualTo(1));
+                Assert.That(oldProvider.EventSubscriberCount, Is.Zero);
+                Assert.That(oldReporter.EventAddCalls, Is.EqualTo(1));
+                Assert.That(oldReporter.EventRemoveCalls, Is.EqualTo(2),
+                    "dispose removes subscription intent; add completion removes a late attach");
+                Assert.That(oldReporter.EventSubscriberCount, Is.Zero);
+                Assert.That(oldReporter.ReadyReadCalls, Is.Zero,
+                    "old Start must stop before observing readiness");
+                Assert.That(RewardedAdRuntime.Current, Is.SameAs(replacement));
+                Assert.That(replacementProvider.InitializeCalls, Is.EqualTo(1));
+                Assert.That(replacementProvider.DisposeCalls, Is.Zero);
+            }
+            finally
+            {
+                RewardedAdRuntime.Uninstall(replacement);
+                old.Dispose();
+                replacement.Dispose();
+                RewardedAdRuntime.ResetForTests();
+            }
+        }
+
+        [Test]
+        public void Start_ReporterReadyGetterReentrantReplacement_NeverInitializesDisposedProvider()
+        {
+            var oldProvider = new RewardedAdFixtures.Provider();
+            var oldReporter = new RewardedAdFixtures.Reporter();
+            var replacementProvider = new RewardedAdFixtures.Provider();
+            var replacement = RewardedAdFixtures.Coordinator(replacementProvider,
+                new RewardedAdFixtures.Reporter());
+            RewardedAdCoordinator old = null;
+            oldReporter.OnReadyRead = () =>
+            {
+                old.Dispose();
+                replacement.Start();
+                RewardedAdRuntime.Install(replacement);
+            };
+            old = RewardedAdFixtures.Coordinator(oldProvider, oldReporter);
+
+            try
+            {
+                old.Start();
+
+                Assert.That(oldReporter.ReadyReadCalls, Is.EqualTo(1));
+                Assert.That(oldProvider.InitializeCalls, Is.Zero,
+                    "readiness returned true only after synchronously disposing the old owner");
+                Assert.That(oldProvider.DisposeCalls, Is.EqualTo(1));
+                Assert.That(oldProvider.EventAddCalls, Is.EqualTo(1));
+                Assert.That(oldProvider.EventRemoveCalls, Is.EqualTo(1));
+                Assert.That(oldProvider.EventSubscriberCount, Is.Zero);
+                Assert.That(oldReporter.EventAddCalls, Is.EqualTo(1));
+                Assert.That(oldReporter.EventRemoveCalls, Is.EqualTo(1));
+                Assert.That(oldReporter.EventSubscriberCount, Is.Zero);
+                Assert.That(RewardedAdRuntime.Current, Is.SameAs(replacement));
+                Assert.That(replacementProvider.InitializeCalls, Is.EqualTo(1));
+                Assert.That(replacementProvider.DisposeCalls, Is.Zero);
+            }
+            finally
+            {
+                RewardedAdRuntime.Uninstall(replacement);
+                old.Dispose();
+                replacement.Dispose();
+                RewardedAdRuntime.ResetForTests();
+            }
+        }
+
+        [Test]
         public void InvalidOrUnavailableOffer_NeverCallsProviderShow()
         {
             var provider = new RewardedAdFixtures.Provider();
