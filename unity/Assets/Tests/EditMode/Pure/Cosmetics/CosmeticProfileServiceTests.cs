@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using CatMetro.Services.Cosmetics;
 using CatMetro.Services.Purchases;
 using CatMetro.Tests.Purchases;
@@ -437,6 +438,131 @@ namespace CatMetro.Tests.Cosmetics
         }
 
         [Test]
+        public void ConstructorRecomputeFailure_DoesNotLeaveAnUnreachableLedgerSubscriber()
+        {
+            var ledger = new EntitlementLedger();
+            ledger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant("outfit_conductor", GrantSource.Store),
+            });
+            var clock = new FaultingClock { Throws = true };
+            var purchases = new PurchaseService(PurchaseCatalog.Parse(PurchaseCatalogJson),
+                clock: clock.Fn, ledger: ledger);
+
+            Assert.Throws<InvalidOperationException>(() => CreateService(
+                new RecordingPersistence(ProfileWithOutfit("outfit_conductor")), purchases));
+            int callsAfterConstructor = clock.Calls;
+
+            Assert.DoesNotThrow(() =>
+                ledger.ReplaceStoreGrants(Array.Empty<EntitlementGrant>()));
+            Assert.That(clock.Calls, Is.EqualTo(callsAfterConstructor),
+                "the failed constructor cannot remain retained by the ledger event");
+        }
+
+        [Test]
+        public void RebindRecomputeFailure_RetainsOldAuthorityAndOldCallbackTransactionally()
+        {
+            var oldPurchase = CreatePurchases();
+            oldPurchase.Ledger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant("outfit_conductor", GrantSource.Store),
+            });
+            var service = CreateService(new RecordingPersistence(
+                ProfileWithOutfit("outfit_conductor")), oldPurchase.Service);
+            var originalPortrait = service.CurrentPortrait;
+            string originalSelected = service.SelectedCatId;
+            int changed = 0;
+            service.Changed += () => changed++;
+
+            var newLedger = new EntitlementLedger();
+            newLedger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant("outfit_conductor", GrantSource.Store),
+            });
+            var faultingClock = new FaultingClock { Throws = true };
+            var newPurchases = new PurchaseService(PurchaseCatalog.Parse(PurchaseCatalogJson),
+                clock: faultingClock.Fn, ledger: newLedger);
+
+            Assert.Throws<InvalidOperationException>(() => service.BindPurchases(newPurchases));
+            Assert.That(service.SelectedCatId, Is.EqualTo(originalSelected));
+            Assert.That(service.CurrentPortrait, Is.EqualTo(originalPortrait));
+            Assert.That(changed, Is.Zero);
+            int callsAfterRebind = faultingClock.Calls;
+
+            Assert.DoesNotThrow(() =>
+                newLedger.ReplaceStoreGrants(Array.Empty<EntitlementGrant>()));
+            Assert.That(faultingClock.Calls, Is.EqualTo(callsAfterRebind),
+                "the rejected authority cannot retain a new-ledger callback");
+
+            oldPurchase.Ledger.ReplaceStoreGrants(Array.Empty<EntitlementGrant>());
+            Assert.That(service.CurrentPortrait.OutfitAssetId, Is.Empty);
+            Assert.That(changed, Is.EqualTo(1), "the old ledger callback remains live");
+            oldPurchase.Ledger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant("outfit_conductor", GrantSource.Store),
+            });
+            Assert.That(service.CurrentPortrait.OutfitAssetId, Is.EqualTo("outfit.conductor"));
+            Assert.That(changed, Is.EqualTo(2), "the old purchase authority remains active");
+        }
+
+        [Test]
+        public void InstallingRuntimeCurrent_PreservesItsOwnedLiveLedgerSubscription()
+        {
+            var owned = CosmeticRuntime.Current;
+            var ledger = PurchaseRuntime.Current.Ledger;
+            Assert.That(HasLedgerSubscriber(ledger, owned), Is.True);
+
+            CosmeticRuntime.Install(owned);
+
+            Assert.That(CosmeticRuntime.Current, Is.SameAs(owned));
+            Assert.That(HasLedgerSubscriber(ledger, owned), Is.True,
+                "reference-identical install must not dispose and republish Current");
+            Assert.That(LedgerSubscriberCount(ledger, owned), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void UninstallingMatchedOwnedDegradedCurrent_DetachesItBeforeReplacement()
+        {
+            var owned = CosmeticRuntime.Current;
+            var ledger = PurchaseRuntime.Current.Ledger;
+            Assert.That(HasLedgerSubscriber(ledger, owned), Is.True);
+
+            CosmeticRuntime.Uninstall(owned);
+            var replacement = CosmeticRuntime.Current;
+
+            Assert.That(replacement, Is.Not.SameAs(owned));
+            Assert.That(HasLedgerSubscriber(ledger, owned), Is.False,
+                "the overwritten runtime-owned service cannot leak its ledger callback");
+            Assert.That(HasLedgerSubscriber(ledger, replacement), Is.True);
+        }
+
+        [Test]
+        public void CosmeticsInstallAfterIndependentPurchaseReset_ReattachesRuntimeRebinding()
+        {
+            var first = CreateService(new RecordingPersistence(
+                ProfileWithOutfit("outfit_conductor")), PurchaseRuntime.Current);
+            CosmeticRuntime.Install(first);
+            PurchaseRuntime.ResetForTests();
+
+            var second = CreateService(new RecordingPersistence(
+                ProfileWithOutfit("outfit_conductor")), PurchaseRuntime.Current);
+            CosmeticRuntime.Install(second);
+            int changed = 0;
+            second.Changed += () => changed++;
+
+            var replacementPurchases = CreatePurchases();
+            replacementPurchases.Ledger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant("outfit_conductor", GrantSource.Store),
+            });
+            PurchaseRuntime.Install(replacementPurchases.Service);
+
+            Assert.That(second.CurrentPortrait.OutfitAssetId,
+                Is.EqualTo("outfit.conductor"));
+            Assert.That(changed, Is.EqualTo(1));
+        }
+
+        [Test]
         public void RuntimeCurrentIsNonNullAndUninstallIsConditionalByReference()
         {
             Assert.That(CosmeticRuntime.Current, Is.Not.Null);
@@ -518,6 +644,24 @@ namespace CatMetro.Tests.Cosmetics
                 new CosmeticLoadout("red_tabby", outfitId, "", ""),
             });
 
+        private static bool HasLedgerSubscriber(EntitlementLedger ledger, object target)
+        {
+            return LedgerSubscriberCount(ledger, target) > 0;
+        }
+
+        private static int LedgerSubscriberCount(EntitlementLedger ledger, object target)
+        {
+            var field = typeof(EntitlementLedger).GetField("Changed",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var callbacks = field?.GetValue(ledger) as Delegate;
+            if (callbacks == null) return 0;
+
+            int count = 0;
+            foreach (var callback in callbacks.GetInvocationList())
+                if (ReferenceEquals(callback.Target, target)) count++;
+            return count;
+        }
+
         private readonly struct PurchaseHarness
         {
             public PurchaseService Service { get; }
@@ -532,6 +676,20 @@ namespace CatMetro.Tests.Cosmetics
                 Backend = backend;
                 Ledger = ledger;
                 Clock = clock;
+            }
+        }
+
+        private sealed class FaultingClock
+        {
+            public bool Throws { get; set; }
+            public int Calls { get; private set; }
+            public Func<long> Fn => Read;
+
+            private long Read()
+            {
+                Calls++;
+                if (Throws) throw new InvalidOperationException("clock failed");
+                return 1_700_000_000L;
             }
         }
 
