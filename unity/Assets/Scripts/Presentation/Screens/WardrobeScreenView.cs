@@ -474,7 +474,10 @@ namespace CatMetro.Presentation.Screens
             {
                 if (!IsCurrentOperation(session, operation)) return;
                 CompleteCurrentOperation();
-                if (_purchases.IsUnlocked(entitlementId))
+                if (result.Outcome == PurchaseOutcome.SuccessCandidate
+                    && result.ConfirmedEntitlements.HasValue
+                    && result.ConfirmedEntitlements.Value.IsAuthoritative
+                    && _purchases.IsUnlocked(entitlementId))
                 {
                     if (!_profile.TryEquip(catId, slot, itemId))
                         SaveFailed();

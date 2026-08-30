@@ -174,6 +174,49 @@ namespace CatMetro.Tests.Purchases
                 "a stray product in the store console must not become purchasable");
         }
 
+        [TestCase(BackendAvailability.Unreachable)]
+        [TestCase(BackendAvailability.Initializing)]
+        [TestCase(BackendAvailability.NotConfigured)]
+        [TestCase(BackendAvailability.NotCompiled)]
+        public void NonReadyEmptyOfferings_PreserveTheLastReadyLocalizedPrice(
+            BackendAvailability availability)
+        {
+            var (svc, backend, _) = PFixtures.Service();
+            backend.WithProduct(ProductIds.OutfitConductor, "Conductor's Coat", "CA$2.79");
+            svc.Refresh();
+            Assert.That(svc.StoreProductCount, Is.EqualTo(1));
+            Assert.That(svc.TryGetPrice(ProductIds.OutfitConductor, out var before), Is.True);
+            Assert.That(before.DisplayText, Is.EqualTo("CA$2.79"));
+
+            backend.ClearProducts();
+            backend.Availability = availability;
+            int callbacks = 0;
+            svc.Refresh(() => callbacks++);
+
+            Assert.That(callbacks, Is.EqualTo(1), "a preserved cache cannot strand refresh UI");
+            Assert.That(svc.StoreProductCount, Is.EqualTo(1));
+            Assert.That(svc.TryGetPrice(ProductIds.OutfitConductor, out var after), Is.True);
+            Assert.That(after.DisplayText, Is.EqualTo("CA$2.79"));
+        }
+
+        [Test]
+        public void ReadyEmptyOfferings_AuthoritativelyClearTheLocalizedPriceCache()
+        {
+            var (svc, backend, _) = PFixtures.Service();
+            backend.WithProduct(ProductIds.OutfitConductor, "Conductor's Coat", "CA$2.79");
+            svc.Refresh();
+            Assert.That(svc.StoreProductCount, Is.EqualTo(1));
+
+            backend.ClearProducts();
+            backend.Availability = BackendAvailability.Ready;
+            int callbacks = 0;
+            svc.Refresh(() => callbacks++);
+
+            Assert.That(callbacks, Is.EqualTo(1));
+            Assert.That(svc.StoreProductCount, Is.EqualTo(0));
+            Assert.That(svc.TryGetPrice(ProductIds.OutfitConductor, out _), Is.False);
+        }
+
         [Test]
         public void DoubleTappingBuy_IsRefusedWhileTheFirstIsInFlight()
         {
@@ -275,6 +318,102 @@ namespace CatMetro.Tests.Purchases
             Assert.That(result.Outcome, Is.EqualTo(PurchaseOutcome.SuccessCandidate));
             Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False,
                 "hence the name SuccessCandidate rather than Success");
+        }
+
+        [Test]
+        public void FallbackConfirmation_EnrichesTheResultAndPreservesItsStoreMetadata()
+        {
+            var (svc, backend, _) = PFixtures.Service();
+            backend.NextPurchaseDiagnostic = "candidate diagnostic";
+
+            PurchaseResult result = default;
+            svc.Purchase(ProductIds.OutfitConductor, r => result = r);
+
+            Assert.That(result.Outcome, Is.EqualTo(PurchaseOutcome.SuccessCandidate));
+            Assert.That(result.ProductId, Is.EqualTo(ProductIds.OutfitConductor));
+            Assert.That(result.LocalizedPrice.DisplayText, Is.EqualTo("$1.99"));
+            Assert.That(result.DiagnosticMessage, Is.EqualTo("candidate diagnostic"));
+            Assert.That(result.ConfirmedEntitlements.HasValue, Is.True,
+                "accepted fallback CustomerInfo must be returned as transaction confirmation");
+            Assert.That(result.ConfirmedEntitlements.Value.IsAuthoritative, Is.True);
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.True);
+        }
+
+        [Test]
+        public void FallbackSnapshotMissingThePromisedEntitlement_IsAppliedButNotConfirmation()
+        {
+            var (svc, backend, _) = PFixtures.Service();
+            backend.GrantOnPurchase = null;
+            svc.GrantRewardedAdEntitlement(EntitlementIds.OutfitConductor);
+
+            PurchaseResult result = default;
+            svc.Purchase(ProductIds.OutfitConductor, r => result = r);
+
+            Assert.That(result.Outcome, Is.EqualTo(PurchaseOutcome.SuccessCandidate));
+            Assert.That(result.ConfirmedEntitlements.HasValue, Is.False);
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.True,
+                "the independent rewarded lease remains wearable but confirms no purchase");
+            Assert.That(svc.SecondsUntilExpiry(EntitlementIds.OutfitConductor), Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void UnreachableFallback_PreservesAccessButReturnsNoTransactionConfirmation()
+        {
+            var (svc, backend, _) = PFixtures.Service();
+            svc.GrantRewardedAdEntitlement(EntitlementIds.OutfitConductor);
+            backend.EntitlementsAreAuthoritative = false;
+            backend.Availability = BackendAvailability.Unreachable;
+
+            PurchaseResult result = default;
+            svc.Purchase(ProductIds.OutfitConductor, r => result = r);
+
+            Assert.That(result.Outcome, Is.EqualTo(PurchaseOutcome.SuccessCandidate));
+            Assert.That(result.ConfirmedEntitlements.HasValue, Is.False);
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.True);
+            Assert.That(svc.SecondsUntilExpiry(EntitlementIds.OutfitConductor), Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void DirectSnapshotWithEveryPromisedEntitlement_RemainsConfirmation()
+        {
+            var (svc, backend, _) = PFixtures.Service();
+            backend.GrantOnPurchase = null;
+            backend.NextPurchaseConfirmedEntitlements = new EntitlementSnapshot(true, new[]
+            {
+                new EntitlementGrant(EntitlementIds.OutfitConductor, GrantSource.Store),
+            });
+
+            PurchaseResult result = default;
+            svc.Purchase(ProductIds.OutfitConductor, r => result = r);
+
+            Assert.That(result.ConfirmedEntitlements.HasValue, Is.True);
+            Assert.That(result.ConfirmedEntitlements.Value.IsAuthoritative, Is.True);
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.True);
+            Assert.That(backend.RefreshEntitlementsCallCount, Is.EqualTo(0),
+                "direct authoritative CustomerInfo needs no redundant fallback");
+        }
+
+        [Test]
+        public void DirectSnapshotMissingAnyBundlePromise_IsTruthButNotConfirmation()
+        {
+            var (svc, backend, _) = PFixtures.Service();
+            backend.GrantOnPurchase = null;
+            backend.NextPurchaseConfirmedEntitlements = new EntitlementSnapshot(true, new[]
+            {
+                new EntitlementGrant(EntitlementIds.OutfitConductor, GrantSource.Store),
+            });
+
+            PurchaseResult result = default;
+            svc.Purchase("cm_bundle", r => result = r);
+
+            Assert.That(result.Outcome, Is.EqualTo(PurchaseOutcome.SuccessCandidate));
+            Assert.That(result.ConfirmedEntitlements.HasValue, Is.False,
+                "one of three bundle grants cannot confirm fulfilment of the whole product");
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.True,
+                "the authoritative partial snapshot is still applied as account truth");
+            Assert.That(svc.IsUnlocked(EntitlementIds.FrameBrass), Is.False);
+            Assert.That(svc.IsUnlocked("supporter"), Is.False);
+            Assert.That(backend.RefreshEntitlementsCallCount, Is.EqualTo(0));
         }
 
         // ---- the runtime locator ---------------------------------------------------------
@@ -393,6 +532,25 @@ namespace CatMetro.Tests.Purchases
             second.SignalReady();
             Assert.That(svc.TryGetPrice(ProductIds.OutfitConductor, out var price), Is.True);
             Assert.That(price.DisplayText, Is.EqualTo("$1.99"));
+        }
+
+        [Test]
+        public void DetachedBackend_LateReadyOfferingsCannotRepopulateTheClearedCache()
+        {
+            var first = new SingleSlotBackend();
+            var second = new FakePurchaseBackend();
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), first);
+
+            svc.Refresh();
+            Assert.That(first.FetchProductsCalls, Is.EqualTo(1));
+            svc.AttachBackend(second);
+            Assert.That(svc.StoreProductCount, Is.EqualTo(0));
+
+            first.CompleteProducts();
+
+            Assert.That(svc.StoreProductCount, Is.EqualTo(0),
+                "a detached backend is no longer the active offerings authority");
+            Assert.That(svc.TryGetPrice(ProductIds.OutfitConductor, out _), Is.False);
         }
 
         [Test]
