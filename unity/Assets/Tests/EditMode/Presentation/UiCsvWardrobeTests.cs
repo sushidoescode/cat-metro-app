@@ -1,85 +1,140 @@
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
 using CatMetro.Presentation.Strings;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace CatMetro.Tests.Presentation
 {
-    // Pins the filmable Wardrobe copy this feature owns without forbidding unrelated slices
-    // before or after it.
     public sealed class UiCsvWardrobeTests
     {
         private const string CsvPath = "Assets/Resources/Strings/ui.csv";
+        private const string CatalogPath = "Assets/Resources/Cosmetics/cosmetic_catalog.json";
 
-        private static readonly string[] OwnedRows =
+        private static readonly string[] RequiredKeys =
         {
-            "wardrobe.entry,Wardrobe",
-            "wardrobe.title,Profile Wardrobe",
-            "wardrobe.profile,Your profile cat",
-            "wardrobe.product,Conductor's Coat",
-            "wardrobe.back,Back",
-            "wardrobe.buy,Unlock · {price}",
-            "wardrobe.equipped,Coat equipped",
-            "wardrobe.restore,Restore purchases",
-            "wardrobe.restore.running,Restoring…",
-            "wardrobe.store.checking,Checking store…",
-            "wardrobe.store.opening,Opening store…",
-            "wardrobe.store.unavailable,Store unavailable",
-            "wardrobe.status.checking,Checking the railway shop…",
-            "wardrobe.status.locked,A station uniform for your profile cat",
-            "wardrobe.status.equipped,Conductor's Coat equipped!",
-            "wardrobe.status.opening,Opening the store…",
-            "wardrobe.status.cancelled,Purchase cancelled",
-            "wardrobe.status.pending,Purchase pending — the coat unlocks after approval",
-            "wardrobe.status.failed,Purchase unavailable — please try again",
-            "wardrobe.status.unconfirmed,Purchase received — checking the entitlement",
-            "wardrobe.status.restoring,Restoring purchases…",
-            "wardrobe.status.restored,Purchase restored — coat equipped!",
-            "wardrobe.status.none,No purchases found",
-            "wardrobe.status.restore.failed,Restore unavailable — please try again",
-            "wardrobe.status.unavailable,The shop is offline — the game is still ready to play",
+            "wardrobe.entry", "wardrobe.title", "wardrobe.profile", "wardrobe.back",
+            "wardrobe.buy", "wardrobe.restore", "wardrobe.restore.running",
+            "wardrobe.cat.red_tabby", "wardrobe.cat.blue_siamese",
+            "wardrobe.cat.yellow_longhair", "wardrobe.tab.outfit",
+            "wardrobe.tab.accessory", "wardrobe.tab.frame", "wardrobe.state.equipped",
+            "wardrobe.state.owned", "wardrobe.action.equip", "wardrobe.action.unequip",
+            "wardrobe.action.rewarded", "wardrobe.time.remaining", "wardrobe.empty",
+            "wardrobe.status.checking", "wardrobe.status.opening",
+            "wardrobe.status.cancelled", "wardrobe.status.pending",
+            "wardrobe.status.unconfirmed", "wardrobe.status.unavailable",
+            "wardrobe.status.save.failed", "wardrobe.status.restoring",
+            "wardrobe.status.restored", "wardrobe.status.none",
+            "wardrobe.status.restore.failed",
         };
 
-        private static string[] Rows()
-        {
-            return File.ReadAllText(CsvPath, Encoding.UTF8)
-                .Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0).ToArray();
-        }
-
         [Test]
-        public void WardrobeRows_StayExactAndContiguousAfterUtf8CsvNormalization()
+        public void EveryRealCatalogueDisplayAndEarnKey_ResolvesExactlyOnce()
         {
-            var rows = Rows();
-            var firstWardrobeRow = System.Array.IndexOf(rows, OwnedRows[0]);
-            Assert.That(firstWardrobeRow, Is.GreaterThanOrEqualTo(0),
-                "the Wardrobe slice must retain its literal anchor row");
-            Assert.That(rows.Length,
-                Is.GreaterThanOrEqualTo(firstWardrobeRow + OwnedRows.Length),
-                "all Wardrobe keys remain present as one contiguous owned slice");
-            for (int i = 0; i < OwnedRows.Length; i++)
-                Assert.That(rows[firstWardrobeRow + i], Is.EqualTo(OwnedRows[i]),
-                    "Wardrobe row " + i + " changed or was interrupted");
-        }
+            var rows = ParseRows();
+            var root = JObject.Parse(File.ReadAllText(CatalogPath, Encoding.UTF8));
+            var catalogueKeys = root["cats"].Children<JObject>()
+                .Select(row => (string)row["displayNameKey"])
+                .Concat(root["items"].Children<JObject>().SelectMany(row => new[]
+                {
+                    (string)row["displayNameKey"],
+                    (string)row["earnInstructionKey"],
+                }))
+                .Where(key => !string.IsNullOrEmpty(key))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
 
-        [Test]
-        public void EveryCsvKey_IsUnique()
-        {
-            var keys = Rows().Select(row => row.Substring(0, row.IndexOf(','))).ToArray();
-            Assert.That(keys.Distinct().Count(), Is.EqualTo(keys.Length),
-                "a duplicate key would silently overwrite earlier UI copy at runtime");
-        }
-
-        [Test]
-        public void WardrobeValues_RoundTripThroughUiStrings()
-        {
-            foreach (var row in OwnedRows)
+            foreach (var key in catalogueKeys)
             {
-                int comma = row.IndexOf(',');
-                string key = row.Substring(0, comma);
-                string value = row.Substring(comma + 1);
-                Assert.That(UiStrings.Get(key), Is.EqualTo(value),
-                    key + " must resolve from the CSV rather than a missing-key sentinel");
+                Assert.That(rows.Count(row => row.Key == key), Is.EqualTo(1),
+                    key + " must occur exactly once in the real CSV");
+                AssertResolved(key);
+            }
+        }
+
+        [Test]
+        public void RequiredWardrobeActionsAndStatuses_ArePresentAndNonSentinel()
+        {
+            var rows = ParseRows();
+            foreach (var key in RequiredKeys)
+            {
+                Assert.That(rows.Count(row => row.Key == key), Is.EqualTo(1),
+                    key + " must occur exactly once in the actual CSV");
+                AssertResolved(key);
+            }
+        }
+
+        [Test]
+        public void UnlockTemplate_ContainsExactlyOnePriceToken_AndNoAuthoredCurrencyOrNumber()
+        {
+            string value = SingleValue("wardrobe.buy");
+            Assert.That(Count(value, "{price}"), Is.EqualTo(1));
+            Assert.That(value.Replace("{price}", string.Empty),
+                Does.Not.Match(@"[0-9$\u00a2\u00a3\u00a5\u20ac]"),
+                "the store is the only price/currency author");
+        }
+
+        [Test]
+        public void EveryCsvKey_IsUniqueBeforeUiStringsCouldOverwriteIt()
+        {
+            var rows = ParseRows();
+            var duplicate = rows.GroupBy(row => row.Key, StringComparer.Ordinal)
+                .FirstOrDefault(group => group.Count() != 1);
+            Assert.That(duplicate, Is.Null,
+                duplicate == null ? string.Empty : "duplicate key: " + duplicate.Key);
+        }
+
+        private static void AssertResolved(string key)
+        {
+            string value = UiStrings.Get(key);
+            Assert.That(value, Is.Not.Empty);
+            Assert.That(value, Is.Not.EqualTo("??" + key + "??"));
+        }
+
+        private static string SingleValue(string key)
+        {
+            var values = ParseRows().Where(row => row.Key == key)
+                .Select(row => row.Value).ToArray();
+            Assert.That(values.Length, Is.EqualTo(1));
+            return values[0];
+        }
+
+        private static int Count(string value, string token)
+        {
+            int count = 0;
+            int offset = 0;
+            while ((offset = value.IndexOf(token, offset, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                offset += token.Length;
+            }
+            return count;
+        }
+
+        private static IReadOnlyList<CsvRow> ParseRows()
+        {
+            return File.ReadAllText(CsvPath, Encoding.UTF8).Split('\n')
+                .Select(line => line.TrimEnd('\r')).Where(line => line.Length > 0)
+                .Select(line =>
+                {
+                    int comma = line.IndexOf(',');
+                    Assert.That(comma, Is.GreaterThan(0), "invalid CSV row: " + line);
+                    return new CsvRow(line.Substring(0, comma), line.Substring(comma + 1));
+                }).ToArray();
+        }
+
+        private readonly struct CsvRow
+        {
+            public string Key { get; }
+            public string Value { get; }
+
+            public CsvRow(string key, string value)
+            {
+                Key = key;
+                Value = value;
             }
         }
     }
