@@ -5,7 +5,6 @@ namespace CatMetro.Services.Cosmetics
     public static class CosmeticRuntime
     {
         private static CosmeticProfileService _current;
-        private static bool _purchaseRuntimeSubscribed;
         private static bool _ownsCurrent;
 
         public static CosmeticProfileService Current
@@ -22,6 +21,13 @@ namespace CatMetro.Services.Cosmetics
         public static void Install(CosmeticProfileService service)
         {
             if (service == null) return;
+            if (ReferenceEquals(_current, service))
+            {
+                service.BindPurchases(PurchaseRuntime.Current);
+                SubscribeToPurchasesOnce();
+                return;
+            }
+
             if (_ownsCurrent) _current?.Dispose();
             _current = service;
             _ownsCurrent = false;
@@ -32,17 +38,14 @@ namespace CatMetro.Services.Cosmetics
         public static void Uninstall(CosmeticProfileService expected)
         {
             if (!ReferenceEquals(_current, expected)) return;
+            if (_ownsCurrent) _current.Dispose();
             _current = Degraded();
             _ownsCurrent = true;
         }
 
         public static void ResetForTests()
         {
-            if (_purchaseRuntimeSubscribed)
-            {
-                PurchaseRuntime.Installed -= OnPurchasesInstalled;
-                _purchaseRuntimeSubscribed = false;
-            }
+            PurchaseRuntime.Installed -= OnPurchasesInstalled;
 
             if (_ownsCurrent) _current?.Dispose();
             _current = Degraded();
@@ -51,9 +54,8 @@ namespace CatMetro.Services.Cosmetics
 
         private static void SubscribeToPurchasesOnce()
         {
-            if (_purchaseRuntimeSubscribed) return;
+            PurchaseRuntime.Installed -= OnPurchasesInstalled;
             PurchaseRuntime.Installed += OnPurchasesInstalled;
-            _purchaseRuntimeSubscribed = true;
         }
 
         private static void OnPurchasesInstalled()
