@@ -21,18 +21,19 @@ namespace CatMetro.Services.Cosmetics
         public static void Install(CosmeticProfileService service)
         {
             if (service == null) return;
+            SubscribeToPurchasesOnce();
             if (ReferenceEquals(_current, service))
             {
                 service.BindPurchases(PurchaseRuntime.Current);
-                SubscribeToPurchasesOnce();
                 return;
             }
 
+            var binding = service.PreparePurchaseBinding(PurchaseRuntime.Current);
+            bool effectiveChanged = service.CommitPurchaseBinding(binding);
             if (_ownsCurrent) _current?.Dispose();
             _current = service;
             _ownsCurrent = false;
-            service.BindPurchases(PurchaseRuntime.Current);
-            SubscribeToPurchasesOnce();
+            service.NotifyPurchaseBindingChanged(effectiveChanged);
         }
 
         public static void Uninstall(CosmeticProfileService expected)
