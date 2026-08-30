@@ -2,6 +2,7 @@ using System;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Input;
 using CatMetro.Presentation.Theme;
+using CatMetro.Services.Ads;
 using CatMetro.Services.Purchases;
 using TMPro;
 using UnityEngine;
@@ -21,10 +22,37 @@ namespace CatMetro.Presentation.Screens
         private const int EntryPriority = ChromeRegions.HomeScreenPriority;
         private const int ModalPriority = ChromeRegions.StackedModalPriority;
 
+        private readonly struct TryOnSpec
+        {
+            public readonly string PlacementId;
+            public readonly string EntitlementId;
+            public readonly string NameKey;
+
+            public TryOnSpec(string placementId, string entitlementId, string nameKey)
+            {
+                PlacementId = placementId;
+                EntitlementId = entitlementId;
+                NameKey = nameKey;
+            }
+        }
+
+        private static readonly TryOnSpec[] TryOnSpecs =
+        {
+            new TryOnSpec("wardrobe_try_conductor", EntitlementIds.OutfitConductor,
+                "wardrobe.tryon.conductor"),
+            new TryOnSpec("wardrobe_try_engineer", EntitlementIds.OutfitEngineer,
+                "wardrobe.tryon.engineer"),
+            new TryOnSpec("wardrobe_try_scarf", EntitlementIds.AccessoryScarf,
+                "wardrobe.tryon.scarf"),
+            new TryOnSpec("wardrobe_try_goggles", EntitlementIds.AccessoryGoggles,
+                "wardrobe.tryon.goggles"),
+        };
+
         public Action OpenRequested;
         public Action BackRequested;
 
         private PurchaseService _service;
+        private IRewardedAds _rewardedAds;
         private ChromeRegions _regions;
         private GameObject _entry;
         private GameObject _panel;
@@ -35,12 +63,21 @@ namespace CatMetro.Presentation.Screens
         private RectTransform _restoreRect;
         private RectTransform _statusRect;
         private RectTransform _portraitRect;
+        private RectTransform _tryOnStrip;
+        private RectTransform _tryOnHeading;
         private RectTransform _coatBody;
         private TMP_Text _entryLabel;
         private TMP_Text _buyLabel;
         private TMP_Text _restoreLabel;
         private TMP_Text _statusLabel;
         private Image _entryOwnedDot;
+        private readonly RectTransform[] _tryOnCards = new RectTransform[4];
+        private readonly GameObject[] _borrowedAccents = new GameObject[4];
+        private readonly GameObject[] _lockedLabels = new GameObject[4];
+        private readonly GameObject[] _borrowedLabels = new GameObject[4];
+        private readonly GameObject[] _actionChips = new GameObject[4];
+        private readonly GameObject[] _unavailableLabels = new GameObject[4];
+        private readonly bool[] _rewardedRegionsRegistered = new bool[4];
 
         private Rect _entryRectPx;
         private Rect _backRectPx;
@@ -51,6 +88,7 @@ namespace CatMetro.Presentation.Screens
         private bool _entryRegistered;
         private bool _modalRegistered;
         private bool _ledgerSubscribed;
+        private bool _adsSubscribed;
         private bool _purchaseBusy;
         private bool _restoreBusy;
 
@@ -67,11 +105,16 @@ namespace CatMetro.Presentation.Screens
         public string StatusText => _statusLabel != null ? _statusLabel.text : string.Empty;
 
         public static WardrobeScreenView Create(Transform canvasParent, PurchaseService service)
+            => Create(canvasParent, service, RewardedAdRuntime.Current);
+
+        public static WardrobeScreenView Create(Transform canvasParent, PurchaseService service,
+            IRewardedAds rewardedAds)
         {
             var root = new GameObject("WardrobeSurface");
             root.transform.SetParent(canvasParent, false);
             var view = root.AddComponent<WardrobeScreenView>();
             view._service = service ?? PurchaseRuntime.Current;
+            view._rewardedAds = rewardedAds ?? RewardedAdRuntime.Current;
             Stretch(root.AddComponent<RectTransform>());
 
             view.BuildEntry(root.transform);
@@ -150,6 +193,8 @@ namespace CatMetro.Presentation.Screens
             _statusLabel.fontSizeMin = 17f;
             _statusLabel.fontSizeMax = 24f;
 
+            BuildTryOnStrip(_panel.transform);
+
             _restoreRect = MakeChip(_panel.transform, "RestorePurchasesChip",
                 Palette.WithAlpha(Palette.MetroTeal, 0.95f));
             _restoreLabel = MakeText(_restoreRect, "RestoreLabel", Vector2.zero, Vector2.one,
@@ -163,6 +208,133 @@ namespace CatMetro.Presentation.Screens
             _buyLabel.enableAutoSizing = true;
             _buyLabel.fontSizeMin = 20f;
             _buyLabel.fontSizeMax = 31f;
+        }
+
+        private void BuildTryOnStrip(Transform parent)
+        {
+            _tryOnStrip = MakeRect(parent, "TryOnStrip");
+            _tryOnHeading = MakeRect(_tryOnStrip, "TryOnHeading");
+            var heading = MakeText(_tryOnHeading, "TryOnHeadingLabel", Vector2.zero, Vector2.one,
+                Text("wardrobe.tryon.heading"), 21f, Palette.InkNavy);
+            heading.fontStyle = FontStyles.Bold;
+            heading.alignment = TextAlignmentOptions.Left;
+            heading.enableAutoSizing = true;
+            heading.fontSizeMin = 14f;
+            heading.fontSizeMax = 21f;
+
+            for (int i = 0; i < TryOnSpecs.Length; i++)
+                BuildTryOnCard(i);
+        }
+
+        private void BuildTryOnCard(int index)
+        {
+            var spec = TryOnSpecs[index];
+            var card = MakeChip(_tryOnStrip, "TryOnCard_" + spec.PlacementId,
+                Palette.WithAlpha(Palette.DepotNavy, 0.92f));
+            _tryOnCards[index] = card;
+
+            MakeSurface(card, "CreamInset", new Vector2(0.025f, 0.025f),
+                new Vector2(0.975f, 0.975f), Palette.CreamCard, true);
+            _borrowedAccents[index] = MakeSurface(card, "BorrowedAccent",
+                new Vector2(0.045f, 0.045f), new Vector2(0.955f, 0.955f),
+                Palette.WithAlpha(Palette.MetroTeal, 0.36f), true).gameObject;
+
+            var name = MakeText(card, "ItemName", new Vector2(0.06f, 0.79f),
+                new Vector2(0.94f, 0.96f), Text(spec.NameKey), 16f, Palette.InkNavy);
+            name.fontStyle = FontStyles.Bold;
+            name.enableAutoSizing = true;
+            name.fontSizeMin = 10f;
+            name.fontSizeMax = 16f;
+
+            var silhouette = MakeRect(card, "Silhouette");
+            silhouette.anchorMin = new Vector2(0.13f, 0.39f);
+            silhouette.anchorMax = new Vector2(0.87f, 0.79f);
+            silhouette.offsetMin = Vector2.zero;
+            silhouette.offsetMax = Vector2.zero;
+            BuildTryOnSilhouette(index, silhouette);
+
+            _lockedLabels[index] = MakeText(card, "LockedLabel", new Vector2(0.06f, 0.30f),
+                new Vector2(0.94f, 0.42f), Text("wardrobe.tryon.locked"), 13f,
+                Palette.InkNavy).gameObject;
+            _borrowedLabels[index] = MakeText(card, "BorrowedLabel", new Vector2(0.04f, 0.27f),
+                new Vector2(0.96f, 0.43f), Text("wardrobe.tryon.borrowed"), 13f,
+                Palette.DepotNavy).gameObject;
+
+            var action = MakeChip(card, "ActionChip", Palette.TicketOrange);
+            action.anchorMin = new Vector2(0.055f, 0.035f);
+            action.anchorMax = new Vector2(0.945f, 0.30f);
+            action.offsetMin = Vector2.zero;
+            action.offsetMax = Vector2.zero;
+            var actionLabel = MakeText(action, "ActionLabel", new Vector2(0.04f, 0.02f),
+                new Vector2(0.96f, 0.98f), Text("wardrobe.tryon.watch"), 13f,
+                Palette.DepotNavy);
+            actionLabel.fontStyle = FontStyles.Bold;
+            actionLabel.enableAutoSizing = true;
+            actionLabel.fontSizeMin = 8f;
+            actionLabel.fontSizeMax = 13f;
+            _actionChips[index] = action.gameObject;
+
+            var unavailable = MakeText(card, "UnavailableLabel", new Vector2(0.04f, 0.035f),
+                new Vector2(0.96f, 0.29f), Text("wardrobe.tryon.unavailable"), 12f,
+                Palette.WithAlpha(Palette.InkNavy, 0.72f));
+            unavailable.enableAutoSizing = true;
+            unavailable.fontSizeMin = 8f;
+            unavailable.fontSizeMax = 12f;
+            _unavailableLabels[index] = unavailable.gameObject;
+
+            _borrowedAccents[index].SetActive(false);
+            _borrowedLabels[index].SetActive(false);
+            _actionChips[index].SetActive(false);
+            _unavailableLabels[index].SetActive(false);
+        }
+
+        private static void BuildTryOnSilhouette(int index, RectTransform parent)
+        {
+            switch (index)
+            {
+                case 0:
+                    MakeSurface(parent, "ConductorCoat", new Vector2(0.20f, 0.08f),
+                        new Vector2(0.80f, 0.70f), Palette.InkNavy, true);
+                    MakeSurface(parent, "ConductorHat", new Vector2(0.12f, 0.68f),
+                        new Vector2(0.88f, 0.84f), Palette.InkNavy, true);
+                    MakeSurface(parent, "ConductorHatCrown", new Vector2(0.25f, 0.78f),
+                        new Vector2(0.75f, 0.98f), Palette.InkNavy, true);
+                    MakeSurface(parent, "ConductorBadge", new Vector2(0.44f, 0.79f),
+                        new Vector2(0.56f, 0.96f), Palette.TicketOrange, true);
+                    break;
+                case 1:
+                    MakeSurface(parent, "EngineerBib", new Vector2(0.21f, 0.08f),
+                        new Vector2(0.79f, 0.78f), Palette.MetroTeal, true);
+                    MakeSurface(parent, "EngineerStrapLeft", new Vector2(0.20f, 0.64f),
+                        new Vector2(0.39f, 0.98f), Palette.TicketOrange, true);
+                    MakeSurface(parent, "EngineerStrapRight", new Vector2(0.61f, 0.64f),
+                        new Vector2(0.80f, 0.98f), Palette.TicketOrange, true);
+                    MakeSurface(parent, "EngineerBuckle", new Vector2(0.41f, 0.40f),
+                        new Vector2(0.59f, 0.61f), Palette.TicketOrange, true);
+                    break;
+                case 2:
+                    var scarfLeft = MakeSurface(parent, "ScarfLeft", new Vector2(0.22f, 0.06f),
+                        new Vector2(0.50f, 0.94f), Palette.TicketOrange, true);
+                    scarfLeft.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -28f);
+                    var scarfRight = MakeSurface(parent, "ScarfRight", new Vector2(0.50f, 0.06f),
+                        new Vector2(0.78f, 0.94f), Palette.TicketOrange, true);
+                    scarfRight.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 28f);
+                    MakeSurface(parent, "ScarfKnot", new Vector2(0.36f, 0.52f),
+                        new Vector2(0.64f, 0.83f), Palette.TabbyYellow, true);
+                    break;
+                default:
+                    MakeSurface(parent, "GoggleLeft", new Vector2(0.05f, 0.27f),
+                        new Vector2(0.45f, 0.76f), Palette.InkNavy, true);
+                    MakeSurface(parent, "GoggleRight", new Vector2(0.55f, 0.27f),
+                        new Vector2(0.95f, 0.76f), Palette.InkNavy, true);
+                    MakeSurface(parent, "GoggleLensLeft", new Vector2(0.13f, 0.37f),
+                        new Vector2(0.40f, 0.69f), Palette.MetroTeal, true);
+                    MakeSurface(parent, "GoggleLensRight", new Vector2(0.60f, 0.37f),
+                        new Vector2(0.87f, 0.69f), Palette.MetroTeal, true);
+                    MakeSurface(parent, "GoggleBridge", new Vector2(0.42f, 0.45f),
+                        new Vector2(0.58f, 0.58f), Palette.InkNavy, true);
+                    break;
+            }
         }
 
         private void BuildProfileCat(Transform parent)
@@ -223,6 +395,7 @@ namespace CatMetro.Presentation.Screens
             _entry.SetActive(true);
             _panel.SetActive(false);
             UnsubscribeLedger();
+            UnsubscribeAds();
             LayoutForViewport(Screen.safeArea, Screen.dpi);
             RefreshVisuals();
             RegisterEntry();
@@ -240,6 +413,7 @@ namespace CatMetro.Presentation.Screens
             UnregisterEntry();
             RegisterModal();
             SubscribeLedger();
+            SubscribeAds();
             SetStatus(Text("wardrobe.status.checking"));
             RefreshVisuals();
             _service.Refresh(() =>
@@ -259,6 +433,7 @@ namespace CatMetro.Presentation.Screens
             UnregisterEntry();
             UnregisterModal();
             UnsubscribeLedger();
+            UnsubscribeAds();
             if (_entry != null) _entry.SetActive(false);
             if (_panel != null) _panel.SetActive(false);
             gameObject.SetActive(false);
@@ -269,6 +444,7 @@ namespace CatMetro.Presentation.Screens
             UnregisterEntry();
             UnregisterModal();
             UnsubscribeLedger();
+            UnsubscribeAds();
         }
 
         private void OnEnable()
@@ -278,6 +454,8 @@ namespace CatMetro.Presentation.Screens
             {
                 RegisterModal();
                 SubscribeLedger();
+                SubscribeAds();
+                RefreshTryOnVisuals();
             }
         }
 
@@ -286,6 +464,7 @@ namespace CatMetro.Presentation.Screens
             UnregisterEntry();
             UnregisterModal();
             UnsubscribeLedger();
+            UnsubscribeAds();
         }
 
         public void LayoutForViewport(Rect safeArea, float dpi)
@@ -300,6 +479,13 @@ namespace CatMetro.Presentation.Screens
             ApplyPx(_restoreRect, _restoreRectPx);
             ApplyPx(_statusRect, WardrobeLayout.StatusRect(safeArea, dpi));
             ApplyPx(_portraitRect, WardrobeLayout.PortraitRect(safeArea, dpi));
+
+            var strip = WardrobeLayout.PreviewStripRect(safeArea, dpi);
+            ApplyPx(_tryOnStrip, strip);
+            ApplyPxRelative(_tryOnHeading, WardrobeLayout.PreviewHeadingRect(safeArea, dpi), strip);
+            for (int i = 0; i < _tryOnCards.Length; i++)
+                ApplyPxRelative(_tryOnCards[i], WardrobeLayout.PreviewCardRect(safeArea, dpi, i),
+                    strip);
 
             var title = _panel.transform.Find("WardrobeTitle") as RectTransform;
             if (title != null) ApplyPx(title, WardrobeLayout.TitleRect(safeArea, dpi));
@@ -403,6 +589,8 @@ namespace CatMetro.Presentation.Screens
                     ? Text("wardrobe.restore.running")
                     : Text("wardrobe.restore");
 
+            RefreshTryOnVisuals();
+
             if (_buyLabel == null) return;
             if (permanent)
                 _buyLabel.text = Text("wardrobe.equipped");
@@ -414,6 +602,24 @@ namespace CatMetro.Presentation.Screens
                 _buyLabel.text = Text("wardrobe.store.checking");
             else
                 _buyLabel.text = Text("wardrobe.store.unavailable");
+        }
+
+        private void RefreshTryOnVisuals()
+        {
+            if (_rewardedAds == null) return;
+            for (int i = 0; i < TryOnSpecs.Length; i++)
+            {
+                bool unlocked = _service.IsUnlocked(TryOnSpecs[i].EntitlementId);
+                bool canShow = _panelShown && !unlocked &&
+                    _rewardedAds.CanShow(TryOnSpecs[i].PlacementId);
+
+                _borrowedAccents[i].SetActive(unlocked);
+                _lockedLabels[i].SetActive(!unlocked);
+                _borrowedLabels[i].SetActive(unlocked);
+                _actionChips[i].SetActive(canShow);
+                _unavailableLabels[i].SetActive(_panelShown && !unlocked && !canShow);
+                SyncRewardedRegion(i, canShow);
+            }
         }
 
         private bool HasPermanentCoat()
@@ -436,6 +642,12 @@ namespace CatMetro.Presentation.Screens
             if (!_purchaseBusy && !_restoreBusy) SetDefaultStatus();
         }
 
+        private void OnAdsAvailabilityChanged()
+        {
+            if (!_panelShown) return;
+            RefreshTryOnVisuals();
+        }
+
         private void SetStatus(string value)
         {
             if (_statusLabel != null) _statusLabel.text = value;
@@ -453,6 +665,20 @@ namespace CatMetro.Presentation.Screens
             if (!_ledgerSubscribed) return;
             _service.Ledger.Changed -= OnLedgerChanged;
             _ledgerSubscribed = false;
+        }
+
+        private void SubscribeAds()
+        {
+            if (_adsSubscribed || _rewardedAds == null) return;
+            _rewardedAds.AvailabilityChanged += OnAdsAvailabilityChanged;
+            _adsSubscribed = true;
+        }
+
+        private void UnsubscribeAds()
+        {
+            if (!_adsSubscribed || _rewardedAds == null) return;
+            _rewardedAds.AvailabilityChanged -= OnAdsAvailabilityChanged;
+            _adsSubscribed = false;
         }
 
         private void RegisterEntry()
@@ -482,11 +708,52 @@ namespace CatMetro.Presentation.Screens
 
         private void UnregisterModal()
         {
+            UnregisterRewardedRegions();
             if (_regions == null || !_modalRegistered) return;
             _regions.Unregister(BackRegionId);
             _regions.Unregister(BuyRegionId);
             _regions.Unregister(RestoreRegionId);
             _modalRegistered = false;
+        }
+
+        private void SyncRewardedRegion(int index, bool shouldRegister)
+        {
+            if (_regions == null || !_modalRegistered) shouldRegister = false;
+            if (shouldRegister == _rewardedRegionsRegistered[index]) return;
+
+            string id = RewardedRegionId(TryOnSpecs[index].PlacementId);
+            if (shouldRegister)
+            {
+                int capturedIndex = index;
+                _regions.Register(id, () => PaintedRectPx(_tryOnCards[capturedIndex]),
+                    () => _rewardedAds.Show(TryOnSpecs[capturedIndex].PlacementId), ModalPriority);
+                _rewardedRegionsRegistered[index] = true;
+            }
+            else
+            {
+                _regions?.Unregister(id);
+                _rewardedRegionsRegistered[index] = false;
+            }
+        }
+
+        private void UnregisterRewardedRegions()
+        {
+            for (int i = 0; i < _rewardedRegionsRegistered.Length; i++)
+            {
+                if (!_rewardedRegionsRegistered[i]) continue;
+                _regions?.Unregister(RewardedRegionId(TryOnSpecs[i].PlacementId));
+                _rewardedRegionsRegistered[i] = false;
+            }
+        }
+
+        private static string RewardedRegionId(string placementId)
+            => "wardrobe.rewarded." + placementId;
+
+        private static Rect PaintedRectPx(RectTransform rect)
+        {
+            var corners = new Vector3[4];
+            rect.GetWorldCorners(corners);
+            return Rect.MinMaxRect(corners[0].x, corners[0].y, corners[2].x, corners[2].y);
         }
 
         private static string Text(string key) => Strings.UiStrings.Get(key);
@@ -564,6 +831,17 @@ namespace CatMetro.Presentation.Screens
             rect.anchorMax = Vector2.zero;
             rect.pivot = new Vector2(0.5f, 0.5f);
             rect.anchoredPosition = px.center;
+            rect.sizeDelta = px.size;
+        }
+
+        private static void ApplyPxRelative(RectTransform rect, Rect px, Rect parentPx)
+        {
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.zero;
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            // With a bottom-left anchor, anchoredPosition is measured from the parent's
+            // bottom-left anchor reference, not from its pivot/centre.
+            rect.anchoredPosition = px.center - parentPx.min;
             rect.sizeDelta = px.size;
         }
     }
