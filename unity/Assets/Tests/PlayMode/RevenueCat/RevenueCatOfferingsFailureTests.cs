@@ -17,19 +17,21 @@ namespace CatMetro.Tests.PlayMode.RevenueCat
     {
         private GameObject _host;
         private RevenueCatBehaviour _backend;
+        private Purchases _purchases;
 
         [SetUp]
         public void SetUp()
         {
             _host = new GameObject("RevenueCatOfferingsFailureTests");
             _backend = _host.AddComponent<RevenueCatBehaviour>();
-            var purchases = _host.AddComponent<Purchases>();
-            purchases.enabled = false;
-            purchases.useRuntimeSetup = true;
+            _backend.enabled = false;
+            _purchases = _host.AddComponent<Purchases>();
+            _purchases.enabled = false;
+            _purchases.useRuntimeSetup = true;
             typeof(Purchases).GetMethod("Start",
                     BindingFlags.Instance | BindingFlags.NonPublic)
-                .Invoke(purchases, null);
-            SetField("_purchases", purchases);
+                .Invoke(_purchases, null);
+            SetField("_purchases", _purchases);
             GetField<Dictionary<string, Purchases.Package>>("_packagesByProductId")
                 [ProductIds.OutfitConductor] = new Purchases.Package(JSON.Parse(PackageJson));
             SetAvailability(BackendAvailability.Ready);
@@ -55,7 +57,6 @@ namespace CatMetro.Tests.PlayMode.RevenueCat
                 observed = _backend.Availability;
                 products = value;
             });
-            _backend.enabled = false;
 
             Assert.That(callbacks, Is.EqualTo(1));
             Assert.That(products, Is.Empty);
@@ -80,15 +81,14 @@ namespace CatMetro.Tests.PlayMode.RevenueCat
                 observed = _backend.Availability;
                 products = value;
             });
-            // Prevent RevenueCatBehaviour.Start from configuring itself next frame. Disabling a
-            // MonoBehaviour does not stop a coroutine it already started, so the Guard watchdog
-            // continues against the real initialized Editor noop wrapper.
-            _backend.enabled = false;
+            // Guard explicitly starts its coroutine on this active host. It continues while the
+            // fixture backend remains disabled, against the initialized Editor noop wrapper.
 
             float deadline = Time.realtimeSinceStartup + 35f;
             while (callbacks == 0 && Time.realtimeSinceStartup < deadline)
                 yield return null;
 
+            AssertManualPurchasesMounted();
             Assert.That(callbacks, Is.EqualTo(1), "the real 30-second watchdog must release UI");
             Assert.That(Time.realtimeSinceStartup - startedAt, Is.GreaterThanOrEqualTo(29f),
                 "a synchronous wrapper exception is not watchdog evidence");
@@ -170,11 +170,11 @@ namespace CatMetro.Tests.PlayMode.RevenueCat
 
             var fire = (Func<IReadOnlyList<StoreProductView>, bool>)guard.Invoke(
                 _backend, arguments);
-            _backend.enabled = false;
             float deadline = Time.realtimeSinceStartup + 1f;
             while (callbacks == 0 && Time.realtimeSinceStartup < deadline)
                 yield return null;
 
+            AssertManualPurchasesMounted();
             Assert.That(events, Is.EqualTo(new[] { "hook", "callback" }),
                 "the failure hook runs before the consumer observes its timeout value");
             Assert.That(callbacks, Is.EqualTo(1));
@@ -183,13 +183,46 @@ namespace CatMetro.Tests.PlayMode.RevenueCat
         }
 
         [Test]
-        public void InteractivePurchaseAndRestoreWatchdogs_RetainProductionDuration()
+        public void PublicPurchase_ForwardsProductionWatchdogToGuard()
         {
-            var interactiveTimeout = typeof(RevenueCatBehaviour).GetField(
-                "InteractiveTimeoutSeconds", BindingFlags.Static | BindingFlags.NonPublic);
-            Assert.That(interactiveTimeout, Is.Not.Null);
-            Assert.That(interactiveTimeout.GetRawConstantValue(), Is.EqualTo(300f),
-                "public purchase and restore retain the production 300-second watchdog");
+            float? observedTimeout = null;
+            ObserveScheduledWatchdog(seconds => observedTimeout = seconds);
+            int localCallbacks = 0;
+
+            _backend.Purchase(ProductIds.OutfitConductor, _ => localCallbacks++);
+
+            Assert.That(observedTimeout, Is.EqualTo(300f),
+                "public Purchase must forward the interactive watchdog to the real Guard");
+            Assert.That(localCallbacks, Is.EqualTo(0),
+                "the initialized noop wrapper must leave the native purchase outstanding");
+            AssertNativeCallbackMounted("MakePurchaseCallback");
+            AssertManualPurchasesMounted();
+        }
+
+        [Test]
+        public void PublicRestore_ForwardsProductionWatchdogToGuard()
+        {
+            float? observedTimeout = null;
+            ObserveScheduledWatchdog(seconds => observedTimeout = seconds);
+            int localCallbacks = 0;
+
+            _backend.Restore(_ => localCallbacks++);
+
+            Assert.That(observedTimeout, Is.EqualTo(300f),
+                "public Restore must forward the interactive watchdog to the real Guard");
+            Assert.That(localCallbacks, Is.EqualTo(0),
+                "the initialized noop wrapper must leave the native restore outstanding");
+            AssertNativeCallbackMounted("RestorePurchasesCallback");
+            AssertManualPurchasesMounted();
+        }
+
+        [UnityTest]
+        public IEnumerator FixtureLifecycle_PreservesManuallyInitializedPurchasesAcrossFrames()
+        {
+            yield return null;
+            yield return null;
+
+            AssertManualPurchasesMounted();
         }
 
         [UnityTest]
@@ -212,16 +245,15 @@ namespace CatMetro.Tests.PlayMode.RevenueCat
             long startedSession = _backend.BeginAuthoritySession();
             int localCallbacks = 0;
 
-            _backend.enabled = true;
             InvokePrivate("PurchaseWithTimeout", ProductIds.OutfitConductor,
                 (Action<PurchaseResult>)(_ => localCallbacks++), 0.01f);
             long laterSession = _backend.BeginAuthoritySession();
-            _backend.enabled = false;
             Assert.That(laterSession, Is.Not.EqualTo(startedSession));
 
             float deadline = Time.realtimeSinceStartup + 1f;
             while (localCallbacks == 0 && Time.realtimeSinceStartup < deadline)
                 yield return null;
+            AssertManualPurchasesMounted();
             Assert.That(localCallbacks, Is.EqualTo(1));
 
             InvokePurchasesCallback("_makePurchase", PurchaseResponseJson);
@@ -244,16 +276,15 @@ namespace CatMetro.Tests.PlayMode.RevenueCat
             long startedSession = _backend.BeginAuthoritySession();
             int localCallbacks = 0;
 
-            _backend.enabled = true;
             InvokePrivate("RestoreWithTimeout",
                 (Action<RestoreResult>)(_ => localCallbacks++), 0.01f);
             long laterSession = _backend.BeginAuthoritySession();
-            _backend.enabled = false;
             Assert.That(laterSession, Is.Not.EqualTo(startedSession));
 
             float deadline = Time.realtimeSinceStartup + 1f;
             while (localCallbacks == 0 && Time.realtimeSinceStartup < deadline)
                 yield return null;
+            AssertManualPurchasesMounted();
             Assert.That(localCallbacks, Is.EqualTo(1));
 
             InvokePurchasesCallback("_restorePurchases", CustomerInfoResponseJson);
@@ -277,6 +308,42 @@ namespace CatMetro.Tests.PlayMode.RevenueCat
             => typeof(Purchases)
                 .GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)
                 .Invoke(GetField<Purchases>("_purchases"), new object[] { json });
+
+        private void ObserveScheduledWatchdog(Action<float> observer)
+        {
+            var diagnostics = typeof(RevenueCatBehaviour).GetField(
+                "_watchdogScheduledForDiagnostics",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(diagnostics, Is.Not.Null,
+                "Guard needs a dormant diagnostics seam so tests can observe its real timeout");
+            diagnostics.SetValue(_backend, observer);
+        }
+
+        private void AssertNativeCallbackMounted(string propertyName)
+        {
+            var callback = typeof(Purchases).GetProperty(propertyName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(callback, Is.Not.Null);
+            Assert.That(callback.GetValue(_purchases), Is.Not.Null,
+                "the public adapter path must reach purchases-unity's actual callback slot");
+        }
+
+        private void AssertManualPurchasesMounted()
+        {
+            Assert.That(GetField<Purchases>("_purchases"), Is.SameAs(_purchases),
+                "the backend must retain the manually initialized SDK object");
+            Assert.That(_host.GetComponents<Purchases>(), Has.Length.EqualTo(1),
+                "RevenueCatBehaviour.Start must not add a replacement SDK component");
+            Assert.That(_backend.enabled, Is.False,
+                "the fixture backend must stay disabled so Start cannot replace its SDK object");
+
+            var wrapper = typeof(Purchases).GetField("_wrapper",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(wrapper, Is.Not.Null);
+            var mountedWrapper = wrapper.GetValue(_purchases);
+            Assert.That(mountedWrapper, Is.Not.Null);
+            Assert.That(mountedWrapper.GetType().Name, Is.EqualTo("PurchasesWrapperNoop"));
+        }
 
         private void SetAvailability(BackendAvailability availability)
             => typeof(RevenueCatBehaviour)
