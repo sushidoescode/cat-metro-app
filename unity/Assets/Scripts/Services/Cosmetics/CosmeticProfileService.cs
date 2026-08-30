@@ -33,7 +33,8 @@ namespace CatMetro.Services.Cosmetics
             _purchases = purchases ?? PurchaseRuntime.Current;
             _access = new CosmeticAccessResolver(_purchases);
 
-            ComputeCurrentPortrait(_access, out _selectedCatId, out _currentPortrait);
+            ComputeCurrentPortrait(_profile, _access, out _selectedCatId,
+                out _currentPortrait);
             _purchases.Ledger.Changed += OnLedgerChanged;
         }
 
@@ -56,9 +57,17 @@ namespace CatMetro.Services.Cosmetics
                 || !Catalog.TryGetItem(itemId, out var item)
                 || item.Slot != slot
                 || !IsCompatible(item, catId)
-                || !_assets.TryGet(item.PortraitAssetId, out _)
-                || !_access.IsAccessible(item, _profile))
+                || !_assets.TryGet(item.PortraitAssetId, out _))
                 return false;
+
+            try
+            {
+                if (!_access.IsAccessible(item, _profile)) return false;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
 
             var loadout = LoadoutForMutation(catId).With(slot, itemId);
             return TryPublish(_profile.WithLoadout(loadout));
@@ -93,22 +102,22 @@ namespace CatMetro.Services.Cosmetics
 
         public CosmeticPortraitSnapshot EffectivePortraitFor(string catId)
         {
-            return EffectivePortraitFor(catId, _access);
+            return EffectivePortraitFor(_profile, catId, _access);
         }
 
-        private CosmeticPortraitSnapshot EffectivePortraitFor(string catId,
-            CosmeticAccessResolver access)
+        private CosmeticPortraitSnapshot EffectivePortraitFor(CosmeticProfileSnapshot profile,
+            string catId, CosmeticAccessResolver access)
         {
-            if (!TryGetAccessibleCat(catId, out var cat)) return default;
+            if (!TryGetAccessibleCat(profile, catId, out var cat)) return default;
 
             string baseAssetId = _assets.TryGet(cat.PortraitAssetId, out _)
                 ? cat.PortraitAssetId
                 : string.Empty;
-            var loadout = _profile.LoadoutFor(catId);
+            var loadout = profile.LoadoutFor(catId);
             return new CosmeticPortraitSnapshot(catId, baseAssetId,
-                EffectiveAsset(catId, CosmeticSlot.Outfit, loadout.OutfitId, access),
-                EffectiveAsset(catId, CosmeticSlot.Accessory, loadout.AccessoryId, access),
-                EffectiveAsset(catId, CosmeticSlot.Frame, loadout.FrameId, access));
+                EffectiveAsset(profile, catId, CosmeticSlot.Outfit, loadout.OutfitId, access),
+                EffectiveAsset(profile, catId, CosmeticSlot.Accessory, loadout.AccessoryId, access),
+                EffectiveAsset(profile, catId, CosmeticSlot.Frame, loadout.FrameId, access));
         }
 
         public CosmeticPortraitSnapshot PreviewPortrait(string catId, CosmeticSlot slot,
@@ -135,7 +144,9 @@ namespace CatMetro.Services.Cosmetics
         public void BindPurchases(PurchaseService purchases)
         {
             if (_disposed) return;
-            BindPurchasesCore(purchases ?? PurchaseRuntime.Current, true);
+            var binding = PreparePurchaseBinding(purchases ?? PurchaseRuntime.Current);
+            bool effectiveChanged = CommitPurchaseBinding(binding);
+            NotifyPurchaseBindingChanged(effectiveChanged);
         }
 
         public void Dispose()
@@ -179,6 +190,18 @@ namespace CatMetro.Services.Cosmetics
 
         private bool TryPublish(CosmeticProfileSnapshot candidate)
         {
+            string selectedCatId;
+            CosmeticPortraitSnapshot currentPortrait;
+            try
+            {
+                ComputeCurrentPortrait(candidate, _access, out selectedCatId,
+                    out currentPortrait);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+
             try
             {
                 if (!_persistence.TryReplace(candidate)) return false;
@@ -189,28 +212,48 @@ namespace CatMetro.Services.Cosmetics
             }
 
             _profile = candidate;
-            RecomputeCurrentPortrait();
+            _selectedCatId = selectedCatId;
+            _currentPortrait = currentPortrait;
             Changed?.Invoke();
             return true;
         }
 
-        private void BindPurchasesCore(PurchaseService purchases, bool publishEffectiveChange)
+        internal PurchaseBinding PreparePurchaseBinding(PurchaseService purchases)
         {
-            if (ReferenceEquals(_purchases, purchases)) return;
+            if (_disposed) throw new ObjectDisposedException(nameof(CosmeticProfileService));
+            if (ReferenceEquals(_purchases, purchases))
+                return new PurchaseBinding(this, _purchases, purchases, _selectedCatId,
+                    _currentPortrait, false);
 
             var candidateAccess = new CosmeticAccessResolver(purchases);
-            ComputeCurrentPortrait(candidateAccess, out var selectedCatId,
+            ComputeCurrentPortrait(_profile, candidateAccess, out var selectedCatId,
                 out var currentPortrait);
+            return new PurchaseBinding(this, _purchases, purchases, selectedCatId,
+                currentPortrait, true);
+        }
+
+        internal bool CommitPurchaseBinding(PurchaseBinding binding)
+        {
+            if (!ReferenceEquals(binding.Owner, this) || _disposed)
+                return false;
+            if (!binding.RequiresCommit) return false;
+            if (!ReferenceEquals(_purchases, binding.PreviousPurchases))
+                throw new InvalidOperationException("stale cosmetic purchase binding");
 
             if (_purchases != null) _purchases.Ledger.Changed -= OnLedgerChanged;
-            _purchases = purchases;
-            _access.BindPurchases(purchases);
+            _purchases = binding.Purchases;
+            _access.BindPurchases(binding.Purchases);
             if (_purchases != null) _purchases.Ledger.Changed += OnLedgerChanged;
 
             var before = _currentPortrait;
-            _selectedCatId = selectedCatId;
-            _currentPortrait = currentPortrait;
-            if (publishEffectiveChange && !_currentPortrait.Equals(before)) Changed?.Invoke();
+            _selectedCatId = binding.SelectedCatId;
+            _currentPortrait = binding.CurrentPortrait;
+            return !_currentPortrait.Equals(before);
+        }
+
+        internal void NotifyPurchaseBindingChanged(bool effectiveChanged)
+        {
+            if (effectiveChanged) Changed?.Invoke();
         }
 
         private void OnLedgerChanged()
@@ -223,24 +266,26 @@ namespace CatMetro.Services.Cosmetics
 
         private void RecomputeCurrentPortrait()
         {
-            ComputeCurrentPortrait(_access, out var selectedCatId, out var currentPortrait);
+            ComputeCurrentPortrait(_profile, _access, out var selectedCatId,
+                out var currentPortrait);
             _selectedCatId = selectedCatId;
             _currentPortrait = currentPortrait;
         }
 
-        private void ComputeCurrentPortrait(CosmeticAccessResolver access,
-            out string selectedCatId, out CosmeticPortraitSnapshot currentPortrait)
+        private void ComputeCurrentPortrait(CosmeticProfileSnapshot profile,
+            CosmeticAccessResolver access, out string selectedCatId,
+            out CosmeticPortraitSnapshot currentPortrait)
         {
-            selectedCatId = ResolveSelectedCatId();
+            selectedCatId = ResolveSelectedCatId(profile);
             currentPortrait = string.IsNullOrEmpty(selectedCatId)
                 ? default
-                : EffectivePortraitFor(selectedCatId, access);
+                : EffectivePortraitFor(profile, selectedCatId, access);
         }
 
-        private string ResolveSelectedCatId()
+        private string ResolveSelectedCatId(CosmeticProfileSnapshot profile)
         {
-            if (TryGetAccessibleCat(_profile.SelectedCatId, out _))
-                return _profile.SelectedCatId;
+            if (TryGetAccessibleCat(profile, profile.SelectedCatId, out _))
+                return profile.SelectedCatId;
 
             for (int i = 0; i < Catalog.Cats.Count; i++)
             {
@@ -253,18 +298,24 @@ namespace CatMetro.Services.Cosmetics
 
         private bool TryGetAccessibleCat(string catId, out CosmeticCatDefinition cat)
         {
-            if (!Catalog.TryGetCat(catId, out cat)) return false;
-            return cat.Starter || Contains(_profile.EarnedCatIds, cat.Id);
+            return TryGetAccessibleCat(_profile, catId, out cat);
         }
 
-        private string EffectiveAsset(string catId, CosmeticSlot slot, string itemId,
-            CosmeticAccessResolver access)
+        private bool TryGetAccessibleCat(CosmeticProfileSnapshot profile, string catId,
+            out CosmeticCatDefinition cat)
+        {
+            if (!Catalog.TryGetCat(catId, out cat)) return false;
+            return cat.Starter || Contains(profile.EarnedCatIds, cat.Id);
+        }
+
+        private string EffectiveAsset(CosmeticProfileSnapshot profile, string catId,
+            CosmeticSlot slot, string itemId, CosmeticAccessResolver access)
         {
             if (string.IsNullOrEmpty(itemId)
                 || !Catalog.TryGetItem(itemId, out var item)
                 || item.Slot != slot
                 || !IsCompatible(item, catId)
-                || !access.IsAccessible(item, _profile)
+                || !access.IsAccessible(item, profile)
                 || !_assets.TryGet(item.PortraitAssetId, out _))
                 return string.Empty;
 
@@ -314,6 +365,29 @@ namespace CatMetro.Services.Cosmetics
                         portrait.OutfitAssetId, portrait.AccessoryAssetId, assetId);
                 default:
                     return portrait;
+            }
+        }
+
+        internal readonly struct PurchaseBinding
+        {
+            internal CosmeticProfileService Owner { get; }
+            internal PurchaseService PreviousPurchases { get; }
+            internal PurchaseService Purchases { get; }
+            internal string SelectedCatId { get; }
+            internal CosmeticPortraitSnapshot CurrentPortrait { get; }
+            internal bool RequiresCommit { get; }
+
+            internal PurchaseBinding(CosmeticProfileService owner,
+                PurchaseService previousPurchases, PurchaseService purchases,
+                string selectedCatId, CosmeticPortraitSnapshot currentPortrait,
+                bool requiresCommit)
+            {
+                Owner = owner;
+                PreviousPurchases = previousPurchases;
+                Purchases = purchases;
+                SelectedCatId = selectedCatId;
+                CurrentPortrait = currentPortrait;
+                RequiresCommit = requiresCommit;
             }
         }
     }
