@@ -20,6 +20,9 @@ namespace CatMetro.Tests.Ads
                         throw new InvalidOperationException("injected provider event-add fault");
                     OnEventAdd?.Invoke();
                     _eventReceived += value;
+                    if (ThrowAfterEventAdd)
+                        throw new InvalidOperationException(
+                            "injected provider post-attach event-add fault");
                 }
                 remove
                 {
@@ -37,6 +40,7 @@ namespace CatMetro.Tests.Ads
             public bool ThrowOnLoad { get; set; }
             public bool ThrowOnShow { get; set; }
             public bool ThrowOnEventAdd { get; set; }
+            public bool ThrowAfterEventAdd { get; set; }
             public bool ThrowOnEventRemove { get; set; }
             public Action OnEventAdd { get; set; }
             public int InitializeCalls { get; private set; }
@@ -90,6 +94,9 @@ namespace CatMetro.Tests.Ads
                     OnEventAdd?.Invoke();
                     _readinessChanged += value;
                     if (ReadyOnSubscribe) IsReady = true;
+                    if (ThrowAfterEventAdd)
+                        throw new InvalidOperationException(
+                            "injected reporter post-attach event-add fault");
                 }
                 remove
                 {
@@ -104,6 +111,7 @@ namespace CatMetro.Tests.Ads
             public bool ThrowOnReady { get; set; }
             public bool ThrowOnReport { get; set; }
             public bool ThrowOnEventAdd { get; set; }
+            public bool ThrowAfterEventAdd { get; set; }
             public bool ThrowOnEventRemove { get; set; }
             public bool ReadyOnSubscribe { get; set; }
             public Action OnEventAdd { get; set; }
