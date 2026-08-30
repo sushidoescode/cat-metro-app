@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using CatMetro.Integrations;
 using CatMetro.Integrations.LevelPlay;
@@ -242,6 +243,138 @@ namespace CatMetro.Tests.LevelPlay
         }
 
         [Test]
+        public void ConflictingAuctionAndAdContextsDropWithoutMutatingEitherIndex()
+        {
+            ReadyProvider();
+            Assert.That(_provider.TryShow(211L, "first"), Is.True);
+            _ad.EmitDisplayed(AdInfo("ad-first", "auction-first", "first"));
+            _ad.EmitClosed(AdInfo("ad-first", "auction-first", "first"));
+            Assert.That(_provider.TryShow(212L, "second"), Is.True);
+            _ad.EmitDisplayed(AdInfo("ad-second", "auction-second", "second"));
+
+            _ad.EmitInfoChanged(AdInfo("ad-second", "auction-first", "malformed"));
+            _ad.EmitRewarded(AdInfo("ad-second", null, "second"));
+            _ad.EmitRewarded(AdInfo("ad-first", "auction-first", "first"));
+
+            Assert.That(_events.Where(e => e.Kind == RewardedAdEventKind.Rewarded)
+                .Select(e => e.AttemptId), Is.EqualTo(new[] { 212L, 211L }),
+                "the conflicting pair must neither grant nor alias either stable index");
+        }
+
+        [Test]
+        public void AdIdFirstThenMatchingAuctionProgressionBindsTheSameAttempt()
+        {
+            ReadyProvider();
+            Assert.That(_provider.TryShow(221L, "placement"), Is.True);
+            _ad.EmitDisplayed(AdInfo("ad-first", null, "placement"));
+
+            _ad.EmitRewarded(AdInfo("ad-first", "auction-later", "placement"));
+
+            var reward = _events.Single(e => e.Kind == RewardedAdEventKind.Rewarded);
+            Assert.That(reward.AttemptId, Is.EqualTo(221L));
+            Assert.That(reward.AdId, Is.EqualTo("ad-first"));
+            Assert.That(reward.AuctionId, Is.EqualTo("auction-later"));
+        }
+
+        [Test]
+        public void AContextBindsEachStableFieldOnceAndNeverRetainsAliases()
+        {
+            ReadyProvider();
+            Assert.That(_provider.TryShow(231L, "placement"), Is.True);
+            _ad.EmitDisplayed(AdInfo(null, "auction", "placement"));
+            _ad.EmitInfoChanged(AdInfo("ad-primary", "auction", "placement"));
+            _ad.EmitInfoChanged(AdInfo("ad-alias", "auction", "placement"));
+
+            _ad.EmitRewarded(AdInfo("ad-alias", null, "placement"));
+            Assert.That(_events.Any(e => e.Kind == RewardedAdEventKind.Rewarded), Is.False);
+
+            _ad.EmitRewarded(AdInfo("ad-primary", "auction", "placement"));
+            Assert.That(_events.Single(e => e.Kind == RewardedAdEventKind.Rewarded).AttemptId,
+                Is.EqualTo(231L));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ReusedAdIdCannotLetAnAdOnlyDuplicateGrantTheNewAttempt(bool expireFirst)
+        {
+            ReadyProvider();
+            Assert.That(_provider.TryShow(241L, "first"), Is.True);
+            var first = AdInfo("shared-ad", "auction-old", "first");
+            _ad.EmitDisplayed(first);
+            if (expireFirst)
+            {
+                _ad.EmitClosed(first);
+                _now += 101L;
+                _provider.IsReadyForPlacement("probe");
+            }
+            else
+            {
+                _ad.EmitRewarded(first);
+                _ad.EmitClosed(first);
+            }
+
+            _provider.Load();
+            var second = AdInfo("shared-ad", "auction-new", "second");
+            _ad.EmitLoaded(second);
+            Assert.That(_provider.TryShow(242L, "second"), Is.True);
+            _ad.EmitDisplayed(second);
+
+            _ad.EmitRewarded(AdInfo("shared-ad", null, "first"));
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.Rewarded),
+                Is.EqualTo(expireFirst ? 0 : 1),
+                "AdId-only history is ambiguous and cannot identify the newer attempt");
+
+            _ad.EmitRewarded(second);
+            Assert.That(_events.Last(e => e.Kind == RewardedAdEventKind.Rewarded).AttemptId,
+                Is.EqualTo(242L), "the distinct current auction remains authoritative");
+        }
+
+        [Test]
+        public void StableIndexesAndCompletedOrAmbiguousHistoriesStayBounded()
+        {
+            ReadyProvider();
+            for (int i = 0; i < 40; i++)
+            {
+                string suffix = i.ToString();
+                string adId = "reused-ad-" + suffix;
+                Assert.That(_provider.TryShow(1_000L + i * 2L, "old-" + suffix), Is.True);
+                var oldInfo = AdInfo(adId, "old-auction-" + suffix, "old-" + suffix);
+                _ad.EmitDisplayed(oldInfo);
+                _ad.EmitRewarded(oldInfo);
+                _ad.EmitClosed(oldInfo);
+
+                _provider.Load();
+                var newInfo = AdInfo(adId, "new-auction-" + suffix, "new-" + suffix);
+                _ad.EmitLoaded(newInfo);
+                Assert.That(_provider.TryShow(1_001L + i * 2L, "new-" + suffix), Is.True);
+                _ad.EmitDisplayed(newInfo);
+                _ad.EmitRewarded(newInfo);
+                _ad.EmitClosed(newInfo);
+            }
+
+            Assert.That(PrivateCollectionCount("_contexts"), Is.Zero);
+            Assert.That(PrivateCollectionCount("_byAuction"), Is.Zero);
+            Assert.That(PrivateCollectionCount("_byAd"), Is.Zero);
+            Assert.That(PrivateCollectionCount("_completedAuctions"), Is.LessThanOrEqualTo(32));
+            Assert.That(PrivateCollectionCount("_retiredAdIds"), Is.LessThanOrEqualTo(32));
+            Assert.That(PrivateCollectionCount("_ambiguousAdIds"), Is.LessThanOrEqualTo(32));
+
+            int rewardsBeforeReuse = _events.Count(e =>
+                e.Kind == RewardedAdEventKind.Rewarded);
+            _provider.Load();
+            var afterEviction = AdInfo("reused-ad-0", "after-history-eviction", "latest");
+            _ad.EmitLoaded(afterEviction);
+            Assert.That(_provider.TryShow(2_000L, "latest"), Is.True);
+            _ad.EmitRewarded(AdInfo("reused-ad-0", null, "latest"));
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.Rewarded),
+                Is.EqualTo(rewardsBeforeReuse),
+                "bounded history eviction must conservatively disable unsafe AdId-only grants");
+            _ad.EmitRewarded(afterEviction);
+            Assert.That(_events.Last(e => e.Kind == RewardedAdEventKind.Rewarded).AttemptId,
+                Is.EqualTo(2_000L));
+        }
+
+        [Test]
         public void AmbiguousUnknownAndMalformedRewardsNeverUseNewestAttemptFallback()
         {
             ReadyProvider();
@@ -286,6 +419,10 @@ namespace CatMetro.Tests.LevelPlay
                 "one unresolved closed context conservatively serializes shows");
 
             _now += 101L;
+            Assert.That(_provider.IsReadyForPlacement("second"), Is.False,
+                "expiry alone cannot prove that the ready ad belongs to a new load generation");
+            _provider.Load();
+            _ad.EmitLoaded(AdInfo("new-ad", "new-auction", "second"));
             Assert.That(_provider.IsReadyForPlacement("second"), Is.True);
             Assert.That(_provider.TryShow(402L, "second"), Is.True);
             _ad.EmitRewarded(AdInfo("late-old-ad", "late-old-auction", "first"));
@@ -296,6 +433,111 @@ namespace CatMetro.Tests.LevelPlay
             _ad.EmitRewarded(AdInfo("new-ad", "new-auction", "second"));
             Assert.That(_events.Single(e => e.Kind == RewardedAdEventKind.Rewarded).AttemptId,
                 Is.EqualTo(402L));
+        }
+
+        [Test]
+        public void ExpiredUnboundContextRequiresANewerStableLoadedGeneration()
+        {
+            ReadyProvider();
+            Assert.That(_provider.TryShow(411L, "old"), Is.True);
+            _ad.EmitClosed(AdInfo(null, null, "old"));
+            _now += 101L;
+
+            _provider.Load();
+            _ad.EmitLoaded(AdInfo(null, null, "new"));
+            Assert.That(_provider.IsReadyForPlacement("new"), Is.False);
+            Assert.That(_provider.TryShow(412L, "new"), Is.False);
+
+            _provider.Load();
+            _ad.EmitLoaded(AdInfo("reusable-ad-only", null, "new"));
+            Assert.That(_provider.IsReadyForPlacement("new"), Is.False,
+                "a reusable AdId alone cannot distinguish the expired unknown generation");
+            Assert.That(_provider.TryShow(412L, "new"), Is.False);
+
+            _provider.Load();
+            _ad.EmitLoaded(AdInfo("new-ad", "new-auction", "new"));
+            Assert.That(_provider.IsReadyForPlacement("new"), Is.True);
+            Assert.That(_provider.TryShow(412L, "new"), Is.True);
+        }
+
+        [TestCase("Displayed")]
+        [TestCase("Clicked")]
+        [TestCase("InfoChanged")]
+        [TestCase("Impression")]
+        [TestCase("StableDisplayFailed")]
+        [TestCase("AnonymousDisplayFailed")]
+        public void StalePostExpiryCallbackCannotBindAcrossTheFreshLoadedGeneration(string kind)
+        {
+            ReadyProvider();
+            Assert.That(_provider.TryShow(421L, "old"), Is.True);
+            _ad.EmitClosed(AdInfo(null, null, "old"));
+            _provider.Load();
+            var current = AdInfo("new-ad", "new-auction", "new");
+            _ad.EmitLoaded(current);
+            _now += 101L;
+            Assert.That(_provider.IsReadyForPlacement("new"), Is.True);
+            Assert.That(_provider.TryShow(422L, "new"), Is.True);
+
+            var stale = AdInfo("old-ad", "old-auction", "old");
+            switch (kind)
+            {
+                case "Displayed": _ad.EmitDisplayed(stale); break;
+                case "Clicked": _ad.EmitClicked(stale); break;
+                case "InfoChanged": _ad.EmitInfoChanged(stale); break;
+                case "Impression":
+                    _ad.EmitImpression(new LevelPlayImpressionSnapshot("old-auction",
+                        "one-rewarded-unit", "old", "old-network", 0.01d, "BID"));
+                    _provider.DrainMainThreadEvents();
+                    break;
+                case "StableDisplayFailed":
+                    _ad.EmitDisplayFailed(stale, new LevelPlayErrorSnapshot(509));
+                    break;
+                case "AnonymousDisplayFailed":
+                    _ad.EmitDisplayFailed(AdInfo(null, null, null),
+                        new LevelPlayErrorSnapshot(509));
+                    break;
+            }
+            _ad.EmitRewarded(stale);
+
+            Assert.That(_events.Any(e => e.Kind == RewardedAdEventKind.Rewarded), Is.False,
+                kind + " must not transfer the expired generation's identity");
+            Assert.That(_events.Any(e => e.Kind == RewardedAdEventKind.DisplayFailed &&
+                e.AttemptId == 422L), Is.False);
+
+            _ad.EmitDisplayed(current);
+            _ad.EmitRewarded(current);
+            Assert.That(_events.Single(e => e.Kind == RewardedAdEventKind.Rewarded).AttemptId,
+                Is.EqualTo(422L));
+        }
+
+        [Test]
+        public void AnonymousDisplayFailureOutsideTheCurrentShowCallIsDropped()
+        {
+            ReadyProvider();
+            Assert.That(_provider.TryShow(431L, "placement"), Is.True);
+
+            _ad.EmitDisplayFailed(AdInfo(null, null, null),
+                new LevelPlayErrorSnapshot(509));
+
+            Assert.That(_events.Any(e => e.Kind == RewardedAdEventKind.DisplayFailed), Is.False);
+            var current = AdInfo("ad", "auction", "placement");
+            _ad.EmitDisplayed(current);
+            _ad.EmitRewarded(current);
+            Assert.That(_events.Single(e => e.Kind == RewardedAdEventKind.Rewarded).AttemptId,
+                Is.EqualTo(431L));
+        }
+
+        [Test]
+        public void SynchronousAnonymousDisplayFailureHasPositiveCurrentShowEvidence()
+        {
+            ReadyProvider();
+            _ad.OnShow = () => _ad.EmitDisplayFailed(AdInfo(null, null, null),
+                new LevelPlayErrorSnapshot(509));
+
+            Assert.That(_provider.TryShow(432L, "placement"), Is.False);
+
+            var failure = _events.Single(e => e.Kind == RewardedAdEventKind.DisplayFailed);
+            Assert.That(failure.AttemptId, Is.EqualTo(432L));
         }
 
         [Test]
@@ -363,6 +605,95 @@ namespace CatMetro.Tests.LevelPlay
             Assert.That(revenue.NetworkName, Is.EqualTo("network-original"));
             Assert.That(revenue.RevenueMicros, Is.EqualTo(1_234L));
             Assert.That(revenue.RevenuePrecision, Is.EqualTo(AdRevenuePrecision.Exact));
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void QueuedImpressionSurvivesBothRewardAndCloseTerminalOrders(bool rewardFirst)
+        {
+            ReadyProvider();
+            Assert.That(_provider.TryShow(511L, "placement"), Is.True);
+            var info = AdInfo("ad-terminal", "auction-terminal", "placement");
+            _ad.EmitDisplayed(info);
+            _ad.EmitImpression(new LevelPlayImpressionSnapshot("auction-terminal",
+                "one-rewarded-unit", "placement", "network", 0.001234d, "BID"));
+
+            if (rewardFirst)
+            {
+                _ad.EmitRewarded(info);
+                _ad.EmitClosed(info);
+            }
+            else
+            {
+                _ad.EmitClosed(info);
+                _ad.EmitRewarded(info);
+            }
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.Revenue), Is.Zero);
+
+            DrainThroughExistingMonetizationPump();
+
+            var revenue = _events.Single(e => e.Kind == RewardedAdEventKind.Revenue);
+            Assert.That(revenue.AttemptId, Is.EqualTo(511L));
+            Assert.That(revenue.AuctionId, Is.EqualTo("auction-terminal"));
+            Assert.That(revenue.RevenueMicros, Is.EqualTo(1_234L));
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.Rewarded), Is.EqualTo(1));
+            _ad.EmitRewarded(info);
+            DrainThroughExistingMonetizationPump();
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.Rewarded), Is.EqualTo(1));
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.Revenue), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void TerminalRevenueIsExactlyOnceAndExpiresWithoutDelivery()
+        {
+            ReadyProvider();
+            Assert.That(_provider.TryShow(521L, "duplicate"), Is.True);
+            var duplicate = AdInfo("ad-duplicate", "auction-duplicate", "duplicate");
+            _ad.EmitDisplayed(duplicate);
+            var duplicateImpression = new LevelPlayImpressionSnapshot("auction-duplicate",
+                "one-rewarded-unit", "duplicate", "network", 0.01d, "CPM");
+            _ad.EmitImpression(duplicateImpression);
+            _ad.EmitImpression(duplicateImpression);
+            _ad.EmitRewarded(duplicate);
+            _ad.EmitClosed(duplicate);
+            DrainThroughExistingMonetizationPump();
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.Revenue), Is.EqualTo(1));
+
+            Assert.That(_provider.TryShow(522L, "expired"), Is.True);
+            var expired = AdInfo("ad-expired", "auction-expired", "expired");
+            _ad.EmitDisplayed(expired);
+            _ad.EmitImpression(new LevelPlayImpressionSnapshot("auction-expired",
+                "one-rewarded-unit", "expired", "network", 0.02d, "RATE"));
+            _ad.EmitRewarded(expired);
+            _ad.EmitClosed(expired);
+            _now += 101L;
+            DrainThroughExistingMonetizationPump();
+
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.Revenue), Is.EqualTo(1),
+                "an expired terminal record drops analytics without affecting reward state");
+        }
+
+        [Test]
+        public void TerminalRevenueCorrelationStateIsBounded()
+        {
+            ReadyProvider();
+            for (int i = 0; i < 24; i++)
+            {
+                string suffix = i.ToString();
+                Assert.That(_provider.TryShow(530L + i, "p-" + suffix), Is.True);
+                var info = AdInfo("ad-" + suffix, "auction-" + suffix, "p-" + suffix);
+                _ad.EmitDisplayed(info);
+                _ad.EmitImpression(new LevelPlayImpressionSnapshot("auction-" + suffix,
+                    "one-rewarded-unit", "p-" + suffix, "network", 0.01d, "BID"));
+                _ad.EmitRewarded(info);
+                _ad.EmitClosed(info);
+            }
+
+            Assert.That(PrivateCollectionCount("_terminalRevenueByAuction"),
+                Is.LessThanOrEqualTo(16));
+            DrainThroughExistingMonetizationPump();
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.Revenue),
+                Is.LessThanOrEqualTo(16));
         }
 
         [Test]
@@ -488,6 +819,43 @@ namespace CatMetro.Tests.LevelPlay
             Assert.That(later, Is.EqualTo(1));
         }
 
+        [Test]
+        public void DisposingEventConsumerStopsRemainingProviderFanOut()
+        {
+            ReadyProvider();
+            int later = 0;
+            _provider.EventReceived += _ => _provider.Dispose();
+            _provider.EventReceived += _ => later++;
+
+            Assert.DoesNotThrow(() => _ad.EmitLoaded(
+                AdInfo("ad", "auction", "placement")));
+
+            Assert.That(later, Is.Zero);
+            Assert.That(_ad.DisposeCalls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ReentrantDisposeDuringTerminalRewardCannotRepopulateClearedState()
+        {
+            ReadyProvider();
+            Assert.That(_provider.TryShow(651L, "placement"), Is.True);
+            var info = AdInfo("ad", "auction", "placement");
+            _ad.EmitDisplayed(info);
+            _ad.EmitClosed(info);
+            _provider.EventReceived += adEvent =>
+            {
+                if (adEvent.Kind == RewardedAdEventKind.Rewarded) _provider.Dispose();
+            };
+
+            _ad.EmitRewarded(info);
+
+            Assert.That(_ad.DisposeCalls, Is.EqualTo(1));
+            Assert.That(PrivateCollectionCount("_contexts"), Is.Zero);
+            Assert.That(PrivateCollectionCount("_completedAuctions"), Is.Zero);
+            Assert.That(PrivateCollectionCount("_retiredAdIds"), Is.Zero);
+            Assert.That(PrivateCollectionCount("_terminalRevenueByAuction"), Is.Zero);
+        }
+
         private static IEnumerable<string> RewardedEventNames => FakeRewardedAd.EventNames;
 
         private void ReadyProvider()
@@ -502,6 +870,52 @@ namespace CatMetro.Tests.LevelPlay
             string placement)
             => new LevelPlayAdSnapshot(adId, auctionId, "one-rewarded-unit", placement,
                 "test-network");
+
+        private int PrivateCollectionCount(string fieldName)
+        {
+            var field = typeof(LevelPlayRewardedAdProvider).GetField(fieldName,
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null, fieldName + " must be explicit bounded state");
+            object value = field.GetValue(_provider);
+            var count = value?.GetType().GetProperty("Count");
+            Assert.That(count, Is.Not.Null, fieldName + " must expose a collection count");
+            return (int)count.GetValue(value);
+        }
+
+        private void DrainThroughExistingMonetizationPump()
+        {
+            Assembly integrations = typeof(RewardedAdsConfig).Assembly;
+            Type compositionType = integrations.GetType(
+                "CatMetro.Integrations.RewardedAdsComposition", throwOnError: true);
+            Type pumpType = integrations.GetType(
+                "CatMetro.Integrations.MonetizationPump", throwOnError: true);
+            ConstructorInfo constructor = compositionType.GetConstructors(
+                BindingFlags.Instance | BindingFlags.NonPublic).Single();
+            object composition = constructor.Invoke(new object[] { null, null, null, null, null });
+            FieldInfo drain = compositionType.GetField("_mainThreadDrain",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(drain, Is.Not.Null);
+            drain.SetValue(composition, _provider);
+            var host = new GameObject("[LevelPlayPumpDrainTests]");
+            try
+            {
+                var pump = host.AddComponent(pumpType);
+                MethodInfo bind = pumpType.GetMethod("Bind",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                MethodInfo update = pumpType.GetMethod("Update",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.That(bind, Is.Not.Null);
+                Assert.That(update, Is.Not.Null);
+                bind.Invoke(pump, new[] { null, composition });
+                update.Invoke(pump, null);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+                ((IDisposable)composition).Dispose();
+            }
+        }
 
         private sealed class MutableImpression
         {

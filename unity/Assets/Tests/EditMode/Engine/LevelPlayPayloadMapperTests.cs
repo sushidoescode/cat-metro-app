@@ -239,6 +239,25 @@ namespace CatMetro.Tests
             Assert.That(deliveries, Is.Zero);
         }
 
+        [Test]
+        public void Queue_ReentrantDisposeStopsTheRemainingSnapshotAndPendingWork()
+        {
+            var queue = new MainThreadAdEventQueue();
+            var observed = new List<int>();
+            queue.Enqueue(() =>
+            {
+                observed.Add(1);
+                queue.Enqueue(() => observed.Add(3));
+                queue.Dispose();
+            });
+            queue.Enqueue(() => observed.Add(2));
+
+            Assert.That(queue.Drain(), Is.EqualTo(1));
+            Assert.That(observed, Is.EqualTo(new[] { 1 }));
+            Assert.That(queue.Drain(), Is.Zero);
+            Assert.That(queue.Enqueue(() => observed.Add(4)), Is.False);
+        }
+
         private sealed class MutableCallback
         {
             public string Placement;

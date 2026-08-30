@@ -97,6 +97,8 @@ namespace CatMetro.Integrations.LevelPlay
     {
         private const int MaxContexts = 16;
         private const int MaxCompletedAuctions = 32;
+        private const int MaxAdHistory = 32;
+        private const int MaxTerminalRevenueContexts = 16;
 
         private readonly RewardedAdsConfig _config;
         private readonly ILevelPlaySdkBridge _sdk;
@@ -107,16 +109,30 @@ namespace CatMetro.Integrations.LevelPlay
         private readonly List<ShowContext> _contexts = new List<ShowContext>();
         private readonly Dictionary<string, ShowContext> _byAuction =
             new Dictionary<string, ShowContext>(StringComparer.Ordinal);
-        private readonly Dictionary<string, List<ShowContext>> _byAd =
-            new Dictionary<string, List<ShowContext>>(StringComparer.Ordinal);
+        private readonly Dictionary<string, ShowContext> _byAd =
+            new Dictionary<string, ShowContext>(StringComparer.Ordinal);
         private readonly HashSet<string> _completedAuctions =
             new HashSet<string>(StringComparer.Ordinal);
         private readonly Queue<string> _completedAuctionOrder = new Queue<string>();
+        private readonly HashSet<string> _retiredAdIds =
+            new HashSet<string>(StringComparer.Ordinal);
+        private readonly Queue<string> _retiredAdOrder = new Queue<string>();
+        private readonly HashSet<string> _ambiguousAdIds =
+            new HashSet<string>(StringComparer.Ordinal);
+        private readonly Queue<string> _ambiguousAdOrder = new Queue<string>();
+        private readonly Dictionary<string, TerminalRevenueContext> _terminalRevenueByAuction =
+            new Dictionary<string, TerminalRevenueContext>(StringComparer.Ordinal);
+        private readonly Queue<string> _terminalRevenueOrder = new Queue<string>();
 
         private Action<RewardedAdEvent> _eventReceived;
         private ILevelPlayRewardedAdBridge _ad;
         private ShowContext _activeContext;
         private ShowContext _unboundContext;
+        private ShowContext _showInvocationContext;
+        private LoadedIdentity _loadedIdentity;
+        private long _loadGeneration;
+        private long _identityQuarantineAfterGeneration;
+        private bool _adHistorySaturated;
         private bool _requiresNonRewardBinding;
         private bool _initializeCalled;
         private bool _initializationTerminal;
@@ -200,10 +216,23 @@ namespace CatMetro.Integrations.LevelPlay
                 _activeContext != null)
                 return false;
 
-            var context = new ShowContext(attemptId, placementId, now);
+            var context = new ShowContext(attemptId, placementId, now, _loadGeneration);
             _contexts.Add(context);
             _activeContext = context;
             _unboundContext = context;
+            bool identityBound = ConsumeLoadedIdentity(context, out long identityGeneration,
+                out bool hasAuctionIdentity);
+            if (_identityQuarantineAfterGeneration > 0L)
+            {
+                if (!identityBound || !hasAuctionIdentity ||
+                    identityGeneration <= _identityQuarantineAfterGeneration)
+                {
+                    RemoveContext(context, tombstoneAuction: false);
+                    return false;
+                }
+                _identityQuarantineAfterGeneration = 0L;
+            }
+            _showInvocationContext = context;
             try
             {
                 _ad.Show(placementId);
@@ -214,11 +243,19 @@ namespace CatMetro.Integrations.LevelPlay
             }
             catch
             {
-                RemoveContext(context, tombstoneAuction: true);
-                Raise(LevelPlayPayloadMapper.CreateLifecycle(
-                    RewardedAdEventKind.DisplayFailed, attemptId, placementId,
-                    _config.RewardedAdUnitId));
+                if (_contexts.Contains(context))
+                {
+                    RemoveContext(context, tombstoneAuction: true);
+                    Raise(LevelPlayPayloadMapper.CreateLifecycle(
+                        RewardedAdEventKind.DisplayFailed, attemptId, placementId,
+                        _config.RewardedAdUnitId));
+                }
                 return false;
+            }
+            finally
+            {
+                if (ReferenceEquals(_showInvocationContext, context))
+                    _showInvocationContext = null;
             }
         }
 
@@ -238,11 +275,19 @@ namespace CatMetro.Integrations.LevelPlay
             DisposeAdOnce();
             _activeContext = null;
             _unboundContext = null;
+            _showInvocationContext = null;
             _contexts.Clear();
             _byAuction.Clear();
             _byAd.Clear();
             _completedAuctions.Clear();
             _completedAuctionOrder.Clear();
+            _retiredAdIds.Clear();
+            _retiredAdOrder.Clear();
+            _ambiguousAdIds.Clear();
+            _ambiguousAdOrder.Clear();
+            _terminalRevenueByAuction.Clear();
+            _terminalRevenueOrder.Clear();
+            _loadedIdentity = default;
             _eventReceived = null;
         }
 
@@ -252,6 +297,10 @@ namespace CatMetro.Integrations.LevelPlay
                 (checkPlacementCap && string.IsNullOrWhiteSpace(placementId)) ||
                 !PurgeExpiredContexts() || _unboundContext != null ||
                 _activeContext != null || _contexts.Count >= MaxContexts)
+                return false;
+            if (_identityQuarantineAfterGeneration > 0L &&
+                (!_loadedIdentity.HasAuctionIdentity ||
+                 _loadedIdentity.Generation <= _identityQuarantineAfterGeneration))
                 return false;
 
             try
@@ -421,6 +470,15 @@ namespace CatMetro.Integrations.LevelPlay
         private void SafeLoad()
         {
             if (_disposed || _failed || _ad == null) return;
+            if (_loadGeneration == long.MaxValue)
+            {
+                _failed = true;
+                Raise(LevelPlayPayloadMapper.CreateLifecycle(RewardedAdEventKind.LoadFailed,
+                    adUnitId: _config.RewardedAdUnitId));
+                return;
+            }
+            _loadGeneration++;
+            _loadedIdentity = default;
             try { _ad.Load(); }
             catch
             {
@@ -432,12 +490,15 @@ namespace CatMetro.Integrations.LevelPlay
         private void OnAdLoaded(LevelPlayAdSnapshot info)
         {
             if (_disposed || _failed) return;
+            if (_loadGeneration > 0L && HasStableId(info))
+                _loadedIdentity = new LoadedIdentity(_loadGeneration, info);
             Raise(Lifecycle(RewardedAdEventKind.Loaded, null, info));
         }
 
         private void OnAdLoadFailed(LevelPlayErrorSnapshot error)
         {
             if (_disposed || _failed) return;
+            _loadedIdentity = default;
             Raise(LevelPlayPayloadMapper.CreateLifecycle(RewardedAdEventKind.LoadFailed,
                 adUnitId: FirstNonBlank(error.AdUnitId, _config.RewardedAdUnitId),
                 adId: error.AdId, errorCode: error.ErrorCode));
@@ -452,8 +513,17 @@ namespace CatMetro.Integrations.LevelPlay
 
         private void OnAdDisplayFailed(LevelPlayAdSnapshot info, LevelPlayErrorSnapshot error)
         {
-            if (!TryResolve(info, allowNewBinding: true, allowNoStableId: true,
-                confirmsCurrentShow: true, out var context)) return;
+            var correlation = new LevelPlayAdSnapshot(FirstNonBlank(info.AdId, error.AdId),
+                info.AuctionId, FirstNonBlank(info.AdUnitId, error.AdUnitId),
+                info.PlacementId, info.NetworkName);
+            ShowContext context;
+            if (!HasStableId(correlation))
+            {
+                context = _showInvocationContext;
+                if (context == null || !ReferenceEquals(context, _activeContext)) return;
+            }
+            else if (!TryResolve(correlation, allowNewBinding: true,
+                allowNoStableId: false, confirmsCurrentShow: true, out context)) return;
             RemoveContext(context, tombstoneAuction: true);
             Raise(LevelPlayPayloadMapper.CreateLifecycle(RewardedAdEventKind.DisplayFailed,
                 context.AttemptId, context.PlacementId,
@@ -471,6 +541,7 @@ namespace CatMetro.Integrations.LevelPlay
 
             context.RewardDelivered = true;
             Raise(Lifecycle(RewardedAdEventKind.Rewarded, context, info));
+            if (_disposed) return;
             if (context.Closed) RemoveContext(context, tombstoneAuction: true);
         }
 
@@ -491,6 +562,7 @@ namespace CatMetro.Integrations.LevelPlay
             context.Closed = true;
             if (ReferenceEquals(_activeContext, context)) _activeContext = null;
             Raise(Lifecycle(RewardedAdEventKind.Closed, context, info));
+            if (_disposed) return;
             if (context.RewardDelivered) RemoveContext(context, tombstoneAuction: true);
         }
 
@@ -513,14 +585,28 @@ namespace CatMetro.Integrations.LevelPlay
             if (_disposed || _failed || !impression.RevenueUsd.HasValue) return;
             var info = new LevelPlayAdSnapshot(null, impression.AuctionId,
                 impression.AdUnitId, impression.PlacementId, impression.NetworkName);
-            if (!TryResolve(info, allowNewBinding: true, allowNoStableId: false,
-                confirmsCurrentShow: true, out var context)) return;
-            if (LevelPlayPayloadMapper.TryCreateRevenue(context.AttemptId,
-                FirstNonBlank(impression.PlacementId, context.PlacementId),
+            if (TryResolve(info, allowNewBinding: true, allowNoStableId: false,
+                confirmsCurrentShow: true, out var context))
+            {
+                if (context.RevenueDelivered) return;
+                if (!LevelPlayPayloadMapper.TryCreateRevenue(context.AttemptId,
+                    FirstNonBlank(impression.PlacementId, context.PlacementId),
+                    FirstNonBlank(impression.AdUnitId, _config.RewardedAdUnitId), null,
+                    impression.AuctionId, impression.NetworkName, impression.RevenueUsd.Value,
+                    impression.Precision, out var activeEvent)) return;
+                context.RevenueDelivered = true;
+                Raise(activeEvent);
+                return;
+            }
+
+            if (!TryGetTerminalRevenue(impression.AuctionId, out var terminal)) return;
+            if (!LevelPlayPayloadMapper.TryCreateRevenue(terminal.AttemptId,
+                FirstNonBlank(impression.PlacementId, terminal.PlacementId),
                 FirstNonBlank(impression.AdUnitId, _config.RewardedAdUnitId), null,
                 impression.AuctionId, impression.NetworkName, impression.RevenueUsd.Value,
-                impression.Precision, out var adEvent))
-                Raise(adEvent);
+                impression.Precision, out var terminalEvent)) return;
+            RemoveTerminalRevenue(impression.AuctionId);
+            Raise(terminalEvent);
         }
 
         private RewardedAdEvent Lifecycle(RewardedAdEventKind kind, ShowContext context,
@@ -538,47 +624,110 @@ namespace CatMetro.Integrations.LevelPlay
             bool hasAuction = !string.IsNullOrWhiteSpace(info.AuctionId);
             bool hasAd = !string.IsNullOrWhiteSpace(info.AdId);
 
-            if (hasAuction)
-            {
-                if (_completedAuctions.Contains(info.AuctionId)) return false;
-                if (!_byAuction.TryGetValue(info.AuctionId, out context))
-                {
-                    if (!allowNewBinding || _unboundContext == null) return false;
-                    context = _unboundContext;
-                    BindAuction(context, info.AuctionId);
-                }
-            }
-            else if (hasAd)
-            {
-                _byAd.TryGetValue(info.AdId, out var candidates);
-                int count = candidates?.Count ?? 0;
-                if (count == 1 && (_unboundContext == null ||
-                    ReferenceEquals(candidates[0], _unboundContext)))
-                {
-                    context = candidates[0];
-                }
-                else if (count == 0 && allowNewBinding && _unboundContext != null)
-                {
-                    context = _unboundContext;
-                }
-                else
-                {
-                    return false;
-                }
-            }
-            else
+            if (!hasAuction && !hasAd)
             {
                 if (!allowNoStableId || _unboundContext == null) return false;
                 context = _unboundContext;
+                return context != null;
+            }
+            if (_adHistorySaturated && hasAd && !hasAuction) return false;
+
+            if (hasAuction && _completedAuctions.Contains(info.AuctionId)) return false;
+            _byAuction.TryGetValue(info.AuctionId ?? string.Empty, out var auctionContext);
+            bool ambiguousAd = hasAd && _ambiguousAdIds.Contains(info.AdId);
+            bool retiredAd = hasAd && _retiredAdIds.Contains(info.AdId);
+            ShowContext adContext = null;
+            if (hasAd && !ambiguousAd && !retiredAd)
+                _byAd.TryGetValue(info.AdId, out adContext);
+
+            // Resolve both indexes before changing either. A pair that already names two
+            // contexts is malformed and must leave all state untouched.
+            if (auctionContext != null && adContext != null &&
+                !ReferenceEquals(auctionContext, adContext))
+                return false;
+
+            bool makeAdAmbiguous = false;
+            if (auctionContext != null)
+            {
+                context = auctionContext;
+            }
+            else if (adContext != null)
+            {
+                // AdId may be supplied before AuctionId. If this context already owns a
+                // different auction, a new auction can identify the sole unbound newer show,
+                // but AdId becomes permanently ambiguous while retained in bounded history.
+                if (hasAuction && !string.IsNullOrEmpty(adContext.AuctionId) &&
+                    !string.Equals(adContext.AuctionId, info.AuctionId,
+                        StringComparison.Ordinal))
+                {
+                    if (!allowNewBinding || _unboundContext == null ||
+                        ReferenceEquals(_unboundContext, adContext))
+                        return false;
+                    context = _unboundContext;
+                    makeAdAmbiguous = true;
+                }
+                else context = adContext;
+            }
+            else
+            {
+                if (!allowNewBinding || _unboundContext == null) return false;
+                context = _unboundContext;
             }
 
-            if (hasAd) BindAd(context, info.AdId);
+            bool bindAuction = false;
+            if (hasAuction)
+            {
+                if (string.IsNullOrEmpty(context.AuctionId)) bindAuction = true;
+                else if (!string.Equals(context.AuctionId, info.AuctionId,
+                    StringComparison.Ordinal)) return false;
+            }
+
+            bool bindAd = false;
+            if (hasAd)
+            {
+                if (adContext != null && !ReferenceEquals(adContext, context))
+                {
+                    if (!makeAdAmbiguous || !bindAuction ||
+                        !ReferenceEquals(context, _unboundContext)) return false;
+                }
+                if (string.IsNullOrEmpty(context.AdId)) bindAd = true;
+                else if (!string.Equals(context.AdId, info.AdId,
+                    StringComparison.Ordinal)) return false;
+
+                if (ambiguousAd || retiredAd)
+                {
+                    bool knownAmbiguousContext = ambiguousAd &&
+                        string.Equals(context.AdId, info.AdId, StringComparison.Ordinal) &&
+                        hasAuction && !bindAuction;
+                    bool distinctFreshAuction = hasAuction && bindAuction &&
+                        ReferenceEquals(context, _unboundContext);
+                    if (!knownAmbiguousContext && !distinctFreshAuction) return false;
+                    makeAdAmbiguous = true;
+                }
+            }
+
+            if (makeAdAmbiguous) MarkAdAmbiguous(info.AdId);
+            if (bindAuction) BindAuction(context, info.AuctionId);
+            if (bindAd) BindAd(context, info.AdId);
             if ((hasAuction || hasAd) && ReferenceEquals(_unboundContext, context))
                 _unboundContext = null;
             if (confirmsCurrentShow && ReferenceEquals(_activeContext, context) &&
                 (hasAuction || hasAd))
                 _requiresNonRewardBinding = false;
             return context != null;
+        }
+
+        private bool ConsumeLoadedIdentity(ShowContext context, out long generation,
+            out bool hasAuctionIdentity)
+        {
+            var loaded = _loadedIdentity;
+            _loadedIdentity = default;
+            generation = loaded.Generation;
+            hasAuctionIdentity = loaded.HasAuctionIdentity;
+            if (!loaded.IsValid || loaded.Generation != _loadGeneration) return false;
+            TryResolve(loaded.Info, allowNewBinding: true, allowNoStableId: false,
+                confirmsCurrentShow: false, out var resolved);
+            return ReferenceEquals(resolved, context);
         }
 
         private bool PurgeExpiredContexts()
@@ -590,7 +739,11 @@ namespace CatMetro.Integrations.LevelPlay
                 if (now < context.CreatedAt || now - context.CreatedAt <= _contextLifetimeTicks)
                     continue;
                 if (ReferenceEquals(context, _unboundContext))
+                {
                     _requiresNonRewardBinding = true;
+                    if (context.LoadGeneration > _identityQuarantineAfterGeneration)
+                        _identityQuarantineAfterGeneration = context.LoadGeneration;
+                }
                 RemoveContext(context, tombstoneAuction: true);
             }
             return true;
@@ -621,12 +774,8 @@ namespace CatMetro.Integrations.LevelPlay
         {
             if (context == null || string.IsNullOrWhiteSpace(adId)) return;
             if (string.IsNullOrEmpty(context.AdId)) context.AdId = adId;
-            if (!_byAd.TryGetValue(adId, out var contexts))
-            {
-                contexts = new List<ShowContext>();
-                _byAd[adId] = contexts;
-            }
-            if (!contexts.Contains(context)) contexts.Add(context);
+            if (!_ambiguousAdIds.Contains(adId) && !_retiredAdIds.Contains(adId))
+                _byAd[adId] = context;
         }
 
         private void RemoveContext(ShowContext context, bool tombstoneAuction)
@@ -637,16 +786,20 @@ namespace CatMetro.Integrations.LevelPlay
             if (ReferenceEquals(_unboundContext, context)) _unboundContext = null;
             if (!string.IsNullOrEmpty(context.AuctionId))
             {
+                if (context.Closed && context.RewardDelivered &&
+                    !context.RevenueDelivered)
+                    RememberTerminalRevenue(context);
                 if (_byAuction.TryGetValue(context.AuctionId, out var indexed) &&
                     ReferenceEquals(indexed, context))
                     _byAuction.Remove(context.AuctionId);
                 if (tombstoneAuction) RememberCompletedAuction(context.AuctionId);
             }
-            if (!string.IsNullOrEmpty(context.AdId) &&
-                _byAd.TryGetValue(context.AdId, out var contexts))
+            if (!string.IsNullOrEmpty(context.AdId))
             {
-                contexts.Remove(context);
-                if (contexts.Count == 0) _byAd.Remove(context.AdId);
+                if (_byAd.TryGetValue(context.AdId, out var indexed) &&
+                    ReferenceEquals(indexed, context))
+                    _byAd.Remove(context.AdId);
+                RememberRetiredAd(context.AdId);
             }
         }
 
@@ -658,6 +811,127 @@ namespace CatMetro.Integrations.LevelPlay
                 _completedAuctions.Remove(_completedAuctionOrder.Dequeue());
         }
 
+        private void RememberTerminalRevenue(ShowContext context)
+        {
+            if (context == null || string.IsNullOrWhiteSpace(context.AuctionId) ||
+                _terminalRevenueByAuction.ContainsKey(context.AuctionId) ||
+                !TryReadClock(out long now)) return;
+            PurgeExpiredTerminalRevenue(now);
+            _terminalRevenueByAuction[context.AuctionId] = new TerminalRevenueContext(
+                context.AttemptId, context.PlacementId, now);
+            _terminalRevenueOrder.Enqueue(context.AuctionId);
+            while (_terminalRevenueOrder.Count > MaxTerminalRevenueContexts)
+                _terminalRevenueByAuction.Remove(_terminalRevenueOrder.Dequeue());
+        }
+
+        private bool TryGetTerminalRevenue(string auctionId,
+            out TerminalRevenueContext terminal)
+        {
+            terminal = null;
+            if (string.IsNullOrWhiteSpace(auctionId) || !TryReadClock(out long now))
+                return false;
+            PurgeExpiredTerminalRevenue(now);
+            return _terminalRevenueByAuction.TryGetValue(auctionId, out terminal);
+        }
+
+        private void PurgeExpiredTerminalRevenue(long now)
+        {
+            int count = _terminalRevenueOrder.Count;
+            for (int i = 0; i < count; i++)
+            {
+                string auctionId = _terminalRevenueOrder.Dequeue();
+                if (!_terminalRevenueByAuction.TryGetValue(auctionId, out var terminal))
+                    continue;
+                if (now < terminal.CreatedAt ||
+                    now - terminal.CreatedAt > _contextLifetimeTicks)
+                {
+                    _terminalRevenueByAuction.Remove(auctionId);
+                    continue;
+                }
+                _terminalRevenueOrder.Enqueue(auctionId);
+            }
+        }
+
+        private void RemoveTerminalRevenue(string auctionId)
+        {
+            if (string.IsNullOrWhiteSpace(auctionId) ||
+                !_terminalRevenueByAuction.Remove(auctionId)) return;
+            RemoveFromOrder(_terminalRevenueOrder, auctionId);
+        }
+
+        private void RememberRetiredAd(string adId)
+        {
+            if (string.IsNullOrWhiteSpace(adId) || _ambiguousAdIds.Contains(adId) ||
+                !_retiredAdIds.Add(adId)) return;
+            _retiredAdOrder.Enqueue(adId);
+            if (TrimHistory(_retiredAdIds, _retiredAdOrder, MaxAdHistory))
+                _adHistorySaturated = true;
+        }
+
+        private void MarkAdAmbiguous(string adId)
+        {
+            if (string.IsNullOrWhiteSpace(adId)) return;
+            _byAd.Remove(adId);
+            if (_retiredAdIds.Remove(adId)) RemoveFromOrder(_retiredAdOrder, adId);
+            if (!_ambiguousAdIds.Add(adId)) return;
+            _ambiguousAdOrder.Enqueue(adId);
+            TrimAmbiguousAdHistory();
+        }
+
+        private static bool TrimHistory(HashSet<string> history, Queue<string> order,
+            int maximum)
+        {
+            bool removed = false;
+            while (order.Count > maximum)
+            {
+                history.Remove(order.Dequeue());
+                removed = true;
+            }
+            return removed;
+        }
+
+        private static void RemoveFromOrder(Queue<string> order, string value)
+        {
+            int count = order.Count;
+            for (int i = 0; i < count; i++)
+            {
+                string item = order.Dequeue();
+                if (!string.Equals(item, value, StringComparison.Ordinal))
+                    order.Enqueue(item);
+            }
+        }
+
+        private void TrimAmbiguousAdHistory()
+        {
+            while (_ambiguousAdOrder.Count > MaxAdHistory)
+            {
+                int candidates = _ambiguousAdOrder.Count;
+                bool removed = false;
+                for (int i = 0; i < candidates; i++)
+                {
+                    string adId = _ambiguousAdOrder.Dequeue();
+                    if (IsAdIdActive(adId))
+                    {
+                        _ambiguousAdOrder.Enqueue(adId);
+                        continue;
+                    }
+                    _ambiguousAdIds.Remove(adId);
+                    _adHistorySaturated = true;
+                    removed = true;
+                    break;
+                }
+                if (!removed) break;
+            }
+        }
+
+        private bool IsAdIdActive(string adId)
+        {
+            for (int i = 0; i < _contexts.Count; i++)
+                if (string.Equals(_contexts[i].AdId, adId, StringComparison.Ordinal))
+                    return true;
+            return false;
+        }
+
         private void Raise(RewardedAdEvent adEvent)
         {
             if (_disposed) return;
@@ -665,6 +939,7 @@ namespace CatMetro.Integrations.LevelPlay
             if (handlers == null) return;
             foreach (Action<RewardedAdEvent> handler in handlers.GetInvocationList())
             {
+                if (_disposed) return;
                 try { handler(adEvent); }
                 catch { }
             }
@@ -687,16 +962,49 @@ namespace CatMetro.Integrations.LevelPlay
             internal long AttemptId { get; }
             internal string PlacementId { get; }
             internal long CreatedAt { get; }
+            internal long LoadGeneration { get; }
             internal string AuctionId;
             internal string AdId;
             internal bool Closed;
             internal bool RewardDelivered;
+            internal bool RevenueDelivered;
 
-            internal ShowContext(long attemptId, string placementId, long createdAt)
+            internal ShowContext(long attemptId, string placementId, long createdAt,
+                long loadGeneration)
             {
                 AttemptId = attemptId;
                 PlacementId = placementId;
                 CreatedAt = createdAt;
+                LoadGeneration = loadGeneration;
+            }
+        }
+
+        private sealed class TerminalRevenueContext
+        {
+            internal long AttemptId { get; }
+            internal string PlacementId { get; }
+            internal long CreatedAt { get; }
+
+            internal TerminalRevenueContext(long attemptId, string placementId, long createdAt)
+            {
+                AttemptId = attemptId;
+                PlacementId = placementId;
+                CreatedAt = createdAt;
+            }
+        }
+
+        private readonly struct LoadedIdentity
+        {
+            internal long Generation { get; }
+            internal LevelPlayAdSnapshot Info { get; }
+            internal bool IsValid => Generation > 0L && HasStableId(Info);
+            internal bool HasAuctionIdentity => Generation > 0L &&
+                !string.IsNullOrWhiteSpace(Info.AuctionId);
+
+            internal LoadedIdentity(long generation, LevelPlayAdSnapshot info)
+            {
+                Generation = generation;
+                Info = info;
             }
         }
     }

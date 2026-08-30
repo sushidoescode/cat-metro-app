@@ -233,3 +233,135 @@ adapter resolution; real fill/show/reward/close ordering; actual worker-thread I
 dashboard placement caps and no-fill; ATT/CMP/privacy behavior; native teardown; and RevenueCat
 Ads sandbox ingestion, dashboard dimensions, or revenue. Those require configured Android/iOS
 device credentials and dashboard state. No device or player build was attempted.
+
+## Fix round 1 — callback attribution hardening
+
+Independent review of `a7c3e758041762560ff1315e6dd86ce3236af0ca` found four valid managed-code
+state-machine defects: cross-ID inconsistency and unsafe AdId reuse, transfer of identity after an
+unbound context expired, loss of queued ILR after reward plus close, and continued callback
+fan-out after reentrant disposal. Each finding was reproduced with a mutation-sensitive test
+before production code changed; no existing test was weakened or removed.
+
+### Fix implementation
+
+- Stable IDs are now resolved bidirectionally before either index is mutated. If AuctionId and
+  AdId already identify different contexts, the callback is dropped with no index mutation.
+  Each context binds each stable field once, while the legitimate AdId-first then
+  AuctionId-plus-same-AdId sequence remains supported.
+- The AdId index no longer retains alias lists. Retired and ambiguous AdIds have bounded
+  32-entry histories, and once an eviction proves finite history cannot safely classify an
+  arbitrary AdId-only callback, AdId-only attribution fails closed. Auction-qualified callbacks
+  remain usable and completed-auction tombstones remain independently bounded to 32.
+- Every explicit Load has a monotonic generation and captures the stable `LevelPlayAdInfo`
+  identity delivered by the corresponding current Loaded callback. After an unbound context
+  expires, readiness/show remain quarantined until a newer Loaded generation supplies a nonblank
+  AuctionId. AdId-only Loaded evidence cannot end that quarantine. Stale displayed, clicked,
+  info-changed, ILR, stable display-failure, and anonymous display-failure callbacks cannot bind
+  the replacement attempt; anonymous display failure is accepted only synchronously inside the
+  exact current Show invocation.
+- A completed reward-plus-close context with queued, undelivered ILR leaves a bounded 16-entry
+  revenue-only terminal record keyed by AuctionId. The existing `MonetizationPump.Update` can
+  consume it once in either terminal order. It expires on the same injected monotonic lifetime,
+  cannot resolve rewards, and cannot reopen eligibility.
+- `MainThreadAdEventQueue.Drain` rechecks its disposal generation between snapshot actions while
+  keeping the lock released during consumers. Reentrant enqueue remains next-frame work,
+  consumer exceptions remain isolated, and disposal from action one stops and clears all later
+  work. Provider `EventReceived` fan-out likewise stops between handlers after reentrant dispose.
+  Terminal callbacks also recheck disposal before any post-handler state mutation.
+
+Fix-round production files modified:
+
+- `unity/Assets/Scripts/Integrations/LevelPlay/LevelPlayRewardedAdProvider.cs`
+- `unity/Assets/Scripts/Integrations/MainThreadAdEventQueue.cs`
+
+Fix-round test files modified:
+
+- `unity/Assets/Tests/EditMode/Engine/LevelPlayPayloadMapperTests.cs`
+- `unity/Assets/Tests/EditMode/LevelPlay/LevelPlayRewardedAdProviderTests.cs`
+
+### Fix-round TDD evidence
+
+Every Unity invocation below used the absolute ads-worktree project path, omitted `-quit`, and
+retained XML only. The focused command form was:
+
+`unity test /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/unity --mode EditMode --filter '<filters below>' --output /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/artifacts/<artifact below> --format json --non-interactive --timeout 600`
+
+The exact filters, artifacts, and parsed XML outcomes were:
+
+1. Reentrant disposal filter
+   `CatMetro.Tests.LevelPlayPayloadMapperTests.Queue_ReentrantDisposeStopsTheRemainingSnapshotAndPendingWork;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.DisposingEventConsumerStopsRemainingProviderFanOut`:
+   `task6-fix1-reentrant-red.xml` passed 0/2 and failed 2 (queue drain returned 2 instead of 1;
+   the later provider handler ran once instead of zero), then
+   `task6-fix1-reentrant-green.xml` passed 2/2.
+2. Stable-ID filter
+   `CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.AContextBindsEachStableFieldOnceAndNeverRetainsAliases;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.AdIdFirstThenMatchingAuctionProgressionBindsTheSameAttempt;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.ConflictingAuctionAndAdContextsDropWithoutMutatingEitherIndex;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.ReusedAdIdCannotLetAnAdOnlyDuplicateGrantTheNewAttempt;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.StableIndexesAndCompletedOrAmbiguousHistoriesStayBounded`:
+   `task6-fix1-stable-ids-red.xml` passed 0/6 and failed 6, then
+   `task6-fix1-stable-ids-green1.xml` passed 6/6.
+3. Expired-generation filter
+   `CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.AnonymousDisplayFailureOutsideTheCurrentShowCallIsDropped;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.ExpiredUnboundContextRequiresANewerStableLoadedGeneration;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.ExpiredUnboundContextRestoresAvailabilityButLateRewardCannotBindNewShow;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.StalePostExpiryCallbackCannotBindAcrossTheFreshLoadedGeneration;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.SynchronousAnonymousDisplayFailureHasPositiveCurrentShowEvidence`:
+   `task6-fix1-generation-red.xml` passed 7/10 and failed the 3 missing quarantine/anonymous
+   guards, then `task6-fix1-generation-green.xml` passed 10/10. A stricter mutation that supplied
+   only AdId in the newer Loaded callback produced
+   `task6-fix1-generation-auction-anchor-red.xml` at 0/1; requiring a fresh AuctionId anchor
+   produced `task6-fix1-generation-auction-anchor-green.xml` at 1/1.
+4. Terminal ILR filter
+   `CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.QueuedImpressionSurvivesBothRewardAndCloseTerminalOrders;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.TerminalRevenueCorrelationStateIsBounded;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.TerminalRevenueIsExactlyOnceAndExpiresWithoutDelivery`:
+   `task6-fix1-terminal-ilr-red.xml` passed 0/4 and failed 4, then
+   `task6-fix1-terminal-ilr-green.xml` passed 4/4. The two order cases enqueue ILR, deliver
+   reward/close or close/reward, and invoke the real existing `MonetizationPump.Update` through
+   `RewardedAdsComposition`; they do not call the provider drain directly.
+5. Bounded-history saturation filter
+   `CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.StableIndexesAndCompletedOrAmbiguousHistoriesStayBounded`:
+   `task6-fix1-history-saturation-red.xml` passed 0/1 and failed 1 when an evicted AdId-only late
+   duplicate could grant, then `task6-fix1-history-saturation-green.xml` passed 1/1.
+6. Reentrant terminal cleanup filter
+   `CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.ReentrantDisposeDuringTerminalRewardCannotRepopulateClearedState`:
+   `task6-fix1-terminal-dispose-red.xml` passed 0/1 and failed 1 when the reward callback
+   repopulated cleared state, then `task6-fix1-terminal-dispose-green.xml` passed 1/1.
+
+The package-present provider/mapper regression artifact
+`task6-fix1-provider-mapper-green1.xml` passed 85/85 at that checkpoint. A subsequent full fresh
+combined run supersedes it.
+
+### Fix-round final verification and audits
+
+Final combined command, rerun after the last AuctionId-generation and reentrant-terminal fixes:
+
+`unity test /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/unity --mode EditMode --filter 'CatMetro.Tests.LevelPlayPayloadMapperTests;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests;CatMetro.Tests.Ads.RewardedAdCoordinatorTests;CatMetro.Tests.RewardedAdsBootstrapTests;RevenueCat.Tests.RevenueCatAdReporterTests' --output /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/artifacts/task6-fix1-final-editmode.xml --format json --non-interactive --timeout 600`
+
+The XML is timestamped `2026-08-30 09:54:24Z` and passed 159/159, failed 0,
+inconclusive 0, skipped 0:
+
+- provider state machine: 60/60
+- mapper/queue: 26/26
+- coordinator: 32/32
+- bootstrap/composition/pump: 17/17
+- RevenueCat reporter: 24/24
+
+Linked-source command:
+
+`dotnet test dotnet/CatMetro.Tests/CatMetro.Tests.csproj --no-restore --filter 'FullyQualifiedName~RewardedAdCoordinatorTests' --logger 'console;verbosity=minimal'`
+
+Result: 32/32 passed, 0 failed, 0 skipped. `bash scripts/check.sh` returned `check: OK`.
+`git diff --check` was clean.
+
+The complete `76ee9963c856d54ccf2b15dda9a72de86c673869..working` Task 6 range and the
+`a7c3e758041762560ff1315e6dd86ce3236af0ca..working` fix range were reviewed. Dependency
+direction remains neutral-to-optional; only `Unity.LevelPlay` is referenced as the package
+assembly and `Unity.Services.LevelPlay` remains the namespace. The manifest and lock retain the
+single exact 9.5.1 package. All real native operations retain
+`#if !UNITY_EDITOR && (UNITY_IOS || UNITY_ANDROID)`. Production constructs exactly one
+`LevelPlayRewardedAd` for the configured rewarded unit and exposes no other format. The provider
+never reloads after terminal callbacks; the coordinator remains the sole reload owner. The ILR
+drain remains on the existing composition/pump lifecycle, and dispose severs it.
+
+Scope/secret/static audits found no raw `.log`, mediation-settings Resources asset, second hidden
+manager, scene, GameRoot, ProjectSettings, unrelated package, credentials, or non-dummy secret
+value. The required untracked `unity/mono_crash.143e1228df.0.json` remains untouched and will not
+be staged. No `.env`, process command line, device, player/store build, install, upload, push,
+merge, or rebase operation was used.
+
+The configured-device-only proof boundary is unchanged: Editor and linked managed tests cannot
+prove native Android/iOS adapter resolution and initialization, actual fill/show/reward/close or
+worker-thread ILR ordering, dashboard caps/no-fill, privacy/ATT/CMP behavior, native teardown, or
+RevenueCat sandbox ingestion/dimensions/revenue. No native or device claim is made.
