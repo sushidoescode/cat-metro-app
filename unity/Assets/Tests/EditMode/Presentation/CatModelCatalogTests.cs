@@ -203,6 +203,15 @@ namespace CatMetro.Tests.EditMode.Presentation
                 Assert.That(clip.empty, Is.False,
                     "this fixture must isolate length from the separate empty-clip check");
                 Assert.That(clip.length, Is.Zero);
+                EditorCurveBinding[] bindings = AnimationUtility.GetCurveBindings(clip);
+                Assert.That(bindings.Length, Is.EqualTo(3),
+                    "the zero-length negative case keeps TASK 17's XYZ packing");
+                foreach (EditorCurveBinding binding in bindings)
+                {
+                    AnimationCurve curve = AnimationUtility.GetEditorCurve(clip, binding);
+                    Assert.That(curve.keys.Length, Is.EqualTo(1), binding.propertyName);
+                    Assert.That(curve.keys[0].time, Is.Zero, binding.propertyName);
+                }
 
                 var catalog = new CatModelCatalog(fixture.Prefab);
 
@@ -215,8 +224,11 @@ namespace CatMetro.Tests.EditMode.Presentation
         [Test]
         public void PositiveLengthBindPoseFallbackShape_IsAdmittedByTheStrictGate()
         {
-            using (var fixture = new ConformingRigFixture(padFallbacksAtBindPose: true))
+            using (var fixture = new ConformingRigFixture())
             {
+                Assert.That(fixture.Prefab.transform.Find("Armature").localPosition,
+                    Is.EqualTo(new Vector3(0f, 0.4853515f, 0f)),
+                    "the synthetic curves must preserve TASK 17's measured bind position");
                 string[] fallbackNames =
                 {
                     CatModelCatalog.IdleSitClip,
@@ -228,19 +240,71 @@ namespace CatMetro.Tests.EditMode.Presentation
                 {
                     AnimationClip clip = fixture.ClipNamed(fallbackName);
                     Assert.That(clip.empty, Is.False, fallbackName);
-                    Assert.That(clip.length, Is.EqualTo(0.4f).Within(0.0001f), fallbackName);
+                    Assert.That(clip.length,
+                        Is.EqualTo(1f / 24f).Within(0.000001f), fallbackName);
                     EditorCurveBinding[] bindings = AnimationUtility.GetCurveBindings(clip);
-                    Assert.That(bindings.Length, Is.EqualTo(1), fallbackName);
-                    AnimationCurve curve = AnimationUtility.GetEditorCurve(clip, bindings[0]);
-                    Assert.That(curve.keys.Length, Is.EqualTo(2), fallbackName);
-                    Assert.That(curve.keys[0].value, Is.Zero, fallbackName);
-                    Assert.That(curve.keys[1].value, Is.Zero, fallbackName);
+                    Assert.That(bindings.Length, Is.EqualTo(3), fallbackName);
+                    CollectionAssert.AreEquivalent(new[]
+                    {
+                        "m_LocalPosition.x", "m_LocalPosition.y", "m_LocalPosition.z",
+                    }, Array.ConvertAll(bindings, binding => binding.propertyName), fallbackName);
+                    foreach (EditorCurveBinding binding in bindings)
+                    {
+                        Assert.That(binding.path, Is.EqualTo("Armature"), fallbackName);
+                        Assert.That(binding.type, Is.EqualTo(typeof(Transform)), fallbackName);
+                        AnimationCurve curve = AnimationUtility.GetEditorCurve(clip, binding);
+                        Assert.That(curve.keys.Length, Is.EqualTo(1), fallbackName);
+                        Assert.That(curve.keys[0].time,
+                            Is.EqualTo(1f / 24f).Within(0.000001f), fallbackName);
+                        float expectedValue = binding.propertyName == "m_LocalPosition.y"
+                            ? 0.4853515f : 0f;
+                        Assert.That(curve.keys[0].value,
+                            Is.EqualTo(expectedValue).Within(0.000001f), fallbackName);
+                    }
                 }
 
                 var catalog = new CatModelCatalog(fixture.Prefab);
 
                 Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(1),
                     catalog.RejectionReason);
+            }
+        }
+
+        [Test]
+        public void FloatNoiseCenteredPivot_IsAdmittedWithinExplicitTolerance()
+        {
+            const float floatNoise = -2.98023224e-08f;
+            using (var fixture = new ConformingRigFixture(
+                       centerX: floatNoise, centerZ: -floatNoise))
+            {
+                MeshFilter body = fixture.Prefab.transform.Find("RigBody")
+                    .GetComponent<MeshFilter>();
+                Bounds authored = BoundsIn(fixture.Prefab.transform, body);
+                Assert.That(authored.center.x, Is.Not.Zero,
+                    "the regression fixture must retain the measured X residue");
+                Assert.That(authored.center.z, Is.Not.Zero,
+                    "the regression fixture must retain the measured Z residue");
+                Assert.That(Mathf.Abs(authored.center.x), Is.LessThanOrEqualTo(0.0001f));
+                Assert.That(Mathf.Abs(authored.center.z), Is.LessThanOrEqualTo(0.0001f));
+
+                var catalog = new CatModelCatalog(fixture.Prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(1),
+                    catalog.RejectionReason);
+            }
+        }
+
+        [TestCase(0.01f, 0f)]
+        [TestCase(0f, 0.01f)]
+        public void GenuinelyOffCenterPivot_IsRejected(float centerX, float centerZ)
+        {
+            using (var fixture = new ConformingRigFixture(
+                       centerX: centerX, centerZ: centerZ))
+            {
+                var catalog = new CatModelCatalog(fixture.Prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain("ground-centred"));
             }
         }
 
@@ -443,32 +507,40 @@ namespace CatMetro.Tests.EditMode.Presentation
             private readonly List<StateMachineBehaviour> _stateBehaviours =
                 new List<StateMachineBehaviour>();
 
+            private readonly Vector3 _animationBindPosition =
+                new Vector3(0f, 0.4853515f, 0f);
+
             public ConformingRigFixture(bool swapWalkAndBoard = false,
                 bool addStateBehaviour = false, string emptyMappedClipName = null,
-                bool padFallbacksAtBindPose = false,
-                string zeroLengthMappedClipName = null)
+                string zeroLengthMappedClipName = null, float centerX = 0f,
+                float centerZ = 0f)
             {
                 Prefab = new GameObject("ConformingBoardCatRig");
                 var body = new GameObject("RigBody");
                 body.transform.SetParent(Prefab.transform, false);
-                body.transform.localPosition = new Vector3(0f, 0.5f, 0f);
+                body.transform.localPosition = new Vector3(centerX, 0.5f, centerZ);
+                // Narrow horizontal extents keep the measured 2.98e-8 residue nonzero after
+                // float32 bounds accumulation; a unit cube rounds that test input back to zero.
+                body.transform.localScale = new Vector3(0.2f, 1f, 0.2f);
                 body.AddComponent<MeshFilter>().sharedMesh =
                     Resources.GetBuiltinResource<Mesh>("Cube.fbx");
                 body.AddComponent<MeshRenderer>();
+                var armature = new GameObject("Armature");
+                armature.transform.SetParent(Prefab.transform, false);
+                armature.transform.localPosition = _animationBindPosition;
 
                 _controller = new AnimatorController();
                 _controller.AddLayer("Base Layer");
-                AddRequiredState("Cat_IdleSit", emptyMappedClipName, padFallbacksAtBindPose,
+                AddRequiredState("Cat_IdleSit", emptyMappedClipName,
                     zeroLengthMappedClipName);
                 AnimatorState walk = AddRequiredState("Cat_Walk", emptyMappedClipName,
-                    padFallbacksAtBindPose, zeroLengthMappedClipName);
+                    zeroLengthMappedClipName);
                 AnimatorState board = AddRequiredState("Cat_Board", emptyMappedClipName,
-                    padFallbacksAtBindPose, zeroLengthMappedClipName);
-                AddRequiredState("Cat_Alight", emptyMappedClipName, padFallbacksAtBindPose,
+                    zeroLengthMappedClipName);
+                AddRequiredState("Cat_Alight", emptyMappedClipName,
                     zeroLengthMappedClipName);
                 AnimatorState celebrate = AddRequiredState("Cat_Celebrate",
-                    emptyMappedClipName, padFallbacksAtBindPose,
-                    zeroLengthMappedClipName);
+                    emptyMappedClipName, zeroLengthMappedClipName);
                 if (swapWalkAndBoard)
                 {
                     Motion walkMotion = walk.motion;
@@ -509,11 +581,17 @@ namespace CatMetro.Tests.EditMode.Presentation
             {
                 var clip = new AnimationClip { name = clipName ?? literalName };
                 if (animateChild)
-                    clip.SetCurve("RigBody", typeof(Transform), "localPosition.x",
-                        zeroLength
-                            ? new AnimationCurve(new Keyframe(0f, 0f))
-                            : AnimationCurve.Linear(0f, 0f, 0.4f,
-                                holdBindPose ? 0f : 0.02f));
+                {
+                    float endTime = zeroLength ? 0f : holdBindPose ? 1f / 24f : 0.4f;
+                    SetPositionCurve(clip, "localPosition.x", _animationBindPosition.x,
+                        holdBindPose || zeroLength
+                            ? _animationBindPosition.x : _animationBindPosition.x + 0.02f,
+                        endTime, holdBindPose || zeroLength);
+                    SetPositionCurve(clip, "localPosition.y", _animationBindPosition.y,
+                        _animationBindPosition.y, endTime, holdBindPose || zeroLength);
+                    SetPositionCurve(clip, "localPosition.z", _animationBindPosition.z,
+                        _animationBindPosition.z, endTime, holdBindPose || zeroLength);
+                }
                 _clips.Add(clip);
                 AnimatorState state = _controller.layers[0].stateMachine.AddState(literalName);
                 state.motion = clip;
@@ -521,16 +599,23 @@ namespace CatMetro.Tests.EditMode.Presentation
             }
 
             private AnimatorState AddRequiredState(string literalName,
-                string emptyMappedClipName, bool padFallbacksAtBindPose,
-                string zeroLengthMappedClipName)
+                string emptyMappedClipName, string zeroLengthMappedClipName)
             {
                 bool emptyMappedClip = literalName == emptyMappedClipName;
                 if (emptyMappedClip)
                     AddState("animated_decoy_" + literalName, true, literalName);
                 bool fallback = literalName != CatModelCatalog.WalkClip;
                 return AddState(literalName, !emptyMappedClip, null,
-                    padFallbacksAtBindPose && fallback,
-                    literalName == zeroLengthMappedClipName);
+                    fallback, literalName == zeroLengthMappedClipName);
+            }
+
+            private static void SetPositionCurve(AnimationClip clip, string property,
+                float startValue, float endValue, float endTime, bool singleKey)
+            {
+                AnimationCurve curve = singleKey
+                    ? new AnimationCurve(new Keyframe(endTime, endValue))
+                    : AnimationCurve.Linear(0f, startValue, endTime, endValue);
+                clip.SetCurve("Armature", typeof(Transform), property, curve);
             }
         }
 
