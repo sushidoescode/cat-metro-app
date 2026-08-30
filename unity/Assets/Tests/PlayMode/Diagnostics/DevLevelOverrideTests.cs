@@ -23,6 +23,8 @@ namespace CatMetro.Tests.PlayMode
         [SetUp]
         public void SetUp()
         {
+            CatMetro.Services.Purchases.PurchaseRuntime.ResetForTests();
+            CatMetro.Services.Cosmetics.CosmeticRuntime.ResetForTests();
             _tmpDir = Path.Combine(Path.GetTempPath(), "cm-devcap2-test", "devcap");
             Directory.CreateDirectory(_tmpDir);
             DevLevelOverride.DirectoryOverride = _tmpDir;
@@ -42,6 +44,8 @@ namespace CatMetro.Tests.PlayMode
             DevBootOverride.DirectoryOverride = null; // PR #52 F4
             if (_root != null) Object.Destroy(_root.gameObject);
             _root = null;
+            CatMetro.Services.Cosmetics.CosmeticRuntime.ResetForTests();
+            CatMetro.Services.Purchases.PurchaseRuntime.ResetForTests();
             var parent = Path.GetDirectoryName(_tmpDir);
             if (parent != null && Directory.Exists(parent)) Directory.Delete(parent, true);
         }
@@ -112,6 +116,8 @@ namespace CatMetro.Tests.PlayMode
             File.WriteAllText(Path.Combine(_tmpDir, "level.json"), DemoJson());
             LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex(
                 @"^DEVCAP_LEVEL_OVERRIDE .+[/\\]devcap[/\\]level\.json$"));
+            // Every real boot also emits the exact independent numeric catalogue read-back.
+            LogAssert.Expect(LogType.Log, CosmeticBootWiringTests.ExpectedDiagnostic);
             _root = SceneBoot();
             yield return null;
             Assert.That(_root.Session, Is.Not.Null, "booted");

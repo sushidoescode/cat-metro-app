@@ -24,7 +24,7 @@ namespace CatMetro.Tests.PlayMode
 {
     public sealed class CosmeticBootWiringTests
     {
-        private const string ExpectedDiagnostic =
+        internal const string ExpectedDiagnostic =
             "COSMETICS admittedRows=3 rejectedRows=0 admittedCats=3 " +
             "assetReadyRows=3 visibleRows=0 purchasableRows=0 conductorReady=false";
         private const string EntitledDiagnostic =

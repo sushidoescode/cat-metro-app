@@ -149,9 +149,20 @@ namespace CatMetro.Tests.PlayMode
             {
                 var name = t.gameObject.name.ToLowerInvariant();
                 foreach (var banned in BannedNodeNames)
+                {
+                    if (banned == "access" && IsPortraitAccessoryLayer(t)) continue;
                     if (name.Contains(banned)) return t.gameObject.name;
+                }
             }
             return null;
+        }
+
+        private static bool IsPortraitAccessoryLayer(Transform candidate)
+        {
+            if (candidate == null || candidate.parent == null) return false;
+            var portrait = candidate.parent.GetComponent<
+                CatMetro.Presentation.Cosmetics.CosmeticPortraitView>();
+            return portrait != null && candidate == portrait.AccessoryLayerTransform;
         }
 
         private static readonly System.Type[] Whitelist =
@@ -160,6 +171,7 @@ namespace CatMetro.Tests.PlayMode
             typeof(CanvasRenderer), typeof(UnityEngine.UI.CanvasScaler),
             typeof(UnityEngine.UI.Image), typeof(TextMeshProUGUI),
             typeof(CatMetro.Presentation.Screens.HomeScreenView),
+            typeof(CatMetro.Presentation.Cosmetics.CosmeticPortraitView),
         };
 
         private static Component FirstOffWhitelist(GameObject root)
@@ -201,10 +213,15 @@ namespace CatMetro.Tests.PlayMode
 
             // positive controls (anti-vacuity, the HomeScreenTests precedent): both detectors
             // detect on a decoy, proving the absences above are real, not a walk that never runs
-            var bannedDecoy = new GameObject("ShopButton");
+            var bannedDecoy = new GameObject("AccessPassButton");
             bannedDecoy.transform.SetParent(_root.Home.transform, false);
             try
             {
+                Assert.That(FirstBannedNode(_root.Home.gameObject),
+                    Is.EqualTo("AccessPassButton"),
+                    "the AccessoryLayer exception must not suppress a real access surface");
+
+                bannedDecoy.name = "ShopButton";
                 Assert.That(FirstBannedNode(_root.Home.gameObject), Is.EqualTo("ShopButton"),
                     "the structural tripwire detects a commerce node when one exists");
             }

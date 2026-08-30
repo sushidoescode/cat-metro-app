@@ -8,6 +8,7 @@ using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Input;
 using CatMetro.Presentation.Screens;
 using CatMetro.Presentation.Strings;
+using CatMetro.Presentation.Theme;
 using CatMetro.Services.Cosmetics;
 using CatMetro.Services.Purchases;
 using Newtonsoft.Json.Linq;
@@ -115,6 +116,47 @@ namespace CatMetro.Tests.PlayMode
             Layout();
             yield return null;
             Assert.That(Portrait("EntryPortrait").AppliedCatId, Is.EqualTo("yellow_longhair"));
+        }
+
+        [UnityTest]
+        public IEnumerator CatSelectors_PaintCanonicalLineColoursThroughSelectionTransitions()
+        {
+            var setup = CreateSetup();
+            CreateView(setup);
+
+            Assert.That(FindRect("CatSelector-red_tabby").GetComponent<Image>().color,
+                Is.EqualTo(CatLine.ColorOf("red")),
+                "the real red catalogue id must ask the canonical line vocabulary");
+            Assert.That(FindRect("CatSelector-blue_siamese").GetComponent<Image>().color,
+                Is.EqualTo(CatLine.ColorOf("blue")),
+                "the real blue catalogue id must ask the canonical line vocabulary");
+            Assert.That(FindRect("CatSelector-yellow_longhair").GetComponent<Image>().color,
+                Is.EqualTo(CatLine.ColorOf("yellow")),
+                "the real yellow catalogue id must ask the canonical line vocabulary");
+
+            _view.Open();
+            Layout();
+            yield return null;
+
+            Assert.That(FindRect("CatSelector-red_tabby").GetComponent<Image>().color,
+                Is.EqualTo(Palette.TicketOrange),
+                "the selected cat uses the selection colour");
+            Assert.That(FindRect("CatSelector-blue_siamese").GetComponent<Image>().color,
+                Is.EqualTo(CatLine.ColorOf("blue")));
+            Assert.That(FindRect("CatSelector-yellow_longhair").GetComponent<Image>().color,
+                Is.EqualTo(CatLine.ColorOf("yellow")));
+
+            Tap(FindRect("CatSelector-blue_siamese"));
+            yield return null;
+
+            Assert.That(FindRect("CatSelector-red_tabby").GetComponent<Image>().color,
+                Is.EqualTo(CatLine.ColorOf("red")),
+                "the deselected cat returns to its canonical line colour");
+            Assert.That(FindRect("CatSelector-blue_siamese").GetComponent<Image>().color,
+                Is.EqualTo(Palette.TicketOrange),
+                "the newly selected cat uses the selection colour");
+            Assert.That(FindRect("CatSelector-yellow_longhair").GetComponent<Image>().color,
+                Is.EqualTo(CatLine.ColorOf("yellow")));
         }
 
         [UnityTest]
