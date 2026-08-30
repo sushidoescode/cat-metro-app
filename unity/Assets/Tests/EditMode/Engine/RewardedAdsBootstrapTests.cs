@@ -191,7 +191,7 @@ namespace CatMetro.Tests
         }
 
         [Test]
-        public void FactoryBackend_IsTheAttachedReporter_AndAloneGatesProviderStartup()
+        public void Boot_UsesItsOneFactoryBackendForPurchasesAndReporterGating()
         {
             using var root = new SFixtures.TempRoot();
             var store = SFixtures.Store(root);
@@ -199,34 +199,34 @@ namespace CatMetro.Tests
             SaveRuntime.Install(store);
             var backend = new BackendReporter(isReady: false);
             int backendCreates = 0;
-            PurchaseBackendFactory.Register(_ =>
+            PurchaseService factoryService = null;
+            PurchaseBackendFactory.Register(service =>
             {
                 backendCreates++;
+                factoryService = service;
                 return backend;
             });
-            var service = new PurchaseService(PFixtures.TinyCatalog(), clock: () => 1_000L);
-            var exactBackend = PurchaseBackendFactory.Create(service);
-            service.AttachBackend(exactBackend);
             var provider = new Provider();
             int providerCreates = 0;
-            using var composition = Composition(service,
-                exactBackend as IAdEventReporter, () =>
-                {
-                    providerCreates++;
-                    return provider;
-                });
+            RewardedAdProviderFactory.Register(_ =>
+            {
+                providerCreates++;
+                return provider;
+            });
+            MonetizationBootstrap.SetRewardedAdsConfigForTests(
+                RewardedAdsConfig.Parse(ConfiguredJson, RuntimePlatform.Android));
 
-            composition.Bind();
-            service.RefreshEntitlements();
+            MonetizationBootstrap.Boot();
+            MonetizationBootstrap.Boot();
 
-            Assert.That(exactBackend, Is.SameAs(backend));
-            Assert.That(exactBackend as IAdEventReporter, Is.SameAs(backend));
+            Assert.That(PurchaseRuntime.IsInstalled, Is.True);
+            Assert.That(factoryService, Is.SameAs(PurchaseRuntime.Current));
             Assert.That(backendCreates, Is.EqualTo(1));
             Assert.That(providerCreates, Is.EqualTo(1));
             Assert.That(backend.RefreshEntitlementsCalls, Is.EqualTo(1),
-                "the factory object must be the PurchaseService backend");
+                "Boot must attach the factory object as the PurchaseService backend");
             Assert.That(backend.ReporterEventAddCalls, Is.EqualTo(1),
-                "the same factory object must be the coordinator reporter");
+                "Boot must pass that same factory object as the coordinator reporter");
             Assert.That(provider.InitializeCalls, Is.Zero);
             Assert.That(provider.LoadCalls, Is.Zero);
 
