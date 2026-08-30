@@ -621,7 +621,7 @@ namespace CatMetro.Integrations.LevelPlay
             if (_disposed || _failed || !impression.RevenueUsd.HasValue) return;
             var info = new LevelPlayAdSnapshot(null, impression.AuctionId,
                 impression.AdUnitId, impression.PlacementId, impression.NetworkName);
-            if (TryResolve(info, allowNewBinding: true, allowNoStableId: false,
+            if (TryResolve(info, allowNewBinding: false, allowNoStableId: false,
                 confirmsCurrentShow: true, trustedLoadedIdentity: false,
                 out var context))
             {

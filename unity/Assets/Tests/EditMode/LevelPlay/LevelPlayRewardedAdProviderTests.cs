@@ -706,6 +706,35 @@ namespace CatMetro.Tests.LevelPlay
         }
 
         [Test]
+        public void StaleAuctionOnlyImpressionCannotBindCurrentUnboundShow()
+        {
+            ReadyProvider();
+            Assert.That(_provider.TryShow(601L, "old"), Is.True);
+            _ad.EmitDisplayed(AdInfo("old-ad", null, "old"));
+            _ad.EmitClosed(AdInfo("old-ad", null, "old"));
+
+            _provider.Load();
+            _ad.EmitLoaded(AdInfo(null, null, null));
+            Assert.That(_provider.TryShow(602L, "new"), Is.True);
+
+            _ad.EmitImpression(new LevelPlayImpressionSnapshot("old-auction",
+                "one-rewarded-unit", "old", "old-network", 0.01d, "BID"));
+            DrainThroughExistingMonetizationPump();
+
+            Assert.That(_events.Any(e => e.Kind == RewardedAdEventKind.Revenue &&
+                e.AttemptId == 602L), Is.False,
+                "an auction-only ILR must not establish the current show's identity as attempt 602");
+
+            _ad.EmitDisplayed(AdInfo("new-ad", "new-auction", "new"));
+            _ad.EmitRewarded(AdInfo("new-ad", "new-auction", "new"));
+            _ad.EmitRewarded(AdInfo("old-ad", null, "old"));
+
+            Assert.That(_events.Where(e => e.Kind == RewardedAdEventKind.Rewarded)
+                .Select(e => e.AttemptId), Is.EqualTo(new[] { 602L, 601L }));
+            Assert.That(_events.Any(e => e.Kind == RewardedAdEventKind.Revenue), Is.False);
+        }
+
+        [Test]
         public void AnonymousDisplayFailureOutsideTheCurrentShowCallIsDropped()
         {
             ReadyProvider();
@@ -1152,7 +1181,7 @@ namespace CatMetro.Tests.LevelPlay
                     BindingFlags.Instance | BindingFlags.NonPublic);
                 Assert.That(bind, Is.Not.Null);
                 Assert.That(update, Is.Not.Null);
-                bind.Invoke(pump, new[] { null, composition });
+                bind.Invoke(pump, new[] { null, composition, null });
                 update.Invoke(pump, null);
             }
             finally
