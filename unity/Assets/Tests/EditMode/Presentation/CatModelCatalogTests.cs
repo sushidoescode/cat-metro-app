@@ -19,14 +19,6 @@ namespace CatMetro.Tests.EditMode.Presentation
         private void Awake() => AwakeCount++;
     }
 
-    public sealed class CatRigStateBehaviourProbe : StateMachineBehaviour
-    {
-        public static int StateEnterCount;
-
-        public override void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo,
-            int layerIndex) => StateEnterCount++;
-    }
-
     public sealed class CatModelCatalogTests
     {
         [Test]
@@ -116,6 +108,9 @@ namespace CatMetro.Tests.EditMode.Presentation
         {
             using (var fixture = new ConformingRigFixture(addStateBehaviour: true))
             {
+                Assert.That(fixture.StateBehaviour,
+                    Is.TypeOf<CatRigStateBehaviourProbe>(),
+                    "the negative fixture must attach a resolvable MonoScript");
                 CatRigStateBehaviourProbe.StateEnterCount = 0;
 
                 var catalog = new CatModelCatalog(fixture.Prefab);
@@ -344,18 +339,13 @@ namespace CatMetro.Tests.EditMode.Presentation
                         "world-space imported forward must face with the cat");
                     Assert.That(cat.Find("Head").GetComponent<MeshRenderer>().enabled, Is.False);
                     Assert.That(cat.Find("EyeLeft").GetComponent<MeshRenderer>().enabled, Is.False);
-                    MeshRenderer rigRenderer = rig.GetComponentInChildren<MeshRenderer>(true);
-                    Assert.That(rigRenderer.enabled, Is.True);
-                    var tint = new MaterialPropertyBlock();
-                    rigRenderer.GetPropertyBlock(tint);
-                    Assert.That(tint.GetColor("_BaseColor"),
-                        Is.EqualTo(CatLine.ColorOf("red")),
+                    Renderer[] rigRenderers = rig.GetComponentsInChildren<Renderer>(true);
+                    Assert.That(rigRenderers, Has.Length.EqualTo(2),
+                        "the fixture must exercise production's all-renderers tint loop");
+                    AssertTints(rigRenderers, CatLine.ColorOf("red"),
                         "the admitted rig must inherit the authoritative cat-line tint");
                     view.SyncSlot(0x0000000100000002L, CatColor.Blue);
-                    tint.Clear();
-                    rigRenderer.GetPropertyBlock(tint);
-                    Assert.That(tint.GetColor("_BaseColor"),
-                        Is.EqualTo(CatLine.ColorOf("blue")),
+                    AssertTints(rigRenderers, CatLine.ColorOf("blue"),
                         "occupant reuse must retint the admitted rig, not retain its old line");
 
                     Bounds standing = BoundsIn(cat,
@@ -477,6 +467,30 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(Vector3.Distance(actual.normalized, expected), Is.LessThan(0.0001f), message);
         }
 
+        private static void AssertTint(Color actual, Color expected, string message)
+        {
+            // MaterialPropertyBlock SetColor/GetColor is not bit-exact in this project's
+            // Linear color space. The observed residue is about 1e-7 per channel.
+            const float tolerance = 0.000001f;
+            Assert.That(actual.r, Is.EqualTo(expected.r).Within(tolerance), message + " (r)");
+            Assert.That(actual.g, Is.EqualTo(expected.g).Within(tolerance), message + " (g)");
+            Assert.That(actual.b, Is.EqualTo(expected.b).Within(tolerance), message + " (b)");
+            Assert.That(actual.a, Is.EqualTo(expected.a).Within(tolerance), message + " (a)");
+        }
+
+        private static void AssertTints(Renderer[] renderers, Color expected, string message)
+        {
+            var properties = new MaterialPropertyBlock();
+            for (int index = 0; index < renderers.Length; index++)
+            {
+                Assert.That(renderers[index].enabled, Is.True, message + " (enabled)");
+                properties.Clear();
+                renderers[index].GetPropertyBlock(properties);
+                AssertTint(properties.GetColor("_BaseColor"), expected,
+                    message + " (" + renderers[index].name + ")");
+            }
+        }
+
         private static Bounds BoundsIn(Transform frame, MeshFilter filter)
         {
             Bounds mesh = filter.sharedMesh.bounds;
@@ -525,6 +539,9 @@ namespace CatMetro.Tests.EditMode.Presentation
                 body.AddComponent<MeshFilter>().sharedMesh =
                     Resources.GetBuiltinResource<Mesh>("Cube.fbx");
                 body.AddComponent<MeshRenderer>();
+                var accent = new GameObject("RigAccent");
+                accent.transform.SetParent(Prefab.transform, false);
+                accent.AddComponent<MeshRenderer>();
                 var armature = new GameObject("Armature");
                 armature.transform.SetParent(Prefab.transform, false);
                 armature.transform.localPosition = _animationBindPosition;
@@ -549,8 +566,11 @@ namespace CatMetro.Tests.EditMode.Presentation
                 }
                 _controller.layers[0].stateMachine.defaultState = celebrate;
                 if (addStateBehaviour)
-                    _stateBehaviours.Add(
-                        celebrate.AddStateMachineBehaviour<CatRigStateBehaviourProbe>());
+                {
+                    StateBehaviour =
+                        celebrate.AddStateMachineBehaviour<CatRigStateBehaviourProbe>();
+                    if (StateBehaviour != null) _stateBehaviours.Add(StateBehaviour);
+                }
 
                 var animator = Prefab.AddComponent<Animator>();
                 animator.runtimeAnimatorController = _controller;
@@ -558,6 +578,8 @@ namespace CatMetro.Tests.EditMode.Presentation
             }
 
             public GameObject Prefab { get; }
+
+            public StateMachineBehaviour StateBehaviour { get; }
 
             public AnimationClip ClipNamed(string name)
             {

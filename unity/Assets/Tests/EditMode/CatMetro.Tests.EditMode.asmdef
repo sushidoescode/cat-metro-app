@@ -8,6 +8,7 @@
         "CatMetro.Application",
         "CatMetro.Presentation",
         "CatMetro.Bootstrap",
+        "CatMetro.Tests.RuntimeSupport",
         "CatMetro.Integrations.OneSignal",
         "CatMetro.Integrations.Analytics",
         "UnityEngine.UI",
