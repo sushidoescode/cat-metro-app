@@ -30,10 +30,11 @@ namespace CatMetro.Services.Cosmetics
             _persistence = persistence ?? new InMemoryCosmeticProfilePersistence(
                 CosmeticProfileSnapshot.Empty);
             _profile = TryLoad(out var loaded) ? loaded : CreateStarterDefault();
-            _access = new CosmeticAccessResolver(null);
+            _purchases = purchases ?? PurchaseRuntime.Current;
+            _access = new CosmeticAccessResolver(_purchases);
 
-            BindPurchasesCore(purchases ?? PurchaseRuntime.Current, false);
-            RecomputeCurrentPortrait();
+            ComputeCurrentPortrait(_access, out _selectedCatId, out _currentPortrait);
+            _purchases.Ledger.Changed += OnLedgerChanged;
         }
 
         public bool IsAccessible(string itemId)
@@ -92,6 +93,12 @@ namespace CatMetro.Services.Cosmetics
 
         public CosmeticPortraitSnapshot EffectivePortraitFor(string catId)
         {
+            return EffectivePortraitFor(catId, _access);
+        }
+
+        private CosmeticPortraitSnapshot EffectivePortraitFor(string catId,
+            CosmeticAccessResolver access)
+        {
             if (!TryGetAccessibleCat(catId, out var cat)) return default;
 
             string baseAssetId = _assets.TryGet(cat.PortraitAssetId, out _)
@@ -99,9 +106,9 @@ namespace CatMetro.Services.Cosmetics
                 : string.Empty;
             var loadout = _profile.LoadoutFor(catId);
             return new CosmeticPortraitSnapshot(catId, baseAssetId,
-                EffectiveAsset(catId, CosmeticSlot.Outfit, loadout.OutfitId),
-                EffectiveAsset(catId, CosmeticSlot.Accessory, loadout.AccessoryId),
-                EffectiveAsset(catId, CosmeticSlot.Frame, loadout.FrameId));
+                EffectiveAsset(catId, CosmeticSlot.Outfit, loadout.OutfitId, access),
+                EffectiveAsset(catId, CosmeticSlot.Accessory, loadout.AccessoryId, access),
+                EffectiveAsset(catId, CosmeticSlot.Frame, loadout.FrameId, access));
         }
 
         public CosmeticPortraitSnapshot PreviewPortrait(string catId, CosmeticSlot slot,
@@ -191,15 +198,19 @@ namespace CatMetro.Services.Cosmetics
         {
             if (ReferenceEquals(_purchases, purchases)) return;
 
+            var candidateAccess = new CosmeticAccessResolver(purchases);
+            ComputeCurrentPortrait(candidateAccess, out var selectedCatId,
+                out var currentPortrait);
+
             if (_purchases != null) _purchases.Ledger.Changed -= OnLedgerChanged;
             _purchases = purchases;
             _access.BindPurchases(purchases);
             if (_purchases != null) _purchases.Ledger.Changed += OnLedgerChanged;
 
-            if (!publishEffectiveChange) return;
             var before = _currentPortrait;
-            RecomputeCurrentPortrait();
-            if (!_currentPortrait.Equals(before)) Changed?.Invoke();
+            _selectedCatId = selectedCatId;
+            _currentPortrait = currentPortrait;
+            if (publishEffectiveChange && !_currentPortrait.Equals(before)) Changed?.Invoke();
         }
 
         private void OnLedgerChanged()
@@ -212,10 +223,18 @@ namespace CatMetro.Services.Cosmetics
 
         private void RecomputeCurrentPortrait()
         {
-            _selectedCatId = ResolveSelectedCatId();
-            _currentPortrait = string.IsNullOrEmpty(_selectedCatId)
+            ComputeCurrentPortrait(_access, out var selectedCatId, out var currentPortrait);
+            _selectedCatId = selectedCatId;
+            _currentPortrait = currentPortrait;
+        }
+
+        private void ComputeCurrentPortrait(CosmeticAccessResolver access,
+            out string selectedCatId, out CosmeticPortraitSnapshot currentPortrait)
+        {
+            selectedCatId = ResolveSelectedCatId();
+            currentPortrait = string.IsNullOrEmpty(selectedCatId)
                 ? default
-                : EffectivePortraitFor(_selectedCatId);
+                : EffectivePortraitFor(selectedCatId, access);
         }
 
         private string ResolveSelectedCatId()
@@ -238,13 +257,14 @@ namespace CatMetro.Services.Cosmetics
             return cat.Starter || Contains(_profile.EarnedCatIds, cat.Id);
         }
 
-        private string EffectiveAsset(string catId, CosmeticSlot slot, string itemId)
+        private string EffectiveAsset(string catId, CosmeticSlot slot, string itemId,
+            CosmeticAccessResolver access)
         {
             if (string.IsNullOrEmpty(itemId)
                 || !Catalog.TryGetItem(itemId, out var item)
                 || item.Slot != slot
                 || !IsCompatible(item, catId)
-                || !_access.IsAccessible(item, _profile)
+                || !access.IsAccessible(item, _profile)
                 || !_assets.TryGet(item.PortraitAssetId, out _))
                 return string.Empty;
 
