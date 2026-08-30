@@ -55,10 +55,11 @@ namespace CatMetro.Services.Cosmetics
             {
                 var item = catalog.Items[i];
                 if (item.Slot != slot || !IsCompatible(item, catId)) continue;
+                if (!profile.TryGetPortraitAsset(item.PortraitAssetId, out _)) continue;
 
                 bool isAccessible = profile.IsAccessible(item.Id);
-                bool isEquipped = string.Equals(desiredItemId, item.Id,
-                    StringComparison.Ordinal);
+                bool isEquipped = isAccessible
+                    && string.Equals(desiredItemId, item.Id, StringComparison.Ordinal);
                 LocalizedPrice price = default;
                 bool hasPrice = purchases != null
                     && !string.IsNullOrEmpty(item.ProductId)
@@ -76,7 +77,8 @@ namespace CatMetro.Services.Cosmetics
                             ? CosmeticWardrobeRoute.None
                             : CosmeticWardrobeRoute.Equip;
                     rows.Add(new CosmeticWardrobeRow(item, true, isEquipped,
-                        secondsRemaining, route, hasPrice ? price : default));
+                        secondsRemaining, route,
+                        route == CosmeticWardrobeRoute.Purchase ? price : default));
                     continue;
                 }
 
