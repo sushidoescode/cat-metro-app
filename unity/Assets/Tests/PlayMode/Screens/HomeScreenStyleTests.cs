@@ -3,6 +3,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using TMPro;
+using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Input;
 using CatMetro.Presentation.Screens;
 using CatMetro.Presentation.Theme;
@@ -90,6 +91,30 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator DirectConstructionWithoutPortraitSource_PreservesFallbackHolderPaint()
+        {
+            CreateShown();
+            yield return null;
+
+            var hero = Find("HeroCard");
+            Assert.That(hero, Is.Not.Null);
+            foreach (var name in new[]
+                     {
+                         "ParkedDistrictA", "ParkedDistrictB", "ParkedDistrictC",
+                     })
+            {
+                var holder = DirectChild(hero, name);
+                var image = holder.GetComponent<UnityEngine.UI.Image>();
+                Assert.That(image, Is.Not.Null, name + " remains an Image holder");
+                Assert.That(image.color,
+                    Is.EqualTo(Palette.WithAlpha(Palette.DepotNavy, 0.18f)),
+                    name + " retains the no-source fallback paint");
+                Assert.That(holder.GetComponentsInChildren<CosmeticPortraitView>(true),
+                    Is.Empty, name + " has no shared portrait without a source");
+            }
+        }
+
+        [UnityTest]
         public IEnumerator LayoutForViewport_ReportsTheCaptureHero_Label_AndMarkers()
         {
             CreateShown();
@@ -116,6 +141,20 @@ namespace CatMetro.Tests.PlayMode
             foreach (var transform in _home.GetComponentsInChildren<Transform>(true))
                 if (transform.name == name) return transform;
             return null;
+        }
+
+        private static Transform DirectChild(Transform parent, string name)
+        {
+            Transform result = null;
+            int count = 0;
+            for (int i = 0; i < parent.childCount; i++)
+            {
+                if (parent.GetChild(i).name != name) continue;
+                result = parent.GetChild(i);
+                count++;
+            }
+            Assert.That(count, Is.EqualTo(1), name + " remains one direct HeroCard child");
+            return result;
         }
     }
 }

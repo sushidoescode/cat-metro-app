@@ -1,10 +1,12 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Input;
 using CatMetro.Presentation.Theme;
 using CatMetro.Services;
+using CatMetro.Services.Cosmetics;
 
 namespace CatMetro.Presentation.Screens
 {
@@ -58,6 +60,7 @@ namespace CatMetro.Presentation.Screens
         private TMP_Text _dailyStatus;
         private RectTransform _reminderGear;
         private DailyReminderSheet _reminderSheet;
+        private CosmeticPortraitView _profilePortrait;
         private Rect _pinRectPx;
         private Rect _dailyPinRectPx;
         private Rect _heroRectPx;
@@ -96,6 +99,10 @@ namespace CatMetro.Presentation.Screens
         public RectTransform ReminderGearTransform => _reminderGear;
         public Rect ReminderGearRectPx => _reminderGearRectPx;
         public DailyReminderSheet ReminderSheet => _reminderSheet;
+        public CosmeticPortraitView ProfilePortrait => _profilePortrait;
+        public RectTransform ProfilePortraitTransform => _profilePortrait != null
+            ? _profilePortrait.RootTransform
+            : null;
         public int MarkerCount => _markers != null ? _markers.Length : 0;
         public Color[] MarkerColors
         {
@@ -112,7 +119,8 @@ namespace CatMetro.Presentation.Screens
         // Daily objects until the save/config gate opens. GameRoot may also call UnlockDaily
         // after a campaign win crosses that same threshold in the current run.
         public static HomeScreenView Create(Transform canvasParent,
-            bool dailyEntryUnlocked = false, int lifetimeDailyCompletions = 0)
+            bool dailyEntryUnlocked = false, int lifetimeDailyCompletions = 0,
+            ICosmeticPortraitSource portraitSource = null)
         {
             var go = new GameObject("HomeScreen");
             go.transform.SetParent(canvasParent, false);
@@ -180,10 +188,16 @@ namespace CatMetro.Presentation.Screens
             // replace only these fallback paints and continue to use their rects as holders.
             MakeSilhouette(view._hero, "ParkedDistrictA",
                 new Vector2(0.11f, 0.665f), new Vector2(0.33f, 0.815f));
-            MakeSilhouette(view._hero, "ParkedDistrictB",
+            var parkedDistrictB = MakeSilhouette(view._hero, "ParkedDistrictB",
                 new Vector2(0.67f, 0.455f), new Vector2(0.89f, 0.605f));
             MakeSilhouette(view._hero, "ParkedDistrictC",
                 new Vector2(0.11f, 0.245f), new Vector2(0.33f, 0.395f));
+            if (portraitSource != null)
+            {
+                parkedDistrictB.color = Color.clear;
+                view._profilePortrait = CosmeticPortraitView.Create(
+                    parkedDistrictB.transform, portraitSource, "HomeProfilePortrait");
+            }
 
             MakeSurface(view._hero, "DepotSpur", new Vector2(0.50f, 0.125f),
                 new Vector2(0.68f, 0.145f), Palette.InkNavy, false);
