@@ -325,6 +325,95 @@ namespace CatMetro.Tests
         }
 
         [Test]
+        public void ReadOnlyReplacement_DetachesPersistenceAndNeverConstructsAnotherAdProvider()
+        {
+            using var writableRoot = new SFixtures.TempRoot();
+            using var futureRoot = new SFixtures.TempRoot();
+            var firstProvider = new Provider();
+            var forbiddenSecondProvider = new Provider();
+            var providers = new Queue<Provider>(new[]
+            {
+                firstProvider,
+                forbiddenSecondProvider,
+            });
+            int providerFactoryCalls = 0;
+            var backend = new BackendReporter();
+            var service = Service(backend, PurchaseCatalog.Parse(ThreeAdEntitlementCatalogJson));
+            using var composition = Composition(service, backend, () =>
+            {
+                providerFactoryCalls++;
+                return providers.Dequeue();
+            });
+            composition.Bind();
+
+            var writable = SFixtures.Store(writableRoot);
+            writable.Load();
+            SeedLease(writable, "outfit_bellhop", 5_000L);
+            Assert.That(writable.TryCommitAtomic(), Is.True);
+            SaveRuntime.Install(writable);
+            byte[] writableBytes = SFixtures.RawFile(writable.SavePath);
+
+            Assert.That(providerFactoryCalls, Is.EqualTo(1));
+            Assert.That(firstProvider.InitializeCalls, Is.EqualTo(1));
+            Assert.That(firstProvider.LoadCalls, Is.EqualTo(1));
+            Assert.That(RewardedAdRuntime.IsInstalled, Is.True);
+            Assert.That(service.CanPersistRewardedAdGrants, Is.True);
+            Assert.That(service.IsUnlocked("outfit_bellhop"), Is.True);
+
+            bool replacementChangedObserved = false;
+            bool canPersistInsideChanged = true;
+            AdGrantOutcome? reentrantGrant = null;
+            service.Ledger.Changed += () =>
+            {
+                if (replacementChangedObserved) return;
+                replacementChangedObserved = true;
+                canPersistInsideChanged = service.CanPersistRewardedAdGrants;
+                reentrantGrant = service.GrantRewardedAdEntitlement("outfit_bellhop");
+            };
+
+            var futureFs = new SFixtures.RecordingFs();
+            var readOnly = SFixtures.Store(futureRoot, futureFs);
+            ushort futureVersion = checked((ushort)(SaveDefaults.SAVE_VERSION + 1));
+            byte[] futureBytes = SFixtures.FileWithVersion(futureVersion);
+            SFixtures.WriteRaw(readOnly.SavePath, futureBytes);
+            Assert.That(readOnly.Load(),
+                Is.EqualTo(CatMetro.Services.LoadResult.RefusedDowngrade));
+            Assert.That(readOnly.ReadOnlyMode, Is.True);
+            CollectionAssert.AreEqual(futureBytes, SFixtures.RawFile(readOnly.SavePath));
+
+            SaveRuntime.Install(readOnly);
+            var show = RewardedAdRuntime.Current.Show("wardrobe_conductor_trial");
+            int refreshesBefore = backend.RefreshEntitlementsCalls;
+            Assert.DoesNotThrow(() => service.RefreshEntitlements());
+
+            Assert.That(firstProvider.DisposeCalls, Is.EqualTo(1));
+            Assert.That(firstProvider.EventRemoveCalls, Is.EqualTo(1));
+            Assert.That(replacementChangedObserved, Is.True,
+                "replacing the writable store's lease must exercise the Changed boundary");
+            Assert.That(canPersistInsideChanged, Is.False,
+                "old persistence must be detached before Restore publishes Changed");
+            Assert.That(reentrantGrant, Is.EqualTo(AdGrantOutcome.PersistenceFailed));
+            Assert.That(service.IsUnlocked("outfit_bellhop"), Is.False);
+            CollectionAssert.AreEqual(writableBytes, SFixtures.RawFile(writable.SavePath),
+                "a reentrant grant must not mutate the replaced writable save");
+            Assert.That(providerFactoryCalls, Is.EqualTo(1),
+                "read-only save state must stop before any new vendor object is constructed");
+            Assert.That(forbiddenSecondProvider.InitializeCalls, Is.Zero);
+            Assert.That(RewardedAdRuntime.IsInstalled, Is.False);
+            Assert.That(RewardedAdRuntime.Current.CanShow("wardrobe_conductor_trial"), Is.False);
+            Assert.That(show, Is.EqualTo(RewardedShowOutcome.Unavailable));
+            Assert.That(firstProvider.TryShowCalls, Is.Zero);
+            Assert.That(forbiddenSecondProvider.TryShowCalls, Is.Zero);
+            Assert.That(service.CanPersistRewardedAdGrants, Is.False,
+                "the writable store's adapter must not survive the replacement");
+            Assert.That(backend.RefreshEntitlementsCalls, Is.EqualTo(refreshesBefore + 1),
+                "normal purchase-service refresh remains usable in read-only save mode");
+            Assert.That(futureFs.Calls, Is.Empty,
+                "composition must make no write/replace/delete call against future bytes");
+            CollectionAssert.AreEqual(futureBytes, SFixtures.RawFile(readOnly.SavePath));
+        }
+
+        [Test]
         public void GenuinelyNewStore_ReplacesOldSaveLeasesBeforeLaterPersistence()
         {
             using var firstRoot = new SFixtures.TempRoot();
@@ -725,10 +814,15 @@ namespace CatMetro.Tests
             public int LoadCalls { get; private set; }
             public int DisposeCalls { get; private set; }
             public int DrainCalls { get; private set; }
+            public int TryShowCalls { get; private set; }
 
             public void Initialize() => InitializeCalls++;
             public void Load() => LoadCalls++;
-            public bool TryShow(long attemptId, string placementId) => true;
+            public bool TryShow(long attemptId, string placementId)
+            {
+                TryShowCalls++;
+                return true;
+            }
             public void Queue(RewardedAdEvent adEvent) => _queuedEvent = adEvent;
 
             public void DrainMainThreadEvents()
