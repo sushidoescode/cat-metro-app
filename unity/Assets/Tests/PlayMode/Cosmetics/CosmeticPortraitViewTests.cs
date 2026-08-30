@@ -144,13 +144,22 @@ namespace CatMetro.Tests.PlayMode
         [Test]
         public void UnsupportedBaseRenderer_ClearsTheLayerAndCatReadback()
         {
-            var source = PortraitTestSource.WithRealTokens(default);
-            source.AddAsset("cat.unsupported", "cat.renderer_not_admitted");
-
+            var source = PortraitTestSource.WithRealTokens(new CosmeticPortraitSnapshot(
+                "cat.red", "cat.red_tabby", "", "", ""));
             var view = CosmeticPortraitView.Create(_host.transform, source);
+
+            Assert.That(view.BaseLayerTransform.gameObject.activeSelf, Is.True,
+                "precondition: the transition begins from a painted supported base");
+            Assert.That(view.AppliedCatId, Is.EqualTo("cat.red"));
+            Assert.That(VisibleImages(view.BaseLayerTransform), Is.Not.Empty,
+                "precondition: real base Images exist to catch a no-clear regression");
+
+            source.AddAsset("cat.unsupported", "cat.renderer_not_admitted");
             source.Set(new CosmeticPortraitSnapshot(
                 "cat.unsupported", "cat.unsupported", "", "", ""));
 
+            Assert.That(VisibleImages(view.BaseLayerTransform), Is.Empty,
+                "unsupported paint clears every previously visible base Image");
             Assert.That(view.BaseLayerTransform.gameObject.activeSelf, Is.False);
             Assert.That(view.AppliedCatId, Is.Empty,
                 "a source-resolved asset is not painted when its renderer token is unsupported");
