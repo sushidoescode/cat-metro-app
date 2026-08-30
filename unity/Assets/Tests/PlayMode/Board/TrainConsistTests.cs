@@ -576,6 +576,23 @@ namespace CatMetro.Tests.PlayMode
             }
         }
 
+        // BUFFER LAW. The winding test above derives face normals from triangle geometry so
+        // duplicated side vertices cannot masquerade as cap vertices. Keep the independent mesh
+        // contract that rewrite displaced: every rendered vertex still carries a normal for the
+        // lighting pipeline. Removing RecalculateNormals must fail here, not as an index error in
+        // an unrelated camera-facing assertion.
+        [Test]
+        public void PinCardMeshes_CarryOneNormalForEveryVertex()
+        {
+            foreach (Mesh mesh in new[] { CatPinMeshBuilder.Card(), CatPinMeshBuilder.StarBadge() })
+            {
+                Assert.That(mesh.vertexCount, Is.GreaterThan(0),
+                    mesh.name + " must have rendered vertices to illuminate");
+                Assert.That(mesh.normals.Length, Is.EqualTo(mesh.vertexCount),
+                    mesh.name + " must expose one vertex normal for every rendered vertex");
+            }
+        }
+
         [UnityTest]
         public IEnumerator Pin_IsPaletteBound_WhiteCardUnderTheLineColour()
         {

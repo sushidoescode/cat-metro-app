@@ -206,8 +206,11 @@ namespace CatMetro.Bootstrap
         private static string OsApiLevel()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
-            return UnityEngine.Android.AndroidInfo.deviceApiLevel
-                .ToString(CultureInfo.InvariantCulture);
+            using (var buildVersion = new UnityEngine.AndroidJavaClass("android.os.Build$VERSION"))
+            {
+                return buildVersion.GetStatic<int>("SDK_INT")
+                    .ToString(CultureInfo.InvariantCulture);
+            }
 #elif UNITY_IOS && !UNITY_EDITOR
             string version = UnityEngine.iOS.Device.systemVersion ?? "";
             int dot = version.IndexOf('.');

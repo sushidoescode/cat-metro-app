@@ -98,14 +98,22 @@ namespace CatMetro.Tests.PlayMode
             CreateShown();
             yield return null;
 
+            const float minimumPulseRange = 0.0001f;
             float min = float.MaxValue, max = float.MinValue;
-            for (int i = 0; i < 10; i++)
+            // Update advances the sine phase at 5 rad/s. A 0.75 s bound exceeds half a cycle,
+            // so even a sample beginning at an extremum observes motion. Stopwatch is independent
+            // of Unity's presentation clock; sample each resumed frame BEFORE checking the bound,
+            // then exit as soon as the promised variation appears.
+            var pulseWindow = System.Diagnostics.Stopwatch.StartNew();
+            while (true)
             {
                 min = Mathf.Min(min, _home.PinScale);
                 max = Mathf.Max(max, _home.PinScale);
+                if (max - min > minimumPulseRange || pulseWindow.ElapsedMilliseconds >= 750)
+                    break;
                 yield return null;
             }
-            Assert.That(max - min, Is.GreaterThan(0.0001f),
+            Assert.That(max - min, Is.GreaterThan(minimumPulseRange),
                 "motion ON: the pin scale varies across frames — the pulse exists");
             Assert.That(_home.RingVisible, Is.True,
                 "the raised-ring shape twin renders WITH motion on — never motion-only state");
