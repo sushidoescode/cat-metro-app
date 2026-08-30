@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Input;
@@ -38,6 +37,8 @@ namespace CatMetro.Tests.PlayMode
         [TearDown]
         public void TearDown()
         {
+            CosmeticRuntime.ResetForTests();
+            PurchaseRuntime.ResetForTests();
             for (int i = 0; i < _profiles.Count; i++) _profiles[i].Dispose();
             _profiles.Clear();
             if (_canvasHost != null) UnityEngine.Object.DestroyImmediate(_canvasHost);
@@ -60,7 +61,8 @@ namespace CatMetro.Tests.PlayMode
             var persistence = new RecordingPersistence(DefaultProfile(), order);
             var setup = CreateSetup(persistence: persistence);
             setup.Profile.Changed += () => order.Add("publish");
-            CreateView(setup);
+            CreateCamera();
+            CreateView(setup, camera: _cameraHost.GetComponent<Camera>());
 
             _view.Open();
             Layout();
@@ -82,11 +84,37 @@ namespace CatMetro.Tests.PlayMode
                 "selection is durable before observers see it");
             Assert.That(setup.Profile.SelectedCatId, Is.EqualTo("blue_siamese"));
             Assert.That(Portrait("LargePortrait").AppliedCatId, Is.EqualTo("blue_siamese"));
+            var portraitRect = ScreenRect(FindRect("LargePortrait"));
+            var bluePixels = RenderPixels();
+            Assert.That(CountColor(bluePixels, portraitRect,
+                new Color32(62, 124, 201, 255), 28), Is.GreaterThan(1_000),
+                "Blue Siamese must paint real Harbor Blue pixels");
 
             _view.ShowEntry();
             Layout();
             yield return null;
             Assert.That(Portrait("EntryPortrait").AppliedCatId, Is.EqualTo("blue_siamese"));
+
+            _view.Open();
+            Layout();
+            yield return null;
+            before = persistence.ReplaceCalls;
+            Tap(FindRect("CatSelector-yellow_longhair"));
+            yield return null;
+            Assert.That(persistence.ReplaceCalls, Is.EqualTo(before + 1));
+            Assert.That(order.TakeLast(2).ToArray(), Is.EqualTo(new[] { "persist", "publish" }));
+            Assert.That(setup.Profile.SelectedCatId, Is.EqualTo("yellow_longhair"));
+            Assert.That(Portrait("LargePortrait").AppliedCatId, Is.EqualTo("yellow_longhair"));
+            var yellowPixels = RenderPixels();
+            Assert.That(CountColor(yellowPixels, portraitRect,
+                new Color32(239, 193, 61, 255), 28), Is.GreaterThan(1_000),
+                "Yellow Longhair must paint real Tabby Yellow pixels");
+            Assert.That(PixelDelta(bluePixels, yellowPixels, portraitRect),
+                Is.GreaterThan(10_000), "Blue and Yellow portraits must be visibly distinct");
+            _view.ShowEntry();
+            Layout();
+            yield return null;
+            Assert.That(Portrait("EntryPortrait").AppliedCatId, Is.EqualTo("yellow_longhair"));
         }
 
         [UnityTest]
@@ -117,6 +145,91 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(empty.gameObject.activeInHierarchy, Is.True);
             Assert.That(empty.text, Is.EqualTo(UiStrings.Get("wardrobe.empty")));
             Assert.That(_regions.IsRegistered("wardrobe.empty"), Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator DynamicLayout_MeetsAllTargetsAndCompactsZeroOneTwoAndThreeRows()
+        {
+            var setup = CreateSetup();
+            CreateView(setup);
+            _view.Open();
+            Layout();
+            yield return null;
+
+            AssertActionGeometry(primaryVisible: false);
+            AssertTightCardBand(1);
+            var collapsedRestore = ScreenRect(FindRect("RestoreChip"));
+            var collapsedStatus = ScreenRect(FindRect("WardrobeStatus"));
+            var collapsedItems = ScreenRect(FindRect("ItemsBand"));
+            var collapsedTabs = ScreenRect(FindRect("TabsBand"));
+            var collapsedPortrait = ScreenRect(FindRect("LargePortraitCard"));
+            float bottomInset = 12f * HudBands.PxPerDp(408f);
+            Assert.That(collapsedRestore.yMin,
+                Is.EqualTo(PhoneSafeArea.yMin + bottomInset).Within(1f),
+                "Restore occupies the bottom thumb position when Primary is absent");
+
+            Tap(CardRect("outfit_conductor"));
+            Canvas.ForceUpdateCanvases();
+            AssertActionGeometry(primaryVisible: true);
+            AssertTightCardBand(1);
+            Assert.That(ScreenRect(FindRect("PrimaryActionChip")).yMin,
+                Is.EqualTo(PhoneSafeArea.yMin + bottomInset).Within(1f));
+            Assert.That(ScreenRect(FindRect("RestoreChip")).yMin,
+                Is.GreaterThan(collapsedRestore.yMin));
+            Assert.That(ScreenRect(FindRect("WardrobeStatus")).yMin,
+                Is.GreaterThan(collapsedStatus.yMin));
+            Assert.That(ScreenRect(FindRect("ItemsBand")).yMin,
+                Is.GreaterThan(collapsedItems.yMin));
+            Assert.That(ScreenRect(FindRect("TabsBand")).yMin,
+                Is.GreaterThan(collapsedTabs.yMin));
+            Assert.That(ScreenRect(FindRect("LargePortraitCard")).height,
+                Is.LessThan(collapsedPortrait.height));
+
+            Tap(FindRect("CatSelector-blue_siamese"));
+            Canvas.ForceUpdateCanvases();
+            Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.False);
+            Assert.That(ScreenRect(FindRect("RestoreChip")).yMin,
+                Is.EqualTo(collapsedRestore.yMin).Within(1f));
+            Assert.That(ScreenRect(FindRect("WardrobeStatus")).yMin,
+                Is.EqualTo(collapsedStatus.yMin).Within(1f));
+            Assert.That(ScreenRect(FindRect("ItemsBand")).yMin,
+                Is.EqualTo(collapsedItems.yMin).Within(1f));
+            Assert.That(ScreenRect(FindRect("TabsBand")).yMin,
+                Is.EqualTo(collapsedTabs.yMin).Within(1f));
+            Assert.That(ScreenRect(FindRect("LargePortraitCard")).height,
+                Is.EqualTo(collapsedPortrait.height).Within(1f));
+
+            Tap(FindRect("Tab-accessory"));
+            Canvas.ForceUpdateCanvases();
+            Assert.That(ActiveCards().Count, Is.EqualTo(0));
+            AssertEmptyBand();
+            AssertActionGeometry(primaryVisible: false);
+
+            Tap(FindRect("Tab-frame"));
+            Canvas.ForceUpdateCanvases();
+            AssertTightCardBand(2);
+            AssertActionGeometry(primaryVisible: false);
+
+            ResetView();
+            var root = ShippedCosmeticCatalogRoot();
+            var third = (JObject)Item(root, "frame_brass").DeepClone();
+            third["id"] = "frame_third";
+            third["displayNameKey"] = "cosmetics.item.frame_brass";
+            third["acquisition"] = "earned";
+            third["earnInstructionKey"] = "cosmetics.earn.conductor";
+            third["order"] = 40;
+            third.Remove("entitlementId");
+            third.Remove("productId");
+            ((JArray)root["items"]).Add(third);
+            var threeSetup = CreateSetup(catalogRoot: root);
+            CreateView(threeSetup);
+            _view.Open();
+            Layout();
+            yield return null;
+            Tap(FindRect("Tab-frame"));
+            Canvas.ForceUpdateCanvases();
+            AssertTightCardBand(3);
+            AssertActionGeometry(primaryVisible: false);
         }
 
         [UnityTest]
@@ -165,6 +278,267 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(Portrait("LargePortrait").AppliedOutfitAssetId,
                 Is.EqualTo("outfit.conductor"));
             Assert.That(_view.PanelVisible, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator DeferredPurchase_EquipsTheInitiatingCatAfterExternalSelectionChange()
+        {
+            var setup = CreateSetup();
+            setup.Backend.DeferPurchase = true;
+            setup.Backend.GrantOnPurchase = true;
+            CreateView(setup);
+            _view.Open();
+            Layout();
+            yield return null;
+
+            Tap(CardRect("outfit_conductor"));
+            Tap(FindRect("PrimaryActionChip"));
+            Assert.That(setup.Profile.TrySelectCat("blue_siamese"), Is.True);
+            yield return null;
+
+            setup.Backend.CompletePurchase();
+            yield return null;
+
+            Assert.That(setup.Profile.Profile.LoadoutFor("red_tabby").OutfitId,
+                Is.EqualTo("outfit_conductor"));
+            Assert.That(setup.Profile.Profile.LoadoutFor("blue_siamese").OutfitId, Is.Empty);
+            Assert.That(setup.Profile.SelectedCatId, Is.EqualTo("blue_siamese"));
+            Assert.That(Portrait("LargePortrait").AppliedCatId, Is.EqualTo("blue_siamese"));
+            Assert.That(Portrait("LargePortrait").AppliedOutfitAssetId, Is.Empty,
+                "equipping Red must not change the selected Blue portrait");
+        }
+
+        [UnityTest]
+        public IEnumerator DeferredReward_EquipsInitiatingCat_AndDoubleTapIssuesOneRequest()
+        {
+            var root = ShippedCosmeticCatalogRoot();
+            Item(root, "outfit_conductor")["rewardedPlacementId"] = "wardrobe.borrow.coat";
+            var setup = CreateSetup(backend: new WardrobeBackend(), catalogRoot: root);
+            var rewarded = new RecordingRewardedRoute(true) { DeferCompletion = true };
+            rewarded.BeforeCompletion = () =>
+                setup.Purchases.GrantRewardedAdEntitlement("outfit_conductor");
+            CreateView(setup, rewarded);
+            _view.Open();
+            Layout();
+            yield return null;
+
+            Tap(CardRect("outfit_conductor"));
+            var primaryAction = Resolve(FindRect("PrimaryActionChip"));
+            var catAction = Resolve(FindRect("CatSelector-yellow_longhair"));
+            var tabAction = Resolve(FindRect("Tab-frame"));
+            var cardAction = Resolve(CardRect("outfit_conductor"));
+            var restoreAction = Resolve(FindRect("RestoreChip"));
+            primaryAction();
+            primaryAction();
+            catAction();
+            tabAction();
+            cardAction();
+            restoreAction();
+            Assert.That(rewarded.RequestCalls, Is.EqualTo(1),
+                "the UI owns the rewarded in-flight guard");
+            Assert.That(rewarded.LastPlacementId, Is.EqualTo("wardrobe.borrow.coat"));
+            Assert.That(setup.Profile.SelectedCatId, Is.EqualTo("red_tabby"));
+            Assert.That(_view.SelectedSlot, Is.EqualTo(CosmeticSlot.Outfit));
+            Assert.That(setup.Backend.RestoreCalls, Is.EqualTo(0));
+            Assert.That(setup.Profile.TrySelectCat("blue_siamese"), Is.True);
+            rewarded.CompleteNext();
+            yield return null;
+
+            Assert.That(setup.Profile.Profile.LoadoutFor("red_tabby").OutfitId,
+                Is.EqualTo("outfit_conductor"));
+            Assert.That(setup.Profile.Profile.LoadoutFor("blue_siamese").OutfitId, Is.Empty);
+            Assert.That(Portrait("LargePortrait").AppliedCatId, Is.EqualTo("blue_siamese"));
+            Assert.That(Portrait("LargePortrait").AppliedOutfitAssetId, Is.Empty);
+        }
+
+        [UnityTest]
+        public IEnumerator BusyOperations_LockSelectorsTabsCardsPrimaryAndRestore()
+        {
+            var setup = CreateSetup();
+            setup.Backend.DeferPurchase = true;
+            CreateView(setup);
+            _view.Open();
+            Layout();
+            yield return null;
+
+            Tap(CardRect("outfit_conductor"));
+            string primary = _view.PrimaryActionText;
+            var purchaseAction = Resolve(FindRect("PrimaryActionChip"));
+            var catAction = Resolve(FindRect("CatSelector-blue_siamese"));
+            var tabAction = Resolve(FindRect("Tab-frame"));
+            var cardAction = Resolve(CardRect("outfit_conductor"));
+            var restoreAction = Resolve(FindRect("RestoreChip"));
+            purchaseAction();
+            catAction();
+            tabAction();
+            cardAction();
+            purchaseAction();
+            restoreAction();
+
+            Assert.That(setup.Profile.SelectedCatId, Is.EqualTo("red_tabby"));
+            Assert.That(_view.SelectedSlot, Is.EqualTo(CosmeticSlot.Outfit));
+            Assert.That(_view.PrimaryActionText, Is.Not.EqualTo(primary),
+                "the purchase may paint its running label but no competing selection");
+            Assert.That(setup.Backend.PurchaseCalls, Is.EqualTo(1));
+            Assert.That(setup.Backend.RestoreCalls, Is.EqualTo(0));
+
+            setup.Backend.NextPurchaseOutcome = PurchaseOutcome.UserCancelled;
+            setup.Backend.CompletePurchase();
+            yield return null;
+
+            setup.Backend.DeferRestore = true;
+            restoreAction = Resolve(FindRect("RestoreChip"));
+            catAction = Resolve(FindRect("CatSelector-yellow_longhair"));
+            tabAction = Resolve(FindRect("Tab-frame"));
+            cardAction = Resolve(CardRect("outfit_conductor"));
+            purchaseAction = Resolve(FindRect("PrimaryActionChip"));
+            restoreAction();
+            catAction();
+            tabAction();
+            cardAction();
+            purchaseAction();
+            restoreAction();
+            Assert.That(setup.Profile.SelectedCatId, Is.EqualTo("red_tabby"));
+            Assert.That(_view.SelectedSlot, Is.EqualTo(CosmeticSlot.Outfit));
+            Assert.That(setup.Backend.PurchaseCalls, Is.EqualTo(1));
+            Assert.That(setup.Backend.RestoreCalls, Is.EqualTo(1));
+            setup.Backend.NextRestoreOutcome = RestoreOutcome.Completed;
+            setup.Backend.CompleteRestore();
+        }
+
+        [UnityTest]
+        public IEnumerator OldPurchaseAndRewardCallbacks_LandAuthorityWithoutNewSessionEquipOrStatus()
+        {
+            var purchaseSetup = CreateSetup();
+            purchaseSetup.Backend.DeferPurchase = true;
+            purchaseSetup.Backend.GrantOnPurchase = true;
+            CreateView(purchaseSetup);
+            _view.Open();
+            Layout();
+            yield return null;
+            Tap(CardRect("outfit_conductor"));
+            Tap(FindRect("PrimaryActionChip"));
+            _view.ShowEntry();
+            _view.Open();
+            Layout();
+            yield return null;
+            purchaseSetup.Backend.CompletePurchase();
+            yield return null;
+            Assert.That(purchaseSetup.Purchases.IsUnlocked("outfit_conductor"), Is.True);
+            Assert.That(purchaseSetup.Profile.Profile.LoadoutFor("red_tabby").OutfitId, Is.Empty);
+            Assert.That(StatusText(), Is.Empty);
+            Assert.That(Card("outfit_conductor").Route, Is.EqualTo(CosmeticWardrobeRoute.Equip));
+
+            ResetView();
+            var root = ShippedCosmeticCatalogRoot();
+            Item(root, "outfit_conductor")["rewardedPlacementId"] = "wardrobe.borrow.coat";
+            var rewardSetup = CreateSetup(backend: new WardrobeBackend(), catalogRoot: root);
+            var rewarded = new RecordingRewardedRoute(true) { DeferCompletion = true };
+            rewarded.BeforeCompletion = () =>
+                rewardSetup.Purchases.GrantRewardedAdEntitlement("outfit_conductor");
+            CreateView(rewardSetup, rewarded);
+            _view.Open();
+            Layout();
+            yield return null;
+            Tap(CardRect("outfit_conductor"));
+            Tap(FindRect("PrimaryActionChip"));
+            _view.Hide();
+            _view.Open();
+            Layout();
+            yield return null;
+            rewardSetup.Backend.WithProduct("cm_outfit_conductor", "CA$2.79");
+            rewardSetup.Purchases.Refresh();
+            rewarded.CompleteNext();
+            yield return null;
+            Assert.That(rewardSetup.Purchases.IsUnlocked("outfit_conductor"), Is.True);
+            Assert.That(rewardSetup.Profile.Profile.LoadoutFor("red_tabby").OutfitId, Is.Empty);
+            Assert.That(StatusText(), Is.Empty);
+            Assert.That(Card("outfit_conductor").Route, Is.EqualTo(CosmeticWardrobeRoute.Purchase),
+                "borrowed access retains the permanent store route when a live price exists");
+        }
+
+        [UnityTest]
+        public IEnumerator OldRestoreAndRefreshCallbacks_CannotOverwriteNewSessionPresentation()
+        {
+            var restoreSetup = CreateSetup();
+            restoreSetup.Backend.DeferRestore = true;
+            restoreSetup.Backend.RestoreEntitlements = new[] { "frame_brass" };
+            CreateView(restoreSetup);
+            _view.Open();
+            Layout();
+            yield return null;
+            Tap(FindRect("RestoreChip"));
+            Assert.That(_view.RestoreLabelText,
+                Is.EqualTo(UiStrings.Get("wardrobe.restore.running")));
+            Assert.That(StatusText(), Is.EqualTo(UiStrings.Get("wardrobe.status.restoring")));
+            _view.Hide();
+            _view.Open();
+            Layout();
+            yield return null;
+            restoreSetup.Backend.CompleteRestore();
+            yield return null;
+            Assert.That(restoreSetup.Purchases.IsUnlocked("frame_brass"), Is.True);
+            Assert.That(restoreSetup.Profile.Profile.LoadoutFor("red_tabby").FrameId, Is.Empty);
+            Assert.That(_view.RestoreLabelText, Is.EqualTo(UiStrings.Get("wardrobe.restore")));
+            Assert.That(StatusText(), Is.Empty);
+
+            restoreSetup.Backend.RestoreEntitlements = Array.Empty<string>();
+            Tap(FindRect("RestoreChip"));
+            _view.gameObject.SetActive(false);
+            _view.gameObject.SetActive(true);
+            Canvas.ForceUpdateCanvases();
+            Assert.That(StatusText(), Is.Empty,
+                "disable/enable invalidates the running presentation session");
+            restoreSetup.Backend.CompleteRestore();
+            yield return null;
+            Assert.That(StatusText(), Is.Empty);
+
+            ResetView();
+            var refreshSetup = CreateSetup();
+            refreshSetup.Backend.DeferProductFetch = true;
+            CreateView(refreshSetup);
+            _view.Open();
+            Layout();
+            yield return null;
+            _view.Hide();
+            _view.Open();
+            Layout();
+            yield return null;
+            Assert.That(StatusText(), Is.EqualTo(UiStrings.Get("wardrobe.status.checking")));
+            refreshSetup.Backend.CompleteNextProductFetch();
+            yield return null;
+            Assert.That(StatusText(), Is.EqualTo(UiStrings.Get("wardrobe.status.checking")),
+                "the first Open callback is stale in the second session");
+            refreshSetup.Backend.CompleteNextProductFetch();
+            yield return null;
+            Assert.That(StatusText(), Is.Empty, "the current Open callback may finish checking");
+        }
+
+        [UnityTest]
+        public IEnumerator CandidateDisappearingDuringPurchase_InvalidatesOnlyLocalEquipEffect()
+        {
+            var setup = CreateSetup();
+            setup.Backend.DeferPurchase = true;
+            setup.Backend.GrantOnPurchase = true;
+            CreateView(setup);
+            _view.Open();
+            Layout();
+            yield return null;
+            Tap(CardRect("outfit_conductor"));
+            Tap(FindRect("PrimaryActionChip"));
+
+            setup.Backend.RemoveProduct("cm_outfit_conductor");
+            setup.Purchases.Refresh();
+            Assert.That(setup.Profile.TrySelectCat("blue_siamese"), Is.True);
+            yield return null;
+            Assert.That(ActiveCards().Count, Is.EqualTo(0));
+            Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.False);
+
+            setup.Backend.CompletePurchase();
+            yield return null;
+            Assert.That(setup.Purchases.IsUnlocked("outfit_conductor"), Is.True);
+            Assert.That(setup.Profile.Profile.LoadoutFor("red_tabby").OutfitId, Is.Empty);
+            Assert.That(setup.Profile.Profile.LoadoutFor("blue_siamese").OutfitId, Is.Empty);
         }
 
         [UnityTest]
@@ -351,6 +725,73 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator DeferredRestore_PaintsRunningCompletedEmptyBusyUnavailableAndFailure()
+        {
+            var setup = CreateSetup();
+            setup.Backend.DeferRestore = true;
+            CreateView(setup);
+            _view.Open();
+            Layout();
+            yield return null;
+
+            setup.Backend.RestoreEntitlements = new[] { "frame_brass" };
+            Tap(FindRect("RestoreChip"));
+            Assert.That(_view.RestoreLabelText,
+                Is.EqualTo(UiStrings.Get("wardrobe.restore.running")));
+            Assert.That(StatusText(), Is.EqualTo(UiStrings.Get("wardrobe.status.restoring")));
+            setup.Backend.CompleteRestore();
+            yield return null;
+            Assert.That(StatusText(), Is.EqualTo(UiStrings.Get("wardrobe.status.restored")));
+
+            var cases = new[]
+            {
+                (RestoreOutcome.Completed, "wardrobe.status.none"),
+                (RestoreOutcome.Busy, "wardrobe.status.restoring"),
+                (RestoreOutcome.Unavailable, "wardrobe.status.unavailable"),
+                (RestoreOutcome.Failure, "wardrobe.status.restore.failed"),
+            };
+            setup.Backend.RestoreEntitlements = Array.Empty<string>();
+            setup.Backend.RevokeAllStoreEntitlements();
+            foreach (var testCase in cases)
+            {
+                setup.Backend.NextRestoreOutcome = testCase.Item1;
+                Tap(FindRect("RestoreChip"));
+                Assert.That(_view.RestoreLabelText,
+                    Is.EqualTo(UiStrings.Get("wardrobe.restore.running")));
+                setup.Backend.CompleteRestore();
+                yield return null;
+                Assert.That(_view.RestoreLabelText,
+                    Is.EqualTo(UiStrings.Get("wardrobe.restore")), testCase.Item1.ToString());
+                Assert.That(StatusText(), Is.EqualTo(UiStrings.Get(testCase.Item2)),
+                    testCase.Item1.ToString());
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator CachedLocalizedPrice_RemainsPurchasableDuringTransientUnreachableBackend()
+        {
+            var setup = CreateSetup();
+            CreateView(setup);
+            _view.Open();
+            Layout();
+            yield return null;
+
+            setup.Backend.Availability = BackendAvailability.Unreachable;
+            setup.Backend.NextPurchaseOutcome = PurchaseOutcome.Unavailable;
+            var card = Card("outfit_conductor");
+            Assert.That(card.Route, Is.EqualTo(CosmeticWardrobeRoute.Purchase));
+            Assert.That(card.DisplayedNameText, Is.EqualTo("Conductor's Coat"));
+            Assert.That(card.DisplayedPriceText, Is.EqualTo("CA$2.79"));
+            Tap(card.RootTransform);
+            Tap(FindRect("PrimaryActionChip"));
+            yield return null;
+            Assert.That(setup.Backend.PurchaseCalls, Is.EqualTo(1));
+            Assert.That(setup.Purchases.IsUnlocked("outfit_conductor"), Is.False);
+            Assert.That(setup.Profile.Profile.LoadoutFor("red_tabby").OutfitId, Is.Empty);
+            Assert.That(StatusText(), Is.EqualTo(UiStrings.Get("wardrobe.status.unavailable")));
+        }
+
+        [UnityTest]
         public IEnumerator MissingProductAndAsset_CompactCardsWithoutBlankChildrenOrGhostRegions()
         {
             var backend = new WardrobeBackend().WithProduct("cm_frame_lantern", "€0.99");
@@ -375,6 +816,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_regions.IsRegistered("wardrobe.item.frame_lantern"), Is.True);
             Assert.That(cards[0].transform.parent.childCount, Is.EqualTo(1),
                 "omission leaves no inactive blank card child");
+            AssertTightCardBand(1);
+            AssertActionGeometry(primaryVisible: false);
 
             setup.Backend.WithStoreEntitlement("frame_brass");
             setup.Purchases.RefreshEntitlements();
@@ -389,6 +832,7 @@ namespace CatMetro.Tests.PlayMode
             Tap(FindRect("Tab-frame"));
             Assert.That(ActiveCards().Any(card => CardString(card, "ItemId") == "frame_brass"),
                 Is.True, "accessible content remains visible without a live price");
+            AssertTightCardBand(2);
         }
 
         [UnityTest]
@@ -400,19 +844,35 @@ namespace CatMetro.Tests.PlayMode
             Layout();
             yield return null;
             AssertCoreRegions(shouldExist: true);
+            Assert.That(_regions.Count, Is.EqualTo(9));
+            Assert.That(_regions.IsRegistered("wardrobe.item.outfit_conductor"), Is.True);
+            Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.False);
 
-            Tap(FindRect("Tab-frame"));
+            Tap(CardRect("outfit_conductor"));
             yield return null;
-            Assert.That(_regions.IsRegistered("wardrobe.item.outfit_conductor"), Is.False);
-            Assert.That(_regions.IsRegistered("wardrobe.item.frame_brass"), Is.True);
-            Assert.That(_regions.IsRegistered("wardrobe.item.frame_lantern"), Is.True);
+            Assert.That(_regions.Count, Is.EqualTo(10));
+            Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.True);
 
             _view.gameObject.SetActive(false);
             Assert.That(_regions.Count, Is.EqualTo(0));
             _view.gameObject.SetActive(true);
             yield return null;
             AssertCoreRegions(shouldExist: true);
+            Assert.That(_regions.Count, Is.EqualTo(10));
+            Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.True);
+
+            Tap(FindRect("CatSelector-blue_siamese"));
+            yield return null;
+            Assert.That(_regions.Count, Is.EqualTo(9));
+            Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.False);
+            Assert.That(_regions.IsRegistered("wardrobe.item.outfit_conductor"), Is.True);
+
+            Tap(FindRect("Tab-frame"));
+            yield return null;
+            Assert.That(_regions.Count, Is.EqualTo(10));
+            Assert.That(_regions.IsRegistered("wardrobe.item.outfit_conductor"), Is.False);
             Assert.That(_regions.IsRegistered("wardrobe.item.frame_brass"), Is.True);
+            Assert.That(_regions.IsRegistered("wardrobe.item.frame_lantern"), Is.True);
 
             _view.Hide();
             Assert.That(_regions.Count, Is.EqualTo(0));
@@ -420,8 +880,104 @@ namespace CatMetro.Tests.PlayMode
             Layout();
             yield return null;
             AssertCoreRegions(shouldExist: true);
+            Assert.That(_regions.Count, Is.EqualTo(10));
+            Assert.That(_regions.IsRegistered("wardrobe.item.frame_brass"), Is.True);
+            Assert.That(_regions.IsRegistered("wardrobe.item.frame_lantern"), Is.True);
             UnityEngine.Object.Destroy(_view.gameObject);
             yield return null;
+            Assert.That(_regions.Count, Is.EqualTo(0));
+        }
+
+        [UnityTest]
+        public IEnumerator TwoArgumentFactory_DelegatesToCurrentProfileAndDisabledRewardedRoute()
+        {
+            var root = ShippedCosmeticCatalogRoot();
+            Item(root, "outfit_conductor")["rewardedPlacementId"] = "wardrobe.borrow.coat";
+            var setup = CreateSetup(backend: new WardrobeBackend(), catalogRoot: root);
+            PurchaseRuntime.Install(setup.Purchases);
+            CosmeticRuntime.Install(setup.Profile);
+
+            _canvasHost = new GameObject("WardrobeBridgeCanvas");
+            _canvas = _canvasHost.AddComponent<Canvas>();
+            _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            _regions = new ChromeRegions();
+            _view = WardrobeScreenView.Create(_canvas.transform, setup.Purchases);
+            _view.Attach(_regions);
+            _view.Open();
+            Layout();
+            yield return null;
+
+            Assert.That(_view.LargePortrait.AppliedCatId,
+                Is.EqualTo(CosmeticRuntime.Current.SelectedCatId));
+            Assert.That(_view.LargePortrait.AppliedCatId, Is.EqualTo("red_tabby"));
+            Assert.That(ActiveCards().Count, Is.EqualTo(0),
+                "the bridge supplies DisabledCosmeticRewardedRoute when price is absent");
+            Assert.That(_regions.Count, Is.EqualTo(8));
+        }
+
+        [UnityTest]
+        public IEnumerator DestroyWithPendingCallbacks_IsHarmlessForPurchaseRewardRestoreAndRefresh()
+        {
+            var purchase = CreateSetup();
+            purchase.Backend.DeferPurchase = true;
+            purchase.Backend.GrantOnPurchase = true;
+            CreateView(purchase);
+            _view.Open();
+            Layout();
+            yield return null;
+            Tap(CardRect("outfit_conductor"));
+            Tap(FindRect("PrimaryActionChip"));
+            UnityEngine.Object.DestroyImmediate(_view.gameObject);
+            Assert.That(_regions.Count, Is.EqualTo(0));
+            purchase.Backend.CompletePurchase();
+            Assert.That(purchase.Purchases.IsUnlocked("outfit_conductor"), Is.True);
+            Assert.That(purchase.Profile.Profile.LoadoutFor("red_tabby").OutfitId, Is.Empty);
+
+            ResetView();
+            var rewardRoot = ShippedCosmeticCatalogRoot();
+            Item(rewardRoot, "outfit_conductor")["rewardedPlacementId"] =
+                "wardrobe.borrow.coat";
+            var reward = CreateSetup(backend: new WardrobeBackend(), catalogRoot: rewardRoot);
+            var rewarded = new RecordingRewardedRoute(true) { DeferCompletion = true };
+            rewarded.BeforeCompletion = () =>
+                reward.Purchases.GrantRewardedAdEntitlement("outfit_conductor");
+            CreateView(reward, rewarded);
+            _view.Open();
+            Layout();
+            yield return null;
+            Tap(CardRect("outfit_conductor"));
+            Tap(FindRect("PrimaryActionChip"));
+            UnityEngine.Object.DestroyImmediate(_view.gameObject);
+            Assert.That(_regions.Count, Is.EqualTo(0));
+            rewarded.CompleteNext();
+            Assert.That(reward.Purchases.IsUnlocked("outfit_conductor"), Is.True);
+            Assert.That(reward.Profile.Profile.LoadoutFor("red_tabby").OutfitId, Is.Empty);
+
+            ResetView();
+            var restore = CreateSetup();
+            restore.Backend.DeferRestore = true;
+            restore.Backend.RestoreEntitlements = new[] { "frame_brass" };
+            CreateView(restore);
+            _view.Open();
+            Layout();
+            yield return null;
+            Tap(FindRect("RestoreChip"));
+            UnityEngine.Object.DestroyImmediate(_view.gameObject);
+            Assert.That(_regions.Count, Is.EqualTo(0));
+            restore.Backend.CompleteRestore();
+            Assert.That(restore.Purchases.IsUnlocked("frame_brass"), Is.True);
+            Assert.That(restore.Profile.Profile.LoadoutFor("red_tabby").FrameId, Is.Empty);
+
+            ResetView();
+            var refresh = CreateSetup();
+            refresh.Backend.DeferProductFetch = true;
+            CreateView(refresh);
+            _view.Open();
+            Layout();
+            yield return null;
+            UnityEngine.Object.DestroyImmediate(_view.gameObject);
+            Assert.That(_regions.Count, Is.EqualTo(0));
+            refresh.Backend.CompleteNextProductFetch();
             Assert.That(_regions.Count, Is.EqualTo(0));
         }
 
@@ -471,21 +1027,50 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             captures.Add(Capture(directory, "wardrobe-purchased-equipped.png"));
 
+            Tap(FindRect("PrimaryActionChip"));
+            yield return null;
+            Assert.That(Portrait("LargePortrait").AppliedOutfitAssetId, Is.Empty,
+                "frame proof uses no conductor colors");
+            var portraitRect = ScreenRect(FindRect("LargePortrait"));
+            var noFramePixels = RenderPixels();
+
             Tap(FindRect("Tab-frame"));
             yield return null;
             Tap(CardRect("frame_brass"));
             Tap(FindRect("PrimaryActionChip"));
             yield return null;
+            Assert.That(Portrait("LargePortrait").AppliedOutfitAssetId, Is.Empty);
+            Assert.That(Portrait("LargePortrait").AppliedFrameAssetId,
+                Is.EqualTo("frame.brass"));
             captures.Add(Capture(directory, "wardrobe-frame-brass.png"));
-            AssertPortraitHasInk(captures.Last(), FindRect("LargePortrait"), navy: false,
-                brass: true);
+            var brassPixels = LoadPixels(captures.Last());
+            AssertFrameBorder(noFramePixels, brassPixels, portraitRect,
+                new Color32(239, 193, 61, 255), "Brass yellow rails/corners");
+            AssertCenterCat(brassPixels, portraitRect);
 
             Tap(CardRect("frame_lantern"));
             Tap(FindRect("PrimaryActionChip"));
             yield return null;
+            Assert.That(Portrait("LargePortrait").AppliedOutfitAssetId, Is.Empty);
+            Assert.That(Portrait("LargePortrait").AppliedFrameAssetId,
+                Is.EqualTo("frame.lantern"));
             captures.Add(Capture(directory, "wardrobe-frame-lantern.png"));
-            AssertPortraitHasInk(captures.Last(), FindRect("LargePortrait"), navy: true,
-                brass: false);
+            var lanternPixels = LoadPixels(captures.Last());
+            AssertFrameBorder(noFramePixels, lanternPixels, portraitRect,
+                new Color32(59, 175, 168, 255), "Lantern teal rails");
+            AssertCenterCat(lanternPixels, portraitRect);
+            Assert.That(BorderPixelDelta(brassPixels, lanternPixels, portraitRect),
+                Is.GreaterThan(5_000), "Brass and Lantern borders must be visibly distinct");
+
+            Tap(FindRect("Tab-outfit"));
+            yield return null;
+            Tap(CardRect("outfit_conductor"));
+            Tap(FindRect("PrimaryActionChip"));
+            yield return null;
+            Assert.That(Portrait("LargePortrait").AppliedOutfitAssetId,
+                Is.EqualTo("outfit.conductor"));
+            Assert.That(Portrait("LargePortrait").AppliedFrameAssetId,
+                Is.EqualTo("frame.lantern"));
 
             setup.Backend.RevokeAllStoreEntitlements();
             setup.Purchases.RefreshEntitlements();
@@ -541,17 +1126,8 @@ namespace CatMetro.Tests.PlayMode
             }
             _regions = new ChromeRegions();
             rewarded ??= new DisabledCosmeticRewardedRoute();
-            var method = typeof(WardrobeScreenView).GetMethod("Create",
-                BindingFlags.Public | BindingFlags.Static, null,
-                new[]
-                {
-                    typeof(Transform), typeof(PurchaseService),
-                    typeof(CosmeticProfileService), typeof(ICosmeticRewardedRoute),
-                }, null);
-            _view = method == null
-                ? WardrobeScreenView.Create(_canvas.transform, setup.Purchases)
-                : (WardrobeScreenView)method.Invoke(null,
-                    new object[] { _canvas.transform, setup.Purchases, setup.Profile, rewarded });
+            _view = WardrobeScreenView.Create(_canvas.transform, setup.Purchases,
+                setup.Profile, rewarded);
             _view.Attach(_regions);
         }
 
@@ -603,12 +1179,11 @@ namespace CatMetro.Tests.PlayMode
             return result;
         }
 
-        private IReadOnlyList<MonoBehaviour> ActiveCards() => _view
-            .GetComponentsInChildren<MonoBehaviour>(true)
-            .Where(component => component.GetType().Name == "CosmeticItemCardView"
-                && component.gameObject.activeInHierarchy).ToArray();
+        private IReadOnlyList<CosmeticItemCardView> ActiveCards() => _view
+            .GetComponentsInChildren<CosmeticItemCardView>(true)
+            .Where(component => component.gameObject.activeInHierarchy).ToArray();
 
-        private MonoBehaviour Card(string itemId)
+        private CosmeticItemCardView Card(string itemId)
         {
             var result = ActiveCards().SingleOrDefault(card =>
                 CardString(card, "ItemId") == itemId);
@@ -642,11 +1217,16 @@ namespace CatMetro.Tests.PlayMode
 
         private void Tap(RectTransform target)
         {
+            Resolve(target)();
+        }
+
+        private Action Resolve(RectTransform target)
+        {
             var rect = ScreenRect(target);
             Assert.That(rect.width, Is.GreaterThan(0f));
             Assert.That(_regions.TryResolve(rect.center, out var action), Is.True,
                 target.name + " is painted but not routed");
-            action();
+            return action;
         }
 
         private Rect ScreenRect(RectTransform target)
@@ -673,6 +1253,71 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(_regions.IsRegistered(id), Is.EqualTo(shouldExist), id);
         }
 
+        private void AssertActionGeometry(bool primaryVisible)
+        {
+            var targets = new List<RectTransform>
+            {
+                FindRect("BackChip"), FindRect("RestoreChip"),
+                FindRect("CatSelector-red_tabby"), FindRect("CatSelector-blue_siamese"),
+                FindRect("CatSelector-yellow_longhair"), FindRect("Tab-outfit"),
+                FindRect("Tab-accessory"), FindRect("Tab-frame"),
+            };
+            targets.AddRange(ActiveCards().Select(card => card.RootTransform));
+            var primary = FindRect("PrimaryActionChip");
+            Assert.That(primary.gameObject.activeInHierarchy, Is.EqualTo(primaryVisible));
+            if (primaryVisible) targets.Add(primary);
+
+            var rects = targets.Select(ScreenRect).ToArray();
+            for (int i = 0; i < rects.Length; i++)
+            {
+                var rect = rects[i];
+                Assert.That(HudBands.MeetsMinTargetPx(rect, 408f), Is.True,
+                    targets[i].name + " violates the 48dp action floor");
+                Assert.That(rect.xMin, Is.GreaterThanOrEqualTo(PhoneSafeArea.xMin - 1f));
+                Assert.That(rect.yMin, Is.GreaterThanOrEqualTo(PhoneSafeArea.yMin - 1f));
+                Assert.That(rect.xMax, Is.LessThanOrEqualTo(PhoneSafeArea.xMax + 1f));
+                Assert.That(rect.yMax, Is.LessThanOrEqualTo(PhoneSafeArea.yMax + 1f));
+                for (int j = i + 1; j < rects.Length; j++)
+                    Assert.That(rect.Overlaps(rects[j]), Is.False,
+                        targets[i].name + " overlaps " + targets[j].name);
+            }
+        }
+
+        private void AssertTightCardBand(int expectedCount)
+        {
+            var cards = ActiveCards().OrderByDescending(card => card.ScreenRect.yMax).ToArray();
+            Assert.That(cards.Length, Is.EqualTo(expectedCount));
+            var band = ScreenRect(FindRect("ItemsBand"));
+            float yMin = cards.Min(card => card.ScreenRect.yMin);
+            float yMax = cards.Max(card => card.ScreenRect.yMax);
+            Assert.That(band.yMin, Is.EqualTo(yMin).Within(1f), "no phantom row below cards");
+            Assert.That(band.yMax, Is.EqualTo(yMax).Within(1f), "no phantom row above cards");
+            float expectedGap = 8f * HudBands.PxPerDp(408f);
+            for (int i = 0; i < cards.Length - 1; i++)
+            {
+                Assert.That(cards[i].ScreenRect.yMin - cards[i + 1].ScreenRect.yMax,
+                    Is.EqualTo(expectedGap).Within(1f), "only the configured gap separates rows");
+            }
+            foreach (var card in cards)
+                Assert.That(HudBands.MeetsMinTargetPx(card.ScreenRect, 408f), Is.True,
+                    card.ItemId + " is below 48dp");
+        }
+
+        private void AssertEmptyBand()
+        {
+            var band = ScreenRect(FindRect("ItemsBand"));
+            var empty = FindText("EmptyStateLabel");
+            Assert.That(empty.gameObject.activeInHierarchy, Is.True);
+            Assert.That(band.height, Is.EqualTo(48f * HudBands.PxPerDp(408f)).Within(1f));
+            var emptyRect = ScreenRect((RectTransform)empty.transform);
+            Assert.That(emptyRect.xMin, Is.GreaterThanOrEqualTo(band.xMin - 1f));
+            Assert.That(emptyRect.yMin, Is.GreaterThanOrEqualTo(band.yMin - 1f));
+            Assert.That(emptyRect.xMax, Is.LessThanOrEqualTo(band.xMax + 1f));
+            Assert.That(emptyRect.yMax, Is.LessThanOrEqualTo(band.yMax + 1f));
+            Assert.That(_regions.Count, Is.EqualTo(8),
+                "empty slot has only back, restore, three cats, and three tabs");
+        }
+
         private string Capture(string directory, string name)
         {
             Canvas.ForceUpdateCanvases();
@@ -688,6 +1333,128 @@ namespace CatMetro.Tests.PlayMode
             File.WriteAllBytes(path, texture.EncodeToPNG());
             UnityEngine.Object.DestroyImmediate(texture);
             return path;
+        }
+
+        private Color32[] RenderPixels()
+        {
+            Canvas.ForceUpdateCanvases();
+            var camera = _cameraHost.GetComponent<Camera>();
+            camera.Render();
+            var previous = RenderTexture.active;
+            RenderTexture.active = _captureTarget;
+            var texture = new Texture2D(Width, Height, TextureFormat.RGBA32, false);
+            texture.ReadPixels(new Rect(0f, 0f, Width, Height), 0, 0);
+            texture.Apply();
+            RenderTexture.active = previous;
+            var pixels = texture.GetPixels32();
+            UnityEngine.Object.DestroyImmediate(texture);
+            return pixels;
+        }
+
+        private static Color32[] LoadPixels(string path)
+        {
+            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!texture.LoadImage(File.ReadAllBytes(path)))
+                throw new InvalidOperationException("could not decode capture " + path);
+            var pixels = texture.GetPixels32();
+            UnityEngine.Object.DestroyImmediate(texture);
+            return pixels;
+        }
+
+        private static void AssertFrameBorder(IReadOnlyList<Color32> noFrame,
+            IReadOnlyList<Color32> framed, Rect rect, Color32 expected, string message)
+        {
+            int baseline = CountBorderColor(noFrame, rect, expected, 28);
+            int painted = CountBorderColor(framed, rect, expected, 28);
+            Assert.That(painted - baseline, Is.GreaterThan(1_000), message);
+        }
+
+        private static void AssertCenterCat(IReadOnlyList<Color32> pixels, Rect portrait)
+        {
+            var centre = new Rect(portrait.xMin + portrait.width * 0.25f,
+                portrait.yMin + portrait.height * 0.18f,
+                portrait.width * 0.50f, portrait.height * 0.66f);
+            Assert.That(CountColor(pixels, centre, new Color32(225, 90, 71, 255), 28),
+                Is.GreaterThan(1_000), "the centre Red Tabby remains painted");
+        }
+
+        private static int CountBorderColor(IReadOnlyList<Color32> pixels, Rect rect,
+            Color32 expected, int tolerance)
+        {
+            int count = 0;
+            int xMin = Mathf.Clamp(Mathf.FloorToInt(rect.xMin), 0, Width - 1);
+            int xMax = Mathf.Clamp(Mathf.CeilToInt(rect.xMax), 1, Width);
+            int yMin = Mathf.Clamp(Mathf.FloorToInt(rect.yMin), 0, Height - 1);
+            int yMax = Mathf.Clamp(Mathf.CeilToInt(rect.yMax), 1, Height);
+            float insetX = rect.width * 0.19f;
+            float insetY = rect.height * 0.19f;
+            for (int y = yMin; y < yMax; y++)
+            for (int x = xMin; x < xMax; x++)
+            {
+                bool border = x < rect.xMin + insetX || x >= rect.xMax - insetX
+                    || y < rect.yMin + insetY || y >= rect.yMax - insetY;
+                if (border && Close(pixels[y * Width + x], expected, tolerance)) count++;
+            }
+            return count;
+        }
+
+        private static int BorderPixelDelta(IReadOnlyList<Color32> left,
+            IReadOnlyList<Color32> right, Rect rect)
+        {
+            int count = 0;
+            int xMin = Mathf.Clamp(Mathf.FloorToInt(rect.xMin), 0, Width - 1);
+            int xMax = Mathf.Clamp(Mathf.CeilToInt(rect.xMax), 1, Width);
+            int yMin = Mathf.Clamp(Mathf.FloorToInt(rect.yMin), 0, Height - 1);
+            int yMax = Mathf.Clamp(Mathf.CeilToInt(rect.yMax), 1, Height);
+            float insetX = rect.width * 0.19f;
+            float insetY = rect.height * 0.19f;
+            for (int y = yMin; y < yMax; y++)
+            for (int x = xMin; x < xMax; x++)
+            {
+                bool border = x < rect.xMin + insetX || x >= rect.xMax - insetX
+                    || y < rect.yMin + insetY || y >= rect.yMax - insetY;
+                if (!border) continue;
+                int index = y * Width + x;
+                var a = left[index];
+                var b = right[index];
+                if (Math.Abs(a.r - b.r) + Math.Abs(a.g - b.g) + Math.Abs(a.b - b.b) > 60)
+                    count++;
+            }
+            return count;
+        }
+
+        private static int CountColor(IReadOnlyList<Color32> pixels, Rect rect,
+            Color32 expected, int tolerance)
+        {
+            int count = 0;
+            int xMin = Mathf.Clamp(Mathf.FloorToInt(rect.xMin), 0, Width - 1);
+            int xMax = Mathf.Clamp(Mathf.CeilToInt(rect.xMax), 1, Width);
+            int yMin = Mathf.Clamp(Mathf.FloorToInt(rect.yMin), 0, Height - 1);
+            int yMax = Mathf.Clamp(Mathf.CeilToInt(rect.yMax), 1, Height);
+            for (int y = yMin; y < yMax; y++)
+            for (int x = xMin; x < xMax; x++)
+                if (Close(pixels[y * Width + x], expected, tolerance)) count++;
+            return count;
+        }
+
+        private static int PixelDelta(IReadOnlyList<Color32> left,
+            IReadOnlyList<Color32> right, Rect rect)
+        {
+            int count = 0;
+            int xMin = Mathf.Clamp(Mathf.FloorToInt(rect.xMin), 0, Width - 1);
+            int xMax = Mathf.Clamp(Mathf.CeilToInt(rect.xMax), 1, Width);
+            int yMin = Mathf.Clamp(Mathf.FloorToInt(rect.yMin), 0, Height - 1);
+            int yMax = Mathf.Clamp(Mathf.CeilToInt(rect.yMax), 1, Height);
+            for (int y = yMin; y < yMax; y++)
+            for (int x = xMin; x < xMax; x++)
+            {
+                int index = y * Width + x;
+                var a = left[index];
+                var b = right[index];
+                if (Math.Abs(a.r - b.r) + Math.Abs(a.g - b.g) + Math.Abs(a.b - b.b) > 60)
+                    count++;
+            }
+            return count;
         }
 
         private void AssertPortraitHasInk(string path, RectTransform portrait, bool navy,
@@ -868,14 +1635,36 @@ namespace CatMetro.Tests.PlayMode
         private sealed class RecordingRewardedRoute : ICosmeticRewardedRoute
         {
             private readonly bool _canOffer;
+            private readonly Queue<Action> _pending = new Queue<Action>();
             public Action BeforeCompletion { get; set; }
+            public bool DeferCompletion { get; set; }
             public int RequestCalls { get; private set; }
+            public string LastPlacementId { get; private set; }
+            public int PendingCount => _pending.Count;
 
             public RecordingRewardedRoute(bool canOffer) => _canOffer = canOffer;
             public bool CanOffer(string placementId, string entitlementId) => _canOffer;
             public void Request(string placementId, Action completed)
             {
                 RequestCalls++;
+                LastPlacementId = placementId;
+                if (DeferCompletion)
+                {
+                    _pending.Enqueue(completed);
+                    return;
+                }
+                Complete(completed);
+            }
+
+            public void CompleteNext()
+            {
+                if (_pending.Count == 0)
+                    throw new InvalidOperationException("no rewarded callback is pending");
+                Complete(_pending.Dequeue());
+            }
+
+            private void Complete(Action completed)
+            {
                 BeforeCompletion?.Invoke();
                 completed?.Invoke();
             }
@@ -887,15 +1676,28 @@ namespace CatMetro.Tests.PlayMode
                 new Dictionary<string, StoreProductView>(StringComparer.Ordinal);
             private readonly HashSet<string> _storeEntitlements =
                 new HashSet<string>(StringComparer.Ordinal);
+            private readonly Queue<Action<IReadOnlyList<StoreProductView>>> _productCallbacks =
+                new Queue<Action<IReadOnlyList<StoreProductView>>>();
+            private readonly Queue<Action<EntitlementSnapshot>> _entitlementCallbacks =
+                new Queue<Action<EntitlementSnapshot>>();
+            private Action<PurchaseResult> _purchaseCallback;
+            private Action<RestoreResult> _restoreCallback;
             public PurchaseCatalog Catalog { get; set; }
             public BackendAvailability Availability { get; set; } = BackendAvailability.Ready;
             public PurchaseOutcome NextPurchaseOutcome { get; set; } =
                 PurchaseOutcome.SuccessCandidate;
+            public RestoreOutcome NextRestoreOutcome { get; set; } = RestoreOutcome.Completed;
             public bool GrantOnPurchase { get; set; }
+            public bool DeferPurchase { get; set; }
+            public bool DeferRestore { get; set; }
+            public bool DeferProductFetch { get; set; }
+            public bool DeferEntitlementRefresh { get; set; }
             public IReadOnlyList<string> RestoreEntitlements { get; set; } = Array.Empty<string>();
             public int PurchaseCalls { get; private set; }
             public int RestoreCalls { get; private set; }
+            public int ProductFetchCalls { get; private set; }
             public string LastPurchasedProductId { get; private set; }
+            public int PendingProductFetches => _productCallbacks.Count;
 
             public WardrobeBackend WithProduct(string id, string price)
             {
@@ -911,29 +1713,104 @@ namespace CatMetro.Tests.PlayMode
             }
             public void RevokeAllStoreEntitlements() => _storeEntitlements.Clear();
 
-            public void FetchProducts(Action<IReadOnlyList<StoreProductView>> onDone) =>
+            public void FetchProducts(Action<IReadOnlyList<StoreProductView>> onDone)
+            {
+                ProductFetchCalls++;
+                if (DeferProductFetch)
+                {
+                    _productCallbacks.Enqueue(onDone);
+                    return;
+                }
                 onDone?.Invoke(_products.Values.ToArray());
+            }
 
             public void Purchase(string productId, Action<PurchaseResult> onDone)
             {
                 PurchaseCalls++;
                 LastPurchasedProductId = productId;
-                if (GrantOnPurchase && NextPurchaseOutcome == PurchaseOutcome.SuccessCandidate)
-                    foreach (var id in Catalog.EntitlementsFor(productId))
-                        _storeEntitlements.Add(id);
-                onDone?.Invoke(new PurchaseResult(NextPurchaseOutcome, productId));
+                if (DeferPurchase)
+                {
+                    if (_purchaseCallback != null)
+                        throw new InvalidOperationException("only one backend purchase may pend");
+                    _purchaseCallback = onDone;
+                    return;
+                }
+                CompletePurchase(onDone);
             }
 
             public void Restore(Action<RestoreResult> onDone)
             {
                 RestoreCalls++;
-                foreach (var id in RestoreEntitlements) _storeEntitlements.Add(id);
-                onDone?.Invoke(new RestoreResult(RestoreOutcome.Completed));
+                if (DeferRestore)
+                {
+                    if (_restoreCallback != null)
+                        throw new InvalidOperationException("only one backend restore may pend");
+                    _restoreCallback = onDone;
+                    return;
+                }
+                CompleteRestore(onDone);
             }
 
-            public void RefreshEntitlements(Action<EntitlementSnapshot> onDone) =>
-                onDone?.Invoke(new EntitlementSnapshot(true, _storeEntitlements
-                    .Select(id => new EntitlementGrant(id, GrantSource.Store)).ToArray()));
+            public void RefreshEntitlements(Action<EntitlementSnapshot> onDone)
+            {
+                if (DeferEntitlementRefresh)
+                {
+                    _entitlementCallbacks.Enqueue(onDone);
+                    return;
+                }
+                onDone?.Invoke(Snapshot());
+            }
+
+            public void CompletePurchase()
+            {
+                if (_purchaseCallback == null)
+                    throw new InvalidOperationException("no backend purchase is pending");
+                var callback = _purchaseCallback;
+                _purchaseCallback = null;
+                CompletePurchase(callback);
+            }
+
+            public void CompleteRestore()
+            {
+                if (_restoreCallback == null)
+                    throw new InvalidOperationException("no backend restore is pending");
+                var callback = _restoreCallback;
+                _restoreCallback = null;
+                CompleteRestore(callback);
+            }
+
+            public void CompleteNextProductFetch()
+            {
+                if (_productCallbacks.Count == 0)
+                    throw new InvalidOperationException("no product refresh is pending");
+                _productCallbacks.Dequeue()?.Invoke(_products.Values.ToArray());
+            }
+
+            public void CompleteNextEntitlementRefresh()
+            {
+                if (_entitlementCallbacks.Count == 0)
+                    throw new InvalidOperationException("no entitlement refresh is pending");
+                _entitlementCallbacks.Dequeue()?.Invoke(Snapshot());
+            }
+
+            private void CompletePurchase(Action<PurchaseResult> callback)
+            {
+                if (GrantOnPurchase && NextPurchaseOutcome == PurchaseOutcome.SuccessCandidate)
+                    foreach (var id in Catalog.EntitlementsFor(LastPurchasedProductId))
+                        _storeEntitlements.Add(id);
+                callback?.Invoke(new PurchaseResult(NextPurchaseOutcome, LastPurchasedProductId));
+            }
+
+            private void CompleteRestore(Action<RestoreResult> callback)
+            {
+                if (NextRestoreOutcome == RestoreOutcome.Completed)
+                    foreach (var id in RestoreEntitlements) _storeEntitlements.Add(id);
+                callback?.Invoke(new RestoreResult(NextRestoreOutcome));
+            }
+
+            private EntitlementSnapshot Snapshot() => new EntitlementSnapshot(true,
+                _storeEntitlements.Select(id =>
+                    new EntitlementGrant(id, GrantSource.Store)).ToArray());
         }
     }
 }
