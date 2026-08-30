@@ -365,3 +365,126 @@ The configured-device-only proof boundary is unchanged: Editor and linked manage
 prove native Android/iOS adapter resolution and initialization, actual fill/show/reward/close or
 worker-thread ILR ordering, dashboard caps/no-fill, privacy/ATT/CMP behavior, native teardown, or
 RevenueCat sandbox ingestion/dimensions/revenue. No native or device claim is made.
+
+## Fix round 2 — saturated auction and serialized load evidence
+
+Review of fix-round-1 commit `75e833d9be8859c3f7adb36e961cc4232e780dc4` confirmed the
+terminal-ILR and reentrant-disposal findings were closed, but identified two remaining attribution
+paths: an evicted completed AuctionId could bind a new unbound attempt, and overlapping Load calls
+could relabel an older callback as a newer generation. It also identified a synchronous anonymous
+display-failure permutation that could terminate a correctly loaded post-expiry replacement.
+
+### Fix-round-2 implementation
+
+- Completed AuctionId tombstones remain bounded to 32. The first eviction permanently raises an
+  auction-history saturation fence. Thereafter, an unknown AuctionId cannot establish a context
+  from an auction-only callback (or from a pair with no independently known current AdId).
+- Safe post-saturation progression remains explicit: a serialized current Loaded callback is the
+  only trusted source allowed to anchor an otherwise-new AuctionId, and a later AuctionId may be
+  paired with an already indexed live AdId only after the existing bidirectional conflict checks.
+  Known auctions continue resolving normally. The earlier bounded AdId saturation fence remains
+  independent and unchanged.
+- LevelPlay 9.5.1 has no Load request token, so the provider now permits at most one vendor Load in
+  flight. Redundant pre-init, in-flight, and already-loaded Load calls collapse without queuing a
+  hidden replacement. Loaded or LoadFailed ends the exact flight; a later explicit coordinator
+  call may issue one replacement. A synchronous Load exception also ends the flight. No callback,
+  close, display failure, or provider-owned timer auto-issues another load.
+- Readiness is false while a Load callback is outstanding, preventing a delayed callback from
+  crossing a Show. Loaded identity is copied only when that serialized flight is active, and the
+  monotonic load generation increments only when a real vendor Load call is issued. An unusable
+  post-expiry Loaded result (blank IDs or AdId only) does not deadlock replacement: the next
+  explicit Load can replace it, while a consumable loaded result remains the one current ad.
+- Accepting a fresh Loaded AuctionId after an expired unresolved context now leaves a terminal
+  evidence barrier on the replacement Show. An anonymous DisplayFailed flushed synchronously by
+  Show cannot cross that barrier. A stable callback that resolves the current context clears it;
+  therefore a stable matching synchronous display failure still terminates normally, while a
+  rejected anonymous stale failure leaves the replacement available for stable displayed,
+  rewarded, and closed callbacks exactly once.
+
+Round-2 changed files:
+
+- `unity/Assets/Scripts/Integrations/LevelPlay/LevelPlayRewardedAdProvider.cs`
+- `unity/Assets/Tests/EditMode/LevelPlay/LevelPlayRewardedAdProviderTests.cs`
+- this report
+
+No mapper, queue, composition, package, scene, settings, or asset file changed in this round.
+
+### Fix-round-2 TDD evidence
+
+All Unity commands used the absolute project path
+`/Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/unity`, omitted `-quit`, and retained
+NUnit XML only.
+
+Focused RED command:
+
+`unity test /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/unity --mode EditMode --filter 'CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.ExplicitLoadsSerializeOneVendorRequestAndOneCallbackGeneration;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.LoadFailureCompletesTheFlightSoOneLaterExplicitLoadCanIssue;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.SaturatedAuctionHistoryRejectsEvictedAuctionOnlyBindingButAllowsSafeAnchors;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.PostExpirySynchronousTerminalRequiresStableCurrentIdentity' --output /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/artifacts/task6-fix2-core-red.xml --format json --non-interactive --timeout 600`
+
+Parsed RED result: 1/5 passed and 4/5 failed. The stable synchronous terminal control passed.
+The four expected failures were:
+
+- an overlapping explicit Load produced 2 vendor calls instead of 1;
+- the load-failure replacement sequence produced 3 calls instead of 2;
+- an anonymous synchronous failure rejected the post-quarantine replacement (`False` instead of
+  `True`); and
+- an evicted auction-only callback increased the reward count from 34 to 35.
+
+The same filter and command with output `task6-fix2-core-green1.xml` passed 4/5. The remaining
+failure showed the saturation fixture itself needed current Loaded anchors for terminal histories
+created after the fence had already closed unknown binding. After making those histories
+serialized and trusted rather than bypassing the production fence, the identical command with
+output `task6-fix2-core-green2.xml` passed 5/5, failed 0, skipped 0.
+
+Provider/mapper/queue command:
+
+`unity test /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/unity --mode EditMode --filter 'CatMetro.Tests.LevelPlayPayloadMapperTests;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests' --output /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/artifacts/task6-fix2-provider-mapper-candidate2.xml --format json --non-interactive --timeout 600`
+
+The first candidate exposed six existing fixtures whose fake callback flow was impossible under a
+serialized request (85/91 passed). Their intended assertions were preserved while setup was
+changed to complete the initial load, issue later Loads only after consumption, and exercise
+event fan-out through a valid displayed callback. The run also exposed that blank/AdId-only
+quarantine evidence must permit a later explicit replacement instead of deadlocking. After that
+fix, `task6-fix2-provider-mapper-candidate2.xml` passed 91/91, failed 0, skipped 0. This includes
+the earlier terminal ILR pump-drain and reentrant queue/provider disposal regressions.
+
+### Fix-round-2 final verification and audits
+
+Final combined command, rerun after the last production comment and strengthened exact event-order
+assertion:
+
+`unity test /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/unity --mode EditMode --filter 'CatMetro.Tests.LevelPlayPayloadMapperTests;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests;CatMetro.Tests.Ads.RewardedAdCoordinatorTests;CatMetro.Tests.RewardedAdsBootstrapTests;RevenueCat.Tests.RevenueCatAdReporterTests' --output /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/artifacts/task6-fix2-final-editmode.xml --format json --non-interactive --timeout 600`
+
+The current-head XML is timestamped `2026-08-30 10:22:40Z` and passed 164/164, failed 0,
+inconclusive 0, skipped 0:
+
+- LevelPlay provider: 65/65
+- mapper/queue: 26/26
+- coordinator: 32/32
+- bootstrap/composition/pump: 17/17
+- RevenueCat reporter: 24/24
+
+Linked-source command:
+
+`dotnet test dotnet/CatMetro.Tests/CatMetro.Tests.csproj --no-restore --filter 'FullyQualifiedName~RewardedAdCoordinatorTests' --logger 'console;verbosity=minimal'`
+
+Result: 32/32 passed, failed 0, skipped 0. `bash scripts/check.sh` returned `check: OK` and
+`git diff --check` was clean.
+
+The complete `75e833d9be8859c3f7adb36e961cc4232e780dc4..working` round-2 diff and cumulative
+`76ee9963c856d54ccf2b15dda9a72de86c673869..working` Task 6 diff were reviewed. Round 2 changes
+only the guarded provider state machine, its real-seam tests, and this report. Dependency
+direction, exact 9.5.1 manifest/lock pin, `Unity.LevelPlay` assembly reference,
+`Unity.Services.LevelPlay` namespace, and every native player-platform guard remain intact.
+Production still constructs only the single configured rewarded unit, exposes no other ad
+format, adds no auto-init Resources asset or hidden manager, and never reloads from provider
+callbacks. The existing composition/pump drain, terminal-revenue-only records, reentrant disposal,
+and exactly-once cleanup remain covered.
+
+Secret/scope/static checks found no credential-bearing value, raw `.log`, GameRoot, scene,
+Resources, ProjectSettings, unrelated package, or other worktree change. The sole unstaged item
+remains the required `unity/mono_crash.143e1228df.0.json`, preserved without staging. No `.env`,
+process command line, device, build, install, upload, push, merge, or rebase operation was used.
+
+The configured-device-only proof boundary remains unchanged. Managed Editor evidence cannot prove
+native Android/iOS adapter resolution/init, real fill/show/reward/close or worker-thread ILR
+ordering, dashboard caps/no-fill, privacy/ATT/CMP behavior, native teardown, or RevenueCat sandbox
+ingestion/dimensions/revenue. No native/device claim is made.

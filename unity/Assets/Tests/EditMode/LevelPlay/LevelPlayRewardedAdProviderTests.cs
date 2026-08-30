@@ -72,9 +72,67 @@ namespace CatMetro.Tests.LevelPlay
             }
 
             _provider.Load();
+            Assert.That(_ad.LoadCalls, Is.EqualTo(1),
+                "an explicit call cannot overlap the still in-flight vendor request");
+            _ad.EmitLoaded(AdInfo(null, null, null));
+            _provider.Load();
+            Assert.That(_ad.LoadCalls, Is.EqualTo(1),
+                "the loaded result remains the current consumable ad");
+            Assert.That(_provider.TryShow(90L, "serialized-load"), Is.True);
+            var shown = AdInfo("serialized-load-ad", "serialized-load-auction",
+                "serialized-load");
+            _ad.EmitDisplayed(shown);
+            _ad.EmitClosed(shown);
+            _provider.Load();
             Assert.That(_ad.LoadCalls, Is.EqualTo(2),
-                "later loads remain explicit coordinator requests");
+                "only a later explicit call after consumption starts the next request");
             Assert.That(_sdk.CreateCalls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ExplicitLoadsSerializeOneVendorRequestAndOneCallbackGeneration()
+        {
+            _provider.Load();
+            _provider.Initialize();
+            _sdk.EmitInitializationSucceeded();
+            Assert.That(_ad.LoadCalls, Is.EqualTo(1));
+
+            _provider.Load();
+            Assert.That(_ad.LoadCalls, Is.EqualTo(1),
+                "an in-flight request has no vendor token that could distinguish another load");
+            Assert.That(PrivateLong("_loadGeneration"), Is.EqualTo(1L));
+
+            var loaded = AdInfo("serialized-ad", "serialized-auction", "serialized");
+            _ad.EmitLoaded(loaded);
+            _provider.Load();
+            Assert.That(_ad.LoadCalls, Is.EqualTo(1),
+                "an already loaded ad is the one current consumable result");
+            Assert.That(PrivateLong("_loadGeneration"), Is.EqualTo(1L));
+
+            Assert.That(_provider.TryShow(901L, "serialized"), Is.True);
+            _ad.EmitRewarded(loaded);
+            Assert.That(_events.Single(e => e.Kind == RewardedAdEventKind.Rewarded).AttemptId,
+                Is.EqualTo(901L));
+        }
+
+        [Test]
+        public void LoadFailureCompletesTheFlightSoOneLaterExplicitLoadCanIssue()
+        {
+            _provider.Load();
+            _provider.Initialize();
+            _sdk.EmitInitializationSucceeded();
+            Assert.That(_ad.LoadCalls, Is.EqualTo(1));
+
+            _ad.EmitLoadFailed(new LevelPlayErrorSnapshot(204));
+            _provider.Load();
+            _provider.Load();
+
+            Assert.That(_ad.LoadCalls, Is.EqualTo(2),
+                "failure ends one flight, but the replacement remains serialized");
+            Assert.That(PrivateLong("_loadGeneration"), Is.EqualTo(2L));
+            _ad.EmitLoaded(AdInfo(null, "replacement-auction", "replacement"));
+            Assert.That(_provider.IsReadyForPlacement("replacement"), Is.True,
+                "the explicit replacement load must not deadlock serving");
         }
 
         [Test]
@@ -177,36 +235,48 @@ namespace CatMetro.Tests.LevelPlay
         public void CallbackMappingPreservesNeutralIdsAndCoordinatorAloneReloadsAfterTerminalEvents()
         {
             ReadyProvider();
-            _ad.EmitLoaded(AdInfo("load-ad", "load-auction", "loaded-placement"));
-            _ad.EmitLoadFailed(new LevelPlayErrorSnapshot(204, "failed-ad", "one-rewarded-unit"));
             Assert.That(_provider.TryShow(73L, "wardrobe_try_goggles"), Is.True);
             var info = AdInfo("show-ad", "show-auction", "wardrobe_try_goggles");
             _ad.EmitDisplayed(info);
             _ad.EmitClicked(info);
             _ad.EmitClosed(info);
 
-            Assert.That(_events.Select(e => e.Kind), Is.EqualTo(new[]
-            {
-                RewardedAdEventKind.Loaded,
-                RewardedAdEventKind.LoadFailed,
-                RewardedAdEventKind.Displayed,
-                RewardedAdEventKind.Opened,
-                RewardedAdEventKind.Closed,
-            }));
-            Assert.That(_events[0].AdId, Is.EqualTo("load-ad"));
-            Assert.That(_events[0].AuctionId, Is.EqualTo("load-auction"));
-            Assert.That(_events[0].AdUnitId, Is.EqualTo("one-rewarded-unit"));
-            Assert.That(_events[1].ErrorCode, Is.EqualTo(204));
-            Assert.That(_events.Skip(2).All(e => e.AttemptId == 73L), Is.True);
             Assert.That(_ad.LoadCalls, Is.EqualTo(1),
                 "close must not trigger a provider-owned reload");
 
             _provider.Load();
+            var other = AdInfo("load-ad", "load-auction", "wardrobe_try_engineer");
+            _ad.EmitLoaded(other);
             Assert.That(_provider.TryShow(74L, "wardrobe_try_engineer"), Is.True);
-            _ad.EmitDisplayFailed(AdInfo("other-ad", "other-auction",
-                "wardrobe_try_engineer"), new LevelPlayErrorSnapshot(509));
+            _ad.EmitDisplayFailed(other, new LevelPlayErrorSnapshot(509));
             Assert.That(_ad.LoadCalls, Is.EqualTo(2),
                 "display failure must not trigger a provider-owned reload");
+
+            _provider.Load();
+            _ad.EmitLoadFailed(new LevelPlayErrorSnapshot(
+                204, "failed-ad", "one-rewarded-unit"));
+            Assert.That(_ad.LoadCalls, Is.EqualTo(3));
+            Assert.That(_events.Select(e => e.Kind), Is.EqualTo(new[]
+            {
+                RewardedAdEventKind.Displayed,
+                RewardedAdEventKind.Opened,
+                RewardedAdEventKind.Closed,
+                RewardedAdEventKind.Loaded,
+                RewardedAdEventKind.DisplayFailed,
+                RewardedAdEventKind.LoadFailed,
+            }));
+
+            var loaded = _events.Single(e => e.Kind == RewardedAdEventKind.Loaded);
+            Assert.That(loaded.AdId, Is.EqualTo("load-ad"));
+            Assert.That(loaded.AuctionId, Is.EqualTo("load-auction"));
+            Assert.That(loaded.AdUnitId, Is.EqualTo("one-rewarded-unit"));
+            Assert.That(_events.Single(e => e.Kind == RewardedAdEventKind.LoadFailed).ErrorCode,
+                Is.EqualTo(204));
+            Assert.That(_events.Where(e => e.Kind == RewardedAdEventKind.Displayed ||
+                e.Kind == RewardedAdEventKind.Opened || e.Kind == RewardedAdEventKind.Closed)
+                .All(e => e.AttemptId == 73L), Is.True);
+            Assert.That(_events.Single(e => e.Kind == RewardedAdEventKind.DisplayFailed).AttemptId,
+                Is.EqualTo(74L));
         }
 
         [Test]
@@ -337,8 +407,13 @@ namespace CatMetro.Tests.LevelPlay
             {
                 string suffix = i.ToString();
                 string adId = "reused-ad-" + suffix;
-                Assert.That(_provider.TryShow(1_000L + i * 2L, "old-" + suffix), Is.True);
                 var oldInfo = AdInfo(adId, "old-auction-" + suffix, "old-" + suffix);
+                if (i > 0)
+                {
+                    _provider.Load();
+                    _ad.EmitLoaded(oldInfo);
+                }
+                Assert.That(_provider.TryShow(1_000L + i * 2L, "old-" + suffix), Is.True);
                 _ad.EmitDisplayed(oldInfo);
                 _ad.EmitRewarded(oldInfo);
                 _ad.EmitClosed(oldInfo);
@@ -372,6 +447,60 @@ namespace CatMetro.Tests.LevelPlay
             _ad.EmitRewarded(afterEviction);
             Assert.That(_events.Last(e => e.Kind == RewardedAdEventKind.Rewarded).AttemptId,
                 Is.EqualTo(2_000L));
+        }
+
+        [Test]
+        public void SaturatedAuctionHistoryRejectsEvictedAuctionOnlyBindingButAllowsSafeAnchors()
+        {
+            ReadyProvider();
+            for (int i = 0; i < 34; i++)
+            {
+                string auctionId = "completed-auction-" + i;
+                var terminal = AdInfo(null, auctionId, "completed-" + i);
+                if (i > 0)
+                {
+                    _provider.Load();
+                    _ad.EmitLoaded(terminal);
+                }
+                Assert.That(_provider.TryShow(3_000L + i, "completed-" + i), Is.True);
+                _ad.EmitDisplayed(terminal);
+                _ad.EmitRewarded(terminal);
+                _ad.EmitClosed(terminal);
+            }
+            Assert.That(PrivateCollectionCount("_completedAuctions"), Is.EqualTo(32));
+
+            _provider.Load();
+            _ad.EmitLoaded(AdInfo(null, null, "current"));
+            Assert.That(_provider.TryShow(4_000L, "current"), Is.True);
+            int rewardsBeforeStale = _events.Count(e =>
+                e.Kind == RewardedAdEventKind.Rewarded);
+
+            var evicted = AdInfo(null, "completed-auction-0", "completed-0");
+            _ad.EmitDisplayed(evicted);
+            _ad.EmitRewarded(evicted);
+
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.Rewarded),
+                Is.EqualTo(rewardsBeforeStale),
+                "an evicted auction tombstone must never reopen unknown auction-only binding");
+
+            var currentAdOnly = AdInfo("current-known-ad", null, "current");
+            _ad.EmitDisplayed(currentAdOnly);
+            var currentPair = AdInfo("current-known-ad", "current-auction", "current");
+            _ad.EmitInfoChanged(currentPair);
+            _ad.EmitRewarded(currentPair);
+            Assert.That(_events.Last(e => e.Kind == RewardedAdEventKind.Rewarded).AttemptId,
+                Is.EqualTo(4_000L),
+                "a new auction paired with the current known AdId remains safe progression");
+            _ad.EmitClosed(currentPair);
+
+            _provider.Load();
+            var loadedAnchor = AdInfo(null, "loaded-current-auction", "loaded-current");
+            _ad.EmitLoaded(loadedAnchor);
+            Assert.That(_provider.TryShow(4_001L, "loaded-current"), Is.True);
+            _ad.EmitRewarded(loadedAnchor);
+            Assert.That(_events.Last(e => e.Kind == RewardedAdEventKind.Rewarded).AttemptId,
+                Is.EqualTo(4_001L),
+                "the serialized current Loaded AuctionId remains authoritative after saturation");
         }
 
         [Test]
@@ -538,6 +667,41 @@ namespace CatMetro.Tests.LevelPlay
 
             var failure = _events.Single(e => e.Kind == RewardedAdEventKind.DisplayFailed);
             Assert.That(failure.AttemptId, Is.EqualTo(432L));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void PostExpirySynchronousTerminalRequiresStableCurrentIdentity(
+            bool stableTerminal)
+        {
+            ReadyProvider();
+            Assert.That(_provider.TryShow(433L, "expired"), Is.True);
+            _ad.EmitClosed(AdInfo(null, null, "expired"));
+            _now += 101L;
+
+            _provider.Load();
+            var current = AdInfo("fresh-ad", "fresh-auction", "replacement");
+            _ad.EmitLoaded(current);
+            _ad.OnShow = () => _ad.EmitDisplayFailed(
+                stableTerminal ? current : AdInfo(null, null, null),
+                new LevelPlayErrorSnapshot(509));
+
+            bool accepted = _provider.TryShow(434L, "replacement");
+
+            Assert.That(accepted, Is.EqualTo(!stableTerminal));
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.DisplayFailed &&
+                e.AttemptId == 434L), Is.EqualTo(stableTerminal ? 1 : 0));
+            if (stableTerminal) return;
+
+            _ad.OnShow = null;
+            _ad.EmitDisplayed(current);
+            _ad.EmitRewarded(current);
+            _ad.EmitRewarded(current);
+            _ad.EmitClosed(current);
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.Rewarded &&
+                e.AttemptId == 434L), Is.EqualTo(1));
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.Closed &&
+                e.AttemptId == 434L), Is.EqualTo(1));
         }
 
         [Test]
@@ -793,6 +957,9 @@ namespace CatMetro.Tests.LevelPlay
             _provider.Dispose();
             SetUp();
             ReadyProvider();
+            Assert.That(_provider.TryShow(640L, "load-exception"), Is.True);
+            _ad.EmitDisplayFailed(AdInfo("load-exception-ad", "load-exception-auction",
+                "load-exception"), new LevelPlayErrorSnapshot(509));
             _ad.ThrowLoad = true;
             Assert.DoesNotThrow(_provider.Load);
             Assert.That(_events.Last().Kind, Is.EqualTo(RewardedAdEventKind.LoadFailed));
@@ -814,7 +981,8 @@ namespace CatMetro.Tests.LevelPlay
             _provider.EventReceived += _ => throw new InvalidOperationException("consumer fault");
             _provider.EventReceived += _ => later++;
 
-            Assert.DoesNotThrow(() => _ad.EmitLoaded(
+            Assert.That(_provider.TryShow(641L, "placement"), Is.True);
+            Assert.DoesNotThrow(() => _ad.EmitDisplayed(
                 AdInfo("ad", "auction", "placement")));
             Assert.That(later, Is.EqualTo(1));
         }
@@ -827,7 +995,8 @@ namespace CatMetro.Tests.LevelPlay
             _provider.EventReceived += _ => _provider.Dispose();
             _provider.EventReceived += _ => later++;
 
-            Assert.DoesNotThrow(() => _ad.EmitLoaded(
+            Assert.That(_provider.TryShow(642L, "placement"), Is.True);
+            Assert.DoesNotThrow(() => _ad.EmitDisplayed(
                 AdInfo("ad", "auction", "placement")));
 
             Assert.That(later, Is.Zero);
@@ -864,6 +1033,8 @@ namespace CatMetro.Tests.LevelPlay
             _provider.Initialize();
             _sdk.EmitInitializationSucceeded();
             Assert.That(_ad.LoadCalls, Is.EqualTo(1));
+            _ad.EmitLoaded(AdInfo(null, null, null));
+            _events.Clear();
         }
 
         private static LevelPlayAdSnapshot AdInfo(string adId, string auctionId,
@@ -881,6 +1052,14 @@ namespace CatMetro.Tests.LevelPlay
             var count = value?.GetType().GetProperty("Count");
             Assert.That(count, Is.Not.Null, fieldName + " must expose a collection count");
             return (int)count.GetValue(value);
+        }
+
+        private long PrivateLong(string fieldName)
+        {
+            var field = typeof(LevelPlayRewardedAdProvider).GetField(fieldName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null, fieldName + " must be explicit correlation state");
+            return (long)field.GetValue(_provider);
         }
 
         private void DrainThroughExistingMonetizationPump()
