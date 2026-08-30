@@ -91,7 +91,7 @@ namespace CatMetro.Tests.Purchases
 
             Assert.That(svc.GrantRewardedAdEntitlement(EntitlementIds.OutfitConductor),
                 Is.EqualTo(AdGrantOutcome.Granted));
-            Assert.That(persistence.LastLeases, Has.Count.EqualTo(1));
+            Assert.That(persistence.LastLeases.Count, Is.EqualTo(1));
             Assert.That(persistence.LastLeases[0].EntitlementId,
                 Is.EqualTo(EntitlementIds.OutfitConductor));
             Assert.That(persistence.LastLeases[0].Source, Is.EqualTo(GrantSource.RewardedAd));
@@ -119,7 +119,7 @@ namespace CatMetro.Tests.Purchases
 
             Assert.That(svc.GrantRewardedAdEntitlement("outfit_bellhop"),
                 Is.EqualTo(AdGrantOutcome.Granted));
-            Assert.That(persistence.LastLeases, Has.Count.EqualTo(1));
+            Assert.That(persistence.LastLeases.Count, Is.EqualTo(1));
             Assert.That(persistence.LastLeases[0].EntitlementId, Is.EqualTo("outfit_bellhop"));
         }
 
