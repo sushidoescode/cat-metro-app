@@ -131,12 +131,29 @@ namespace CatMetro.Tests.PlayMode
                 "cat.red", "missing.base", "missing.outfit", "missing.accessory", ""));
 
             Assert.That(view.BaseLayerTransform.gameObject.activeSelf, Is.False);
+            Assert.That(view.AppliedCatId, Is.Empty,
+                "a missing base asset cannot be reported as a painted cat");
             Assert.That(view.OutfitLayerTransform.gameObject.activeSelf, Is.False);
             Assert.That(view.AccessoryLayerTransform.gameObject.activeSelf, Is.False);
             Assert.That(view.FrameLayerTransform.gameObject.activeSelf, Is.False);
             Assert.That(view.AppliedOutfitAssetId, Is.Empty);
             Assert.That(view.AppliedAccessoryAssetId, Is.Empty);
             Assert.That(view.AppliedFrameAssetId, Is.Empty);
+        }
+
+        [Test]
+        public void UnsupportedBaseRenderer_ClearsTheLayerAndCatReadback()
+        {
+            var source = PortraitTestSource.WithRealTokens(default);
+            source.AddAsset("cat.unsupported", "cat.renderer_not_admitted");
+
+            var view = CosmeticPortraitView.Create(_host.transform, source);
+            source.Set(new CosmeticPortraitSnapshot(
+                "cat.unsupported", "cat.unsupported", "", "", ""));
+
+            Assert.That(view.BaseLayerTransform.gameObject.activeSelf, Is.False);
+            Assert.That(view.AppliedCatId, Is.Empty,
+                "a source-resolved asset is not painted when its renderer token is unsupported");
         }
 
         private static Image[] VisibleImages(RectTransform layer) => layer
@@ -197,6 +214,12 @@ namespace CatMetro.Tests.PlayMode
             if (assetId != null) return _assets.TryGetValue(assetId, out asset);
             asset = null;
             return false;
+        }
+
+        public void AddAsset(string assetId, string rendererToken)
+        {
+            _assets.Add(assetId,
+                new CosmeticPortraitAssetDefinition(assetId, rendererToken, "project." + assetId));
         }
 
         public void Set(CosmeticPortraitSnapshot portrait)

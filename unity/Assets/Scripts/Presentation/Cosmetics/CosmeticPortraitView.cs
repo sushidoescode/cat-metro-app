@@ -61,8 +61,10 @@ namespace CatMetro.Presentation.Cosmetics
                 return;
             }
 
-            AppliedCatId = snapshot.CatId ?? string.Empty;
-            ApplyLayer(BaseLayerTransform, snapshot.BaseAssetId, out _);
+            ApplyLayer(BaseLayerTransform, snapshot.BaseAssetId, out var baseAssetId);
+            AppliedCatId = string.IsNullOrEmpty(baseAssetId)
+                ? string.Empty
+                : snapshot.CatId ?? string.Empty;
             ApplyLayer(OutfitLayerTransform, snapshot.OutfitAssetId,
                 out var outfitAssetId);
             ApplyLayer(AccessoryLayerTransform, snapshot.AccessoryAssetId,
