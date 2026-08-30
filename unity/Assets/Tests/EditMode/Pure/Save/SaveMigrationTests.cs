@@ -274,7 +274,7 @@ namespace CatMetro.Tests.Save
             Assert.That(JToken.DeepEquals(filePayload["futureExperiment"], expectedUnknown), Is.True);
             Assert.That(JToken.DeepEquals(filePayload["caps"]["counters"],
                 expectedLegacyCounters), Is.True,
-                "the committed v2 artifact must retain every legacy cap value");
+                "the committed v3 artifact must retain every legacy cap value");
 
             var reloaded = SFixtures.Store(root);
             Assert.That(reloaded.Load(), Is.EqualTo(LoadResult.Ok));
