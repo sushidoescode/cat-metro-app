@@ -37,8 +37,8 @@ namespace CatMetro.Services.Ads
         private bool _reporterReady;
         private bool _reporterFailed;
         private bool _providerFailed;
-        private bool _providerSubscribed;
-        private bool _reporterSubscribed;
+        private SubscriptionState _providerSubscription;
+        private SubscriptionState _reporterSubscription;
         private bool _disposed;
 
         public event Action AvailabilityChanged;
@@ -64,21 +64,72 @@ namespace CatMetro.Services.Ads
             // and a transition between observation and subscription must not be lost.
             if (_provider != null)
             {
+                _providerSubscription = SubscriptionState.Adding;
+                bool addCompleted = false;
                 try
                 {
                     _provider.EventReceived += OnProviderEvent;
-                    _providerSubscribed = true;
+                    addCompleted = true;
                 }
-                catch { _providerFailed = true; }
+                catch
+                {
+                    if (_disposed || _providerSubscription != SubscriptionState.Adding)
+                        SafeRemoveProviderHandler();
+                    else
+                    {
+                        _providerSubscription = SubscriptionState.None;
+                        _providerFailed = true;
+                    }
+                }
+                if (!addCompleted)
+                {
+                    if (_disposed) return;
+                }
+                else if (_disposed || _providerSubscription != SubscriptionState.Adding)
+                {
+                    // Dispose can run inside the add accessor before the accessor attaches the
+                    // handler. Its first remove then precedes the attachment, so compensate once
+                    // the accessor returns without touching any other coordinator/provider.
+                    SafeRemoveProviderHandler();
+                    return;
+                }
+                else
+                {
+                    _providerSubscription = SubscriptionState.Attached;
+                }
             }
             if (_reporter != null)
             {
+                _reporterSubscription = SubscriptionState.Adding;
+                bool addCompleted = false;
                 try
                 {
                     _reporter.ReadinessChanged += OnReporterReadinessChanged;
-                    _reporterSubscribed = true;
+                    addCompleted = true;
                 }
-                catch { _reporterFailed = true; }
+                catch
+                {
+                    if (_disposed || _reporterSubscription != SubscriptionState.Adding)
+                        SafeRemoveReporterHandler();
+                    else
+                    {
+                        _reporterSubscription = SubscriptionState.None;
+                        _reporterFailed = true;
+                    }
+                }
+                if (!addCompleted)
+                {
+                    if (_disposed) return;
+                }
+                else if (_disposed || _reporterSubscription != SubscriptionState.Adding)
+                {
+                    SafeRemoveReporterHandler();
+                    return;
+                }
+                else
+                {
+                    _reporterSubscription = SubscriptionState.Attached;
+                }
             }
             ObserveReporterReadiness(force: true);
         }
@@ -164,17 +215,17 @@ namespace CatMetro.Services.Ads
         {
             if (_disposed) return;
             _disposed = true;
-            if (_providerSubscribed)
+            if (_providerSubscription != SubscriptionState.None)
             {
-                try { _provider.EventReceived -= OnProviderEvent; }
-                catch { }
-                _providerSubscribed = false;
+                // Clear ownership before the external remove accessor so reentrant disposal is
+                // idempotent. An in-flight add is compensated again after that add returns.
+                _providerSubscription = SubscriptionState.None;
+                SafeRemoveProviderHandler();
             }
-            if (_reporterSubscribed)
+            if (_reporterSubscription != SubscriptionState.None)
             {
-                try { _reporter.ReadinessChanged -= OnReporterReadinessChanged; }
-                catch { }
-                _reporterSubscribed = false;
+                _reporterSubscription = SubscriptionState.None;
+                SafeRemoveReporterHandler();
             }
             _openAttempt = null;
             _retainedAttempts.Clear();
@@ -198,11 +249,13 @@ namespace CatMetro.Services.Ads
             try { ready = _reporter.IsReady; }
             catch
             {
+                if (_disposed) return;
                 _reporterFailed = true;
                 _reporterReady = false;
                 RaiseAvailabilityChanged();
                 return;
             }
+            if (_disposed) return;
 
             bool changed = ready != _reporterReady;
             _reporterReady = ready;
@@ -214,19 +267,35 @@ namespace CatMetro.Services.Ads
                     try
                     {
                         _provider?.Initialize();
-                        SafeLoad();
                     }
                     catch
                     {
+                        if (_disposed) return;
                         _providerFailed = true;
                     }
+                    if (_disposed) return;
+                    if (!_providerFailed && !SafeLoad()) return;
                 }
                 else if (changed && !force)
                 {
-                    SafeLoad();
+                    if (!SafeLoad()) return;
                 }
             }
             if (changed || force) RaiseAvailabilityChanged();
+        }
+
+        private void SafeRemoveProviderHandler()
+        {
+            if (_provider == null) return;
+            try { _provider.EventReceived -= OnProviderEvent; }
+            catch { }
+        }
+
+        private void SafeRemoveReporterHandler()
+        {
+            if (_reporter == null) return;
+            try { _reporter.ReadinessChanged -= OnReporterReadinessChanged; }
+            catch { }
         }
 
         private void OnProviderEvent(RewardedAdEvent adEvent)
@@ -404,12 +473,17 @@ namespace CatMetro.Services.Ads
                     new LocalDatePlacementKey(dateKey, placement.Id));
         }
 
-        private void SafeLoad()
+        private bool SafeLoad()
         {
             if (_disposed || !_reporterReady || _reporterFailed || _providerFailed ||
-                _provider == null) return;
+                _provider == null) return !_disposed;
             try { _provider.Load(); }
-            catch { _providerFailed = true; }
+            catch
+            {
+                if (_disposed) return false;
+                _providerFailed = true;
+            }
+            return !_disposed;
         }
 
         private void SafeReport(RewardedAdEvent adEvent)
@@ -472,6 +546,13 @@ namespace CatMetro.Services.Ads
                 Id = id;
                 Placement = placement;
             }
+        }
+
+        private enum SubscriptionState
+        {
+            None,
+            Adding,
+            Attached,
         }
 
         private readonly struct LocalDatePlacementKey : IEquatable<LocalDatePlacementKey>
