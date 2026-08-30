@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace CatMetro.Services.Cosmetics
@@ -71,7 +73,12 @@ namespace CatMetro.Services.Cosmetics
 
             try
             {
-                var token = JToken.Parse(json);
+                using var text = new StringReader(json);
+                using var reader = new JsonTextReader(text)
+                {
+                    DateParseHandling = DateParseHandling.None,
+                };
+                var token = JToken.ReadFrom(reader);
                 if (token is JObject root) return root;
                 problems.Add(label + " root is not an object");
             }
@@ -119,6 +126,8 @@ namespace CatMetro.Services.Cosmetics
                 return result;
             }
 
+            var duplicates = FindDuplicateStringIds(array, "id");
+            var reportedDuplicates = new HashSet<string>(StringComparer.Ordinal);
             foreach (var row in array)
             {
                 if (!(row is JObject item))
@@ -127,17 +136,18 @@ namespace CatMetro.Services.Cosmetics
                     continue;
                 }
 
-                string id;
-                try { id = (string)item["id"]; }
-                catch (Exception) { id = null; }
-                if (string.IsNullOrWhiteSpace(id))
+                if (!TryGetText(item, "id", out var id))
                 {
-                    problems.Add("provenance row has no id");
+                    problems.Add("provenance row has invalid or missing id");
                     continue;
                 }
-                if (result.ContainsKey(id))
+                if (duplicates.Contains(id))
                 {
-                    problems.Add("duplicate provenance id: " + id);
+                    if (reportedDuplicates.Add(id))
+                    {
+                        problems.Add("duplicate provenance id: " + id);
+                        result[id] = false;
+                    }
                     continue;
                 }
 
@@ -154,9 +164,8 @@ namespace CatMetro.Services.Cosmetics
 
         private static bool TryValidateProvenance(JObject item, string id, out string problem)
         {
-            string sourceKind;
-            try { sourceKind = (string)item["sourceKind"]; }
-            catch (Exception) { sourceKind = null; }
+            if (!TryGetText(item, "sourceKind", out var sourceKind))
+                return Invalid(id, "sourceKind", out problem);
 
             if (sourceKind == "project_authored")
             {
@@ -199,8 +208,19 @@ namespace CatMetro.Services.Cosmetics
 
         private static bool HasText(JObject item, string field)
         {
-            try { return !string.IsNullOrWhiteSpace((string)item[field]); }
-            catch (Exception) { return false; }
+            return TryGetText(item, field, out _);
+        }
+
+        private static bool TryGetText(JObject item, string field, out string value)
+        {
+            var token = item[field];
+            if (token == null || token.Type != JTokenType.String)
+            {
+                value = null;
+                return false;
+            }
+            value = (string)token;
+            return !string.IsNullOrWhiteSpace(value);
         }
 
         private static bool HasNonEmptyStringArray(JObject item, string field)
@@ -208,9 +228,8 @@ namespace CatMetro.Services.Cosmetics
             if (!(item[field] is JArray values) || values.Count == 0) return false;
             foreach (var value in values)
             {
-                string text;
-                try { text = (string)value; }
-                catch (Exception) { return false; }
+                if (value.Type != JTokenType.String) return false;
+                var text = (string)value;
                 if (string.IsNullOrWhiteSpace(text)) return false;
             }
             return true;
@@ -218,8 +237,7 @@ namespace CatMetro.Services.Cosmetics
 
         private static bool HasClearedDistribution(JObject item)
         {
-            try { return (string)item["commercialDistribution"] == "cleared"; }
-            catch (Exception) { return false; }
+            return TryGetText(item, "commercialDistribution", out var value) && value == "cleared";
         }
 
         private static List<CosmeticPortraitAssetDefinition> ParseAssets(JToken token,
@@ -233,7 +251,8 @@ namespace CatMetro.Services.Cosmetics
                 return result;
             }
 
-            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var duplicates = FindDuplicateStringIds(array, "assetId");
+            var reportedDuplicates = new HashSet<string>(StringComparer.Ordinal);
             foreach (var row in array)
             {
                 if (!(row is JObject item))
@@ -242,34 +261,20 @@ namespace CatMetro.Services.Cosmetics
                     continue;
                 }
 
-                string assetId;
-                string rendererToken;
-                string provenanceId;
-                try
+                if (!TryGetText(item, "assetId", out var assetId))
                 {
-                    assetId = (string)item["assetId"];
-                    rendererToken = (string)item["rendererToken"];
-                    provenanceId = (string)item["provenanceId"];
-                }
-                catch (Exception)
-                {
-                    problems.Add("asset row has fields with invalid types");
+                    problems.Add("asset row has invalid or missing assetId");
                     continue;
                 }
-
-                if (string.IsNullOrWhiteSpace(assetId))
+                if (duplicates.Contains(assetId))
                 {
-                    problems.Add("asset row has no assetId");
+                    if (reportedDuplicates.Add(assetId))
+                        problems.Add("duplicate asset id: " + assetId);
                     continue;
                 }
-                if (!seen.Add(assetId))
+                if (!TryGetText(item, "rendererToken", out var rendererToken))
                 {
-                    problems.Add("duplicate asset id: " + assetId);
-                    continue;
-                }
-                if (string.IsNullOrWhiteSpace(rendererToken))
-                {
-                    problems.Add("asset " + assetId + " has no rendererToken");
+                    problems.Add("asset " + assetId + " has invalid or missing rendererToken");
                     continue;
                 }
                 if (!supportedRendererTokens.Contains(rendererToken))
@@ -277,9 +282,9 @@ namespace CatMetro.Services.Cosmetics
                     problems.Add("asset " + assetId + " has unsupported renderer token: " + rendererToken);
                     continue;
                 }
-                if (string.IsNullOrWhiteSpace(provenanceId))
+                if (!TryGetText(item, "provenanceId", out var provenanceId))
                 {
-                    problems.Add("asset " + assetId + " has no provenanceId");
+                    problems.Add("asset " + assetId + " has invalid or missing provenanceId");
                     continue;
                 }
                 if (!provenance.TryGetValue(provenanceId, out var valid) || !valid)
@@ -291,6 +296,18 @@ namespace CatMetro.Services.Cosmetics
                 result.Add(new CosmeticPortraitAssetDefinition(assetId, rendererToken, provenanceId));
             }
             return result;
+        }
+
+        private static HashSet<string> FindDuplicateStringIds(JArray rows, string field)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var duplicates = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var row in rows)
+            {
+                if (!(row is JObject item) || !TryGetText(item, field, out var id)) continue;
+                if (!seen.Add(id)) duplicates.Add(id);
+            }
+            return duplicates;
         }
     }
 }
