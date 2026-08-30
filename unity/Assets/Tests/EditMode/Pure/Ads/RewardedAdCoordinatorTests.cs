@@ -499,6 +499,167 @@ namespace CatMetro.Tests.Ads
         }
 
         [Test]
+        public void LoadFailure_DelaysRetry_DuplicateDoesNotMoveDeadline_AndSyncFailureBacksOff()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            using var coordinator = RewardedAdFixtures.Coordinator(provider);
+            coordinator.Tick(100d);
+            coordinator.Start();
+
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.LoadFailed, errorCode: 204));
+            Assert.That(provider.LoadCalls, Is.EqualTo(1),
+                "the callback must not synchronously recurse into Load");
+            coordinator.Tick(100d);
+
+            coordinator.Tick(101d);
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.LoadFailed, errorCode: 204));
+            coordinator.Tick(101.999d);
+            Assert.That(provider.LoadCalls, Is.EqualTo(1),
+                "a duplicate callback must not move or accelerate the one pending retry");
+
+            provider.OnLoad = () =>
+            {
+                provider.OnLoad = null;
+                provider.Emit(new RewardedAdEvent(RewardedAdEventKind.LoadFailed,
+                    errorCode: 204));
+            };
+            coordinator.Tick(102d);
+            Assert.That(provider.LoadCalls, Is.EqualTo(2),
+                "the exact first deadline issues one retry");
+            coordinator.Tick(102d);
+
+            coordinator.Tick(105.999d);
+            Assert.That(provider.LoadCalls, Is.EqualTo(2),
+                "a synchronous retry failure schedules a later attempt without recursion");
+            coordinator.Tick(106d);
+            Assert.That(provider.LoadCalls, Is.EqualTo(3),
+                "the second failure uses the four-second exponential delay");
+        }
+
+        [Test]
+        public void LoadFailureAfterClockGap_AnchorsFromObservationTickNotStaleSample()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            using var coordinator = RewardedAdFixtures.Coordinator(provider);
+            coordinator.Tick(100d);
+            coordinator.Start();
+
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.LoadFailed, errorCode: 204));
+            coordinator.Tick(500d);
+            Assert.That(provider.LoadCalls, Is.EqualTo(1),
+                "the observation frame anchors the delay; stale t=100 cannot make it due");
+            coordinator.Tick(501.999d);
+            Assert.That(provider.LoadCalls, Is.EqualTo(1));
+            coordinator.Tick(502d);
+            Assert.That(provider.LoadCalls, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void LoadFailureBeforeFirstTick_AnchorsAtFirstValidTimeWithoutImmediateRetry()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            using var coordinator = RewardedAdFixtures.Coordinator(provider);
+            coordinator.Start();
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.LoadFailed, errorCode: 204));
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.LoadFailed, errorCode: 204));
+
+            coordinator.Tick(double.NaN);
+            coordinator.Tick(double.PositiveInfinity);
+            coordinator.Tick(100d);
+            Assert.That(provider.LoadCalls, Is.EqualTo(1),
+                "the first valid sample anchors an unobserved clock; it is not itself due");
+            coordinator.Tick(101.999d);
+            Assert.That(provider.LoadCalls, Is.EqualTo(1));
+            coordinator.Tick(102d);
+            Assert.That(provider.LoadCalls, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Loaded_CancelsPendingRetry_AndResetsBackoffToInitialDelay()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            using var coordinator = RewardedAdFixtures.Coordinator(provider);
+            coordinator.Tick(10d);
+            coordinator.Start();
+
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.LoadFailed, errorCode: 204));
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Loaded));
+            coordinator.Tick(12d);
+            Assert.That(provider.LoadCalls, Is.EqualTo(1),
+                "a successful load cancels the stale pending retry");
+
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.LoadFailed, errorCode: 204));
+            coordinator.Tick(12d);
+            coordinator.Tick(13.999d);
+            Assert.That(provider.LoadCalls, Is.EqualTo(1));
+            coordinator.Tick(14d);
+            Assert.That(provider.LoadCalls, Is.EqualTo(2),
+                "success resets the next failure to the initial two-second delay");
+        }
+
+        [Test]
+        public void RepeatedLoadFailures_UseExponentialBackoffCappedAtThirtySeconds()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            using var coordinator = RewardedAdFixtures.Coordinator(provider);
+            coordinator.Tick(0d);
+            coordinator.Start();
+            provider.OnLoad = () => provider.Emit(new RewardedAdEvent(
+                RewardedAdEventKind.LoadFailed, errorCode: 204));
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.LoadFailed, errorCode: 204));
+            coordinator.Tick(0d);
+
+            var deadlines = new[] { 2d, 6d, 14d, 30d, 60d, 90d, 120d };
+            for (int i = 0; i < deadlines.Length; i++)
+            {
+                coordinator.Tick(deadlines[i] - 0.001d);
+                Assert.That(provider.LoadCalls, Is.EqualTo(i + 1));
+                coordinator.Tick(deadlines[i]);
+                Assert.That(provider.LoadCalls, Is.EqualTo(i + 2));
+                coordinator.Tick(deadlines[i]);
+            }
+        }
+
+        [Test]
+        public void InvalidOrRegressiveTick_CannotTriggerOrMovePendingRetry()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            using var coordinator = RewardedAdFixtures.Coordinator(provider);
+            coordinator.Tick(10d);
+            coordinator.Start();
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.LoadFailed, errorCode: 204));
+            coordinator.Tick(10d);
+
+            coordinator.Tick(double.NaN);
+            coordinator.Tick(double.PositiveInfinity);
+            coordinator.Tick(double.NegativeInfinity);
+            coordinator.Tick(-1d);
+            coordinator.Tick(9d);
+            coordinator.Tick(11.999d);
+            Assert.That(provider.LoadCalls, Is.EqualTo(1));
+
+            coordinator.Tick(12d);
+            Assert.That(provider.LoadCalls, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Dispose_CancelsPendingLoadRetry_AndLaterTicksDoNothing()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var coordinator = RewardedAdFixtures.Coordinator(provider);
+            coordinator.Tick(0d);
+            coordinator.Start();
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.LoadFailed, errorCode: 204));
+            coordinator.Tick(0d);
+
+            coordinator.Dispose();
+            coordinator.Tick(2d);
+
+            Assert.That(provider.LoadCalls, Is.EqualTo(1));
+            Assert.That(provider.DisposeCalls, Is.EqualTo(1));
+        }
+
+        [Test]
         public void OnlyApprovedLifecycleKindsReachReporterAndIdsRemainDistinct()
         {
             var provider = new RewardedAdFixtures.Provider();
@@ -735,6 +896,136 @@ namespace CatMetro.Tests.Ads
                 "FIFO no-grant eviction bounds callbacks that never arrive");
             provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, firstAttempt, "p0"));
             Assert.That(service.IsUnlocked("outfit_conductor"), Is.False);
+        }
+
+        [Test]
+        public void ClosedWithoutReward_BlocksReuseButStillGrantsExactlyOnceWithinGrace()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var persistence = new RewardedAdFixtures.LeasePersistence();
+            var service = RewardedAdFixtures.Service(persistence);
+            using var coordinator = RewardedAdFixtures.Coordinator(provider, service: service,
+                placements: RewardedAdFixtures.Placements(count: 1));
+            coordinator.Tick(100d);
+            coordinator.Start();
+            coordinator.Show("p0");
+            long attempt = provider.Shows.Single().AttemptId;
+
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Closed, attempt, "p0"));
+            coordinator.Tick(100d);
+            coordinator.Tick(399.999d);
+            Assert.That(coordinator.Show("p0"), Is.EqualTo(RewardedShowOutcome.Unavailable),
+                "the exact closed attempt owns its placement throughout the grace window");
+
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, attempt, "p0"));
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, attempt, "p0"));
+
+            Assert.That(service.IsUnlocked("outfit_conductor"), Is.True);
+            Assert.That(persistence.Calls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ClosedWithoutReward_ExpiresAtGrace_ReopensPlacement_AndRejectsStaleReward()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var service = RewardedAdFixtures.Service();
+            using var coordinator = RewardedAdFixtures.Coordinator(provider, service: service,
+                placements: RewardedAdFixtures.Placements(count: 1));
+            int availabilityChanges = 0;
+            coordinator.AvailabilityChanged += () => availabilityChanges++;
+            coordinator.Tick(100d);
+            coordinator.Start();
+            coordinator.Show("p0");
+            long attempt = provider.Shows.Single().AttemptId;
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Closed, attempt, "p0"));
+            int changesAfterClose = availabilityChanges;
+            coordinator.Tick(100d);
+
+            coordinator.Tick(399.999d);
+            Assert.That(coordinator.CanShow("p0"), Is.False);
+            Assert.That(availabilityChanges, Is.EqualTo(changesAfterClose));
+
+            coordinator.Tick(400d);
+            Assert.That(coordinator.CanShow("p0"), Is.True);
+            Assert.That(availabilityChanges, Is.EqualTo(changesAfterClose + 1),
+                "expiry must publish the newly available placement");
+
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, attempt, "p0"));
+            Assert.That(service.IsUnlocked("outfit_conductor"), Is.False,
+                "a reward arriving after the grace boundary has no retained owner");
+            Assert.That(coordinator.Show("p0"), Is.EqualTo(RewardedShowOutcome.Started));
+            Assert.That(provider.Shows.Last().AttemptId, Is.Not.EqualTo(attempt));
+        }
+
+        [Test]
+        public void ClosedBeforeFirstTick_ReceivesFullGraceFromFirstValidMonotonicSample()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var service = RewardedAdFixtures.Service();
+            using var coordinator = RewardedAdFixtures.Coordinator(provider, service: service,
+                placements: RewardedAdFixtures.Placements(count: 1));
+            coordinator.Start();
+            coordinator.Show("p0");
+            long attempt = provider.Shows.Single().AttemptId;
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Closed, attempt, "p0"));
+
+            coordinator.Tick(400d);
+            coordinator.Tick(699.999d);
+            Assert.That(coordinator.CanShow("p0"), Is.False,
+                "a high-uptime first sample must not consume grace measured from an invented zero");
+
+            coordinator.Tick(700d);
+            Assert.That(coordinator.CanShow("p0"), Is.True);
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, attempt, "p0"));
+            Assert.That(service.IsUnlocked("outfit_conductor"), Is.False);
+        }
+
+        [Test]
+        public void ClosedAfterClockGap_ReceivesFullGraceFromObservationTick()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var service = RewardedAdFixtures.Service();
+            using var coordinator = RewardedAdFixtures.Coordinator(provider, service: service,
+                placements: RewardedAdFixtures.Placements(count: 1));
+            coordinator.Tick(100d);
+            coordinator.Start();
+            coordinator.Show("p0");
+            long attempt = provider.Shows.Single().AttemptId;
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Closed, attempt, "p0"));
+
+            coordinator.Tick(500d);
+            coordinator.Tick(799.999d);
+            Assert.That(coordinator.CanShow("p0"), Is.False,
+                "the observation frame, not stale t=100, starts the full grace period");
+            coordinator.Tick(800d);
+            Assert.That(coordinator.CanShow("p0"), Is.True);
+
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, attempt, "p0"));
+            Assert.That(service.IsUnlocked("outfit_conductor"), Is.False);
+        }
+
+        [Test]
+        public void Tick_ServicesDueLoadRetryAndRetainedExpiryWithoutStarvingEither()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            using var coordinator = RewardedAdFixtures.Coordinator(provider,
+                placements: RewardedAdFixtures.Placements(count: 1));
+            coordinator.Tick(0d);
+            coordinator.Start();
+            coordinator.Show("p0");
+            long attempt = provider.Shows.Single().AttemptId;
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Closed, attempt, "p0"));
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.LoadFailed, errorCode: 204));
+            Assert.That(provider.LoadCalls, Is.EqualTo(2));
+            Assert.That(coordinator.CanShow("p0"), Is.False);
+            coordinator.Tick(0d);
+
+            coordinator.Tick(300d);
+
+            Assert.That(provider.LoadCalls, Is.EqualTo(3),
+                "the overdue background load must run on this tick");
+            Assert.That(coordinator.CanShow("p0"), Is.True,
+                "the retained attempt must expire on the same tick, not a later frame");
         }
 
         [Test]

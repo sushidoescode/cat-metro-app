@@ -11,6 +11,9 @@ namespace CatMetro.Services.Ads
         // A callback that never arrives cannot retain memory forever. FIFO eviction releases the
         // placement but deliberately discards any later reward for that evicted exact attempt.
         private const int MaxRetainedClosedAttempts = 16;
+        private const double InitialLoadRetryDelaySeconds = 2d;
+        private const double MaxLoadRetryDelaySeconds = 30d;
+        private const double RetainedAttemptGraceSeconds = 300d;
 
         private readonly RewardedPlacementCatalog _placements;
         private readonly PurchaseService _purchases;
@@ -39,6 +42,13 @@ namespace CatMetro.Services.Ads
         private bool _providerFailed;
         private SubscriptionState _providerSubscription;
         private SubscriptionState _reporterSubscription;
+        private double _lastMonotonicSeconds;
+        private double _nextLoadRetrySeconds;
+        private double _pendingLoadRetryDelaySeconds;
+        private int _consecutiveLoadFailures;
+        private bool _hasMonotonicSeconds;
+        private bool _loadRetryPending;
+        private bool _loadRetryDeadlineAnchored;
         private bool _disposed;
 
         public event Action AvailabilityChanged;
@@ -122,6 +132,39 @@ namespace CatMetro.Services.Ads
                 }
             }
             ObserveReporterReadiness(force: true);
+        }
+
+        public void Tick(double monotonicSeconds)
+        {
+            if (_disposed || !IsValidMonotonicSeconds(monotonicSeconds) ||
+                (_hasMonotonicSeconds && monotonicSeconds < _lastMonotonicSeconds))
+                return;
+
+            _lastMonotonicSeconds = monotonicSeconds;
+            _hasMonotonicSeconds = true;
+            bool loadRetryDue = false;
+            if (_loadRetryPending && !_loadRetryDeadlineAnchored)
+            {
+                // The callback may have waited in the main-thread queue across a long stall.
+                // This observation frame starts the full delay and is never itself due.
+                _nextLoadRetrySeconds = AddSaturated(monotonicSeconds,
+                    _pendingLoadRetryDelaySeconds);
+                _loadRetryDeadlineAnchored = true;
+            }
+            else if (_loadRetryPending && monotonicSeconds >= _nextLoadRetrySeconds)
+            {
+                loadRetryDue = true;
+                // Clear ownership before crossing the provider boundary. A synchronous
+                // LoadFailed callback can now schedule the next delayed retry without recursion.
+                _loadRetryPending = false;
+                _loadRetryDeadlineAnchored = false;
+                _nextLoadRetrySeconds = 0d;
+                _pendingLoadRetryDelaySeconds = 0d;
+            }
+
+            bool retainedAttemptExpired = ExpireRetainedAttempts(monotonicSeconds);
+            if (loadRetryDue) SafeLoad();
+            if (retainedAttemptExpired && !_disposed) RaiseAvailabilityChanged();
         }
 
         public bool CanShow(string placementId)
@@ -231,6 +274,7 @@ namespace CatMetro.Services.Ads
             _retainedAttempts.Clear();
             _retainedOrder.Clear();
             _pendingPlacements.Clear();
+            CancelLoadRetry();
             try { _provider?.Dispose(); }
             catch { }
         }
@@ -338,7 +382,11 @@ namespace CatMetro.Services.Ads
                         OnDisplayFailed(adEvent.AttemptId);
                         break;
                     case RewardedAdEventKind.Loaded:
+                        CancelLoadRetry();
+                        RaiseAvailabilityChanged();
+                        break;
                     case RewardedAdEventKind.LoadFailed:
+                        ScheduleLoadRetry();
                         RaiseAvailabilityChanged();
                         break;
                 }
@@ -418,8 +466,42 @@ namespace CatMetro.Services.Ads
                     _pendingPlacements.Remove(evicted.Placement.Id);
                 }
             }
+            // Closed is a callback, not a clock sample. The next valid Tick anchors the grace
+            // period so a queued callback cannot inherit a stale pre-background timestamp.
             attempt.RetainedNode = _retainedOrder.AddLast(attempt.Id);
             _retainedAttempts[attempt.Id] = attempt;
+        }
+
+        private bool ExpireRetainedAttempts(double monotonicSeconds)
+        {
+            bool removedAny = false;
+            var node = _retainedOrder.First;
+            while (node != null)
+            {
+                var next = node.Next;
+                long attemptId = node.Value;
+                if (!_retainedAttempts.TryGetValue(attemptId, out var attempt))
+                {
+                    node = next;
+                    continue;
+                }
+                if (!attempt.RetainedDeadlineAnchored)
+                {
+                    attempt.RetainedUntilMonotonicSeconds = AddSaturated(
+                        monotonicSeconds, RetainedAttemptGraceSeconds);
+                    attempt.RetainedDeadlineAnchored = true;
+                    node = next;
+                    continue;
+                }
+                if (monotonicSeconds >= attempt.RetainedUntilMonotonicSeconds)
+                {
+                    RemoveRetained(attempt);
+                    _pendingPlacements.Remove(attempt.Placement.Id);
+                    removedAny = true;
+                }
+                node = next;
+            }
+            return removedAny;
         }
 
         private void RemoveRetained(Attempt attempt)
@@ -507,6 +589,44 @@ namespace CatMetro.Services.Ads
             return !_disposed;
         }
 
+        private void ScheduleLoadRetry()
+        {
+            if (_disposed || _providerFailed || _loadRetryPending) return;
+
+            double delay = LoadRetryDelay(_consecutiveLoadFailures);
+            if (_consecutiveLoadFailures < int.MaxValue) _consecutiveLoadFailures++;
+            _pendingLoadRetryDelaySeconds = delay;
+            // Event delivery can lag the last Tick. Always let the next frame anchor this delay.
+            _loadRetryDeadlineAnchored = false;
+            _nextLoadRetrySeconds = 0d;
+            _loadRetryPending = true;
+        }
+
+        private void CancelLoadRetry()
+        {
+            _loadRetryPending = false;
+            _loadRetryDeadlineAnchored = false;
+            _nextLoadRetrySeconds = 0d;
+            _pendingLoadRetryDelaySeconds = 0d;
+            _consecutiveLoadFailures = 0;
+        }
+
+        private static double LoadRetryDelay(int consecutiveLoadFailures)
+        {
+            if (consecutiveLoadFailures <= 0) return InitialLoadRetryDelaySeconds;
+            if (consecutiveLoadFailures >= 4) return MaxLoadRetryDelaySeconds;
+            return InitialLoadRetryDelaySeconds * (1 << consecutiveLoadFailures);
+        }
+
+        private static bool IsValidMonotonicSeconds(double value)
+            => !double.IsNaN(value) && !double.IsInfinity(value) && value >= 0d;
+
+        private static double AddSaturated(double value, double increment)
+        {
+            double sum = value + increment;
+            return double.IsInfinity(sum) || sum > double.MaxValue ? double.MaxValue : sum;
+        }
+
         private void SafeReport(RewardedAdEvent adEvent)
         {
             if (!_reporterReady || _reporterFailed || _reporter == null) return;
@@ -561,6 +681,8 @@ namespace CatMetro.Services.Ads
             public readonly RewardedPlacement Placement;
             public bool RewardLatched;
             public LinkedListNode<long> RetainedNode;
+            public double RetainedUntilMonotonicSeconds;
+            public bool RetainedDeadlineAnchored;
 
             public Attempt(long id, RewardedPlacement placement)
             {
