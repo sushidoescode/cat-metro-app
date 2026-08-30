@@ -6,14 +6,14 @@ namespace CatMetro.Services.Cosmetics
     {
         private static CosmeticProfileService _current;
         private static bool _ownsCurrent;
+        private static long _publicationGeneration;
 
         public static CosmeticProfileService Current
         {
             get
             {
                 if (_current != null) return _current;
-                _current = Degraded();
-                _ownsCurrent = true;
+                Publish(Degraded(), true);
                 return _current;
             }
         }
@@ -22,8 +22,23 @@ namespace CatMetro.Services.Cosmetics
         {
             if (service == null) return;
             SubscribeToPurchasesOnce();
-            bool identityInstall = ReferenceEquals(_current, service);
-            var binding = service.PreparePurchaseBinding(PurchaseRuntime.Current);
+            var current = Current;
+            bool ownsCurrent = _ownsCurrent;
+            long generation = _publicationGeneration;
+            var purchases = PurchaseRuntime.Current;
+            bool identityInstall = ReferenceEquals(current, service);
+            var binding = service.PreparePurchaseBinding(purchases);
+
+            if (!ReferenceEquals(_current, current)
+                || _ownsCurrent != ownsCurrent
+                || _publicationGeneration != generation
+                || !ReferenceEquals(PurchaseRuntime.Current, purchases))
+            {
+                service.CancelPurchaseBinding(binding);
+                throw new System.InvalidOperationException(
+                    "cosmetic runtime changed during installation");
+            }
+
             bool effectiveChanged = service.CommitPurchaseBinding(binding);
             if (identityInstall)
             {
@@ -31,9 +46,8 @@ namespace CatMetro.Services.Cosmetics
                 return;
             }
 
-            if (_ownsCurrent) _current?.Dispose();
-            _current = service;
-            _ownsCurrent = false;
+            if (ownsCurrent) current.Dispose();
+            Publish(service, false);
             service.NotifyPurchaseBindingChanged(effectiveChanged);
         }
 
@@ -41,8 +55,7 @@ namespace CatMetro.Services.Cosmetics
         {
             if (!ReferenceEquals(_current, expected)) return;
             if (_ownsCurrent) _current.Dispose();
-            _current = Degraded();
-            _ownsCurrent = true;
+            Publish(Degraded(), true);
         }
 
         public static void ResetForTests()
@@ -50,8 +63,7 @@ namespace CatMetro.Services.Cosmetics
             PurchaseRuntime.Installed -= OnPurchasesInstalled;
 
             if (_ownsCurrent) _current?.Dispose();
-            _current = Degraded();
-            _ownsCurrent = true;
+            Publish(Degraded(), true);
         }
 
         private static void SubscribeToPurchasesOnce()
@@ -63,6 +75,16 @@ namespace CatMetro.Services.Cosmetics
         private static void OnPurchasesInstalled()
         {
             Current.BindPurchases(PurchaseRuntime.Current);
+        }
+
+        private static void Publish(CosmeticProfileService service, bool ownsCurrent)
+        {
+            _current = service;
+            _ownsCurrent = ownsCurrent;
+            unchecked
+            {
+                _publicationGeneration++;
+            }
         }
 
         private static CosmeticProfileService Degraded()
