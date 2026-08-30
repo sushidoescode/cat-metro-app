@@ -151,6 +151,33 @@ namespace RevenueCat.Tests
                 Is.EqualTo(global::RevenueCat.AdTracker.Precision.PublisherDefined));
         }
 
+        [TestCase(RewardedAdEventKind.DisplayFailed)]
+        [TestCase(RewardedAdEventKind.Rewarded)]
+        [TestCase(RewardedAdEventKind.Closed)]
+        public void NonreportableKinds_IgnoreBlankMetadataAndMissingTracker(
+            RewardedAdEventKind kind)
+        {
+            LogAssert.Expect(LogType.Log, new Regex("RevenueCat configured"));
+            FinishConfiguration();
+            int changes = 0;
+            _reporter.ReadinessChanged += () => changes++;
+
+            _reporter.Report(Event(kind, " ", " "));
+            LogAssert.NoUnexpectedReceived();
+            Assert.That(_wrapper.TotalTrackCalls, Is.Zero);
+            Assert.That(changes, Is.Zero);
+
+            typeof(Purchases).GetField("<AdTracker>k__BackingField",
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(_purchases, null);
+            _reporter.Report(Event(kind, "unit-1", " "));
+            LogAssert.NoUnexpectedReceived();
+
+            Assert.That(_wrapper.TotalTrackCalls, Is.Zero);
+            Assert.That(changes, Is.Zero,
+                "an ignored provider-only event must not probe tracker readiness");
+        }
+
         [TestCase(AdRevenuePrecision.Exact, "exact")]
         [TestCase(AdRevenuePrecision.PublisherDefined, "publisher_defined")]
         [TestCase(AdRevenuePrecision.Estimated, "estimated")]
@@ -236,6 +263,33 @@ namespace RevenueCat.Tests
             Assert.That(changes, Is.EqualTo(2),
                 "an unchanged failed state must not notify again");
             Assert.That(_wrapper.TrackAttempts, Is.EqualTo(throwFromSdk ? 1 : 0));
+        }
+
+        [Test]
+        public void NestedFailureDuringReadyObserver_InvalidatesRemainingOuterSnapshot()
+        {
+            var firstStates = new List<bool>();
+            var secondStates = new List<bool>();
+            _reporter.ReadinessChanged += () =>
+            {
+                bool ready = _reporter.IsReady;
+                firstStates.Add(ready);
+                if (!ready) return;
+
+                _wrapper.ThrowOnTrack = true;
+                LogAssert.Expect(LogType.Error,
+                    new Regex("RevenueCat ad tracking failed"));
+                _reporter.Report(Valid(RewardedAdEventKind.Loaded));
+            };
+            _reporter.ReadinessChanged += () => secondStates.Add(_reporter.IsReady);
+
+            FinishConfiguration();
+
+            Assert.That(firstStates, Is.EqualTo(new[] { true, false }));
+            Assert.That(secondStates, Is.EqualTo(new[] { false }),
+                "a nested false transition must invalidate the outer true snapshot");
+            Assert.That(_reporter.IsReady, Is.False);
+            Assert.That(_wrapper.TrackAttempts, Is.EqualTo(1));
         }
 
         [Test]

@@ -53,6 +53,7 @@ namespace CatMetro.Integrations
         private static bool _booted;
         private static GameObject _host;
         private static RewardedAdsComposition _rewardedAds;
+        private static RewardedAdsConfig _rewardedAdsConfigForTests;
 
         public static RewardedPlacementCatalog Placements { get; private set; } =
             RewardedPlacementCatalog.Empty;
@@ -91,7 +92,7 @@ namespace CatMetro.Integrations
             var backend = PurchaseBackendFactory.Create(service);
             if (backend != null) service.AttachBackend(backend);
 
-            var rewardedConfig = RewardedAdsConfig.Load();
+            var rewardedConfig = _rewardedAdsConfigForTests ?? RewardedAdsConfig.Load();
             _rewardedAds = new RewardedAdsComposition(service, Placements,
                 () => RewardedAdProviderFactory.Create(rewardedConfig),
                 backend as IAdEventReporter, LocalDateKey);
@@ -100,7 +101,8 @@ namespace CatMetro.Integrations
             // The pump owns the two things that need a frame: re-reading entitlements when the
             // app comes back to the foreground, and noticing that a timed unlock has lapsed.
             _host = new GameObject("[Monetization]");
-            UnityEngine.Object.DontDestroyOnLoad(_host);
+            if (UnityEngine.Application.isPlaying)
+                UnityEngine.Object.DontDestroyOnLoad(_host);
             _host.hideFlags = HideFlags.HideAndDontSave;
             _host.AddComponent<MonetizationPump>().Bind(service, _rewardedAds);
 
@@ -134,6 +136,9 @@ namespace CatMetro.Integrations
         private static string LocalDateKey()
             => DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
+        internal static void SetRewardedAdsConfigForTests(RewardedAdsConfig config)
+            => _rewardedAdsConfigForTests = config;
+
         // Test seam only. Lets an EditMode test boot a second time against fresh Resources.
         internal static void ResetForTests()
         {
@@ -145,6 +150,7 @@ namespace CatMetro.Integrations
                 _host = null;
             }
             _booted = false;
+            _rewardedAdsConfigForTests = null;
             Placements = RewardedPlacementCatalog.Empty;
         }
     }

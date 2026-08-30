@@ -69,6 +69,7 @@ namespace CatMetro.Integrations.RevenueCat
         private Purchases _purchases;
         private MonetizationKeys _config;
         private bool _adTrackingReady;
+        private uint _adReadinessVersion;
 
         // Offerings are cached so a purchase can find the Package object it needs. RevenueCat
         // purchases a Package, not a product id, and PurchasePackage is the supported path.
@@ -191,6 +192,11 @@ namespace CatMetro.Integrations.RevenueCat
 
         public void Report(RewardedAdEvent adEvent)
         {
+            if (adEvent.Kind == RewardedAdEventKind.DisplayFailed ||
+                adEvent.Kind == RewardedAdEventKind.Rewarded ||
+                adEvent.Kind == RewardedAdEventKind.Closed)
+                return;
+
             if (!TryValidateAdEvent(adEvent, out bool shouldTrack)) return;
 
             // AdTracker belongs to Purchases and is installed by Purchases.Start/SetWrapper.
@@ -293,11 +299,6 @@ namespace CatMetro.Integrations.RevenueCat
                     shouldTrack = true;
                     requiresImpression = false;
                     break;
-                case RewardedAdEventKind.DisplayFailed:
-                case RewardedAdEventKind.Rewarded:
-                case RewardedAdEventKind.Closed:
-                    requiresImpression = false;
-                    break;
                 default:
                     Debug.LogWarning("[Monetization] dropped malformed RevenueCat ad event: " +
                                      "unsupported kind");
@@ -347,10 +348,12 @@ namespace CatMetro.Integrations.RevenueCat
         {
             if (_adTrackingReady == ready) return;
             _adTrackingReady = ready;
+            uint deliveryVersion = ++_adReadinessVersion;
             var handlers = ReadinessChanged;
             if (handlers == null) return;
             foreach (Action handler in handlers.GetInvocationList())
             {
+                if (_adReadinessVersion != deliveryVersion) return;
                 try { handler(); }
                 catch (Exception e)
                 {
