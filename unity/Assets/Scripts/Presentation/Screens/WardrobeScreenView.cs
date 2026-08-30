@@ -75,6 +75,7 @@ namespace CatMetro.Presentation.Screens
         private readonly GameObject[] _borrowedAccents = new GameObject[4];
         private readonly GameObject[] _lockedLabels = new GameObject[4];
         private readonly GameObject[] _borrowedLabels = new GameObject[4];
+        private readonly GameObject[] _successLabels = new GameObject[4];
         private readonly GameObject[] _actionChips = new GameObject[4];
         private readonly GameObject[] _unavailableLabels = new GameObject[4];
         private readonly bool[] _rewardedRegionsRegistered = new bool[4];
@@ -247,22 +248,31 @@ namespace CatMetro.Presentation.Screens
             name.fontSizeMax = 16f;
 
             var silhouette = MakeRect(card, "Silhouette");
-            silhouette.anchorMin = new Vector2(0.13f, 0.39f);
+            silhouette.anchorMin = new Vector2(0.13f, 0.48f);
             silhouette.anchorMax = new Vector2(0.87f, 0.79f);
             silhouette.offsetMin = Vector2.zero;
             silhouette.offsetMax = Vector2.zero;
             BuildTryOnSilhouette(index, silhouette);
 
-            _lockedLabels[index] = MakeText(card, "LockedLabel", new Vector2(0.06f, 0.30f),
-                new Vector2(0.94f, 0.42f), Text("wardrobe.tryon.locked"), 13f,
+            _lockedLabels[index] = MakeText(card, "LockedLabel", new Vector2(0.06f, 0.39f),
+                new Vector2(0.94f, 0.50f), Text("wardrobe.tryon.locked"), 13f,
                 Palette.InkNavy).gameObject;
-            _borrowedLabels[index] = MakeText(card, "BorrowedLabel", new Vector2(0.04f, 0.27f),
-                new Vector2(0.96f, 0.43f), Text("wardrobe.tryon.borrowed"), 13f,
+            _borrowedLabels[index] = MakeText(card, "BorrowedLabel", new Vector2(0.04f, 0.39f),
+                new Vector2(0.96f, 0.50f), Text("wardrobe.tryon.borrowed"), 13f,
                 Palette.DepotNavy).gameObject;
+
+            var success = MakeText(card, "SuccessLabel", new Vector2(0.04f, 0.035f),
+                new Vector2(0.96f, 0.39f), Text("wardrobe.tryon.success"), 13f,
+                Palette.DepotNavy);
+            success.fontStyle = FontStyles.Bold;
+            success.enableAutoSizing = true;
+            success.fontSizeMin = 8f;
+            success.fontSizeMax = 13f;
+            _successLabels[index] = success.gameObject;
 
             var action = MakeChip(card, "ActionChip", Palette.TicketOrange);
             action.anchorMin = new Vector2(0.055f, 0.035f);
-            action.anchorMax = new Vector2(0.945f, 0.30f);
+            action.anchorMax = new Vector2(0.945f, 0.39f);
             action.offsetMin = Vector2.zero;
             action.offsetMax = Vector2.zero;
             var actionLabel = MakeText(action, "ActionLabel", new Vector2(0.04f, 0.02f),
@@ -275,7 +285,7 @@ namespace CatMetro.Presentation.Screens
             _actionChips[index] = action.gameObject;
 
             var unavailable = MakeText(card, "UnavailableLabel", new Vector2(0.04f, 0.035f),
-                new Vector2(0.96f, 0.29f), Text("wardrobe.tryon.unavailable"), 12f,
+                new Vector2(0.96f, 0.39f), Text("wardrobe.tryon.unavailable"), 12f,
                 Palette.WithAlpha(Palette.InkNavy, 0.72f));
             unavailable.enableAutoSizing = true;
             unavailable.fontSizeMin = 8f;
@@ -284,6 +294,7 @@ namespace CatMetro.Presentation.Screens
 
             _borrowedAccents[index].SetActive(false);
             _borrowedLabels[index].SetActive(false);
+            _successLabels[index].SetActive(false);
             _actionChips[index].SetActive(false);
             _unavailableLabels[index].SetActive(false);
         }
@@ -616,6 +627,7 @@ namespace CatMetro.Presentation.Screens
                 _borrowedAccents[i].SetActive(unlocked);
                 _lockedLabels[i].SetActive(!unlocked);
                 _borrowedLabels[i].SetActive(unlocked);
+                _successLabels[i].SetActive(unlocked);
                 _actionChips[i].SetActive(canShow);
                 _unavailableLabels[i].SetActive(_panelShown && !unlocked && !canShow);
                 SyncRewardedRegion(i, canShow);
@@ -725,7 +737,8 @@ namespace CatMetro.Presentation.Screens
             if (shouldRegister)
             {
                 int capturedIndex = index;
-                _regions.Register(id, () => PaintedRectPx(_tryOnCards[capturedIndex]),
+                _regions.Register(id, () => PaintedScreenRectPx(
+                        _actionChips[capturedIndex].transform as RectTransform),
                     () => _rewardedAds.Show(TryOnSpecs[capturedIndex].PlacementId), ModalPriority);
                 _rewardedRegionsRegistered[index] = true;
             }
@@ -749,11 +762,29 @@ namespace CatMetro.Presentation.Screens
         private static string RewardedRegionId(string placementId)
             => "wardrobe.rewarded." + placementId;
 
-        private static Rect PaintedRectPx(RectTransform rect)
+        private static Rect PaintedScreenRectPx(RectTransform rect)
         {
             var corners = new Vector3[4];
             rect.GetWorldCorners(corners);
-            return Rect.MinMaxRect(corners[0].x, corners[0].y, corners[2].x, corners[2].y);
+            var canvas = rect.GetComponentInParent<Canvas>();
+            Camera camera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
+                ? canvas.worldCamera
+                : null;
+
+            Vector2 first = RectTransformUtility.WorldToScreenPoint(camera, corners[0]);
+            float xMin = first.x;
+            float xMax = first.x;
+            float yMin = first.y;
+            float yMax = first.y;
+            for (int i = 1; i < corners.Length; i++)
+            {
+                Vector2 screen = RectTransformUtility.WorldToScreenPoint(camera, corners[i]);
+                xMin = Mathf.Min(xMin, screen.x);
+                xMax = Mathf.Max(xMax, screen.x);
+                yMin = Mathf.Min(yMin, screen.y);
+                yMax = Mathf.Max(yMax, screen.y);
+            }
+            return Rect.MinMaxRect(xMin, yMin, xMax, yMax);
         }
 
         private static string Text(string key) => Strings.UiStrings.Get(key);
