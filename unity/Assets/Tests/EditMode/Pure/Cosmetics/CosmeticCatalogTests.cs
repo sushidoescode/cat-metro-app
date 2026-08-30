@@ -452,6 +452,44 @@ namespace CatMetro.Tests.Cosmetics
             Assert.That(inventory.TryGet(null, out _), Is.False);
         }
 
+        [Test]
+        public void InventorySource_WithTrailingGarbage_IsRejectedAsAWhole()
+        {
+            var json = ProjectAuthoredInventory().ToString() + " trailing-garbage";
+
+            var inventory = CosmeticAssetInventory.Parse(json, new[] { "cat.test" });
+
+            Assert.That(inventory.AssetIds, Is.Empty);
+            Assert.That(inventory.ProvenanceAssetIds, Is.Empty);
+            Assert.That(inventory.TryGet("cat.test", out _), Is.False);
+            Assert.That(inventory.Problems, Is.Not.Empty);
+        }
+
+        [Test]
+        public void InventorySource_WithSecondTopLevelJsonValue_IsRejectedAsAWhole()
+        {
+            var json = ProjectAuthoredInventory().ToString() + "\n{ \"second\": true }";
+
+            var inventory = CosmeticAssetInventory.Parse(json, new[] { "cat.test" });
+
+            Assert.That(inventory.AssetIds, Is.Empty);
+            Assert.That(inventory.ProvenanceAssetIds, Is.Empty);
+            Assert.That(inventory.TryGet("cat.test", out _), Is.False);
+            Assert.That(inventory.Problems, Is.Not.Empty);
+        }
+
+        [Test]
+        public void InventorySource_WithOnlyTrailingWhitespace_RemainsValid()
+        {
+            var json = ProjectAuthoredInventory().ToString() + " \r\n\t  ";
+
+            var inventory = CosmeticAssetInventory.Parse(json, new[] { "cat.test" });
+
+            Assert.That(inventory.Problems, Is.Empty);
+            Assert.That(inventory.AssetIds, Is.EqualTo(new[] { "cat.test" }));
+            Assert.That(inventory.ProvenanceAssetIds, Is.EqualTo(new[] { "cat.test" }));
+        }
+
         [TestCase(null)]
         [TestCase("")]
         [TestCase("not json")]

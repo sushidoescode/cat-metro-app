@@ -77,8 +77,15 @@ namespace CatMetro.Services.Cosmetics
                 using var reader = new JsonTextReader(text)
                 {
                     DateParseHandling = DateParseHandling.None,
+                    SupportMultipleContent = true,
                 };
                 var token = JToken.ReadFrom(reader);
+                while (reader.Read())
+                {
+                    if (reader.TokenType == JsonToken.Comment) continue;
+                    problems.Add(label + " has trailing content after the root object");
+                    return null;
+                }
                 if (token is JObject root) return root;
                 problems.Add(label + " root is not an object");
             }
