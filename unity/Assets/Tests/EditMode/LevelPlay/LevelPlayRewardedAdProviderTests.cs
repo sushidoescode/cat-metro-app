@@ -6,6 +6,7 @@ using System.Threading;
 using CatMetro.Integrations;
 using CatMetro.Integrations.LevelPlay;
 using CatMetro.Services.Ads;
+using CatMetro.Services.Purchases;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -294,6 +295,113 @@ namespace CatMetro.Tests.LevelPlay
                 .Select(e => e.AttemptId), Is.EqualTo(new[] { 101L }));
             Assert.That(_events.Where(e => e.Kind == RewardedAdEventKind.Rewarded)
                 .Select(e => e.AttemptId), Is.EqualTo(new[] { 101L }));
+        }
+
+        [Test]
+        public void LongAdCloseGraceReachesRealCoordinatorAndDurablePurchaseGrant()
+        {
+            RecreateProvider(now: 0L, contextLifetimeTicks: 300L);
+            var catalog = PurchaseCatalog.Parse(@"{
+              ""entitlements"": [
+                { ""id"": ""outfit_conductor"", ""kind"": ""outfit"",
+                  ""display"": ""Conductor"", ""adLeaseSeconds"": 86400 }
+              ],
+              ""products"": [
+                { ""id"": ""cm_outfit_conductor"", ""storeType"": ""non_consumable"",
+                  ""display"": ""Conductor"", ""entitlements"": [""outfit_conductor""] }
+              ]
+            }");
+            Assert.That(catalog.Problems, Is.Empty);
+            var service = new PurchaseService(catalog, clock: () => 1_000L);
+            var durable = new DurableGrantStore();
+            service.AttachLeasePersistence(durable);
+            var placements = RewardedPlacementCatalog.Parse(@"{
+              ""placements"": [
+                { ""id"": ""wardrobe_try_conductor"",
+                  ""entitlement"": ""outfit_conductor"", ""enabled"": true }
+              ]
+            }", catalog);
+            Assert.That(placements.Problems, Is.Empty);
+            using var coordinator = new RewardedAdCoordinator(placements, service, _provider,
+                new ReadyReporter(), durable, () => "2026-08-30");
+            coordinator.Tick(0d);
+            coordinator.Start();
+            _sdk.EmitInitializationSucceeded();
+            _ad.EmitLoaded(AdInfo(null, null, null));
+
+            Assert.That(coordinator.Show("wardrobe_try_conductor"),
+                Is.EqualTo(RewardedShowOutcome.Started));
+            var info = AdInfo("long-ad", "long-auction", "wardrobe_try_conductor");
+            _ad.EmitDisplayed(info);
+            _now = 60L;
+            _ad.EmitClosed(info);
+            coordinator.Tick(60d);
+
+            _now = 310L;
+            _ad.EmitRewarded(info);
+
+            Assert.That(durable.ReplaceCalls, Is.EqualTo(1),
+                "the 250-second post-close reward must cross the durable precommit boundary");
+            Assert.That(durable.Leases.Single().EntitlementId,
+                Is.EqualTo("outfit_conductor"));
+            Assert.That(durable.Leases.Single().ExpiresAtUnixSeconds, Is.EqualTo(87_400L));
+            Assert.That(service.IsUnlocked("outfit_conductor"), Is.True);
+        }
+
+        [Test]
+        public void ClosedContextExpiresAtExactLifetimeFromOriginalClose()
+        {
+            RecreateProvider(now: 0L, contextLifetimeTicks: 300L);
+            ReadyProvider();
+            Assert.That(_provider.TryShow(102L, "placement"), Is.True);
+            var info = AdInfo("deadline-ad", "deadline-auction", "placement");
+            _ad.EmitDisplayed(info);
+            _now = 60L;
+            _ad.EmitClosed(info);
+
+            _now = 360L;
+            _ad.EmitRewarded(info);
+
+            Assert.That(_events.Any(e => e.Kind == RewardedAdEventKind.Rewarded), Is.False,
+                "the exact full close-grace boundary is already expired");
+        }
+
+        [Test]
+        public void DuplicateCloseCannotExtendOriginalCloseGrace()
+        {
+            RecreateProvider(now: 0L, contextLifetimeTicks: 300L);
+            ReadyProvider();
+            Assert.That(_provider.TryShow(103L, "placement"), Is.True);
+            var info = AdInfo("duplicate-close-ad", "duplicate-close-auction", "placement");
+            _ad.EmitDisplayed(info);
+            _now = 60L;
+            _ad.EmitClosed(info);
+            _now = 300L;
+            _ad.EmitClosed(info);
+
+            _now = 360L;
+            _ad.EmitRewarded(info);
+
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.Closed), Is.EqualTo(1));
+            Assert.That(_events.Any(e => e.Kind == RewardedAdEventKind.Rewarded), Is.False);
+        }
+
+        [Test]
+        public void UnclosedContextKeepsShowAnchoredStrictExpiryBoundary()
+        {
+            RecreateProvider(now: 0L, contextLifetimeTicks: 300L);
+            ReadyProvider();
+            Assert.That(_provider.TryShow(104L, "placement"), Is.True);
+
+            _now = 300L;
+            Assert.That(_provider.IsReadyForPlacement("replacement"), Is.False);
+            Assert.That(PrivateCollectionCount("_contexts"), Is.EqualTo(1),
+                "the existing no-callback watchdog retains through its exact boundary");
+
+            _now = 301L;
+            Assert.That(_provider.IsReadyForPlacement("replacement"), Is.False);
+            Assert.That(PrivateCollectionCount("_contexts"), Is.Zero,
+                "the existing no-callback watchdog expires strictly after its show boundary");
         }
 
         [Test]
@@ -1132,6 +1240,19 @@ namespace CatMetro.Tests.LevelPlay
             _events.Clear();
         }
 
+        private void RecreateProvider(long now, long contextLifetimeTicks)
+        {
+            _provider?.Dispose();
+            _ad = new FakeRewardedAd { Ready = true };
+            _sdk = new FakeSdk(_ad);
+            _events = new List<RewardedAdEvent>();
+            _now = now;
+            _provider = new LevelPlayRewardedAdProvider(
+                RewardedAdsConfig.Parse(ConfigJson, RuntimePlatform.Android),
+                _sdk, () => _now, contextLifetimeTicks);
+            _provider.EventReceived += _events.Add;
+        }
+
         private static LevelPlayAdSnapshot AdInfo(string adId, string auctionId,
             string placement)
             => new LevelPlayAdSnapshot(adId, auctionId, "one-rewarded-unit", placement,
@@ -1203,6 +1324,40 @@ namespace CatMetro.Tests.LevelPlay
             public LevelPlayImpressionSnapshot Snapshot()
                 => new LevelPlayImpressionSnapshot(AuctionId, AdUnitId, Placement, Network,
                     Revenue, Precision);
+        }
+
+        private sealed class DurableGrantStore : IEntitlementLeasePersistence,
+            IRewardedAdCapStore
+        {
+            public int ReplaceCalls { get; private set; }
+            public IReadOnlyList<EntitlementGrant> Leases { get; private set; } =
+                Array.Empty<EntitlementGrant>();
+
+            public bool TryReplaceRewardedAdLeases(IReadOnlyList<EntitlementGrant> leases)
+            {
+                ReplaceCalls++;
+                Leases = leases == null
+                    ? Array.Empty<EntitlementGrant>()
+                    : new List<EntitlementGrant>(leases);
+                return true;
+            }
+
+            public int ReadLocalDateCount(string placementId, string localDateKey) => 0;
+
+            public bool TryIncrementLocalDateCount(string placementId, string localDateKey)
+                => true;
+        }
+
+        private sealed class ReadyReporter : IAdEventReporter
+        {
+            public event Action ReadinessChanged
+            {
+                add { }
+                remove { }
+            }
+
+            public bool IsReady => true;
+            public void Report(RewardedAdEvent adEvent) { }
         }
 
         private sealed class FakeSdk : ILevelPlaySdkBridge
