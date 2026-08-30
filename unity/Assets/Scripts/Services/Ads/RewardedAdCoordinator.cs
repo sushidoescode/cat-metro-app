@@ -73,13 +73,8 @@ namespace CatMetro.Services.Ads
                 }
                 catch
                 {
-                    if (_disposed || _providerSubscription != SubscriptionState.Adding)
-                        SafeRemoveProviderHandler();
-                    else
-                    {
-                        _providerSubscription = SubscriptionState.None;
-                        _providerFailed = true;
-                    }
+                    CompensateProviderAddFailure();
+                    if (!_disposed) _providerFailed = true;
                 }
                 if (!addCompleted)
                 {
@@ -109,13 +104,8 @@ namespace CatMetro.Services.Ads
                 }
                 catch
                 {
-                    if (_disposed || _reporterSubscription != SubscriptionState.Adding)
-                        SafeRemoveReporterHandler();
-                    else
-                    {
-                        _reporterSubscription = SubscriptionState.None;
-                        _reporterFailed = true;
-                    }
+                    CompensateReporterAddFailure();
+                    if (!_disposed) _reporterFailed = true;
                 }
                 if (!addCompleted)
                 {
@@ -291,11 +281,32 @@ namespace CatMetro.Services.Ads
             catch { }
         }
 
+        private void CompensateProviderAddFailure()
+        {
+            // An add accessor may attach and then throw. Retain visible ownership while invoking
+            // the conservative remove so a synchronous Dispose can finish the same cleanup; only
+            // the invocation that still owns Removing relinquishes it after the boundary returns.
+            if (_providerSubscription == SubscriptionState.Adding)
+                _providerSubscription = SubscriptionState.Removing;
+            SafeRemoveProviderHandler();
+            if (_providerSubscription == SubscriptionState.Removing)
+                _providerSubscription = SubscriptionState.None;
+        }
+
         private void SafeRemoveReporterHandler()
         {
             if (_reporter == null) return;
             try { _reporter.ReadinessChanged -= OnReporterReadinessChanged; }
             catch { }
+        }
+
+        private void CompensateReporterAddFailure()
+        {
+            if (_reporterSubscription == SubscriptionState.Adding)
+                _reporterSubscription = SubscriptionState.Removing;
+            SafeRemoveReporterHandler();
+            if (_reporterSubscription == SubscriptionState.Removing)
+                _reporterSubscription = SubscriptionState.None;
         }
 
         private void OnProviderEvent(RewardedAdEvent adEvent)
@@ -553,6 +564,7 @@ namespace CatMetro.Services.Ads
             None,
             Adding,
             Attached,
+            Removing,
         }
 
         private readonly struct LocalDatePlacementKey : IEquatable<LocalDatePlacementKey>

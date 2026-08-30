@@ -38,8 +38,9 @@ namespace CatMetro.Tests.Ads
             Assert.That(provider.EventAddCalls, Is.EqualTo(1));
             Assert.That(reporter.EventAddCalls, Is.EqualTo(1));
             Assert.That(coordinator.CanShow("p0"), Is.False);
-            Assert.That(provider.EventRemoveCalls, Is.Zero,
-                "only a successful event add earns a matching remove");
+            Assert.That(provider.EventRemoveCalls, Is.EqualTo(1),
+                "an add exception conservatively removes in case the accessor attached first");
+            Assert.That(provider.EventSubscriberCount, Is.Zero);
             Assert.That(reporter.EventRemoveCalls, Is.EqualTo(1));
             Assert.That(provider.DisposeCalls, Is.EqualTo(1));
         }
@@ -58,9 +59,85 @@ namespace CatMetro.Tests.Ads
             Assert.That(reporter.EventAddCalls, Is.EqualTo(1));
             Assert.That(coordinator.CanShow("p0"), Is.False);
             Assert.That(provider.EventRemoveCalls, Is.EqualTo(1));
-            Assert.That(reporter.EventRemoveCalls, Is.Zero,
-                "only a successful event add earns a matching remove");
+            Assert.That(reporter.EventRemoveCalls, Is.EqualTo(1),
+                "an add exception conservatively removes in case the accessor attached first");
+            Assert.That(reporter.EventSubscriberCount, Is.Zero);
             Assert.That(provider.DisposeCalls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Start_ProviderEventAddAttachesThenThrows_CompensatesWithoutAffectingNewerRuntime()
+        {
+            var provider = new RewardedAdFixtures.Provider { ThrowAfterEventAdd = true };
+            var reporter = new RewardedAdFixtures.Reporter();
+            var coordinator = RewardedAdFixtures.Coordinator(provider, reporter);
+            var newerProvider = new RewardedAdFixtures.Provider();
+            var newer = RewardedAdFixtures.Coordinator(newerProvider,
+                new RewardedAdFixtures.Reporter());
+            newer.Start();
+            RewardedAdRuntime.Install(newer);
+
+            try
+            {
+                Assert.DoesNotThrow(coordinator.Start);
+                Assert.DoesNotThrow(coordinator.Dispose);
+
+                Assert.That(provider.EventAddCalls, Is.EqualTo(1));
+                Assert.That(provider.EventRemoveCalls, Is.EqualTo(1));
+                Assert.That(provider.EventSubscriberCount, Is.Zero,
+                    "a handler attached before the add fault must not survive failed startup");
+                Assert.That(provider.InitializeCalls, Is.Zero);
+                Assert.That(provider.DisposeCalls, Is.EqualTo(1));
+                Assert.That(reporter.EventAddCalls, Is.EqualTo(1));
+                Assert.That(reporter.EventRemoveCalls, Is.EqualTo(1));
+                Assert.That(RewardedAdRuntime.Current, Is.SameAs(newer));
+                Assert.That(newerProvider.DisposeCalls, Is.Zero);
+            }
+            finally
+            {
+                RewardedAdRuntime.Uninstall(newer);
+                coordinator.Dispose();
+                newer.Dispose();
+                RewardedAdRuntime.ResetForTests();
+            }
+        }
+
+        [Test]
+        public void Start_ReporterEventAddAttachesThenThrows_CompensatesWithoutAffectingNewerRuntime()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var reporter = new RewardedAdFixtures.Reporter { ThrowAfterEventAdd = true };
+            var coordinator = RewardedAdFixtures.Coordinator(provider, reporter);
+            var newerProvider = new RewardedAdFixtures.Provider();
+            var newer = RewardedAdFixtures.Coordinator(newerProvider,
+                new RewardedAdFixtures.Reporter());
+            newer.Start();
+            RewardedAdRuntime.Install(newer);
+
+            try
+            {
+                Assert.DoesNotThrow(coordinator.Start);
+                Assert.DoesNotThrow(coordinator.Dispose);
+
+                Assert.That(provider.EventAddCalls, Is.EqualTo(1));
+                Assert.That(provider.EventRemoveCalls, Is.EqualTo(1));
+                Assert.That(provider.EventSubscriberCount, Is.Zero);
+                Assert.That(provider.InitializeCalls, Is.Zero);
+                Assert.That(provider.DisposeCalls, Is.EqualTo(1));
+                Assert.That(reporter.EventAddCalls, Is.EqualTo(1));
+                Assert.That(reporter.EventRemoveCalls, Is.EqualTo(1));
+                Assert.That(reporter.EventSubscriberCount, Is.Zero,
+                    "a handler attached before the add fault must not survive failed startup");
+                Assert.That(RewardedAdRuntime.Current, Is.SameAs(newer));
+                Assert.That(newerProvider.DisposeCalls, Is.Zero);
+            }
+            finally
+            {
+                RewardedAdRuntime.Uninstall(newer);
+                coordinator.Dispose();
+                newer.Dispose();
+                RewardedAdRuntime.ResetForTests();
+            }
         }
 
         [Test]
