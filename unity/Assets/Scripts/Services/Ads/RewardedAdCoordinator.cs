@@ -148,7 +148,12 @@ namespace CatMetro.Services.Ads
                 return false;
             }
 
-            try { return _provider.IsReady; }
+            try
+            {
+                if (_provider is IRewardedAdPlacementReadiness placementReadiness)
+                    return placementReadiness.IsReadyForPlacement(placementId);
+                return _provider.IsReady;
+            }
             catch
             {
                 _providerFailed = true;
@@ -192,6 +197,11 @@ namespace CatMetro.Services.Ads
             {
                 _providerFailed = true;
             }
+
+            // A provider may synchronously report a terminal display failure before returning
+            // false. That callback already cleared this exact attempt and owns the reload.
+            if (!ReferenceEquals(_openAttempt, attempt))
+                return RewardedShowOutcome.Unavailable;
 
             if (ReferenceEquals(_openAttempt, attempt)) _openAttempt = null;
             RemoveRetained(attempt);

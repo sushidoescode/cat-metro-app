@@ -542,6 +542,43 @@ namespace CatMetro.Tests
                 "destroy must remove the static SaveRuntime subscription");
         }
 
+        [Test]
+        public void Pump_UpdateDrainsOnlyTheCurrentlyOwnedProviderAndStopsAfterDestroy()
+        {
+            using var firstRoot = new SFixtures.TempRoot();
+            using var secondRoot = new SFixtures.TempRoot();
+            var first = SFixtures.Store(firstRoot);
+            first.Load();
+            var second = SFixtures.Store(secondRoot);
+            second.Load();
+            var firstProvider = new Provider();
+            var secondProvider = new Provider();
+            var providers = new Queue<Provider>(new[] { firstProvider, secondProvider });
+            var backend = new BackendReporter();
+            var service = Service(backend);
+            var composition = Composition(service, backend, () => providers.Dequeue());
+            composition.Bind();
+            SaveRuntime.Install(first);
+            var host = new GameObject("[RewardedAdsDrainOwnerTests]");
+            var pump = host.AddComponent<MonetizationPump>();
+            pump.Bind(service, composition);
+
+            pump.Update();
+            Assert.That(firstProvider.DrainCalls, Is.EqualTo(1));
+
+            SaveRuntime.Install(second);
+            pump.Update();
+            Assert.That(firstProvider.DrainCalls, Is.EqualTo(1),
+                "a replacement must sever the old provider from the frame owner");
+            Assert.That(secondProvider.DrainCalls, Is.EqualTo(1));
+
+            pump.OnDestroy();
+            pump.Update();
+            UnityEngine.Object.DestroyImmediate(host);
+            Assert.That(secondProvider.DrainCalls, Is.EqualTo(1));
+            Assert.That(secondProvider.DisposeCalls, Is.EqualTo(1));
+        }
+
         private static PurchaseService Service(BackendReporter backend,
             PurchaseCatalog catalog = null)
             => new PurchaseService(catalog ?? PFixtures.TinyCatalog(), backend, () => 1_000L);
@@ -568,7 +605,7 @@ namespace CatMetro.Tests
             };
         }
 
-        private sealed class Provider : IRewardedAdProvider
+        private sealed class Provider : IRewardedAdProvider, IMainThreadRewardedAdEventDrain
         {
             private Action<RewardedAdEvent> _eventReceived;
 
@@ -584,10 +621,12 @@ namespace CatMetro.Tests
             public int InitializeCalls { get; private set; }
             public int LoadCalls { get; private set; }
             public int DisposeCalls { get; private set; }
+            public int DrainCalls { get; private set; }
 
             public void Initialize() => InitializeCalls++;
             public void Load() => LoadCalls++;
             public bool TryShow(long attemptId, string placementId) => true;
+            public void DrainMainThreadEvents() => DrainCalls++;
             public void Dispose() => DisposeCalls++;
         }
 

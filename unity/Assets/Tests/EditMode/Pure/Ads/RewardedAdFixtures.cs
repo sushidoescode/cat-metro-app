@@ -7,7 +7,7 @@ namespace CatMetro.Tests.Ads
 {
     public static class RewardedAdFixtures
     {
-        public sealed class Provider : IRewardedAdProvider
+        public sealed class Provider : IRewardedAdProvider, IRewardedAdPlacementReadiness
         {
             private Action<RewardedAdEvent> _eventReceived;
 
@@ -42,7 +42,9 @@ namespace CatMetro.Tests.Ads
             public bool ThrowOnEventAdd { get; set; }
             public bool ThrowAfterEventAdd { get; set; }
             public bool ThrowOnEventRemove { get; set; }
+            public string CappedPlacement { get; set; }
             public Action OnEventAdd { get; set; }
+            public Action<long, string> OnShow { get; set; }
             public int InitializeCalls { get; private set; }
             public int LoadCalls { get; private set; }
             public int DisposeCalls { get; private set; }
@@ -51,10 +53,20 @@ namespace CatMetro.Tests.Ads
             public int EventSubscriberCount => _eventReceived?.GetInvocationList().Length ?? 0;
             public readonly List<(long AttemptId, string PlacementId)> Shows =
                 new List<(long, string)>();
+            public readonly List<string> PlacementReadinessChecks = new List<string>();
 
             bool IRewardedAdProvider.IsReady => ThrowOnReady
                 ? throw new InvalidOperationException("injected readiness fault")
                 : IsReady;
+
+            public bool IsReadyForPlacement(string placementId)
+            {
+                PlacementReadinessChecks.Add(placementId);
+                if (ThrowOnReady)
+                    throw new InvalidOperationException("injected placement readiness fault");
+                return IsReady && !string.Equals(CappedPlacement, placementId,
+                    StringComparison.Ordinal);
+            }
 
             public void Initialize()
             {
@@ -71,6 +83,7 @@ namespace CatMetro.Tests.Ads
             public bool TryShow(long attemptId, string placementId)
             {
                 Shows.Add((attemptId, placementId));
+                OnShow?.Invoke(attemptId, placementId);
                 if (ThrowOnShow) throw new InvalidOperationException("injected show fault");
                 return ShowAccepted;
             }

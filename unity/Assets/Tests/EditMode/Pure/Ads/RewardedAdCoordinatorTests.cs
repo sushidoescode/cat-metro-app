@@ -327,6 +327,19 @@ namespace CatMetro.Tests.Ads
         }
 
         [Test]
+        public void CanShow_UsesProviderPlacementReadinessWhenAvailable()
+        {
+            var provider = new RewardedAdFixtures.Provider { CappedPlacement = "p0" };
+            using var coordinator = RewardedAdFixtures.Coordinator(provider);
+            coordinator.Start();
+
+            Assert.That(coordinator.CanShow("p0"), Is.False,
+                "a dashboard-capped placement must be hidden before the tap");
+            Assert.That(coordinator.CanShow("p1"), Is.True);
+            Assert.That(provider.PlacementReadinessChecks, Is.EqualTo(new[] { "p0", "p1" }));
+        }
+
+        [Test]
         public void MissingLeasePersistenceOrCoordinatorDependency_FailsClosedBeforeProviderShow()
         {
             var provider = new RewardedAdFixtures.Provider();
@@ -369,6 +382,22 @@ namespace CatMetro.Tests.Ads
             Assert.That(provider.Shows, Has.Count.EqualTo(1));
             Assert.That(provider.Shows[0].AttemptId, Is.GreaterThan(0));
             Assert.That(provider.Shows[0].PlacementId, Is.EqualTo("p0"));
+        }
+
+        [Test]
+        public void SynchronousDisplayFailureDuringRejectedShow_ReloadsExactlyOnce()
+        {
+            var provider = new RewardedAdFixtures.Provider { ShowAccepted = false };
+            provider.OnShow = (attemptId, placementId) => provider.Emit(
+                new RewardedAdEvent(RewardedAdEventKind.DisplayFailed, attemptId, placementId));
+            using var coordinator = RewardedAdFixtures.Coordinator(provider);
+            coordinator.Start();
+            Assert.That(provider.LoadCalls, Is.EqualTo(1));
+
+            Assert.That(coordinator.Show("p0"), Is.EqualTo(RewardedShowOutcome.Unavailable));
+
+            Assert.That(provider.LoadCalls, Is.EqualTo(2),
+                "the callback terminal path already owns the single reload");
         }
 
         [Test]
