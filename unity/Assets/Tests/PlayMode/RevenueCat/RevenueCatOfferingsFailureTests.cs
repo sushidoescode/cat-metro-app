@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using CatMetro.Integrations.RevenueCat;
 using CatMetro.Services.Purchases;
 using NUnit.Framework;
+using RevenueCat.SimpleJSON;
 using UnityEngine;
 using UnityEngine.TestTools;
 
@@ -29,6 +30,8 @@ namespace CatMetro.Tests.PlayMode.RevenueCat
                     BindingFlags.Instance | BindingFlags.NonPublic)
                 .Invoke(purchases, null);
             SetField("_purchases", purchases);
+            GetField<Dictionary<string, Purchases.Package>>("_packagesByProductId")
+                [ProductIds.OutfitConductor] = new Purchases.Package(JSON.Parse(PackageJson));
             SetAvailability(BackendAvailability.Ready);
         }
 
@@ -96,12 +99,19 @@ namespace CatMetro.Tests.PlayMode.RevenueCat
 
             // The native slot remains occupied after local timeout. A retry must fail locally,
             // not overwrite the SDK's still-live GetOfferings callback.
+            var purchases = GetField<Purchases>("_purchases");
+            var callbackProperty = typeof(Purchases).GetProperty("GetOfferingsCallback",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(callbackProperty, Is.Not.Null);
+            var originalNativeCallback = callbackProperty.GetValue(purchases) as Delegate;
+            Assert.That(originalNativeCallback, Is.Not.Null);
             int retryCallbacks = 0;
             _backend.FetchProducts(_ => retryCallbacks++);
             Assert.That(retryCallbacks, Is.EqualTo(1));
             Assert.That(GetField<bool>("_offeringsSlotOccupied"), Is.True);
+            Assert.That(callbackProperty.GetValue(purchases), Is.SameAs(originalNativeCallback),
+                "occupied retry must not overwrite purchases-unity's one callback delegate");
 
-            var purchases = GetField<Purchases>("_purchases");
             typeof(Purchases).GetMethod("_getOfferings",
                     BindingFlags.Instance | BindingFlags.NonPublic)
                 .Invoke(purchases, new object[]
@@ -172,6 +182,102 @@ namespace CatMetro.Tests.PlayMode.RevenueCat
             Assert.That(callbacks, Is.EqualTo(1));
         }
 
+        [Test]
+        public void InteractivePurchaseAndRestoreWatchdogs_RetainProductionDuration()
+        {
+            var interactiveTimeout = typeof(RevenueCatBehaviour).GetField(
+                "InteractiveTimeoutSeconds", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(interactiveTimeout, Is.Not.Null);
+            Assert.That(interactiveTimeout.GetRawConstantValue(), Is.EqualTo(300f),
+                "public purchase and restore retain the production 300-second watchdog");
+        }
+
+        [UnityTest]
+        public IEnumerator PurchaseLateCallback_PublishesItsOperationStartAuthoritySession()
+        {
+            yield return ProvePurchaseCapturesOperationStartSession();
+        }
+
+        [UnityTest]
+        public IEnumerator RestoreLateCallback_PublishesItsOperationStartAuthoritySession()
+        {
+            yield return ProveRestoreCapturesOperationStartSession();
+        }
+
+        private IEnumerator ProvePurchaseCapturesOperationStartSession()
+        {
+            var updates = new List<TransactionEntitlementUpdate>();
+            Action<TransactionEntitlementUpdate> handler = update => updates.Add(update);
+            _backend.TransactionEntitlementsConfirmed += handler;
+            long startedSession = _backend.BeginAuthoritySession();
+            int localCallbacks = 0;
+
+            _backend.enabled = true;
+            InvokePrivate("PurchaseWithTimeout", ProductIds.OutfitConductor,
+                (Action<PurchaseResult>)(_ => localCallbacks++), 0.01f);
+            long laterSession = _backend.BeginAuthoritySession();
+            _backend.enabled = false;
+            Assert.That(laterSession, Is.Not.EqualTo(startedSession));
+
+            float deadline = Time.realtimeSinceStartup + 1f;
+            while (localCallbacks == 0 && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.That(localCallbacks, Is.EqualTo(1));
+
+            InvokePurchasesCallback("_makePurchase", PurchaseResponseJson);
+
+            Assert.That(updates.Count, Is.EqualTo(1));
+            Assert.That(updates[0].AuthoritySessionId, Is.EqualTo(startedSession),
+                "late purchase publishes operation-start S1, never callback-time S2");
+            Assert.That(updates[0].Snapshot.IsAuthoritative, Is.True);
+            Assert.That(updates[0].Snapshot.Grants.Count, Is.EqualTo(1));
+            Assert.That(localCallbacks, Is.EqualTo(1),
+                "late native purchase cannot refire its timed-out local callback");
+            _backend.TransactionEntitlementsConfirmed -= handler;
+        }
+
+        private IEnumerator ProveRestoreCapturesOperationStartSession()
+        {
+            var updates = new List<TransactionEntitlementUpdate>();
+            Action<TransactionEntitlementUpdate> handler = update => updates.Add(update);
+            _backend.TransactionEntitlementsConfirmed += handler;
+            long startedSession = _backend.BeginAuthoritySession();
+            int localCallbacks = 0;
+
+            _backend.enabled = true;
+            InvokePrivate("RestoreWithTimeout",
+                (Action<RestoreResult>)(_ => localCallbacks++), 0.01f);
+            long laterSession = _backend.BeginAuthoritySession();
+            _backend.enabled = false;
+            Assert.That(laterSession, Is.Not.EqualTo(startedSession));
+
+            float deadline = Time.realtimeSinceStartup + 1f;
+            while (localCallbacks == 0 && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.That(localCallbacks, Is.EqualTo(1));
+
+            InvokePurchasesCallback("_restorePurchases", CustomerInfoResponseJson);
+
+            Assert.That(updates.Count, Is.EqualTo(1));
+            Assert.That(updates[0].AuthoritySessionId, Is.EqualTo(startedSession),
+                "late restore publishes operation-start S1, never callback-time S2");
+            Assert.That(updates[0].Snapshot.IsAuthoritative, Is.True);
+            Assert.That(updates[0].Snapshot.Grants.Count, Is.EqualTo(1));
+            Assert.That(localCallbacks, Is.EqualTo(1),
+                "late native restore cannot refire its timed-out local callback");
+            _backend.TransactionEntitlementsConfirmed -= handler;
+        }
+
+        private void InvokePrivate(string methodName, params object[] arguments)
+            => typeof(RevenueCatBehaviour)
+                .GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(_backend, arguments);
+
+        private void InvokePurchasesCallback(string methodName, string json)
+            => typeof(Purchases)
+                .GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(GetField<Purchases>("_purchases"), new object[] { json });
+
         private void SetAvailability(BackendAvailability availability)
             => typeof(RevenueCatBehaviour)
                 .GetField("<Availability>k__BackingField",
@@ -187,6 +293,69 @@ namespace CatMetro.Tests.PlayMode.RevenueCat
             => (T)typeof(RevenueCatBehaviour)
                 .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
                 .GetValue(_backend);
+
+        private const string PackageJson = @"{
+          ""identifier"": ""$rc_lifetime"",
+          ""packageType"": ""LIFETIME"",
+          ""presentedOfferingContext"": { ""offeringIdentifier"": ""cosmetics"" },
+          ""product"": {
+            ""identifier"": ""cm_outfit_conductor"",
+            ""title"": ""Conductor's Coat"",
+            ""description"": """",
+            ""price"": 1.99,
+            ""priceString"": ""$1.99"",
+            ""currencyCode"": ""USD"",
+            ""productCategory"": ""NON_SUBSCRIPTION"",
+            ""presentedOfferingContext"": { ""offeringIdentifier"": ""cosmetics"" }
+          }
+        }";
+
+        private const string CustomerInfoBody = @"{
+          ""entitlements"": {
+            ""all"": {
+              ""outfit_conductor"": {
+                ""identifier"": ""outfit_conductor"", ""isActive"": true,
+                ""willRenew"": false, ""periodType"": ""NORMAL"",
+                ""latestPurchaseDateMillis"": 1700000000000,
+                ""originalPurchaseDateMillis"": 1700000000000,
+                ""expirationDateMillis"": 0, ""store"": ""PLAY_STORE"",
+                ""productIdentifier"": ""cm_outfit_conductor"", ""isSandbox"": true,
+                ""verification"": ""VERIFIED""
+              }
+            },
+            ""active"": {
+              ""outfit_conductor"": {
+                ""identifier"": ""outfit_conductor"", ""isActive"": true,
+                ""willRenew"": false, ""periodType"": ""NORMAL"",
+                ""latestPurchaseDateMillis"": 1700000000000,
+                ""originalPurchaseDateMillis"": 1700000000000,
+                ""expirationDateMillis"": 0, ""store"": ""PLAY_STORE"",
+                ""productIdentifier"": ""cm_outfit_conductor"", ""isSandbox"": true,
+                ""verification"": ""VERIFIED""
+              }
+            },
+            ""verification"": ""VERIFIED""
+          },
+          ""activeSubscriptions"": [],
+          ""allPurchasedProductIdentifiers"": [""cm_outfit_conductor""],
+          ""firstSeenMillis"": 1700000000000,
+          ""originalAppUserId"": ""test-user"",
+          ""requestDateMillis"": 1700000000000,
+          ""originalPurchaseDateMillis"": 1700000000000,
+          ""latestExpirationDateMillis"": 0,
+          ""allExpirationDatesMillis"": { ""cm_outfit_conductor"": null },
+          ""allPurchaseDatesMillis"": { ""cm_outfit_conductor"": 1700000000000 },
+          ""originalApplicationVersion"": ""1"",
+          ""managementURL"": null,
+          ""nonSubscriptionTransactions"": [],
+          ""subscriptionsByProductIdentifier"": {}
+        }";
+
+        private const string CustomerInfoResponseJson =
+            "{\"customerInfo\":" + CustomerInfoBody + "}";
+
+        private const string PurchaseResponseJson =
+            "{\"customerInfo\":" + CustomerInfoBody + ",\"userCancelled\":false}";
     }
 }
 #endif

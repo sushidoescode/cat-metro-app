@@ -64,12 +64,33 @@ namespace CatMetro.Services.Purchases
         event Action Ready;
     }
 
+    // Engine-free envelope for a transaction callback that arrived after its local UI window.
+    // The opaque session belongs to the backend attachment that started the native operation;
+    // it prevents an A1 callback from acquiring authority through a later A3 subscription.
+    public readonly struct TransactionEntitlementUpdate
+    {
+        public readonly long AuthoritySessionId;
+        public readonly EntitlementSnapshot Snapshot;
+
+        public TransactionEntitlementUpdate(long authoritySessionId,
+            EntitlementSnapshot snapshot)
+        {
+            AuthoritySessionId = authoritySessionId;
+            Snapshot = snapshot;
+        }
+    }
+
     // Optional push path for authoritative CustomerInfo returned by a PURCHASE OR RESTORE after
     // that transaction's local callback window. Ordinary refresh responses must never use this
     // event: they may have been requested before a newer purchase and retain their request epoch.
+    // BeginAuthoritySession transfers exclusive authority to one consumer attachment. It does not
+    // throw and returns a fresh nonzero opaque ID on every call. Cat Metro owns one RevenueCat
+    // backend through one singleton PurchaseService; this backend-global session is not a contract
+    // for concurrently attaching multiple services to one backend.
     public interface IPurchaseBackendTransactionUpdates
     {
-        event Action<EntitlementSnapshot> TransactionEntitlementsConfirmed;
+        long BeginAuthoritySession();
+        event Action<TransactionEntitlementUpdate> TransactionEntitlementsConfirmed;
     }
 
     // The backend used when there is no store to talk to: no SDK compiled in, running in the
