@@ -182,6 +182,92 @@ namespace CatMetro.Tests.Cosmetics
             Assert.That(rows[1].Item.Order, Is.EqualTo(40));
         }
 
+        [TestCase(true)]
+        [TestCase(false)]
+        public void MissingProfilePortraitOmitsActionableRowWithoutLeavingAGap(
+            bool missingRowHasPrice)
+        {
+            var fullInventory = ShippedInventory();
+            var root = ShippedCatalogRoot();
+            Item(root, "frame_brass")["rewardedPlacementId"] = "wardrobe.frame_brass";
+            var catalog = ParseCatalog(root, fullInventory);
+
+            var inventoryRoot = ShippedInventoryRoot();
+            Asset(inventoryRoot, "frame.brass")["rendererToken"] = "frame.unsupported";
+            var sparseProfileInventory = CosmeticAssetInventory.Parse(
+                inventoryRoot.ToString(), SupportedRendererTokens);
+            var purchases = missingRowHasPrice
+                ? CreatePurchasesWithPrices("cm_frame_brass", "cm_frame_lantern")
+                : CreatePurchasesWithPrices("cm_frame_lantern");
+            var profile = CreateProfile(catalog, sparseProfileInventory, purchases,
+                DefaultProfile());
+
+            var rows = CosmeticWardrobeProjection.Build(catalog, profile, purchases,
+                new OfferAllRewardedRoute(), "red_tabby", CosmeticSlot.Frame);
+
+            Assert.That(catalog.TryGetItem("frame_brass", out _), Is.True,
+                "the row is statically admitted against the full inventory");
+            Assert.That(sparseProfileInventory.TryGet("frame.brass", out _), Is.False,
+                "the profile's actual portrait inventory is deliberately sparse");
+            Assert.That(rows.Count, Is.EqualTo(1));
+            Assert.That(rows[0].Item.Id, Is.EqualTo("frame_lantern"));
+            Assert.That(rows[0].Route, Is.EqualTo(CosmeticWardrobeRoute.Purchase));
+        }
+
+        [Test]
+        public void RefundedDesiredRowRemainsSavedButIsNotEffectivelyEquipped()
+        {
+            var inventory = ShippedInventory();
+            var catalog = ShippedCatalog(inventory);
+            var purchases = CreatePurchases("cm_outfit_conductor", "$1.99");
+            purchases.Ledger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant("outfit_conductor", GrantSource.Store),
+            });
+            var profile = CreateProfile(catalog, inventory, purchases,
+                ProfileWith("outfit_conductor"));
+            Assert.That(profile.CurrentPortrait.OutfitAssetId,
+                Is.EqualTo("outfit.conductor"));
+
+            purchases.Ledger.ReplaceStoreGrants(Array.Empty<EntitlementGrant>());
+            var rows = CosmeticWardrobeProjection.Build(catalog, profile, purchases,
+                new DisabledCosmeticRewardedRoute(), "red_tabby", CosmeticSlot.Outfit);
+
+            Assert.That(profile.Profile.LoadoutFor("red_tabby").OutfitId,
+                Is.EqualTo("outfit_conductor"), "refund must not erase saved intent");
+            Assert.That(rows.Count, Is.EqualTo(1));
+            Assert.That(rows[0].IsAccessible, Is.False);
+            Assert.That(rows[0].IsEquipped, Is.False);
+            Assert.That(rows[0].Route, Is.EqualTo(CosmeticWardrobeRoute.Purchase));
+            Assert.That(rows[0].Price.DisplayText, Is.EqualTo("$1.99"));
+        }
+
+        [TestCase(false, CosmeticWardrobeRoute.Equip)]
+        [TestCase(true, CosmeticWardrobeRoute.None)]
+        public void PermanentAccessibleRowDoesNotExposePriceOutsidePurchaseRoute(
+            bool desired, CosmeticWardrobeRoute expectedRoute)
+        {
+            var inventory = ShippedInventory();
+            var catalog = ShippedCatalog(inventory);
+            var purchases = CreatePurchases("cm_outfit_conductor", "$1.99");
+            purchases.Ledger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant("outfit_conductor", GrantSource.Store),
+            });
+            var profile = CreateProfile(catalog, inventory, purchases,
+                desired ? ProfileWith("outfit_conductor") : DefaultProfile());
+
+            var rows = CosmeticWardrobeProjection.Build(catalog, profile, purchases,
+                new DisabledCosmeticRewardedRoute(), "red_tabby", CosmeticSlot.Outfit);
+
+            Assert.That(rows.Count, Is.EqualTo(1));
+            Assert.That(rows[0].IsAccessible, Is.True);
+            Assert.That(rows[0].SecondsRemaining, Is.Zero);
+            Assert.That(rows[0].Route, Is.EqualTo(expectedRoute));
+            Assert.That(rows[0].Price.IsKnown, Is.False,
+                "Price is meaningful only when Route is Purchase");
+        }
+
         [Test]
         public void AccessibleTemporaryEntitlementReportsCountdownAndRetainsDirectPurchase()
         {
@@ -278,6 +364,18 @@ namespace CatMetro.Tests.Cosmetics
             var purchases = new PurchaseService(catalog, backend, () => 1_700_000_000L,
                 new EntitlementLedger());
             if (productId != null) purchases.Refresh();
+            return purchases;
+        }
+
+        private static PurchaseService CreatePurchasesWithPrices(params string[] productIds)
+        {
+            var catalog = PurchaseCatalog.Parse(File.ReadAllText(PurchaseCatalogPath()));
+            var backend = new FakePurchaseBackend { GrantOnPurchase = catalog.EntitlementsFor };
+            for (int i = 0; i < productIds.Length; i++)
+                backend.WithProduct(productIds[i], productIds[i], "$0.99");
+            var purchases = new PurchaseService(catalog, backend, () => 1_700_000_000L,
+                new EntitlementLedger());
+            purchases.Refresh();
             return purchases;
         }
 
