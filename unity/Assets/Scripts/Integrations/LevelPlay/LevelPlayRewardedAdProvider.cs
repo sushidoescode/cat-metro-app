@@ -132,8 +132,12 @@ namespace CatMetro.Integrations.LevelPlay
         private LoadedIdentity _loadedIdentity;
         private long _loadGeneration;
         private long _identityQuarantineAfterGeneration;
+        private bool _auctionHistorySaturated;
         private bool _adHistorySaturated;
         private bool _requiresNonRewardBinding;
+        private bool _postQuarantineStableTerminalRequired;
+        private bool _loadInFlight;
+        private bool _loadedAvailable;
         private bool _initializeCalled;
         private bool _initializationTerminal;
         private bool _loadRequested;
@@ -222,7 +226,8 @@ namespace CatMetro.Integrations.LevelPlay
             _unboundContext = context;
             bool identityBound = ConsumeLoadedIdentity(context, out long identityGeneration,
                 out bool hasAuctionIdentity);
-            if (_identityQuarantineAfterGeneration > 0L)
+            bool wasIdentityQuarantined = _identityQuarantineAfterGeneration > 0L;
+            if (wasIdentityQuarantined)
             {
                 if (!identityBound || !hasAuctionIdentity ||
                     identityGeneration <= _identityQuarantineAfterGeneration)
@@ -231,7 +236,9 @@ namespace CatMetro.Integrations.LevelPlay
                     return false;
                 }
                 _identityQuarantineAfterGeneration = 0L;
+                _postQuarantineStableTerminalRequired = true;
             }
+            _loadedAvailable = false;
             _showInvocationContext = context;
             try
             {
@@ -288,6 +295,8 @@ namespace CatMetro.Integrations.LevelPlay
             _terminalRevenueByAuction.Clear();
             _terminalRevenueOrder.Clear();
             _loadedIdentity = default;
+            _loadInFlight = false;
+            _loadedAvailable = false;
             _eventReceived = null;
         }
 
@@ -295,7 +304,7 @@ namespace CatMetro.Integrations.LevelPlay
         {
             if (_disposed || _failed || _ad == null ||
                 (checkPlacementCap && string.IsNullOrWhiteSpace(placementId)) ||
-                !PurgeExpiredContexts() || _unboundContext != null ||
+                !PurgeExpiredContexts() || _loadInFlight || _unboundContext != null ||
                 _activeContext != null || _contexts.Count >= MaxContexts)
                 return false;
             if (_identityQuarantineAfterGeneration > 0L &&
@@ -388,6 +397,9 @@ namespace CatMetro.Integrations.LevelPlay
             if (_disposed || _failed) return;
             _failed = true;
             _loadRequested = false;
+            _loadInFlight = false;
+            _loadedAvailable = false;
+            _loadedIdentity = default;
             DetachInitializationHandlers();
             DetachRewardedHandlers();
             DisposeAdOnce();
@@ -469,7 +481,10 @@ namespace CatMetro.Integrations.LevelPlay
 
         private void SafeLoad()
         {
-            if (_disposed || _failed || _ad == null) return;
+            // LevelPlay 9.5.1 supplies no request token with Loaded/LoadFailed. Never overlap
+            // requests: a callback is current only because exactly one vendor Load is in flight.
+            if (_disposed || _failed || _ad == null || _loadInFlight ||
+                HasConsumableLoadedResult() || _activeContext != null) return;
             if (_loadGeneration == long.MaxValue)
             {
                 _failed = true;
@@ -478,18 +493,32 @@ namespace CatMetro.Integrations.LevelPlay
                 return;
             }
             _loadGeneration++;
+            _loadedAvailable = false;
             _loadedIdentity = default;
+            _loadInFlight = true;
             try { _ad.Load(); }
             catch
             {
+                _loadInFlight = false;
+                _loadedAvailable = false;
                 Raise(LevelPlayPayloadMapper.CreateLifecycle(RewardedAdEventKind.LoadFailed,
                     adUnitId: _config.RewardedAdUnitId));
             }
         }
 
+        private bool HasConsumableLoadedResult()
+        {
+            if (!_loadedAvailable) return false;
+            if (_identityQuarantineAfterGeneration <= 0L) return true;
+            return _loadedIdentity.HasAuctionIdentity &&
+                _loadedIdentity.Generation > _identityQuarantineAfterGeneration;
+        }
+
         private void OnAdLoaded(LevelPlayAdSnapshot info)
         {
-            if (_disposed || _failed) return;
+            if (_disposed || _failed || !_loadInFlight) return;
+            _loadInFlight = false;
+            _loadedAvailable = true;
             if (_loadGeneration > 0L && HasStableId(info))
                 _loadedIdentity = new LoadedIdentity(_loadGeneration, info);
             Raise(Lifecycle(RewardedAdEventKind.Loaded, null, info));
@@ -497,7 +526,9 @@ namespace CatMetro.Integrations.LevelPlay
 
         private void OnAdLoadFailed(LevelPlayErrorSnapshot error)
         {
-            if (_disposed || _failed) return;
+            if (_disposed || _failed || !_loadInFlight) return;
+            _loadInFlight = false;
+            _loadedAvailable = false;
             _loadedIdentity = default;
             Raise(LevelPlayPayloadMapper.CreateLifecycle(RewardedAdEventKind.LoadFailed,
                 adUnitId: FirstNonBlank(error.AdUnitId, _config.RewardedAdUnitId),
@@ -507,7 +538,8 @@ namespace CatMetro.Integrations.LevelPlay
         private void OnAdDisplayed(LevelPlayAdSnapshot info)
         {
             if (!TryResolve(info, allowNewBinding: true, allowNoStableId: false,
-                confirmsCurrentShow: true, out var context)) return;
+                confirmsCurrentShow: true, trustedLoadedIdentity: false,
+                out var context)) return;
             Raise(Lifecycle(RewardedAdEventKind.Displayed, context, info));
         }
 
@@ -519,11 +551,13 @@ namespace CatMetro.Integrations.LevelPlay
             ShowContext context;
             if (!HasStableId(correlation))
             {
+                if (_postQuarantineStableTerminalRequired) return;
                 context = _showInvocationContext;
                 if (context == null || !ReferenceEquals(context, _activeContext)) return;
             }
             else if (!TryResolve(correlation, allowNewBinding: true,
-                allowNoStableId: false, confirmsCurrentShow: true, out context)) return;
+                allowNoStableId: false, confirmsCurrentShow: true,
+                trustedLoadedIdentity: false, out context)) return;
             RemoveContext(context, tombstoneAuction: true);
             Raise(LevelPlayPayloadMapper.CreateLifecycle(RewardedAdEventKind.DisplayFailed,
                 context.AttemptId, context.PlacementId,
@@ -536,7 +570,8 @@ namespace CatMetro.Integrations.LevelPlay
         {
             if (!HasStableId(info) || !TryResolve(info,
                 allowNewBinding: false, allowNoStableId: false,
-                confirmsCurrentShow: false, out var context) || context.RewardDelivered)
+                confirmsCurrentShow: true, trustedLoadedIdentity: false,
+                out var context) || context.RewardDelivered)
                 return;
 
             context.RewardDelivered = true;
@@ -548,7 +583,8 @@ namespace CatMetro.Integrations.LevelPlay
         private void OnAdClicked(LevelPlayAdSnapshot info)
         {
             if (!TryResolve(info, allowNewBinding: true, allowNoStableId: false,
-                confirmsCurrentShow: true, out var context)) return;
+                confirmsCurrentShow: true, trustedLoadedIdentity: false,
+                out var context)) return;
             Raise(Lifecycle(RewardedAdEventKind.Opened, context, info));
         }
 
@@ -556,7 +592,7 @@ namespace CatMetro.Integrations.LevelPlay
         {
             if (!TryResolve(info, allowNewBinding: true,
                 allowNoStableId: !_requiresNonRewardBinding, confirmsCurrentShow: true,
-                out var context) || context.Closed)
+                trustedLoadedIdentity: false, out var context) || context.Closed)
                 return;
 
             context.Closed = true;
@@ -569,7 +605,7 @@ namespace CatMetro.Integrations.LevelPlay
         private void OnAdInfoChanged(LevelPlayAdSnapshot info)
         {
             TryResolve(info, allowNewBinding: true, allowNoStableId: false,
-                confirmsCurrentShow: true, out _);
+                confirmsCurrentShow: true, trustedLoadedIdentity: false, out _);
         }
 
         private void OnAdImpression(LevelPlayImpressionSnapshot impression)
@@ -586,7 +622,8 @@ namespace CatMetro.Integrations.LevelPlay
             var info = new LevelPlayAdSnapshot(null, impression.AuctionId,
                 impression.AdUnitId, impression.PlacementId, impression.NetworkName);
             if (TryResolve(info, allowNewBinding: true, allowNoStableId: false,
-                confirmsCurrentShow: true, out var context))
+                confirmsCurrentShow: true, trustedLoadedIdentity: false,
+                out var context))
             {
                 if (context.RevenueDelivered) return;
                 if (!LevelPlayPayloadMapper.TryCreateRevenue(context.AttemptId,
@@ -617,7 +654,8 @@ namespace CatMetro.Integrations.LevelPlay
                 info.AuctionId, info.NetworkName);
 
         private bool TryResolve(LevelPlayAdSnapshot info, bool allowNewBinding,
-            bool allowNoStableId, bool confirmsCurrentShow, out ShowContext context)
+            bool allowNoStableId, bool confirmsCurrentShow,
+            bool trustedLoadedIdentity, out ShowContext context)
         {
             context = null;
             if (_disposed || _failed || !PurgeExpiredContexts()) return false;
@@ -644,6 +682,9 @@ namespace CatMetro.Integrations.LevelPlay
             // contexts is malformed and must leave all state untouched.
             if (auctionContext != null && adContext != null &&
                 !ReferenceEquals(auctionContext, adContext))
+                return false;
+            if (_auctionHistorySaturated && hasAuction && auctionContext == null &&
+                !trustedLoadedIdentity && adContext == null)
                 return false;
 
             bool makeAdAmbiguous = false;
@@ -713,7 +754,10 @@ namespace CatMetro.Integrations.LevelPlay
                 _unboundContext = null;
             if (confirmsCurrentShow && ReferenceEquals(_activeContext, context) &&
                 (hasAuction || hasAd))
+            {
                 _requiresNonRewardBinding = false;
+                _postQuarantineStableTerminalRequired = false;
+            }
             return context != null;
         }
 
@@ -726,7 +770,8 @@ namespace CatMetro.Integrations.LevelPlay
             hasAuctionIdentity = loaded.HasAuctionIdentity;
             if (!loaded.IsValid || loaded.Generation != _loadGeneration) return false;
             TryResolve(loaded.Info, allowNewBinding: true, allowNoStableId: false,
-                confirmsCurrentShow: false, out var resolved);
+                confirmsCurrentShow: false, trustedLoadedIdentity: true,
+                out var resolved);
             return ReferenceEquals(resolved, context);
         }
 
@@ -782,7 +827,11 @@ namespace CatMetro.Integrations.LevelPlay
         {
             if (context == null) return;
             _contexts.Remove(context);
-            if (ReferenceEquals(_activeContext, context)) _activeContext = null;
+            if (ReferenceEquals(_activeContext, context))
+            {
+                _activeContext = null;
+                _postQuarantineStableTerminalRequired = false;
+            }
             if (ReferenceEquals(_unboundContext, context)) _unboundContext = null;
             if (!string.IsNullOrEmpty(context.AuctionId))
             {
@@ -808,7 +857,10 @@ namespace CatMetro.Integrations.LevelPlay
             if (string.IsNullOrWhiteSpace(auctionId) || !_completedAuctions.Add(auctionId)) return;
             _completedAuctionOrder.Enqueue(auctionId);
             while (_completedAuctionOrder.Count > MaxCompletedAuctions)
+            {
                 _completedAuctions.Remove(_completedAuctionOrder.Dequeue());
+                _auctionHistorySaturated = true;
+            }
         }
 
         private void RememberTerminalRevenue(ShowContext context)
