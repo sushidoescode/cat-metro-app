@@ -62,10 +62,13 @@ namespace CatMetro.Application.Save
                 return false;
 
             var loadouts = new List<CosmeticLoadout>(rows.Count);
+            var seenCatIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (var token in rows)
             {
                 if (!(token is JObject row)
                     || !TryString(row["catId"], out var catId)
+                    || string.IsNullOrEmpty(catId)
+                    || !seenCatIds.Add(catId)
                     || !TryString(row["outfitId"], out var outfitId)
                     || !TryString(row["accessoryId"], out var accessoryId)
                     || !TryString(row["frameId"], out var frameId))

@@ -228,6 +228,11 @@ namespace CatMetro.Tests.Cosmetics
                 payload["profile"]["cosmetics"]["loadouts"] = new JArray("row"));
             yield return Malformed("missing loadout cat", payload =>
                 ((JObject)payload["profile"]["cosmetics"]["loadouts"][0]).Remove("catId"));
+            yield return Malformed("empty loadout cat", payload =>
+                payload["profile"]["cosmetics"]["loadouts"][0]["catId"] = "");
+            yield return Malformed("duplicate loadout cat", payload =>
+                ((JArray)payload["profile"]["cosmetics"]["loadouts"]).Add(
+                    Loadout("red_tabby", "future_outfit", "future_accessory", "future_frame")));
             yield return Malformed("loadout outfit type", payload =>
                 payload["profile"]["cosmetics"]["loadouts"][0]["outfitId"] = 1);
             yield return Malformed("missing loadout accessory", payload =>
@@ -264,7 +269,7 @@ namespace CatMetro.Tests.Cosmetics
         }
 
         [Test]
-        public void ProfileDtos_DefensivelyCopyAndResolveDuplicatesDeterministically()
+        public void ProfileDtoCandidates_DefensivelyCopyAndResolveDuplicatesDeterministically()
         {
             var earnedCats = new List<string> { "cat_a", "cat_a", "cat_b" };
             var earnedItems = new List<string> { "item_a", "item_a", "item_b" };
@@ -318,6 +323,19 @@ namespace CatMetro.Tests.Cosmetics
             Assert.That(portrait, Is.EqualTo(new CosmeticPortraitSnapshot("", "", "", "", "")));
             Assert.That(portrait.GetHashCode(),
                 Is.EqualTo(new CosmeticPortraitSnapshot("", "", "", "", "").GetHashCode()));
+        }
+
+        [Test]
+        public void PortraitSnapshot_DefaultAndExplicitEmptyAreSymmetricallyEqualWithSameHash()
+        {
+            var implicitEmpty = default(CosmeticPortraitSnapshot);
+            var explicitEmpty = new CosmeticPortraitSnapshot("", "", "", "", "");
+
+            Assert.That(implicitEmpty.Equals(explicitEmpty), Is.True);
+            Assert.That(explicitEmpty.Equals(implicitEmpty), Is.True);
+            Assert.That(implicitEmpty.Equals((object)explicitEmpty), Is.True);
+            Assert.That(explicitEmpty.Equals((object)implicitEmpty), Is.True);
+            Assert.That(implicitEmpty.GetHashCode(), Is.EqualTo(explicitEmpty.GetHashCode()));
         }
 
         [Test]

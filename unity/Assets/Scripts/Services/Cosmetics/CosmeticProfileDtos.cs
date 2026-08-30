@@ -182,11 +182,11 @@ namespace CatMetro.Services.Cosmetics
         }
 
         public bool Equals(CosmeticPortraitSnapshot other) =>
-            string.Equals(CatId, other.CatId, StringComparison.Ordinal)
-            && string.Equals(BaseAssetId, other.BaseAssetId, StringComparison.Ordinal)
-            && string.Equals(OutfitAssetId, other.OutfitAssetId, StringComparison.Ordinal)
-            && string.Equals(AccessoryAssetId, other.AccessoryAssetId, StringComparison.Ordinal)
-            && string.Equals(FrameAssetId, other.FrameAssetId, StringComparison.Ordinal);
+            Same(CatId, other.CatId)
+            && Same(BaseAssetId, other.BaseAssetId)
+            && Same(OutfitAssetId, other.OutfitAssetId)
+            && Same(AccessoryAssetId, other.AccessoryAssetId)
+            && Same(FrameAssetId, other.FrameAssetId);
 
         public override bool Equals(object obj) =>
             obj is CosmeticPortraitSnapshot other && Equals(other);
@@ -204,5 +204,8 @@ namespace CatMetro.Services.Cosmetics
                 return hash;
             }
         }
+
+        private static bool Same(string left, string right) => string.Equals(
+            left ?? string.Empty, right ?? string.Empty, StringComparison.Ordinal);
     }
 }
