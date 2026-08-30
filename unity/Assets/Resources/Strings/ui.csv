@@ -35,25 +35,41 @@ reminder.settings.close,Close
 wardrobe.entry,Wardrobe
 wardrobe.title,Profile Wardrobe
 wardrobe.profile,Your profile cat
-wardrobe.product,Conductor's Coat
 wardrobe.back,Back
 wardrobe.buy,Unlock · {price}
-wardrobe.equipped,Coat equipped
 wardrobe.restore,Restore purchases
 wardrobe.restore.running,Restoring…
+wardrobe.cat.red_tabby,Red Tabby
+wardrobe.cat.blue_siamese,Blue Siamese
+wardrobe.cat.yellow_longhair,Yellow Longhair
+wardrobe.tab.outfit,Outfit
+wardrobe.tab.accessory,Accessory
+wardrobe.tab.frame,Frame
+wardrobe.state.equipped,Equipped
+wardrobe.state.owned,Owned
+wardrobe.action.equip,Equip
+wardrobe.action.unequip,Unequip
+wardrobe.action.rewarded,Watch to borrow
+wardrobe.time.remaining,{time} remaining
+wardrobe.empty,No accessories are waiting at the depot yet.
 wardrobe.store.checking,Checking store…
 wardrobe.store.opening,Opening store…
 wardrobe.store.unavailable,Store unavailable
 wardrobe.status.checking,Checking the railway shop…
-wardrobe.status.locked,A station uniform for your profile cat
-wardrobe.status.equipped,Conductor's Coat equipped!
 wardrobe.status.opening,Opening the store…
 wardrobe.status.cancelled,Purchase cancelled
-wardrobe.status.pending,Purchase pending — the coat unlocks after approval
-wardrobe.status.failed,Purchase unavailable — please try again
+wardrobe.status.pending,Purchase pending — it unlocks after approval
 wardrobe.status.unconfirmed,Purchase received — checking the entitlement
+wardrobe.status.save.failed,Access is ready but the outfit could not be saved
 wardrobe.status.restoring,Restoring purchases…
-wardrobe.status.restored,Purchase restored — coat equipped!
+wardrobe.status.restored,Purchases restored
 wardrobe.status.none,No purchases found
 wardrobe.status.restore.failed,Restore unavailable — please try again
 wardrobe.status.unavailable,The shop is offline — the game is still ready to play
+cosmetics.cat.red_tabby,Red Tabby
+cosmetics.cat.blue_siamese,Blue Siamese
+cosmetics.cat.yellow_longhair,Yellow Longhair
+cosmetics.item.outfit_conductor,Conductor's Coat
+cosmetics.item.frame_brass,Brass Ticket Frame
+cosmetics.item.frame_lantern,Lantern Frame
+cosmetics.earn.conductor,Complete the stationmaster route to earn this outfit.
