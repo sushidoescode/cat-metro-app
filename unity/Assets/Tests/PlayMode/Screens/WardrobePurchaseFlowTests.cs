@@ -597,6 +597,109 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator ExistingRewardedLease_NonSuccessPurchasesNeverEquipAndPaintOutcome()
+        {
+            var cases = new[]
+            {
+                (PurchaseOutcome.UserCancelled, "wardrobe.status.cancelled"),
+                (PurchaseOutcome.Pending, "wardrobe.status.pending"),
+                (PurchaseOutcome.Busy, "wardrobe.status.opening"),
+                (PurchaseOutcome.Failure, "wardrobe.status.unavailable"),
+                (PurchaseOutcome.Unavailable, "wardrobe.status.unavailable"),
+                (PurchaseOutcome.UnknownUnsettled, "wardrobe.status.unavailable"),
+            };
+
+            foreach (var testCase in cases)
+            {
+                var setup = CreateSetup();
+                Assert.That(setup.Purchases.GrantRewardedAdEntitlement("outfit_conductor"),
+                    Is.EqualTo(AdGrantOutcome.Granted));
+                setup.Backend.NextPurchaseOutcome = testCase.Item1;
+                CreateView(setup);
+                _view.Open();
+                Layout();
+                yield return null;
+
+                Tap(CardRect("outfit_conductor"));
+                Tap(FindRect("PrimaryActionChip"));
+                yield return null;
+
+                Assert.That(setup.Purchases.IsUnlocked("outfit_conductor"), Is.True,
+                    "the older lease remains source-blind wearable access");
+                Assert.That(setup.Purchases.SecondsUntilExpiry("outfit_conductor"),
+                    Is.GreaterThan(0));
+                Assert.That(setup.Profile.Profile.LoadoutFor("red_tabby").OutfitId, Is.Empty,
+                    testCase.Item1 + " cannot convert an older lease into a desired equip");
+                Assert.That(StatusText(), Is.EqualTo(UiStrings.Get(testCase.Item2)),
+                    testCase.Item1.ToString());
+                ResetView();
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator ExistingRewardedLease_UnconfirmedSuccessNeverEquips()
+        {
+            var cases = new[]
+            {
+                (authoritative: true, availability: BackendAvailability.Ready,
+                    label: "authoritative snapshot missing the product promise"),
+                (authoritative: false, availability: BackendAvailability.Unreachable,
+                    label: "unreachable CustomerInfo"),
+            };
+
+            foreach (var testCase in cases)
+            {
+                var setup = CreateSetup();
+                Assert.That(setup.Purchases.GrantRewardedAdEntitlement("outfit_conductor"),
+                    Is.EqualTo(AdGrantOutcome.Granted));
+                setup.Backend.GrantOnPurchase = false;
+                CreateView(setup);
+                _view.Open();
+                Layout();
+                yield return null;
+
+                Tap(CardRect("outfit_conductor"));
+                setup.Backend.EntitlementsAreAuthoritative = testCase.authoritative;
+                setup.Backend.Availability = testCase.availability;
+                Tap(FindRect("PrimaryActionChip"));
+                yield return null;
+
+                Assert.That(setup.Purchases.IsUnlocked("outfit_conductor"), Is.True,
+                    testCase.label);
+                Assert.That(setup.Purchases.SecondsUntilExpiry("outfit_conductor"),
+                    Is.GreaterThan(0), testCase.label);
+                Assert.That(setup.Profile.Profile.LoadoutFor("red_tabby").OutfitId, Is.Empty,
+                    testCase.label);
+                Assert.That(StatusText(),
+                    Is.EqualTo(UiStrings.Get("wardrobe.status.unconfirmed")), testCase.label);
+                ResetView();
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator ExistingRewardedLease_ConfirmedFallbackBecomesPermanentAndEquipsInitiator()
+        {
+            var setup = CreateSetup();
+            Assert.That(setup.Purchases.GrantRewardedAdEntitlement("outfit_conductor"),
+                Is.EqualTo(AdGrantOutcome.Granted));
+            setup.Backend.GrantOnPurchase = true;
+            CreateView(setup);
+            _view.Open();
+            Layout();
+            yield return null;
+
+            Tap(CardRect("outfit_conductor"));
+            Tap(FindRect("PrimaryActionChip"));
+            yield return null;
+
+            Assert.That(setup.Purchases.SecondsUntilExpiry("outfit_conductor"), Is.EqualTo(0),
+                "accepted fallback CustomerInfo replaces the countdown with permanent access");
+            Assert.That(setup.Profile.Profile.LoadoutFor("red_tabby").OutfitId,
+                Is.EqualTo("outfit_conductor"));
+            Assert.That(StatusText(), Is.EqualTo(UiStrings.Get("wardrobe.state.equipped")));
+        }
+
+        [UnityTest]
         public IEnumerator SavedCoat_LapsesWithoutSaveOrDesiredErase_AndRestoresAutomatically()
         {
             var persistence = new RecordingPersistence(ProfileWith(outfit: "outfit_conductor"));
@@ -776,19 +879,35 @@ namespace CatMetro.Tests.PlayMode
             Layout();
             yield return null;
 
+            int readyProductCount = setup.Purchases.StoreProductCount;
+            Assert.That(readyProductCount, Is.EqualTo(3));
+            setup.Backend.ClearProducts();
             setup.Backend.Availability = BackendAvailability.Unreachable;
-            setup.Backend.NextPurchaseOutcome = PurchaseOutcome.Unavailable;
+            setup.Purchases.Refresh();
+            _view.Hide();
+            _view.Open();
+            Layout();
+            yield return null;
+
+            Assert.That(setup.Purchases.StoreProductCount, Is.EqualTo(readyProductCount),
+                "an unreachable empty offerings response preserves the shared cache");
             var card = Card("outfit_conductor");
             Assert.That(card.Route, Is.EqualTo(CosmeticWardrobeRoute.Purchase));
             Assert.That(card.DisplayedNameText, Is.EqualTo("Conductor's Coat"));
             Assert.That(card.DisplayedPriceText, Is.EqualTo("CA$2.79"));
-            Tap(card.RootTransform);
-            Tap(FindRect("PrimaryActionChip"));
+
+            setup.Backend.Availability = BackendAvailability.Ready;
+            setup.Purchases.Refresh();
+            _view.Hide();
+            _view.Open();
+            Layout();
             yield return null;
-            Assert.That(setup.Backend.PurchaseCalls, Is.EqualTo(1));
-            Assert.That(setup.Purchases.IsUnlocked("outfit_conductor"), Is.False);
-            Assert.That(setup.Profile.Profile.LoadoutFor("red_tabby").OutfitId, Is.Empty);
-            Assert.That(StatusText(), Is.EqualTo(UiStrings.Get("wardrobe.status.unavailable")));
+
+            Assert.That(setup.Purchases.StoreProductCount, Is.EqualTo(0),
+                "Ready empty offerings are authoritative removal");
+            Assert.That(ActiveCards(), Is.Empty);
+            Assert.That(_regions.IsRegistered("wardrobe.item.outfit_conductor"), Is.False);
+            AssertEmptyBand();
         }
 
         [UnityTest]
@@ -1688,6 +1807,8 @@ namespace CatMetro.Tests.PlayMode
                 PurchaseOutcome.SuccessCandidate;
             public RestoreOutcome NextRestoreOutcome { get; set; } = RestoreOutcome.Completed;
             public bool GrantOnPurchase { get; set; }
+            public bool EntitlementsAreAuthoritative { get; set; } = true;
+            public bool ReturnConfirmedPurchaseSnapshot { get; set; }
             public bool DeferPurchase { get; set; }
             public bool DeferRestore { get; set; }
             public bool DeferProductFetch { get; set; }
@@ -1706,6 +1827,7 @@ namespace CatMetro.Tests.PlayMode
             }
 
             public void RemoveProduct(string id) => _products.Remove(id);
+            public void ClearProducts() => _products.Clear();
             public WardrobeBackend WithStoreEntitlement(string id)
             {
                 _storeEntitlements.Add(id);
@@ -1721,7 +1843,7 @@ namespace CatMetro.Tests.PlayMode
                     _productCallbacks.Enqueue(onDone);
                     return;
                 }
-                onDone?.Invoke(_products.Values.ToArray());
+                onDone?.Invoke(ProductsForFetch());
             }
 
             public void Purchase(string productId, Action<PurchaseResult> onDone)
@@ -1783,7 +1905,7 @@ namespace CatMetro.Tests.PlayMode
             {
                 if (_productCallbacks.Count == 0)
                     throw new InvalidOperationException("no product refresh is pending");
-                _productCallbacks.Dequeue()?.Invoke(_products.Values.ToArray());
+                _productCallbacks.Dequeue()?.Invoke(ProductsForFetch());
             }
 
             public void CompleteNextEntitlementRefresh()
@@ -1798,7 +1920,8 @@ namespace CatMetro.Tests.PlayMode
                 if (GrantOnPurchase && NextPurchaseOutcome == PurchaseOutcome.SuccessCandidate)
                     foreach (var id in Catalog.EntitlementsFor(LastPurchasedProductId))
                         _storeEntitlements.Add(id);
-                callback?.Invoke(new PurchaseResult(NextPurchaseOutcome, LastPurchasedProductId));
+                callback?.Invoke(new PurchaseResult(NextPurchaseOutcome, LastPurchasedProductId,
+                    confirmedEntitlements: ReturnConfirmedPurchaseSnapshot ? Snapshot() : null));
             }
 
             private void CompleteRestore(Action<RestoreResult> callback)
@@ -1808,9 +1931,15 @@ namespace CatMetro.Tests.PlayMode
                 callback?.Invoke(new RestoreResult(NextRestoreOutcome));
             }
 
-            private EntitlementSnapshot Snapshot() => new EntitlementSnapshot(true,
-                _storeEntitlements.Select(id =>
-                    new EntitlementGrant(id, GrantSource.Store)).ToArray());
+            private IReadOnlyList<StoreProductView> ProductsForFetch()
+                => Availability == BackendAvailability.Ready
+                    ? _products.Values.ToArray()
+                    : Array.Empty<StoreProductView>();
+
+            private EntitlementSnapshot Snapshot() => EntitlementsAreAuthoritative
+                ? new EntitlementSnapshot(true, _storeEntitlements.Select(id =>
+                    new EntitlementGrant(id, GrantSource.Store)).ToArray())
+                : EntitlementSnapshot.Unreachable();
         }
     }
 }

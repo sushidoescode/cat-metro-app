@@ -196,11 +196,14 @@ namespace CatMetro.Services.Purchases
                 // purchase and restore still converge on ApplySnapshot and the same ledger.
                 if (TryApplyConfirmedSnapshot(result.ConfirmedEntitlements))
                 {
-                    onDone?.Invoke(result);
+                    onDone?.Invoke(NormalizePurchaseConfirmation(result,
+                        result.ConfirmedEntitlements));
                     return;
                 }
 
-                RefreshEntitlements(() => onDone?.Invoke(result));
+                RefreshEntitlementsWithSnapshot((snapshot, accepted) =>
+                    onDone?.Invoke(NormalizePurchaseConfirmation(result,
+                        accepted ? snapshot : (EntitlementSnapshot?)null)));
             });
         }
 
@@ -376,19 +379,23 @@ namespace CatMetro.Services.Purchases
 
             _productRefreshInFlight = true;
             var onDone = _productRefreshQueue.Dequeue();
-            _backend.FetchProducts(products =>
+            var backend = _backend;
+            backend.FetchProducts(products =>
             {
-                _storeProducts.Clear();
-                if (products != null)
+                if (ReferenceEquals(backend, _backend)
+                    && backend.Availability == BackendAvailability.Ready)
                 {
-                    for (int i = 0; i < products.Count; i++)
+                    _storeProducts.Clear();
+                    if (products != null)
                     {
-                        var p = products[i];
-                        // Ignore anything the store offers that our catalogue does not declare.
-                        // A stray product in the store console must not become a purchasable
-                        // item that grants nothing.
-                        if (_catalog.TryGetProduct(p.ProductId, out _))
-                            _storeProducts[p.ProductId] = p;
+                        for (int i = 0; i < products.Count; i++)
+                        {
+                            var p = products[i];
+                            // Ignore anything the store offers that our catalogue does not
+                            // declare. A stray store-console product must not become purchasable.
+                            if (_catalog.TryGetProduct(p.ProductId, out _))
+                                _storeProducts[p.ProductId] = p;
+                        }
                     }
                 }
 
@@ -438,6 +445,45 @@ namespace CatMetro.Services.Purchases
             // If that old request returns later, it cannot revoke the newer purchase truth.
             _entitlementEpoch++;
             ApplySnapshot(candidate.Value);
+            return true;
+        }
+
+        private PurchaseResult NormalizePurchaseConfirmation(PurchaseResult result,
+            EntitlementSnapshot? acceptedSnapshot)
+        {
+            EntitlementSnapshot? confirmation = acceptedSnapshot.HasValue
+                && acceptedSnapshot.Value.IsAuthoritative
+                && SnapshotFulfilsProduct(result.ProductId, acceptedSnapshot.Value)
+                    ? acceptedSnapshot
+                    : null;
+            return new PurchaseResult(result.Outcome, result.ProductId,
+                result.LocalizedPrice, result.DiagnosticMessage, confirmation);
+        }
+
+        private bool SnapshotFulfilsProduct(string productId, EntitlementSnapshot snapshot)
+        {
+            var promised = _catalog.EntitlementsFor(productId);
+            var grants = snapshot.Grants;
+            long now = _clock();
+            for (int i = 0; i < promised.Count; i++)
+            {
+                bool found = false;
+                if (grants != null)
+                {
+                    for (int j = 0; j < grants.Count; j++)
+                    {
+                        var grant = grants[j];
+                        if (grant.Source == GrantSource.RewardedAd
+                            || !grant.IsActiveAt(now)
+                            || !string.Equals(grant.EntitlementId, promised[i],
+                                StringComparison.Ordinal))
+                            continue;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) return false;
+            }
             return true;
         }
 
