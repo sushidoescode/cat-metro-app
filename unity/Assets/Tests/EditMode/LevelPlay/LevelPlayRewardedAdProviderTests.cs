@@ -504,6 +504,72 @@ namespace CatMetro.Tests.LevelPlay
         }
 
         [Test]
+        public void SaturatedAuctionHistoryRejectsOldAdRedirectToEvictedAuctionWithoutMutation()
+        {
+            ReadyProvider();
+            for (int i = 0; i < 34; i++)
+            {
+                var terminal = AdInfo(null, "evicted-auction-" + i, "terminal-" + i);
+                if (i > 0)
+                {
+                    _provider.Load();
+                    _ad.EmitLoaded(terminal);
+                }
+                Assert.That(_provider.TryShow(5_000L + i, "terminal-" + i), Is.True);
+                _ad.EmitDisplayed(terminal);
+                _ad.EmitRewarded(terminal);
+                _ad.EmitClosed(terminal);
+            }
+            Assert.That(PrivateCollectionCount("_completedAuctions"), Is.EqualTo(32));
+
+            _provider.Load();
+            var retained = AdInfo("shared", "retained-auction", "retained");
+            _ad.EmitLoaded(retained);
+            Assert.That(_provider.TryShow(5_100L, "retained"), Is.True);
+            _ad.EmitDisplayed(retained);
+            _ad.EmitClosed(retained);
+
+            _provider.Load();
+            _ad.EmitLoaded(AdInfo(null, null, "current"));
+            Assert.That(_provider.TryShow(5_101L, "current"), Is.True);
+            int rewardsBeforeStale = _events.Count(e =>
+                e.Kind == RewardedAdEventKind.Rewarded);
+
+            var stalePair = AdInfo("shared", "evicted-auction-0", "terminal-0");
+            _ad.EmitDisplayed(stalePair);
+            _ad.EmitRewarded(stalePair);
+
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.Rewarded),
+                Is.EqualTo(rewardsBeforeStale));
+            Assert.That(_events.Any(e => e.Kind == RewardedAdEventKind.Rewarded &&
+                (e.AttemptId == 5_100L || e.AttemptId == 5_101L)), Is.False,
+                "the old AdId plus evicted auction must neither redirect nor grant either context");
+
+            var currentAdOnly = AdInfo("current-ad", null, "current");
+            _ad.EmitDisplayed(currentAdOnly);
+            var currentPair = AdInfo("current-ad", "current-auction-2", "current");
+            _ad.EmitRewarded(currentPair);
+            _ad.EmitClosed(currentPair);
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.Rewarded &&
+                e.AttemptId == 5_101L), Is.EqualTo(1),
+                "the rejected stale pair must leave the current context safely attributable");
+
+            _provider.Load();
+            _ad.EmitLoaded(AdInfo(null, null, "retained-blank"));
+            Assert.That(_provider.TryShow(5_102L, "retained-blank"), Is.True);
+            var retainedAdOnly = AdInfo("retained-blank-ad", null, "retained-blank");
+            _ad.EmitDisplayed(retainedAdOnly);
+            _ad.EmitClosed(retainedAdOnly);
+            _ad.EmitRewarded(AdInfo("retained-blank-ad", "later-auction",
+                "retained-blank"));
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.Rewarded &&
+                e.AttemptId == 5_102L), Is.EqualTo(1),
+                "a retained same-context AdId can still acquire its previously blank AuctionId");
+            Assert.That(_events.Any(e => e.Kind == RewardedAdEventKind.Rewarded &&
+                e.AttemptId == 5_100L), Is.False);
+        }
+
+        [Test]
         public void AmbiguousUnknownAndMalformedRewardsNeverUseNewestAttemptFallback()
         {
             ReadyProvider();

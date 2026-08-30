@@ -488,3 +488,95 @@ The configured-device-only proof boundary remains unchanged. Managed Editor evid
 native Android/iOS adapter resolution/init, real fill/show/reward/close or worker-thread ILR
 ordering, dashboard caps/no-fill, privacy/ATT/CMP behavior, native teardown, or RevenueCat sandbox
 ingestion/dimensions/revenue. No native/device claim is made.
+
+## Fix round 3 — retained AdId saturation bypass
+
+Review of `50c312ef1501025cc1fede7161c47e3bb69665c6` found one remaining bypass in the
+auction-history saturation exception. An unknown/evicted AuctionId was rejected when no AdId index
+existed, but any indexed AdId was accepted as permission to continue. If that AdId belonged to an
+older closed-but-reward-eligible context with a different known AuctionId, the resolver redirected
+the pair to the newer unbound context, mutated its indexes, and let the matching stale reward grant
+the newer attempt.
+
+The correction remains inside the resolver's pre-mutation saturation check. When auction history
+is saturated and the callback AuctionId is unknown, non-Loaded evidence now fails closed if its
+indexed AdId context already owns a different AuctionId. The check runs after both indexes are
+resolved and before maps, histories, context IDs, unbound ownership, or confirmation flags change.
+Trusted serialized current Loaded identity remains an explicit exception. An AdId already bound to
+the same context while its AuctionId is blank can still acquire that AuctionId, including after
+close while the context remains reward-eligible. Known current auctions and ordinary
+cross-consistent callbacks are unchanged; histories remain bounded.
+
+Round-3 changed files:
+
+- `unity/Assets/Scripts/Integrations/LevelPlay/LevelPlayRewardedAdProvider.cs`
+- `unity/Assets/Tests/EditMode/LevelPlay/LevelPlayRewardedAdProviderTests.cs`
+- this report
+
+### Fix-round-3 TDD evidence
+
+Focused RED command:
+
+`unity test /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/unity --mode EditMode --filter 'CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.SaturatedAuctionHistoryRejectsOldAdRedirectToEvictedAuctionWithoutMutation' --output /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/artifacts/task6-fix3-retained-old-ad-red.xml --format json --non-interactive --timeout 600`
+
+The real production provider test passed 0/1 and failed 1/1 at `2026-08-30 10:34:46Z`. After 34
+terminal auctions, it retained AdId `shared` on a closed eligible context at
+`retained-auction`, started a newer unbound attempt, then sent `shared` paired with evicted
+`evicted-auction-0` through Displayed and Rewarded. The expected reward count stayed 34, but the
+current resolver produced 35, directly proving the bypass.
+
+Focused GREEN command:
+
+`unity test /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/unity --mode EditMode --filter 'CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.SaturatedAuctionHistoryRejectsOldAdRedirectToEvictedAuctionWithoutMutation;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.SaturatedAuctionHistoryRejectsEvictedAuctionOnlyBindingButAllowsSafeAnchors;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests.AdIdFirstThenMatchingAuctionProgressionBindsTheSameAttempt' --output /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/artifacts/task6-fix3-saturation-green.xml --format json --non-interactive --timeout 600`
+
+Result: 3/3 passed, failed 0, skipped 0. The new test additionally proves the rejected stale pair
+does not mutate the newer attempt by safely binding that attempt through a legitimate current
+AdId-to-AuctionId progression. It then closes an AdId-only context and proves the same retained
+context can acquire its previously blank AuctionId and receive exactly one reward. The focused
+set also preserves the prior direct auction-only saturation rejection and trusted Loaded anchor.
+
+Provider/mapper/queue command:
+
+`unity test /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/unity --mode EditMode --filter 'CatMetro.Tests.LevelPlayPayloadMapperTests;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests' --output /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/artifacts/task6-fix3-provider-mapper.xml --format json --non-interactive --timeout 600`
+
+Result: 92/92 passed, failed 0, inconclusive 0, skipped 0. This includes all stable-ID, bounded
+history, generation quarantine, serialized load, synchronous terminal, terminal-ILR concrete pump
+drain, queue exception/reentrancy, and provider reentrant-disposal tests.
+
+Final combined command:
+
+`unity test /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/unity --mode EditMode --filter 'CatMetro.Tests.LevelPlayPayloadMapperTests;CatMetro.Tests.LevelPlay.LevelPlayRewardedAdProviderTests;CatMetro.Tests.Ads.RewardedAdCoordinatorTests;CatMetro.Tests.RewardedAdsBootstrapTests;RevenueCat.Tests.RevenueCatAdReporterTests' --output /Users/sushantsrikrish/cat-metro-app/.claude/worktrees/ads/artifacts/task6-fix3-final-editmode.xml --format json --non-interactive --timeout 600`
+
+The fresh post-edit XML is timestamped `2026-08-30 10:35:52Z` and passed 165/165, failed 0,
+inconclusive 0, skipped 0:
+
+- LevelPlay provider: 66/66
+- mapper/queue: 26/26
+- coordinator: 32/32
+- bootstrap/composition/pump: 17/17
+- RevenueCat reporter: 24/24
+
+Linked-source command:
+
+`dotnet test dotnet/CatMetro.Tests/CatMetro.Tests.csproj --no-restore --filter 'FullyQualifiedName~RewardedAdCoordinatorTests' --logger 'console;verbosity=minimal'`
+
+Result: 32/32 passed, failed 0, skipped 0. `bash scripts/check.sh` returned `check: OK` and
+`git diff --check` was clean.
+
+The `50c312ef1501025cc1fede7161c47e3bb69665c6..working` round-3 diff and cumulative
+`76ee9963c856d54ccf2b15dda9a72de86c673869..working` Task 6 diff were reviewed. Round 3 changes
+one resolver guard, one real-provider mutation test, and this report. Exact package 9.5.1,
+`Unity.LevelPlay` assembly direction, `Unity.Services.LevelPlay` namespace, native player guards,
+single configured rewarded instance/format, coordinator-only reload, serialized load evidence,
+existing pump drain, terminal revenue retention, reentrant disposal, and subscription cleanup are
+unchanged and covered.
+
+Narrow secret/scope/static audits found no credential-bearing value, raw `.log`, other format,
+mediation-settings Resources asset, scene, GameRoot, ProjectSettings, package, or unrelated file
+change. The required untracked `unity/mono_crash.143e1228df.0.json` remains untouched and will not
+be staged. No `.env`, process command line, device, build, install, upload, push, merge, or rebase
+operation was used.
+
+The configured-device-only proof boundary remains unchanged: no claim is made for native adapter
+resolution/init, real fill/show/reward/close or worker-thread ILR ordering, dashboard caps/no-fill,
+privacy/ATT/CMP behavior, native teardown, or RevenueCat sandbox ingestion/dimensions/revenue.

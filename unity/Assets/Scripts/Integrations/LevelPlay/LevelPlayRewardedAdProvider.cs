@@ -684,8 +684,14 @@ namespace CatMetro.Integrations.LevelPlay
                 !ReferenceEquals(auctionContext, adContext))
                 return false;
             if (_auctionHistorySaturated && hasAuction && auctionContext == null &&
-                !trustedLoadedIdentity && adContext == null)
-                return false;
+                !trustedLoadedIdentity)
+            {
+                if (adContext == null) return false;
+                if (!string.IsNullOrEmpty(adContext.AuctionId) &&
+                    !string.Equals(adContext.AuctionId, info.AuctionId,
+                        StringComparison.Ordinal))
+                    return false;
+            }
 
             bool makeAdAmbiguous = false;
             if (auctionContext != null)
