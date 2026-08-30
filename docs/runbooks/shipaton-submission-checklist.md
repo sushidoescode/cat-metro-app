@@ -13,8 +13,9 @@ can add closed-test and production-access lead time.
 
 All accounts, configuration, credentials, signing, builds, archives, uploads, store releases,
 promo-code generation, organizer contact, public video hosting, and Devpost submission actions are
-human-only. Never put a credential, judge code, device identifier, dashboard token, or private
-receipt in Git, and never read `.env`.
+human-only. Never put a credential, judge code, human-supplied test-device identifier, dashboard
+token, or private receipt in Git; the sole device identifier written below is the repository-
+authorized Android target serial. Never read `.env`.
 
 ## Engineering evidence gate
 
@@ -28,7 +29,9 @@ receipt in Git, and never read `.env`.
       Ads tracking path. Merely bundling the SDK does not satisfy the gate.
 - [ ] For the Catvertising path, complete
       `docs/runbooks/rewarded-ads-device-proof.md` on a configured physical iOS device first and on
-      the Pixel 9 Pro later. Unchecked native/configuration prerequisites remain outstanding.
+      the authorized Pixel 9 Pro later. Preserve separate controlled-proof-build and frozen-release-
+      candidate receipts; proof-build evidence never proves the public binary. Unchecked native/
+      configuration prerequisites remain outstanding.
 - [ ] Confirm the shipped privacy policy, App Store App Privacy answers, Play Data Safety answers,
       ads declaration, IAP declaration, content rating, CMP/TCF behavior, ATT behavior, and binary
       all describe the same exact candidate.
@@ -52,8 +55,9 @@ receipt in Git, and never read `.env`.
 - [ ] Install or open the store-delivered version and repeat the qualifying RevenueCat path and
       ordinary gameplay smoke check; do not substitute a sideloaded proof build.
 - [ ] Keep iOS as the first release sequence. If Android is also submitted, the human first runs
-      `adb devices -l`, reads `model:`, targets only the Cat Metro Pixel 9 Pro, excludes the Quest
-      and Pico, and preserves a separate Play-delivered receipt.
+      `adb devices -l` before every Android device command and requires serial `48121FDAP006X4` plus
+      its matching `model:` to identify the Cat Metro Pixel 9 Pro. Exclude the Quest and Pico, and
+      preserve a separate Play-delivered release-candidate receipt.
 
 ## RevenueCat and Catvertising truth gate
 
@@ -140,9 +144,11 @@ Confirm each statement against the exact public candidate before using it:
 - [ ] HAMM/RevenueCat copy reports only real purchase, conversion, retention, or revenue numbers,
       with date range and denominator where applicable; omit unavailable metrics rather than
       estimating them.
-- [ ] Do not state a level count unless the exact candidate proves it. The repository currently has
-      17 authored levels, while older submission prose says 19; neither number is submission copy
-      until the public-candidate receipt establishes the exact reachable count.
+- [ ] Do not state a level count unless the exact candidate proves it. The tracked content artifact
+      contains 19 JSON files, `L001.json` through `L019.json`, while older research/design documents
+      report 17. The source discrepancy and tracked filenames do not prove ordinary reachability;
+      no count enters submission copy until the public-candidate receipt proves the exact reachable
+      count through ordinary progression.
 - [ ] Human prepares judge access instructions and a working free-trial or promo-code path that
       unlocks every premium feature required for judging.
 - [ ] Judge credentials, trial details, promo codes, and redemption receipts remain human-held and
