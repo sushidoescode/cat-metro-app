@@ -40,6 +40,8 @@ namespace CatMetro.Tests.Cosmetics
             CollectionAssert.AreEqual(
                 new[] { "outfit_conductor", "frame_brass", "frame_lantern" },
                 catalog.Items.Select(item => item.Id));
+            Assert.That(catalog.Cats.All(cat => cat.Starter), Is.True,
+                "all three launch cats must be directly available starters");
 
             Assert.That(catalog.TryGetCat("red_tabby", out var cat), Is.True);
             Assert.That(cat.Starter, Is.True);
@@ -55,6 +57,43 @@ namespace CatMetro.Tests.Cosmetics
             Assert.That(catalog.TryGetItem(null, out _), Is.False);
         }
 
+        [TestCase("red_tabby", "cosmetics.cat.red_tabby", "cat.red_tabby")]
+        [TestCase("blue_siamese", "cosmetics.cat.blue_siamese", "cat.blue_siamese")]
+        [TestCase("yellow_longhair", "cosmetics.cat.yellow_longhair", "cat.yellow_longhair")]
+        public void RealCatRow_HasExactLaunchMapping(string id, string displayNameKey,
+            string portraitAssetId)
+        {
+            var catalog = ShippedCatalog(ShippedInventory());
+
+            Assert.That(catalog.TryGetCat(id, out var cat), Is.True);
+            Assert.That(cat.DisplayNameKey, Is.EqualTo(displayNameKey));
+            Assert.That(cat.PortraitAssetId, Is.EqualTo(portraitAssetId));
+            Assert.That(cat.Starter, Is.True);
+        }
+
+        [TestCase("outfit_conductor", CosmeticSlot.Outfit, "cosmetics.item.outfit_conductor",
+            "outfit.conductor", "outfit_conductor", "cm_outfit_conductor")]
+        [TestCase("frame_brass", CosmeticSlot.Frame, "cosmetics.item.frame_brass",
+            "frame.brass", "frame_brass", "cm_frame_brass")]
+        [TestCase("frame_lantern", CosmeticSlot.Frame, "cosmetics.item.frame_lantern",
+            "frame.lantern", "frame_lantern", "cm_frame_lantern")]
+        public void RealItemRow_HasExactLaunchMapping(string id, CosmeticSlot slot,
+            string displayNameKey, string portraitAssetId, string entitlementId, string productId)
+        {
+            var catalog = ShippedCatalog(ShippedInventory());
+
+            Assert.That(catalog.TryGetItem(id, out var item), Is.True);
+            Assert.That(item.Slot, Is.EqualTo(slot));
+            Assert.That(item.DisplayNameKey, Is.EqualTo(displayNameKey));
+            Assert.That(item.PortraitAssetId, Is.EqualTo(portraitAssetId));
+            Assert.That(item.Acquisition, Is.EqualTo(CosmeticAcquisition.Entitlement));
+            Assert.That(item.EntitlementId, Is.EqualTo(entitlementId));
+            Assert.That(item.ProductId, Is.EqualTo(productId));
+            CollectionAssert.AreEqual(
+                new[] { "red_tabby", "blue_siamese", "yellow_longhair" },
+                item.CompatibleCatIds);
+        }
+
         [Test]
         public void RealResources_ContainNoPriceCurrencyRandomGachaRarityOrStats()
         {
@@ -63,7 +102,7 @@ namespace CatMetro.Tests.Cosmetics
                 var root = JObject.Parse(File.ReadAllText(path));
                 var properties = root.DescendantsAndSelf().OfType<JProperty>().ToArray();
 
-                foreach (var forbiddenName in new[] { "price", "currency", "rarity", "stat" })
+                foreach (var forbiddenName in new[] { "price", "currency", "rarity", "stat", "power" })
                     Assert.That(properties.Any(p => p.Name.IndexOf(
                         forbiddenName, StringComparison.OrdinalIgnoreCase) >= 0), Is.False,
                         Path.GetFileName(path) + " declares forbidden field fragment " + forbiddenName);
@@ -168,22 +207,66 @@ namespace CatMetro.Tests.Cosmetics
         }
 
         [Test]
-        public void MalformedAndDuplicateCatRows_ChangeOnlyCatAdmissionCounts()
+        public void RejectedCatRow_AloneDoesNotRejectItems_ButAReferenceToItRejectsOneItem()
         {
             var inventory = ShippedInventory();
             var root = JObject.Parse(File.ReadAllText(CatalogPath()));
             var cats = (JArray)root["cats"];
-            ((JObject)cats[1]).Remove("displayNameKey");
+            cats.Add(new JObject
+            {
+                ["id"] = "rejected_cat",
+                ["portraitAssetId"] = "cat.red_tabby",
+                ["starter"] = true,
+            });
             cats.Add(((JObject)cats[0]).DeepClone());
+
+            var catFailuresOnly = CosmeticCatalog.Parse(root.ToString(), inventory.AssetIds,
+                inventory.ProvenanceAssetIds);
+
+            Assert.That(catFailuresOnly.AdmittedCatCount, Is.EqualTo(3));
+            Assert.That(catFailuresOnly.AdmittedRowCount, Is.EqualTo(3));
+            Assert.That(catFailuresOnly.RejectedRowCount, Is.Zero,
+                "RejectedRowCount is defined only over submitted item rows");
+            Assert.That(catFailuresOnly.Problems.Count, Is.GreaterThanOrEqualTo(2));
+
+            var brass = (JObject)((JArray)root["items"])[1];
+            ((JArray)brass["compatibleCatIds"]).Add("rejected_cat");
+            var referencedRejectedCat = CosmeticCatalog.Parse(root.ToString(), inventory.AssetIds,
+                inventory.ProvenanceAssetIds);
+
+            Assert.That(referencedRejectedCat.AdmittedCatCount, Is.EqualTo(3));
+            Assert.That(referencedRejectedCat.AdmittedRowCount, Is.EqualTo(2));
+            Assert.That(referencedRejectedCat.RejectedRowCount, Is.EqualTo(1));
+            Assert.That(referencedRejectedCat.Items.Select(item => item.Id),
+                Is.EqualTo(new[] { "outfit_conductor", "frame_lantern" }),
+                "the rejected frame must reserve no gap");
+            Assert.That(referencedRejectedCat.Problems.Any(p => p.Contains("rejected_cat")), Is.True);
+        }
+
+        [Test]
+        public void EqualItemOrder_PreservesAdmittedSubmissionOrder()
+        {
+            var inventory = ShippedInventory();
+            var root = JObject.Parse(File.ReadAllText(CatalogPath()));
+            var template = (JObject)((JArray)root["items"])[0];
+            var submittedIds = new List<string>();
+            var tiedItems = new JArray();
+            for (int i = 0; i < 20; i++)
+            {
+                var item = (JObject)template.DeepClone();
+                var id = "tied_item_" + i.ToString("D2");
+                item["id"] = id;
+                item["order"] = 10;
+                submittedIds.Add(id);
+                tiedItems.Add(item);
+            }
+            root["items"] = tiedItems;
 
             var catalog = CosmeticCatalog.Parse(root.ToString(), inventory.AssetIds,
                 inventory.ProvenanceAssetIds);
 
-            Assert.That(catalog.AdmittedCatCount, Is.EqualTo(2));
-            Assert.That(catalog.AdmittedRowCount, Is.EqualTo(3));
-            Assert.That(catalog.RejectedRowCount, Is.Zero,
-                "RejectedRowCount is defined only over submitted item rows");
-            Assert.That(catalog.Problems.Count, Is.GreaterThanOrEqualTo(2));
+            Assert.That(catalog.RejectedRowCount, Is.Zero);
+            CollectionAssert.AreEqual(submittedIds, catalog.Items.Select(item => item.Id));
         }
 
         [TestCase(null)]
@@ -237,6 +320,98 @@ namespace CatMetro.Tests.Cosmetics
             }
         }
 
+        [TestCase("valid_first")]
+        [TestCase("invalid_first")]
+        [TestCase("conflicting_valid")]
+        public void DuplicateProvenanceId_IsNeverAdmitted_IndependentOfOrder(string permutation)
+        {
+            var root = ProjectAuthoredInventory();
+            var valid = (JObject)((JArray)root["provenance"])[0];
+            var invalid = (JObject)valid.DeepClone();
+            invalid.Remove("sourcePath");
+            var conflicting = (JObject)GeneratedPaidInventory()["provenance"][0];
+            var rows = (JArray)root["provenance"];
+
+            switch (permutation)
+            {
+                case "valid_first": rows.Add(invalid); break;
+                case "invalid_first": root["provenance"] = new JArray(invalid, valid); break;
+                case "conflicting_valid": rows.Add(conflicting); break;
+            }
+
+            var inventory = CosmeticAssetInventory.Parse(root.ToString(), new[] { "cat.test" });
+
+            AssertRejectedTestAsset(inventory, "duplicate provenance id");
+        }
+
+        [TestCase("valid_first")]
+        [TestCase("invalid_first")]
+        [TestCase("conflicting_valid")]
+        public void DuplicateAssetId_IsNeverAdmitted_IndependentOfOrder(string permutation)
+        {
+            var root = ProjectAuthoredInventory();
+            var valid = (JObject)((JArray)root["assets"])[0];
+            var invalid = (JObject)valid.DeepClone();
+            invalid.Remove("rendererToken");
+            var conflicting = (JObject)valid.DeepClone();
+            conflicting["rendererToken"] = "cat.other";
+            var rows = (JArray)root["assets"];
+
+            switch (permutation)
+            {
+                case "valid_first": rows.Add(invalid); break;
+                case "invalid_first": root["assets"] = new JArray(invalid, valid); break;
+                case "conflicting_valid": rows.Add(conflicting); break;
+            }
+
+            var inventory = CosmeticAssetInventory.Parse(root.ToString(),
+                new[] { "cat.test", "cat.other" });
+
+            AssertRejectedTestAsset(inventory, "duplicate asset id");
+        }
+
+        private static IEnumerable<TestCaseData> WrongTypeProvenanceFields()
+        {
+            foreach (var field in new[] { "id", "sourceKind", "sourcePath", "commercialDistribution" })
+                yield return new TestCaseData("project_authored", field).SetName(
+                    "ProjectAuthored_" + field + "_MustBeAString");
+
+            foreach (var field in new[]
+            {
+                "id", "sourceKind", "provider", "paidTier", "taskId", "prompt",
+                "generationTimestamp", "sourceHash", "custodyLocation", "termsEvidence",
+                "commercialDistribution",
+            })
+                yield return new TestCaseData("generated_paid", field).SetName(
+                    "GeneratedPaid_" + field + "_MustBeAString");
+
+            yield return new TestCaseData("generated_paid", "derivativeHashes").SetName(
+                "GeneratedPaid_derivativeHashes_ElementsMustBeStrings");
+            yield return new TestCaseData("generated_paid", "transformationChain").SetName(
+                "GeneratedPaid_transformationChain_ElementsMustBeStrings");
+        }
+
+        [TestCaseSource(nameof(WrongTypeProvenanceFields))]
+        public void ProvenanceEvidence_WrongJsonType_IsRejectedAndNamesTheField(
+            string sourceKind, string field)
+        {
+            var root = sourceKind == "project_authored"
+                ? ProjectAuthoredInventory()
+                : GeneratedPaidInventory();
+            var provenance = (JObject)((JArray)root["provenance"])[0];
+            provenance[field] = field == "derivativeHashes" || field == "transformationChain"
+                ? new JArray("valid-first-element", true)
+                : new JValue(7);
+
+            var inventory = CosmeticAssetInventory.Parse(root.ToString(), new[] { "cat.test" });
+
+            Assert.That(inventory.AssetIds, Is.Empty);
+            Assert.That(inventory.ProvenanceAssetIds, Is.Empty);
+            Assert.That(inventory.TryGet("cat.test", out _), Is.False);
+            Assert.That(inventory.Problems.Any(p => p.Contains(field)), Is.True,
+                "the type failure must identify " + field);
+        }
+
         private static IEnumerable<TestCaseData> GeneratedPaidRequiredFields()
         {
             foreach (var field in new[]
@@ -268,9 +443,9 @@ namespace CatMetro.Tests.Cosmetics
             var inventory = CosmeticAssetInventory.Parse(GeneratedPaidInventory().ToString(),
                 new[] { "cat.test" });
 
+            Assert.That(inventory.Problems, Is.Empty, string.Join(" | ", inventory.Problems));
             Assert.That(inventory.AssetIds, Is.EqualTo(new[] { "cat.test" }));
             Assert.That(inventory.ProvenanceAssetIds, Is.EqualTo(new[] { "cat.test" }));
-            Assert.That(inventory.Problems, Is.Empty);
             Assert.That(inventory.TryGet("cat.test", out var asset), Is.True);
             Assert.That(asset.RendererToken, Is.EqualTo("cat.test"));
             Assert.That(asset.ProvenanceId, Is.EqualTo("prov.test"));
@@ -292,6 +467,15 @@ namespace CatMetro.Tests.Cosmetics
 
         private static TestCaseData ItemMutation(string name, Action<JObject, JObject> mutate)
             => new TestCaseData(name, mutate).SetName("ItemMutation_" + name.Replace(' ', '_'));
+
+        private static void AssertRejectedTestAsset(CosmeticAssetInventory inventory,
+            string expectedProblem)
+        {
+            Assert.That(inventory.AssetIds, Does.Not.Contain("cat.test"));
+            Assert.That(inventory.ProvenanceAssetIds, Does.Not.Contain("cat.test"));
+            Assert.That(inventory.TryGet("cat.test", out _), Is.False);
+            Assert.That(inventory.Problems.Any(p => p.Contains(expectedProblem)), Is.True);
+        }
 
         private static CosmeticAssetInventory ShippedInventory()
             => CosmeticAssetInventory.Parse(File.ReadAllText(InventoryPath()), SupportedRendererTokens);

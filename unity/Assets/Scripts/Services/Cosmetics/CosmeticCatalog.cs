@@ -66,11 +66,12 @@ namespace CatMetro.Services.Cosmetics
 
             var assets = ToSet(portraitAssetIds);
             var provenance = ToSet(provenanceAssetIds);
-            var declaredCatIds = DeclaredCatIds(root["cats"]);
             var cats = ParseCats(root["cats"], assets, provenance, problems);
-            var items = ParseItems(root["items"], declaredCatIds, assets, provenance,
+            var admittedCatIds = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < cats.Count; i++) admittedCatIds.Add(cats[i].Id);
+            var items = ParseItems(root["items"], admittedCatIds, assets, provenance,
                 problems, out var rejectedRows);
-            items.Sort((left, right) => left.Order.CompareTo(right.Order));
+            StableSortByOrder(items);
             return new CosmeticCatalog(cats, items, rejectedRows, problems);
         }
 
@@ -122,23 +123,6 @@ namespace CatMetro.Services.Cosmetics
             if (values == null) return result;
             foreach (var value in values)
                 if (!string.IsNullOrWhiteSpace(value)) result.Add(value);
-            return result;
-        }
-
-        private static HashSet<string> DeclaredCatIds(JToken token)
-        {
-            var result = new HashSet<string>(StringComparer.Ordinal);
-            if (!(token is JArray array)) return result;
-            foreach (var row in array)
-            {
-                if (!(row is JObject item)) continue;
-                try
-                {
-                    var id = (string)item["id"];
-                    if (!string.IsNullOrWhiteSpace(id)) result.Add(id);
-                }
-                catch (Exception) { }
-            }
             return result;
         }
 
@@ -215,7 +199,7 @@ namespace CatMetro.Services.Cosmetics
         }
 
         private static List<CosmeticItemDefinition> ParseItems(JToken token,
-            HashSet<string> declaredCatIds, HashSet<string> assets, HashSet<string> provenance,
+            HashSet<string> admittedCatIds, HashSet<string> assets, HashSet<string> provenance,
             List<string> problems, out int rejectedRows)
         {
             var result = new List<CosmeticItemDefinition>();
@@ -238,7 +222,7 @@ namespace CatMetro.Services.Cosmetics
 
                 try
                 {
-                    if (!TryParseItem(item, seen, declaredCatIds, assets, provenance,
+                    if (!TryParseItem(item, seen, admittedCatIds, assets, provenance,
                         out var definition, out var problem))
                     {
                         rejectedRows++;
@@ -257,7 +241,7 @@ namespace CatMetro.Services.Cosmetics
         }
 
         private static bool TryParseItem(JObject item, HashSet<string> seen,
-            HashSet<string> declaredCatIds, HashSet<string> assets, HashSet<string> provenance,
+            HashSet<string> admittedCatIds, HashSet<string> assets, HashSet<string> provenance,
             out CosmeticItemDefinition definition, out string problem)
         {
             definition = null;
@@ -302,7 +286,7 @@ namespace CatMetro.Services.Cosmetics
             foreach (var token in compatibleTokens)
             {
                 var catId = (string)token;
-                if (string.IsNullOrWhiteSpace(catId) || !declaredCatIds.Contains(catId))
+                if (string.IsNullOrWhiteSpace(catId) || !admittedCatIds.Contains(catId))
                     return Reject("item " + id + " names unknown compatible cat: " +
                                   (catId ?? "<missing>"), out problem);
                 if (!compatibleSeen.Add(catId))
@@ -325,6 +309,23 @@ namespace CatMetro.Services.Cosmetics
         {
             problem = message;
             return false;
+        }
+
+        private static void StableSortByOrder(List<CosmeticItemDefinition> items)
+        {
+            // Insertion sort moves only strictly greater orders. Equal-order rows therefore
+            // retain their admitted submission order on every runtime, unlike List.Sort.
+            for (int i = 1; i < items.Count; i++)
+            {
+                var current = items[i];
+                int destination = i;
+                while (destination > 0 && items[destination - 1].Order > current.Order)
+                {
+                    items[destination] = items[destination - 1];
+                    destination--;
+                }
+                items[destination] = current;
+            }
         }
 
         private static bool TryParseSlot(string raw, out CosmeticSlot slot)
