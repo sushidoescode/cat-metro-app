@@ -592,9 +592,11 @@ namespace CatMetro.Integrations.LevelPlay
         {
             if (!TryResolve(info, allowNewBinding: true,
                 allowNoStableId: !_requiresNonRewardBinding, confirmsCurrentShow: true,
-                trustedLoadedIdentity: false, out var context) || context.Closed)
+                trustedLoadedIdentity: false, out var context, out long closedAt) ||
+                context.Closed)
                 return;
 
+            context.ClosedAt = closedAt;
             context.Closed = true;
             if (ReferenceEquals(_activeContext, context)) _activeContext = null;
             Raise(Lifecycle(RewardedAdEventKind.Closed, context, info));
@@ -656,9 +658,16 @@ namespace CatMetro.Integrations.LevelPlay
         private bool TryResolve(LevelPlayAdSnapshot info, bool allowNewBinding,
             bool allowNoStableId, bool confirmsCurrentShow,
             bool trustedLoadedIdentity, out ShowContext context)
+            => TryResolve(info, allowNewBinding, allowNoStableId, confirmsCurrentShow,
+                trustedLoadedIdentity, out context, out _);
+
+        private bool TryResolve(LevelPlayAdSnapshot info, bool allowNewBinding,
+            bool allowNoStableId, bool confirmsCurrentShow,
+            bool trustedLoadedIdentity, out ShowContext context, out long observedAt)
         {
             context = null;
-            if (_disposed || _failed || !PurgeExpiredContexts()) return false;
+            observedAt = 0L;
+            if (_disposed || _failed || !PurgeExpiredContexts(out observedAt)) return false;
             bool hasAuction = !string.IsNullOrWhiteSpace(info.AuctionId);
             bool hasAd = !string.IsNullOrWhiteSpace(info.AdId);
 
@@ -782,12 +791,21 @@ namespace CatMetro.Integrations.LevelPlay
         }
 
         private bool PurgeExpiredContexts()
+            => PurgeExpiredContexts(out _);
+
+        private bool PurgeExpiredContexts(out long now)
         {
-            if (!TryReadClock(out long now)) return false;
+            if (!TryReadClock(out now)) return false;
             for (int i = _contexts.Count - 1; i >= 0; i--)
             {
                 var context = _contexts[i];
-                if (now < context.CreatedAt || now - context.CreatedAt <= _contextLifetimeTicks)
+                long anchor = context.Closed ? context.ClosedAt : context.CreatedAt;
+                if (now < anchor)
+                    continue;
+                long elapsed = now - anchor;
+                if (context.Closed
+                        ? elapsed < _contextLifetimeTicks
+                        : elapsed <= _contextLifetimeTicks)
                     continue;
                 if (ReferenceEquals(context, _unboundContext))
                 {
@@ -1023,6 +1041,7 @@ namespace CatMetro.Integrations.LevelPlay
             internal long LoadGeneration { get; }
             internal string AuctionId;
             internal string AdId;
+            internal long ClosedAt;
             internal bool Closed;
             internal bool RewardDelivered;
             internal bool RevenueDelivered;
