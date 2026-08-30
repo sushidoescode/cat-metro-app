@@ -22,14 +22,15 @@ namespace CatMetro.Services.Cosmetics
         {
             if (service == null) return;
             SubscribeToPurchasesOnce();
-            if (ReferenceEquals(_current, service))
+            bool identityInstall = ReferenceEquals(_current, service);
+            var binding = service.PreparePurchaseBinding(PurchaseRuntime.Current);
+            bool effectiveChanged = service.CommitPurchaseBinding(binding);
+            if (identityInstall)
             {
-                service.BindPurchases(PurchaseRuntime.Current);
+                service.NotifyPurchaseBindingChanged(effectiveChanged);
                 return;
             }
 
-            var binding = service.PreparePurchaseBinding(PurchaseRuntime.Current);
-            bool effectiveChanged = service.CommitPurchaseBinding(binding);
             if (_ownsCurrent) _current?.Dispose();
             _current = service;
             _ownsCurrent = false;
