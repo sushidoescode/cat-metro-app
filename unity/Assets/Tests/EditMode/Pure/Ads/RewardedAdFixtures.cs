@@ -44,6 +44,7 @@ namespace CatMetro.Tests.Ads
             public bool ThrowOnEventRemove { get; set; }
             public string CappedPlacement { get; set; }
             public Action OnEventAdd { get; set; }
+            public Action OnLoad { get; set; }
             public Action<long, string> OnShow { get; set; }
             public int InitializeCalls { get; private set; }
             public int LoadCalls { get; private set; }
@@ -77,6 +78,7 @@ namespace CatMetro.Tests.Ads
             public void Load()
             {
                 LoadCalls++;
+                OnLoad?.Invoke();
                 if (ThrowOnLoad) throw new InvalidOperationException("injected load fault");
             }
 

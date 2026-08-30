@@ -579,6 +579,108 @@ namespace CatMetro.Tests
             Assert.That(secondProvider.DisposeCalls, Is.EqualTo(1));
         }
 
+        [Test]
+        public void Pump_FirstUpdateAnchorsPreexistingCoordinatorFailureBeforeRetrying()
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            store.Load();
+            var provider = new Provider();
+            var backend = new BackendReporter();
+            var service = Service(backend);
+            var composition = Composition(service, backend, () => provider);
+            composition.Bind();
+            SaveRuntime.Install(store);
+            var host = new GameObject("[RewardedAdsRetryPumpTests]");
+            var pump = host.AddComponent<MonetizationPump>();
+            double now = 100d;
+            pump.Bind(service, composition, () => now);
+
+            provider.Queue(new RewardedAdEvent(RewardedAdEventKind.LoadFailed,
+                errorCode: 204));
+            pump.Update();
+            Assert.That(provider.LoadCalls, Is.EqualTo(1),
+                "draining the failure must not recurse into Load on the same frame");
+
+            now = 101.999d;
+            pump.Update();
+            Assert.That(provider.LoadCalls, Is.EqualTo(1));
+            now = 102d;
+            pump.Update();
+            Assert.That(provider.LoadCalls, Is.EqualTo(2),
+                "the frame owner, not a direct coordinator test call, issues the due retry");
+
+            pump.OnDestroy();
+            UnityEngine.Object.DestroyImmediate(host);
+        }
+
+        [Test]
+        public void Pump_LateCoordinatorUsesPreviouslyObservedClockForFullRetryDelay()
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            store.Load();
+            var provider = new Provider();
+            var backend = new BackendReporter();
+            var service = Service(backend);
+            var composition = Composition(service, backend, () => provider);
+            composition.Bind();
+            var host = new GameObject("[RewardedAdsLateRetryPumpTests]");
+            var pump = host.AddComponent<MonetizationPump>();
+            double now = 100d;
+            pump.Bind(service, composition, () => now);
+
+            pump.Update();
+            SaveRuntime.Install(store);
+            provider.Queue(new RewardedAdEvent(RewardedAdEventKind.LoadFailed,
+                errorCode: 204));
+            pump.Update();
+            Assert.That(provider.LoadCalls, Is.EqualTo(1));
+
+            now = 101.999d;
+            pump.Update();
+            Assert.That(provider.LoadCalls, Is.EqualTo(1));
+            now = 102d;
+            pump.Update();
+            Assert.That(provider.LoadCalls, Is.EqualTo(2));
+
+            pump.OnDestroy();
+            UnityEngine.Object.DestroyImmediate(host);
+        }
+
+        [Test]
+        public void Pump_DrainsLoadedBeforeTickSoDueRetryIsCancelled()
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            store.Load();
+            var provider = new Provider();
+            var backend = new BackendReporter();
+            var service = Service(backend);
+            var composition = Composition(service, backend, () => provider);
+            composition.Bind();
+            var host = new GameObject("[RewardedAdsDrainBeforeTickTests]");
+            var pump = host.AddComponent<MonetizationPump>();
+            double now = 100d;
+            pump.Bind(service, composition, () => now);
+
+            pump.Update();
+            SaveRuntime.Install(store);
+            provider.Queue(new RewardedAdEvent(RewardedAdEventKind.LoadFailed,
+                errorCode: 204));
+            pump.Update();
+            Assert.That(provider.LoadCalls, Is.EqualTo(1));
+
+            now = 102d;
+            provider.Queue(new RewardedAdEvent(RewardedAdEventKind.Loaded));
+            pump.Update();
+            Assert.That(provider.LoadCalls, Is.EqualTo(1),
+                "Loaded must cancel the due retry before Tick can issue another Load");
+
+            pump.OnDestroy();
+            UnityEngine.Object.DestroyImmediate(host);
+        }
+
         private static PurchaseService Service(BackendReporter backend,
             PurchaseCatalog catalog = null)
             => new PurchaseService(catalog ?? PFixtures.TinyCatalog(), backend, () => 1_000L);
@@ -608,6 +710,7 @@ namespace CatMetro.Tests
         private sealed class Provider : IRewardedAdProvider, IMainThreadRewardedAdEventDrain
         {
             private Action<RewardedAdEvent> _eventReceived;
+            private RewardedAdEvent? _queuedEvent;
 
             public event Action<RewardedAdEvent> EventReceived
             {
@@ -626,7 +729,16 @@ namespace CatMetro.Tests
             public void Initialize() => InitializeCalls++;
             public void Load() => LoadCalls++;
             public bool TryShow(long attemptId, string placementId) => true;
-            public void DrainMainThreadEvents() => DrainCalls++;
+            public void Queue(RewardedAdEvent adEvent) => _queuedEvent = adEvent;
+
+            public void DrainMainThreadEvents()
+            {
+                DrainCalls++;
+                var queued = _queuedEvent;
+                _queuedEvent = null;
+                if (queued.HasValue) _eventReceived?.Invoke(queued.Value);
+            }
+
             public void Dispose() => DisposeCalls++;
         }
 

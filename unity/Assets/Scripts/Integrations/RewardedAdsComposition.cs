@@ -18,6 +18,8 @@ namespace CatMetro.Integrations
         private SaveStore _boundStore;
         private RewardedAdCoordinator _coordinator;
         private IMainThreadRewardedAdEventDrain _mainThreadDrain;
+        private double _lastMonotonicSeconds;
+        private bool _hasMonotonicSeconds;
         private bool _subscribed;
         private bool _disposed;
 
@@ -68,6 +70,23 @@ namespace CatMetro.Integrations
             catch
             {
                 // A mediation analytics handoff is optional and must not break the frame owner.
+            }
+        }
+
+        internal void Tick(double monotonicSeconds)
+        {
+            if (_disposed) return;
+            if (IsValidMonotonicSeconds(monotonicSeconds) &&
+                (!_hasMonotonicSeconds || monotonicSeconds >= _lastMonotonicSeconds))
+            {
+                _lastMonotonicSeconds = monotonicSeconds;
+                _hasMonotonicSeconds = true;
+            }
+            try { _coordinator?.Tick(monotonicSeconds); }
+            catch
+            {
+                // Retry/retention maintenance is optional monetization work. It cannot own the
+                // Unity frame even if a future coordinator implementation regresses.
             }
         }
 
@@ -125,6 +144,7 @@ namespace CatMetro.Integrations
                     _reporter, saveData, _localDateKey);
                 _mainThreadDrain = provider as IMainThreadRewardedAdEventDrain;
                 _coordinator = coordinator;
+                if (_hasMonotonicSeconds) coordinator.Tick(_lastMonotonicSeconds);
                 RewardedAdRuntime.Install(coordinator);
                 if (!OwnsPublished(store, coordinator))
                 {
@@ -175,5 +195,8 @@ namespace CatMetro.Integrations
             try { disposable?.Dispose(); }
             catch { }
         }
+
+        private static bool IsValidMonotonicSeconds(double value)
+            => !double.IsNaN(value) && !double.IsInfinity(value) && value >= 0d;
     }
 }

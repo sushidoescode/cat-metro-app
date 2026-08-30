@@ -162,17 +162,24 @@ namespace CatMetro.Integrations
 
         private PurchaseService _service;
         private RewardedAdsComposition _rewardedAds;
+        private Func<double> _monotonicSeconds;
         private float _nextPrune;
 
-        internal void Bind(PurchaseService service, RewardedAdsComposition rewardedAds)
+        internal void Bind(PurchaseService service, RewardedAdsComposition rewardedAds,
+            Func<double> monotonicSeconds = null)
         {
             _service = service;
             _rewardedAds = rewardedAds;
+            _monotonicSeconds = monotonicSeconds ?? ReadMonotonicSeconds;
         }
 
         internal void Update()
         {
             _rewardedAds?.DrainMainThreadAdEvents();
+            double now = double.NaN;
+            try { now = _monotonicSeconds?.Invoke() ?? double.NaN; }
+            catch { }
+            _rewardedAds?.Tick(now);
             if (_service == null) return;
             if (Time.unscaledTime < _nextPrune) return;
             _nextPrune = Time.unscaledTime + PruneIntervalSeconds;
@@ -202,6 +209,9 @@ namespace CatMetro.Integrations
         {
             _rewardedAds?.Dispose();
             _rewardedAds = null;
+            _monotonicSeconds = null;
         }
+
+        private static double ReadMonotonicSeconds() => Time.unscaledTimeAsDouble;
     }
 }
