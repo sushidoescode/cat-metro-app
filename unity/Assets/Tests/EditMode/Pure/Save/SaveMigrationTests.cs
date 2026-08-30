@@ -30,6 +30,78 @@ namespace CatMetro.Tests.Save
         }
 
         [Test]
+        public void DefaultV2ToV3_AddsCosmetics_WithoutReadingLeasesOrUnknownSiblings()
+        {
+            var v2 = SaveDefaults.FreshPayload();
+            v2["saveVersion"] = 2;
+            ((JObject)v2["profile"]).Remove("cosmetics");
+            var leases = new JArray(
+                new JObject { ["entitlementId"] = "outfit_conductor", ["expiresAtUnixSeconds"] = 99L },
+                new JObject { ["futureLeaseShape"] = new JArray(1, "two") });
+            v2["entitlements"]["localLeases"] = leases.DeepClone();
+            v2["futureRoot"] = new JObject { ["kept"] = true };
+
+            var migrated = MigrationTable.CreateDefault().Migrate(v2, 2, 3);
+
+            Assert.That(migrated, Is.Not.Null, "the default table needs a v2-to-v3 step");
+            Assert.That((int)migrated["saveVersion"], Is.EqualTo(3));
+            Assert.That(migrated["profile"]["cosmetics"], Is.InstanceOf<JObject>());
+            Assert.That(JToken.DeepEquals(migrated["entitlements"]["localLeases"], leases), Is.True);
+            Assert.That((bool)migrated["futureRoot"]["kept"], Is.True);
+        }
+
+        [Test]
+        public void DefaultV1ToV3_AppliesBothStepsInOrder()
+        {
+            var legacy = RepresentativeV1();
+
+            var migrated = MigrationTable.CreateDefault().Migrate(legacy, 1, 3);
+
+            Assert.That(migrated, Is.Not.Null, "the default table needs a complete v1-to-v3 chain");
+            Assert.That((int)migrated["saveVersion"], Is.EqualTo(3));
+            Assert.That(migrated["daily"]["completedKeys"], Is.InstanceOf<JArray>());
+            Assert.That(migrated["profile"]["cosmetics"], Is.InstanceOf<JObject>());
+        }
+
+        [Test]
+        public void DefaultV2ToV3_PreservesExistingCosmeticsAndUnknownProfileSiblings()
+        {
+            var v2 = SaveDefaults.FreshPayload();
+            v2["saveVersion"] = 2;
+            var profile = (JObject)v2["profile"];
+            var cosmetics = new JObject
+            {
+                ["selectedCatId"] = "void_cat",
+                ["earnedCatIds"] = new JArray("void_cat"),
+                ["futureCosmetic"] = new JObject { ["kept"] = true },
+            };
+            profile["cosmetics"] = cosmetics.DeepClone();
+            profile["futureProfileField"] = new JArray(3, 5, 8);
+
+            var migrated = MigrationTable.CreateDefault().Migrate(v2, 2, 3);
+
+            Assert.That(migrated, Is.Not.Null, "the default table needs a v2-to-v3 step");
+            Assert.That(JToken.DeepEquals(migrated["profile"]["cosmetics"], cosmetics), Is.True);
+            Assert.That(JToken.DeepEquals(migrated["profile"]["futureProfileField"],
+                new JArray(3, 5, 8)), Is.True);
+        }
+
+        [TestCase("profile")]
+        [TestCase("profile.cosmetics")]
+        public void DefaultV2ToV3_MalformedKnownContainer_ReturnsNull(string path)
+        {
+            var v2 = SaveDefaults.FreshPayload();
+            v2["saveVersion"] = 2;
+            if (path == "profile.cosmetics")
+                ((JObject)v2["profile"])["cosmetics"] = "not-an-object";
+            else
+                v2[path] = "not-an-object";
+
+            Assert.That(MigrationTable.CreateDefault().Migrate(v2, 2, 3), Is.Null,
+                path + " must fail closed instead of silently discarding malformed data");
+        }
+
+        [Test]
         public void MigrationTable_DefaultV1ToV2_UnionsEveryReservedField_AndPreservesLegacyCaps()
         {
             var legacy = SaveDefaults.FreshPayload();
@@ -149,7 +221,7 @@ namespace CatMetro.Tests.Save
         }
 
         [Test]
-        public void SaveStore_DefaultMigration_RoundTripsRealV1FileAsUnionedV2Bytes()
+        public void SaveStore_DefaultMigration_RoundTripsRealV1FileAsUnionedV3Bytes()
         {
             using var root = new SFixtures.TempRoot();
             var store = SFixtures.Store(root);
@@ -169,20 +241,21 @@ namespace CatMetro.Tests.Save
             SFixtures.WriteRaw(store.SavePath, SFixtures.FileWithVersion(1, legacy));
 
             Assert.That(store.Load(), Is.EqualTo(LoadResult.Ok));
-            Assert.That((int)store.State.Payload["saveVersion"], Is.EqualTo(2));
+            Assert.That((int)store.State.Payload["saveVersion"], Is.EqualTo(3));
             Assert.That(store.TryCommitAtomic(), Is.True);
 
             var header = SaveHeader.TryParse(SFixtures.RawFile(store.SavePath),
                 SaveDefaults.MAGIC, out var payloadBytes);
             Assert.That(header, Is.Not.Null);
-            Assert.That(header.SaveVersion, Is.EqualTo(2));
+            Assert.That(header.SaveVersion, Is.EqualTo(3));
             var filePayload = JObject.Parse(System.Text.Encoding.UTF8.GetString(payloadBytes));
-            Assert.That((int)filePayload["saveVersion"], Is.EqualTo(2));
+            Assert.That((int)filePayload["saveVersion"], Is.EqualTo(3));
             Assert.That(filePayload["daily"]["completedKeys"], Is.InstanceOf<JArray>());
             Assert.That((bool)filePayload["settings"]["dailyReminderEnabled"], Is.False);
             Assert.That(filePayload["entitlements"]["localLeases"], Is.InstanceOf<JArray>());
             Assert.That((string)filePayload["caps"]["rewarded"]["dateKey"], Is.Empty);
             Assert.That(filePayload["caps"]["rewarded"]["counters"], Is.InstanceOf<JObject>());
+            Assert.That(filePayload["profile"]["cosmetics"], Is.InstanceOf<JObject>());
             Assert.That(JToken.DeepEquals(filePayload["futureExperiment"], expectedUnknown), Is.True);
             Assert.That(JToken.DeepEquals(filePayload["caps"]["counters"],
                 expectedLegacyCounters), Is.True,
@@ -191,7 +264,7 @@ namespace CatMetro.Tests.Save
             var reloaded = SFixtures.Store(root);
             Assert.That(reloaded.Load(), Is.EqualTo(LoadResult.Ok));
             Assert.That(JToken.DeepEquals(reloaded.State.Payload, filePayload), Is.True,
-                "the serialized v2 artifact must reload without another migration or data loss");
+                "the serialized v3 artifact must reload without another migration or data loss");
         }
 
         [Test]
@@ -200,7 +273,7 @@ namespace CatMetro.Tests.Save
             var table = MigrationTable.CreateDefault();
             Assert.That(table.Migrate(SaveDefaults.FreshPayload(), SaveDefaults.SAVE_VERSION,
                 SaveDefaults.SAVE_VERSION + 1), Is.Null,
-                "the default table must contain no unpublished v2->v3 production step");
+                "the default table must contain no unpublished v3->v4 production step");
         }
 
         [Test]

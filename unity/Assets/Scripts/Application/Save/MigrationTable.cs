@@ -28,7 +28,8 @@ namespace CatMetro.Application.Save
         private readonly List<Step> _steps = new List<Step>();
 
         public static MigrationTable CreateDefault() => new MigrationTable()
-            .Register(1, 2, SaveSchemaV2.MigrateFromV1);
+            .Register(1, 2, SaveSchemaV2.MigrateFromV1)
+            .Register(2, 3, SaveSchemaV3.MigrateFromV2);
 
         public MigrationTable Register(int from, int to, System.Func<JObject, JObject> apply)
         {
