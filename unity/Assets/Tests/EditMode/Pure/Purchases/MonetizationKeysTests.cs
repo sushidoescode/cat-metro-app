@@ -1,4 +1,7 @@
+using System;
+using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
 using CatMetro.Services.Purchases;
 using NUnit.Framework;
 
@@ -180,25 +183,42 @@ namespace CatMetro.Tests.Purchases
             Assert.That(keys.Problem, Does.Contain("placeholder"));
         }
 
-        // The test that would catch a leaked key. It inspects parsed string VALUES rather than
-        // scanning raw text, because the example file legitimately discusses the key prefixes in
-        // its own prose — a substring scan flags that documentation and is then either deleted
-        // or ignored, which is how leak detectors die. A real key is a value that STARTS WITH a
-        // prefix; a sentence mentioning one is not.
+        // The test that would catch a leaked key. It reads the blobs staged in Git's index, not
+        // the working tree: the real local runtime config is deliberately ignored and may contain
+        // a legitimate public SDK key. It inspects parsed string VALUES rather than scanning raw
+        // text, because the example file legitimately discusses the key prefixes in its own prose.
+        // A real key is a value that STARTS WITH a prefix; a sentence mentioning one is not.
         [Test]
         public void NoRealApiKey_IsCommittedAnywhereInResources()
         {
-            var dir = Path.Combine(CatMetro.Tests.Domain.Fixtures.RepoRoot(),
-                "unity", "Assets", "Resources", "Monetization");
+            string repoRoot = CatMetro.Tests.Domain.Fixtures.RepoRoot();
+            const string indexedDirectory = "unity/Assets/Resources/Monetization";
+            string[] entries = RunGit(repoRoot,
+                    "ls-files --stage -z -- " + indexedDirectory)
+                .Split(new[] { '\0' }, StringSplitOptions.RemoveEmptyEntries);
+            int scannedJsonFiles = 0;
 
-            foreach (var file in Directory.GetFiles(dir, "*.json"))
+            foreach (string entry in entries)
             {
-                var root = Newtonsoft.Json.Linq.JObject.Parse(File.ReadAllText(file));
+                int pathSeparator = entry.IndexOf('\t');
+                Assert.That(pathSeparator, Is.GreaterThan(0),
+                    "git ls-files --stage returned an unparseable index entry");
+                string[] fields = entry.Substring(0, pathSeparator).Split(' ');
+                Assert.That(fields.Length, Is.EqualTo(3),
+                    "git index metadata is mode, object id, and stage");
+                Assert.That(fields[2], Is.EqualTo("0"),
+                    "the key guard cannot prove an index with unresolved merge stages");
+
+                string indexedPath = entry.Substring(pathSeparator + 1);
+                if (!indexedPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) continue;
+                scannedJsonFiles++;
+                var root = Newtonsoft.Json.Linq.JObject.Parse(
+                    RunGit(repoRoot, "cat-file blob " + fields[1]));
                 foreach (var token in root.Descendants())
                 {
                     if (token.Type != Newtonsoft.Json.Linq.JTokenType.String) continue;
                     var value = ((string)token ?? string.Empty).Trim();
-                    var where = Path.GetFileName(file);
+                    var where = Path.GetFileName(indexedPath);
 
                     Assert.That(value.StartsWith("goog_"), Is.False,
                         "a Google RevenueCat key is committed in " + where);
@@ -210,6 +230,42 @@ namespace CatMetro.Tests.Purchases
                     Assert.That(value.StartsWith("test_"), Is.False,
                         "a RevenueCat Test Store key is committed in " + where);
                 }
+            }
+            Assert.That(scannedJsonFiles, Is.GreaterThan(0),
+                "the git index must expose at least one committed monetization JSON file");
+        }
+
+        private static string RunGit(string repoRoot, string arguments)
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = arguments,
+                WorkingDirectory = repoRoot,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            using (var process = Process.Start(startInfo))
+            {
+                Assert.That(process, Is.Not.Null, "the committed-key guard must be able to run git");
+                Task<string> stdout = process.StandardOutput.ReadToEndAsync();
+                Task<string> stderr = process.StandardError.ReadToEndAsync();
+                if (!process.WaitForExit(10000))
+                {
+                    try { process.Kill(); }
+                    catch (Exception error)
+                    {
+                        Assert.Fail("timed-out git process could not be stopped: " + error.Message);
+                    }
+                    Assert.Fail("git " + arguments + " timed out after 10 seconds");
+                }
+                Assert.That(Task.WaitAll(new Task[] { stdout, stderr }, 5000), Is.True,
+                    "git exited but its redirected output did not drain within 5 seconds");
+                Assert.That(process.ExitCode, Is.EqualTo(0),
+                    "git " + arguments + " failed: " + stderr.Result);
+                return stdout.Result;
             }
         }
 
