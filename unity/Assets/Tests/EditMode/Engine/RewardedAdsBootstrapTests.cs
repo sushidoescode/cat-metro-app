@@ -191,6 +191,54 @@ namespace CatMetro.Tests
         }
 
         [Test]
+        public void FactoryBackend_IsTheAttachedReporter_AndAloneGatesProviderStartup()
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            store.Load();
+            SaveRuntime.Install(store);
+            var backend = new BackendReporter(isReady: false);
+            int backendCreates = 0;
+            PurchaseBackendFactory.Register(_ =>
+            {
+                backendCreates++;
+                return backend;
+            });
+            var service = new PurchaseService(PFixtures.TinyCatalog(), clock: () => 1_000L);
+            var exactBackend = PurchaseBackendFactory.Create(service);
+            service.AttachBackend(exactBackend);
+            var provider = new Provider();
+            int providerCreates = 0;
+            using var composition = Composition(service,
+                exactBackend as IAdEventReporter, () =>
+                {
+                    providerCreates++;
+                    return provider;
+                });
+
+            composition.Bind();
+            service.RefreshEntitlements();
+
+            Assert.That(exactBackend, Is.SameAs(backend));
+            Assert.That(exactBackend as IAdEventReporter, Is.SameAs(backend));
+            Assert.That(backendCreates, Is.EqualTo(1));
+            Assert.That(providerCreates, Is.EqualTo(1));
+            Assert.That(backend.RefreshEntitlementsCalls, Is.EqualTo(1),
+                "the factory object must be the PurchaseService backend");
+            Assert.That(backend.ReporterEventAddCalls, Is.EqualTo(1),
+                "the same factory object must be the coordinator reporter");
+            Assert.That(provider.InitializeCalls, Is.Zero);
+            Assert.That(provider.LoadCalls, Is.Zero);
+
+            backend.SetReady(true);
+            backend.SetReady(true);
+
+            Assert.That(provider.InitializeCalls, Is.EqualTo(1));
+            Assert.That(provider.LoadCalls, Is.EqualTo(1));
+            Assert.That(backend.ReporterReadinessNotifications, Is.EqualTo(1));
+        }
+
+        [Test]
         public void NewStore_AttachesOneAdapter_StartsOneCoordinator_AndInstallsRuntime()
         {
             using var root = new SFixtures.TempRoot();
@@ -546,12 +594,19 @@ namespace CatMetro.Tests
         private sealed class BackendReporter : IPurchaseBackend, IAdEventReporter
         {
             private Action _readinessChanged;
+            private bool _isReady;
+
+            public BackendReporter(bool isReady = true)
+            {
+                _isReady = isReady;
+            }
 
             public BackendAvailability Availability => BackendAvailability.Ready;
-            public bool IsReady => true;
+            public bool IsReady => _isReady;
             public int RefreshEntitlementsCalls { get; private set; }
             public int ReporterEventAddCalls { get; private set; }
             public int ReporterEventRemoveCalls { get; private set; }
+            public int ReporterReadinessNotifications { get; private set; }
 
             public event Action ReadinessChanged
             {
@@ -572,6 +627,14 @@ namespace CatMetro.Tests
             {
                 RefreshEntitlementsCalls++;
                 onDone?.Invoke(EntitlementSnapshot.Unreachable());
+            }
+
+            public void SetReady(bool ready)
+            {
+                if (_isReady == ready) return;
+                _isReady = ready;
+                ReporterReadinessNotifications++;
+                _readinessChanged?.Invoke();
             }
 
             public void Report(RewardedAdEvent adEvent) { }
