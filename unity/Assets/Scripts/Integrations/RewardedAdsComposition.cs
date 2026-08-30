@@ -116,15 +116,22 @@ namespace CatMetro.Integrations
 
             IRewardedAdProvider provider = null;
             RewardedAdCoordinator coordinator = null;
+            if (_service == null) return;
+
+            // The prior writable store is no longer authoritative. Detach before parsing or
+            // restoring because RestoreRewardedAdLeases can publish Ledger.Changed reentrantly.
+            // Any read/restore exception before a new writable adapter is attached leaves ad
+            // rewards fail-closed, never writing through the replaced store's adapter.
+            _service.AttachLeasePersistence(null);
+            if (!OwnsStore(store)) return;
             try
             {
-                if (_service == null) return;
-
                 // Saved leases remain part of purchase truth even when ads are not configured in
                 // this build, so restore and persistence attachment happen before ad viability.
                 var saveData = new RewardedAdSaveStore(store);
                 _service.RestoreRewardedAdLeases(saveData.ReadLocalLeases());
                 if (!OwnsStore(store)) return;
+                if (store.ReadOnlyMode) return;
                 _service.AttachLeasePersistence(saveData);
                 if (!OwnsStore(store)) return;
 
