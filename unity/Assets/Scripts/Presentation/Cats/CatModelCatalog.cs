@@ -16,6 +16,7 @@ namespace CatMetro.Presentation.Cats
         public const string AlightClip = "Cat_Alight";
         public const string CelebrateClip = "Cat_Celebrate";
         public const float NormalizedStandingHeight = 1f;
+        private const float PivotCenterTolerance = 1e-4f;
         // TASK 17 measured this display scale from the admitted one-unit rig. Its value happens
         // to match ToyTrainView's 0.42 board-unit queue spacing, but the two contracts are
         // independent: this is a dimensionless presentation scale.
@@ -172,10 +173,12 @@ namespace CatMetro.Presentation.Cats
                 return false;
             }
 
+            bool isHorizontallyCentered =
+                Mathf.Abs(bounds.center.x) <= PivotCenterTolerance
+                && Mathf.Abs(bounds.center.z) <= PivotCenterTolerance;
             if (!Mathf.Approximately(bounds.size.y, NormalizedStandingHeight)
                 || !Mathf.Approximately(bounds.min.y, 0f)
-                || !Mathf.Approximately(bounds.center.x, 0f)
-                || !Mathf.Approximately(bounds.center.z, 0f))
+                || !isHorizontallyCentered)
             {
                 rejectionReason = "Cat rig must have a ground-centred, one-unit standing pivot.";
                 return false;
