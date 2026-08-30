@@ -85,6 +85,7 @@ namespace CatMetro.Integrations.RevenueCat
         private bool _purchaseSlotOccupied;
         private bool _restoreSlotOccupied;
         private long _authoritySession;
+        [NonSerialized] private Action<float> _watchdogScheduledForDiagnostics;
 
         public BackendAvailability Availability { get; private set; } = BackendAvailability.Initializing;
         public event Action Ready;
@@ -741,6 +742,7 @@ namespace CatMetro.Integrations.RevenueCat
                 return true;
             }
 
+            _watchdogScheduledForDiagnostics?.Invoke(timeoutSeconds);
             watchdog = StartCoroutine(Timeout(timeoutSeconds, () =>
             {
                 try { onTimeout?.Invoke(); }
