@@ -51,7 +51,7 @@ wardrobe.action.equip,Equip
 wardrobe.action.unequip,Unequip
 wardrobe.action.rewarded,Watch to borrow
 wardrobe.time.remaining,{time} remaining
-wardrobe.empty,No accessories are waiting at the depot yet.
+wardrobe.empty,Nothing is waiting at the depot yet.
 wardrobe.store.checking,Checking store…
 wardrobe.store.opening,Opening store…
 wardrobe.store.unavailable,Store unavailable

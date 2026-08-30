@@ -78,6 +78,14 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
+        public void EmptyStateCopy_IsNeutralAcrossEveryZeroCandidateSlot()
+        {
+            string value = SingleValue("wardrobe.empty");
+            Assert.That(value, Does.Not.Match("(?i)accessor|outfit|frame"),
+                "the same empty label is reused for every slot");
+        }
+
+        [Test]
         public void EveryCsvKey_IsUniqueBeforeUiStringsCouldOverwriteIt()
         {
             var rows = ParseRows();
