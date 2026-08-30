@@ -218,6 +218,43 @@ namespace CatMetro.Tests.Purchases
         }
 
         [Test]
+        public void ReadyNullOfferings_PreserveTheLastReadyLocalizedPriceCache()
+        {
+            var (svc, backend, _) = PFixtures.Service();
+            backend.WithProduct(ProductIds.OutfitConductor, "Conductor's Coat", "CA$2.79");
+            svc.Refresh();
+
+            backend.ReturnNullProducts = true;
+            int callbacks = 0;
+            svc.Refresh(() => callbacks++);
+
+            Assert.That(callbacks, Is.EqualTo(1));
+            Assert.That(svc.StoreProductCount, Is.EqualTo(1));
+            Assert.That(svc.TryGetPrice(ProductIds.OutfitConductor, out var price), Is.True);
+            Assert.That(price.DisplayText, Is.EqualTo("CA$2.79"),
+                "Ready plus null is a failed response, not authoritative empty offerings");
+        }
+
+        [Test]
+        public void ReadyPartialOfferings_ReplaceRatherThanMergeTheLastReadyCache()
+        {
+            var (svc, backend, _) = PFixtures.Service();
+            backend.WithProduct(ProductIds.OutfitConductor, "Conductor's Coat", "CA$2.79")
+                .WithProduct(ProductIds.FrameBrass, "Brass Frame", "CA$1.39");
+            svc.Refresh();
+            Assert.That(svc.StoreProductCount, Is.EqualTo(2));
+
+            backend.ClearProducts();
+            backend.WithProduct(ProductIds.FrameBrass, "Brass Frame", "CA$1.49");
+            svc.Refresh();
+
+            Assert.That(svc.StoreProductCount, Is.EqualTo(1));
+            Assert.That(svc.TryGetPrice(ProductIds.OutfitConductor, out _), Is.False);
+            Assert.That(svc.TryGetPrice(ProductIds.FrameBrass, out var price), Is.True);
+            Assert.That(price.DisplayText, Is.EqualTo("CA$1.49"));
+        }
+
+        [Test]
         public void DoubleTappingBuy_IsRefusedWhileTheFirstIsInFlight()
         {
             var (svc, backend, _) = PFixtures.Service();
@@ -416,6 +453,118 @@ namespace CatMetro.Tests.Purchases
             Assert.That(backend.RefreshEntitlementsCallCount, Is.EqualTo(0));
         }
 
+        [TestCase(null, false)]
+        [TestCase("cm_unknown_backend_product", false)]
+        [TestCase(null, true)]
+        [TestCase("cm_unknown_backend_product", true)]
+        public void NullOrUnknownBackendProductMetadata_CannotVacuouslyConfirmTheRequestedProduct(
+            string returnedProductId, bool direct)
+        {
+            var (svc, backend, _) = PFixtures.Service();
+            backend.GrantOnPurchase = null;
+            backend.OverridePurchaseResultProductId = true;
+            backend.NextPurchaseResultProductId = returnedProductId;
+            if (direct)
+            {
+                backend.NextPurchaseConfirmedEntitlements =
+                    new EntitlementSnapshot(true, Array.Empty<EntitlementGrant>());
+            }
+            svc.GrantRewardedAdEntitlement(EntitlementIds.OutfitConductor);
+
+            PurchaseResult result = default;
+            svc.Purchase(ProductIds.OutfitConductor, r => result = r);
+
+            Assert.That(result.ProductId, Is.EqualTo(returnedProductId),
+                "backend metadata is preserved rather than silently rewritten");
+            Assert.That(result.ConfirmedEntitlements.HasValue, Is.False,
+                "zero promises for unknown metadata cannot confirm the caller's coat purchase");
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.True,
+                "the independent rewarded lease remains active but is not purchase truth");
+            Assert.That(svc.SecondsUntilExpiry(EntitlementIds.OutfitConductor), Is.GreaterThan(0));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void MismatchedBackendMetadata_StillConfirmsWhenTheRequestedProductIsFulfilled(
+            bool direct)
+        {
+            var (svc, backend, _) = PFixtures.Service();
+            backend.OverridePurchaseResultProductId = true;
+            backend.NextPurchaseResultProductId = ProductIds.FrameBrass;
+            if (direct)
+            {
+                backend.GrantOnPurchase = null;
+                backend.NextPurchaseConfirmedEntitlements = new EntitlementSnapshot(true, new[]
+                {
+                    new EntitlementGrant(EntitlementIds.OutfitConductor, GrantSource.Store)
+                });
+            }
+
+            PurchaseResult result = default;
+            svc.Purchase(ProductIds.OutfitConductor, r => result = r);
+
+            Assert.That(result.ProductId, Is.EqualTo(ProductIds.FrameBrass));
+            Assert.That(result.ConfirmedEntitlements.HasValue, Is.True,
+                "confirmation is anchored to the caller-requested coat, not returned metadata");
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.True);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void MismatchedBackendMetadata_CannotConfirmOnlyTheWrongProductTruth(bool direct)
+        {
+            var (svc, backend, _) = PFixtures.Service();
+            backend.OverridePurchaseResultProductId = true;
+            backend.NextPurchaseResultProductId = ProductIds.FrameBrass;
+            backend.GrantOnPurchase = _ => new[] { EntitlementIds.FrameBrass };
+            if (direct)
+            {
+                backend.NextPurchaseConfirmedEntitlements = new EntitlementSnapshot(true, new[]
+                {
+                    new EntitlementGrant(EntitlementIds.FrameBrass, GrantSource.Store)
+                });
+            }
+
+            PurchaseResult result = default;
+            svc.Purchase(ProductIds.OutfitConductor, r => result = r);
+
+            Assert.That(result.ProductId, Is.EqualTo(ProductIds.FrameBrass));
+            Assert.That(result.ConfirmedEntitlements.HasValue, Is.False,
+                "truth for the returned frame cannot confirm the requested coat");
+            Assert.That(svc.IsUnlocked(EntitlementIds.FrameBrass), Is.True,
+                "the authoritative account snapshot is still applied independently");
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False);
+        }
+
+        [Test]
+        public void AdmittedZeroPromiseProduct_NeverProducesTransactionConfirmation()
+        {
+            var catalog = PurchaseCatalog.Parse(@"{
+              ""schemaVersion"": 2,
+              ""entitlements"": [],
+              ""products"": [
+                { ""id"": ""cm_consumable_no_durable_grant"", ""storeType"": ""consumable"",
+                  ""display"": ""Token"", ""entitlements"": [] }
+              ]
+            }");
+            Assert.That(catalog.TryGetProduct("cm_consumable_no_durable_grant", out _), Is.True,
+                "the parser deliberately admits consumables without durable entitlements");
+            var backend = new FakePurchaseBackend
+            {
+                GrantOnPurchase = catalog.EntitlementsFor,
+                NextPurchaseConfirmedEntitlements =
+                    new EntitlementSnapshot(true, Array.Empty<EntitlementGrant>())
+            };
+            var svc = new PurchaseService(catalog, backend);
+
+            PurchaseResult result = default;
+            svc.Purchase("cm_consumable_no_durable_grant", r => result = r);
+
+            Assert.That(result.Outcome, Is.EqualTo(PurchaseOutcome.SuccessCandidate));
+            Assert.That(result.ConfirmedEntitlements.HasValue, Is.False,
+                "an empty promise set cannot pass confirmation vacuously");
+        }
+
         // ---- the runtime locator ---------------------------------------------------------
 
         [Test]
@@ -551,6 +700,308 @@ namespace CatMetro.Tests.Purchases
             Assert.That(svc.StoreProductCount, Is.EqualTo(0),
                 "a detached backend is no longer the active offerings authority");
             Assert.That(svc.TryGetPrice(ProductIds.OutfitConductor, out _), Is.False);
+        }
+
+        [Test]
+        public void AbaReattachedBackend_LateReadyOfferingsCannotRepopulateTheClearedCache()
+        {
+            var first = new SingleSlotBackend();
+            var replacement = new SingleSlotBackend();
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), first);
+
+            svc.Refresh();
+            svc.AttachBackend(replacement);
+            svc.AttachBackend(first);
+            first.CompleteProducts();
+
+            Assert.That(svc.StoreProductCount, Is.EqualTo(0),
+                "identity alone is ABA-vulnerable; every attachment needs a new generation");
+        }
+
+        [Test]
+        public void ReattachingTheSameBackend_InvalidatesItsAlreadyStartedOfferingsFetch()
+        {
+            var backend = new SingleSlotBackend();
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), backend);
+
+            svc.Refresh();
+            svc.AttachBackend(backend);
+            backend.CompleteProducts();
+
+            Assert.That(svc.StoreProductCount, Is.EqualTo(0),
+                "even same-instance attachment is a new authority generation");
+        }
+
+        [Test]
+        public void DetachedBackend_DirectPurchaseCallbackReturnsUnconfirmedAndAppliesNoTruth()
+        {
+            var first = new SingleSlotBackend
+                { DeferPurchase = true, ReturnConfirmedSnapshot = true };
+            var replacement = new SingleSlotBackend();
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), first);
+            int callbacks = 0;
+            PurchaseResult result = default;
+
+            svc.Purchase(ProductIds.OutfitConductor, r => { callbacks++; result = r; });
+            svc.AttachBackend(replacement);
+            first.CompletePurchase();
+
+            Assert.That(callbacks, Is.EqualTo(1));
+            Assert.That(result.Outcome, Is.EqualTo(PurchaseOutcome.SuccessCandidate));
+            Assert.That(result.ConfirmedEntitlements.HasValue, Is.False);
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False);
+            Assert.That(replacement.RefreshEntitlementsCalls, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void AbaReattachedBackend_DirectPurchaseCallbackCannotApplyPriorGenerationTruth()
+        {
+            var first = new SingleSlotBackend
+                { DeferPurchase = true, ReturnConfirmedSnapshot = true };
+            var replacement = new SingleSlotBackend();
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), first);
+            PurchaseResult result = default;
+
+            svc.Purchase(ProductIds.OutfitConductor, r => result = r);
+            svc.AttachBackend(replacement);
+            svc.AttachBackend(first);
+            first.CompletePurchase();
+
+            Assert.That(result.ConfirmedEntitlements.HasValue, Is.False);
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False,
+                "the same object returning after ABA is still an older authority generation");
+            Assert.That(first.RefreshEntitlementsCalls, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void DetachedBackend_FallbackPurchaseNeverQueriesReplacementAuthority()
+        {
+            var first = new SingleSlotBackend { DeferPurchase = true };
+            var replacement = new SingleSlotBackend { Owned = true };
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), first);
+            int callbacks = 0;
+            PurchaseResult result = default;
+
+            svc.Purchase(ProductIds.OutfitConductor, r => { callbacks++; result = r; });
+            svc.AttachBackend(replacement);
+            first.CompletePurchase();
+
+            Assert.That(callbacks, Is.EqualTo(1),
+                "a stale purchase completes its caller without waiting on unrelated authority");
+            Assert.That(result.ConfirmedEntitlements.HasValue, Is.False);
+            Assert.That(replacement.RefreshEntitlementsCalls, Is.EqualTo(0),
+                "detached transaction metadata must never initiate a replacement-backend query");
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False);
+        }
+
+        [Test]
+        public void PurchaseFallbackStartedOnCurrentBackend_IsRejectedAfterAuthorityChanges()
+        {
+            var first = new SingleSlotBackend();
+            var replacement = new SingleSlotBackend();
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), first);
+            int callbacks = 0;
+            PurchaseResult result = default;
+
+            svc.Purchase(ProductIds.OutfitConductor, r => { callbacks++; result = r; });
+            Assert.That(first.RefreshEntitlementsCalls, Is.EqualTo(1));
+            Assert.That(callbacks, Is.EqualTo(0));
+
+            svc.AttachBackend(replacement);
+            first.CompleteEntitlements();
+
+            Assert.That(callbacks, Is.EqualTo(1));
+            Assert.That(result.ConfirmedEntitlements.HasValue, Is.False);
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False,
+                "fallback CustomerInfo belongs to the backend generation that requested it");
+            Assert.That(replacement.RefreshEntitlementsCalls, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void DetachedBackend_DirectCompletedRestoreBecomesTruthfulFailure()
+        {
+            var first = new SingleSlotBackend
+                { DeferRestore = true, ReturnConfirmedSnapshot = true };
+            var replacement = new SingleSlotBackend();
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), first);
+            int callbacks = 0;
+            RestoreResult result = default;
+
+            svc.Restore(r => { callbacks++; result = r; });
+            svc.AttachBackend(replacement);
+            first.CompleteRestore();
+
+            Assert.That(callbacks, Is.EqualTo(1));
+            Assert.That(result.Outcome, Is.EqualTo(RestoreOutcome.Failure));
+            Assert.That(result.DiagnosticMessage, Does.Contain("backend").IgnoreCase);
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False);
+            Assert.That(replacement.RefreshEntitlementsCalls, Is.EqualTo(0));
+        }
+
+        [TestCase(RestoreOutcome.Failure)]
+        [TestCase(RestoreOutcome.Unavailable)]
+        public void DetachedBackend_NonCompletedRestoreStripsAllAuthorityMetadata(
+            RestoreOutcome outcome)
+        {
+            var first = new FakePurchaseBackend
+            {
+                DeferCallbacks = true,
+                NextRestoreOutcome = outcome,
+                NextRestoreReportedCount = 7,
+                NextRestoreDiagnostic = "store diagnostic",
+                NextRestoreConfirmedEntitlements = new EntitlementSnapshot(true, new[]
+                {
+                    new EntitlementGrant(EntitlementIds.OutfitConductor, GrantSource.Store)
+                })
+            };
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), first);
+            RestoreResult result = default;
+
+            svc.Restore(r => result = r);
+            svc.AttachBackend(new FakePurchaseBackend());
+            first.DeferCallbacks = false;
+            first.CompleteDeferred();
+
+            Assert.That(result.Outcome, Is.EqualTo(outcome));
+            Assert.That(result.RestoredEntitlementCount, Is.EqualTo(0));
+            Assert.That(result.DiagnosticMessage, Is.EqualTo("store diagnostic"));
+            Assert.That(result.ConfirmedEntitlements.HasValue, Is.False,
+                "detached authority metadata is stripped for every stale restore outcome");
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False);
+        }
+
+        [Test]
+        public void AbaReattachedBackend_DirectCompletedRestoreCannotApplyPriorGenerationTruth()
+        {
+            var first = new SingleSlotBackend
+                { DeferRestore = true, ReturnConfirmedSnapshot = true };
+            var replacement = new SingleSlotBackend();
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), first);
+            RestoreResult result = default;
+
+            svc.Restore(r => result = r);
+            svc.AttachBackend(replacement);
+            svc.AttachBackend(first);
+            first.CompleteRestore();
+
+            Assert.That(result.Outcome, Is.EqualTo(RestoreOutcome.Failure));
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False);
+            Assert.That(first.RefreshEntitlementsCalls, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void DetachedBackend_FallbackCompletedRestoreNeverQueriesReplacementAuthority()
+        {
+            var first = new SingleSlotBackend { DeferRestore = true };
+            var replacement = new SingleSlotBackend { Owned = true };
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), first);
+            int callbacks = 0;
+            RestoreResult result = default;
+
+            svc.Restore(r => { callbacks++; result = r; });
+            svc.AttachBackend(replacement);
+            first.CompleteRestore();
+
+            Assert.That(callbacks, Is.EqualTo(1));
+            Assert.That(result.Outcome, Is.EqualTo(RestoreOutcome.Failure));
+            Assert.That(replacement.RefreshEntitlementsCalls, Is.EqualTo(0));
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False);
+        }
+
+        [Test]
+        public void RestoreFallbackStartedOnCurrentBackend_IsRejectedAfterAuthorityChanges()
+        {
+            var first = new SingleSlotBackend();
+            var replacement = new SingleSlotBackend();
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), first);
+            int callbacks = 0;
+            RestoreResult result = default;
+
+            svc.Restore(r => { callbacks++; result = r; });
+            Assert.That(first.RefreshEntitlementsCalls, Is.EqualTo(1));
+            Assert.That(callbacks, Is.EqualTo(0));
+
+            svc.AttachBackend(replacement);
+            first.CompleteEntitlements();
+
+            Assert.That(callbacks, Is.EqualTo(1));
+            Assert.That(result.Outcome, Is.EqualTo(RestoreOutcome.Failure));
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False);
+            Assert.That(replacement.RefreshEntitlementsCalls, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void AbaReattachedBackend_LateEntitlementRefreshCannotReplaceCurrentLedger()
+        {
+            var first = new SingleSlotBackend { Owned = true };
+            var replacement = new SingleSlotBackend();
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), first);
+            int callbacks = 0;
+
+            svc.RefreshEntitlements(() => callbacks++);
+            svc.AttachBackend(replacement);
+            svc.AttachBackend(first);
+            first.CompleteEntitlements();
+
+            Assert.That(callbacks, Is.EqualTo(1));
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False,
+                "a prior-generation CustomerInfo response is rejected even after ABA");
+        }
+
+        [Test]
+        public void QueuedEntitlementRefresh_DoesNotMigrateToAReplacementBackend()
+        {
+            var first = new SingleSlotBackend();
+            var replacement = new SingleSlotBackend { Owned = true };
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), first);
+            int firstDone = 0, queuedDone = 0;
+
+            svc.RefreshEntitlements(() => firstDone++);
+            svc.RefreshEntitlements(() => queuedDone++);
+            svc.AttachBackend(replacement);
+            first.CompleteEntitlements();
+
+            Assert.That(firstDone, Is.EqualTo(1));
+            Assert.That(queuedDone, Is.EqualTo(1),
+                "prior-authority queued work is rejected and completed, not migrated");
+            Assert.That(replacement.RefreshEntitlementsCalls, Is.EqualTo(0));
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False);
+        }
+
+        [Test]
+        public void EntitlementPump_ReservesTheNativeSlotWhileStaleCallbacksEnqueueCurrentWork()
+        {
+            var backend = new SingleSlotBackend();
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), backend);
+            int oldInFlight = 0, staleOne = 0, staleTwo = 0, currentOne = 0, currentTwo = 0;
+
+            svc.RefreshEntitlements(() => oldInFlight++);
+            svc.RefreshEntitlements(() =>
+            {
+                staleOne++;
+                svc.RefreshEntitlements(() => currentOne++);
+                svc.RefreshEntitlements(() => currentTwo++);
+            });
+            svc.RefreshEntitlements(() => staleTwo++);
+            svc.AttachBackend(backend);
+
+            backend.CompleteEntitlements();
+
+            Assert.That(oldInFlight, Is.EqualTo(1));
+            Assert.That(staleOne, Is.EqualTo(1));
+            Assert.That(staleTwo, Is.EqualTo(1));
+            Assert.That(backend.RefreshEntitlementsCalls, Is.EqualTo(2),
+                "stale callback reentrancy may start exactly one current native request");
+            Assert.That(currentOne + currentTwo, Is.EqualTo(0));
+
+            backend.CompleteEntitlements();
+            Assert.That(currentOne + currentTwo, Is.EqualTo(1));
+            Assert.That(backend.RefreshEntitlementsCalls, Is.EqualTo(3));
+
+            backend.CompleteEntitlements();
+            Assert.That(currentOne, Is.EqualTo(1));
+            Assert.That(currentTwo, Is.EqualTo(1));
+            Assert.That(backend.RefreshEntitlementsCalls, Is.EqualTo(3));
         }
 
         [Test]
@@ -802,15 +1253,22 @@ namespace CatMetro.Tests.Purchases
             IPurchaseBackendTransactionUpdates
         {
             private Action _completeProducts;
+            private Action _completePurchase;
+            private Action _completeRestore;
             private Action _completeEntitlements;
             private bool _owned;
 
             public BackendAvailability Availability => BackendAvailability.Ready;
             public event Action<EntitlementSnapshot> TransactionEntitlementsConfirmed;
             public int FetchProductsCalls { get; private set; }
+            public int PurchaseCalls { get; private set; }
+            public int RestoreCalls { get; private set; }
             public int RefreshEntitlementsCalls { get; private set; }
             public bool ReturnConfirmedSnapshot { get; set; }
             public bool GrantOnRestore { get; set; } = true;
+            public bool DeferPurchase { get; set; }
+            public bool DeferRestore { get; set; }
+            public bool Owned { get => _owned; set => _owned = value; }
 
             public void FetchProducts(Action<IReadOnlyList<StoreProductView>> onDone)
             {
@@ -824,16 +1282,23 @@ namespace CatMetro.Tests.Purchases
 
             public void Purchase(string productId, Action<PurchaseResult> onDone)
             {
+                PurchaseCalls++;
                 _owned = true;
-                onDone?.Invoke(new PurchaseResult(PurchaseOutcome.SuccessCandidate, productId,
+                void Complete() => onDone?.Invoke(new PurchaseResult(
+                    PurchaseOutcome.SuccessCandidate, productId,
                     confirmedEntitlements: ReturnConfirmedSnapshot ? Snapshot(_owned) : null));
+                if (DeferPurchase) _completePurchase = Complete;
+                else Complete();
             }
 
             public void Restore(Action<RestoreResult> onDone)
             {
+                RestoreCalls++;
                 if (GrantOnRestore) _owned = true;
-                onDone?.Invoke(new RestoreResult(RestoreOutcome.Completed,
+                void Complete() => onDone?.Invoke(new RestoreResult(RestoreOutcome.Completed,
                     confirmedEntitlements: ReturnConfirmedSnapshot ? Snapshot(_owned) : null));
+                if (DeferRestore) _completeRestore = Complete;
+                else Complete();
             }
 
             public void RefreshEntitlements(Action<EntitlementSnapshot> onDone)
@@ -853,6 +1318,20 @@ namespace CatMetro.Tests.Purchases
             {
                 var callback = _completeProducts;
                 _completeProducts = null;
+                callback?.Invoke();
+            }
+
+            public void CompletePurchase()
+            {
+                var callback = _completePurchase;
+                _completePurchase = null;
+                callback?.Invoke();
+            }
+
+            public void CompleteRestore()
+            {
+                var callback = _completeRestore;
+                _completeRestore = null;
                 callback?.Invoke();
             }
 
