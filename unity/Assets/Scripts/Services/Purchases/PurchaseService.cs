@@ -35,6 +35,7 @@ namespace CatMetro.Services.Purchases
         private IEntitlementLeasePersistence _leasePersistence;
         private IPurchaseBackendReadiness _readinessBackend;
         private IPurchaseBackendTransactionUpdates _transactionUpdatesBackend;
+        private Action<TransactionEntitlementUpdate> _transactionUpdateHandler;
 
         private readonly Dictionary<string, StoreProductView> _storeProducts =
             new Dictionary<string, StoreProductView>(StringComparer.Ordinal);
@@ -80,9 +81,9 @@ namespace CatMetro.Services.Purchases
         {
             if (_readinessBackend != null)
                 _readinessBackend.Ready -= OnBackendReady;
-            if (_transactionUpdatesBackend != null)
+            if (_transactionUpdatesBackend != null && _transactionUpdateHandler != null)
                 _transactionUpdatesBackend.TransactionEntitlementsConfirmed -=
-                    OnTransactionEntitlementsConfirmed;
+                    _transactionUpdateHandler;
 
             unchecked
             {
@@ -95,8 +96,26 @@ namespace CatMetro.Services.Purchases
                 _readinessBackend.Ready += OnBackendReady;
             _transactionUpdatesBackend = _backend as IPurchaseBackendTransactionUpdates;
             if (_transactionUpdatesBackend != null)
+            {
+                var authoritySession = _transactionUpdatesBackend.BeginAuthoritySession();
+                var attachedBackend = _backend;
+                var attachedGeneration = _backendGeneration;
+                _transactionUpdateHandler = update =>
+                {
+                    if (authoritySession == 0
+                        || update.AuthoritySessionId != authoritySession
+                        || !IsCurrentBackend(attachedBackend, attachedGeneration)
+                        || !update.Snapshot.IsAuthoritative)
+                        return;
+                    TryApplyConfirmedSnapshot(update.Snapshot);
+                };
                 _transactionUpdatesBackend.TransactionEntitlementsConfirmed +=
-                    OnTransactionEntitlementsConfirmed;
+                    _transactionUpdateHandler;
+            }
+            else
+            {
+                _transactionUpdateHandler = null;
+            }
             _storeProducts.Clear();
         }
 
@@ -389,10 +408,6 @@ namespace CatMetro.Services.Purchases
             candidate.Sort((a, b) => string.CompareOrdinal(a.EntitlementId, b.EntitlementId));
             return candidate;
         }
-
-        private void OnTransactionEntitlementsConfirmed(EntitlementSnapshot snapshot)
-            => TryApplyConfirmedSnapshot(snapshot);
-
         // purchases-unity 9.9 keeps one native callback slot per operation. Calling the same
         // operation again before it completes overwrites that slot and strands the first caller
         // until our 30-second timeout. Queue at the engine-free seam so launch, resume, wardrobe,

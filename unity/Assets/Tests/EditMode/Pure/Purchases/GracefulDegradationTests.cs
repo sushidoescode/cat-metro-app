@@ -1137,6 +1137,171 @@ namespace CatMetro.Tests.Purchases
         }
 
         [Test]
+        public void TransactionUpdateSubscription_HasExactlyOneCurrentHandlerAcrossRemounts()
+        {
+            var first = new SingleSlotBackend();
+            var second = new SingleSlotBackend();
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), first);
+
+            Assert.That(first.TransactionSubscriberCount, Is.EqualTo(1));
+            Assert.That(first.TransactionSubscriptionAdds, Is.EqualTo(1));
+
+            svc.AttachBackend(second);
+            Assert.That(first.TransactionSubscriberCount, Is.EqualTo(0));
+            Assert.That(first.TransactionSubscriptionRemoves, Is.EqualTo(1));
+            Assert.That(second.TransactionSubscriberCount, Is.EqualTo(1));
+
+            svc.AttachBackend(first);
+            Assert.That(second.TransactionSubscriberCount, Is.EqualTo(0));
+            Assert.That(second.TransactionSubscriptionRemoves, Is.EqualTo(1));
+            Assert.That(first.TransactionSubscriberCount, Is.EqualTo(1));
+            Assert.That(first.TransactionSubscriptionAdds, Is.EqualTo(2));
+
+            svc.AttachBackend(first);
+            Assert.That(first.TransactionSubscriberCount, Is.EqualTo(1));
+            Assert.That(first.TransactionSubscriptionAdds, Is.EqualTo(3));
+            Assert.That(first.TransactionSubscriptionRemoves, Is.EqualTo(2));
+
+            first.SignalTransactionUpdate(owned: false);
+            Assert.That(first.LastPublishHandlerCount, Is.EqualTo(1),
+                "ledger no-op deduplication cannot conceal duplicate subscription handlers");
+        }
+
+        [Test]
+        public void StaleSessionUpdate_DoesNotInvalidateCurrentEntitlementRefreshEpoch()
+        {
+            var backend = new SingleSlotBackend
+            {
+                CaptureLateTransactionUpdate = true,
+                CapturedLateUpdateOwned = false
+            };
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), backend);
+
+            svc.Purchase(ProductIds.OutfitConductor, _ => { });
+            svc.AttachBackend(backend);
+            backend.Owned = true;
+            svc.RefreshEntitlements();
+
+            backend.PublishCapturedPurchaseUpdate();
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False,
+                "rejected stale truth cannot mutate the ledger");
+
+            backend.CompleteEntitlements();
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.True,
+                "rejected stale truth cannot invalidate a current refresh epoch");
+        }
+
+        [Test]
+        public void DefaultUnknownAndNonAuthoritativeTransactionUpdates_AreRejected()
+        {
+            var backend = new SingleSlotBackend();
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), backend);
+            int ledgerChanges = 0;
+            svc.Ledger.Changed += () => ledgerChanges++;
+
+            backend.SignalTransactionUpdate(0, new EntitlementSnapshot(true, new[]
+            {
+                new EntitlementGrant(EntitlementIds.OutfitConductor, GrantSource.Store)
+            }));
+            backend.SignalTransactionUpdate(backend.CurrentAuthoritySession + 99,
+                new EntitlementSnapshot(true, new[]
+                {
+                    new EntitlementGrant(EntitlementIds.OutfitConductor, GrantSource.Store)
+                }));
+            backend.SignalTransactionUpdate(backend.CurrentAuthoritySession,
+                EntitlementSnapshot.Unreachable());
+
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False);
+            Assert.That(ledgerChanges, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void EqualSessionNumbersOnDistinctBackends_RemainFencedByAttachmentIdentity()
+        {
+            var first = new SingleSlotBackend();
+            var second = new SingleSlotBackend();
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), first);
+            Assert.That(first.CurrentAuthoritySession, Is.EqualTo(1));
+
+            svc.AttachBackend(second);
+            Assert.That(second.CurrentAuthoritySession, Is.EqualTo(1),
+                "backend-local opaque tokens may legitimately share numeric values");
+
+            first.SignalTransactionUpdate(second.CurrentAuthoritySession, SnapshotWithCoat());
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False);
+
+            second.SignalTransactionUpdate(first.CurrentAuthoritySession, SnapshotWithCoat());
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.True);
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void AbaReattachedBackend_RejectsLateUpdateCapturedByItsPriorAttachment(
+            bool purchase)
+        {
+            var first = new SingleSlotBackend { CaptureLateTransactionUpdate = true };
+            var replacement = new SingleSlotBackend();
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), first);
+            int ledgerChanges = 0;
+            int localCallbacks = 0;
+            svc.Ledger.Changed += () => ledgerChanges++;
+
+            if (purchase) svc.Purchase(ProductIds.OutfitConductor, _ => localCallbacks++);
+            else svc.Restore(_ => localCallbacks++);
+            Assert.That(localCallbacks, Is.EqualTo(1));
+
+            svc.AttachBackend(replacement);
+            svc.AttachBackend(first);
+            if (purchase) first.PublishCapturedPurchaseUpdate();
+            else first.PublishCapturedRestoreUpdate();
+
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False,
+                "an A1 transaction cannot publish authority through A3's new subscription");
+            Assert.That(ledgerChanges, Is.EqualTo(0));
+            Assert.That(localCallbacks, Is.EqualTo(1),
+                "the late event cannot refire the A1 transaction caller");
+
+            if (purchase) svc.Purchase(ProductIds.OutfitConductor, _ => localCallbacks++);
+            else svc.Restore(_ => localCallbacks++);
+            if (purchase) first.PublishCapturedPurchaseUpdate();
+            else first.PublishCapturedRestoreUpdate();
+
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.True,
+                "a transaction begun under the current A3 attachment remains accepted");
+            Assert.That(ledgerChanges, Is.EqualTo(1));
+            Assert.That(localCallbacks, Is.EqualTo(2));
+
+            if (purchase) first.PublishCapturedPurchaseUpdate();
+            else first.PublishCapturedRestoreUpdate();
+            Assert.That(ledgerChanges, Is.EqualTo(1),
+                "re-delivering identical current truth cannot change the ledger twice");
+            Assert.That(localCallbacks, Is.EqualTo(2));
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void SameInstanceReattach_RejectsAlreadyCapturedLateTransactionUpdate(bool purchase)
+        {
+            var backend = new SingleSlotBackend { CaptureLateTransactionUpdate = true };
+            var svc = new PurchaseService(PFixtures.TinyCatalog(), backend);
+            int ledgerChanges = 0;
+            int localCallbacks = 0;
+            svc.Ledger.Changed += () => ledgerChanges++;
+
+            if (purchase) svc.Purchase(ProductIds.OutfitConductor, _ => localCallbacks++);
+            else svc.Restore(_ => localCallbacks++);
+            svc.AttachBackend(backend);
+            if (purchase) backend.PublishCapturedPurchaseUpdate();
+            else backend.PublishCapturedRestoreUpdate();
+
+            Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.False);
+            Assert.That(ledgerChanges, Is.EqualTo(0),
+                "every same-object attachment begins a distinct transaction authority session");
+            Assert.That(localCallbacks, Is.EqualTo(1),
+                "the late event cannot refire the timed-out transaction caller");
+        }
+
+        [Test]
         public void EmptyConfirmedRestore_DoesNotCountAnActiveAdLeaseAsAPurchase()
         {
             var backend = new SingleSlotBackend
@@ -1157,6 +1322,12 @@ namespace CatMetro.Tests.Purchases
             Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.True,
                 "the empty store snapshot must preserve the independently earned ad lease");
         }
+
+        private static EntitlementSnapshot SnapshotWithCoat()
+            => new EntitlementSnapshot(true, new[]
+            {
+                new EntitlementGrant(EntitlementIds.OutfitConductor, GrantSource.Store)
+            });
 
         // ---- restore ---------------------------------------------------------------------
 
@@ -1258,19 +1429,52 @@ namespace CatMetro.Tests.Purchases
             private Action _completePurchase;
             private Action _completeRestore;
             private Action _completeEntitlements;
+            private Action _publishCapturedPurchaseUpdate;
+            private Action _publishCapturedRestoreUpdate;
+            private Action<TransactionEntitlementUpdate> _transactionUpdateHandlers;
             private bool _owned;
+            private long _authoritySession;
 
             public BackendAvailability Availability => BackendAvailability.Ready;
-            public event Action<EntitlementSnapshot> TransactionEntitlementsConfirmed;
+            public event Action<TransactionEntitlementUpdate> TransactionEntitlementsConfirmed
+            {
+                add
+                {
+                    _transactionUpdateHandlers += value;
+                    TransactionSubscriptionAdds++;
+                    TransactionSubscriberCount =
+                        _transactionUpdateHandlers?.GetInvocationList().Length ?? 0;
+                }
+                remove
+                {
+                    _transactionUpdateHandlers -= value;
+                    TransactionSubscriptionRemoves++;
+                    TransactionSubscriberCount =
+                        _transactionUpdateHandlers?.GetInvocationList().Length ?? 0;
+                }
+            }
             public int FetchProductsCalls { get; private set; }
             public int PurchaseCalls { get; private set; }
             public int RestoreCalls { get; private set; }
             public int RefreshEntitlementsCalls { get; private set; }
+            public int TransactionSubscriptionAdds { get; private set; }
+            public int TransactionSubscriptionRemoves { get; private set; }
+            public int TransactionSubscriberCount { get; private set; }
+            public int LastPublishHandlerCount { get; private set; }
+            public long CurrentAuthoritySession => _authoritySession;
             public bool ReturnConfirmedSnapshot { get; set; }
             public bool GrantOnRestore { get; set; } = true;
             public bool DeferPurchase { get; set; }
             public bool DeferRestore { get; set; }
+            public bool CaptureLateTransactionUpdate { get; set; }
+            public bool CapturedLateUpdateOwned { get; set; } = true;
             public bool Owned { get => _owned; set => _owned = value; }
+
+            public long BeginAuthoritySession()
+            {
+                _authoritySession++;
+                return _authoritySession;
+            }
 
             public void FetchProducts(Action<IReadOnlyList<StoreProductView>> onDone)
             {
@@ -1285,6 +1489,16 @@ namespace CatMetro.Tests.Purchases
             public void Purchase(string productId, Action<PurchaseResult> onDone)
             {
                 PurchaseCalls++;
+                if (CaptureLateTransactionUpdate)
+                {
+                    long capturedSession = _authoritySession;
+                    bool capturedOwned = CapturedLateUpdateOwned;
+                    _publishCapturedPurchaseUpdate = () =>
+                        PublishTransactionUpdate(capturedSession, Snapshot(capturedOwned));
+                    onDone?.Invoke(new PurchaseResult(PurchaseOutcome.Failure, productId,
+                        diagnosticMessage: "local purchase callback timed out"));
+                    return;
+                }
                 _owned = true;
                 void Complete() => onDone?.Invoke(new PurchaseResult(
                     PurchaseOutcome.SuccessCandidate, productId,
@@ -1296,6 +1510,16 @@ namespace CatMetro.Tests.Purchases
             public void Restore(Action<RestoreResult> onDone)
             {
                 RestoreCalls++;
+                if (CaptureLateTransactionUpdate)
+                {
+                    long capturedSession = _authoritySession;
+                    bool capturedOwned = CapturedLateUpdateOwned;
+                    _publishCapturedRestoreUpdate = () =>
+                        PublishTransactionUpdate(capturedSession, Snapshot(capturedOwned));
+                    onDone?.Invoke(new RestoreResult(RestoreOutcome.Failure,
+                        diagnosticMessage: "local restore callback timed out"));
+                    return;
+                }
                 if (GrantOnRestore) _owned = true;
                 void Complete() => onDone?.Invoke(new RestoreResult(RestoreOutcome.Completed,
                     confirmedEntitlements: ReturnConfirmedSnapshot ? Snapshot(_owned) : null));
@@ -1345,7 +1569,26 @@ namespace CatMetro.Tests.Purchases
             }
 
             public void SignalTransactionUpdate(bool owned)
-                => TransactionEntitlementsConfirmed?.Invoke(Snapshot(owned));
+                => PublishTransactionUpdate(_authoritySession, Snapshot(owned));
+
+            public void SignalTransactionUpdate(long authoritySession,
+                EntitlementSnapshot snapshot)
+                => PublishTransactionUpdate(authoritySession, snapshot);
+
+            private void PublishTransactionUpdate(long authoritySession,
+                EntitlementSnapshot snapshot)
+            {
+                LastPublishHandlerCount =
+                    _transactionUpdateHandlers?.GetInvocationList().Length ?? 0;
+                _transactionUpdateHandlers?.Invoke(
+                    new TransactionEntitlementUpdate(authoritySession, snapshot));
+            }
+
+            public void PublishCapturedPurchaseUpdate()
+                => _publishCapturedPurchaseUpdate?.Invoke();
+
+            public void PublishCapturedRestoreUpdate()
+                => _publishCapturedRestoreUpdate?.Invoke();
         }
     }
 }
