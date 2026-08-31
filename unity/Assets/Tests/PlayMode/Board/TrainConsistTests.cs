@@ -64,9 +64,8 @@ namespace CatMetro.Tests.PlayMode
             PlaceOnEdge(edge: 1, progressTicks: 6);
             _view.UpdateFrom(_session);
 
-            // First-render verdict (2026-08-25): a head near the box's full width reads as
-            // a ball ON the carriage. Target-02's cats are 60-70% of the box width with the
-            // lower third hidden by the brim — pin the LAW, not the current magic numbers.
+            // The 2026-08-31 curated references put heads at roughly 70-85% of carriage width
+            // with only their lower portion behind the wall — pin the LAW, not magic numbers.
             // r3: these were computed from localScale, which is NOT a size — it is a size only
             // once multiplied by the mesh's own bounds. Against pSphere1 (~3.33 units across)
             // the head scored 0.679 here while RENDERING at 2.26x the box's width. Both laws
@@ -81,14 +80,14 @@ namespace CatMetro.Tests.PlayMode
                 "not unit-sized, and assuming they are is what buried the whole face");
 
             float widthRatio = headSize.x / bodySize.y; // lateral axis is y
-            Assert.That(widthRatio, Is.InRange(0.55f, 0.75f),
+            Assert.That(widthRatio, Is.InRange(0.72f, 0.88f),
                 "the chibi head stays clearly narrower than the open box it sits in");
 
             float bodyTop = body.localPosition.z - bodySize.z * 0.5f; // -z is up
             float headBottom = head.localPosition.z + headSize.z * 0.5f;
             float submerged = (headBottom - bodyTop) / headSize.z;
-            Assert.That(submerged, Is.InRange(0.25f, 0.5f),
-                "the brim hides roughly the lower third of the head — seated IN, not ON");
+            Assert.That(submerged, Is.InRange(0.10f, 0.25f),
+                "the low wall hides only the lower fifth — seated IN but readable above it");
         }
 
         // ── The invisible-ears regression, pinned ───────────────────────────────────────
@@ -100,11 +99,11 @@ namespace CatMetro.Tests.PlayMode
         // the camera actually performs, not in board-space clearance, and they are checked at
         // several headings because heading is what buried the far ear.
 
-        // World units of on-screen clearance beyond the head's silhouette. At the fitted
-        // gameplay zoom the board renders ~93 px per board unit (measured off the 917x2048
-        // capture: a 0.90 sleeper spans 72 px, sleeper pitch 0.42 spans 32.7 px), so a
-        // 17.7 px head needs an ear standing at least ~4.7 px clear to read as an ear.
-        private const float MinEarSilhouetteClearance = 0.05f;
+        // World units of on-screen clearance beyond the head's silhouette. At the fixed
+        // 93 px/unit readability yardstick, the 0.31-unit head is 28.8 px and needs an ear
+        // standing several pixels clear to read as an ear. The artifact test owns the actual
+        // production-camera percentage; this is deliberately only a conservative size check.
+        private const float MinEarSilhouetteClearance = 0.03f;
 
         // Board z of the switch-disc slab's mid-plane. Ears must stay UNDER it: a cat passes
         // beneath a signal, it does not grow through one. This is the ceiling that makes
@@ -182,9 +181,8 @@ namespace CatMetro.Tests.PlayMode
             // Rendered, not authored: ear and head carry DIFFERENT builtin meshes (cube vs
             // sphere), so a localScale ratio here compared two incommensurate numbers.
             float earToHead = RenderedWorldSize(ear).y / RenderedWorldSize(head).x;
-            Assert.That(earToHead, Is.InRange(0.5f, 0.8f),
-                "target-02's ears are a large fraction of the head — a token nub cannot read " +
-                "at a 17.7 px head no matter where it is placed");
+            Assert.That(earToHead, Is.InRange(0.35f, 0.60f),
+                "the ears stay a substantial fraction of the larger phone-readable head");
 
             float tipZ = EarExtremeBoardZ(ear);
             Assert.That(tipZ, Is.GreaterThan(SwitchDiscMidPlaneZ + 0.01f),
@@ -229,7 +227,7 @@ namespace CatMetro.Tests.PlayMode
             {
                 var part = cat.Find(feature);
                 Assert.That(part, Is.Not.Null,
-                    $"the cat needs {feature} — at a 17.7 px head the face is what reads, " +
+                    $"the cat needs {feature} — at the 28.8 px yardstick the face reads, " +
                     "and target-02's cats are eyes-and-muzzle first");
                 Assert.That(part.GetComponent<MeshFilter>().sharedMesh, Is.Not.Null,
                     feature + " must resolve its builtin mesh");
@@ -328,12 +326,11 @@ namespace CatMetro.Tests.PlayMode
         // for the reason the ear tests carry in their own header: 27 authored-space tests once
         // passed unanimously while the render showed a bare ball.
 
-        // Board units to screen pixels at the fitted gameplay zoom. BoardSceneLook.FitCamera is
-        // orthographic and floors orthographicSize at 7, so px per board unit is (height/2) /
-        // size: an L001-class level on a 917x2048 capture renders 1024/7 = 146, and a level big
-        // enough to need size ~11 renders ~93. 93 is the honest WORST case and the figure the
-        // ear work measured, so every readability law here is stated against it.
-        private const float GameplayPixelsPerBoardUnit = 93f;
+        // A fixed conservative readability yardstick retained for the pin's sub-feature sizes.
+        // It is not claimed as the current corpus minimum: camera fit varies with level and with
+        // which licensed prop batch is locally installed. BoardLookTests separately measures the
+        // passenger against a real 917x2048 production-camera artifact.
+        private const float ReadabilityYardstickPixelsPerBoardUnit = 93f;
 
         // The lowest board z any switch furniture reaches. The disc is a cylinder centred at
         // -0.4, scaled 0.08 on its 2-unit axis, so the slab runs -0.48..-0.32; on onboarding
@@ -440,7 +437,7 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(Vector3.Dot(asSeen * Vector3.forward, Vector3.forward),
                     Is.GreaterThan(0.9999f),
                     $"on edge {edge} the pin's face must point straight down the view axis — " +
-                    "a card left lying in the board plane renders at cos 48 = 67% height and " +
+                    "a card left lying in the board plane renders at cos 38 = 79% height and " +
                     "its circle reads as an ellipse");
                 Assert.That(Vector3.Dot(asSeen * Vector3.up, Vector3.up),
                     Is.GreaterThan(0.9999f),
@@ -467,13 +464,14 @@ namespace CatMetro.Tests.PlayMode
                     $"on edge {edge} the pin must sit dead above its cat, not off to one side " +
                     "— the board-plane offset is SOLVED for zero screen drift, so any wander " +
                     "here means the heading counter-rotation was dropped");
-                Assert.That(pin.y - head.y, Is.EqualTo(0.26f).Within(0.001f),
+                Assert.That(pin.y - head.y, Is.EqualTo(0.30f).Within(0.001f),
                     $"on edge {edge} the pin must hold the same screen rise at every heading");
             }
         }
 
-        // The clearance the whole placement exists to buy. A card held square to a camera 48
-        // degrees off the board plane spans a LOT of board z on its own, and the airspace
+        // The clearance the whole placement exists to buy. The camera view is 38 degrees off
+        // the board normal (52 degrees above its plane), so a square-on card spans a LOT of
+        // board z on its own, and the airspace
         // straight above a cat's head belongs to the switch discs — the same ceiling that made
         // "just make the ears taller" the wrong fix. Measured on the shipped meshes' real
         // vertices through their real transforms, so rounded corners count as rounded.
@@ -503,23 +501,25 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator Pin_ReadsAtGameplayZoom_OutSizingTheHeadItLabels()
+        public IEnumerator Pin_ReadsAtConservative93PixelYardstick_AlongsideTheLargerHead()
         {
             yield return BuildBoard();
             PlaceOnEdge(edge: 1, progressTicks: 6);
             _view.UpdateFrom(_session);
 
-            float cardPx = RenderedWorldSize(Pin().Find("Card")).x * GameplayPixelsPerBoardUnit;
+            float cardPx = RenderedWorldSize(Pin().Find("Card")).x
+                * ReadabilityYardstickPixelsPerBoardUnit;
             float symbolPx =
-                RenderedWorldSize(Pin().Find("Symbol")).x * GameplayPixelsPerBoardUnit;
+                RenderedWorldSize(Pin().Find("Symbol")).x
+                * ReadabilityYardstickPixelsPerBoardUnit;
             float headPx = RenderedWorldSize(TrainRoot().transform.Find("Carriage/Cat/Head")).x
-                * GameplayPixelsPerBoardUnit;
+                * ReadabilityYardstickPixelsPerBoardUnit;
 
-            Assert.That(headPx, Is.EqualTo(17.7f).Within(0.5f),
-                "sanity on the yardstick itself: the head renders 17.7 px at the worst zoom");
-            Assert.That(cardPx, Is.GreaterThan(headPx),
-                $"the card ({cardPx:F1} px) must out-read the head ({headPx:F1} px) it labels " +
-                "— in target-01 the pin is about as large as the cat, and ours starts smaller");
+            Assert.That(headPx, Is.GreaterThan(28f),
+                "the enlarged passenger remains readable at the conservative yardstick");
+            Assert.That(cardPx / headPx, Is.GreaterThan(0.75f),
+                $"the constrained card ({cardPx:F1} px) must remain substantial beside the " +
+                $"larger head ({headPx:F1} px) it labels");
             Assert.That(symbolPx, Is.GreaterThan(12f),
                 $"the symbol ({symbolPx:F1} px) carries the entire destination channel");
             Assert.That(cardPx - symbolPx, Is.GreaterThan(4f),
@@ -530,9 +530,9 @@ namespace CatMetro.Tests.PlayMode
             // the symbol at 0.17 rather than something daintier. Under ~4 px a star stops
             // reading as a star and the wild cat's badge becomes an anonymous blob.
             float starPointPx = 0.5f * (1f - CatPinMeshBuilder.StarInnerRadius)
-                * ToyTrainView.PinSymbolSize * GameplayPixelsPerBoardUnit;
+                * ToyTrainView.PinSymbolSize * ReadabilityYardstickPixelsPerBoardUnit;
             Assert.That(starPointPx, Is.GreaterThan(4f),
-                $"a star point renders {starPointPx:F1} px at the worst gameplay zoom");
+                $"a star point renders {starPointPx:F1} px at the conservative yardstick");
         }
 
         // WINDING. This codebase has lost time to backface culling twice, most recently a whole

@@ -236,15 +236,13 @@ namespace CatMetro.Presentation.Props
         // --- LOOK step 4: the station as a raised wooden platform under a line canopy ---
         //
         // ALL of these are BOARD units (the kiosk holder is unscaled), and every one of them
-        // was chosen against the shipped zoom rather than by eye. The diorama camera is
-        // orthographic with the board on Quaternion.Euler(38, -32, -4), so at 917x2048 a board
-        // unit is 1024 / orthographicSize pixels: 82 px on the widest authored level (L008),
-        // 93 px on the median one — which is the same ~93 px/unit the cat lane measured
-        // independently for ToyTrainView. Board +Z (into the table) projects to screen
-        // (-0.418, -0.616), so a THICKNESS t reads as 0.616 * t * 82 px at worst. Anything
-        // under ~4 px does not read at all, which is what the r6 render found; 0.05 units is
-        // therefore the floor for any dimension here and nothing below sits near it.
-        private const float PlinthDepth = 0.18f;   // 9.1 px of riser at the worst zoom
+        // was chosen against a fixed conservative 82 px/unit yardstick rather than by eye.
+        // That number is not claimed as today's corpus minimum; camera fit changes with level
+        // and licensed catalog. With the frontal Quaternion.Euler(38, 0, 0), board +Z projects
+        // vertically at 0.616 screen units per board unit, so a thickness t reads as
+        // 0.616 * t * 82 px at the yardstick. The r6 artifact found that detail under roughly
+        // 4 px does not read; 0.05 units is therefore the floor and nothing below sits near it.
+        private const float PlinthDepth = 0.18f;   // 9.1 px of riser at the 82 px/unit yardstick
         private const float PlinthInset = 0.14f;   // the deck overhangs the plinth all round
         private const float DeckDepth = 0.10f;     // 5.0 px
         private const float PostThickness = 0.09f; // 8.4 px wide (board X and Y both project)
@@ -273,7 +271,7 @@ namespace CatMetro.Presentation.Props
             float baseDepth = Mathf.Clamp(bounds.size.y * 1.05f, 0.75f, 1.7f);
 
             // The platform, in two courses. It used to be ONE 0.11-thick box, which is 5.6 px
-            // of riser at the worst zoom and read as a coloured rectangle painted on the wood
+            // of riser at the conservative yardstick and read as paint on the wood
             // rather than as something standing on it. A plinth carries the height and a deck
             // caps it, overhanging on every side, so the shadow line between the two is what
             // the eye actually reads as "raised" — that line is the whole trick in target-02.
@@ -472,8 +470,8 @@ namespace CatMetro.Presentation.Props
         //
         // Not below it, which is where the first cut put it. Two things rule that out. The
         // primary keyline already reaches local y -1.54 (0.92 board units under the node) and
-        // BoardSurface.Margin is only 1.05, so a row clearing it vertically would hang off the
-        // cream rim. And at the clearance the keylines actually need, the two cream halos
+        // BoardSurface's near rim is only 0.89, so a row clearing it vertically would hang off
+        // the cream rim. And at the clearance the keylines actually need, the two cream halos
         // overlapped at an identical Z and z-fought. Sideways, the primary stays at x = 0
         // untouched — which is also why a single-accept station renders exactly as it always
         // has, down to the pixel.
@@ -486,7 +484,7 @@ namespace CatMetro.Presentation.Props
         private const float AcceptGlyphSize = 0.22f;
 
         // The post the badge stands on. Anchor-local, and the anchor is at 0.6, so 0.15 here is
-        // 0.09 board units — 8.4 px wide at the worst authored zoom, the same slender-but-
+        // 0.09 board units — 8.4 px wide at the conservative yardstick, the same slender-but-
         // present read the reference art's sign poles have. The chip masts are thinner (0.11 ->
         // 0.066 board -> 6.1 px) because a chip is a smaller sign and a pole as thick as the
         // primary's would out-weigh the badge it carries. Both stay well clear of the ~4 px
@@ -531,10 +529,10 @@ namespace CatMetro.Presentation.Props
 
         /// <summary>
         /// The one rotation every station sign wears. Its face ends up pointing along board
-        /// (-0.662, -0.750, 0) — the SAME direction ToyTrainView's seated cats face, since both
+        /// (0, -1, 0) — the SAME direction ToyTrainView's seated cats face, since both
         /// are answering "which way is the camera". Only the model axis differs: a cat presents
-        /// its +x face and so carries the bare yaw (-131.4 degrees), while a plate presents its
-        /// -z face and so needs the standing turn composed in as well.
+        /// its +x face and so carries the bare yaw (-90 degrees in the frontal rig), while a
+        /// plate presents its -z face and so needs the standing turn composed in as well.
         /// </summary>
         public static Quaternion StationSignRotation =>
             StandingSignRotation(BoardSceneLook.BoardTilt);
@@ -588,13 +586,11 @@ namespace CatMetro.Presentation.Props
             // untouched; what changed is that its face is perpendicular to the tabletop and
             // yawed at the camera, and that a mast runs from the wood up to its bottom edge.
             //
-            // Standing it BUYS legibility rather than costing any, which is worth stating
-            // because the intuition runs the other way. The board's normal is 48.07 degrees off
-            // the view axis, so a plaque lying flat on it is foreshortened by cos(48.07) =
-            // 0.669. A sign perpendicular to that same board has its face in the board PLANE,
-            // and the closest a direction in the plane gets to the view axis is 41.93 degrees —
-            // cos = 0.744. The badge therefore presents about 11% MORE projected face standing
-            // up than it did lying down, and reads as signage into the bargain.
+            // Under the frontal 38-degree pitch, a flat plaque would present cos(38) = 0.788
+            // of its face, while the best upright board-plane direction presents sin(38) =
+            // 0.616. Standing therefore costs about 22% of projected face area; the deliberate
+            // 0.9-unit badge pays that cost in exchange for reading unambiguously as a station
+            // sign rather than another symbol painted onto the tabletop.
             var head = new Vector3(0f, PlateY, PlateZ);
             CreateMast("station:signmast-generated", stationAnchor,
                 head, PlateSize, MastThickness, footLocalZ);

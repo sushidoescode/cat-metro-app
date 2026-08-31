@@ -1,10 +1,12 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using CatMetro.Bootstrap;
+using CatMetro.Domain;
 using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Props;
 using CatMetro.Presentation.Theme;
@@ -191,7 +193,7 @@ namespace CatMetro.Tests.PlayMode
         private const float PinnedPhoneAspect = 917f / 2048f;
 
         [UnityTest]
-        public IEnumerator BoardBody_MarginIsAnisotropicAndStillClearsTheDeskClutter()
+        public IEnumerator BoardBody_UsesSideBleedWithCompactFrontalRims()
         {
             _root = GameRoot.Launch();
             yield return null;
@@ -206,15 +208,17 @@ namespace CatMetro.Tests.PlayMode
             float far = top.localPosition.y + top.localScale.y * 0.5f - maxY;
             float near = minY - (top.localPosition.y - top.localScale.y * 0.5f);
 
-            // The frame is 2.23:1 and the toy is roughly square, so the whole fill gap is
-            // vertical. Under the diorama tilt a unit of the board's local Y buys 1.5722 of
-            // screen height for 0.5326 of width, while a unit of local X buys 1.7375 of width
-            // for 0.1099 of height — local Y is 2.95x the better axis and the margin has to
-            // say so. If these three ever collapse back to one number the fill goes with it.
-            Assert.That(far, Is.GreaterThan(side + 0.5f),
-                "the far margin is the efficient axis and must be the largest");
-            Assert.That(side, Is.GreaterThan(near + 0.5f),
-                "the side margin is bought with frame the slab does not have to pay for");
+            // The curated frontal reference keeps the long side edges outside the portrait
+            // frame but gives the near/far wood only a compact rim. The old diagonal rig did
+            // the inverse — 3.05 at the far edge — and the same slab filled 66.5% after the
+            // camera was straightened. Side bleed and compact depth preserve gameplay zoom
+            // while bringing the visible physical board back toward the reference's ~49%.
+            Assert.That(side, Is.GreaterThan(far + 0.5f),
+                "horizontal wood pays for intentional side bleed in the frontal frame");
+            Assert.That(Mathf.Abs(far - near), Is.LessThan(0.05f),
+                "the frontal board keeps balanced near and far rims");
+            Assert.That(far, Is.InRange(0.75f, 1.05f),
+                "the rim remains substantial without becoming empty board acreage");
 
             // The near margin is a wall, not a preference. BoardPropDecorator seats the desk
             // clutter at (node minY - 1.4) on the desk contact plane, which is BEHIND the
@@ -222,7 +226,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(near, Is.LessThan(1.4f),
                 "a near margin at or past 1.4 swallows the desk clutter BoardPropDecorator "
                 + "places at minY - 1.4");
-            Assert.That(near, Is.GreaterThanOrEqualTo(1.0f),
+            Assert.That(near, Is.GreaterThanOrEqualTo(0.75f),
                 "and it still has to be a rim, not a hairline");
 
             var clutter = _root.View.GetComponentsInChildren<BoardPropInstance>(true)
@@ -234,7 +238,7 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator BoardBody_BleedsOffBothSideEdgesAndFillsTheFrame()
+        public IEnumerator BoardBody_BleedsOffBothSideEdgesAndReportsArtifactFrameArea()
         {
             _root = GameRoot.Launch();
             yield return null;
@@ -257,21 +261,72 @@ namespace CatMetro.Tests.PlayMode
                 Vector3 viewport = camera.WorldToViewportPoint(top.TransformPoint(local[i]));
                 corners[i] = new Vector2(viewport.x, viewport.y);
             }
-            float area = 0f;
-            for (int i = 0; i < 4; i++)
-            {
-                Vector2 a = corners[i], b = corners[(i + 1) % 4];
-                area += a.x * b.y - b.x * a.y;
-            }
-            area = Mathf.Abs(area) * 0.5f;
+            float projectedArea = PolygonArea(corners);
+            float visibleArea = VisiblePolygonArea(corners);
 
-            // Measured baseline, off .catshots/orchestrator-2026-08-25-r6 at orthographicSize
-            // 8.834: the slab was 37.10 of the frame's 139.77 square world units, 26.5%. The
-            // law split plus the anisotropic margin computes to 53.5% unclipped and 48.1%
-            // once the side bleed is cut off. 0.45 is a floor under that, well clear of the
-            // 0.265 it replaces.
-            Assert.That(area, Is.GreaterThan(0.45f),
-                "the board's projected area collapsed back toward the 26.5% we started from");
+            const int maskWidth = 917;
+            const int maskHeight = 2048;
+            Texture2D physicalMask = null;
+            var physicalRig = new ArtifactMaskRig(_root, top.parent, maskWidth, maskHeight,
+                preserveOcclusion: false);
+            try
+            {
+                // The target must be bound for a frame before a screen-space mask counts.
+                yield return null;
+                physicalMask = physicalRig.Read();
+            }
+            finally
+            {
+                physicalRig.Dispose();
+            }
+            float physicalArea = WhitePixelFraction(physicalMask);
+            int propEntries = PropModelCatalog.LoadResources().AdmittedEntryCount;
+            string boardMetrics = string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "board_projected_top_area={0:F6}\nboard_visible_top_area={1:F6}\n"
+                + "board_visible_physical_area={2:F6}\northo_size={3:F6}\n"
+                + "prop_entries={4}\n",
+                projectedArea, visibleArea, physicalArea, camera.orthographicSize, propEntries);
+            TestContext.Out.WriteLine("COMPOSITION_" + boardMetrics.Replace("\n", " ").Trim());
+            string boardCaptureDir =
+                System.Environment.GetEnvironmentVariable("CM_BOARD_LOOK_CAPTURE_DIR");
+            if (!string.IsNullOrEmpty(boardCaptureDir))
+            {
+                Directory.CreateDirectory(boardCaptureDir);
+                File.WriteAllText(Path.Combine(boardCaptureDir, "step-2-board-metrics.txt"),
+                    boardMetrics);
+                File.WriteAllBytes(
+                    Path.Combine(boardCaptureDir, "step-2-board-physical-mask.png"),
+                    physicalMask.EncodeToPNG());
+            }
+            Object.Destroy(physicalMask);
+
+            // Manual traces of gen-ref-board-framing.jpeg put the top deck at about 44.4% of
+            // its portrait frame and the complete physical-board silhouette at about 49.4%,
+            // each with roughly +/-4 percentage points of boundary uncertainty. This law is
+            // deliberately named and reported as the TOP proxy: clip the projected WoodTop
+            // polygon to viewport [0,1] before applying shoelace. The board's visible front
+            // thickness makes its complete silhouette larger. That rendered mask is reported
+            // separately, but its rectangular frontal boundary is not asserted equal to the
+            // reference's perspective trapezoid. The previous version called its figure
+            // clipped but summed the off-screen quadrilateral, so its assertion was narrower
+            // than its name promised.
+            Assert.That(visibleArea, Is.InRange(0.45f, 0.54f),
+                $"visible board-top proxy {visibleArea:P1} must stay in the curated framing "
+                + "window, not the r6 baseline's 26.4% clipped top projection");
+            if (propEntries == 5 || propEntries == 10)
+                Assert.That(physicalArea, Is.InRange(0.50f, 0.60f),
+                    $"rendered physical-board silhouette {physicalArea:P1} must remain a "
+                    + "prominent but finite tabletop in the shipped-prop framing");
+            else
+            {
+                Assert.That(propEntries, Is.Zero,
+                    "only an atomic licensed catalog or the licence-neutral fallback is valid");
+                Assert.That(physicalArea, Is.GreaterThan(visibleArea + 0.03f)
+                        .And.LessThan(0.62f),
+                    "the fallback mask must include real rim/base thickness; its closer camera "
+                    + "is measured but is not the shipped-prop framing claim");
+            }
 
             float minX = corners.Min(c => c.x), maxX = corners.Max(c => c.x);
             float minY = corners.Min(c => c.y), maxY = corners.Max(c => c.y);
@@ -283,6 +338,117 @@ namespace CatMetro.Tests.PlayMode
             // object on a desk rather than as a floor.
             Assert.That(minY, Is.GreaterThan(0.02f), "the near rim stays in frame");
             Assert.That(maxY, Is.LessThan(0.98f), "and so does the far rim");
+        }
+
+        [UnityTest]
+        public IEnumerator PassengerHead_IsReadableAtPhoneScaleAndSitsProudOfCarriageWall()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+            var camera = _root.Cam;
+            camera.aspect = PinnedPhoneAspect;
+            SeedMidEdgePassenger(_root);
+            yield return null;
+
+            var train = _root.View.GetComponentsInChildren<BoardElementId>(true)
+                .Single(x => x.Kind == "train").transform;
+            var head = train.Find("Carriage/Cat/Head");
+            var body = train.Find("Carriage/Body");
+            Assert.That(head, Is.Not.Null);
+            Assert.That(body, Is.Not.Null);
+            var cat = head.parent;
+
+            Rect headRect = ProjectedMeshRect(camera, head);
+            float widthRatio = RenderedAxisSize(head, 0) / RenderedAxisSize(body, 1);
+
+            const int maskWidth = 917;
+            const int maskHeight = 2048;
+            Texture2D catMask = null;
+            var catRig = new ArtifactMaskRig(_root, cat, maskWidth, maskHeight,
+                preserveOcclusion: true);
+            try
+            {
+                // The target must be bound for a frame before any screen-space result counts.
+                yield return null;
+                // Runtime simulation advances during that wait; reset to the declared evidence
+                // pose immediately before rendering so mask and normal capture are congruent.
+                SeedMidEdgePassenger(_root);
+                catMask = catRig.Read();
+            }
+            finally
+            {
+                catRig.Dispose();
+            }
+
+            Texture2D headCoreMask = null;
+            var headCoreRig = new ArtifactMaskRig(_root, head, maskWidth, maskHeight,
+                preserveOcclusion: true);
+            try
+            {
+                yield return null;
+                SeedMidEdgePassenger(_root);
+                headCoreMask = headCoreRig.Read();
+            }
+            finally
+            {
+                headCoreRig.Dispose();
+            }
+
+            RectInt visibleCat = OpaquePixelBounds(catMask);
+            RectInt visibleHeadCore = OpaquePixelBounds(headCoreMask);
+            float visibleCatWidth = visibleCat.width / (float)maskWidth;
+            float visibleHeadCoreWidth = visibleHeadCore.width / (float)maskWidth;
+            float exposed = Mathf.Min(1f,
+                visibleHeadCore.height / (headRect.height * maskHeight));
+            int propEntries = PropModelCatalog.LoadResources().AdmittedEntryCount;
+            string passengerMetrics = string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "visible_cat_head_width_fraction={0:F6}\n"
+                + "visible_head_core_width_fraction={1:F6}\n"
+                + "head_carriage_width_ratio={2:F6}\n"
+                + "visible_head_core_exposure={3:F6}\northo_size={4:F6}\n"
+                + "prop_entries={5}\ntrain_edge=1\ntrain_tick=6\n",
+                visibleCatWidth, visibleHeadCoreWidth, widthRatio, exposed,
+                camera.orthographicSize, propEntries);
+            TestContext.Out.WriteLine("COMPOSITION_"
+                + passengerMetrics.Replace("\n", " ").Trim());
+            string captureDir = System.Environment.GetEnvironmentVariable("CM_BOARD_LOOK_CAPTURE_DIR");
+            if (!string.IsNullOrEmpty(captureDir))
+            {
+                Directory.CreateDirectory(captureDir);
+                File.WriteAllBytes(Path.Combine(captureDir, "step-2-visible-cat-mask.png"),
+                    catMask.EncodeToPNG());
+                File.WriteAllBytes(Path.Combine(captureDir, "step-2-visible-head-core-mask.png"),
+                    headCoreMask.EncodeToPNG());
+                File.WriteAllText(Path.Combine(captureDir, "step-2-passenger-metrics.txt"),
+                    passengerMetrics);
+            }
+            Object.Destroy(catMask);
+            Object.Destroy(headCoreMask);
+
+            // Fixed-colour segmentation of the older r6 artifact put its complete tinted
+            // head-and-ears silhouette at 3.60% of the 917px frame; the delivery target is
+            // 5-6%. The new generated references independently put the spherical head core at
+            // roughly 70-85% of carriage width and visibly above the walls. Absolute size and
+            // exposure come from depth-preserving raster masks; the stable physical proportion
+            // compares rendered mesh sizes, not authored localScale values.
+            if (propEntries == 5 || propEntries == 10)
+                Assert.That(visibleCatWidth, Is.InRange(0.05f, 0.06f),
+                    $"visible passenger head and ears are {visibleCatWidth:P1} of frame width; "
+                    + "target is 5-6% "
+                    + $"(head/carriage {widthRatio:P1}, exposed {exposed:P1})");
+            else
+            {
+                Assert.That(propEntries, Is.Zero,
+                    "only an atomic licensed catalog or the licence-neutral fallback is valid");
+                Assert.That(visibleCatWidth, Is.InRange(0.05f, 0.065f),
+                    $"fallback passenger is {visibleCatWidth:P1}; its closer camera is measured "
+                    + "but is not the shipped-prop 5-6% claim");
+            }
+            Assert.That(widthRatio, Is.InRange(0.72f, 0.88f),
+                $"head is {widthRatio:P1} of the rendered carriage width; reference is ~70-85%");
+            Assert.That(exposed, Is.GreaterThanOrEqualTo(0.72f),
+                $"only {exposed:P1} of the head projects above the carriage wall");
         }
 
         [UnityTest]
@@ -841,11 +1007,19 @@ namespace CatMetro.Tests.PlayMode
             _root = GameRoot.Launch();
             yield return null;
             yield return null;
+            SeedMidEdgePassenger(_root);
+            yield return null;
 
             const int width = 917;
             const int height = 2048;
             var rt = new RenderTexture(width, height, 24);
             _root.Cam.targetTexture = rt;
+            // Screen-space canvases observe the RenderTexture dimensions on the next frame.
+            // Laying out before that frame silently measures the batchmode Game view instead.
+            yield return null;
+            // The session advances during that frame; restore the same declared edge/tick the
+            // artifact masks use immediately before rendering.
+            SeedMidEdgePassenger(_root);
             _root.Preview.Refresh();
             Canvas.ForceUpdateCanvases();
             _root.Cam.Render();
@@ -860,6 +1034,235 @@ namespace CatMetro.Tests.PlayMode
             File.WriteAllBytes(Path.Combine(dir, "step-2-board.png"), tex.EncodeToPNG());
             Object.Destroy(tex);
             Object.Destroy(rt);
+        }
+
+        private static void SeedMidEdgePassenger(GameRoot root)
+        {
+            root.Session.State.Trains[0] = new TrainSlot
+            {
+                Id = 1,
+                Color = CatColor.Red,
+                EdgeId = 1,
+                ProgressTicks = 6,
+                NodeId = 1,
+                State = TrainState.OnEdge,
+            };
+            root.View.UpdateFrom(root.Session);
+        }
+
+        private static Rect ProjectedMeshRect(Camera camera, Transform part)
+        {
+            var filter = part.GetComponent<MeshFilter>();
+            Assert.That(filter, Is.Not.Null, part.name + " needs the mesh the player sees");
+            Assert.That(filter.sharedMesh, Is.Not.Null, part.name + " mesh must resolve");
+            Vector3[] vertices = filter.sharedMesh.vertices;
+            float minX = float.PositiveInfinity, minY = float.PositiveInfinity;
+            float maxX = float.NegativeInfinity, maxY = float.NegativeInfinity;
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                Vector3 viewport = camera.WorldToViewportPoint(part.TransformPoint(vertices[i]));
+                minX = Mathf.Min(minX, viewport.x);
+                minY = Mathf.Min(minY, viewport.y);
+                maxX = Mathf.Max(maxX, viewport.x);
+                maxY = Mathf.Max(maxY, viewport.y);
+            }
+            return Rect.MinMaxRect(minX, minY, maxX, maxY);
+        }
+
+        private static float RenderedAxisSize(Transform part, int axis)
+        {
+            var filter = part.GetComponent<MeshFilter>();
+            Vector3 mesh = filter.sharedMesh.bounds.size;
+            Vector3 scale = part.lossyScale;
+            return Mathf.Abs(axis == 0 ? mesh.x * scale.x : mesh.y * scale.y);
+        }
+
+        private static RectInt OpaquePixelBounds(Texture2D texture)
+        {
+            Color32[] pixels = texture.GetPixels32();
+            int minX = texture.width, minY = texture.height, maxX = -1, maxY = -1;
+            for (int y = 0; y < texture.height; y++)
+            {
+                int row = y * texture.width;
+                for (int x = 0; x < texture.width; x++)
+                {
+                    Color32 pixel = pixels[row + x];
+                    if (pixel.r < 128 || pixel.g < 128 || pixel.b < 128) continue;
+                    minX = Mathf.Min(minX, x);
+                    minY = Mathf.Min(minY, y);
+                    maxX = Mathf.Max(maxX, x);
+                    maxY = Mathf.Max(maxY, y);
+                }
+            }
+            Assert.That(maxX, Is.GreaterThanOrEqualTo(minX),
+                "the artifact mask must contain visible head pixels");
+            return new RectInt(minX, minY, maxX - minX + 1, maxY - minY + 1);
+        }
+
+        private static float WhitePixelFraction(Texture2D texture)
+        {
+            Color32[] pixels = texture.GetPixels32();
+            int white = 0;
+            for (int i = 0; i < pixels.Length; i++)
+                if (pixels[i].r >= 128 && pixels[i].g >= 128 && pixels[i].b >= 128)
+                    white++;
+            return white / (float)pixels.Length;
+        }
+
+        private sealed class ArtifactMaskRig : System.IDisposable
+        {
+            private readonly Camera _camera;
+            private readonly CameraClearFlags _clearFlags;
+            private readonly Color _background;
+            private readonly RenderTexture _previousTarget;
+            private readonly RenderTexture _previousActive;
+            private readonly RenderTexture _target;
+            private readonly Renderer[] _renderers;
+            private readonly Material[][] _materials;
+            private readonly MaterialPropertyBlock[] _blocks;
+            private readonly bool[] _rendererEnabled;
+            private readonly Canvas[] _canvases;
+            private readonly bool[] _canvasEnabled;
+            private readonly Material _white;
+            private readonly Material _black;
+
+            public ArtifactMaskRig(GameRoot root, Transform target, int width, int height,
+                bool preserveOcclusion)
+            {
+                _camera = root.Cam;
+                _clearFlags = _camera.clearFlags;
+                _background = _camera.backgroundColor;
+                _previousTarget = _camera.targetTexture;
+                _previousActive = RenderTexture.active;
+                _target = new RenderTexture(width, height, 24);
+                Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+                Assert.That(shader, Is.Not.Null, "the mask needs the shipped URP unlit shader");
+                _white = new Material(shader);
+                _white.SetColor("_BaseColor", Color.white);
+                _black = new Material(shader);
+                _black.SetColor("_BaseColor", Color.black);
+
+                _renderers = root.GetComponentsInChildren<Renderer>(true);
+                _materials = new Material[_renderers.Length][];
+                _blocks = new MaterialPropertyBlock[_renderers.Length];
+                _rendererEnabled = new bool[_renderers.Length];
+                for (int i = 0; i < _renderers.Length; i++)
+                {
+                    Renderer renderer = _renderers[i];
+                    _materials[i] = renderer.sharedMaterials;
+                    _rendererEnabled[i] = renderer.enabled;
+                    var block = new MaterialPropertyBlock();
+                    renderer.GetPropertyBlock(block);
+                    _blocks[i] = block;
+                    if (!renderer.enabled) continue;
+
+                    bool selected = renderer.transform == target
+                        || renderer.transform.IsChildOf(target);
+                    if (!preserveOcclusion && !selected)
+                    {
+                        renderer.enabled = false;
+                        continue;
+                    }
+                    renderer.SetPropertyBlock(null);
+                    var replacements = new Material[_materials[i].Length];
+                    for (int m = 0; m < replacements.Length; m++)
+                        replacements[m] = selected ? _white : _black;
+                    renderer.sharedMaterials = replacements;
+                }
+
+                _canvases = root.GetComponentsInChildren<Canvas>(true);
+                _canvasEnabled = new bool[_canvases.Length];
+                for (int i = 0; i < _canvases.Length; i++)
+                {
+                    _canvasEnabled[i] = _canvases[i].enabled;
+                    _canvases[i].enabled = false;
+                }
+
+                _camera.clearFlags = CameraClearFlags.SolidColor;
+                _camera.backgroundColor = Color.black;
+                _camera.targetTexture = _target;
+            }
+
+            public Texture2D Read()
+            {
+                _camera.Render();
+                RenderTexture.active = _target;
+                var texture = new Texture2D(_target.width, _target.height,
+                    TextureFormat.RGB24, false);
+                texture.ReadPixels(new Rect(0f, 0f, _target.width, _target.height), 0, 0);
+                texture.Apply();
+                return texture;
+            }
+
+            public void Dispose()
+            {
+                _camera.targetTexture = _previousTarget;
+                _camera.clearFlags = _clearFlags;
+                _camera.backgroundColor = _background;
+                RenderTexture.active = _previousActive;
+                for (int i = 0; i < _renderers.Length; i++)
+                {
+                    if (_renderers[i] == null) continue;
+                    _renderers[i].sharedMaterials = _materials[i];
+                    _renderers[i].SetPropertyBlock(_blocks[i]);
+                    _renderers[i].enabled = _rendererEnabled[i];
+                }
+                for (int i = 0; i < _canvases.Length; i++)
+                    if (_canvases[i] != null) _canvases[i].enabled = _canvasEnabled[i];
+                Object.Destroy(_target);
+                Object.Destroy(_white);
+                Object.Destroy(_black);
+            }
+        }
+
+        private static float VisiblePolygonArea(IReadOnlyList<Vector2> polygon)
+        {
+            var clipped = new List<Vector2>(polygon);
+            clipped = ClipAxis(clipped, axis: 0, boundary: 0f, keepGreater: true);
+            clipped = ClipAxis(clipped, axis: 0, boundary: 1f, keepGreater: false);
+            clipped = ClipAxis(clipped, axis: 1, boundary: 0f, keepGreater: true);
+            clipped = ClipAxis(clipped, axis: 1, boundary: 1f, keepGreater: false);
+            return PolygonArea(clipped);
+        }
+
+        private static float PolygonArea(IReadOnlyList<Vector2> polygon)
+        {
+            if (polygon.Count < 3) return 0f;
+            float twiceArea = 0f;
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                Vector2 a = polygon[i], b = polygon[(i + 1) % polygon.Count];
+                twiceArea += a.x * b.y - b.x * a.y;
+            }
+            return Mathf.Abs(twiceArea) * 0.5f;
+        }
+
+        private static List<Vector2> ClipAxis(List<Vector2> input, int axis,
+            float boundary, bool keepGreater)
+        {
+            var output = new List<Vector2>();
+            if (input.Count == 0) return output;
+            Vector2 previous = input[input.Count - 1];
+            float previousValue = axis == 0 ? previous.x : previous.y;
+            bool previousInside = keepGreater
+                ? previousValue >= boundary : previousValue <= boundary;
+            for (int i = 0; i < input.Count; i++)
+            {
+                Vector2 current = input[i];
+                float currentValue = axis == 0 ? current.x : current.y;
+                bool currentInside = keepGreater
+                    ? currentValue >= boundary : currentValue <= boundary;
+                if (currentInside != previousInside)
+                {
+                    float t = (boundary - previousValue) / (currentValue - previousValue);
+                    output.Add(Vector2.LerpUnclamped(previous, current, t));
+                }
+                if (currentInside) output.Add(current);
+                previous = current;
+                previousValue = currentValue;
+                previousInside = currentInside;
+            }
+            return output;
         }
     }
 }

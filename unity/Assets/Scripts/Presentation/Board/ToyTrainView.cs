@@ -35,54 +35,28 @@ namespace CatMetro.Presentation.Board
         private const float HeadAnchorZ = -0.2f;
 
         // ── Cat geometry ────────────────────────────────────────────────────────────────
-        // Sized from the 2026-08-25 render verdict, which showed a smooth coloured ball: the
-        // 0.05 ears cleared the 0.19 crown by 0.023 (12% of head diameter) and, at the fitted
-        // gameplay zoom (~93 px per board unit, head = 17.7 px), broke the head's projected
-        // silhouette by at most 2.3 px — and that only on ONE side. The board tilt puts
-        // table-up 48 degrees off the view axis, so as a train turns, the ears' lateral axis
-        // swings through the view direction and the far ear projects INSIDE the head's disc
-        // (measured worst case: 3.4 px inside, i.e. wholly buried). Two fixes, together:
+        // The 2026-08-31 curated references make two scale requirements explicit: the head is
+        // roughly 70-85% of its carriage width, and most of it sits above the carriage wall.
+        // At the production L001 phone projection, the old 0.19 head rendered at only 3.2% of
+        // frame width after the frontal-camera change; 0.31 renders just over 5% with the
+        // explicit 5-6% delivery target. The carriage grows with it below, keeping the head at
+        // ~82% of the open box rather than turning it into a ball balanced on a tiny wagon.
         //
-        //  1. The cat holds a FIXED board yaw facing the camera (CatBoardYaw) instead of
-        //     turning with the carriage. That makes the ear axis exactly perpendicular to the
-        //     view at every heading, so both ears project at full width, always — the
-        //     heading-dependent burial is gone by construction, not by tuning.
-        //  2. Ears grow to a flat 0.115 wedge set out at 0.080. Silhouette excess goes
-        //     2.3 px (best case) -> 6.9 px (every case); projected area outside the head disc
-        //     goes 8.7 px^2 -> 39.6 px^2 per ear.
-        //
-        // Height is the constrained axis, not width: the switch discs are a slab from board z
-        // -0.48 to -0.32, so an ear tall enough to clear the crown on its own would have to
-        // reach board z -0.408, past the disc mid-plane. So the ears lean on lateral spread
-        // (unconstrained, and it projects at ~full strength once the yaw is fixed) and only
-        // reach board z -0.371 — into the disc's lower half, where a tip is simply occluded
-        // by the opaque disc as the cat passes under it.
-        //
-        // A face does the rest of the work: at a 17.7 px head, two near-black eyes and a pale
-        // muzzle read by CONTRAST, which costs no silhouette and no headroom at all. Target-02
-        // reads exactly this way at thumbnail size.
-        //
-        // r3 postscript — none of the above rendered, for a reason none of it was to blame for.
-        // Every size below is a WORLD size and reaches the transform through
-        // ScaleForWorldSize, because the builtin sphere mesh is ~3.33 units across, not 1.
-        // The head was therefore rendering at 0.633 rather than 0.19 and enclosed the whole
-        // face: the r3 slot measured the farthest feature 0.17 from the head centre against a
-        // head extent of 0.31. The ear placement was right the whole time (that same 0.17 is
-        // exactly where this file puts the ear's outer corner); only the head was wrong.
-
-        // Public so a test can assert the head RENDERS at the diameter this constant names.
-        // That assertion is the one that would have caught the r3 mesh-scale bug on frame one:
-        // every law was computed in authored space, which did not match the rendered hierarchy.
-        public const float HeadDiameter = 0.19f;
-        private const float HeadCenterZ = -0.037f;
-        private const float EarThickness = 0.038f; // along travel; ears are flat wedges
-        private const float EarSize = 0.115f;      // the 45-degree diamond's box size
+        // Height remains constrained by the switch-disc slab. The bigger head grows mostly
+        // downward into a lower wall: its crown moves by less than a hundredth of a board unit.
+        // Ears keep their tips below the pinned switch midpoint and gain readability through
+        // lateral spread. All values are WORLD sizes passed through ScaleForWorldSize; builtin
+        // Sphere.fbx is ~3.33 units across and a raw localScale would repeat the r3 regression.
+        public const float HeadDiameter = 0.31f;
+        private const float HeadCenterZ = 0.010f;
+        private const float EarThickness = 0.050f; // along travel; ears are flat wedges
+        private const float EarSize = 0.140f;      // the 45-degree diamond's box size
         private const float EarLateral = 0.080f;
-        private const float EarCenterZ = -0.090f;
-        private const float EyeSize = 0.048f;
-        private static readonly Vector3 EyeOffset = new Vector3(0.0528f, 0.0369f, -0.0844f);
-        private static readonly Vector3 MuzzleOffset = new Vector3(0.0768f, 0f, -0.0658f);
-        private static readonly Vector3 MuzzleSize = new Vector3(0.050f, 0.068f, 0.044f);
+        private const float EarCenterZ = -0.080f;
+        private const float EyeSize = 0.079f;
+        private static readonly Vector3 EyeOffset = new Vector3(0.0862f, 0.0602f, -0.0673f);
+        private static readonly Vector3 MuzzleOffset = new Vector3(0.1253f, 0f, -0.0370f);
+        private static readonly Vector3 MuzzleSize = new Vector3(0.082f, 0.111f, 0.071f);
 
         // ── The destination pin ─────────────────────────────────────────────────────────
         // target-01's single most important readability device: above every riding cat floats
@@ -93,15 +67,13 @@ namespace CatMetro.Presentation.Board
         //
         // SIZING, in the projection the camera actually performs. The diorama camera is
         // orthographic and identity-rotated, so px-per-board-unit is (screenHeight / 2) /
-        // orthographicSize. BoardSceneLook.FitCamera floors orthographicSize at 7, so on a
-        // 917x2048 capture an L001-class level renders 1024/7 = 146 px per board unit, while a
-        // level big enough to need size ~11 renders ~93 — the figure the ear work measured and
-        // the honest WORST case. Everything below is sized against 93:
+        // orthographicSize. A level big enough to need size ~11 renders ~93 px per board unit,
+        // the fixed conservative sizing yardstick used below. It is not claimed as the current
+        // corpus minimum; BoardLookTests measures the delivery target from a rendered artifact.
         //
-        //     cat head    0.19  x 93 = 17.7 px   (the thing the pin must out-read)
-        //     pin card    0.24  x 93 = 22.3 px   (1.26x the head; target-01's is ~1.0x, and
-        //                                         ours is generous because our head is a
-        //                                         smaller fraction of the frame than the art's)
+        //     cat head    0.31  x 93 = 28.8 px
+        //     pin card    0.24  x 93 = 22.3 px   (77% of the enlarged head; card height is
+        //                                         constrained by rail/switch clearance)
         //     symbol      0.17  x 93 = 15.8 px
         //     white margin      each side 3.3 px  (the card still reads as a card behind it)
         //     star point  (0.5-0.45) x 0.17 x 93 = 4.3 px
@@ -109,8 +81,7 @@ namespace CatMetro.Presentation.Board
         // The star's point length is the binding constraint on the whole design: it is the
         // finest detail any of the five symbols carries, and under ~4 px it stops reading as a
         // star at all. That is what fixes the symbol at 0.17 rather than something daintier,
-        // and the card at 0.24 rather than head-sized. At the 146 px zoom every figure above
-        // scales by 1.57 (card 35.1 px, symbol 24.9 px, star point 6.8 px).
+        // and the card at 0.24 rather than something daintier.
         public const float PinCardSize = 0.24f;
         public const float PinSymbolSize = 0.17f;
         private const float PinCardDepth = 0.02f;
@@ -120,16 +91,14 @@ namespace CatMetro.Presentation.Board
         // floats. It reads as an embossed badge from the only angle anyone sees it from.
         private const float PinSymbolLocalZ = -0.018f;
 
-        // Screen-space board-units from the cat's head CENTRE up to the pin's centre. 0.26
-        // leaves 0.26 - 0.12 - 0.095 = 0.045 of clear air between the head's top and the card's
-        // bottom edge (4.2 px at the 93 zoom, 6.6 px at 146) — the small, definite gap
-        // target-01 floats its pins on. Read on screen, the card centre sits 1.4 head-diameters
-        // above the head; the art reads about 1.45.
-        private const float PinScreenRise = 0.26f;
+        // Screen-space board-units from the cat's head CENTRE up to the pin's centre. 0.30
+        // leaves 0.30 - 0.12 - 0.155 = 0.025 of clear air between the larger head and card
+        // (2.3 px even at the 93 px/unit yardstick) without spending more switch clearance.
+        private const float PinScreenRise = 0.30f;
 
         // Carriage-local board z for the pin's centre, i.e. board z -0.155. This is the ONLY
         // number the switch discs constrain, and it is centred in the gap they leave. A card
-        // this size, held square to a camera 48 degrees off the board plane, spans 0.2353 of
+        // this size, held square to the camera above the tilted board, spans 0.2353 of
         // board z all by itself, against a window running from the rail crowns (+0.035) up to
         // the lowest switch furniture (the onboarding teach ring's underside, -0.31). Centring
         // in that window leaves 0.0373 of clearance under the switch furniture and 0.0723 over
@@ -149,7 +118,7 @@ namespace CatMetro.Presentation.Board
             return Mathf.Atan2(-viewLocal.y, -viewLocal.x) * Mathf.Rad2Deg;
         }
 
-        /// <summary>The fixed board-local yaw every seated cat holds (about -131.4 degrees).</summary>
+        /// <summary>The fixed board-local yaw every seated cat holds (-90 degrees frontally).</summary>
         public static float CatBoardYaw => CameraFacingYawDegrees(BoardSceneLook.BoardTilt);
 
         /// <summary>
@@ -162,8 +131,8 @@ namespace CatMetro.Presentation.Board
         /// rotation a flat card needs — derived from the diorama tilt, never hardcoded, so it
         /// tracks any re-authoring of BoardSceneLook.BoardTilt. A yaw alone is enough for the
         /// CAT, whose features are domes on a sphere: it only has to bring them round to the
-        /// camera's side. It is NOT enough for a card. Board-plane -z sits 48 degrees off the
-        /// view axis, so a pin left lying in the board plane would render at cos 48 = 67% of
+        /// camera's side. It is NOT enough for a card. Board-plane -z sits 38 degrees off the
+        /// view axis, so a pin left lying in the board plane would render at cos 38 = 79% of
         /// its height and its circle would read as an ellipse. Undoing the whole tilt is the
         /// answer because the camera is identity-rotated: tilt * inverse(tilt) is identity, so
         /// the card ends up axis-aligned with the camera itself.
@@ -186,9 +155,9 @@ namespace CatMetro.Presentation.Board
         /// The rows of the tilt are the board-local gradients of screen x and screen y, so
         /// "directly above the cat, by this much" is a 2x2 solve for the in-plane part, with
         /// the z spend's own screen drift subtracted out on the right-hand side. The
-        /// determinant is the tilt's zz term (0.668 at the authored tilt) and only collapses if
-        /// the board were ever tilted edge-on to the camera, at which point nothing on it
-        /// renders anyway.
+        /// determinant is the tilt's zz term (about 0.788 at the authored tilt) and only
+        /// collapses if the board were ever tilted edge-on to the camera, at which point
+        /// nothing on it renders anyway.
         /// </remarks>
         public static Vector3 ScreenUpOffset(Quaternion boardTilt, float screenRise, float boardZ)
         {
@@ -442,15 +411,15 @@ namespace CatMetro.Presentation.Board
             _carriage = new GameObject("Carriage").transform;
             _carriage.SetParent(transform, false);
             CreatePart("Chassis", _carriage, CubeMesh(),
-                new Vector3(0f, 0f, 0.205f), new Vector3(0.36f, 0.30f, 0.06f),
+                new Vector3(0f, 0f, 0.205f), new Vector3(0.36f, 0.40f, 0.06f),
                 Quaternion.identity, NavyMaterial());
             CreatePart("Body", _carriage, CubeMesh(),
-                new Vector3(0f, 0f, 0.085f), new Vector3(0.34f, 0.28f, 0.18f),
+                new Vector3(0f, 0f, 0.145f), new Vector3(0.34f, 0.38f, 0.10f),
                 Quaternion.identity, CreamMaterial());
 
-            // The passenger: a chibi head at 68% of the body's width (target-02 reads
-            // 60-70%) with its lower THIRD sunk below the brim, so it sits IN the open box
-            // rather than ON it — the seating the 2026-08-25 render confirmed, left alone.
+            // The passenger: a chibi head at 82% of the body's width. Its lower fifth intersects
+            // the low wall in board-local geometry, while the frontal artifact keeps nearly all
+            // of its face visible, so it remains seated IN the open box and reads clearly.
             // Head and ears carry the line tint; the face is deliberately OUTSIDE the tinted
             // set, so the eyes stay near-black and the muzzle cream whatever colour the cat
             // is. Ears are 45-degree diamonds anchored in the head, splayed up and out.

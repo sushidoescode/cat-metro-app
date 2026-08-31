@@ -93,13 +93,9 @@ namespace CatMetro.Presentation.Props
             // partially installed machine never shows a half-furnished board. Their FBX metres
             // are real-world (fence = 2 m), so DisplayScale converts metres to board units.
             //
-            // FacingYaw, like the five above, is per-asset presentation data. Under the scene
-            // rig (board Euler(38,-32,-4), axis-aligned ortho camera) the most camera-facing
-            // in-board bearing is atan2(0.492, 0.558) = 221 deg (41 deg west of south). The
-            // signposts' plank faces sit at model +-Z and the lantern arm extends model +Z, so
-            // yaw turns a face/arm from bearing 0 to bearing yaw: 45 shows the depot sign's
-            // face (planks pointing up-screen NW instead of edge-on), 90 lands one trail-sign
-            // face at 225, and 225 hangs the lantern on the camera side of its post. The lamp
+            // FacingYaw, like the five above, is per-asset presentation data. The signposts'
+            // plank faces sit at model +-Z and the lantern arm extends model +Z, so these turns
+            // choose which face/arm the frontal diorama presents. The lamp
             // is 2.4 m tall with a 0.47 m head: 0.65 tops the 1.45-unit kiosk by ~8% and gives
             // the lantern head a readable 0.3-unit silhouette, against 1.08 units of bare
             // stick at the blind 0.45.

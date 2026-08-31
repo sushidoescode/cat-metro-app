@@ -1,8 +1,10 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using CatMetro.Application.Session;
 using CatMetro.Bootstrap;
 using CatMetro.Content;
+using CatMetro.Domain;
 using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Props;
 using NUnit.Framework;
@@ -26,7 +28,7 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
-        public void GameRoot_UsesLowIsometricWarmRig_AndFramesWidePropLayout()
+        public void GameRoot_UsesFrontalWarmRig_AndFramesWidePropLayout()
         {
             var root = GameRoot.LaunchWith(ImportLevel("L008"));
             _owned.Add(root.gameObject);
@@ -38,7 +40,12 @@ namespace CatMetro.Tests.PlayMode
                 "the axis-aligned camera preserves input, preview, and cause-frame geometry");
             Assert.That(Quaternion.Angle(root.View.transform.rotation, Quaternion.identity),
                 Is.GreaterThan(20f),
-                "the complete board is tilted as one low-isometric presentation space");
+                "the complete board is tilted as one presentation space");
+            Vector3 boardFar = root.View.transform.TransformDirection(Vector3.up);
+            float frontalSkew = Mathf.Abs(Mathf.Atan2(boardFar.x, boardFar.y) * Mathf.Rad2Deg);
+            Assert.That(frontalSkew, Is.LessThan(1f),
+                $"the curated framing target is frontal; the board's receding axis is "
+                + $"skewed {frontalSkew:F1} degrees on screen");
 
             var lights = root.GetComponentsInChildren<Light>(true);
             var keys = lights.Where(x => x.name == "Diorama Warm Key").ToArray();
@@ -96,7 +103,7 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
-        public void CauseFrameAndRetry_PreserveTheObliqueRestRig()
+        public void CauseFrameAndRetry_PreserveTheFrontalRestRig()
         {
             var root = GameRoot.LaunchWith(ImportLevel("L001"));
             _owned.Add(root.gameObject);
@@ -243,6 +250,166 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
+        public void EveryAuthoredLevel_KeepsEveryGameplayRendererInsideHorizontalBand()
+        {
+            int inspected = 0;
+            bool mutationProved = false;
+            foreach (string levelId in AuthoredLevelIds())
+            {
+                var root = GameRoot.LaunchWith(ImportLevel(levelId));
+                try
+                {
+                    var camera = root.Cam;
+                    camera.aspect = PhoneAspect;
+                    Renderer[] gameplay = GameplayRenderers(root.View).ToArray();
+                    Assert.That(gameplay.Length, Is.GreaterThan(10),
+                        levelId + " must expose a non-vacuous rendered gameplay hierarchy");
+                    foreach (var renderer in gameplay)
+                    {
+                        Assert.That(HorizontalBoundsViolation(camera, renderer.bounds), Is.Null,
+                            levelId + "/" + renderer.name + " left x="
+                            + $"{GameplayMinX:F3}..{GameplayMaxX:F3}");
+                        inspected++;
+                    }
+
+                    if (!mutationProved)
+                    {
+                        Renderer probe = gameplay[0];
+                        Vector3 original = probe.transform.position;
+                        float frameWidth = 2f * camera.orthographicSize * camera.aspect;
+                        try
+                        {
+                            probe.transform.position += new Vector3(frameWidth, 0f, 0f);
+                            Assert.That(HorizontalBoundsViolation(camera, probe.bounds), Is.Not.Null,
+                                "a one-frame renderer escape must trip the artifact guard");
+                            mutationProved = true;
+                        }
+                        finally
+                        {
+                            probe.transform.position = original;
+                        }
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(root.gameObject);
+                }
+            }
+            Assert.That(inspected, Is.GreaterThan(100),
+                "anti-vacuity: the corpus sweep must inspect real gameplay renderers");
+            Assert.That(mutationProved, Is.True);
+        }
+
+        [Test]
+        public void TrainPassengerAndPin_StayInsideBand_AtEveryTickAndEighthTickSample()
+        {
+            bool mutationProved = false;
+            foreach (string levelId in AuthoredLevelIds())
+            {
+                var root = GameRoot.LaunchWith(ImportLevel(levelId));
+                try
+                {
+                    var camera = root.Cam;
+                    camera.aspect = PhoneAspect;
+                    var graph = root.Session.Level.Graph;
+
+                    Assert.That(root.Session.Alpha, Is.EqualTo(0d),
+                        "a newly launched session starts on a tick boundary");
+                    for (int eighth = 0; eighth < 8; eighth++)
+                    {
+                        if (eighth > 0)
+                            root.Session.AdvanceMs(TickInterpolator.TICK_MS / 8d);
+                        Assert.That(root.Session.Alpha,
+                            Is.EqualTo(eighth / 8d).Within(0.0000001d));
+                        for (int edge = 0; edge < graph.EdgeFrom.Length; edge++)
+                        {
+                            int[] incoming = Enumerable.Range(0, graph.EdgeFrom.Length)
+                                .Where(x => graph.EdgeTo[x] == graph.EdgeFrom[edge]).ToArray();
+                            foreach (int history in new[] { -1 }.Concat(incoming))
+                            {
+                                ClearTrainHistory(root);
+                                if (history >= 0)
+                                {
+                                    PutTrainOnEdge(root, history,
+                                        graph.EdgeTravelTicks[history] - 1);
+                                    PutTrainAtNode(root, graph.EdgeFrom[edge]);
+                                }
+                                int travel = graph.EdgeTravelTicks[edge];
+                                for (int tick = 0; tick < travel; tick++)
+                                {
+                                    PutTrainOnEdge(root, edge, tick);
+                                    AssertTrainInside(camera, root,
+                                        $"{levelId}/edge {edge}/tick {tick}+{eighth}/8"
+                                        + $"/history {history}");
+                                }
+                            }
+                        }
+                    }
+
+                    // Node poses do not interpolate, but the carriage retains the edge it
+                    // arrived on. Exercise every real arrival independently of the alpha grid.
+                    for (int edge = 0; edge < graph.EdgeFrom.Length; edge++)
+                    {
+                        int[] incoming = Enumerable.Range(0, graph.EdgeFrom.Length)
+                            .Where(x => graph.EdgeTo[x] == graph.EdgeFrom[edge]).ToArray();
+                        foreach (int history in new[] { -1 }.Concat(incoming))
+                        {
+                            ClearTrainHistory(root);
+                            if (history >= 0)
+                            {
+                                PutTrainOnEdge(root, history,
+                                    graph.EdgeTravelTicks[history] - 1);
+                                PutTrainAtNode(root, graph.EdgeFrom[edge]);
+                            }
+                            PutTrainOnEdge(root, edge, graph.EdgeTravelTicks[edge] - 1);
+                            PutTrainAtNode(root, graph.EdgeTo[edge]);
+                            AssertTrainInside(camera, root,
+                                $"{levelId}/arrival edge {edge}/history {history}");
+                        }
+                    }
+
+                    // A catch-up frame may park at a node unrelated to the remembered edge.
+                    // Exercise every remembered heading at every node, including the collapsed
+                    // consist branch that an arrival-only loop would silently skip.
+                    for (int prior = 0; prior < graph.EdgeFrom.Length; prior++)
+                    {
+                        for (int node = 0; node < graph.NodeCount; node++)
+                        {
+                            ClearTrainHistory(root);
+                            PutTrainOnEdge(root, prior, graph.EdgeTravelTicks[prior] - 1);
+                            PutTrainAtNode(root, node);
+                            AssertTrainInside(camera, root,
+                                $"{levelId}/node {node}/prior edge {prior}");
+                        }
+                    }
+
+                    if (!mutationProved)
+                    {
+                        Transform probe = TrainTransform(root);
+                        Vector3 original = probe.position;
+                        float frameWidth = 2f * camera.orthographicSize * camera.aspect;
+                        try
+                        {
+                            probe.position += new Vector3(frameWidth, 0f, 0f);
+                            Assert.That(HorizontalGameplayViolation(camera, probe), Is.Not.Null,
+                                "a one-frame train escape must trip the mesh-vertex guard");
+                            mutationProved = true;
+                        }
+                        finally
+                        {
+                            probe.position = original;
+                        }
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(root.gameObject);
+                }
+            }
+            Assert.That(mutationProved, Is.True);
+        }
+
+        [Test]
         public void DecorativePropsLeaveTheWidthFit_ButNeverTheVerticalFit()
         {
             var root = GameRoot.LaunchWith(ImportLevel("L008"));
@@ -366,18 +533,19 @@ namespace CatMetro.Tests.PlayMode
         /// The same test the guard applies, as a bool, so the NEGATIVE case can be asserted
         /// directly instead of by catching the guard's own AssertionException.
         ///
-        /// Catching it would work on the NUnit that ships here and is still the wrong shape.
-        /// From NUnit 3.6 onward a failing Assert.That records an AssertionResult into
-        /// CurrentResult.AssertionResults BEFORE it throws, and that recorded failure can fail
-        /// the whole test even though Assert.Throws swallowed the exception — a test that
-        /// reports failed while showing a constraint that looks satisfied. This project ships
-        /// com.unity.ext.nunit@d8c07649098d, whose nunit.framework.dll is version 3.5.0.0:
-        /// RecordAssertion, AssertionResults, RecordTestCompletion, MultipleAssertLevel and
-        /// AssertionStatus are all absent from that assembly (AssertionException,
-        /// TestExecutionContext, CurrentResult and SetResult are present, so that is a real
-        /// absence and not a failed search). So the trap is not armed today. It arms itself
-        /// silently the day anyone bumps that package, which is reason enough not to depend on
-        /// it: the predicate below is version-proof and tests the same four constants.
+        /// Catching an assertion here would couple the negative-case proof to NUnit's assertion
+        /// side effects. One proposed rationale was that NUnit 3.6+ records an AssertionResult
+        /// before throwing and can therefore fail the test even when Assert.Throws catches the
+        /// exception. That later-version behaviour was not verified and is not treated as fact.
+        ///
+        /// What was verified locally is narrower: Unity's inspected nunit.framework.dll reports
+        /// version 3.5.0.0, and RecordAssertion, AssertionResults, RecordTestCompletion,
+        /// MultipleAssertLevel and AssertionStatus have zero occurrences in it. Control probes
+        /// in the same scan — AssertionException, TestExecutionContext, CurrentResult and
+        /// SetResult — are present, so the absence is real rather than a failed search. Those
+        /// probes establish only the shipped assembly's surface, not any NUnit 3.6+ behaviour.
+        /// Independently of NUnit version, the predicate below is version-proof and tests the
+        /// same four constants directly.
         /// </summary>
         private static bool IsInsideGameplayBand(Camera camera, Vector3 world)
         {
@@ -396,6 +564,144 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(viewport.y, Is.InRange(GameplayMinY, GameplayMaxY),
                 label + " outside the portrait vertical safe frame");
         }
+
+        private static IEnumerable<Renderer> GameplayRenderers(BoardView board)
+        {
+            Transform desk = board.transform.Find("DeskSurface");
+            Transform slab = board.transform.Find("BoardBody");
+            Transform[] decorative = board.GetComponentsInChildren<BoardPropInstance>(true)
+                .Where(x => x.IsDecorative).Select(x => x.transform).ToArray();
+            foreach (var renderer in board.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!renderer.enabled) continue;
+                if (desk != null && renderer.transform.IsChildOf(desk)) continue;
+                if (slab != null && renderer.transform.IsChildOf(slab)) continue;
+                if (decorative.Any(x => renderer.transform.IsChildOf(x))) continue;
+                yield return renderer;
+            }
+        }
+
+        private static string HorizontalBoundsViolation(Camera camera, Bounds bounds)
+        {
+            for (int corner = 0; corner < 8; corner++)
+            {
+                Vector3 world = new Vector3(
+                    (corner & 1) == 0 ? bounds.min.x : bounds.max.x,
+                    (corner & 2) == 0 ? bounds.min.y : bounds.max.y,
+                    (corner & 4) == 0 ? bounds.min.z : bounds.max.z);
+                Vector3 viewport = camera.WorldToViewportPoint(world);
+                if (viewport.z <= 0f || viewport.x < GameplayMinX
+                    || viewport.x > GameplayMaxX)
+                    return $"bounds corner {corner} projected to "
+                        + $"({viewport.x:F4}, {viewport.y:F4}, {viewport.z:F2})";
+            }
+            return null;
+        }
+
+        private static void AssertTrainInside(Camera camera, GameRoot root, string label) =>
+            Assert.That(HorizontalGameplayViolation(camera, TrainTransform(root)), Is.Null,
+                label + $" left x={GameplayMinX:F3}..{GameplayMaxX:F3}");
+
+        private static void PutTrainOnEdge(GameRoot root, int edge, int tick)
+        {
+            ClearOtherTrainSlots(root);
+            root.Session.State.Trains[0] = new TrainSlot
+            {
+                Id = 1,
+                Color = CatColor.Red,
+                EdgeId = (short)edge,
+                ProgressTicks = (short)tick,
+                NodeId = (short)root.Session.Level.Graph.EdgeFrom[edge],
+                State = TrainState.OnEdge,
+            };
+            root.View.UpdateFrom(root.Session);
+        }
+
+        private static void PutTrainAtNode(GameRoot root, int node)
+        {
+            ClearOtherTrainSlots(root);
+            root.Session.State.Trains[0] = new TrainSlot
+            {
+                Id = 1,
+                Color = CatColor.Red,
+                NodeId = (short)node,
+                State = TrainState.AtNode,
+            };
+            root.View.UpdateFrom(root.Session);
+        }
+
+        private static void ClearTrainHistory(GameRoot root)
+        {
+            var graph = root.Session.Level.Graph;
+            Assert.That(graph.EdgeFrom.Length, Is.GreaterThan(0));
+            Assert.That(graph.NodeCount, Is.GreaterThan(1),
+                "the corpus needs a foreign node to exercise the no-history train pose");
+            PutTrainOnEdge(root, 0, graph.EdgeTravelTicks[0] - 1);
+            int foreignNode = (graph.EdgeTo[0] + 1) % graph.NodeCount;
+            PutTrainAtNode(root, foreignNode);
+        }
+
+        private static void ClearOtherTrainSlots(GameRoot root)
+        {
+            for (int i = 1; i < root.Session.State.Trains.Length; i++)
+                root.Session.State.Trains[i] = default;
+        }
+
+        private static Transform TrainTransform(GameRoot root) =>
+            root.View.GetComponentsInChildren<BoardElementId>(true)
+                .Single(x => x.Kind == "train" && x.gameObject.activeInHierarchy).transform;
+
+        private static string HorizontalGameplayViolation(Camera camera, Transform train)
+        {
+            foreach (var filter in train.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (!filter.gameObject.activeInHierarchy || filter.sharedMesh == null) continue;
+                Vector3[] vertices = filter.sharedMesh.vertices;
+                for (int i = 0; i < vertices.Length; i++)
+                {
+                    Vector3 viewport = camera.WorldToViewportPoint(
+                        filter.transform.TransformPoint(vertices[i]));
+                    if (viewport.z <= 0f || viewport.x < GameplayMinX
+                        || viewport.x > GameplayMaxX)
+                        return $"{filter.name} vertex {i} projected to "
+                            + $"({viewport.x:F4}, {viewport.y:F4}, {viewport.z:F2})";
+                }
+            }
+            return null;
+        }
+
+        private static string[] AuthoredLevelIds()
+        {
+            string staged = Path.Combine(UnityEngine.Application.streamingAssetsPath,
+                "content", "levels");
+            string authored = Path.Combine(UnityEngine.Application.dataPath,
+                "..", "..", "content", "levels");
+            Assert.That(Directory.Exists(staged), Is.True,
+                "the staged level corpus must exist: " + staged);
+            Assert.That(Directory.Exists(authored), Is.True,
+                "the authored level corpus must exist: " + authored);
+            string[] stagedIds = LevelIdsIn(staged);
+            string[] authoredIds = LevelIdsIn(authored);
+            Assert.That(stagedIds.Length, Is.GreaterThanOrEqualTo(17),
+                "anti-vacuity: this project had at least 17 authored levels");
+            Assert.That(stagedIds, Is.EqualTo(authoredIds),
+                "staged levels drifted from the authored corpus");
+            foreach (string id in stagedIds)
+            {
+                byte[] stagedBytes = File.ReadAllBytes(Path.Combine(staged, id + ".json"));
+                byte[] authoredBytes = File.ReadAllBytes(Path.Combine(authored, id + ".json"));
+                Assert.That(stagedBytes, Is.EqualTo(authoredBytes),
+                    id + " differs between staged and authored level content");
+            }
+            return stagedIds;
+        }
+
+        private static string[] LevelIdsIn(string directory) =>
+            Directory.GetFiles(directory, "L*.json")
+                .Where(x => Path.GetExtension(x) == ".json")
+                .Select(Path.GetFileNameWithoutExtension)
+                .OrderBy(x => x, System.StringComparer.Ordinal)
+                .ToArray();
 
         private static ImportedLevel ImportLevel(string id)
         {
