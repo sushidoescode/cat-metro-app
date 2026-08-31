@@ -15,6 +15,13 @@ namespace CatMetro.Presentation.Cats
         public const string BoardClip = "Cat_Board";
         public const string AlightClip = "Cat_Alight";
         public const string CelebrateClip = "Cat_Celebrate";
+        // Measured on TASK 17's admitted 30-bone skin. These are deliberately neutral A/B
+        // labels: provider names do not establish anatomical left/right, but localized bake
+        // probes prove that each branch deforms one upper ear and belongs to the renderer skin.
+        public const string EarDeformerPathA =
+            "Armature/tripo::Root/tripo::Head_0/tripo::Head_1/tripo::Head_2/bone_4";
+        public const string EarDeformerPathB =
+            "Armature/tripo::Root/tripo::Head_0/tripo::Head_1/tripo::Head_2/tripo::Head_3";
         public const float NormalizedStandingHeight = 1f;
         private const float PivotCenterTolerance = 1e-4f;
         // TASK 17 measured this display scale from the admitted one-unit rig. Its value happens

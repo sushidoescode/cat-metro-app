@@ -5,6 +5,7 @@ using CatMetro.Application.Session;
 using CatMetro.Content;
 using CatMetro.Domain;
 using CatMetro.Presentation.Board;
+using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Theme;
 using NUnit.Framework;
 using UnityEngine;
@@ -153,6 +154,7 @@ namespace CatMetro.Tests.PlayMode
         public IEnumerator CatEars_StandClearOfTheHeadSilhouette_AtEveryHeading()
         {
             yield return BuildBoard();
+            SeatFirstCat();
             foreach (int edge in new[] { 0, 1, 2 }) // three distinct authored headings
             {
                 PlaceOnEdge(edge: edge, progressTicks: 4);
@@ -196,6 +198,7 @@ namespace CatMetro.Tests.PlayMode
         public IEnumerator SeatedCat_HoldsAFixedCameraFacingYaw_WhateverTheTrackDoes()
         {
             yield return BuildBoard();
+            SeatFirstCat();
             Vector3 toCamera = -(Quaternion.Inverse(BoardSceneLook.BoardTilt) * Vector3.forward);
             float bestPossible = new Vector2(toCamera.x, toCamera.y).magnitude;
 
@@ -456,6 +459,7 @@ namespace CatMetro.Tests.PlayMode
         public IEnumerator Pin_SitsDIRECTLYAboveItsOwnCat_AtEveryHeading()
         {
             yield return BuildBoard();
+            SeatFirstCat();
             foreach (int edge in new[] { 0, 1, 2 })
             {
                 PlaceOnEdge(edge: edge, progressTicks: 4);
@@ -816,6 +820,81 @@ namespace CatMetro.Tests.PlayMode
                 "a delivered train's consist leaves the board, cat and all");
         }
 
+        [UnityTest]
+        public IEnumerator AdmittedRigEarTwitch_ComposesAfterAnimatorWithoutAccumulating()
+        {
+            yield return BuildBoard();
+            PlaceOnEdge(edge: 0, progressTicks: 4);
+            _view.UpdateFrom(_session, 0f);
+            ToyTrainView train = TrainRoot().GetComponent<ToyTrainView>();
+            if (!train.RigAdmitted)
+                Assert.Ignore("The licensed local rig is absent; run in the combined workspace.");
+            Assert.That(train.RigEarTwitchSupported, Is.True,
+                "the shipped 30-bone rig must bind TASK 17's two measured ear branches");
+
+            Animator animator = train.GetComponentInChildren<Animator>(true);
+            Transform branchA = animator.transform.Find(CatModelCatalog.EarDeformerPathA);
+            Transform branchB = animator.transform.Find(CatModelCatalog.EarDeformerPathB);
+            const uint firstSeed = 41u;
+            float firstTime = TimeWithLargeEarTwitch(firstSeed);
+            CatMicroPose firstPose = new CatMicroMotion(firstSeed)
+                .Evaluate(firstTime, false, false);
+            Quaternion offsetA = Quaternion.Euler(0f, 0f,
+                firstPose.EarTwitchDegrees * ToyTrainView.RigEarTwitchGain);
+            Quaternion offsetB = Quaternion.Euler(0f, 0f,
+                -firstPose.EarTwitchDegrees * ToyTrainView.RigEarTwitchGain);
+
+            train.SyncSlot(firstSeed, CatColor.Red);
+            train.ApplyPresentation(CatPresentationState.RideIdle, firstTime, false);
+            yield return null;
+            Quaternion firstFrameA = branchA.localRotation;
+            Quaternion firstFrameB = branchB.localRotation;
+            Quaternion sampledIdleA = firstFrameA * Quaternion.Inverse(offsetA);
+            Quaternion sampledIdleB = firstFrameB * Quaternion.Inverse(offsetB);
+            for (int frame = 0; frame < 4; frame++) yield return null;
+            Assert.That(Quaternion.Angle(branchA.localRotation, firstFrameA), Is.LessThan(0.01f),
+                "LateUpdate must replace, not accumulate, the additive on padded idle clips");
+            Assert.That(Quaternion.Angle(branchB.localRotation, firstFrameB), Is.LessThan(0.01f));
+
+            train.SyncSlot(42L, CatColor.Blue);
+            Assert.That(Quaternion.Angle(branchA.localRotation, sampledIdleA), Is.LessThan(0.01f),
+                "occupant reuse must strip the previous cat's procedural ear offset");
+            Assert.That(Quaternion.Angle(branchB.localRotation, sampledIdleB), Is.LessThan(0.01f));
+
+            float walkTime = TimeWithLargeEarTwitch(42u);
+            CatMicroPose walkPose = new CatMicroMotion(42u).Evaluate(walkTime, false, false);
+            train.ApplyPresentation(CatPresentationState.Walk, walkTime, false);
+            yield return null;
+            AnimatorStateInfo walkState = animator.GetCurrentAnimatorStateInfo(0);
+            Assert.That(walkState.IsName("Base Layer." + CatModelCatalog.WalkClip), Is.True);
+
+            GameObject control = Object.Instantiate(
+                Resources.Load<GameObject>(CatModelCatalog.ResourcePath), _host.transform, false);
+            Animator controlAnimator = control.GetComponentInChildren<Animator>(true);
+            controlAnimator.applyRootMotion = false;
+            controlAnimator.speed = 0f;
+            controlAnimator.Rebind();
+            float walkPhase = walkState.normalizedTime - Mathf.Floor(walkState.normalizedTime);
+            controlAnimator.Play("Base Layer." + CatModelCatalog.WalkClip, 0, walkPhase);
+            controlAnimator.Update(0f);
+            Transform controlA = controlAnimator.transform.Find(CatModelCatalog.EarDeformerPathA);
+            Transform controlB = controlAnimator.transform.Find(CatModelCatalog.EarDeformerPathB);
+            Quaternion authoredA = branchA.localRotation * Quaternion.Inverse(
+                Quaternion.Euler(0f, 0f, walkPose.EarTwitchDegrees
+                    * ToyTrainView.RigEarTwitchGain));
+            Quaternion authoredB = branchB.localRotation * Quaternion.Inverse(
+                Quaternion.Euler(0f, 0f, -walkPose.EarTwitchDegrees
+                    * ToyTrainView.RigEarTwitchGain));
+            Assert.That(Quaternion.Angle(authoredA, controlA.localRotation), Is.LessThan(0.1f),
+                "the additive must preserve Animator's authored Walk sample on branch A");
+            Assert.That(Quaternion.Angle(authoredB, controlB.localRotation), Is.LessThan(0.1f),
+                "the additive must preserve Animator's authored Walk sample on branch B");
+
+            train.ApplyPresentation(CatPresentationState.RideIdle, walkTime, true);
+            Assert.That(train.RigNeutralSampleCount, Is.EqualTo(1));
+            LogAssert.NoUnexpectedReceived();
+        }
+
         private IEnumerator BuildBoard()
         {
             var level = ImportL001();
@@ -837,6 +916,32 @@ namespace CatMetro.Tests.PlayMode
                 NodeId = 1,
                 State = TrainState.OnEdge,
             };
+        }
+
+        private void SeatFirstCat()
+        {
+            PlaceOnEdge(edge: 0, progressTicks: 4);
+            _view.UpdateFrom(_session, 0f);
+            _view.UpdateFrom(_session,
+                CatPresentationTrack.SpawnWalkDuration
+                + CatPresentationTrack.BoardDuration);
+            Assert.That(TrainRoot().GetComponent<ToyTrainView>().PresentationState,
+                Is.EqualTo(CatPresentationState.RideIdle),
+                "seated geometry laws must measure the fixed-yaw RideIdle artifact, not the " +
+                "path-facing Walk/Board transfer pose");
+        }
+
+        private static float TimeWithLargeEarTwitch(uint seed)
+        {
+            var motion = new CatMicroMotion(seed);
+            for (int sample = 0; sample <= 1000; sample++)
+            {
+                float time = sample * 0.01f;
+                if (Mathf.Abs(motion.Evaluate(time, false, false).EarTwitchDegrees) >= 12f)
+                    return time;
+            }
+            Assert.Fail("the deterministic Tier-1 cadence must contain a >=12 degree ear pose");
+            return 0f;
         }
 
         private BoardElementId TrainRoot() =>

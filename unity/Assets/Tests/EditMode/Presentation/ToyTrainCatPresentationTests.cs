@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using CatMetro.Application.Session;
 using CatMetro.Content;
 using CatMetro.Domain;
@@ -54,6 +56,68 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void FurnishedStations_KeepOneOwnedTintMaterialThroughDecorationAndTeardown()
+        {
+            var prefab = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Object.DestroyImmediate(prefab.GetComponent<Collider>());
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            Assert.That(shader, Is.Not.Null, "URP/Lit test precondition");
+            var prefabMaterial = new Material(shader);
+            prefabMaterial.SetTexture("_BaseMap", Texture2D.whiteTexture);
+            prefab.GetComponent<Renderer>().sharedMaterial = prefabMaterial;
+            var catalog = new PropModelCatalog(new[]
+            {
+                new PropModelCatalog.Entry(PropModelCatalog.StationKioskId,
+                    prefab, 1f, 0f, Vector3.zero),
+            });
+            Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(1));
+
+            var before = new HashSet<int>(Resources.FindObjectsOfTypeAll<Material>()
+                .Where(x => x.name.StartsWith("Board station — "))
+                .Select(x => x.GetInstanceID()));
+            var owned = new List<Material>();
+            try
+            {
+                _boardHost = new GameObject("furnished-material-lifecycle-host");
+                ImportedLevel level = VFixtures.Import(VFixtures.L001Bytes());
+                _session = new GameSession(level);
+                _board = BoardView.Build(level, _boardHost.transform, _session, catalog);
+
+                foreach (BoardElementId station in _board
+                    .GetComponentsInChildren<BoardElementId>(true)
+                    .Where(x => x.Kind == "station"))
+                {
+                    Material anchor = station.GetComponent<Renderer>().sharedMaterial;
+                    Renderer plate = station.transform.Find("station:plate-generated")
+                        .GetComponent<Renderer>();
+                    Assert.That(plate.sharedMaterial, Is.SameAs(anchor),
+                        "the generated primary badge must retain the station's authoritative tint");
+                    owned.Add(anchor);
+                }
+
+                Material[] created = Resources.FindObjectsOfTypeAll<Material>()
+                    .Where(x => x.name.StartsWith("Board station — ")
+                        && !before.Contains(x.GetInstanceID()))
+                    .ToArray();
+                Assert.That(created, Has.Length.EqualTo(owned.Count),
+                    "decoration must not make a second renderer.material instance per station");
+
+                Object.DestroyImmediate(_board.gameObject);
+                _board = null;
+                TestContext.Out.WriteLine("STATION_MATERIAL_TEARDOWN_READBACK created="
+                    + created.Length + " destroyed=" + created.Count(x => x == null));
+                foreach (Material material in created)
+                    Assert.That(material == null, Is.True,
+                        "BoardView must tear down every station material it creates");
+            }
+            finally
+            {
+                Object.DestroyImmediate(prefab);
+                Object.DestroyImmediate(prefabMaterial);
+            }
+        }
+
+        [Test]
         public void PlatformBlend_MovesTheCatOutsideTheCarriageAndSwingsPlaceholderLegsOnly()
         {
             _view.PlaceOnEdge(_paths, 0, 1.5f);
@@ -71,8 +135,9 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(Vector3.Distance(Cat().localPosition, seatedBaseline),
                 Is.GreaterThan(ToyTrainView.PlatformSideOffset - 0.022f));
             Assert.That(Vector3.Distance(Pin().localPosition - pinBaseline,
-                Vector3.down * ToyTrainView.PlatformSideOffset), Is.LessThan(0.0001f),
-                "the destination card follows the cat instead of floating over the empty seat");
+                Cat().localPosition - seatedBaseline), Is.LessThan(0.0001f),
+                "the destination card follows both the cat's path and its visual-only bob " +
+                "instead of floating over the empty seat");
             Vector3 towardSeat = (seatedWorld - Cat().position).normalized;
             Assert.That(Vector3.Dot(Cat().TransformDirection(Vector3.right), towardSeat),
                 Is.GreaterThan(0.9f), "Cat-local +X / rig forward faces along the path");

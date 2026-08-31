@@ -38,7 +38,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private const float EarSize = 0.24f;
         private const float EarInset = 0.22f;
         private const float EarRise = 0.343f;
-        private const float EarTilt = 12f;
+        public const float NeutralEarTiltDegrees = 12f;
         private const float EyeSize = 0.088f;
         private const float EyeSpread = 0.15f;
         private const float EyeRise = 0.035f;
@@ -271,8 +271,10 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 new Vector2(-sizePx * EarInset, sizePx * EarRise), new Vector2(ear, ear));
             Place(_earRight.rectTransform,
                 new Vector2(sizePx * EarInset, sizePx * EarRise), new Vector2(ear, ear));
-            _earLeft.rectTransform.localRotation = Quaternion.Euler(0f, 0f, EarTilt);
-            _earRight.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -EarTilt);
+            _earLeft.rectTransform.localRotation = Quaternion.Euler(
+                0f, 0f, NeutralEarTiltDegrees);
+            _earRight.rectTransform.localRotation = Quaternion.Euler(
+                0f, 0f, -NeutralEarTiltDegrees);
 
             float head = sizePx * HeadSize;
             Place(_head.rectTransform, Vector2.zero, new Vector2(head, head));

@@ -63,8 +63,10 @@ namespace CatMetro.Tests.PlayMode
                 face.ApplyVisualTime(i * 0.01f);
                 float eyeY = Eye(face, "eyeL").localScale.y;
                 float bob = face.FaceRect.anchoredPosition.y - 18f;
-                float leftOffset = Mathf.DeltaAngle(18f, Ear(face, "earL").localEulerAngles.z);
-                float rightOffset = Mathf.DeltaAngle(-18f, Ear(face, "earR").localEulerAngles.z);
+                float leftOffset = Mathf.DeltaAngle(CatFaceView.NeutralEarTiltDegrees,
+                    Ear(face, "earL").localEulerAngles.z);
+                float rightOffset = Mathf.DeltaAngle(-CatFaceView.NeutralEarTiltDegrees,
+                    Ear(face, "earR").localEulerAngles.z);
 
                 Assert.That(eyeY, Is.InRange(0.08f, 1f));
                 Assert.That(Mathf.Abs(bob), Is.LessThanOrEqualTo(maxBobPx + 0.001f));
@@ -147,10 +149,11 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator SessionTickLayout_DoesNotLeaveAnActiveFaceNeutralAtEndOfFrame()
+        public IEnumerator SessionTickLayout_DoesNotLeaveAnActiveFaceNeutralAtCanvasRender()
         {
             _root = GameRoot.Launch();
-            yield return new WaitForEndOfFrame();
+            yield return null;
+            Canvas.ForceUpdateCanvases();
             var face = FirstActiveFace(_root.Preview);
 
             _root.MotionOffToggle = true;
@@ -159,10 +162,12 @@ namespace CatMetro.Tests.PlayMode
             _root.MotionOffToggle = false;
 
             // A real session change makes WavePreviewStrip.Refresh/Layout run in LateUpdate.
-            // The assertion resumes after rendering, when a pre-render callback has had its
-            // final chance to reapply the visual pose.
+            // Advancing one frame lets that LateUpdate run. ForceUpdateCanvases then invokes
+            // the same pre-render callback in both interactive and batchmode test players,
+            // without WaitForEndOfFrame (which Unity never evokes in batchmode).
             _root.Session.AdvanceMs(CatMetro.Application.Session.TickInterpolator.TICK_MS);
-            yield return new WaitForEndOfFrame();
+            yield return null;
+            Canvas.ForceUpdateCanvases();
 
             Assert.That(_root.Session.State.Tick, Is.GreaterThan(0));
             Assert.That(IsAnimated(face, neutralPosition), Is.True,
@@ -215,8 +220,10 @@ namespace CatMetro.Tests.PlayMode
             face.FaceRect.anchoredPosition != neutralPosition
             || Eye(face, "eyeL").localScale != Vector3.one
             || Eye(face, "eyeR").localScale != Vector3.one
-            || Ear(face, "earL").localRotation != Quaternion.Euler(0f, 0f, 18f)
-            || Ear(face, "earR").localRotation != Quaternion.Euler(0f, 0f, -18f);
+            || Ear(face, "earL").localRotation != Quaternion.Euler(
+                0f, 0f, CatFaceView.NeutralEarTiltDegrees)
+            || Ear(face, "earR").localRotation != Quaternion.Euler(
+                0f, 0f, -CatFaceView.NeutralEarTiltDegrees);
 
         private static void AssertNeutral(CatFaceView face, Vector2 centre)
         {
@@ -224,8 +231,10 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(face.FaceRect.localScale, Is.EqualTo(Vector3.one));
             Assert.That(Eye(face, "eyeL").localScale, Is.EqualTo(Vector3.one));
             Assert.That(Eye(face, "eyeR").localScale, Is.EqualTo(Vector3.one));
-            Assert.That(Ear(face, "earL").localRotation, Is.EqualTo(Quaternion.Euler(0f, 0f, 18f)));
-            Assert.That(Ear(face, "earR").localRotation, Is.EqualTo(Quaternion.Euler(0f, 0f, -18f)));
+            Assert.That(Ear(face, "earL").localRotation, Is.EqualTo(Quaternion.Euler(
+                0f, 0f, CatFaceView.NeutralEarTiltDegrees)));
+            Assert.That(Ear(face, "earR").localRotation, Is.EqualTo(Quaternion.Euler(
+                0f, 0f, -CatFaceView.NeutralEarTiltDegrees)));
         }
 
         private static RectTransform Eye(CatFaceView face, string name) =>

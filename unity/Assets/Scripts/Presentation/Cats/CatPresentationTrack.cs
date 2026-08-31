@@ -25,6 +25,10 @@ namespace CatMetro.Presentation.Cats
         public const float CelebrateDuration = 0.48f;
         private const float BoardStartBlend = 0.35f;
         private const float DeliveryWalkMinimumBlend = 0.45f;
+        // Absolute presentation-clock tolerance. Decimal phase endpoints such as 10.22 + 0.18
+        // differ by about one microsecond after float32 rounding; the named duration still ends
+        // at that endpoint, never one rendered frame later.
+        private const float PhaseBoundaryTolerance = 0.00001f;
 
         private int _representedOccupantGeneration;
         private bool _departureActive;
@@ -225,6 +229,7 @@ namespace CatMetro.Presentation.Cats
             StateElapsed = 0f;
         }
 
-        private bool HasElapsed(float now, float duration) => now >= _stateStartedAt + duration;
+        private bool HasElapsed(float now, float duration) =>
+            Mathf.Max(0f, now - _stateStartedAt) + PhaseBoundaryTolerance >= duration;
     }
 }

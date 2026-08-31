@@ -15,6 +15,7 @@ namespace CatMetro.Presentation.Board
     // Presentation NEVER simulates (criterion 6): it reads session state + Alpha and places
     // primitives; the lever shows the COMMITTED route (state route + pending toggles) so a tap
     // is visible on its first rendered frame while the sim applies it at the boundary.
+    [ExecuteAlways]
     public sealed class BoardView : MonoBehaviour
     {
         // CM-UX-03: the onboarding teach affordance — a static raised ring behind every switch
@@ -49,6 +50,7 @@ namespace CatMetro.Presentation.Board
         private int[] _switchNode;
         private ToySwitchView[] _switchView;
         private readonly Dictionary<int, ToyTrainView> _trains = new Dictionary<int, ToyTrainView>();
+        private readonly List<Material> _ownedNodeMaterials = new List<Material>();
         private CatPresentationTrack[] _catTracks;
         private int[] _catOccupantGenerations;
         private int[] _sourcePlatformLanes;
@@ -155,7 +157,19 @@ namespace CatMetro.Presentation.Board
                 renderer.sharedMaterial = GreyboxMaterial.Shared;
                 if (kind == "station")
                 {
-                    renderer.material.color = ColorFor(stationAccept[nodes[i].Id]);
+                    // A station's material is shared with its generated primary badge, so it
+                    // must carry the line tint on the material itself. Create it explicitly,
+                    // bind it through sharedMaterial, and tear it down with this BoardView.
+                    // Reading renderer.material here would ask Unity to clone an unowned copy
+                    // (and does exactly that, with a leak warning, in EditMode).
+                    var stationMaterial = GreyboxMaterial.CreateTinted(
+                        "Board station — " + nodes[i].Id,
+                        ColorFor(stationAccept[nodes[i].Id]));
+                    if (stationMaterial != null)
+                    {
+                        _ownedNodeMaterials.Add(stationMaterial);
+                        renderer.sharedMaterial = stationMaterial;
+                    }
                     var symbol = new GameObject("Symbol").AddComponent<TextMesh>();
                     symbol.transform.SetParent(prim.transform, false);
                     symbol.transform.localPosition = new Vector3(0f, 0f, -1f);
@@ -165,8 +179,10 @@ namespace CatMetro.Presentation.Board
                     symbol.text = stationAccept[nodes[i].Id].Length > 0
                         ? stationAccept[nodes[i].Id].Substring(0, 1).ToUpperInvariant() : "?";
                 }
-                else if (kind == "source") renderer.material.color = new Color(0.25f, 0.25f, 0.25f);
-                else renderer.material.color = new Color(0.7f, 0.7f, 0.7f);
+                else if (kind == "source")
+                    TintSharedRenderer(renderer, new Color(0.25f, 0.25f, 0.25f));
+                else
+                    TintSharedRenderer(renderer, new Color(0.7f, 0.7f, 0.7f));
             }
 
             _edgeFrom = new int[edges.Length];
@@ -553,5 +569,25 @@ namespace CatMetro.Presentation.Board
         // rendering magenta with nothing to catch it. Routed through the vocabulary too, so
         // adding a line is one edit in CatLine and every surface follows.
         private static Color ColorForCode(byte code) => CatLine.ColorOf(code);
+
+        private static void TintSharedRenderer(Renderer renderer, Color color)
+        {
+            var properties = new MaterialPropertyBlock();
+            properties.SetColor("_BaseColor", color);
+            properties.SetColor("_Color", color);
+            renderer.SetPropertyBlock(properties);
+        }
+
+        private void OnDestroy()
+        {
+            for (int i = 0; i < _ownedNodeMaterials.Count; i++)
+            {
+                Material material = _ownedNodeMaterials[i];
+                if (material == null) continue;
+                if (UnityEngine.Application.isPlaying) Destroy(material);
+                else DestroyImmediate(material);
+            }
+            _ownedNodeMaterials.Clear();
+        }
     }
 }

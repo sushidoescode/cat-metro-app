@@ -8,6 +8,7 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 
 namespace CatMetro.Tests.EditMode.Presentation
@@ -32,6 +33,10 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(CatModelCatalog.CelebrateClip, Is.EqualTo("Cat_Celebrate"));
             Assert.That(CatModelCatalog.PresenterScale, Is.EqualTo(0.42f));
             Assert.That(CatModelCatalog.WalkTravelSpeedAtOneX, Is.EqualTo(0.100367f));
+            Assert.That(CatModelCatalog.EarDeformerPathA, Is.EqualTo(
+                "Armature/tripo::Root/tripo::Head_0/tripo::Head_1/tripo::Head_2/bone_4"));
+            Assert.That(CatModelCatalog.EarDeformerPathB, Is.EqualTo(
+                "Armature/tripo::Root/tripo::Head_0/tripo::Head_1/tripo::Head_2/tripo::Head_3"));
         }
 
         [Test]
@@ -373,6 +378,126 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void ResourcesRig_MeasuredEarBranchesCarryTierOneTwitchWithoutAPlaybackDependency()
+        {
+            GameObject prefab = Resources.Load<GameObject>(CatModelCatalog.ResourcePath);
+            if (prefab == null)
+                Assert.Ignore("The licensed local rig is absent; run this in the combined asset workspace.");
+
+            var catalog = new CatModelCatalog(prefab);
+            Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(1), catalog.RejectionReason);
+            TestContext.Out.WriteLine("CAT_RIG_CATALOG_READBACK AdmittedEntryCount="
+                + catalog.AdmittedEntryCount);
+            var host = new GameObject("measured-ear-rig-host");
+            Mesh neutralMesh = null;
+            Mesh twitchMesh = null;
+            try
+            {
+                var view = ToyTrainView.Create(host.transform, "train:measured-ears",
+                    new[] { 0 }, new[] { 1 }, catalog);
+                view.SyncSlot(41L, CatColor.Red);
+                Animator animator = view.GetComponentInChildren<Animator>(true);
+                Transform branchA = animator.transform.Find(CatModelCatalog.EarDeformerPathA);
+                Transform branchB = animator.transform.Find(CatModelCatalog.EarDeformerPathB);
+                Assert.That(branchA, Is.Not.Null, "TASK 17's first measured ear path must resolve");
+                Assert.That(branchB, Is.Not.Null, "TASK 17's second measured ear path must resolve");
+
+                SkinnedMeshRenderer[] skins =
+                    animator.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                Assert.That(skins, Has.Length.EqualTo(1));
+                Assert.That(skins[0].bones, Has.Length.EqualTo(30),
+                    "the admitted artifact is TASK 17's measured 30-bone skin");
+                Assert.That(Array.IndexOf(skins[0].bones, branchA), Is.GreaterThanOrEqualTo(0));
+                Assert.That(Array.IndexOf(skins[0].bones, branchB), Is.GreaterThanOrEqualTo(0));
+                Assert.That(view.RigEarTwitchSupported, Is.True,
+                    "Tier 1 must bind only after both measured branches belong to the skin");
+
+                view.ApplyPresentation(CatPresentationState.RideIdle, 0f, true);
+                Quaternion neutralA = branchA.localRotation;
+                Quaternion neutralB = branchB.localRotation;
+                neutralMesh = new Mesh();
+                // useScale=true compensates the renderer Transform scale. The baked vertices
+                // remain renderer-local, so TransformPoint below then applies the admitted
+                // 0.42 presentation hierarchy exactly once.
+                skins[0].BakeMesh(neutralMesh, true);
+
+                float sampleTime = TimeWithLargeEarTwitch(41u);
+                CatMicroPose pose = new CatMicroMotion(41u).Evaluate(sampleTime, false, false);
+                view.ApplyPresentation(CatPresentationState.RideIdle, sampleTime, false);
+                Assert.That(Quaternion.Angle(branchA.localRotation,
+                    neutralA * Quaternion.Euler(0f, 0f,
+                        pose.EarTwitchDegrees * ToyTrainView.RigEarTwitchGain)),
+                    Is.LessThan(0.01f));
+                Assert.That(Quaternion.Angle(branchB.localRotation,
+                    neutralB * Quaternion.Euler(0f, 0f,
+                        -pose.EarTwitchDegrees * ToyTrainView.RigEarTwitchGain)),
+                    Is.LessThan(0.01f));
+
+                twitchMesh = new Mesh();
+                skins[0].BakeMesh(twitchMesh, true);
+                AssertLocalizedUpperHeadDeformation(neutralMesh, twitchMesh,
+                    skins[0].transform, animator.transform);
+            }
+            finally
+            {
+                if (neutralMesh != null) Object.DestroyImmediate(neutralMesh);
+                if (twitchMesh != null) Object.DestroyImmediate(twitchMesh);
+                Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ResourcesRig_NoLocalizedEyeControlPinsBlinkToHudAndPlaceholderCats()
+        {
+            GameObject prefab = Resources.Load<GameObject>(CatModelCatalog.ResourcePath);
+            if (prefab == null)
+                Assert.Ignore("The licensed local rig is absent; run this in the combined asset workspace.");
+
+            var catalog = new CatModelCatalog(prefab);
+            Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(1), catalog.RejectionReason);
+            var host = new GameObject("measured-blink-policy-host");
+            try
+            {
+                var rigView = ToyTrainView.Create(host.transform, "train:rig-blink-policy",
+                    new[] { 0 }, new[] { 1 }, catalog);
+                rigView.SyncSlot(41L, CatColor.Red);
+                Animator animator = rigView.GetComponentInChildren<Animator>(true);
+                foreach (SkinnedMeshRenderer skin in
+                    animator.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                    Assert.That(skin.sharedMesh.blendShapeCount, Is.EqualTo(0),
+                        "the admitted rig has no blendshape that could localize a blink");
+                foreach (Transform candidate in animator.GetComponentsInChildren<Transform>(true))
+                {
+                    string lower = candidate.name.ToLowerInvariant();
+                    Assert.That(lower.Contains("eye") || lower.Contains("lid"), Is.False,
+                        "the admitted rig has no independently named eye/lid transform");
+                }
+                Assert.That(rigView.RigBlinkSupported, Is.False,
+                    "without a localized control, broad face deformation is forbidden: " +
+                    "board-rig blink is deferred while HUD and placeholder blink remain");
+                Assert.That(rigView.transform.Find("Carriage/Cat/EyeLeft")
+                    .GetComponent<MeshRenderer>().enabled, Is.False,
+                    "admission hides the placeholder eyes rather than layering them over the rig");
+
+                var placeholderView = ToyTrainView.Create(host.transform,
+                    "train:placeholder-blink", new[] { 0 }, new[] { 1 },
+                    new CatModelCatalog(null));
+                placeholderView.SyncSlot(41L, CatColor.Red);
+                Transform eye = placeholderView.transform.Find("Carriage/Cat/EyeLeft");
+                float neutralEyeY = eye.localScale.y;
+                placeholderView.ApplyPresentation(CatPresentationState.RideIdle,
+                    TimeWithBlink(41u), false);
+                Assert.That(eye.GetComponent<MeshRenderer>().enabled, Is.True);
+                Assert.That(eye.localScale.y, Is.LessThan(neutralEyeY * 0.2f),
+                    "the explicit deferral must not remove blink from placeholder board cats");
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
         public void WalkPlayback_UsesActualPlatformPathAndRetimesTheSameState()
         {
             using (var fixture = new ConformingRigFixture())
@@ -453,6 +578,43 @@ namespace CatMetro.Tests.EditMode.Presentation
             }
         }
 
+        [Test]
+        public void HiddenMotionOff_SamplesNeutralBeforeDeactivationAndAfterOccupantReuse()
+        {
+            using (var fixture = new ConformingRigFixture())
+            {
+                var host = new GameObject("hidden-motion-off-rig-host");
+                try
+                {
+                    var view = ToyTrainView.Create(host.transform, "train:rig",
+                        new[] { 0 }, new[] { 1 }, new CatModelCatalog(fixture.Prefab));
+                    Transform cat = view.transform.Find("Carriage/Cat");
+                    view.SyncSlot(0x0000000100000001L, CatColor.Red);
+                    view.ApplyPresentation(CatPresentationState.RideIdle, 0f, false);
+
+                    view.ApplyPresentation(CatPresentationState.Hidden, 0.1f, true);
+
+                    Assert.That(cat.gameObject.activeSelf, Is.False);
+                    Assert.That(view.RigNeutralSampleCount, Is.EqualTo(1),
+                        "a hidden rig may claim a neutral sample only after Animator.Update ran");
+                    LogAssert.NoUnexpectedReceived();
+
+                    view.SyncSlot(0x0000000100000002L, CatColor.Blue);
+                    view.ApplyPresentation(CatPresentationState.RideIdle, 0.2f, false);
+                    view.ApplyPresentation(CatPresentationState.Hidden, 0.3f, true);
+
+                    Assert.That(cat.gameObject.activeSelf, Is.False);
+                    Assert.That(view.RigNeutralSampleCount, Is.EqualTo(2),
+                        "a reused occupant must get its own active neutral resample");
+                    LogAssert.NoUnexpectedReceived();
+                }
+                finally
+                {
+                    Object.DestroyImmediate(host);
+                }
+            }
+        }
+
         private static void AssertPlays(ToyTrainView view, Animator animator,
             CatPresentationState state, string expectedState)
         {
@@ -512,6 +674,75 @@ namespace CatMetro.Tests.EditMode.Presentation
                 else result.Encapsulate(point);
             }
             return result;
+        }
+
+        private static float TimeWithLargeEarTwitch(uint seed)
+        {
+            var motion = new CatMicroMotion(seed);
+            for (int sample = 0; sample <= 1000; sample++)
+            {
+                float time = sample * 0.01f;
+                if (Mathf.Abs(motion.Evaluate(time, false, false).EarTwitchDegrees) >= 12f)
+                    return time;
+            }
+            Assert.Fail("the deterministic Tier-1 cadence must contain a >=12 degree ear pose");
+            return 0f;
+        }
+
+        private static float TimeWithBlink(uint seed)
+        {
+            var motion = new CatMicroMotion(seed);
+            for (int sample = 0; sample <= 1000; sample++)
+            {
+                float time = sample * 0.01f;
+                if (motion.Evaluate(time, false, false).EyeYScale <= 0.1f)
+                    return time;
+            }
+            Assert.Fail("the deterministic Tier-1 cadence must contain a closed-eye sample");
+            return 0f;
+        }
+
+        private static void AssertLocalizedUpperHeadDeformation(Mesh neutral, Mesh twitch,
+            Transform rendererTransform, Transform rigFrame)
+        {
+            Assert.That(twitch.vertexCount, Is.EqualTo(neutral.vertexCount));
+            Vector3[] baseline = neutral.vertices;
+            Vector3[] deformed = twitch.vertices;
+            var rigBaseline = new Vector3[baseline.Length];
+            Bounds bounds = default;
+            for (int index = 0; index < baseline.Length; index++)
+            {
+                rigBaseline[index] = rigFrame.InverseTransformPoint(
+                    rendererTransform.TransformPoint(baseline[index]));
+                if (index == 0) bounds = new Bounds(rigBaseline[index], Vector3.zero);
+                else bounds.Encapsulate(rigBaseline[index]);
+            }
+            float upperHeadFloor = bounds.min.y + bounds.size.y * 0.55f;
+            int movedVertices = 0;
+            float maximumDisplacement = 0f;
+            float lowerBodyDisplacement = 0f;
+            for (int index = 0; index < baseline.Length; index++)
+            {
+                Vector3 neutralWorld = rendererTransform.TransformPoint(baseline[index]);
+                Vector3 twitchWorld = rendererTransform.TransformPoint(deformed[index]);
+                float displacement = Vector3.Distance(neutralWorld, twitchWorld);
+                maximumDisplacement = Mathf.Max(maximumDisplacement, displacement);
+                if (displacement > 0.00001f) movedVertices++;
+                if (rigBaseline[index].y < upperHeadFloor)
+                    lowerBodyDisplacement = Mathf.Max(lowerBodyDisplacement, displacement);
+            }
+
+            Assert.That(movedVertices, Is.GreaterThan(1000),
+                "both measured ear branches must deform a substantial visible region");
+            TestContext.Out.WriteLine("CAT_RIG_EAR_TWITCH_READBACK movedVertices="
+                + movedVertices + " maxBoardDisplacement=" + maximumDisplacement.ToString("F6")
+                + " worstZoomUpperBoundPixels=" + (maximumDisplacement * 93f).ToString("F3")
+                + " lowerBodyDisplacement=" + lowerBodyDisplacement.ToString("F6"));
+            Assert.That(maximumDisplacement, Is.GreaterThan(0.008f),
+                "the >=12 degree probe must move an ear by at least 0.008 board units; " +
+                "screen projection remains a render-slot question");
+            Assert.That(lowerBodyDisplacement, Is.LessThan(0.0001f),
+                "the ear control must remain localized above the calibrated 55% height line");
         }
 
         private sealed class ConformingRigFixture : IDisposable
