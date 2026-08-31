@@ -144,18 +144,46 @@ namespace CatMetro.Tests.Purchases
             Assert.That(p.Placements, Is.Not.Empty);
         }
 
-        // The ads lane owns turning these on. Until an ad network is actually wired, a placement
-        // that reports itself enabled would let a "watch an ad" button appear with no ad behind it.
         [Test]
-        public void EveryShippedPlacement_IsStillDisabled_WithAStatedReason()
+        public void ExactlyFourWardrobePlacements_AreEnabledWithTheirApprovedRewardsAndCaps()
         {
             var p = RewardedPlacementCatalog.Parse(PFixtures.ShippedPlacementsJson(), Shipped());
-            foreach (var placement in p.Placements)
+            var expected = new[]
             {
-                Assert.That(placement.Enabled, Is.False,
-                    placement.Id + " is enabled but no ad network is wired yet");
-                Assert.That(placement.DisabledReason, Is.Not.Null.And.Not.Empty, placement.Id);
+                new { Id = "wardrobe_try_conductor", Entitlement = EntitlementIds.OutfitConductor,
+                    Caps = new[] { new { Scope = "localDate", Limit = 1 } } },
+                new { Id = "wardrobe_try_engineer", Entitlement = EntitlementIds.OutfitEngineer,
+                    Caps = new[] { new { Scope = "localDate", Limit = 1 } } },
+                new { Id = "wardrobe_try_scarf", Entitlement = EntitlementIds.AccessoryScarf,
+                    Caps = new[] { new { Scope = "localDate", Limit = 1 } } },
+                new { Id = "wardrobe_try_goggles", Entitlement = EntitlementIds.AccessoryGoggles,
+                    Caps = new[]
+                    {
+                        new { Scope = "localDate", Limit = 1 },
+                        new { Scope = "session", Limit = 1 }
+                    }
+                }
+            };
+
+            var enabled = p.Placements.Where(placement => placement.Enabled).ToArray();
+            Assert.That(enabled.Select(placement => placement.Id),
+                Is.EquivalentTo(expected.Select(row => row.Id)),
+                "only genuine locked-item Wardrobe needs may ship enabled");
+
+            foreach (var row in expected)
+            {
+                Assert.That(p.TryGet(row.Id, out var placement), Is.True, row.Id);
+                Assert.That(placement.Enabled, Is.True, row.Id + " must be player-visible");
+                Assert.That(placement.EntitlementId, Is.EqualTo(row.Entitlement), row.Id);
+                Assert.That(placement.DisabledReason, Is.Null.Or.Empty,
+                    row.Id + " cannot retain the obsolete no-network explanation");
+                Assert.That(placement.Caps.Select(cap => new { cap.Scope, cap.Limit }),
+                    Is.EquivalentTo(row.Caps), row.Id + " cap mapping changed");
             }
+
+            Assert.That(enabled.Any(placement =>
+                    !placement.Id.StartsWith("wardrobe_try_", System.StringComparison.Ordinal)),
+                Is.False, "no level-boundary, rewind, or generic monetization placement is enabled");
         }
 
         [Test]

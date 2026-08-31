@@ -390,7 +390,11 @@ namespace CatMetro.Tests.PlayMode
 
         private static PurchaseService CreateService(FilmablePurchaseBackend backend,
             Func<long> clock = null)
-            => new PurchaseService(Catalog(), backend, clock ?? (() => 1_000L));
+        {
+            var service = new PurchaseService(Catalog(), backend, clock ?? (() => 1_000L));
+            service.AttachLeasePersistence(new AcceptingLeasePersistence());
+            return service;
+        }
 
         private static PurchaseCatalog Catalog() => PurchaseCatalog.Parse(@"{
           'entitlements': [
@@ -404,6 +408,11 @@ namespace CatMetro.Tests.PlayMode
               'display': 'Conductor Coat', 'entitlements': ['outfit_conductor'] }
           ]
         }");
+
+        private sealed class AcceptingLeasePersistence : IEntitlementLeasePersistence
+        {
+            public bool TryReplaceRewardedAdLeases(IReadOnlyList<EntitlementGrant> leases) => true;
+        }
 
         private sealed class FilmablePurchaseBackend : IPurchaseBackend
         {

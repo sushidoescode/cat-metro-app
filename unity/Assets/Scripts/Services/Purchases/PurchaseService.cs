@@ -11,7 +11,8 @@ namespace CatMetro.Services.Purchases
         Granted,
         AlreadyUnlocked,
         NotAdGrantable,
-        UnknownEntitlement
+        UnknownEntitlement,
+        PersistenceFailed
     }
 
     // The one object the rest of the game talks to about money.
@@ -31,6 +32,7 @@ namespace CatMetro.Services.Purchases
         private readonly EntitlementLedger _ledger;
         private readonly Func<long> _clock;
         private IPurchaseBackend _backend;
+        private IEntitlementLeasePersistence _leasePersistence;
         private IPurchaseBackendReadiness _readinessBackend;
         private IPurchaseBackendTransactionUpdates _transactionUpdatesBackend;
 
@@ -54,6 +56,7 @@ namespace CatMetro.Services.Purchases
         public BackendAvailability Availability => _backend.Availability;
         public EntitlementLedger Ledger => _ledger;
         public PurchaseCatalog Catalog => _catalog;
+        public bool CanPersistRewardedAdGrants => _leasePersistence != null;
 
         // True once the backend has told us something authoritative. Until then the UI should
         // show cosmetics as locked but should NOT offer "restore" as if it had failed.
@@ -89,6 +92,14 @@ namespace CatMetro.Services.Purchases
                 _transactionUpdatesBackend.TransactionEntitlementsConfirmed +=
                     OnTransactionEntitlementsConfirmed;
             _storeProducts.Clear();
+        }
+
+        // A rewarded lease is published to the ledger only after its replacement snapshot has
+        // committed. A null adapter represents an unavailable local save and intentionally
+        // makes awarding fail closed rather than granting a reward that disappears at restart.
+        public void AttachLeasePersistence(IEntitlementLeasePersistence persistence)
+        {
+            _leasePersistence = persistence;
         }
 
         // ---- the query the whole game uses ----------------------------------------------
@@ -256,7 +267,25 @@ namespace CatMetro.Services.Purchases
             if (!definition.IsAdGrantable) return AdGrantOutcome.NotAdGrantable;
 
             long now = _clock();
-            return _ledger.GrantLease(entitlementId, now + definition.AdLeaseSeconds, now)
+            long expiresAt = now + definition.AdLeaseSeconds;
+            if (expiresAt <= 0L || expiresAt <= now)
+                return AdGrantOutcome.AlreadyUnlocked;
+            if (!_ledger.CanGrantLease(entitlementId, expiresAt, now))
+                return AdGrantOutcome.AlreadyUnlocked;
+
+            var candidate = ActiveLeaseCandidateWith(entitlementId, expiresAt, now);
+            try
+            {
+                if (_leasePersistence == null ||
+                    !_leasePersistence.TryReplaceRewardedAdLeases(candidate))
+                    return AdGrantOutcome.PersistenceFailed;
+            }
+            catch
+            {
+                return AdGrantOutcome.PersistenceFailed;
+            }
+
+            return _ledger.GrantLease(entitlementId, expiresAt, now)
                 ? AdGrantOutcome.Granted
                 : AdGrantOutcome.AlreadyUnlocked;
         }
@@ -270,15 +299,63 @@ namespace CatMetro.Services.Purchases
                 return false;
 
             long now = _clock();
-            return _ledger.CanGrantLease(entitlementId,
-                now + definition.AdLeaseSeconds, now);
+            long expiresAt = now + definition.AdLeaseSeconds;
+            return expiresAt > 0L && expiresAt > now &&
+                _ledger.CanGrantLease(entitlementId, expiresAt, now);
         }
 
         public bool PruneExpiredLeases() => _ledger.PruneExpired(_clock());
 
+        // Save parsing is deliberately permissive, but only a currently valid rewarded lease
+        // for a live ad-grantable catalogue entitlement may enter the ledger. A SaveStore is the
+        // authority for the complete local lease snapshot, so a new store replaces (not merges)
+        // prior rewarded leases while store/promotional grants remain untouched. Validate the
+        // full input before the single ledger mutation so a throwing source cannot partly swap.
+        public void RestoreRewardedAdLeases(IReadOnlyList<EntitlementGrant> leases)
+        {
+            if (leases == null) return;
+            long now = _clock();
+            var valid = new List<EntitlementGrant>();
+            for (int i = 0; i < leases.Count; i++)
+            {
+                var lease = leases[i];
+                if (lease.Source != GrantSource.RewardedAd ||
+                    lease.ExpiresAtUnixSeconds <= 0L ||
+                    lease.ExpiresAtUnixSeconds <= now ||
+                    !_catalog.TryGetEntitlement(lease.EntitlementId, out var definition) ||
+                    !definition.IsAdGrantable)
+                    continue;
+                valid.Add(lease);
+            }
+
+            _ledger.ReplaceRewardedAdLeases(valid, now);
+        }
+
         // ---- internals ------------------------------------------------------------------
 
         private void OnBackendReady() => Refresh();
+
+        private IReadOnlyList<EntitlementGrant> ActiveLeaseCandidateWith(string entitlementId,
+            long expiresAtUnixSeconds, long nowUnixSeconds)
+        {
+            var candidate = new List<EntitlementGrant>();
+            var existing = _ledger.ExportLeases();
+            for (int i = 0; i < existing.Count; i++)
+            {
+                var lease = existing[i];
+                if (lease.Source != GrantSource.RewardedAd ||
+                    lease.ExpiresAtUnixSeconds <= 0L ||
+                    lease.ExpiresAtUnixSeconds <= nowUnixSeconds ||
+                    !lease.IsActiveAt(nowUnixSeconds) ||
+                    lease.EntitlementId == entitlementId)
+                    continue;
+                candidate.Add(lease);
+            }
+            candidate.Add(new EntitlementGrant(entitlementId, GrantSource.RewardedAd,
+                expiresAtUnixSeconds));
+            candidate.Sort((a, b) => string.CompareOrdinal(a.EntitlementId, b.EntitlementId));
+            return candidate;
+        }
 
         private void OnTransactionEntitlementsConfirmed(EntitlementSnapshot snapshot)
             => TryApplyConfirmedSnapshot(snapshot);

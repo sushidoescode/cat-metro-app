@@ -14,6 +14,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using CatMetro.Services.Ads;
 using CatMetro.Services.Purchases;
 using UnityEngine;
 
@@ -57,7 +58,7 @@ namespace CatMetro.Integrations.RevenueCat
     // A MonoBehaviour because two things here need frames: the SDK must be configured a frame
     // after its own Start() runs (see Configure below), and every call needs a timeout.
     public sealed class RevenueCatBehaviour : MonoBehaviour, IPurchaseBackend,
-        IPurchaseBackendReadiness, IPurchaseBackendTransactionUpdates
+        IPurchaseBackendReadiness, IPurchaseBackendTransactionUpdates, IAdEventReporter
     {
         // Queries should release the UI promptly, while an OS purchase sheet can legitimately
         // remain open during banking-app or parental verification. These are LOCAL watchdogs;
@@ -67,6 +68,8 @@ namespace CatMetro.Integrations.RevenueCat
 
         private Purchases _purchases;
         private MonetizationKeys _config;
+        private bool _adTrackingReady;
+        private uint _adReadinessVersion;
 
         // Offerings are cached so a purchase can find the Package object it needs. RevenueCat
         // purchases a Package, not a product id, and PurchasePackage is the supported path.
@@ -85,6 +88,8 @@ namespace CatMetro.Integrations.RevenueCat
         public BackendAvailability Availability { get; private set; } = BackendAvailability.Initializing;
         public event Action Ready;
         public event Action<EntitlementSnapshot> TransactionEntitlementsConfirmed;
+        public event Action ReadinessChanged;
+        public bool IsReady => _adTrackingReady && _purchases?.AdTracker != null;
 
         internal static IPurchaseBackend Create()
         {
@@ -147,6 +152,10 @@ namespace CatMetro.Integrations.RevenueCat
             }
 
             Availability = BackendAvailability.Ready;
+            if (_purchases?.AdTracker != null)
+                SetAdTrackingReady(true);
+            else
+                FailAdTracking("RevenueCat AdTracker is unavailable after configuration", null);
             try
             {
                 Ready?.Invoke();
@@ -163,11 +172,194 @@ namespace CatMetro.Integrations.RevenueCat
 
         private void FailConfiguration(string stage, Exception error)
         {
+            SetAdTrackingReady(false);
             Availability = BackendAvailability.Unreachable;
-            if (_purchases != null) Destroy(_purchases);
+            if (_purchases != null)
+            {
+#if UNITY_EDITOR
+                if (Application.isPlaying) Destroy(_purchases);
+                else DestroyImmediate(_purchases);
+#else
+                Destroy(_purchases);
+#endif
+            }
             _purchases = null;
             Debug.LogError("[Monetization] RevenueCat failed while " + stage +
                            "; continuing without a store. " + error);
+        }
+
+        // ---- IAdEventReporter ------------------------------------------------------------
+
+        public void Report(RewardedAdEvent adEvent)
+        {
+            if (adEvent.Kind == RewardedAdEventKind.DisplayFailed ||
+                adEvent.Kind == RewardedAdEventKind.Rewarded ||
+                adEvent.Kind == RewardedAdEventKind.Closed)
+                return;
+
+            if (!TryValidateAdEvent(adEvent, out bool shouldTrack)) return;
+
+            // AdTracker belongs to Purchases and is installed by Purchases.Start/SetWrapper.
+            // Re-read it for every report: the host may have been torn down after readiness was
+            // observed, and a cached tracker would continue serving ads against stale ownership.
+            global::RevenueCat.AdTracker tracker;
+            try
+            {
+                tracker = _purchases?.AdTracker;
+            }
+            catch (Exception e)
+            {
+                FailAdTracking("reading RevenueCat AdTracker", e);
+                return;
+            }
+
+            if (tracker == null)
+            {
+                if (_adTrackingReady)
+                    FailAdTracking("RevenueCat AdTracker is unavailable", null);
+                return;
+            }
+            if (!_adTrackingReady || !shouldTrack) return;
+
+            try
+            {
+                var mediator = new global::RevenueCat.AdTracker.MediatorName("LevelPlay");
+                var format = global::RevenueCat.AdTracker.Format.Rewarded;
+                switch (adEvent.Kind)
+                {
+                    case RewardedAdEventKind.Loaded:
+                        tracker.TrackAdLoaded(new global::RevenueCat.AdLoadedData(
+                            mediatorName: mediator,
+                            adFormat: format,
+                            adUnitId: adEvent.AdUnitId,
+                            impressionId: adEvent.AuctionId,
+                            networkName: adEvent.NetworkName,
+                            placement: adEvent.PlacementId));
+                        break;
+                    case RewardedAdEventKind.Displayed:
+                        tracker.TrackAdDisplayed(new global::RevenueCat.AdDisplayedData(
+                            mediatorName: mediator,
+                            adFormat: format,
+                            adUnitId: adEvent.AdUnitId,
+                            impressionId: adEvent.AuctionId,
+                            networkName: adEvent.NetworkName,
+                            placement: adEvent.PlacementId));
+                        break;
+                    case RewardedAdEventKind.Opened:
+                        tracker.TrackAdOpened(new global::RevenueCat.AdOpenedData(
+                            mediatorName: mediator,
+                            adFormat: format,
+                            adUnitId: adEvent.AdUnitId,
+                            impressionId: adEvent.AuctionId,
+                            networkName: adEvent.NetworkName,
+                            placement: adEvent.PlacementId));
+                        break;
+                    case RewardedAdEventKind.LoadFailed:
+                        tracker.TrackAdFailedToLoad(new global::RevenueCat.AdFailedToLoadData(
+                            mediatorName: mediator,
+                            adFormat: format,
+                            adUnitId: adEvent.AdUnitId,
+                            placement: adEvent.PlacementId,
+                            mediatorErrorCode: adEvent.ErrorCode));
+                        break;
+                    case RewardedAdEventKind.Revenue:
+                        tracker.TrackAdRevenue(new global::RevenueCat.AdRevenueData(
+                            mediatorName: mediator,
+                            adFormat: format,
+                            adUnitId: adEvent.AdUnitId,
+                            impressionId: adEvent.AuctionId,
+                            revenueMicros: adEvent.RevenueMicros,
+                            currency: "USD",
+                            precision: MapPrecision(adEvent.RevenuePrecision),
+                            networkName: adEvent.NetworkName,
+                            placement: adEvent.PlacementId));
+                        break;
+                }
+            }
+            catch (Exception e)
+            {
+                FailAdTracking("reporting " + adEvent.Kind, e);
+            }
+        }
+
+        private static bool TryValidateAdEvent(RewardedAdEvent adEvent, out bool shouldTrack)
+        {
+            shouldTrack = false;
+            bool requiresImpression;
+            switch (adEvent.Kind)
+            {
+                case RewardedAdEventKind.Loaded:
+                case RewardedAdEventKind.Displayed:
+                case RewardedAdEventKind.Opened:
+                case RewardedAdEventKind.Revenue:
+                    shouldTrack = true;
+                    requiresImpression = true;
+                    break;
+                case RewardedAdEventKind.LoadFailed:
+                    shouldTrack = true;
+                    requiresImpression = false;
+                    break;
+                default:
+                    Debug.LogWarning("[Monetization] dropped malformed RevenueCat ad event: " +
+                                     "unsupported kind");
+                    return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(adEvent.AdUnitId) ||
+                (requiresImpression && string.IsNullOrWhiteSpace(adEvent.AuctionId)))
+            {
+                Debug.LogWarning("[Monetization] dropped malformed RevenueCat ad event: " +
+                                 "required ad metadata is blank");
+                return false;
+            }
+            return true;
+        }
+
+        private static global::RevenueCat.AdTracker.Precision MapPrecision(
+            AdRevenuePrecision precision)
+        {
+            switch (precision)
+            {
+                case AdRevenuePrecision.Exact:
+                    return global::RevenueCat.AdTracker.Precision.Exact;
+                case AdRevenuePrecision.PublisherDefined:
+                    return global::RevenueCat.AdTracker.Precision.PublisherDefined;
+                case AdRevenuePrecision.Estimated:
+                    return global::RevenueCat.AdTracker.Precision.Estimated;
+                default:
+                    return global::RevenueCat.AdTracker.Precision.Unknown;
+            }
+        }
+
+        private void FailAdTracking(string stage, Exception error)
+        {
+            SetAdTrackingReady(false);
+            if (error == null)
+            {
+                Debug.LogError("[Monetization] " + stage +
+                               "; future rewarded ads are disabled.");
+                return;
+            }
+            Debug.LogError("[Monetization] RevenueCat ad tracking failed while " + stage +
+                           "; future rewarded ads are disabled. " + error);
+        }
+
+        private void SetAdTrackingReady(bool ready)
+        {
+            if (_adTrackingReady == ready) return;
+            _adTrackingReady = ready;
+            uint deliveryVersion = ++_adReadinessVersion;
+            var handlers = ReadinessChanged;
+            if (handlers == null) return;
+            foreach (Action handler in handlers.GetInvocationList())
+            {
+                if (_adReadinessVersion != deliveryVersion) return;
+                try { handler(); }
+                catch (Exception e)
+                {
+                    Debug.LogError("[Monetization] RevenueCat ad readiness subscriber threw: " + e);
+                }
+            }
         }
 
         // ---- IPurchaseBackend -------------------------------------------------------------
@@ -551,6 +743,12 @@ namespace CatMetro.Integrations.RevenueCat
                 // RevenueCat's native dispatch or leave the slot marked occupied.
                 Debug.LogError("[Monetization] entitlement update subscriber threw: " + e);
             }
+        }
+
+        private void OnDestroy()
+        {
+            SetAdTrackingReady(false);
+            _purchases = null;
         }
 
         private static string Describe(Purchases.Error error)

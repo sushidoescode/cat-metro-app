@@ -1,35 +1,31 @@
 {
   "schemaVersion": 2,
-  "note": "Every placement lends an entitlement from product_catalog.json, for that entitlement's own adLeaseSeconds. There is no separate reward vocabulary: an ad can only lend something a purchase could sell. `enabled` is owned by the ads lane and stays false until an ad network is actually wired.",
+  "note": "The four enabled Wardrobe placements lend named entitlements from product_catalog.json for each entitlement's own adLeaseSeconds. Availability still fails closed when provider configuration, consent, caps, network, or fill is absent.",
 
   "placements": [
     {
       "id": "wardrobe_try_conductor",
       "entitlement": "outfit_conductor",
       "caps": { "localDate": 1 },
-      "enabled": false,
-      "disabledReason": "no ad network wired yet; the ads lane flips this"
+      "enabled": true
     },
     {
       "id": "wardrobe_try_engineer",
       "entitlement": "outfit_engineer",
       "caps": { "localDate": 1 },
-      "enabled": false,
-      "disabledReason": "no ad network wired yet; the ads lane flips this"
+      "enabled": true
     },
     {
       "id": "wardrobe_try_scarf",
       "entitlement": "accessory_scarf",
       "caps": { "localDate": 1 },
-      "enabled": false,
-      "disabledReason": "no ad network wired yet; the ads lane flips this"
+      "enabled": true
     },
     {
       "id": "wardrobe_try_goggles",
       "entitlement": "accessory_goggles",
       "caps": { "localDate": 1, "session": 1 },
-      "enabled": false,
-      "disabledReason": "no ad network wired yet; the ads lane flips this"
+      "enabled": true
     }
   ]
 }

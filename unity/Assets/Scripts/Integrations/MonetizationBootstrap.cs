@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using CatMetro.Services.Ads;
 using CatMetro.Services.Purchases;
 using UnityEngine;
 
@@ -36,6 +38,8 @@ namespace CatMetro.Integrations
                 return null;
             }
         }
+
+        internal static void ResetForTests() => _factory = null;
     }
 
     // Boots the purchase service and store backend independently of GameRoot. GameRoot composes
@@ -47,6 +51,9 @@ namespace CatMetro.Integrations
         public const string PlacementsResourcePath = "Monetization/rewarded_placements";
 
         private static bool _booted;
+        private static GameObject _host;
+        private static RewardedAdsComposition _rewardedAds;
+        private static RewardedAdsConfig _rewardedAdsConfigForTests;
 
         public static RewardedPlacementCatalog Placements { get; private set; } =
             RewardedPlacementCatalog.Empty;
@@ -85,12 +92,19 @@ namespace CatMetro.Integrations
             var backend = PurchaseBackendFactory.Create(service);
             if (backend != null) service.AttachBackend(backend);
 
+            var rewardedConfig = _rewardedAdsConfigForTests ?? RewardedAdsConfig.Load();
+            _rewardedAds = new RewardedAdsComposition(service, Placements,
+                () => RewardedAdProviderFactory.Create(rewardedConfig),
+                backend as IAdEventReporter, LocalDateKey);
+            _rewardedAds.Bind();
+
             // The pump owns the two things that need a frame: re-reading entitlements when the
             // app comes back to the foreground, and noticing that a timed unlock has lapsed.
-            var host = new GameObject("[Monetization]");
-            UnityEngine.Object.DontDestroyOnLoad(host);
-            host.hideFlags = HideFlags.HideAndDontSave;
-            host.AddComponent<MonetizationPump>().Bind(service);
+            _host = new GameObject("[Monetization]");
+            if (UnityEngine.Application.isPlaying)
+                UnityEngine.Object.DontDestroyOnLoad(_host);
+            _host.hideFlags = HideFlags.HideAndDontSave;
+            _host.AddComponent<MonetizationPump>().Bind(service, _rewardedAds);
 
             service.Refresh();
 
@@ -119,10 +133,24 @@ namespace CatMetro.Integrations
                 Debug.LogWarning("[Monetization] " + what + ": " + problems[i]);
         }
 
+        private static string LocalDateKey()
+            => DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+        internal static void SetRewardedAdsConfigForTests(RewardedAdsConfig config)
+            => _rewardedAdsConfigForTests = config;
+
         // Test seam only. Lets an EditMode test boot a second time against fresh Resources.
         internal static void ResetForTests()
         {
+            _rewardedAds?.Dispose();
+            _rewardedAds = null;
+            if (_host != null)
+            {
+                UnityEngine.Object.DestroyImmediate(_host);
+                _host = null;
+            }
             _booted = false;
+            _rewardedAdsConfigForTests = null;
             Placements = RewardedPlacementCatalog.Empty;
         }
     }
@@ -133,12 +161,25 @@ namespace CatMetro.Integrations
         private const float PruneIntervalSeconds = 5f;
 
         private PurchaseService _service;
+        private RewardedAdsComposition _rewardedAds;
+        private Func<double> _monotonicSeconds;
         private float _nextPrune;
 
-        internal void Bind(PurchaseService service) => _service = service;
-
-        private void Update()
+        internal void Bind(PurchaseService service, RewardedAdsComposition rewardedAds,
+            Func<double> monotonicSeconds = null)
         {
+            _service = service;
+            _rewardedAds = rewardedAds;
+            _monotonicSeconds = monotonicSeconds ?? ReadMonotonicSeconds;
+        }
+
+        internal void Update()
+        {
+            _rewardedAds?.DrainMainThreadAdEvents();
+            double now = double.NaN;
+            try { now = _monotonicSeconds?.Invoke() ?? double.NaN; }
+            catch { }
+            _rewardedAds?.Tick(now);
             if (_service == null) return;
             if (Time.unscaledTime < _nextPrune) return;
             _nextPrune = Time.unscaledTime + PruneIntervalSeconds;
@@ -154,11 +195,23 @@ namespace CatMetro.Integrations
             if (hasFocus) _service?.RefreshEntitlements();
         }
 
-        private void OnApplicationPause(bool paused)
+        internal void OnApplicationPause(bool paused)
         {
             // Coming back from the Play purchase flow lands here on Android, and it is the most
             // reliable moment to notice that a purchase completed in another activity.
-            if (!paused) _service?.RefreshEntitlements();
+            if (_rewardedAds != null)
+                _rewardedAds.OnApplicationPause(paused);
+            else if (!paused)
+                _service?.RefreshEntitlements();
         }
+
+        internal void OnDestroy()
+        {
+            _rewardedAds?.Dispose();
+            _rewardedAds = null;
+            _monotonicSeconds = null;
+        }
+
+        private static double ReadMonotonicSeconds() => Time.unscaledTimeAsDouble;
     }
 }

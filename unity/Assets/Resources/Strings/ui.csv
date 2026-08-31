@@ -57,3 +57,13 @@ wardrobe.status.restored,Purchase restored — coat equipped!
 wardrobe.status.none,No purchases found
 wardrobe.status.restore.failed,Restore unavailable — please try again
 wardrobe.status.unavailable,The shop is offline — the game is still ready to play
+wardrobe.tryon.heading,Today's try-ons
+wardrobe.tryon.conductor,Conductor
+wardrobe.tryon.engineer,Engineer
+wardrobe.tryon.scarf,Scarf
+wardrobe.tryon.goggles,Goggles
+wardrobe.tryon.locked,Locked
+wardrobe.tryon.borrowed,Borrowed today
+wardrobe.tryon.watch,Watch to borrow today
+wardrobe.tryon.unavailable,Try-on unavailable
+wardrobe.tryon.success,Ready to wear!

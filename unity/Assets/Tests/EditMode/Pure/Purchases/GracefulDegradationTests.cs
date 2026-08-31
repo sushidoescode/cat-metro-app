@@ -334,6 +334,7 @@ namespace CatMetro.Tests.Purchases
         public void AttachingABackendLater_KeepsAdLeasesEarnedBeforeIt()
         {
             var svc = new PurchaseService(PFixtures.TinyCatalog());
+            svc.AttachLeasePersistence(new PFixtures.RecordingLeasePersistence());
             svc.GrantRewardedAdEntitlement(EntitlementIds.OutfitConductor);
             Assert.That(svc.IsUnlocked(EntitlementIds.OutfitConductor), Is.True);
 
@@ -535,6 +536,7 @@ namespace CatMetro.Tests.Purchases
                 GrantOnRestore = false
             };
             var svc = new PurchaseService(PFixtures.TinyCatalog(), backend);
+            svc.AttachLeasePersistence(new PFixtures.RecordingLeasePersistence());
             svc.GrantRewardedAdEntitlement(EntitlementIds.OutfitConductor);
 
             RestoreResult result = default;

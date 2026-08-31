@@ -13,6 +13,9 @@ namespace CatMetro.Presentation.Screens
         private const float BuyHeightDp = 72f;
         private const float RestoreHeightDp = 52f;
         private const float StatusHeightDp = 58f;
+        private const float PreviewHeightDp = 172f;
+        private const float PreviewHeadingHeightDp = 24f;
+        private const float PreviewCardGapDp = 8f;
 
         public static Rect EntryRect(Rect safeArea, float dpi)
         {
@@ -69,12 +72,53 @@ namespace CatMetro.Presentation.Screens
         {
             float px = HudBands.PxPerDp(dpi);
             float inset = SideInsetDp * px;
+            var preview = PreviewStripRect(safeArea, dpi);
+            var title = TitleRect(safeArea, dpi);
+            float y = preview.yMax + GapDp * px;
+            float yMax = title.yMin - GapDp * px;
+            return new Rect(safeArea.x + inset, y,
+                Mathf.Max(0f, safeArea.width - inset * 2f), Mathf.Max(0f, yMax - y));
+        }
+
+        public static Rect PortraitRectWithoutPreview(Rect safeArea, float dpi)
+        {
+            float px = HudBands.PxPerDp(dpi);
+            float inset = SideInsetDp * px;
             var status = StatusRect(safeArea, dpi);
             var title = TitleRect(safeArea, dpi);
             float y = status.yMax + GapDp * px;
             float yMax = title.yMin - GapDp * px;
             return new Rect(safeArea.x + inset, y,
                 Mathf.Max(0f, safeArea.width - inset * 2f), Mathf.Max(0f, yMax - y));
+        }
+
+        public static Rect PreviewStripRect(Rect safeArea, float dpi)
+        {
+            float px = HudBands.PxPerDp(dpi);
+            float inset = SideInsetDp * px;
+            var status = StatusRect(safeArea, dpi);
+            return new Rect(safeArea.x + inset, status.yMax + GapDp * px,
+                Mathf.Max(0f, safeArea.width - inset * 2f), PreviewHeightDp * px);
+        }
+
+        public static Rect PreviewHeadingRect(Rect safeArea, float dpi)
+        {
+            float px = HudBands.PxPerDp(dpi);
+            var strip = PreviewStripRect(safeArea, dpi);
+            float height = PreviewHeadingHeightDp * px;
+            return new Rect(strip.x, strip.yMax - height, strip.width, height);
+        }
+
+        public static Rect PreviewCardRect(Rect safeArea, float dpi, int index)
+        {
+            float px = HudBands.PxPerDp(dpi);
+            var strip = PreviewStripRect(safeArea, dpi);
+            float gap = PreviewCardGapDp * px;
+            float headingAndGap = (PreviewHeadingHeightDp + PreviewCardGapDp) * px;
+            float width = Mathf.Max(0f, (strip.width - gap * 3f) / 4f);
+            int boundedIndex = Mathf.Clamp(index, 0, 3);
+            return new Rect(strip.x + boundedIndex * (width + gap), strip.y,
+                width, Mathf.Max(0f, strip.height - headingAndGap));
         }
     }
 }

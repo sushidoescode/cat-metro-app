@@ -311,6 +311,7 @@ namespace CatMetro.Bootstrap
                 _saveStore = new SaveStore(storage, new RealSaveFileSystem(),
                     parsedBounds.Value, MigrationTable.CreateDefault());
                 _saveStore.Load();
+                SaveRuntime.Install(_saveStore);
                 _dailyProgress = new DailyProgressTracker(_saveStore);
                 _dailyReminderPreferences = new DailyReminderPreferences(_saveStore);
                 _reminderPromptPending = _dailyReminderPreferences.CanOfferPrompt(

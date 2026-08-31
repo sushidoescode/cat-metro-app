@@ -63,7 +63,8 @@ namespace CatMetro.Services.Purchases
     //     new snapshot it is gone, which is what makes refunds and lapsed subscriptions work.
     //     Merging instead of replacing would make a refund permanently unenforceable.
     //
-    //   * Ad leases are ADDED and expire on their own clock (GrantLease). A CustomerInfo
+    //   * Ad leases are ADDED when earned and expire on their own clock (GrantLease). A newly
+    //     bound local save replaces that limb with its authoritative snapshot, but a CustomerInfo
     //     refresh must never wipe a lease the player earned thirty seconds ago, because
     //     RevenueCat has never heard of it.
     //
@@ -108,7 +109,7 @@ namespace CatMetro.Services.Purchases
 
             _store.Clear();
             foreach (var kv in incoming) _store[kv.Key] = kv.Value;
-            Changed?.Invoke();
+            RaiseChanged();
         }
 
         // A rewarded ad (or any other temporary source) lending an entitlement until `expiresAt`.
@@ -120,7 +121,7 @@ namespace CatMetro.Services.Purchases
 
             _leases[entitlementId] = new EntitlementGrant(entitlementId, GrantSource.RewardedAd,
                 expiresAtUnixSeconds);
-            Changed?.Invoke();
+            RaiseChanged();
             return true;
         }
 
@@ -167,7 +168,7 @@ namespace CatMetro.Services.Purchases
         public bool PruneExpired(long nowUnixSeconds)
         {
             bool changed = Prune(_leases, nowUnixSeconds) | Prune(_store, nowUnixSeconds);
-            if (changed) Changed?.Invoke();
+            if (changed) RaiseChanged();
             return changed;
         }
 
@@ -270,7 +271,45 @@ namespace CatMetro.Services.Purchases
                 changed = true;
             }
 
-            if (changed) Changed?.Invoke();
+            if (changed) RaiseChanged();
+        }
+
+        // A loaded SaveStore is authoritative for the complete local rewarded-lease snapshot.
+        // Build the replacement first so a malformed/throwing source cannot partially mutate
+        // the live ledger. Store and promotional grants live in _store and are untouched.
+        internal void ReplaceRewardedAdLeases(IReadOnlyList<EntitlementGrant> leases,
+            long nowUnixSeconds)
+        {
+            var incoming = new Dictionary<string, EntitlementGrant>(StringComparer.Ordinal);
+            if (leases != null)
+            {
+                for (int i = 0; i < leases.Count; i++)
+                {
+                    var grant = leases[i];
+                    if (string.IsNullOrEmpty(grant.EntitlementId) ||
+                        grant.Source != GrantSource.RewardedAd ||
+                        grant.ExpiresAtUnixSeconds <= 0L ||
+                        !grant.IsActiveAt(nowUnixSeconds))
+                        continue;
+                    incoming[grant.EntitlementId] = grant;
+                }
+            }
+
+            if (SameKeys(_leases, incoming)) return;
+            _leases.Clear();
+            foreach (var pair in incoming) _leases[pair.Key] = pair.Value;
+            RaiseChanged();
+        }
+
+        private void RaiseChanged()
+        {
+            var handlers = Changed;
+            if (handlers == null) return;
+            foreach (Action handler in handlers.GetInvocationList())
+            {
+                try { handler(); }
+                catch { }
+            }
         }
 
         private static bool SameKeys(Dictionary<string, EntitlementGrant> a,
