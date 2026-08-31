@@ -1,3 +1,4 @@
+using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Theme;
 using UnityEngine;
 
@@ -80,6 +81,34 @@ namespace CatMetro.Presentation.Board
         private const float EarLateral = 0.080f;
         private const float EarCenterZ = -0.090f;
         private const float EyeSize = 0.048f;
+        // A platform-centre offset measured in board units, not authored mesh space. At the
+        // wide 93 px/unit framing this is 27.9 px before board-plane foreshortening and about
+        // 18.6 px on its steepest axis, still just larger than the 17.7 px head. The carriage
+        // half-width (0.14) plus head radius (0.095) leaves 0.065 board units clear.
+        public const float PlatformSideOffset = 0.30f;
+        // Queue cards are 0.24 units wide. At the widest framing (93 px/unit) and worst board
+        // foreshortening (0.668), 0.42 BOARD UNITS projects to 26.1 px versus a 22.3 px card,
+        // leaving a visible ~3.8 px gap between simultaneous source waiters. The same numeric
+        // value as CatModelCatalog.PresenterScale is coincidental; that scale is dimensionless.
+        public const float PlatformQueueSpacing = 0.42f;
+
+        private static float PlatformLaneOffset(int lane)
+        {
+            if (lane <= 0) return 0f;
+            int step = (lane + 1) / 2;
+            return (lane & 1) == 1
+                ? step * PlatformQueueSpacing
+                : -step * PlatformQueueSpacing;
+        }
+        private const float WalkLegSwingDegrees = 22f;
+        private const float TransitionLegSwingDegrees = 12f;
+        // The admitted skin's partial ear weights turn the doubled >=12-degree Tier-1 probe
+        // into 0.020037 board units of localized 3D deformation. At the pinned 93 px/unit
+        // worst zoom that is a 1.863 px upper bound, deliberately large enough to have a chance
+        // of reading on the ~17.7 px head. Only a render can confirm the projected motion.
+        public const float RigEarTwitchGain = 2f;
+        public static readonly Vector3 PlaceholderBodyWorldSize = new Vector3(0.124f, 0.108f, 0.102f);
+        private static readonly Vector3 PlaceholderLegWorldSize = new Vector3(0.038f, 0.036f, 0.082f);
         private static readonly Vector3 EyeOffset = new Vector3(0.0528f, 0.0369f, -0.0844f);
         private static readonly Vector3 MuzzleOffset = new Vector3(0.0768f, 0f, -0.0658f);
         private static readonly Vector3 MuzzleSize = new Vector3(0.050f, 0.068f, 0.044f);
@@ -229,9 +258,60 @@ namespace CatMetro.Presentation.Board
         private Transform _carriage;
         private Transform _cat;
         private Transform _pin;
+        private Transform _head;
+        private Transform _earLeft;
+        private Transform _earRight;
+        private Transform _eyeLeft;
+        private Transform _eyeRight;
+        private Transform _muzzle;
+        private Transform _legLeft;
+        private Transform _legRight;
+        private Transform[] _bodyLegs;
         private MeshFilter _pinSymbolFilter;
         private MeshRenderer _pinSymbol;
-        private MeshRenderer[] _catRenderers; // head + ears — tinted per cat via property block
+        private MeshRenderer[] _catRenderers; // placeholder renderers — tinted per cat via property block
+
+        private Vector3 _catBaseLocalPosition;
+        private Quaternion _catBaseLocalRotation;
+        private Quaternion _headBaseLocalRotation;
+        private Quaternion _earLeftBaseLocalRotation;
+        private Quaternion _earRightBaseLocalRotation;
+        private Quaternion _eyeLeftBaseLocalRotation;
+        private Quaternion _eyeRightBaseLocalRotation;
+        private Quaternion _muzzleBaseLocalRotation;
+        private Quaternion _legLeftBaseLocalRotation;
+        private Quaternion _legRightBaseLocalRotation;
+        private Vector3 _earLeftBaseLocalPosition;
+        private Vector3 _earRightBaseLocalPosition;
+        private Vector3 _eyeLeftBaseLocalPosition;
+        private Vector3 _eyeRightBaseLocalPosition;
+        private Vector3 _muzzleBaseLocalPosition;
+        private Vector3 _eyeLeftBaseLocalScale;
+        private Vector3 _eyeRightBaseLocalScale;
+        private Vector3 _pinBaseLocalPosition;
+        private Vector3 _platformAnchorWorldPosition;
+        private CatMicroMotion _microMotion = new CatMicroMotion(0u);
+        private CatPresentationState _presentationState = CatPresentationState.Hidden;
+        private CatPresentationState _lastRigState = CatPresentationState.Hidden;
+        private CatModelCatalog _catCatalog;
+        private GameObject _rigInstance;
+        private Animator _rigAnimator;
+        private Transform _rigEarDeformerA;
+        private Transform _rigEarDeformerB;
+        private Quaternion _rigEarAPreviousOffset = Quaternion.identity;
+        private Quaternion _rigEarBPreviousOffset = Quaternion.identity;
+        private Quaternion _rigEarALastApplied;
+        private Quaternion _rigEarBLastApplied;
+        private bool _rigAdmitted;
+        private bool _rigMotionSuppressed;
+        private bool _rigEarTwitchSupported;
+        private bool _rigEarPoseApplied;
+        private bool _rigEarTwitchActive;
+        private float _rigEarTwitchDegrees;
+        private bool _hasPlatformAnchor;
+        private bool _platformAnchorMovesToPlatform;
+        private int _rigNeutralSampleCount;
+        private string _rigFallbackReason = "Rig has not been evaluated.";
 
         // The authored graph's edge endpoints (BoardView's own arrays) — the authority that
         // decides whether remembered history is a path the train could actually have rolled.
@@ -240,27 +320,41 @@ namespace CatMetro.Presentation.Board
 
         // Presentation-side memory the sim doesn't carry: the edge the head is (or was last)
         // on, one edge of history behind it, and the last applied heading for parked frames.
-        private short _seenTrainId;
+        private long _seenOccupantKey;
+        private bool _hasSeenOccupant;
         private int _currentEdge = -1;
         private int _previousEdge = -1;
         private float _headingDegrees;
         private byte _appliedColorCode;
         private bool _catColorApplied;
 
+        public bool RigAdmitted => _rigAdmitted;
+        public string RigFallbackReason => _rigFallbackReason;
+        public CatPresentationState PresentationState => _presentationState;
+        public long PresentationOccupantKey => _seenOccupantKey;
+        public int RigNeutralSampleCount => _rigNeutralSampleCount;
+        public bool RigEarTwitchSupported => _rigEarTwitchSupported;
+        // TASK 17's admitted mesh has neither blendshapes nor a localized eye/lid bone. A
+        // broad head squash would be worse than no blink, so rig blink is deliberately deferred;
+        // Tier 1 still blinks the HUD faces and the discrete-part placeholder cats.
+        public bool RigBlinkSupported => false;
+
         public static ToyTrainView Create(Transform parent, string name,
-            int[] edgeFrom, int[] edgeTo)
+            int[] edgeFrom, int[] edgeTo, CatModelCatalog catCatalog = null)
         {
             var root = new GameObject(name);
             root.transform.SetParent(parent, false);
             var view = root.AddComponent<ToyTrainView>();
             view._edgeFrom = edgeFrom;
             view._edgeTo = edgeTo;
+            view._catCatalog = catCatalog;
             view.BuildConsist();
             return view;
         }
 
-        // Slot slaved to sim state: a reused slot (new train Id) must not inherit the previous
-        // occupant's edge history, tint or pin shape.
+        // The key is presentation-owned because Domain TrainSlot.Id identifies the fixed slot,
+        // not successive occupants of it. A new key must not inherit the previous occupant's
+        // edge history, micro-motion phase, pose, tint or pin shape.
         //
         // This takes the Domain colour CODE rather than a resolved Color, and that is the
         // whole reason the pin can exist. A Color cannot be turned back into a line without
@@ -270,26 +364,303 @@ namespace CatMetro.Presentation.Board
         // apart. It also fixes a quiet bug in passing — BoardView.ColorForCode has no wild
         // case, so a wild passenger used to ride out MAGENTA; CatLine.ColorOf gives it the
         // catnip violet the manifest pinned.
-        public void SyncSlot(short trainId, byte colorCode)
+        public void SyncSlot(long presentationOccupantKey, byte colorCode)
         {
-            if (trainId != _seenTrainId)
+            if (!_hasSeenOccupant || presentationOccupantKey != _seenOccupantKey)
             {
-                _seenTrainId = trainId;
+                _hasSeenOccupant = true;
+                _seenOccupantKey = presentationOccupantKey;
                 _currentEdge = -1;
                 _previousEdge = -1;
                 _headingDegrees = 0f;
+                uint lowKey = (uint)presentationOccupantKey;
+                uint highKey = (uint)(presentationOccupantKey >> 32);
+                _microMotion = new CatMicroMotion(lowKey ^ highKey * 2654435761u);
+                _presentationState = CatPresentationState.Hidden;
+                _lastRigState = CatPresentationState.Hidden;
+                _hasPlatformAnchor = false;
+                ClearRigEarTwitch();
+                ResetVisualPose();
             }
             if (!_catColorApplied || colorCode != _appliedColorCode)
             {
                 _appliedColorCode = colorCode;
                 _catColorApplied = true;
                 Color catColor = CatLine.ColorOf(colorCode);
-                var properties = new MaterialPropertyBlock();
-                properties.SetColor("_BaseColor", catColor);
-                properties.SetColor("_Color", catColor);
-                for (int i = 0; i < _catRenderers.Length; i++)
-                    _catRenderers[i].SetPropertyBlock(properties);
-                ApplyPinShape(CatLine.ShapeOf(CatLine.NameOfCode(colorCode)), properties);
+                ApplyCatTint(catColor);
+                var pinProperties = new MaterialPropertyBlock();
+                pinProperties.SetColor("_BaseColor", catColor);
+                pinProperties.SetColor("_Color", catColor);
+                ApplyPinShape(CatLine.ShapeOf(CatLine.NameOfCode(colorCode)), pinProperties);
+            }
+        }
+
+        /// <summary>
+        /// Pins the spawn endpoint to an exact board node rather than the carriage position of
+        /// whichever frame first observes the occupant. Board-local side is derived from the
+        /// emitted edge tangent by BoardView; no gameplay transform reads this value back.
+        /// </summary>
+        public void SetSourcePlatformAnchor(Vector3 boardLocalNode, Vector3 boardLocalSide,
+            int queuePosition = 0)
+        {
+            Transform board = transform.parent;
+            Vector3 side = new Vector3(boardLocalSide.x, boardLocalSide.y, 0f);
+            if (side.sqrMagnitude <= 1e-8f) side = Vector3.down;
+            else side.Normalize();
+            // BoardView supplies right-normal(tangent). Its perpendicular below is therefore
+            // -tangent; stable lanes alternate on either side of the boarding point so the
+            // source group stays compact without coincident cats or destination cards.
+            Vector3 behind = new Vector3(side.y, -side.x, 0f);
+            Vector3 seatBoard = board.InverseTransformPoint(
+                _carriage.TransformPoint(_catBaseLocalPosition));
+            Vector3 anchorBoard = new Vector3(boardLocalNode.x, boardLocalNode.y, seatBoard.z)
+                + side * PlatformSideOffset
+                + behind * PlatformLaneOffset(queuePosition);
+            _platformAnchorWorldPosition = board.TransformPoint(anchorBoard);
+            _platformAnchorMovesToPlatform = false;
+            _hasPlatformAnchor = true;
+        }
+
+        /// <summary>
+        /// Applies presentation-only decoration after the caller has placed the train root on
+        /// its authoritative spline/node position. This method deliberately never changes the
+        /// train root, engine, carriage, or destination-pin placement contracts.
+        /// </summary>
+        public void ApplyPresentation(CatPresentationState state, float visualTime, bool motionOff) =>
+            ApplyPresentationInternal(state, 0f, false, visualTime, motionOff,
+                false, 0f, false);
+
+        /// <summary>
+        /// Applies the cat's presentation-owned seat-to-platform path. Platform blend is copied
+        /// from CatPresentationTrack and can move only the Cat child plus its destination-card
+        /// sibling; it never moves the train root, carriage, spline anchor, or simulation data.
+        /// </summary>
+        public void ApplyPresentation(CatPresentationState state, float platformBlend,
+            float visualTime, bool motionOff) =>
+            ApplyPresentationInternal(state, platformBlend,
+                state == CatPresentationState.Alight || state == CatPresentationState.Celebrate,
+                visualTime, motionOff, true, 0f, false);
+
+        public void ApplyPresentation(CatPresentationState state, float platformBlend,
+            bool movingToPlatform, float visualTime, bool motionOff) =>
+            ApplyPresentationInternal(state, platformBlend, movingToPlatform,
+                visualTime, motionOff, true, 0f, false);
+
+        /// <summary>
+        /// Applies a presentation-owned path rate as well as its current blend. The rate remains
+        /// geometry-free in CatPresentationTrack; this view measures the current seat-to-anchor
+        /// distance in board units, including a source queue lane, before driving the in-place
+        /// Walk clip. Existing callers without the rate retain nominal one-times playback.
+        /// </summary>
+        public void ApplyPresentation(CatPresentationState state, float platformBlend,
+            bool movingToPlatform, float visualTime, bool motionOff,
+            float platformBlendSpeed) =>
+            ApplyPresentationInternal(state, platformBlend, movingToPlatform,
+                visualTime, motionOff, true, platformBlendSpeed, true);
+
+        private void ApplyPresentationInternal(CatPresentationState state, float platformBlend,
+            bool movingToPlatform, float visualTime, bool motionOff, bool usePlatformPath,
+            float platformBlendSpeed, bool scaleWalkPlayback)
+        {
+            _presentationState = state;
+            bool hidden = state == CatPresentationState.Hidden;
+            if (hidden)
+            {
+                // Animator.Update cannot sample an inactive hierarchy. A first motion-off
+                // transition therefore takes its one neutral sample before Cat is hidden;
+                // already-suppressed frames do not reactivate or resample it.
+                if (motionOff && !_rigMotionSuppressed)
+                    _cat.gameObject.SetActive(true);
+                ClearRigEarTwitch();
+                ResetVisualPose();
+                _hasPlatformAnchor = false;
+                SetBodyLegVisibility(false);
+                if (motionOff) PlayRig(CatPresentationState.Hidden, true, 0f);
+                _cat.gameObject.SetActive(false);
+                _pin.gameObject.SetActive(false);
+                return;
+            }
+
+            _cat.gameObject.SetActive(true);
+            _pin.gameObject.SetActive(true);
+
+            float safePlatformBlend = float.IsNaN(platformBlend) || float.IsInfinity(platformBlend)
+                ? 0f : Mathf.Clamp01(platformBlend);
+            bool platformWaiting = state == CatPresentationState.WaitingIdle
+                && safePlatformBlend > 0f;
+            SetBodyLegVisibility(state == CatPresentationState.Walk
+                || state == CatPresentationState.Board
+                || state == CatPresentationState.Alight
+                || state == CatPresentationState.Celebrate
+                || platformWaiting);
+            bool followsPlatform = usePlatformPath
+                && (state == CatPresentationState.Walk
+                    || state == CatPresentationState.Board
+                    || state == CatPresentationState.Alight
+                    || state == CatPresentationState.Celebrate
+                    || platformWaiting);
+            // A queued wait is information, so reduced motion keeps its static platform
+            // endpoint. Other live transitions cut to the authoritative carriage seat.
+            bool resolvePlatformPath = followsPlatform && (!motionOff || platformWaiting);
+            if (resolvePlatformPath && (!_hasPlatformAnchor
+                || _platformAnchorMovesToPlatform != movingToPlatform))
+            {
+                _platformAnchorWorldPosition = _carriage.TransformPoint(
+                    _catBaseLocalPosition + Vector3.down * PlatformSideOffset);
+                _hasPlatformAnchor = true;
+                _platformAnchorMovesToPlatform = movingToPlatform;
+            }
+            else if (!followsPlatform)
+            {
+                _hasPlatformAnchor = false;
+            }
+
+            // Relative seat/platform transition speed only: carriage advection is intentionally
+            // excluded because it carries the cat rather than representing walking intent. The
+            // actual current path length still includes stable queue-lane displacement and grows
+            // as a moving carriage separates from its fixed source anchor.
+            float desiredTravelSpeed = CatModelCatalog.WalkTravelSpeedAtOneX;
+            if (scaleWalkPlayback && state == CatPresentationState.Walk)
+            {
+                desiredTravelSpeed = 0f;
+                float safeBlendSpeed = float.IsNaN(platformBlendSpeed)
+                    || float.IsInfinity(platformBlendSpeed)
+                    ? 0f : Mathf.Max(0f, platformBlendSpeed);
+                if (resolvePlatformPath && _hasPlatformAnchor)
+                {
+                    Transform board = transform.parent;
+                    Vector3 seatBoard = board.InverseTransformPoint(
+                        _carriage.TransformPoint(_catBaseLocalPosition));
+                    Vector3 anchorBoard = board.InverseTransformPoint(
+                        _platformAnchorWorldPosition);
+                    desiredTravelSpeed = Vector3.Distance(seatBoard, anchorBoard)
+                        * safeBlendSpeed;
+                    if (float.IsNaN(desiredTravelSpeed)
+                        || float.IsInfinity(desiredTravelSpeed))
+                        desiredTravelSpeed = 0f;
+                }
+            }
+
+            Vector3 pathLocalPosition = _catBaseLocalPosition;
+            if (resolvePlatformPath && _hasPlatformAnchor)
+            {
+                Vector3 platformLocalPosition = _carriage.InverseTransformPoint(
+                    _platformAnchorWorldPosition);
+                pathLocalPosition = Vector3.Lerp(_catBaseLocalPosition,
+                    platformLocalPosition, safePlatformBlend);
+            }
+            Vector3 pathOffset = pathLocalPosition - _catBaseLocalPosition;
+            ResetVisualPose();
+            if (motionOff)
+            {
+                ClearRigEarTwitch();
+                if (platformWaiting)
+                {
+                    _cat.localPosition = pathLocalPosition;
+                    _pin.localPosition = _pinBaseLocalPosition + pathOffset;
+                }
+                PlayRig(state, true, desiredTravelSpeed);
+                return;
+            }
+
+            float safeTime = float.IsNaN(visualTime) || float.IsInfinity(visualTime)
+                ? 0f : visualTime;
+            if (resolvePlatformPath && _hasPlatformAnchor
+                && state != CatPresentationState.Celebrate)
+                FaceAlongPlatformPath(movingToPlatform,
+                    _carriage.TransformPoint(_catBaseLocalPosition));
+            bool arrival = state == CatPresentationState.Alight || state == CatPresentationState.Celebrate;
+            CatMicroPose pose = _microMotion.Evaluate(safeTime, false, arrival);
+            // ScreenUpOffset carries exactly 0.021 board units of screen-space vertical travel;
+            // it is applied to the cat and its label pin, never to the train/root spline anchor.
+            Vector3 boardBob = ScreenUpOffset(BoardSceneLook.BoardTilt, pose.Bob * 0.021f, 0f);
+            Vector3 carriageLocalBob = Quaternion.Inverse(_carriage.localRotation) * boardBob;
+            _cat.localPosition = pathLocalPosition
+                + carriageLocalBob;
+            // The destination card labels the cat, not its empty seat. Carry the exact same
+            // presentation-only path and bob deltas so the solved 0.26 screen rise remains
+            // invariant while neither transform can affect the authoritative train root.
+            _pin.localPosition = _pinBaseLocalPosition + pathOffset + carriageLocalBob;
+            ApplyPlaceholderGait(state, safeTime);
+            Quaternion headTurn = Quaternion.Euler(0f, 0f, pose.ArrivalHeadTurnDegrees);
+            _head.localRotation = headTurn * _headBaseLocalRotation;
+            SetFeaturePose(_earLeft, _earLeftBaseLocalPosition, _earLeftBaseLocalRotation,
+                headTurn, Quaternion.Euler(0f, 0f, pose.EarTwitchDegrees));
+            SetFeaturePose(_earRight, _earRightBaseLocalPosition, _earRightBaseLocalRotation,
+                headTurn, Quaternion.Euler(0f, 0f, -pose.EarTwitchDegrees));
+            SetFeaturePose(_eyeLeft, _eyeLeftBaseLocalPosition, _eyeLeftBaseLocalRotation,
+                headTurn, Quaternion.identity);
+            SetFeaturePose(_eyeRight, _eyeRightBaseLocalPosition, _eyeRightBaseLocalRotation,
+                headTurn, Quaternion.identity);
+            SetFeaturePose(_muzzle, _muzzleBaseLocalPosition, _muzzleBaseLocalRotation,
+                headTurn, Quaternion.identity);
+            _eyeLeft.localScale = new Vector3(_eyeLeftBaseLocalScale.x,
+                _eyeLeftBaseLocalScale.y * pose.EyeYScale, _eyeLeftBaseLocalScale.z);
+            _eyeRight.localScale = new Vector3(_eyeRightBaseLocalScale.x,
+                _eyeRightBaseLocalScale.y * pose.EyeYScale, _eyeRightBaseLocalScale.z);
+            SetRigEarTwitch(pose.EarTwitchDegrees);
+            PlayRig(state, false, desiredTravelSpeed);
+            ApplyRigEarTwitch();
+        }
+
+        // GameRoot supplies presentation state in Update. Unity samples Animator after Update,
+        // so the same additive pose is re-applied in LateUpdate to remain visible without ever
+        // becoming an input to the deterministic simulation.
+        private void LateUpdate() => ApplyRigEarTwitch();
+
+        private void FaceAlongPlatformPath(bool movingToPlatform, Vector3 seatWorldPosition)
+        {
+            Vector3 travelWorld = movingToPlatform
+                ? _platformAnchorWorldPosition - seatWorldPosition
+                : seatWorldPosition - _platformAnchorWorldPosition;
+            Vector3 travelLocal = _carriage.InverseTransformDirection(travelWorld);
+            travelLocal.z = 0f;
+            if (travelLocal.sqrMagnitude <= 1e-8f) return;
+            float angle = Mathf.Atan2(travelLocal.y, travelLocal.x) * Mathf.Rad2Deg;
+            // TASK 17's +Z source-forward is adapted to Cat-local +X. Point that exact axis
+            // down the path while retaining Cat-local -Z as tabletop up.
+            _cat.localRotation = Quaternion.Euler(0f, 0f, angle);
+        }
+
+        private void ApplyPlaceholderGait(CatPresentationState state, float visualTime)
+        {
+            float maximum = state == CatPresentationState.Walk
+                ? WalkLegSwingDegrees
+                : state == CatPresentationState.Board || state == CatPresentationState.Alight
+                    ? TransitionLegSwingDegrees : 0f;
+            float swing = Mathf.Sin(visualTime * 18f) * maximum;
+            _legLeft.localRotation = _legLeftBaseLocalRotation * Quaternion.Euler(0f, swing, 0f);
+            _legRight.localRotation = _legRightBaseLocalRotation * Quaternion.Euler(0f, -swing, 0f);
+        }
+
+        private void SetFeaturePose(Transform feature, Vector3 baselinePosition,
+            Quaternion baselineRotation, Quaternion headTurn, Quaternion localTwitch)
+        {
+            feature.localPosition = _head.localPosition
+                + headTurn * (baselinePosition - _head.localPosition);
+            feature.localRotation = headTurn * baselineRotation * localTwitch;
+        }
+
+        private void ApplyCatTint(Color color)
+        {
+            var properties = new MaterialPropertyBlock();
+            for (int i = 0; i < _catRenderers.Length; i++)
+            {
+                _catRenderers[i].GetPropertyBlock(properties);
+                properties.SetColor("_BaseColor", color);
+                properties.SetColor("_Color", color);
+                _catRenderers[i].SetPropertyBlock(properties);
+                properties.Clear();
+            }
+            if (_rigInstance == null) return;
+            var rigRenderers = _rigInstance.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < rigRenderers.Length; i++)
+            {
+                rigRenderers[i].GetPropertyBlock(properties);
+                properties.SetColor("_BaseColor", color);
+                properties.SetColor("_Color", color);
+                rigRenderers[i].SetPropertyBlock(properties);
+                properties.Clear();
             }
         }
 
@@ -397,7 +768,8 @@ namespace CatMetro.Presentation.Board
         private void SetCarriageHeading(float degrees)
         {
             _carriage.localRotation = Quaternion.Euler(0f, 0f, degrees);
-            _cat.localRotation = Quaternion.Euler(0f, 0f, CatBoardYaw - degrees);
+            _catBaseLocalRotation = Quaternion.Euler(0f, 0f, CatBoardYaw - degrees);
+            _cat.localRotation = _catBaseLocalRotation;
             // The pin gets the same treatment one dimension up. Undoing the carriage's turn
             // leaves it at a FIXED board-local pose — rotation and offset both — so the card
             // holds still, square to the camera and directly above its cat, on a straight,
@@ -407,6 +779,7 @@ namespace CatMetro.Presentation.Board
             Quaternion unturn = Quaternion.Inverse(Quaternion.Euler(0f, 0f, degrees));
             _pin.localRotation = unturn * PinBoardRotation;
             _pin.localPosition = unturn * PinBoardOffset;
+            _pinBaseLocalPosition = _pin.localPosition;
         }
 
         // Vehicles are modelled along +x; travel tangents live in the board's XY plane.
@@ -456,21 +829,21 @@ namespace CatMetro.Presentation.Board
             // is. Ears are 45-degree diamonds anchored in the head, splayed up and out.
             _cat = new GameObject("Cat").transform;
             _cat.SetParent(_carriage, false);
-            _catRenderers = new[]
-            {
-                CreatePart("Head", _cat, SphereMesh(),
-                    new Vector3(0f, 0f, HeadCenterZ),
-                    new Vector3(HeadDiameter, HeadDiameter, HeadDiameter),
-                    Quaternion.identity, CatBasisMaterial()),
-                CreatePart("EarLeft", _cat, CubeMesh(),
-                    new Vector3(0f, EarLateral, EarCenterZ),
-                    new Vector3(EarThickness, EarSize, EarSize),
-                    Quaternion.Euler(45f, 0f, 0f), CatBasisMaterial()),
-                CreatePart("EarRight", _cat, CubeMesh(),
-                    new Vector3(0f, -EarLateral, EarCenterZ),
-                    new Vector3(EarThickness, EarSize, EarSize),
-                    Quaternion.Euler(45f, 0f, 0f), CatBasisMaterial()),
-            };
+            var head = CreatePart("Head", _cat, SphereMesh(),
+                new Vector3(0f, 0f, HeadCenterZ),
+                new Vector3(HeadDiameter, HeadDiameter, HeadDiameter),
+                Quaternion.identity, CatBasisMaterial());
+            var earLeft = CreatePart("EarLeft", _cat, CubeMesh(),
+                new Vector3(0f, EarLateral, EarCenterZ),
+                new Vector3(EarThickness, EarSize, EarSize),
+                Quaternion.Euler(45f, 0f, 0f), CatBasisMaterial());
+            var earRight = CreatePart("EarRight", _cat, CubeMesh(),
+                new Vector3(0f, -EarLateral, EarCenterZ),
+                new Vector3(EarThickness, EarSize, EarSize),
+                Quaternion.Euler(45f, 0f, 0f), CatBasisMaterial());
+            _head = head.transform;
+            _earLeft = earLeft.transform;
+            _earRight = earRight.transform;
 
             // The face. Because the cat holds a fixed camera-facing yaw, these sit at a known
             // screen position for every train on every heading — so they can be placed once,
@@ -478,17 +851,47 @@ namespace CatMetro.Presentation.Board
             // sphere sunk into the head so it reads as a dome on the surface, never a decal
             // that could z-fight. Reuses the engine's two cached materials: no new material,
             // no property block, nothing to tear down.
-            CreatePart("EyeLeft", _cat, SphereMesh(),
+            var eyeLeft = CreatePart("EyeLeft", _cat, SphereMesh(),
                 new Vector3(EyeOffset.x, EyeOffset.y, EyeOffset.z),
                 new Vector3(EyeSize, EyeSize, EyeSize),
                 Quaternion.identity, NavyMaterial());
-            CreatePart("EyeRight", _cat, SphereMesh(),
+            var eyeRight = CreatePart("EyeRight", _cat, SphereMesh(),
                 new Vector3(EyeOffset.x, -EyeOffset.y, EyeOffset.z),
                 new Vector3(EyeSize, EyeSize, EyeSize),
                 Quaternion.identity, NavyMaterial());
-            CreatePart("Muzzle", _cat, SphereMesh(),
+            var muzzle = CreatePart("Muzzle", _cat, SphereMesh(),
                 MuzzleOffset, MuzzleSize,
                 Quaternion.identity, CreamMaterial());
+            _eyeLeft = eyeLeft.transform;
+            _eyeRight = eyeRight.transform;
+            _muzzle = muzzle.transform;
+
+            // A sphere's neutral render is rotationally symmetric, so rotate its local basis
+            // without changing its neutral appearance: local Y is now the projected screen-up
+            // direction at the fixed Cat board yaw, making blink collapse read vertically.
+            Quaternion fixedCatYaw = Quaternion.Euler(0f, 0f, CatBoardYaw);
+            Vector3 screenUp = ScreenUpOffset(BoardSceneLook.BoardTilt, 1f, 0f).normalized;
+            Quaternion eyeBasis = Quaternion.FromToRotation(Vector3.up,
+                Quaternion.Inverse(fixedCatYaw) * screenUp);
+            _eyeLeft.localRotation = eyeBasis;
+            _eyeRight.localRotation = eyeBasis;
+
+            // A small Tier-1 body and legs give walking/alighting cats a readable silhouette.
+            // These use the same builtin meshes and bounds-derived scale as every train part:
+            // no primitive factory, colliders, or owned generated asset.
+            var body = CreatePart("Body", _cat, SphereMesh(),
+                new Vector3(-0.030f, 0f, 0.030f), PlaceholderBodyWorldSize,
+                Quaternion.identity, CatBasisMaterial());
+            var legLeft = CreatePart("LegLeft", _cat, CubeMesh(),
+                new Vector3(-0.035f, 0.048f, 0.092f), PlaceholderLegWorldSize,
+                Quaternion.identity, CatBasisMaterial());
+            var legRight = CreatePart("LegRight", _cat, CubeMesh(),
+                new Vector3(-0.035f, -0.048f, 0.092f), PlaceholderLegWorldSize,
+                Quaternion.identity, CatBasisMaterial());
+            _legLeft = legLeft.transform;
+            _legRight = legRight.transform;
+            _bodyLegs = new[] { body.transform, legLeft.transform, legRight.transform };
+            _catRenderers = new[] { head, earLeft, earRight, body, legLeft, legRight };
 
             // The destination pin: a white card floating above the passenger with that cat's
             // destination symbol on it. A sibling of the Cat rather than a child of it, because
@@ -514,6 +917,219 @@ namespace CatMetro.Presentation.Board
             _pinSymbolFilter = _pinSymbol.GetComponent<MeshFilter>();
 
             SetCarriageHeading(0f); // a consist faces the camera before its first placement
+            _catBaseLocalPosition = _cat.localPosition;
+            _headBaseLocalRotation = _head.localRotation;
+            _earLeftBaseLocalRotation = _earLeft.localRotation;
+            _earRightBaseLocalRotation = _earRight.localRotation;
+            _eyeLeftBaseLocalRotation = _eyeLeft.localRotation;
+            _eyeRightBaseLocalRotation = _eyeRight.localRotation;
+            _muzzleBaseLocalRotation = _muzzle.localRotation;
+            _legLeftBaseLocalRotation = _legLeft.localRotation;
+            _legRightBaseLocalRotation = _legRight.localRotation;
+            _earLeftBaseLocalPosition = _earLeft.localPosition;
+            _earRightBaseLocalPosition = _earRight.localPosition;
+            _eyeLeftBaseLocalPosition = _eyeLeft.localPosition;
+            _eyeRightBaseLocalPosition = _eyeRight.localPosition;
+            _muzzleBaseLocalPosition = _muzzle.localPosition;
+            _eyeLeftBaseLocalScale = _eyeLeft.localScale;
+            _eyeRightBaseLocalScale = _eyeRight.localScale;
+            SetBodyLegVisibility(false);
+            TryInstallRig();
+        }
+
+        private void ResetVisualPose()
+        {
+            _cat.localPosition = _catBaseLocalPosition;
+            _cat.localRotation = _catBaseLocalRotation;
+            _head.localRotation = _headBaseLocalRotation;
+            _earLeft.localRotation = _earLeftBaseLocalRotation;
+            _earRight.localRotation = _earRightBaseLocalRotation;
+            _eyeLeft.localRotation = _eyeLeftBaseLocalRotation;
+            _eyeRight.localRotation = _eyeRightBaseLocalRotation;
+            _muzzle.localRotation = _muzzleBaseLocalRotation;
+            _legLeft.localRotation = _legLeftBaseLocalRotation;
+            _legRight.localRotation = _legRightBaseLocalRotation;
+            _pin.localPosition = _pinBaseLocalPosition;
+            _earLeft.localPosition = _earLeftBaseLocalPosition;
+            _earRight.localPosition = _earRightBaseLocalPosition;
+            _eyeLeft.localPosition = _eyeLeftBaseLocalPosition;
+            _eyeRight.localPosition = _eyeRightBaseLocalPosition;
+            _muzzle.localPosition = _muzzleBaseLocalPosition;
+            _eyeLeft.localScale = _eyeLeftBaseLocalScale;
+            _eyeRight.localScale = _eyeRightBaseLocalScale;
+        }
+
+        private void SetBodyLegVisibility(bool visible)
+        {
+            for (int i = 0; i < _bodyLegs.Length; i++)
+                _bodyLegs[i].gameObject.SetActive(visible);
+        }
+
+        private void TryInstallRig()
+        {
+            var catalog = _catCatalog ?? CatModelCatalog.LoadResources();
+            _rigFallbackReason = catalog.RejectionReason;
+            if (!catalog.TryInstantiate(_cat, out _rigInstance)) return;
+
+            var animators = _rigInstance.GetComponentsInChildren<Animator>(true);
+            if (animators.Length != 1)
+            {
+                _rigFallbackReason = "Instantiated cat rig must contain exactly one Animator.";
+                DestroyOwned(_rigInstance);
+                _rigInstance = null;
+                return;
+            }
+
+            _rigAnimator = animators[0];
+            _rigAnimator.applyRootMotion = false;
+            _rigInstance.transform.localPosition = Vector3.zero;
+            // TASK 17 imports conventional +Y-up, +Z-forward content. This presentation-only
+            // adapter stands it on Cat's -Z tabletop-up axis and points it along Cat's +X face.
+            _rigInstance.transform.localRotation = Quaternion.LookRotation(
+                Vector3.right, Vector3.back);
+            _rigInstance.transform.localScale = Vector3.one * CatModelCatalog.PresenterScale;
+            ResolveRigTierOneControls();
+            _rigAdmitted = true;
+            _rigFallbackReason = string.Empty;
+            SetPlaceholderRenderersVisible(false);
+            if (_catColorApplied)
+                ApplyCatTint(CatLine.ColorOf(_appliedColorCode));
+        }
+
+        private void ResolveRigTierOneControls()
+        {
+            Transform branchA = _rigAnimator.transform.Find(CatModelCatalog.EarDeformerPathA);
+            Transform branchB = _rigAnimator.transform.Find(CatModelCatalog.EarDeformerPathB);
+            if (branchA == null || branchB == null) return;
+
+            bool branchAInSkin = false;
+            bool branchBInSkin = false;
+            var skins = _rigAnimator.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            for (int skinIndex = 0; skinIndex < skins.Length; skinIndex++)
+            {
+                Transform[] bones = skins[skinIndex].bones;
+                for (int boneIndex = 0; boneIndex < bones.Length; boneIndex++)
+                {
+                    branchAInSkin |= bones[boneIndex] == branchA;
+                    branchBInSkin |= bones[boneIndex] == branchB;
+                }
+            }
+            if (!branchAInSkin || !branchBInSkin) return;
+
+            _rigEarDeformerA = branchA;
+            _rigEarDeformerB = branchB;
+            _rigEarTwitchSupported = true;
+        }
+
+        private void SetRigEarTwitch(float degrees)
+        {
+            if (!_rigEarTwitchSupported) return;
+            _rigEarTwitchDegrees = Mathf.Clamp(degrees,
+                -CatMicroMotion.EarTwitchMaximumDegrees,
+                CatMicroMotion.EarTwitchMaximumDegrees) * RigEarTwitchGain;
+            _rigEarTwitchActive = true;
+        }
+
+        private void ApplyRigEarTwitch()
+        {
+            if (!_rigEarTwitchSupported || !_rigEarTwitchActive) return;
+
+            Quaternion offsetA = Quaternion.Euler(0f, 0f, _rigEarTwitchDegrees);
+            Quaternion offsetB = Quaternion.Euler(0f, 0f, -_rigEarTwitchDegrees);
+            Quaternion sampledA = AnimationSampleWithoutPreviousOffset(
+                _rigEarDeformerA.localRotation, _rigEarALastApplied,
+                _rigEarAPreviousOffset, _rigEarPoseApplied);
+            Quaternion sampledB = AnimationSampleWithoutPreviousOffset(
+                _rigEarDeformerB.localRotation, _rigEarBLastApplied,
+                _rigEarBPreviousOffset, _rigEarPoseApplied);
+            _rigEarDeformerA.localRotation = sampledA * offsetA;
+            _rigEarDeformerB.localRotation = sampledB * offsetB;
+            _rigEarAPreviousOffset = offsetA;
+            _rigEarBPreviousOffset = offsetB;
+            _rigEarALastApplied = _rigEarDeformerA.localRotation;
+            _rigEarBLastApplied = _rigEarDeformerB.localRotation;
+            _rigEarPoseApplied = true;
+        }
+
+        private void ClearRigEarTwitch()
+        {
+            _rigEarTwitchActive = false;
+            _rigEarTwitchDegrees = 0f;
+            if (!_rigEarTwitchSupported || !_rigEarPoseApplied) return;
+
+            _rigEarDeformerA.localRotation = AnimationSampleWithoutPreviousOffset(
+                _rigEarDeformerA.localRotation, _rigEarALastApplied,
+                _rigEarAPreviousOffset, true);
+            _rigEarDeformerB.localRotation = AnimationSampleWithoutPreviousOffset(
+                _rigEarDeformerB.localRotation, _rigEarBLastApplied,
+                _rigEarBPreviousOffset, true);
+            _rigEarAPreviousOffset = Quaternion.identity;
+            _rigEarBPreviousOffset = Quaternion.identity;
+            _rigEarPoseApplied = false;
+        }
+
+        private static Quaternion AnimationSampleWithoutPreviousOffset(Quaternion current,
+            Quaternion lastApplied, Quaternion previousOffset, bool hadPreviousOffset)
+        {
+            // If Animator did not rewrite this branch, current is our prior final pose and the
+            // old additive must be removed before the new one is applied. If Animator sampled
+            // a walk pose in between, preserve that fresh sample instead. This avoids both
+            // accumulation on the padded idle clips and clobbering the authored walk motion.
+            return hadPreviousOffset && Quaternion.Angle(current, lastApplied) < 0.001f
+                ? current * Quaternion.Inverse(previousOffset)
+                : current;
+        }
+
+        private void PlayRig(CatPresentationState state, bool motionOff,
+            float desiredTravelSpeed)
+        {
+            if (!_rigAdmitted || _rigAnimator == null) return;
+            _rigAnimator.applyRootMotion = false;
+            if (motionOff)
+            {
+                if (_rigMotionSuppressed) return;
+                _rigMotionSuppressed = true;
+                _rigAnimator.Rebind();
+                _rigAnimator.Play(_rigAnimator.GetLayerName(0) + "."
+                    + CatModelCatalog.IdleSitClip, 0, 0f);
+                _rigAnimator.Update(0f);
+                _rigAnimator.speed = 0f;
+                _rigNeutralSampleCount++;
+                _lastRigState = CatPresentationState.Hidden;
+                return;
+            }
+
+            _rigMotionSuppressed = false;
+            float playbackSpeed = 1f;
+            if (state == CatPresentationState.Walk)
+            {
+                float safeTravelSpeed = float.IsNaN(desiredTravelSpeed)
+                    || float.IsInfinity(desiredTravelSpeed)
+                    ? 0f : Mathf.Max(0f, desiredTravelSpeed);
+                playbackSpeed = safeTravelSpeed / CatModelCatalog.WalkTravelSpeedAtOneX;
+            }
+            // A stored source anchor can separate farther from a moving carriage without a
+            // presentation-state transition, so retime before the same-state early return.
+            _rigAnimator.speed = playbackSpeed;
+            if (_lastRigState == state) return;
+            _rigAnimator.Play(_rigAnimator.GetLayerName(0) + "." + CatModelCatalog.ClipFor(state), 0, 0f);
+            _rigAnimator.Update(0f); // presentation sampling only; root motion stays disabled.
+            _lastRigState = state;
+        }
+
+        private void SetPlaceholderRenderersVisible(bool visible)
+        {
+            for (int i = 0; i < _catRenderers.Length; i++)
+                _catRenderers[i].enabled = visible;
+            _eyeLeft.GetComponent<MeshRenderer>().enabled = visible;
+            _eyeRight.GetComponent<MeshRenderer>().enabled = visible;
+            _cat.Find("Muzzle").GetComponent<MeshRenderer>().enabled = visible;
+        }
+
+        private static void DestroyOwned(GameObject instance)
+        {
+            if (UnityEngine.Application.isPlaying) Destroy(instance);
+            else DestroyImmediate(instance);
         }
 
         // BoardSurface.CreatePart's shape: builtin mesh, no collider, project material only —

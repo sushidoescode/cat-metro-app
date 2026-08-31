@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using CatMetro.Application.Session;
 using CatMetro.Content;
+using CatMetro.Domain;
+using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Props;
 using CatMetro.Presentation.Theme;
 using UnityEngine;
@@ -13,6 +15,7 @@ namespace CatMetro.Presentation.Board
     // Presentation NEVER simulates (criterion 6): it reads session state + Alpha and places
     // primitives; the lever shows the COMMITTED route (state route + pending toggles) so a tap
     // is visible on its first rendered frame while the sim applies it at the boundary.
+    [ExecuteAlways]
     public sealed class BoardView : MonoBehaviour
     {
         // CM-UX-03: the onboarding teach affordance — a static raised ring behind every switch
@@ -38,6 +41,7 @@ namespace CatMetro.Presentation.Board
         private GameSession _session;
         private string[] _nodeIds;
         private Vector3[] _nodePos;
+        private bool[] _sourceNode;
         private int[] _edgeFrom;
         private int[] _edgeTo;
         private int[] _edgeTravel;
@@ -46,6 +50,18 @@ namespace CatMetro.Presentation.Board
         private int[] _switchNode;
         private ToySwitchView[] _switchView;
         private readonly Dictionary<int, ToyTrainView> _trains = new Dictionary<int, ToyTrainView>();
+        private readonly List<Material> _ownedNodeMaterials = new List<Material>();
+        private CatPresentationTrack[] _catTracks;
+        private int[] _catOccupantGenerations;
+        private int[] _sourcePlatformLanes;
+        private TrainSlot[] _currentTrainSlots;
+        private TrainSlot[] _previousTrainSlots;
+        private int[] _currentSessionOccupantGenerations;
+        private int[] _previousSessionOccupantGenerations;
+        private int[] _currentSessionDeliveryGenerations;
+        private int[] _previousSessionDeliveryGenerations;
+        private int _previousDeliveryCount;
+        private bool _hasPresentationSnapshot;
 
         public int SwitchCount => _switchNode.Length;
         public string NodeId(int nodeIndex) => _nodeIds[nodeIndex];
@@ -69,6 +85,14 @@ namespace CatMetro.Presentation.Board
         }
         public Vector3 SwitchWorldPos(int switchIndex) =>
             transform.TransformPoint(_nodePos[_switchNode[switchIndex]]); // F11: world, not local
+
+        /// <summary>
+        /// Pure presentation derivation: delivery is a counter advance paired with this slot
+        /// changing from live to empty. Both slots are caller-owned value snapshots.
+        /// </summary>
+        public static bool DeliveryAdvancedForPresentation(TrainSlot previous, TrainSlot current,
+            int previousDeliveryCount, int currentDeliveryCount) =>
+            IsLive(previous) && !IsLive(current) && currentDeliveryCount > previousDeliveryCount;
 
         public static BoardView Build(ImportedLevel level, Transform parent, GameSession session,
             PropModelCatalog propCatalog = null)
@@ -106,6 +130,7 @@ namespace CatMetro.Presentation.Board
             var nodeIndex = new Dictionary<string, int>();
             _nodePos = new Vector3[nodes.Length];
             _nodeIds = new string[nodes.Length];
+            _sourceNode = new bool[nodes.Length];
 
             var sourceIds = new HashSet<string>();
             foreach (var s in dto.Sources.ToArray()) sourceIds.Add(s.NodeId);
@@ -118,6 +143,7 @@ namespace CatMetro.Presentation.Board
                 nodeIndex[nodes[i].Id] = i;
                 _nodeIds[i] = nodes[i].Id;
                 _nodePos[i] = new Vector3(nodes[i].X, nodes[i].Y, 0f);
+                _sourceNode[i] = sourceIds.Contains(nodes[i].Id);
                 string kind = sourceIds.Contains(nodes[i].Id) ? "source"
                     : stationAccept.ContainsKey(nodes[i].Id) ? "station" : "node";
                 var prim = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -131,7 +157,19 @@ namespace CatMetro.Presentation.Board
                 renderer.sharedMaterial = GreyboxMaterial.Shared;
                 if (kind == "station")
                 {
-                    renderer.material.color = ColorFor(stationAccept[nodes[i].Id]);
+                    // A station's material is shared with its generated primary badge, so it
+                    // must carry the line tint on the material itself. Create it explicitly,
+                    // bind it through sharedMaterial, and tear it down with this BoardView.
+                    // Reading renderer.material here would ask Unity to clone an unowned copy
+                    // (and does exactly that, with a leak warning, in EditMode).
+                    var stationMaterial = GreyboxMaterial.CreateTinted(
+                        "Board station — " + nodes[i].Id,
+                        ColorFor(stationAccept[nodes[i].Id]));
+                    if (stationMaterial != null)
+                    {
+                        _ownedNodeMaterials.Add(stationMaterial);
+                        renderer.sharedMaterial = stationMaterial;
+                    }
                     var symbol = new GameObject("Symbol").AddComponent<TextMesh>();
                     symbol.transform.SetParent(prim.transform, false);
                     symbol.transform.localPosition = new Vector3(0f, 0f, -1f);
@@ -141,8 +179,10 @@ namespace CatMetro.Presentation.Board
                     symbol.text = stationAccept[nodes[i].Id].Length > 0
                         ? stationAccept[nodes[i].Id].Substring(0, 1).ToUpperInvariant() : "?";
                 }
-                else if (kind == "source") renderer.material.color = new Color(0.25f, 0.25f, 0.25f);
-                else renderer.material.color = new Color(0.7f, 0.7f, 0.7f);
+                else if (kind == "source")
+                    TintSharedRenderer(renderer, new Color(0.25f, 0.25f, 0.25f));
+                else
+                    TintSharedRenderer(renderer, new Color(0.7f, 0.7f, 0.7f));
             }
 
             _edgeFrom = new int[edges.Length];
@@ -279,18 +319,121 @@ namespace CatMetro.Presentation.Board
             }
         }
 
-        public void UpdateFrom(GameSession session)
+        public void UpdateFrom(GameSession session) => UpdateFrom(session, Time.unscaledTime);
+
+        /// <summary>
+        /// Explicit visual-time seam for deterministic presentation tests. Runtime callers use
+        /// the one-argument overload, which always supplies <see cref="Time.unscaledTime"/>.
+        /// </summary>
+        public void UpdateFrom(GameSession session, float visualTime)
         {
             RefreshSwitches();
             UpdateTeach(session);
             float alpha = (float)session.Alpha;
-            var trains = session.State.Trains;
+            bool motionOff = MotionOffSource != null && MotionOffSource();
+            // Copy first: presentation tracks must never hold a simulation slot reference or
+            // mutate the session while deriving a delivery transition.
+            var sourceTrains = session.State.Trains;
+            EnsureCatTracks(sourceTrains.Length);
+            var trains = _currentTrainSlots;
+            for (int t = 0; t < sourceTrains.Length; t++)
+            {
+                trains[t] = sourceTrains[t];
+                _currentSessionOccupantGenerations[t] = session.TrainOccupantGeneration(t);
+                _currentSessionDeliveryGenerations[t] = session.TrainDeliveryGeneration(t);
+            }
+            int deliveries = session.State.Deliveries;
+            bool deliveryCounterAdvanced = _hasPresentationSnapshot
+                && deliveries > _previousDeliveryCount;
             for (int t = 0; t < trains.Length; t++)
             {
-                bool live = trains[t].Id != 0 && trains[t].State != CatMetro.Domain.TrainState.None;
+                TrainSlot previous = _hasPresentationSnapshot && t < _previousTrainSlots.Length
+                    ? _previousTrainSlots[t] : default;
+                bool previousLive = _hasPresentationSnapshot && IsLive(previous);
+                bool live = IsLive(trains[t]);
+                bool sessionDeliveryAdvanced = _hasPresentationSnapshot
+                    && _currentSessionDeliveryGenerations[t]
+                        != _previousSessionDeliveryGenerations[t];
+                bool singleSessionDelivery = sessionDeliveryAdvanced
+                    && _currentSessionDeliveryGenerations[t]
+                        == NextGeneration(_previousSessionDeliveryGenerations[t]);
+                bool displayedOccupantDelivered = previousLive && singleSessionDelivery;
+                // Two complete lifecycles can collapse inside one hitch. Likewise, a delivery
+                // that starts from an already-empty rendered snapshot belongs to an unseen cat,
+                // not any older departure still lingering. Only one delivery of the occupant
+                // visible in the prior snapshot may move and animate that retained renderer.
+                bool deliveryAdvanced = displayedOccupantDelivered
+                    || (!sessionDeliveryAdvanced && deliveryCounterAdvanced
+                        && DeliveryAdvancedForPresentation(previous, trains[t],
+                            _previousDeliveryCount, deliveries));
+                bool sessionOccupantChanged = _hasPresentationSnapshot
+                    && _currentSessionOccupantGenerations[t]
+                        != _previousSessionOccupantGenerations[t];
+                bool newOccupant = live
+                    && (!_hasPresentationSnapshot || !previousLive || sessionOccupantChanged);
+                if (newOccupant) _catOccupantGenerations[t] = NextGeneration(
+                    _catOccupantGenerations[t]);
+
+                // GameSession observes every authoritative step, so its read-only generation
+                // catches same-colour refills even when a render hitch collapses delivery,
+                // empty-slot and refill snapshots. Unrelated live slots retain their generation.
+                bool waitingOnSourcePlatform = live
+                    && session.TrainOccupantGeneration(t) > 0
+                    && trains[t].State == TrainState.AtNode
+                    && trains[t].NodeId >= 0 && trains[t].NodeId < _sourceNode.Length
+                    && _sourceNode[trains[t].NodeId];
+                _catTracks[t].Observe(trains[t], _catOccupantGenerations[t],
+                    deliveryAdvanced, visualTime, waitingOnSourcePlatform);
+                bool usesSourcePlatformLane = live
+                    && !_catTracks[t].MovingToPlatform
+                    && _catTracks[t].PlatformBlend > 0f;
+                if (!usesSourcePlatformLane)
+                    _sourcePlatformLanes[t] = -1;
+                else if (newOccupant || _sourcePlatformLanes[t] < 0)
+                {
+                    _sourcePlatformLanes[t] = -1;
+                    _sourcePlatformLanes[t] = AllocateSourcePlatformLane();
+                }
                 if (!live)
                 {
-                    if (_trains.TryGetValue(t, out var dead)) dead.gameObject.SetActive(false);
+                    if (_trains.TryGetValue(t, out var dead))
+                    {
+                        if (deliveryAdvanced && displayedOccupantDelivered)
+                        {
+                            int deliveryNode = session.TrainDeliveryNode(t);
+                            if (deliveryNode >= 0 && deliveryNode < _nodePos.Length)
+                                dead.PlaceAtNode(_trackPaths, deliveryNode,
+                                    _nodePos[deliveryNode]);
+                        }
+                        // Exact GameSession delivery metadata places a delivered consist at the
+                        // station even when rendering skipped the arrival step. Manually-driven
+                        // presentation fixtures fall back to their last root. Either pose is
+                        // retained only for departure; motion-off hides it in the same frame.
+                        bool retainDeparture = !motionOff
+                            && _catTracks[t].State != CatPresentationState.Hidden;
+                        if (!retainDeparture)
+                        {
+                            // Cancel, rather than merely hide, so re-enabling motion cannot
+                            // resume an old departure sequence from its elapsed timestamp.
+                            bool cancelDeparture = motionOff
+                                && _catTracks[t].State != CatPresentationState.Hidden;
+                            bool needsHideReset = dead.gameObject.activeSelf || cancelDeparture;
+                            if (cancelDeparture) _catTracks[t] = new CatPresentationTrack();
+                            if (needsHideReset)
+                            {
+                                dead.ApplyPresentation(CatPresentationState.Hidden, visualTime, true);
+                                dead.gameObject.SetActive(false);
+                            }
+                        }
+                        else
+                        {
+                            dead.gameObject.SetActive(true);
+                            dead.ApplyPresentation(_catTracks[t].State,
+                                _catTracks[t].PlatformBlend,
+                                _catTracks[t].MovingToPlatform, visualTime, false,
+                                _catTracks[t].PlatformBlendSpeed);
+                        }
+                    }
                     continue;
                 }
                 if (!_trains.TryGetValue(t, out var consist) || consist == null)
@@ -309,7 +452,8 @@ namespace CatMetro.Presentation.Board
                 // The CODE, not a resolved Color: the consist paints the cat AND cuts its
                 // destination pin from it, and both have to come off the one CatLine vocabulary
                 // or the pin's shape and the cat's colour can drift apart.
-                consist.SyncSlot(trains[t].Id, trains[t].Color);
+                consist.SyncSlot(PresentationOccupantKey(t, _catOccupantGenerations[t]),
+                    trains[t].Color);
                 if (trains[t].State == CatMetro.Domain.TrainState.OnEdge)
                 {
                     int e = trains[t].EdgeId;
@@ -320,8 +464,96 @@ namespace CatMetro.Presentation.Board
                 {
                     consist.PlaceAtNode(_trackPaths, trains[t].NodeId, _nodePos[trains[t].NodeId]);
                 }
+                // New riders need a hitch-proof source endpoint. Waiting cats reapply their
+                // stable presentation lane; once released, they retain that stored endpoint
+                // for the boarding walk. Lanes outlive FIFO-rank changes until the cat reaches
+                // its seat, so an older waiter and same-tick newcomer cannot coincide.
+                if (newOccupant || waitingOnSourcePlatform)
+                {
+                    int spawnNode = session.TrainOccupantSpawnNode(t);
+                    int spawnEdge = session.TrainOccupantSpawnEdge(t);
+                    if (spawnNode >= 0 && spawnNode < _nodePos.Length)
+                    {
+                        Vector3 tangent = spawnEdge >= 0 && spawnEdge < _edgeFrom.Length
+                            ? _trackPaths.Path(spawnEdge).TangentDistanceFraction(0f)
+                            : Vector3.right;
+                        consist.SetSourcePlatformAnchor(_nodePos[spawnNode],
+                            new Vector3(tangent.y, -tangent.x, 0f),
+                            _sourcePlatformLanes[t]);
+                    }
+                }
+                // Always place from the copied simulation snapshot before applying visual-only
+                // cat transforms. No bob/head motion can feed back into spline placement.
+                consist.ApplyPresentation(_catTracks[t].State,
+                    _catTracks[t].PlatformBlend, _catTracks[t].MovingToPlatform,
+                    visualTime, motionOff, _catTracks[t].PlatformBlendSpeed);
             }
+            for (int t = 0; t < trains.Length; t++)
+            {
+                _previousTrainSlots[t] = trains[t];
+                _previousSessionOccupantGenerations[t] =
+                    _currentSessionOccupantGenerations[t];
+                _previousSessionDeliveryGenerations[t] =
+                    _currentSessionDeliveryGenerations[t];
+            }
+            _previousDeliveryCount = deliveries;
+            _hasPresentationSnapshot = true;
         }
+
+        private void EnsureCatTracks(int count)
+        {
+            if (_catTracks != null && _catTracks.Length == count) return;
+            var replacement = new CatPresentationTrack[count];
+            var replacementGenerations = new int[count];
+            var replacementLanes = new int[count];
+            for (int i = 0; i < replacementLanes.Length; i++) replacementLanes[i] = -1;
+            int existing = _catTracks == null ? 0 : Mathf.Min(_catTracks.Length, count);
+            for (int i = 0; i < existing; i++)
+            {
+                replacement[i] = _catTracks[i];
+                replacementGenerations[i] = _catOccupantGenerations[i];
+                replacementLanes[i] = _sourcePlatformLanes[i];
+            }
+            for (int i = existing; i < count; i++) replacement[i] = new CatPresentationTrack();
+            _catTracks = replacement;
+            _catOccupantGenerations = replacementGenerations;
+            _sourcePlatformLanes = replacementLanes;
+            _currentTrainSlots = new TrainSlot[count];
+            _previousTrainSlots = new TrainSlot[count];
+            _currentSessionOccupantGenerations = new int[count];
+            _previousSessionOccupantGenerations = new int[count];
+            _currentSessionDeliveryGenerations = new int[count];
+            _previousSessionDeliveryGenerations = new int[count];
+            _hasPresentationSnapshot = false;
+        }
+
+        private static int NextGeneration(int current)
+        {
+            int next = unchecked(current + 1);
+            return next > 0 ? next : 1;
+        }
+
+        private static long PresentationOccupantKey(int slotIndex, int generation) =>
+            ((long)(uint)(slotIndex + 1) << 32) | (uint)generation;
+
+        private int AllocateSourcePlatformLane()
+        {
+            for (int candidate = 0; candidate < _sourcePlatformLanes.Length; candidate++)
+            {
+                bool used = false;
+                for (int t = 0; t < _sourcePlatformLanes.Length; t++)
+                    if (_sourcePlatformLanes[t] == candidate)
+                    {
+                        used = true;
+                        break;
+                    }
+                if (!used) return candidate;
+            }
+            return _sourcePlatformLanes.Length;
+        }
+
+        private static bool IsLive(TrainSlot slot) =>
+            slot.Id != 0 && slot.State != TrainState.None;
 
         // STATION-BADGE: one colour decision, not two. This was a private duplicate of
         // CatLine.ColorOf — same four cases, same magenta fallback — and the duplication was
@@ -337,5 +569,25 @@ namespace CatMetro.Presentation.Board
         // rendering magenta with nothing to catch it. Routed through the vocabulary too, so
         // adding a line is one edit in CatLine and every surface follows.
         private static Color ColorForCode(byte code) => CatLine.ColorOf(code);
+
+        private static void TintSharedRenderer(Renderer renderer, Color color)
+        {
+            var properties = new MaterialPropertyBlock();
+            properties.SetColor("_BaseColor", color);
+            properties.SetColor("_Color", color);
+            renderer.SetPropertyBlock(properties);
+        }
+
+        private void OnDestroy()
+        {
+            for (int i = 0; i < _ownedNodeMaterials.Count; i++)
+            {
+                Material material = _ownedNodeMaterials[i];
+                if (material == null) continue;
+                if (UnityEngine.Application.isPlaying) Destroy(material);
+                else DestroyImmediate(material);
+            }
+            _ownedNodeMaterials.Clear();
+        }
     }
 }

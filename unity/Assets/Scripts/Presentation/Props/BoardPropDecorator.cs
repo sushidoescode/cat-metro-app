@@ -265,7 +265,7 @@ namespace CatMetro.Presentation.Props
         {
             var fallback = stationAnchor.GetComponent<Renderer>();
             Color lineColor = fallback != null && fallback.sharedMaterial != null
-                ? fallback.material.color : Color.magenta;
+                ? fallback.sharedMaterial.color : Color.magenta;
 
             var model = kiosk.Find("Model");
             Bounds bounds = LocalRendererBounds(kiosk, model);
