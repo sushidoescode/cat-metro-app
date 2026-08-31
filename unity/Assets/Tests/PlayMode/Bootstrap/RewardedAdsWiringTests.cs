@@ -11,6 +11,7 @@ using CatMetro.Services;
 using CatMetro.Services.Ads;
 using CatMetro.Services.Purchases;
 using NUnit.Framework;
+using TMPro;
 using UnityEngine;
 using UnityEngine.TestTools;
 
@@ -407,11 +408,109 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.EntryRectPx.center),
                 Is.EqualTo(-3));
             yield return null;
-            AssertWardrobeNoAdTargets(game.Wardrobe, game.Input);
+            Assert.That(game.Wardrobe.transform.Find("WardrobePanel/TryOnStrip"), Is.Null);
+            Assert.That(game.Input.Regions.Count, Is.EqualTo(3));
+            for (int i = 0; i < PlacementIds.Length; i++)
+                Assert.That(game.Input.Regions.IsRegistered(
+                    "wardrobe.rewarded." + PlacementIds[i]), Is.False);
             UnityEngine.Object.Destroy(game.gameObject);
             UnityEngine.Object.Destroy(monetizationHost);
             yield return null;
             Assert.That(RewardedAdRuntime.IsInstalled, Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator UnconfiguredAds_RealBootOmitsTryOnArtifactAndReclaimsPreviewGap()
+        {
+            var root = NewTempRoot();
+            GameRoot.DailyStorageRootOverride = () => root;
+            var backend = new BackendReporter();
+            int providerFactoryCalls = 0;
+            PurchaseBackendFactory.Register(_ => backend);
+            RewardedAdProviderFactory.Register(_ =>
+            {
+                providerFactoryCalls++;
+                return new Provider();
+            });
+            MonetizationBootstrap.SetRewardedAdsConfigForTests(
+                RewardedAdsConfig.Parse("{}", RuntimePlatform.Android));
+            MonetizationBootstrap.Boot();
+            Track(GameObject.Find("[Monetization]"));
+
+            var game = GameRoot.Launch();
+            Track(game.gameObject);
+            yield return null;
+
+            Assert.That(providerFactoryCalls, Is.Zero,
+                "an unconfigured build must not construct the mediation provider");
+            Assert.That(RewardedAdRuntime.IsInstalled, Is.False);
+            Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.EntryRectPx.center),
+                Is.EqualTo(-3));
+            yield return null;
+
+            game.Wardrobe.LayoutForViewport(PhoneSafeArea, 408f);
+            Canvas.ForceUpdateCanvases();
+            yield return null;
+            Canvas.ForceUpdateCanvases();
+
+            var panel = game.Wardrobe.transform.Find("WardrobePanel");
+            Assert.That(panel, Is.Not.Null);
+            Assert.That(panel.Find("TryOnStrip"), Is.Null,
+                "an absent provider must leave no ad-shaped hierarchy to render");
+
+            string[] forbiddenTryOnText =
+            {
+                "Today's try-ons",
+                "Conductor",
+                "Engineer",
+                "Scarf",
+                "Goggles",
+                "Locked",
+                "Borrowed today",
+                "Watch to borrow today",
+                "Try-on unavailable",
+                "Ready to wear!",
+            };
+            var allLabels = game.Wardrobe.GetComponentsInChildren<TMP_Text>(true);
+            for (int i = 0; i < forbiddenTryOnText.Length; i++)
+            {
+                string forbidden = forbiddenTryOnText[i];
+                Assert.That(Array.Exists(allLabels, label => label.text == forbidden), Is.False,
+                    "unconfigured Wardrobe retained try-on text: " + forbidden);
+            }
+
+            Assert.That(game.Input.Regions.Count, Is.EqualTo(3),
+                "only Back, Buy, and Restore may remain on the open Wardrobe");
+            for (int i = 0; i < PlacementIds.Length; i++)
+            {
+                Assert.That(game.Input.Regions.IsRegistered(
+                    "wardrobe.rewarded." + PlacementIds[i]), Is.False,
+                    PlacementIds[i] + " left a ghost rewarded target");
+            }
+
+            var status = ProjectedScreenRect(
+                panel.Find("WardrobeStatus") as RectTransform);
+            var portrait = ProjectedScreenRect(
+                panel.Find("ProfileCatCard") as RectTransform);
+            const float expectedGapPx = 12f * (408f / 160f);
+            Assert.That(portrait.yMin - status.yMax,
+                Is.EqualTo(expectedGapPx).Within(1f),
+                "the portrait must reclaim the omitted 172dp preview band without a blank hole");
+
+            Assert.That(panel.Find("BackChip").gameObject.activeInHierarchy, Is.True);
+            Assert.That(panel.Find("BuyConductorCoatChip").gameObject.activeInHierarchy, Is.True);
+            Assert.That(panel.Find("RestorePurchasesChip").gameObject.activeInHierarchy, Is.True);
+            Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.BuyRectPx.center),
+                Is.EqualTo(-3));
+            Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.RestoreRectPx.center),
+                Is.EqualTo(-3));
+            Assert.That(backend.PurchaseCalls, Is.EqualTo(1));
+            Assert.That(backend.RestoreCalls, Is.EqualTo(1));
+            Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.BackRectPx.center),
+                Is.EqualTo(-3));
+            yield return null;
+            Assert.That(game.Wardrobe.PanelVisible, Is.False);
+            Assert.That(game.Home.IsVisible, Is.True);
         }
 
         private RewardedAdsComposition NewComposition(PurchaseService service, Provider provider,
@@ -509,6 +608,35 @@ namespace CatMetro.Tests.PlayMode
                     "wardrobe.rewarded." + PlacementIds[i]), Is.False,
                     PlacementIds[i] + " must leave no ghost input target");
             }
+        }
+
+        private static Rect ProjectedScreenRect(RectTransform rect)
+        {
+            Assert.That(rect, Is.Not.Null);
+            var canvas = rect.GetComponentInParent<Canvas>();
+            Assert.That(canvas, Is.Not.Null);
+            Camera camera = canvas.renderMode == RenderMode.ScreenSpaceOverlay
+                ? null
+                : canvas.worldCamera;
+            if (canvas.renderMode != RenderMode.ScreenSpaceOverlay)
+                Assert.That(camera, Is.Not.Null);
+
+            var corners = new Vector3[4];
+            rect.GetWorldCorners(corners);
+            Vector2 first = RectTransformUtility.WorldToScreenPoint(camera, corners[0]);
+            float xMin = first.x;
+            float xMax = first.x;
+            float yMin = first.y;
+            float yMax = first.y;
+            for (int i = 1; i < corners.Length; i++)
+            {
+                Vector2 screen = RectTransformUtility.WorldToScreenPoint(camera, corners[i]);
+                xMin = Mathf.Min(xMin, screen.x);
+                xMax = Mathf.Max(xMax, screen.x);
+                yMin = Mathf.Min(yMin, screen.y);
+                yMax = Mathf.Max(yMax, screen.y);
+            }
+            return Rect.MinMaxRect(xMin, yMin, xMax, yMax);
         }
 
         private static long ExactExpiry(IReadOnlyList<EntitlementGrant> leases, string id)

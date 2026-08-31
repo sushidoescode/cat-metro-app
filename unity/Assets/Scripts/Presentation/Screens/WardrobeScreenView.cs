@@ -106,10 +106,16 @@ namespace CatMetro.Presentation.Screens
         public string StatusText => _statusLabel != null ? _statusLabel.text : string.Empty;
 
         public static WardrobeScreenView Create(Transform canvasParent, PurchaseService service)
-            => Create(canvasParent, service, RewardedAdRuntime.Current);
+            => Create(canvasParent, service, RewardedAdRuntime.Current,
+                RewardedAdRuntime.IsInstalled);
 
         public static WardrobeScreenView Create(Transform canvasParent, PurchaseService service,
             IRewardedAds rewardedAds)
+            => Create(canvasParent, service, rewardedAds ?? RewardedAdRuntime.Current,
+                rewardedAds != null || RewardedAdRuntime.IsInstalled);
+
+        private static WardrobeScreenView Create(Transform canvasParent, PurchaseService service,
+            IRewardedAds rewardedAds, bool buildTryOnStrip)
         {
             var root = new GameObject("WardrobeSurface");
             root.transform.SetParent(canvasParent, false);
@@ -119,7 +125,7 @@ namespace CatMetro.Presentation.Screens
             Stretch(root.AddComponent<RectTransform>());
 
             view.BuildEntry(root.transform);
-            view.BuildPanel(root.transform);
+            view.BuildPanel(root.transform, buildTryOnStrip);
 
             view._entry.SetActive(false);
             view._panel.SetActive(false);
@@ -146,7 +152,7 @@ namespace CatMetro.Presentation.Screens
             _entryLabel.fontSizeMax = 25f;
         }
 
-        private void BuildPanel(Transform parent)
+        private void BuildPanel(Transform parent, bool buildTryOnStrip)
         {
             _panel = new GameObject("WardrobePanel");
             _panel.transform.SetParent(parent, false);
@@ -194,7 +200,7 @@ namespace CatMetro.Presentation.Screens
             _statusLabel.fontSizeMin = 17f;
             _statusLabel.fontSizeMax = 24f;
 
-            BuildTryOnStrip(_panel.transform);
+            if (buildTryOnStrip) BuildTryOnStrip(_panel.transform);
 
             _restoreRect = MakeChip(_panel.transform, "RestorePurchasesChip",
                 Palette.WithAlpha(Palette.MetroTeal, 0.95f));
@@ -489,14 +495,20 @@ namespace CatMetro.Presentation.Screens
             ApplyPx(_buyRect, _buyRectPx);
             ApplyPx(_restoreRect, _restoreRectPx);
             ApplyPx(_statusRect, WardrobeLayout.StatusRect(safeArea, dpi));
-            ApplyPx(_portraitRect, WardrobeLayout.PortraitRect(safeArea, dpi));
+            ApplyPx(_portraitRect, _tryOnStrip != null
+                ? WardrobeLayout.PortraitRect(safeArea, dpi)
+                : WardrobeLayout.PortraitRectWithoutPreview(safeArea, dpi));
 
-            var strip = WardrobeLayout.PreviewStripRect(safeArea, dpi);
-            ApplyPx(_tryOnStrip, strip);
-            ApplyPxRelative(_tryOnHeading, WardrobeLayout.PreviewHeadingRect(safeArea, dpi), strip);
-            for (int i = 0; i < _tryOnCards.Length; i++)
-                ApplyPxRelative(_tryOnCards[i], WardrobeLayout.PreviewCardRect(safeArea, dpi, i),
-                    strip);
+            if (_tryOnStrip != null)
+            {
+                var strip = WardrobeLayout.PreviewStripRect(safeArea, dpi);
+                ApplyPx(_tryOnStrip, strip);
+                ApplyPxRelative(_tryOnHeading,
+                    WardrobeLayout.PreviewHeadingRect(safeArea, dpi), strip);
+                for (int i = 0; i < _tryOnCards.Length; i++)
+                    ApplyPxRelative(_tryOnCards[i],
+                        WardrobeLayout.PreviewCardRect(safeArea, dpi, i), strip);
+            }
 
             var title = _panel.transform.Find("WardrobeTitle") as RectTransform;
             if (title != null) ApplyPx(title, WardrobeLayout.TitleRect(safeArea, dpi));
@@ -617,7 +629,7 @@ namespace CatMetro.Presentation.Screens
 
         private void RefreshTryOnVisuals()
         {
-            if (_rewardedAds == null) return;
+            if (_tryOnStrip == null || _rewardedAds == null) return;
             for (int i = 0; i < TryOnSpecs.Length; i++)
             {
                 bool unlocked = _service.IsUnlocked(TryOnSpecs[i].EntitlementId);
@@ -681,7 +693,7 @@ namespace CatMetro.Presentation.Screens
 
         private void SubscribeAds()
         {
-            if (_adsSubscribed || _rewardedAds == null) return;
+            if (_adsSubscribed || _tryOnStrip == null || _rewardedAds == null) return;
             _rewardedAds.AvailabilityChanged += OnAdsAvailabilityChanged;
             _adsSubscribed = true;
         }

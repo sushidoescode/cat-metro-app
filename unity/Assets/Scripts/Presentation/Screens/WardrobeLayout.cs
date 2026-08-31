@@ -80,6 +80,18 @@ namespace CatMetro.Presentation.Screens
                 Mathf.Max(0f, safeArea.width - inset * 2f), Mathf.Max(0f, yMax - y));
         }
 
+        public static Rect PortraitRectWithoutPreview(Rect safeArea, float dpi)
+        {
+            float px = HudBands.PxPerDp(dpi);
+            float inset = SideInsetDp * px;
+            var status = StatusRect(safeArea, dpi);
+            var title = TitleRect(safeArea, dpi);
+            float y = status.yMax + GapDp * px;
+            float yMax = title.yMin - GapDp * px;
+            return new Rect(safeArea.x + inset, y,
+                Mathf.Max(0f, safeArea.width - inset * 2f), Mathf.Max(0f, yMax - y));
+        }
+
         public static Rect PreviewStripRect(Rect safeArea, float dpi)
         {
             float px = HudBands.PxPerDp(dpi);
