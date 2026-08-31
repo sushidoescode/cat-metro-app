@@ -137,6 +137,10 @@ namespace CatMetro.Integrations.LevelPlay
         private bool _requiresNonRewardBinding;
         private bool _postQuarantineStableTerminalRequired;
         private bool _loadInFlight;
+        private bool _loadInvocationInProgress;
+        private bool _deferredLoadRequested;
+        private bool _deferredLoadDrainQueued;
+        private bool _loadFailedDuringInvocation;
         private bool _loadedAvailable;
         private bool _initializeCalled;
         private bool _initializationTerminal;
@@ -207,6 +211,14 @@ namespace CatMetro.Integrations.LevelPlay
             if (_ad == null)
             {
                 _loadRequested = true;
+                return;
+            }
+            if (_loadInvocationInProgress)
+            {
+                // Loaded can synchronously lead to Show and a terminal callback. Preserve the
+                // coordinator's resulting replenishment demand, but never turn a LoadFailed
+                // subscriber into an immediate retry ahead of its backoff.
+                if (!_loadFailedDuringInvocation) _deferredLoadRequested = true;
                 return;
             }
             SafeLoad();
@@ -296,6 +308,10 @@ namespace CatMetro.Integrations.LevelPlay
             _terminalRevenueOrder.Clear();
             _loadedIdentity = default;
             _loadInFlight = false;
+            _loadInvocationInProgress = false;
+            _deferredLoadRequested = false;
+            _deferredLoadDrainQueued = false;
+            _loadFailedDuringInvocation = false;
             _loadedAvailable = false;
             _eventReceived = null;
         }
@@ -314,7 +330,20 @@ namespace CatMetro.Integrations.LevelPlay
 
             try
             {
-                if (!_ad.IsReady()) return false;
+                if (!_ad.IsReady())
+                {
+                    // LevelPlay can invalidate a previously loaded ad without a callback. Clear
+                    // that stale consumable result before requesting one serialized replacement;
+                    // a synchronous failure then leaves no stale state for reentrant probes to
+                    // turn into immediate retries ahead of the coordinator's backoff.
+                    if (!_loadInvocationInProgress && HasConsumableLoadedResult())
+                    {
+                        _loadedAvailable = false;
+                        _loadedIdentity = default;
+                        SafeLoad();
+                    }
+                    return false;
+                }
                 return !checkPlacementCap || !_ad.IsPlacementCapped(placementId);
             }
             catch
@@ -398,6 +427,9 @@ namespace CatMetro.Integrations.LevelPlay
             _failed = true;
             _loadRequested = false;
             _loadInFlight = false;
+            _deferredLoadRequested = false;
+            _deferredLoadDrainQueued = false;
+            _loadFailedDuringInvocation = false;
             _loadedAvailable = false;
             _loadedIdentity = default;
             DetachInitializationHandlers();
@@ -481,29 +513,67 @@ namespace CatMetro.Integrations.LevelPlay
 
         private void SafeLoad()
         {
+            if (TryInvokeLoad(out bool serviceDeferredLoad) && serviceDeferredLoad)
+                QueueDeferredLoad();
+        }
+
+        private void QueueDeferredLoad()
+        {
+            if (_disposed || _failed || _deferredLoadDrainQueued) return;
+            _deferredLoadDrainQueued = true;
+            if (!_mainThreadQueue.Enqueue(ServiceDeferredLoad))
+                _deferredLoadDrainQueued = false;
+        }
+
+        private void ServiceDeferredLoad()
+        {
+            _deferredLoadDrainQueued = false;
+            // Drain snapshots defer work enqueued by a synchronous follow-up callback until the
+            // next frame. This preserves every legitimate terminal replenishment without vendor
+            // recursion; TryInvokeLoad re-applies all current state gates at service time.
+            SafeLoad();
+        }
+
+        private bool TryInvokeLoad(out bool serviceDeferredLoad)
+        {
+            serviceDeferredLoad = false;
             // LevelPlay 9.5.1 supplies no request token with Loaded/LoadFailed. Never overlap
             // requests: a callback is current only because exactly one vendor Load is in flight.
             if (_disposed || _failed || _ad == null || _loadInFlight ||
-                HasConsumableLoadedResult() || _activeContext != null) return;
+                _loadInvocationInProgress ||
+                HasConsumableLoadedResult() || _activeContext != null) return false;
             if (_loadGeneration == long.MaxValue)
             {
                 _failed = true;
                 Raise(LevelPlayPayloadMapper.CreateLifecycle(RewardedAdEventKind.LoadFailed,
                     adUnitId: _config.RewardedAdUnitId));
-                return;
+                return false;
             }
             _loadGeneration++;
             _loadedAvailable = false;
             _loadedIdentity = default;
             _loadInFlight = true;
+            _loadInvocationInProgress = true;
+            _deferredLoadRequested = false;
+            _loadFailedDuringInvocation = false;
             try { _ad.Load(); }
             catch
             {
+                _loadFailedDuringInvocation = true;
                 _loadInFlight = false;
                 _loadedAvailable = false;
                 Raise(LevelPlayPayloadMapper.CreateLifecycle(RewardedAdEventKind.LoadFailed,
                     adUnitId: _config.RewardedAdUnitId));
             }
+            finally
+            {
+                _loadInvocationInProgress = false;
+                serviceDeferredLoad = _deferredLoadRequested &&
+                    !_loadFailedDuringInvocation;
+                _deferredLoadRequested = false;
+                _loadFailedDuringInvocation = false;
+            }
+            return true;
         }
 
         private bool HasConsumableLoadedResult()
@@ -527,6 +597,7 @@ namespace CatMetro.Integrations.LevelPlay
         private void OnAdLoadFailed(LevelPlayErrorSnapshot error)
         {
             if (_disposed || _failed || !_loadInFlight) return;
+            if (_loadInvocationInProgress) _loadFailedDuringInvocation = true;
             _loadInFlight = false;
             _loadedAvailable = false;
             _loadedIdentity = default;

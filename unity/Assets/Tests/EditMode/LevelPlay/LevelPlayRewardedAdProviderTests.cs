@@ -137,6 +137,205 @@ namespace CatMetro.Tests.LevelPlay
         }
 
         [Test]
+        public void StaleLoadedReadinessStartsOneReplacementAndReplacementLoadedRestoresReady()
+        {
+            ReadyProvider();
+            _ad.Ready = false;
+
+            Assert.That(_provider.IsReadyForPlacement("first-probe"), Is.False);
+            Assert.That(_ad.LoadCalls, Is.EqualTo(2),
+                "a vendor-invalidated loaded ad must start one replacement load");
+            Assert.That(PrivateLong("_loadGeneration"), Is.EqualTo(2L));
+
+            Assert.That(_provider.IsReadyForPlacement("second-probe"), Is.False);
+            Assert.That(_provider.IsReadyForPlacement("third-probe"), Is.False);
+            Assert.That(_provider.IsReadyForPlacement("fourth-probe"), Is.False);
+            Assert.That(_ad.LoadCalls, Is.EqualTo(2),
+                "four placement probes must share the one in-flight replacement");
+
+            _ad.Ready = true;
+            _ad.EmitLoaded(AdInfo("replacement-ad", "replacement-auction",
+                "first-probe"));
+
+            Assert.That(_provider.IsReadyForPlacement("first-probe"), Is.True);
+            Assert.That(_ad.LoadCalls, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void SynchronousStaleReplacementFailureSignalsOnceWithoutReentrantLoadChurn()
+        {
+            ReadyProvider();
+            _ad.Ready = false;
+            bool emittedFailure = false;
+            _ad.OnLoad = () =>
+            {
+                if (emittedFailure) return;
+                emittedFailure = true;
+                _ad.EmitLoadFailed(new LevelPlayErrorSnapshot(204));
+            };
+            int reentrantFailureCallbacks = 0;
+            bool reentrantReady = true;
+            _provider.EventReceived += adEvent =>
+            {
+                if (adEvent.Kind != RewardedAdEventKind.LoadFailed) return;
+                reentrantFailureCallbacks++;
+                reentrantReady = _provider.IsReadyForPlacement("reentrant-probe");
+                _provider.Load();
+                _provider.Load();
+            };
+
+            Assert.DoesNotThrow(() => Assert.That(
+                _provider.IsReadyForPlacement("initial-probe"), Is.False));
+
+            Assert.That(reentrantFailureCallbacks, Is.EqualTo(1));
+            Assert.That(reentrantReady, Is.False);
+            Assert.That(_events.Count(e => e.Kind == RewardedAdEventKind.LoadFailed),
+                Is.EqualTo(1), "the coordinator must receive the existing retry signal once");
+            Assert.That(_ad.LoadCalls, Is.EqualTo(2),
+                "a synchronous failure and reentrant readiness probe must not recurse");
+
+            _provider.DrainMainThreadEvents();
+            Assert.That(_provider.IsReadyForPlacement("later-probe"), Is.False);
+            Assert.That(_ad.LoadCalls, Is.EqualTo(2),
+                "failure subscribers cannot queue ahead of the coordinator's delayed retry");
+
+            _provider.Load();
+            _provider.Load();
+            Assert.That(_ad.LoadCalls, Is.EqualTo(3),
+                "one later coordinator retry remains possible and serialized");
+        }
+
+        [Test]
+        public void SynchronousLoadedReentrantProbePreservesIdentityForRewardBeforeDisplay()
+        {
+            ReadyProvider();
+            _ad.Ready = false;
+            var loadedInfo = AdInfo("synchronous-ad", "synchronous-auction",
+                "initial-probe");
+            int synchronousLoads = 0;
+            _ad.OnLoad = () =>
+            {
+                synchronousLoads++;
+                if (synchronousLoads != 1) return;
+                _ad.EmitLoaded(loadedInfo);
+            };
+            int reentrantLoadedCallbacks = 0;
+            bool reentrantReady = true;
+            bool showAccepted = false;
+            _provider.EventReceived += adEvent =>
+            {
+                if (adEvent.Kind != RewardedAdEventKind.Loaded) return;
+                reentrantLoadedCallbacks++;
+                reentrantReady = _provider.IsReadyForPlacement("reentrant-probe");
+                _ad.Ready = true;
+                showAccepted = _provider.TryShow(702L, "initial-probe");
+                _ad.EmitRewarded(loadedInfo);
+                _ad.EmitClosed(loadedInfo);
+            };
+
+            Assert.DoesNotThrow(() => Assert.That(
+                _provider.IsReadyForPlacement("initial-probe"), Is.False));
+
+            Assert.That(reentrantLoadedCallbacks, Is.EqualTo(1));
+            Assert.That(reentrantReady, Is.False,
+                "the fake keeps native readiness false during the synchronous callback");
+            Assert.That(_ad.LoadCalls, Is.EqualTo(2),
+                "the loaded callback must not recursively invalidate its own generation");
+            Assert.That(PrivateLong("_loadGeneration"), Is.EqualTo(2L));
+            Assert.That(showAccepted, Is.True);
+            Assert.That(_events.Any(e => e.Kind == RewardedAdEventKind.Displayed), Is.False,
+                "the exact loaded identity must support a reward before Displayed arrives");
+            Assert.That(_events.Single(e => e.Kind == RewardedAdEventKind.Rewarded).AttemptId,
+                Is.EqualTo(702L));
+        }
+
+        [Test]
+        public void SynchronousLoadedShowCloseDefersOneExplicitReplenishmentUntilLoadUnwinds()
+        {
+            ReadyProvider();
+            _ad.Ready = false;
+            var loadedInfo = AdInfo("terminal-ad", "terminal-auction", "terminal-probe");
+            int synchronousLoads = 0;
+            _ad.OnLoad = () =>
+            {
+                synchronousLoads++;
+                if (synchronousLoads != 1) return;
+                _ad.Ready = true;
+                _ad.EmitLoaded(loadedInfo);
+            };
+            bool showAccepted = false;
+            int loadCallsInsideCallback = 0;
+            _provider.EventReceived += adEvent =>
+            {
+                if (adEvent.Kind != RewardedAdEventKind.Loaded) return;
+                showAccepted = _provider.TryShow(703L, "terminal-probe");
+                _ad.EmitClosed(loadedInfo);
+                _provider.Load();
+                _provider.Load();
+                loadCallsInsideCallback = _ad.LoadCalls;
+            };
+
+            Assert.DoesNotThrow(() => Assert.That(
+                _provider.IsReadyForPlacement("stale-probe"), Is.False));
+
+            Assert.That(showAccepted, Is.True);
+            Assert.That(loadCallsInsideCallback, Is.EqualTo(2),
+                "the explicit replenishment must wait until the vendor Load returns");
+            Assert.That(_ad.LoadCalls, Is.EqualTo(2),
+                "the coalesced demand must leave the vendor callback stack before loading");
+
+            _provider.DrainMainThreadEvents();
+
+            Assert.That(_ad.LoadCalls, Is.EqualTo(3),
+                "two callback-time requests coalesce into one next-drain replenishment");
+            Assert.That(PrivateLong("_loadGeneration"), Is.EqualTo(3L));
+
+            _provider.Load();
+            Assert.That(_ad.LoadCalls, Is.EqualTo(3),
+                "the post-unwind replenishment remains the sole in-flight request");
+        }
+
+        [Test]
+        public void RepeatedSynchronousLoadedConsumptionCarriesOneDemandAcrossEachDrain()
+        {
+            ReadyProvider();
+            _ad.Ready = false;
+            int synchronousLoads = 0;
+            LevelPlayAdSnapshot currentInfo = default;
+            _ad.OnLoad = () =>
+            {
+                synchronousLoads++;
+                currentInfo = AdInfo("chain-ad-" + synchronousLoads,
+                    "chain-auction-" + synchronousLoads, "chain-probe");
+                _ad.Ready = true;
+                _ad.EmitLoaded(currentInfo);
+            };
+            int acceptedShows = 0;
+            _provider.EventReceived += adEvent =>
+            {
+                if (adEvent.Kind != RewardedAdEventKind.Loaded) return;
+                if (_provider.TryShow(800L + synchronousLoads, "chain-probe"))
+                    acceptedShows++;
+                _ad.EmitClosed(currentInfo);
+                _provider.Load();
+                _provider.Load();
+            };
+
+            Assert.That(_provider.IsReadyForPlacement("stale-probe"), Is.False);
+            Assert.That(_ad.LoadCalls, Is.EqualTo(2));
+            Assert.That(acceptedShows, Is.EqualTo(1));
+
+            _provider.DrainMainThreadEvents();
+            Assert.That(_ad.LoadCalls, Is.EqualTo(3));
+            Assert.That(acceptedShows, Is.EqualTo(2));
+
+            _provider.DrainMainThreadEvents();
+            Assert.That(_ad.LoadCalls, Is.EqualTo(4),
+                "a demand raised by the deferred load must survive to the following drain");
+            Assert.That(acceptedShows, Is.EqualTo(3));
+        }
+
+        [Test]
         public void InitializationFailureOrThrowFailsClosedWithoutCreatingAnAd()
         {
             _provider.Load();
@@ -1499,6 +1698,7 @@ namespace CatMetro.Tests.LevelPlay
             public bool ThrowReady;
             public bool ThrowCap;
             public bool ThrowDispose;
+            public Action OnLoad;
             public Action OnShow;
             public int LoadCalls;
             public int ReadyChecks;
@@ -1560,6 +1760,7 @@ namespace CatMetro.Tests.LevelPlay
                 Sequence.Add("Load");
                 LoadCalls++;
                 if (ThrowLoad) throw new InvalidOperationException("load fault");
+                OnLoad?.Invoke();
             }
 
             public void Show(string placementId)
