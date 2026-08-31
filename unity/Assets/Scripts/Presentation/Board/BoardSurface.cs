@@ -12,54 +12,24 @@ namespace CatMetro.Presentation.Board
     /// </summary>
     public static class BoardSurface
     {
-        // The wood beyond the outermost node, per edge. It used to be one 1.05 constant. It
-        // is three now because the three edges cost completely different amounts of frame,
-        // and because the slab is the ONE part of the diorama the safe-frame law does not
-        // govern — RuntimeSceneRigTests asserts node markers and BoardPropInstance renderers
-        // and never touches BoardBody, and BoardSceneLook.FitCamera excludes BoardBody from
-        // the width fit. So growing the slab moves board fill without moving the camera.
+        // Wood beyond the outermost node is split by axis because the frontal composition asks
+        // for different things: side edges bleed beyond the portrait frame, while near and far
+        // retain a compact visible rim. BoardSceneLook excludes BoardBody from its width fit, so
+        // the side margin can create that bleed without shrinking gameplay or the cats.
         //
-        // Under the 38/-32/-4 tilt, one unit of margin buys, in world units of screen:
-        //   local X (MarginSide): width +2*|M00| = 1.7375   height +2*|M10| = 0.1099
-        //   local Y (MarginFar) : width +2*|M01| = 0.5326   height +2*|M11| = 1.5722
-        // The portrait frame is 2.23:1 and the toy is ~1:1, so the whole 26.5% -> 70% gap is
-        // vertical: on the r6 render the slab spans 8.27 of the frame's 17.67 world units
-        // tall while already overhanging it horizontally. Local Y is therefore the efficient
-        // axis, at 2.95x the screen height per unit of frame width spent.
+        // On the 917x2048 L001 artifact, straightening the old 3.05/1.05 diagonal slab made its
+        // correctly clipped top occupy 66.5% of the frame. Manual traces of the curated board
+        // reference put its top deck near 44.4% and complete outer silhouette near 49.4% (+/-
+        // about 4 points each). Balanced 0.89 near/far rims put our clipped WoodTop proxy in the
+        // test's 45-54% framing window while leaving the content-driven camera unchanged.
+        // MarginSide 2.05 still clears both horizontal edges. BoardLookTests measures the
+        // clipped top polygon explicitly; it does not call that proxy the full physical board.
         //
-        // MarginSide 2.05. Measured sweep of clipped slab coverage on L001 at the post-split
-        // orthographicSize 7.919, holding MarginFar 3.05:
-        //   1.05 -> 39.4%   1.30 -> 41.9%   1.55 -> 44.2%   1.80 -> 46.3%
-        //   2.05 -> 48.1%   2.30 -> 49.6%   2.80 -> 52.0%
-        // The returns flatten but never stop, so the choice is not the knee — it is the
-        // first value that clears BOTH frame edges with room to spare. At 1.80 the slab's
-        // far corner lands 0.17 units past the right edge, which is 20px and inside the
-        // uncertainty on where the camera centres; at 2.05 it is 0.39 units and unambiguous,
-        // so the board bleeds left AND right as target-01's does rather than bleeding left
-        // and merely touching right. There is no upper law here — losing the side rims off
-        // frame is what the target does — but the vertical rims stay in frame, and those are
-        // the ones that make the toy read as a finite object.
-        //
-        // Losing the horizontal rims is also what makes the desk's own defocus falloff
-        // matter more than it did: see DefocusVeil, which continues that falloff past the
-        // slab into the top and bottom of the frame.
-        //
-        // MarginFar 3.05, capped by the height fit, not by taste. requiredForHeight takes
-        // over from requiredForWidth when frameBounds.size.y exceeds size/0.69079; on the
-        // tallest authored levels (L012, L015) that ratio reaches 0.971 at 3.05 and 0.999 at
-        // 3.55. 3.05 keeps ~3% of headroom on the worst level. If it ever did bind, the
-        // failure is graceful — the camera pulls back and fill drops, no law is breached.
-        //
-        // MarginNear 1.05, unchanged, and this one is a hard wall rather than a choice.
-        // BoardPropDecorator seats the desk clutter at (node minY - 1.4) on the DESK contact
-        // plane at z 1.38, which is BEHIND the board's wood face at z 0.35. A near margin of
-        // 1.4 or more would bury the mug inside the slab, and that file belongs to another
-        // lane right now. 1.05 leaves 0.35 units of clearance. Raising this is the single
-        // most valuable follow-up once the prop lane can move the clutter: target-01's own
-        // big wood band is at its NEAR edge, running off the bottom of frame.
+        // Desk clutter remains at node minY - 1.4 on the desk plane; a 0.89 near rim therefore
+        // leaves 0.51 board units of separation instead of swallowing the prop into the slab.
         private const float MarginSide = 2.05f;
-        private const float MarginFar = 3.05f;
-        private const float MarginNear = 1.05f;
+        private const float MarginFar = 0.89f;
+        private const float MarginNear = 0.89f;
         private const float WoodFront = 0.35f;
         private const float WoodDepth = 0.70f;
         private const float RimWidth = 0.24f;
@@ -153,9 +123,9 @@ namespace CatMetro.Presentation.Board
             // markers BoardPropDecorator reads, whose x/y are unused but whose identity as
             // "the middle of the level" is the thing the prop lane reasons about.
             var center = new Vector2((minX + maxX) * 0.5f, (minY + maxY) * 0.5f);
-            // The slab is no longer symmetric about the play area: it reaches MarginFar away
-            // from the camera and only MarginNear toward it, so its own centre sits half the
-            // difference behind the node centre.
+            // Keep the formula explicit even though the current frontal rims are balanced:
+            // if near/far diverge again, the slab follows its actual margins rather than
+            // silently drifting away from the authored node centre.
             var bodyCenter = new Vector2(center.x, minY - MarginNear + height * 0.5f);
 
             var body = new GameObject("BoardBody").transform;
