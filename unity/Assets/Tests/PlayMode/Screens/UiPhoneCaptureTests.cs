@@ -6,6 +6,9 @@ using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
 using CatMetro.Bootstrap;
+using CatMetro.Presentation.Cosmetics;
+using CatMetro.Presentation.Hud.WavePreview;
+using CatMetro.Presentation.Theme;
 
 namespace CatMetro.Tests.PlayMode
 {
@@ -70,6 +73,73 @@ namespace CatMetro.Tests.PlayMode
             ApplyPhoneLayout(_root.Home);
             ApplyPhoneLayout(_root.Wardrobe);
             Capture(dir, "step-7-home-daily.png");
+        }
+
+        [UnityTest]
+        public IEnumerator ShippedHome_WardrobeEntry_IsRaisedCreamToyButton_WithoutReplacingPortraitMount()
+        {
+            GameRoot.DevSkipShippedHome = false;
+            _root = GameRoot.Launch();
+            yield return null;
+            yield return null;
+
+            Assert.That(_root.Wardrobe, Is.Not.Null);
+            Assert.That(_root.Wardrobe.EntryVisible, Is.True);
+            ApplyPhoneLayout(_root.Home);
+            ApplyPhoneLayout(_root.Wardrobe);
+            Canvas.ForceUpdateCanvases();
+
+            var capsule = FindRequiredRect(_root.Wardrobe.transform, "WardrobeCapsule");
+            Assert.That(capsule.parent, Is.SameAs(_root.Wardrobe.transform),
+                "WardrobeCapsule remains the entry root under WardrobeSurface");
+            var shadow = capsule.GetComponent<Image>();
+            Assert.That(shadow, Is.Not.Null);
+            Assert.That(shadow.color, Is.EqualTo(Palette.DepotNavy),
+                "WardrobeCapsule stays the navy raised-button shadow/root");
+            Assert.That(shadow.sprite, Is.SameAs(HudShapeSprites.RoundedSquare));
+            Assert.That(shadow.type, Is.EqualTo(Image.Type.Sliced));
+
+            var face = FindRequiredRect(capsule, "WardrobeButtonFace");
+            var faceImage = face.GetComponent<Image>();
+            Assert.That(faceImage, Is.Not.Null);
+            Assert.That(faceImage.color, Is.EqualTo(Palette.CreamCard));
+            Assert.That(faceImage.sprite, Is.SameAs(HudShapeSprites.RoundedSquare));
+            Assert.That(faceImage.type, Is.EqualTo(Image.Type.Sliced));
+
+            var label = FindRequiredRect(capsule, "WardrobeLabel");
+            Assert.That(label.parent, Is.SameAs(capsule));
+            Assert.That(label.GetComponent<TMPro.TMP_Text>().color,
+                Is.EqualTo(Palette.InkNavy));
+
+            RectTransform portraitMount = null;
+            int mountCount = 0;
+            for (int i = 0; i < capsule.childCount; i++)
+            {
+                var child = capsule.GetChild(i) as RectTransform;
+                if (child == null || child.name != "EntryPortraitMount") continue;
+                portraitMount = child;
+                mountCount++;
+            }
+            Assert.That(mountCount, Is.EqualTo(1),
+                "the cosmetics seam remains one direct WardrobeCapsule child");
+            Assert.That(portraitMount.anchorMin,
+                Is.EqualTo(new Vector2(0.035f, 0.08f)));
+            Assert.That(portraitMount.anchorMax,
+                Is.EqualTo(new Vector2(0.30f, 0.92f)));
+            Assert.That(face.GetSiblingIndex(), Is.LessThan(portraitMount.GetSiblingIndex()),
+                "the cream face paints behind the existing portrait mount");
+            Assert.That(face.GetSiblingIndex(), Is.LessThan(label.GetSiblingIndex()),
+                "the cream face paints behind the existing label");
+
+            CosmeticPortraitView entryPortrait = _root.Wardrobe.EntryPortrait;
+            Assert.That(entryPortrait, Is.Not.Null);
+            Assert.That(entryPortrait.name, Is.EqualTo("EntryPortrait"));
+            Assert.That(entryPortrait.transform.parent, Is.SameAs(portraitMount));
+            var mountedPortraits = portraitMount.GetComponentsInChildren<CosmeticPortraitView>(
+                true);
+            Assert.That(mountedPortraits.Length, Is.EqualTo(1));
+            Assert.That(mountedPortraits[0], Is.SameAs(entryPortrait),
+                "the public Wardrobe portrait remains the view mounted beneath the seam");
         }
 
         [UnityTest]
