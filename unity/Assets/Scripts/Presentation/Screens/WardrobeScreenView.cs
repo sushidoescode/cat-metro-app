@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Hud;
+using CatMetro.Presentation.Hud.WavePreview;
 using CatMetro.Presentation.Input;
 using CatMetro.Presentation.Theme;
 using CatMetro.Services.Cosmetics;
@@ -169,8 +170,18 @@ namespace CatMetro.Presentation.Screens
                 new Vector2(0.982f, 0.982f), Palette.WarmPaper, true);
             MakeSurface(_portraitRect, "PortraitGlow", new Vector2(0.05f, 0.05f),
                 new Vector2(0.95f, 0.95f), Palette.WithAlpha(Palette.MetroTeal, 0.14f), true);
+            var stand = MakeRect(_portraitRect, "PortraitStand",
+                new Vector2(0.12f, 0.015f), new Vector2(0.88f, 0.35f));
+            MakeShapedSurface(stand, "StandShadow", new Vector2(0.04f, 0.00f),
+                new Vector2(0.96f, 0.36f), Palette.WithAlpha(Palette.InkNavy, 0.45f),
+                HudShapeSprites.Disc);
+            MakeShapedSurface(stand, "StandBase", new Vector2(0.02f, 0.13f),
+                new Vector2(0.98f, 0.76f), Palette.TicketOrange, HudShapeSprites.Disc);
+            MakeShapedSurface(stand, "StandPlaque", new Vector2(0.31f, 0.03f),
+                new Vector2(0.69f, 0.28f), Palette.CreamCard,
+                HudShapeSprites.RoundedSquare);
             var largeMount = MakeRect(_portraitRect, "LargePortraitMount",
-                new Vector2(0.18f, 0.08f), new Vector2(0.82f, 0.96f));
+                new Vector2(0.06f, 0.04f), new Vector2(0.94f, 0.98f));
             _largePortrait = CosmeticPortraitView.Create(largeMount, _profile,
                 "LargePortrait");
 
@@ -382,8 +393,9 @@ namespace CatMetro.Presentation.Screens
             for (int i = 0; i < _rows.Count; i++)
             {
                 var row = _rows[i];
-                var card = CosmeticItemCardView.Create(_cardsRoot);
-                card.Configure(row.Item.Id, Text(row.Item.DisplayNameKey), CardStatus(row),
+                var card = CosmeticItemCardView.Create(_cardsRoot, _profile);
+                card.Configure(_profile.SelectedCatId, row.Item,
+                    Text(row.Item.DisplayNameKey), CardStatus(row),
                     row.Price.DisplayText ?? string.Empty, row.Route,
                     string.Equals(_previewItemId, row.Item.Id, StringComparison.Ordinal),
                     SlotColor(row.Item.Slot));
@@ -973,6 +985,14 @@ namespace CatMetro.Presentation.Screens
         {
             var rect = MakeRect(parent, name, min, max);
             return Paint(rect.gameObject, color, rounded);
+        }
+
+        private static Image MakeShapedSurface(Transform parent, string name, Vector2 min,
+            Vector2 max, Color color, Sprite sprite)
+        {
+            var image = MakeSurface(parent, name, min, max, color, true);
+            image.sprite = sprite;
+            return image;
         }
 
         private static Image Paint(GameObject go, Color color, bool rounded)

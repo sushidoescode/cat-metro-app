@@ -11,6 +11,7 @@ namespace CatMetro.Presentation.Cosmetics
     {
         private ICosmeticPortraitSource _source;
         private bool _subscribed;
+        private bool _followsCurrentPortrait;
 
         public RectTransform RootTransform { get; private set; }
         public RectTransform BaseLayerTransform { get; private set; }
@@ -25,6 +26,28 @@ namespace CatMetro.Presentation.Cosmetics
         public static CosmeticPortraitView Create(Transform parent,
             ICosmeticPortraitSource source, string name = "CosmeticPortrait")
         {
+            var view = CreateLayers(parent, name);
+            view._followsCurrentPortrait = true;
+            view.Bind(source);
+            return view;
+        }
+
+        /// <summary>
+        /// Creates a resolver-backed portrait that changes only through ApplySnapshot. Card
+        /// previews use this path so profile events and OnEnable cannot replace their preview.
+        /// </summary>
+        public static CosmeticPortraitView CreateStaticSnapshot(Transform parent,
+            ICosmeticPortraitSource source, string name = "CosmeticPortrait")
+        {
+            var view = CreateLayers(parent, name);
+            view._source = source;
+            view._followsCurrentPortrait = false;
+            view.ClearAll();
+            return view;
+        }
+
+        private static CosmeticPortraitView CreateLayers(Transform parent, string name)
+        {
             var go = new GameObject(string.IsNullOrEmpty(name) ? "CosmeticPortrait" : name,
                 typeof(RectTransform));
             go.transform.SetParent(parent, false);
@@ -36,12 +59,12 @@ namespace CatMetro.Presentation.Cosmetics
             view.OutfitLayerTransform = MakeLayer(go.transform, "OutfitLayer");
             view.AccessoryLayerTransform = MakeLayer(go.transform, "AccessoryLayer");
             view.FrameLayerTransform = MakeLayer(go.transform, "FrameLayer");
-            view.Bind(source);
             return view;
         }
 
         public void Bind(ICosmeticPortraitSource source)
         {
+            _followsCurrentPortrait = true;
             if (!ReferenceEquals(_source, source))
             {
                 Unsubscribe();
@@ -78,7 +101,7 @@ namespace CatMetro.Presentation.Cosmetics
 
         private void OnEnable()
         {
-            if (_source == null) return;
+            if (!_followsCurrentPortrait || _source == null) return;
             Subscribe();
             ApplySnapshot(_source.CurrentPortrait);
         }

@@ -53,6 +53,41 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
+        public void CreateStaticSnapshot_NeverSubscribesOrReappliesCurrentPortrait()
+        {
+            var source = PortraitTestSource.WithRealTokens(new CosmeticPortraitSnapshot(
+                "cat.red", "cat.red_tabby", "", "", ""));
+            var factory = typeof(CosmeticPortraitView).GetMethod("CreateStaticSnapshot",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            Assert.That(factory, Is.Not.Null,
+                "card previews require an explicit static snapshot factory");
+
+            var view = factory.Invoke(null, new object[]
+            {
+                _host.transform, source, "ItemPortrait",
+            }) as CosmeticPortraitView;
+            Assert.That(view, Is.Not.Null);
+            Assert.That(source.SubscriberCount, Is.Zero);
+            Assert.That(view.AppliedCatId, Is.Empty,
+                "a static snapshot must not initially apply CurrentPortrait");
+
+            view.ApplySnapshot(new CosmeticPortraitSnapshot(
+                "cat.blue", "cat.blue_siamese", "outfit.conductor", "", "frame.brass"));
+            source.Set(new CosmeticPortraitSnapshot(
+                "cat.yellow", "cat.yellow_longhair", "", "", ""));
+            view.gameObject.SetActive(false);
+            view.gameObject.SetActive(true);
+
+            Assert.That(source.SubscriberCount, Is.Zero);
+            Assert.That(view.AppliedCatId, Is.EqualTo("cat.blue"));
+            Assert.That(view.AppliedOutfitAssetId, Is.EqualTo("outfit.conductor"));
+            Assert.That(view.AppliedFrameAssetId, Is.EqualTo("frame.brass"));
+            Assert.That(VisibleColors(view.BaseLayerTransform),
+                Does.Contain((Color32)Palette.HarborBlue),
+                "unrelated profile changes and OnEnable cannot overwrite a configured card");
+        }
+
+        [Test]
         public void Changed_RepaintsTheActualLayerTree()
         {
             var source = PortraitTestSource.WithRealTokens(new CosmeticPortraitSnapshot(

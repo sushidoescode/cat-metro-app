@@ -404,8 +404,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(rig.Input.Regions.Count, Is.EqualTo(8),
                 caseName + " left a ghost action region");
             Assert.That(rig.View.ItemsRectPx.height,
-                Is.EqualTo(48f * HudBands.PxPerDp(PhoneDpi)).Within(1f),
-                caseName + " retained more than the real empty-state band");
+                Is.EqualTo(112f * HudBands.PxPerDp(PhoneDpi)).Within(1f),
+                caseName + " must retain the stable one-rail empty-state band");
             var empty = rig.View.GetComponentsInChildren<TMP_Text>(true)
                 .Single(label => label.name == "EmptyStateLabel");
             Assert.That(empty.gameObject.activeInHierarchy, Is.True, caseName);
