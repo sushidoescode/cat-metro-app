@@ -254,6 +254,8 @@ namespace CatMetro.Tests.Cosmetics
             RewardedAdRuntime.Install(old);
             using var route = new RewardedAdCosmeticRoute();
             int calls = 0;
+            int changes = 0;
+            route.AvailabilityChanged += () => changes++;
             CosmeticRewardedCompletion result = CosmeticRewardedCompletion.Granted;
             route.Request("wardrobe_try_conductor", "outfit_conductor", value =>
             {
@@ -266,12 +268,198 @@ namespace CatMetro.Tests.Cosmetics
 
             Assert.That(calls, Is.EqualTo(1));
             Assert.That(result, Is.EqualTo(CosmeticRewardedCompletion.NotGranted));
+            Assert.That(old.AvailabilityRemoveCalls, Is.EqualTo(1));
+            Assert.That(old.AvailabilitySubscriberCount, Is.Zero,
+                "the binding current when the outer rebind began must still detach");
             Assert.That(intermediate.AvailabilitySubscriberCount, Is.Zero);
             Assert.That(replacement.AvailabilityAddCalls, Is.EqualTo(1));
             Assert.That(replacement.AvailabilitySubscriberCount, Is.EqualTo(1));
+            int afterReplacement = changes;
+            old.RaiseAvailability();
+            intermediate.RaiseAvailability();
+            Assert.That(changes, Is.EqualTo(afterReplacement),
+                "superseded sources must stay silent after the nested replacement");
+            replacement.RaiseAvailability();
+            Assert.That(changes, Is.EqualTo(afterReplacement + 1),
+                "current availability must deliver exactly once");
             old.Complete(new RewardedAdCompletion(4L, "wardrobe_try_conductor",
                 "outfit_conductor", RewardedAdCompletionKind.Granted));
             Assert.That(calls, Is.EqualTo(1), "the detached request must complete exactly once");
+        }
+
+        [Test]
+        public void PendingNotGrantedReentrantReturnToOriginal_ReplacesRatherThanLeaksHandler()
+        {
+            var original = new ExactAds();
+            var intermediate = new ExactAds();
+            RewardedAdRuntime.Install(original);
+            var route = new RewardedAdCosmeticRoute();
+            int completions = 0;
+            int changes = 0;
+            CosmeticRewardedCompletion completion = CosmeticRewardedCompletion.Granted;
+            route.AvailabilityChanged += () => changes++;
+            route.Request("wardrobe_try_conductor", "outfit_conductor", result =>
+            {
+                completions++;
+                completion = result;
+                RewardedAdRuntime.Install(original);
+            });
+
+            RewardedAdRuntime.Install(intermediate);
+
+            Assert.That(completions, Is.EqualTo(1));
+            Assert.That(completion, Is.EqualTo(CosmeticRewardedCompletion.NotGranted));
+            Assert.That(intermediate.AvailabilitySubscriberCount, Is.Zero);
+            Assert.That(original.AvailabilitySubscriberCount, Is.EqualTo(1),
+                "returning to A must replace A's old binding rather than stack a second handler");
+            int afterReplacement = changes;
+            intermediate.RaiseAvailability();
+            Assert.That(changes, Is.EqualTo(afterReplacement));
+            original.RaiseAvailability();
+            Assert.That(changes, Is.EqualTo(afterReplacement + 1),
+                "current A availability must remain single-delivery");
+
+            route.Dispose();
+
+            Assert.That(original.AvailabilitySubscriberCount, Is.Zero);
+            Assert.That(original.AvailabilityRemoveCalls, Is.EqualTo(2),
+                "the original and rebound A handlers each detach exactly once");
+        }
+
+        [Test]
+        public void PendingNotGrantedCallbackDispose_StillDetachesOriginalBinding()
+        {
+            var original = new ExactAds();
+            var replacement = new ExactAds();
+            RewardedAdRuntime.Install(original);
+            var route = new RewardedAdCosmeticRoute();
+            int completions = 0;
+            route.Request("wardrobe_try_conductor", "outfit_conductor", _ =>
+            {
+                completions++;
+                route.Dispose();
+            });
+
+            RewardedAdRuntime.Install(replacement);
+
+            Assert.That(completions, Is.EqualTo(1));
+            Assert.That(original.AvailabilityRemoveCalls, Is.EqualTo(1));
+            Assert.That(original.AvailabilitySubscriberCount, Is.Zero);
+            Assert.That(replacement.AvailabilitySubscriberCount, Is.Zero);
+        }
+
+        [Test]
+        public void CanShowNestedRequest_FailsNestedWithoutClearingOuterOwner()
+        {
+            var ads = new ExactAds();
+            RewardedAdRuntime.Install(ads);
+            using var route = new RewardedAdCosmeticRoute();
+            int outerCalls = 0;
+            int nestedCalls = 0;
+            CosmeticRewardedCompletion outerResult = CosmeticRewardedCompletion.NotGranted;
+            CosmeticRewardedCompletion nestedResult = CosmeticRewardedCompletion.Granted;
+            ads.OnExactCanShow = () =>
+            {
+                ads.OnExactCanShow = null;
+                route.Request("wardrobe_try_conductor", "outfit_conductor", result =>
+                {
+                    nestedCalls++;
+                    nestedResult = result;
+                });
+            };
+
+            route.Request("wardrobe_try_conductor", "outfit_conductor", result =>
+            {
+                outerCalls++;
+                outerResult = result;
+            });
+            ads.Complete(new RewardedAdCompletion(7L, "wardrobe_try_conductor",
+                "outfit_conductor", RewardedAdCompletionKind.Granted));
+            ads.Complete(new RewardedAdCompletion(7L, "wardrobe_try_conductor",
+                "outfit_conductor", RewardedAdCompletionKind.Granted));
+
+            Assert.That(nestedCalls, Is.EqualTo(1));
+            Assert.That(nestedResult, Is.EqualTo(CosmeticRewardedCompletion.NotGranted));
+            Assert.That(ads.ExactShowCalls, Is.EqualTo(1));
+            Assert.That(outerCalls, Is.EqualTo(1));
+            Assert.That(outerResult, Is.EqualTo(CosmeticRewardedCompletion.Granted));
+        }
+
+        [Test]
+        public void RealCoordinator_CanShowNestedRequestPreservesOuterExactAttempt()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var purchases = RewardedAdFixtures.Service();
+            var coordinator = RewardedAdFixtures.Coordinator(provider, service: purchases);
+            try
+            {
+                coordinator.Start();
+                RewardedAdRuntime.Install(coordinator);
+                using var route = new RewardedAdCosmeticRoute();
+                int outerCalls = 0;
+                int nestedCalls = 0;
+                CosmeticRewardedCompletion outerResult =
+                    CosmeticRewardedCompletion.NotGranted;
+                CosmeticRewardedCompletion nestedResult = CosmeticRewardedCompletion.Granted;
+                provider.OnPlacementReadinessCheck = _ =>
+                {
+                    provider.OnPlacementReadinessCheck = null;
+                    route.Request("p0", "outfit_conductor", result =>
+                    {
+                        nestedCalls++;
+                        nestedResult = result;
+                    });
+                };
+
+                route.Request("p0", "outfit_conductor", result =>
+                {
+                    outerCalls++;
+                    outerResult = result;
+                });
+                Assert.That(provider.Shows, Has.Count.EqualTo(1));
+                long attempt = provider.Shows.Single().AttemptId;
+                provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, attempt, "p0"));
+                provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, attempt, "p0"));
+
+                Assert.That(nestedCalls, Is.EqualTo(1));
+                Assert.That(nestedResult, Is.EqualTo(CosmeticRewardedCompletion.NotGranted));
+                Assert.That(outerCalls, Is.EqualTo(1));
+                Assert.That(outerResult, Is.EqualTo(CosmeticRewardedCompletion.Granted));
+                Assert.That(purchases.IsUnlocked("outfit_conductor"), Is.True);
+                Assert.That(provider.Shows, Has.Count.EqualTo(1));
+            }
+            finally
+            {
+                RewardedAdRuntime.Uninstall(coordinator);
+                coordinator.Dispose();
+            }
+        }
+
+        [Test]
+        public void TerminalCompletion_ReleasesOwnershipForNextRequest()
+        {
+            var ads = new ExactAds();
+            RewardedAdRuntime.Install(ads);
+            using var route = new RewardedAdCosmeticRoute();
+            int first = 0;
+            int second = 0;
+            route.Request("wardrobe_try_conductor", "outfit_conductor", result =>
+            {
+                if (result == CosmeticRewardedCompletion.Granted) first++;
+            });
+            ads.Complete(new RewardedAdCompletion(4L, "wardrobe_try_conductor",
+                "outfit_conductor", RewardedAdCompletionKind.Granted));
+
+            route.Request("wardrobe_try_conductor", "outfit_conductor", result =>
+            {
+                if (result == CosmeticRewardedCompletion.Granted) second++;
+            });
+            ads.Complete(new RewardedAdCompletion(5L, "wardrobe_try_conductor",
+                "outfit_conductor", RewardedAdCompletionKind.Granted));
+
+            Assert.That(first, Is.EqualTo(1));
+            Assert.That(second, Is.EqualTo(1));
+            Assert.That(ads.ExactShowCalls, Is.EqualTo(2));
         }
 
         [Test]

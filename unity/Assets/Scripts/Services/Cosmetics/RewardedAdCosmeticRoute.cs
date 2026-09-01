@@ -8,9 +8,7 @@ namespace CatMetro.Services.Cosmetics
     {
         private Binding _binding;
         private long _bindingGeneration;
-        private IRewardedAds _pendingSource;
-        private long _pendingBindingGeneration;
-        private Action<CosmeticRewardedCompletion> _pendingFinish;
+        private RequestToken _activeRequest;
         private bool _disposed;
 
         public event Action AvailabilityChanged;
@@ -36,32 +34,22 @@ namespace CatMetro.Services.Cosmetics
         public void Request(string placementId, string entitlementId,
             Action<CosmeticRewardedCompletion> completed)
         {
-            bool completedOnce = false;
-            Action<CosmeticRewardedCompletion> finish = null;
-            finish = outcome =>
+            var request = new RequestToken(completed);
+            if (_activeRequest != null)
             {
-                if (completedOnce) return;
-                completedOnce = true;
-                if (ReferenceEquals(_pendingFinish, finish))
-                {
-                    _pendingFinish = null;
-                    _pendingSource = null;
-                    _pendingBindingGeneration = 0L;
-                }
-                try { completed?.Invoke(outcome); }
-                catch { }
-            };
-            if (_pendingFinish != null)
-            {
-                finish(CosmeticRewardedCompletion.NotGranted);
+                Complete(request, CosmeticRewardedCompletion.NotGranted);
                 return;
             }
 
+            // Claim the route before Resolve or CanShow: both can invoke arbitrary callbacks.
+            // A nested Request must fail without replacing or clearing this request's token.
+            _activeRequest = request;
             var binding = Resolve();
+            request.Binding = binding;
             var source = binding?.Source as IRewardedAdExactCompletionSource;
-            if (source == null || !IsLive(binding))
+            if (!Owns(request) || source == null || !IsLive(binding))
             {
-                finish(CosmeticRewardedCompletion.NotGranted);
+                Complete(request, CosmeticRewardedCompletion.NotGranted);
                 return;
             }
 
@@ -69,42 +57,36 @@ namespace CatMetro.Services.Cosmetics
             try { canShow = source.CanShow(placementId, entitlementId); }
             catch
             {
-                finish(CosmeticRewardedCompletion.NotGranted);
+                Complete(request, CosmeticRewardedCompletion.NotGranted);
                 return;
             }
-            if (!canShow || !IsLive(binding))
+            if (!Owns(request) || !canShow || !IsLive(binding))
             {
-                finish(CosmeticRewardedCompletion.NotGranted);
+                Complete(request, CosmeticRewardedCompletion.NotGranted);
                 return;
             }
 
             RewardedShowOutcome shown;
             try
             {
-                _pendingSource = binding.Source;
-                _pendingBindingGeneration = binding.Generation;
-                _pendingFinish = finish;
                 shown = source.Show(placementId, entitlementId, result =>
                 {
-                    bool ownsRequest = ReferenceEquals(_pendingFinish, finish) &&
-                        ReferenceEquals(_pendingSource, binding.Source) &&
-                        _pendingBindingGeneration == binding.Generation;
-                    bool exact = ownsRequest && IsLive(binding) && result.AttemptId > 0L &&
+                    bool exact = Owns(request) && IsLive(binding) && result.AttemptId > 0L &&
                         string.Equals(result.PlacementId, placementId, StringComparison.Ordinal) &&
                         string.Equals(result.EntitlementId, entitlementId,
                             StringComparison.Ordinal);
-                    finish(exact && result.Kind == RewardedAdCompletionKind.Granted
+                    Complete(request, exact && result.Kind == RewardedAdCompletionKind.Granted
                         ? CosmeticRewardedCompletion.Granted
                         : CosmeticRewardedCompletion.NotGranted);
                 });
             }
             catch
             {
-                finish(CosmeticRewardedCompletion.NotGranted);
+                Complete(request, CosmeticRewardedCompletion.NotGranted);
                 return;
             }
-            if (!IsLive(binding) || shown != RewardedShowOutcome.Started)
-                finish(CosmeticRewardedCompletion.NotGranted);
+            if (!Owns(request) || !IsLive(binding) || shown != RewardedShowOutcome.Started)
+                Complete(request, CosmeticRewardedCompletion.NotGranted);
         }
 
         public void Dispose()
@@ -136,13 +118,15 @@ namespace CatMetro.Services.Cosmetics
             // Publish desired ownership before crossing any callback-capable boundary. A nested
             // Rebind can replace this token; every continuation below then fails its token check.
             _binding = replacement;
-            if (_pendingSource != null && !ReferenceEquals(_pendingSource, next))
+            var activeRequest = _activeRequest;
+            if (activeRequest?.Binding?.Source != null &&
+                !ReferenceEquals(activeRequest.Binding.Source, next))
             {
-                var pending = _pendingFinish;
-                pending?.Invoke(CosmeticRewardedCompletion.NotGranted);
-                if (!Owns(replacement)) return;
+                Complete(activeRequest, CosmeticRewardedCompletion.NotGranted);
             }
 
+            // The callback above may install another binding or dispose the route. It must not
+            // strand the exact binding that was current when this rebind began.
             Detach(previous);
             if (!Owns(replacement)) return;
             Attach(replacement);
@@ -224,6 +208,19 @@ namespace CatMetro.Services.Cosmetics
             => binding != null && ReferenceEquals(_binding, binding) &&
                _bindingGeneration == binding.Generation;
 
+        private bool Owns(RequestToken request)
+            => request != null && !request.Completed &&
+               ReferenceEquals(_activeRequest, request);
+
+        private void Complete(RequestToken request, CosmeticRewardedCompletion outcome)
+        {
+            if (request == null || request.Completed) return;
+            request.Completed = true;
+            if (ReferenceEquals(_activeRequest, request)) _activeRequest = null;
+            try { request.CompletedCallback?.Invoke(outcome); }
+            catch { }
+        }
+
         private bool IsLive(Binding binding)
             => !_disposed && Owns(binding) && binding.Source != null &&
                ReferenceEquals(binding.Source, RewardedAdRuntime.Current);
@@ -248,6 +245,18 @@ namespace CatMetro.Services.Cosmetics
                 Source = source;
                 Generation = generation;
                 Handler = () => owner.OnAvailabilityChanged(this);
+            }
+        }
+
+        private sealed class RequestToken
+        {
+            public Action<CosmeticRewardedCompletion> CompletedCallback { get; }
+            public Binding Binding { get; set; }
+            public bool Completed { get; set; }
+
+            public RequestToken(Action<CosmeticRewardedCompletion> completedCallback)
+            {
+                CompletedCallback = completedCallback;
             }
         }
     }
