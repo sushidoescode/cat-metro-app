@@ -565,7 +565,6 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(input.Regions.IsRegistered("wardrobe.restore"), Is.True);
             Assert.That(input.Regions.IsRegistered("wardrobe.primary"), Is.False,
                 "the single row action exists only after selecting an actual item card");
-            Assert.That(input.Regions.IsRegistered("wardrobe.buy"), Is.False);
 
             var conductor = view.VisibleCards.SingleOrDefault(card => card != null
                 && card.IsActive && card.ItemId == EntitlementIds.OutfitConductor);
@@ -574,10 +573,6 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(view.transform.Find(
                 "WardrobePanel/ItemsBand/CardsRoot/ItemCard-outfit_conductor"), Is.Not.Null);
             Assert.That(input.Regions.IsRegistered("wardrobe.item.outfit_conductor"), Is.True);
-            Assert.That(view.transform.Find("WardrobePanel/TryOnStrip"), Is.Null);
-            for (int i = 0; i < PlacementIds.Length; i++)
-                Assert.That(input.Regions.IsRegistered(
-                    "wardrobe.rewarded." + PlacementIds[i]), Is.False);
             Assert.That(input.Regions.Count, Is.EqualTo(9),
                 "Back, Restore, three cats, three tabs, and the admitted conductor card only");
 

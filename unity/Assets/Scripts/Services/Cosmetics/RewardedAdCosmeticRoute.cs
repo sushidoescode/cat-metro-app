@@ -6,8 +6,10 @@ namespace CatMetro.Services.Cosmetics
     // Presentation-safe bridge: ownership remains solely in RewardedAdCoordinator/PurchaseService.
     public sealed class RewardedAdCosmeticRoute : ICosmeticRewardedRoute, IDisposable
     {
-        private IRewardedAds _subscribed;
+        private Binding _binding;
+        private long _bindingGeneration;
         private IRewardedAds _pendingSource;
+        private long _pendingBindingGeneration;
         private Action<CosmeticRewardedCompletion> _pendingFinish;
         private bool _disposed;
 
@@ -21,17 +23,19 @@ namespace CatMetro.Services.Cosmetics
 
         public bool CanOffer(string placementId, string entitlementId)
         {
-            if (_disposed) return false;
-            var source = Resolve() as IRewardedAdExactCompletionSource;
-            try { return source != null && source.CanShow(placementId, entitlementId); }
+            var binding = Resolve();
+            var source = binding?.Source as IRewardedAdExactCompletionSource;
+            if (source == null || !IsLive(binding)) return false;
+
+            bool canShow;
+            try { canShow = source.CanShow(placementId, entitlementId); }
             catch { return false; }
+            return canShow && IsLive(binding);
         }
 
         public void Request(string placementId, string entitlementId,
             Action<CosmeticRewardedCompletion> completed)
         {
-            var ads = Resolve();
-            var source = ads as IRewardedAdExactCompletionSource;
             bool completedOnce = false;
             Action<CosmeticRewardedCompletion> finish = null;
             finish = outcome =>
@@ -42,6 +46,7 @@ namespace CatMetro.Services.Cosmetics
                 {
                     _pendingFinish = null;
                     _pendingSource = null;
+                    _pendingBindingGeneration = 0L;
                 }
                 try { completed?.Invoke(outcome); }
                 catch { }
@@ -51,12 +56,23 @@ namespace CatMetro.Services.Cosmetics
                 finish(CosmeticRewardedCompletion.NotGranted);
                 return;
             }
-            if (_disposed || source == null || !CanOffer(placementId, entitlementId))
+
+            var binding = Resolve();
+            var source = binding?.Source as IRewardedAdExactCompletionSource;
+            if (source == null || !IsLive(binding))
             {
                 finish(CosmeticRewardedCompletion.NotGranted);
                 return;
             }
-            if (!ReferenceEquals(ads, Resolve()))
+
+            bool canShow;
+            try { canShow = source.CanShow(placementId, entitlementId); }
+            catch
+            {
+                finish(CosmeticRewardedCompletion.NotGranted);
+                return;
+            }
+            if (!canShow || !IsLive(binding))
             {
                 finish(CosmeticRewardedCompletion.NotGranted);
                 return;
@@ -65,13 +81,18 @@ namespace CatMetro.Services.Cosmetics
             RewardedShowOutcome shown;
             try
             {
-                _pendingSource = ads;
+                _pendingSource = binding.Source;
+                _pendingBindingGeneration = binding.Generation;
                 _pendingFinish = finish;
                 shown = source.Show(placementId, entitlementId, result =>
                 {
-                    bool exact = ReferenceEquals(ads, Resolve()) && result.AttemptId > 0L &&
+                    bool ownsRequest = ReferenceEquals(_pendingFinish, finish) &&
+                        ReferenceEquals(_pendingSource, binding.Source) &&
+                        _pendingBindingGeneration == binding.Generation;
+                    bool exact = ownsRequest && IsLive(binding) && result.AttemptId > 0L &&
                         string.Equals(result.PlacementId, placementId, StringComparison.Ordinal) &&
-                        string.Equals(result.EntitlementId, entitlementId, StringComparison.Ordinal);
+                        string.Equals(result.EntitlementId, entitlementId,
+                            StringComparison.Ordinal);
                     finish(exact && result.Kind == RewardedAdCompletionKind.Granted
                         ? CosmeticRewardedCompletion.Granted
                         : CosmeticRewardedCompletion.NotGranted);
@@ -82,7 +103,7 @@ namespace CatMetro.Services.Cosmetics
                 finish(CosmeticRewardedCompletion.NotGranted);
                 return;
             }
-            if (shown != RewardedShowOutcome.Started)
+            if (!IsLive(binding) || shown != RewardedShowOutcome.Started)
                 finish(CosmeticRewardedCompletion.NotGranted);
         }
 
@@ -94,44 +115,139 @@ namespace CatMetro.Services.Cosmetics
             Rebind(null);
         }
 
-        private IRewardedAds Resolve()
+        private Binding Resolve()
         {
             Rebind(RewardedAdRuntime.Current);
-            return _subscribed;
+            return _binding;
         }
 
         private void OnRuntimeChanged() => Rebind(RewardedAdRuntime.Current);
 
         private void Rebind(IRewardedAds next)
         {
-            if (ReferenceEquals(_subscribed, next)) return;
+            if (_disposed) next = null;
+            var previous = _binding;
+            if (previous != null && ReferenceEquals(previous.Source, next)) return;
+
+            long generation;
+            unchecked { generation = ++_bindingGeneration; }
+            var replacement = new Binding(this, next, generation);
+
+            // Publish desired ownership before crossing any callback-capable boundary. A nested
+            // Rebind can replace this token; every continuation below then fails its token check.
+            _binding = replacement;
             if (_pendingSource != null && !ReferenceEquals(_pendingSource, next))
-                _pendingFinish?.Invoke(CosmeticRewardedCompletion.NotGranted);
-            if (_subscribed != null)
             {
-                try { _subscribed.AvailabilityChanged -= OnAvailabilityChanged; }
-                catch { }
+                var pending = _pendingFinish;
+                pending?.Invoke(CosmeticRewardedCompletion.NotGranted);
+                if (!Owns(replacement)) return;
             }
-            _subscribed = next;
-            if (!_disposed && _subscribed != null)
-            {
-                try { _subscribed.AvailabilityChanged += OnAvailabilityChanged; }
-                catch { }
-            }
-            RaiseAvailabilityChanged();
+
+            Detach(previous);
+            if (!Owns(replacement)) return;
+            Attach(replacement);
+            if (!Owns(replacement)) return;
+            RaiseAvailabilityChanged(replacement);
         }
 
-        private void OnAvailabilityChanged() => RaiseAvailabilityChanged();
-
-        private void RaiseAvailabilityChanged()
+        private void Attach(Binding binding)
         {
-            if (_disposed) return;
+            if (binding?.Source == null || !IsLive(binding)) return;
+            binding.Subscription = SubscriptionState.Adding;
+            try
+            {
+                binding.Source.AvailabilityChanged += binding.Handler;
+            }
+            catch
+            {
+                // An accessor may attach and then throw. Relinquish visible ownership first so
+                // that a synchronous callback during the conservative remove stays inert.
+                binding.Subscription = SubscriptionState.None;
+                binding.DetachRequested = true;
+                SafeRemove(binding);
+                return;
+            }
+
+            if (!IsLive(binding) || binding.DetachRequested ||
+                binding.Subscription != SubscriptionState.Adding)
+            {
+                // A nested replacement can remove before this add actually attaches. Compensate
+                // after the accessor returns, when the late attachment is now observable.
+                binding.Subscription = SubscriptionState.None;
+                SafeRemove(binding);
+                return;
+            }
+            binding.Subscription = SubscriptionState.Attached;
+        }
+
+        private static void Detach(Binding binding)
+        {
+            if (binding?.Source == null) return;
+            binding.DetachRequested = true;
+            if (binding.Subscription != SubscriptionState.Attached) return;
+
+            // Commit loss of ownership before invoking the remove accessor. The captured handler
+            // is therefore inert even if the source invokes it synchronously while removing.
+            binding.Subscription = SubscriptionState.None;
+            SafeRemove(binding);
+        }
+
+        private static void SafeRemove(Binding binding)
+        {
+            try { binding.Source.AvailabilityChanged -= binding.Handler; }
+            catch { }
+        }
+
+        private void OnAvailabilityChanged(Binding binding)
+        {
+            if (!IsLive(binding) ||
+                (binding.Subscription != SubscriptionState.Adding &&
+                 binding.Subscription != SubscriptionState.Attached))
+                return;
+            RaiseAvailabilityChanged(binding);
+        }
+
+        private void RaiseAvailabilityChanged(Binding expected)
+        {
+            if (!IsLive(expected)) return;
             var handlers = AvailabilityChanged;
             if (handlers == null) return;
             foreach (Action handler in handlers.GetInvocationList())
             {
                 try { handler(); }
                 catch { }
+                if (!IsLive(expected)) return;
+            }
+        }
+
+        private bool Owns(Binding binding)
+            => binding != null && ReferenceEquals(_binding, binding) &&
+               _bindingGeneration == binding.Generation;
+
+        private bool IsLive(Binding binding)
+            => !_disposed && Owns(binding) && binding.Source != null &&
+               ReferenceEquals(binding.Source, RewardedAdRuntime.Current);
+
+        private enum SubscriptionState
+        {
+            None,
+            Adding,
+            Attached,
+        }
+
+        private sealed class Binding
+        {
+            public IRewardedAds Source { get; }
+            public long Generation { get; }
+            public Action Handler { get; }
+            public SubscriptionState Subscription { get; set; }
+            public bool DetachRequested { get; set; }
+
+            public Binding(RewardedAdCosmeticRoute owner, IRewardedAds source, long generation)
+            {
+                Source = source;
+                Generation = generation;
+                Handler = () => owner.OnAvailabilityChanged(this);
             }
         }
     }

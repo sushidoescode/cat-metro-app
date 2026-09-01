@@ -778,15 +778,17 @@ namespace CatMetro.Presentation.Screens
 
         private void OnAuthorityChanged()
         {
-            if (!_destroyed && isActiveAndEnabled && _panelShown)
+            // A different entitlement can change while this Wardrobe's exact ad is open. Its
+            // initiating row must survive until the typed terminal callback; that callback owns
+            // the final projection/equip path after the durable Conductor grant has committed.
+            if (!_rewardBusy && !_destroyed && isActiveAndEnabled && _panelShown)
                 RebuildProjectionAndCards();
         }
 
         private void OnRewardedAvailabilityChanged()
         {
             // Starting this Wardrobe's own ad makes the exact placement busy synchronously.
-            // Keep its selected row/operation mounted until the typed terminal callback; authority
-            // changes still reproject through OnAuthorityChanged before a granted equip.
+            // Keep its selected row/operation mounted until the typed terminal callback.
             if (!_rewardBusy && !_rebuildingProjection && !_destroyed
                 && isActiveAndEnabled && _panelShown)
                 RebuildProjectionAndCards();

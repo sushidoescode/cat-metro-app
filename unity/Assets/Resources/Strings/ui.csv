@@ -34,14 +34,10 @@ reminder.settings.open,Open notification settings
 reminder.settings.close,Close
 wardrobe.entry,Wardrobe
 wardrobe.title,Profile Wardrobe
-wardrobe.profile,Your profile cat
 wardrobe.back,Back
 wardrobe.buy,Unlock · {price}
 wardrobe.restore,Restore purchases
 wardrobe.restore.running,Restoring…
-wardrobe.cat.red_tabby,Red Tabby
-wardrobe.cat.blue_siamese,Blue Siamese
-wardrobe.cat.yellow_longhair,Yellow Longhair
 wardrobe.tab.outfit,Outfit
 wardrobe.tab.accessory,Accessory
 wardrobe.tab.frame,Frame
@@ -52,9 +48,7 @@ wardrobe.action.unequip,Unequip
 wardrobe.action.rewarded,Watch to borrow
 wardrobe.time.remaining,{time} remaining
 wardrobe.empty,Nothing is waiting at the depot yet.
-wardrobe.store.checking,Checking store…
 wardrobe.store.opening,Opening store…
-wardrobe.store.unavailable,Store unavailable
 wardrobe.status.checking,Checking the railway shop…
 wardrobe.status.opening,Opening the store…
 wardrobe.status.cancelled,Purchase cancelled
@@ -66,11 +60,6 @@ wardrobe.status.restored,Purchases restored
 wardrobe.status.none,No purchases found
 wardrobe.status.restore.failed,Restore unavailable — please try again
 wardrobe.status.unavailable,The shop is offline — the game is still ready to play
-wardrobe.product,Conductor's Coat
-wardrobe.equipped,Coat equipped
-wardrobe.status.locked,A station uniform for your profile cat
-wardrobe.status.equipped,Conductor's Coat equipped!
-wardrobe.status.failed,Purchase unavailable — please try again
 cosmetics.cat.red_tabby,Red Tabby
 cosmetics.cat.blue_siamese,Blue Siamese
 cosmetics.cat.yellow_longhair,Yellow Longhair

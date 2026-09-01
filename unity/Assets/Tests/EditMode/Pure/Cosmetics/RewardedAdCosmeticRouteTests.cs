@@ -1,6 +1,8 @@
 using System;
+using System.Linq;
 using CatMetro.Services.Ads;
 using CatMetro.Services.Cosmetics;
+using CatMetro.Tests.Ads;
 using NUnit.Framework;
 
 namespace CatMetro.Tests.Cosmetics
@@ -137,6 +139,179 @@ namespace CatMetro.Tests.Cosmetics
         }
 
         [Test]
+        public void CanOffer_ReplacementDuringExactCanShowFailsClosed()
+        {
+            var old = new ExactAds();
+            var replacement = new ExactAds();
+            RewardedAdRuntime.Install(old);
+            using var route = new RewardedAdCosmeticRoute();
+            old.OnExactCanShow = () => RewardedAdRuntime.Install(replacement);
+
+            Assert.That(route.CanOffer("wardrobe_try_conductor", "outfit_conductor"),
+                Is.False, "a positive answer from a detached source is stale");
+            Assert.That(old.ExactCanShowCalls, Is.EqualTo(1));
+            Assert.That(replacement.ExactCanShowCalls, Is.Zero,
+                "the in-flight query must fail closed rather than switching its subject");
+        }
+
+        [Test]
+        public void CanOffer_UninstallDuringExactCanShowFailsClosed()
+        {
+            var old = new ExactAds();
+            RewardedAdRuntime.Install(old);
+            using var route = new RewardedAdCosmeticRoute();
+            old.OnExactCanShow = () => RewardedAdRuntime.Uninstall(old);
+
+            Assert.That(route.CanOffer("wardrobe_try_conductor", "outfit_conductor"),
+                Is.False, "an uninstalled source cannot publish an offer");
+            Assert.That(old.ExactCanShowCalls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Request_DisposeDuringExactCanShowNeverCallsShow()
+        {
+            var ads = new ExactAds();
+            RewardedAdRuntime.Install(ads);
+            var route = new RewardedAdCosmeticRoute();
+            ads.OnExactCanShow = route.Dispose;
+            int calls = 0;
+            CosmeticRewardedCompletion result = CosmeticRewardedCompletion.Granted;
+
+            route.Request("wardrobe_try_conductor", "outfit_conductor", value =>
+            {
+                calls++;
+                result = value;
+            });
+
+            Assert.That(ads.ExactShowCalls, Is.Zero,
+                "disposing inside CanShow must fence the later Show boundary");
+            Assert.That(calls, Is.EqualTo(1));
+            Assert.That(result, Is.EqualTo(CosmeticRewardedCompletion.NotGranted));
+        }
+
+        [Test]
+        public void AvailabilityAddReentrantReplacement_RemovesLateOldAttachment()
+        {
+            var old = new ExactAds();
+            var replacement = new ExactAds();
+            old.OnAvailabilityAdd = () =>
+            {
+                old.OnAvailabilityAdd = null;
+                RewardedAdRuntime.Install(replacement);
+            };
+            RewardedAdRuntime.Install(old);
+            using var route = new RewardedAdCosmeticRoute();
+            int changes = 0;
+            route.AvailabilityChanged += () => changes++;
+
+            old.RaiseAvailability();
+            Assert.That(changes, Is.Zero,
+                "a handler attached after its source was replaced must stay inert");
+            replacement.RaiseAvailability();
+
+            Assert.That(old.AvailabilitySubscriberCount, Is.Zero);
+            Assert.That(replacement.AvailabilityAddCalls, Is.EqualTo(1));
+            Assert.That(replacement.AvailabilitySubscriberCount, Is.EqualTo(1));
+            Assert.That(changes, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void AvailabilityRemoveReentrantReplacement_DoesNotLetOuterRebindClobberIt()
+        {
+            var old = new ExactAds();
+            var intermediate = new ExactAds();
+            var replacement = new ExactAds();
+            RewardedAdRuntime.Install(old);
+            using var route = new RewardedAdCosmeticRoute();
+            int changes = 0;
+            route.AvailabilityChanged += () => changes++;
+            old.OnAvailabilityRemove = () =>
+            {
+                old.OnAvailabilityRemove = null;
+                RewardedAdRuntime.Install(replacement);
+            };
+
+            RewardedAdRuntime.Install(intermediate);
+            int afterReplacement = changes;
+            old.RaiseAvailability();
+            intermediate.RaiseAvailability();
+            Assert.That(changes, Is.EqualTo(afterReplacement),
+                "neither superseded source may publish availability");
+            replacement.RaiseAvailability();
+
+            Assert.That(intermediate.AvailabilitySubscriberCount, Is.Zero);
+            Assert.That(replacement.AvailabilityAddCalls, Is.EqualTo(1));
+            Assert.That(replacement.AvailabilitySubscriberCount, Is.EqualTo(1));
+            Assert.That(changes, Is.EqualTo(afterReplacement + 1));
+        }
+
+        [Test]
+        public void PendingNotGrantedReentrantReplacement_DoesNotLetOuterRebindClobberIt()
+        {
+            var old = new ExactAds();
+            var intermediate = new ExactAds();
+            var replacement = new ExactAds();
+            RewardedAdRuntime.Install(old);
+            using var route = new RewardedAdCosmeticRoute();
+            int calls = 0;
+            CosmeticRewardedCompletion result = CosmeticRewardedCompletion.Granted;
+            route.Request("wardrobe_try_conductor", "outfit_conductor", value =>
+            {
+                calls++;
+                result = value;
+                RewardedAdRuntime.Install(replacement);
+            });
+
+            RewardedAdRuntime.Install(intermediate);
+
+            Assert.That(calls, Is.EqualTo(1));
+            Assert.That(result, Is.EqualTo(CosmeticRewardedCompletion.NotGranted));
+            Assert.That(intermediate.AvailabilitySubscriberCount, Is.Zero);
+            Assert.That(replacement.AvailabilityAddCalls, Is.EqualTo(1));
+            Assert.That(replacement.AvailabilitySubscriberCount, Is.EqualTo(1));
+            old.Complete(new RewardedAdCompletion(4L, "wardrobe_try_conductor",
+                "outfit_conductor", RewardedAdCompletionKind.Granted));
+            Assert.That(calls, Is.EqualTo(1), "the detached request must complete exactly once");
+        }
+
+        [Test]
+        public void RealCoordinator_ForeignPositiveAttemptCannotGrantOrCompleteRoute()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var purchases = RewardedAdFixtures.Service();
+            var coordinator = RewardedAdFixtures.Coordinator(provider, service: purchases);
+            try
+            {
+                coordinator.Start();
+                RewardedAdRuntime.Install(coordinator);
+                using var route = new RewardedAdCosmeticRoute();
+                int calls = 0;
+                CosmeticRewardedCompletion result = CosmeticRewardedCompletion.Granted;
+                route.Request("p0", "outfit_conductor", value =>
+                {
+                    calls++;
+                    result = value;
+                });
+                long attempt = provider.Shows.Single().AttemptId;
+
+                provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded,
+                    attempt + 1L, "p0"));
+
+                Assert.That(calls, Is.Zero,
+                    "the real coordinator must not forward a foreign positive attempt");
+                Assert.That(purchases.IsUnlocked("outfit_conductor"), Is.False);
+                provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Closed, attempt, "p0"));
+                Assert.That(calls, Is.EqualTo(1));
+                Assert.That(result, Is.EqualTo(CosmeticRewardedCompletion.NotGranted));
+            }
+            finally
+            {
+                RewardedAdRuntime.Uninstall(coordinator);
+                coordinator.Dispose();
+            }
+        }
+
+        [Test]
         public void RuntimeUninstallDuringPendingRequest_FailsClosedOnceAndOldSourceStaysInert()
         {
             var old = new ExactAds();
@@ -243,20 +418,36 @@ namespace CatMetro.Tests.Cosmetics
             private Action<RewardedAdCompletion> _completion;
             public int AvailabilityAddCalls { get; private set; }
             public int AvailabilityRemoveCalls { get; private set; }
+            public int AvailabilitySubscriberCount =>
+                _availabilityChanged?.GetInvocationList().Length ?? 0;
             public bool CanShowExact { get; set; } = true;
             public Action OnExactCanShow { get; set; }
+            public Action OnAvailabilityAdd { get; set; }
+            public Action OnAvailabilityRemove { get; set; }
             public RewardedShowOutcome NextShow { get; set; } = RewardedShowOutcome.Started;
             public int ExactShowCalls { get; private set; }
+            public int ExactCanShowCalls { get; private set; }
             public string LastPlacement { get; private set; }
             public string LastEntitlement { get; private set; }
             public event Action AvailabilityChanged
             {
-                add { AvailabilityAddCalls++; _availabilityChanged += value; }
-                remove { AvailabilityRemoveCalls++; _availabilityChanged -= value; }
+                add
+                {
+                    AvailabilityAddCalls++;
+                    OnAvailabilityAdd?.Invoke();
+                    _availabilityChanged += value;
+                }
+                remove
+                {
+                    AvailabilityRemoveCalls++;
+                    OnAvailabilityRemove?.Invoke();
+                    _availabilityChanged -= value;
+                }
             }
             public bool CanShow(string placementId) => CanShowExact;
             public bool CanShow(string placementId, string entitlementId)
             {
+                ExactCanShowCalls++;
                 OnExactCanShow?.Invoke();
                 return CanShowExact;
             }

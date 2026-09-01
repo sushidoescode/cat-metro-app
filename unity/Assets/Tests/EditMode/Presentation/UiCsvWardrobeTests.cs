@@ -16,11 +16,10 @@ namespace CatMetro.Tests.Presentation
 
         private static readonly string[] RequiredKeys =
         {
-            "wardrobe.entry", "wardrobe.title", "wardrobe.profile", "wardrobe.back",
+            "wardrobe.entry", "wardrobe.title", "wardrobe.back",
             "wardrobe.buy", "wardrobe.restore", "wardrobe.restore.running",
-            "wardrobe.cat.red_tabby", "wardrobe.cat.blue_siamese",
-            "wardrobe.cat.yellow_longhair", "wardrobe.tab.outfit",
-            "wardrobe.tab.accessory", "wardrobe.tab.frame", "wardrobe.state.equipped",
+            "wardrobe.tab.outfit", "wardrobe.tab.accessory", "wardrobe.tab.frame",
+            "wardrobe.state.equipped",
             "wardrobe.state.owned", "wardrobe.action.equip", "wardrobe.action.unequip",
             "wardrobe.action.rewarded", "wardrobe.time.remaining", "wardrobe.empty",
             "wardrobe.status.checking", "wardrobe.status.opening",
@@ -28,8 +27,7 @@ namespace CatMetro.Tests.Presentation
             "wardrobe.status.unconfirmed", "wardrobe.status.unavailable",
             "wardrobe.status.save.failed", "wardrobe.status.restoring",
             "wardrobe.status.restored", "wardrobe.status.none",
-            "wardrobe.status.restore.failed", "wardrobe.product", "wardrobe.equipped",
-            "wardrobe.status.locked", "wardrobe.status.equipped", "wardrobe.status.failed",
+            "wardrobe.status.restore.failed",
         };
 
         [Test]

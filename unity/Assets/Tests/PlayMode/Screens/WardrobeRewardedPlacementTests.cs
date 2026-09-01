@@ -126,6 +126,9 @@ namespace CatMetro.Tests.PlayMode
                 "the registered, painted primary action must meet the 48dp floor");
             Assert.That(rig.View.PrimaryActionText,
                 Is.EqualTo(UiStrings.Get("wardrobe.action.rewarded")));
+            Assert.That(rig.View.LargePortrait.AppliedOutfitAssetId,
+                Is.EqualTo("outfit.conductor"),
+                "the actual admitted Conductor card must preview its shipped portrait layer");
         }
 
         [UnityTest]
@@ -184,6 +187,58 @@ namespace CatMetro.Tests.PlayMode
                 Is.EqualTo(ConductorItemId));
             Assert.That(string.IsNullOrEmpty(
                 profile.Profile.LoadoutFor("red_tabby").OutfitId), Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator UnrelatedAuthorityChangeDuringStarted_PreservesRowAndExactEquip()
+        {
+            var profile = NewProfile();
+            var rig = NewRig(profile);
+            OpenAndLayout(rig);
+            yield return null;
+            Tap(rig, ProjectedScreenRect(FindRect(rig.View,
+                "CatSelector-blue_siamese")));
+            yield return null;
+            Tap(rig, ConductorCard(rig).ScreenRect);
+            yield return null;
+            Assert.That(rig.View.LargePortrait.AppliedOutfitAssetId,
+                Is.EqualTo("outfit.conductor"));
+            Tap(rig, ProjectedScreenRect(FindRect(rig.View, "PrimaryActionChip")));
+            long attempt = _provider.LastAttemptId;
+            int profileChanges = 0;
+            profile.Changed += () => profileChanges++;
+
+            Assert.That(_purchases.GrantRewardedAdEntitlement("outfit_engineer"),
+                Is.EqualTo(AdGrantOutcome.Granted),
+                "the unrelated authority change must be a real persisted ledger grant");
+
+            Assert.That(ConductorCard(rig).Route,
+                Is.EqualTo(CosmeticWardrobeRoute.Rewarded));
+            Assert.That(rig.Input.Regions.IsRegistered("wardrobe.primary"), Is.True,
+                "the exact initiating action must remain live while its ad is open");
+            Assert.That(rig.View.LargePortrait.AppliedOutfitAssetId,
+                Is.EqualTo("outfit.conductor"));
+
+            _provider.Emit(RewardedAdEventKind.Rewarded, attempt, ConductorPlacementId);
+            yield return null;
+            Canvas.ForceUpdateCanvases();
+
+            Assert.That(_purchases.IsUnlocked("outfit_engineer"), Is.True);
+            Assert.That(_purchases.IsUnlocked(ConductorItemId), Is.True);
+            Assert.That(profile.Profile.LoadoutFor("blue_siamese").OutfitId,
+                Is.EqualTo(ConductorItemId));
+            Assert.That(string.IsNullOrEmpty(
+                profile.Profile.LoadoutFor("red_tabby").OutfitId), Is.True);
+            Assert.That(profileChanges, Is.EqualTo(1),
+                "the initiating cat equips exactly once after the exact durable reward");
+            Assert.That(_purchases.Ledger.ExportLeases(), Has.Count.EqualTo(2));
+            byte[] committed = File.ReadAllBytes(_store.SavePath);
+
+            _provider.Emit(RewardedAdEventKind.Rewarded, attempt, ConductorPlacementId);
+            yield return null;
+
+            Assert.That(profileChanges, Is.EqualTo(1));
+            CollectionAssert.AreEqual(committed, File.ReadAllBytes(_store.SavePath));
         }
 
         [UnityTest]
