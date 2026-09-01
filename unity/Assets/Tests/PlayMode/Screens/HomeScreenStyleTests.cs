@@ -2,6 +2,7 @@ using System.Collections;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using UnityEngine.UI;
 using TMPro;
 using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Input;
@@ -38,15 +39,16 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator Home_PaintsTheWarmTabletopPalette()
+        public IEnumerator Home_PaintsTheTransparentBoardWindowPalette()
         {
             CreateShown();
             yield return null;
 
-            Assert.That(_home.BackgroundColor, Is.EqualTo(Palette.WarmPaper),
-                "Home has a full-bleed warm-paper background (was transparent)");
-            Assert.That(_home.TitleColor, Is.EqualTo(Palette.InkNavy),
-                "the title is ink navy, not the old pure white");
+            Assert.That(_home.BackgroundColor,
+                Is.EqualTo(Palette.WithAlpha(Palette.WarmPaper, 0f)),
+                "Home leaves the already-loaded tick-0 board visible");
+            Assert.That(_home.TitleColor, Is.EqualTo(Palette.CreamCard),
+                "the raised title lettering is cream on the carved navy plaque");
             Assert.That(_home.PinRingColor, Is.EqualTo(Palette.TicketOrange),
                 "the L001 pin's raised ring is the ticket-orange CTA glow");
         }
@@ -65,29 +67,77 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator RouteCard_UsesTheHeroStage_PaletteMarkers_AndLabelledPrimaryCta()
+        public IEnumerator DioramaWindow_IsGraphicFree_AndFramedWithPaletteSurfaces()
         {
             CreateShown();
             yield return null;
 
-            Assert.That(Find("HeroCard"), Is.Not.Null,
-                "Home supplies one visually dominant route-card stage");
-            Assert.That(Find("DepotPlatform"), Is.Not.Null,
-                "the stage contains a depot platform, not empty silhouette blocks");
-            Assert.That(Find("RailNorth"), Is.Not.Null,
-                "the stage contains geometric rail structure");
-            Assert.That(Find("Sleeper03"), Is.Not.Null,
-                "the rail has repeated cream sleepers");
+            var hero = Find("HeroCard");
+            var window = Find("DioramaWindow");
+            Assert.That(hero, Is.Not.Null, "Home supplies one dominant diorama stage");
+            Assert.That(hero.GetComponent<Graphic>(), Is.Null,
+                "the hero parent cannot paint over the live board");
+            Assert.That(window, Is.Not.Null, "the stage names its transparent board window");
+            Assert.That(window.GetComponent<Graphic>(), Is.Null,
+                "the window itself is a real hole, not a clear-looking opaque card");
+
+            Assert.That(ImageColor("DioramaFrameTop"), Is.EqualTo(Palette.CreamCard));
+            Assert.That(ImageColor("DioramaFrameBottom"), Is.EqualTo(Palette.CreamCard));
+            Assert.That(ImageColor("DioramaFrameLeft"), Is.EqualTo(Palette.CreamCard));
+            Assert.That(ImageColor("DioramaFrameRight"), Is.EqualTo(Palette.CreamCard));
+            Assert.That(ImageColor("DioramaInnerTop"), Is.EqualTo(Palette.InkNavy));
+            Assert.That(ImageColor("BackdropLeft"),
+                Is.EqualTo(Palette.WithAlpha(Palette.DepotNavy, 0.48f)),
+                "palette shade surrounds the window without filling its center");
+
+            var plaque = Find("TitlePlaque");
+            Assert.That(plaque, Is.Not.Null);
+            Assert.That(plaque.GetComponent<Image>().color, Is.EqualTo(Palette.DepotNavy));
+        }
+
+        [UnityTest]
+        public IEnumerator Routes_UseRaisedCreamFaces_WithNavyLabels()
+        {
+            CreateShown();
+            _home.UnlockDaily(12);
+            yield return null;
 
             var label = Find("PlayLabel");
             Assert.That(label, Is.Not.Null, "the primary action is labelled");
             Assert.That(label.GetComponent<TMP_Text>().text,
                 Is.EqualTo(CatMetro.Presentation.Strings.UiStrings.Get("intro.play")));
+            Assert.That(label.GetComponent<TMP_Text>().color, Is.EqualTo(Palette.InkNavy));
+            Assert.That(ImageColor("PlayButtonFace"), Is.EqualTo(Palette.CreamCard));
+            Assert.That(ImageColor("DailyButtonFace"), Is.EqualTo(Palette.CreamCard));
+            Assert.That(Find("PinDailyLabel").GetComponent<TMP_Text>().color,
+                Is.EqualTo(Palette.InkNavy));
+        }
 
-            Assert.That(Find("ParkedDistrictA").GetComponent<UnityEngine.UI.Image>(), Is.Not.Null);
-            Assert.That(Find("ParkedDistrictB").GetComponent<UnityEngine.UI.Image>(), Is.Not.Null);
-            Assert.That(Find("ParkedDistrictC").GetComponent<UnityEngine.UI.Image>(), Is.Not.Null,
+        [UnityTest]
+        public IEnumerator Restyle_PreservesHolderIdentity_AndModelRootLocalPosition()
+        {
+            CreateShown();
+            yield return null;
+
+            var hero = Find("HeroCard");
+            var holderA = Find("ParkedDistrictA");
+            Assert.That(holderA.GetComponent<Image>(), Is.Not.Null);
+            Assert.That(Find("ParkedDistrictB").GetComponent<Image>(), Is.Not.Null);
+            Assert.That(Find("ParkedDistrictC").GetComponent<Image>(), Is.Not.Null,
                 "cat-wire retains all three exact Image holder nodes");
+            Assert.That(holderA.parent, Is.SameAs(hero),
+                "holder identity and direct-parent seam stay stable for prefab mounting");
+
+            var modelRoot = new GameObject("PinnedModelRoot").transform;
+            modelRoot.SetParent(holderA, false);
+            var pinned = new Vector3(0.031f, -0.017f, 0.044f);
+            modelRoot.localPosition = pinned;
+            _home.LayoutForViewport(new Rect(0f, 64f, 917f, 1920f), 408f);
+            _home.Hide();
+            _home.Show();
+            Assert.That(modelRoot.parent, Is.SameAs(holderA));
+            Assert.That(modelRoot.localPosition, Is.EqualTo(pinned),
+                "Home layout/show must never reset an admitted prefab root's localPosition");
         }
 
         [UnityTest]
@@ -123,9 +173,9 @@ namespace CatMetro.Tests.PlayMode
             Canvas.ForceUpdateCanvases();
 
             Assert.That(_home.HeroRectPx.x, Is.EqualTo(51f).Within(0.01f));
-            Assert.That(_home.HeroRectPx.y, Is.EqualTo(329.2f).Within(0.01f));
+            Assert.That(_home.HeroRectPx.y, Is.EqualTo(472f).Within(0.01f));
             Assert.That(_home.HeroRectPx.width, Is.EqualTo(815f).Within(0.01f));
-            Assert.That(_home.HeroRectPx.height, Is.EqualTo(1399.8f).Within(0.01f));
+            Assert.That(_home.HeroRectPx.height, Is.EqualTo(1257f).Within(0.01f));
             Assert.That(_home.PrimaryLabelText,
                 Is.EqualTo(CatMetro.Presentation.Strings.UiStrings.Get("intro.play")));
             Assert.That(_home.MarkerCount, Is.EqualTo(3));
@@ -134,6 +184,35 @@ namespace CatMetro.Tests.PlayMode
                 Palette.SignalRed, Palette.HarborBlue, Palette.TabbyYellow,
             }, _home.MarkerColors);
             yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator UnlockedDaily_ReservesItsRouteSlot_BelowTheDiorama()
+        {
+            if (_canvasGo != null) Object.Destroy(_canvasGo);
+            _canvasGo = new GameObject("TestCanvas");
+            var canvas = _canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            _home = HomeScreenView.Create(canvas.transform,
+                dailyEntryUnlocked: true, lifetimeDailyCompletions: 7);
+            _home.Attach(new ChromeRegions(), () => false);
+            _home.Show();
+
+            var safeArea = new Rect(0f, 64f, 917f, 1920f);
+            _home.LayoutForViewport(safeArea, 408f);
+            Assert.That(_home.HeroRectPx,
+                Is.EqualTo(HomeLayout.HeroRect(safeArea, 408f, dailyEntryUnlocked: true)),
+                "the window rises above all three unlocked routes");
+            yield return null;
+        }
+
+        private Color ImageColor(string name)
+        {
+            var found = Find(name);
+            Assert.That(found, Is.Not.Null, name + " must exist");
+            var image = found.GetComponent<Image>();
+            Assert.That(image, Is.Not.Null, name + " must be an Image");
+            return image.color;
         }
 
         private Transform Find(string name)
