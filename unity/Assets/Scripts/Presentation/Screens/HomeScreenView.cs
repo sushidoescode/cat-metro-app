@@ -320,23 +320,23 @@ namespace CatMetro.Presentation.Screens
                     Palette.TicketOrange, true);
                 _dailyLabel = MakeText(dailyFace.transform, "PinDailyLabel",
                     new Vector2(0.22f, 0.50f), new Vector2(0.94f, 0.94f),
-                    Strings.UiStrings.Get("home.daily.label"), 18f, Palette.InkNavy); // key-only, never a literal
+                    Strings.UiStrings.Get("home.daily.label"), 28f, Palette.InkNavy); // key-only, never a literal
                 _dailyLabel.enableAutoSizing = true;
-                _dailyLabel.fontSizeMin = 10f;
-                _dailyLabel.fontSizeMax = 18f;
+                _dailyLabel.fontSizeMin = 18f;
+                _dailyLabel.fontSizeMax = 28f;
                 _dailyLabel.fontStyle = FontStyles.Bold;
                 _dailyTally = MakeText(dailyFace.transform, "LifetimeTally",
                     new Vector2(0.22f, 0.08f), new Vector2(0.94f, 0.53f),
-                    "", 12f, Palette.InkNavy);
+                    "", 14f, Palette.InkNavy);
                 _dailyTally.enableAutoSizing = true;
-                _dailyTally.fontSizeMin = 7f;
-                _dailyTally.fontSizeMax = 12f;
+                _dailyTally.fontSizeMin = 9f;
+                _dailyTally.fontSizeMax = 14f;
                 _dailyStatus = MakeText(dailyFace.transform, "DailyStatus",
                     new Vector2(0.22f, 0.08f), new Vector2(0.94f, 0.53f),
-                    "", 11f, Palette.InkNavy);
+                    "", 14f, Palette.InkNavy);
                 _dailyStatus.enableAutoSizing = true;
-                _dailyStatus.fontSizeMin = 7f;
-                _dailyStatus.fontSizeMax = 11f;
+                _dailyStatus.fontSizeMin = 9f;
+                _dailyStatus.fontSizeMax = 14f;
                 _dailyStatus.gameObject.SetActive(false);
             }
 

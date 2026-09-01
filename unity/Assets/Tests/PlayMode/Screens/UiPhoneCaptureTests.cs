@@ -23,6 +23,7 @@ namespace CatMetro.Tests.PlayMode
         public void TearDown()
         {
             GameRoot.DevSkipShippedHome = false;
+            GameRoot.DailyEntryUnlocked = false;
             if (_root != null) Object.Destroy(_root.gameObject);
             _root = null;
         }
@@ -46,6 +47,29 @@ namespace CatMetro.Tests.PlayMode
             ApplyPhoneLayout(_root.Home);
             ApplyPhoneLayout(_root.Wardrobe);
             Capture(dir, "step-7-home.png");
+        }
+
+        [UnityTest]
+        public IEnumerator CaptureEvidence_UnlockedDailyHome_917x2048_WhenRequested()
+        {
+            var dir = System.Environment.GetEnvironmentVariable("CM_UI_CAPTURE_DIR");
+            if (string.IsNullOrEmpty(dir))
+            {
+                Assert.Pass("capture rig disarmed — set CM_UI_CAPTURE_DIR to emit phone frames");
+                yield break;
+            }
+
+            GameRoot.DevSkipShippedHome = false;
+            GameRoot.DailyEntryUnlocked = true;
+            _root = GameRoot.Launch();
+            yield return null;
+            yield return null;
+            Assert.That(_root.Home, Is.Not.Null);
+            Assert.That(_root.Home.IsVisible, Is.True);
+            Assert.That(_root.Home.DailyPinTransform, Is.Not.Null);
+            ApplyPhoneLayout(_root.Home);
+            ApplyPhoneLayout(_root.Wardrobe);
+            Capture(dir, "step-7-home-daily.png");
         }
 
         [UnityTest]
