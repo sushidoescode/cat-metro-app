@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Hud;
+using CatMetro.Presentation.Hud.WavePreview;
 using CatMetro.Presentation.Input;
 using CatMetro.Presentation.Theme;
 using CatMetro.Services;
@@ -150,10 +151,14 @@ namespace CatMetro.Presentation.Screens
                 Vector2.zero, Vector2.one,
                 Palette.WithAlpha(Palette.WarmPaper, 0f), rounded: false);
             var surroundShade = Palette.WithAlpha(Palette.DepotNavy, 0.48f);
-            view._backdropTop = MakeChip(go.transform, "BackdropTop", surroundShade);
-            view._backdropBottom = MakeChip(go.transform, "BackdropBottom", surroundShade);
-            view._backdropLeft = MakeChip(go.transform, "BackdropLeft", surroundShade);
-            view._backdropRight = MakeChip(go.transform, "BackdropRight", surroundShade);
+            view._backdropTop = MakeSurface(go.transform, "BackdropTop",
+                Vector2.zero, Vector2.one, surroundShade, false).rectTransform;
+            view._backdropBottom = MakeSurface(go.transform, "BackdropBottom",
+                Vector2.zero, Vector2.one, surroundShade, false).rectTransform;
+            view._backdropLeft = MakeSurface(go.transform, "BackdropLeft",
+                Vector2.zero, Vector2.one, surroundShade, false).rectTransform;
+            view._backdropRight = MakeSurface(go.transform, "BackdropRight",
+                Vector2.zero, Vector2.one, surroundShade, false).rectTransform;
 
             // A navy, raised sign carries the same carved-toy identity as the board labels.
             view._titlePlaqueShadow = MakeChip(go.transform, "TitlePlaqueShadow",
@@ -186,16 +191,16 @@ namespace CatMetro.Presentation.Screens
             view._heroShadow = MakeRect(go.transform, "HeroShadow");
             MakeSurface(view._heroShadow, "DioramaShadowTop",
                 new Vector2(0.018f, 0.918f), new Vector2(0.982f, 0.992f),
-                Palette.WithAlpha(Palette.DepotNavy, 0.72f), true);
+                Palette.WithAlpha(Palette.DepotNavy, 0.72f), false);
             MakeSurface(view._heroShadow, "DioramaShadowBottom",
                 new Vector2(0.018f, 0.008f), new Vector2(0.982f, 0.082f),
-                Palette.WithAlpha(Palette.DepotNavy, 0.72f), true);
+                Palette.WithAlpha(Palette.DepotNavy, 0.72f), false);
             MakeSurface(view._heroShadow, "DioramaShadowLeft",
                 new Vector2(0.018f, 0.07f), new Vector2(0.082f, 0.93f),
-                Palette.WithAlpha(Palette.DepotNavy, 0.72f), true);
+                Palette.WithAlpha(Palette.DepotNavy, 0.72f), false);
             MakeSurface(view._heroShadow, "DioramaShadowRight",
                 new Vector2(0.918f, 0.07f), new Vector2(0.982f, 0.93f),
-                Palette.WithAlpha(Palette.DepotNavy, 0.72f), true);
+                Palette.WithAlpha(Palette.DepotNavy, 0.72f), false);
 
             view._hero = MakeRect(go.transform, "HeroCard");
             view._dioramaWindow = MakeRect(view._hero, "DioramaWindow",
@@ -203,16 +208,16 @@ namespace CatMetro.Presentation.Screens
                 new Vector2(WindowXMax, WindowYMax));
             MakeSurface(view._hero, "DioramaFrameTop",
                 new Vector2(0.025f, 0.925f), new Vector2(0.975f, 0.99f),
-                Palette.CreamCard, true);
+                Palette.CreamCard, false);
             MakeSurface(view._hero, "DioramaFrameBottom",
                 new Vector2(0.025f, 0.01f), new Vector2(0.975f, 0.08f),
-                Palette.CreamCard, true);
+                Palette.CreamCard, false);
             MakeSurface(view._hero, "DioramaFrameLeft",
                 new Vector2(0.025f, 0.07f), new Vector2(0.08f, 0.935f),
-                Palette.CreamCard, true);
+                Palette.CreamCard, false);
             MakeSurface(view._hero, "DioramaFrameRight",
                 new Vector2(0.92f, 0.07f), new Vector2(0.975f, 0.935f),
-                Palette.CreamCard, true);
+                Palette.CreamCard, false);
             MakeSurface(view._hero, "DioramaInnerTop",
                 new Vector2(0.075f, 0.918f), new Vector2(0.925f, 0.93f),
                 Palette.InkNavy, false);
@@ -446,11 +451,7 @@ namespace CatMetro.Presentation.Screens
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
             var img = go.AddComponent<Image>();
-            if (rounded)
-            {
-                var mat = UiChromeMaterial.Shared;
-                if (mat != null) img.material = mat;
-            }
+            if (rounded) ApplyRoundedPaint(img);
             img.color = color;
             img.raycastTarget = false;
             return img;
@@ -467,8 +468,7 @@ namespace CatMetro.Presentation.Screens
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
             var img = go.AddComponent<Image>();
-            var mat = UiChromeMaterial.Shared;
-            if (mat != null) img.material = mat;
+            ApplyRoundedPaint(img);
             img.color = Palette.WithAlpha(Palette.DepotNavy, 0.18f);
             img.raycastTarget = false;
             return img;
@@ -498,11 +498,18 @@ namespace CatMetro.Presentation.Screens
             go.transform.SetParent(parent, false);
             var rect = go.AddComponent<RectTransform>();
             var img = go.AddComponent<Image>();
-            var mat = UiChromeMaterial.Shared;
-            if (mat != null) img.material = mat;
+            ApplyRoundedPaint(img);
             img.color = color;
             img.raycastTarget = false;
             return rect;
+        }
+
+        private static void ApplyRoundedPaint(Image image)
+        {
+            var mat = UiChromeMaterial.Shared;
+            if (mat != null) image.material = mat;
+            image.sprite = HudShapeSprites.RoundedSquare;
+            image.type = Image.Type.Sliced;
         }
 
         public void Attach(ChromeRegions regions, System.Func<bool> motionOff)

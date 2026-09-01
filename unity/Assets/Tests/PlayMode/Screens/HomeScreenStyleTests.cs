@@ -6,6 +6,7 @@ using UnityEngine.UI;
 using TMPro;
 using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Input;
+using CatMetro.Presentation.Hud.WavePreview;
 using CatMetro.Presentation.Screens;
 using CatMetro.Presentation.Theme;
 
@@ -93,6 +94,7 @@ namespace CatMetro.Tests.PlayMode
             var plaque = Find("TitlePlaque");
             Assert.That(plaque, Is.Not.Null);
             Assert.That(plaque.GetComponent<Image>().color, Is.EqualTo(Palette.DepotNavy));
+            AssertRoundedToySurface(plaque, "the carved title plaque");
         }
 
         [UnityTest]
@@ -109,6 +111,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(label.GetComponent<TMP_Text>().color, Is.EqualTo(Palette.InkNavy));
             Assert.That(ImageColor("PlayButtonFace"), Is.EqualTo(Palette.CreamCard));
             Assert.That(ImageColor("DailyButtonFace"), Is.EqualTo(Palette.CreamCard));
+            AssertRoundedToySurface(Find("PlayButtonFace"), "Play's raised face");
+            AssertRoundedToySurface(Find("DailyButtonFace"), "Daily's raised face");
             Assert.That(Find("PinDailyLabel").GetComponent<TMP_Text>().color,
                 Is.EqualTo(Palette.InkNavy));
         }
@@ -241,6 +245,16 @@ namespace CatMetro.Tests.PlayMode
             var image = found.GetComponent<Image>();
             Assert.That(image, Is.Not.Null, name + " must be an Image");
             return image.color;
+        }
+
+        private static void AssertRoundedToySurface(Transform surface, string description)
+        {
+            var image = surface.GetComponent<Image>();
+            Assert.That(image, Is.Not.Null, description + " must be an Image");
+            Assert.That(image.sprite, Is.SameAs(HudShapeSprites.RoundedSquare),
+                description + " uses the cached toy-tile silhouette");
+            Assert.That(image.type, Is.EqualTo(Image.Type.Sliced),
+                description + " preserves its corner radius when stretched");
         }
 
         private Transform Find(string name)
