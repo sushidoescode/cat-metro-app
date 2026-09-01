@@ -18,9 +18,10 @@ namespace CatMetro.Tests.Presentation
 
             Assert.That(pin.width, Is.EqualTo(320f).Within(0.001f),
                 "the primary action spans the safe card width, not a lone square");
-            Assert.That(pin.height, Is.EqualTo(72f).Within(0.001f));
+            Assert.That(pin.height, Is.EqualTo(60f).Within(0.001f));
             Assert.That(pin.x, Is.EqualTo(20f).Within(0.001f), "20dp side inset");
-            Assert.That(pin.y, Is.EqualTo(16f).Within(0.001f), "16dp above the safe bottom");
+            Assert.That(pin.y, Is.EqualTo(84f).Within(0.001f),
+                "Play stacks immediately above the bottom Wardrobe route");
 
             Assert.That(HudBands.MeetsMinTargetPx(pin, 160f), Is.True,
                 "the pin clears the 48dp floor (A11Y-S01-4)");
@@ -52,8 +53,8 @@ namespace CatMetro.Tests.Presentation
             var pin = HomeLayout.PinRect(safeArea, 160f);
             var band = HudBands.ThumbBand(safeArea);
 
-            Assert.That(pin.y, Is.EqualTo(64f).Within(0.001f),
-                "16dp above the safe bottom, never the raw screen");
+            Assert.That(pin.y, Is.EqualTo(132f).Within(0.001f),
+                "the complete route stack rises with the safe bottom");
             Assert.That(HudBands.MeetsMinTargetPx(pin, 160f), Is.True);
             Assert.That(pin.yMin, Is.GreaterThanOrEqualTo(band.yMin));
             Assert.That(pin.yMax, Is.LessThanOrEqualTo(band.yMax));
@@ -83,9 +84,9 @@ namespace CatMetro.Tests.Presentation
 
             Assert.That(header, Is.EqualTo(new Rect(51f, 1769.8f, 815f, 214.2f))
                 .Using(RectComparer.Within(0.01f)));
-            Assert.That(hero, Is.EqualTo(new Rect(51f, 329.2f, 815f, 1399.8f))
+            Assert.That(hero, Is.EqualTo(new Rect(51f, 472f, 815f, 1257f))
                 .Using(RectComparer.Within(0.01f)));
-            Assert.That(cta, Is.EqualTo(new Rect(51f, 104.8f, 815f, 183.6f))
+            Assert.That(cta, Is.EqualTo(new Rect(51f, 278.2f, 815f, 153f))
                 .Using(RectComparer.Within(0.01f)));
 
             Assert.That(hero.height, Is.GreaterThan(cta.height * 7f),
@@ -97,22 +98,54 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void DailyLayout_SplitsTheCtaRow_WithoutLeavingTheSafeArea()
+        public void DailyLayout_AddsAMiddleRoute_WithoutLeavingTheSafeArea()
         {
             var safeArea = new Rect(0f, 64f, 917f, 1920f);
             const float dpi = 408f;
 
             var primary = HomeLayout.PrimaryPinRect(safeArea, dpi, dailyEntryUnlocked: true);
             var daily = HomeLayout.DailyPinRect(safeArea, dpi);
+            var wardrobe = WardrobeLayout.EntryRect(safeArea, dpi);
 
-            Assert.That(primary.xMax, Is.LessThanOrEqualTo(daily.xMin),
-                "Daily never overlaps the campaign action");
+            Assert.That(wardrobe.yMax, Is.LessThanOrEqualTo(daily.yMin),
+                "Daily stacks above Wardrobe");
+            Assert.That(daily.yMax, Is.LessThanOrEqualTo(primary.yMin),
+                "Play stacks above Daily");
             Assert.That(primary.xMin, Is.GreaterThanOrEqualTo(safeArea.xMin));
-            Assert.That(daily.xMax, Is.LessThanOrEqualTo(safeArea.xMax));
+            Assert.That(primary.xMax, Is.LessThanOrEqualTo(safeArea.xMax));
+            Assert.That(daily.x, Is.EqualTo(primary.x).Within(0.01f));
+            Assert.That(daily.width, Is.EqualTo(primary.width).Within(0.01f));
             Assert.That(primary.yMin, Is.GreaterThanOrEqualTo(safeArea.yMin));
             Assert.That(daily.yMax, Is.LessThanOrEqualTo(safeArea.yMax));
             Assert.That(HudBands.MeetsMinTargetPx(primary, dpi), Is.True);
             Assert.That(HudBands.MeetsMinTargetPx(daily, dpi), Is.True);
+        }
+
+        [Test]
+        public void HomeRoutes_StackAsFullWidthButtons_WithoutAnEmptyLockedDailySlot()
+        {
+            var safeArea = new Rect(0f, 0f, 360f, 640f);
+            const float dpi = 160f;
+
+            var wardrobe = WardrobeLayout.EntryRect(safeArea, dpi);
+            var lockedPlay = HomeLayout.PrimaryPinRect(
+                safeArea, dpi, dailyEntryUnlocked: false);
+            var daily = HomeLayout.DailyPinRect(safeArea, dpi);
+            var unlockedPlay = HomeLayout.PrimaryPinRect(
+                safeArea, dpi, dailyEntryUnlocked: true);
+
+            Assert.That(wardrobe, Is.EqualTo(new Rect(20f, 16f, 320f, 60f))
+                .Using(RectComparer.Within(0.001f)),
+                "Wardrobe owns the fixed bottom slot");
+            Assert.That(lockedPlay, Is.EqualTo(new Rect(20f, 84f, 320f, 60f))
+                .Using(RectComparer.Within(0.001f)),
+                "before Daily unlocks, Play sits directly above Wardrobe");
+            Assert.That(daily, Is.EqualTo(new Rect(20f, 84f, 320f, 60f))
+                .Using(RectComparer.Within(0.001f)),
+                "Daily occupies the middle slot only when it exists");
+            Assert.That(unlockedPlay, Is.EqualTo(new Rect(20f, 152f, 320f, 60f))
+                .Using(RectComparer.Within(0.001f)),
+                "after Daily unlocks, Play rises by exactly one slot");
         }
 
         private sealed class RectComparer : System.Collections.IComparer
