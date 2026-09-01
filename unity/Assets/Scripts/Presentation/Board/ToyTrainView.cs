@@ -55,15 +55,15 @@ namespace CatMetro.Presentation.Board
         private const float EarLateral = 0.080f;
         private const float EarCenterZ = -0.080f;
         private const float EyeSize = 0.079f;
-        // A platform-centre offset measured in board units, not authored mesh space. At the
-        // wide 93 px/unit framing this is 27.9 px before board-plane foreshortening and about
-        // 18.6 px on its steepest axis, still just larger than the 17.7 px head. The carriage
-        // half-width (0.14) plus head radius (0.095) leaves 0.065 board units clear.
-        public const float PlatformSideOffset = 0.30f;
-        // Queue cards are 0.24 units wide. At the widest framing (93 px/unit) and worst board
-        // foreshortening (0.668), 0.42 BOARD UNITS projects to 26.1 px versus a 22.3 px card,
-        // leaving a visible ~3.8 px gap between simultaneous source waiters. The same numeric
-        // value as CatModelCatalog.PresenterScale is coincidental; that scale is dimensionless.
+        // A platform-centre offset measured in board units, not authored mesh space. The
+        // enlarged head radius (0.155) plus the carriage chassis half-width (0.20) consumes
+        // 0.355, so 0.40 leaves 0.045 board units of real clearance at the full endpoint.
+        public const float PlatformSideOffset = 0.40f;
+        // Queue cards are 0.24 units wide. At the conservative 93 px/unit yardstick, even the
+        // frontal board's foreshortened axis projects 0.42 * cos(38) * 93 = 30.8 px versus a
+        // 22.3 px card, leaving a visible gap between simultaneous source waiters. The same
+        // numeric value as CatModelCatalog.PresenterScale is coincidental; that scale is
+        // dimensionless.
         public const float PlatformQueueSpacing = 0.42f;
 
         private static float PlatformLaneOffset(int lane)
@@ -77,12 +77,14 @@ namespace CatMetro.Presentation.Board
         private const float WalkLegSwingDegrees = 22f;
         private const float TransitionLegSwingDegrees = 12f;
         // The admitted skin's partial ear weights turn the doubled >=12-degree Tier-1 probe
-        // into 0.020037 board units of localized 3D deformation. At the pinned 93 px/unit
-        // worst zoom that is a 1.863 px upper bound, deliberately large enough to have a chance
-        // of reading on the ~17.7 px head. Only a render can confirm the projected motion.
+        // into 0.020037 board units of localized 3D deformation. At the conservative 93 px/unit
+        // yardstick that is a 1.863 px upper bound against the enlarged 28.8 px head. Only a
+        // render can establish how much of that deformation is visible.
         public const float RigEarTwitchGain = 2f;
-        public static readonly Vector3 PlaceholderBodyWorldSize = new Vector3(0.124f, 0.108f, 0.102f);
-        private static readonly Vector3 PlaceholderLegWorldSize = new Vector3(0.038f, 0.036f, 0.082f);
+        public static readonly Vector3 PlaceholderBodyWorldSize =
+            new Vector3(0.200f, 0.175f, 0.165f);
+        private static readonly Vector3 PlaceholderLegWorldSize =
+            new Vector3(0.060f, 0.058f, 0.130f);
         private static readonly Vector3 EyeOffset = new Vector3(0.0862f, 0.0602f, -0.0673f);
         private static readonly Vector3 MuzzleOffset = new Vector3(0.1253f, 0f, -0.0370f);
         private static readonly Vector3 MuzzleSize = new Vector3(0.082f, 0.111f, 0.071f);
@@ -547,7 +549,7 @@ namespace CatMetro.Presentation.Board
             _cat.localPosition = pathLocalPosition
                 + carriageLocalBob;
             // The destination card labels the cat, not its empty seat. Carry the exact same
-            // presentation-only path and bob deltas so the solved 0.26 screen rise remains
+            // presentation-only path and bob deltas so the solved 0.30 screen rise remains
             // invariant while neither transform can affect the authoritative train root.
             _pin.localPosition = _pinBaseLocalPosition + pathOffset + carriageLocalBob;
             ApplyPlaceholderGait(state, safeTime);
@@ -845,17 +847,18 @@ namespace CatMetro.Presentation.Board
             _eyeLeft.localRotation = eyeBasis;
             _eyeRight.localRotation = eyeBasis;
 
-            // A small Tier-1 body and legs give walking/alighting cats a readable silhouette.
+            // A Tier-1 body and legs scaled with the enlarged head give walking/alighting cats
+            // a readable silhouette; their neutral lower edges meet the -0.2 root's tabletop.
             // These use the same builtin meshes and bounds-derived scale as every train part:
             // no primitive factory, colliders, or owned generated asset.
             var body = CreatePart("Body", _cat, SphereMesh(),
-                new Vector3(-0.030f, 0f, 0.030f), PlaceholderBodyWorldSize,
+                new Vector3(-0.050f, 0f, 0.115f), PlaceholderBodyWorldSize,
                 Quaternion.identity, CatBasisMaterial());
             var legLeft = CreatePart("LegLeft", _cat, CubeMesh(),
-                new Vector3(-0.035f, 0.048f, 0.092f), PlaceholderLegWorldSize,
+                new Vector3(-0.055f, 0.078f, 0.135f), PlaceholderLegWorldSize,
                 Quaternion.identity, CatBasisMaterial());
             var legRight = CreatePart("LegRight", _cat, CubeMesh(),
-                new Vector3(-0.035f, -0.048f, 0.092f), PlaceholderLegWorldSize,
+                new Vector3(-0.055f, -0.078f, 0.135f), PlaceholderLegWorldSize,
                 Quaternion.identity, CatBasisMaterial());
             _legLeft = legLeft.transform;
             _legRight = legRight.transform;
