@@ -8,6 +8,7 @@ using UnityEngine.TestTools;
 using CatMetro.Bootstrap;
 using CatMetro.Domain;
 using CatMetro.Presentation.Board;
+using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Props;
 using CatMetro.Presentation.Theme;
 
@@ -341,7 +342,7 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator PassengerHead_IsReadableAtPhoneScaleAndSitsProudOfCarriageWall()
+        public IEnumerator FallbackPassengerHead_IsReadableAtPhoneScaleAndSitsProudOfCarriageWall()
         {
             _root = GameRoot.Launch();
             yield return null;
@@ -352,10 +353,20 @@ namespace CatMetro.Tests.PlayMode
 
             var train = _root.View.GetComponentsInChildren<BoardElementId>(true)
                 .Single(x => x.Kind == "train").transform;
+            var trainView = train.GetComponent<ToyTrainView>();
+            Assert.That(trainView.PresentationState,
+                Is.EqualTo(CatPresentationState.RideIdle),
+                "the artifact must measure a passenger seated behind its carriage wall, "
+                + "not the new boarding animation beside the train");
+            if (trainView.RigAdmitted)
+                Assert.Ignore("fallback passenger geometry is hidden by the admitted cat rig; "
+                    + "this clean-checkout metric does not validate that rig's rendered scale");
             var head = train.Find("Carriage/Cat/Head");
             var body = train.Find("Carriage/Body");
             Assert.That(head, Is.Not.Null);
             Assert.That(body, Is.Not.Null);
+            Assert.That(head.GetComponent<Renderer>().enabled, Is.True,
+                "the fallback metric must target geometry that is actually rendered");
             var cat = head.parent;
 
             Rect headRect = ProjectedMeshRect(camera, head);
@@ -370,8 +381,9 @@ namespace CatMetro.Tests.PlayMode
             {
                 // The target must be bound for a frame before any screen-space result counts.
                 yield return null;
-                // Runtime simulation advances during that wait; reset to the declared evidence
-                // pose immediately before rendering so mask and normal capture are congruent.
+                // Runtime simulation advances during that wait; restore the declared edge,
+                // tick, and seated state immediately before this mask. The separate normal
+                // capture can have a different interpolation phase and is not pixel-congruent.
                 SeedMidEdgePassenger(_root);
                 catMask = catRig.Read();
             }
@@ -407,7 +419,7 @@ namespace CatMetro.Tests.PlayMode
                 + "visible_head_core_width_fraction={1:F6}\n"
                 + "head_carriage_width_ratio={2:F6}\n"
                 + "visible_head_core_exposure={3:F6}\northo_size={4:F6}\n"
-                + "prop_entries={5}\ntrain_edge=1\ntrain_tick=6\n",
+                + "prop_entries={5}\ncat_rig_admitted=0\ntrain_edge=1\ntrain_tick=6\n",
                 visibleCatWidth, visibleHeadCoreWidth, widthRatio, exposed,
                 camera.orthographicSize, propEntries);
             TestContext.Out.WriteLine("COMPOSITION_"
@@ -1017,8 +1029,9 @@ namespace CatMetro.Tests.PlayMode
             // Screen-space canvases observe the RenderTexture dimensions on the next frame.
             // Laying out before that frame silently measures the batchmode Game view instead.
             yield return null;
-            // The session advances during that frame; restore the same declared edge/tick the
-            // artifact masks use immediately before rendering.
+            // The session advances during that frame; restore the same declared edge, tick,
+            // and seated state as the masks immediately before rendering. This independently
+            // seeded capture does not claim their exact interpolation phase or pixel pose.
             SeedMidEdgePassenger(_root);
             _root.Preview.Refresh();
             Canvas.ForceUpdateCanvases();
@@ -1047,7 +1060,12 @@ namespace CatMetro.Tests.PlayMode
                 NodeId = 1,
                 State = TrainState.OnEdge,
             };
-            root.View.UpdateFrom(root.Session);
+            // First observation deliberately enters the shipped boarding walk. Advance the
+            // explicit presentation clock through Walk + Board so each caller restores the
+            // same seated RideIdle state behind the carriage wall.
+            root.View.UpdateFrom(root.Session, 0f);
+            root.View.UpdateFrom(root.Session,
+                CatPresentationTrack.SpawnWalkDuration + CatPresentationTrack.BoardDuration);
         }
 
         private static Rect ProjectedMeshRect(Camera camera, Transform part)

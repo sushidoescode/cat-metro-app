@@ -31,7 +31,11 @@ namespace CatMetro.Tests.EditMode.Presentation
             _host = new GameObject("cat-presentation-host");
             _paths = TrackSplineGraph.Build(new[] { Vector3.zero, new Vector3(3f, 0f, 0f) },
                 new[] { 0 }, new[] { 1 });
-            _view = ToyTrainView.Create(_host.transform, "train:cat", new[] { 0 }, new[] { 1 });
+            // The directly constructed view specifies the licence-neutral fallback. Inject it
+            // explicitly so a workstation-only rig cannot silently turn its placeholder
+            // geometry checks into claims about a different rendered cat.
+            _view = ToyTrainView.Create(_host.transform, "train:cat", new[] { 0 }, new[] { 1 },
+                new CatModelCatalog(null));
             _view.SyncSlot(41L, CatMetro.Domain.CatColor.Red);
             _eyeBaseline = EyeLeft().localScale;
         }
@@ -150,6 +154,24 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void FallbackPlatformEndpoint_KeepsTheReadableHeadClearOfTheWholeCarriage()
+        {
+            _view.PlaceOnEdge(_paths, 0, 1.5f);
+
+            _view.ApplyPresentation(CatPresentationState.Walk, 1f, 0f, false);
+
+            Bounds head = Head().GetComponent<Renderer>().bounds;
+            foreach (string carriagePart in new[] { "Body", "Chassis" })
+            {
+                Bounds carriage = _view.transform.Find("Carriage/" + carriagePart)
+                    .GetComponent<Renderer>().bounds;
+                Assert.That(head.Intersects(carriage), Is.False,
+                    $"the full platform endpoint must clear Carriage/{carriagePart}; "
+                    + "the walking passenger cannot finish embedded in the vehicle");
+            }
+        }
+
+        [Test]
         public void DeliveryAdvance_IsDerivedFromCopiedSlotValuesAndCounterWithoutSlotMutation()
         {
             var previous = new TrainSlot { Id = 1, State = TrainState.AtNode };
@@ -207,6 +229,31 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(Cat().GetComponentsInChildren<BoardElementId>(true), Is.Empty);
             Assert.That(Cat().GetComponentsInChildren<Selectable>(true), Is.Empty);
             Assert.That(Cat().GetComponentsInChildren<BaseRaycaster>(true), Is.Empty);
+        }
+
+        [Test]
+        public void WalkingFallbackBodyAndLegs_BreakTheOpaqueHeadSilhouette()
+        {
+            _view.PlaceOnEdge(_paths, 0, 1.5f);
+
+            _view.ApplyPresentation(CatPresentationState.Walk, 1f, 0.73f, false);
+
+            float headRadius = WorldMeshSize(Head()).x * 0.5f;
+            foreach (string featureName in new[] { "Body", "LegLeft", "LegRight" })
+            {
+                Transform feature = Part(featureName);
+                float farthest = 0f;
+                foreach (Vector3 vertex in feature.GetComponent<MeshFilter>().sharedMesh.vertices)
+                {
+                    Vector3 offset = feature.TransformPoint(vertex) - Head().position;
+                    Vector3 projected = BoardSceneLook.BoardTilt * offset;
+                    farthest = Mathf.Max(farthest,
+                        new Vector2(projected.x, projected.y).magnitude);
+                }
+                Assert.That(farthest, Is.GreaterThan(headRadius + 0.005f),
+                    $"{featureName} must project beyond the opaque head while walking; "
+                    + $"silhouette radius {farthest:F4} versus head {headRadius:F4}");
+            }
         }
 
         [Test]
