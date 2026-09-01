@@ -120,22 +120,26 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
 
             var hero = Find("HeroCard");
-            var holderA = Find("ParkedDistrictA");
-            Assert.That(holderA.GetComponent<Image>(), Is.Not.Null);
-            Assert.That(Find("ParkedDistrictB").GetComponent<Image>(), Is.Not.Null);
-            Assert.That(Find("ParkedDistrictC").GetComponent<Image>(), Is.Not.Null,
-                "cat-wire retains all three exact Image holder nodes");
-            Assert.That(holderA.parent, Is.SameAs(hero),
-                "holder identity and direct-parent seam stay stable for prefab mounting");
+            Transform holderB = null;
+            foreach (var name in new[]
+                     {
+                         "ParkedDistrictA", "ParkedDistrictB", "ParkedDistrictC",
+                     })
+            {
+                var holder = DirectChild(hero, name);
+                Assert.That(holder.GetComponent<Image>(), Is.Not.Null,
+                    name + " retains its exact Image holder type");
+                if (name == "ParkedDistrictB") holderB = holder;
+            }
 
             var modelRoot = new GameObject("PinnedModelRoot").transform;
-            modelRoot.SetParent(holderA, false);
+            modelRoot.SetParent(holderB, false);
             var pinned = new Vector3(0.031f, -0.017f, 0.044f);
             modelRoot.localPosition = pinned;
             _home.LayoutForViewport(new Rect(0f, 64f, 917f, 1920f), 408f);
             _home.Hide();
             _home.Show();
-            Assert.That(modelRoot.parent, Is.SameAs(holderA));
+            Assert.That(modelRoot.parent, Is.SameAs(holderB));
             Assert.That(modelRoot.localPosition, Is.EqualTo(pinned),
                 "Home layout/show must never reset an admitted prefab root's localPosition");
         }
@@ -187,6 +191,30 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator ExplicitViewport_ShadeCoversOnlyOutsideTheDioramaAperture()
+        {
+            CreateShown();
+            var safeArea = new Rect(0f, 64f, 917f, 1920f);
+            var viewport = new Rect(0f, 0f, 917f, 2048f);
+            _home.LayoutForViewport(safeArea, 408f, viewport);
+
+            var hero = HomeLayout.HeroRect(safeArea, 408f);
+            float xMin = hero.x + hero.width * 0.075f;
+            float xMax = hero.x + hero.width * 0.925f;
+            float yMin = hero.y + hero.height * 0.075f;
+            float yMax = hero.y + hero.height * 0.93f;
+            AssertRect(PaintedRect(Find("BackdropTop") as RectTransform),
+                new Rect(0f, yMax, viewport.width, viewport.height - yMax));
+            AssertRect(PaintedRect(Find("BackdropBottom") as RectTransform),
+                new Rect(0f, 0f, viewport.width, yMin));
+            AssertRect(PaintedRect(Find("BackdropLeft") as RectTransform),
+                new Rect(0f, yMin, xMin, yMax - yMin));
+            AssertRect(PaintedRect(Find("BackdropRight") as RectTransform),
+                new Rect(xMax, yMin, viewport.width - xMax, yMax - yMin));
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator UnlockedDaily_ReservesItsRouteSlot_BelowTheDiorama()
         {
             if (_canvasGo != null) Object.Destroy(_canvasGo);
@@ -232,8 +260,25 @@ namespace CatMetro.Tests.PlayMode
                 result = parent.GetChild(i);
                 count++;
             }
-            Assert.That(count, Is.EqualTo(1), name + " remains one direct HeroCard child");
+            Assert.That(count, Is.EqualTo(1),
+                name + " remains one direct HeroCard child");
             return result;
+        }
+
+        private static Rect PaintedRect(RectTransform rect)
+        {
+            Assert.That(rect, Is.Not.Null);
+            return new Rect(rect.anchoredPosition.x - rect.sizeDelta.x * rect.pivot.x,
+                rect.anchoredPosition.y - rect.sizeDelta.y * rect.pivot.y,
+                rect.sizeDelta.x, rect.sizeDelta.y);
+        }
+
+        private static void AssertRect(Rect actual, Rect expected)
+        {
+            Assert.That(actual.x, Is.EqualTo(expected.x).Within(0.01f));
+            Assert.That(actual.y, Is.EqualTo(expected.y).Within(0.01f));
+            Assert.That(actual.width, Is.EqualTo(expected.width).Within(0.01f));
+            Assert.That(actual.height, Is.EqualTo(expected.height).Within(0.01f));
         }
     }
 }

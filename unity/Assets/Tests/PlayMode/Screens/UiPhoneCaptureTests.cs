@@ -206,6 +206,22 @@ namespace CatMetro.Tests.PlayMode
                 Canvas.ForceUpdateCanvases();
                 Color32[] withHome = ReadFrame(camera, target);
 
+                yield return null;
+                ApplyPhoneLayout(_root.Home);
+                Canvas.ForceUpdateCanvases();
+                Color32[] stableHome = ReadFrame(camera, target);
+
+                Color32[] withoutFrame;
+                frameImage.enabled = false;
+                try
+                {
+                    withoutFrame = ReadFrame(camera, target);
+                }
+                finally
+                {
+                    frameImage.enabled = true;
+                }
+
                 Assert.That(_root.Session.State.Tick, Is.EqualTo(0),
                     "the comparison must use the same paused board tick");
                 Assert.That(RgbSpatialStdDev(boardOnly, aperturePatch, CaptureWidth),
@@ -214,12 +230,15 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(MeanRgbDelta(boardOnly, withHome,
                         aperturePatch, CaptureWidth), Is.LessThanOrEqualTo(2f / 255f),
                     "Home preserves board pixels through the transparent aperture");
-                Assert.That(MeanRgbDelta(boardOnly, withHome,
+                Assert.That(MeanRgbDelta(withoutFrame, withHome,
                         framePatch, CaptureWidth), Is.GreaterThan(8f / 255f),
-                    "the opaque frame composites visibly above the board");
-                Assert.That(ChangedFraction(boardOnly, withHome, framePatch,
+                    "the cream frame itself composites above the shaded board");
+                Assert.That(ChangedFraction(withoutFrame, withHome, framePatch,
                         CaptureWidth, minimumPerChannelDelta: 4), Is.GreaterThan(0.45f),
-                    "most frame pixels replace board pixels, ruling out wrong sorting");
+                    "most frame pixels come from the frame, not the backdrop beneath it");
+                Assert.That(MeanRgbDelta(withHome, stableHome,
+                        framePatch, CaptureWidth), Is.LessThanOrEqualTo(1f / 255f),
+                    "the composited frame is stable across rendered frames, not z-fighting");
             }
             finally
             {
@@ -237,7 +256,16 @@ namespace CatMetro.Tests.PlayMode
             var method = view.GetType().GetMethod("LayoutForViewport",
                 BindingFlags.Instance | BindingFlags.Public);
             if (method != null)
-                method.Invoke(view, new object[] { CaptureSafeArea, CaptureDpi });
+            {
+                var parameters = method.GetParameters();
+                method.Invoke(view, parameters.Length == 3
+                    ? new object[]
+                    {
+                        CaptureSafeArea, CaptureDpi,
+                        new Rect(0f, 0f, CaptureWidth, CaptureHeight),
+                    }
+                    : new object[] { CaptureSafeArea, CaptureDpi });
+            }
         }
 
         private static RectTransform FindRequiredRect(Transform root, string name)

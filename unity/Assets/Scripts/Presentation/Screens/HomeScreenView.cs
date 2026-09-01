@@ -630,9 +630,10 @@ namespace CatMetro.Presentation.Screens
             }
         }
 
-        // Pure layout injection keeps the capture and the runtime on the same law. Show() is
-        // the only live Screen binding because the shipped orientation is portrait-locked.
-        public void LayoutForViewport(Rect safeArea, float dpi)
+        // Injected safe-area/viewport geometry keeps capture and runtime on the same law. The
+        // optional viewport falls back to the live Screen only for ordinary Show() calls; the
+        // offscreen rig supplies its exact RenderTexture bounds.
+        public void LayoutForViewport(Rect safeArea, float dpi, Rect viewport = default)
         {
             bool hasDaily = _dailyPin != null;
             _pinRectPx = HomeLayout.PrimaryPinRect(safeArea, dpi, hasDaily);
@@ -640,19 +641,25 @@ namespace CatMetro.Presentation.Screens
             ApplyPx(_ring, HomeLayout.RingRect(safeArea, dpi, hasDaily));
 
             _heroRectPx = HomeLayout.HeroRect(safeArea, dpi, hasDaily);
-            float viewportWidth = Mathf.Max(Screen.width, safeArea.xMax);
-            float viewportHeight = Mathf.Max(Screen.height, safeArea.yMax);
+            if (viewport.width <= 0f || viewport.height <= 0f)
+            {
+                viewport = new Rect(0f, 0f,
+                    Mathf.Max(Screen.width, safeArea.xMax),
+                    Mathf.Max(Screen.height, safeArea.yMax));
+            }
             float windowXMin = _heroRectPx.x + _heroRectPx.width * WindowXMin;
             float windowXMax = _heroRectPx.x + _heroRectPx.width * WindowXMax;
             float windowYMin = _heroRectPx.y + _heroRectPx.height * WindowYMin;
             float windowYMax = _heroRectPx.y + _heroRectPx.height * WindowYMax;
-            ApplyPx(_backdropBottom, new Rect(0f, 0f, viewportWidth, windowYMin));
-            ApplyPx(_backdropTop, new Rect(0f, windowYMax, viewportWidth,
-                Mathf.Max(0f, viewportHeight - windowYMax)));
-            ApplyPx(_backdropLeft, new Rect(0f, windowYMin, windowXMin,
+            ApplyPx(_backdropBottom, new Rect(viewport.xMin, viewport.yMin,
+                viewport.width, Mathf.Max(0f, windowYMin - viewport.yMin)));
+            ApplyPx(_backdropTop, new Rect(viewport.xMin, windowYMax, viewport.width,
+                Mathf.Max(0f, viewport.yMax - windowYMax)));
+            ApplyPx(_backdropLeft, new Rect(viewport.xMin, windowYMin,
+                Mathf.Max(0f, windowXMin - viewport.xMin),
                 Mathf.Max(0f, windowYMax - windowYMin)));
             ApplyPx(_backdropRight, new Rect(windowXMax, windowYMin,
-                Mathf.Max(0f, viewportWidth - windowXMax),
+                Mathf.Max(0f, viewport.xMax - windowXMax),
                 Mathf.Max(0f, windowYMax - windowYMin)));
             ApplyPx(_hero, _heroRectPx);
             float shadowDx = 4f * HudBands.PxPerDp(dpi);
