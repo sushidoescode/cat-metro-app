@@ -208,7 +208,7 @@ namespace CatMetro.Services.Ads
 
         public RewardedShowOutcome Show(string placementId)
         {
-            return ShowCore(placementId, null);
+            return ShowCore(placementId, null, null);
         }
 
         public bool CanShow(string placementId, string entitlementId)
@@ -235,16 +235,30 @@ namespace CatMetro.Services.Ads
                     RewardedAdCompletionKind.Unavailable);
                 return RewardedShowOutcome.Unavailable;
             }
-            return ShowCore(placementId, completed);
+            return ShowCore(placementId, entitlementId, completed);
         }
 
-        private RewardedShowOutcome ShowCore(string placementId,
+        private RewardedShowOutcome ShowCore(string placementId, string requestedEntitlementId,
             Action<RewardedAdCompletion> completed)
         {
-            if (_openAttempt != null) return RewardedShowOutcome.Busy;
-            if (!CanShow(placementId)) return RewardedShowOutcome.Unavailable;
-            if (!_placements.TryGet(placementId, out var placement))
+            if (_openAttempt != null)
+            {
+                CompleteImmediate(completed, placementId, requestedEntitlementId,
+                    RewardedAdCompletionKind.Unavailable);
+                return RewardedShowOutcome.Busy;
+            }
+            if (!CanShow(placementId))
+            {
+                CompleteImmediate(completed, placementId, requestedEntitlementId,
+                    RewardedAdCompletionKind.Unavailable);
                 return RewardedShowOutcome.Unavailable;
+            }
+            if (!_placements.TryGet(placementId, out var placement))
+            {
+                CompleteImmediate(completed, placementId, requestedEntitlementId,
+                    RewardedAdCompletionKind.Unavailable);
+                return RewardedShowOutcome.Unavailable;
+            }
 
             long attemptId;
             try
@@ -256,6 +270,8 @@ namespace CatMetro.Services.Ads
             {
                 _providerFailed = true;
                 RaiseAvailabilityChanged();
+                CompleteImmediate(completed, placementId, requestedEntitlementId,
+                    RewardedAdCompletionKind.Unavailable);
                 return RewardedShowOutcome.Unavailable;
             }
 

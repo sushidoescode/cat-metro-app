@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using CatMetro.Services.Ads;
 using CatMetro.Services.Purchases;
 using NUnit.Framework;
@@ -8,6 +10,183 @@ namespace CatMetro.Tests.Ads
 {
     public sealed class RewardedAdCoordinatorTests
     {
+        [Test]
+        public void ExactShow_PrecheckFailuresCompleteOnceWithTheRequestedIdentity()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            using var coordinator = RewardedAdFixtures.Coordinator(provider);
+            coordinator.Start();
+
+            AssertImmediateExactFailure(coordinator, "missing", "outfit_conductor",
+                RewardedShowOutcome.Unavailable);
+            AssertImmediateExactFailure(coordinator, "p0", "wrong_entitlement",
+                RewardedShowOutcome.Unavailable);
+            provider.IsReady = false;
+            AssertImmediateExactFailure(coordinator, "p0", "outfit_conductor",
+                RewardedShowOutcome.Unavailable);
+            provider.IsReady = true;
+            Assert.That(coordinator.Show("p0"), Is.EqualTo(RewardedShowOutcome.Started));
+            AssertImmediateExactFailure(coordinator, "p1", "outfit_conductor",
+                RewardedShowOutcome.Busy);
+        }
+
+        [Test]
+        public void ExactShow_SecondStageBusyUnavailableAndOverflowStillCompleteOnce()
+        {
+            var flipProvider = new RewardedAdFixtures.Provider();
+            flipProvider.PlacementReadinessResults.Enqueue(true);
+            flipProvider.PlacementReadinessResults.Enqueue(false);
+            using var unavailable = RewardedAdFixtures.Coordinator(flipProvider);
+            unavailable.Start();
+            AssertImmediateExactFailure(unavailable, "p0", "outfit_conductor",
+                RewardedShowOutcome.Unavailable);
+
+            var busyProvider = new RewardedAdFixtures.Provider();
+            using var busy = RewardedAdFixtures.Coordinator(busyProvider);
+            busy.Start();
+            int readinessChecks = 0;
+            busyProvider.OnPlacementReadinessCheck = _ =>
+            {
+                readinessChecks++;
+                if (readinessChecks != 1) return;
+                Assert.That(busy.Show("p1"), Is.EqualTo(RewardedShowOutcome.Started));
+            };
+            AssertImmediateExactFailure(busy, "p0", "outfit_conductor",
+                RewardedShowOutcome.Busy);
+
+            var overflowProvider = new RewardedAdFixtures.Provider();
+            using var overflow = RewardedAdFixtures.Coordinator(overflowProvider);
+            overflow.Start();
+            var nextAttempt = typeof(RewardedAdCoordinator).GetField("_nextAttemptId",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(nextAttempt, Is.Not.Null);
+            nextAttempt.SetValue(overflow, long.MaxValue);
+            AssertImmediateExactFailure(overflow, "p0", "outfit_conductor",
+                RewardedShowOutcome.Unavailable);
+        }
+
+        [Test]
+        public void ExactShow_ProviderRejectOrThrowCompletesOneDisplayFailedWithExactAttempt()
+        {
+            AssertRejectedExactShow(new RewardedAdFixtures.Provider { ShowAccepted = false });
+            AssertRejectedExactShow(new RewardedAdFixtures.Provider { ThrowOnShow = true });
+        }
+
+        [Test]
+        public void ExactShow_SynchronousDisplayFailureDuringRejectedShowCompletesOnlyOnce()
+        {
+            var provider = new RewardedAdFixtures.Provider { ShowAccepted = false };
+            provider.OnShow = (attemptId, placementId) => provider.Emit(
+                new RewardedAdEvent(RewardedAdEventKind.DisplayFailed, attemptId, placementId));
+            using var coordinator = RewardedAdFixtures.Coordinator(provider);
+            coordinator.Start();
+            var completions = new List<RewardedAdCompletion>();
+
+            Assert.That(coordinator.Show("p0", "outfit_conductor", completions.Add),
+                Is.EqualTo(RewardedShowOutcome.Unavailable));
+
+            AssertExactCompletion(completions, RewardedAdCompletionKind.DisplayFailed,
+                attemptMustExist: true);
+        }
+
+        [Test]
+        public void ExactShow_CloseThenLateRewardKeepsClosedCompletionAndGrantsDurablyOnce()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var persistence = new RewardedAdFixtures.LeasePersistence();
+            var service = RewardedAdFixtures.Service(persistence);
+            using var coordinator = RewardedAdFixtures.Coordinator(provider, service: service);
+            coordinator.Start();
+            var completions = new List<RewardedAdCompletion>();
+            Assert.That(coordinator.Show("p0", "outfit_conductor", completions.Add),
+                Is.EqualTo(RewardedShowOutcome.Started));
+            long attempt = provider.Shows.Single().AttemptId;
+
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Closed, attempt, "p0"));
+            AssertExactCompletion(completions,
+                RewardedAdCompletionKind.ClosedWithoutReward, attemptMustExist: true);
+            Assert.That(service.IsUnlocked("outfit_conductor"), Is.False);
+
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, attempt, "p0"));
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, attempt, "p0"));
+
+            AssertExactCompletion(completions,
+                RewardedAdCompletionKind.ClosedWithoutReward, attemptMustExist: true);
+            Assert.That(service.IsUnlocked("outfit_conductor"), Is.True);
+            Assert.That(service.Ledger.ExportLeases(), Has.Count.EqualTo(1));
+            Assert.That(persistence.Calls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ExactShow_ForeignAttemptOrPlacementTerminalsCannotCompleteOrGrant()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var service = RewardedAdFixtures.Service();
+            using var coordinator = RewardedAdFixtures.Coordinator(provider, service: service);
+            coordinator.Start();
+            var completions = new List<RewardedAdCompletion>();
+            Assert.That(coordinator.Show("p0", "outfit_conductor", completions.Add),
+                Is.EqualTo(RewardedShowOutcome.Started));
+            long attempt = provider.Shows.Single().AttemptId;
+
+            foreach (var kind in new[]
+                     {
+                         RewardedAdEventKind.Rewarded,
+                         RewardedAdEventKind.Closed,
+                         RewardedAdEventKind.DisplayFailed,
+                     })
+            {
+                provider.Emit(new RewardedAdEvent(kind, attempt + 1L, "p0"));
+                provider.Emit(new RewardedAdEvent(kind, attempt, "p1"));
+            }
+
+            Assert.That(completions, Is.Empty);
+            Assert.That(service.IsUnlocked("outfit_conductor"), Is.False);
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, attempt, "p0"));
+            AssertExactCompletion(completions, RewardedAdCompletionKind.Granted,
+                attemptMustExist: true);
+            Assert.That(service.IsUnlocked("outfit_conductor"), Is.True);
+        }
+
+        [Test]
+        public void ExactShow_DisposeTwiceCompletesOpenOnceButCannotReplacePriorClose()
+        {
+            var openProvider = new RewardedAdFixtures.Provider();
+            var openService = RewardedAdFixtures.Service();
+            var open = RewardedAdFixtures.Coordinator(openProvider, service: openService);
+            open.Start();
+            var cancelled = new List<RewardedAdCompletion>();
+            Assert.That(open.Show("p0", "outfit_conductor", cancelled.Add),
+                Is.EqualTo(RewardedShowOutcome.Started));
+            long openAttempt = openProvider.Shows.Single().AttemptId;
+            open.Dispose();
+            open.Dispose();
+            openProvider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded,
+                openAttempt, "p0"));
+            AssertExactCompletion(cancelled, RewardedAdCompletionKind.Cancelled,
+                attemptMustExist: true);
+            Assert.That(openService.IsUnlocked("outfit_conductor"), Is.False);
+            Assert.That(openService.Ledger.ExportLeases(), Is.Empty);
+
+            var closedProvider = new RewardedAdFixtures.Provider();
+            var closedService = RewardedAdFixtures.Service();
+            var closed = RewardedAdFixtures.Coordinator(closedProvider, service: closedService);
+            closed.Start();
+            var priorClose = new List<RewardedAdCompletion>();
+            Assert.That(closed.Show("p0", "outfit_conductor", priorClose.Add),
+                Is.EqualTo(RewardedShowOutcome.Started));
+            long attempt = closedProvider.Shows.Single().AttemptId;
+            closedProvider.Emit(new RewardedAdEvent(RewardedAdEventKind.Closed, attempt, "p0"));
+            closed.Dispose();
+            closed.Dispose();
+            closedProvider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded,
+                attempt, "p0"));
+            AssertExactCompletion(priorClose,
+                RewardedAdCompletionKind.ClosedWithoutReward, attemptMustExist: true);
+            Assert.That(closedService.IsUnlocked("outfit_conductor"), Is.False);
+            Assert.That(closedService.Ledger.ExportLeases(), Is.Empty);
+        }
+
         [Test]
         public void Start_SubscribesBeforeInspectingReporterReadiness()
         {
@@ -1112,6 +1291,49 @@ namespace CatMetro.Tests.Ads
             Assert.That(provider.EventRemoveCalls, Is.EqualTo(1));
             Assert.That(reporter.EventRemoveCalls, Is.EqualTo(1));
             Assert.That(provider.DisposeCalls, Is.EqualTo(1));
+        }
+
+        private static void AssertImmediateExactFailure(RewardedAdCoordinator coordinator,
+            string placementId, string entitlementId, RewardedShowOutcome expectedOutcome)
+        {
+            var completions = new List<RewardedAdCompletion>();
+
+            Assert.That(coordinator.Show(placementId, entitlementId, completions.Add),
+                Is.EqualTo(expectedOutcome));
+
+            Assert.That(completions, Has.Count.EqualTo(1));
+            Assert.That(completions[0].AttemptId, Is.Zero,
+                "a pre-attempt rejection must not invent an attempt identity");
+            Assert.That(completions[0].PlacementId, Is.EqualTo(placementId));
+            Assert.That(completions[0].EntitlementId, Is.EqualTo(entitlementId));
+            Assert.That(completions[0].Kind,
+                Is.EqualTo(RewardedAdCompletionKind.Unavailable));
+        }
+
+        private static void AssertRejectedExactShow(RewardedAdFixtures.Provider provider)
+        {
+            using var coordinator = RewardedAdFixtures.Coordinator(provider);
+            coordinator.Start();
+            var completions = new List<RewardedAdCompletion>();
+
+            Assert.That(coordinator.Show("p0", "outfit_conductor", completions.Add),
+                Is.EqualTo(RewardedShowOutcome.Unavailable));
+
+            AssertExactCompletion(completions, RewardedAdCompletionKind.DisplayFailed,
+                attemptMustExist: true);
+            Assert.That(provider.Shows, Has.Count.EqualTo(1));
+            Assert.That(completions[0].AttemptId, Is.EqualTo(provider.Shows[0].AttemptId));
+        }
+
+        private static void AssertExactCompletion(IReadOnlyList<RewardedAdCompletion> completions,
+            RewardedAdCompletionKind kind, bool attemptMustExist)
+        {
+            Assert.That(completions, Has.Count.EqualTo(1));
+            Assert.That(completions[0].AttemptId,
+                attemptMustExist ? Is.GreaterThan(0L) : Is.Zero);
+            Assert.That(completions[0].PlacementId, Is.EqualTo("p0"));
+            Assert.That(completions[0].EntitlementId, Is.EqualTo("outfit_conductor"));
+            Assert.That(completions[0].Kind, Is.EqualTo(kind));
         }
     }
 }

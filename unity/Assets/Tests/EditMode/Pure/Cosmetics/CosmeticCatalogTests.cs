@@ -51,6 +51,8 @@ namespace CatMetro.Tests.Cosmetics
             Assert.That(conductor.Acquisition, Is.EqualTo(CosmeticAcquisition.Entitlement));
             Assert.That(conductor.EntitlementId, Is.EqualTo("outfit_conductor"));
             Assert.That(conductor.ProductId, Is.EqualTo("cm_outfit_conductor"));
+            Assert.That(conductor.RewardedPlacementId, Is.EqualTo("wardrobe_try_conductor"),
+                "the shipped Wardrobe row may offer only the exact conductor placement");
             Assert.That(conductor.CompatibleCatIds,
                 Is.EqualTo(new[] { "red_tabby", "blue_siamese", "yellow_longhair" }));
             Assert.That(catalog.TryGetCat(null, out _), Is.False);

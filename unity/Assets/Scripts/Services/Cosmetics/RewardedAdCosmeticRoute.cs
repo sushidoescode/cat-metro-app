@@ -7,18 +7,21 @@ namespace CatMetro.Services.Cosmetics
     public sealed class RewardedAdCosmeticRoute : ICosmeticRewardedRoute, IDisposable
     {
         private IRewardedAds _subscribed;
+        private IRewardedAds _pendingSource;
+        private Action<CosmeticRewardedCompletion> _pendingFinish;
         private bool _disposed;
 
         public event Action AvailabilityChanged;
 
         public RewardedAdCosmeticRoute()
         {
-            RewardedAdRuntime.Installed += OnRuntimeInstalled;
+            RewardedAdRuntime.Changed += OnRuntimeChanged;
             Rebind(RewardedAdRuntime.Current);
         }
 
         public bool CanOffer(string placementId, string entitlementId)
         {
+            if (_disposed) return false;
             var source = Resolve() as IRewardedAdExactCompletionSource;
             try { return source != null && source.CanShow(placementId, entitlementId); }
             catch { return false; }
@@ -30,14 +33,30 @@ namespace CatMetro.Services.Cosmetics
             var ads = Resolve();
             var source = ads as IRewardedAdExactCompletionSource;
             bool completedOnce = false;
-            Action<CosmeticRewardedCompletion> finish = outcome =>
+            Action<CosmeticRewardedCompletion> finish = null;
+            finish = outcome =>
             {
                 if (completedOnce) return;
                 completedOnce = true;
+                if (ReferenceEquals(_pendingFinish, finish))
+                {
+                    _pendingFinish = null;
+                    _pendingSource = null;
+                }
                 try { completed?.Invoke(outcome); }
                 catch { }
             };
+            if (_pendingFinish != null)
+            {
+                finish(CosmeticRewardedCompletion.NotGranted);
+                return;
+            }
             if (_disposed || source == null || !CanOffer(placementId, entitlementId))
+            {
+                finish(CosmeticRewardedCompletion.NotGranted);
+                return;
+            }
+            if (!ReferenceEquals(ads, Resolve()))
             {
                 finish(CosmeticRewardedCompletion.NotGranted);
                 return;
@@ -46,6 +65,8 @@ namespace CatMetro.Services.Cosmetics
             RewardedShowOutcome shown;
             try
             {
+                _pendingSource = ads;
+                _pendingFinish = finish;
                 shown = source.Show(placementId, entitlementId, result =>
                 {
                     bool exact = ReferenceEquals(ads, Resolve()) && result.AttemptId > 0L &&
@@ -69,7 +90,7 @@ namespace CatMetro.Services.Cosmetics
         {
             if (_disposed) return;
             _disposed = true;
-            RewardedAdRuntime.Installed -= OnRuntimeInstalled;
+            RewardedAdRuntime.Changed -= OnRuntimeChanged;
             Rebind(null);
         }
 
@@ -79,11 +100,13 @@ namespace CatMetro.Services.Cosmetics
             return _subscribed;
         }
 
-        private void OnRuntimeInstalled() => Rebind(RewardedAdRuntime.Current);
+        private void OnRuntimeChanged() => Rebind(RewardedAdRuntime.Current);
 
         private void Rebind(IRewardedAds next)
         {
             if (ReferenceEquals(_subscribed, next)) return;
+            if (_pendingSource != null && !ReferenceEquals(_pendingSource, next))
+                _pendingFinish?.Invoke(CosmeticRewardedCompletion.NotGranted);
             if (_subscribed != null)
             {
                 try { _subscribed.AvailabilityChanged -= OnAvailabilityChanged; }
@@ -102,6 +125,7 @@ namespace CatMetro.Services.Cosmetics
 
         private void RaiseAvailabilityChanged()
         {
+            if (_disposed) return;
             var handlers = AvailabilityChanged;
             if (handlers == null) return;
             foreach (Action handler in handlers.GetInvocationList())

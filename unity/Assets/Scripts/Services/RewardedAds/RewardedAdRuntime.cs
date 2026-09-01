@@ -11,12 +11,14 @@ namespace CatMetro.Services.Ads
         public static IRewardedAds Current => _current ??= NoRewardedAds.Instance;
         public static bool IsInstalled { get; private set; }
         public static event Action Installed;
+        public static event Action Changed;
 
         public static void Install(IRewardedAds rewardedAds)
         {
             if (rewardedAds == null) return;
             _current = rewardedAds;
             IsInstalled = true;
+            Changed?.Invoke();
             Installed?.Invoke();
         }
 
@@ -28,6 +30,7 @@ namespace CatMetro.Services.Ads
             if (rewardedAds == null || !ReferenceEquals(_current, rewardedAds)) return false;
             _current = NoRewardedAds.Instance;
             IsInstalled = false;
+            Changed?.Invoke();
             return true;
         }
 
@@ -36,6 +39,7 @@ namespace CatMetro.Services.Ads
             _current = NoRewardedAds.Instance;
             IsInstalled = false;
             Installed = null;
+            Changed = null;
         }
 
         private sealed class NoRewardedAds : IRewardedAds

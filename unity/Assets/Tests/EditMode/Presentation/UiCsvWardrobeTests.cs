@@ -30,10 +30,6 @@ namespace CatMetro.Tests.Presentation
             "wardrobe.status.restored", "wardrobe.status.none",
             "wardrobe.status.restore.failed", "wardrobe.product", "wardrobe.equipped",
             "wardrobe.status.locked", "wardrobe.status.equipped", "wardrobe.status.failed",
-            "wardrobe.tryon.heading", "wardrobe.tryon.conductor", "wardrobe.tryon.engineer",
-            "wardrobe.tryon.scarf", "wardrobe.tryon.goggles", "wardrobe.tryon.locked",
-            "wardrobe.tryon.borrowed", "wardrobe.tryon.watch", "wardrobe.tryon.unavailable",
-            "wardrobe.tryon.success",
         };
 
         [Test]

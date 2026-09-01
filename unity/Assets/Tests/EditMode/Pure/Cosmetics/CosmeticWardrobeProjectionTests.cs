@@ -76,7 +76,9 @@ namespace CatMetro.Tests.Cosmetics
         public void LockedEntitlementWithNeitherPriceNorDeclaredRewardedRouteIsAbsent()
         {
             var inventory = ShippedInventory();
-            var catalog = ShippedCatalog(inventory);
+            var root = ShippedCatalogRoot();
+            Item(root, "outfit_conductor").Remove("rewardedPlacementId");
+            var catalog = ParseCatalog(root, inventory);
             var purchases = CreatePurchases();
             var profile = CreateProfile(catalog, inventory, purchases, DefaultProfile());
 
@@ -104,6 +106,26 @@ namespace CatMetro.Tests.Cosmetics
             Assert.That(rows[0].IsAccessible, Is.False);
             Assert.That(rows[0].Route, Is.EqualTo(CosmeticWardrobeRoute.Purchase));
             Assert.That(rows[0].Price.DisplayText, Is.EqualTo("€1.99"));
+        }
+
+        [Test]
+        public void ShippedConductor_UsesExactWatchOnlyWhenPriceIsUnavailable()
+        {
+            var inventory = ShippedInventory();
+            var catalog = ShippedCatalog(inventory);
+            var profile = CreateProfile(catalog, inventory, CreatePurchases(), DefaultProfile());
+            var watched = new SelectiveRewardedRoute("wardrobe_try_conductor",
+                "outfit_conductor");
+
+            var watchRows = CosmeticWardrobeProjection.Build(catalog, profile,
+                CreatePurchases(), watched, "red_tabby", CosmeticSlot.Outfit);
+            var priceRows = CosmeticWardrobeProjection.Build(catalog, profile,
+                CreatePurchases("cm_outfit_conductor", "$2.79"), watched,
+                "red_tabby", CosmeticSlot.Outfit);
+
+            Assert.That(watchRows.Single().Route, Is.EqualTo(CosmeticWardrobeRoute.Rewarded));
+            Assert.That(priceRows.Single().Route, Is.EqualTo(CosmeticWardrobeRoute.Purchase));
+            Assert.That(priceRows.Single().Price.DisplayText, Is.EqualTo("$2.79"));
         }
 
         [Test]

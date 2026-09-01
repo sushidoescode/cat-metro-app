@@ -402,9 +402,8 @@ namespace CatMetro.Tests.PlayMode
             var rewarded = new RecordingRewardedRoute(true)
             {
                 NextCompletion = CosmeticRewardedCompletion.NotGranted,
+                DeferCompletion = true,
             };
-            rewarded.BeforeCompletion = () =>
-                setup.Purchases.GrantRewardedAdEntitlement("outfit_conductor");
             CreateView(setup, rewarded);
             _view.Open();
             Layout();
@@ -412,15 +411,24 @@ namespace CatMetro.Tests.PlayMode
 
             Tap(CardRect("outfit_conductor"));
             Tap(FindRect("PrimaryActionChip"));
+            rewarded.CompleteNext();
             yield return null;
 
             Assert.That(rewarded.LastPlacementId, Is.EqualTo("wardrobe.borrow.coat"));
-            Assert.That(setup.Purchases.IsUnlocked("outfit_conductor"), Is.True,
-                "the shared durable authority observes the late grant");
+            Assert.That(setup.Purchases.IsUnlocked("outfit_conductor"), Is.False,
+                "the close completion releases Wardrobe before a late coordinator reward");
             Assert.That(setup.Profile.Profile.LoadoutFor("red_tabby").OutfitId, Is.Empty,
                 "a non-granted visible completion must never auto-equip");
             Assert.That(_view.VisibleCards.Count, Is.GreaterThan(0));
             Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.True);
+
+            Assert.That(setup.Purchases.GrantRewardedAdEntitlement("outfit_conductor"),
+                Is.EqualTo(AdGrantOutcome.Granted));
+            yield return null;
+            Assert.That(setup.Purchases.IsUnlocked("outfit_conductor"), Is.True,
+                "the shared durable authority observes the late grant");
+            Assert.That(setup.Profile.Profile.LoadoutFor("red_tabby").OutfitId, Is.Empty,
+                "late durable ownership reprojects the row but never auto-equips it");
         }
 
         [UnityTest]
@@ -1749,24 +1757,24 @@ namespace CatMetro.Tests.PlayMode
                 new CosmeticLoadout("red_tabby", outfit, "", frame),
             });
 
-        private static CosmeticAssetInventory ShippedInventory() =>
+        internal static CosmeticAssetInventory ShippedInventory() =>
             CosmeticAssetInventory.Parse(Resources.Load<TextAsset>("Cosmetics/portrait_assets").text,
                 CosmeticPortraitPainter.SupportedRendererTokens);
 
-        private static CosmeticCatalog ShippedCatalog(CosmeticAssetInventory inventory) =>
+        internal static CosmeticCatalog ShippedCatalog(CosmeticAssetInventory inventory) =>
             CosmeticCatalog.Parse(Resources.Load<TextAsset>("Cosmetics/cosmetic_catalog").text,
                 inventory.AssetIds, inventory.ProvenanceAssetIds);
 
         private static PurchaseCatalog ShippedPurchaseCatalog() => PurchaseCatalog.Parse(
             Resources.Load<TextAsset>("Monetization/product_catalog").text);
 
-        private static JObject ShippedCosmeticCatalogRoot() => JObject.Parse(
+        internal static JObject ShippedCosmeticCatalogRoot() => JObject.Parse(
             Resources.Load<TextAsset>("Cosmetics/cosmetic_catalog").text);
 
         private static JObject ShippedInventoryRoot() => JObject.Parse(
             Resources.Load<TextAsset>("Cosmetics/portrait_assets").text);
 
-        private static JObject Item(JObject root, string id) => root["items"].Children<JObject>()
+        internal static JObject Item(JObject root, string id) => root["items"].Children<JObject>()
             .Single(row => (string)row["id"] == id);
 
         private static JObject Asset(JObject root, string id) => root["assets"].Children<JObject>()

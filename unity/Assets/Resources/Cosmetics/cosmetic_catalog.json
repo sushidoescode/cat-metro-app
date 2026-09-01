@@ -29,6 +29,7 @@
       "acquisition": "entitlement",
       "entitlementId": "outfit_conductor",
       "productId": "cm_outfit_conductor",
+      "rewardedPlacementId": "wardrobe_try_conductor",
       "compatibleCatIds": ["red_tabby", "blue_siamese", "yellow_longhair"],
       "order": 10
     },

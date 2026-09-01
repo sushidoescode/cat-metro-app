@@ -784,7 +784,11 @@ namespace CatMetro.Presentation.Screens
 
         private void OnRewardedAvailabilityChanged()
         {
-            if (!_rebuildingProjection && !_destroyed && isActiveAndEnabled && _panelShown)
+            // Starting this Wardrobe's own ad makes the exact placement busy synchronously.
+            // Keep its selected row/operation mounted until the typed terminal callback; authority
+            // changes still reproject through OnAuthorityChanged before a granted equip.
+            if (!_rewardBusy && !_rebuildingProjection && !_destroyed
+                && isActiveAndEnabled && _panelShown)
                 RebuildProjectionAndCards();
         }
 

@@ -2,16 +2,19 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using CatMetro.Application.Save;
 using CatMetro.Bootstrap;
 using CatMetro.Integrations;
+using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Input;
 using CatMetro.Presentation.Screens;
+using CatMetro.Presentation.Strings;
 using CatMetro.Services;
 using CatMetro.Services.Ads;
+using CatMetro.Services.Cosmetics;
 using CatMetro.Services.Purchases;
 using NUnit.Framework;
-using TMPro;
 using UnityEngine;
 using UnityEngine.TestTools;
 
@@ -19,14 +22,16 @@ namespace CatMetro.Tests.PlayMode
 {
     public sealed class RewardedAdsWiringTests
     {
-        private const long InitialNow = 2_000_000_000L;
+        internal const long InitialNow = 2_000_000_000L;
         private const long ExpectedConductorExpiry = InitialNow + 86_400L;
-        private const string LocalDateKey = "2033-05-18";
-        private static readonly Rect PhoneSafeArea = new Rect(0f, 64f, 917f, 1920f);
+        internal const string LocalDateKey = "2033-05-18";
+        internal static readonly Rect PhoneSafeArea = new Rect(0f, 64f, 917f, 1920f);
 
         private readonly List<GameObject> _ownedObjects = new List<GameObject>();
         private readonly List<RewardedAdsComposition> _directCompositions =
             new List<RewardedAdsComposition>();
+        private readonly List<CosmeticProfileService> _directProfiles =
+            new List<CosmeticProfileService>();
         private readonly List<TempStorageRoot> _tempRoots = new List<TempStorageRoot>();
 
         [SetUp]
@@ -54,6 +59,8 @@ namespace CatMetro.Tests.PlayMode
 
             for (int i = _directCompositions.Count - 1; i >= 0; i--)
                 _directCompositions[i]?.Dispose();
+            for (int i = _directProfiles.Count - 1; i >= 0; i--)
+                _directProfiles[i]?.Dispose();
             MonetizationBootstrap.ResetForTests();
             PurchaseBackendFactory.ResetForTests();
             RewardedAdProviderFactory.ResetForTests();
@@ -68,6 +75,7 @@ namespace CatMetro.Tests.PlayMode
                 _tempRoots[i]?.Dispose();
             _ownedObjects.Clear();
             _directCompositions.Clear();
+            _directProfiles.Clear();
             _tempRoots.Clear();
         }
 
@@ -127,7 +135,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(durableBeforePublication, Is.True,
                 "Ledger.Changed must observe the exact earned lease already committed to disk");
             Assert.That(firstService.IsUnlocked(EntitlementIds.OutfitConductor), Is.True);
-            AssertBorrowed(firstRig.View, 0, true);
+            AssertCurrentWardrobeState(firstRig.View, firstRig.Input, conductorOwned: true);
             Assert.That(ExactExpiry(firstService.Ledger.ExportLeases(),
                 EntitlementIds.OutfitConductor), Is.EqualTo(ExpectedConductorExpiry));
             Assert.That(ExactExpiry(new RewardedAdSaveStore(store).ReadLocalLeases(),
@@ -168,7 +176,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(secondService.IsUnlocked(EntitlementIds.OutfitConductor), Is.True);
             Assert.That(ExactExpiry(secondService.Ledger.ExportLeases(),
                 EntitlementIds.OutfitConductor), Is.EqualTo(ExpectedConductorExpiry));
-            AssertBorrowed(secondRig.View, 0, true);
+            AssertCurrentWardrobeState(secondRig.View, secondRig.Input, conductorOwned: true);
             secondRig.View.Hide();
             UnityEngine.Object.Destroy(secondRig.CanvasHost);
             UnityEngine.Object.Destroy(secondRig.InputHost);
@@ -211,7 +219,7 @@ namespace CatMetro.Tests.PlayMode
             clock.Now = firstExpiry + 1L;
             Assert.That(service.PruneExpiredLeases(), Is.True);
             Assert.That(service.IsUnlocked(EntitlementIds.OutfitConductor), Is.False);
-            AssertBorrowed(rig.View, 0, false);
+            AssertCurrentWardrobeState(rig.View, rig.Input, conductorOwned: false);
             byte[] beforeExpiredDuplicate = File.ReadAllBytes(store.SavePath);
 
             provider.Emit(RewardedAdEventKind.Rewarded, conductorAttempt, PlacementIds[0]);
@@ -240,8 +248,7 @@ namespace CatMetro.Tests.PlayMode
                 "close-before-reward keeps the exact original attempt eligible");
             Assert.That(service.IsUnlocked(EntitlementIds.AccessoryScarf), Is.False,
                 "the late Engineer callback cannot grant the newer Scarf attempt");
-            AssertBorrowed(rig.View, 1, true);
-            AssertBorrowed(rig.View, 2, false);
+            AssertCurrentWardrobeState(rig.View, rig.Input, conductorOwned: false);
             Assert.That(RewardedAdRuntime.Current.Show(PlacementIds[3]),
                 Is.EqualTo(RewardedShowOutcome.Busy),
                 "the newer Scarf attempt remains the one open attempt");
@@ -250,8 +257,7 @@ namespace CatMetro.Tests.PlayMode
             CollectionAssert.AreEqual(afterLateReward, File.ReadAllBytes(store.SavePath));
             Assert.That(new RewardedAdSaveStore(store).ReadLocalDateCount(
                 PlacementIds[1], LocalDateKey), Is.EqualTo(1));
-            AssertBorrowed(rig.View, 1, true);
-            AssertBorrowed(rig.View, 2, false);
+            AssertCurrentWardrobeState(rig.View, rig.Input, conductorOwned: false);
             provider.Emit(RewardedAdEventKind.Closed, scarfAttempt, PlacementIds[2]);
             rig.View.Hide();
             UnityEngine.Object.Destroy(rig.CanvasHost);
@@ -353,12 +359,22 @@ namespace CatMetro.Tests.PlayMode
                 Is.EqualTo(-3));
             yield return null;
 
-            AssertWardrobeNoAdTargets(game.Wardrobe, game.Input);
-            Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.BuyRectPx.center),
+            AssertCurrentWardrobeState(game.Wardrobe, game.Input);
+            var conductorCard = game.Wardrobe.VisibleCards.Single(card =>
+                card != null && card.IsActive && card.ItemId == EntitlementIds.OutfitConductor);
+            Assert.That(game.Input.HandleTapAtScreen(conductorCard.ScreenRect.center),
                 Is.EqualTo(-3));
-            Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.RestoreRectPx.center),
+            yield return null;
+            var primary = game.Wardrobe.transform.Find(
+                "WardrobePanel/PrimaryActionChip") as RectTransform;
+            Assert.That(primary, Is.Not.Null);
+            Assert.That(primary.gameObject.activeInHierarchy, Is.True);
+            Assert.That(game.Input.Regions.IsRegistered("wardrobe.primary"), Is.True);
+            Assert.That(game.Input.HandleTapAtScreen(ProjectedScreenRect(primary).center),
                 Is.EqualTo(-3));
             Assert.That(backend.PurchaseCalls, Is.EqualTo(1));
+            Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.RestoreRectPx.center),
+                Is.EqualTo(-3));
             Assert.That(backend.RestoreCalls, Is.EqualTo(1));
             Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.BackRectPx.center),
                 Is.EqualTo(-3));
@@ -408,11 +424,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.EntryRectPx.center),
                 Is.EqualTo(-3));
             yield return null;
-            Assert.That(game.Wardrobe.transform.Find("WardrobePanel/TryOnStrip"), Is.Null);
-            Assert.That(game.Input.Regions.Count, Is.EqualTo(3));
-            for (int i = 0; i < PlacementIds.Length; i++)
-                Assert.That(game.Input.Regions.IsRegistered(
-                    "wardrobe.rewarded." + PlacementIds[i]), Is.False);
+            AssertCurrentWardrobeState(game.Wardrobe, game.Input);
             UnityEngine.Object.Destroy(game.gameObject);
             UnityEngine.Object.Destroy(monetizationHost);
             yield return null;
@@ -420,7 +432,7 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator UnconfiguredAds_RealBootOmitsTryOnArtifactAndReclaimsPreviewGap()
+        public IEnumerator UnconfiguredAds_RealBootLeavesCatalogueWardrobeAndNoRewardTarget()
         {
             var root = NewTempRoot();
             GameRoot.DailyStorageRootOverride = () => root;
@@ -453,58 +465,9 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Canvas.ForceUpdateCanvases();
 
-            var panel = game.Wardrobe.transform.Find("WardrobePanel");
-            Assert.That(panel, Is.Not.Null);
-            Assert.That(panel.Find("TryOnStrip"), Is.Null,
-                "an absent provider must leave no ad-shaped hierarchy to render");
-
-            string[] forbiddenTryOnText =
-            {
-                "Today's try-ons",
-                "Conductor",
-                "Engineer",
-                "Scarf",
-                "Goggles",
-                "Locked",
-                "Borrowed today",
-                "Watch to borrow today",
-                "Try-on unavailable",
-                "Ready to wear!",
-            };
-            var allLabels = game.Wardrobe.GetComponentsInChildren<TMP_Text>(true);
-            for (int i = 0; i < forbiddenTryOnText.Length; i++)
-            {
-                string forbidden = forbiddenTryOnText[i];
-                Assert.That(Array.Exists(allLabels, label => label.text == forbidden), Is.False,
-                    "unconfigured Wardrobe retained try-on text: " + forbidden);
-            }
-
-            Assert.That(game.Input.Regions.Count, Is.EqualTo(3),
-                "only Back, Buy, and Restore may remain on the open Wardrobe");
-            for (int i = 0; i < PlacementIds.Length; i++)
-            {
-                Assert.That(game.Input.Regions.IsRegistered(
-                    "wardrobe.rewarded." + PlacementIds[i]), Is.False,
-                    PlacementIds[i] + " left a ghost rewarded target");
-            }
-
-            var status = ProjectedScreenRect(
-                panel.Find("WardrobeStatus") as RectTransform);
-            var portrait = ProjectedScreenRect(
-                panel.Find("ProfileCatCard") as RectTransform);
-            const float expectedGapPx = 12f * (408f / 160f);
-            Assert.That(portrait.yMin - status.yMax,
-                Is.EqualTo(expectedGapPx).Within(1f),
-                "the portrait must reclaim the omitted 172dp preview band without a blank hole");
-
-            Assert.That(panel.Find("BackChip").gameObject.activeInHierarchy, Is.True);
-            Assert.That(panel.Find("BuyConductorCoatChip").gameObject.activeInHierarchy, Is.True);
-            Assert.That(panel.Find("RestorePurchasesChip").gameObject.activeInHierarchy, Is.True);
-            Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.BuyRectPx.center),
-                Is.EqualTo(-3));
+            AssertCurrentWardrobeState(game.Wardrobe, game.Input);
             Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.RestoreRectPx.center),
                 Is.EqualTo(-3));
-            Assert.That(backend.PurchaseCalls, Is.EqualTo(1));
             Assert.That(backend.RestoreCalls, Is.EqualTo(1));
             Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.BackRectPx.center),
                 Is.EqualTo(-3));
@@ -513,7 +476,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(game.Home.IsVisible, Is.True);
         }
 
-        private RewardedAdsComposition NewComposition(PurchaseService service, Provider provider,
+        internal RewardedAdsComposition NewComposition(PurchaseService service, Provider provider,
             IAdEventReporter reporter)
         {
             var composition = new RewardedAdsComposition(service, ShippedPlacements(service.Catalog),
@@ -522,17 +485,24 @@ namespace CatMetro.Tests.PlayMode
             return composition;
         }
 
-        private static PurchaseService NewService(IPurchaseBackend backend, MutableClock clock)
+        internal static PurchaseService NewService(IPurchaseBackend backend, MutableClock clock)
             => new PurchaseService(ShippedCatalog(), backend, clock.Read);
 
-        private WardrobeRig NewWardrobeRig(PurchaseService service)
+        internal WardrobeRig NewWardrobeRig(PurchaseService service,
+            CosmeticProfileService profile = null, ICosmeticRewardedRoute rewarded = null)
         {
             var canvasHost = Track(new GameObject("RewardedAdsWiringCanvas"));
             var canvas = canvasHost.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             var inputHost = Track(new GameObject("RewardedAdsWiringInput"));
             var input = inputHost.AddComponent<TapInput>();
-            var view = WardrobeScreenView.Create(canvas.transform, service);
+            if (profile == null)
+            {
+                profile = CosmeticComposition.Create(SaveRuntime.Current, service);
+                _directProfiles.Add(profile);
+            }
+            rewarded ??= new RewardedAdCosmeticRoute();
+            var view = WardrobeScreenView.Create(canvas.transform, service, profile, rewarded);
             view.Attach(input.Regions);
             var pumpHost = Track(new GameObject("RewardedAdsWiringPump"));
             pumpHost.AddComponent<MonetizationPump>().Bind(service,
@@ -540,14 +510,14 @@ namespace CatMetro.Tests.PlayMode
             return new WardrobeRig(canvasHost, inputHost, pumpHost, view, input);
         }
 
-        private TempStorageRoot NewTempRoot()
+        internal TempStorageRoot NewTempRoot()
         {
             var root = new TempStorageRoot();
             _tempRoots.Add(root);
             return root;
         }
 
-        private SaveStore NewStore(IStorageRoot root)
+        internal SaveStore NewStore(IStorageRoot root)
         {
             var bytes = File.ReadAllBytes(Path.Combine(UnityEngine.Application.streamingAssetsPath,
                 "config", "runtime_bounds.json"));
@@ -587,27 +557,36 @@ namespace CatMetro.Tests.PlayMode
               ""androidRewardedAdUnitId"": ""task-8-shared-rewarded-unit""
             }", RuntimePlatform.Android);
 
-        private static void AssertWardrobeNoAdTargets(WardrobeScreenView view, TapInput input)
+        private static void AssertCurrentWardrobeState(WardrobeScreenView view, TapInput input,
+            bool? conductorOwned = false)
         {
             Assert.That(view.PanelVisible, Is.True);
-            Assert.That(input.Regions.Count, Is.EqualTo(3),
-                "only Back, Buy, and Restore remain registered");
             Assert.That(input.Regions.IsRegistered("wardrobe.back"), Is.True);
-            Assert.That(input.Regions.IsRegistered("wardrobe.buy"), Is.True);
             Assert.That(input.Regions.IsRegistered("wardrobe.restore"), Is.True);
+            Assert.That(input.Regions.IsRegistered("wardrobe.primary"), Is.False,
+                "the single row action exists only after selecting an actual item card");
+            Assert.That(input.Regions.IsRegistered("wardrobe.buy"), Is.False);
+
+            var conductor = view.VisibleCards.SingleOrDefault(card => card != null
+                && card.IsActive && card.ItemId == EntitlementIds.OutfitConductor);
+            Assert.That(conductor, Is.Not.Null,
+                "the admitted conductor catalogue row must be the rendered artifact");
+            Assert.That(view.transform.Find(
+                "WardrobePanel/ItemsBand/CardsRoot/ItemCard-outfit_conductor"), Is.Not.Null);
+            Assert.That(input.Regions.IsRegistered("wardrobe.item.outfit_conductor"), Is.True);
+            Assert.That(view.transform.Find("WardrobePanel/TryOnStrip"), Is.Null);
             for (int i = 0; i < PlacementIds.Length; i++)
-            {
-                var card = view.transform.Find("WardrobePanel/TryOnStrip/TryOnCard_" +
-                    PlacementIds[i]);
-                Assert.That(card, Is.Not.Null);
-                Assert.That(card.gameObject.activeInHierarchy, Is.True,
-                    PlacementIds[i] + " card must remain visible");
-                Assert.That(card.Find("Silhouette").gameObject.activeInHierarchy, Is.True);
-                Assert.That(card.Find("ActionChip").gameObject.activeSelf, Is.False);
                 Assert.That(input.Regions.IsRegistered(
-                    "wardrobe.rewarded." + PlacementIds[i]), Is.False,
-                    PlacementIds[i] + " must leave no ghost input target");
-            }
+                    "wardrobe.rewarded." + PlacementIds[i]), Is.False);
+            Assert.That(input.Regions.Count, Is.EqualTo(9),
+                "Back, Restore, three cats, three tabs, and the admitted conductor card only");
+
+            if (!conductorOwned.HasValue) return;
+            string owned = UiStrings.Get("wardrobe.state.owned");
+            if (conductorOwned.Value)
+                Assert.That(conductor.DisplayedStatusText, Does.StartWith(owned));
+            else
+                Assert.That(conductor.DisplayedStatusText, Does.Not.StartWith(owned));
         }
 
         private static Rect ProjectedScreenRect(RectTransform rect)
@@ -647,17 +626,6 @@ namespace CatMetro.Tests.PlayMode
             return -1L;
         }
 
-        private static void AssertBorrowed(WardrobeScreenView view, int cardIndex, bool expected)
-        {
-            var card = view.transform.Find("WardrobePanel/TryOnStrip/TryOnCard_" +
-                PlacementIds[cardIndex]);
-            Assert.That(card, Is.Not.Null);
-            Assert.That(card.Find("BorrowedAccent").gameObject.activeSelf, Is.EqualTo(expected));
-            Assert.That(card.Find("LockedLabel").gameObject.activeSelf, Is.EqualTo(!expected));
-            Assert.That(card.Find("BorrowedLabel").gameObject.activeSelf, Is.EqualTo(expected));
-            Assert.That(card.Find("SuccessLabel").gameObject.activeSelf, Is.EqualTo(expected));
-        }
-
         private static readonly string[] PlacementIds =
         {
             "wardrobe_try_conductor",
@@ -666,14 +634,14 @@ namespace CatMetro.Tests.PlayMode
             "wardrobe_try_goggles",
         };
 
-        private sealed class MutableClock
+        internal sealed class MutableClock
         {
             public long Now;
             public MutableClock(long now) { Now = now; }
             public long Read() => Now;
         }
 
-        private sealed class WardrobeRig
+        internal sealed class WardrobeRig
         {
             public readonly GameObject CanvasHost;
             public readonly GameObject InputHost;
@@ -692,7 +660,7 @@ namespace CatMetro.Tests.PlayMode
             }
         }
 
-        private sealed class TempStorageRoot : IStorageRoot, IDisposable
+        internal sealed class TempStorageRoot : IStorageRoot, IDisposable
         {
             public string SaveDirectory { get; }
             public string CacheDirectory => SaveDirectory;
@@ -711,7 +679,7 @@ namespace CatMetro.Tests.PlayMode
             }
         }
 
-        private sealed class Provider : IRewardedAdProvider
+        internal sealed class Provider : IRewardedAdProvider
         {
             private Action<RewardedAdEvent> _events;
             public bool IsReady { get; set; } = true;
@@ -754,7 +722,7 @@ namespace CatMetro.Tests.PlayMode
             public void Dispose() => DisposeCalls++;
         }
 
-        private readonly struct ShowRecord
+        internal readonly struct ShowRecord
         {
             public readonly long AttemptId;
             public readonly string PlacementId;
@@ -768,12 +736,13 @@ namespace CatMetro.Tests.PlayMode
             }
         }
 
-        private sealed class BackendReporter : IPurchaseBackend, IAdEventReporter
+        internal sealed class BackendReporter : IPurchaseBackend, IAdEventReporter
         {
             private Action _readinessChanged;
             public BackendAvailability Availability => BackendAvailability.Ready;
             public bool IsReady => true;
             public bool ThrowOnReport { get; set; }
+            public bool OfferConductorProduct { get; set; } = true;
             public int EventRemoveCalls { get; private set; }
             public int PurchaseCalls { get; private set; }
             public int RestoreCalls { get; private set; }
@@ -786,11 +755,13 @@ namespace CatMetro.Tests.PlayMode
             }
 
             public void FetchProducts(Action<IReadOnlyList<StoreProductView>> onDone)
-                => onDone?.Invoke(new[]
-                {
-                    new StoreProductView(ProductIds.Gate, "Conductor Coat",
-                        new LocalizedPrice("$1.99")),
-                });
+                => onDone?.Invoke(OfferConductorProduct
+                    ? new[]
+                    {
+                        new StoreProductView(ProductIds.Gate, "Conductor Coat",
+                            new LocalizedPrice("$1.99")),
+                    }
+                    : Array.Empty<StoreProductView>());
             public void Purchase(string productId, Action<PurchaseResult> onDone)
             {
                 PurchaseCalls++;
