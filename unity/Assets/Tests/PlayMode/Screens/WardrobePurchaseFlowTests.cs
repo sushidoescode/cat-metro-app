@@ -394,6 +394,36 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator ClosedReward_ReprojectsLateOwnershipWithoutAutoEquipping()
+        {
+            var root = ShippedCosmeticCatalogRoot();
+            Item(root, "outfit_conductor")["rewardedPlacementId"] = "wardrobe.borrow.coat";
+            var setup = CreateSetup(backend: new WardrobeBackend(), catalogRoot: root);
+            var rewarded = new RecordingRewardedRoute(true)
+            {
+                NextCompletion = CosmeticRewardedCompletion.NotGranted,
+            };
+            rewarded.BeforeCompletion = () =>
+                setup.Purchases.GrantRewardedAdEntitlement("outfit_conductor");
+            CreateView(setup, rewarded);
+            _view.Open();
+            Layout();
+            yield return null;
+
+            Tap(CardRect("outfit_conductor"));
+            Tap(FindRect("PrimaryActionChip"));
+            yield return null;
+
+            Assert.That(rewarded.LastPlacementId, Is.EqualTo("wardrobe.borrow.coat"));
+            Assert.That(setup.Purchases.IsUnlocked("outfit_conductor"), Is.True,
+                "the shared durable authority observes the late grant");
+            Assert.That(setup.Profile.Profile.LoadoutFor("red_tabby").OutfitId, Is.Empty,
+                "a non-granted visible completion must never auto-equip");
+            Assert.That(_view.VisibleCards.Count, Is.GreaterThan(0));
+            Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.True);
+        }
+
+        [UnityTest]
         public IEnumerator BusyOperations_LockSelectorsTabsCardsPrimaryAndRestore()
         {
             var setup = CreateSetup();
@@ -1264,6 +1294,7 @@ namespace CatMetro.Tests.PlayMode
                 .WithProduct("cm_frame_lantern", "¥120");
             long clock = 1_700_000_000L;
             var purchases = new PurchaseService(ShippedPurchaseCatalog(), backend, () => clock);
+            purchases.AttachLeasePersistence(new AcceptingLeasePersistence());
             backend.Catalog = purchases.Catalog;
             persistence ??= new RecordingPersistence(DefaultProfile());
             var profile = new CosmeticProfileService(catalog, inventory, persistence, purchases);
@@ -1796,16 +1827,21 @@ namespace CatMetro.Tests.PlayMode
         private sealed class RecordingRewardedRoute : ICosmeticRewardedRoute
         {
             private readonly bool _canOffer;
-            private readonly Queue<Action> _pending = new Queue<Action>();
+            private readonly Queue<Action<CosmeticRewardedCompletion>> _pending =
+                new Queue<Action<CosmeticRewardedCompletion>>();
             public Action BeforeCompletion { get; set; }
             public bool DeferCompletion { get; set; }
+            public CosmeticRewardedCompletion NextCompletion { get; set; } =
+                CosmeticRewardedCompletion.Granted;
             public int RequestCalls { get; private set; }
             public string LastPlacementId { get; private set; }
             public int PendingCount => _pending.Count;
 
             public RecordingRewardedRoute(bool canOffer) => _canOffer = canOffer;
+            public event Action AvailabilityChanged { add { } remove { } }
             public bool CanOffer(string placementId, string entitlementId) => _canOffer;
-            public void Request(string placementId, Action completed)
+            public void Request(string placementId, string entitlementId,
+                Action<CosmeticRewardedCompletion> completed)
             {
                 RequestCalls++;
                 LastPlacementId = placementId;
@@ -1824,11 +1860,16 @@ namespace CatMetro.Tests.PlayMode
                 Complete(_pending.Dequeue());
             }
 
-            private void Complete(Action completed)
+            private void Complete(Action<CosmeticRewardedCompletion> completed)
             {
                 BeforeCompletion?.Invoke();
-                completed?.Invoke();
+                completed?.Invoke(NextCompletion);
             }
+        }
+
+        private sealed class AcceptingLeasePersistence : IEntitlementLeasePersistence
+        {
+            public bool TryReplaceRewardedAdLeases(IReadOnlyList<EntitlementGrant> leases) => true;
         }
 
         private sealed class WardrobeBackend : IPurchaseBackend

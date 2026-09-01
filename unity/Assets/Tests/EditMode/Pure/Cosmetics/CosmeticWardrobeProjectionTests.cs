@@ -296,7 +296,7 @@ namespace CatMetro.Tests.Cosmetics
             int completions = 0;
 
             Assert.That(route.CanOffer("wardrobe.conductor", "outfit_conductor"), Is.False);
-            route.Request("wardrobe.conductor", () => completions++);
+            route.Request("wardrobe.conductor", "outfit_conductor", _ => completions++);
 
             Assert.That(completions, Is.EqualTo(1));
             Assert.That(purchases.IsUnlocked("outfit_conductor"), Is.False);
@@ -442,14 +442,18 @@ namespace CatMetro.Tests.Cosmetics
 
         private sealed class OfferAllRewardedRoute : ICosmeticRewardedRoute
         {
+            public event Action AvailabilityChanged { add { } remove { } }
             public bool CanOffer(string placementId, string entitlementId) => true;
-            public void Request(string placementId, Action completed) => completed?.Invoke();
+            public void Request(string placementId, string entitlementId,
+                Action<CosmeticRewardedCompletion> completed)
+                => completed?.Invoke(CosmeticRewardedCompletion.NotGranted);
         }
 
         private sealed class SelectiveRewardedRoute : ICosmeticRewardedRoute
         {
             private readonly string _placementId;
             private readonly string _entitlementId;
+            public event Action AvailabilityChanged { add { } remove { } }
 
             public SelectiveRewardedRoute(string placementId, string entitlementId)
             {
@@ -461,7 +465,9 @@ namespace CatMetro.Tests.Cosmetics
                 string.Equals(placementId, _placementId, StringComparison.Ordinal)
                 && string.Equals(entitlementId, _entitlementId, StringComparison.Ordinal);
 
-            public void Request(string placementId, Action completed) => completed?.Invoke();
+            public void Request(string placementId, string entitlementId,
+                Action<CosmeticRewardedCompletion> completed)
+                => completed?.Invoke(CosmeticRewardedCompletion.NotGranted);
         }
     }
 }

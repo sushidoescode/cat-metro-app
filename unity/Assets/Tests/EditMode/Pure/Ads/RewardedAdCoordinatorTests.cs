@@ -415,6 +415,8 @@ namespace CatMetro.Tests.Ads
             Assert.That(service.IsUnlocked("outfit_conductor"), Is.False);
 
             provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, attempt, "wrong"));
+            Assert.That(service.IsUnlocked("outfit_conductor"), Is.False,
+                "a terminal callback must match both the exact attempt and placement");
             provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, attempt, "p0"));
             Assert.That(service.IsUnlocked("outfit_conductor"), Is.True);
             Assert.That(service.Ledger.ExportLeases(), Has.Count.EqualTo(1));
@@ -437,6 +439,38 @@ namespace CatMetro.Tests.Ads
             provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, first, "p0"));
             Assert.That(service.IsUnlocked("outfit_conductor"), Is.True,
                 "the old exact ID, not the newest attempt, owns the late reward");
+        }
+
+        [Test]
+        public void WrongPlacementClose_DoesNotReleaseTheOpenAttempt()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            using var coordinator = RewardedAdFixtures.Coordinator(provider);
+            coordinator.Start();
+            Assert.That(coordinator.Show("p0"), Is.EqualTo(RewardedShowOutcome.Started));
+            long attempt = provider.Shows.Single().AttemptId;
+
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Closed, attempt, "p1"));
+
+            Assert.That(coordinator.Show("p1"), Is.EqualTo(RewardedShowOutcome.Busy),
+                "a foreign terminal event must not release the actual open attempt");
+        }
+
+        [Test]
+        public void WrongPlacementDisplayFailure_DoesNotDiscardTheExactAttempt()
+        {
+            var provider = new RewardedAdFixtures.Provider();
+            var service = RewardedAdFixtures.Service();
+            using var coordinator = RewardedAdFixtures.Coordinator(provider, service: service);
+            coordinator.Start();
+            Assert.That(coordinator.Show("p0"), Is.EqualTo(RewardedShowOutcome.Started));
+            long attempt = provider.Shows.Single().AttemptId;
+
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.DisplayFailed, attempt, "p1"));
+            provider.Emit(new RewardedAdEvent(RewardedAdEventKind.Rewarded, attempt, "p0"));
+
+            Assert.That(service.IsUnlocked("outfit_conductor"), Is.True,
+                "the exact attempt remains eligible when a foreign failure arrives first");
         }
 
         [Test]

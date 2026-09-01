@@ -583,7 +583,7 @@ namespace CatMetro.Bootstrap
                 canvasGo.transform,
                 CatMetro.Services.Purchases.PurchaseRuntime.Current,
                 _cosmetics,
-                new CatMetro.Services.Cosmetics.DisabledCosmeticRewardedRoute());
+                new CatMetro.Services.Cosmetics.RewardedAdCosmeticRoute());
             Wardrobe.Attach(Input.Regions);
 
             Home.LevelSelected = () =>

@@ -72,6 +72,8 @@ namespace CatMetro.Presentation.Screens
         private bool _primaryRegistered;
         private bool _profileSubscribed;
         private bool _authoritySubscribed;
+        private bool _rewardedSubscribed;
+        private bool _rebuildingProjection;
         private bool _purchaseBusy;
         private bool _rewardBusy;
         private bool _restoreBusy;
@@ -309,6 +311,7 @@ namespace CatMetro.Presentation.Screens
             UnregisterEntry();
             UnregisterPanelRegions();
             UnsubscribeProfile();
+            if (_rewarded is IDisposable disposable) disposable.Dispose();
         }
 
         public void LayoutForViewport(Rect safeArea, float dpi)
@@ -345,6 +348,10 @@ namespace CatMetro.Presentation.Screens
 
         private void RebuildProjectionAndCards()
         {
+            if (_rebuildingProjection) return;
+            _rebuildingProjection = true;
+            try
+            {
             UnregisterCardRegions();
             for (int i = 0; i < _cards.Count; i++)
             {
@@ -387,6 +394,8 @@ namespace CatMetro.Presentation.Screens
             ReflowLayout();
             PaintSelectors();
             RegisterCardRegions();
+            }
+            finally { _rebuildingProjection = false; }
         }
 
         private void LayoutCards()
@@ -518,11 +527,12 @@ namespace CatMetro.Presentation.Screens
             string placementId = row.Item.RewardedPlacementId;
             _rewardBusy = true;
             UpdatePrimaryAction();
-            _rewarded.Request(placementId, () =>
+            _rewarded.Request(placementId, entitlementId, result =>
             {
                 if (!IsCurrentOperation(session, operation)) return;
                 CompleteCurrentOperation();
-                if (_purchases.IsUnlocked(entitlementId))
+                if (result == CosmeticRewardedCompletion.Granted &&
+                    _purchases.IsUnlocked(entitlementId))
                 {
                     if (!_profile.TryEquip(catId, slot, itemId)) SaveFailed();
                     else SetStatus(Text("wardrobe.state.equipped"));
@@ -740,6 +750,11 @@ namespace CatMetro.Presentation.Screens
                 _purchases.Ledger.Changed += OnAuthorityChanged;
                 _authoritySubscribed = true;
             }
+            if (!_rewardedSubscribed)
+            {
+                _rewarded.AvailabilityChanged += OnRewardedAvailabilityChanged;
+                _rewardedSubscribed = true;
+            }
         }
 
         private void UnsubscribeProfile()
@@ -754,11 +769,22 @@ namespace CatMetro.Presentation.Screens
                 _purchases.Ledger.Changed -= OnAuthorityChanged;
                 _authoritySubscribed = false;
             }
+            if (_rewardedSubscribed)
+            {
+                _rewarded.AvailabilityChanged -= OnRewardedAvailabilityChanged;
+                _rewardedSubscribed = false;
+            }
         }
 
         private void OnAuthorityChanged()
         {
             if (!_destroyed && isActiveAndEnabled && _panelShown)
+                RebuildProjectionAndCards();
+        }
+
+        private void OnRewardedAvailabilityChanged()
+        {
+            if (!_rebuildingProjection && !_destroyed && isActiveAndEnabled && _panelShown)
                 RebuildProjectionAndCards();
         }
 
