@@ -40,7 +40,7 @@ namespace CatMetro.Domain
         public int Overloads;
         public int SwitchesUsed;
         public Pcg32 Rng;
-        public byte[] SwitchRoutes;        // index = switchId
+        public byte[] SwitchRoutes;        // index = switchId; SwitchState packed route + cooldown
         public byte[] NodeQueueCounts;     // live count per node
         public short[][] NodeQueueSlots;   // per node: QCapBound slots, unused written 0
         public short[] OverloadTimers;     // per node; 16 ticks
@@ -69,7 +69,8 @@ namespace CatMetro.Domain
                 Outcome = SimOutcome.Running,
             };
             for (int i = 0; i < graph.NodeCount; i++) s.NodeQueueSlots[i] = new short[graph.QCapBound];
-            for (int i = 0; i < s.SwitchRoutes.Length; i++) s.SwitchRoutes[i] = graph.SwitchInitialRoute[i];
+            for (int i = 0; i < s.SwitchRoutes.Length; i++)
+                s.SwitchRoutes[i] = SwitchState.Pack(graph.SwitchInitialRoute[i], 0);
             return s;
         }
 

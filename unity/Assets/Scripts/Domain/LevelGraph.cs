@@ -24,8 +24,8 @@ namespace CatMetro.Domain
             shape == Round || shape == Square || shape == Triangle;
     }
 
-    // Immutable authored gate interval. Gate behaviour is intentionally not implemented here;
-    // this value only keeps schema data intact until the simulation mechanic is added.
+    // Immutable authored half-open gate interval. Edge entry is permitted when the processing
+    // tick is >= StartTick and < EndTick.
     public readonly struct GateWindow
     {
         public readonly int StartTick;
@@ -50,8 +50,8 @@ namespace CatMetro.Domain
         public readonly int[] EdgeFrom;             // per edge
         public readonly int[] EdgeTo;               // per edge
         public readonly int[] EdgeTravelTicks;      // per edge
-        public readonly bool[] EdgeOneWay;          // per edge; data only until traversal semantics land
-        public readonly bool[] EdgeReversible;      // per edge; data only until reversal semantics land
+        public readonly bool[] EdgeOneWay;          // per edge; false permits ordinary reverse traversal
+        public readonly bool[] EdgeReversible;      // per edge; explicit ordinary reverse permission
         public readonly bool[] EdgeTunnel;          // per edge; endpoints are the paired portals
         public readonly bool[] EdgeHold;            // per edge; holding-loop designation only
         public readonly int SourceNode;             // legacy first-source view for one-source callers
@@ -59,7 +59,7 @@ namespace CatMetro.Domain
         public readonly int[][] SwitchRoutes;       // per switch: candidate outgoing edge ids (2-3)
         public readonly int[] SwitchNode;           // per switch: the junction node it sits on
         public readonly byte[] SwitchInitialRoute;  // per switch
-        public readonly int[] SwitchCooldownTicks;  // per switch; data only until cooldown semantics land
+        public readonly int[] SwitchCooldownTicks;  // per switch; accepted flip lock duration
         public readonly int[] GateEdge;              // per gate: dense edge index
         public readonly GateWindow[][] GateOpenWindows; // per gate, authored order
         public readonly int[] GatePreviewTicks;      // per gate
@@ -169,6 +169,12 @@ namespace CatMetro.Domain
             int switchLength = switchRoutes == null ? 0 : switchRoutes.Length;
             SwitchCooldownTicks = IntDataOrDefault(
                 switchCooldownTicks, switchLength, nameof(switchCooldownTicks));
+            for (int s = 0; s < SwitchCooldownTicks.Length; s++)
+                if (SwitchCooldownTicks[s] < 0
+                    || SwitchCooldownTicks[s] > SwitchState.MaxCooldown)
+                    throw new ArgumentOutOfRangeException(
+                        nameof(switchCooldownTicks),
+                        $"switchCooldownTicks[{s}] must be 0..{SwitchState.MaxCooldown}");
             int[] resolvedGateEdge;
             GateWindow[][] resolvedGateWindows;
             int[] resolvedGatePreview;
@@ -270,6 +276,10 @@ namespace CatMetro.Domain
             {
                 if (gateEdge[g] < 0 || gateEdge[g] >= edgeLength)
                     throw new ArgumentException($"gate {g}: edge {gateEdge[g]} is outside the graph");
+                for (int prior = 0; prior < g; prior++)
+                    if (gateEdge[prior] == gateEdge[g])
+                        throw new ArgumentException(
+                            $"gate {g}: edge {gateEdge[g]} already has a gate", nameof(gateEdge));
                 var windows = gateOpenWindows[g];
                 if (windows == null || windows.Length == 0)
                     throw new ArgumentException($"gate {g}: at least one open window is required");

@@ -38,16 +38,33 @@ namespace CatMetro.Domain
             int tick = state.Tick;
             var enteredThisTick = new HashSet<int>(); // train slot indices that entered an edge this tick
 
-            // step 1 — apply commands in receipt order
+            // step 1 — apply commands in receipt order. The authored flip budget is a hard
+            // accepted-command cap. A cooling switch ignores presses. Cooldown present at the
+            // start of this processing tick decrements only after rejecting this tick's presses,
+            // so an accepted flip locks exactly N following processing ticks.
+            var coolingAtStart = new bool[state.SwitchRoutes.Length];
+            for (int s = 0; s < state.SwitchRoutes.Length; s++)
+                coolingAtStart[s] = SwitchState.Cooldown(state.SwitchRoutes[s]) > 0;
             for (int c = 0; c < commandsThisTick.Length; c++)
             {
                 int sw = commandsThisTick[c].SwitchId;
                 if (sw >= state.SwitchRoutes.Length)
                     throw new InvalidOperationException(
                         $"command names switch {sw} but the level has {state.SwitchRoutes.Length} — replay log does not belong to this level (F10)");
-                state.SwitchRoutes[sw] = (byte)((state.SwitchRoutes[sw] + 1) % g.SwitchRoutes[sw].Length);
+                if (!FlipBudget.CanAccept(g.PerfectMaxSwitches, state.SwitchesUsed)) continue;
+                byte packed = state.SwitchRoutes[sw];
+                if (SwitchState.Cooldown(packed) > 0) continue;
+                int route = (SwitchState.Route(packed) + 1) % g.SwitchRoutes[sw].Length;
+                state.SwitchRoutes[sw] = SwitchState.Pack(route, g.SwitchCooldownTicks[sw]);
                 state.SwitchesUsed++;
             }
+            for (int s = 0; s < state.SwitchRoutes.Length; s++)
+                if (coolingAtStart[s])
+                {
+                    byte packed = state.SwitchRoutes[s];
+                    state.SwitchRoutes[s] = SwitchState.Pack(
+                        SwitchState.Route(packed), SwitchState.Cooldown(packed) - 1);
+                }
 
             // step 2 — emit waves whose emission tick matches (wave.tick + k*spacing, k < count).
             // A single-count wave is spacing-independent; spacing <= 0 with count > 1 is refused
@@ -70,11 +87,13 @@ namespace CatMetro.Domain
                 state.Trains[slot].Color = g.WaveColor[w];
                 int sourceNode = g.WaveSourceNode[w];
                 state.Trains[slot].NodeId = (short)sourceNode;
-                int outEdge = SingleOutgoingEdge(g, sourceNode, state);
-                if (outEdge < 0)
+                var traversal = OutgoingTraversalFor(g, state, sourceNode);
+                if (!traversal.IsValid)
                     throw new InvalidOperationException("source node has no outgoing edge — invalid fixture (F10)");
-                if (state.NodeQueueCounts[sourceNode] == 0 && MouthFree(state, outEdge))
-                    EnterEdge(ref state, slot, outEdge, enteredThisTick);
+                if (state.NodeQueueCounts[sourceNode] == 0
+                    && EdgeEntryOpen(g, traversal.EdgeId, tick)
+                    && MouthFree(state, traversal))
+                    EnterTraversal(ref state, slot, traversal, enteredThisTick);
                 else
                     Enqueue(ref state, sourceNode, slot);
             }
@@ -90,6 +109,8 @@ namespace CatMetro.Domain
                 {
                     state.Trains[t].ProgressTicks++;
                     if (state.Trains[t].ProgressTicks >= RejectionDwellTicks)
+                        // Refusal escape is exceptional in every direction: it ignores both
+                        // authored direction flags and gate state to preserve the exact dwell.
                         EnterReverseEdge(ref state, t, state.Trains[t].EdgeId, enteredThisTick);
                     continue;
                 }
@@ -106,11 +127,13 @@ namespace CatMetro.Domain
             {
                 if (state.NodeQueueCounts[n] == 0) continue;
                 int head = state.NodeQueueSlots[n][0] - 1; // stored ids are 1-based
-                int outEdge = OutgoingEdgeFor(g, state, n);
-                if (outEdge >= 0 && MouthFree(state, outEdge))
+                var traversal = OutgoingTraversalFor(g, state, n);
+                if (traversal.IsValid
+                    && EdgeEntryOpen(g, traversal.EdgeId, tick)
+                    && MouthFree(state, traversal))
                 {
                     DequeueHead(ref state, n);
-                    EnterEdge(ref state, head, outEdge, enteredThisTick);
+                    EnterTraversal(ref state, head, traversal, enteredThisTick);
                 }
             }
 
@@ -144,9 +167,11 @@ namespace CatMetro.Domain
                     continue;
                 }
 
-                int route = OutgoingEdgeFor(g, state, node);
-                if (route >= 0 && MouthFree(state, route))
-                    EnterEdge(ref state, t, route, enteredThisTick);
+                var traversal = OutgoingTraversalFor(g, state, node);
+                if (traversal.IsValid
+                    && EdgeEntryOpen(g, traversal.EdgeId, tick)
+                    && MouthFree(state, traversal))
+                    EnterTraversal(ref state, t, traversal, enteredThisTick);
                 else
                     Enqueue(ref state, node, t);
             }
@@ -213,12 +238,24 @@ namespace CatMetro.Domain
             throw new InvalidOperationException("TrainsMax exceeded — fixture outside its digest envelope (A-C1-7)");
         }
 
-        private static bool MouthFree(SimulationState state, int edgeId)
+        private static bool MouthFree(SimulationState state, EdgeTraversal traversal)
         {
+            byte stateAtMouth = traversal.Reverse ? TrainState.OnEdgeReverse : TrainState.OnEdge;
             for (int t = 0; t < state.Trains.Length; t++)
-                if (state.Trains[t].State == TrainState.OnEdge && state.Trains[t].EdgeId == edgeId && state.Trains[t].ProgressTicks == 0)
+                if (state.Trains[t].State == stateAtMouth
+                    && state.Trains[t].EdgeId == traversal.EdgeId
+                    && state.Trains[t].ProgressTicks == 0)
                     return false;
             return true;
+        }
+
+        private static void EnterTraversal(ref SimulationState state, int slot,
+            EdgeTraversal traversal, HashSet<int> enteredThisTick)
+        {
+            if (traversal.Reverse)
+                EnterReverseEdge(ref state, slot, traversal.EdgeId, enteredThisTick);
+            else
+                EnterEdge(ref state, slot, traversal.EdgeId, enteredThisTick);
         }
 
         private static void EnterEdge(ref SimulationState state, int slot, int edgeId, HashSet<int> enteredThisTick)
@@ -260,21 +297,64 @@ namespace CatMetro.Domain
             state.NodeQueueCounts[node] = (byte)(count - 1);
         }
 
-        // The route out of a node: the node's switch's current route if it has one, else its
-        // single outgoing edge, else -1 (terminal). Multiple switch-less outgoing edges do not
-        // occur in CM-C1 fixtures.
-        private static int OutgoingEdgeFor(LevelGraph g, SimulationState state, int node)
+        // The traversal out of a node: a switch selects its current incident edge. Without a
+        // switch, authored forward edges win before an eligible reverse edge. A closed gate never
+        // selects an alternate traversal; the caller leaves the train queued on the chosen route.
+        private static EdgeTraversal OutgoingTraversalFor(
+            LevelGraph g, SimulationState state, int node)
         {
             for (int s = 0; s < g.SwitchNode.Length; s++)
                 if (g.SwitchNode[s] == node)
-                    return g.SwitchRoutes[s][state.SwitchRoutes[s]];
+                {
+                    int route = SwitchState.Route(state.SwitchRoutes[s]);
+                    return TraversalFromNode(g, node, g.SwitchRoutes[s][route]);
+                }
             for (int e = 0; e < g.EdgeFrom.Length; e++)
                 if (g.EdgeFrom[e] == node)
-                    return e;
-            return -1;
+                    return new EdgeTraversal(e, reverse: false);
+            for (int e = 0; e < g.EdgeTo.Length; e++)
+                if (g.EdgeTo[e] == node && (!g.EdgeOneWay[e] || g.EdgeReversible[e]))
+                    return new EdgeTraversal(e, reverse: true);
+            return EdgeTraversal.Invalid;
         }
 
-        private static int SingleOutgoingEdge(LevelGraph g, int node, SimulationState state) => OutgoingEdgeFor(g, state, node);
+        private static EdgeTraversal TraversalFromNode(LevelGraph g, int node, int edge)
+        {
+            if (edge < 0 || edge >= g.EdgeFrom.Length) return EdgeTraversal.Invalid;
+            if (g.EdgeFrom[edge] == node) return new EdgeTraversal(edge, reverse: false);
+            if (g.EdgeTo[edge] == node && (!g.EdgeOneWay[edge] || g.EdgeReversible[edge]))
+                return new EdgeTraversal(edge, reverse: true);
+            return EdgeTraversal.Invalid;
+        }
+
+        private static bool EdgeEntryOpen(LevelGraph g, int edge, int tick)
+        {
+            for (int gate = 0; gate < g.GateEdge.Length; gate++)
+            {
+                if (g.GateEdge[gate] != edge) continue;
+                var windows = g.GateOpenWindows[gate];
+                for (int w = 0; w < windows.Length; w++)
+                    if (tick >= windows[w].StartTick && tick < windows[w].EndTick)
+                        return true;
+                return false;
+            }
+            return true;
+        }
+
+        private readonly struct EdgeTraversal
+        {
+            public static readonly EdgeTraversal Invalid = new EdgeTraversal(-1, false);
+
+            public readonly int EdgeId;
+            public readonly bool Reverse;
+            public bool IsValid => EdgeId >= 0;
+
+            public EdgeTraversal(int edgeId, bool reverse)
+            {
+                EdgeId = edgeId;
+                Reverse = reverse;
+            }
+        }
 
         private static int StationIndex(LevelGraph g, int node)
         {

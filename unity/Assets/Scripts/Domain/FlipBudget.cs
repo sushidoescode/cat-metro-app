@@ -47,21 +47,28 @@ namespace CatMetro.Domain
             if (perfectMaxSwitches == Unbudgeted)
                 return new FlipBudgetStatus(Unbudgeted, used, Unbudgeted, FlipRating.Ungated);
 
-            int extra = Math.Max(1, perfectMaxSwitches);
-            int twoStarMaxSwitches = perfectMaxSwitches > int.MaxValue - extra
-                ? int.MaxValue
-                : perfectMaxSwitches + extra;
+            // Budgeted runtime states can never exceed this hard cap. Preserve the public
+            // rating-shaped value for constructor/API compatibility: accepted play is Perfect;
+            // an externally fabricated over-cap count is visibly invalid rather than receiving
+            // the retired soft Efficient band.
+            int twoStarMaxSwitches = perfectMaxSwitches;
             FlipRating rating = used <= perfectMaxSwitches
                 ? FlipRating.Perfect
-                : used <= twoStarMaxSwitches
-                    ? FlipRating.Efficient
-                    : FlipRating.Solved;
+                : FlipRating.Solved;
 
             return new FlipBudgetStatus(
                 perfectMaxSwitches,
                 used,
                 twoStarMaxSwitches,
                 rating);
+        }
+
+        public static bool CanAccept(int perfectMaxSwitches, int used)
+        {
+            if (used < 0) throw new ArgumentOutOfRangeException(nameof(used));
+            if (perfectMaxSwitches < Unbudgeted)
+                throw new ArgumentOutOfRangeException(nameof(perfectMaxSwitches));
+            return perfectMaxSwitches == Unbudgeted || used < perfectMaxSwitches;
         }
     }
 }
