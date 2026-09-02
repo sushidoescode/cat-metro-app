@@ -87,7 +87,7 @@ invoke_wrapper "$green5" "$green5"
 run_count="$(wc -l < "$RUNS" | tr -d ' ')"
 if [ "$WRAPPER_RC" -eq 0 ] \
   && [ "$run_count" = "2" ] \
-  && printf '%s\n' "$WRAPPER_OUT" | grep -q '^solution-suite: OK — suite green (5 passed),'; then
+  && grep -q '^solution-suite: OK — suite green (5 passed),' <<<"$WRAPPER_OUT"; then
   ok "two detailed green artifacts produce one proven green"
 else
   bad "detailed green: rc=$WRAPPER_RC runs=$run_count output='$WRAPPER_OUT'"
@@ -95,7 +95,7 @@ fi
 
 invoke_wrapper "$green5" "$zero"
 if [ "$WRAPPER_RC" -ne 0 ] \
-  && printf '%s\n' "$WRAPPER_OUT" | grep -q 'run2: dotnet-summary: FAIL'; then
+  && grep -q 'run2: dotnet-summary: FAIL' <<<"$WRAPPER_OUT"; then
   ok "a vacuous second run fails closed"
 else
   bad "vacuous second run: rc=$WRAPPER_RC output='$WRAPPER_OUT'"
@@ -103,7 +103,7 @@ fi
 
 invoke_wrapper "$green5" "$green4"
 if [ "$WRAPPER_RC" -ne 0 ] \
-  && printf '%s\n' "$WRAPPER_OUT" | grep -q 'test counts differ across independent processes'; then
+  && grep -q 'test counts differ across independent processes' <<<"$WRAPPER_OUT"; then
   ok "different positive counts across runs are rejected"
 else
   bad "count mismatch: rc=$WRAPPER_RC output='$WRAPPER_OUT'"
@@ -111,7 +111,7 @@ fi
 
 invoke_wrapper "$green5" "$green5" 1
 if [ "$WRAPPER_RC" -ne 0 ] \
-  && printf '%s\n' "$WRAPPER_OUT" | grep -q 'parser output was not exactly five integer fields'; then
+  && grep -q 'parser output was not exactly five integer fields' <<<"$WRAPPER_OUT"; then
   ok "identical extra parser output fails closed"
 else
   bad "parser noise: rc=$WRAPPER_RC output='$WRAPPER_OUT'"

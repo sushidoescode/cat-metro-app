@@ -54,7 +54,8 @@ vs_total=$(grep -c 'vSyncCount:' "$QS" || true)
 vs_zero=$(grep -c 'vSyncCount: 0' "$QS" || true)
 [ "$vs_total" -ge 1 ] && [ "$vs_total" = "$vs_zero" ] \
   || fail "criterion 3: a committed quality level carries a non-zero vsync count"
-grep -A3 'm_PerPlatformDefaultQuality' "$QS" | grep -q 'Android: 0' \
+platform_default_quality=$(grep -A3 'm_PerPlatformDefaultQuality' "$QS" || true)
+grep -q 'Android: 0' <<<"$platform_default_quality" \
   || fail "criterion 3: the Android default quality level drifted"
 vsc=$(grep -rEn 'vSyncCount[[:space:]]*=[[:space:]]*[1-9]' --include='*.cs' unity/Assets/Scripts 2>/dev/null || true)
 [ -z "$vsc" ] || fail "criterion 3: shipped code assigns a non-zero vsync count: $vsc"
@@ -86,13 +87,13 @@ BIND_CHECK=scripts/check-runtime-renderer-bindings.py
 if ! rout=$(python3 "$BIND_CHECK" unity/Assets/Scripts/Presentation 2>&1); then
   fail "criterion 5: unbound runtime renderer: $rout"
 fi
-echo "$rout" | grep -Eq 'OK \([1-9][0-9]* site-local bindings\)' \
+grep -Eq 'OK \([1-9][0-9]* site-local bindings\)' <<<"$rout" \
   || fail "criterion 5: renderer checker returned no non-zero proof count: $rout"
 
 if neg=$(python3 "$BIND_CHECK" "$FIX" 2>&1); then
   fail "criterion 5: site-local checker accepted the unassigned-creation fixture: $neg"
 fi
-echo "$neg" | grep -q 'GuardedPolicy.cs' \
+grep -q 'GuardedPolicy.cs' <<<"$neg" \
   || fail "criterion 5: original unbound fixture was not named: $neg"
 
 # Adversarial fixture: old global totals are equal, yet one creation is unbound and another is
@@ -107,7 +108,7 @@ bb=$(grep -rEo '\.sharedMaterials?[[:space:]]*=' \
 if neg=$(python3 "$BIND_CHECK" "$BALANCED" 2>&1); then
   fail "criterion 5: site-local checker accepted equal-total unbound fixture: $neg"
 fi
-echo "$neg" | grep -q 'BalancedButUnbound.cs' \
+grep -q 'BalancedButUnbound.cs' <<<"$neg" \
   || fail "criterion 5: equal-total unbound site was not named: $neg"
 
 echo "device-config.test.sh: OK (1, 2-yaml, 3, 4, 5-static-tripwire)"

@@ -45,8 +45,8 @@ platform_conditional=$(grep -rEn --include='*.cs' \
   "${engine_free_roots[@]}" 2>/dev/null || true)
 [ -z "$platform_conditional" ] \
   || fail "criterion 13: platform conditional in an engine-free assembly: $platform_conditional"
-printf '%s\n' '#elif UNITY_ANDROID || UNITY_IOS' \
-  | grep -Eq '#(if|elif)[[:space:]]+.*UNITY_[A-Z0-9_]+' \
+grep -Eq '#(if|elif)[[:space:]]+.*UNITY_[A-Z0-9_]+' \
+  <<<'#elif UNITY_ANDROID || UNITY_IOS' \
   || fail "criterion 13: platform-conditional pattern missed the compound #elif fixture"
 
 # Criterion 14 (Q-T): the ledger is a data structure — zero monetization tokens under Save.

@@ -122,7 +122,7 @@ else_viol=$(echo "$else_out" | sed -n 's/^VIOLATIONS=//p')
 # preserved literally (TMPDIR trailing-slash + our own "/" join — observed on macOS, where
 # TMPDIR itself already ends in "/"), so match on the file's basename + line number, never the
 # raw $elsescratch string.
-echo "$else_out" | grep -qE 'unguarded reference: .*/ElseArmShim\.cs:[0-9]+$' \
+grep -qE 'unguarded reference: .*/ElseArmShim\.cs:[0-9]+$' <<<"$else_out" \
   || { rm -rf "$elsescratch"; fail "security-S4: violation reported but not attributed to the else-arm scratch file"; }
 rm -rf "$elsescratch"
 
@@ -149,7 +149,7 @@ rm -f "$tmp"
 if shortout=$(bash scripts/devcap-report.sh "$goodfx/sample-short.csv" 2>&1); then
   fail "criterion 5: a 19-cycle capture must exit non-zero (p95 is over 20)"
 fi
-echo "$shortout" | grep -q "19" \
+grep -q "19" <<<"$shortout" \
   || fail "criterion 5: the short-capture failure must print the cycle counts"
 
 echo "devcap.test.sh: OK (1-static, 4, 5)"
