@@ -345,7 +345,10 @@ namespace CatMetro.Content.Daily
                 if (!HasElevenOrderedStages(level.Verdicts))
                     return AdmissionResult.Rejected("validator did not return stages 1..11 in order",
                         level.Verdicts, level.Solve);
-                if (report.ExitFailure || HasBlockingVerdict(level.Verdicts))
+                // This is deliberately a one-member non-campaign admission. Corpus-wide
+                // campaign assertions (notably the exact 60-level count) are unrelated to the
+                // candidate and must not poison its eleven authoritative level-stage rows.
+                if (HasBlockingVerdict(level.Verdicts))
                     return AdmissionResult.Rejected(BlockingSummary(level.Verdicts),
                         level.Verdicts, level.Solve);
                 if (level.Solve == null
