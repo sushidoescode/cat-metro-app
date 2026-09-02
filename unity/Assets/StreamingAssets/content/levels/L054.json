@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 2,
+  "id": "L054",
+  "name": "Comet Tail",
+  "seed": 1054,
+  "meta": {
+    "band": "pressure",
+    "difficultyTarget": 0.94,
+    "mechanics": ["switch", "budget", "wildcard-express"],
+    "newMechanic": null,
+    "teachingGoal": "Set one route for a blue cat and the fast wildcard following on its tail",
+    "minActionWindowTicks": 8,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 9 },
+      { "id": "J1", "x": 0, "y": 4, "queueCapacity": 4 },
+      { "id": "BLUE", "x": -4, "y": 0 },
+      { "id": "YELLOW", "x": 4, "y": 0 },
+      { "id": "LOOP_A", "x": 4, "y": 5 },
+      { "id": "LOOP_B", "x": 3, "y": 8 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 7 },
+      { "id": "E_BLUE", "from": "J1", "to": "BLUE", "travelTicks": 7 },
+      { "id": "E_YELLOW", "from": "J1", "to": "YELLOW", "travelTicks": 7 },
+      { "id": "E_LOOP_OUT", "from": "J1", "to": "LOOP_A", "travelTicks": 4 },
+      { "id": "E_LOOP_TOP", "from": "LOOP_A", "to": "LOOP_B", "travelTicks": 4 },
+      { "id": "E_LOOP_BACK", "from": "LOOP_B", "to": "J1", "travelTicks": 4 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["blue", "wild"] }
+  ],
+  "stations": [
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 4 },
+    { "nodeId": "YELLOW", "accepts": ["yellow"], "capacity": 4 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_BLUE", "E_YELLOW", "E_LOOP_OUT"], "initialRoute": 2 }
+  ],
+  "waves": [
+    { "tick": 3, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8 },
+    { "tick": 5, "sourceNode": "SRC", "color": "wild", "count": 1, "spacingTicks": 8, "express": true }
+  ],
+  "win": {
+    "deliveries": 2,
+    "timeLimitTicks": 110,
+    "perfectMaxSwitches": 1,
+    "stars": { "two": 920, "three": 1200 }
+  },
+  "economy": { "baseTickets": 59, "perfectBonus": 29 }
+}

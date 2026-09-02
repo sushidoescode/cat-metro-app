@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 2,
+  "id": "L056",
+  "name": "Shape of a Comet",
+  "seed": 1056,
+  "meta": {
+    "band": "pressure",
+    "difficultyTarget": 0.96,
+    "mechanics": ["switch", "shape", "budget", "wildcard-express"],
+    "newMechanic": null,
+    "teachingGoal": "Sort two red shapes around a wildcard express that can take either platform",
+    "minActionWindowTicks": 8,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 9 },
+      { "id": "J1", "x": 0, "y": 4, "queueCapacity": 4 },
+      { "id": "SQUARE", "x": -4, "y": 0 },
+      { "id": "TRIANGLE", "x": 4, "y": 0 },
+      { "id": "LOOP_A", "x": 4, "y": 5 },
+      { "id": "LOOP_B", "x": 3, "y": 8 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 6 },
+      { "id": "E_SQUARE", "from": "J1", "to": "SQUARE", "travelTicks": 7 },
+      { "id": "E_TRIANGLE", "from": "J1", "to": "TRIANGLE", "travelTicks": 7 },
+      { "id": "E_LOOP_OUT", "from": "J1", "to": "LOOP_A", "travelTicks": 5 },
+      { "id": "E_LOOP_TOP", "from": "LOOP_A", "to": "LOOP_B", "travelTicks": 5 },
+      { "id": "E_LOOP_BACK", "from": "LOOP_B", "to": "J1", "travelTicks": 5 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red", "wild"] }
+  ],
+  "stations": [
+    { "nodeId": "SQUARE", "accepts": ["red"], "capacity": 4, "shape": "square" },
+    { "nodeId": "TRIANGLE", "accepts": ["red"], "capacity": 4, "shape": "triangle" }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_SQUARE", "E_TRIANGLE", "E_LOOP_OUT"], "initialRoute": 2 }
+  ],
+  "waves": [
+    { "tick": 3, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8, "shape": "square" },
+    { "tick": 20, "sourceNode": "SRC", "color": "wild", "count": 1, "spacingTicks": 8, "express": true, "shape": "round" },
+    { "tick": 37, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8, "shape": "triangle" }
+  ],
+  "win": {
+    "deliveries": 3,
+    "timeLimitTicks": 135,
+    "perfectMaxSwitches": 2,
+    "stars": { "two": 980, "three": 1270 }
+  },
+  "economy": { "baseTickets": 61, "perfectBonus": 31 }
+}

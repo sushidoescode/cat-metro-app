@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 2,
+  "id": "L060",
+  "name": "Grand Central Cats",
+  "seed": 1060,
+  "meta": {
+    "band": "capstone",
+    "difficultyTarget": 1.0,
+    "mechanics": ["switch", "shape", "budget", "tunnel", "hold", "stray", "wildcard-express"],
+    "newMechanic": null,
+    "teachingGoal": "Use the stray's first press, then make one precise flip between comet and triangle",
+    "minActionWindowTicks": 4,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 10 },
+      { "id": "J1", "x": 0, "y": 6, "queueCapacity": 4 },
+      { "id": "RED", "x": -4, "y": 0 },
+      { "id": "BLUE_TRIANGLE", "x": 4, "y": 0 },
+      { "id": "HOLD_A", "x": 4, "y": 6 },
+      { "id": "HOLD_B", "x": 3, "y": 9 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 6 },
+      { "id": "E_RED_TUNNEL", "from": "J1", "to": "RED", "travelTicks": 7, "tunnel": true },
+      { "id": "E_BLUE", "from": "J1", "to": "BLUE_TRIANGLE", "travelTicks": 7 },
+      { "id": "E_HOLD_OUT", "from": "J1", "to": "HOLD_A", "travelTicks": 8, "hold": true },
+      { "id": "E_HOLD_TOP", "from": "HOLD_A", "to": "HOLD_B", "travelTicks": 8 },
+      { "id": "E_HOLD_BACK", "from": "HOLD_B", "to": "J1", "travelTicks": 8 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red", "blue", "wild"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 4 },
+    { "nodeId": "BLUE_TRIANGLE", "accepts": ["blue"], "capacity": 4, "shape": "triangle" }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_RED_TUNNEL", "E_BLUE", "E_HOLD_OUT"], "initialRoute": 2 }
+  ],
+  "waves": [
+    { "tick": 3, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8, "stray": true },
+    { "tick": 15, "sourceNode": "SRC", "color": "wild", "count": 1, "spacingTicks": 8, "express": true },
+    { "tick": 22, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8, "shape": "triangle" }
+  ],
+  "win": {
+    "deliveries": 2,
+    "timeLimitTicks": 45,
+    "perfectMaxSwitches": 1,
+    "stars": { "two": 1120, "three": 1440 }
+  },
+  "economy": { "baseTickets": 65, "perfectBonus": 35 }
+}

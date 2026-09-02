@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 2,
+  "id": "L058",
+  "name": "Backward Badge",
+  "seed": 1058,
+  "meta": {
+    "band": "capstone",
+    "difficultyTarget": 0.98,
+    "mechanics": ["switch", "shape", "budget", "reversible"],
+    "newMechanic": null,
+    "teachingGoal": "Read the square badge and take the reversible spur backward out of the loop",
+    "minActionWindowTicks": 10,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 9 },
+      { "id": "J1", "x": 0, "y": 5, "queueCapacity": 4 },
+      { "id": "K", "x": -3, "y": 4 },
+      { "id": "SQUARE", "x": -4, "y": 0 },
+      { "id": "LOOP_A", "x": 4, "y": 5 },
+      { "id": "LOOP_B", "x": 3, "y": 8 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 6 },
+      { "id": "E_SQUARE", "from": "K", "to": "SQUARE", "travelTicks": 7 },
+      { "id": "E_REVERSE", "from": "K", "to": "J1", "travelTicks": 5, "reversible": true },
+      { "id": "E_LOOP_OUT", "from": "J1", "to": "LOOP_A", "travelTicks": 5 },
+      { "id": "E_LOOP_TOP", "from": "LOOP_A", "to": "LOOP_B", "travelTicks": 5 },
+      { "id": "E_LOOP_BACK", "from": "LOOP_B", "to": "J1", "travelTicks": 5 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red"] }
+  ],
+  "stations": [
+    { "nodeId": "SQUARE", "accepts": ["red"], "capacity": 4, "shape": "square" }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_REVERSE", "E_LOOP_OUT"], "initialRoute": 1 }
+  ],
+  "waves": [
+    { "tick": 4, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8, "shape": "square" }
+  ],
+  "win": {
+    "deliveries": 1,
+    "timeLimitTicks": 95,
+    "perfectMaxSwitches": 1,
+    "stars": { "two": 1040, "three": 1340 }
+  },
+  "economy": { "baseTickets": 63, "perfectBonus": 33 }
+}
