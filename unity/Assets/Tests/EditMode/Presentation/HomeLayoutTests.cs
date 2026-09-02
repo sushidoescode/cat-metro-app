@@ -148,6 +148,63 @@ namespace CatMetro.Tests.Presentation
                 "after Daily unlocks, Play rises by exactly one slot");
         }
 
+        [Test]
+        public void Reference360x640_AudioToggleStaysSafe_AndClearsThe48DpFloor()
+        {
+            var safeArea = new Rect(0f, 0f, 360f, 640f); // 1 px per dp at 160 dpi
+            var toggle = HomeLayout.AudioToggleRect(safeArea, 160f);
+
+            Assert.That(toggle, Is.EqualTo(new Rect(16f, 572f, 72f, 52f))
+                .Using(RectComparer.Within(0.001f)),
+                "the compact sound control keeps its declared top/side inset");
+            Assert.That(toggle.xMin, Is.GreaterThanOrEqualTo(safeArea.xMin));
+            Assert.That(toggle.xMax, Is.LessThanOrEqualTo(safeArea.xMax));
+            Assert.That(toggle.yMin, Is.GreaterThanOrEqualTo(safeArea.yMin));
+            Assert.That(toggle.yMax, Is.LessThanOrEqualTo(safeArea.yMax));
+            Assert.That(HudBands.MeetsMinTargetPx(toggle, 160f), Is.True,
+                "both sound-toggle dimensions clear the 48dp touch-target floor");
+        }
+
+        [Test]
+        public void Reference360x640_CarvedTitleAndShadow_ClearBothHeaderControlsBy8Dp()
+        {
+            var safeArea = new Rect(0f, 0f, 360f, 640f);
+            var title = HomeLayout.TitleRect(safeArea, 160f,
+                audioToggleVisible: true, reminderGearVisible: true);
+            var shadow = HomeLayout.TitleShadowRect(title, 160f);
+            var audio = HomeLayout.AudioToggleRect(safeArea, 160f);
+            var reminder = DailyReminderLayout.GearRect(safeArea, 160f);
+
+            Assert.That(title, Is.EqualTo(new Rect(96f, 556f, 185f, 84f))
+                .Using(RectComparer.Within(0.001f)));
+            Assert.That(shadow, Is.EqualTo(new Rect(99f, 551f, 185f, 84f))
+                .Using(RectComparer.Within(0.001f)));
+            Assert.That(title.xMin - audio.xMax, Is.EqualTo(8f).Within(0.001f),
+                "the carved title face leaves an exact tactile gap after the SFX chip");
+            Assert.That(reminder.xMin - shadow.xMax, Is.EqualTo(8f).Within(0.001f),
+                "the plaque's visible toy shadow also clears the reminder gear by 8dp");
+        }
+
+        [Test]
+        public void CaptureViewport_CarvedTitleClearance_ScalesTo8Dp()
+        {
+            var safeArea = new Rect(0f, 64f, 917f, 1920f);
+            const float dpi = 408f;
+            float expectedGap = HomeLayout.HeaderControlGapDp * HudBands.PxPerDp(dpi);
+            var title = HomeLayout.TitleRect(safeArea, dpi,
+                audioToggleVisible: true, reminderGearVisible: true);
+            var shadow = HomeLayout.TitleShadowRect(title, dpi);
+            var audio = HomeLayout.AudioToggleRect(safeArea, dpi);
+            var reminder = DailyReminderLayout.GearRect(safeArea, dpi);
+
+            Assert.That(title, Is.EqualTo(new Rect(244.8f, 1769.8f, 470.75f, 214.2f))
+                .Using(RectComparer.Within(0.01f)));
+            Assert.That(title.xMin - audio.xMax,
+                Is.EqualTo(expectedGap).Within(0.01f));
+            Assert.That(reminder.xMin - shadow.xMax,
+                Is.EqualTo(expectedGap).Within(0.01f));
+        }
+
         private sealed class RectComparer : System.Collections.IComparer
         {
             private readonly float _tolerance;

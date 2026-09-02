@@ -195,6 +195,35 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator AudioChip_LeavesEightDpAroundThePaintedCarvedTitle()
+        {
+            CreateShown();
+            _home.ConfigureAudio(true);
+            _home.ConfigureReminder(true, false,
+                CatMetro.Services.DailyReminderSlot.Morning,
+                CatMetro.Services.MessagingPermission.Unknown, true, true);
+            var safeArea = new Rect(0f, 0f, 360f, 640f);
+            _home.LayoutForViewport(safeArea, 160f,
+                new Rect(0f, 0f, 360f, 640f));
+
+            var paintedAudio = PaintedRect(_home.AudioToggleTransform);
+            var paintedTitle = PaintedRect(Find("TitlePlaque") as RectTransform);
+            var paintedShadow = PaintedRect(Find("TitlePlaqueShadow") as RectTransform);
+            var paintedGear = PaintedRect(_home.ReminderGearTransform);
+            AssertRect(paintedAudio, HomeLayout.AudioToggleRect(safeArea, 160f));
+            AssertRect(paintedTitle, HomeLayout.TitleRect(safeArea, 160f, true, true));
+            AssertRect(paintedShadow, HomeLayout.TitleShadowRect(paintedTitle, 160f));
+            AssertRect(paintedGear, DailyReminderLayout.GearRect(safeArea, 160f));
+            Assert.That(paintedTitle.xMin - paintedAudio.xMax,
+                Is.EqualTo(8f).Within(0.001f),
+                "the actual carved plaque face clears the actual SFX chip by 8dp");
+            Assert.That(paintedGear.xMin - paintedShadow.xMax,
+                Is.EqualTo(8f).Within(0.001f),
+                "the actual reminder gear clears the plaque's visible shadow by 8dp");
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator ExplicitViewport_ShadeCoversOnlyOutsideTheDioramaAperture()
         {
             CreateShown();

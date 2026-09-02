@@ -226,7 +226,8 @@ namespace CatMetro.Presentation.Screens
         {
             UnregisterRegions();
             if (!_shown || !isActiveAndEnabled || _regions == null) return;
-            Register("blocker", () => _layout.Blocker, () => { }, BlockerPriority);
+            Register("blocker", () => _layout.Blocker, () => { }, BlockerPriority,
+                ChromeFeedback.None);
             Register("morning", () => _layout.Morning,
                 () => SelectSlot(DailyReminderSlot.Morning), ControlPriority);
             Register("afternoon", () => _layout.Afternoon,
@@ -249,10 +250,11 @@ namespace CatMetro.Presentation.Screens
             }
         }
 
-        private void Register(string suffix, Func<Rect> rect, Action action, int priority)
+        private void Register(string suffix, Func<Rect> rect, Action action, int priority,
+            ChromeFeedback feedback = ChromeFeedback.WoodTap)
         {
             string id = RegionPrefix + suffix;
-            _regions.Register(id, rect, action, priority);
+            _regions.Register(id, rect, action, priority, feedback);
             _registered.Add(id);
         }
 

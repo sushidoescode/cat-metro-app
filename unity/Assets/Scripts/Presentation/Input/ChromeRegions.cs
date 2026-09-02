@@ -4,6 +4,15 @@ using UnityEngine;
 
 namespace CatMetro.Presentation.Input
 {
+    // Presentation-only feedback attached to a resolved chrome region. WoodTap is the default
+    // for every existing button registration; None is reserved for consuming surfaces such as a
+    // modal blocker that are intentionally not controls.
+    public enum ChromeFeedback : byte
+    {
+        None = 0,
+        WoodTap = 1,
+    }
+
     // CM-UX-01 criterion 1: deterministic chrome hit routing. Pure rect math over injected
     // screen-space rects — no input-package reference, no engine objects; TapInput stays the one
     // input consumer and consults this registry AFTER the legacy retry band and BEFORE the
@@ -56,6 +65,7 @@ namespace CatMetro.Presentation.Input
             public Action OnTap;
             public int Priority;
             public long Seq;
+            public ChromeFeedback Feedback;
         }
 
         private readonly List<Entry> _entries = new List<Entry>();
@@ -75,6 +85,14 @@ namespace CatMetro.Presentation.Input
 
         public void Register(string id, Func<Rect> screenRect, Action onTap, int priority)
         {
+            Register(id, screenRect, onTap, priority, ChromeFeedback.WoodTap);
+        }
+
+        // Feedback is presentation metadata only. It never participates in hit resolution or
+        // action ordering, so adding it cannot change which region consumes a tap.
+        public void Register(string id, Func<Rect> screenRect, Action onTap, int priority,
+            ChromeFeedback feedback)
+        {
             if (string.IsNullOrEmpty(id)) throw new ArgumentException("region id is required");
             if (screenRect == null) throw new ArgumentException("screenRect provider is required");
             if (onTap == null) throw new ArgumentException("onTap action is required");
@@ -84,7 +102,12 @@ namespace CatMetro.Presentation.Input
                         "duplicate region id '" + id + "' — a wiring defect, never a silent replace");
             _entries.Add(new Entry
             {
-                Id = id, ScreenRect = screenRect, OnTap = onTap, Priority = priority, Seq = _seq++
+                Id = id,
+                ScreenRect = screenRect,
+                OnTap = onTap,
+                Priority = priority,
+                Seq = _seq++,
+                Feedback = feedback,
             });
         }
 
@@ -103,9 +126,16 @@ namespace CatMetro.Presentation.Input
 
         // Highest priority containing the point wins; ties go to the EARLIEST registration.
         // The rect provider is consulted per call — regions track their live layout.
-        public bool TryResolve(Vector2 screenPos, out Action onTap)
+        public bool TryResolve(Vector2 screenPos, out Action onTap) =>
+            TryResolve(screenPos, out onTap, out _);
+
+        // API-compatible metadata overload: existing action-only callers retain their exact
+        // behavior, while TapInput can suppress feedback for a consuming non-control region.
+        public bool TryResolve(Vector2 screenPos, out Action onTap,
+            out ChromeFeedback feedback)
         {
             onTap = null;
+            feedback = ChromeFeedback.None;
             int bestPriority = 0;
             long bestSeq = 0;
             bool found = false;
@@ -120,6 +150,7 @@ namespace CatMetro.Presentation.Input
                     bestPriority = _entries[i].Priority;
                     bestSeq = _entries[i].Seq;
                     onTap = _entries[i].OnTap;
+                    feedback = _entries[i].Feedback;
                 }
             }
             return found;
