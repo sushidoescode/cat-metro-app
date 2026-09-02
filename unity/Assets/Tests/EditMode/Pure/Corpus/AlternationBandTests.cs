@@ -265,10 +265,10 @@ namespace CatMetro.Tests.Corpus
         }
 
         [Test]
-        public void Campaign_CorpusCount_Is10Of30Pending()
+        public void Campaign_CorpusCount_Is10Of60Pending()
         {
             var count = Shared.Value.CampaignVerdicts.Single(v => v.Value == "tag=CM-R09.1");
-            Assert.That(count.Detail, Does.Contain("10/30"));
+            Assert.That(count.Detail, Does.Contain("10/60"));
             Assert.That(count.Blocks, Is.False);
         }
 

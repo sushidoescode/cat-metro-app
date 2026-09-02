@@ -268,17 +268,23 @@ namespace CatMetro.Content.Validation
             return new CorpusReport(reports, campaignVerdicts, exitFailure);
         }
 
-        // The launch band table (product_spec.md §21, LOCKED): band -> (level range, target range).
+        // The 60-level mechanic ladder: band -> (level range, target range).
         private static readonly (string band, int lo, int hi, double dLo, double dHi)[] BandTable =
         {
-            ("onboarding", 1, 5, 0.05, 0.16),
-            ("alternation", 6, 10, 0.18, 0.28),
-            ("queue-reading", 11, 17, 0.28, 0.36),
-            ("two-source", 18, 20, 0.38, 0.42),
-            ("combo", 21, 25, 0.42, 0.48),
-            ("multi-line", 26, 28, 0.48, 0.51),
-            ("pressure", 29, 29, 0.53, 0.53),
-            ("capstone", 30, 30, 0.55, 0.55),
+            ("onboarding", 1, 8, 0.05, 0.16),
+            ("shape", 9, 12, 0.17, 0.24),
+            ("budget", 13, 16, 0.25, 0.32),
+            ("two-source", 17, 20, 0.33, 0.40),
+            ("alternation", 21, 24, 0.41, 0.48),
+            ("tunnel", 25, 28, 0.49, 0.56),
+            ("combination", 29, 32, 0.57, 0.64),
+            ("timed-gates", 33, 36, 0.65, 0.72),
+            ("oneway", 37, 40, 0.73, 0.78),
+            ("multi-line", 41, 44, 0.79, 0.84),
+            ("combo", 45, 48, 0.85, 0.88),
+            ("stray", 49, 52, 0.89, 0.92),
+            ("pressure", 53, 56, 0.93, 0.96),
+            ("capstone", 57, 60, 0.97, 1.00),
         };
 
         // CM-C5.1: campaign assertions receive the full (dto, graph, solve) runs so the liveness
@@ -312,19 +318,46 @@ namespace CatMetro.Content.Validation
                 : new StageVerdict(Stage.NoveltyCheck, StageVerdictCode.Pass,
                     "mechanic order OK (CM-R06.2)", "tag=CM-R06.2", false));
 
-            // CM-R09.1: 30 campaign levels. PENDING while the corpus grows; a hard count only at 30+.
+            // CM-R09.1: 60 campaign levels. PENDING while the corpus grows; a hard count only at 60+.
             int n = campaign.Count;
-            if (n < 30)
+            if (n < 60)
                 result.Add(new StageVerdict(Stage.NoveltyCheck, StageVerdictCode.Pending,
-                    "campaign corpus " + n + "/30 — PENDING until the corpus reaches 30 (CM-R09.1)",
+                    "campaign corpus " + n + "/60 — PENDING until the corpus reaches 60 (CM-R09.1)",
                     "tag=CM-R09.1", false));
-            else if (n == 30)
+            else if (n == 60)
                 result.Add(new StageVerdict(Stage.NoveltyCheck, StageVerdictCode.Pass,
-                    "campaign corpus 30/30 (CM-R09.1)", "tag=CM-R09.1", false));
+                    "campaign corpus 60/60 (CM-R09.1)", "tag=CM-R09.1", false));
             else
                 result.Add(StageVerdict.Fail(Stage.NoveltyCheck,
-                    "campaign corpus " + n + "/30 exceeds the locked 30 (CM-R09.1)",
+                    "campaign corpus " + n + "/60 exceeds the locked 60 (CM-R09.1)",
                     "tag=CM-R09.1"));
+
+            // A campaign cannot ship on the per-level solver warning alone: every authored
+            // campaign member must have a complete exact proof. Stress/non-campaign members
+            // deliberately retain the existing non-blocking NotFound warning semantics.
+            const string campaignProofTag = "tag=CM-LADDER-solve-proof";
+            if (campaign.Count == 0)
+            {
+                result.Add(new StageVerdict(Stage.Solver, StageVerdictCode.Skipped,
+                    "SKIPPED(no campaign members)", campaignProofTag, false));
+            }
+            else
+            {
+                var proofFails = campaign
+                    .Where(run => run.Solve.Verdict != SolveVerdict.Solved
+                        || run.Solve.BeamWidthUsed != 0)
+                    .Select(run => run.Dto.Id + ": verdict=" + run.Solve.Verdict
+                        + " reason=" + run.Solve.NotFoundReason
+                        + " beamWidthUsed=" + run.Solve.BeamWidthUsed)
+                    .ToList();
+                result.Add(proofFails.Count > 0
+                    ? StageVerdict.Fail(Stage.Solver,
+                        "campaign exact-solve proof failed: " + string.Join("; ", proofFails),
+                        campaignProofTag)
+                    : new StageVerdict(Stage.Solver, StageVerdictCode.Pass,
+                        "campaign exact-solve proof OK for " + campaign.Count + " level(s)",
+                        campaignProofTag, false));
+            }
 
             // CM-R09.3: band table conformance (id range + difficultyTarget range). Blocking.
             var bandFails = new List<string>();

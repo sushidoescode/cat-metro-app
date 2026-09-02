@@ -15,9 +15,9 @@
       "additionalProperties": false,
       "required": ["band", "difficultyTarget", "mechanics", "newMechanic", "teachingGoal", "authoredBy"],
       "properties": {
-        "band": { "enum": ["onboarding", "alternation", "queue-reading", "two-source", "combo", "multi-line", "timed-gates", "pressure", "combination", "expert", "capstone", "daily"] },
+        "band": { "enum": ["onboarding", "alternation", "queue-reading", "two-source", "combo", "multi-line", "timed-gates", "pressure", "combination", "expert", "capstone", "daily", "shape", "budget", "tunnel", "oneway", "stray"] },
         "difficultyTarget": { "type": "number", "minimum": 0, "maximum": 1 },
-        "mechanics": { "type": "array", "items": { "enum": ["switch", "queue", "second-source", "wildcard", "cooldown", "gate", "express", "reversible"] }, "minItems": 1 },
+        "mechanics": { "type": "array", "items": { "enum": ["switch", "queue", "second-source", "wildcard", "cooldown", "gate", "express", "reversible", "shape", "budget", "tunnel", "second-train", "hold", "stray", "wildcard-express"] }, "minItems": 1 },
         "newMechanic": { "type": ["string", "null"], "description": "At most one mechanic may appear here that is not in any earlier level's mechanics list; validator enforces" },
         "teachingGoal": { "type": "string", "maxLength": 160 },
         "minActionWindowTicks": { "type": "integer", "minimum": 3, "description": "Accessibility floor: solver rejects levels whose only solutions require action windows below this. Default 6 ticks (~750ms at 8 ticks/s)" },

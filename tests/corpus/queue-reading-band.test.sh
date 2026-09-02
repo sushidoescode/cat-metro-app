@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # CM-C12 wrapper — the queue-reading band (L011-L017) gate: mirrors
-# tests/corpus/alternation-band.test.sh's structure and rationale (that file is CM-C11's and
-# stays untouched; this is a NEW, independent wrapper). Re-runs `bash scripts/validate-content.sh`
+# tests/corpus/alternation-band.test.sh's structure and rationale. Re-runs
+# `bash scripts/validate-content.sh`
 # and independently parses its machine report — deliberate duplication of the ~40s+ gate cost,
 # same tradeoff CM-C11's own wrapper accepted (an independently produced, independently parsed
 # report is the point). Criteria the C# NUnit fixtures already cover (progression-row fields,
@@ -48,17 +48,53 @@ fi
 
 BAND="$BAND" python3 - "$tmp/report.json" <<'PYEOF'
 import json, os, re, sys
+from pathlib import Path
 
 report_path = sys.argv[1]
 band = os.environ["BAND"].split()
 with open(report_path) as f:
     report = json.load(f)
 
-levels = {lvl["id"]: lvl for lvl in report["levels"]}
-
 def fail(msg):
     print("queue-reading-band.test.sh: FAIL — " + msg)
     sys.exit(1)
+
+authoritative_files = sorted(Path("content/levels").glob("L*.json"), key=lambda path: path.name)
+if not authoritative_files:
+    fail("no authoritative L*.json campaign files discovered")
+invalid_names = [path.name for path in authoritative_files
+                 if re.fullmatch(r"L[0-9]{3}\.json", path.name) is None]
+if invalid_names:
+    fail("campaign filenames do not match LNNN.json: " + ", ".join(invalid_names))
+
+authoritative_ids = []
+for path in authoritative_files:
+    with path.open(encoding="utf-8") as source:
+        declared_id = json.load(source).get("id")
+    if declared_id != path.stem:
+        fail(path.name + ": declared id does not match filename: " + str(declared_id))
+    authoritative_ids.append(declared_id)
+if len(set(authoritative_ids)) != len(authoritative_ids):
+    fail("duplicate declared campaign ids: " + ", ".join(authoritative_ids))
+expected_ids = ["L%03d" % number for number in range(1, len(authoritative_ids) + 1)]
+if authoritative_ids != expected_ids:
+    fail("campaign ids are not contiguous from L001: " + ", ".join(authoritative_ids))
+
+staged_files = sorted(Path("unity/Assets/StreamingAssets/content/levels").glob("L*.json"),
+                      key=lambda path: path.name)
+if [path.name for path in staged_files] != [path.name for path in authoritative_files]:
+    fail("StreamingAssets campaign filenames differ from the authoritative corpus")
+for source, staged in zip(authoritative_files, staged_files):
+    if source.read_bytes() != staged.read_bytes():
+        fail(source.name + ": StreamingAssets bytes differ from authoritative content")
+
+campaign_levels = [lvl for lvl in report["levels"] if lvl.get("campaign")]
+report_campaign_ids = [lvl["id"] for lvl in campaign_levels]
+if len(set(report_campaign_ids)) != len(report_campaign_ids):
+    fail("the validator report contains duplicate campaign ids")
+if sorted(report_campaign_ids) != authoritative_ids:
+    fail("the validator campaign set differs from discovered authoritative content")
+levels = {lvl["id"]: lvl for lvl in report["levels"]}
 
 def stage(lvl, name):
     for s in lvl["stages"]:
@@ -145,13 +181,14 @@ if order is None or order["code"] != "Pass":
 bandv = next((v for v in report["campaign"] if v["value"] == "tag=CM-R09.3"), None)
 if bandv is None or bandv["code"] != "Pass":
     fail("campaign band-table verdict not Pass: " + (bandv["detail"] if bandv else "MISSING"))
+proof = next((v for v in report["campaign"] if v["value"] == "tag=CM-LADDER-solve-proof"), None)
+if proof is None or proof["code"] != "Pass":
+    fail("campaign exact-solve proof not Pass: " + (proof["detail"] if proof else "MISSING"))
 count = next((v for v in report["campaign"] if v["value"] == "tag=CM-R09.1"), None)
-# 17/30 is the expected post-merge count for THIS band alone (10 onboarding+alternation levels
-# already shipped + these 7). Note for the merge record (per this contract's task brief): merging
-# alongside CM-C11's own wrapper, which independently pins "10/30" against the pre-this-band tree,
-# is a declared, expected divergence at merge time — not a defect in either wrapper.
-if count is None or "17/30" not in count["detail"]:
-    fail("campaign count row does not read 17/30: " + (count["detail"] if count else "MISSING"))
+expected_count = "%d/60" % len(authoritative_ids)
+if count is None or expected_count not in count["detail"]:
+    fail("campaign count row does not read " + expected_count + ": "
+         + (count["detail"] if count else "MISSING"))
 
 print("queue-reading-band.test.sh: python report checks OK")
 PYEOF

@@ -110,6 +110,16 @@ namespace CatMetro.Tests.Validation
 
         private static CorpusReport FullRun() => Shared.Value;
 
+        private static CorpusReport BudgetLimitedReport(bool campaign)
+        {
+            var member = new CorpusMember(
+                campaign ? "content/levels/L001.json" : "stress_boards.json#L001",
+                VFixtures.L001Bytes(), campaign);
+            return CorpusValidator.Validate(new ValidationRequest(
+                VFixtures.SchemaBytes(), VFixtures.BareConfig(), null, new[] { member },
+                maxNodesExpanded: 1));
+        }
+
         [Test]
         public void StressBoards_AreValidated_WithTheQPStageSet()
         {
@@ -147,9 +157,111 @@ namespace CatMetro.Tests.Validation
         {
             var report = FullRun();
             var count = report.CampaignVerdicts.Single(v => v.Value == "tag=CM-R09.1");
-            Assert.That(count.Detail, Does.Contain("1/30"),
-                "the 30-level count sees content/levels/** only — never the stress boards");
+            Assert.That(count.Detail, Does.Contain("1/60"),
+                "the 60-level count sees content/levels/** only — never the stress boards");
             Assert.That(count.Blocks, Is.False, "PENDING while the corpus grows");
+            var proof = report.CampaignVerdicts.Single(v =>
+                v.Value == "tag=CM-LADDER-solve-proof");
+            Assert.That(proof.Code, Is.EqualTo(StageVerdictCode.Pass), proof.Detail);
+        }
+
+        [Test]
+        public void CampaignBudgetMiss_IsBlockedByExactSolveProof()
+        {
+            var report = BudgetLimitedReport(campaign: true);
+            var level = report.Levels.Single();
+            Assert.That(level.Solve.Verdict,
+                Is.EqualTo(CatMetro.Domain.Solver.SolveVerdict.NotFound));
+            Assert.That(level.Solve.NotFoundReason,
+                Is.EqualTo(CatMetro.Domain.Solver.NotFoundReason.Budget));
+
+            var solverWarning = level.Verdicts.Single(v => v.Stage == Stage.Solver);
+            Assert.That(solverWarning.Code, Is.EqualTo(StageVerdictCode.Warn));
+            Assert.That(solverWarning.Blocks, Is.False,
+                "the existing per-level NotFound row remains a warning");
+
+            var proof = report.CampaignVerdicts.Single(v =>
+                v.Value == "tag=CM-LADDER-solve-proof");
+            Assert.That(proof.Code, Is.EqualTo(StageVerdictCode.Fail));
+            Assert.That(proof.Blocks, Is.True);
+            Assert.That(proof.Detail, Does.Contain("L001")
+                .And.Contain("NotFound").And.Contain("Budget").And.Contain("beamWidthUsed=0"));
+            Assert.That(report.ExitFailure, Is.True);
+        }
+
+        [Test]
+        public void NonCampaignBudgetMiss_RemainsANonBlockingWarning()
+        {
+            var report = BudgetLimitedReport(campaign: false);
+            var level = report.Levels.Single();
+            Assert.That(level.Solve.Verdict,
+                Is.EqualTo(CatMetro.Domain.Solver.SolveVerdict.NotFound));
+            Assert.That(level.Solve.NotFoundReason,
+                Is.EqualTo(CatMetro.Domain.Solver.NotFoundReason.Budget));
+
+            var solverWarning = level.Verdicts.Single(v => v.Stage == Stage.Solver);
+            Assert.That(solverWarning.Code, Is.EqualTo(StageVerdictCode.Warn));
+            Assert.That(solverWarning.Blocks, Is.False);
+
+            var proof = report.CampaignVerdicts.Single(v =>
+                v.Value == "tag=CM-LADDER-solve-proof");
+            Assert.That(proof.Code, Is.EqualTo(StageVerdictCode.Skipped));
+            Assert.That(proof.Blocks, Is.False);
+            Assert.That(report.ExitFailure, Is.False);
+        }
+
+        [Test]
+        public void SchemaDeclaresTheCompleteMechanicLadderVocabulary()
+        {
+            var schema = JObject.Parse(System.Text.Encoding.UTF8.GetString(VFixtures.SchemaBytes()));
+            var metaProperties = schema["properties"]["meta"]["properties"];
+            var bands = metaProperties["band"]["enum"].Values<string>();
+            Assert.That(bands, Is.SupersetOf(new[]
+            {
+                "onboarding", "shape", "budget", "two-source", "alternation", "tunnel",
+                "combination", "timed-gates", "oneway", "multi-line", "combo", "stray",
+                "pressure", "capstone", "queue-reading", "expert", "daily",
+            }));
+
+            var mechanics = metaProperties["mechanics"]["items"]["enum"].Values<string>();
+            Assert.That(mechanics, Is.SupersetOf(new[]
+            {
+                "switch", "queue", "second-source", "wildcard", "cooldown", "gate",
+                "express", "reversible", "shape", "budget", "tunnel", "second-train",
+                "hold", "stray", "wildcard-express",
+            }));
+        }
+
+        [Test]
+        public void CampaignBandTableMatchesThe60LevelLadder()
+        {
+            var field = typeof(CorpusValidator).GetField("BandTable",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            Assert.That(field, Is.Not.Null);
+            var actual = (System.ValueTuple<string, int, int, double, double>[])field.GetValue(null);
+            var expected = new System.ValueTuple<string, int, int, double, double>[]
+            {
+                ("onboarding", 1, 8, 0.05, 0.16),
+                ("shape", 9, 12, 0.17, 0.24),
+                ("budget", 13, 16, 0.25, 0.32),
+                ("two-source", 17, 20, 0.33, 0.40),
+                ("alternation", 21, 24, 0.41, 0.48),
+                ("tunnel", 25, 28, 0.49, 0.56),
+                ("combination", 29, 32, 0.57, 0.64),
+                ("timed-gates", 33, 36, 0.65, 0.72),
+                ("oneway", 37, 40, 0.73, 0.78),
+                ("multi-line", 41, 44, 0.79, 0.84),
+                ("combo", 45, 48, 0.85, 0.88),
+                ("stray", 49, 52, 0.89, 0.92),
+                ("pressure", 53, 56, 0.93, 0.96),
+                ("capstone", 57, 60, 0.97, 1.00),
+            };
+            Assert.That(actual, Is.EqualTo(expected));
+            for (int i = 1; i < actual.Length; i++)
+            {
+                Assert.That(actual[i].Item2, Is.EqualTo(actual[i - 1].Item3 + 1));
+                Assert.That(actual[i].Item4, Is.GreaterThan(actual[i - 1].Item5));
+            }
         }
 
         [Test]

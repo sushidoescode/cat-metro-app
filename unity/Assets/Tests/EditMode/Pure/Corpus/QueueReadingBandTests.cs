@@ -24,6 +24,11 @@ namespace CatMetro.Tests.Corpus
         public static byte[] Bytes(string id) =>
             File.ReadAllBytes(Path.Combine(RepoRoot(), "content", "levels", id + ".json"));
 
+        public static string[] CampaignFiles() =>
+            Directory.GetFiles(Path.Combine(RepoRoot(), "content", "levels"), "L*.json")
+                .OrderBy(path => Path.GetFileName(path), System.StringComparer.Ordinal)
+                .ToArray();
+
         public static ImportedLevel Import(string id)
         {
             var r = LevelImporter.Import(Bytes(id));
@@ -157,39 +162,65 @@ namespace CatMetro.Tests.Corpus
             }
         }
 
-        // Wider than CM-C11's own L001-L010 check (criterion 1's spirit extended): this band
-        // lands after both the onboarding and alternation bands, so the distinctness net widens
-        // to all seventeen shipped campaign levels, not just this band's seven.
+        // Wider than CM-C11's own L001-L010 check (criterion 1's spirit extended): discover the
+        // authoritative campaign so this assertion grows with the ladder rather than silently
+        // stopping at the formerly shipped seventeen levels.
         [Test]
-        public void TeachingGoals_AreDistinctAcrossAllSeventeenCampaignLevels()
+        public void TeachingGoals_AreDistinctAcrossDiscoveredCampaign()
         {
-            var ids = new[]
+            var goals = QueueBandFixtures.CampaignFiles().Select(path =>
             {
-                "L001", "L002", "L003", "L004", "L005", "L006", "L007", "L008", "L009", "L010",
-                "L011", "L012", "L013", "L014", "L015", "L016", "L017",
-            };
-            var goals = ids.Select(id =>
-                LevelImporter.Import(File.ReadAllBytes(
-                    Path.Combine(QueueBandFixtures.RepoRoot(), "content", "levels", id + ".json")))
-                    .Value.Dto.Meta.TeachingGoal).ToList();
-            Assert.That(goals, Is.Unique, "criterion 1: teachingGoal must be pairwise distinct across L001-L017");
+                var imported = LevelImporter.Import(File.ReadAllBytes(path));
+                Assert.That(imported.Ok, Is.True, Path.GetFileName(path) + ": " + imported.Error);
+                return imported.Value.Dto.Meta.TeachingGoal;
+            }).ToList();
+            Assert.That(goals, Is.Unique,
+                "criterion 1: teachingGoal must be pairwise distinct across the discovered campaign");
+        }
+
+        [Test]
+        public void CampaignFiles_AreContiguousUniqueAndByteIdenticalToStreamingAssets()
+        {
+            var authoritative = QueueBandFixtures.CampaignFiles();
+            Assert.That(authoritative, Is.Not.Empty, "the authoritative campaign must not be empty");
+
+            var ids = authoritative.Select(path =>
+            {
+                var filenameId = Path.GetFileNameWithoutExtension(path);
+                var imported = LevelImporter.Import(File.ReadAllBytes(path));
+                Assert.That(imported.Ok, Is.True, Path.GetFileName(path) + ": " + imported.Error);
+                Assert.That(imported.Value.Dto.Id, Is.EqualTo(filenameId),
+                    "the authored id must match its filename");
+                return imported.Value.Dto.Id;
+            }).ToArray();
+
+            Assert.That(ids, Is.Unique, "campaign ids must not be duplicated");
+            var expectedIds = Enumerable.Range(1, authoritative.Length)
+                .Select(number => "L" + number.ToString("000"))
+                .ToArray();
+            Assert.That(ids, Is.EqualTo(expectedIds),
+                "campaign ids must be contiguous from L001 with no gaps");
+
+            var stagedDirectory = Path.Combine(QueueBandFixtures.RepoRoot(), "unity", "Assets",
+                "StreamingAssets", "content", "levels");
+            var staged = Directory.GetFiles(stagedDirectory, "L*.json")
+                .OrderBy(path => Path.GetFileName(path), System.StringComparer.Ordinal)
+                .ToArray();
+            Assert.That(staged.Select(Path.GetFileName),
+                Is.EqualTo(authoritative.Select(Path.GetFileName)),
+                "StreamingAssets must contain exactly the authoritative campaign filenames");
+            for (int i = 0; i < authoritative.Length; i++)
+                CollectionAssert.AreEqual(File.ReadAllBytes(authoritative[i]), File.ReadAllBytes(staged[i]),
+                    Path.GetFileName(authoritative[i]) + " differs from its staged copy");
         }
     }
 
-    // Criteria 3/4/5-shaped: the corpus gate over L001-L017 (the whole shipped campaign to date).
+    // Criteria 3/4/5-shaped: the corpus gate over the discovered shipped campaign.
     // Runs the real console validator in-process against the shipped bytes — same shape as
     // AlternationBandGateTests / CorpusAndReportTests.cs.
-    // [Timeout] finding (this session's own Unity EditMode batch run, not present in the dotnet
-    // leg): the class-shared `Shared` Lazy<CorpusReport> pays its one-time cost (17 BFS-exact
-    // solves) on whichever test happens to run first — Unity's NUnit runs fixture methods
-    // alphabetically, so that landed on Campaign_CorpusCount_Is17Of30Pending, which measured
-    // 422s in one run and 519.8s in the round-1 reviewer's own independent run (87% of the
-    // original 600000ms cap) and exceeded NUnit's 180000ms default per-test timeout while every
-    // other test in this class (reading the already-memoized value) passed in microseconds.
-    // AlternationBandGateTests (L001-L010, 10 levels) stays under the default; this band's 17
-    // levels do not. Resized 600000->900000 at the round-1 review's Minor-4 (the 422s/519.8s
-    // spread shows real cross-run variance; 900000 keeps generous margin without hoisting the
-    // solve to OneTimeSetUp, which would be a larger structural change for a timing-only finding).
+    // [Timeout] finding: the class-shared `Shared` Lazy<CorpusReport> pays its one-time campaign
+    // solve cost on whichever test runs first. The former campaign measured 422s-519.8s in Unity
+    // EditMode, so the 900000ms class limit preserves headroom as discovery adds ladder levels.
     // A class-level Timeout raises the wall-clock budget only — it asserts nothing new and
     // weakens no existing assertion.
     [TestFixture]
@@ -204,14 +235,9 @@ namespace CatMetro.Tests.Corpus
             var configResult = CatMetro.Content.Validation.ValidatorConfig.Parse(File.ReadAllBytes(
                 Path.Combine(QueueBandFixtures.RepoRoot(), "config", "validator_thresholds.json")));
             Assert.That(configResult.Ok, Is.True, $"{configResult.Error}");
-            var ids = new[]
-            {
-                "L001", "L002", "L003", "L004", "L005", "L006", "L007", "L008", "L009", "L010",
-                "L011", "L012", "L013", "L014", "L015", "L016", "L017",
-            };
-            var members = ids
-                .Select(id => new CatMetro.Content.Validation.CorpusMember(
-                    "content/levels/" + id + ".json", QueueBandFixtures.Bytes(id), true))
+            var members = QueueBandFixtures.CampaignFiles()
+                .Select(path => new CatMetro.Content.Validation.CorpusMember(
+                    "content/levels/" + Path.GetFileName(path), File.ReadAllBytes(path), true))
                 .ToArray();
             var request = new CatMetro.Content.Validation.ValidationRequest(
                 schemaBytes, configResult.Value, "2026-08-01T00:00:00+00:00", members);
@@ -222,7 +248,7 @@ namespace CatMetro.Tests.Corpus
             Shared.Value.Levels.Single(l => l.LevelId == id);
 
         [Test]
-        public void FullSeventeenLevelCorpus_ExitsClean()
+        public void DiscoveredCampaignCorpus_ExitsClean()
         {
             Assert.That(Shared.Value.ExitFailure, Is.False,
                 string.Join("\n", Shared.Value.Levels.SelectMany(l => l.Verdicts).Where(v => v.Blocks)
@@ -307,13 +333,15 @@ namespace CatMetro.Tests.Corpus
             Assert.That(order.Code, Is.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Pass), order.Detail);
             var band = Shared.Value.CampaignVerdicts.Single(v => v.Value == "tag=CM-R09.3");
             Assert.That(band.Code, Is.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Pass), band.Detail);
+            var proof = Shared.Value.CampaignVerdicts.Single(v => v.Value == "tag=CM-LADDER-solve-proof");
+            Assert.That(proof.Code, Is.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Pass), proof.Detail);
         }
 
         [Test]
-        public void Campaign_CorpusCount_Is17Of30Pending()
+        public void Campaign_CorpusCount_MatchesDiscoveredCampaign()
         {
             var count = Shared.Value.CampaignVerdicts.Single(v => v.Value == "tag=CM-R09.1");
-            Assert.That(count.Detail, Does.Contain("17/30"));
+            Assert.That(count.Detail, Does.Contain(QueueBandFixtures.CampaignFiles().Length + "/60"));
             Assert.That(count.Blocks, Is.False);
         }
 
