@@ -20,15 +20,24 @@ namespace CatMetro.Tests.Presentation
                 .Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0).ToArray();
         }
 
+        private static void AssertUniqueKey(string[] rows, string key)
+        {
+            Assert.That(rows.Count(row => row.StartsWith(key + ",")), Is.EqualTo(1),
+                key + " must occur exactly once in the append-only csv");
+        }
+
         [Test]
         public void ThisSlice_AppendsExactlyTwoRows_BytePinned()
         {
             var rows = Rows();
-            // 12 merged rows (UiCsvUx06Tests' own anchor) + this slice's 2 = 14.
-            Assert.That(rows.Length, Is.EqualTo(14),
-                "12 merged rows + this slice's 2 — append-only, never edits");
+            // This slice owns rows 12-13. Later slices may append rows, but may not move,
+            // rewrite, reorder, or duplicate either owned key.
+            Assert.That(rows.Length, Is.GreaterThanOrEqualTo(14),
+                "the csv must retain the 12 merged rows and this slice's two rows");
             Assert.That(rows[12], Is.EqualTo("home.daily.label,Daily Line"), "DRAFT");
             Assert.That(rows[13], Is.EqualTo("results.daily.done,Home"), "DRAFT");
+            AssertUniqueKey(rows, "home.daily.label");
+            AssertUniqueKey(rows, "results.daily.done");
         }
 
         [Test]

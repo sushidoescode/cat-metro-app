@@ -21,6 +21,12 @@ namespace CatMetro.Tests.Presentation
                 .Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0).ToArray();
         }
 
+        private static void AssertUniqueKey(string[] rows, string key)
+        {
+            Assert.That(rows.Count(row => row.StartsWith(key + ",")), Is.EqualTo(1),
+                key + " must occur exactly once in the append-only csv");
+        }
+
         [Test]
         public void ThisSlice_AppendsExactlyThreeRows_BytePinned()
         {
@@ -28,15 +34,16 @@ namespace CatMetro.Tests.Presentation
             // Adoption shift (2026-08-06): anchored at 7 merged rows; main gained
             // hint.tutorial + results.next before this slice merged, so 9 merged + 3 = 12
             // and this slice's pins sit at rows 9-11 (merge order governs; the #39 law).
-            // CM-DAILYWIRE (the R1-L6 evolution clause, UiCsvDisciplineTests' own precedent):
-            // appends its own two rows AFTER this slice's three, at rows 12-13 — this slice's
-            // own count bound rises 12 -> 14 to admit them; rows 9-11 stay byte-pinned exactly
-            // as they were.
-            Assert.That(rows.Length, Is.EqualTo(14),
-                "9 merged rows + this slice's 3 + CM-DAILYWIRE's 2 — append-only, never edits");
+            // Later slices may append freely; they may not move, rewrite, reorder, or duplicate
+            // this slice's three owned rows.
+            Assert.That(rows.Length, Is.GreaterThanOrEqualTo(12),
+                "the csv must retain the nine merged rows and this slice's three rows");
             Assert.That(rows[9], Is.EqualTo("home.title,Cat Metro"), "DRAFT");
             Assert.That(rows[10], Is.EqualTo("intro.play,Play"), "DRAFT");
             Assert.That(rows[11], Is.EqualTo("intro.goal,Deliver {count} cats"), "DRAFT");
+            AssertUniqueKey(rows, "home.title");
+            AssertUniqueKey(rows, "intro.play");
+            AssertUniqueKey(rows, "intro.goal");
         }
 
         [Test]
