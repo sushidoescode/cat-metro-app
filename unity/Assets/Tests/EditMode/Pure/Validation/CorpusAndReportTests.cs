@@ -104,7 +104,7 @@ namespace CatMetro.Tests.Validation
             // which is non-blocking by design — the shipped harness uses the authored default.
             var request = new ValidationRequest(VFixtures.SchemaBytes(), VFixtures.BareConfig(),
                 "2026-08-01T00:00:00+00:00", members,
-                maxNodesExpanded: CatMetro.Domain.Solver.SolverBounds.MAX_NODES_EXPANDED);
+                maxNodesExpanded: 10000);
             return CorpusValidator.Validate(request);
         });
 
@@ -158,7 +158,9 @@ namespace CatMetro.Tests.Validation
 
             var stage6 = l701.Verdicts.Single(v => v.Stage == Stage.BrittlenessAccessibility);
             Assert.That(stage6.Blocks, Is.False, stage6.Detail);
-            Assert.That(stage6.Code, Is.AnyOf(StageVerdictCode.Pass, StageVerdictCode.Skipped));
+            Assert.That(stage6.Code == StageVerdictCode.Pass
+                    || stage6.Code == StageVerdictCode.Skipped,
+                Is.True, stage6.Detail);
             if (stage6.Code == StageVerdictCode.Pass)
                 Assert.That(stage6.Value, Does.Contain("retention=").And.Contain("windows=["));
 
