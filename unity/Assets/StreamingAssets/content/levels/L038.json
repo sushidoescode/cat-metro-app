@@ -22,7 +22,7 @@
     "edges": [
       { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 3 },
       { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 3 },
-      { "id": "E_SPUR", "from": "BLUE", "to": "J1", "travelTicks": 3, "oneWay": false }
+      { "id": "E_SPUR", "from": "BLUE", "to": "J1", "travelTicks": 3, "oneWay": true, "reversible": true }
     ]
   },
   "sources": [
