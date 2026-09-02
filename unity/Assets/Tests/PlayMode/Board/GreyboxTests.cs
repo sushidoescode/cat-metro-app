@@ -47,16 +47,21 @@ namespace CatMetro.Tests.PlayMode
 
             var elements = Object.FindObjectsByType<BoardElementId>(FindObjectsSortMode.None)
                 .Where(e => e.Kind != "train").ToList();
-            var ids = elements.Select(e => e.Id).OrderBy(x => x).ToArray();
-            Assert.That(ids, Is.EqualTo(new[] { "BLU", "E1", "E2", "E3", "J1", "RED", "S1", "SRC" }),
-                "exactly one view object per authored element");
-            Assert.That(elements.Count(e => e.Kind == "source"), Is.EqualTo(1));
-            Assert.That(elements.Count(e => e.Kind == "station"), Is.EqualTo(2));
-            Assert.That(elements.Count(e => e.Kind == "node"), Is.EqualTo(1));
-            Assert.That(elements.Count(e => e.Kind == "edge"), Is.EqualTo(3));
-            Assert.That(elements.Count(e => e.Kind == "switch"), Is.EqualTo(1));
-
             var dto = _root.Session.Level.Dto;
+            var ids = elements.Select(e => e.Id).OrderBy(x => x).ToArray();
+            var expectedIds = dto.Nodes.ToArray().Select(x => x.Id)
+                .Concat(dto.Edges.ToArray().Select(x => x.Id))
+                .Concat(dto.Switches.ToArray().Select(x => x.Id))
+                .OrderBy(x => x).ToArray();
+            Assert.That(ids, Is.EqualTo(expectedIds),
+                "exactly one view object per authored element");
+            Assert.That(elements.Count(e => e.Kind == "source"), Is.EqualTo(dto.Sources.Length));
+            Assert.That(elements.Count(e => e.Kind == "station"), Is.EqualTo(dto.Stations.Length));
+            Assert.That(elements.Count(e => e.Kind == "node"),
+                Is.EqualTo(dto.Nodes.Length - dto.Sources.Length - dto.Stations.Length));
+            Assert.That(elements.Count(e => e.Kind == "edge"), Is.EqualTo(dto.Edges.Length));
+            Assert.That(elements.Count(e => e.Kind == "switch"), Is.EqualTo(dto.Switches.Length));
+
             foreach (var n in dto.Nodes.ToArray())
             {
                 var view = elements.Single(e => e.Id == n.Id && e.Kind != "edge" && e.Kind != "switch");

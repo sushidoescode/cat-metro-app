@@ -94,9 +94,11 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(props.Count(x => x.AssetId == PropModelCatalog.ToyEngineId), Is.EqualTo(1));
             Assert.That(props.Single(x => x.AssetId == PropModelCatalog.DepotShedId).AnchorId,
                 Is.EqualTo("SRC"));
+            var stationIds = level.Dto.Stations.ToArray()
+                .Select(x => x.NodeId).OrderBy(x => x).ToArray();
             Assert.That(props.Where(x => x.AssetId == PropModelCatalog.StationKioskId)
                 .Select(x => x.AnchorId).OrderBy(x => x).ToArray(),
-                Is.EqualTo(new[] { "BLU", "RED" }));
+                Is.EqualTo(stationIds));
             Assert.That(props.All(x => x.GetComponent<BoardElementId>() == null), Is.True,
                 "decorative art must never enter the authored gameplay inventory");
             Assert.That(view.GetComponentsInChildren<BoardElementId>(true)
@@ -170,10 +172,14 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(wood.r, Is.GreaterThan(wood.g));
                 Assert.That(wood.g, Is.GreaterThan(wood.b));
             }
-            Color redRoof = PropertyColor(
-                kiosks["RED"].transform.Find("station:line-roof").GetComponent<Renderer>());
-            Color blueRoof = PropertyColor(
-                kiosks["BLU"].transform.Find("station:line-roof").GetComponent<Renderer>());
+            string redStationId = level.Dto.Stations.ToArray().Single(x =>
+                x.Accepts.ToArray().Contains("red")).NodeId;
+            string blueStationId = level.Dto.Stations.ToArray().Single(x =>
+                x.Accepts.ToArray().Contains("blue")).NodeId;
+            Color redRoof = PropertyColor(kiosks[redStationId].transform
+                .Find("station:line-roof").GetComponent<Renderer>());
+            Color blueRoof = PropertyColor(kiosks[blueStationId].transform
+                .Find("station:line-roof").GetComponent<Renderer>());
             Assert.That(redRoof.r, Is.GreaterThan(redRoof.b), "RED roof carries the red line");
             Assert.That(blueRoof.b, Is.GreaterThan(blueRoof.r), "BLU roof carries the blue line");
             Assert.That(sourceVisuals.All(x => !x.enabled), Is.True,

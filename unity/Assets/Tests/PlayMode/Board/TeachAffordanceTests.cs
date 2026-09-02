@@ -320,7 +320,7 @@ namespace CatMetro.Tests.PlayMode
     { ""id"": ""S1"", ""nodeId"": ""J1"", ""routes"": [""E2"", ""E3""], ""initialRoute"": 0 },
     { ""id"": ""S2"", ""nodeId"": ""J2"", ""routes"": [""E4"", ""E5""], ""initialRoute"": 0 } ],
   ""waves"": [ { ""tick"": 3999, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 1, ""spacingTicks"": 1 } ],
-  ""win"": { ""deliveries"": 99, ""timeLimitTicks"": 4000, ""perfectMaxSwitches"": 1,
+  ""win"": { ""deliveries"": 99, ""timeLimitTicks"": 4000,
     ""stars"": { ""two"": 200, ""three"": 300 } },
   ""economy"": { ""baseTickets"": 20, ""perfectBonus"": 10 }
 }";

@@ -301,11 +301,13 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator WavePreview_NextTwoWaves_TopBand_NonInteractive_Updates()
         {
-            _root = GameRoot.Launch(); // L001: one authored wave
+            _root = GameRoot.Launch();
             yield return null;
 
-            // 1: shows the next wave's colour+count (L001 has one wave: red x2)
-            Assert.That(_root.Preview.ChipSummary, Is.EqualTo("red x2"));
+            // 1: shows the next authored wave's colour+count
+            var firstWave = _root.Session.Level.Dto.Waves.ToArray()[0];
+            Assert.That(_root.Preview.ChipSummary,
+                Is.EqualTo(firstWave.Color + " x" + firstWave.Count));
             Assert.That(_root.Preview.VisibleChipCount, Is.EqualTo(1));
             // 2: sits in the top 0-15% band
             Assert.That(_root.Preview.InTopBand(0), Is.True);
