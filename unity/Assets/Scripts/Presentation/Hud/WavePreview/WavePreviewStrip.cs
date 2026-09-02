@@ -54,7 +54,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 var symbol = new GameObject("cat-token").AddComponent<TextMesh>();
                 symbol.transform.SetParent(chip.transform, false);
                 symbol.transform.localPosition = new Vector3(-0.24f, 0f, -0.01f);
-                symbol.characterSize = 0.2f;
+                symbol.characterSize = 0.24f;
                 symbol.anchor = TextAnchor.MiddleCenter;
                 symbol.alignment = TextAlignment.Center;
                 symbol.color = Theme.Palette.InkNavy;
@@ -169,12 +169,12 @@ namespace CatMetro.Presentation.Hud.WavePreview
             string glyph;
             switch (wave.Shape)
             {
-                case "square": glyph = "■"; break;
-                case "triangle": glyph = "▲"; break;
-                default: glyph = "●"; break;
+                case "square": glyph = "S"; break;
+                case "triangle": glyph = "T"; break;
+                default: glyph = "O"; break;
             }
-            if (wave.Stray) glyph += "↯";
-            if (wave.Express) glyph += "⚡";
+            if (wave.Stray) glyph += "!";
+            if (wave.Express) glyph += "E";
             return glyph;
         }
     }

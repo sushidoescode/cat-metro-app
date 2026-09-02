@@ -1,4 +1,5 @@
 using System.Collections;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using CatMetro.Application.Session;
@@ -41,19 +42,19 @@ namespace CatMetro.Tests.PlayMode
             var previewTokens = Object.FindObjectsByType<TextMesh>(FindObjectsSortMode.None)
                 .Where(label => label.name == "cat-token" && label.transform.IsChildOf(_root.Preview.transform))
                 .Select(label => label.text).ToArray();
-            Assert.That(previewTokens, Does.Contain("●↯"), "the stray is visible before emission");
-            Assert.That(previewTokens, Does.Contain("●⚡"), "the express flag is visible before emission");
+            Assert.That(previewTokens, Does.Contain("O!"), "the stray is visible before emission");
+            Assert.That(previewTokens, Does.Contain("OE"), "the express flag is visible before emission");
 
             var labels = Object.FindObjectsByType<TextMesh>(FindObjectsSortMode.None);
             Assert.That(labels.Any(label => label.name == "tunnel-entry:E_RED_TUNNEL"), Is.True);
             Assert.That(labels.Any(label => label.name == "tunnel-exit:E_RED_TUNNEL"), Is.True);
             Assert.That(labels.Single(label => label.name == "hold:E_HOLD_OUT").text, Is.EqualTo("H"));
-            Assert.That(labels.Any(label => label.name == "match-shape" && label.text == "▲"), Is.True,
+            Assert.That(labels.Any(label => label.name == "match-shape" && label.text == "T"), Is.True,
                 "the triangle station has an independent non-colour match signal");
 
             _root.Session.AdvanceMs(4 * TickInterpolator.TICK_MS);
             yield return null;
-            Assert.That(_root.View.TrainBadge(0), Is.EqualTo("●↯"),
+            Assert.That(_root.View.TrainBadge(0), Is.EqualTo("O!"),
                 "the emitted train carries the same token badge as its preview");
         }
 
@@ -66,7 +67,7 @@ namespace CatMetro.Tests.PlayMode
             var labels = Object.FindObjectsByType<TextMesh>(FindObjectsSortMode.None);
             var gate = labels.Single(label => label.name == "gate:E_GATE_TUNNEL");
             var cooldown = labels.Single(label => label.name == "cooldown:S1");
-            Assert.That(gate.text, Is.EqualTo("╫"));
+            Assert.That(gate.text, Is.EqualTo("X"));
             Assert.That(cooldown.text, Is.Empty);
 
             Assert.That(_root.Session.EnqueueToggle(0), Is.True);
@@ -77,8 +78,44 @@ namespace CatMetro.Tests.PlayMode
 
             _root.Session.AdvanceMs(7 * TickInterpolator.TICK_MS);
             yield return null;
-            Assert.That(gate.text, Is.EqualTo("╫ 7"),
+            Assert.That(gate.text, Is.EqualTo("X 7"),
                 "previewTicks exposes the next transition instead of remaining decorative data");
+        }
+
+        [UnityTest]
+        public IEnumerator CaptureEvidence_CapstonePhoneFrame_WhenRequested()
+        {
+            string dir = System.Environment.GetEnvironmentVariable("CM_LADDER_CAPTURE_DIR");
+            if (string.IsNullOrEmpty(dir))
+            {
+                Assert.Pass("capture rig disarmed — set CM_LADDER_CAPTURE_DIR to emit L060");
+                yield break;
+            }
+
+            _root = GameRoot.LaunchWith(ReadLevel("L060"));
+            yield return null;
+            _root.Session.AdvanceMs(4 * TickInterpolator.TICK_MS);
+            yield return null;
+
+            const int width = 917;
+            const int height = 2048;
+            var rt = new RenderTexture(width, height, 24);
+            _root.Cam.targetTexture = rt;
+            yield return null; // camera aspect must settle before screen-space layout
+            _root.Preview.Refresh();
+            Canvas.ForceUpdateCanvases();
+            _root.Cam.Render();
+            RenderTexture.active = rt;
+            var tex = new Texture2D(width, height, TextureFormat.RGB24, false);
+            tex.ReadPixels(new Rect(0f, 0f, width, height), 0, 0);
+            tex.Apply();
+            _root.Cam.targetTexture = null;
+            RenderTexture.active = null;
+
+            Directory.CreateDirectory(dir);
+            File.WriteAllBytes(Path.Combine(dir, "ladder-L060-tick004.png"), tex.EncodeToPNG());
+            Object.Destroy(tex);
+            Object.Destroy(rt);
         }
 
         private static ImportedLevel ReadLevel(string id)

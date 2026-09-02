@@ -158,7 +158,7 @@ namespace CatMetro.Presentation.Board
                     var matchShape = new GameObject("match-shape").AddComponent<TextMesh>();
                     matchShape.transform.SetParent(prim.transform, false);
                     matchShape.transform.localPosition = new Vector3(0.48f, -0.48f, -1.02f);
-                    matchShape.characterSize = 0.18f;
+                    matchShape.characterSize = 0.24f;
                     matchShape.anchor = TextAnchor.MiddleCenter;
                     matchShape.alignment = TextAlignment.Center;
                     matchShape.text = ShapeGlyph(stationShape[nodes[i].Id]);
@@ -187,9 +187,9 @@ namespace CatMetro.Presentation.Board
                     ToyTrackMeshBuilder.Build(edges[i].Id, _trackPaths.Path(i), transform);
                 else
                 {
-                    CreateBoardLabel("tunnel-entry:" + edges[i].Id, "◉",
+                    CreateBoardLabel("tunnel-entry:" + edges[i].Id, "T",
                         _nodePos[_edgeFrom[i]] + new Vector3(0f, 0f, -0.34f), 0.32f);
-                    CreateBoardLabel("tunnel-exit:" + edges[i].Id, "◉",
+                    CreateBoardLabel("tunnel-exit:" + edges[i].Id, "T",
                         _nodePos[_edgeTo[i]] + new Vector3(0f, 0f, -0.34f), 0.32f);
                 }
                 if (edges[i].Hold)
@@ -197,7 +197,7 @@ namespace CatMetro.Presentation.Board
                         _trackPaths.Path(i).EvaluateDistanceFraction(0.5f)
                             + new Vector3(0f, 0f, -0.34f), 0.24f);
                 if (!edges[i].OneWay || edges[i].Reversible)
-                    CreateBoardLabel("direction:" + edges[i].Id, "↔",
+                    CreateBoardLabel("direction:" + edges[i].Id, "<->",
                         _trackPaths.Path(i).EvaluateDistanceFraction(0.58f)
                             + new Vector3(0f, 0f, -0.34f), 0.22f);
             }
@@ -208,7 +208,7 @@ namespace CatMetro.Presentation.Board
             for (int g = 0; g < gates.Length; g++)
             {
                 _gateEdge[g] = edgeIndex[gates[g].EdgeId];
-                _gateLabel[g] = CreateBoardLabel("gate:" + gates[g].EdgeId, "╫",
+                _gateLabel[g] = CreateBoardLabel("gate:" + gates[g].EdgeId, "X",
                     _trackPaths.Path(_gateEdge[g]).EvaluateDistanceFraction(0.5f)
                         + new Vector3(0f, 0f, -0.38f), 0.28f);
             }
@@ -379,7 +379,7 @@ namespace CatMetro.Presentation.Board
                     var badge = new GameObject("cat-token").AddComponent<TextMesh>();
                     badge.transform.SetParent(go.transform, false);
                     badge.transform.localPosition = new Vector3(0f, 0f, -1.05f);
-                    badge.characterSize = 0.42f;
+                    badge.characterSize = 0.48f;
                     badge.anchor = TextAnchor.MiddleCenter;
                     badge.alignment = TextAlignment.Center;
                     badge.color = Palette.InkNavy;
@@ -432,7 +432,7 @@ namespace CatMetro.Presentation.Board
                     string countdown = transition > 0
                         && transition <= session.Level.Graph.GatePreviewTicks[g]
                         ? " " + transition : "";
-                    _gateLabel[g].text = (open ? "┃" : "╫") + countdown;
+                    _gateLabel[g].text = (open ? "|" : "X") + countdown;
                     _gateLabel[g].color = open ? Palette.GardenGreen : Palette.SignalRed;
                 }
         }
@@ -479,9 +479,9 @@ namespace CatMetro.Presentation.Board
         {
             switch (shape)
             {
-                case "square": return "■";
-                case "triangle": return "▲";
-                default: return "●";
+                case "square": return "S";
+                case "triangle": return "T";
+                default: return "O";
             }
         }
 
@@ -489,17 +489,17 @@ namespace CatMetro.Presentation.Board
         {
             switch (shape)
             {
-                case CatMetro.Domain.CatShape.Square: return "■";
-                case CatMetro.Domain.CatShape.Triangle: return "▲";
-                default: return "●";
+                case CatMetro.Domain.CatShape.Square: return "S";
+                case CatMetro.Domain.CatShape.Triangle: return "T";
+                default: return "O";
             }
         }
 
         private static string TokenGlyph(byte token)
         {
             string glyph = ShapeGlyph(CatMetro.Domain.CatToken.Shape(token));
-            if (CatMetro.Domain.CatToken.IsStray(token)) glyph += "↯";
-            if (CatMetro.Domain.CatToken.IsExpress(token)) glyph += "⚡";
+            if (CatMetro.Domain.CatToken.IsStray(token)) glyph += "!";
+            if (CatMetro.Domain.CatToken.IsExpress(token)) glyph += "E";
             return glyph;
         }
 
