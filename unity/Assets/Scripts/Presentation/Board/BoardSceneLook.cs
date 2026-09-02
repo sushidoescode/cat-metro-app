@@ -24,30 +24,18 @@ namespace CatMetro.Presentation.Board
         // only 0.0036. Do not widen these without re-deriving both bands.
         private const float SafeWidth = 0.88f;
         private const float SafeHeight = 0.76f;
-        // THE COMPOSITION ALTERNATIVE, isolated here as a one-line flip so a render can
-        // compare it: set this to -16f. Reducing the yaw is the other documented way to buy
-        // horizontal fill, and it does NOT pay what an earlier lane reported. The mechanism,
-        // with the tilt matrix written out (Unity applies Euler ZXY, so M = Ry*Rx*Rz):
-        //
-        //   yaw -32:  |M00| 0.86874   |M01| 0.26630   |M02| 0.41758
-        //   yaw -16:  |M00| 0.97080   |M01| 0.10220   |M02| 0.21720
-        //
-        // A renderer's world-x half-extent is |M00|ex + |M01|ey + |M02|ez, so lowering the
-        // yaw makes the board's long local-Y axis 2.6x cheaper in frame width — but it also
-        // makes local X 12% MORE expensive, and the stations sit at the extremes of local X.
-        // On L001 those cancel almost exactly: the post-split gameplay contentBounds goes
-        // 6.126 -> 6.048, a 1.013x fill, against the 1.116x the law split alone buys.
-        // (Reconstructing the pre-split figure the same way gives ~1.10x, not the ~1.23x an
-        // earlier lane reported; that number cannot be right for a 4-wide, 7-tall board.)
-        // The yaw lever pays on tall, NARROW levels, costs fill on wide ones such as L008,
-        // and it moves the key-light incidence law in ApplyLighting, which is calibrated
-        // against this exact 38/-32/-4. That is why it is the alternative and not the choice.
-        private const float DioramaYaw = -32f;
+        // The 2026-08-31 curated framing reference is frontal: the board's receding axis runs
+        // vertically in the portrait frame instead of diagonally across it. Pitch retains the
+        // raised wooden-toy depth; zero yaw and roll make that frontal composition explicit.
+        // RuntimeSceneRigTests measures the resulting screen skew (<1 degree) and separately
+        // sweeps the gameplay safe frame, so this cannot be changed as an aesthetic literal
+        // without re-proving both claims against the rendered hierarchy.
+        private const float DioramaPitch = 38f;
         // Public because the diorama tilt is the ONLY thing that decides which way a board-local
         // feature faces the (identity-rotated, orthographic) camera. ToyTrainView derives the
         // cat's fixed facing from it rather than hardcoding a yaw that would silently rot if
         // this tilt were ever re-authored.
-        public static readonly Quaternion BoardTilt = Quaternion.Euler(38f, DioramaYaw, -4f);
+        public static readonly Quaternion BoardTilt = Quaternion.Euler(DioramaPitch, 0f, 0f);
 
         // Declared below BoardTilt on purpose: feat/cats-on-trains inserts its comment block
         // at exactly that line, and an insertion of our own at the same point turns two
@@ -104,30 +92,13 @@ namespace CatMetro.Presentation.Board
             // slab into the horizontal safe band shrank the whole diorama to satisfy a border
             // no law asks about. Target-01 lets the board run off both edges; so do we now.
             //
-            // THE LAW SPLIT, and what it is worth. Measured off
-            // .catshots/orchestrator-2026-08-25-r6/rigA-board-train-midedge.png (L001), whose
-            // three unclipped rim corners solve the projection exactly at 115.92 px per world
-            // unit, cameraX 3.297, cameraY 5.192, orthographicSize 8.834 — reproducing the
-            // 115.7 and 8.85 this file already quoted from the r3 render:
-            //
-            //   contentBounds was world x [-0.120, 6.714], size 6.834.
-            //   The RIGHT extreme is the BLU station kiosk: its blue roof's silhouette ends
-            //   at world x 6.571 and its AABB reaches 6.714. That is gameplay and it stays.
-            //   The LEFT extreme is the perimeter-trees cluster. Its foliage silhouette
-            //   begins at world x 0.187 and NOTHING else outside the slab is left of it, so
-            //   the 0.307 gap down to -0.120 is that cluster's own AABB inflation (renderer
-            //   bounds are world-axis-aligned, and every board child is tilted 38/-32/-4, so
-            //   an AABB always overreaches its silhouette).
-            //
-            // A decorative tree was therefore setting the size of the entire diorama. With it
-            // out, the leftmost gameplay renderer is the depot shed, silhouette at world x
-            // 0.895; applying the same 0.307 inflation puts its AABB near 0.588, so
-            //   contentBounds.size.x 6.834 -> 6.126, and size 8.834 -> 7.919: a 1.116x fill.
-            // Board coverage of the frame goes 26.5% -> 32.7% on that alone, and 48.1% once
-            // BoardSurface's anisotropic margin (which this split is what pays for) lands.
-            // The cat scales only with the camera, so it goes 3.2-3.6% -> 3.57-4.02% of frame
-            // width against the target's 5-6%: the slab does nothing for cat legibility, and
-            // nothing on the camera side can, because the gameplay band is already full.
+            // The r6 artifact showed why the split is necessary: a decorative tree and the
+            // slab's rim participated in the same world AABB as stations and track, so empty
+            // scenery pulled the camera away from gameplay. Decorative width is now excluded;
+            // BoardSurface owns the intentional side bleed while this fit continues to size
+            // from things the player must read. BoardLookTests clips the projected WoodTop to
+            // the real viewport before claiming frame area, and the passenger test measures a
+            // depth-preserving rendered mask rather than inferring cat pixels from this fit.
             //
             // This WIDENS what may leave frame. Trees, bushes, the desk clutter and the
             // parked engine may now cross the band that stations, sources, node markers,
@@ -170,36 +141,10 @@ namespace CatMetro.Presentation.Board
             float size = Mathf.Max(MinOrthoSize,
                 Mathf.Max(requiredForHeight, requiredForWidth) * 1.05f);
             float safeCenterY = (0.13f + 0.86f) * 0.5f;
-            // Centre X on the content the law governs, not on the slab that may be lopsided
-            // around it; centre Y on the full frame so the rim stays inside top and bottom.
-            //
-            // KNOWN, MEASURED, NOT FIXED HERE: the slab bleeds off the LEFT frame edge only,
-            // where target-01 bleeds both. It is a consequence of this line, and the fix is
-            // not available on the camera side. Measured off the 2026-08-25 r3 render (L001):
-            // the rim's two long edges sit 600px apart, which against their 5.186-unit
-            // horizontal separation puts the frame at 115.7 px/world-unit and the fit at
-            // orthographicSize 8.85. The slab's AABB is 8.137 units = 941px against a 917px
-            // frame, so centred it would clear each edge by only 12px. But the board's centre
-            // projects to screen x 411 against the frame's 458.5 — contentBounds is offset
-            // 0.41 units from the slab it sits on, because props spread asymmetrically. Left
-            // overhang becomes 12 + 47.5 = 60px (bleeds, and the rim does clip at x=0 for
-            // rows 588-680); right becomes 12 - 47.5, so it falls ~35px short and the rim
-            // stops at x=857.
-            //
-            // Re-centring on the slab is the obvious fix and it breaches the safe-frame law:
-            // 0.41 units is 0.0517 of viewport width here, against the 0.013 of slack the
-            // derivation above leaves on each edge — 4x over. That law was breached once this
-            // week already and SafeWidth/SafeHeight are the fix.
-            //
-            // What would work is a wider slab, which is free against the width fit now that
-            // contentBounds excludes BoardBody. The slab's AABB has to reach
-            // 2 * (3.965 + 0.41) = 8.75 units, and d(AABB.x)/d(Margin) = 2.27, so
-            // BoardSurface.Margin would go 1.05 -> ~1.32 bare, ~1.56 with headroom. Vertically
-            // that is affordable (requiredForHeight * 1.05 reaches 6.05 against the fitted
-            // 8.85; it would have to reach 12.8 to take over the fit). Two reasons it is not
-            // done here: it widens the toy's wood border by ~50%, which moves overall board
-            // fill — reserved for the human — and the 0.41 offset is per-level, so one
-            // constant would be an unverifiable guess on the other 16 levels.
+            // Centre X on the gameplay content the law governs, not on decorative wood or a
+            // lopsided prop cluster. BoardSurface is deliberately wide enough to bleed at both
+            // portrait sides despite that choice. Centre Y on the complete non-desk frame so
+            // the compact near/far rims remain visible as a finite tabletop.
             float cameraX = contentBounds.center.x;
             float cameraY = frameBounds.center.y - (safeCenterY - 0.5f) * 2f * size;
 
@@ -294,23 +239,26 @@ namespace CatMetro.Presentation.Board
             // any cool albedo cool. docs/LOOK.md names navy and teal in the palette, so this
             // was defeating the art direction at the class level, not just on the rails.
             //
-            // Why the ambient was the wrong half of it. The board's visible normal is
-            // (0.418, 0.616, -0.668) — n.y = 0.616, so every surface the player looks at is
+            // Why the ambient was the wrong half of it. The frontal board's visible normal is
+            // (0, 0.616, -0.788) — n.y = 0.616, so every surface the player looks at is
             // upward-facing and draws almost entirely on the SKY band. The cool ground colour
             // was only ever reaching downward faces, which is to say nothing. Cooling the fill
             // means cooling the sky.
             //
             // What this is. Sky and equator go to a cool blue-grey; the ground stays warm,
             // which is physically what it is — bounce off a wooden desk. Intensity rises to
-            // 1.15 to hold the fill's share of the total. With the key below, the illuminant
-            // becomes S = (1.063, 0.890, 0.738), i.e. blue at 0.694 of red against 0.303.
-            // Predicted from the measured transfer: InkNavy renders (59, 62, 74), b-r +15;
+            // 1.15 to hold the fill's share of the total. In the former diagonal rig, the key
+            // below made the fitted illuminant S = (1.063, 0.890, 0.738), i.e. blue at 0.694
+            // of red against 0.303. That historical transfer predicted InkNavy (59, 62, 74),
+            // b-r +15;
             // MetroTeal (77, 170, 151), b-r +74; CreamCard (252, 225, 193), b-r -59 and no
             // longer clipping. The warm mood is not spent — it moves into the wood albedos
             // (re-solved in BoardSurface so the board still renders (204, 130, 87), which is
             // target-01's board to within three units) and into the warm/cool split that a
             // cool fill under a warm key finally makes possible. Before this, lit and shaded
             // faces were both amber, which is the flatness the raking key was fighting alone.
+            // The frontal pose changes key incidence, so those pixel predictions are provenance
+            // for these colour constants, not a current artifact measurement.
             RenderSettings.ambientMode = AmbientMode.Trilight;
             RenderSettings.ambientSkyColor = new Color(0.55f, 0.59f, 0.66f);
             RenderSettings.ambientEquatorColor = new Color(0.44f, 0.47f, 0.53f);
@@ -408,14 +356,10 @@ namespace CatMetro.Presentation.Board
             // not a nudge, and it is the largest single reason the diorama reads differently
             // from the base branch.
             //
-            // The board is tilted Euler(38,-32,-4), so its visible surface
-            // normal is ~(0.42, 0.62, -0.67). The base pose at Euler(35,-30,2) sat within
-            // ~2.5 degrees of that normal — square-on light, which is why the diorama read
-            // flat-lit with near-zero shadow length. This pose keeps the light high-right in
-            // frame but ~28 degrees off the board normal, so it rakes: shadows stretch to
-            // roughly half an object's height toward frame-left and vertical faces split
-            // into lit and shaded sides. Renderer positions are untouched, so the 24-unit
-            // shadow-distance law in RuntimeSceneRigTests still holds.
+            // The board is now frontal at Euler(38,0,0). This key remains intentionally off the
+            // board normal so vertical faces split into lit and shaded sides; the scene tests
+            // measure that result and the 24-unit shadow-distance envelope directly rather
+            // than preserving an angle computed for the superseded diagonal pose.
             key.transform.localRotation = Quaternion.Euler(19f, -56f, 0f);
         }
     }

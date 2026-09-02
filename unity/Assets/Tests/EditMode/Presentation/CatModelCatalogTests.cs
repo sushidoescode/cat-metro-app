@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using CatMetro.Content;
 using CatMetro.Domain;
 using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Cats;
@@ -31,8 +34,12 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(CatModelCatalog.BoardClip, Is.EqualTo("Cat_Board"));
             Assert.That(CatModelCatalog.AlightClip, Is.EqualTo("Cat_Alight"));
             Assert.That(CatModelCatalog.CelebrateClip, Is.EqualTo("Cat_Celebrate"));
-            Assert.That(CatModelCatalog.PresenterScale, Is.EqualTo(0.42f));
-            Assert.That(CatModelCatalog.WalkTravelSpeedAtOneX, Is.EqualTo(0.100367f));
+            Assert.That(CatModelCatalog.PresenterScale, Is.EqualTo(0.46725f));
+            Assert.That(CatModelCatalog.NormalizedWalkTravelSpeedAtOneX,
+                Is.EqualTo(0.238969f));
+            Assert.That(CatModelCatalog.WalkTravelSpeedAtOneX,
+                Is.EqualTo(CatModelCatalog.NormalizedWalkTravelSpeedAtOneX
+                    * CatModelCatalog.PresenterScale));
             Assert.That(CatModelCatalog.EarDeformerPathA, Is.EqualTo(
                 "Armature/tripo::Root/tripo::Head_0/tripo::Head_1/tripo::Head_2/bone_4"));
             Assert.That(CatModelCatalog.EarDeformerPathB, Is.EqualTo(
@@ -331,7 +338,7 @@ namespace CatMetro.Tests.EditMode.Presentation
 
                     Transform rig = animators[0].transform;
                     Assert.That(rig.localScale,
-                        Is.EqualTo(Vector3.one * 0.42f));
+                        Is.EqualTo(Vector3.one * CatModelCatalog.PresenterScale));
                     AssertDirection(rig.localRotation * Vector3.up, Vector3.back,
                         "imported +Y must become cat/tabletop up (-Z)");
                     AssertDirection(rig.localRotation * Vector3.forward, Vector3.right,
@@ -355,9 +362,11 @@ namespace CatMetro.Tests.EditMode.Presentation
 
                     Bounds standing = BoundsIn(cat,
                         rig.GetComponentInChildren<MeshFilter>(true));
-                    Assert.That(standing.min.z, Is.EqualTo(-0.42f).Within(0.0001f));
+                    Assert.That(standing.min.z,
+                        Is.EqualTo(-CatModelCatalog.PresenterScale).Within(0.0001f));
                     Assert.That(standing.max.z, Is.EqualTo(0f).Within(0.0001f));
-                    Assert.That(standing.size.z, Is.EqualTo(0.42f).Within(0.0001f));
+                    Assert.That(standing.size.z,
+                        Is.EqualTo(CatModelCatalog.PresenterScale).Within(0.0001f));
 
                     AssertPlays(view, animators[0], CatPresentationState.WaitingIdle,
                         "Base Layer.Cat_IdleSit");
@@ -447,6 +456,297 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void ResourcesRig_ReleasedLaneEnvelopeAndCurrentEndpointCasesClearTheCarriage()
+        {
+            GameObject prefab = Resources.Load<GameObject>(CatModelCatalog.ResourcePath);
+            if (prefab == null)
+                Assert.Ignore("The licensed local rig is absent; run this in the combined asset workspace.");
+
+            var catalog = new CatModelCatalog(prefab);
+            Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(1), catalog.RejectionReason);
+            var host = new GameObject("measured-platform-clearance-host");
+            var baked = new Mesh { name = "measured-platform-clearance-snapshot" };
+            try
+            {
+                var view = ToyTrainView.Create(host.transform, "train:rig-clearance",
+                    new[] { 0 }, new[] { 1 }, catalog);
+                view.SyncSlot(41L, CatColor.Red);
+                Transform carriage = view.transform.Find("Carriage");
+                Transform cat = carriage.Find("Cat");
+                Animator animator = cat.GetComponentInChildren<Animator>(true);
+                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+                SkinnedMeshRenderer[] skins =
+                    animator.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                Assert.That(skins, Has.Length.EqualTo(1),
+                    "the pinned licensed artifact must expose its one measured skin");
+                AnimationClip[] clips = animator.runtimeAnimatorController.animationClips;
+                AnimationClip walk = clips.Single(
+                    clip => clip.name == CatModelCatalog.WalkClip);
+                int walkHalfFrameSamples = Mathf.CeilToInt(
+                    walk.length * walk.frameRate * 2f);
+                Assert.That(walkHalfFrameSamples, Is.GreaterThanOrEqualTo(150),
+                    "the probe must sample the complete licensed walk at half-frame spacing");
+                float maximumBobTime;
+                float minimumBobTime;
+                float[] visualTimes = TimesAcrossEarRange(
+                    41u, out maximumBobTime, out minimumBobTime);
+                var motion = new CatMicroMotion(41u);
+                for (int index = 0; index < visualTimes.Length; index++)
+                {
+                    float targetEar = Mathf.Lerp(-CatMicroMotion.EarTwitchMaximumDegrees,
+                        CatMicroMotion.EarTwitchMaximumDegrees,
+                        index / (float)(visualTimes.Length - 1));
+                    CatMicroPose pose = motion.Evaluate(visualTimes[index], false, false);
+                    Assert.That(pose.EarTwitchDegrees,
+                        Is.EqualTo(targetEar).Within(0.03f),
+                        "the clearance corpus must cover both signs and intermediate ear angles");
+                }
+                Assert.That(motion.Evaluate(maximumBobTime, false, false).Bob,
+                    Is.GreaterThanOrEqualTo(0.99999f),
+                    "positive bob extreme must come from the production micro-motion artifact");
+                Assert.That(motion.Evaluate(minimumBobTime, false, false).Bob,
+                    Is.LessThanOrEqualTo(-0.99999f),
+                    "negative bob extreme must come from the production micro-motion artifact");
+
+                string levelsDir = Path.Combine(UnityEngine.Application.streamingAssetsPath,
+                    "content", "levels");
+                string[] levelPaths = Directory.GetFiles(levelsDir, "L*.json")
+                    .Where(path => Path.GetExtension(path) == ".json")
+                    .ToArray();
+                Assert.That(levelPaths.Length, Is.GreaterThanOrEqualTo(19),
+                    "the queue-lane bound must come from the non-empty authored corpus");
+                ImportedLevel[] authoredLevels = levelPaths
+                    .Select(path => LevelImporter.Import(File.ReadAllBytes(path)))
+                    .Select(import =>
+                    {
+                        Assert.That(import.Ok, Is.True,
+                            import.Ok ? string.Empty : import.Error.ToString());
+                        return import.Value;
+                    })
+                    .ToArray();
+                int maximumAuthoredTrains = authoredLevels
+                    .Max(level => level.Graph.TrainsMax);
+                Assert.That(maximumAuthoredTrains, Is.GreaterThanOrEqualTo(10),
+                    "the lane sweep must include the current authored TrainsMax ceiling");
+
+                float minimumGap = float.PositiveInfinity;
+                string minimumLabel = string.Empty;
+                Vector3 seatBoard = host.transform.InverseTransformPoint(cat.position);
+                var states = new List<CatPresentationState>();
+                var sourceSides = new List<Vector3>();
+                var queuePositions = new List<int>();
+                var movingToPlatforms = new List<bool>();
+                var endpointLabels = new List<string>();
+                const int maximumAuthoredWaitingQueuePosition = 3;
+                var waitingSourceSides = new[]
+                {
+                    Vector3.left,
+                    new Vector3(-1f, -1f, 0f).normalized,
+                    new Vector3(-1f, 1f, 0f).normalized,
+                };
+                var waitingSourceLabels = new[]
+                {
+                    "straight-source",
+                    "diagonal-source-a",
+                    "diagonal-source-b",
+                };
+                for (int queuePosition = 0;
+                    queuePosition < maximumAuthoredTrains;
+                    queuePosition++)
+                {
+                    // Once a released source cat reaches its outgoing edge, the carriage and
+                    // source tangent rotate together and BoardView's side is carriage-local -Y.
+                    states.Add(CatPresentationState.Walk);
+                    sourceSides.Add(Vector3.down);
+                    queuePositions.Add(queuePosition);
+                    movingToPlatforms.Add(false);
+                    endpointLabels.Add("released/lane=" + queuePosition);
+                }
+                // A source-blocked cat is still parked in the fresh heading-zero carriage.
+                // L005/L011/L012/L013 reach lanes 0..3 at their straight sources; the two
+                // diagonal source families in L018/L019 can expose lanes 0..1 on a catch-up
+                // frame before the presentation-side allocator observes the first release.
+                for (int queuePosition = 0;
+                    queuePosition <= maximumAuthoredWaitingQueuePosition;
+                    queuePosition++)
+                {
+                    states.Add(CatPresentationState.WaitingIdle);
+                    sourceSides.Add(waitingSourceSides[0]);
+                    queuePositions.Add(queuePosition);
+                    movingToPlatforms.Add(false);
+                    endpointLabels.Add("waiting/" + waitingSourceLabels[0]
+                        + "/lane=" + queuePosition);
+                }
+                const int maximumDiagonalWaitingQueuePosition = 1;
+                for (int side = 1; side < waitingSourceSides.Length; side++)
+                {
+                    for (int queuePosition = 0;
+                        queuePosition <= maximumDiagonalWaitingQueuePosition;
+                        queuePosition++)
+                    {
+                        states.Add(CatPresentationState.WaitingIdle);
+                        sourceSides.Add(waitingSourceSides[side]);
+                        queuePositions.Add(queuePosition);
+                        movingToPlatforms.Add(false);
+                        endpointLabels.Add("waiting/" + waitingSourceLabels[side]
+                            + "/lane=" + queuePosition);
+                    }
+                }
+                states.Add(CatPresentationState.Walk);
+                sourceSides.Add(Vector3.down);
+                queuePositions.Add(-1);
+                movingToPlatforms.Add(true);
+                endpointLabels.Add("departure-walk");
+
+                Assert.That(states.Count,
+                    Is.EqualTo(maximumAuthoredTrains
+                        + maximumAuthoredWaitingQueuePosition + 6));
+                for (int endpoint = 0; endpoint < states.Count; endpoint++)
+                {
+                    CatPresentationState state = states[endpoint];
+                    Vector3 sourceSide = sourceSides[endpoint];
+                    int queuePosition = queuePositions[endpoint];
+                    bool movingToPlatform = movingToPlatforms[endpoint];
+                    if (!movingToPlatform)
+                        view.SetSourcePlatformAnchor(seatBoard, sourceSide, queuePosition);
+                    MeasureRigClearanceCase(view, host.transform, baked, state,
+                        movingToPlatform, sourceSide, maximumBobTime, minimumBobTime,
+                        visualTimes, endpointLabels[endpoint],
+                        ref minimumGap, ref minimumLabel);
+                }
+
+                int stationArrivalCases = 0;
+                var uniqueStationHeadings = new List<float>();
+                foreach (ImportedLevel level in authoredLevels)
+                {
+                    NodeDto[] levelNodes = level.Dto.Nodes.ToArray();
+                    Vector3[] nodePositions = levelNodes
+                        .Select(node => new Vector3(node.X, node.Y, 0f))
+                        .ToArray();
+                    TrackSplineGraph paths = TrackSplineGraph.Build(nodePositions,
+                        level.Graph.EdgeFrom, level.Graph.EdgeTo);
+                    ToyTrainView celebrateView = ToyTrainView.Create(host.transform,
+                        "train:celebrate-clearance:" + level.Graph.LevelId,
+                        level.Graph.EdgeFrom, level.Graph.EdgeTo, catalog);
+                    try
+                    {
+                        for (int edge = 0; edge < level.Graph.EdgeFrom.Length; edge++)
+                        {
+                            int stationNode = level.Graph.EdgeTo[edge];
+                            if (!level.Graph.StationNode.Contains(stationNode)) continue;
+                            stationArrivalCases++;
+                            celebrateView.SyncSlot(PresentationKeyForSeed(
+                                41u, (uint)stationArrivalCases), CatColor.Red);
+                            celebrateView.PlaceOnEdge(paths, edge, paths.Path(edge).Length);
+                            celebrateView.PlaceAtNode(paths, stationNode,
+                                nodePositions[stationNode]);
+                            Transform celebrateCarriage = celebrateView.transform
+                                .Find("Carriage");
+                            float heading = Mathf.DeltaAngle(0f,
+                                celebrateCarriage.localEulerAngles.z);
+                            if (!uniqueStationHeadings.Any(existing =>
+                                Mathf.Abs(Mathf.DeltaAngle(existing, heading)) < 0.001f))
+                                uniqueStationHeadings.Add(heading);
+                            foreach (CatPresentationState departureState in new[]
+                                {
+                                    CatPresentationState.Walk,
+                                    CatPresentationState.Celebrate,
+                                })
+                                MeasureRigClearanceCase(celebrateView, host.transform, baked,
+                                    departureState, true, Vector3.down,
+                                    maximumBobTime, minimumBobTime, visualTimes,
+                                    level.Graph.LevelId + "/departure-" + departureState
+                                        + "/edge=" + edge
+                                        + "/heading=" + heading.ToString("F3"),
+                                    ref minimumGap, ref minimumLabel);
+                        }
+                    }
+                    finally
+                    {
+                        Object.DestroyImmediate(celebrateView.gameObject);
+                    }
+                }
+                Assert.That(stationArrivalCases, Is.EqualTo(38),
+                    "the current 19-level corpus has 38 station-arrival placements");
+                Assert.That(uniqueStationHeadings.Count, Is.EqualTo(11),
+                    "production placement yields 11 current station carriage headings");
+
+                const int retainedHeadingStepDegrees = 5;
+                int retainedHeadingSamples = 0;
+                var retainedView = ToyTrainView.Create(host.transform,
+                    "train:retained-heading-clearance", new[] { 0 }, new[] { 1 }, catalog);
+                try
+                {
+                    for (int heading = 0; heading < 360;
+                        heading += retainedHeadingStepDegrees)
+                    {
+                        retainedHeadingSamples++;
+                        Vector3 direction = Quaternion.Euler(0f, 0f, heading)
+                            * Vector3.right * 2f;
+                        var headingPaths = TrackSplineGraph.Build(
+                            new[] { Vector3.zero, direction }, new[] { 0 }, new[] { 1 });
+                        retainedView.SyncSlot(PresentationKeyForSeed(
+                            41u, (uint)(stationArrivalCases + retainedHeadingSamples)),
+                            CatColor.Red);
+                        retainedView.PlaceOnEdge(headingPaths, 0,
+                            headingPaths.Path(0).Length);
+                        // A collapsed catch-up can park at a foreign node while retaining the
+                        // last rendered heading. This is the production clamp, not a direct
+                        // transform mutation; five-degree intervals sample that retained state
+                        // around the full circle without claiming a continuous proof.
+                        retainedView.PlaceAtNode(headingPaths, 0, Vector3.zero);
+                        foreach (CatPresentationState departureState in new[]
+                            {
+                                CatPresentationState.Walk,
+                                CatPresentationState.Celebrate,
+                            })
+                            MeasureRigClearanceCase(retainedView, host.transform, baked,
+                                departureState, true, Vector3.down,
+                                maximumBobTime, minimumBobTime, visualTimes,
+                                "retained-heading/" + heading + "/" + departureState,
+                                ref minimumGap, ref minimumLabel);
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(retainedView.gameObject);
+                }
+                Assert.That(retainedHeadingSamples, Is.EqualTo(72),
+                    "72 five-degree samples must span the retained-heading circle");
+
+                TestContext.Out.WriteLine("CAT_RIG_PLATFORM_CLEARANCE_READBACK offset="
+                    + ToyTrainView.PlatformSideOffset.ToString("F6")
+                    + " minimumGap=" + minimumGap.ToString("F6")
+                    + " releasedMaximumQueuePosition=" + (maximumAuthoredTrains - 1)
+                    + " straightWaitingMaximumQueuePosition="
+                        + maximumAuthoredWaitingQueuePosition
+                    + " diagonalWaitingMaximumQueuePosition="
+                        + maximumDiagonalWaitingQueuePosition
+                    + " endpointSamples=" + (states.Count + 2 * stationArrivalCases
+                        + 2 * retainedHeadingSamples)
+                    + " stationArrivalCases=" + stationArrivalCases
+                    + " uniqueStationHeadings=" + uniqueStationHeadings.Count
+                    + " retainedHeadingSamples=" + retainedHeadingSamples
+                    + " departureStates=2"
+                    + " earSamples=" + visualTimes.Length
+                    + " sample=" + minimumLabel);
+                Assert.That(minimumGap,
+                    Is.GreaterThanOrEqualTo(ToyTrainView.PlatformEndpointClearance),
+                    $"{minimumLabel} leaves only {minimumGap:F4} board units; the licensed "
+                    + "skin must retain the declared separating-plane clearance across the "
+                    + "released TrainsMax lane envelope, straight waiting lanes 0..3, both "
+                    + "diagonal waiting normals at lanes 0..1, actual station arrivals, the "
+                    + "five-degree retained-heading envelope, half-frame active clips and the "
+                    + "17-angle ear corpus translated to maximum carriage-ward bob");
+            }
+            finally
+            {
+                Object.DestroyImmediate(baked);
+                Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
         public void ResourcesRig_NoLocalizedEyeControlPinsBlinkToHudAndPlaceholderCats()
         {
             GameObject prefab = Resources.Load<GameObject>(CatModelCatalog.ResourcePath);
@@ -514,20 +814,34 @@ namespace CatMetro.Tests.EditMode.Presentation
                     Vector3 seatBoard = host.transform.InverseTransformPoint(cat.position);
                     view.SetSourcePlatformAnchor(seatBoard, Vector3.down, 0);
 
-                    view.ApplyPresentation(CatPresentationState.Walk, 0.8f, false,
+                    const float laneZeroBlend = 0.8f;
+                    view.ApplyPresentation(CatPresentationState.Walk, laneZeroBlend, false,
                         0f, false, 1f);
-                    Assert.That(animator.speed, Is.EqualTo(2.989030f).Within(0.0001f),
-                        "lane zero is 0.30 board units, independent of board transform scale");
+                    float laneZeroPath = ToyTrainView.PlatformSideOffset;
+                    Assert.That(animator.speed,
+                        Is.EqualTo(laneZeroPath / CatModelCatalog.WalkTravelSpeedAtOneX)
+                            .Within(0.0001f),
+                        "walk playback and the collision-safe lane-zero platform endpoint "
+                        + "must remain one board-space distance law");
 
                     view.SetSourcePlatformAnchor(seatBoard, Vector3.down, 3);
-                    view.ApplyPresentation(CatPresentationState.Walk, 0.75f, false,
+                    const float laneThreeBlend = 0.75f;
+                    view.ApplyPresentation(CatPresentationState.Walk, laneThreeBlend, false,
                         0.005f, false, 1f);
-                    Assert.That(animator.speed, Is.EqualTo(8.887026f).Within(0.0001f),
-                        "lane three is sqrt(0.30^2 + (2 * 0.42)^2) board units");
+                    float laneThreePath = Mathf.Sqrt(
+                        ToyTrainView.PlatformSideOffset * ToyTrainView.PlatformSideOffset
+                        + Mathf.Pow(2f * ToyTrainView.PlatformQueueSpacing, 2f));
+                    Assert.That(animator.speed,
+                        Is.EqualTo(laneThreePath / CatModelCatalog.WalkTravelSpeedAtOneX)
+                            .Within(0.0001f),
+                        "queued playback must combine authored queue spacing with the same "
+                        + "platform endpoint law");
 
                     view.ApplyPresentation(CatPresentationState.Walk, 0.7f, false,
                         0.01f, false, 0.5f);
-                    Assert.That(animator.speed, Is.EqualTo(4.443513f).Within(0.0001f),
+                    Assert.That(animator.speed,
+                        Is.EqualTo(laneThreePath * 0.5f
+                            / CatModelCatalog.WalkTravelSpeedAtOneX).Within(0.0001f),
                         "speed changes within one Walk state must not be skipped");
 
                     view.ApplyPresentation(CatPresentationState.Board, 0.35f, false,
@@ -687,6 +1001,171 @@ namespace CatMetro.Tests.EditMode.Presentation
             }
             Assert.Fail("the deterministic Tier-1 cadence must contain a >=12 degree ear pose");
             return 0f;
+        }
+
+        private static long PresentationKeyForSeed(uint seed, uint generation)
+        {
+            uint lowKey = seed ^ generation * 2654435761u;
+            return ((long)generation << 32) | lowKey;
+        }
+
+        private static void MeasureRigClearanceCase(ToyTrainView view, Transform board,
+            Mesh baked, CatPresentationState state, bool movingToPlatform,
+            Vector3 sourceSide, float maximumBobTime, float minimumBobTime,
+            float[] visualTimes, string caseLabel, ref float minimumGap,
+            ref string minimumLabel)
+        {
+            Transform carriage = view.transform.Find("Carriage");
+            Transform cat = carriage.Find("Cat");
+            Animator animator = cat.GetComponentInChildren<Animator>(true);
+            Assert.That(animator, Is.Not.Null, caseLabel + " must use the admitted rig");
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            SkinnedMeshRenderer[] skins =
+                animator.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            Assert.That(skins, Has.Length.EqualTo(1),
+                caseLabel + " must expose the pinned artifact's one skin");
+            SkinnedMeshRenderer skin = skins[0];
+
+            Vector3 towardCarriage = carriage.InverseTransformDirection(
+                board.TransformDirection(-sourceSide)).normalized;
+            Assert.That(towardCarriage.sqrMagnitude, Is.GreaterThan(0.999f),
+                caseLabel + " must declare a non-zero platform side");
+            float carriageMinimum = float.PositiveInfinity;
+            foreach (string partName in new[] { "Body", "Chassis" })
+            {
+                MeshFilter part = carriage.Find(partName).GetComponent<MeshFilter>();
+                Assert.That(part, Is.Not.Null, caseLabel + "/" + partName);
+                carriageMinimum = Mathf.Min(carriageMinimum,
+                    MinimumProjectionIn(carriage, part.transform,
+                        part.sharedMesh.vertices, towardCarriage));
+            }
+
+            view.ApplyPresentation(state, 1f, movingToPlatform,
+                maximumBobTime, false, 1f);
+            float maximumRootProjection =
+                Vector3.Dot(cat.localPosition, towardCarriage);
+            view.ApplyPresentation(state, 1f, movingToPlatform,
+                minimumBobTime, false, 1f);
+            maximumRootProjection = Mathf.Max(maximumRootProjection,
+                Vector3.Dot(cat.localPosition, towardCarriage));
+
+            string clipName = state == CatPresentationState.WaitingIdle
+                ? CatModelCatalog.IdleSitClip
+                : state == CatPresentationState.Celebrate
+                    ? CatModelCatalog.CelebrateClip
+                    : CatModelCatalog.WalkClip;
+            AnimationClip clip = animator.runtimeAnimatorController.animationClips
+                .Single(candidate => candidate.name == clipName);
+            int halfFrameSamples = Mathf.CeilToInt(
+                clip.length * clip.frameRate * 2f);
+            Assert.That(halfFrameSamples, Is.GreaterThan(0),
+                caseLabel + " must sample a non-empty " + clipName + " artifact");
+            var motion = new CatMicroMotion(41u);
+            for (int clipSample = 0; clipSample <= halfFrameSamples; clipSample++)
+            {
+                float normalizedTime = clipSample / (float)halfFrameSamples;
+                for (int earSample = 0; earSample < visualTimes.Length; earSample++)
+                {
+                    float visualTime = visualTimes[earSample];
+                    animator.Play("Base Layer." + clipName, 0, normalizedTime);
+                    animator.Update(0f);
+                    view.ApplyPresentation(state, 1f, movingToPlatform,
+                        visualTime, false, 1f);
+                    skin.BakeMesh(baked, true);
+
+                    float currentRootProjection =
+                        Vector3.Dot(cat.localPosition, towardCarriage);
+                    float bobCorrection = maximumRootProjection - currentRootProjection;
+                    Assert.That(bobCorrection, Is.GreaterThanOrEqualTo(-0.00001f),
+                        caseLabel + " selected bob extrema must never move the measured skin "
+                        + "farther carriage-ward than the corrected envelope");
+                    float conservativeBobCorrection = Mathf.Max(0f, bobCorrection);
+                    float rigMaximum = MaximumProjectionIn(carriage, skin.transform,
+                        baked.vertices, towardCarriage) + conservativeBobCorrection;
+                    float gap = carriageMinimum - rigMaximum;
+                    if (gap >= minimumGap) continue;
+
+                    CatMicroPose pose = motion.Evaluate(visualTime, false,
+                        state == CatPresentationState.Celebrate);
+                    minimumGap = gap;
+                    minimumLabel = caseLabel
+                        + "/clip=" + clipName
+                        + "/halfFrame=" + clipSample + "/" + halfFrameSamples
+                        + "/earSample=" + earSample
+                        + "/sourceEar=" + pose.EarTwitchDegrees.ToString("F3")
+                        + "/appliedEar=" + (pose.EarTwitchDegrees
+                            * ToyTrainView.RigEarTwitchGain).ToString("F3")
+                        + "/bobCorrection=" + conservativeBobCorrection.ToString("F6")
+                        + "/maxRoot=" + maximumRootProjection.ToString("F6")
+                        + "/currentRoot=" + currentRootProjection.ToString("F6");
+                }
+            }
+        }
+
+        private static float[] TimesAcrossEarRange(uint seed, out float maximumBobTime,
+            out float minimumBobTime)
+        {
+            var motion = new CatMicroMotion(seed);
+            const int earSamples = 17;
+            const float timeStep = 0.001f;
+            var bestTimes = new float[earSamples];
+            var bestErrors = Enumerable.Repeat(float.PositiveInfinity, earSamples).ToArray();
+            maximumBobTime = 0f;
+            minimumBobTime = 0f;
+            float maximumBob = float.NegativeInfinity;
+            float minimumBob = float.PositiveInfinity;
+            // Bob at 4.1 rad/s and ears at 2.7 rad/s share a 20*PI-second period. Sweep that
+            // exact production clock once, retaining the closest artifact time for each target
+            // ear angle and both independent bob-extreme times.
+            int samples = Mathf.CeilToInt(20f * Mathf.PI / timeStep);
+            for (int sample = 0; sample <= samples; sample++)
+            {
+                float time = sample * timeStep;
+                CatMicroPose pose = motion.Evaluate(time, false, false);
+                if (pose.Bob > maximumBob)
+                {
+                    maximumBob = pose.Bob;
+                    maximumBobTime = time;
+                }
+                if (pose.Bob < minimumBob)
+                {
+                    minimumBob = pose.Bob;
+                    minimumBobTime = time;
+                }
+                for (int index = 0; index < earSamples; index++)
+                {
+                    float target = Mathf.Lerp(-CatMicroMotion.EarTwitchMaximumDegrees,
+                        CatMicroMotion.EarTwitchMaximumDegrees,
+                        index / (float)(earSamples - 1));
+                    float error = Mathf.Abs(pose.EarTwitchDegrees - target);
+                    if (error >= bestErrors[index]) continue;
+                    bestErrors[index] = error;
+                    bestTimes[index] = time;
+                }
+            }
+            return bestTimes;
+        }
+
+        private static float MaximumProjectionIn(Transform frame, Transform source,
+            Vector3[] vertices, Vector3 axis)
+        {
+            Assert.That(vertices, Is.Not.Empty);
+            float maximum = float.NegativeInfinity;
+            for (int index = 0; index < vertices.Length; index++)
+                maximum = Mathf.Max(maximum, Vector3.Dot(
+                    frame.InverseTransformPoint(source.TransformPoint(vertices[index])), axis));
+            return maximum;
+        }
+
+        private static float MinimumProjectionIn(Transform frame, Transform source,
+            Vector3[] vertices, Vector3 axis)
+        {
+            Assert.That(vertices, Is.Not.Empty);
+            float minimum = float.PositiveInfinity;
+            for (int index = 0; index < vertices.Length; index++)
+                minimum = Mathf.Min(minimum, Vector3.Dot(
+                    frame.InverseTransformPoint(source.TransformPoint(vertices[index])), axis));
+            return minimum;
         }
 
         private static float TimeWithBlink(uint seed)
