@@ -122,6 +122,37 @@ namespace CatMetro.Tests.Domain
             new[] { 0 }, new[] { CatColor.Red }, new[] { 1 }, new[] { 1 },
             1, 100, qCapBound: 8, trainsMax: 1);
 
+        // A player tap stamped at tick 1 is accepted before the stray reaches J1 during that
+        // tick, then applies at tick 2. The stray's automatic press establishes cooldown in
+        // between. Route 0 is the only winning route for the later red train. An earlier tap
+        // sends the stray into a same-tick collision with the blue helper at BLU, while no tap
+        // leaves the red train on route 1. That makes the freshness race, rather than merely any
+        // one-flip solution, observable to both the session and exact solver.
+        public static LevelGraph StrayCooldownPriorityShape(
+            int perfectMaxSwitches = 1) => new LevelGraph(
+            "FX-STRAY-COOLDOWN-PRIORITY", 5,
+            new[] { 4, 4, 4, 4, 4 },
+            new[] { 0, 1, 1, 4 },
+            new[] { 1, 2, 3, 3 },
+            new[] { 1, 6, 4, 4 },
+            new[] { 0, 4 },
+            new[] { new[] { 1, 2 } },
+            new[] { 1 },
+            new byte[] { 0 },
+            new[] { 2, 3 },
+            new[] { new[] { CatColor.Red }, new[] { CatColor.Blue } },
+            new[] { 3, 3 },
+            new[] { 0, 1, 2 },
+            new[] { CatColor.Red, CatColor.Blue, CatColor.Red },
+            new[] { 1, 1, 1 },
+            new[] { 1, 1, 1 },
+            2, 14, qCapBound: 4, trainsMax: 3,
+            waveSourceNode: new[] { 0, 4, 0 },
+            perfectMaxSwitches: perfectMaxSwitches,
+            switchCooldownTicks: new[] { 2 },
+            waveStray: new[] { true, false, false },
+            collisionsEnabled: true);
+
         // Steps the sim to the END of processing tick `lastTick` (i.e. `lastTick + 1` Step calls),
         // feeding each call the log entries due at its boundary: an entry enqueued during tick t
         // applies at step 1 of the call whose entry Tick == t + 1 (CM-R07.3; handoff timing note).

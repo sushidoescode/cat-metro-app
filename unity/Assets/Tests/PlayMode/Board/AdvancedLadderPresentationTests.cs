@@ -1,6 +1,7 @@
 using System.Collections;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using CatMetro.Application.Session;
 using CatMetro.Bootstrap;
@@ -21,6 +22,7 @@ namespace CatMetro.Tests.PlayMode
         {
             if (_root != null) Object.Destroy(_root.gameObject);
             _root = null;
+            Time.timeScale = 1f;
         }
 
         [Test]
@@ -83,6 +85,48 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator AcceptedTap_StaysCommittedAcrossAnInterveningStrayCooldown()
+        {
+            Time.timeScale = 0f; // keep GameRoot.Update from racing the three manual boundaries
+            _root = GameRoot.LaunchWith(StrayCooldownPriorityLevel());
+            yield return null;
+
+            _root.Session.AdvanceMs(TickInterpolator.TICK_MS); // process tick 0
+            Assert.That(_root.Session.EnqueueToggle(0), Is.True);
+            Assert.That(_root.View.CommittedRoute(0), Is.EqualTo(1));
+            Assert.That(_root.Session.Log.Entries.Count, Is.EqualTo(1));
+            Assert.That(_root.Session.FlipStatus.Used, Is.EqualTo(1));
+            Assert.That(_root.Session.FlipStatus.RemainingToPerfect, Is.Zero);
+
+            _root.Session.AdvanceMs(TickInterpolator.TICK_MS); // stray presses during tick 1
+            yield return null;
+            Assert.That(CatMetro.Domain.SwitchState.Route(
+                _root.Session.State.SwitchRoutes[0]), Is.EqualTo(1));
+            Assert.That(CatMetro.Domain.SwitchState.Cooldown(
+                _root.Session.State.SwitchRoutes[0]), Is.EqualTo(2));
+            Assert.That(_root.Session.PendingToggleCount(0), Is.EqualTo(1));
+            int committedAfterStray = _root.View.CommittedRoute(0);
+            Assert.That(committedAfterStray, Is.Zero,
+                "the live lever composes the automatic press and pending player tap");
+
+            _root.Session.AdvanceMs(TickInterpolator.TICK_MS); // accepted tap applies at tick 2
+            yield return null;
+            Assert.That(CatMetro.Domain.SwitchState.Route(
+                _root.Session.State.SwitchRoutes[0]), Is.Zero,
+                "the accepted tap produces its route change instead of disappearing");
+            Assert.That(CatMetro.Domain.SwitchState.Cooldown(
+                _root.Session.State.SwitchRoutes[0]), Is.EqualTo(2));
+            Assert.That(_root.Session.State.SwitchesUsed, Is.EqualTo(1));
+            Assert.That(_root.Session.State.FreshAutomaticCooldowns, Is.Zero);
+            Assert.That(_root.Session.PendingToggleCount(0), Is.Zero);
+            Assert.That(_root.Session.Log.Entries.Count, Is.EqualTo(1));
+            Assert.That(_root.View.CommittedRoute(0), Is.EqualTo(committedAfterStray),
+                "the rendered committed lever does not snap back at application");
+            Assert.That(_root.Session.EnqueueToggle(0), Is.False,
+                "the accepted tap still owns the one-flip cap");
+        }
+
+        [UnityTest]
         public IEnumerator CaptureEvidence_CapstonePhoneFrame_WhenRequested()
         {
             string dir = System.Environment.GetEnvironmentVariable("CM_LADDER_CAPTURE_DIR");
@@ -125,6 +169,70 @@ namespace CatMetro.Tests.PlayMode
                 "content/levels/" + id + ".json", CancellationToken.None)
                 .GetAwaiter().GetResult();
             var imported = LevelImporter.Import(bytes);
+            Assert.That(imported.Ok, Is.True, imported.Ok ? "" : imported.Error.ToString());
+            return imported.Value;
+        }
+
+        private static ImportedLevel StrayCooldownPriorityLevel()
+        {
+            const string json = @"{
+  ""schemaVersion"": 2,
+  ""id"": ""L901"",
+  ""name"": ""Stray cooldown priority fixture"",
+  ""seed"": 7001,
+  ""meta"": {
+    ""band"": ""combo"",
+    ""difficultyTarget"": 0.5,
+    ""mechanics"": [""switch"", ""cooldown"", ""stray"", ""second-train""],
+    ""newMechanic"": null,
+    ""teachingGoal"": ""Accepted tap survives automatic cooldown"",
+    ""minActionWindowTicks"": 4,
+    ""authoredBy"": ""llm+validator""
+  },
+  ""board"": {
+    ""nodes"": [
+      { ""id"": ""SRC"", ""x"": 0, ""y"": 4 },
+      { ""id"": ""J1"", ""x"": 0, ""y"": 1, ""queueCapacity"": 4 },
+      { ""id"": ""RED"", ""x"": -4, ""y"": -2 },
+      { ""id"": ""BLUE"", ""x"": 4, ""y"": -2 },
+      { ""id"": ""AUX"", ""x"": 7, ""y"": 2 }
+    ],
+    ""edges"": [
+      { ""id"": ""E_IN"", ""from"": ""SRC"", ""to"": ""J1"", ""travelTicks"": 1 },
+      { ""id"": ""E_RED"", ""from"": ""J1"", ""to"": ""RED"", ""travelTicks"": 6 },
+      { ""id"": ""E_BLUE"", ""from"": ""J1"", ""to"": ""BLUE"", ""travelTicks"": 4 },
+      { ""id"": ""E_HELP"", ""from"": ""AUX"", ""to"": ""BLUE"", ""travelTicks"": 4 }
+    ]
+  },
+  ""sources"": [
+    { ""nodeId"": ""SRC"", ""allowedColors"": [""red""] },
+    { ""nodeId"": ""AUX"", ""allowedColors"": [""blue""] }
+  ],
+  ""stations"": [
+    { ""nodeId"": ""RED"", ""accepts"": [""red""], ""capacity"": 3 },
+    { ""nodeId"": ""BLUE"", ""accepts"": [""blue""], ""capacity"": 3 }
+  ],
+  ""switches"": [
+    { ""id"": ""S1"", ""nodeId"": ""J1"", ""routes"": [""E_RED"", ""E_BLUE""],
+      ""initialRoute"": 0, ""cooldownTicks"": 2 }
+  ],
+  ""waves"": [
+    { ""tick"": 0, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 1,
+      ""spacingTicks"": 1, ""stray"": true },
+    { ""tick"": 1, ""sourceNode"": ""AUX"", ""color"": ""blue"", ""count"": 1,
+      ""spacingTicks"": 1 },
+    { ""tick"": 2, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 1,
+      ""spacingTicks"": 1 }
+  ],
+  ""win"": {
+    ""deliveries"": 2,
+    ""timeLimitTicks"": 20,
+    ""perfectMaxSwitches"": 1,
+    ""stars"": { ""two"": 100, ""three"": 200 }
+  },
+  ""economy"": { ""baseTickets"": 1, ""perfectBonus"": 1 }
+}";
+            var imported = LevelImporter.Import(Encoding.UTF8.GetBytes(json));
             Assert.That(imported.Ok, Is.True, imported.Ok ? "" : imported.Error.ToString());
             return imported.Value;
         }

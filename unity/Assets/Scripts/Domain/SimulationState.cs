@@ -42,6 +42,10 @@ namespace CatMetro.Domain
         public int SwitchesUsed;
         public Pcg32 Rng;
         public byte[] SwitchRoutes;        // index = switchId; SwitchState packed route + cooldown
+        // One-tick origin/age witness. A bit means a stray established this switch's current
+        // cooldown during the immediately preceding processing tick. It lets an already-received
+        // player command retain receipt priority without weakening ordinary cooldown admission.
+        public ushort FreshAutomaticCooldowns;
         public byte[] NodeQueueCounts;     // live count per node
         public short[][] NodeQueueSlots;   // per node: QCapBound slots, unused written 0
         public short[] OverloadTimers;     // per node; 16 ticks
@@ -76,10 +80,17 @@ namespace CatMetro.Domain
         }
 
         // Contract criterion 8: DigestLength is a pure function of the level shape.
-        public static int DigestLength(int nSwitches, int nNodes, int nTrainsMax, int qCap)
-            => 46 + nSwitches + nNodes * (3 + 2 * qCap) + 10 * nTrainsMax;
+        public static int DigestLength(int nSwitches, int nNodes, int nTrainsMax, int qCap,
+            bool tracksFreshAutomaticCooldowns = false)
+            => 46 + nSwitches + (tracksFreshAutomaticCooldowns ? 2 : 0)
+                + nNodes * (3 + 2 * qCap) + 10 * nTrainsMax;
 
-        public int DigestLength() => DigestLength(SwitchRoutes.Length, Graph.NodeCount, Graph.TrainsMax, Graph.QCapBound);
+        public int DigestLength() => DigestLength(SwitchRoutes.Length, Graph.NodeCount,
+            Graph.TrainsMax, Graph.QCapBound, Graph.TracksFreshAutomaticCooldowns);
+
+        public bool HasFreshAutomaticCooldown(int switchId) =>
+            switchId >= 0 && switchId < sizeof(ushort) * 8
+                && (FreshAutomaticCooldowns & (1 << switchId)) != 0;
 
         // Canonical little-endian fixed-layout byte image (ADR-0002 §7; overview.md:312-320).
         // Field order and widths are the contract; the offset table lives in DigestTests.
@@ -99,6 +110,12 @@ namespace CatMetro.Domain
             System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(destination.Slice(o, 8), Rng.State); o += 8;
             System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(destination.Slice(o, 8), Rng.Inc); o += 8;
             for (int i = 0; i < SwitchRoutes.Length; i++) { destination[o] = SwitchRoutes[i]; o += 1; }
+            if (Graph.TracksFreshAutomaticCooldowns)
+            {
+                System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(
+                    destination.Slice(o, 2), FreshAutomaticCooldowns);
+                o += 2;
+            }
             for (int n = 0; n < Graph.NodeCount; n++)
             {
                 destination[o] = NodeQueueCounts[n]; o += 1;

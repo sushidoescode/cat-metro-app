@@ -44,6 +44,10 @@ namespace CatMetro.Domain
     // part of the digest contract (A-C1-10).
     public sealed class LevelGraph
     {
+        // The authored schema/importer bounds boards to ten switches. Keep the transient bitset
+        // representation pinned to that same gameplay envelope even though ushort has spare bits.
+        private const int MaxFreshAutomaticCooldownSwitches = 10;
+
         public readonly string LevelId;
         public readonly int NodeCount;
         public readonly int[] NodeQueueCapacity;    // per node, 1..QCapBound (0 = no queue limit checks off)
@@ -76,6 +80,10 @@ namespace CatMetro.Domain
         public readonly byte[] WaveShape;           // per wave: CatShape code
         public readonly bool[] WaveStray;           // per wave; refuses stations and presses switches
         public readonly bool CollisionsEnabled;     // same-node/opposing-edge failure rule
+        // A stray can establish cooldown after a player tap was accepted but before that tap's
+        // next-boundary application. Only graphs capable of that interaction need the transient
+        // origin mask in their canonical state digest.
+        public readonly bool TracksFreshAutomaticCooldowns;
         public readonly int WinDeliveries;
         public readonly int TimeLimitTicks;
         public readonly int QCapBound;              // digest padding: queue slots per node (A-C1-7 i)
@@ -196,6 +204,17 @@ namespace CatMetro.Domain
             WaveShape = ShapeDataOrDefault(waveShape, waveLength, nameof(waveShape));
             WaveStray = BoolDataOrDefault(waveStray, waveLength, false, nameof(waveStray));
             CollisionsEnabled = collisionsEnabled;
+            bool hasStray = false;
+            for (int w = 0; w < WaveStray.Length; w++)
+                if (WaveStray[w]) { hasStray = true; break; }
+            bool hasCooldown = false;
+            for (int s = 0; s < SwitchCooldownTicks.Length; s++)
+                if (SwitchCooldownTicks[s] > 0) { hasCooldown = true; break; }
+            TracksFreshAutomaticCooldowns = hasStray && hasCooldown;
+            if (TracksFreshAutomaticCooldowns
+                && switchLength > MaxFreshAutomaticCooldownSwitches)
+                throw new ArgumentException(
+                    $"stray/cooldown origin tracking supports at most {MaxFreshAutomaticCooldownSwitches} switches");
             WinDeliveries = winDeliveries;
             TimeLimitTicks = timeLimitTicks;
             QCapBound = qCapBound;

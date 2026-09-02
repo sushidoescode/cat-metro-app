@@ -1274,7 +1274,8 @@ namespace CatMetro.Domain.Solver
             var k = new int[switches];
             for (int s = 0; s < switches; s++)
             {
-                if (SwitchState.Cooldown(state.SwitchRoutes[s]) > 0)
+                if (SwitchState.Cooldown(state.SwitchRoutes[s]) > 0
+                    && !state.HasFreshAutomaticCooldown(s))
                     counts[s] = 1; // k=0 only: every press would be ignored this tick
                 else if (graph.SwitchCooldownTicks[s] > 0)
                     counts[s] = Math.Min(2, graph.SwitchRoutes[s].Length); // 0 or 1 accepted

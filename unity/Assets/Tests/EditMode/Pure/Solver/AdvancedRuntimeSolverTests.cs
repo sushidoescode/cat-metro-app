@@ -1,5 +1,6 @@
 using CatMetro.Domain;
 using CatMetro.Domain.Solver;
+using CatMetro.Tests.Domain;
 using NUnit.Framework;
 
 namespace CatMetro.Tests.Solver
@@ -31,6 +32,36 @@ namespace CatMetro.Tests.Solver
             Assert.That(collision.Outcome.Kind, Is.EqualTo(OutcomeKind.Failed));
             Assert.That(collision.Outcome.Reason, Is.EqualTo(FailReason.Collision));
             Assert.That(collision.Deliveries, Is.Zero);
+        }
+
+        [Test]
+        public void ExactSolver_ReplaysAcceptedTapAcrossFreshAutomaticCooldown()
+        {
+            var graph = Fixtures.StrayCooldownPriorityShape();
+
+            var solve = LevelSolver.Solve(graph, 7001);
+
+            Assert.That(solve.Verdict, Is.EqualTo(SolveVerdict.Solved));
+            Assert.That(solve.BeamWidthUsed, Is.Zero);
+            Assert.That(solve.PinnedPruned, Is.Zero);
+            Assert.That(solve.SwitchesUsed, Is.EqualTo(1));
+            Assert.That(solve.OptimalLog.Entries.Count, Is.EqualTo(1));
+            Assert.That(solve.OptimalLog.Entries[0].SwitchId, Is.Zero);
+            Assert.That(solve.OptimalLog.Entries[0].Tick, Is.EqualTo(1),
+                "the exact win must be accepted before the stray press and apply one boundary later");
+
+            var replay = ReplayHasher.RunToEnd(graph, 7001, solve.OptimalLog);
+            Assert.That(replay.Outcome.Kind, Is.EqualTo(OutcomeKind.Won));
+            Assert.That(replay.Deliveries, Is.EqualTo(2));
+            Assert.That(replay.SwitchesUsed, Is.EqualTo(1));
+            Assert.That(replay.FreshAutomaticCooldowns, Is.Zero,
+                "the origin witness is transient state, never replay-log data");
+            Assert.That(ReplayHasher.ComputeReplayHash(graph, 7001, solve.OptimalLog),
+                Is.EqualTo(ReplayHasher.ComputeReplayHash(graph, 7001, solve.OptimalLog)));
+
+            var noInput = ReplayHasher.RunToEnd(graph, 7001, new CommandLog());
+            Assert.That(noInput.Outcome.Kind, Is.EqualTo(OutcomeKind.Failed));
+            Assert.That(noInput.Deliveries, Is.EqualTo(1));
         }
 
         private static LevelGraph CollisionAvoidanceGraph() => new LevelGraph(

@@ -26,6 +26,11 @@ also Wild or express. At a switched junction it captures the current route, then
 automatic press for subsequent trains. The captured route remains attached if the stray must wait
 in a queue. The automatic press ignores `perfectMaxSwitches`, does not increment `SwitchesUsed`,
 and obeys/starts the authored switch cooldown. Multiple later passes may press again after unlock.
+If a player tap was already accepted before a stray establishes cooldown during the intervening
+processing tick, that tap retains receipt priority at the next boundary. Only the first due tap
+for that switch may claim the priority; it applies the route change and starts a full authored
+cooldown. The automatic-origin witness expires after that boundary and is never written to the
+command log.
 
 ## Second-train collision rule
 
@@ -40,9 +45,11 @@ pass on an edge. Same-direction mouth admission is unchanged.
 ## Replay and graph scope
 
 Switch cooldown and token identity reuse existing canonical bytes. `TrainSlot`, the switch byte,
-the command format, and digest widths are unchanged; round/no-flag/no-cooldown replays retain their
-legacy bytes and hash. Solver search runs the same state machine, including collision failures,
-express holds, stray automatic presses, and shape refusal.
+and the command format are unchanged. A graph combining any stray wave with any nonzero switch
+cooldown adds a two-byte transient automatic-origin mask to its canonical digest; other graphs
+retain their previous digest widths, so round/no-flag/no-cooldown replays retain their legacy bytes
+and hash. Solver search runs the same state machine, including collision failures, express holds,
+stray automatic presses, receipt priority, and shape refusal.
 
 Tunnel and hold flags do not add motion state: they are ordinary routed edges in the Domain. Their
 flags remain available to presentation and liveness checks.

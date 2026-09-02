@@ -39,10 +39,13 @@ namespace CatMetro.Domain
             var enteredThisTick = new HashSet<int>(); // train slot indices that entered an edge this tick
 
             // step 1 — apply commands in receipt order. The authored flip budget is a hard
-            // accepted-command cap. A cooling switch ignores presses. Cooldown present at the
-            // start of this processing tick decrements only after rejecting this tick's presses,
-            // so an accepted flip locks exactly N following processing ticks.
+            // accepted-command cap. A cooling switch ignores presses, except that a player command
+            // received before a stray established a fresh automatic cooldown keeps receipt
+            // priority on this one boundary. Cooldown present at the start of this processing tick
+            // decrements only after rejecting this tick's presses, so an accepted flip locks
+            // exactly N following processing ticks.
             var coolingAtStart = new bool[state.SwitchRoutes.Length];
+            var freshAutoClaimed = new bool[state.SwitchRoutes.Length];
             for (int s = 0; s < state.SwitchRoutes.Length; s++)
                 coolingAtStart[s] = SwitchState.Cooldown(state.SwitchRoutes[s]) > 0;
             for (int c = 0; c < commandsThisTick.Length; c++)
@@ -53,18 +56,25 @@ namespace CatMetro.Domain
                         $"command names switch {sw} but the level has {state.SwitchRoutes.Length} — replay log does not belong to this level (F10)");
                 if (!FlipBudget.CanAccept(g.PerfectMaxSwitches, state.SwitchesUsed)) continue;
                 byte packed = state.SwitchRoutes[sw];
-                if (SwitchState.Cooldown(packed) > 0) continue;
+                bool freshAutoPriority = SwitchState.Cooldown(packed) > 0
+                    && state.HasFreshAutomaticCooldown(sw)
+                    && !freshAutoClaimed[sw];
+                if (SwitchState.Cooldown(packed) > 0 && !freshAutoPriority) continue;
                 int route = (SwitchState.Route(packed) + 1) % g.SwitchRoutes[sw].Length;
                 state.SwitchRoutes[sw] = SwitchState.Pack(route, g.SwitchCooldownTicks[sw]);
                 state.SwitchesUsed++;
+                if (freshAutoPriority) freshAutoClaimed[sw] = true;
             }
             for (int s = 0; s < state.SwitchRoutes.Length; s++)
-                if (coolingAtStart[s])
+                if (coolingAtStart[s] && !freshAutoClaimed[s])
                 {
                     byte packed = state.SwitchRoutes[s];
                     state.SwitchRoutes[s] = SwitchState.Pack(
                         SwitchState.Route(packed), SwitchState.Cooldown(packed) - 1);
                 }
+            // Fresh means exactly one following processing boundary. New stray presses later in
+            // this Step set their bits again for the next boundary.
+            state.FreshAutomaticCooldowns = 0;
 
             // step 2a — express trains held outside a source queue retry before new emissions.
             // They read the then-current selected route and never occupy queue digest slots.
@@ -295,11 +305,15 @@ namespace CatMetro.Domain
             state.Tick = tick + 1;
 
             // step 8 — win first, then time (A-C1-11 tie rule)
-            if (state.Outcome.Kind != OutcomeKind.Running) return;
-            if (state.Deliveries >= g.WinDeliveries)
-                state.Outcome = SimOutcome.Won;
-            else if (state.Tick >= g.TimeLimitTicks)
-                state.Outcome = SimOutcome.MakeFailed(FailReason.TimeOut);
+            if (state.Outcome.Kind == OutcomeKind.Running)
+            {
+                if (state.Deliveries >= g.WinDeliveries)
+                    state.Outcome = SimOutcome.Won;
+                else if (state.Tick >= g.TimeLimitTicks)
+                    state.Outcome = SimOutcome.MakeFailed(FailReason.TimeOut);
+            }
+            if (state.Outcome.Kind != OutcomeKind.Running)
+                state.FreshAutomaticCooldowns = 0;
         }
 
         private static int AllocateTrain(ref SimulationState state)
@@ -457,6 +471,8 @@ namespace CatMetro.Domain
             int route = (SwitchState.Route(packed) + 1) % g.SwitchRoutes[switchId].Length;
             state.SwitchRoutes[switchId] = SwitchState.Pack(
                 route, g.SwitchCooldownTicks[switchId]);
+            if (g.SwitchCooldownTicks[switchId] > 0)
+                state.FreshAutomaticCooldowns |= (ushort)(1 << switchId);
             // Automatic presses deliberately neither consult the hard player cap nor increment
             // SwitchesUsed. The packed cooldown is still authoritative for later presses.
         }

@@ -65,8 +65,10 @@ Merely loading a numeric cap does not prove the board is fair.
 ## Determinism and scope
 
 The cap and cooldown rules are integer-only and have no `UnityEngine` dependency. The command
-format, `TrainSlot` width, switch-state byte width, and canonical digest width are unchanged. The
-committed no-cooldown happy-path replay retains its previous hash.
+format, `TrainSlot` width, and switch-state byte width are unchanged. A later ladder rule adds a
+two-byte transient digest mask only when stray waves and nonzero cooldown coexist; graphs without
+that interaction keep their canonical digest width. The committed no-cooldown happy-path replay
+retains its previous hash.
 
 This does not implement campaign score, persistence, ticket bonuses, result-screen UI, or the
 schema's `win.stars.two` / `win.stars.three` thresholds.
