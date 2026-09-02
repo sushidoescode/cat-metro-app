@@ -62,7 +62,12 @@ namespace CatMetro.Tests.CM_C14a
             Assert.That(liveness.Code, Is.EqualTo(StageVerdictCode.Pass), liveness.Detail);
             Assert.That(liveness.Value, Does.Contain("SA").And.Contain("SB"),
                 "second-source evidence names both authored sources");
-            Assert.That(report.ExitFailure, Is.False, "the complete campaign-context run is green");
+            var count = report.CampaignVerdicts.Single(v => v.Value == "tag=CM-R09.1");
+            Assert.That(count.Code, Is.EqualTo(StageVerdictCode.Fail));
+            Assert.That(count.Detail, Does.Contain("3/60"),
+                "this focused fixture is deliberately not the complete campaign");
+            Assert.That(report.ExitFailure, Is.True,
+                "the incomplete-campaign count blocks even though L018 itself is clean");
         }
 
         private static byte[] LockedL018Bytes()

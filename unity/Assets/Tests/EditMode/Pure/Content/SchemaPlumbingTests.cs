@@ -19,12 +19,13 @@ namespace CatMetro.Tests.Content
         {
             var json = L001Json();
             var firstEdge = (JObject)json["board"]["edges"][0];
+            string gatedEdgeId = (string)json["board"]["edges"][1]["id"];
             firstEdge["oneWay"] = false;
             firstEdge["reversible"] = true;
             json["switches"][0]["cooldownTicks"] = 7;
             json["gates"] = new JArray(new JObject
             {
-                ["edgeId"] = "E2",
+                ["edgeId"] = gatedEdgeId,
                 ["openWindows"] = new JArray(
                     new JArray(2, 9),
                     new JArray(12, 20)),
@@ -44,7 +45,7 @@ namespace CatMetro.Tests.Content
 
             Assert.That(imported.Dto.Gates.Length, Is.EqualTo(1));
             var gate = imported.Dto.Gates.Span[0];
-            Assert.That(gate.EdgeId, Is.EqualTo("E2"));
+            Assert.That(gate.EdgeId, Is.EqualTo(gatedEdgeId));
             Assert.That(gate.PreviewTicks, Is.EqualTo(11));
             Assert.That(gate.OpenWindows.Length, Is.EqualTo(2));
             Assert.That(gate.OpenWindows.Span[0].StartTick, Is.EqualTo(2));
@@ -56,7 +57,8 @@ namespace CatMetro.Tests.Content
             Assert.That(graph.EdgeOneWay, Is.EqualTo(new[] { false, true, true }));
             Assert.That(graph.EdgeReversible, Is.EqualTo(new[] { true, false, false }));
             Assert.That(graph.SwitchCooldownTicks, Is.EqualTo(new[] { 7 }));
-            Assert.That(graph.GateEdge, Is.EqualTo(new[] { 1 }), "E2 maps to dense edge index 1");
+            Assert.That(graph.GateEdge, Is.EqualTo(new[] { 1 }),
+                $"{gatedEdgeId} maps to dense edge index 1");
             Assert.That(graph.GatePreviewTicks, Is.EqualTo(new[] { 11 }));
             Assert.That(graph.GateOpenWindows[0].Length, Is.EqualTo(2));
             Assert.That(graph.GateOpenWindows[0][0].StartTick, Is.EqualTo(2));
@@ -88,9 +90,10 @@ namespace CatMetro.Tests.Content
             Assert.That(imported.Graph.WaveExpress, Is.EqualTo(new[] { false }));
 
             var gateJson = L001Json();
+            string gatedEdgeId = (string)gateJson["board"]["edges"][1]["id"];
             gateJson["gates"] = new JArray(new JObject
             {
-                ["edgeId"] = "E2",
+                ["edgeId"] = gatedEdgeId,
                 ["openWindows"] = new JArray(
                     new JArray(2, 9),
                     new JArray(12, 20)),
@@ -136,6 +139,7 @@ namespace CatMetro.Tests.Content
             string mutation, ContentErrorKind expectedKind)
         {
             var json = L001Json();
+            string gatedEdgeId = (string)json["board"]["edges"][1]["id"];
             switch (mutation)
             {
                 case "oneWay-type":
@@ -148,7 +152,7 @@ namespace CatMetro.Tests.Content
                     json["switches"][0]["cooldownTicks"] = ContentBounds.COOLDOWN_TICKS_MAX + 1;
                     break;
                 case "preview-bound":
-                    AddGate(json, "E2",
+                    AddGate(json, gatedEdgeId,
                         new JArray(new JArray(2, 9), new JArray(12, 20)),
                         ContentBounds.GATE_PREVIEW_TICKS_MIN - 1);
                     break;
@@ -163,15 +167,15 @@ namespace CatMetro.Tests.Content
                         new JArray(new JArray(2, 9), new JArray(12, 20)), 16);
                     break;
                 case "gate-window-reversed":
-                    AddGate(json, "E2",
+                    AddGate(json, gatedEdgeId,
                         new JArray(new JArray(9, 2), new JArray(12, 20)), 16);
                     break;
                 case "gate-window-overlap":
-                    AddGate(json, "E2",
+                    AddGate(json, gatedEdgeId,
                         new JArray(new JArray(2, 9), new JArray(8, 12)), 16);
                     break;
                 case "gate-window-float":
-                    AddGate(json, "E2",
+                    AddGate(json, gatedEdgeId,
                         new JArray(new JArray(2.5, 9), new JArray(12, 20)), 16);
                     break;
                 default:

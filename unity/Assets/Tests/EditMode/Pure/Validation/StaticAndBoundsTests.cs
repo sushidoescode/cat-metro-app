@@ -61,7 +61,7 @@ namespace CatMetro.Tests.Validation
         [Test]
         public void L001_WarnsOnItsDecoyOnly_NeverBlocks()
         {
-            // Review F6: the decoy carve-out is audible, not silent — L001's BLU warns.
+            // The decoy carve-out is audible, not silent — L001's BLUE station warns.
             var v = Check(VFixtures.L001Bytes());
             Assert.That(v.Code, Is.EqualTo(StageVerdictCode.Warn), v.Detail);
             Assert.That(v.Blocks, Is.False);

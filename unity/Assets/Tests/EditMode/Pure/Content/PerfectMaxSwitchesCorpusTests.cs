@@ -33,7 +33,7 @@ namespace CatMetro.Tests.Content
         {
             string path = Path.Combine(Fixtures.RepoRoot(), "content", "levels", "L001.json");
             var json = JObject.Parse(File.ReadAllText(path));
-            ((JObject)json["win"]).Property("perfectMaxSwitches").Remove();
+            ((JObject)json["win"]).Property("perfectMaxSwitches")?.Remove();
             var import = LevelImporter.Import(Encoding.UTF8.GetBytes(json.ToString(Formatting.None)));
             Assert.That(import.Ok, Is.True, import.Error?.ToString());
 

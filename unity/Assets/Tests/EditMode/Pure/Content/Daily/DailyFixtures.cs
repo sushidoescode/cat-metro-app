@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using CatMetro.Content;
 using CatMetro.Content.Daily;
@@ -36,11 +38,18 @@ namespace CatMetro.Tests.Daily
             Config("{\"DAILY_PREVALIDATION_DAYS\": 3, \"SALT_MAX_K\": " + saltMaxK
                 + ", \"PIPELINE_ANCHOR_DATE\": \"2026-08-24\"}");
 
-        public static LevelDto L001Dto() => VFixtures.Import(VFixtures.L001Bytes()).Dto;
+        public static LevelDto L001Dto() => DailySerializableDto(VFixtures.L001Bytes());
 
-        public static LevelDto UnsolvableDto() => VFixtures.Import(VFixtures.UnsolvableLevel()).Dto;
+        public static LevelDto UnsolvableDto() => DailySerializableDto(VFixtures.UnsolvableLevel());
 
-        public static LevelDto TrivialWinDto() => VFixtures.Import(VFixtures.TrivialWinLevel()).Dto;
+        public static LevelDto TrivialWinDto() => DailySerializableDto(VFixtures.TrivialWinLevel());
+
+        private static LevelDto DailySerializableDto(byte[] bytes)
+        {
+            var json = JObject.Parse(Encoding.UTF8.GetString(bytes));
+            json["win"]["perfectMaxSwitches"] = 1;
+            return VFixtures.Import(Encoding.UTF8.GetBytes(json.ToString(Formatting.None))).Dto;
+        }
 
         public static LevelDto NullMetaDto()
         {

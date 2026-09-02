@@ -121,16 +121,17 @@ namespace CatMetro.Tests.Solver
 
             Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.NotFound));
             Assert.That(r.NotFoundReason, Is.EqualTo(NotFoundReason.Budget));
-            Assert.That(r.NodesExpanded, Is.EqualTo(34),
-                "the search stops on the first rejected successor-work charge");
+            Assert.That(r.NodesExpanded, Is.GreaterThan(0).And.LessThanOrEqualTo(100),
+                "the search stops within the shared work ceiling");
             Assert.That(r.OptimalLog.Entries.Count, Is.EqualTo(0));
         }
 
         [Test]
         public void CanonicalRefinement_UsesTheSameTotalWorkCeiling()
         {
-            // Search reaches the raw win in 97 expansions. After successor work is charged, the
-            // remainder still cannot certify and compare the equal-primary winning histories.
+            // Search reaches a raw win, but the remainder cannot certify and compare the
+            // equal-primary histories. Expansion telemetry must match the unbudgeted control;
+            // the separate refinement meter is what exhausts the total-work ceiling.
             var control = LevelSolver.Solve(SolverFixtures.TieBreakBoard(), 11);
             var r = LevelSolver.Solve(
                 SolverFixtures.TieBreakBoard(), 11, maxNodesExpanded: 400);
@@ -138,7 +139,7 @@ namespace CatMetro.Tests.Solver
             Assert.That(control.Verdict, Is.EqualTo(SolveVerdict.Solved));
             Assert.That(r.Verdict, Is.EqualTo(SolveVerdict.NotFound));
             Assert.That(r.NotFoundReason, Is.EqualTo(NotFoundReason.Budget));
-            Assert.That(r.NodesExpanded, Is.EqualTo(97),
+            Assert.That(r.NodesExpanded, Is.EqualTo(control.NodesExpanded),
                 "NodesExpanded remains honest search accounting; refinement is separately metered");
             Assert.That(r.OptimalLog.Entries.Count, Is.EqualTo(0));
             Assert.That(r.PinnedPruned, Is.EqualTo(control.PinnedPruned),

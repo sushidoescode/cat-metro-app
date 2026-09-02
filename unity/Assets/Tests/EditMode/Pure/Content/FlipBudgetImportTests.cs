@@ -37,7 +37,7 @@ namespace CatMetro.Tests.Content
         public void MissingOptionalParImportsAsUngated()
         {
             var json = L001Json();
-            ((JObject)json["win"]).Property("perfectMaxSwitches").Remove();
+            ((JObject)json["win"]).Property("perfectMaxSwitches")?.Remove();
 
             var import = LevelImporter.Import(Encoding.UTF8.GetBytes(json.ToString(Formatting.None)));
 
