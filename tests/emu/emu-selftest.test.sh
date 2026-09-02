@@ -90,7 +90,8 @@ hasE 'case "\$port" in \*\[!0-9\]' || fail "boot does not reject an underivable 
 # the number) drops the count below 2.
 bound_count=$(grep -cE '\[ "\$tries" -le 60 \]' <<<"$stripped" || true)
 [ "$bound_count" -eq 2 ] || fail "boot's two 180s waits are not both bounded at -le 60 (found $bound_count)"
-sed -n '/rotate-portrait)/,/;;/p' <<<"$stripped" | grep -q 'accelerometer_rotation 1' \
+rotate_portrait_case=$(sed -n '/rotate-portrait)/,/;;/p' <<<"$stripped")
+grep -q 'accelerometer_rotation 1' <<<"$rotate_portrait_case" \
   || fail "rotate-portrait does not enable accelerometer_rotation"
 # The tap guard must validate the ACTUAL args "${1}${2}" (D3 defangs by testing a literal).
 hasE 'case "\$\{1\}\$\{2\}" in \*\[!0-9\]' || fail "tap does not validate its own coordinate args"

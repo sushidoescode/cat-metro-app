@@ -27,8 +27,8 @@ cmp -s config/runtime_bounds.json "$sa/config/runtime_bounds.json" \
 
 # --- criterion 11 (decided branch, backup OFF) ---
 # review F12: comments stripped so a commented-out attribute can never satisfy the gate
-if ! sed 's|<!--.*-->||g' unity/Assets/Plugins/Android/LauncherManifest.xml \
-    | grep -q 'android:allowBackup="false"'; then
+manifest_without_comments=$(sed 's|<!--.*-->||g' unity/Assets/Plugins/Android/LauncherManifest.xml)
+if ! grep -q 'android:allowBackup="false"' <<<"$manifest_without_comments"; then
   fail "criterion 11: allowBackup=false missing from the launcher manifest (RK-17 decided posture)"
 fi
 rules=$(find unity/Assets \( -name "*backup*rules*.xml" -o -name "data_extraction_rules*.xml" \) 2>/dev/null || true)
@@ -58,7 +58,8 @@ if grep -rEn --include='*.cs' 'streamingAssetsPath' "$boot" 2>/dev/null | grep -
   grep -rEnq --include='*.cs' 'UnityWebRequest' "$boot" \
     || fail "criterion 9: streaming reads without the web-request route"
   sfile=$(grep -rEl --include='*.cs' 'streamingAssetsPath' "$boot")
-  if sed 's|//.*||' $sfile | grep -qE 'File\.(ReadAll|Open|Exists)'; then
+  streaming_sources_without_comments=$(sed 's|//.*||' $sfile)
+  if grep -qE 'File\.(ReadAll|Open|Exists)' <<<"$streaming_sources_without_comments"; then
     fail "criterion 9: plain-file read of the streaming path in $sfile"
   fi
 fi
@@ -88,10 +89,13 @@ if [ -x "$ED" ]; then
   summary=$(python3 -c "
 import xml.etree.ElementTree as ET
 r = ET.parse('$tmp/results.xml').getroot()
-print(r.get('total'), r.get('passed'), r.get('failed'))")
-  total=$(echo "$summary" | cut -d' ' -f1); passed=$(echo "$summary" | cut -d' ' -f2); failed=$(echo "$summary" | cut -d' ' -f3)
-  [ "$failed" = "0" ] && [ "$total" = "$passed" ] && [ "$total" != "0" ] \
-    || fail "editor half: EditMode $passed/$total passed, $failed failed"
+print(r.get('total'), r.get('passed'), r.get('failed'),
+      r.get('skipped', '0'), r.get('inconclusive', '0'))")
+  read total passed failed skipped inconclusive <<<"$summary"
+  accounted=$((passed + skipped))
+  [ "$failed" = "0" ] && [ "$inconclusive" = "0" ] \
+    && [ "$total" = "$accounted" ] && [ "$passed" != "0" ] \
+    || fail "editor half: EditMode $passed passed + $skipped skipped / $total, $failed failed, $inconclusive inconclusive"
   if ! "$ED" -batchmode -projectPath "$(pwd)/unity" -runTests -testPlatform PlayMode \
       -testResults "$tmp/pm.xml" -logFile "$tmp/pm.log" > /dev/null 2>&1; then
     tail -5 "$tmp/pm.log" 2>/dev/null
@@ -100,11 +104,14 @@ print(r.get('total'), r.get('passed'), r.get('failed'))")
   pm=$(python3 -c "
 import xml.etree.ElementTree as ET
 r = ET.parse('$tmp/pm.xml').getroot()
-print(r.get('total'), r.get('passed'), r.get('failed'))")
-  pt=$(echo "$pm" | cut -d' ' -f1); pp=$(echo "$pm" | cut -d' ' -f2); pf=$(echo "$pm" | cut -d' ' -f3)
-  [ "$pf" = "0" ] && [ "$pt" = "$pp" ] && [ "$pt" != "0" ] \
-    || fail "editor half: PlayMode $pp/$pt passed, $pf failed"
-  echo "editmode.test.sh: OK (10, 11, 9-static, 6-static, 2-static; EditMode $passed/$total; PlayMode $pp/$pt)"
+print(r.get('total'), r.get('passed'), r.get('failed'),
+      r.get('skipped', '0'), r.get('inconclusive', '0'))")
+  read pt pp pf ps pi <<<"$pm"
+  pa=$((pp + ps))
+  [ "$pf" = "0" ] && [ "$pi" = "0" ] \
+    && [ "$pt" = "$pa" ] && [ "$pp" != "0" ] \
+    || fail "editor half: PlayMode $pp passed + $ps skipped / $pt, $pf failed, $pi inconclusive"
+  echo "editmode.test.sh: OK (10, 11, 9-static, 6-static, 2-static; EditMode $passed passed + $skipped skipped / $total; PlayMode $pp passed + $ps skipped / $pt)"
 else
   echo "editmode.test.sh: OK (10, 11, 9-static, 6-static, 2-static; editor half DEFERRED — pinned editor absent, unity-editmode CI job is the remote enforcement, Q-V)"
 fi

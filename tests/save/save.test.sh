@@ -45,8 +45,8 @@ platform_conditional=$(grep -rEn --include='*.cs' \
   "${engine_free_roots[@]}" 2>/dev/null || true)
 [ -z "$platform_conditional" ] \
   || fail "criterion 13: platform conditional in an engine-free assembly: $platform_conditional"
-printf '%s\n' '#elif UNITY_ANDROID || UNITY_IOS' \
-  | grep -Eq '#(if|elif)[[:space:]]+.*UNITY_[A-Z0-9_]+' \
+grep -Eq '#(if|elif)[[:space:]]+.*UNITY_[A-Z0-9_]+' \
+  <<<'#elif UNITY_ANDROID || UNITY_IOS' \
   || fail "criterion 13: platform-conditional pattern missed the compound #elif fixture"
 
 # Criterion 14 (Q-T): the ledger is a data structure — zero monetization tokens under Save.
@@ -60,9 +60,9 @@ grep -Eq '/billing/|/iap/|/ads/|RevenueCat|Purchases\.|BillingClient|GoogleMobil
 # Review F3: comments are STRIPPED first — a comment naming the call must never satisfy the
 # guard for the single most load-bearing line in the contract (the inverted CM-C1 landmine).
 decommented=$(sed 's|//.*||' "$app_root/Save/ISaveFileSystem.cs")
-printf '%s\n' "$decommented" | grep -q 'Flush(flushToDisk: true)' \
+grep -q 'Flush(flushToDisk: true)' <<<"$decommented" \
   || fail "criterion 4: Flush(flushToDisk: true) call missing from the real filesystem seam"
-printf '%s\n' "$decommented" | grep -q 'File\.Replace' \
+grep -q 'File\.Replace' <<<"$decommented" \
   || fail "criterion 4: File.Replace call missing from the real filesystem seam"
 
 echo "save.test.sh: OK (4-shape, 13, 14, 15-sources; 15-suite-green rides tests/suite/solution-suite.test.sh)"

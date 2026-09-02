@@ -197,7 +197,7 @@ r["stdout"] = base64.b64encode(b"FORGED GREEN\n").decode()
 json.dump(r, open(p, "w"))
 PY
   out="$(invoke)"
-  if [ "$(runs)" = "2" ] && ! printf '%s' "$out" | grep -q FORGED; then
+  if [ "$(runs)" = "2" ] && ! grep -q FORGED <<<"$out"; then
     ok "checksum-tampered entry: miss, forged payload never replayed"
   else
     bad "tampered entry: runs=$(runs), output='$out'"

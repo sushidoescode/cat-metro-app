@@ -23,7 +23,8 @@ an_root="unity/Assets/Scripts/Application/Analytics"
 dec() { sed 's|//.*||' "$1"; }
 writepath='\bFileStream\b|\bStreamWriter\b|\bStreamReader\b|\bFile\.(Replace|Move|WriteAll|ReadAll|Copy|Open|Create|Append|Delete)'
 for f in "$an_root"/*.cs; do
-  if dec "$f" | grep -qE "$writepath"; then
+  decommented=$(dec "$f")
+  if grep -qE "$writepath" <<<"$decommented"; then
     fail "criterion 1: a second write-path implementation in $f"
   fi
 done
