@@ -1,135 +1,49 @@
 {
   "schemaVersion": 2,
   "id": "L005",
-  "name": "Evening Rush",
+  "name": "Platform Pair",
   "seed": 1005,
   "meta": {
     "band": "onboarding",
-    "difficultyTarget": 0.16,
-    "mechanics": [
-      "switch",
-      "queue"
-    ],
-    "newMechanic": null,
-    "teachingGoal": "Everything at once: a queued red rush, then the blue stragglers - two committed switches win it",
-    "minActionWindowTicks": 12,
+    "difficultyTarget": 0.12,
+    "mechanics": ["switch", "queue"],
+    "newMechanic": "queue",
+    "teachingGoal": "Watch a second red cat remain visibly queued after two cats arrive together",
+    "minActionWindowTicks": 16,
     "authoredBy": "llm+validator"
   },
   "board": {
     "nodes": [
-      {
-        "id": "SRC",
-        "x": 3,
-        "y": 9,
-        "queueCapacity": 3
-      },
-      {
-        "id": "J1",
-        "x": 3,
-        "y": 6
-      },
-      {
-        "id": "RED",
-        "x": 1,
-        "y": 2
-      },
-      {
-        "id": "BLU",
-        "x": 5,
-        "y": 2
-      }
+      { "id": "SRC", "x": 3, "y": 9, "queueCapacity": 3 },
+      { "id": "J1", "x": 3, "y": 5 },
+      { "id": "RED", "x": 0, "y": 1 },
+      { "id": "BLUE", "x": 6, "y": 1 }
     ],
     "edges": [
-      {
-        "id": "E1",
-        "from": "SRC",
-        "to": "J1",
-        "travelTicks": 10
-      },
-      {
-        "id": "E2",
-        "from": "J1",
-        "to": "RED",
-        "travelTicks": 12
-      },
-      {
-        "id": "E3",
-        "from": "J1",
-        "to": "BLU",
-        "travelTicks": 12
-      }
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 10 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 10 },
+      { "id": "E_BLUE", "from": "J1", "to": "BLUE", "travelTicks": 10 }
     ]
   },
   "sources": [
-    {
-      "nodeId": "SRC",
-      "allowedColors": [
-        "red",
-        "blue"
-      ]
-    }
+    { "nodeId": "SRC", "allowedColors": ["red", "blue"] }
   ],
   "stations": [
-    {
-      "nodeId": "RED",
-      "accepts": [
-        "red"
-      ],
-      "capacity": 6
-    },
-    {
-      "nodeId": "BLU",
-      "accepts": [
-        "blue"
-      ],
-      "capacity": 6
-    }
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 8 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 8 }
   ],
   "switches": [
-    {
-      "id": "S1",
-      "nodeId": "J1",
-      "routes": [
-        "E2",
-        "E3"
-      ],
-      "initialRoute": 1
-    }
+    { "id": "S1", "nodeId": "J1", "routes": ["E_RED", "E_BLUE"], "initialRoute": 0 }
   ],
   "waves": [
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 2,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 2,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 90,
-      "sourceNode": "SRC",
-      "color": "blue",
-      "count": 2,
-      "spacingTicks": 20
-    }
+    { "tick": 8, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 12 },
+    { "tick": 8, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 12 },
+    { "tick": 52, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 12 }
   ],
   "win": {
-    "deliveries": 6,
-    "timeLimitTicks": 190,
-    "perfectMaxSwitches": 2,
-    "stars": {
-      "two": 200,
-      "three": 300
-    }
+    "deliveries": 3,
+    "timeLimitTicks": 260,
+    "stars": { "two": 330, "three": 460 }
   },
-  "economy": {
-    "baseTickets": 20,
-    "perfectBonus": 10
-  }
+  "economy": { "baseTickets": 24, "perfectBonus": 12 }
 }

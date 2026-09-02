@@ -1,171 +1,52 @@
 {
   "schemaVersion": 2,
   "id": "L009",
-  "name": "Tide Tables",
+  "name": "Same Colour, New Shape",
   "seed": 1009,
   "meta": {
-    "band": "alternation",
-    "difficultyTarget": 0.26,
-    "mechanics": [
-      "switch",
-      "queue"
-    ],
-    "newMechanic": null,
-    "teachingGoal": "Three colors on the schedule: red keeps its own berth, blue and yellow share the cool-water pier",
-    "minActionWindowTicks": 12,
+    "band": "shape",
+    "difficultyTarget": 0.17,
+    "mechanics": ["switch", "shape"],
+    "newMechanic": "shape",
+    "teachingGoal": "Route three red cats by badge shape when colour alone no longer identifies a platform",
+    "minActionWindowTicks": 16,
     "authoredBy": "llm+validator"
   },
   "board": {
     "nodes": [
-      {
-        "id": "SRC",
-        "x": 3,
-        "y": 9,
-        "queueCapacity": 4
-      },
-      {
-        "id": "J1",
-        "x": 3,
-        "y": 6
-      },
-      {
-        "id": "RED",
-        "x": 1,
-        "y": 2
-      },
-      {
-        "id": "COOL",
-        "x": 5,
-        "y": 2
-      },
-      {
-        "id": "TRAP",
-        "x": 5,
-        "y": 6,
-        "queueCapacity": 1
-      }
+      { "id": "SRC", "x": 4, "y": 10 },
+      { "id": "J1", "x": 4, "y": 6 },
+      { "id": "ROUND", "x": 0, "y": 1 },
+      { "id": "SQUARE", "x": 4, "y": 1 },
+      { "id": "TRIANGLE", "x": 8, "y": 1 }
     ],
     "edges": [
-      {
-        "id": "E1",
-        "from": "SRC",
-        "to": "J1",
-        "travelTicks": 8
-      },
-      {
-        "id": "E2",
-        "from": "J1",
-        "to": "RED",
-        "travelTicks": 12
-      },
-      {
-        "id": "E3",
-        "from": "J1",
-        "to": "COOL",
-        "travelTicks": 12
-      },
-      {
-        "id": "E4",
-        "from": "J1",
-        "to": "TRAP",
-        "travelTicks": 4
-      }
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 10 },
+      { "id": "E_ROUND", "from": "J1", "to": "ROUND", "travelTicks": 11 },
+      { "id": "E_SQUARE", "from": "J1", "to": "SQUARE", "travelTicks": 11 },
+      { "id": "E_TRIANGLE", "from": "J1", "to": "TRIANGLE", "travelTicks": 11 }
     ]
   },
   "sources": [
-    {
-      "nodeId": "SRC",
-      "allowedColors": [
-        "red",
-        "blue",
-        "yellow"
-      ]
-    }
+    { "nodeId": "SRC", "allowedColors": ["red"] }
   ],
   "stations": [
-    {
-      "nodeId": "RED",
-      "accepts": [
-        "red"
-      ],
-      "capacity": 8
-    },
-    {
-      "nodeId": "COOL",
-      "accepts": [
-        "blue",
-        "yellow"
-      ],
-      "capacity": 10
-    }
+    { "nodeId": "ROUND", "accepts": ["red"], "capacity": 8, "shape": "round" },
+    { "nodeId": "SQUARE", "accepts": ["red"], "capacity": 8, "shape": "square" },
+    { "nodeId": "TRIANGLE", "accepts": ["red"], "capacity": 8, "shape": "triangle" }
   ],
   "switches": [
-    {
-      "id": "S1",
-      "nodeId": "J1",
-      "routes": [
-        "E2",
-        "E3",
-        "E4"
-      ],
-      "initialRoute": 0
-    }
+    { "id": "S1", "nodeId": "J1", "routes": ["E_ROUND", "E_SQUARE", "E_TRIANGLE"], "initialRoute": 0 }
   ],
   "waves": [
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 48,
-      "sourceNode": "SRC",
-      "color": "blue",
-      "count": 2,
-      "spacingTicks": 16
-    },
-    {
-      "tick": 88,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 2,
-      "spacingTicks": 16
-    },
-    {
-      "tick": 128,
-      "sourceNode": "SRC",
-      "color": "yellow",
-      "count": 2,
-      "spacingTicks": 16
-    }
+    { "tick": 8, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 12, "shape": "round" },
+    { "tick": 28, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 12, "shape": "square" },
+    { "tick": 48, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 12, "shape": "triangle" }
   ],
   "win": {
-    "deliveries": 9,
-    "timeLimitTicks": 230,
-    "perfectMaxSwitches": 4,
-    "stars": {
-      "two": 550,
-      "three": 800
-    }
+    "deliveries": 3,
+    "timeLimitTicks": 120,
+    "stars": { "two": 470, "three": 620 }
   },
-  "economy": {
-    "baseTickets": 22,
-    "perfectBonus": 14
-  }
+  "economy": { "baseTickets": 28, "perfectBonus": 14 }
 }

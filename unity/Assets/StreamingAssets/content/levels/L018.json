@@ -1,28 +1,28 @@
 {
   "schemaVersion": 2,
-  "id": "L017",
-  "name": "Two Platforms Meet",
-  "seed": 1017,
+  "id": "L018",
+  "name": "Crossing Arrivals",
+  "seed": 1018,
   "meta": {
     "band": "two-source",
-    "difficultyTarget": 0.33,
+    "difficultyTarget": 0.35,
     "mechanics": ["switch", "budget", "second-source"],
-    "newMechanic": "second-source",
-    "teachingGoal": "Watch both source platforms feed the same lever and reserve one change for each arrival",
+    "newMechanic": null,
+    "teachingGoal": "Hold blue for its source, then spend one change to gather both red arrivals",
     "minActionWindowTicks": 16,
     "authoredBy": "llm+validator"
   },
   "board": {
     "nodes": [
-      { "id": "SRC_A", "x": 1, "y": 10 },
-      { "id": "SRC_B", "x": 7, "y": 10 },
+      { "id": "SRC_A", "x": 0, "y": 9 },
+      { "id": "SRC_B", "x": 8, "y": 10 },
       { "id": "J1", "x": 4, "y": 6 },
       { "id": "RED", "x": 1, "y": 1 },
       { "id": "BLUE", "x": 7, "y": 1 }
     ],
     "edges": [
-      { "id": "E_A", "from": "SRC_A", "to": "J1", "travelTicks": 10 },
-      { "id": "E_B", "from": "SRC_B", "to": "J1", "travelTicks": 10 },
+      { "id": "E_A", "from": "SRC_A", "to": "J1", "travelTicks": 9 },
+      { "id": "E_B", "from": "SRC_B", "to": "J1", "travelTicks": 11 },
       { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 10 },
       { "id": "E_BLUE", "from": "J1", "to": "BLUE", "travelTicks": 10 }
     ]
@@ -40,13 +40,14 @@
   ],
   "waves": [
     { "tick": 8, "sourceNode": "SRC_A", "color": "red", "count": 1, "spacingTicks": 12 },
-    { "tick": 48, "sourceNode": "SRC_B", "color": "blue", "count": 1, "spacingTicks": 12 }
+    { "tick": 42, "sourceNode": "SRC_B", "color": "blue", "count": 1, "spacingTicks": 12 },
+    { "tick": 76, "sourceNode": "SRC_A", "color": "red", "count": 1, "spacingTicks": 12 }
   ],
   "win": {
-    "deliveries": 2,
-    "timeLimitTicks": 300,
-    "perfectMaxSwitches": 2,
-    "stars": { "two": 730, "three": 930 }
+    "deliveries": 3,
+    "timeLimitTicks": 340,
+    "perfectMaxSwitches": 1,
+    "stars": { "two": 760, "three": 970 }
   },
-  "economy": { "baseTickets": 36, "perfectBonus": 18 }
+  "economy": { "baseTickets": 37, "perfectBonus": 19 }
 }
