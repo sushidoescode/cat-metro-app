@@ -41,9 +41,10 @@ station. Equality is allowed. Occupancy above capacity fails immediately in the 
 step with the existing `Failed(PlatformOverflow)` outcome. Cause attribution selects the first
 over-capacity station in authored station order.
 
-Cat Metro still has no collision mechanic. A reverse train does not reserve the forward edge mouth,
-and forward and reverse trains may occupy and pass on the same edge. No collision outcome is
-created.
+A reverse train does not reserve the forward edge mouth. When the level does not enable the
+`second-train` collision rule, forward and reverse trains may still occupy and pass on the same
+edge. With that rule enabled, the same opposing occupancy fails with `Collision`; the exceptional
+refusal entry itself remains unconditional and the collision check resolves afterward.
 
 ## Replay, solver, and presentation invariants
 
@@ -62,7 +63,7 @@ view leaves a refused train at its station node during dwell, then evaluates the
 from `1 - progress` while it reverses.
 
 Executable coverage includes exact dwell boundaries, current-route re-entry, repeated refusal,
-the strict-above-capacity failure boundary and attribution, simultaneous forward/reverse travel,
+the strict-above-capacity failure boundary and attribution, collision-disabled forward/reverse travel,
 fixed digest slot width, an exact-BFS recovery with zero pins, and a detected/traversed directed
 cycle that solves with `BeamWidthUsed == 0`.
 

@@ -1393,7 +1393,9 @@ namespace CatMetro.Domain.Solver
                                 && graph.EdgeTo[tr.EdgeId] == node;
                             bool reverseInbound = tr.State == TrainState.OnEdgeReverse
                                 && graph.EdgeFrom[tr.EdgeId] == node;
-                            if (forwardInbound || reverseInbound)
+                            bool expressHeldAtSwitch = tr.State == TrainState.ExpressHeldAtSource
+                                && tr.NodeId == node;
+                            if (forwardInbound || reverseInbound || expressHeldAtSwitch)
                             {
                                 active = true;
                                 break;

@@ -66,16 +66,16 @@ namespace CatMetro.Domain
         public readonly int[] StationNode;          // per station
         public readonly byte[][] StationAccepts;    // per station: accepted colors
         public readonly int[] StationCapacity;      // per station
-        public readonly byte[] StationShape;        // per station: CatShape code
+        public readonly byte[] StationShape;        // per station: concrete cats must also match
         public readonly int[] WaveTick;             // per wave
         public readonly byte[] WaveColor;           // per wave
         public readonly int[] WaveCount;            // per wave
         public readonly int[] WaveSpacingTicks;     // per wave
         public readonly int[] WaveSourceNode;       // per wave: authored source node
-        public readonly bool[] WaveExpress;         // per wave; data only until no-wait semantics land
+        public readonly bool[] WaveExpress;         // per wave; never enters a node queue
         public readonly byte[] WaveShape;           // per wave: CatShape code
-        public readonly bool[] WaveStray;           // per wave; data only until stray semantics land
-        public readonly bool CollisionsEnabled;     // derived from the second-train mechanic
+        public readonly bool[] WaveStray;           // per wave; refuses stations and presses switches
+        public readonly bool CollisionsEnabled;     // same-node/opposing-edge failure rule
         public readonly int WinDeliveries;
         public readonly int TimeLimitTicks;
         public readonly int QCapBound;              // digest padding: queue slots per node (A-C1-7 i)

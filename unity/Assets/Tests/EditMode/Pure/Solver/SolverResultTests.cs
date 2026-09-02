@@ -108,7 +108,9 @@ namespace CatMetro.Tests.Solver
                         || state.Trains.Any(tr =>
                             (tr.State == TrainState.OnEdge && graph.EdgeTo[tr.EdgeId] == node)
                             || (tr.State == TrainState.OnEdgeReverse
-                                && graph.EdgeFrom[tr.EdgeId] == node));
+                                && graph.EdgeFrom[tr.EdgeId] == node)
+                            || (tr.State == TrainState.ExpressHeldAtSource
+                                && tr.NodeId == node));
                     if (active) pending++;
                 }
                 maxPending = Math.Max(maxPending, pending);

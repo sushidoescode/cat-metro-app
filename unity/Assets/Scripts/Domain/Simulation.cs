@@ -66,7 +66,23 @@ namespace CatMetro.Domain
                         SwitchState.Route(packed), SwitchState.Cooldown(packed) - 1);
                 }
 
-            // step 2 — emit waves whose emission tick matches (wave.tick + k*spacing, k < count).
+            // step 2a — express trains held outside a source queue retry before new emissions.
+            // They read the then-current selected route and never occupy queue digest slots.
+            for (int t = 0; t < state.Trains.Length; t++)
+            {
+                if (state.Trains[t].State != TrainState.ExpressHeldAtSource) continue;
+                int sourceNode = state.Trains[t].NodeId;
+                var traversal = OutgoingTraversalFor(g, state, sourceNode);
+                if (!traversal.IsValid)
+                    throw new InvalidOperationException(
+                        "source node has no outgoing edge — invalid fixture (F10)");
+                if (state.NodeQueueCounts[sourceNode] == 0
+                    && EdgeEntryOpen(g, traversal.EdgeId, tick)
+                    && MouthFree(state, traversal))
+                    EnterTraversal(ref state, t, traversal, enteredThisTick);
+            }
+
+            // step 2b — emit waves whose emission tick matches (wave.tick + k*spacing, k < count).
             // A single-count wave is spacing-independent; spacing <= 0 with count > 1 is refused
             // loudly at LevelGraph construction (F9) — no silent non-emission.
             for (int w = 0; w < g.WaveTick.Length; w++)
@@ -84,7 +100,8 @@ namespace CatMetro.Domain
                 }
                 int slot = AllocateTrain(ref state);
                 state.Trains[slot].Id = (short)(slot + 1); // 1-based; 0 = empty slot (A-C1-10)
-                state.Trains[slot].Color = g.WaveColor[w];
+                state.Trains[slot].Color = CatToken.Pack(
+                    g.WaveColor[w], g.WaveShape[w], g.WaveStray[w], g.WaveExpress[w]);
                 int sourceNode = g.WaveSourceNode[w];
                 state.Trains[slot].NodeId = (short)sourceNode;
                 var traversal = OutgoingTraversalFor(g, state, sourceNode);
@@ -94,14 +111,16 @@ namespace CatMetro.Domain
                     && EdgeEntryOpen(g, traversal.EdgeId, tick)
                     && MouthFree(state, traversal))
                     EnterTraversal(ref state, slot, traversal, enteredThisTick);
+                else if (g.WaveExpress[w])
+                    HoldExpressAtSource(ref state, slot, sourceNode);
                 else
                     Enqueue(ref state, sourceNode, slot);
             }
 
             // step 3 — advance trains that were already on an edge; collect arrivals. A refused
             // cat occupies its platform for the rejection tick plus seven following ticks, then
-            // begins reverse traversal on tick nine. Reverse entry ignores edge occupancy: the
-            // simulation has no collision mechanic, so forward/reverse trains pass through.
+            // begins reverse traversal on tick nine. Reverse entry ignores edge occupancy; the
+            // optional second-train rule detects opposing occupancy before any delivery.
             var arrivals = new List<int>(); // train slot indices, slot order = deterministic
             for (int t = 0; t < g.TrainsMax; t++)
             {
@@ -122,99 +141,152 @@ namespace CatMetro.Domain
                     arrivals.Add(t);
             }
 
-            // step 4a — queued heads release first (A-C1-8 ii)
-            for (int n = 0; n < g.NodeCount; n++)
-            {
-                if (state.NodeQueueCounts[n] == 0) continue;
-                int head = state.NodeQueueSlots[n][0] - 1; // stored ids are 1-based
-                var traversal = OutgoingTraversalFor(g, state, n);
-                if (traversal.IsValid
-                    && EdgeEntryOpen(g, traversal.EdgeId, tick)
-                    && MouthFree(state, traversal))
-                {
-                    DequeueHead(ref state, n);
-                    EnterTraversal(ref state, head, traversal, enteredThisTick);
-                }
-            }
+            // The second-train mechanic makes either opposing edge occupancy or two same-tick
+            // arrivals at one node fatal. Check before station deliveries are committed.
+            bool collision = g.CollisionsEnabled
+                && (HasOpposingEdgeCollision(g, state)
+                    || HasSameNodeArrivalCollision(g, state, arrivals));
+            var pendingDeliveries = new List<int>();
 
-            // step 4b/5 — arrivals resolve: station acceptance, junction routing, or enqueue
-            foreach (int t in arrivals)
+            if (!collision)
             {
-                int incomingEdge = state.Trains[t].EdgeId;
-                bool arrivedInReverse = state.Trains[t].State == TrainState.OnEdgeReverse;
-                int node = arrivedInReverse ? g.EdgeFrom[incomingEdge] : g.EdgeTo[incomingEdge];
-                state.Trains[t].State = TrainState.AtNode;
-                state.Trains[t].EdgeId = -1;
-                state.Trains[t].ProgressTicks = 0;
-                state.Trains[t].NodeId = (short)node;
-
-                int station = StationIndex(g, node);
-                if (station >= 0)
+                // step 4a — queued heads release first (A-C1-8 ii). A stray that already reached
+                // a switch retains the route captured before its automatic press.
+                for (int n = 0; n < g.NodeCount; n++)
                 {
-                    // step 5 — matching cats deliver. A mismatch remains on this platform for
-                    // exactly eight ticks, then traverses its incoming edge back to EdgeFrom.
-                    // The exceptional reverse is allowed even when that edge is authored one-way.
-                    if (!Accepts(g, station, state.Trains[t].Color))
+                    if (state.NodeQueueCounts[n] == 0) continue;
+                    int head = state.NodeQueueSlots[n][0] - 1; // stored ids are 1-based
+                    var traversal = QueuedTraversalFor(g, state, head, n);
+                    if (traversal.IsValid
+                        && EdgeEntryOpen(g, traversal.EdgeId, tick)
+                        && MouthFree(state, traversal))
                     {
+                        DequeueHead(ref state, n);
+                        EnterTraversal(ref state, head, traversal, enteredThisTick);
+                    }
+                }
+
+                // step 4b/5 — arrivals resolve: station acceptance, junction routing, bounce,
+                // or enqueue. Matching deliveries are deferred until the post-routing collision
+                // check, so a collision always wins this processing tick.
+                foreach (int t in arrivals)
+                {
+                    int incomingEdge = state.Trains[t].EdgeId;
+                    bool arrivedInReverse = state.Trains[t].State == TrainState.OnEdgeReverse;
+                    int node = arrivedInReverse ? g.EdgeFrom[incomingEdge] : g.EdgeTo[incomingEdge];
+                    state.Trains[t].State = TrainState.AtNode;
+                    state.Trains[t].EdgeId = -1;
+                    state.Trains[t].ProgressTicks = 0;
+                    state.Trains[t].NodeId = (short)node;
+
+                    byte token = state.Trains[t].Color;
+                    bool stray = CatToken.IsStray(token);
+                    bool express = CatToken.IsExpress(token);
+                    int station = StationIndex(g, node);
+                    if (station >= 0)
+                    {
+                        // A stray never delivers. Other Wild trains accept universally; concrete
+                        // cats require both color and shape. Express mismatches bounce immediately,
+                        // while every other refusal keeps the exact eight-tick platform contract.
+                        if (!stray && Accepts(g, station, token))
+                        {
+                            pendingDeliveries.Add(t);
+                            continue;
+                        }
+
                         state.Rejections++;
-                        state.Trains[t].State = TrainState.RejectedAtStation;
-                        state.Trains[t].EdgeId = (short)incomingEdge;
-                        state.Trains[t].ProgressTicks = 0;
+                        if (express && !stray)
+                            ReverseIncoming(ref state, t, incomingEdge, arrivedInReverse,
+                                enteredThisTick);
+                        else
+                            RefuseAtStation(ref state, t, incomingEdge);
                         continue;
                     }
-                    state.Deliveries++;
-                    state.Trains[t] = default; // delivered slot is zeroed (A-C1-10)
-                    continue;
-                }
 
-                var traversal = OutgoingTraversalFor(g, state, node);
-                if (traversal.IsValid
-                    && EdgeEntryOpen(g, traversal.EdgeId, tick)
-                    && MouthFree(state, traversal))
-                    EnterTraversal(ref state, t, traversal, enteredThisTick);
-                else
-                    Enqueue(ref state, node, t);
-            }
+                    int switchId = SwitchIndexAtNode(g, node);
+                    var traversal = OutgoingTraversalFor(g, state, node); // capture before press
+                    if (stray && switchId >= 0)
+                        PressSwitchForStray(ref state, switchId, coolingAtStart[switchId]);
 
-            // step 6a — station platform overflow is immediate. Capacity is simultaneous refused
-            // cats, not lifetime rejections; equality is allowed and only occupancy above the
-            // authored capacity fails.
-            for (int station = 0; station < g.StationNode.Length; station++)
-            {
-                int occupied = 0;
-                int stationNode = g.StationNode[station];
-                for (int t = 0; t < state.Trains.Length; t++)
-                    if (state.Trains[t].State == TrainState.RejectedAtStation
-                        && state.Trains[t].NodeId == stationNode)
-                        occupied++;
-                if (occupied > g.StationCapacity[station])
-                {
-                    state.Outcome = SimOutcome.MakeFailed(FailReason.PlatformOverflow);
-                    break;
-                }
-            }
-
-            // step 6b — node queue overflow countdown.
-            for (int n = 0; n < g.NodeCount; n++)
-            {
-                if (state.Outcome.Kind != OutcomeKind.Running) break;
-                int cap = g.NodeQueueCapacity[n];
-                if (cap <= 0) continue;
-                if (state.NodeQueueCounts[n] >= cap)
-                {
-                    if (state.OverloadTimers[n] == 0)
+                    bool mayEnter = traversal.IsValid
+                        && EdgeEntryOpen(g, traversal.EdgeId, tick)
+                        && MouthFree(state, traversal);
+                    if (express)
                     {
-                        state.OverloadTimers[n] = 16; // 2 s countdown ring (CM-R02.5)
-                        state.Overloads++;
+                        if (mayEnter)
+                            EnterTraversal(ref state, t, traversal, enteredThisTick);
+                        else
+                            ReverseIncoming(ref state, t, incomingEdge, arrivedInReverse,
+                                enteredThisTick);
                     }
-                    else if (--state.OverloadTimers[n] == 0)
+                    else if (mayEnter)
                     {
-                        state.Outcome = SimOutcome.MakeFailed(FailReason.QueueOverflow);
+                        EnterTraversal(ref state, t, traversal, enteredThisTick);
+                    }
+                    else if (stray && switchId >= 0 && traversal.IsValid)
+                    {
+                        EnqueueCaptured(ref state, node, t, traversal);
+                    }
+                    else
+                    {
+                        Enqueue(ref state, node, t);
                     }
                 }
-                else
+
+                collision = g.CollisionsEnabled && HasOpposingEdgeCollision(g, state);
+                if (!collision)
+                    foreach (int t in pendingDeliveries)
+                    {
+                        state.Deliveries++;
+                        state.Trains[t] = default; // delivered slot is zeroed (A-C1-10)
+                    }
+            }
+
+            if (collision)
+            {
+                state.Outcome = SimOutcome.MakeFailed(FailReason.Collision);
+            }
+            else
+            {
+                // step 6a — station platform overflow is immediate. Capacity is simultaneous
+                // refused cats, not lifetime rejections; equality is allowed.
+                for (int station = 0; station < g.StationNode.Length; station++)
                 {
-                    state.OverloadTimers[n] = 0; // clearing space cancels Overload
+                    int occupied = 0;
+                    int stationNode = g.StationNode[station];
+                    for (int t = 0; t < state.Trains.Length; t++)
+                        if (state.Trains[t].State == TrainState.RejectedAtStation
+                            && state.Trains[t].NodeId == stationNode)
+                            occupied++;
+                    if (occupied > g.StationCapacity[station])
+                    {
+                        state.Outcome = SimOutcome.MakeFailed(FailReason.PlatformOverflow);
+                        break;
+                    }
+                }
+
+                // step 6b — node queue overflow countdown.
+                for (int n = 0; n < g.NodeCount; n++)
+                {
+                    if (state.Outcome.Kind != OutcomeKind.Running) break;
+                    int cap = g.NodeQueueCapacity[n];
+                    if (cap <= 0) continue;
+                    if (state.NodeQueueCounts[n] >= cap)
+                    {
+                        if (state.OverloadTimers[n] == 0)
+                        {
+                            state.OverloadTimers[n] = 16; // 2 s countdown ring (CM-R02.5)
+                            state.Overloads++;
+                        }
+                        else if (--state.OverloadTimers[n] == 0)
+                        {
+                            state.Outcome = SimOutcome.MakeFailed(FailReason.QueueOverflow);
+                        }
+                    }
+                    else
+                    {
+                        state.OverloadTimers[n] = 0; // clearing space cancels Overload
+                    }
                 }
             }
 
@@ -275,6 +347,33 @@ namespace CatMetro.Domain
             enteredThisTick.Add(slot);
         }
 
+        private static void ReverseIncoming(ref SimulationState state, int slot, int incomingEdge,
+            bool arrivedInReverse, HashSet<int> enteredThisTick)
+        {
+            // The bounce is exceptional: ignore gate/direction/mouth state. Reversing an ordinary
+            // forward arrival travels toward EdgeFrom; reversing a reverse arrival travels back
+            // toward EdgeTo.
+            if (arrivedInReverse)
+                EnterEdge(ref state, slot, incomingEdge, enteredThisTick);
+            else
+                EnterReverseEdge(ref state, slot, incomingEdge, enteredThisTick);
+        }
+
+        private static void HoldExpressAtSource(ref SimulationState state, int slot, int node)
+        {
+            state.Trains[slot].State = TrainState.ExpressHeldAtSource;
+            state.Trains[slot].EdgeId = -1;
+            state.Trains[slot].ProgressTicks = 0;
+            state.Trains[slot].NodeId = (short)node;
+        }
+
+        private static void RefuseAtStation(ref SimulationState state, int slot, int incomingEdge)
+        {
+            state.Trains[slot].State = TrainState.RejectedAtStation;
+            state.Trains[slot].EdgeId = (short)incomingEdge;
+            state.Trains[slot].ProgressTicks = 0;
+        }
+
         private static void Enqueue(ref SimulationState state, int node, int slot)
         {
             int count = state.NodeQueueCounts[node];
@@ -288,6 +387,13 @@ namespace CatMetro.Domain
             state.Trains[slot].NodeId = (short)node;
         }
 
+        private static void EnqueueCaptured(ref SimulationState state, int node, int slot,
+            EdgeTraversal traversal)
+        {
+            Enqueue(ref state, node, slot);
+            state.Trains[slot].EdgeId = (short)traversal.EdgeId;
+        }
+
         private static void DequeueHead(ref SimulationState state, int node)
         {
             int count = state.NodeQueueCounts[node];
@@ -295,6 +401,72 @@ namespace CatMetro.Domain
             for (int q = 1; q < count; q++) slots[q - 1] = slots[q];
             slots[count - 1] = 0;
             state.NodeQueueCounts[node] = (byte)(count - 1);
+        }
+
+        private static EdgeTraversal QueuedTraversalFor(
+            LevelGraph g, SimulationState state, int slot, int node)
+        {
+            var train = state.Trains[slot];
+            if (CatToken.IsStray(train.Color) && train.EdgeId >= 0)
+                return TraversalFromNode(g, node, train.EdgeId);
+            return OutgoingTraversalFor(g, state, node);
+        }
+
+        private static int SwitchIndexAtNode(LevelGraph g, int node)
+        {
+            for (int s = 0; s < g.SwitchNode.Length; s++)
+                if (g.SwitchNode[s] == node)
+                    return s;
+            return -1;
+        }
+
+        private static void PressSwitchForStray(
+            ref SimulationState state, int switchId, bool coolingAtTickStart)
+        {
+            byte packed = state.SwitchRoutes[switchId];
+            if (coolingAtTickStart || SwitchState.Cooldown(packed) > 0) return;
+            var g = state.Graph;
+            int route = (SwitchState.Route(packed) + 1) % g.SwitchRoutes[switchId].Length;
+            state.SwitchRoutes[switchId] = SwitchState.Pack(
+                route, g.SwitchCooldownTicks[switchId]);
+            // Automatic presses deliberately neither consult the hard player cap nor increment
+            // SwitchesUsed. The packed cooldown is still authoritative for later presses.
+        }
+
+        private static bool HasSameNodeArrivalCollision(
+            LevelGraph g, SimulationState state, List<int> arrivals)
+        {
+            var countByNode = new int[g.NodeCount];
+            foreach (int slot in arrivals)
+            {
+                var train = state.Trains[slot];
+                int node = train.State == TrainState.OnEdgeReverse
+                    ? g.EdgeFrom[train.EdgeId]
+                    : g.EdgeTo[train.EdgeId];
+                countByNode[node]++;
+                if (countByNode[node] >= 2) return true;
+            }
+            return false;
+        }
+
+        private static bool HasOpposingEdgeCollision(LevelGraph g, SimulationState state)
+        {
+            var forward = new bool[g.EdgeFrom.Length];
+            var reverse = new bool[g.EdgeFrom.Length];
+            foreach (var train in state.Trains)
+            {
+                if (train.State == TrainState.OnEdge)
+                {
+                    if (reverse[train.EdgeId]) return true;
+                    forward[train.EdgeId] = true;
+                }
+                else if (train.State == TrainState.OnEdgeReverse)
+                {
+                    if (forward[train.EdgeId]) return true;
+                    reverse[train.EdgeId] = true;
+                }
+            }
+            return false;
         }
 
         // The traversal out of a node: a switch selects its current incident edge. Without a
@@ -364,12 +536,13 @@ namespace CatMetro.Domain
             return -1;
         }
 
-        private static bool Accepts(LevelGraph g, int station, byte color)
+        private static bool Accepts(LevelGraph g, int station, byte token)
         {
-            // NEW-Q35: Wild is a train color and auto-accepts at the first station reached.
-            // A Wild token authored on the station side remains exact-only and therefore does not
-            // accept a concrete train.
+            byte color = CatToken.Color(token);
+            // Train-side Wild auto-accepts regardless of station shape. A Wild token authored on
+            // the station side remains exact-only and therefore does not accept a concrete train.
             if (color == CatColor.Wild) return true;
+            if (CatToken.Shape(token) != g.StationShape[station]) return false;
             var accepts = g.StationAccepts[station];
             for (int i = 0; i < accepts.Length; i++)
                 if (accepts[i] == color)

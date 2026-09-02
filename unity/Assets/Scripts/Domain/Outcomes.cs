@@ -1,12 +1,13 @@
 namespace CatMetro.Domain
 {
-    // Exactly three members, contract-tested (CM-R03.1; ADR-0002 §10). Members are published
-    // in player-facing copy and the analytics taxonomy — adding one is an ADR change.
+    // Collision was appended for the ladder's second-train mechanic. Published ordinals 1-3 stay
+    // stable for replay/save compatibility.
     public enum FailReason : byte
     {
         QueueOverflow = 1,
         PlatformOverflow = 2,
         TimeOut = 3,
+        Collision = 4,
     }
 
     public enum OutcomeKind : byte

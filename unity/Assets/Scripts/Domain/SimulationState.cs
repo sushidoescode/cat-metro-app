@@ -9,7 +9,7 @@ namespace CatMetro.Domain
     public struct TrainSlot
     {
         public short Id;
-        public byte Color;
+        public byte Color; // CatToken packed identity; field name/width retained by digest contract
         public short EdgeId;
         public short ProgressTicks;
         public short NodeId;
@@ -22,10 +22,11 @@ namespace CatMetro.Domain
         public const byte OnEdge = 1;
         public const byte AtNode = 2;
         // A refused cat keeps its incoming EdgeId while ProgressTicks counts its eight-tick
-        // platform dwell. Both new states fit the existing one-byte digest field; TrainSlot
+        // platform dwell. Added runtime states fit the existing one-byte digest field; TrainSlot
         // remains exactly 10 bytes.
         public const byte RejectedAtStation = 3;
         public const byte OnEdgeReverse = 4;
+        public const byte ExpressHeldAtSource = 5;
     }
 
     // ADR-0002 §3: integer only. ADR-0002 §7 + overview.md §6: the digest layout below IS the
