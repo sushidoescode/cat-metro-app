@@ -44,6 +44,42 @@ namespace CatMetro.Tests.Daily
 
         public static LevelDto TrivialWinDto() => DailySerializableDto(VFixtures.TrivialWinLevel());
 
+        public static LevelDto AllFieldsDto() => new LevelDto(
+            2, "L800", "Daily Field Probe", 8080,
+            new MetaDto("daily", 0.625,
+                new[] { "switch", "reversible", "tunnel", "hold", "cooldown", "gate",
+                    "express", "shape", "stray" },
+                "gate", "Preserve every daily DTO field", 5, "generator+validator",
+                "2026-09-02", true),
+            new[]
+            {
+                new NodeDto("SRC", 1, 6, 3, true),
+                new NodeDto("J1", 2, 3, 0, false),
+                new NodeDto("ST", 4, 0, 0, false),
+            },
+            new[]
+            {
+                new EdgeDto("E_REV", "SRC", "J1", 3,
+                    oneWay: false, reversible: true, tunnel: true),
+                new EdgeDto("E_HOLD", "J1", "ST", 4, hold: true),
+            },
+            new[] { new SourceDto("SRC", new[] { "red", "wild" }) },
+            new[] { new StationDto("ST", new[] { "red" }, 4, "triangle") },
+            new[] { new SwitchDto("S1", "J1", new[] { "E_REV", "E_HOLD" }, 1, 5) },
+            new[] { new WaveDto(2, "SRC", "red", 1, 8,
+                express: true, shape: "square", stray: true) },
+            new WinDto(1, 40, 2, new StarsDto(120, 220)),
+            new EconomyDto(30, 12),
+            new[]
+            {
+                new GateDto("E_HOLD", new[]
+                {
+                    new GateWindowDto(2, 6),
+                    new GateWindowDto(10, 14),
+                }, 9),
+            },
+            new[] { "daily", "field-probe" });
+
         private static LevelDto DailySerializableDto(byte[] bytes)
         {
             var json = JObject.Parse(Encoding.UTF8.GetString(bytes));

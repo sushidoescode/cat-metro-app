@@ -57,7 +57,8 @@ namespace CatMetro.Content.Daily
             for (int i = 0; i < edges.Length; i++)
             {
                 EdgeDto e = template.Edges.Span[i];
-                edges[i] = new EdgeDto(e.Id, e.From, e.To, e.TravelTicks);
+                edges[i] = new EdgeDto(e.Id, e.From, e.To, e.TravelTicks,
+                    e.OneWay, e.Reversible, e.Tunnel, e.Hold);
             }
 
             var sources = new SourceDto[template.Sources.Length];
@@ -73,7 +74,7 @@ namespace CatMetro.Content.Daily
             {
                 StationDto station = template.Stations.Span[i];
                 stations[i] = new StationDto(station.NodeId,
-                    MapColors(station.Accepts, colorMap), station.Capacity);
+                    MapColors(station.Accepts, colorMap), station.Capacity, station.Shape);
             }
 
             var switches = new SwitchDto[template.Switches.Length];
@@ -92,7 +93,21 @@ namespace CatMetro.Content.Daily
                     routes[1] = swap;
                     initialRoute = 1 - initialRoute;
                 }
-                switches[i] = new SwitchDto(value.Id, value.NodeId, routes, initialRoute);
+                switches[i] = new SwitchDto(value.Id, value.NodeId, routes, initialRoute,
+                    value.CooldownTicks);
+            }
+
+            var gates = new GateDto[template.Gates.Length];
+            for (int i = 0; i < gates.Length; i++)
+            {
+                GateDto gate = template.Gates.Span[i];
+                var windows = new GateWindowDto[gate.OpenWindows.Length];
+                for (int j = 0; j < windows.Length; j++)
+                {
+                    GateWindowDto window = gate.OpenWindows.Span[j];
+                    windows[j] = new GateWindowDto(window.StartTick, window.EndTick);
+                }
+                gates[i] = new GateDto(gate.EdgeId, windows, gate.PreviewTicks);
             }
 
             var waves = new WaveDto[template.Waves.Length];
@@ -100,12 +115,15 @@ namespace CatMetro.Content.Daily
             {
                 WaveDto wave = template.Waves.Span[i];
                 waves[i] = new WaveDto(wave.Tick, wave.SourceNode,
-                    MapColor(wave.Color, colorMap), wave.Count, wave.SpacingTicks);
+                    MapColor(wave.Color, colorMap), wave.Count, wave.SpacingTicks,
+                    wave.Express, wave.Shape, wave.Stray);
             }
 
             var mechanics = new string[template.Meta.Mechanics.Length];
             for (int i = 0; i < mechanics.Length; i++)
                 mechanics[i] = template.Meta.Mechanics.Span[i];
+            var tags = new string[template.Tags.Length];
+            for (int i = 0; i < tags.Length; i++) tags[i] = template.Tags.Span[i];
 
             var meta = new MetaDto(template.Meta.Band, template.Meta.DifficultyTarget,
                 mechanics, template.Meta.NewMechanic, template.Meta.TeachingGoal,
@@ -118,7 +136,8 @@ namespace CatMetro.Content.Daily
                 template.Economy.BaseTickets, template.Economy.PerfectBonus);
 
             return new LevelDto(template.SchemaVersion, template.Id, template.Name,
-                template.Seed, meta, nodes, edges, sources, stations, switches, waves, win, economy);
+                template.Seed, meta, nodes, edges, sources, stations, switches, waves, win, economy,
+                gates, tags);
         }
 
         private static string[] MapColors(System.ReadOnlyMemory<string> values, string[] colorMap)
@@ -136,7 +155,8 @@ namespace CatMetro.Content.Daily
                 case "red": return colorMap[0];
                 case "blue": return colorMap[1];
                 case "yellow": return colorMap[2];
-                default: return colorMap[3];
+                case "green": return colorMap[3];
+                default: return color;
             }
         }
     }

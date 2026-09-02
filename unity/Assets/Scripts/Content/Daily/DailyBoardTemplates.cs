@@ -129,11 +129,11 @@ namespace CatMetro.Content.Daily
                 },
                 new[]
                 {
-                    new WaveDto(8, "SRC", "red", 2, 16),
-                    new WaveDto(56, "SRC", "blue", 2, 16),
-                    new WaveDto(104, "SRC", "yellow", 2, 16),
+                    new WaveDto(8, "SRC", "red", 1, 16),
+                    new WaveDto(40, "SRC", "blue", 1, 16),
+                    new WaveDto(72, "SRC", "yellow", 1, 16),
                 },
-                new WinDto(6, 180, 3, new StarsDto(500, 750)));
+                new WinDto(3, 180, 3, new StarsDto(500, 750)));
         }
 
         private static LevelDto Board(uint seed, double difficulty, string[] mechanics,

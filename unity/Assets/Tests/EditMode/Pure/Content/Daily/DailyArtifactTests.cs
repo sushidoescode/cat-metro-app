@@ -109,6 +109,33 @@ namespace CatMetro.Tests.Daily
         }
 
         [Test]
+        public void RoundTrip_NonDefaultMechanicFieldsPreserveTheCompleteDto()
+        {
+            var dto = DFixtures.AllFieldsDto();
+            string text = DailyBoardJson.Serialize(dto);
+            var json = JObject.Parse(text);
+
+            Assert.That((bool)json["board"]["edges"][0]["oneWay"], Is.False);
+            Assert.That((bool)json["board"]["edges"][0]["reversible"], Is.True);
+            Assert.That((bool)json["board"]["edges"][0]["tunnel"], Is.True);
+            Assert.That((bool)json["board"]["edges"][1]["hold"], Is.True);
+            Assert.That((string)json["stations"][0]["shape"], Is.EqualTo("triangle"));
+            Assert.That((int)json["switches"][0]["cooldownTicks"], Is.EqualTo(5));
+            Assert.That(json["gates"][0]["openWindows"].ToObject<int[][]>(),
+                Is.EqualTo(new[] { new[] { 2, 6 }, new[] { 10, 14 } }));
+            Assert.That((int)json["gates"][0]["previewTicks"], Is.EqualTo(9));
+            Assert.That((bool)json["waves"][0]["express"], Is.True);
+            Assert.That((string)json["waves"][0]["shape"], Is.EqualTo("square"));
+            Assert.That((bool)json["waves"][0]["stray"], Is.True);
+            Assert.That(json["tags"].Values<string>(),
+                Is.EqualTo(new[] { "daily", "field-probe" }));
+
+            var back = LevelImporter.Import(System.Text.Encoding.UTF8.GetBytes(text));
+            Assert.That(back.Ok, Is.True, $"round-trip must import: {back.Error}");
+            AssertCompleteDto(back.Value.Dto, dto);
+        }
+
+        [Test]
         public void RoundTrip_PreservesAbsentKeys()
         {
             string text = DailyBoardJson.Serialize(DFixtures.L001Dto());
@@ -117,9 +144,90 @@ namespace CatMetro.Tests.Daily
         }
 
         [Test]
+        public void RoundTrip_UnbudgetedWinOmitsTheOptionalBudgetKey()
+        {
+            var dto = DFixtures.L001Dto();
+            var unbudgeted = new LevelDto(dto.SchemaVersion, dto.Id, dto.Name, dto.Seed, dto.Meta,
+                dto.Nodes.ToArray(), dto.Edges.ToArray(), dto.Sources.ToArray(),
+                dto.Stations.ToArray(), dto.Switches.ToArray(), dto.Waves.ToArray(),
+                new WinDto(dto.Win.Deliveries, dto.Win.TimeLimitTicks,
+                    CatMetro.Domain.FlipBudget.Unbudgeted, dto.Win.Stars),
+                dto.Economy, dto.Gates.ToArray(), dto.Tags.ToArray());
+
+            string text = DailyBoardJson.Serialize(unbudgeted);
+            Assert.That(text, Does.Not.Contain("perfectMaxSwitches"));
+            var back = LevelImporter.Import(System.Text.Encoding.UTF8.GetBytes(text));
+            Assert.That(back.Ok, Is.True, $"round-trip must import: {back.Error}");
+            Assert.That(back.Value.Dto.Win.PerfectMaxSwitches,
+                Is.EqualTo(CatMetro.Domain.FlipBudget.Unbudgeted));
+        }
+
+        [Test]
         public void SolverCompletionTicks_PositiveForASolvedBoard()
         {
             Assert.That(ThreeDateReport().Records[0].SolverCompletionTicks, Is.GreaterThan(0));
+        }
+
+        private static void AssertCompleteDto(LevelDto actual, LevelDto expected)
+        {
+            Assert.That(actual.SchemaVersion, Is.EqualTo(expected.SchemaVersion));
+            Assert.That(actual.Id, Is.EqualTo(expected.Id));
+            Assert.That(actual.Name, Is.EqualTo(expected.Name));
+            Assert.That(actual.Seed, Is.EqualTo(expected.Seed));
+            Assert.That(actual.Meta.Band, Is.EqualTo(expected.Meta.Band));
+            Assert.That(actual.Meta.DifficultyTarget, Is.EqualTo(expected.Meta.DifficultyTarget));
+            Assert.That(actual.Meta.Mechanics.ToArray(), Is.EqualTo(expected.Meta.Mechanics.ToArray()));
+            Assert.That(actual.Meta.NewMechanic, Is.EqualTo(expected.Meta.NewMechanic));
+            Assert.That(actual.Meta.TeachingGoal, Is.EqualTo(expected.Meta.TeachingGoal));
+            Assert.That(actual.Meta.MinActionWindowTicks,
+                Is.EqualTo(expected.Meta.MinActionWindowTicks));
+            Assert.That(actual.Meta.AuthoredBy, Is.EqualTo(expected.Meta.AuthoredBy));
+            Assert.That(actual.Meta.ValidatedAt, Is.EqualTo(expected.Meta.ValidatedAt));
+            Assert.That(actual.Meta.HasValidatedAt, Is.EqualTo(expected.Meta.HasValidatedAt));
+            Assert.That(actual.Nodes.ToArray().Select(n =>
+                    (n.Id, n.X, n.Y, n.QueueCapacity, n.HasQueueCapacity)),
+                Is.EqualTo(expected.Nodes.ToArray().Select(n =>
+                    (n.Id, n.X, n.Y, n.QueueCapacity, n.HasQueueCapacity))));
+            Assert.That(actual.Edges.ToArray().Select(e =>
+                    (e.Id, e.From, e.To, e.TravelTicks, e.OneWay,
+                        e.Reversible, e.Tunnel, e.Hold)),
+                Is.EqualTo(expected.Edges.ToArray().Select(e =>
+                    (e.Id, e.From, e.To, e.TravelTicks, e.OneWay,
+                        e.Reversible, e.Tunnel, e.Hold))));
+            Assert.That(actual.Sources.ToArray().Select(s =>
+                    (s.NodeId, string.Join(",", s.AllowedColors.ToArray()))),
+                Is.EqualTo(expected.Sources.ToArray().Select(s =>
+                    (s.NodeId, string.Join(",", s.AllowedColors.ToArray())))));
+            Assert.That(actual.Stations.ToArray().Select(s =>
+                    (s.NodeId, string.Join(",", s.Accepts.ToArray()), s.Capacity, s.Shape)),
+                Is.EqualTo(expected.Stations.ToArray().Select(s =>
+                    (s.NodeId, string.Join(",", s.Accepts.ToArray()), s.Capacity, s.Shape))));
+            Assert.That(actual.Switches.ToArray().Select(s =>
+                    (s.Id, s.NodeId, string.Join(",", s.Routes.ToArray()),
+                        s.InitialRoute, s.CooldownTicks)),
+                Is.EqualTo(expected.Switches.ToArray().Select(s =>
+                    (s.Id, s.NodeId, string.Join(",", s.Routes.ToArray()),
+                        s.InitialRoute, s.CooldownTicks))));
+            Assert.That(actual.Gates.ToArray().Select(g =>
+                    (g.EdgeId, string.Join(";", g.OpenWindows.ToArray()
+                        .Select(w => w.StartTick + "," + w.EndTick)), g.PreviewTicks)),
+                Is.EqualTo(expected.Gates.ToArray().Select(g =>
+                    (g.EdgeId, string.Join(";", g.OpenWindows.ToArray()
+                        .Select(w => w.StartTick + "," + w.EndTick)), g.PreviewTicks))));
+            Assert.That(actual.Waves.ToArray().Select(w =>
+                    (w.Tick, w.SourceNode, w.Color, w.Count, w.SpacingTicks,
+                        w.Express, w.Shape, w.Stray)),
+                Is.EqualTo(expected.Waves.ToArray().Select(w =>
+                    (w.Tick, w.SourceNode, w.Color, w.Count, w.SpacingTicks,
+                        w.Express, w.Shape, w.Stray))));
+            Assert.That(actual.Tags.ToArray(), Is.EqualTo(expected.Tags.ToArray()));
+            Assert.That((actual.Win.Deliveries, actual.Win.TimeLimitTicks,
+                    actual.Win.PerfectMaxSwitches, actual.Win.Stars.Two, actual.Win.Stars.Three),
+                Is.EqualTo((expected.Win.Deliveries, expected.Win.TimeLimitTicks,
+                    expected.Win.PerfectMaxSwitches, expected.Win.Stars.Two,
+                    expected.Win.Stars.Three)));
+            Assert.That((actual.Economy.BaseTickets, actual.Economy.PerfectBonus),
+                Is.EqualTo((expected.Economy.BaseTickets, expected.Economy.PerfectBonus)));
         }
     }
 }

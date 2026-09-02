@@ -5,6 +5,8 @@ using System.Text;
 using NUnit.Framework;
 using CatMetro.Content;
 using CatMetro.Content.Daily;
+using CatMetro.Domain;
+using CatMetro.Domain.Solver;
 
 namespace CatMetro.Tests.Daily
 {
@@ -106,8 +108,8 @@ namespace CatMetro.Tests.Daily
             Assert.That(Stations(dto), Is.EqualTo("RED:red:c6|BLU:yellow:c6|YEL:blue:c6"));
             Assert.That(Switches(dto), Is.EqualTo("S1@J1:E2,E3:i1|S2@J2:E5,E4:i1"));
             Assert.That(Waves(dto), Is.EqualTo(
-                "8:SRC:red:2:16|56:SRC:yellow:2:16|104:SRC:blue:2:16"));
-            AssertWin(dto, 6, 180, 3, 500, 750);
+                "8:SRC:red:1:16|40:SRC:yellow:1:16|72:SRC:blue:1:16"));
+            AssertWin(dto, 3, 180, 3, 500, 750);
         }
 
         [Test]
@@ -156,7 +158,7 @@ namespace CatMetro.Tests.Daily
         [TestCase("2026-08-25", 3466517912u, 3,
             "43cb5a7f978ef98e19c8025706bac2e7a5af68057b16570e0d280b1d2ba1a4a8")]
         [TestCase("2026-08-27", 69047575u, 0,
-            "3655bb161fb4420660d9d002753666686c72fbe4b5878bda4a96f4b6f728f6df")]
+            "aa9cfda91fcae6c925a0ed985a075c55c2894da1d07d7e4b078a69cdc8b470bd")]
         public void CanonicalJson_MatchesIndependentLiteralHash(
             string dateKey, uint seed, int k, string expectedHash)
         {
@@ -169,6 +171,76 @@ namespace CatMetro.Tests.Daily
         {
             Assert.That(Hash(new DailyBoardFactory().BuildFallback(1449106418u, "2026-08-24")),
                 Is.EqualTo("7f6b851b77b06a55912ccb450736965bb03026523971b54e98a8f4cbc8a971e9"));
+        }
+
+        [Test]
+        public void Transform_PreservesMechanicFieldsAndCopiesNestedArrays()
+        {
+            var template = DFixtures.AllFieldsDto();
+            var transform = typeof(DailyBoardFactory).GetMethod("Transform",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            Assert.That(transform, Is.Not.Null);
+
+            var actual = (LevelDto)transform.Invoke(null, new object[]
+            {
+                template, true, new[] { false }, new[] { "blue", "yellow", "green", "red" },
+            });
+
+            Assert.That(actual.Nodes.Span[0].X, Is.EqualTo(5), "mirror transform remains active");
+            Assert.That(actual.Edges.Span[0].OneWay, Is.False);
+            Assert.That(actual.Edges.Span[0].Reversible, Is.True);
+            Assert.That(actual.Edges.Span[0].Tunnel, Is.True);
+            Assert.That(actual.Edges.Span[1].Hold, Is.True);
+            Assert.That(actual.Sources.Span[0].AllowedColors.ToArray(),
+                Is.EqualTo(new[] { "blue", "wild" }), "wild is not a shuffle colour");
+            Assert.That(actual.Stations.Span[0].Accepts.ToArray(), Is.EqualTo(new[] { "blue" }));
+            Assert.That(actual.Stations.Span[0].Shape, Is.EqualTo("triangle"));
+            Assert.That(actual.Switches.Span[0].CooldownTicks, Is.EqualTo(5));
+            Assert.That(actual.Gates.Span[0].EdgeId, Is.EqualTo("E_HOLD"));
+            Assert.That(actual.Gates.Span[0].PreviewTicks, Is.EqualTo(9));
+            Assert.That(actual.Gates.Span[0].OpenWindows.ToArray()
+                .Select(w => (w.StartTick, w.EndTick)),
+                Is.EqualTo(new[] { (2, 6), (10, 14) }));
+            Assert.That(actual.Waves.Span[0].Color, Is.EqualTo("blue"));
+            Assert.That(actual.Waves.Span[0].Shape, Is.EqualTo("square"));
+            Assert.That(actual.Waves.Span[0].Express, Is.True);
+            Assert.That(actual.Waves.Span[0].Stray, Is.True);
+            Assert.That(actual.Tags.ToArray(), Is.EqualTo(new[] { "daily", "field-probe" }));
+
+            Assert.That(actual.Edges.Equals(template.Edges), Is.False);
+            Assert.That(actual.Switches.Span[0].Routes.Equals(
+                template.Switches.Span[0].Routes), Is.False);
+            Assert.That(actual.Gates.Equals(template.Gates), Is.False);
+            Assert.That(actual.Gates.Span[0].OpenWindows.Equals(
+                template.Gates.Span[0].OpenWindows), Is.False);
+            Assert.That(actual.Tags.Equals(template.Tags), Is.False);
+        }
+
+        [Test]
+        public void August25_FirstCascadeCandidateHasExactCappedWinningReplay()
+        {
+            const string dateKey = "2026-08-25";
+            const uint seed = 3466517912u;
+            var candidate = new DailyBoardFactory().Build(seed, dateKey, 0);
+            var imported = LevelImporter.Import(
+                Encoding.UTF8.GetBytes(DailyBoardJson.Serialize(candidate)));
+            Assert.That(imported.Ok, Is.True, imported.Ok ? "" : imported.Error.ToString());
+
+            var solve = LevelSolver.Solve(imported.Value.Graph, seed);
+            Assert.That(solve.Verdict, Is.EqualTo(SolveVerdict.Solved));
+            Assert.That(solve.BeamWidthUsed, Is.Zero);
+            Assert.That(solve.SwitchesUsed, Is.EqualTo(candidate.Win.PerfectMaxSwitches));
+            var replay = ReplayHasher.RunToEnd(imported.Value.Graph, seed, solve.OptimalLog);
+            Assert.That(replay.Outcome.Kind, Is.EqualTo(OutcomeKind.Won));
+            Assert.That(replay.Deliveries, Is.EqualTo(candidate.Win.Deliveries));
+            Assert.That(replay.SwitchesUsed, Is.EqualTo(candidate.Win.PerfectMaxSwitches));
+
+            var record = DFixtures.Run(DFixtures.RuntimeRequest(
+                new[] { dateKey }, new DailyBoardFactory(), DFixtures.TinyConfig())).Records.Single();
+            Assert.That(record.Blocks, Is.False, record.Detail);
+            Assert.That(record.K, Is.Zero);
+            Assert.That(record.UsedFallback, Is.False);
+            Assert.That(record.SolverCompletionTicks, Is.EqualTo(solve.CompletionTicks));
         }
 
         private static string Nodes(LevelDto dto) => string.Join("|", dto.Nodes.ToArray().Select(n =>
