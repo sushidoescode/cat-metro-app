@@ -8,7 +8,7 @@
     "difficultyTarget": 0.78,
     "mechanics": ["switch", "budget", "reversible"],
     "newMechanic": null,
-    "teachingGoal": "Read four alternating arrivals and bind all three flips around the reverse spur",
+    "teachingGoal": "Recover alternating arrivals with one reversible-spur release flip",
     "minActionWindowTicks": 3,
     "authoredBy": "llm+validator"
   },
@@ -44,7 +44,7 @@
   "win": {
     "deliveries": 4,
     "timeLimitTicks": 40,
-    "perfectMaxSwitches": 3,
+    "perfectMaxSwitches": 1,
     "stars": { "two": 290, "three": 485 }
   },
   "economy": { "baseTickets": 68, "perfectBonus": 29 }
