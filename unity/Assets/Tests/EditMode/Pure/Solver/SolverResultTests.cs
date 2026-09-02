@@ -105,7 +105,10 @@ namespace CatMetro.Tests.Solver
                 {
                     int node = graph.SwitchNode[s];
                     bool active = state.NodeQueueCounts[node] > 0
-                        || state.Trains.Any(tr => tr.State == TrainState.OnEdge && graph.EdgeTo[tr.EdgeId] == node);
+                        || state.Trains.Any(tr =>
+                            (tr.State == TrainState.OnEdge && graph.EdgeTo[tr.EdgeId] == node)
+                            || (tr.State == TrainState.OnEdgeReverse
+                                && graph.EdgeFrom[tr.EdgeId] == node));
                     if (active) pending++;
                 }
                 maxPending = Math.Max(maxPending, pending);

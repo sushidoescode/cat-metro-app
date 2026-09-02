@@ -8,8 +8,8 @@ using Newtonsoft.Json.Linq;
 
 namespace CatMetro.Tests.Validation
 {
-    // Criterion 5: stage 4 blocks ONLY on Unsolvable; NotFound and Indeterminate print their
-    // counts and never block (Q-N; ADR-0008:117).
+    // Criterion 5: stage 4 blocks ONLY on Unsolvable; NotFound and an unsupported-domain
+    // Indeterminate print their counts and never block. This preserves stress-board warnings.
     [TestFixture]
     public class SolverStageTests
     {
@@ -32,10 +32,12 @@ namespace CatMetro.Tests.Validation
         [Test]
         public void Indeterminate_PrintsCountsAndDoesNotBlock()
         {
-            var solve = Solve(VFixtures.AllPinnedLevel());
-            Assert.That(solve.Verdict, Is.EqualTo(SolveVerdict.Indeterminate), "fixture sanity");
+            var solve = new SolveResult(
+                SolveVerdict.Indeterminate, NotFoundReason.None, new CommandLog(),
+                0, 0, 0, 2, 17, "unsupported-domain-boundary",
+                new DifficultyProxy(0, 0, 40, 0, 0, 0));
             var v = SolverStage.Verdict(solve);
-            Assert.That(v.Blocks, Is.False, "Q-N: pinned exhaustion is not a proof");
+            Assert.That(v.Blocks, Is.False, "stress-board indeterminacy remains a warning");
             Assert.That(v.Detail, Does.Contain("Indeterminate").And.Contain("pinned"));
             Assert.That(v.Detail, Does.Contain(solve.PinnedPruned.ToString()), "the count is printed");
         }

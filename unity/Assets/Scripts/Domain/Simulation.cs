@@ -6,7 +6,7 @@ namespace CatMetro.Domain
     // The ONE step implementation (ADR-0002 §2): solver, validator, runtime and capture rig all
     // call this symbol. Implements the authoritative per-tick order of operations at
     // docs/plan/specs/product_spec.md:218-227. Step 7 (score/combo) is deferred with scoring
-    // (pin NEW-Q5 / Q-C); step 5 carries NEW-Q4 plus NEW-Q35's ratified W-auto acceptance.
+    // (pin NEW-Q5 / Q-C); step 5 implements refusal/dwell/reverse plus NEW-Q35's W-auto acceptance.
     //
     // Micro-semantics adopted as handoff assumption A-C1-8 (golden fixture exercises none of them):
     //   (i)  an edge mouth is occupied iff any train on that edge has ProgressTicks == 0;
@@ -27,6 +27,8 @@ namespace CatMetro.Domain
     // hold exactly (contract 13(c)/(d)).
     public static class Simulation
     {
+        public const int RejectionDwellTicks = 8;
+
         // commandsThisTick: the commands due at THIS tick's step 1 — i.e. commands enqueued
         // during tick (state.Tick - 1), selected by the caller/runner (CM-R07.3).
         public static void Step(ref SimulationState state, ReadOnlySpan<ToggleSwitchCommand> commandsThisTick)
@@ -77,11 +79,23 @@ namespace CatMetro.Domain
                     Enqueue(ref state, sourceNode, slot);
             }
 
-            // step 3 — advance trains that were already on an edge; collect arrivals
+            // step 3 — advance trains that were already on an edge; collect arrivals. A refused
+            // cat occupies its platform for the rejection tick plus seven following ticks, then
+            // begins reverse traversal on tick nine. Reverse entry ignores edge occupancy: the
+            // simulation has no collision mechanic, so forward/reverse trains pass through.
             var arrivals = new List<int>(); // train slot indices, slot order = deterministic
             for (int t = 0; t < g.TrainsMax; t++)
             {
-                if (state.Trains[t].State != TrainState.OnEdge || enteredThisTick.Contains(t)) continue;
+                if (state.Trains[t].State == TrainState.RejectedAtStation)
+                {
+                    state.Trains[t].ProgressTicks++;
+                    if (state.Trains[t].ProgressTicks >= RejectionDwellTicks)
+                        EnterReverseEdge(ref state, t, state.Trains[t].EdgeId, enteredThisTick);
+                    continue;
+                }
+                if ((state.Trains[t].State != TrainState.OnEdge
+                        && state.Trains[t].State != TrainState.OnEdgeReverse)
+                    || enteredThisTick.Contains(t)) continue;
                 state.Trains[t].ProgressTicks++;
                 if (state.Trains[t].ProgressTicks >= g.EdgeTravelTicks[state.Trains[t].EdgeId])
                     arrivals.Add(t);
@@ -103,7 +117,9 @@ namespace CatMetro.Domain
             // step 4b/5 — arrivals resolve: station acceptance, junction routing, or enqueue
             foreach (int t in arrivals)
             {
-                int node = g.EdgeTo[state.Trains[t].EdgeId];
+                int incomingEdge = state.Trains[t].EdgeId;
+                bool arrivedInReverse = state.Trains[t].State == TrainState.OnEdgeReverse;
+                int node = arrivedInReverse ? g.EdgeFrom[incomingEdge] : g.EdgeTo[incomingEdge];
                 state.Trains[t].State = TrainState.AtNode;
                 state.Trains[t].EdgeId = -1;
                 state.Trains[t].ProgressTicks = 0;
@@ -112,10 +128,17 @@ namespace CatMetro.Domain
                 int station = StationIndex(g, node);
                 if (station >= 0)
                 {
-                    // step 5 — match only; non-match is pinned out (NEW-Q4, criterion 14)
+                    // step 5 — matching cats deliver. A mismatch remains on this platform for
+                    // exactly eight ticks, then traverses its incoming edge back to EdgeFrom.
+                    // The exceptional reverse is allowed even when that edge is authored one-way.
                     if (!Accepts(g, station, state.Trains[t].Color))
-                        throw new NotSupportedException(
-                            "pinned NEW-Q4: a non-matching cat arrived at a station — rejection/reverse traversal is out of CM-C1 scope (state/backlog.md Q-B, criterion 14)");
+                    {
+                        state.Rejections++;
+                        state.Trains[t].State = TrainState.RejectedAtStation;
+                        state.Trains[t].EdgeId = (short)incomingEdge;
+                        state.Trains[t].ProgressTicks = 0;
+                        continue;
+                    }
                     state.Deliveries++;
                     state.Trains[t] = default; // delivered slot is zeroed (A-C1-10)
                     continue;
@@ -128,9 +151,28 @@ namespace CatMetro.Domain
                     Enqueue(ref state, node, t);
             }
 
-            // step 6 — overflow checks (queue overflow only; platform overflow is pinned, Q-J)
+            // step 6a — station platform overflow is immediate. Capacity is simultaneous refused
+            // cats, not lifetime rejections; equality is allowed and only occupancy above the
+            // authored capacity fails.
+            for (int station = 0; station < g.StationNode.Length; station++)
+            {
+                int occupied = 0;
+                int stationNode = g.StationNode[station];
+                for (int t = 0; t < state.Trains.Length; t++)
+                    if (state.Trains[t].State == TrainState.RejectedAtStation
+                        && state.Trains[t].NodeId == stationNode)
+                        occupied++;
+                if (occupied > g.StationCapacity[station])
+                {
+                    state.Outcome = SimOutcome.MakeFailed(FailReason.PlatformOverflow);
+                    break;
+                }
+            }
+
+            // step 6b — node queue overflow countdown.
             for (int n = 0; n < g.NodeCount; n++)
             {
+                if (state.Outcome.Kind != OutcomeKind.Running) break;
                 int cap = g.NodeQueueCapacity[n];
                 if (cap <= 0) continue;
                 if (state.NodeQueueCounts[n] >= cap)
@@ -182,6 +224,15 @@ namespace CatMetro.Domain
         private static void EnterEdge(ref SimulationState state, int slot, int edgeId, HashSet<int> enteredThisTick)
         {
             state.Trains[slot].State = TrainState.OnEdge;
+            state.Trains[slot].EdgeId = (short)edgeId;
+            state.Trains[slot].ProgressTicks = 0;
+            enteredThisTick.Add(slot);
+        }
+
+        private static void EnterReverseEdge(ref SimulationState state, int slot, int edgeId,
+            HashSet<int> enteredThisTick)
+        {
+            state.Trains[slot].State = TrainState.OnEdgeReverse;
             state.Trains[slot].EdgeId = (short)edgeId;
             state.Trains[slot].ProgressTicks = 0;
             enteredThisTick.Add(slot);

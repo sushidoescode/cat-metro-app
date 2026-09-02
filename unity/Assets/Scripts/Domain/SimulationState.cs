@@ -21,6 +21,11 @@ namespace CatMetro.Domain
         public const byte None = 0;
         public const byte OnEdge = 1;
         public const byte AtNode = 2;
+        // A refused cat keeps its incoming EdgeId while ProgressTicks counts its eight-tick
+        // platform dwell. Both new states fit the existing one-byte digest field; TrainSlot
+        // remains exactly 10 bytes.
+        public const byte RejectedAtStation = 3;
+        public const byte OnEdgeReverse = 4;
     }
 
     // ADR-0002 §3: integer only. ADR-0002 §7 + overview.md §6: the digest layout below IS the
@@ -31,7 +36,7 @@ namespace CatMetro.Domain
         public int Score;        // present, stays 0 in CM-C1 (scoring pinned, Q-C)
         public int Chain;        // present, stays 0 in CM-C1
         public int Deliveries;
-        public int Rejections;   // stays 0 in CM-C1 (rejection pinned, NEW-Q4)
+        public int Rejections;   // wrong-colour station arrivals; repeated refusals each count
         public int Overloads;
         public int SwitchesUsed;
         public Pcg32 Rng;

@@ -316,10 +316,13 @@ namespace CatMetro.Presentation.Board
                 }
                 go.SetActive(true);
                 go.GetComponent<Renderer>().material.color = ColorForCode(trains[t].Color);
-                if (trains[t].State == CatMetro.Domain.TrainState.OnEdge)
+                if (trains[t].State == CatMetro.Domain.TrainState.OnEdge
+                    || trains[t].State == CatMetro.Domain.TrainState.OnEdgeReverse)
                 {
                     int e = trains[t].EdgeId;
                     float progress = Mathf.Min(1f, (trains[t].ProgressTicks + alpha) / _edgeTravel[e]);
+                    if (trains[t].State == CatMetro.Domain.TrainState.OnEdgeReverse)
+                        progress = 1f - progress;
                     go.transform.localPosition = _trackPaths.Path(e).EvaluateDistanceFraction(progress)
                         + new Vector3(0f, 0f, -0.2f);
                 }

@@ -8,7 +8,7 @@ namespace CatMetro.Presentation.Hud
     // veil (scrim + halt.notice) instead of nothing. Zero registered regions, zero
     // affordances: the veil is inert by construction; the input block is CM-UX-07's
     // BoardInputActive binding (forward obligation) and the restart escape is CM-UX-07's
-    // wiring line (human answer Q-2). Nothing here may decide Q-B/NEW-Q4 semantics.
+    // wiring line (human answer Q-2). Normal gameplay outcomes never use this surface.
     // Scrim shape + text: legible in greyscale, never color-alone.
     public sealed class HaltVeilView : MonoBehaviour
     {

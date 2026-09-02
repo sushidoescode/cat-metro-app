@@ -103,10 +103,12 @@ namespace CatMetro.Tests.Domain
         public void StationSideWild_IsNotUniversalForAConcreteTrain()
         {
             var graph = WildGraph(CatColor.Red, CatColor.Wild);
-            var ex = Assert.Throws<NotSupportedException>(() =>
-                ReplayHasher.RunToEnd(graph, 35, new CommandLog()));
-            Assert.That(ex.Message, Does.Contain("NEW-Q4"),
-                "a station Wild token does not universalize concrete arrivals");
+            var end = ReplayHasher.RunToEnd(graph, 35, new CommandLog());
+            Assert.That(end.Outcome.Kind, Is.EqualTo(OutcomeKind.Failed));
+            Assert.That(end.Outcome.Reason, Is.EqualTo(FailReason.TimeOut));
+            Assert.That(end.Deliveries, Is.Zero);
+            Assert.That(end.Rejections, Is.GreaterThan(0),
+                "a station Wild token stays exact-only, so a concrete arrival is refused");
         }
 
         private static LevelGraph TwoSourceGraph(

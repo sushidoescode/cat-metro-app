@@ -4,8 +4,7 @@ using CatMetro.Domain;
 
 namespace CatMetro.Tests.Domain
 {
-    // Criterion 14: three-member enum + four loud pin guards. Pinned behaviours must be absent
-    // and NOISY, never silently invented (stop condition 1).
+    // Criterion 14: the three-member failure taxonomy and the remaining envelope guards.
     [TestFixture]
     public class GuardTests
     {
@@ -18,11 +17,14 @@ namespace CatMetro.Tests.Domain
         }
 
         [Test]
-        public void Guard_NonMatchingStationArrival_Throws_NEWQ4()
+        public void NonMatchingStationArrival_IsARecoverableRefusal()
         {
-            var ex = Assert.Throws<NotSupportedException>(() =>
-                Fixtures.RunThroughTick(Fixtures.MismatchShape(), 3, new CommandLog(), 50));
-            Assert.That(ex.Message, Does.Contain("NEW-Q4"));
+            SimulationState state = null;
+            Assert.DoesNotThrow(() =>
+                state = Fixtures.RunThroughTick(Fixtures.MismatchShape(), 3, new CommandLog(), 50));
+            Assert.That(state.Rejections, Is.GreaterThan(1),
+                "the unchanged route sends the cat through repeated deterministic refusals");
+            Assert.That(state.Outcome.Kind, Is.EqualTo(OutcomeKind.Running));
         }
 
         [Test]
@@ -62,14 +64,10 @@ namespace CatMetro.Tests.Domain
         }
 
         [Test]
-        public void Guard_FailedPlatformOverflow_Throws()
+        public void EveryPublishedFailureReason_ConstructsNormally()
         {
-            // The member exists (digest layout + enum test stay stable) but nothing may raise it
-            // until Q-J is answered.
-            var ex = Assert.Throws<NotSupportedException>(() => SimOutcome.MakeFailed(FailReason.PlatformOverflow));
-            Assert.That(ex.Message, Does.Contain("Q-J"));
-            // The two raisable members construct normally.
             Assert.That(SimOutcome.MakeFailed(FailReason.QueueOverflow).Reason, Is.EqualTo(FailReason.QueueOverflow));
+            Assert.That(SimOutcome.MakeFailed(FailReason.PlatformOverflow).Reason, Is.EqualTo(FailReason.PlatformOverflow));
             Assert.That(SimOutcome.MakeFailed(FailReason.TimeOut).Reason, Is.EqualTo(FailReason.TimeOut));
         }
     }

@@ -94,11 +94,12 @@ namespace CatMetro.Domain.Solver
             string firstPin = "";
             int nodesExpanded = priorExpanded;
             int timeLimit = graph.TimeLimitTicks;
-            // SwitchesUsed is write-only during Simulation.Step, so a lower-command history that
-            // reaches the same remaining state dominates a higher-command one for every suffix.
-            // Apply that convergence only where pinned-prune diagnostics are statically zero;
-            // pin-bearing corpus boards retain their established full-digest counts verbatim.
-            bool commandCountDominance = exhaustiveIsProof && IsStaticallyPinFree(graph);
+            // SwitchesUsed and Rejections are write-only counters during Simulation.Step. For
+            // exact BFS, a lower-command history that reaches the same remaining state dominates
+            // a higher-command one for every suffix even when their lifetime refusal counts
+            // differ. Normalizing both counters prevents recoverable bounce loops from exploding
+            // the proof search without erasing any future behavior.
+            bool behavioralStateDominance = exhaustiveIsProof;
 
             // Layer L = distinct running states whose replay has taken exactly L steps. A state
             // is simulated once, while its minimum-command receipt histories travel as a compact
@@ -175,7 +176,7 @@ namespace CatMetro.Domain.Solver
                         }
                         else if (state.Outcome.Kind == OutcomeKind.Running)
                         {
-                            var key = DigestKey(state, commandCountDominance);
+                            var key = DigestKey(state, behavioralStateDominance);
                             if (!next.TryGetValue(key, out var incumbent))
                             {
                                 incumbent = new SearchFrontier(state, childLog);
@@ -1331,36 +1332,17 @@ namespace CatMetro.Domain.Solver
             return d;
         }
 
-        private static string DigestKey(SimulationState state, bool omitSwitchesUsed = false)
+        private static string DigestKey(SimulationState state, bool omitNonBehavioralCounters = false)
         {
             var digest = Digest(state);
-            if (omitSwitchesUsed)
+            if (omitNonBehavioralCounters)
             {
+                const int rejectionsOffset = 4 * 4; // fifth int in WriteDigest's frozen layout
                 const int switchesUsedOffset = 6 * 4; // seventh int in WriteDigest's frozen layout
+                Array.Clear(digest, rejectionsOffset, 4);
                 Array.Clear(digest, switchesUsedOffset, 4);
             }
             return Convert.ToBase64String(digest);
-        }
-
-        private static bool IsStaticallyPinFree(LevelGraph graph)
-        {
-            for (int w = 0; w < graph.WaveColor.Length; w++)
-            {
-                byte color = graph.WaveColor[w];
-                for (int station = 0; station < graph.StationAccepts.Length; station++)
-                {
-                    bool accepts = false;
-                    var colors = graph.StationAccepts[station];
-                    for (int i = 0; i < colors.Length; i++)
-                    {
-                        if (colors[i] != color) continue;
-                        accepts = true;
-                        break;
-                    }
-                    if (!accepts) return false;
-                }
-            }
-            return true;
         }
 
         // Difficulty proxy per the handoff rulings — populated only for a Solved verdict.
@@ -1390,7 +1372,11 @@ namespace CatMetro.Domain.Solver
                     {
                         foreach (var tr in state.Trains)
                         {
-                            if (tr.State == TrainState.OnEdge && graph.EdgeTo[tr.EdgeId] == node)
+                            bool forwardInbound = tr.State == TrainState.OnEdge
+                                && graph.EdgeTo[tr.EdgeId] == node;
+                            bool reverseInbound = tr.State == TrainState.OnEdgeReverse
+                                && graph.EdgeFrom[tr.EdgeId] == node;
+                            if (forwardInbound || reverseInbound)
                             {
                                 active = true;
                                 break;
@@ -1401,7 +1387,7 @@ namespace CatMetro.Domain.Solver
                 }
                 if (pending > maxPending) maxPending = pending;
 
-                // Axis H (queue term only, PARTIAL(Q-J)): find the peak-load tick and the
+                // Axis H (queue term only): find the peak-load tick and the
                 // minimum capacity slack at it; earliest peak wins ties.
                 int totalQueued = 0;
                 for (int n = 0; n < graph.NodeCount; n++) totalQueued += state.NodeQueueCounts[n];

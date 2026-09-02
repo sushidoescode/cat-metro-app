@@ -2,7 +2,7 @@ namespace CatMetro.Presentation.Hud
 {
     // CM-UX-05 criterion 1: counts FailureReview ENTRIES per level attempt-run — pure C#
     // (no UnityEngine), edge-triggered on the observed state stream. Halted and Won entries
-    // are deliberately never counted: counting the halt would pre-decide Q-B/NEW-Q4, and the
+    // are deliberately never counted: a halt is an unexpected runtime boundary, and the
     // decompose pins the counter to FailureReview entries alone. Reset() is the per-level
     // seam — CM-UX-07/level-advance calls it when a new level loads; retries of the SAME
     // level keep accumulating (that accumulation IS the CM-R13.5 mechanic).

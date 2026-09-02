@@ -89,7 +89,7 @@ namespace CatMetro.Tests.Validation
                 o["win"]["timeLimitTicks"] = 40;
             });
 
-        // Every line pins: both routes end at blue-only stations, one red cat.
+        // Every route refuses: both routes end at blue-only stations, one red cat.
         public static byte[] AllPinnedLevel() =>
             Level(o =>
             {

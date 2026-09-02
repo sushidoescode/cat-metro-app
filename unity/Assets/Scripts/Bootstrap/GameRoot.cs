@@ -373,9 +373,8 @@ namespace CatMetro.Bootstrap
         }
 
         // CM-C3 criterion 10's reason→key mapping, PURE and test-drivable (review S1): the
-        // PlatformOverflow branch is the ELSE — no shipped code names the pinned enum member
-        // (the [CI] grep enforces that), yet the day Q-J unpins it, the correct LOCKED string
-        // renders with the {station} substitution instead of a wrong banner.
+        // PlatformOverflow is the ELSE: the correct station-specific string renders with the
+        // causal station substitution supplied by CauseAttribution.
         public static (string key, string token) FailKey(CatMetro.Domain.FailReason reason)
         {
             if (reason == CatMetro.Domain.FailReason.QueueOverflow)
@@ -664,9 +663,9 @@ namespace CatMetro.Bootstrap
                 }
                 catch (System.Exception ex)
                 {
-                    // CM-C2b review F2: a pinned Domain boundary (NEW-Q4's exception on a
-                    // misroute) or an envelope guard must HALT the run loudly, never re-enter a
-                    // partially-stepped tick every frame or masquerade as a game outcome.
+                    // CM-C2b review F2: an unexpected Domain or envelope guard must HALT the run
+                    // loudly, never re-enter a partially-stepped tick every frame or masquerade
+                    // as a game outcome.
                     _halted = true;
                     ScreenState = "Halted";
                     // CM-UX-07 criterion 4 (Q-2, human-approved): the halt escape is a chrome
@@ -677,7 +676,7 @@ namespace CatMetro.Bootstrap
                     Input.Regions.Register("halt.escape",
                         () => new Rect(0f, 0f, Screen.width, Screen.height), Retry,
                         Presentation.Input.ChromeRegions.HaltEscapePriority);
-                    Debug.LogError("run halted at a pinned/guarded Domain boundary: " + ex.Message);
+                    Debug.LogError("run halted at an unexpected Domain boundary: " + ex.Message);
                     return;
                 }
             }

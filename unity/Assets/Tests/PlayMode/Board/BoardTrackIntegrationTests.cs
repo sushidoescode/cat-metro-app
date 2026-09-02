@@ -85,6 +85,36 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator ReversingTrain_UsesTheSameSplineInTheOppositeDirection()
+        {
+            var level = ImportL001();
+            var session = new GameSession(level);
+            _host = new GameObject("board-reverse-curve-host");
+            _view = BoardView.Build(level, _host.transform, session);
+            session.State.Trains[0] = new TrainSlot
+            {
+                Id = 1,
+                Color = CatColor.Red,
+                EdgeId = 1,
+                ProgressTicks = 3,
+                NodeId = 2,
+                State = TrainState.OnEdgeReverse,
+            };
+
+            _view.UpdateFrom(session);
+            yield return null;
+
+            var train = _view.GetComponentsInChildren<BoardElementId>(true)
+                .Single(x => x.Kind == "train");
+            TrackSpline expectedPath = BuildTrackGraph(level).Path(1);
+            Vector3 expectedPosition = expectedPath.EvaluateDistanceFraction(0.75f)
+                + new Vector3(0f, 0f, -0.2f);
+            Assert.That(Vector3.Distance(train.transform.localPosition, expectedPosition),
+                Is.LessThan(0.001f),
+                "reverse progress must mirror the rendered spline fraction, not jump endpoints");
+        }
+
+        [UnityTest]
         public IEnumerator DestroyingRuntimeBoard_ReleasesEveryGeneratedTrackMesh()
         {
             var level = ImportL001();

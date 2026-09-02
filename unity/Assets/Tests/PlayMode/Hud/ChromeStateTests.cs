@@ -11,8 +11,8 @@ namespace CatMetro.Tests.PlayMode
 {
     // CM-UX-02 criteria 1/2/3/4/5/7 under the contract's live-wiring + anti-vacuity rule:
     // every absence assert carries a positive control in the same fixture. Criterion 2's
-    // transitions use a test-controlled state source over real wiring; criterion 4 drives the
-    // REAL halt (the GreyboxTests recipe) with the exact delegate shape CM-UX-07 will bind.
+    // transitions use a test-controlled state source over real wiring; criterion 4 drives a
+    // real unexpected Domain halt with the exact delegate shape CM-UX-07 binds.
     // Prose in this file is scanned by HaltVocabularyGuardTests — keep banned tokens out.
     public sealed class ChromeStateTests
     {
@@ -22,8 +22,8 @@ namespace CatMetro.Tests.PlayMode
         [SetUp]
         public void SetUp()
         {
-            // CM-BOOT-HOME: RealHalt_RendersTheVeil_WithTheWiringDelegateShape drives L001 to a
-            // real halt through GameRoot.Launch() — Home now composes there by default
+            // CM-BOOT-HOME: RealHalt_RendersTheVeil_WithTheWiringDelegateShape drives the real
+            // halt catch through GameRoot.Launch() — Home now composes there by default
             // (criterion 1), which would hold the sim at tick 0 and never reach the halt.
             // Opt OUT via the dev skip-Home hatch; the LaunchWith-seam tests (AttachControlled)
             // are unaffected either way (LaunchWith never composes Home, CM-BOOT-HOME EDIT 2).
@@ -65,6 +65,15 @@ namespace CatMetro.Tests.PlayMode
                 + "forever (would have been RED before #50's Wire-time guard)");
             chrome.Attach(() => _state);
             return chrome;
+        }
+
+        private void ForceUnexpectedHaltAtFirstEmission()
+        {
+            var graph = _root.Session.State.Graph;
+            int source = graph.SourceNode;
+            for (int edge = 0; edge < graph.EdgeFrom.Length; edge++)
+                if (graph.EdgeFrom[edge] == source)
+                    graph.EdgeFrom[edge] = (source + 1) % graph.NodeCount;
         }
 
         // --- criterion 2: state map proven on TRANSITIONS ---
@@ -138,7 +147,7 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator RealHalt_RendersTheVeil_WithTheWiringDelegateShape()
         {
-            _root = GameRoot.Launch(); // L001 through the real seam
+            _root = GameRoot.Launch();
             // E-1 (CM-TESTFIX, declared over this test's 112-145 range): resolve the
             // Wire-attached instance instead of stacking a second controller (the same
             // duplicate-composition debt as AttachControlled above).
@@ -152,9 +161,9 @@ namespace CatMetro.Tests.PlayMode
                 "exactly one controller on the GameObject — pins single-controller composition "
                 + "forever (would have been RED before #50's Wire-time guard)");
             chrome.Attach(() => _root.ScreenState); // the EXACT shape CM-UX-07 binds
-            // the merged recipe expects the halt's by-design loud error (GreyboxTests:155)
+            ForceUnexpectedHaltAtFirstEmission();
             LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex(
-                "run halted at a pinned/guarded Domain boundary"));
+                "run halted at an unexpected Domain boundary"));
             Time.timeScale = 8f;
 
             // pre-halt positive control: nothing renders while Playing
@@ -162,7 +171,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(chrome.Veil == null || !chrome.Veil.IsVisible, Is.True,
                 "no veil during live play");
 
-            // the GreyboxTests recipe: tap nothing; L001 reaches the pinned boundary
+            // The corrupted source route reaches GameRoot's unexpected-fault catch.
             float deadline = Time.realtimeSinceStartup + 60f;
             while (_root.ScreenState != "Halted" && Time.realtimeSinceStartup < deadline)
                 yield return null;

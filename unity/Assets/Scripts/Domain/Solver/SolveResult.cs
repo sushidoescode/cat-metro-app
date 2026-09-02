@@ -20,15 +20,15 @@ namespace CatMetro.Domain.Solver
 
     // The integer inputs for difficulty axes C/T/H/R (product_spec.md:504-511). The weighted
     // axis arithmetic is CM-C5's — real-number work lives outside the Domain's numeric ban.
-    // Axis H carries the QUEUE term only
-    // while Q-J/NEW-Q4 keep platform overflow unraisable — recorded, not assumed away (A-C4-4).
+    // Axis H currently carries the QUEUE term only; live platform occupancy is implemented as
+    // a failure condition but is not yet included in this difficulty proxy.
     // Executable counting rules: state/handoffs/CM-C4.md §Planner rulings round 2.
     public readonly struct DifficultyProxy
     {
         public readonly int MaxSimultaneousPendingDecisions; // axis C
         public readonly int SolverOptimalTicks;              // axis T numerator
         public readonly int TimeLimitTicks;                  // axis T denominator
-        public readonly int MinQueueSlackAtPeak;             // axis H, queue term only — PARTIAL(Q-J)
+        public readonly int MinQueueSlackAtPeak;             // axis H, queue term only
         public readonly int SinglePerturbationsWinnable;     // axis R numerator
         public readonly int SinglePerturbationsTried;        // axis R denominator
 

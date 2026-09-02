@@ -110,8 +110,8 @@ namespace CatMetro.Tests.Domain
             new[] { 0, 0 }, new[] { CatColor.Red, CatColor.Red }, new[] { 1, 1 }, new[] { 1, 1 },
             2, 400, qCapBound: 8, trainsMax: 2);
 
-        // Guard fixture: the only station rejects the only color -> first arrival must hit the
-        // NEW-Q4 NotSupportedException guard (contract criterion 14), never invented semantics.
+        // Refusal fixture: the only station rejects the only color, so the train repeatedly
+        // dwells, reverses to the source, and takes the same route again.
         public static LevelGraph MismatchShape() => new LevelGraph(
             "FX-MM", 2,
             new[] { 8, 8 },
