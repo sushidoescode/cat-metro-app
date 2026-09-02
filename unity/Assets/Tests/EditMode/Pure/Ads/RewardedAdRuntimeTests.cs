@@ -37,17 +37,43 @@ namespace CatMetro.Tests.Ads
         }
 
         [Test]
+        public void ChangedPublishesInstallAndSuccessfulIdentityUninstall_WithoutRedefiningInstalled()
+        {
+            RewardedAdRuntime.ResetForTests();
+            using var coordinator = RewardedAdFixtures.Coordinator();
+            using var foreign = RewardedAdFixtures.Coordinator();
+            int installed = 0;
+            int changed = 0;
+            RewardedAdRuntime.Installed += () => installed++;
+            RewardedAdRuntime.Changed += () => changed++;
+
+            RewardedAdRuntime.Install(coordinator);
+            Assert.That(RewardedAdRuntime.Uninstall(foreign), Is.False);
+            Assert.That(RewardedAdRuntime.Uninstall(coordinator), Is.True);
+
+            Assert.That(installed, Is.EqualTo(1),
+                "Installed remains an install-only publication");
+            Assert.That(changed, Is.EqualTo(2),
+                "only the installed identity and its successful uninstall change the runtime");
+            Assert.That(RewardedAdRuntime.IsInstalled, Is.False);
+            Assert.That(RewardedAdRuntime.Current.CanShow("p0"), Is.False);
+        }
+
+        [Test]
         public void ResetRestoresNoOpAndClearsInstalledSubscribers()
         {
             int installed = 0;
+            int changed = 0;
             RewardedAdRuntime.ResetForTests();
             RewardedAdRuntime.Installed += () => installed++;
+            RewardedAdRuntime.Changed += () => changed++;
             RewardedAdRuntime.ResetForTests();
             using var coordinator = RewardedAdFixtures.Coordinator();
 
             RewardedAdRuntime.Install(coordinator);
 
             Assert.That(installed, Is.Zero);
+            Assert.That(changed, Is.Zero);
             Assert.That(RewardedAdRuntime.Current, Is.SameAs(coordinator));
         }
     }

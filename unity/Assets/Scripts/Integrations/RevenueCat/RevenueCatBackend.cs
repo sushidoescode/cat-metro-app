@@ -84,12 +84,23 @@ namespace CatMetro.Integrations.RevenueCat
         private bool _customerInfoSlotOccupied;
         private bool _purchaseSlotOccupied;
         private bool _restoreSlotOccupied;
+        private long _authoritySession;
+        [NonSerialized] private Action<float> _watchdogScheduledForDiagnostics;
 
         public BackendAvailability Availability { get; private set; } = BackendAvailability.Initializing;
         public event Action Ready;
-        public event Action<EntitlementSnapshot> TransactionEntitlementsConfirmed;
+        public event Action<TransactionEntitlementUpdate> TransactionEntitlementsConfirmed;
         public event Action ReadinessChanged;
         public bool IsReady => _adTrackingReady && _purchases?.AdTracker != null;
+
+        public long BeginAuthoritySession()
+        {
+            unchecked
+            {
+                do { _authoritySession++; } while (_authoritySession == 0);
+            }
+            return _authoritySession;
+        }
 
         internal static IPurchaseBackend Create()
         {
@@ -366,9 +377,15 @@ namespace CatMetro.Integrations.RevenueCat
 
         public void FetchProducts(Action<IReadOnlyList<StoreProductView>> onDone)
         {
-            var once = Guard(onDone, Array.Empty<StoreProductView>());
+            var once = Guard(onDone, Array.Empty<StoreProductView>(), QueryTimeoutSeconds,
+                () => Availability = BackendAvailability.Unreachable);
             if (_purchases == null) { once(Array.Empty<StoreProductView>()); return; }
-            if (_offeringsSlotOccupied) { once(Array.Empty<StoreProductView>()); return; }
+            if (_offeringsSlotOccupied)
+            {
+                Availability = BackendAvailability.Unreachable;
+                once(Array.Empty<StoreProductView>());
+                return;
+            }
 
             _offeringsSlotOccupied = true;
             try
@@ -452,11 +469,16 @@ namespace CatMetro.Integrations.RevenueCat
         }
 
         public void Purchase(string productId, Action<PurchaseResult> onDone)
+            => PurchaseWithTimeout(productId, onDone, InteractiveTimeoutSeconds);
+
+        private void PurchaseWithTimeout(string productId, Action<PurchaseResult> onDone,
+            float timeoutSeconds)
         {
+            long authoritySession = _authoritySession;
             var once = Guard(onDone,
                 new PurchaseResult(PurchaseOutcome.UnknownUnsettled, productId, default,
-                    "the store did not answer within " + InteractiveTimeoutSeconds + "s"),
-                InteractiveTimeoutSeconds);
+                    "the store did not answer within " + timeoutSeconds + "s"),
+                timeoutSeconds);
 
             if (_purchases == null)
             {
@@ -494,7 +516,8 @@ namespace CatMetro.Integrations.RevenueCat
                     {
                         var translated = Translate(result, productId);
                         if (!once(translated))
-                            PublishLateEntitlements(translated.ConfirmedEntitlements);
+                            PublishLateEntitlements(authoritySession,
+                                translated.ConfirmedEntitlements);
                     }
                     catch (Exception e)
                     {
@@ -547,10 +570,14 @@ namespace CatMetro.Integrations.RevenueCat
             => error?.ReadableErrorCode == "PaymentPendingError";
 
         public void Restore(Action<RestoreResult> onDone)
+            => RestoreWithTimeout(onDone, InteractiveTimeoutSeconds);
+
+        private void RestoreWithTimeout(Action<RestoreResult> onDone, float timeoutSeconds)
         {
+            long authoritySession = _authoritySession;
             var once = Guard(onDone,
                 new RestoreResult(RestoreOutcome.Failure, 0, "the store did not answer in time"),
-                InteractiveTimeoutSeconds);
+                timeoutSeconds);
 
             if (_purchases == null)
             {
@@ -588,7 +615,8 @@ namespace CatMetro.Integrations.RevenueCat
                             confirmedEntitlements: new EntitlementSnapshot(true,
                                 ReadEntitlements(info)));
                         if (!once(restored))
-                            PublishLateEntitlements(restored.ConfirmedEntitlements);
+                            PublishLateEntitlements(authoritySession,
+                                restored.ConfirmedEntitlements);
                     }
                     catch (Exception e)
                     {
@@ -690,7 +718,7 @@ namespace CatMetro.Integrations.RevenueCat
         // a callback that never arrives (the Editor noop wrapper, a wedged store), and one that
         // arrives after we have already given up. This wraps both.
         private Func<T, bool> Guard<T>(Action<T> onDone, T timeoutValue,
-            float timeoutSeconds = QueryTimeoutSeconds)
+            float timeoutSeconds = QueryTimeoutSeconds, Action onTimeout = null)
         {
             bool fired = false;
             Coroutine watchdog = null;
@@ -714,7 +742,16 @@ namespace CatMetro.Integrations.RevenueCat
                 return true;
             }
 
-            watchdog = StartCoroutine(Timeout(timeoutSeconds, () => { Fire(timeoutValue); }));
+            _watchdogScheduledForDiagnostics?.Invoke(timeoutSeconds);
+            watchdog = StartCoroutine(Timeout(timeoutSeconds, () =>
+            {
+                try { onTimeout?.Invoke(); }
+                catch (Exception e)
+                {
+                    Debug.LogError("[Monetization] timeout hook threw: " + e);
+                }
+                Fire(timeoutValue);
+            }));
             return Fire;
         }
 
@@ -724,18 +761,21 @@ namespace CatMetro.Integrations.RevenueCat
             onTimeout();
         }
 
-        private void PublishLateEntitlements(EntitlementSnapshot? candidate)
+        private void PublishLateEntitlements(long authoritySession,
+            EntitlementSnapshot? candidate)
         {
             if (!candidate.HasValue) return;
-            PublishLateEntitlements(candidate.Value);
+            PublishLateEntitlements(authoritySession, candidate.Value);
         }
 
-        private void PublishLateEntitlements(EntitlementSnapshot snapshot)
+        private void PublishLateEntitlements(long authoritySession,
+            EntitlementSnapshot snapshot)
         {
-            if (!snapshot.IsAuthoritative) return;
+            if (authoritySession == 0 || !snapshot.IsAuthoritative) return;
             try
             {
-                TransactionEntitlementsConfirmed?.Invoke(snapshot);
+                TransactionEntitlementsConfirmed?.Invoke(
+                    new TransactionEntitlementUpdate(authoritySession, snapshot));
             }
             catch (Exception e)
             {

@@ -6,7 +6,8 @@ namespace CatMetro.Services.Ads
 {
     // Owns the policy around one reusable rewarded ad. Vendor adapters only translate callbacks;
     // this class owns attempt IDs, reload decisions, exact reward attribution, and caps.
-    public sealed class RewardedAdCoordinator : IRewardedAds, IDisposable
+    public sealed class RewardedAdCoordinator : IRewardedAds, IRewardedAdExactCompletionSource,
+        IDisposable
     {
         // A callback that never arrives cannot retain memory forever. FIFO eviction releases the
         // placement but deliberately discards any later reward for that evicted exact attempt.
@@ -207,10 +208,57 @@ namespace CatMetro.Services.Ads
 
         public RewardedShowOutcome Show(string placementId)
         {
-            if (_openAttempt != null) return RewardedShowOutcome.Busy;
-            if (!CanShow(placementId)) return RewardedShowOutcome.Unavailable;
-            if (!_placements.TryGet(placementId, out var placement))
+            return ShowCore(placementId, null, null);
+        }
+
+        public bool CanShow(string placementId, string entitlementId)
+        {
+            if (string.IsNullOrEmpty(entitlementId) || _placements == null ||
+                !_placements.TryGet(placementId, out var placement) ||
+                !string.Equals(placement.EntitlementId, entitlementId, StringComparison.Ordinal))
+                return false;
+            return CanShow(placementId);
+        }
+
+        public RewardedShowOutcome Show(string placementId, string entitlementId,
+            Action<RewardedAdCompletion> completed)
+        {
+            if (_openAttempt != null)
+            {
+                CompleteImmediate(completed, placementId, entitlementId,
+                    RewardedAdCompletionKind.Unavailable);
+                return RewardedShowOutcome.Busy;
+            }
+            if (!CanShow(placementId, entitlementId))
+            {
+                CompleteImmediate(completed, placementId, entitlementId,
+                    RewardedAdCompletionKind.Unavailable);
                 return RewardedShowOutcome.Unavailable;
+            }
+            return ShowCore(placementId, entitlementId, completed);
+        }
+
+        private RewardedShowOutcome ShowCore(string placementId, string requestedEntitlementId,
+            Action<RewardedAdCompletion> completed)
+        {
+            if (_openAttempt != null)
+            {
+                CompleteImmediate(completed, placementId, requestedEntitlementId,
+                    RewardedAdCompletionKind.Unavailable);
+                return RewardedShowOutcome.Busy;
+            }
+            if (!CanShow(placementId))
+            {
+                CompleteImmediate(completed, placementId, requestedEntitlementId,
+                    RewardedAdCompletionKind.Unavailable);
+                return RewardedShowOutcome.Unavailable;
+            }
+            if (!_placements.TryGet(placementId, out var placement))
+            {
+                CompleteImmediate(completed, placementId, requestedEntitlementId,
+                    RewardedAdCompletionKind.Unavailable);
+                return RewardedShowOutcome.Unavailable;
+            }
 
             long attemptId;
             try
@@ -222,10 +270,12 @@ namespace CatMetro.Services.Ads
             {
                 _providerFailed = true;
                 RaiseAvailabilityChanged();
+                CompleteImmediate(completed, placementId, requestedEntitlementId,
+                    RewardedAdCompletionKind.Unavailable);
                 return RewardedShowOutcome.Unavailable;
             }
 
-            var attempt = new Attempt(attemptId, placement);
+            var attempt = new Attempt(attemptId, placement, completed);
             _openAttempt = attempt;
             _pendingPlacements.Add(placement.Id);
             try
@@ -251,6 +301,7 @@ namespace CatMetro.Services.Ads
             _pendingPlacements.Remove(placement.Id);
             SafeLoad();
             RaiseAvailabilityChanged();
+            CompleteAttempt(attempt, RewardedAdCompletionKind.DisplayFailed);
             return RewardedShowOutcome.Unavailable;
         }
 
@@ -270,6 +321,9 @@ namespace CatMetro.Services.Ads
                 _reporterSubscription = SubscriptionState.None;
                 SafeRemoveReporterHandler();
             }
+            CompleteAttempt(_openAttempt, RewardedAdCompletionKind.Cancelled);
+            foreach (var retained in _retainedAttempts.Values)
+                CompleteAttempt(retained, RewardedAdCompletionKind.Cancelled);
             _openAttempt = null;
             _retainedAttempts.Clear();
             _retainedOrder.Clear();
@@ -373,13 +427,13 @@ namespace CatMetro.Services.Ads
                 switch (adEvent.Kind)
                 {
                     case RewardedAdEventKind.Rewarded:
-                        OnRewarded(adEvent.AttemptId);
+                        OnRewarded(adEvent);
                         break;
                     case RewardedAdEventKind.Closed:
-                        OnClosed(adEvent.AttemptId);
+                        OnClosed(adEvent);
                         break;
                     case RewardedAdEventKind.DisplayFailed:
-                        OnDisplayFailed(adEvent.AttemptId);
+                        OnDisplayFailed(adEvent);
                         break;
                     case RewardedAdEventKind.Loaded:
                         CancelLoadRetry();
@@ -400,9 +454,9 @@ namespace CatMetro.Services.Ads
             }
         }
 
-        private void OnRewarded(long attemptId)
+        private void OnRewarded(RewardedAdEvent adEvent)
         {
-            var attempt = FindAttempt(attemptId);
+            var attempt = FindAttempt(adEvent.AttemptId, adEvent.PlacementId);
             if (attempt == null || attempt.RewardLatched) return;
 
             // Set first: lease persistence can synchronously publish observers that re-enter the
@@ -418,37 +472,70 @@ namespace CatMetro.Services.Ads
                 RemoveRetained(attempt);
                 _pendingPlacements.Remove(attempt.Placement.Id);
             }
+            CompleteAttempt(attempt, outcome == AdGrantOutcome.Granted
+                ? RewardedAdCompletionKind.Granted
+                : RewardedAdCompletionKind.GrantFailed);
             RaiseAvailabilityChanged();
         }
 
-        private void OnClosed(long attemptId)
+        private void OnClosed(RewardedAdEvent adEvent)
         {
-            if (_openAttempt == null || _openAttempt.Id != attemptId) return;
+            if (_openAttempt == null || _openAttempt.Id != adEvent.AttemptId ||
+                !string.Equals(_openAttempt.Placement.Id, adEvent.PlacementId,
+                    StringComparison.Ordinal))
+                return;
             var attempt = _openAttempt;
             _openAttempt = null;
             if (attempt.RewardLatched)
                 _pendingPlacements.Remove(attempt.Placement.Id);
             else
                 RetainClosed(attempt);
+            if (!attempt.RewardLatched)
+                CompleteAttempt(attempt, RewardedAdCompletionKind.ClosedWithoutReward);
             SafeLoad();
             RaiseAvailabilityChanged();
         }
 
-        private void OnDisplayFailed(long attemptId)
+        private void OnDisplayFailed(RewardedAdEvent adEvent)
         {
-            var attempt = FindAttempt(attemptId);
+            var attempt = FindAttempt(adEvent.AttemptId, adEvent.PlacementId);
             if (attempt == null) return;
             if (ReferenceEquals(attempt, _openAttempt)) _openAttempt = null;
+            CompleteAttempt(attempt, RewardedAdCompletionKind.DisplayFailed);
             RemoveRetained(attempt);
             _pendingPlacements.Remove(attempt.Placement.Id);
             SafeLoad();
             RaiseAvailabilityChanged();
         }
 
-        private Attempt FindAttempt(long attemptId)
+        private Attempt FindAttempt(long attemptId, string placementId)
         {
-            if (_openAttempt != null && _openAttempt.Id == attemptId) return _openAttempt;
-            return _retainedAttempts.TryGetValue(attemptId, out var retained) ? retained : null;
+            Attempt attempt = null;
+            if (_openAttempt != null && _openAttempt.Id == attemptId) attempt = _openAttempt;
+            else _retainedAttempts.TryGetValue(attemptId, out attempt);
+            return attempt != null && string.Equals(attempt.Placement.Id, placementId,
+                StringComparison.Ordinal) ? attempt : null;
+        }
+
+        private static void CompleteImmediate(Action<RewardedAdCompletion> completed,
+            string placementId, string entitlementId, RewardedAdCompletionKind kind)
+        {
+            try { completed?.Invoke(new RewardedAdCompletion(0L, placementId, entitlementId, kind)); }
+            catch { }
+        }
+
+        private static void CompleteAttempt(Attempt attempt, RewardedAdCompletionKind kind)
+        {
+            if (attempt == null || attempt.CompletionLatched) return;
+            attempt.CompletionLatched = true;
+            var completed = attempt.Completed;
+            attempt.Completed = null;
+            try
+            {
+                completed?.Invoke(new RewardedAdCompletion(attempt.Id, attempt.Placement.Id,
+                    attempt.Placement.EntitlementId, kind));
+            }
+            catch { }
         }
 
         private void RetainClosed(Attempt attempt)
@@ -680,14 +767,18 @@ namespace CatMetro.Services.Ads
             public readonly long Id;
             public readonly RewardedPlacement Placement;
             public bool RewardLatched;
+            public bool CompletionLatched;
+            public Action<RewardedAdCompletion> Completed;
             public LinkedListNode<long> RetainedNode;
             public double RetainedUntilMonotonicSeconds;
             public bool RetainedDeadlineAnchored;
 
-            public Attempt(long id, RewardedPlacement placement)
+            public Attempt(long id, RewardedPlacement placement,
+                Action<RewardedAdCompletion> completed)
             {
                 Id = id;
                 Placement = placement;
+                Completed = completed;
             }
         }
 

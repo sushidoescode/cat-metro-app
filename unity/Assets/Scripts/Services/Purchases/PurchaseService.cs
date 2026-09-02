@@ -35,6 +35,7 @@ namespace CatMetro.Services.Purchases
         private IEntitlementLeasePersistence _leasePersistence;
         private IPurchaseBackendReadiness _readinessBackend;
         private IPurchaseBackendTransactionUpdates _transactionUpdatesBackend;
+        private Action<TransactionEntitlementUpdate> _transactionUpdateHandler;
 
         private readonly Dictionary<string, StoreProductView> _storeProducts =
             new Dictionary<string, StoreProductView>(StringComparer.Ordinal);
@@ -46,6 +47,7 @@ namespace CatMetro.Services.Purchases
         private bool _restoreInFlight;
         private bool _productRefreshInFlight;
         private bool _entitlementRefreshInFlight;
+        private long _backendGeneration;
         private long _entitlementEpoch;
 
         // Diagnostics. Read by the device self-test and worth logging on launch: a shop that is
@@ -79,18 +81,41 @@ namespace CatMetro.Services.Purchases
         {
             if (_readinessBackend != null)
                 _readinessBackend.Ready -= OnBackendReady;
-            if (_transactionUpdatesBackend != null)
+            if (_transactionUpdatesBackend != null && _transactionUpdateHandler != null)
                 _transactionUpdatesBackend.TransactionEntitlementsConfirmed -=
-                    OnTransactionEntitlementsConfirmed;
+                    _transactionUpdateHandler;
 
+            unchecked
+            {
+                _backendGeneration++;
+                _entitlementEpoch++;
+            }
             _backend = backend ?? new NullPurchaseBackend();
             _readinessBackend = _backend as IPurchaseBackendReadiness;
             if (_readinessBackend != null)
                 _readinessBackend.Ready += OnBackendReady;
             _transactionUpdatesBackend = _backend as IPurchaseBackendTransactionUpdates;
             if (_transactionUpdatesBackend != null)
+            {
+                var authoritySession = _transactionUpdatesBackend.BeginAuthoritySession();
+                var attachedBackend = _backend;
+                var attachedGeneration = _backendGeneration;
+                _transactionUpdateHandler = update =>
+                {
+                    if (authoritySession == 0
+                        || update.AuthoritySessionId != authoritySession
+                        || !IsCurrentBackend(attachedBackend, attachedGeneration)
+                        || !update.Snapshot.IsAuthoritative)
+                        return;
+                    TryApplyConfirmedSnapshot(update.Snapshot);
+                };
                 _transactionUpdatesBackend.TransactionEntitlementsConfirmed +=
-                    OnTransactionEntitlementsConfirmed;
+                    _transactionUpdateHandler;
+            }
+            else
+            {
+                _transactionUpdateHandler = null;
+            }
             _storeProducts.Clear();
         }
 
@@ -179,10 +204,20 @@ namespace CatMetro.Services.Purchases
                 return;
             }
 
+            var requestedProductId = productId;
+            var backend = _backend;
+            var generation = _backendGeneration;
             _purchaseInFlight = true;
-            _backend.Purchase(productId, result =>
+            backend.Purchase(productId, result =>
             {
                 _purchaseInFlight = false;
+
+                if (!IsCurrentBackend(backend, generation))
+                {
+                    onDone?.Invoke(new PurchaseResult(result.Outcome, result.ProductId,
+                        result.LocalizedPrice, result.DiagnosticMessage));
+                    return;
+                }
 
                 if (!result.IsGrantable)
                 {
@@ -196,11 +231,14 @@ namespace CatMetro.Services.Purchases
                 // purchase and restore still converge on ApplySnapshot and the same ledger.
                 if (TryApplyConfirmedSnapshot(result.ConfirmedEntitlements))
                 {
-                    onDone?.Invoke(result);
+                    onDone?.Invoke(NormalizePurchaseConfirmation(result, requestedProductId,
+                        result.ConfirmedEntitlements));
                     return;
                 }
 
-                RefreshEntitlements(() => onDone?.Invoke(result));
+                RefreshEntitlementsWithSnapshot((snapshot, accepted) =>
+                    onDone?.Invoke(NormalizePurchaseConfirmation(result, requestedProductId,
+                        accepted ? snapshot : (EntitlementSnapshot?)null)));
             });
         }
 
@@ -214,10 +252,24 @@ namespace CatMetro.Services.Purchases
                 return;
             }
 
+            var backend = _backend;
+            var generation = _backendGeneration;
             _restoreInFlight = true;
-            _backend.Restore(result =>
+            backend.Restore(result =>
             {
                 _restoreInFlight = false;
+
+                if (!IsCurrentBackend(backend, generation))
+                {
+                    bool completed = result.Outcome == RestoreOutcome.Completed;
+                    onDone?.Invoke(new RestoreResult(
+                        completed ? RestoreOutcome.Failure : result.Outcome,
+                        0,
+                        completed
+                            ? "restore completed on a replaced purchase backend"
+                            : result.DiagnosticMessage));
+                    return;
+                }
 
                 if (result.Outcome != RestoreOutcome.Completed)
                 {
@@ -356,10 +408,6 @@ namespace CatMetro.Services.Purchases
             candidate.Sort((a, b) => string.CompareOrdinal(a.EntitlementId, b.EntitlementId));
             return candidate;
         }
-
-        private void OnTransactionEntitlementsConfirmed(EntitlementSnapshot snapshot)
-            => TryApplyConfirmedSnapshot(snapshot);
-
         // purchases-unity 9.9 keeps one native callback slot per operation. Calling the same
         // operation again before it completes overwrites that slot and strands the first caller
         // until our 30-second timeout. Queue at the engine-free seam so launch, resume, wardrobe,
@@ -376,17 +424,20 @@ namespace CatMetro.Services.Purchases
 
             _productRefreshInFlight = true;
             var onDone = _productRefreshQueue.Dequeue();
-            _backend.FetchProducts(products =>
+            var backend = _backend;
+            var generation = _backendGeneration;
+            backend.FetchProducts(products =>
             {
-                _storeProducts.Clear();
-                if (products != null)
+                if (IsCurrentBackend(backend, generation)
+                    && backend.Availability == BackendAvailability.Ready
+                    && products != null)
                 {
+                    _storeProducts.Clear();
                     for (int i = 0; i < products.Count; i++)
                     {
                         var p = products[i];
-                        // Ignore anything the store offers that our catalogue does not declare.
-                        // A stray product in the store console must not become a purchasable
-                        // item that grants nothing.
+                        // Ignore anything the store offers that our catalogue does not
+                        // declare. A stray store-console product must not become purchasable.
                         if (_catalog.TryGetProduct(p.ProductId, out _))
                             _storeProducts[p.ProductId] = p;
                     }
@@ -402,23 +453,46 @@ namespace CatMetro.Services.Purchases
         {
             if (_entitlementRefreshInFlight) return;
 
+            // This flag owns both the native request and the stale-drain pump. A stale callback
+            // may synchronously enqueue current work, but it cannot re-enter and start a second
+            // RevenueCat request while this invocation still owns the one native slot.
+            _entitlementRefreshInFlight = true;
+
             while (_entitlementRefreshQueue.Count > 0 &&
-                   _entitlementRefreshQueue.Peek().Epoch != _entitlementEpoch)
+                   !IsCurrentRequest(_entitlementRefreshQueue.Peek()))
             {
                 var stale = _entitlementRefreshQueue.Dequeue();
-                stale.OnDone?.Invoke(EntitlementSnapshot.Unreachable(), false);
+                try
+                {
+                    stale.OnDone?.Invoke(EntitlementSnapshot.Unreachable(), false);
+                }
+                catch
+                {
+                    _entitlementRefreshInFlight = false;
+                    PumpEntitlementRefreshes();
+                    throw;
+                }
             }
 
-            if (_entitlementRefreshQueue.Count == 0) return;
-
-            _entitlementRefreshInFlight = true;
-            var request = _entitlementRefreshQueue.Dequeue();
-            _backend.RefreshEntitlements(snapshot =>
+            if (_entitlementRefreshQueue.Count == 0)
             {
-                bool accepted = snapshot.IsAuthoritative && request.Epoch == _entitlementEpoch;
+                _entitlementRefreshInFlight = false;
+                return;
+            }
+
+            var request = _entitlementRefreshQueue.Dequeue();
+            request.Backend.RefreshEntitlements(snapshot =>
+            {
+                bool current = IsCurrentRequest(request);
+                bool accepted = current && snapshot.IsAuthoritative;
                 if (accepted) ApplySnapshot(snapshot);
                 _entitlementRefreshInFlight = false;
-                try { request.OnDone?.Invoke(snapshot, accepted); }
+                try
+                {
+                    request.OnDone?.Invoke(current
+                        ? snapshot
+                        : EntitlementSnapshot.Unreachable(), accepted);
+                }
                 finally { PumpEntitlementRefreshes(); }
             });
         }
@@ -426,7 +500,8 @@ namespace CatMetro.Services.Purchases
         private void RefreshEntitlementsWithSnapshot(Action<EntitlementSnapshot, bool> onDone)
         {
             _entitlementRefreshQueue.Enqueue(
-                new EntitlementRefreshRequest(_entitlementEpoch, onDone));
+                new EntitlementRefreshRequest(_backend, _backendGeneration,
+                    _entitlementEpoch, onDone));
             PumpEntitlementRefreshes();
         }
 
@@ -440,6 +515,53 @@ namespace CatMetro.Services.Purchases
             ApplySnapshot(candidate.Value);
             return true;
         }
+
+        private PurchaseResult NormalizePurchaseConfirmation(PurchaseResult result,
+            string requestedProductId, EntitlementSnapshot? acceptedSnapshot)
+        {
+            EntitlementSnapshot? confirmation = acceptedSnapshot.HasValue
+                && acceptedSnapshot.Value.IsAuthoritative
+                && SnapshotFulfilsProduct(requestedProductId, acceptedSnapshot.Value)
+                    ? acceptedSnapshot
+                    : null;
+            return new PurchaseResult(result.Outcome, result.ProductId,
+                result.LocalizedPrice, result.DiagnosticMessage, confirmation);
+        }
+
+        private bool SnapshotFulfilsProduct(string productId, EntitlementSnapshot snapshot)
+        {
+            var promised = _catalog.EntitlementsFor(productId);
+            if (promised.Count == 0) return false;
+            var grants = snapshot.Grants;
+            long now = _clock();
+            for (int i = 0; i < promised.Count; i++)
+            {
+                bool found = false;
+                if (grants != null)
+                {
+                    for (int j = 0; j < grants.Count; j++)
+                    {
+                        var grant = grants[j];
+                        if (grant.Source == GrantSource.RewardedAd
+                            || !grant.IsActiveAt(now)
+                            || !string.Equals(grant.EntitlementId, promised[i],
+                                StringComparison.Ordinal))
+                            continue;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) return false;
+            }
+            return true;
+        }
+
+        private bool IsCurrentBackend(IPurchaseBackend backend, long generation)
+            => ReferenceEquals(backend, _backend) && generation == _backendGeneration;
+
+        private bool IsCurrentRequest(EntitlementRefreshRequest request)
+            => IsCurrentBackend(request.Backend, request.BackendGeneration)
+               && request.Epoch == _entitlementEpoch;
 
         private void ApplySnapshot(EntitlementSnapshot snapshot)
         {
@@ -473,12 +595,17 @@ namespace CatMetro.Services.Purchases
 
         private readonly struct EntitlementRefreshRequest
         {
+            public readonly IPurchaseBackend Backend;
+            public readonly long BackendGeneration;
             public readonly long Epoch;
             public readonly Action<EntitlementSnapshot, bool> OnDone;
 
-            public EntitlementRefreshRequest(long epoch,
+            public EntitlementRefreshRequest(IPurchaseBackend backend, long backendGeneration,
+                long epoch,
                 Action<EntitlementSnapshot, bool> onDone)
             {
+                Backend = backend;
+                BackendGeneration = backendGeneration;
                 Epoch = epoch;
                 OnDone = onDone;
             }

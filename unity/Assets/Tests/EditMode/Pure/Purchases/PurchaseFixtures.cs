@@ -21,7 +21,15 @@ namespace CatMetro.Tests.Purchases
         public bool EntitlementsAreAuthoritative { get; set; } = true;
 
         public PurchaseOutcome NextPurchaseOutcome { get; set; } = PurchaseOutcome.SuccessCandidate;
+        public string NextPurchaseDiagnostic { get; set; }
+        public EntitlementSnapshot? NextPurchaseConfirmedEntitlements { get; set; }
+        public bool OverridePurchaseResultProductId { get; set; }
+        public string NextPurchaseResultProductId { get; set; }
         public RestoreOutcome NextRestoreOutcome { get; set; } = RestoreOutcome.Completed;
+        public int NextRestoreReportedCount { get; set; }
+        public string NextRestoreDiagnostic { get; set; }
+        public EntitlementSnapshot? NextRestoreConfirmedEntitlements { get; set; }
+        public bool ReturnNullProducts { get; set; }
 
         // Set to hold a callback instead of invoking it, so a test can assert on the in-flight
         // window (the double-tap guard) before letting it complete.
@@ -30,6 +38,7 @@ namespace CatMetro.Tests.Purchases
 
         public int PurchaseCallCount { get; private set; }
         public int RestoreCallCount { get; private set; }
+        public int FetchProductsCallCount { get; private set; }
         public int RefreshEntitlementsCallCount { get; private set; }
         public string LastPurchasedProductId { get; private set; }
 
@@ -38,6 +47,8 @@ namespace CatMetro.Tests.Purchases
             _products.Add(new StoreProductView(id, display, new LocalizedPrice(price)));
             return this;
         }
+
+        public void ClearProducts() => _products.Clear();
 
         // Simulates the store granting an entitlement — what CustomerInfo would report after a
         // real purchase. Tests call this to make the fake "have" something.
@@ -70,7 +81,14 @@ namespace CatMetro.Tests.Purchases
         }
 
         public void FetchProducts(Action<IReadOnlyList<StoreProductView>> onDone)
-            => Deliver(() => onDone?.Invoke(_products.ToArray()));
+        {
+            FetchProductsCallCount++;
+            Deliver(() => onDone?.Invoke(ReturnNullProducts
+                ? null
+                : Availability == BackendAvailability.Ready
+                    ? _products.ToArray()
+                    : Array.Empty<StoreProductView>()));
+        }
 
         public void Purchase(string productId, Action<PurchaseResult> onDone)
         {
@@ -89,7 +107,10 @@ namespace CatMetro.Tests.Purchases
                         _entitlements.Add(new EntitlementGrant(e, GrantSource.Store));
                 }
 
-                onDone?.Invoke(new PurchaseResult(outcome, productId, new LocalizedPrice("$1.99")));
+                onDone?.Invoke(new PurchaseResult(outcome,
+                    OverridePurchaseResultProductId ? NextPurchaseResultProductId : productId,
+                    new LocalizedPrice("$1.99"), NextPurchaseDiagnostic,
+                    NextPurchaseConfirmedEntitlements));
             });
         }
 
@@ -108,7 +129,9 @@ namespace CatMetro.Tests.Purchases
                         _entitlements.Add(new EntitlementGrant(e, GrantSource.Store));
                 }
 
-                onDone?.Invoke(new RestoreResult(outcome));
+                onDone?.Invoke(new RestoreResult(outcome, NextRestoreReportedCount,
+                    NextRestoreDiagnostic,
+                    confirmedEntitlements: NextRestoreConfirmedEntitlements));
             });
         }
 

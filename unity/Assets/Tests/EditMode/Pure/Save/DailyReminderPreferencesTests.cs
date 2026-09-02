@@ -83,12 +83,13 @@ namespace CatMetro.Tests.Save
         }
 
         [Test]
-        public void V1Reload_MigratesToV2WithDefaultOffAndKeepsUnknownKeys()
+        public void V1Reload_MigratesToV3WithDefaultOffAndKeepsUnknownKeys()
         {
             using var root = new SFixtures.TempRoot();
             var store = SFixtures.Store(root);
             var v1 = SaveDefaults.FreshPayload();
             v1["saveVersion"] = 1;
+            ((JObject)v1["profile"]).Remove("cosmetics");
             ((JObject)v1["settings"]).Remove("dailyReminderEnabled");
             ((JObject)v1["settings"]).Remove("dailyReminderPromptSeen");
             ((JObject)v1["settings"]).Remove("dailyReminderSlot");
@@ -96,7 +97,7 @@ namespace CatMetro.Tests.Save
             SFixtures.WriteRaw(store.SavePath, SFixtures.FileWithVersion(1, v1));
 
             Assert.That(store.Load(), Is.EqualTo(CatMetro.Services.LoadResult.Ok));
-            Assert.That((int)store.State.Payload["saveVersion"], Is.EqualTo(2));
+            Assert.That((int)store.State.Payload["saveVersion"], Is.EqualTo(3));
             var preferences = new DailyReminderPreferences(store);
             Assert.That(preferences.Enabled, Is.False);
             Assert.That(preferences.PromptSeen, Is.False,

@@ -46,6 +46,7 @@ namespace CatMetro.Tests.Ads
             public Action OnEventAdd { get; set; }
             public Action OnLoad { get; set; }
             public Action<long, string> OnShow { get; set; }
+            public Action<string> OnPlacementReadinessCheck { get; set; }
             public int InitializeCalls { get; private set; }
             public int LoadCalls { get; private set; }
             public int DisposeCalls { get; private set; }
@@ -55,6 +56,7 @@ namespace CatMetro.Tests.Ads
             public readonly List<(long AttemptId, string PlacementId)> Shows =
                 new List<(long, string)>();
             public readonly List<string> PlacementReadinessChecks = new List<string>();
+            public readonly Queue<bool> PlacementReadinessResults = new Queue<bool>();
 
             bool IRewardedAdProvider.IsReady => ThrowOnReady
                 ? throw new InvalidOperationException("injected readiness fault")
@@ -63,8 +65,11 @@ namespace CatMetro.Tests.Ads
             public bool IsReadyForPlacement(string placementId)
             {
                 PlacementReadinessChecks.Add(placementId);
+                OnPlacementReadinessCheck?.Invoke(placementId);
                 if (ThrowOnReady)
                     throw new InvalidOperationException("injected placement readiness fault");
+                if (PlacementReadinessResults.Count > 0)
+                    return PlacementReadinessResults.Dequeue();
                 return IsReady && !string.Equals(CappedPlacement, placementId,
                     StringComparison.Ordinal);
             }
