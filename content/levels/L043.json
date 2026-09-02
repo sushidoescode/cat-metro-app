@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 2,
+  "id": "L043",
+  "name": "Blue Pair Passing",
+  "seed": 4043,
+  "meta": {
+    "band": "multi-line",
+    "difficultyTarget": 0.83,
+    "mechanics": ["switch", "budget", "second-train"],
+    "newMechanic": null,
+    "teachingGoal": "Hold blue through a close pair, then restore red while the last blue train is still in flight.",
+    "authoredBy": "llm+validator",
+    "minActionWindowTicks": 3
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 9 },
+      { "id": "J1", "x": 0, "y": 6, "queueCapacity": 5 },
+      { "id": "RED", "x": -5, "y": 1 },
+      { "id": "BLUE", "x": 5, "y": 1 },
+      { "id": "ARC_A", "x": 0, "y": 0, "queueCapacity": 3 },
+      { "id": "ARC_B", "x": 6, "y": -2, "queueCapacity": 3 },
+      { "id": "ARC_C", "x": 9, "y": 2, "queueCapacity": 3 },
+      { "id": "ARC_D", "x": 5, "y": 8, "queueCapacity": 3 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 3 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 4 },
+      { "id": "E_BLUE", "from": "J1", "to": "BLUE", "travelTicks": 4 },
+      { "id": "E_ARC_OUT", "from": "J1", "to": "ARC_A", "travelTicks": 2 },
+      { "id": "E_ARC_LOW", "from": "ARC_A", "to": "ARC_B", "travelTicks": 2 },
+      { "id": "E_ARC_RISE", "from": "ARC_B", "to": "ARC_C", "travelTicks": 2 },
+      { "id": "E_ARC_HIGH", "from": "ARC_C", "to": "ARC_D", "travelTicks": 2 },
+      { "id": "E_ARC_BACK", "from": "ARC_D", "to": "J1", "travelTicks": 2 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red", "blue"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 4 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 4 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_RED", "E_BLUE"], "initialRoute": 1 }
+  ],
+  "waves": [
+    { "tick": 0, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8 },
+    { "tick": 4, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8 },
+    { "tick": 11, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8 },
+    { "tick": 14, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8 }
+  ],
+  "win": {
+    "deliveries": 4,
+    "timeLimitTicks": 25,
+    "perfectMaxSwitches": 3,
+    "stars": { "two": 320, "three": 530 }
+  },
+  "economy": { "baseTickets": 74, "perfectBonus": 32 }
+}

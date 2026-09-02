@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 2,
+  "id": "L044",
+  "name": "Double Junction Relay",
+  "seed": 4044,
+  "meta": {
+    "band": "multi-line",
+    "difficultyTarget": 0.84,
+    "mechanics": ["switch", "budget", "second-train"],
+    "newMechanic": null,
+    "teachingGoal": "Coordinate both junctions to release red, open the blue line, and restore red before the final arrival.",
+    "authoredBy": "llm+validator",
+    "minActionWindowTicks": 3
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 9 },
+      { "id": "J1", "x": 0, "y": 6, "queueCapacity": 4 },
+      { "id": "J2", "x": 3, "y": 3, "queueCapacity": 4 },
+      { "id": "RETURN_A", "x": 6, "y": 1, "queueCapacity": 3 },
+      { "id": "RETURN_B", "x": 9, "y": 3, "queueCapacity": 3 },
+      { "id": "RETURN_C", "x": 6, "y": 8, "queueCapacity": 3 },
+      { "id": "RED", "x": -4, "y": 1 },
+      { "id": "BLUE", "x": 6, "y": 0 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 3 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 5 },
+      { "id": "E_MID", "from": "J1", "to": "J2", "travelTicks": 3 },
+      { "id": "E_BLUE", "from": "J2", "to": "BLUE", "travelTicks": 3 },
+      { "id": "E_RETURN_A", "from": "J2", "to": "RETURN_A", "travelTicks": 1 },
+      { "id": "E_RETURN_B", "from": "RETURN_A", "to": "RETURN_B", "travelTicks": 1 },
+      { "id": "E_RETURN_C", "from": "RETURN_B", "to": "RETURN_C", "travelTicks": 1 },
+      { "id": "E_RETURN_HOME", "from": "RETURN_C", "to": "J1", "travelTicks": 1 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red", "blue"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 3 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 3 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_RED", "E_MID"], "initialRoute": 1 },
+    { "id": "S2", "nodeId": "J2", "routes": ["E_BLUE", "E_RETURN_A"], "initialRoute": 1 }
+  ],
+  "waves": [
+    { "tick": 0, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8 },
+    { "tick": 7, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8 },
+    { "tick": 11, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8 }
+  ],
+  "win": {
+    "deliveries": 3,
+    "timeLimitTicks": 23,
+    "perfectMaxSwitches": 4,
+    "stars": { "two": 330, "three": 545 }
+  },
+  "economy": { "baseTickets": 76, "perfectBonus": 33 }
+}
