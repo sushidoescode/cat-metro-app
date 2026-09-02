@@ -11,8 +11,10 @@ namespace CatMetro.Content
         public const int MAX_EDGES = 70;                       // docs/plan/data/level_schema.json:45
         public const int MAX_WAVES = 30;                       // docs/plan/data/level_schema.json:108
         public const int MAX_SWITCHES = 10;                    // docs/plan/data/level_schema.json:81
+        public const int MAX_GATES = 8;                        // docs/plan/data/level_schema.json:94
         public const int MAX_SOURCES = 6;                      // docs/plan/data/level_schema.json:60
         public const int MAX_STATIONS = 6;                     // docs/plan/data/level_schema.json:70
+        public const int MAX_TAGS = 12;                        // docs/plan/data/level_schema.json:141
         public const int TRAVEL_TICKS_MIN = 1;                 // docs/plan/data/level_schema.json:51
         public const int TRAVEL_TICKS_MAX = 40;                // docs/plan/data/level_schema.json:51
         public const int TIME_LIMIT_TICKS_MIN = 20;            // docs/plan/data/level_schema.json:125
@@ -27,6 +29,11 @@ namespace CatMetro.Content
         public const int INITIAL_ROUTE_MAX = 2;                // docs/plan/data/level_schema.json:88
         public const int ROUTES_MIN = 2;                       // docs/plan/data/level_schema.json:87
         public const int ROUTES_MAX = 3;                       // docs/plan/data/level_schema.json:87
+        public const int COOLDOWN_TICKS_MIN = 0;               // docs/plan/data/level_schema.json:89
+        public const int COOLDOWN_TICKS_MAX = 20;              // docs/plan/data/level_schema.json:89
+        public const int COOLDOWN_TICKS_DEFAULT = 0;           // docs/plan/data/level_schema.json:89
+        public const int GATE_PREVIEW_TICKS_MIN = 8;           // docs/plan/data/level_schema.json:103
+        public const int GATE_PREVIEW_TICKS_DEFAULT = 16;      // docs/plan/data/level_schema.json:103
         public const int WAVE_COUNT_MIN = 1;                   // docs/plan/data/level_schema.json:115
         public const int WAVE_COUNT_MAX = 8;                   // docs/plan/data/level_schema.json:115
         public const int SPACING_TICKS_MIN = 1;                // docs/plan/data/level_schema.json:116

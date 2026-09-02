@@ -18,7 +18,9 @@ namespace CatMetro.Content
         private readonly SourceDto[] _sources;
         private readonly StationDto[] _stations;
         private readonly SwitchDto[] _switches;
+        private readonly GateDto[] _gates;
         private readonly WaveDto[] _waves;
+        private readonly string[] _tags;
         public readonly WinDto Win;
         public readonly EconomyDto Economy;
 
@@ -27,15 +29,19 @@ namespace CatMetro.Content
         public ReadOnlyMemory<SourceDto> Sources => _sources;
         public ReadOnlyMemory<StationDto> Stations => _stations;
         public ReadOnlyMemory<SwitchDto> Switches => _switches;
+        public ReadOnlyMemory<GateDto> Gates => _gates;
         public ReadOnlyMemory<WaveDto> Waves => _waves;
+        public ReadOnlyMemory<string> Tags => _tags;
 
         public LevelDto(int schemaVersion, string id, string name, long seed, MetaDto meta,
             NodeDto[] nodes, EdgeDto[] edges, SourceDto[] sources, StationDto[] stations,
-            SwitchDto[] switches, WaveDto[] waves, WinDto win, EconomyDto economy)
+            SwitchDto[] switches, WaveDto[] waves, WinDto win, EconomyDto economy,
+            GateDto[] gates = null, string[] tags = null)
         {
             SchemaVersion = schemaVersion; Id = id; Name = name; Seed = seed; Meta = meta;
             _nodes = nodes; _edges = edges; _sources = sources; _stations = stations;
-            _switches = switches; _waves = waves; Win = win; Economy = economy;
+            _switches = switches; _gates = gates ?? Array.Empty<GateDto>(); _waves = waves;
+            _tags = tags ?? Array.Empty<string>(); Win = win; Economy = economy;
         }
     }
 
@@ -83,10 +89,14 @@ namespace CatMetro.Content
         public readonly string From;
         public readonly string To;
         public readonly int TravelTicks;
+        public readonly bool OneWay;
+        public readonly bool Reversible;
 
-        public EdgeDto(string id, string from, string to, int travelTicks)
+        public EdgeDto(string id, string from, string to, int travelTicks,
+            bool oneWay = true, bool reversible = false)
         {
             Id = id; From = from; To = to; TravelTicks = travelTicks;
+            OneWay = oneWay; Reversible = reversible;
         }
     }
 
@@ -121,11 +131,38 @@ namespace CatMetro.Content
         public readonly string NodeId;
         private readonly string[] _routes;
         public readonly int InitialRoute;
+        public readonly int CooldownTicks;
         public ReadOnlyMemory<string> Routes => _routes;
 
-        public SwitchDto(string id, string nodeId, string[] routes, int initialRoute)
+        public SwitchDto(string id, string nodeId, string[] routes, int initialRoute,
+            int cooldownTicks = 0)
         {
             Id = id; NodeId = nodeId; _routes = routes; InitialRoute = initialRoute;
+            CooldownTicks = cooldownTicks;
+        }
+    }
+
+    public sealed class GateWindowDto
+    {
+        public readonly int StartTick;
+        public readonly int EndTick;
+
+        public GateWindowDto(int startTick, int endTick)
+        {
+            StartTick = startTick; EndTick = endTick;
+        }
+    }
+
+    public sealed class GateDto
+    {
+        public readonly string EdgeId;
+        private readonly GateWindowDto[] _openWindows;
+        public readonly int PreviewTicks;
+        public ReadOnlyMemory<GateWindowDto> OpenWindows => _openWindows;
+
+        public GateDto(string edgeId, GateWindowDto[] openWindows, int previewTicks)
+        {
+            EdgeId = edgeId; _openWindows = openWindows; PreviewTicks = previewTicks;
         }
     }
 
@@ -136,10 +173,13 @@ namespace CatMetro.Content
         public readonly string Color;
         public readonly int Count;
         public readonly int SpacingTicks;
+        public readonly bool Express;
 
-        public WaveDto(int tick, string sourceNode, string color, int count, int spacingTicks)
+        public WaveDto(int tick, string sourceNode, string color, int count, int spacingTicks,
+            bool express = false)
         {
-            Tick = tick; SourceNode = sourceNode; Color = color; Count = count; SpacingTicks = spacingTicks;
+            Tick = tick; SourceNode = sourceNode; Color = color; Count = count;
+            SpacingTicks = spacingTicks; Express = express;
         }
     }
 

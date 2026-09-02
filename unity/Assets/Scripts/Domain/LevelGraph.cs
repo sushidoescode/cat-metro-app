@@ -14,6 +14,20 @@ namespace CatMetro.Domain
         public const byte Wild = 5;
     }
 
+    // Immutable authored gate interval. Gate behaviour is intentionally not implemented here;
+    // this value only keeps schema data intact until the simulation mechanic is added.
+    public readonly struct GateWindow
+    {
+        public readonly int StartTick;
+        public readonly int EndTick;
+
+        public GateWindow(int startTick, int endTick)
+        {
+            StartTick = startTick;
+            EndTick = endTick;
+        }
+    }
+
     // A-C1-1: the Domain owns its own integer board type; CatMetro.Content maps DTO -> LevelGraph
     // in CM-C2. Fixtures construct this directly in test code (A-C1-2).
     // Arrays are indexed by dense integer ids; the construction order of nodes/edges/switches is
@@ -26,11 +40,17 @@ namespace CatMetro.Domain
         public readonly int[] EdgeFrom;             // per edge
         public readonly int[] EdgeTo;               // per edge
         public readonly int[] EdgeTravelTicks;      // per edge
+        public readonly bool[] EdgeOneWay;          // per edge; data only until traversal semantics land
+        public readonly bool[] EdgeReversible;      // per edge; data only until reversal semantics land
         public readonly int SourceNode;             // legacy first-source view for one-source callers
         public readonly int[] SourceNodes;           // every authored source, in authored order
         public readonly int[][] SwitchRoutes;       // per switch: candidate outgoing edge ids (2-3)
         public readonly int[] SwitchNode;           // per switch: the junction node it sits on
         public readonly byte[] SwitchInitialRoute;  // per switch
+        public readonly int[] SwitchCooldownTicks;  // per switch; data only until cooldown semantics land
+        public readonly int[] GateEdge;              // per gate: dense edge index
+        public readonly GateWindow[][] GateOpenWindows; // per gate, authored order
+        public readonly int[] GatePreviewTicks;      // per gate
         public readonly int[] StationNode;          // per station
         public readonly byte[][] StationAccepts;    // per station: accepted colors
         public readonly int[] StationCapacity;      // per station
@@ -39,6 +59,7 @@ namespace CatMetro.Domain
         public readonly int[] WaveCount;            // per wave
         public readonly int[] WaveSpacingTicks;     // per wave
         public readonly int[] WaveSourceNode;       // per wave: authored source node
+        public readonly bool[] WaveExpress;         // per wave; data only until no-wait semantics land
         public readonly int WinDeliveries;
         public readonly int TimeLimitTicks;
         public readonly int QCapBound;              // digest padding: queue slots per node (A-C1-7 i)
@@ -56,7 +77,14 @@ namespace CatMetro.Domain
             int winDeliveries, int timeLimitTicks,
             int qCapBound, int trainsMax,
             int[] waveSourceNode = null,
-            int perfectMaxSwitches = FlipBudget.Unbudgeted)
+            int perfectMaxSwitches = FlipBudget.Unbudgeted,
+            bool[] edgeOneWay = null,
+            bool[] edgeReversible = null,
+            int[] switchCooldownTicks = null,
+            int[] gateEdge = null,
+            GateWindow[][] gateOpenWindows = null,
+            int[] gatePreviewTicks = null,
+            bool[] waveExpress = null)
         {
             if (perfectMaxSwitches < FlipBudget.Unbudgeted)
                 throw new ArgumentOutOfRangeException(nameof(perfectMaxSwitches));
@@ -66,6 +94,9 @@ namespace CatMetro.Domain
             EdgeFrom = edgeFrom;
             EdgeTo = edgeTo;
             EdgeTravelTicks = edgeTravelTicks;
+            int edgeLength = edgeFrom == null ? 0 : edgeFrom.Length;
+            EdgeOneWay = BoolDataOrDefault(edgeOneWay, edgeLength, true, nameof(edgeOneWay));
+            EdgeReversible = BoolDataOrDefault(edgeReversible, edgeLength, false, nameof(edgeReversible));
             if (waveTick == null || waveColor == null || waveCount == null
                 || waveSpacingTicks == null
                 || waveTick.Length != waveColor.Length
@@ -111,6 +142,17 @@ namespace CatMetro.Domain
             SwitchRoutes = switchRoutes;
             SwitchNode = switchNode;
             SwitchInitialRoute = switchInitialRoute;
+            int switchLength = switchRoutes == null ? 0 : switchRoutes.Length;
+            SwitchCooldownTicks = IntDataOrDefault(
+                switchCooldownTicks, switchLength, nameof(switchCooldownTicks));
+            int[] resolvedGateEdge;
+            GateWindow[][] resolvedGateWindows;
+            int[] resolvedGatePreview;
+            SetGateData(gateEdge, gateOpenWindows, gatePreviewTicks, edgeLength,
+                out resolvedGateEdge, out resolvedGateWindows, out resolvedGatePreview);
+            GateEdge = resolvedGateEdge;
+            GateOpenWindows = resolvedGateWindows;
+            GatePreviewTicks = resolvedGatePreview;
             StationNode = stationNode;
             StationAccepts = stationAccepts;
             StationCapacity = stationCapacity;
@@ -118,11 +160,87 @@ namespace CatMetro.Domain
             WaveColor = waveColor;
             WaveCount = waveCount;
             WaveSpacingTicks = waveSpacingTicks;
+            WaveExpress = BoolDataOrDefault(waveExpress, waveLength, false, nameof(waveExpress));
             WinDeliveries = winDeliveries;
             TimeLimitTicks = timeLimitTicks;
             QCapBound = qCapBound;
             TrainsMax = trainsMax;
             PerfectMaxSwitches = perfectMaxSwitches;
+        }
+
+        private static bool[] BoolDataOrDefault(
+            bool[] values, int expectedLength, bool defaultValue, string paramName)
+        {
+            if (values != null)
+            {
+                if (values.Length != expectedLength)
+                    throw new ArgumentException(
+                        $"{paramName} length must be {expectedLength}", paramName);
+                return values;
+            }
+
+            var materialized = new bool[expectedLength];
+            if (defaultValue)
+                for (int i = 0; i < materialized.Length; i++) materialized[i] = true;
+            return materialized;
+        }
+
+        private static int[] IntDataOrDefault(int[] values, int expectedLength, string paramName)
+        {
+            if (values != null)
+            {
+                if (values.Length != expectedLength)
+                    throw new ArgumentException(
+                        $"{paramName} length must be {expectedLength}", paramName);
+                return values;
+            }
+            return new int[expectedLength];
+        }
+
+        private static void SetGateData(
+            int[] gateEdge,
+            GateWindow[][] gateOpenWindows,
+            int[] gatePreviewTicks,
+            int edgeLength,
+            out int[] resolvedEdge,
+            out GateWindow[][] resolvedWindows,
+            out int[] resolvedPreview)
+        {
+            if (gateEdge == null && gateOpenWindows == null && gatePreviewTicks == null)
+            {
+                resolvedEdge = Array.Empty<int>();
+                resolvedWindows = Array.Empty<GateWindow[]>();
+                resolvedPreview = Array.Empty<int>();
+                return;
+            }
+            if (gateEdge == null || gateOpenWindows == null || gatePreviewTicks == null
+                || gateEdge.Length != gateOpenWindows.Length
+                || gateEdge.Length != gatePreviewTicks.Length)
+                throw new ArgumentException("all gate arrays must be present and have the same length");
+
+            for (int g = 0; g < gateEdge.Length; g++)
+            {
+                if (gateEdge[g] < 0 || gateEdge[g] >= edgeLength)
+                    throw new ArgumentException($"gate {g}: edge {gateEdge[g]} is outside the graph");
+                var windows = gateOpenWindows[g];
+                if (windows == null || windows.Length == 0)
+                    throw new ArgumentException($"gate {g}: at least one open window is required");
+                int previousEnd = -1;
+                for (int w = 0; w < windows.Length; w++)
+                {
+                    if (windows[w].StartTick < 0 || windows[w].EndTick <= windows[w].StartTick)
+                        throw new ArgumentException(
+                            $"gate {g} window {w}: expected 0 <= start < end");
+                    if (w > 0 && windows[w].StartTick < previousEnd)
+                        throw new ArgumentException(
+                            $"gate {g} window {w}: windows must be ordered and non-overlapping");
+                    previousEnd = windows[w].EndTick;
+                }
+            }
+
+            resolvedEdge = gateEdge;
+            resolvedWindows = gateOpenWindows;
+            resolvedPreview = gatePreviewTicks;
         }
     }
 }
