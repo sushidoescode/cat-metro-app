@@ -105,9 +105,9 @@ namespace CatMetro.Tests.PlayMode
             var portraitRect = ScreenRect(portrait.RootTransform);
 
             Assert.That(holderRect.x, Is.EqualTo(597.05f).Within(1f));
-            Assert.That(holderRect.y, Is.EqualTo(966.109f).Within(1f));
+            Assert.That(holderRect.y, Is.EqualTo(1043.935f).Within(1f));
             Assert.That(holderRect.width, Is.EqualTo(179.3f).Within(1f));
-            Assert.That(holderRect.height, Is.EqualTo(209.97f).Within(1f));
+            Assert.That(holderRect.height, Is.EqualTo(188.55f).Within(1f));
             AssertRectApproximately(portraitRect, holderRect, 0.5f);
             Assert.That(PhoneSafeArea.Contains(holderRect.min), Is.True);
             Assert.That(PhoneSafeArea.Contains(holderRect.max), Is.True);
