@@ -92,12 +92,13 @@ namespace CatMetro.Content
         public readonly bool OneWay;
         public readonly bool Reversible;
         public readonly bool Tunnel;
+        public readonly bool Hold;
 
         public EdgeDto(string id, string from, string to, int travelTicks,
-            bool oneWay = true, bool reversible = false, bool tunnel = false)
+            bool oneWay = true, bool reversible = false, bool tunnel = false, bool hold = false)
         {
             Id = id; From = from; To = to; TravelTicks = travelTicks;
-            OneWay = oneWay; Reversible = reversible; Tunnel = tunnel;
+            OneWay = oneWay; Reversible = reversible; Tunnel = tunnel; Hold = hold;
         }
     }
 
@@ -177,12 +178,13 @@ namespace CatMetro.Content
         public readonly int SpacingTicks;
         public readonly bool Express;
         public readonly string Shape;
+        public readonly bool Stray;
 
         public WaveDto(int tick, string sourceNode, string color, int count, int spacingTicks,
-            bool express = false, string shape = "round")
+            bool express = false, string shape = "round", bool stray = false)
         {
             Tick = tick; SourceNode = sourceNode; Color = color; Count = count;
-            SpacingTicks = spacingTicks; Express = express; Shape = shape;
+            SpacingTicks = spacingTicks; Express = express; Shape = shape; Stray = stray;
         }
     }
 

@@ -333,7 +333,12 @@ namespace CatMetro.Content
                 // element is individually validated below.
                 var mechArr = ReqArr(metaObj, "mechanics", ContentBounds.MAX_NODES);
                 var mechanics = new string[mechArr.Count];
-                for (int i = 0; i < mechArr.Count; i++) mechanics[i] = (string)mechArr[i];
+                bool collisionsEnabled = false;
+                for (int i = 0; i < mechArr.Count; i++)
+                {
+                    mechanics[i] = (string)mechArr[i];
+                    if (mechanics[i] == "second-train") collisionsEnabled = true;
+                }
                 string validatedAt = null;
                 bool hasValidatedAt = false;
                 var vaProp = metaObj.Property("validatedAt");
@@ -395,7 +400,8 @@ namespace CatMetro.Content
                         ReqIntIn(e, "travelTicks", ContentBounds.TRAVEL_TICKS_MIN, ContentBounds.TRAVEL_TICKS_MAX),
                         OptBool(e, "oneWay", true),
                         OptBool(e, "reversible", false),
-                        OptBool(e, "tunnel", false));
+                        OptBool(e, "tunnel", false),
+                        OptBool(e, "hold", false));
                     edgeIndex[eid] = i;
                 }
 
@@ -496,7 +502,8 @@ namespace CatMetro.Content
                         ReqIntIn(w, "count", ContentBounds.WAVE_COUNT_MIN, ContentBounds.WAVE_COUNT_MAX),
                         ReqIntIn(w, "spacingTicks", ContentBounds.SPACING_TICKS_MIN, ContentBounds.SPACING_TICKS_MAX),
                         OptBool(w, "express", false),
-                        OptShape(w, "wave"));
+                        OptShape(w, "wave"),
+                        OptBool(w, "stray", false));
                 }
 
                 var tagsArr = OptArr(o, "tags", ContentBounds.MAX_TAGS);
@@ -613,6 +620,7 @@ namespace CatMetro.Content
                 var edgeOneWay = new bool[edges.Length];
                 var edgeReversible = new bool[edges.Length];
                 var edgeTunnel = new bool[edges.Length];
+                var edgeHold = new bool[edges.Length];
                 for (int i = 0; i < edges.Length; i++)
                 {
                     edgeIds[i] = edges[i].Id;
@@ -622,6 +630,7 @@ namespace CatMetro.Content
                     edgeOneWay[i] = edges[i].OneWay;
                     edgeReversible[i] = edges[i].Reversible;
                     edgeTunnel[i] = edges[i].Tunnel;
+                    edgeHold[i] = edges[i].Hold;
                 }
                 var sourceIds = new string[sources.Length];
                 var sourceNodes = new int[sources.Length];
@@ -682,6 +691,7 @@ namespace CatMetro.Content
                 var waveSpacing = new int[waves.Length];
                 var waveExpress = new bool[waves.Length];
                 var waveShape = new byte[waves.Length];
+                var waveStray = new bool[waves.Length];
                 int trainsMax = 0;
                 for (int i = 0; i < waves.Length; i++)
                 {
@@ -692,6 +702,7 @@ namespace CatMetro.Content
                     waveSpacing[i] = waves[i].SpacingTicks;
                     waveExpress[i] = waves[i].Express;
                     waveShape[i] = ShapeCode(waves[i].Shape, "wave");
+                    waveStray[i] = waves[i].Stray;
                     trainsMax += waves[i].Count;
                 }
 
@@ -716,7 +727,10 @@ namespace CatMetro.Content
                         waveExpress: waveExpress,
                         edgeTunnel: edgeTunnel,
                         stationShape: stationShape,
-                        waveShape: waveShape);
+                        waveShape: waveShape,
+                        edgeHold: edgeHold,
+                        waveStray: waveStray,
+                        collisionsEnabled: collisionsEnabled);
                 }
                 catch (NotSupportedException ex)
                 {

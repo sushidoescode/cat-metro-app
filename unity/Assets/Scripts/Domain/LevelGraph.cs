@@ -53,6 +53,7 @@ namespace CatMetro.Domain
         public readonly bool[] EdgeOneWay;          // per edge; data only until traversal semantics land
         public readonly bool[] EdgeReversible;      // per edge; data only until reversal semantics land
         public readonly bool[] EdgeTunnel;          // per edge; endpoints are the paired portals
+        public readonly bool[] EdgeHold;            // per edge; holding-loop designation only
         public readonly int SourceNode;             // legacy first-source view for one-source callers
         public readonly int[] SourceNodes;           // every authored source, in authored order
         public readonly int[][] SwitchRoutes;       // per switch: candidate outgoing edge ids (2-3)
@@ -73,6 +74,8 @@ namespace CatMetro.Domain
         public readonly int[] WaveSourceNode;       // per wave: authored source node
         public readonly bool[] WaveExpress;         // per wave; data only until no-wait semantics land
         public readonly byte[] WaveShape;           // per wave: CatShape code
+        public readonly bool[] WaveStray;           // per wave; data only until stray semantics land
+        public readonly bool CollisionsEnabled;     // derived from the second-train mechanic
         public readonly int WinDeliveries;
         public readonly int TimeLimitTicks;
         public readonly int QCapBound;              // digest padding: queue slots per node (A-C1-7 i)
@@ -100,7 +103,10 @@ namespace CatMetro.Domain
             bool[] waveExpress = null,
             bool[] edgeTunnel = null,
             byte[] stationShape = null,
-            byte[] waveShape = null)
+            byte[] waveShape = null,
+            bool[] edgeHold = null,
+            bool[] waveStray = null,
+            bool collisionsEnabled = false)
         {
             if (perfectMaxSwitches < FlipBudget.Unbudgeted)
                 throw new ArgumentOutOfRangeException(nameof(perfectMaxSwitches));
@@ -114,6 +120,7 @@ namespace CatMetro.Domain
             EdgeOneWay = BoolDataOrDefault(edgeOneWay, edgeLength, true, nameof(edgeOneWay));
             EdgeReversible = BoolDataOrDefault(edgeReversible, edgeLength, false, nameof(edgeReversible));
             EdgeTunnel = BoolDataOrDefault(edgeTunnel, edgeLength, false, nameof(edgeTunnel));
+            EdgeHold = BoolDataOrDefault(edgeHold, edgeLength, false, nameof(edgeHold));
             if (waveTick == null || waveColor == null || waveCount == null
                 || waveSpacingTicks == null
                 || waveTick.Length != waveColor.Length
@@ -181,6 +188,8 @@ namespace CatMetro.Domain
             WaveSpacingTicks = waveSpacingTicks;
             WaveExpress = BoolDataOrDefault(waveExpress, waveLength, false, nameof(waveExpress));
             WaveShape = ShapeDataOrDefault(waveShape, waveLength, nameof(waveShape));
+            WaveStray = BoolDataOrDefault(waveStray, waveLength, false, nameof(waveStray));
+            CollisionsEnabled = collisionsEnabled;
             WinDeliveries = winDeliveries;
             TimeLimitTicks = timeLimitTicks;
             QCapBound = qCapBound;

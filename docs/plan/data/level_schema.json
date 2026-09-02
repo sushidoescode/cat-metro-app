@@ -50,7 +50,9 @@
               "from": { "type": "string" }, "to": { "type": "string" },
               "travelTicks": { "type": "integer", "minimum": 1, "maximum": 40 },
               "oneWay": { "type": "boolean", "default": true },
-              "reversible": { "type": "boolean", "default": false, "description": "Only valid when meta.mechanics includes 'reversible'" }
+              "reversible": { "type": "boolean", "default": false, "description": "Only valid when meta.mechanics includes 'reversible'" },
+              "tunnel": { "type": "boolean", "default": false },
+              "hold": { "type": "boolean", "default": false, "description": "Designates a holding-loop edge routed by an ordinary switch" }
             }
           }
         }
@@ -73,7 +75,8 @@
         "properties": {
           "nodeId": { "type": "string" },
           "accepts": { "type": "array", "minItems": 1, "items": { "enum": ["red", "blue", "yellow", "green", "wild"] } },
-          "capacity": { "type": "integer", "minimum": 1, "maximum": 12 }
+          "capacity": { "type": "integer", "minimum": 1, "maximum": 12 },
+          "shape": { "type": "string", "enum": ["round", "square", "triangle"], "default": "round" }
         }
       }
     },
@@ -114,7 +117,9 @@
           "color": { "enum": ["red", "blue", "yellow", "green", "wild"] },
           "count": { "type": "integer", "minimum": 1, "maximum": 8 },
           "spacingTicks": { "type": "integer", "minimum": 1, "maximum": 40, "default": 12 },
-          "express": { "type": "boolean", "default": false, "description": "Cannot wait in node queues; only valid when meta.mechanics includes 'express'" }
+          "express": { "type": "boolean", "default": false, "description": "Cannot wait in node queues; only valid when meta.mechanics includes 'express'" },
+          "shape": { "type": "string", "enum": ["round", "square", "triangle"], "default": "round" },
+          "stray": { "type": "boolean", "default": false }
         }
       }
     },
