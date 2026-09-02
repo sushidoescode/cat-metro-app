@@ -8,7 +8,7 @@
     "difficultyTarget": 0.99,
     "mechanics": ["switch", "budget", "second-source", "second-train"],
     "newMechanic": null,
-    "teachingGoal": "Let red clear the shared junction before turning it for the later blue train",
+    "teachingGoal": "Let red clear the shared junction before turning it for the two later blue trains",
     "minActionWindowTicks": 4,
     "authoredBy": "llm+validator"
   },
@@ -45,10 +45,10 @@
   ],
   "waves": [
     { "tick": 2, "sourceNode": "SRC_A", "color": "red", "count": 1, "spacingTicks": 8 },
-    { "tick": 2, "sourceNode": "SRC_B", "color": "blue", "count": 1, "spacingTicks": 8 }
+    { "tick": 2, "sourceNode": "SRC_B", "color": "blue", "count": 2, "spacingTicks": 19 }
   ],
   "win": {
-    "deliveries": 2,
+    "deliveries": 3,
     "timeLimitTicks": 105,
     "perfectMaxSwitches": 1,
     "stars": { "two": 1080, "three": 1380 }

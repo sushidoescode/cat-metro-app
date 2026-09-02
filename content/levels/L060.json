@@ -8,7 +8,7 @@
     "difficultyTarget": 1.0,
     "mechanics": ["switch", "shape", "budget", "tunnel", "hold", "stray", "wildcard-express"],
     "newMechanic": null,
-    "teachingGoal": "Use the stray's first press, then make one precise flip between comet and triangle",
+    "teachingGoal": "Use the stray's first press, let comet and red clear the tunnel, then flip once for the triangle",
     "minActionWindowTicks": 4,
     "authoredBy": "llm+validator"
   },
@@ -43,10 +43,11 @@
   "waves": [
     { "tick": 3, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8, "stray": true },
     { "tick": 15, "sourceNode": "SRC", "color": "wild", "count": 1, "spacingTicks": 8, "express": true },
+    { "tick": 18, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8 },
     { "tick": 22, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8, "shape": "triangle" }
   ],
   "win": {
-    "deliveries": 2,
+    "deliveries": 3,
     "timeLimitTicks": 45,
     "perfectMaxSwitches": 1,
     "stars": { "two": 1120, "three": 1440 }
