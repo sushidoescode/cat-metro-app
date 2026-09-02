@@ -18,7 +18,7 @@
       { "id": "J1", "x": 0, "y": 4, "queueCapacity": 4 },
       { "id": "BLUE", "x": -4, "y": 0 },
       { "id": "YELLOW", "x": 4, "y": 0 },
-      { "id": "LOOP_A", "x": 4, "y": 5 },
+      { "id": "LOOP_A", "x": 4, "y": 3 },
       { "id": "LOOP_B", "x": 3, "y": 8 }
     ],
     "edges": [

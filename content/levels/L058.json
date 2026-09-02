@@ -18,8 +18,8 @@
       { "id": "J1", "x": 0, "y": 5, "queueCapacity": 4 },
       { "id": "K", "x": -3, "y": 4 },
       { "id": "SQUARE", "x": -4, "y": 0 },
-      { "id": "LOOP_A", "x": 4, "y": 5 },
-      { "id": "LOOP_B", "x": 3, "y": 8 }
+      { "id": "LOOP_A", "x": 4, "y": 1 },
+      { "id": "LOOP_B", "x": -5, "y": 1 }
     ],
     "edges": [
       { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 6 },
