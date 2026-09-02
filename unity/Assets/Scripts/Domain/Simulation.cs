@@ -130,7 +130,7 @@ namespace CatMetro.Domain
                     if (state.Trains[t].ProgressTicks >= RejectionDwellTicks)
                         // Refusal escape is exceptional in every direction: it ignores both
                         // authored direction flags and gate state to preserve the exact dwell.
-                        EnterReverseEdge(ref state, t, state.Trains[t].EdgeId, enteredThisTick);
+                        ReverseRejectedArrival(ref state, t, enteredThisTick);
                     continue;
                 }
                 if ((state.Trains[t].State != TrainState.OnEdge
@@ -372,6 +372,34 @@ namespace CatMetro.Domain
             state.Trains[slot].State = TrainState.RejectedAtStation;
             state.Trains[slot].EdgeId = (short)incomingEdge;
             state.Trains[slot].ProgressTicks = 0;
+        }
+
+        private static void ReverseRejectedArrival(
+            ref SimulationState state, int slot, HashSet<int> enteredThisTick)
+        {
+            var train = state.Trains[slot];
+            int edge = train.EdgeId;
+            int rejectedNode = train.NodeId;
+            var graph = state.Graph;
+
+            // NodeId remains the station endpoint throughout the dwell, so it preserves which
+            // way the train arrived without widening the fixed ten-byte train digest. A forward
+            // arrival ends at EdgeTo and leaves in reverse; a reverse arrival ends at EdgeFrom
+            // and must leave forward. Using only EdgeId here made reverse arrivals teleport to
+            // EdgeTo and drive back into the same rejecting station.
+            if (graph.EdgeTo[edge] == rejectedNode && graph.EdgeFrom[edge] != rejectedNode)
+            {
+                EnterReverseEdge(ref state, slot, edge, enteredThisTick);
+                return;
+            }
+            if (graph.EdgeFrom[edge] == rejectedNode)
+            {
+                EnterEdge(ref state, slot, edge, enteredThisTick);
+                return;
+            }
+
+            throw new InvalidOperationException(
+                $"rejected train node {rejectedNode} is not on incoming edge {edge}");
         }
 
         private static void Enqueue(ref SimulationState state, int node, int slot)

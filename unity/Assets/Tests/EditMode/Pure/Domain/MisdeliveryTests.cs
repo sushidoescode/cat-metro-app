@@ -71,6 +71,46 @@ namespace CatMetro.Tests.Domain
         }
 
         [Test]
+        public void ReverseArrival_DwellsThenDepartsForwardFromTheSameStationEndpoint()
+        {
+            var graph = ReverseArrivalBounceGraph();
+            var log = new CommandLog();
+            log.Append(new ToggleSwitchCommand(0, 5)); // choose the correct route during dwell
+            var snapshots = new List<TrainSnapshot>();
+            var end = ReplayHasher.RunToEnd(graph, 106, log, state =>
+            {
+                var train = state.Trains.FirstOrDefault(candidate => candidate.Id == 1);
+                snapshots.Add(new TrainSnapshot(state.Tick, train));
+            });
+
+            var dwell = snapshots.Where(snapshot =>
+                snapshot.State == TrainState.RejectedAtStation).ToArray();
+            Assert.That(dwell.Length, Is.EqualTo(Simulation.RejectionDwellTicks));
+            Assert.That(dwell.Select(snapshot => snapshot.Tick),
+                Is.EqualTo(Enumerable.Range(3, Simulation.RejectionDwellTicks)));
+            Assert.That(dwell.Select(snapshot => (int)snapshot.ProgressTicks),
+                Is.EqualTo(Enumerable.Range(0, Simulation.RejectionDwellTicks)));
+            Assert.That(dwell.Select(snapshot => (int)snapshot.NodeId), Is.All.EqualTo(0),
+                "the train stays on the rejecting platform for the whole dwell");
+
+            var departure = snapshots.Single(snapshot => snapshot.Tick == 11);
+            Assert.That(departure.State, Is.EqualTo(TrainState.OnEdge),
+                "reversing an OnEdgeReverse arrival means forward traversal");
+            Assert.That(departure.EdgeId, Is.Zero);
+            Assert.That(departure.ProgressTicks, Is.Zero);
+            Assert.That(departure.NodeId, Is.EqualTo(graph.EdgeFrom[departure.EdgeId]),
+                "progress zero must render at the rejecting station, not teleport to EdgeTo");
+
+            var inFlight = snapshots.Single(snapshot => snapshot.Tick == 12);
+            Assert.That(inFlight.State, Is.EqualTo(TrainState.OnEdge));
+            Assert.That(inFlight.EdgeId, Is.Zero);
+            Assert.That(inFlight.ProgressTicks, Is.EqualTo(1));
+            Assert.That(end.Outcome.Kind, Is.EqualTo(OutcomeKind.Won));
+            Assert.That(end.Deliveries, Is.EqualTo(1));
+            Assert.That(end.Rejections, Is.EqualTo(1));
+        }
+
+        [Test]
         public void PlatformCapacity_AllowsEquality_ButFailsImmediatelyAboveCapacity()
         {
             var atCapacity = Fixtures.RunThroughTick(
@@ -154,6 +194,22 @@ namespace CatMetro.Tests.Domain
                 new[] { stationCapacity, 2 },
                 new[] { 0 }, new[] { CatColor.Red }, new[] { waveCount }, new[] { waveSpacing },
                 waveCount, 80, qCapBound: 8, trainsMax: trainsMax);
+
+        private static LevelGraph ReverseArrivalBounceGraph() => new LevelGraph(
+            "FX-REFUSE-REVERSE-ARRIVAL", 3,
+            new[] { 8, 8, 8 },                       // wrong BLUE, source/junction, correct RED
+            new[] { 0, 1 },
+            new[] { 1, 2 },
+            new[] { 2, 1 },
+            new[] { 1 },
+            new[] { new[] { 0, 1 } }, new[] { 1 }, new byte[] { 0 },
+            new[] { 0, 2 },
+            new[] { new[] { CatColor.Blue }, new[] { CatColor.Red } },
+            new[] { 2, 2 },
+            new[] { 0 }, new[] { CatColor.Red }, new[] { 1 }, new[] { 1 },
+            1, 40, qCapBound: 8, trainsMax: 1,
+            edgeOneWay: new[] { true, true },
+            edgeReversible: new[] { true, false });
 
         private readonly struct TrainSnapshot
         {
