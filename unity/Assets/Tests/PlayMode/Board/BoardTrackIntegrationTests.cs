@@ -54,12 +54,14 @@ namespace CatMetro.Tests.PlayMode
             var session = new GameSession(level);
             _host = new GameObject("board-train-curve-host");
             _view = BoardView.Build(level, _host.transform, session);
+            const int edge = 1;
+            const int progressTicks = 6;
             session.State.Trains[0] = new TrainSlot
             {
                 Id = 1,
                 Color = CatColor.Red,
-                EdgeId = 1,
-                ProgressTicks = 6,
+                EdgeId = edge,
+                ProgressTicks = progressTicks,
                 NodeId = 1,
                 State = TrainState.OnEdge,
             };
@@ -69,8 +71,10 @@ namespace CatMetro.Tests.PlayMode
 
             var train = _view.GetComponentsInChildren<BoardElementId>(true)
                 .Single(x => x.Kind == "train");
-            TrackSpline expectedPath = BuildTrackGraph(level).Path(1);
-            Vector3 expectedPosition = expectedPath.EvaluateDistanceFraction(0.5f)
+            TrackSpline expectedPath = BuildTrackGraph(level).Path(edge);
+            float expectedFraction = Mathf.Min(1f,
+                (progressTicks + (float)session.Alpha) / level.Graph.EdgeTravelTicks[edge]);
+            Vector3 expectedPosition = expectedPath.EvaluateDistanceFraction(expectedFraction)
                 + new Vector3(0f, 0f, -0.2f);
             Assert.That(Vector3.Distance(train.transform.localPosition, expectedPosition),
                 Is.LessThan(0.001f),
@@ -91,12 +95,14 @@ namespace CatMetro.Tests.PlayMode
             var session = new GameSession(level);
             _host = new GameObject("board-reverse-curve-host");
             _view = BoardView.Build(level, _host.transform, session);
+            const int edge = 1;
+            const int progressTicks = 3;
             session.State.Trains[0] = new TrainSlot
             {
                 Id = 1,
                 Color = CatColor.Red,
-                EdgeId = 1,
-                ProgressTicks = 3,
+                EdgeId = edge,
+                ProgressTicks = progressTicks,
                 NodeId = 2,
                 State = TrainState.OnEdgeReverse,
             };
@@ -106,8 +112,10 @@ namespace CatMetro.Tests.PlayMode
 
             var train = _view.GetComponentsInChildren<BoardElementId>(true)
                 .Single(x => x.Kind == "train");
-            TrackSpline expectedPath = BuildTrackGraph(level).Path(1);
-            Vector3 expectedPosition = expectedPath.EvaluateDistanceFraction(0.75f)
+            TrackSpline expectedPath = BuildTrackGraph(level).Path(edge);
+            float expectedFraction = 1f - Mathf.Min(1f,
+                (progressTicks + (float)session.Alpha) / level.Graph.EdgeTravelTicks[edge]);
+            Vector3 expectedPosition = expectedPath.EvaluateDistanceFraction(expectedFraction)
                 + new Vector3(0f, 0f, -0.2f);
             Assert.That(Vector3.Distance(train.transform.localPosition, expectedPosition),
                 Is.LessThan(0.001f),
