@@ -283,11 +283,36 @@ namespace CatMetro.Content
             ["wild"] = CatColor.Wild,
         };
 
+        private static readonly Dictionary<string, byte> ShapeCodes = new Dictionary<string, byte>
+        {
+            ["round"] = CatShape.Round,
+            ["square"] = CatShape.Square,
+            ["triangle"] = CatShape.Triangle,
+        };
+
         private static byte ColorCode(string color, string where)
         {
             if (!ColorCodes.TryGetValue(color, out var code))
                 throw new WalkException(ContentErrorKind.BoundViolation, $"{where} color '{color}' unknown");
             return code;
+        }
+
+        private static byte ShapeCode(string shape, string where)
+        {
+            if (!ShapeCodes.TryGetValue(shape, out var code))
+                throw new WalkException(ContentErrorKind.BoundViolation, $"{where} shape '{shape}' unknown");
+            return code;
+        }
+
+        private static string OptShape(JObject o, string where)
+        {
+            var property = o.Property("shape");
+            if (property == null) return "round";
+            if (property.Value.Type != JTokenType.String)
+                throw new WalkException(ContentErrorKind.MalformedJson, where + " shape must be a string");
+            string shape = (string)property.Value;
+            ShapeCode(shape, where);
+            return shape;
         }
 
         private static ContentResult<ImportedLevel> Build(JObject o)
@@ -369,7 +394,8 @@ namespace CatMetro.Content
                     edges[i] = new EdgeDto(eid, ReqStr(e, "from"), ReqStr(e, "to"),
                         ReqIntIn(e, "travelTicks", ContentBounds.TRAVEL_TICKS_MIN, ContentBounds.TRAVEL_TICKS_MAX),
                         OptBool(e, "oneWay", true),
-                        OptBool(e, "reversible", false));
+                        OptBool(e, "reversible", false),
+                        OptBool(e, "tunnel", false));
                     edgeIndex[eid] = i;
                 }
 
@@ -393,7 +419,8 @@ namespace CatMetro.Content
                     var accepts = new string[acceptsArr.Count];
                     for (int c = 0; c < acceptsArr.Count; c++) accepts[c] = (string)acceptsArr[c];
                     stations[i] = new StationDto(ReqStr(s, "nodeId"), accepts,
-                        ReqIntIn(s, "capacity", ContentBounds.STATION_CAPACITY_MIN, ContentBounds.STATION_CAPACITY_MAX));
+                        ReqIntIn(s, "capacity", ContentBounds.STATION_CAPACITY_MIN, ContentBounds.STATION_CAPACITY_MAX),
+                        OptShape(s, "station"));
                 }
 
                 var switchesArr = ReqArr(o, "switches", ContentBounds.MAX_SWITCHES);
@@ -468,7 +495,8 @@ namespace CatMetro.Content
                         ReqStr(w, "color"),
                         ReqIntIn(w, "count", ContentBounds.WAVE_COUNT_MIN, ContentBounds.WAVE_COUNT_MAX),
                         ReqIntIn(w, "spacingTicks", ContentBounds.SPACING_TICKS_MIN, ContentBounds.SPACING_TICKS_MAX),
-                        OptBool(w, "express", false));
+                        OptBool(w, "express", false),
+                        OptShape(w, "wave"));
                 }
 
                 var tagsArr = OptArr(o, "tags", ContentBounds.MAX_TAGS);
@@ -584,6 +612,7 @@ namespace CatMetro.Content
                 var edgeTravel = new int[edges.Length];
                 var edgeOneWay = new bool[edges.Length];
                 var edgeReversible = new bool[edges.Length];
+                var edgeTunnel = new bool[edges.Length];
                 for (int i = 0; i < edges.Length; i++)
                 {
                     edgeIds[i] = edges[i].Id;
@@ -592,6 +621,7 @@ namespace CatMetro.Content
                     edgeTravel[i] = edges[i].TravelTicks;
                     edgeOneWay[i] = edges[i].OneWay;
                     edgeReversible[i] = edges[i].Reversible;
+                    edgeTunnel[i] = edges[i].Tunnel;
                 }
                 var sourceIds = new string[sources.Length];
                 var sourceNodes = new int[sources.Length];
@@ -633,6 +663,7 @@ namespace CatMetro.Content
                 var stationNode = new int[stations.Length];
                 var stationAccepts = new byte[stations.Length][];
                 var stationCapacity = new int[stations.Length];
+                var stationShape = new byte[stations.Length];
                 for (int i = 0; i < stations.Length; i++)
                 {
                     stationIds[i] = stations[i].NodeId;
@@ -642,6 +673,7 @@ namespace CatMetro.Content
                     for (int c = 0; c < span.Length; c++) codes[c] = ColorCode(span[c], "station accepts");
                     stationAccepts[i] = codes;
                     stationCapacity[i] = stations[i].Capacity;
+                    stationShape[i] = ShapeCode(stations[i].Shape, "station");
                 }
                 var waveTick = new int[waves.Length];
                 var waveSourceNode = new int[waves.Length];
@@ -649,6 +681,7 @@ namespace CatMetro.Content
                 var waveCount = new int[waves.Length];
                 var waveSpacing = new int[waves.Length];
                 var waveExpress = new bool[waves.Length];
+                var waveShape = new byte[waves.Length];
                 int trainsMax = 0;
                 for (int i = 0; i < waves.Length; i++)
                 {
@@ -658,6 +691,7 @@ namespace CatMetro.Content
                     waveCount[i] = waves[i].Count;
                     waveSpacing[i] = waves[i].SpacingTicks;
                     waveExpress[i] = waves[i].Express;
+                    waveShape[i] = ShapeCode(waves[i].Shape, "wave");
                     trainsMax += waves[i].Count;
                 }
 
@@ -679,7 +713,10 @@ namespace CatMetro.Content
                         gateEdge: gateEdge,
                         gateOpenWindows: gateOpenWindows,
                         gatePreviewTicks: gatePreview,
-                        waveExpress: waveExpress);
+                        waveExpress: waveExpress,
+                        edgeTunnel: edgeTunnel,
+                        stationShape: stationShape,
+                        waveShape: waveShape);
                 }
                 catch (NotSupportedException ex)
                 {

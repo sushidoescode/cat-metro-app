@@ -14,6 +14,16 @@ namespace CatMetro.Domain
         public const byte Wild = 5;
     }
 
+    public static class CatShape
+    {
+        public const byte Round = 1;
+        public const byte Square = 2;
+        public const byte Triangle = 3;
+
+        public static bool IsKnown(byte shape) =>
+            shape == Round || shape == Square || shape == Triangle;
+    }
+
     // Immutable authored gate interval. Gate behaviour is intentionally not implemented here;
     // this value only keeps schema data intact until the simulation mechanic is added.
     public readonly struct GateWindow
@@ -42,6 +52,7 @@ namespace CatMetro.Domain
         public readonly int[] EdgeTravelTicks;      // per edge
         public readonly bool[] EdgeOneWay;          // per edge; data only until traversal semantics land
         public readonly bool[] EdgeReversible;      // per edge; data only until reversal semantics land
+        public readonly bool[] EdgeTunnel;          // per edge; endpoints are the paired portals
         public readonly int SourceNode;             // legacy first-source view for one-source callers
         public readonly int[] SourceNodes;           // every authored source, in authored order
         public readonly int[][] SwitchRoutes;       // per switch: candidate outgoing edge ids (2-3)
@@ -54,12 +65,14 @@ namespace CatMetro.Domain
         public readonly int[] StationNode;          // per station
         public readonly byte[][] StationAccepts;    // per station: accepted colors
         public readonly int[] StationCapacity;      // per station
+        public readonly byte[] StationShape;        // per station: CatShape code
         public readonly int[] WaveTick;             // per wave
         public readonly byte[] WaveColor;           // per wave
         public readonly int[] WaveCount;            // per wave
         public readonly int[] WaveSpacingTicks;     // per wave
         public readonly int[] WaveSourceNode;       // per wave: authored source node
         public readonly bool[] WaveExpress;         // per wave; data only until no-wait semantics land
+        public readonly byte[] WaveShape;           // per wave: CatShape code
         public readonly int WinDeliveries;
         public readonly int TimeLimitTicks;
         public readonly int QCapBound;              // digest padding: queue slots per node (A-C1-7 i)
@@ -84,7 +97,10 @@ namespace CatMetro.Domain
             int[] gateEdge = null,
             GateWindow[][] gateOpenWindows = null,
             int[] gatePreviewTicks = null,
-            bool[] waveExpress = null)
+            bool[] waveExpress = null,
+            bool[] edgeTunnel = null,
+            byte[] stationShape = null,
+            byte[] waveShape = null)
         {
             if (perfectMaxSwitches < FlipBudget.Unbudgeted)
                 throw new ArgumentOutOfRangeException(nameof(perfectMaxSwitches));
@@ -97,6 +113,7 @@ namespace CatMetro.Domain
             int edgeLength = edgeFrom == null ? 0 : edgeFrom.Length;
             EdgeOneWay = BoolDataOrDefault(edgeOneWay, edgeLength, true, nameof(edgeOneWay));
             EdgeReversible = BoolDataOrDefault(edgeReversible, edgeLength, false, nameof(edgeReversible));
+            EdgeTunnel = BoolDataOrDefault(edgeTunnel, edgeLength, false, nameof(edgeTunnel));
             if (waveTick == null || waveColor == null || waveCount == null
                 || waveSpacingTicks == null
                 || waveTick.Length != waveColor.Length
@@ -156,11 +173,14 @@ namespace CatMetro.Domain
             StationNode = stationNode;
             StationAccepts = stationAccepts;
             StationCapacity = stationCapacity;
+            int stationLength = stationNode == null ? 0 : stationNode.Length;
+            StationShape = ShapeDataOrDefault(stationShape, stationLength, nameof(stationShape));
             WaveTick = waveTick;
             WaveColor = waveColor;
             WaveCount = waveCount;
             WaveSpacingTicks = waveSpacingTicks;
             WaveExpress = BoolDataOrDefault(waveExpress, waveLength, false, nameof(waveExpress));
+            WaveShape = ShapeDataOrDefault(waveShape, waveLength, nameof(waveShape));
             WinDeliveries = winDeliveries;
             TimeLimitTicks = timeLimitTicks;
             QCapBound = qCapBound;
@@ -195,6 +215,25 @@ namespace CatMetro.Domain
                 return values;
             }
             return new int[expectedLength];
+        }
+
+        private static byte[] ShapeDataOrDefault(byte[] values, int expectedLength, string paramName)
+        {
+            if (values != null)
+            {
+                if (values.Length != expectedLength)
+                    throw new ArgumentException(
+                        $"{paramName} length must be {expectedLength}", paramName);
+                for (int i = 0; i < values.Length; i++)
+                    if (!CatShape.IsKnown(values[i]))
+                        throw new ArgumentException(
+                            $"{paramName}[{i}] is not a known CatShape code", paramName);
+                return values;
+            }
+
+            var materialized = new byte[expectedLength];
+            for (int i = 0; i < materialized.Length; i++) materialized[i] = CatShape.Round;
+            return materialized;
         }
 
         private static void SetGateData(

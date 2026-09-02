@@ -91,12 +91,13 @@ namespace CatMetro.Content
         public readonly int TravelTicks;
         public readonly bool OneWay;
         public readonly bool Reversible;
+        public readonly bool Tunnel;
 
         public EdgeDto(string id, string from, string to, int travelTicks,
-            bool oneWay = true, bool reversible = false)
+            bool oneWay = true, bool reversible = false, bool tunnel = false)
         {
             Id = id; From = from; To = to; TravelTicks = travelTicks;
-            OneWay = oneWay; Reversible = reversible;
+            OneWay = oneWay; Reversible = reversible; Tunnel = tunnel;
         }
     }
 
@@ -117,11 +118,12 @@ namespace CatMetro.Content
         public readonly string NodeId;
         private readonly string[] _accepts;
         public readonly int Capacity;
+        public readonly string Shape;
         public ReadOnlyMemory<string> Accepts => _accepts;
 
-        public StationDto(string nodeId, string[] accepts, int capacity)
+        public StationDto(string nodeId, string[] accepts, int capacity, string shape = "round")
         {
-            NodeId = nodeId; _accepts = accepts; Capacity = capacity;
+            NodeId = nodeId; _accepts = accepts; Capacity = capacity; Shape = shape;
         }
     }
 
@@ -174,12 +176,13 @@ namespace CatMetro.Content
         public readonly int Count;
         public readonly int SpacingTicks;
         public readonly bool Express;
+        public readonly string Shape;
 
         public WaveDto(int tick, string sourceNode, string color, int count, int spacingTicks,
-            bool express = false)
+            bool express = false, string shape = "round")
         {
             Tick = tick; SourceNode = sourceNode; Color = color; Count = count;
-            SpacingTicks = spacingTicks; Express = express;
+            SpacingTicks = spacingTicks; Express = express; Shape = shape;
         }
     }
 
