@@ -13,6 +13,12 @@ namespace CatMetro.Presentation.Screens
         public const float CtaBottomInsetDp = 16f;
         public const float HeaderHeightDp = 84f;
         public const float ContentGapDp = 16f;
+        public const float AudioToggleWidthDp = 72f;
+        public const float AudioToggleHeightDp = 52f;
+        public const float AudioToggleInsetDp = 16f;
+        public const float HeaderControlGapDp = 8f;
+        public const float TitleShadowXDp = 3f;
+        public const float TitleShadowYDp = 5f;
 
         public static Rect PinRect(Rect safeArea, float dpi) =>
             PrimaryPinRect(safeArea, dpi, dailyEntryUnlocked: false);
@@ -64,6 +70,57 @@ namespace CatMetro.Presentation.Screens
             float height = HeaderHeightDp * pxPerDp;
             return new Rect(safeArea.x + inset, safeArea.yMax - height,
                 safeArea.width - inset * 2f, height);
+        }
+
+        public static Rect AudioToggleRect(Rect safeArea, float dpi)
+        {
+            float pxPerDp = HudBands.PxPerDp(dpi);
+            float inset = AudioToggleInsetDp * pxPerDp;
+            float width = Mathf.Min(AudioToggleWidthDp * pxPerDp,
+                Mathf.Max(0f, safeArea.width - inset * 2f));
+            float height = Mathf.Min(AudioToggleHeightDp * pxPerDp,
+                Mathf.Max(0f, safeArea.height - inset * 2f));
+            return new Rect(safeArea.x + inset,
+                safeArea.yMax - inset - height, width, height);
+        }
+
+        public static Rect TitleRect(Rect safeArea, float dpi,
+            bool audioToggleVisible, bool reminderGearVisible)
+        {
+            var header = HeaderRect(safeArea, dpi);
+            float pxPerDp = HudBands.PxPerDp(dpi);
+            float gap = HeaderControlGapDp * pxPerDp;
+            float xMin = header.xMin;
+            float xMax = header.xMax;
+
+            if (audioToggleVisible)
+                xMin = Mathf.Max(xMin, AudioToggleRect(safeArea, dpi).xMax + gap);
+            if (reminderGearVisible)
+            {
+                // The carved plaque keeps its 3dp right/down toy shadow. Reserve that painted
+                // lip as well as the face so the visible sign still clears the gear by 8dp.
+                float shadowDx = TitleShadowXDp * pxPerDp;
+                xMax = Mathf.Min(xMax,
+                    DailyReminderLayout.GearRect(safeArea, dpi).xMin - gap - shadowDx);
+            }
+
+            if (xMax < xMin)
+            {
+                float center = Mathf.Clamp((xMin + xMax) * 0.5f,
+                    header.xMin, header.xMax);
+                xMin = center;
+                xMax = center;
+            }
+
+            return new Rect(xMin, header.y, xMax - xMin, header.height);
+        }
+
+        public static Rect TitleShadowRect(Rect titlePlaque, float dpi)
+        {
+            float pxPerDp = HudBands.PxPerDp(dpi);
+            return new Rect(titlePlaque.x + TitleShadowXDp * pxPerDp,
+                titlePlaque.y - TitleShadowYDp * pxPerDp,
+                titlePlaque.width, titlePlaque.height);
         }
 
         public static Rect HeroRect(Rect safeArea, float dpi)

@@ -485,6 +485,10 @@ namespace CatMetro.Tests.PlayMode
             var setup = CreateSetup(persistence: persistence);
             setup.Backend.GrantOnPurchase = true;
             CreateView(setup);
+            int confirmations = 0;
+            _view.PurchaseConfirmed += () =>
+                throw new InvalidOperationException("presentation feedback fault");
+            _view.PurchaseConfirmed += () => confirmations++;
             _view.Open();
             Layout();
             yield return null;
@@ -496,6 +500,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(setup.Backend.PurchaseCalls, Is.EqualTo(1));
             Assert.That(setup.Backend.LastPurchasedProductId, Is.EqualTo("cm_outfit_conductor"));
             Assert.That(setup.Purchases.IsUnlocked("outfit_conductor"), Is.True);
+            Assert.That(confirmations, Is.EqualTo(1),
+                "one faulty feedback subscriber does not block later subscribers or duplicate delivery");
             Assert.That(setup.Profile.Profile.LoadoutFor("red_tabby").OutfitId,
                 Is.EqualTo("outfit_conductor"));
             Assert.That(Portrait("LargePortrait").AppliedOutfitAssetId,
@@ -809,6 +815,10 @@ namespace CatMetro.Tests.PlayMode
             var setup = CreateSetup(persistence: persistence);
             setup.Backend.GrantOnPurchase = true;
             CreateView(setup);
+            int confirmations = 0;
+            _view.PurchaseConfirmed = () =>
+                throw new InvalidOperationException("isolated test subscriber");
+            _view.PurchaseConfirmed += () => confirmations++;
             _view.Open();
             Layout();
             yield return null;
@@ -819,6 +829,8 @@ namespace CatMetro.Tests.PlayMode
 
             Assert.That(setup.Purchases.IsUnlocked("outfit_conductor"), Is.True,
                 "the purchase ledger is not rolled back by a profile disk refusal");
+            Assert.That(confirmations, Is.EqualTo(1),
+                "authoritative paid success publishes exactly once, independent of equip save");
             Assert.That(setup.Profile.Profile.LoadoutFor("red_tabby").OutfitId, Is.Empty);
             Assert.That(setup.Profile.CurrentPortrait.OutfitAssetId, Is.Empty);
             Assert.That(Portrait("LargePortrait").AppliedOutfitAssetId, Is.Empty);
@@ -830,6 +842,8 @@ namespace CatMetro.Tests.PlayMode
         {
             var setup = CreateSetup();
             CreateView(setup);
+            int confirmations = 0;
+            _view.PurchaseConfirmed = () => confirmations++;
             _view.Open();
             Layout();
             yield return null;
@@ -851,6 +865,8 @@ namespace CatMetro.Tests.PlayMode
                 Tap(FindRect("PrimaryActionChip"));
                 yield return null;
                 Assert.That(setup.Purchases.IsUnlocked("outfit_conductor"), Is.False);
+                Assert.That(confirmations, Is.Zero,
+                    "unconfirmed and terminal non-success outcomes publish no paid success");
                 Assert.That(setup.Profile.Profile.LoadoutFor("red_tabby").OutfitId, Is.Empty);
                 Assert.That(StatusText(), Is.EqualTo(UiStrings.Get(testCase.Item2)),
                     testCase.Item1.ToString());

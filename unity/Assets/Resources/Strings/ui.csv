@@ -32,6 +32,8 @@ reminder.status.unknown,Notification permission not decided.
 reminder.status.unavailable,Notifications unavailable on this device.
 reminder.settings.open,Open notification settings
 reminder.settings.close,Close
+settings.audio.on,SFX on
+settings.audio.off,SFX off
 wardrobe.entry,Wardrobe
 wardrobe.title,Profile Wardrobe
 wardrobe.back,Back
