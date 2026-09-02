@@ -47,6 +47,8 @@ namespace CatMetro.Tests.PlayMode
         [SetUp]
         public void SetUp()
         {
+            CatMetro.Services.Purchases.PurchaseRuntime.ResetForTests();
+            CatMetro.Services.Cosmetics.CosmeticRuntime.ResetForTests();
             _tmpDir = Path.Combine(Path.GetTempPath(), "cm-devcap3-test", "devcap");
             Directory.CreateDirectory(_tmpDir);
             DevBootOverride.DirectoryOverride = _tmpDir;
@@ -62,6 +64,8 @@ namespace CatMetro.Tests.PlayMode
             DevLevelOverride.DirectoryOverride = null; // F5
             if (_root != null) Object.Destroy(_root.gameObject);
             _root = null;
+            CatMetro.Services.Cosmetics.CosmeticRuntime.ResetForTests();
+            CatMetro.Services.Purchases.PurchaseRuntime.ResetForTests();
             var parent = Path.GetDirectoryName(_tmpDir);
             if (parent != null && Directory.Exists(parent)) Directory.Delete(parent, true);
         }
@@ -167,6 +171,8 @@ namespace CatMetro.Tests.PlayMode
             // the SEAM_LOADED line is the NORMAL shipped-boot log (GameRoot.cs) — expected
             // here, never an "unexpected" log; only DEVCAP_BOOT_OVERRIDE_INVALID may not fire
             LogAssert.Expect(LogType.Log, "SEAM_LOADED content/levels/L001.json");
+            // Every real boot also emits the exact independent numeric catalogue read-back.
+            LogAssert.Expect(LogType.Log, CosmeticBootWiringTests.ExpectedDiagnostic);
             _root = GameRoot.Launch();
             yield return null;
             Assert.That(_root.Session, Is.Not.Null);
@@ -188,6 +194,7 @@ namespace CatMetro.Tests.PlayMode
         {
             File.WriteAllText(Path.Combine(_tmpDir, "boot.json"), "{\"bootToHome\": false}");
             LogAssert.Expect(LogType.Log, "SEAM_LOADED content/levels/L001.json");
+            LogAssert.Expect(LogType.Log, CosmeticBootWiringTests.ExpectedDiagnostic);
             _root = GameRoot.Launch();
             yield return null;
             Assert.That(_root.Session, Is.Not.Null);

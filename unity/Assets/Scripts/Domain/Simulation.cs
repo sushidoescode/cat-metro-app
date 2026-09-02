@@ -456,6 +456,7 @@ namespace CatMetro.Domain
 
         private static int SwitchIndexAtNode(LevelGraph g, int node)
         {
+            LevelGraph g = state.Graph;
             for (int s = 0; s < g.SwitchNode.Length; s++)
                 if (g.SwitchNode[s] == node)
                     return s;

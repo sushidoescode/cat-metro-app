@@ -5,8 +5,8 @@ using CatMetro.Application.Save;
 
 namespace CatMetro.Tests.Save
 {
-    // CM-C7 criteria 2 + 3: the payload v1 key set is EXACTLY ADR-0006 §2 — and the three OPEN
-    // sub-shapes are absent, not guessed.
+    // The v3 payload remains additive over ADR-0006's v1 shape. Cosmetics belong to profile;
+    // Daily Live, reminders, local leases, and rewarded-video caps remain unchanged.
     public sealed class SavePayloadTests
     {
         private static readonly string[] TopLevel =
@@ -20,6 +20,55 @@ namespace CatMetro.Tests.Save
         {
             var keys = SaveDefaults.FreshPayload().Properties().Select(p => p.Name).ToArray();
             Assert.That(keys, Is.EquivalentTo(TopLevel), "no more, no fewer (criterion 2)");
+        }
+
+        [Test]
+        public void FreshPayload_IsV3_WithEveryReservedDefault()
+        {
+            var payload = SaveDefaults.FreshPayload();
+
+            Assert.That(SaveDefaults.SAVE_VERSION, Is.EqualTo(3));
+            Assert.That((int)payload["saveVersion"], Is.EqualTo(3));
+            Assert.That((int)payload["daily"]["lifetimeCompletions"], Is.Zero);
+            Assert.That((string)payload["daily"]["trustedDateKey"], Is.Empty);
+            Assert.That(payload["daily"]["completedKeys"], Is.InstanceOf<JArray>());
+            Assert.That(((JArray)payload["daily"]["completedKeys"]).Count, Is.Zero);
+            Assert.That((bool)payload["settings"]["dailyReminderEnabled"], Is.False);
+            Assert.That((bool)payload["settings"]["dailyReminderPromptSeen"], Is.False);
+            Assert.That((string)payload["settings"]["dailyReminderSlot"], Is.EqualTo("morning"));
+            Assert.That(payload["entitlements"]["localLeases"], Is.InstanceOf<JArray>());
+            Assert.That(((JArray)payload["entitlements"]["localLeases"]).Count, Is.Zero);
+            Assert.That((string)payload["caps"]["rewarded"]["dateKey"], Is.Empty);
+            Assert.That(payload["caps"]["rewarded"]["counters"], Is.InstanceOf<JObject>());
+            Assert.That(((JObject)payload["caps"]["rewarded"]["counters"]).Count, Is.Zero);
+        }
+
+        [Test]
+        public void FreshPayload_IsV3_AndCosmeticsLivesOnlyInsideProfile()
+        {
+            var payload = SaveDefaults.FreshPayload();
+
+            Assert.That((int)payload["saveVersion"], Is.EqualTo(3));
+            Assert.That(payload["cosmetics"], Is.Null, "cosmetics is not a top-level sibling");
+            var cosmetics = (JObject)payload["profile"]["cosmetics"];
+            Assert.That(cosmetics.Properties().Select(p => p.Name), Is.EquivalentTo(new[]
+            {
+                "selectedCatId", "earnedCatIds", "earnedItemIds", "loadouts",
+            }));
+            Assert.That((string)cosmetics["selectedCatId"], Is.EqualTo("red_tabby"));
+            CollectionAssert.IsEmpty((JArray)cosmetics["earnedCatIds"]);
+            CollectionAssert.IsEmpty((JArray)cosmetics["earnedItemIds"]);
+            var loadouts = (JArray)cosmetics["loadouts"];
+            Assert.That(loadouts.Count, Is.EqualTo(1));
+            var loadout = (JObject)loadouts[0];
+            Assert.That(loadout.Properties().Select(p => p.Name), Is.EquivalentTo(new[]
+            {
+                "catId", "outfitId", "accessoryId", "frameId",
+            }));
+            Assert.That((string)loadout["catId"], Is.EqualTo("red_tabby"));
+            Assert.That((string)loadout["outfitId"], Is.Empty);
+            Assert.That((string)loadout["accessoryId"], Is.Empty);
+            Assert.That((string)loadout["frameId"], Is.Empty);
         }
 
         // Review F5: criterion 2 says "the SERIALISED payload's top-level keys" — assert the
@@ -77,19 +126,34 @@ namespace CatMetro.Tests.Save
         {
             var p = SaveDefaults.FreshPayload();
             Assert.That(((JObject)p["profile"]).Properties().Select(x => x.Name),
-                Is.EquivalentTo(new[] { "createdAtUtc", "lastSeenAtUtc", "sessionCount" }));
+                Is.EquivalentTo(new[]
+                {
+                    "createdAtUtc", "lastSeenAtUtc", "sessionCount", "cosmetics",
+                }));
             Assert.That(((JObject)p["progress"]).Properties().Select(x => x.Name),
                 Is.EquivalentTo(new[] { "levels", "districtsUnlocked", "tutorialDone" }));
             Assert.That(((JObject)p["daily"]).Properties().Select(x => x.Name),
-                Is.EquivalentTo(new[] { "lastDateKey", "streakDays", "playedKeys" }));
+                Is.EquivalentTo(new[]
+                {
+                    "lastDateKey", "streakDays", "playedKeys", "trustedDateKey",
+                    "completedKeys", "lifetimeCompletions",
+                }));
             Assert.That(((JObject)p["economy"]).Properties().Select(x => x.Name),
                 Is.EquivalentTo(new[] { "tickets", "rewindBalance", "freeRewindDateKey" }));
+            Assert.That(((JObject)p["caps"]).Properties().Select(x => x.Name),
+                Is.EquivalentTo(new[] { "dateKey", "counters", "rewarded" }));
+            Assert.That(((JObject)p["caps"]["rewarded"]).Properties().Select(x => x.Name),
+                Is.EquivalentTo(new[] { "dateKey", "counters" }));
             Assert.That(((JObject)p["entitlements"]).Properties().Select(x => x.Name),
-                Is.EquivalentTo(new[] { "appUserId", "active", "fetchedAtUtc" }));
+                Is.EquivalentTo(new[] { "appUserId", "active", "fetchedAtUtc", "localLeases" }));
             Assert.That(((JObject)p["breadcrumbs"]).Properties().Select(x => x.Name),
                 Is.EquivalentTo(new[] { "screenStack", "purchase" }));
             Assert.That(((JObject)p["settings"]).Properties().Select(x => x.Name),
-                Is.EquivalentTo(new[] { "haptics", "motion", "audio", "equippedThemeId" }));
+                Is.EquivalentTo(new[]
+                {
+                    "haptics", "motion", "audio", "equippedThemeId", "dailyReminderEnabled",
+                    "dailyReminderPromptSeen", "dailyReminderSlot",
+                }));
         }
 
         // Criterion 3: the three OPEN sub-shapes are ABSENT, not guessed.

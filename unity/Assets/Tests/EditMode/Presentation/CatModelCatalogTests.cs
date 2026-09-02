@@ -1,0 +1,883 @@
+using System;
+using System.Collections.Generic;
+using CatMetro.Domain;
+using CatMetro.Presentation.Board;
+using CatMetro.Presentation.Cats;
+using CatMetro.Presentation.Theme;
+using NUnit.Framework;
+using UnityEditor;
+using UnityEditor.Animations;
+using UnityEngine;
+using UnityEngine.TestTools;
+using Object = UnityEngine.Object;
+
+namespace CatMetro.Tests.EditMode.Presentation
+{
+    public sealed class CatRigMonoBehaviourProbe : MonoBehaviour
+    {
+        public static int AwakeCount;
+
+        private void Awake() => AwakeCount++;
+    }
+
+    public sealed class CatModelCatalogTests
+    {
+        [Test]
+        public void Task17HandoffContract_UsesThePinnedResourceAndStateLiterals()
+        {
+            Assert.That(CatModelCatalog.ResourcePath, Is.EqualTo("CatRigs/BoardCatRig"));
+            Assert.That(CatModelCatalog.IdleSitClip, Is.EqualTo("Cat_IdleSit"));
+            Assert.That(CatModelCatalog.WalkClip, Is.EqualTo("Cat_Walk"));
+            Assert.That(CatModelCatalog.BoardClip, Is.EqualTo("Cat_Board"));
+            Assert.That(CatModelCatalog.AlightClip, Is.EqualTo("Cat_Alight"));
+            Assert.That(CatModelCatalog.CelebrateClip, Is.EqualTo("Cat_Celebrate"));
+            Assert.That(CatModelCatalog.PresenterScale, Is.EqualTo(0.42f));
+            Assert.That(CatModelCatalog.WalkTravelSpeedAtOneX, Is.EqualTo(0.100367f));
+            Assert.That(CatModelCatalog.EarDeformerPathA, Is.EqualTo(
+                "Armature/tripo::Root/tripo::Head_0/tripo::Head_1/tripo::Head_2/bone_4"));
+            Assert.That(CatModelCatalog.EarDeformerPathB, Is.EqualTo(
+                "Armature/tripo::Root/tripo::Head_0/tripo::Head_1/tripo::Head_2/tripo::Head_3"));
+        }
+
+        [Test]
+        public void MissingRig_StaysUnadmittedWithAReadBackReason()
+        {
+            var catalog = new CatModelCatalog(null);
+
+            Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+            Assert.That(catalog.RejectionReason, Is.Not.Empty);
+            Assert.That(catalog.TryInstantiate(null, out var instance), Is.False);
+            Assert.That(instance, Is.Null);
+        }
+
+        [Test]
+        public void ColliderOnRig_RejectsThePrefabRatherThanAdmittingInteractiveDecoration()
+        {
+            var prefab = new GameObject("invalid cat rig");
+            prefab.AddComponent<BoxCollider>();
+            try
+            {
+                var catalog = new CatModelCatalog(prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain("Collider"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(prefab);
+            }
+        }
+
+        [TestCase("BoxCollider2D")]
+        [TestCase("Rigidbody2D")]
+        public void TwoDimensionalPhysicsOnRig_IsRejectedAsInteractiveDecoration(string component)
+        {
+            var prefab = new GameObject("invalid 2D physics cat rig");
+            if (component == "BoxCollider2D") prefab.AddComponent<BoxCollider2D>();
+            else prefab.AddComponent<Rigidbody2D>();
+            try
+            {
+                var catalog = new CatModelCatalog(prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain(component));
+            }
+            finally
+            {
+                Object.DestroyImmediate(prefab);
+            }
+        }
+
+        [Test]
+        public void MonoBehaviourOnOtherwiseConformingRig_IsRejectedBeforeInstantiation()
+        {
+            using (var fixture = new ConformingRigFixture())
+            {
+                fixture.Prefab.AddComponent<CatRigMonoBehaviourProbe>();
+                CatRigMonoBehaviourProbe.AwakeCount = 0;
+
+                var catalog = new CatModelCatalog(fixture.Prefab);
+                bool instantiated = catalog.TryInstantiate(null, out GameObject instance);
+                if (instance != null) Object.DestroyImmediate(instance);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain("MonoBehaviour"));
+                Assert.That(instantiated, Is.False);
+                Assert.That(CatRigMonoBehaviourProbe.AwakeCount, Is.EqualTo(0),
+                    "catalog admission must not clone and awaken an external rig script");
+            }
+        }
+
+        [Test]
+        public void StateMachineBehaviour_IsRejectedBeforeAnyAnimatorSamplingCallback()
+        {
+            using (var fixture = new ConformingRigFixture(addStateBehaviour: true))
+            {
+                Assert.That(fixture.StateBehaviour,
+                    Is.TypeOf<CatRigStateBehaviourProbe>(),
+                    "the negative fixture must attach a resolvable MonoScript");
+                CatRigStateBehaviourProbe.StateEnterCount = 0;
+
+                var catalog = new CatModelCatalog(fixture.Prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain("StateMachineBehaviour"));
+                Assert.That(CatRigStateBehaviourProbe.StateEnterCount, Is.EqualTo(0),
+                    "catalog validation must reject controller callbacks before Rebind/Update");
+            }
+        }
+
+        [Test]
+        public void MatchingClipsWithWrongStateNames_RejectTheRigBeforeItCanSilentlyFailPlayback()
+        {
+            var prefab = new GameObject("rig with wrongly named states");
+            var clips = new[]
+            {
+                Clip(CatModelCatalog.IdleSitClip),
+                Clip(CatModelCatalog.WalkClip),
+                Clip(CatModelCatalog.BoardClip),
+                Clip(CatModelCatalog.AlightClip),
+                Clip(CatModelCatalog.CelebrateClip),
+            };
+            var controller = new AnimatorController();
+            controller.AddLayer("Base Layer");
+            foreach (var clip in clips)
+                controller.layers[0].stateMachine.AddState("wrong_" + clip.name).motion = clip;
+            var animator = prefab.AddComponent<Animator>();
+            animator.runtimeAnimatorController = controller;
+            animator.applyRootMotion = false;
+            try
+            {
+                var catalog = new CatModelCatalog(prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain("state"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(prefab);
+                Object.DestroyImmediate(controller);
+                foreach (var clip in clips) Object.DestroyImmediate(clip);
+            }
+        }
+
+        [Test]
+        public void SwappedWalkAndBoardStateMotions_AreRejectedDespiteCompleteLiteralSets()
+        {
+            using (var fixture = new ConformingRigFixture(swapWalkAndBoard: true))
+            {
+                var catalog = new CatModelCatalog(fixture.Prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain("Cat_Walk"));
+                Assert.That(catalog.RejectionReason, Does.Contain("clip"));
+            }
+        }
+
+        [TestCase("Cat_IdleSit")]
+        [TestCase("Cat_Walk")]
+        [TestCase("Cat_Board")]
+        [TestCase("Cat_Alight")]
+        [TestCase("Cat_Celebrate")]
+        public void EmptyMappedRequiredClip_IsRejectedDespiteAnAnimatedSameNamedDecoy(
+            string requiredState)
+        {
+            using (var fixture = new ConformingRigFixture(
+                emptyMappedClipName: requiredState))
+            {
+                var catalog = new CatModelCatalog(fixture.Prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain(requiredState));
+                Assert.That(catalog.RejectionReason, Does.Contain("positive-length"));
+            }
+        }
+
+        [Test]
+        public void NonemptyZeroLengthMappedClip_IsRejectedByThePositiveLengthGate()
+        {
+            using (var fixture = new ConformingRigFixture(
+                zeroLengthMappedClipName: CatModelCatalog.BoardClip))
+            {
+                AnimationClip clip = fixture.ClipNamed(CatModelCatalog.BoardClip);
+                Assert.That(clip.empty, Is.False,
+                    "this fixture must isolate length from the separate empty-clip check");
+                Assert.That(clip.length, Is.Zero);
+                EditorCurveBinding[] bindings = AnimationUtility.GetCurveBindings(clip);
+                Assert.That(bindings.Length, Is.EqualTo(3),
+                    "the zero-length negative case keeps TASK 17's XYZ packing");
+                foreach (EditorCurveBinding binding in bindings)
+                {
+                    AnimationCurve curve = AnimationUtility.GetEditorCurve(clip, binding);
+                    Assert.That(curve.keys.Length, Is.EqualTo(1), binding.propertyName);
+                    Assert.That(curve.keys[0].time, Is.Zero, binding.propertyName);
+                }
+
+                var catalog = new CatModelCatalog(fixture.Prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain(CatModelCatalog.BoardClip));
+                Assert.That(catalog.RejectionReason, Does.Contain("positive-length"));
+            }
+        }
+
+        [Test]
+        public void PositiveLengthBindPoseFallbackShape_IsAdmittedByTheStrictGate()
+        {
+            using (var fixture = new ConformingRigFixture())
+            {
+                Assert.That(fixture.Prefab.transform.Find("Armature").localPosition,
+                    Is.EqualTo(new Vector3(0f, 0.4853515f, 0f)),
+                    "the synthetic curves must preserve TASK 17's measured bind position");
+                string[] fallbackNames =
+                {
+                    CatModelCatalog.IdleSitClip,
+                    CatModelCatalog.BoardClip,
+                    CatModelCatalog.AlightClip,
+                    CatModelCatalog.CelebrateClip,
+                };
+                foreach (string fallbackName in fallbackNames)
+                {
+                    AnimationClip clip = fixture.ClipNamed(fallbackName);
+                    Assert.That(clip.empty, Is.False, fallbackName);
+                    Assert.That(clip.length,
+                        Is.EqualTo(1f / 24f).Within(0.000001f), fallbackName);
+                    EditorCurveBinding[] bindings = AnimationUtility.GetCurveBindings(clip);
+                    Assert.That(bindings.Length, Is.EqualTo(3), fallbackName);
+                    CollectionAssert.AreEquivalent(new[]
+                    {
+                        "m_LocalPosition.x", "m_LocalPosition.y", "m_LocalPosition.z",
+                    }, Array.ConvertAll(bindings, binding => binding.propertyName), fallbackName);
+                    foreach (EditorCurveBinding binding in bindings)
+                    {
+                        Assert.That(binding.path, Is.EqualTo("Armature"), fallbackName);
+                        Assert.That(binding.type, Is.EqualTo(typeof(Transform)), fallbackName);
+                        AnimationCurve curve = AnimationUtility.GetEditorCurve(clip, binding);
+                        Assert.That(curve.keys.Length, Is.EqualTo(1), fallbackName);
+                        Assert.That(curve.keys[0].time,
+                            Is.EqualTo(1f / 24f).Within(0.000001f), fallbackName);
+                        float expectedValue = binding.propertyName == "m_LocalPosition.y"
+                            ? 0.4853515f : 0f;
+                        Assert.That(curve.keys[0].value,
+                            Is.EqualTo(expectedValue).Within(0.000001f), fallbackName);
+                    }
+                }
+
+                var catalog = new CatModelCatalog(fixture.Prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(1),
+                    catalog.RejectionReason);
+            }
+        }
+
+        [Test]
+        public void FloatNoiseCenteredPivot_IsAdmittedWithinExplicitTolerance()
+        {
+            const float floatNoise = -2.98023224e-08f;
+            using (var fixture = new ConformingRigFixture(
+                       centerX: floatNoise, centerZ: -floatNoise))
+            {
+                MeshFilter body = fixture.Prefab.transform.Find("RigBody")
+                    .GetComponent<MeshFilter>();
+                Bounds authored = BoundsIn(fixture.Prefab.transform, body);
+                Assert.That(authored.center.x, Is.Not.Zero,
+                    "the regression fixture must retain the measured X residue");
+                Assert.That(authored.center.z, Is.Not.Zero,
+                    "the regression fixture must retain the measured Z residue");
+                Assert.That(Mathf.Abs(authored.center.x), Is.LessThanOrEqualTo(0.0001f));
+                Assert.That(Mathf.Abs(authored.center.z), Is.LessThanOrEqualTo(0.0001f));
+
+                var catalog = new CatModelCatalog(fixture.Prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(1),
+                    catalog.RejectionReason);
+            }
+        }
+
+        [TestCase(0.01f, 0f)]
+        [TestCase(0f, 0.01f)]
+        public void GenuinelyOffCenterPivot_IsRejected(float centerX, float centerZ)
+        {
+            using (var fixture = new ConformingRigFixture(
+                       centerX: centerX, centerZ: centerZ))
+            {
+                var catalog = new CatModelCatalog(fixture.Prefab);
+
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(0));
+                Assert.That(catalog.RejectionReason, Does.Contain("ground-centred"));
+            }
+        }
+
+        [Test]
+        public void ConformingRig_IsAdmittedAndToyTrainMapsItsAxesScaleAndRequiredPlayback()
+        {
+            using (var fixture = new ConformingRigFixture())
+            {
+                var catalog = new CatModelCatalog(fixture.Prefab);
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(1), catalog.RejectionReason);
+
+                var host = new GameObject("conforming-rig-train-host");
+                try
+                {
+                    var view = ToyTrainView.Create(host.transform, "train:rig",
+                        new[] { 0 }, new[] { 1 }, catalog);
+                    view.SyncSlot(0x0000000100000001L, CatColor.Red);
+
+                    Assert.That(view.RigAdmitted, Is.True, view.RigFallbackReason);
+                    Transform cat = view.transform.Find("Carriage/Cat");
+                    Animator[] animators = cat.GetComponentsInChildren<Animator>(true);
+                    Assert.That(animators.Length, Is.EqualTo(1));
+                    Assert.That(animators[0].applyRootMotion, Is.False);
+
+                    Transform rig = animators[0].transform;
+                    Assert.That(rig.localScale,
+                        Is.EqualTo(Vector3.one * 0.42f));
+                    AssertDirection(rig.localRotation * Vector3.up, Vector3.back,
+                        "imported +Y must become cat/tabletop up (-Z)");
+                    AssertDirection(rig.localRotation * Vector3.forward, Vector3.right,
+                        "imported +Z must become the cat's +X facing axis");
+                    AssertDirection(rig.TransformDirection(Vector3.up),
+                        cat.TransformDirection(Vector3.back),
+                        "world-space imported up must stand away from the tabletop");
+                    AssertDirection(rig.TransformDirection(Vector3.forward),
+                        cat.TransformDirection(Vector3.right),
+                        "world-space imported forward must face with the cat");
+                    Assert.That(cat.Find("Head").GetComponent<MeshRenderer>().enabled, Is.False);
+                    Assert.That(cat.Find("EyeLeft").GetComponent<MeshRenderer>().enabled, Is.False);
+                    Renderer[] rigRenderers = rig.GetComponentsInChildren<Renderer>(true);
+                    Assert.That(rigRenderers, Has.Length.EqualTo(2),
+                        "the fixture must exercise production's all-renderers tint loop");
+                    AssertTints(rigRenderers, CatLine.ColorOf("red"),
+                        "the admitted rig must inherit the authoritative cat-line tint");
+                    view.SyncSlot(0x0000000100000002L, CatColor.Blue);
+                    AssertTints(rigRenderers, CatLine.ColorOf("blue"),
+                        "occupant reuse must retint the admitted rig, not retain its old line");
+
+                    Bounds standing = BoundsIn(cat,
+                        rig.GetComponentInChildren<MeshFilter>(true));
+                    Assert.That(standing.min.z, Is.EqualTo(-0.42f).Within(0.0001f));
+                    Assert.That(standing.max.z, Is.EqualTo(0f).Within(0.0001f));
+                    Assert.That(standing.size.z, Is.EqualTo(0.42f).Within(0.0001f));
+
+                    AssertPlays(view, animators[0], CatPresentationState.WaitingIdle,
+                        "Base Layer.Cat_IdleSit");
+                    AssertPlays(view, animators[0], CatPresentationState.Walk,
+                        "Base Layer.Cat_Walk");
+                    AssertPlays(view, animators[0], CatPresentationState.Board,
+                        "Base Layer.Cat_Board");
+                    AssertPlays(view, animators[0], CatPresentationState.Alight,
+                        "Base Layer.Cat_Alight");
+                    AssertPlays(view, animators[0], CatPresentationState.Celebrate,
+                        "Base Layer.Cat_Celebrate");
+                }
+                finally
+                {
+                    Object.DestroyImmediate(host);
+                }
+            }
+        }
+
+        [Test]
+        public void ResourcesRig_MeasuredEarBranchesCarryTierOneTwitchWithoutAPlaybackDependency()
+        {
+            GameObject prefab = Resources.Load<GameObject>(CatModelCatalog.ResourcePath);
+            if (prefab == null)
+                Assert.Ignore("The licensed local rig is absent; run this in the combined asset workspace.");
+
+            var catalog = new CatModelCatalog(prefab);
+            Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(1), catalog.RejectionReason);
+            TestContext.Out.WriteLine("CAT_RIG_CATALOG_READBACK AdmittedEntryCount="
+                + catalog.AdmittedEntryCount);
+            var host = new GameObject("measured-ear-rig-host");
+            Mesh neutralMesh = null;
+            Mesh twitchMesh = null;
+            try
+            {
+                var view = ToyTrainView.Create(host.transform, "train:measured-ears",
+                    new[] { 0 }, new[] { 1 }, catalog);
+                view.SyncSlot(41L, CatColor.Red);
+                Animator animator = view.GetComponentInChildren<Animator>(true);
+                Transform branchA = animator.transform.Find(CatModelCatalog.EarDeformerPathA);
+                Transform branchB = animator.transform.Find(CatModelCatalog.EarDeformerPathB);
+                Assert.That(branchA, Is.Not.Null, "TASK 17's first measured ear path must resolve");
+                Assert.That(branchB, Is.Not.Null, "TASK 17's second measured ear path must resolve");
+
+                SkinnedMeshRenderer[] skins =
+                    animator.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                Assert.That(skins, Has.Length.EqualTo(1));
+                Assert.That(skins[0].bones, Has.Length.EqualTo(30),
+                    "the admitted artifact is TASK 17's measured 30-bone skin");
+                Assert.That(Array.IndexOf(skins[0].bones, branchA), Is.GreaterThanOrEqualTo(0));
+                Assert.That(Array.IndexOf(skins[0].bones, branchB), Is.GreaterThanOrEqualTo(0));
+                Assert.That(view.RigEarTwitchSupported, Is.True,
+                    "Tier 1 must bind only after both measured branches belong to the skin");
+
+                view.ApplyPresentation(CatPresentationState.RideIdle, 0f, true);
+                Quaternion neutralA = branchA.localRotation;
+                Quaternion neutralB = branchB.localRotation;
+                neutralMesh = new Mesh();
+                // useScale=true compensates the renderer Transform scale. The baked vertices
+                // remain renderer-local, so TransformPoint below then applies the admitted
+                // 0.42 presentation hierarchy exactly once.
+                skins[0].BakeMesh(neutralMesh, true);
+
+                float sampleTime = TimeWithLargeEarTwitch(41u);
+                CatMicroPose pose = new CatMicroMotion(41u).Evaluate(sampleTime, false, false);
+                view.ApplyPresentation(CatPresentationState.RideIdle, sampleTime, false);
+                Assert.That(Quaternion.Angle(branchA.localRotation,
+                    neutralA * Quaternion.Euler(0f, 0f,
+                        pose.EarTwitchDegrees * ToyTrainView.RigEarTwitchGain)),
+                    Is.LessThan(0.01f));
+                Assert.That(Quaternion.Angle(branchB.localRotation,
+                    neutralB * Quaternion.Euler(0f, 0f,
+                        -pose.EarTwitchDegrees * ToyTrainView.RigEarTwitchGain)),
+                    Is.LessThan(0.01f));
+
+                twitchMesh = new Mesh();
+                skins[0].BakeMesh(twitchMesh, true);
+                AssertLocalizedUpperHeadDeformation(neutralMesh, twitchMesh,
+                    skins[0].transform, animator.transform);
+            }
+            finally
+            {
+                if (neutralMesh != null) Object.DestroyImmediate(neutralMesh);
+                if (twitchMesh != null) Object.DestroyImmediate(twitchMesh);
+                Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ResourcesRig_NoLocalizedEyeControlPinsBlinkToHudAndPlaceholderCats()
+        {
+            GameObject prefab = Resources.Load<GameObject>(CatModelCatalog.ResourcePath);
+            if (prefab == null)
+                Assert.Ignore("The licensed local rig is absent; run this in the combined asset workspace.");
+
+            var catalog = new CatModelCatalog(prefab);
+            Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(1), catalog.RejectionReason);
+            var host = new GameObject("measured-blink-policy-host");
+            try
+            {
+                var rigView = ToyTrainView.Create(host.transform, "train:rig-blink-policy",
+                    new[] { 0 }, new[] { 1 }, catalog);
+                rigView.SyncSlot(41L, CatColor.Red);
+                Animator animator = rigView.GetComponentInChildren<Animator>(true);
+                foreach (SkinnedMeshRenderer skin in
+                    animator.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                    Assert.That(skin.sharedMesh.blendShapeCount, Is.EqualTo(0),
+                        "the admitted rig has no blendshape that could localize a blink");
+                foreach (Transform candidate in animator.GetComponentsInChildren<Transform>(true))
+                {
+                    string lower = candidate.name.ToLowerInvariant();
+                    Assert.That(lower.Contains("eye") || lower.Contains("lid"), Is.False,
+                        "the admitted rig has no independently named eye/lid transform");
+                }
+                Assert.That(rigView.RigBlinkSupported, Is.False,
+                    "without a localized control, broad face deformation is forbidden: " +
+                    "board-rig blink is deferred while HUD and placeholder blink remain");
+                Assert.That(rigView.transform.Find("Carriage/Cat/EyeLeft")
+                    .GetComponent<MeshRenderer>().enabled, Is.False,
+                    "admission hides the placeholder eyes rather than layering them over the rig");
+
+                var placeholderView = ToyTrainView.Create(host.transform,
+                    "train:placeholder-blink", new[] { 0 }, new[] { 1 },
+                    new CatModelCatalog(null));
+                placeholderView.SyncSlot(41L, CatColor.Red);
+                Transform eye = placeholderView.transform.Find("Carriage/Cat/EyeLeft");
+                float neutralEyeY = eye.localScale.y;
+                placeholderView.ApplyPresentation(CatPresentationState.RideIdle,
+                    TimeWithBlink(41u), false);
+                Assert.That(eye.GetComponent<MeshRenderer>().enabled, Is.True);
+                Assert.That(eye.localScale.y, Is.LessThan(neutralEyeY * 0.2f),
+                    "the explicit deferral must not remove blink from placeholder board cats");
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void WalkPlayback_UsesActualPlatformPathAndRetimesTheSameState()
+        {
+            using (var fixture = new ConformingRigFixture())
+            {
+                var host = new GameObject("walk-speed-rig-host");
+                try
+                {
+                    host.transform.localScale = new Vector3(2f, 3f, 1f);
+                    var view = ToyTrainView.Create(host.transform, "train:rig",
+                        new[] { 0 }, new[] { 1 }, new CatModelCatalog(fixture.Prefab));
+                    view.SyncSlot(0x0000000100000001L, CatColor.Red);
+                    Animator animator = view.GetComponentInChildren<Animator>(true);
+                    Transform cat = view.transform.Find("Carriage/Cat");
+                    Vector3 seatBoard = host.transform.InverseTransformPoint(cat.position);
+                    view.SetSourcePlatformAnchor(seatBoard, Vector3.down, 0);
+
+                    view.ApplyPresentation(CatPresentationState.Walk, 0.8f, false,
+                        0f, false, 1f);
+                    Assert.That(animator.speed, Is.EqualTo(2.989030f).Within(0.0001f),
+                        "lane zero is 0.30 board units, independent of board transform scale");
+
+                    view.SetSourcePlatformAnchor(seatBoard, Vector3.down, 3);
+                    view.ApplyPresentation(CatPresentationState.Walk, 0.75f, false,
+                        0.005f, false, 1f);
+                    Assert.That(animator.speed, Is.EqualTo(8.887026f).Within(0.0001f),
+                        "lane three is sqrt(0.30^2 + (2 * 0.42)^2) board units");
+
+                    view.ApplyPresentation(CatPresentationState.Walk, 0.7f, false,
+                        0.01f, false, 0.5f);
+                    Assert.That(animator.speed, Is.EqualTo(4.443513f).Within(0.0001f),
+                        "speed changes within one Walk state must not be skipped");
+
+                    view.ApplyPresentation(CatPresentationState.Board, 0.35f, false,
+                        0.02f, false, 10f);
+                    Assert.That(animator.speed, Is.EqualTo(1f),
+                        "desired travel speed affects only the in-place Walk clip");
+                }
+                finally
+                {
+                    Object.DestroyImmediate(host);
+                }
+            }
+        }
+
+        [Test]
+        public void MotionOff_FreezesIdleSitAndResamplesOnlyWhenSuppressionChanges()
+        {
+            using (var fixture = new ConformingRigFixture())
+            {
+                var host = new GameObject("motion-off-rig-host");
+                try
+                {
+                    var view = ToyTrainView.Create(host.transform, "train:rig",
+                        new[] { 0 }, new[] { 1 }, new CatModelCatalog(fixture.Prefab));
+                    view.SyncSlot(0x0000000100000001L, CatColor.Red);
+                    view.ApplyPresentation(CatPresentationState.RideIdle, 0f, false);
+                    Animator animator = view.GetComponentInChildren<Animator>(true);
+
+                    view.ApplyPresentation(CatPresentationState.RideIdle, 0.1f, true);
+                    view.ApplyPresentation(CatPresentationState.RideIdle, 0.2f, true);
+                    view.ApplyPresentation(CatPresentationState.RideIdle, 0.3f, true);
+                    Assert.That(view.RigNeutralSampleCount, Is.EqualTo(1));
+                    Assert.That(animator.GetCurrentAnimatorStateInfo(0)
+                        .IsName("Base Layer.Cat_IdleSit"), Is.True,
+                        "motion-off must not freeze the controller's non-idle default state");
+                    Assert.That(animator.speed, Is.EqualTo(0f));
+
+                    view.ApplyPresentation(CatPresentationState.RideIdle, 0.4f, false);
+                    view.ApplyPresentation(CatPresentationState.RideIdle, 0.5f, true);
+                    Assert.That(view.RigNeutralSampleCount, Is.EqualTo(2));
+                    Assert.That(animator.GetCurrentAnimatorStateInfo(0)
+                        .IsName("Base Layer.Cat_IdleSit"), Is.True);
+                }
+                finally
+                {
+                    Object.DestroyImmediate(host);
+                }
+            }
+        }
+
+        [Test]
+        public void HiddenMotionOff_SamplesNeutralBeforeDeactivationAndAfterOccupantReuse()
+        {
+            using (var fixture = new ConformingRigFixture())
+            {
+                var host = new GameObject("hidden-motion-off-rig-host");
+                try
+                {
+                    var view = ToyTrainView.Create(host.transform, "train:rig",
+                        new[] { 0 }, new[] { 1 }, new CatModelCatalog(fixture.Prefab));
+                    Transform cat = view.transform.Find("Carriage/Cat");
+                    view.SyncSlot(0x0000000100000001L, CatColor.Red);
+                    view.ApplyPresentation(CatPresentationState.RideIdle, 0f, false);
+
+                    view.ApplyPresentation(CatPresentationState.Hidden, 0.1f, true);
+
+                    Assert.That(cat.gameObject.activeSelf, Is.False);
+                    Assert.That(view.RigNeutralSampleCount, Is.EqualTo(1),
+                        "a hidden rig may claim a neutral sample only after Animator.Update ran");
+                    LogAssert.NoUnexpectedReceived();
+
+                    view.SyncSlot(0x0000000100000002L, CatColor.Blue);
+                    view.ApplyPresentation(CatPresentationState.RideIdle, 0.2f, false);
+                    view.ApplyPresentation(CatPresentationState.Hidden, 0.3f, true);
+
+                    Assert.That(cat.gameObject.activeSelf, Is.False);
+                    Assert.That(view.RigNeutralSampleCount, Is.EqualTo(2),
+                        "a reused occupant must get its own active neutral resample");
+                    LogAssert.NoUnexpectedReceived();
+                }
+                finally
+                {
+                    Object.DestroyImmediate(host);
+                }
+            }
+        }
+
+        private static void AssertPlays(ToyTrainView view, Animator animator,
+            CatPresentationState state, string expectedState)
+        {
+            view.ApplyPresentation(state, 0f, false);
+            Assert.That(animator.GetCurrentAnimatorStateInfo(0).IsName(expectedState), Is.True,
+                "presentation state " + state + " must sample " + expectedState);
+            Assert.That(animator.applyRootMotion, Is.False);
+        }
+
+        private static void AssertDirection(Vector3 actual, Vector3 expected, string message)
+        {
+            Assert.That(Vector3.Distance(actual.normalized, expected), Is.LessThan(0.0001f), message);
+        }
+
+        private static void AssertTint(Color actual, Color expected, string message)
+        {
+            // MaterialPropertyBlock SetColor/GetColor is not bit-exact in this project's
+            // Linear color space. The observed residue is about 1e-7 per channel.
+            const float tolerance = 0.000001f;
+            Assert.That(actual.r, Is.EqualTo(expected.r).Within(tolerance), message + " (r)");
+            Assert.That(actual.g, Is.EqualTo(expected.g).Within(tolerance), message + " (g)");
+            Assert.That(actual.b, Is.EqualTo(expected.b).Within(tolerance), message + " (b)");
+            Assert.That(actual.a, Is.EqualTo(expected.a).Within(tolerance), message + " (a)");
+        }
+
+        private static void AssertTints(Renderer[] renderers, Color expected, string message)
+        {
+            var properties = new MaterialPropertyBlock();
+            for (int index = 0; index < renderers.Length; index++)
+            {
+                Assert.That(renderers[index].enabled, Is.True, message + " (enabled)");
+                properties.Clear();
+                renderers[index].GetPropertyBlock(properties);
+                AssertTint(properties.GetColor("_BaseColor"), expected,
+                    message + " (" + renderers[index].name + ")");
+            }
+        }
+
+        private static Bounds BoundsIn(Transform frame, MeshFilter filter)
+        {
+            Bounds mesh = filter.sharedMesh.bounds;
+            bool initialized = false;
+            Bounds result = default;
+            for (int x = 0; x <= 1; x++)
+            for (int y = 0; y <= 1; y++)
+            for (int z = 0; z <= 1; z++)
+            {
+                Vector3 point = new Vector3(x == 0 ? mesh.min.x : mesh.max.x,
+                    y == 0 ? mesh.min.y : mesh.max.y,
+                    z == 0 ? mesh.min.z : mesh.max.z);
+                point = frame.InverseTransformPoint(filter.transform.TransformPoint(point));
+                if (!initialized)
+                {
+                    result = new Bounds(point, Vector3.zero);
+                    initialized = true;
+                }
+                else result.Encapsulate(point);
+            }
+            return result;
+        }
+
+        private static float TimeWithLargeEarTwitch(uint seed)
+        {
+            var motion = new CatMicroMotion(seed);
+            for (int sample = 0; sample <= 1000; sample++)
+            {
+                float time = sample * 0.01f;
+                if (Mathf.Abs(motion.Evaluate(time, false, false).EarTwitchDegrees) >= 12f)
+                    return time;
+            }
+            Assert.Fail("the deterministic Tier-1 cadence must contain a >=12 degree ear pose");
+            return 0f;
+        }
+
+        private static float TimeWithBlink(uint seed)
+        {
+            var motion = new CatMicroMotion(seed);
+            for (int sample = 0; sample <= 1000; sample++)
+            {
+                float time = sample * 0.01f;
+                if (motion.Evaluate(time, false, false).EyeYScale <= 0.1f)
+                    return time;
+            }
+            Assert.Fail("the deterministic Tier-1 cadence must contain a closed-eye sample");
+            return 0f;
+        }
+
+        private static void AssertLocalizedUpperHeadDeformation(Mesh neutral, Mesh twitch,
+            Transform rendererTransform, Transform rigFrame)
+        {
+            Assert.That(twitch.vertexCount, Is.EqualTo(neutral.vertexCount));
+            Vector3[] baseline = neutral.vertices;
+            Vector3[] deformed = twitch.vertices;
+            var rigBaseline = new Vector3[baseline.Length];
+            Bounds bounds = default;
+            for (int index = 0; index < baseline.Length; index++)
+            {
+                rigBaseline[index] = rigFrame.InverseTransformPoint(
+                    rendererTransform.TransformPoint(baseline[index]));
+                if (index == 0) bounds = new Bounds(rigBaseline[index], Vector3.zero);
+                else bounds.Encapsulate(rigBaseline[index]);
+            }
+            float upperHeadFloor = bounds.min.y + bounds.size.y * 0.55f;
+            int movedVertices = 0;
+            float maximumDisplacement = 0f;
+            float lowerBodyDisplacement = 0f;
+            for (int index = 0; index < baseline.Length; index++)
+            {
+                Vector3 neutralWorld = rendererTransform.TransformPoint(baseline[index]);
+                Vector3 twitchWorld = rendererTransform.TransformPoint(deformed[index]);
+                float displacement = Vector3.Distance(neutralWorld, twitchWorld);
+                maximumDisplacement = Mathf.Max(maximumDisplacement, displacement);
+                if (displacement > 0.00001f) movedVertices++;
+                if (rigBaseline[index].y < upperHeadFloor)
+                    lowerBodyDisplacement = Mathf.Max(lowerBodyDisplacement, displacement);
+            }
+
+            Assert.That(movedVertices, Is.GreaterThan(1000),
+                "both measured ear branches must deform a substantial visible region");
+            TestContext.Out.WriteLine("CAT_RIG_EAR_TWITCH_READBACK movedVertices="
+                + movedVertices + " maxBoardDisplacement=" + maximumDisplacement.ToString("F6")
+                + " worstZoomUpperBoundPixels=" + (maximumDisplacement * 93f).ToString("F3")
+                + " lowerBodyDisplacement=" + lowerBodyDisplacement.ToString("F6"));
+            Assert.That(maximumDisplacement, Is.GreaterThan(0.008f),
+                "the >=12 degree probe must move an ear by at least 0.008 board units; " +
+                "screen projection remains a render-slot question");
+            Assert.That(lowerBodyDisplacement, Is.LessThan(0.0001f),
+                "the ear control must remain localized above the calibrated 55% height line");
+        }
+
+        private sealed class ConformingRigFixture : IDisposable
+        {
+            private readonly AnimatorController _controller;
+            private readonly List<AnimationClip> _clips = new List<AnimationClip>();
+            private readonly List<StateMachineBehaviour> _stateBehaviours =
+                new List<StateMachineBehaviour>();
+
+            private readonly Vector3 _animationBindPosition =
+                new Vector3(0f, 0.4853515f, 0f);
+
+            public ConformingRigFixture(bool swapWalkAndBoard = false,
+                bool addStateBehaviour = false, string emptyMappedClipName = null,
+                string zeroLengthMappedClipName = null, float centerX = 0f,
+                float centerZ = 0f)
+            {
+                Prefab = new GameObject("ConformingBoardCatRig");
+                var body = new GameObject("RigBody");
+                body.transform.SetParent(Prefab.transform, false);
+                body.transform.localPosition = new Vector3(centerX, 0.5f, centerZ);
+                // Narrow horizontal extents keep the measured 2.98e-8 residue nonzero after
+                // float32 bounds accumulation; a unit cube rounds that test input back to zero.
+                body.transform.localScale = new Vector3(0.2f, 1f, 0.2f);
+                body.AddComponent<MeshFilter>().sharedMesh =
+                    Resources.GetBuiltinResource<Mesh>("Cube.fbx");
+                body.AddComponent<MeshRenderer>();
+                var accent = new GameObject("RigAccent");
+                accent.transform.SetParent(Prefab.transform, false);
+                accent.AddComponent<MeshRenderer>();
+                var armature = new GameObject("Armature");
+                armature.transform.SetParent(Prefab.transform, false);
+                armature.transform.localPosition = _animationBindPosition;
+
+                _controller = new AnimatorController();
+                _controller.AddLayer("Base Layer");
+                AddRequiredState("Cat_IdleSit", emptyMappedClipName,
+                    zeroLengthMappedClipName);
+                AnimatorState walk = AddRequiredState("Cat_Walk", emptyMappedClipName,
+                    zeroLengthMappedClipName);
+                AnimatorState board = AddRequiredState("Cat_Board", emptyMappedClipName,
+                    zeroLengthMappedClipName);
+                AddRequiredState("Cat_Alight", emptyMappedClipName,
+                    zeroLengthMappedClipName);
+                AnimatorState celebrate = AddRequiredState("Cat_Celebrate",
+                    emptyMappedClipName, zeroLengthMappedClipName);
+                if (swapWalkAndBoard)
+                {
+                    Motion walkMotion = walk.motion;
+                    walk.motion = board.motion;
+                    board.motion = walkMotion;
+                }
+                _controller.layers[0].stateMachine.defaultState = celebrate;
+                if (addStateBehaviour)
+                {
+                    StateBehaviour =
+                        celebrate.AddStateMachineBehaviour<CatRigStateBehaviourProbe>();
+                    if (StateBehaviour != null) _stateBehaviours.Add(StateBehaviour);
+                }
+
+                var animator = Prefab.AddComponent<Animator>();
+                animator.runtimeAnimatorController = _controller;
+                animator.applyRootMotion = false;
+            }
+
+            public GameObject Prefab { get; }
+
+            public StateMachineBehaviour StateBehaviour { get; }
+
+            public AnimationClip ClipNamed(string name)
+            {
+                for (int i = 0; i < _clips.Count; i++)
+                    if (_clips[i].name == name) return _clips[i];
+                return null;
+            }
+
+            public void Dispose()
+            {
+                Object.DestroyImmediate(Prefab);
+                for (int i = 0; i < _stateBehaviours.Count; i++)
+                    Object.DestroyImmediate(_stateBehaviours[i]);
+                Object.DestroyImmediate(_controller);
+                for (int i = 0; i < _clips.Count; i++) Object.DestroyImmediate(_clips[i]);
+            }
+
+            private AnimatorState AddState(string literalName, bool animateChild = false,
+                string clipName = null, bool holdBindPose = false,
+                bool zeroLength = false)
+            {
+                var clip = new AnimationClip { name = clipName ?? literalName };
+                if (animateChild)
+                {
+                    float endTime = zeroLength ? 0f : holdBindPose ? 1f / 24f : 0.4f;
+                    SetPositionCurve(clip, "localPosition.x", _animationBindPosition.x,
+                        holdBindPose || zeroLength
+                            ? _animationBindPosition.x : _animationBindPosition.x + 0.02f,
+                        endTime, holdBindPose || zeroLength);
+                    SetPositionCurve(clip, "localPosition.y", _animationBindPosition.y,
+                        _animationBindPosition.y, endTime, holdBindPose || zeroLength);
+                    SetPositionCurve(clip, "localPosition.z", _animationBindPosition.z,
+                        _animationBindPosition.z, endTime, holdBindPose || zeroLength);
+                }
+                _clips.Add(clip);
+                AnimatorState state = _controller.layers[0].stateMachine.AddState(literalName);
+                state.motion = clip;
+                return state;
+            }
+
+            private AnimatorState AddRequiredState(string literalName,
+                string emptyMappedClipName, string zeroLengthMappedClipName)
+            {
+                bool emptyMappedClip = literalName == emptyMappedClipName;
+                if (emptyMappedClip)
+                    AddState("animated_decoy_" + literalName, true, literalName);
+                bool fallback = literalName != CatModelCatalog.WalkClip;
+                return AddState(literalName, !emptyMappedClip, null,
+                    fallback, literalName == zeroLengthMappedClipName);
+            }
+
+            private static void SetPositionCurve(AnimationClip clip, string property,
+                float startValue, float endValue, float endTime, bool singleKey)
+            {
+                AnimationCurve curve = singleKey
+                    ? new AnimationCurve(new Keyframe(endTime, endValue))
+                    : AnimationCurve.Linear(0f, startValue, endTime, endValue);
+                clip.SetCurve("Armature", typeof(Transform), property, curve);
+            }
+        }
+
+        private static AnimationClip Clip(string name)
+        {
+            var clip = new AnimationClip { name = name };
+            clip.SetCurve("RigBody", typeof(Transform), "localPosition.x",
+                AnimationCurve.Linear(0f, 0f, 0.4f, 0.02f));
+            return clip;
+        }
+    }
+}

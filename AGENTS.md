@@ -36,7 +36,7 @@ the read-back.
 display plinths. Correct it in the presentation layer — the model bytes are pinned by the
 licensing record.
 
-**`scripts/build.sh` builds nothing** (it's a stub). `scripts/build-apk.sh` is the real path.
+**`scripts/build.sh` was a no-op stub and has been removed.** `scripts/build-apk.sh` is the real path.
 Unity needs the network on a cold Library and writes outside the sandbox, so builds run
 unsandboxed — the human runs them.
 

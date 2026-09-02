@@ -1,0 +1,26 @@
+{
+    "name": "CatMetro.Integrations.LevelPlay",
+    "rootNamespace": "CatMetro.Integrations.LevelPlay",
+    "references": [
+        "CatMetro.Services",
+        "CatMetro.Integrations",
+        "Unity.LevelPlay"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "CATMETRO_LEVELPLAY"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.services.levelplay",
+            "expression": "9.5.1",
+            "define": "CATMETRO_LEVELPLAY"
+        }
+    ],
+    "noEngineReferences": false
+}

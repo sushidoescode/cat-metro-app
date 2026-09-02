@@ -31,6 +31,11 @@ trap 'rm -rf "$TMP"' EXIT
 apply_to() { bash "$STAGER" --root "$1" --apply; }
 check_of() { bash "$STAGER" --root "$1"; }
 sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
+seed_daily_sources() {
+  mkdir -p "$1/config" "$1/content/daily"
+  cp config/daily_live.json "$1/config/daily_live.json"
+  cp content/daily/precomputed.json "$1/content/daily/precomputed.json"
+}
 
 # --- criterion 1a + A-2: default check mode is read-only and green on the clean tree ---
 out=$(bash "$STAGER" 2>&1) || fail "criterion 1a: check mode non-zero on the clean tree: $out"
@@ -42,13 +47,15 @@ echo "$out" | grep -q "rule 2: config/runtime_bounds.json" || fail "criterion 1:
 nd="$(new_dirt)"
 [ -z "$nd" ] || fail "criterion 1a: check mode dirtied the tree — new dirt: $nd"
 
-# --- criterion 1b: drift fixture — named, non-zero, NOT repaired (check runs in place, read-only) ---
-if out=$(check_of "$FIX/drift-bytes" 2>&1); then
+# --- criterion 1b: drift fixture — named, non-zero, NOT repaired (check runs in a temp copy) ---
+cp -R "$FIX/drift-bytes" "$TMP/drift"
+seed_daily_sources "$TMP/drift"
+if out=$(check_of "$TMP/drift" 2>&1); then
   fail "criterion 1b: check mode exited 0 on drift-bytes"
 fi
 echo "$out" | grep -q "D001.json" || fail "criterion 1b: drifted file not named: $out"
-if cmp -s "$FIX/drift-bytes/content/levels/D001.json" \
-          "$FIX/drift-bytes/unity/Assets/StreamingAssets/content/levels/D001.json"; then
+if cmp -s "$TMP/drift/content/levels/D001.json" \
+          "$TMP/drift/unity/Assets/StreamingAssets/content/levels/D001.json"; then
   fail "criterion 1b: check mode repaired the fixture (it must write nothing)"
 fi
 
@@ -58,19 +65,24 @@ echo "$out" | grep -qi "usage" || fail "criterion 1c: no usage line on unknown f
 
 # --- criterion 2: allowlist, never a sweep — non-shipping siblings must not stage ---
 cp -R "$FIX/extra-sources" "$TMP/extra"
+seed_daily_sources "$TMP/extra"
 apply_to "$TMP/extra" >/dev/null 2>&1 || fail "criterion 2: write mode failed on extra-sources"
 esa="$TMP/extra/unity/Assets/StreamingAssets"
 leak=$(find "$esa" -name pins.json -o -name validator_thresholds.json -o -name generator_inputs.json)
 [ -z "$leak" ] || fail "criterion 2: non-shipping file staged: $leak"
 cfgset=$(cd "$esa/config" && ls | grep -v '\.meta$')
-[ "$cfgset" = "runtime_bounds.json" ] \
-  || fail "criterion 2: staged config payload set is [$cfgset], expected exactly runtime_bounds.json"
+[ "$cfgset" = $'daily_live.json\nruntime_bounds.json' ] \
+  || fail "criterion 2: staged config payload set is [$cfgset], expected Daily Live + runtime bounds"
+[ -f "$esa/content/daily/precomputed.json" ] \
+  || fail "criterion 2: Daily precomputed catalog was not staged"
 
 # --- criterion 3: the committed staged tree IS the stager's output (anti-tautology) ---
 # real sources -> temp root with an EMPTY destination; then compare payloads vs the real tree.
-mkdir -p "$TMP/real/content/levels" "$TMP/real/config"
+mkdir -p "$TMP/real/content/levels" "$TMP/real/content/daily" "$TMP/real/config"
 cp content/levels/*.json "$TMP/real/content/levels/"
 cp config/runtime_bounds.json "$TMP/real/config/"
+cp config/daily_live.json "$TMP/real/config/"
+cp content/daily/precomputed.json "$TMP/real/content/daily/"
 # N1 grant census (both escape classes): snapshot the whole temp root and the source SHAs
 # BEFORE the write-mode run — afterwards every ADDED path must live under the staged tree
 # and no SOURCE byte may change. Criterion 4 alone cannot see a stager that rewrites its own
@@ -86,28 +98,52 @@ escapes=$(comm -13 <(printf '%s\n' "$pre_paths") <(printf '%s\n' "$post_paths") 
 [ "$pre_src" = "$post_src" ] || fail "N1 grant: write mode modified source files under content/ or config/"
 gen="$TMP/real/unity/Assets/StreamingAssets"
 real=unity/Assets/StreamingAssets
-genset=$(cd "$gen" && find content/levels config -type f ! -name '*.meta' | sort)
-realset=$(cd "$real" && find content/levels config -type f ! -name '*.meta' | sort)
+genset=$(cd "$gen" && find content/levels content/daily config -type f ! -name '*.meta' | sort)
+realset=$(cd "$real" && find content/levels content/daily config -type f ! -name '*.meta' | sort)
 [ -n "$genset" ] || fail "criterion 3: stager produced nothing"
 [ "$genset" = "$realset" ] \
   || fail "criterion 3: payload set drift — generated [$genset] vs committed [$realset]"
 for p in $genset; do
   [ "$(sha "$gen/$p")" = "$(sha "$real/$p")" ] || fail "criterion 3: sha drift in $p"
 done
-# N-1 (backlog staged-derived-tree class): the staged config payload set is exactly runtime_bounds.json
+# Managed rule-folder metadata is part of the generated artifact too. Compare it explicitly:
+# find rooted inside content/daily cannot see the sibling content/daily.meta.
+[ -f "$gen/content/daily.meta" ] \
+  || fail "criterion 3: stager omitted generated content/daily.meta"
+[ -f "$real/content/daily.meta" ] \
+  || fail "criterion 3: committed content/daily.meta is missing"
+[ "$(sha "$gen/content/daily.meta")" = "$(sha "$real/content/daily.meta")" ] \
+  || fail "criterion 3: generated content/daily.meta differs from committed output"
+
+# Artifact mutation: deletion must make check mode fail and apply mode must reconstruct the exact
+# deterministic folder meta. Existence in this checkout alone would prove nothing.
+cp "$gen/content/daily.meta" "$TMP/daily-folder-meta.first"
+rm "$gen/content/daily.meta"
+if mout=$(check_of "$TMP/real" 2>&1); then
+  fail "criterion 3: check mode stayed green after content/daily.meta was deleted"
+fi
+echo "$mout" | grep -q 'content/daily.meta' \
+  || fail "criterion 3: missing folder meta was not named: $mout"
+apply_to "$TMP/real" >/dev/null 2>&1 \
+  || fail "criterion 3: apply mode did not restore content/daily.meta"
+cmp -s "$TMP/daily-folder-meta.first" "$gen/content/daily.meta" \
+  || fail "criterion 3: restored content/daily.meta is not deterministic"
+# N-1 (backlog staged-derived-tree class): the staged config payload set is exactly the two
+# allowlisted runtime configs.
 cfgreal=$(cd "$real/config" && ls | grep -v '\.meta$')
-[ "$cfgreal" = "runtime_bounds.json" ] \
-  || fail "N-1: real staged config payload set is [$cfgreal], expected exactly runtime_bounds.json"
+[ "$cfgreal" = $'daily_live.json\nruntime_bounds.json' ] \
+  || fail "N-1: real staged config payload set is [$cfgreal], expected Daily Live + runtime bounds"
 # .meta coverage on the real tree: every payload has a sibling; no orphan .meta in a rule dir
 for p in $realset; do
   [ -f "$real/$p.meta" ] || fail "criterion 3: missing .meta sibling for $p"
 done
-for m in $(cd "$real" && find content/levels config -type f -name '*.meta' | sort); do
+for m in $(cd "$real" && find content/levels content/daily config -type f -name '*.meta' | sort); do
   [ -f "$real/${m%.meta}" ] || fail "criterion 3: orphan .meta in rule dir: $m"
 done
 
 # --- criterion 4: byte copy, never a re-serialization ---
 cp -R "$FIX/odd-bytes" "$TMP/odd"
+seed_daily_sources "$TMP/odd"
 apply_to "$TMP/odd" >/dev/null 2>&1 || fail "criterion 4: write mode failed on odd-bytes"
 [ "$(sha "$TMP/odd/content/levels/odd.json")" = "$(sha "$TMP/odd/unity/Assets/StreamingAssets/content/levels/odd.json")" ] \
   || fail "criterion 4: staged bytes differ from source (re-serialization?)"
@@ -117,6 +153,7 @@ fi
 
 # --- criterion 5: prune is scoped, both-directional, never destructive outside its pattern ---
 cp -R "$FIX/stale-dest" "$TMP/stale"
+seed_daily_sources "$TMP/stale"
 if cout=$(check_of "$TMP/stale" 2>&1); then fail "criterion 5: check mode green on stale-dest"; fi
 echo "$cout" | grep -q "F999.json" || fail "criterion 5a: stale file not reported by check mode"
 echo "$cout" | grep -q "catalog.json" && fail "criterion 5c: out-of-rule-dir sentinel reported by check mode"
@@ -135,6 +172,7 @@ done
 
 # --- criterion 6: .meta preserved always; generated only when absent, deterministically ---
 cp -R "$FIX/meta-cases" "$TMP/meta"
+seed_daily_sources "$TMP/meta"
 apply_to "$TMP/meta" >/dev/null 2>&1 || fail "criterion 6: write mode failed on meta-cases"
 md="$TMP/meta/unity/Assets/StreamingAssets"
 cmp -s "$md/content/levels/M001.json.meta" "$FIX/meta-cases/unity/Assets/StreamingAssets/content/levels/M001.json.meta" \
@@ -157,6 +195,12 @@ mguid() { grep '^guid:' "$1" | cut -d' ' -f2; }
   || fail "criterion 6c: guid derivation disagrees for content/levels/odd.json"
 [ "$(mguid "$TMP/odd/unity/Assets/StreamingAssets/config/runtime_bounds.json.meta")" = "$(pyguid config/runtime_bounds.json)" ] \
   || fail "criterion 6c: guid derivation disagrees for config/runtime_bounds.json"
+[ "$(mguid "$TMP/odd/unity/Assets/StreamingAssets/config/daily_live.json.meta")" = "$(pyguid config/daily_live.json)" ] \
+  || fail "criterion 6c: guid derivation disagrees for config/daily_live.json"
+[ "$(mguid "$TMP/odd/unity/Assets/StreamingAssets/content/daily/precomputed.json.meta")" = "$(pyguid content/daily/precomputed.json)" ] \
+  || fail "criterion 6c: guid derivation disagrees for content/daily/precomputed.json"
+[ "$(mguid "$TMP/odd/unity/Assets/StreamingAssets/content/daily.meta")" = "$(pyguid content/daily)" ] \
+  || fail "criterion 6c: guid derivation disagrees for content/daily folder"
 # 6d: guid uniqueness — explicit root unity/Assets, never "." (A-3: worktree checkouts duplicate guids)
 dupes=$(find unity/Assets -name '*.meta' -exec grep -h '^guid:' {} + | sort | uniq -d)
 [ -z "$dupes" ] || fail "criterion 6d: duplicate guids under unity/Assets: $dupes"
@@ -191,16 +235,6 @@ c2=$(grep -c 'stage-content' scripts/check.sh || true)
 badapply=$(grep -n -- '--apply' tests/staging/*.test.sh | grep -v -- '--root' || true)
 [ -z "$badapply" ] || fail "criterion 8: a write-mode line lacks --root: $badapply"
 
-# --- criterion 9: the build gate fails closed on staged drift ---
-bash scripts/build.sh >/dev/null 2>&1 || fail "criterion 9: build gate non-zero on the clean tree"
-if bout=$(bash scripts/build.sh --root "$FIX/drift-bytes" 2>&1); then
-  fail "criterion 9: build gate green on the drifted fixture"
-fi
-echo "$bout" | grep -q "D001.json" || fail "criterion 9: build gate does not name the drifted file"
-if bash scripts/build.sh --apply --root "$TMP/extra" >/dev/null 2>&1; then
-  fail "criterion 9: build gate accepted the write-mode flag (it must run check-only)"
-fi
-
 # --- criterion 7 self-test: turn a fixture's expected failure into a success -> wrapper goes red ---
 if [ -z "${CM_C10_SELFTEST:-}" ]; then
   cp -R "$FIX" "$TMP/fixflip"
@@ -213,5 +247,5 @@ fi
 
 nd="$(new_dirt)"
 [ -z "$nd" ] || fail "criterion 7: wrapper left the tree dirty — new dirt: $nd"
-echo "stage-content.test.sh: OK (criteria 1-6 fixture legs, 3 anti-tautology + N-1 config set, 7 self-test, 8 verifier-untouched, 9 build gate; tree clean)"
+echo "stage-content.test.sh: OK (criteria 1-6 fixture legs, 3 anti-tautology + N-1 config set, 7 self-test, 8 verifier-untouched; tree clean)"
 exit 0

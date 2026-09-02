@@ -47,7 +47,7 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void NewRows_ExactlyTheSevenPinned_Appended()
+        public void OwnedAppendedRows_StayBytePinned()
         {
             var rows = Rows();
             // CM-UX-02 owns the two rows immediately after the five-row frozen base. Other

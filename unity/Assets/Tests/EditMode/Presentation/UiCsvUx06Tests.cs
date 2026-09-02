@@ -28,7 +28,7 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void ThisSlice_AppendsExactlyThreeRows_BytePinned()
+        public void HomeAndIntroRows_StayBytePinnedAtTheirAppendPositions()
         {
             var rows = Rows();
             // Adoption shift (2026-08-06): anchored at 7 merged rows; main gained

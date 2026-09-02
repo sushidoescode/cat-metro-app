@@ -4,7 +4,11 @@
 set -euo pipefail
 
 metrics_script=${GLB_METRICS_SCRIPT:-scripts/glb_metrics.py}
-tmp=$(mktemp -d)
+# Explicit template: macOS /usr/bin/mktemp ignores $TMPDIR without one and falls back to the
+# confstr darwin temp dir, which sandboxed agent runs cannot write. Both BSD and GNU mktemp
+# honor the template form; a temp failure aborts loudly with an attributable message.
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/glb-metrics.XXXXXXXX") \
+  || { echo "glb-metrics test: FAIL — cannot create temp dir under ${TMPDIR:-/tmp}" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
 
 write_fixture() {

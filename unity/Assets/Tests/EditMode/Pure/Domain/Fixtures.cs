@@ -6,7 +6,7 @@ using CatMetro.Domain;
 namespace CatMetro.Tests.Domain
 {
     // A-C1-2: fixtures are constructed in code, not loaded from JSON (parsing is CM-C2's).
-    // The L001 shape mirrors docs/plan/data/example_levels.json:4-17 field-for-field; its
+    // The L001 shape mirrors the shipped onboarding level field-for-field; its
     // construction order (nodes SRC,J1,RED,BLU; edges E1,E2,E3; switch S1) is part of the
     // golden's meaning (A-C1-10).
     public static class Fixtures

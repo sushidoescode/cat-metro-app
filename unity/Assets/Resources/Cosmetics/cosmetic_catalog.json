@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "cats": [
+    {
+      "id": "red_tabby",
+      "displayNameKey": "cosmetics.cat.red_tabby",
+      "portraitAssetId": "cat.red_tabby",
+      "starter": true
+    },
+    {
+      "id": "blue_siamese",
+      "displayNameKey": "cosmetics.cat.blue_siamese",
+      "portraitAssetId": "cat.blue_siamese",
+      "starter": true
+    },
+    {
+      "id": "yellow_longhair",
+      "displayNameKey": "cosmetics.cat.yellow_longhair",
+      "portraitAssetId": "cat.yellow_longhair",
+      "starter": true
+    }
+  ],
+  "items": [
+    {
+      "id": "outfit_conductor",
+      "slot": "outfit",
+      "displayNameKey": "cosmetics.item.outfit_conductor",
+      "portraitAssetId": "outfit.conductor",
+      "acquisition": "entitlement",
+      "entitlementId": "outfit_conductor",
+      "productId": "cm_outfit_conductor",
+      "rewardedPlacementId": "wardrobe_try_conductor",
+      "compatibleCatIds": ["red_tabby", "blue_siamese", "yellow_longhair"],
+      "order": 10
+    },
+    {
+      "id": "frame_brass",
+      "slot": "frame",
+      "displayNameKey": "cosmetics.item.frame_brass",
+      "portraitAssetId": "frame.brass",
+      "acquisition": "entitlement",
+      "entitlementId": "frame_brass",
+      "productId": "cm_frame_brass",
+      "compatibleCatIds": ["red_tabby", "blue_siamese", "yellow_longhair"],
+      "order": 20
+    },
+    {
+      "id": "frame_lantern",
+      "slot": "frame",
+      "displayNameKey": "cosmetics.item.frame_lantern",
+      "portraitAssetId": "frame.lantern",
+      "acquisition": "entitlement",
+      "entitlementId": "frame_lantern",
+      "productId": "cm_frame_lantern",
+      "compatibleCatIds": ["red_tabby", "blue_siamese", "yellow_longhair"],
+      "order": 30
+    }
+  ]
+}

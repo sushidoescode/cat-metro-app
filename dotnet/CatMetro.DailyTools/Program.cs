@@ -21,13 +21,10 @@ namespace CatMetro.DailyTools
         public bool Exists(string relativePath) => File.Exists(relativePath);
     }
 
-    // Q3 (human-ruled, PR #73): DailyBoardFactory now ships as the one runtime IBoardFactory
-    // implementation (see IBoardFactory.cs) — the real generator is no longer stop-gated.
-    // CatMetro.DailyTools' pre-validation CLI still runs its OWN fixed-board HARNESS STUB below:
-    // imports an existing corpus level once and returns that DTO for every date, zero
-    // board-shaping rules live here. Historical note: under CM-C6 criterion 8 this stub existed
-    // because Q-S (A-C6-9) was open and no generator shipped at all; the artifact still names
-    // this stub in boardProvenance so no one mistakes stub dailies for generated ones.
+    // The historical report command retains its fixed-board harness for compatibility. Passing
+    // --catalog-out selects the shipped DailyBoardFactory + DailyLineSeedScheme instead and emits
+    // runtime-ready admitted boards; the Content assembly still owns all generation/validation
+    // semantics while this host owns the file reads and write.
     internal sealed class FixedBoardFactory : IBoardFactory
     {
         private readonly LevelDto _dto;
@@ -52,13 +49,15 @@ namespace CatMetro.DailyTools
 
         private static int Run(string[] args)
         {
-            string outPath = null, fromKey = null, boardPath = null, curvePath = null;
+            string outPath = null, catalogOutPath = null, fromKey = null;
+            string boardPath = null, curvePath = null;
             int? days = null;
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
                 {
                     case "--out": outPath = args[++i]; break;
+                    case "--catalog-out": catalogOutPath = args[++i]; break;
                     case "--from": fromKey = args[++i]; break;
                     case "--days":
                         days = int.Parse(args[++i], System.Globalization.CultureInfo.InvariantCulture);
@@ -105,22 +104,45 @@ namespace CatMetro.DailyTools
                 return 2;
             }
 
-            string board = boardPath ?? Path.Combine("content", "levels", "L001.json");
-            var import = LevelImporter.Import(Read(board));
-            if (!import.Ok)
+            IBoardFactory factory;
+            IDailySeedScheme seedScheme;
+            string boardProvenance;
+            if (catalogOutPath != null)
             {
-                Console.Error.WriteLine("validate-dailies: stub board unusable — " + import.Error);
-                return 2;
+                if (boardPath != null)
+                {
+                    Console.Error.WriteLine(
+                        "validate-dailies: --board cannot be combined with --catalog-out");
+                    return 2;
+                }
+                factory = new DailyBoardFactory();
+                seedScheme = DailyLineSeedScheme.Instance;
+                boardProvenance = DailyBoardCatalog.BoardProvenance;
+            }
+            else
+            {
+                string board = boardPath ?? Path.Combine("content", "levels", "L001.json");
+                var import = LevelImporter.Import(Read(board));
+                if (!import.Ok)
+                {
+                    Console.Error.WriteLine(
+                        "validate-dailies: stub board unusable — " + import.Error);
+                    return 2;
+                }
+                factory = new FixedBoardFactory(import.Value.Dto);
+                seedScheme = HistoricalDailySeedScheme.Instance;
+                boardProvenance = "stub:" + board.Replace('\\', '/')
+                    + " (DailyTools CLI fixed-board stub — DailyBoardFactory ships separately, see IBoardFactory.cs)";
             }
 
             var dates = DateKeys.Enumerate(fromKey ?? config.AnchorDateKey,
                 days ?? config.PrevalidationDays);
             var run = DailyPipeline.Run(new DailyRunRequest(
                 schemaBytes, thresholds.Value, config, curveBytes, dates,
-                new FixedBoardFactory(import.Value.Dto),
+                factory,
                 referenceTimestamp: null,
-                boardProvenance: "stub:" + board.Replace('\\', '/')
-                    + " (DailyTools CLI fixed-board stub — DailyBoardFactory ships separately, see IBoardFactory.cs)"));
+                boardProvenance: boardProvenance,
+                seedScheme: seedScheme));
             if (!run.Ok)
             {
                 Console.Error.WriteLine("validate-dailies: " + run.Error);
@@ -150,6 +172,15 @@ namespace CatMetro.DailyTools
             }
 
             if (outPath != null) File.WriteAllText(outPath, report.ToJson());
+            if (catalogOutPath != null && !report.ExitFailure)
+            {
+                string parent = Path.GetDirectoryName(Path.GetFullPath(catalogOutPath));
+                if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
+                File.WriteAllText(catalogOutPath,
+                    DailyBoardCatalog.CreateArtifactJson(report), new System.Text.UTF8Encoding(false));
+                Console.WriteLine("DAILY_CATALOG " + catalogOutPath.Replace('\\', '/')
+                    + " " + report.Records.Count + " dates");
+            }
 
             return report.ExitFailure ? 1 : 0;
         }

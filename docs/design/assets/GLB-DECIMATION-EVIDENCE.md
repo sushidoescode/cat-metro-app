@@ -1,7 +1,9 @@
 # GLB decimation evidence — 15 generated candidates
 
-Run date: **2026-08-16**. The evidence folder retains the frozen
-`glb-decimation-2026-08-15` name; that folder name is not the run date.
+Run date: **2026-08-16**. The historical evidence folder used the frozen
+`glb-decimation-2026-08-15` name; that folder name was not the run date. The
+tracked render packs were retired in the 2026-08-27 repository cleanup, while
+the machine-readable manifests, metrics, and this historical record remain.
 
 Source-curation addendum: **2026-08-17**. Lane C executed the relayed human
 uniform-NO-plinth ruling under the H-1 evidentiary caveat recorded in frozen
@@ -83,8 +85,9 @@ derivative/sidecar are retained at the second path:
   original removes both smaller components and produces identical final bytes.
 - The regenerated derivatives contain 14,999 and 15,000 triangles,
   respectively. The other 13 derivative GLBs are byte-identical to their
-  pre-curation files. Their GLBs and sidecars are hash-pinned by
-  `tests/assets/glb-curation.test.sh`.
+  pre-curation files. Their recorded GLB and sidecar hashes are pinned by
+  `tests/assets/glb-curation.test.sh`; setting its explicit local artifact
+  root also compares those records with the ignored files on disk.
 
 The committed correction rerun boundary selects exactly the wave asset:
 
@@ -108,25 +111,23 @@ original GLB/sidecar hashes after Blender, writes a durable prepared/committed
 journal, fsyncs each pair transition, and normalizes an interrupted journal on
 the next locked invocation.
 
-Committed renders and their complete checksum inventory are under
-`evals/results/assets/glb-curation-2026-08-17/`. Lane C viewed the source
-comparison, changed-derivative comparison, full 15-asset derivative grid, and
-the dedicated correction before/after sheet at original detail. The ruled
-disc and both wave debris components are absent; the loaf body, paws, head,
-ears, whiskers, and tail and the wave cat, raised paw, feet, and tail remain
-legible. All 13 untouched before/after derivative PNG pairs are byte-identical.
-The evidence README records the looked-at disposition.
+Lane C viewed the historical source comparison, changed-derivative comparison,
+full 15-asset derivative grid, and dedicated correction before/after sheet at
+original detail. The ruled disc and both wave debris components were absent;
+the loaf body, paws, head, ears, whiskers, and tail and the wave cat, raised
+paw, feet, and tail remained legible. All 13 untouched before/after derivative
+PNG pairs were byte-identical. The tracked PNG pack, checksum inventory, and
+its README were deliberately removed in the 2026-08-27 repository cleanup, so
+the current checkout does not revalidate those image bytes.
 
-## Curation render evidence
+## Historical curation render record
 
-Contact sheets committed under `evals/results/assets/glb-curation-2026-08-17/`.
-These are curation artifacts, not part of the decimation queue's silhouette
-record, so they are held here rather than in that section. Every row below is
-reconciled against the committed checksum manifest, the bytes on disk, and the
-PNG's own declared dimensions by `tests/assets/glb-curation.test.sh`, which
-also rejects any unclaimed row in this section.
+The following table records the retired contact sheets' former paths,
+dimensions, and checksums. It is an audit record, not a claim that the files
+remain in the checkout; `tests/assets/glb-curation.test.sh` no longer treats
+the removed screenshots as current validation artifacts.
 
-| Path under `evals/results/assets/glb-curation-2026-08-17/` | Dimensions | SHA-256 |
+| Former path under the retired curation render pack | Dimensions | SHA-256 |
 |---|---:|---|
 | `source-comparison.png` | 2080×520 | `bc68c694543f65254e94dfaf92f9f2623834eeaf3bf978c846e89cce2650dccc` |
 | `changed-derivative-comparison.png` | 2080×520 | `8d18ff8f208dc3b7a1eb5e492ce4199fdb3a0311dfc11c5f6b3f71f9cd666338` |
@@ -531,10 +532,11 @@ tracked Unity art or represented as licensed to ship until the source defects,
 and generated-asset licence ADR are resolved. Board/Home wiring is also
 outside this evidence PR.
 
-## Authoring validation
+## Historical authoring validation
 
-The final evidence gate runs from the evidence worktree at the recorded code
-HEAD, with no Unity, emulator, adb, network, credential, or `.env` access:
+The final evidence gate ran from the evidence worktree at the recorded code
+HEAD, with no Unity, emulator, adb, network, credential, or `.env` access. The
+no-op build entrypoint from that historical sequence was later removed:
 
 ```bash
 bash tests/assets/glb-curation.test.sh
@@ -551,18 +553,18 @@ bash tests/assets/glb-silhouette.test.sh
 bash tests/assets/glb-decimation-pipeline.test.sh
 bash scripts/check.sh
 bash scripts/test.sh
-bash scripts/build.sh
 git diff --check
 ```
 
 The companion JSON is additionally checked for exact manifest order, 15/10/5
 inventory, category/global bands, recomputed totals, sidecar hash agreement,
 source custody, empty preservation diagnostics, exact embedded payload and
-texture-role preservation, and current render hashes. The companion JSON
+texture-role preservation, and the recorded historical render hashes. The companion JSON
 was recalculated only where the two curated sources invalidate prior entries;
 the other 13 asset records remain exact. Generated GLBs and sidecars remain
-local and ignored. The curation PNGs and their checksum inventory are
-committed under `evals/results/assets/glb-curation-2026-08-17/`.
+local and ignored. The curation PNGs and checksum inventory were reviewed for
+this historical run, then removed from the tracked repository in the
+2026-08-27 cleanup; they are not current validation artifacts.
 
 Historical decimation exact-head observed results on 2026-08-16:
 

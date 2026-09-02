@@ -1,8 +1,12 @@
 # Per-district production checklist — PROPOSED / UNSIGNED / NON-EXECUTABLE
 
-How one paid district would actually get built in **this** repo, using the pipeline that exists today.
-Docs-only: running this checklist is not authorized by writing it. Stages 4–6 cannot start at all before
-the human-authored `state/mode` → `production` commit (verbatim tripwire in `sku-price-proposal.md`).
+> **Historical design snapshot (2026-08-13).** Retained for product rationale only; its old
+> process gates and file-state citations are not an executable workflow. Use
+> `docs/release/play-release-runbook.md` and `docs/release/release-checklist.md` for the current
+> release path. Keeping this proposal does not authorize paid-district production.
+
+How one paid district was proposed to be built in this repo. Any future implementation still
+requires explicit human authorization for scope, pricing, store configuration, and asset licensing.
 
 **Legend:** **[HUMAN]** = only a human may perform or approve it · **[AGENT]** = an agent may execute it
 under an ordinary task contract · **[BLOCKED]** = cannot begin before the `state/mode` flip.
@@ -107,13 +111,11 @@ under an ordinary task contract · **[BLOCKED]** = cannot begin before the `stat
       exists in this repo, and none is proposed by this lane** — so "paid content" means gated *access*,
       never withheld *bytes*. This is a required input to ADR-0011 (Stage 1) and must never be described
       as piracy protection.
-- [ ] `bash scripts/check.sh` and `bash scripts/build.sh` green.
-- [ ] Inherited traps, verified as still-open debt: the stager excludes all `*.meta`, so a **new**
-      StreamingAssets folder is unverified (`state/PROJECT_STATE.md:100`) — district levels land in the
-      existing `content/levels/` folder, so no new folder is created; the CLI build shim
-      `unity/Assets/Editor/CatMetroCliBuild.cs` is **untracked on every ref** and a clean clone cannot
-      build an APK (`state/PROJECT_STATE.md:113`) — **[HUMAN]** call to commit or discard; the
-      `unity-editmode` remote CI job the harness names **does not exist** (`:105`).
+- [ ] `bash scripts/check.sh` green.
+- [ ] **[HUMAN]** Build the device-proof APK with `bash scripts/build-apk.sh`; the tracked APK and AAB
+      Editor entrypoints are present, but only a real Unity build and device run prove this stage.
+- [ ] The stager excludes all `*.meta`, so verify the import result if a district introduces a new
+      StreamingAssets folder. District levels currently use the existing `content/levels/` folder.
 - [ ] Player-reachability reality: `GameRoot.LevelBand` is a flat free-only array that wraps to L001 and
       there is no level select or gating (`unity/Assets/Scripts/Bootstrap/GameRoot.cs:291-301`). A
       district needs a map/level-select surface — **UNBUILT** — and a rule that `LevelBand` never

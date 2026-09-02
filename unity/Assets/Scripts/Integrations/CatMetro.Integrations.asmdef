@@ -1,0 +1,17 @@
+{
+    "name": "CatMetro.Integrations",
+    "rootNamespace": "CatMetro.Integrations",
+    "references": [
+        "CatMetro.Services",
+        "CatMetro.Application"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

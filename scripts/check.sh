@@ -140,5 +140,31 @@ else
   scan_banned unity/Assets/Scripts/Content/Daily "$daily_banned" "Daily clock ban, CM-C6"
 fi
 
+# --- The single suite-green assertion must survive ---
+# Five wrappers used to each run the unfiltered `dotnet test dotnet/CatMetro.sln`
+# purely to recompute the boolean "the suite is green" — nine runs of one ~529s
+# command per suite, with the output discarded on success. Those legs were
+# removed, which makes ONE file load-bearing for the entire repo: if
+# tests/suite/solution-suite.test.sh stops asserting, every other gate still
+# reports green over code that was never run. That is exactly the fail-open
+# class this repo removed once before (scan_banned above; review F4, cf. commit
+# ee637c9), so it is GUARDED here rather than trusted to survive review.
+suite_green='tests/suite/solution-suite.test.sh'
+if [ ! -f "$suite_green" ]; then
+  echo "check: FAIL — the single suite-green assertion $suite_green is missing"
+  fail=1
+else
+  # Both patterns are ANCHORED. An unanchored grep is satisfied by the phrase
+  # appearing anywhere — including in this file's own prose describing itself —
+  # so a gutted wrapper that still *talks about* the marker would pass. (Caught
+  # by mutation: renaming the header marker left the guard green because the
+  # long comment below it mentions the marker by name.) Same self-match trap the
+  # init-token scan above dodges by assembling its pattern from pieces.
+  grep -qE '^# SUITE-GREEN-ASSERTION' "$suite_green" \
+    || { echo "check: FAIL — $suite_green lost its SUITE-GREEN-ASSERTION header marker"; fail=1; }
+  grep -qE '^[[:space:]]*dotnet test dotnet/CatMetro\.sln' "$suite_green" \
+    || { echo "check: FAIL — $suite_green no longer runs the unfiltered solution suite"; fail=1; }
+fi
+
 [ "$fail" -eq 0 ] && echo "check: OK (interim harness — real lint+typecheck arrive with the stack)"
 exit "$fail"

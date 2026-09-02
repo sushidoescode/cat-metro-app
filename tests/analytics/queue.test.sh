@@ -4,9 +4,6 @@
 # scripts/test.sh summary-numbers comparison is the PR evidence procedure (CM-C2a c13 precedent).
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
-tmp="${TMPDIR:-/tmp}/cm-c8-wrapper-$$"
-mkdir -p "$tmp"
-trap 'rm -rf "$tmp"' EXIT
 fail() { echo "queue.test.sh: FAIL — $1"; exit 1; }
 an_root="unity/Assets/Scripts/Application/Analytics"
 
@@ -14,11 +11,12 @@ an_root="unity/Assets/Scripts/Application/Analytics"
 [ -n "$(ls unity/Assets/Tests/EditMode/Pure/Analytics/*.cs 2>/dev/null)" ] \
   || fail "criterion 12: Analytics NUnit sources missing (fail-closed)"
 
-# Criterion 12: the dotnet leg is green — full suite, unfiltered (CM-C6 review F1 precedent).
-if ! dotnet test dotnet/CatMetro.sln -c Release --nologo > "$tmp/test.out" 2>&1; then
-  tail -20 "$tmp/test.out"
-  fail "criterion 12: dotnet test not green"
-fi
+# Criterion 12's dotnet leg has MOVED to tests/suite/solution-suite.test.sh.
+# It ran the unfiltered solution suite here purely to recompute the boolean "the
+# suite is green" — ~529s, and the output was referenced only inside the failure
+# branch and discarded on success. Seven wrappers each doing that made nine runs
+# of one command. The source-presence guard above STAYS: it is this contract's
+# own fail-closed check that the Analytics cases still exist to be run.
 
 # Criterion 1: ONE write-path implementation — the queue names no file stream of its own; all
 # disk access rides the CM-C7 seam. Comments stripped first (CM-C7 review F3 precedent).
@@ -56,5 +54,5 @@ hits=$(grep -rEn --include='*.cs' 'save\.dat|SavePath' "$an_root" 2>/dev/null ||
 [ -z "$hits" ] || fail "criterion 11: the queue names the save file: $hits"
 grep -rEq 'save\.dat' tests/fixtures/analytics-bad || fail "criterion 11: save-file pattern dead"
 
-echo "queue.test.sh: OK (1-shape+fixture, 2, 7, 10, 11-grep, 12)"
+echo "queue.test.sh: OK (1-shape+fixture, 2, 7, 10, 11-grep, 12-sources; 12-suite-green rides tests/suite/solution-suite.test.sh)"
 exit 0

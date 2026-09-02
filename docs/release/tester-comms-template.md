@@ -1,6 +1,6 @@
 # Tester comms — paste-ready templates
 
-Written 2026-08-13 (Lane 10 RELEASE-PREP). Companion to `docs/runbooks/play-closed-test.md`.
+Updated 2026-08-26. Companion to `docs/release/play-release-runbook.md`.
 Sending these is a **[HUMAN]** act. Nothing here is sent automatically.
 
 ## How to use
@@ -9,23 +9,16 @@ Sending these is a **[HUMAN]** act. Nothing here is sent automatically.
 2. `[OPT-IN URL]` comes from Play Console → Testing → Closed testing → Manage track → Testers tab.
    It "only shows when an app is Published"
    ([Play Console Help](https://support.google.com/googleplay/android-developer/answer/9845334?hl=en), retrieved 2026-08-13) — so you cannot send message A before the first closed release clears review. Send **A0** in the meantime; it needs no URL.
-3. **Do not add product claims.** Anything about levels, features or performance must already be
-   `VERIFIED` in `docs/store/play-store-listing.md` §Current claim gates (Lane 7's pack — read it,
-   never edit it). If a claim is not there, cut the sentence rather than softening it.
-   Message A contains **exactly one claim requiring verbatim reproduction** (its opening
-   one-line game description corresponds to the VERIFIED row at
-   `docs/store/play-store-listing.md:72`, publication rule "May remain in current copy") —
-   "No forced ads, energy, or loot-box system;
-   every current level is solvable free" — reproduced **verbatim** from the VERIFIED row at
-   `docs/store/play-store-listing.md:76`, whose publication rule is "Keep the positioning line
-   verbatim". Do not reword it, and do not add a second claim beside it.
-4. Keep the tester roster (names + Gmail addresses) **out of this repository**: personal data, and
-   the repo has no secret-scanning gate today (`state/PROJECT_STATE.md:92`, `.github/workflows/ci.yml:17`).
-5. **Q0-1 gate on the 12/14 wording:** messages A0 and A state Google's 12-testers/14-days
-   requirement as fact. That requirement binds only personal developer accounts created on/after
-   2023-11-13 (runbook §0 Q0-1, §1 — currently UNKNOWN for this account). Answer Q0-1 BEFORE
-   sending; if the account predates the cutoff, reword "Google requires…" to "I want a real
-   two-week test group" — never hand external people a requirement-shaped reason that does not bind.
+3. **Do not add product claims.** Use only wording whose gate is cleared in
+   `docs/store/play-store-listing.md` for the exact test AAB. If a claim is not cleared, cut it.
+   Any campaign quantity comes from that AAB's generated listing sibling, never this template.
+4. Keep the tester roster (names + Gmail addresses) **out of this repository**. It is personal data.
+5. **Account gate on the 12/14 wording:** messages A0 and A state Google's 12-testers/14-days
+   requirement as fact. It binds only personal developer accounts created **after** 2023-11-13.
+   Organization accounts and personal accounts created **on or before** 2023-11-13 follow the exempt
+   path. Confirm the account branch in `docs/release/play-release-runbook.md` before sending. For an
+   exempt account, reword "Google requires…" to "I want a real two-week test group" — never give
+   people a requirement-shaped reason that does not bind.
 
 ---
 
@@ -44,7 +37,8 @@ is already assembled — the review wait then costs you nothing.
 >
 > **What it will involve, so you can say no now rather than later:**
 > - One link to tap on an **Android phone** (it won't work on iPhone), then install from Play.
-> - Staying in the test for **two weeks** — leaving early restarts the clock for that seat.
+> - Staying opted in until I confirm Google has granted production access. That will be at least
+>   **two weeks**; leaving early breaks the continuous period for that seat.
 > - Opening it a couple of times a week and telling me what's confusing or boring.
 >
 > I'll send the link as soon as Google approves the build — probably [DATE ESTIMATE], possibly up to
@@ -71,22 +65,26 @@ Keep the replies in your own private notes — see the roster-custody rule in st
 > 3. Play for a few minutes.
 >
 > **What I need over the next two weeks:**
-> - **Stay opted in until [DATE = opt-in date + 15 days].** Please don't tap *Leave the test* — that
->   breaks the 14-day streak for that seat and it has to start over. Keep it installed to be safe.
+> - **Stay opted in until I explicitly confirm production access is granted — never earlier than
+>   [DATE = exact opt-in timestamp + 15 calendar days].** Please don't tap *Leave the test* — that
+>   breaks the continuous period for that seat. Keep it installed to avoid accidental churn; Google
+>   documents opt-in continuity, not what uninstalling does.
 > - Open it a couple of times a week and actually play. When I apply to launch, Google asks me to
 >   describe the engagement I got from testers and what I changed because of their feedback.
 > - Tell me anything confusing, boring, or broken. One sentence is enough.
 >
 > **Fair warning about the build:** it is an early test build. [ONE HONEST LINE ABOUT THE CURRENT
-> STATE — e.g. placeholder art / no sound / [N] levels. Fill from the exact release candidate.]
-> No forced ads, energy, or loot-box system; every current level is solvable free.
+> STATE — e.g. placeholder art / no sound / [N] levels. If naming a count, copy it from the exact
+> AAB's generated listing.]
+> No forced ads. No energy timers. No loot boxes. Campaign play is free. [KEEP ONLY IF THE EXACT
+> TEST AAB CLEARS THESE CLAIMS.]
 >
 > **Where to send feedback:** [FEEDBACK EMAIL OR LINK] (same address is listed in the Play test page).
 >
 > Thanks — this genuinely unblocks the launch.
 > [YOUR NAME]
 
-**Sourcing for the three Google-behaviour statements in message A** (the 12/14 requirement — §1/S1, Q0-1-gated per rule 5 — plus the two below; retrieved 2026-08-13):
+**Sourcing for the three Google-behaviour statements in message A** (the 12-testers-for-14-consecutive-days requirement plus the two points below; retrieved 2026-08-13):
 
 - *"breaks the 14-day streak … has to start over"* — the requirement page is explicit that the 14
   days "must be consecutive to count" and that testers who opt out are not counted
@@ -116,13 +114,17 @@ not evidence (`docs/prd/venture-critique.md` V-1 is an evidence request, not a v
 
 ---
 
-## C. Confirmation check (send ~24h after A, to anyone whose opt-in you cannot see in Console)
+## C. Confirmation check (send ~24h after A to anyone who has not self-confirmed)
 
-> Quick check — Play Console still doesn't show you as opted in. Two things it usually is:
+> Quick check — Play Console shows only the total opted-in count, not individual names. Could you
+> reply **opted in** and send a screenshot of the tester page? Two common snags are:
 > - the link was opened on a computer or with a different Google account than **[EMAIL]**, or
 > - the page was opened but *Become a tester* was never tapped.
 >
 > Link again: **[OPT-IN URL]**. Ping me if it says the test isn't available and I'll fix the roster.
+
+Treat replies and screenshots as private, self-reported coordination evidence. The Play Console
+aggregate and its production-access eligibility state are authoritative for the 12/14 gate.
 
 ---
 
@@ -134,15 +136,15 @@ not evidence (`docs/prd/venture-critique.md` V-1 is an evidence request, not a v
 > Version [VERSIONNAME] (build [VERSIONCODE]).
 
 Keep the version line — it makes tester reports attributable to a specific artifact, which is the
-only build-to-feedback binding this project has today
-(`docs/release/release-checklist.md` §5 ledger).
+build-to-feedback binding recorded in `docs/release/release-checklist.md` §Candidate receipt.
 
 ---
 
 ## E. Mid-window nudge (day ~7)
 
 > Halfway through the test window. Two asks:
-> 1. Don't leave the test yet — the streak has to run to [DATE].
+> 1. Don't leave the test yet — the earliest buffer date is [DATE], and I will confirm separately
+>    when Google grants production access.
 > 2. If you've played since the last build: what's the single most annoying thing about it?
 >
 > If you've already dropped off, that's useful information too — tell me why and I'll take it as the
@@ -150,10 +152,10 @@ only build-to-feedback binding this project has today
 
 ---
 
-## F. Wrap-up (after the window closes)
+## F. Wrap-up (only after production access is granted)
 
-> The closed test window is done — thank you. You can leave the test any time now without breaking
-> anything. [IF APPLICABLE: what happens next / when it goes live.]
+> Google has granted production access — thank you. You can leave the test any time now without
+> affecting this application. [IF APPLICABLE: what happens next / when it goes live.]
 > Last ask: one sentence — would you have kept playing if I hadn't asked you to?
 
 ---
@@ -165,8 +167,7 @@ only build-to-feedback binding this project has today
 - **Never tie an incentive to an install, an opt-in, a rating, or a review.** Paying for or rewarding
   those is the shape of a policy violation and it corrupts the only signal the test exists to
   produce. Thanks and credits are fine; "opt in and I'll send you £10" is not.
-- No claims outside the VERIFIED set in `docs/store/play-store-listing.md`.
+- No claims whose exact-candidate gate is uncleared in `docs/store/play-store-listing.md`.
 - No links to internal docs, the private repo, or unreleased plans.
-- If a tester asks what data the app collects, answer from the Data safety form you actually
-  submitted — not from `docs/plan/web/privacy/index.html`, which describes SDKs this build does not
-  contain (flagged as F-2 in `docs/release/release-checklist.md`).
+- If a tester asks what data the app collects, answer from the Data safety form and privacy policy
+  submitted for that exact AAB, not from a future plan or a different build.

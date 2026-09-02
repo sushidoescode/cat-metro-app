@@ -1,53 +1,75 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
-    "defaultMode": "default",
     "allow": [
-      "Read", "Glob", "Grep",
-      "Bash(git status)", "Bash(git diff*)", "Bash(git log*)", "Bash(git add *)",
-      "Bash(git commit *)", "Bash(git branch*)", "Bash(git checkout -b *)", "Bash(git switch *)",
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git branch*)",
+      "Bash(git checkout -b *)",
+      "Bash(git switch *)",
       "Bash(git worktree *)",
-      "Bash(bash scripts/check.sh*)", "Bash(bash scripts/test.sh*)", "Bash(bash scripts/build.sh*)",
-      "WebFetch(domain:docs.anthropic.com)", "WebFetch(domain:code.claude.com)", "WebFetch(domain:github.com)"
-    ],
-    "ask": [
-      "Bash(git push *)", "Bash(git checkout *)", "Bash(git restore *)",
-      "Bash(gh pr merge *)", "Bash(gh repo *)"
+      "Bash(bash scripts/check.sh*)",
+      "Bash(bash scripts/test.sh*)",
+      "Bash(bash scripts/build.sh*)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:code.claude.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(git push *)",
+      "Bash(gh pr *)",
+      "Bash(gh api *)",
+      "Bash(gh run *)"
     ],
     "deny": [
-      "Bash(rm -rf *)", "Bash(git push --force*)", "Bash(git reset --hard*)",
-      "Bash(git rebase*)", "Bash(sudo *)",
-      "Read(./.env)", "Read(./.env.*)", "Read(//Users/*/.ssh/**)", "Read(~/.ssh/**)",
-      "Read(~/.aws/**)", "Read(~/.config/gh/**)",
+      "Bash(rm -rf *)",
+      "Bash(git push --force*)",
+      "Bash(git reset --hard*)",
+      "Bash(git rebase*)",
+      "Bash(sudo *)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(//Users/*/.ssh/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.config/gh/**)",
       "Bash(fastlane supply*)",
-      "Edit(docs/constitution.md)", "Write(docs/constitution.md)",
-      "Edit(tests/contract/**)", "Write(tests/contract/**)",
-      "Edit(.claude/hooks/**)", "Write(.claude/hooks/**)",
-      "Edit(scripts/git-hooks/**)", "Write(scripts/git-hooks/**)",
-      "Edit(evals/benchmark/**)", "Write(evals/benchmark/**)",
-      "Edit(evals/release-rubric.md)", "Write(evals/release-rubric.md)",
-      "Edit(evals/mode-policy.json)", "Write(evals/mode-policy.json)",
-      "Edit(evals/results/attested/**)", "Write(evals/results/attested/**)",
-      "Edit(state/mode)", "Write(state/mode)"
-    ]
+      "Edit(docs/constitution.md)",
+      "Write(docs/constitution.md)",
+      "Edit(tests/contract/**)",
+      "Write(tests/contract/**)",
+      "Edit(.claude/hooks/**)",
+      "Write(.claude/hooks/**)",
+      "Edit(scripts/git-hooks/**)",
+      "Write(scripts/git-hooks/**)",
+      "Edit(evals/benchmark/**)",
+      "Write(evals/benchmark/**)",
+      "Edit(evals/release-rubric.md)",
+      "Write(evals/release-rubric.md)",
+      "Edit(evals/mode-policy.json)",
+      "Write(evals/mode-policy.json)",
+      "Edit(evals/results/attested/**)",
+      "Write(evals/results/attested/**)",
+      "Edit(state/mode)",
+      "Write(state/mode)"
+    ],
+    "ask": [],
+    "defaultMode": "default"
   },
+
   "sandbox": {
     "enabled": true,
-    "filesystem": { "denyRead": ["~/.ssh", "~/.aws", "~/.config/gh"] },
-    "network": { "allowedDomains": ["github.com", "api.anthropic.com"] }
+    "network": {
+      "allowedDomains": ["github.com", "api.anthropic.com"]
+    },
+    "filesystem": {
+      "denyRead": ["~/.ssh", "~/.aws", "~/.config/gh"]
+    }
   },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/protect-files.sh\"" }]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/protect-bash.sh\"" }]
-      }
-    ]
-  },
-  "fileCheckpointingEnabled": true,
-  "autoCompactEnabled": true
+  "autoCompactEnabled": true,
+  "fileCheckpointingEnabled": true
 }

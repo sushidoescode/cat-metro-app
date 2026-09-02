@@ -4,20 +4,16 @@ using CatMetro.Content.Validation;
 
 namespace CatMetro.Bootstrap
 {
-    // CM-DAILYWIRE FA-2: DailyPipeline.Run needs schema/validator/pipeline-config INPUTS that
-    // scripts/stage-content.sh's own header forbids ever shipping as loose StreamingAssets
-    // files ("config/ holds non-shipping tool config ... none of that may ever ship"). This
-    // mirrors the merged DAILY-LINE contract's own precedent for exactly this situation
-    // (DailyDifficulty.cs hardcodes the weekday envelope instead of shipping
-    // config/daily_weekday_curve.json): the SAME VALUES the three source files hold are
-    // reproduced here as compiled C# — the source files never enter the shipped asset tree,
-    // only their derived values do. A companion EditMode test (DailyRuntimeInputsTests, kept
-    // outside Content/Daily's dotnet-linked Pure mirror so it may read real files) reads
-    // docs/plan/data/level_schema.json off disk at test time and asserts this embedded copy is
-    // byte-identical, so a future schema edit fails that test loudly instead of drifting
-    // silently against the runtime copy.
+    // CM-DAILYWIRE FA-2: DailyPipeline.Run needs schema/validator/pipeline-config inputs that
+    // scripts/stage-content.sh deliberately forbids shipping as loose StreamingAssets. The
+    // schema and pipeline config are embedded as exact bytes; validator thresholds are compiled
+    // as the exact parsed values because that source intentionally omits optional rows. Companion
+    // EditMode drift guards compare each representation with its real source artifact.
     public static class DailyRuntimeInputs
     {
+        private static readonly DailyPipelineConfig ParsedPipelineConfig =
+            ParsePipelineConfig();
+
         // config/validator_thresholds.json in full is one row: { "jitterSampleCount": 20 } —
         // the four Q-R rows (lowerBoundSlack/starBandSlack/noveltyMinDistance/axisBBandCaps)
         // are DELIBERATELY absent there (CM-C5 stop condition 3; Q-R). Reproduced here as the
@@ -26,19 +22,33 @@ namespace CatMetro.Bootstrap
             jitterSampleCount: 20, lowerBoundSlack: null, starBandSlack: null,
             noveltyMinDistance: null, axisBBandCaps: null);
 
-        // config/daily_pipeline.json's SALT_MAX_K row (10 — A-C6-2's own derivation is the
-        // device-side solve budget this ceiling was sized for, so this IS the on-device
-        // candidate ceiling, not a borrowed CI number). PrevalidationDays/AnchorDateKey are
-        // CI-horizon concepts DailyPipeline.Run never consults when DateKeys carries exactly
-        // one entry (today) — the values below satisfy the constructor without inventing a
-        // second runtime meaning for either.
-        public const int SaltMaxK = 10;
+        public static byte[] PipelineConfigBytes =>
+            Convert.FromBase64String(PipelineConfigJsonBase64);
+
+        // The precomputed artifact is admitted against the complete source-derived config:
+        // count alone would accept a same-size catalog shifted to the wrong dates.
+        public static DailyPipelineConfig ShippedPipelineConfig => ParsedPipelineConfig;
 
         public static DailyPipelineConfig PipelineConfig(string todayDateKey) =>
-            new DailyPipelineConfig(prevalidationDays: 1, saltMaxK: SaltMaxK,
+            new DailyPipelineConfig(prevalidationDays: 1,
+                saltMaxK: ParsedPipelineConfig.SaltMaxK,
                 anchorDateKey: todayDateKey);
 
         public static byte[] SchemaBytes => Convert.FromBase64String(SchemaJsonBase64);
+
+        private static DailyPipelineConfig ParsePipelineConfig()
+        {
+            var parsed = DailyPipelineConfig.Parse(PipelineConfigBytes);
+            if (!parsed.Ok)
+                throw new InvalidOperationException(
+                    "embedded daily pipeline config is invalid: " + parsed.Error);
+            return parsed.Value;
+        }
+
+        // config/daily_pipeline.json's exact bytes. Keeping the source comments in this payload
+        // ensures the drift guard detects any artifact edit, not only edits to selected fields.
+        private const string PipelineConfigJsonBase64 =
+            "ewogICJfY29tbWVudCI6ICJDTS1DNiBkYWlseS1zZWVkIHByZS12YWxpZGF0aW9uIHJvd3MuIERBSUxZX1BSRVZBTElEQVRJT05fREFZUyBpcyBhIGNvcnB1cyBudW1iZXI6IENNLVI0NidzIGhlYWRpbmcgcGlucyAnOTAgZGF0ZXMgcHJlLXZhbGlkYXRlZCBpbiBDSScgKGRvY3MvcHJkL1BSRC5tZDo3MjcpIGFuZCBBRFItMDAwOTozNSBydW5zIHZhbGlkYXRlLWRhaWxpZXMgJ292ZXIgdGhlIG5leHQgOTAgZGF0ZXMnIOKAlCBjb3BpZWQsIG5vdCBjaG9zZW4gKEEtQzYtMTsgUS1RIGd1YXJkcyBvbmx5IHRoZSBESUZGRVJFTlQgMzAtYm9hcmQgZGF0ZWQgYmFja3VwIHBvb2wsIEFEUi0wMDA4OjktMTQsIHdoaWNoIHRoaXMgcGlwZWxpbmUgbmV2ZXIgdG91Y2hlcykuIFBJUEVMSU5FX0FOQ0hPUl9EQVRFIGlzIHRoZSBob3N0J3MgZGVmYXVsdCAtLWZyb20gKEEtQzYtNyk6IGxpdmVvcHNfc3BlYy5tZDo1MydzICctLWZyb20gMjAyNi0wOC0yNCcgZXhhbXBsZSwgdGhlIHB1YmxpYy0xLjAgd2luZG93IHN0YXJ0OyB0aGUgQ0kgd29ya2Zsb3cgKGh1bWFuLWF1dGhvcmVkLCBRLVYpIHBhc3NlcyBhIHJlYWwgLS1mcm9tIGNvbXB1dGVkIG91dHNpZGUgdGhlIHRvb2wsIHNvIG5vIGNsb2NrIGlzIHJlYWQgYW55d2hlcmUgaW4gdGhpcyBjb250cmFjdC4iLAogICJfU0FMVF9NQVhfS19kZXJpdmF0aW9uIjogIkEtQzYtMiAodGhlIG9uZSBhbmFseXN0LWF1dGhvcmVkIG51bWJlciBoZXJlOyBmbGFnZ2VkIGluIHRoZSBDTS1DNiBQUik6IHRoZSBkZXZpY2Utc2lkZSBsaW1iIG9mIENNLVI0Ni4zIGJvdW5kcyB0aGUgU0FNRSBzYWx0IGxvb3AgYXQgMjUwIG1zIHdpdGggdGhlIHNvbHZlciBhdCBiZWFtIHdpZHRoIDFrOyBidWRnZXRpbmcgPj0gfjI1IG1zIHBlciBzb2x2ZSBhdHRlbXB0LCBhIGRldmljZSBjYW4gZ3VhcmFudGVlIGF0IG1vc3QgfjEwIGF0dGVtcHRzIGluc2lkZSB0aGF0IGJ1ZGdldCwgYW5kIGEgQ0kgY2VpbGluZyBhYm92ZSB0aGUgZGV2aWNlJ3MgcmVhY2hhYmxlIGsgd291bGQgYnJlYWsgbGl2ZW9wc19zcGVjLm1kOjU1LTU2J3MgJ3NhbWUgYWxnb3JpdGhtID0+IHNhbWUgaycgZ3VhcmFudGVlLiBUaGUgbG9vcCBhdHRlbXB0cyBrID0gMC4uU0FMVF9NQVhfSyBpbmNsdXNpdmUsIHRoZW4gcmVwb3J0cyBleGhhdXN0aW9uLiIsCiAgIkRBSUxZX1BSRVZBTElEQVRJT05fREFZUyI6IDkwLAogICJTQUxUX01BWF9LIjogMTAsCiAgIlBJUEVMSU5FX0FOQ0hPUl9EQVRFIjogIjIwMjYtMDgtMjQiCn0K";
 
         // docs/plan/data/level_schema.json's exact bytes, base64-encoded — never hand-
         // transcribed (base64 removes any C#-string-escaping transcription risk for a

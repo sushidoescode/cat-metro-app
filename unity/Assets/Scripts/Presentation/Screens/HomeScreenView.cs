@@ -1,16 +1,20 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Input;
 using CatMetro.Presentation.Theme;
+using CatMetro.Services;
+using CatMetro.Services.Cosmetics;
 
 namespace CatMetro.Presentation.Screens
 {
     // LOOK step 7 Home: a framed toy-route/depot stage around three non-interactive cat
     // holders, with one wide, csv-labelled L001 action. The default remains commerce-free;
-    // Daily is constructed only when explicitly unlocked. Hit regions retain the existing
-    // unregister lifecycle, and motion-off keeps the action's static raised-ring cue.
+    // Daily is constructed only when progress/config unlocks it, including a threshold crossed
+    // during the current run. Hit regions retain the existing unregister lifecycle, and
+    // motion-off keeps the action's static raised-ring cue.
     public sealed class HomeScreenView : MonoBehaviour
     {
         private const string PinRegionId = "home.pin.l001";
@@ -23,22 +27,24 @@ namespace CatMetro.Presentation.Screens
         // RegisterPin/UnregisterPin/OnDisable/OnEnable lifetime law the L001 pin already obeys
         // (a second call site into the same helpers, never a parallel implementation).
         private const string DailyPinRegionId = "home.pin.daily";
-        // CM-BOOT-HOME: deliberately left at the OLD ParentPriority(0), NOT raised alongside
-        // PinRegionPriority above — Daily is explicitly out of scope for this contract
-        // (criterion 5, commerce-free shipped path) and this pin is never constructed at all
-        // when dailyUnlocked is false (GameRoot.ComposeScreenFlow), which is unconditionally the
-        // case in a shipped build — so the priority-debt fix's live-tap-bug risk never reaches
-        // it. Left as a named, flagged follow-up rather than silently widened past this
-        // contract's declared scope.
-        private const int DailyPinRegionPriority = 0; // explicit per A-UX1-3
+        // Daily now ships on Home, so it shares Home's raised priority and cannot lose a tap to
+        // a lower painted layer while the screen is visible.
+        private const int DailyPinRegionPriority = ChromeRegions.HomeScreenPriority;
+        private const string ReminderGearRegionId = "home.reminder.gear";
+        private const int ReminderGearRegionPriority = ChromeRegions.HomeScreenPriority;
 
         public System.Action LevelSelected;
         public System.Action DailySelected;
+        public System.Action ReminderAccepted;
+        public System.Action ReminderDismissed;
+        public System.Action<bool> ReminderEnabledChanged;
+        public System.Action<DailyReminderSlot> ReminderSlotChanged;
 
         private ChromeRegions _regions;
         private System.Func<bool> _motionOff;
         private bool _registered;
         private bool _dailyRegistered;
+        private bool _reminderGearRegistered;
         private bool _shown; // #46 review F4: Show()-left-shown intent, survives OnDisable/OnEnable
         private Image _background; // BEAUTIFUL-MENU: the warm-paper tabletop ground
         private TMP_Text _title;
@@ -50,9 +56,15 @@ namespace CatMetro.Presentation.Screens
         private TMP_Text _primaryLabel;
         private RectTransform _dailyPin;
         private TMP_Text _dailyLabel;
+        private TMP_Text _dailyTally;
+        private TMP_Text _dailyStatus;
+        private RectTransform _reminderGear;
+        private DailyReminderSheet _reminderSheet;
+        private CosmeticPortraitView _profilePortrait;
         private Rect _pinRectPx;
         private Rect _dailyPinRectPx;
         private Rect _heroRectPx;
+        private Rect _reminderGearRectPx;
         private float _phase;
 
         public Rect PinPaintedRectPx => _pinRectPx;
@@ -79,8 +91,18 @@ namespace CatMetro.Presentation.Screens
         public Rect DailyPinPaintedRectPx => _dailyPinRectPx;
         public RectTransform DailyPinTransform => _dailyPin;
         public string DailyLabelText => _dailyLabel != null ? _dailyLabel.text : "";
+        public string DailyTallyText => _dailyTally != null ? _dailyTally.text : "";
+        public string DailyStatusText => _dailyStatus != null ? _dailyStatus.text : "";
+        public bool DailyTallyVisible => _dailyTally != null && _dailyTally.gameObject.activeSelf;
         public Rect HeroRectPx => _heroRectPx;
         public string PrimaryLabelText => _primaryLabel != null ? _primaryLabel.text : "";
+        public RectTransform ReminderGearTransform => _reminderGear;
+        public Rect ReminderGearRectPx => _reminderGearRectPx;
+        public DailyReminderSheet ReminderSheet => _reminderSheet;
+        public CosmeticPortraitView ProfilePortrait => _profilePortrait;
+        public RectTransform ProfilePortraitTransform => _profilePortrait != null
+            ? _profilePortrait.RootTransform
+            : null;
         public int MarkerCount => _markers != null ? _markers.Length : 0;
         public Color[] MarkerColors
         {
@@ -93,11 +115,12 @@ namespace CatMetro.Presentation.Screens
             }
         }
 
-        // dailyEntryUnlocked (CM-DAILYWIRE, default false): every EXISTING caller/test uses the
-        // zero-argument form, so HomeScreenTests.cs's S-01 tree walk and exactly-one-region
-        // count keep exercising the untouched session-1 tree. Only GameRoot, when
-        // DailyEntryUnlocked is explicitly set, passes true.
-        public static HomeScreenView Create(Transform canvasParent, bool dailyEntryUnlocked = false)
+        // dailyEntryUnlocked (CM-DAILYWIRE, default false): the session-1 tree stays free of
+        // Daily objects until the save/config gate opens. GameRoot may also call UnlockDaily
+        // after a campaign win crosses that same threshold in the current run.
+        public static HomeScreenView Create(Transform canvasParent,
+            bool dailyEntryUnlocked = false, int lifetimeDailyCompletions = 0,
+            ICosmeticPortraitSource portraitSource = null)
         {
             var go = new GameObject("HomeScreen");
             go.transform.SetParent(canvasParent, false);
@@ -165,10 +188,16 @@ namespace CatMetro.Presentation.Screens
             // replace only these fallback paints and continue to use their rects as holders.
             MakeSilhouette(view._hero, "ParkedDistrictA",
                 new Vector2(0.11f, 0.665f), new Vector2(0.33f, 0.815f));
-            MakeSilhouette(view._hero, "ParkedDistrictB",
+            var parkedDistrictB = MakeSilhouette(view._hero, "ParkedDistrictB",
                 new Vector2(0.67f, 0.455f), new Vector2(0.89f, 0.605f));
             MakeSilhouette(view._hero, "ParkedDistrictC",
                 new Vector2(0.11f, 0.245f), new Vector2(0.33f, 0.395f));
+            if (portraitSource != null)
+            {
+                parkedDistrictB.color = Color.clear;
+                view._profilePortrait = CosmeticPortraitView.Create(
+                    parkedDistrictB.transform, portraitSource, "HomeProfilePortrait");
+            }
 
             MakeSurface(view._hero, "DepotSpur", new Vector2(0.50f, 0.125f),
                 new Vector2(0.68f, 0.145f), Palette.InkNavy, false);
@@ -201,21 +230,115 @@ namespace CatMetro.Presentation.Screens
             view._primaryLabel.fontSizeMax = 42f;
             view._primaryLabel.fontStyle = FontStyles.Bold;
 
-            // CM-DAILYWIRE: the Daily entry — a second, static (no pulse) chip beside the L001
-            // pin, following the same MakeChip + csv-keyed label pattern as the rest of Home.
-            // NEVER constructed when dailyEntryUnlocked is false (S-01 — the CM-UX-07
-            // "zero objects constructed" law, not merely inactive/hidden).
-            if (dailyEntryUnlocked)
-            {
-                view._dailyPin = MakeChip(go.transform, "PinDaily",
-                    new Color(0.10f, 0.32f, 0.24f, 0.95f));
-                view._dailyLabel = MakeText(view._dailyPin.transform, "PinDailyLabel",
-                    Vector2.zero, Vector2.one,
-                    Strings.UiStrings.Get("home.daily.label"), 22f, Palette.WarmPaper); // key-only, never a literal
-            }
+            if (dailyEntryUnlocked) view.UnlockDaily(lifetimeDailyCompletions);
 
             go.SetActive(false);
             return view;
+        }
+
+        // Opens the same save/config-gated surface both at boot and when the threshold is
+        // crossed during play. Idempotent so a duplicate outcome observation cannot stack
+        // render objects or input regions.
+        public void UnlockDaily(int lifetimeDailyCompletions)
+        {
+            if (_dailyPin == null)
+            {
+                _dailyPin = MakeChip(transform, "PinDaily",
+                    new Color(0.10f, 0.32f, 0.24f, 0.95f));
+                _dailyLabel = MakeText(_dailyPin.transform, "PinDailyLabel",
+                    new Vector2(0.05f, 0.57f), new Vector2(0.95f, 0.96f),
+                    Strings.UiStrings.Get("home.daily.label"), 18f, Palette.WarmPaper); // key-only, never a literal
+                _dailyLabel.enableAutoSizing = true;
+                _dailyLabel.fontSizeMin = 10f;
+                _dailyLabel.fontSizeMax = 18f;
+                _dailyLabel.fontStyle = FontStyles.Bold;
+                _dailyTally = MakeText(_dailyPin.transform, "LifetimeTally",
+                    new Vector2(0.06f, 0.05f), new Vector2(0.94f, 0.57f),
+                    "", 12f, Palette.WarmPaper);
+                _dailyTally.enableAutoSizing = true;
+                _dailyTally.fontSizeMin = 7f;
+                _dailyTally.fontSizeMax = 12f;
+                _dailyStatus = MakeText(_dailyPin.transform, "DailyStatus",
+                    new Vector2(0.06f, 0.05f), new Vector2(0.94f, 0.57f),
+                    "", 11f, Palette.WarmPaper);
+                _dailyStatus.enableAutoSizing = true;
+                _dailyStatus.fontSizeMin = 7f;
+                _dailyStatus.fontSizeMax = 11f;
+                _dailyStatus.gameObject.SetActive(false);
+            }
+
+            SetDailyLifetimeCompletions(lifetimeDailyCompletions);
+            LayoutForViewport(Screen.safeArea, Screen.dpi);
+            if (_shown && isActiveAndEnabled) RegisterDailyPin();
+        }
+
+        public void SetDailyLifetimeCompletions(int count)
+        {
+            if (_dailyTally == null) return;
+            int safeCount = Mathf.Max(0, count);
+            _dailyTally.text = Strings.UiStrings.Get("home.daily.tally")
+                .Replace("{count}", safeCount.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        // Cache fallback work and failures stay on Home. Surface that state in the existing
+        // Daily chip so the tap never appears dead; null/empty clears it and restores the tally.
+        public void SetDailyStatusKey(string key)
+        {
+            if (_dailyStatus == null || _dailyTally == null) return;
+            bool hasStatus = !string.IsNullOrEmpty(key);
+            _dailyStatus.text = hasStatus ? Strings.UiStrings.Get(key) : "";
+            _dailyStatus.gameObject.SetActive(hasStatus);
+            _dailyTally.gameObject.SetActive(!hasStatus);
+        }
+
+        public void ConfigureReminder(bool configurationUnlocked, bool enabled,
+            DailyReminderSlot slot, MessagingPermission permission,
+            bool canRequestPermission, bool providerAvailable)
+        {
+            if (!configurationUnlocked) return;
+            EnsureReminderViews();
+            _reminderSheet.Configure(enabled, slot, permission,
+                canRequestPermission, providerAvailable);
+            LayoutForViewport(Screen.safeArea, Screen.dpi);
+            if (_shown && isActiveAndEnabled) RegisterReminderGear();
+        }
+
+        public void ShowReminderPrompt()
+        {
+            if (_reminderSheet == null || !_shown || !isActiveAndEnabled) return;
+            _reminderSheet.ShowPrompt();
+        }
+
+        public void ShowReminderSettings()
+        {
+            if (_reminderSheet == null || !_shown || !isActiveAndEnabled) return;
+            _reminderSheet.ShowSettings();
+        }
+
+        private void EnsureReminderViews()
+        {
+            if (_reminderSheet != null) return;
+
+            _reminderGear = MakeChip(transform, "ReminderGear", Palette.CreamCard);
+            MakeSurface(_reminderGear, "GearHub", new Vector2(0.24f, 0.24f),
+                new Vector2(0.76f, 0.76f), Palette.InkNavy, true);
+            MakeSurface(_reminderGear, "GearHole", new Vector2(0.42f, 0.42f),
+                new Vector2(0.58f, 0.58f), Palette.WarmPaper, true);
+            for (int i = 0; i < 4; i++)
+            {
+                var tooth = MakeSurface(_reminderGear, "GearTooth" + i,
+                    new Vector2(0.14f, 0.44f), new Vector2(0.86f, 0.56f),
+                    Palette.InkNavy, false);
+                tooth.rectTransform.localEulerAngles = new Vector3(0f, 0f, i * 45f);
+            }
+
+            _reminderSheet = DailyReminderSheet.Create(transform);
+            _reminderSheet.Attach(_regions);
+            _reminderSheet.Accepted = () => ReminderAccepted?.Invoke();
+            _reminderSheet.Dismissed = () => ReminderDismissed?.Invoke();
+            _reminderSheet.EnabledChanged = value => ReminderEnabledChanged?.Invoke(value);
+            _reminderSheet.SlotChanged = value => ReminderSlotChanged?.Invoke(value);
         }
 
         private static TMP_Text MakeText(Transform parent, string name,
@@ -295,6 +418,7 @@ namespace CatMetro.Presentation.Screens
         {
             _regions = regions;
             _motionOff = motionOff; // GameRoot.MotionOff binding is CM-UX-07's (P-3)
+            if (_reminderSheet != null) _reminderSheet.Attach(regions);
         }
 
         public void Show()
@@ -304,13 +428,16 @@ namespace CatMetro.Presentation.Screens
             LayoutForViewport(Screen.safeArea, Screen.dpi);
             RegisterPin();
             RegisterDailyPin();
+            RegisterReminderGear();
         }
 
         public void Hide()
         {
             _shown = false;
+            if (_reminderSheet != null) _reminderSheet.Hide();
             UnregisterPin();
             UnregisterDailyPin();
+            UnregisterReminderGear();
             gameObject.SetActive(false);
         }
 
@@ -318,6 +445,7 @@ namespace CatMetro.Presentation.Screens
         {
             UnregisterPin(); // R1-F3 lifetime law
             UnregisterDailyPin();
+            UnregisterReminderGear();
         }
 
         // CM-UX-07 W-1 (R2-3, audit M-3): mirrors OnDestroy — a deactivated-but-not-destroyed
@@ -328,6 +456,7 @@ namespace CatMetro.Presentation.Screens
         {
             UnregisterPin();
             UnregisterDailyPin();
+            UnregisterReminderGear();
         }
 
         // #46 review F4: mirrors OnDisable — a host reactivated directly (SetActive(true), not
@@ -344,6 +473,7 @@ namespace CatMetro.Presentation.Screens
             {
                 RegisterPin();
                 RegisterDailyPin();
+                RegisterReminderGear();
             }
         }
 
@@ -390,6 +520,25 @@ namespace CatMetro.Presentation.Screens
             }
         }
 
+        private void RegisterReminderGear()
+        {
+            if (_reminderGear != null && _regions != null && !_reminderGearRegistered)
+            {
+                _regions.Register(ReminderGearRegionId, () => _reminderGearRectPx,
+                    ShowReminderSettings, ReminderGearRegionPriority);
+                _reminderGearRegistered = true;
+            }
+        }
+
+        private void UnregisterReminderGear()
+        {
+            if (_regions != null && _reminderGearRegistered)
+            {
+                _regions.Unregister(ReminderGearRegionId);
+                _reminderGearRegistered = false;
+            }
+        }
+
         // Pure layout injection keeps the capture and the runtime on the same law. Show() is
         // the only live Screen binding because the shipped orientation is portrait-locked.
         public void LayoutForViewport(Rect safeArea, float dpi)
@@ -413,6 +562,13 @@ namespace CatMetro.Presentation.Screens
                 _dailyPinRectPx = HomeLayout.DailyPinRect(safeArea, dpi);
                 ApplyPx(_dailyPin, _dailyPinRectPx);
             }
+            if (_reminderGear != null)
+            {
+                _reminderGearRectPx = DailyReminderLayout.GearRect(safeArea, dpi);
+                ApplyPx(_reminderGear, _reminderGearRectPx);
+            }
+            if (_reminderSheet != null && _reminderSheet.IsVisible)
+                _reminderSheet.LayoutForViewport(safeArea, dpi);
         }
 
         private static void ApplyPx(RectTransform rect, Rect px)

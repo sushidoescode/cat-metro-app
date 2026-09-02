@@ -6,16 +6,18 @@ using UnityEngine;
 using UnityEngine.TestTools;
 using CatMetro.Bootstrap;
 using CatMetro.Bootstrap.DevCapture;
+using CatMetro.Application.Save;
 using CatMetro.Content;
 using CatMetro.Content.Daily;
 using CatMetro.Presentation.Hud;
+using CatMetro.Services;
 
 namespace CatMetro.Tests.PlayMode
 {
-    // CM-DAILYWIRE: funnel position 6, end-to-end. Home's Daily pin -> the REAL DailyPipeline
-    // for an injected UTC date -> the admitted board plays through LevelImporter.Import (the
-    // identical function LoadNext/InitializeFromSeam use) -> a Daily win never reaches
-    // LevelBand/NextLevelId/WrapAtEndOfBand and returns Home. Every test drives REAL composition
+    // CM-DAILYWIRE: funnel position 6, end-to-end. Home's Daily pin -> the admitted precomputed
+    // catalog when available, otherwise the real deterministic DailyPipeline fallback -> the
+    // board enters the same imported-level seam as campaign play -> a Daily win never reaches
+    // LevelBand/NextLevelId/WrapAtEndOfBand and returns Home. Every test drives real composition
     // through GameRoot.Wire/SelectDaily (the CM-UX-01/02/04/05/07/LOADNEXT live-wiring +
     // anti-vacuity rule) — no test hand-sets a delegate GameRoot binds itself.
     public sealed class DailyWireTests
@@ -41,14 +43,17 @@ namespace CatMetro.Tests.PlayMode
         [SetUp]
         public void SetUp()
         {
+            GameRoot.DevSkipShippedHome = false;
             GameRoot.BootToHome = false;
             _tmpDir = Path.Combine(Path.GetTempPath(),
                 "cm-dailywire-" + System.Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_tmpDir);
             DevLevelOverride.DirectoryOverride = _tmpDir;
-            // CM-DAILYWIRE: the shipped default is false (S-01 — HomeScreenTests.cs's own tree
-            // walk forbids a Daily node on session-1 Home; product_spec §18 agrees, "after L007
-            // win"). This suite explicitly opts into the dev/test-only seam to exercise the
+            GameRoot.DailyStorageRootOverride = () =>
+                new TestStorageRoot(Path.Combine(_tmpDir, "save"));
+            GameRoot.MessagingFactoryOverride = null;
+            // A fresh save is below the shipped configurable threshold. This suite explicitly
+            // opts into the dev/test-only seam to exercise the
             // REAL wiring end-to-end; every test resets it in TearDown so it never bleeds into
             // an unrelated fixture (the BootToHome hygiene precedent).
             GameRoot.DailyEntryUnlocked = true;
@@ -57,8 +62,11 @@ namespace CatMetro.Tests.PlayMode
         [TearDown]
         public void TearDown()
         {
+            GameRoot.DevSkipShippedHome = false;
             GameRoot.BootToHome = false;
             GameRoot.DailyEntryUnlocked = false;
+            GameRoot.DailyStorageRootOverride = null;
+            GameRoot.MessagingFactoryOverride = null;
             DevLevelOverride.DirectoryOverride = null; // CM-BOOT-HOME re-seam hygiene
             if (!string.IsNullOrEmpty(_tmpDir) && Directory.Exists(_tmpDir))
                 Directory.Delete(_tmpDir, true);
@@ -66,6 +74,18 @@ namespace CatMetro.Tests.PlayMode
             if (_root != null) Object.Destroy(_root.gameObject);
             _root = null;
             Time.timeScale = 1f;
+        }
+
+        private sealed class TestStorageRoot : IStorageRoot
+        {
+            public string SaveDirectory { get; }
+            public string CacheDirectory => SaveDirectory;
+
+            public TestStorageRoot(string path)
+            {
+                SaveDirectory = path;
+                Directory.CreateDirectory(path);
+            }
         }
 
         // CM-BOOT-HOME: writes the campaign fixture where DevLevelOverride reads it, then boots
@@ -93,15 +113,21 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Home.IsVisible, Is.True, "precondition: Home shown on boot");
         }
 
-        // --- the S-01 default: DailyEntryUnlocked false builds ZERO Daily objects (discovered
-        // mid-implementation via HomeScreenTests.cs's own tree walk — product_spec §18's
-        // "after L007 win" gate and S-01's "no daily entry rendered in session 1" law agree,
-        // and this contract does not relax either; see the frozen contract's revised FA-4) ---
+        private static IEnumerator WaitForDailySession(GameRoot root, float timeoutSeconds = 90f)
+        {
+            float deadline = Time.realtimeSinceStartup + timeoutSeconds;
+            while (!root.IsDailySession && Time.realtimeSinceStartup < deadline)
+                yield return null;
+            Assert.That(root.IsDailySession, Is.True,
+                "Daily fallback did not finish before the real-time deadline");
+        }
+
+        // --- a fresh save below the configured threshold builds zero Daily objects ---
 
         [UnityTest]
-        public IEnumerator ShippedDefault_DailyEntryUnlocked_False_BuildsZeroDailyObjects()
+        public IEnumerator FreshSave_BelowConfiguredThreshold_BuildsZeroDailyObjects()
         {
-            GameRoot.DailyEntryUnlocked = false; // the actual shipped default, overriding SetUp
+            GameRoot.DailyEntryUnlocked = false; // exercise save/config rather than force-on
             _root = LaunchWithCampaignFixture("L001");
             yield return null;
 
@@ -112,6 +138,8 @@ namespace CatMetro.Tests.PlayMode
                 + "here");
             Assert.That(_root.Home.DailyLabelText, Is.EqualTo(""),
                 "no label component exists to read");
+            Assert.That(_root.DailyUnlockAfterCampaignCompletions, Is.EqualTo(7),
+                "the shipped config defaults to seven unique campaign clears");
 
             // positive control: the SAME boot with the flag on DOES build it (the pair proves
             // the guard is real, not a tautology).
@@ -124,6 +152,109 @@ namespace CatMetro.Tests.PlayMode
                 "control: the flag genuinely gates construction");
         }
 
+        [UnityTest]
+        public IEnumerator SevenSavedCampaignClears_UnlockDailyWithoutTheDevFlag()
+        {
+            GameRoot.DailyEntryUnlocked = false;
+            var storage = new TestStorageRoot(Path.Combine(_tmpDir, "save"));
+            var boundsBytes = File.ReadAllBytes(Path.Combine(
+                UnityEngine.Application.streamingAssetsPath, "config", "runtime_bounds.json"));
+            var bounds = RuntimeBounds.Parse(boundsBytes);
+            Assert.That(bounds.Ok, Is.True, bounds.Error?.ToString());
+            var store = new SaveStore(storage, new RealSaveFileSystem(),
+                bounds.Value, MigrationTable.CreateDefault());
+            store.Load();
+            var progress = new DailyProgressTracker(store);
+            for (int i = 1; i <= 7; i++)
+                progress.RecordCampaignCompletion("L" + i.ToString("000"));
+
+            _root = LaunchWithCampaignFixture("L008");
+            yield return null;
+
+            Assert.That(_root.Home.DailyPinTransform, Is.Not.Null,
+                "the real saved-progress/config path constructs the shipped Daily entry");
+            Assert.That(_root.DailyUnlockAfterCampaignCompletions, Is.EqualTo(7));
+        }
+
+        [UnityTest]
+        public IEnumerator SeventhCampaignClear_UnlocksDailyInTheSameRun_AndReturnsHome()
+        {
+            GameRoot.DailyEntryUnlocked = false;
+            var storage = new TestStorageRoot(Path.Combine(_tmpDir, "save"));
+            var boundsBytes = File.ReadAllBytes(Path.Combine(
+                UnityEngine.Application.streamingAssetsPath, "config", "runtime_bounds.json"));
+            var bounds = RuntimeBounds.Parse(boundsBytes);
+            Assert.That(bounds.Ok, Is.True, bounds.Error?.ToString());
+            var store = new SaveStore(storage, new RealSaveFileSystem(),
+                bounds.Value, MigrationTable.CreateDefault());
+            store.Load();
+            var progress = new DailyProgressTracker(store);
+            for (int i = 1; i <= 6; i++)
+                progress.RecordCampaignCompletion("L" + i.ToString("000"));
+
+            File.Copy(Path.Combine(UnityEngine.Application.streamingAssetsPath,
+                    GameRoot.LevelPath("L007")),
+                Path.Combine(_tmpDir, "level.json"), overwrite: true);
+            _root = GameRoot.Launch();
+            yield return null;
+
+            Assert.That(_root.Home.DailyPinTransform, Is.Null,
+                "six unique clears are still below the shipped threshold");
+            Assert.That(_root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center),
+                Is.EqualTo(-3));
+            Assert.That(_root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center),
+                Is.EqualTo(-3));
+            Assert.That(_root.ScreensVisible, Is.False, "campaign play has started");
+
+            var level = _root.Session.Level;
+            var solve = CatMetro.Domain.Solver.LevelSolver.Solve(level.Graph, (ulong)level.Dto.Seed);
+            Assert.That(solve.Verdict, Is.EqualTo(CatMetro.Domain.Solver.SolveVerdict.Solved),
+                "the real shipped L007 supplies the campaign-win witness");
+            foreach (var e in solve.OptimalLog.Entries)
+            {
+                while (_root.Session.State.Tick < e.Tick
+                    && _root.Session.State.Outcome.Kind == CatMetro.Domain.OutcomeKind.Running)
+                    _root.Session.AdvanceMs(
+                        CatMetro.Application.Session.TickInterpolator.TICK_MS);
+                _root.Session.EnqueueToggle(e.SwitchId);
+            }
+            while (_root.Session.State.Outcome.Kind == CatMetro.Domain.OutcomeKind.Running
+                && _root.Session.State.Tick <= level.Dto.Win.TimeLimitTicks)
+                _root.Session.AdvanceMs(CatMetro.Application.Session.TickInterpolator.TICK_MS);
+            Assert.That(_root.Session.State.Outcome.Kind,
+                Is.EqualTo(CatMetro.Domain.OutcomeKind.Won), "solver witness wins L007 for real");
+
+            yield return null; // GameRoot observes the win and persists clear seven.
+            yield return null; // ResultsPanel observes ScreenState == Won.
+            Assert.That(_root.Home.DailyPinTransform, Is.Not.Null,
+                "the threshold transition constructs Daily without a cold relaunch");
+            var panel = _root.GetComponent<ResultsPanel>();
+            Assert.That(panel.CtaText, Is.EqualTo("Home"),
+                "the threshold-crossing result routes to the newly unlocked Home surface");
+
+            panel.NextRequested?.Invoke();
+            yield return null;
+            yield return null;
+            yield return null;
+            Assert.That(_root.Home.IsVisible, Is.True,
+                "the player can reach the unlocked entry in the same running app");
+            Assert.That(_root.Home.DailyPinTransform, Is.Not.Null);
+            Assert.That(_root.CurrentLevelId, Is.EqualTo("L008"),
+                "the next campaign level is prepared behind Home");
+            Assert.That(_root.LifetimeDailyCompletions, Is.Zero,
+                "a real campaign win cannot count as a Daily completion");
+            Assert.That(_root.Home.ReminderGearTransform, Is.Null,
+                "a real campaign win cannot arm the earned reminder affordance");
+            Assert.That(_root.Home.ReminderSheet, Is.Null,
+                "the campaign funnel must construct no reminder prompt tree");
+
+            _root.DailyClockUnixSeconds = () => PinnedUnixSeconds;
+            Assert.That(_root.Input.HandleTapAtScreen(
+                _root.Home.DailyPinPaintedRectPx.center), Is.EqualTo(-3));
+            Assert.That(_root.IsDailySession, Is.True,
+                "the newly constructed region is live, not only visible");
+        }
+
         // --- criterion 1: Home carries a Daily entry, same lifetime law as the L001 pin ---
 
         [UnityTest]
@@ -134,7 +265,10 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Home.DailyLabelText, Is.EqualTo(
                 CatMetro.Presentation.Strings.UiStrings.Get("home.daily.label")),
                 "the label resolves through the csv key, never a literal");
-            int regionBaseline = _root.Input.Regions.Count;
+            Assert.That(_root.Input.Regions.IsRegistered("home.pin.l001"), Is.True);
+            Assert.That(_root.Input.Regions.IsRegistered("home.pin.daily"), Is.True);
+            Assert.That(_root.Input.Regions.IsRegistered("wardrobe.entry"), Is.True,
+                "Wardrobe is a legitimate third Home target, not noise in a count");
 
             // The tap IS the trigger (HomeScreenView.DailySelected -> GameRoot.SelectDaily) —
             // no test hand-invokes SelectDaily here, so this proves the real registered region
@@ -145,23 +279,25 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Home.IsVisible, Is.False, "Home hides once Daily is selected");
             Assert.That(_root.IsDailySession, Is.True,
                 "the real tap reached SelectDaily(), not a no-op");
-            // F2 (review fix round): EXACTLY two regions gone (the L001 pin + the Daily pin),
-            // not merely "fewer than before" — Is.LessThan would also pass if only one
-            // unregistered (a real ghost-region bug) or if some unrelated third region
-            // vanished too, proving nothing precise.
-            Assert.That(_root.Input.Regions.Count, Is.EqualTo(regionBaseline - 2),
-                "both Home pins (L001 + Daily), and only those two, unregister once Home "
-                + "hides — a ghost region would leave this count higher");
+            Assert.That(_root.Input.Regions.IsRegistered("home.pin.l001"), Is.False);
+            Assert.That(_root.Input.Regions.IsRegistered("home.pin.daily"), Is.False);
+            Assert.That(_root.Input.Regions.IsRegistered("wardrobe.entry"), Is.False,
+                "all painted Home targets unregister when Daily enters gameplay");
         }
 
-        // --- criteria 2/3/8: the real pipeline runs for the injected date, loads through the
-        // campaign seam, and the clock enters exactly once ---
+        // --- criteria 2/3/8: the precomputed artifact wins for an in-horizon injected date,
+        // loads through the gameplay seam, and the clock enters exactly once ---
 
         [UnityTest]
-        public IEnumerator TapDailyPin_RunsTheRealPipeline_ForTheInjectedDate_LoadsThroughTheSeam()
+        public IEnumerator TapDailyPin_UsesPrecomputedBoard_ForInjectedDate_LoadsThroughTheSeam()
         {
             yield return BootToHomeWithCampaignFixture();
-            _root.DailyClockUnixSeconds = () => PinnedUnixSeconds;
+            int clockReads = 0;
+            _root.DailyClockUnixSeconds = () =>
+            {
+                clockReads++;
+                return PinnedUnixSeconds;
+            };
 
             LogAssert.Expect(LogType.Log, new Regex(@"SEAM_LOADED daily:2026-08-24"));
             int tapResult = _root.Input.HandleTapAtScreen(_root.Home.DailyPinPaintedRectPx.center);
@@ -171,11 +307,127 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Session.Level.Dto.Id, Is.EqualTo("L800"),
                 "the shipped Daily runtime id (DAILY-LINE A-DL-3)");
             Assert.That((uint)_root.Session.Level.Dto.Seed, Is.EqualTo(PinnedSeed),
-                "#73's own pinned vector for 2026-08-24 — the REAL pipeline ran, not a stub");
+                "#73's pinned vector proves the catalog serves the deterministic board");
             Assert.That(_root.ScreenState, Is.EqualTo("Playing"));
             Assert.That(_root.Home.IsVisible, Is.False);
+            Assert.That(_root.ActiveDailyDateKey, Is.EqualTo("2026-08-24"));
+            Assert.That(clockReads, Is.EqualTo(1),
+                "selection captures today's UTC date once; midnight cannot split one run");
+            Assert.That(_root.DailyRunIsPractice, Is.False);
+            Assert.That(_root.LastDailyBoardSource, Is.EqualTo("precomputed"),
+                "an in-horizon date must use the shipped, prevalidated board before regeneration");
             CollectionAssert.AreEqual(new string[0], _root.Stack.ToBreadcrumb(),
                 "no Intro sheet for Daily — straight into gameplay");
+        }
+
+        private sealed class ThrowingFactory : IBoardFactory
+        {
+            public LevelDto Build(uint seed, string dateKey, int k) =>
+                throw new System.InvalidOperationException("runtime regeneration should not run");
+        }
+
+        private sealed class DelayedFactory : IBoardFactory
+        {
+            private readonly DailyBoardFactory _inner = new DailyBoardFactory();
+            private int _first = 1;
+
+            public LevelDto Build(uint seed, string dateKey, int k)
+            {
+                if (System.Threading.Interlocked.Exchange(ref _first, 0) == 1)
+                    System.Threading.Thread.Sleep(750);
+                return _inner.Build(seed, dateKey, k);
+            }
+        }
+
+        private sealed class CountingFactory : IBoardFactory
+        {
+            private readonly DailyBoardFactory _inner = new DailyBoardFactory();
+            private int _buildCalls;
+
+            public int BuildCalls => System.Threading.Volatile.Read(ref _buildCalls);
+
+            public LevelDto Build(uint seed, string dateKey, int k)
+            {
+                System.Threading.Interlocked.Increment(ref _buildCalls);
+                return _inner.Build(seed, dateKey, k);
+            }
+        }
+
+        private sealed class DelayedThrowingFactory : IBoardFactory
+        {
+            public LevelDto Build(uint seed, string dateKey, int k)
+            {
+                System.Threading.Thread.Sleep(250);
+                throw new System.InvalidOperationException("cancelled fallback sentinel");
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator InHorizonCatalog_RemainsPlayableWhenRuntimeGeneratorThrows()
+        {
+            yield return BootToHomeWithCampaignFixture();
+            _root.DailyClockUnixSeconds = () => PinnedUnixSeconds;
+            _root.DailyFactory = () => new ThrowingFactory();
+
+            Assert.DoesNotThrow(() => _root.SelectDaily());
+
+            Assert.That(_root.IsDailySession, Is.True);
+            Assert.That(_root.LastDailyBoardSource, Is.EqualTo("precomputed"));
+            Assert.That((uint)_root.Session.Level.Dto.Seed, Is.EqualTo(PinnedSeed));
+        }
+
+        [UnityTest]
+        public IEnumerator OutsideCatalogFallback_ReturnsTheFrame_ShowsLoading_ThenLoads()
+        {
+            yield return BootToHomeWithCampaignFixture();
+            _root.DailyClockUnixSeconds = () => OtherUnixSeconds;
+            _root.DailyFactory = () => new DelayedFactory();
+
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            _root.SelectDaily();
+            elapsed.Stop();
+
+            Assert.That(elapsed.ElapsedMilliseconds, Is.LessThan(250),
+                "fallback generation must not run the solver on the Home tap frame");
+            Assert.That(_root.IsDailySession, Is.False,
+                "the generated board is not installed before background work completes");
+            Assert.That(_root.Home.IsVisible, Is.True,
+                "Home remains visible while the fallback is being prepared");
+            Assert.That(_root.Home.DailyStatusText, Is.EqualTo("Preparing today's Line…"),
+                "the returned frame explains that deterministic fallback work is pending");
+
+            float deadline = Time.realtimeSinceStartup + 90f;
+            while (!_root.IsDailySession && Time.realtimeSinceStartup < deadline)
+                yield return null;
+
+            Assert.That(_root.IsDailySession, Is.True,
+                "the admitted fallback is installed on a later main-thread frame");
+            Assert.That(_root.LastDailyBoardSource, Is.EqualTo("generated"));
+            Assert.That((uint)_root.Session.Level.Dto.Seed, Is.EqualTo(OtherSeed));
+            Assert.That(_root.Home.IsVisible, Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator NavigatingToCampaign_CancelsPendingFallback_AndStaleWorkCannotInstall()
+        {
+            yield return BootToHomeWithCampaignFixture();
+            _root.DailyClockUnixSeconds = () => OtherUnixSeconds;
+            _root.DailyFactory = () => new DelayedThrowingFactory();
+
+            _root.SelectDaily();
+            Assert.That(_root.Home.DailyStatusText, Is.EqualTo("Preparing today's Line…"));
+            Assert.That(_root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center),
+                Is.EqualTo(-3), "campaign navigation consumes the tap while fallback is pending");
+            Assert.That(_root.Intro.IsVisible, Is.True);
+
+            float deadline = Time.realtimeSinceStartup + 2f;
+            while (Time.realtimeSinceStartup < deadline) yield return null;
+
+            Assert.That(_root.IsDailySession, Is.False,
+                "a detached worker cannot install over the newer campaign navigation state");
+            Assert.That(_root.Intro.IsVisible, Is.True);
+            Assert.That(_root.Home.DailyStatusText, Is.Empty,
+                "logical cancellation clears the transient loading state");
         }
 
         // --- F4 (review fix round): a second SelectDaily() call while already in a Daily
@@ -215,11 +467,18 @@ namespace CatMetro.Tests.PlayMode
         public IEnumerator SelectDaily_IsDeterministic_ForTheSameDate_AndDiffers_ForADifferentDate()
         {
             yield return BootToHomeWithCampaignFixture();
-            _root.DailyClockUnixSeconds = () => PinnedUnixSeconds;
+            _root.DailyClockUnixSeconds = () => OtherUnixSeconds;
+            var countingFactory = new CountingFactory();
+            _root.DailyFactory = () => countingFactory;
             _root.SelectDaily();
-            Assert.That((uint)_root.Session.Level.Dto.Seed, Is.EqualTo(PinnedSeed));
+            yield return WaitForDailySession(_root);
+            Assert.That((uint)_root.Session.Level.Dto.Seed, Is.EqualTo(OtherSeed));
+            Assert.That(_root.LastDailyBoardSource, Is.EqualTo("generated"),
+                "outside the baked horizon, deterministic runtime generation is the fallback");
             uint firstSeed = (uint)_root.Session.Level.Dto.Seed;
             string firstJson = DailyBoardJson.Serialize(_root.Session.Level.Dto);
+            Assert.That(countingFactory.BuildCalls, Is.EqualTo(1),
+                "the admitted k=0 fallback invokes the generator exactly once");
 
             // Return home and select Daily again with the SAME injected date.
             var panel = _root.GetComponent<ResultsPanel>();
@@ -227,16 +486,24 @@ namespace CatMetro.Tests.PlayMode
                                             // the routing law from the tap-routing law
             Assert.That(_root.IsDailySession, Is.False, "precondition: returned home");
             _root.SelectDaily();
+            yield return WaitForDailySession(_root);
             Assert.That((uint)_root.Session.Level.Dto.Seed, Is.EqualTo(firstSeed),
                 "same injected date -> byte-identical resolution");
             Assert.That(DailyBoardJson.Serialize(_root.Session.Level.Dto), Is.EqualTo(firstJson));
+            Assert.That(countingFactory.BuildCalls, Is.EqualTo(1),
+                "same-date replay must use the in-memory admitted board, not regenerate it");
 
-            // A different injected date resolves the OTHER pinned vector.
+            // A later injected date resolves the other pinned vector. This ordering is
+            // deliberate: forward jumps are accepted because an offline client cannot tell a
+            // clock jump from a long absence; the reverse ordering is the rollback-practice
+            // case covered separately below.
             panel.NextRequested?.Invoke();
-            _root.DailyClockUnixSeconds = () => OtherUnixSeconds;
+            _root.DailyClockUnixSeconds = () => PinnedUnixSeconds;
             _root.SelectDaily();
-            Assert.That((uint)_root.Session.Level.Dto.Seed, Is.EqualTo(OtherSeed),
-                "#73's own pinned vector for 2026-08-10");
+            yield return WaitForDailySession(_root);
+            Assert.That((uint)_root.Session.Level.Dto.Seed, Is.EqualTo(PinnedSeed),
+                "#73's own pinned vector for 2026-08-24");
+            Assert.That(_root.LastDailyBoardSource, Is.EqualTo("precomputed"));
 
             // F3 (review fix round, found while implementing the one-frame lockout): the
             // return-home -> immediate-reselect sequence just above (no yield between
@@ -280,6 +547,8 @@ namespace CatMetro.Tests.PlayMode
             _root.SelectDaily();
             Assert.That(_root.IsDailySession, Is.True, "precondition");
             Assert.That(_root.DailyTicketsEarned, Is.Null, "not yet won");
+            Assert.That(_root.LifetimeDailyCompletions, Is.Zero,
+                "the batch test boot starts with an isolated fresh save");
 
             var panel = _root.GetComponent<ResultsPanel>();
             Assert.That(panel.CtaText,
@@ -306,6 +575,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.ScreenState, Is.EqualTo("Won"), "the solver's own log wins for real");
             Assert.That(_root.DailyTicketsEarned, Is.EqualTo(level.Dto.Economy.BaseTickets),
                 "criterion 9 — surfaced from the admitted board's own DTO reward");
+            Assert.That(_root.LifetimeDailyCompletions, Is.EqualTo(1),
+                "the first eligible Daily win increments the cumulative lifetime tally once");
             yield return null; // within one pumped frame the panel is up
 
             Assert.That(panel.IsVisible, Is.True, "precondition: the panel is showing");
@@ -329,7 +600,65 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             yield return null;
             Assert.That(_root.Home.IsVisible, Is.True, "Home re-shown once the lockout clears");
+            Assert.That(_root.Home.DailyTallyText, Is.EqualTo("Dailies completed: 1"));
             CollectionAssert.AreEqual(new[] { "home" }, _root.Stack.ToBreadcrumb());
+        }
+
+        [UnityTest]
+        public IEnumerator ClockRollback_LoadsTrustedPuzzleAsPractice_AndExplainsWhy()
+        {
+            yield return BootToHomeWithCampaignFixture();
+            _root.DailyClockUnixSeconds = () => PinnedUnixSeconds;
+            _root.SelectDaily();
+            Assert.That(_root.ActiveDailyDateKey, Is.EqualTo("2026-08-24"));
+
+            _root.GetComponent<ResultsPanel>().NextRequested?.Invoke();
+            _root.DailyClockUnixSeconds = () => OtherUnixSeconds;
+            _root.SelectDaily();
+
+            Assert.That(_root.IsDailySession, Is.True);
+            Assert.That(_root.ActiveDailyDateKey, Is.EqualTo("2026-08-24"),
+                "rollback serves the trusted high-water puzzle, not the older clock date");
+            Assert.That(_root.DailyRunIsPractice, Is.True);
+            Assert.That(_root.Banner.CurrentKey, Is.EqualTo("daily.practice"));
+            Assert.That(_root.Banner.CurrentText,
+                Is.EqualTo("Clock changed — practice run"));
+
+            var level = _root.Session.Level;
+            var solve = CatMetro.Domain.Solver.LevelSolver.Solve(
+                level.Graph, (ulong)level.Dto.Seed);
+            Assert.That(solve.Verdict,
+                Is.EqualTo(CatMetro.Domain.Solver.SolveVerdict.Solved));
+            foreach (var entry in solve.OptimalLog.Entries)
+            {
+                while (_root.Session.State.Tick < entry.Tick
+                    && _root.Session.State.Outcome.Kind
+                        == CatMetro.Domain.OutcomeKind.Running)
+                    _root.Session.AdvanceMs(
+                        CatMetro.Application.Session.TickInterpolator.TICK_MS);
+                _root.Session.EnqueueToggle(entry.SwitchId);
+            }
+            _root.Session.AdvanceMs(
+                400 * CatMetro.Application.Session.TickInterpolator.TICK_MS);
+            yield return null;
+            Assert.That(_root.ScreenState, Is.EqualTo("Won"),
+                "the trusted rollback board is won through the real practice session");
+            yield return null;
+
+            Assert.That(_root.LifetimeDailyCompletions, Is.Zero,
+                "a practice win cannot increment the cumulative Daily tally");
+            var panel = _root.GetComponent<ResultsPanel>();
+            Assert.That(panel.IsVisible, Is.True);
+            Assert.That(_root.Input.HandleTapAtScreen(panel.ChipPaintedRectPx.center),
+                Is.EqualTo(-3));
+            yield return null;
+            yield return null;
+
+            Assert.That(_root.Home.IsVisible, Is.True);
+            Assert.That(_root.Home.ReminderGearTransform, Is.Null,
+                "a real practice win cannot arm the earned reminder affordance");
+            Assert.That(_root.Home.ReminderSheet, Is.Null,
+                "the practice funnel must construct no reminder prompt tree");
         }
 
         // --- F3 (review fix round): a repeat tap at the SAME coordinates, one yield after the
@@ -397,16 +726,27 @@ namespace CatMetro.Tests.PlayMode
         {
             yield return BootToHomeWithCampaignFixture();
             string campaignIdBefore = _root.CurrentLevelId;
+            _root.DailyClockUnixSeconds = () => OtherUnixSeconds;
             _root.DailyFactory = () => new NeverAdmitsFactory();
 
             LogAssert.Expect(LogType.Error,
-                new Regex(@"daily pipeline could not admit a board"));
+                new Regex(@"daily fallback failed.*pipeline could not admit a board"));
             _root.SelectDaily();
+
+            Assert.That(_root.Home.DailyStatusText, Is.EqualTo("Preparing today's Line…"),
+                "the failure path returns a loading frame before reporting the terminal error");
+            float deadline = Time.realtimeSinceStartup + 90f;
+            while (_root.Home.DailyStatusText != "Daily unavailable — try again"
+                && Time.realtimeSinceStartup < deadline)
+                yield return null;
 
             Assert.That(_root.IsDailySession, Is.False);
             Assert.That(_root.CurrentLevelId, Is.EqualTo(campaignIdBefore),
                 "nothing loaded — the campaign level stays exactly as it was");
             Assert.That(_root.Home.IsVisible, Is.True, "Home is untouched, never half-hidden");
+            Assert.That(_root.Home.DailyStatusText,
+                Is.EqualTo("Daily unavailable — try again"),
+                "the failed tap must be visible, not only an error log");
         }
 
         // --- fixtures ---

@@ -1,0 +1,289 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace CatMetro.Presentation.Cats
+{
+    // The real model stays optional: a clean checkout keeps the existing placeholder until an
+    // asset meets this strict visual-only contract. Rejection is intentionally observable so a
+    // failed import can never look like an unexplained fallback.
+    public sealed class CatModelCatalog
+    {
+        public const string ResourcePath = "CatRigs/BoardCatRig";
+        public const string IdleSitClip = "Cat_IdleSit";
+        public const string WalkClip = "Cat_Walk";
+        public const string BoardClip = "Cat_Board";
+        public const string AlightClip = "Cat_Alight";
+        public const string CelebrateClip = "Cat_Celebrate";
+        // Measured on TASK 17's admitted 30-bone skin. These are deliberately neutral A/B
+        // labels: provider names do not establish anatomical left/right, but localized bake
+        // probes prove that each branch deforms one upper ear and belongs to the renderer skin.
+        public const string EarDeformerPathA =
+            "Armature/tripo::Root/tripo::Head_0/tripo::Head_1/tripo::Head_2/bone_4";
+        public const string EarDeformerPathB =
+            "Armature/tripo::Root/tripo::Head_0/tripo::Head_1/tripo::Head_2/tripo::Head_3";
+        public const float NormalizedStandingHeight = 1f;
+        private const float PivotCenterTolerance = 1e-4f;
+        // TASK 17 measured this display scale from the admitted one-unit rig. Its value happens
+        // to match ToyTrainView's 0.42 board-unit queue spacing, but the two contracts are
+        // independent: this is a dimensionless presentation scale.
+        public const float PresenterScale = 0.42f;
+        // TASK 17 measured the source walk at PresenterScale: 0.238969 normalized standing
+        // heights/second * 0.42 board units/height = 0.100367 board units/second at playback 1x.
+        public const float WalkTravelSpeedAtOneX = 0.100367f;
+
+        private static readonly string[] RequiredClipNames =
+        {
+            IdleSitClip, WalkClip, BoardClip, AlightClip, CelebrateClip,
+        };
+
+        private readonly GameObject _prefab;
+
+        public CatModelCatalog(GameObject prefab)
+        {
+            if (TryValidate(prefab, out string reason))
+            {
+                _prefab = prefab;
+                RejectionReason = string.Empty;
+            }
+            else
+            {
+                RejectionReason = reason;
+            }
+        }
+
+        public int AdmittedEntryCount => _prefab == null ? 0 : 1;
+        public bool RigAdmitted => _prefab != null;
+        public string RejectionReason { get; }
+
+        public static CatModelCatalog LoadResources() =>
+            new CatModelCatalog(Resources.Load<GameObject>(ResourcePath));
+
+        public bool TryInstantiate(Transform parent, out GameObject instance)
+        {
+            instance = null;
+            if (_prefab == null) return false;
+
+            instance = UnityEngine.Object.Instantiate(_prefab, parent, false);
+            var animator = instance.GetComponentInChildren<Animator>(true);
+            animator.applyRootMotion = false;
+            return true;
+        }
+
+        public static string ClipFor(CatPresentationState state)
+        {
+            switch (state)
+            {
+                case CatPresentationState.Walk: return WalkClip;
+                case CatPresentationState.Board: return BoardClip;
+                case CatPresentationState.Alight: return AlightClip;
+                case CatPresentationState.Celebrate: return CelebrateClip;
+                default: return IdleSitClip;
+            }
+        }
+
+        public static bool TryValidate(GameObject prefab, out string rejectionReason)
+        {
+            if (prefab == null)
+            {
+                rejectionReason = "Missing cat rig at Resources/" + ResourcePath + ".";
+                return false;
+            }
+
+            foreach (var component in prefab.GetComponentsInChildren<Component>(true))
+            {
+                if (component == null)
+                {
+                    rejectionReason = "Cat rig has a missing component.";
+                    return false;
+                }
+
+                // External behaviours could run Awake/OnEnable during Instantiate and cross
+                // the presentation-only boundary. Animator derives from Behaviour, not
+                // MonoBehaviour, so the one admitted animation driver remains unaffected.
+                if (component is MonoBehaviour)
+                {
+                    rejectionReason = "Cat rig contains forbidden MonoBehaviour "
+                        + component.GetType().Name + ".";
+                    return false;
+                }
+
+                if (component is Animation || component is Collider || component is Rigidbody
+                    || component is Collider2D || component is Rigidbody2D)
+                {
+                    rejectionReason = "Cat rig contains forbidden " + component.GetType().Name + ".";
+                    return false;
+                }
+            }
+
+            var animators = prefab.GetComponentsInChildren<Animator>(true);
+            if (animators.Length != 1)
+            {
+                rejectionReason = "Cat rig must contain exactly one Animator.";
+                return false;
+            }
+            if (animators[0].applyRootMotion)
+            {
+                rejectionReason = "Cat rig Animator.applyRootMotion must be false.";
+                return false;
+            }
+            if (animators[0].runtimeAnimatorController == null)
+            {
+                rejectionReason = "Cat rig Animator is missing its controller.";
+                return false;
+            }
+            // Inspect before any Rebind/Update: a StateMachineBehaviour can execute callbacks
+            // while the controller is sampled even though it is not a component in the rig
+            // hierarchy and therefore was not covered by the MonoBehaviour scan above.
+            var stateBehaviours = animators[0].GetBehaviours<StateMachineBehaviour>();
+            if (stateBehaviours != null && stateBehaviours.Length > 0)
+            {
+                rejectionReason = "Cat rig controller contains forbidden StateMachineBehaviour "
+                    + stateBehaviours[0].GetType().Name + ".";
+                return false;
+            }
+
+            var clips = animators[0].runtimeAnimatorController.animationClips;
+            foreach (string required in RequiredClipNames)
+            {
+                AnimationClip clip = Array.Find(clips, candidate => candidate != null && candidate.name == required);
+                if (clip == null)
+                {
+                    rejectionReason = "Cat rig controller is missing clip " + required + ".";
+                    return false;
+                }
+            }
+            foreach (AnimationClip clip in clips)
+            {
+                if (clip != null && clip.hasRootCurves)
+                {
+                    rejectionReason = "Cat rig clip " + clip.name + " must be in-place.";
+                    return false;
+                }
+            }
+            if (!HasRequiredStateClips(animators[0], out string stateReason))
+            {
+                rejectionReason = stateReason;
+                return false;
+            }
+
+            if (prefab.transform.localRotation != Quaternion.identity
+                || prefab.transform.localScale != Vector3.one)
+            {
+                rejectionReason = "Cat rig root must keep +Z forward and +Y up.";
+                return false;
+            }
+
+            if (!TryGetLocalBounds(prefab.transform, out Bounds bounds))
+            {
+                rejectionReason = "Cat rig has no renderable mesh bounds.";
+                return false;
+            }
+
+            bool isHorizontallyCentered =
+                Mathf.Abs(bounds.center.x) <= PivotCenterTolerance
+                && Mathf.Abs(bounds.center.z) <= PivotCenterTolerance;
+            if (!Mathf.Approximately(bounds.size.y, NormalizedStandingHeight)
+                || !Mathf.Approximately(bounds.min.y, 0f)
+                || !isHorizontallyCentered)
+            {
+                rejectionReason = "Cat rig must have a ground-centred, one-unit standing pivot.";
+                return false;
+            }
+
+            rejectionReason = string.Empty;
+            return true;
+        }
+
+        // Animator state and clip sampling are only reliable on an initialized Animator. Probe
+        // the controller through a disposable plain GameObject rather than instantiating the
+        // imported prefab, so catalog validation cannot invoke asset-owned behaviour.
+        private static bool HasRequiredStateClips(Animator source, out string rejectionReason)
+        {
+            var probe = new GameObject("Cat rig state probe");
+            try
+            {
+                var animator = probe.AddComponent<Animator>();
+                animator.runtimeAnimatorController = source.runtimeAnimatorController;
+                animator.applyRootMotion = false;
+                animator.Rebind();
+                animator.Update(0f);
+
+                string layerName = animator.GetLayerName(0);
+                foreach (string required in RequiredClipNames)
+                {
+                    int stateHash = Animator.StringToHash(layerName + "." + required);
+                    if (!animator.HasState(0, stateHash))
+                    {
+                        rejectionReason = "Cat rig controller is missing state " + required + ".";
+                        return false;
+                    }
+
+                    animator.Play(stateHash, 0, 0f);
+                    animator.Update(0f);
+                    AnimatorClipInfo[] sampled = animator.GetCurrentAnimatorClipInfo(0);
+                    if (sampled.Length != 1 || sampled[0].clip == null
+                        || sampled[0].clip.name != required)
+                    {
+                        rejectionReason = "Cat rig state " + required
+                            + " must sample clip " + required + ".";
+                        return false;
+                    }
+                    if (sampled[0].clip.empty || sampled[0].clip.length <= 0f)
+                    {
+                        rejectionReason = "Cat rig state " + required
+                            + " must sample a positive-length child animation.";
+                        return false;
+                    }
+                }
+            }
+            finally
+            {
+                if (UnityEngine.Application.isPlaying) UnityEngine.Object.Destroy(probe);
+                else UnityEngine.Object.DestroyImmediate(probe);
+            }
+
+            rejectionReason = string.Empty;
+            return true;
+        }
+
+        private static bool TryGetLocalBounds(Transform root, out Bounds localBounds)
+        {
+            var meshes = new List<Tuple<Transform, Mesh>>();
+            foreach (var filter in root.GetComponentsInChildren<MeshFilter>(true))
+                if (filter.sharedMesh != null) meshes.Add(Tuple.Create(filter.transform, filter.sharedMesh));
+            foreach (var skinned in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                if (skinned.sharedMesh != null) meshes.Add(Tuple.Create(skinned.transform, skinned.sharedMesh));
+
+            if (meshes.Count == 0)
+            {
+                localBounds = default;
+                return false;
+            }
+
+            bool initialized = false;
+            localBounds = default;
+            foreach (var entry in meshes)
+            {
+                Bounds meshBounds = entry.Item2.bounds;
+                Vector3 min = meshBounds.min;
+                Vector3 max = meshBounds.max;
+                for (int x = 0; x <= 1; x++)
+                for (int y = 0; y <= 1; y++)
+                for (int z = 0; z <= 1; z++)
+                {
+                    Vector3 point = new Vector3(x == 0 ? min.x : max.x,
+                        y == 0 ? min.y : max.y, z == 0 ? min.z : max.z);
+                    point = root.InverseTransformPoint(entry.Item1.TransformPoint(point));
+                    if (!initialized)
+                    {
+                        localBounds = new Bounds(point, Vector3.zero);
+                        initialized = true;
+                    }
+                    else localBounds.Encapsulate(point);
+                }
+            }
+            return true;
+        }
+    }
+}

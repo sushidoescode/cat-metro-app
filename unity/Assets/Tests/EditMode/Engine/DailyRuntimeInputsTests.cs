@@ -65,14 +65,8 @@ namespace CatMetro.Tests.Engine
             Assert.That(cfg.AxisBBandCaps, Is.EqualTo(parsed.Value.AxisBBandCaps));
         }
 
-        // F1 (review fix round): same rewrite as above. PrevalidationDays/AnchorDateKey are
-        // DELIBERATELY not drift-guarded here — DailyRuntimeInputs documents them as
-        // CI-horizon placeholders DailyPipeline.Run never consults for a single-date request
-        // (see DailyRuntimeInputs.cs), so comparing them to the parsed file would assert a
-        // claim this class never makes. SaltMaxK is the one field this class actually claims
-        // mirrors the file, so it is the one field drift-guarded against the REAL parse.
         [Test]
-        public void PipelineConfig_CarriesTheRealSaltMaxK()
+        public void EmbeddedPipelineConfig_MatchesTheRealSourceFile_ByteForByte()
         {
             string repoRoot = Path.GetFullPath(
                 Path.Combine(UnityEngine.Application.dataPath, "..", ".."));
@@ -81,16 +75,34 @@ namespace CatMetro.Tests.Engine
                 "precondition: the real pipeline-config source must exist at " + path
                 + " — otherwise this drift guard proves nothing");
             byte[] real = File.ReadAllBytes(path);
+            Assert.That(DailyRuntimeInputs.PipelineConfigBytes, Is.EqualTo(real),
+                "the embedded copy must be byte-identical to config/daily_pipeline.json — "
+                + "a future horizon, anchor, or salt edit must fail HERE rather than drift "
+                + "silently against the shipped catalog contract");
+        }
+
+        [Test]
+        public void PipelineConfigs_AreDerivedFromTheEmbeddedSource()
+        {
+            byte[] real = DailyRuntimeInputs.PipelineConfigBytes;
             var parsed = DailyPipelineConfig.Parse(real);
             Assert.That(parsed.Ok, Is.True,
-                "precondition: the real file must parse through the REAL "
+                "precondition: the embedded file must parse through the REAL "
                 + "DailyPipelineConfig.Parse: " + parsed.Error);
 
-            var cfg = DailyRuntimeInputs.PipelineConfig("2026-08-24");
-            Assert.That(cfg.SaltMaxK, Is.EqualTo(parsed.Value.SaltMaxK),
-                "a future config/daily_pipeline.json SALT_MAX_K edit must fail HERE, not "
-                + "drift silently against the embedded copy DailyPipeline actually runs "
-                + "against");
+            var shipped = DailyRuntimeInputs.ShippedPipelineConfig;
+            Assert.That(shipped.PrevalidationDays,
+                Is.EqualTo(parsed.Value.PrevalidationDays));
+            Assert.That(shipped.SaltMaxK, Is.EqualTo(parsed.Value.SaltMaxK));
+            Assert.That(shipped.AnchorDateKey,
+                Is.EqualTo(parsed.Value.AnchorDateKey));
+
+            const string requestedDate = "2026-09-30";
+            var runtime = DailyRuntimeInputs.PipelineConfig(requestedDate);
+            Assert.That(runtime.PrevalidationDays, Is.EqualTo(1),
+                "a runtime fallback request generates one requested date, not the corpus");
+            Assert.That(runtime.SaltMaxK, Is.EqualTo(parsed.Value.SaltMaxK));
+            Assert.That(runtime.AnchorDateKey, Is.EqualTo(requestedDate));
         }
 
         // F5 (review fix round): DailyRuntimeInputs supplies exactly THREE embedded inputs

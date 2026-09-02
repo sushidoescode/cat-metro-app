@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "assets": [
+    { "assetId": "cat.red_tabby", "rendererToken": "cat.red_tabby", "provenanceId": "project.cat.red_tabby" },
+    { "assetId": "cat.blue_siamese", "rendererToken": "cat.blue_siamese", "provenanceId": "project.cat.blue_siamese" },
+    { "assetId": "cat.yellow_longhair", "rendererToken": "cat.yellow_longhair", "provenanceId": "project.cat.yellow_longhair" },
+    { "assetId": "outfit.conductor", "rendererToken": "outfit.conductor", "provenanceId": "project.outfit.conductor" },
+    { "assetId": "frame.brass", "rendererToken": "frame.brass", "provenanceId": "project.frame.brass" },
+    { "assetId": "frame.lantern", "rendererToken": "frame.lantern", "provenanceId": "project.frame.lantern" }
+  ],
+  "provenance": [
+    {
+      "id": "project.cat.red_tabby",
+      "sourceKind": "project_authored",
+      "sourcePath": "unity/Assets/Scripts/Presentation/Cosmetics/CosmeticPortraitPainter.cs",
+      "commercialDistribution": "cleared"
+    },
+    {
+      "id": "project.cat.blue_siamese",
+      "sourceKind": "project_authored",
+      "sourcePath": "unity/Assets/Scripts/Presentation/Cosmetics/CosmeticPortraitPainter.cs",
+      "commercialDistribution": "cleared"
+    },
+    {
+      "id": "project.cat.yellow_longhair",
+      "sourceKind": "project_authored",
+      "sourcePath": "unity/Assets/Scripts/Presentation/Cosmetics/CosmeticPortraitPainter.cs",
+      "commercialDistribution": "cleared"
+    },
+    {
+      "id": "project.outfit.conductor",
+      "sourceKind": "project_authored",
+      "sourcePath": "unity/Assets/Scripts/Presentation/Cosmetics/CosmeticPortraitPainter.cs",
+      "commercialDistribution": "cleared"
+    },
+    {
+      "id": "project.frame.brass",
+      "sourceKind": "project_authored",
+      "sourcePath": "unity/Assets/Scripts/Presentation/Cosmetics/CosmeticPortraitPainter.cs",
+      "commercialDistribution": "cleared"
+    },
+    {
+      "id": "project.frame.lantern",
+      "sourceKind": "project_authored",
+      "sourcePath": "unity/Assets/Scripts/Presentation/Cosmetics/CosmeticPortraitPainter.cs",
+      "commercialDistribution": "cleared"
+    }
+  ]
+}
