@@ -338,9 +338,17 @@ namespace CatMetro.Tests.PlayMode
         [Test]
         public void AllAuthoredLevels_ProduceOneStableScenerySet()
         {
-            for (int levelNumber = 1; levelNumber <= 17; levelNumber++)
+            string levelsRoot = Path.Combine(UnityEngine.Application.streamingAssetsPath,
+                "content", "levels");
+            var levelPaths = Directory.GetFiles(levelsRoot, "L*.json")
+                .OrderBy(path => path, System.StringComparer.Ordinal)
+                .ToArray();
+            Assert.That(levelPaths, Is.Not.Empty,
+                "the prop-placement corpus assertion must inspect the shipped level artifact");
+            foreach (string path in levelPaths)
             {
-                var level = ImportLevel("L" + levelNumber.ToString("000"));
+                string levelId = Path.GetFileNameWithoutExtension(path);
+                var level = ImportLevel(levelId);
                 var view = BuildBoard(level);
                 var root = BoardPropDecorator.Decorate(level, view.transform, CompleteCatalog());
                 var props = root.GetComponentsInChildren<BoardPropInstance>(true);

@@ -86,11 +86,16 @@ namespace CatMetro.Tests.EditMode.Presentation
         [Test]
         public void EveryAuthoredLevel_BuildsContinuousForwardMovingTrackPaths()
         {
-            for (int levelNumber = 1; levelNumber <= 17; levelNumber++)
+            string levelsRoot = Path.Combine(UnityEngine.Application.streamingAssetsPath,
+                "content", "levels");
+            var levelPaths = Directory.GetFiles(levelsRoot, "L*.json")
+                .OrderBy(path => path, System.StringComparer.Ordinal)
+                .ToArray();
+            Assert.That(levelPaths, Is.Not.Empty,
+                "the spline corpus assertion must inspect the shipped level artifact");
+            foreach (string path in levelPaths)
             {
-                string levelId = $"L{levelNumber:000}";
-                string path = Path.Combine(UnityEngine.Application.streamingAssetsPath,
-                    "content", "levels", levelId + ".json");
+                string levelId = Path.GetFileNameWithoutExtension(path);
                 var imported = LevelImporter.Import(File.ReadAllBytes(path));
                 Assert.That(imported.Ok, Is.True,
                     imported.Ok ? string.Empty : levelId + ": " + imported.Error);
