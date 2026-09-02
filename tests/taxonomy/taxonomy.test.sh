@@ -28,7 +28,7 @@ done
 sites=$(grep -rl --include='*.cs' 'new AnalyticsEvent(' "$scripts_root" 2>/dev/null || true)
 count=$(printf '%s\n' "$sites" | grep -c . || true)
 [ "$count" = "1" ] || fail "criterion 7: expected exactly 1 'new AnalyticsEvent(' file under $scripts_root, found $count: $sites"
-printf '%s\n' "$sites" | grep -q "EventTaxonomy/Taxonomy.cs" \
+grep -q "EventTaxonomy/Taxonomy.cs" <<<"$sites" \
   || fail "criterion 7: the one construction site is not the taxonomy builder: $sites"
 grep -q 'new AnalyticsEvent(' "$badfx" || fail "criterion 7: construction pattern failed to fire on the fixture"
 SDK='Firebase|OneSignalSDK|GoogleMobileAds|Purchases\.(PurchasesConfiguration|Package|Offering|Offerings|CustomerInfo|Error|PurchaseResult|StoreKitVersion)|AddComponent<Purchases>|(^|[^[:alnum:]_.])Purchases[[:space:]]+[A-Za-z_]'

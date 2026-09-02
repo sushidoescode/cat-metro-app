@@ -5093,7 +5093,13 @@ def exercise_size_preflight(
     process = process_context.Process(target=child)
     process.start()
     send.close()
-    process.join(20)
+    payload = None
+    if receive.poll(20):
+        try:
+            payload = receive.recv()
+        except EOFError:
+            payload = None
+    process.join(2)
     if process.is_alive():
         process.terminate()
         process.join(2)
@@ -5105,12 +5111,6 @@ def exercise_size_preflight(
         guarded_path.unlink(missing_ok=True)
         process.close()
         return
-    payload = None
-    if receive.poll(1):
-        try:
-            payload = receive.recv()
-        except EOFError:
-            payload = None
     receive.close()
     child_exitcode = process.exitcode
     process.close()
