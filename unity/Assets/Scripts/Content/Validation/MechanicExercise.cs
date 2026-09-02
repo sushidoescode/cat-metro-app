@@ -289,95 +289,7 @@ namespace CatMetro.Content.Validation
                     "SKIPPED(no winning log)", prefix + "exercised=false; evidence=none", false);
 
             var record = Observe(graph, (ulong)dto.Seed, solve.OptimalLog);
-            bool exercised;
-            string evidence;
-            switch (mechanic)
-            {
-                case "switch":
-                    exercised = record.RouteChanged && record.SwitchesUsed >= 1;
-                    evidence = "toggles=" + record.SwitchesUsed
-                        + ",routeChangedAtTick=" + record.RouteChangedAtTick;
-                    break;
-                case "queue":
-                    exercised = record.MaxQueued > 0;
-                    evidence = "maxQueued=" + record.MaxQueued + "@tick " + record.MaxQueuedAtTick;
-                    break;
-                case "second-source":
-                    exercised = record.EmittingSourceNodes.Length >= 2;
-                    var names = new List<string>();
-                    var nodes = dto.Nodes.Span;
-                    for (int i = 0; i < record.EmittingSourceNodes.Length; i++)
-                    {
-                        int node = record.EmittingSourceNodes[i];
-                        if (node >= 0 && node < nodes.Length) names.Add(nodes[node].Id);
-                    }
-                    evidence = "sources=" + (names.Count == 0 ? "none" : string.Join(",", names));
-                    break;
-                case "wildcard":
-                    exercised = record.WildDeliveries > 0;
-                    evidence = "wildDeliveries=" + record.WildDeliveries + "@tick "
-                        + record.FirstWildDeliveryAtTick;
-                    break;
-                case "shape":
-                    exercised = record.ShapeDeliveries > 0;
-                    evidence = "nonRoundDeliveries=" + record.ShapeDeliveries;
-                    break;
-                case "budget":
-                    exercised = graph.PerfectMaxSwitches >= 0
-                        && record.SwitchesUsed == graph.PerfectMaxSwitches;
-                    evidence = "used=" + record.SwitchesUsed + "/cap=" + graph.PerfectMaxSwitches;
-                    break;
-                case "cooldown":
-                    exercised = record.SwitchesUsed > 0 && record.MaxCooldown > 0;
-                    evidence = "maxCooldown=" + record.MaxCooldown;
-                    break;
-                case "tunnel":
-                    exercised = record.TunnelTraversed;
-                    evidence = "tunnelTraversed=" + record.TunnelTraversed.ToString().ToLowerInvariant();
-                    break;
-                case "gate":
-                    exercised = record.GateWaitThenTraverse;
-                    evidence = "closedWaitThenTraverse="
-                        + record.GateWaitThenTraverse.ToString().ToLowerInvariant();
-                    break;
-                case "reversible":
-                    exercised = record.ReversibleTraversed;
-                    evidence = "ordinaryReverse="
-                        + record.ReversibleTraversed.ToString().ToLowerInvariant();
-                    break;
-                case "second-train":
-                    var zero = ReplayHasher.RunToEnd(graph, (ulong)dto.Seed, new CommandLog());
-                    bool zeroCollision = zero.Outcome.Kind == OutcomeKind.Failed
-                        && zero.Outcome.Reason == FailReason.Collision;
-                    exercised = graph.CollisionsEnabled && record.MaxActiveTrains >= 2
-                        && zeroCollision;
-                    evidence = "maxActive=" + record.MaxActiveTrains
-                        + ",zeroInputCollision=" + zeroCollision.ToString().ToLowerInvariant();
-                    break;
-                case "hold":
-                    exercised = record.HoldTraversed;
-                    evidence = "holdTraversed=" + record.HoldTraversed.ToString().ToLowerInvariant();
-                    break;
-                case "stray":
-                    exercised = record.StrayEmitted && record.StrayAutoToggled;
-                    evidence = "emitted=" + record.StrayEmitted.ToString().ToLowerInvariant()
-                        + ",autoToggle=" + record.StrayAutoToggled.ToString().ToLowerInvariant();
-                    break;
-                case "express":
-                    exercised = record.ExpressDeliveries > 0 && !record.ExpressQueued;
-                    evidence = "expressDeliveries=" + record.ExpressDeliveries
-                        + ",queued=" + record.ExpressQueued.ToString().ToLowerInvariant();
-                    break;
-                case "wildcard-express":
-                    exercised = record.WildExpressDeliveries > 0 && !record.ExpressQueued;
-                    evidence = "wildExpressDeliveries=" + record.WildExpressDeliveries
-                        + ",queued=" + record.ExpressQueued.ToString().ToLowerInvariant();
-                    break;
-                default:
-                    exercised = false;
-                    evidence = "none";
-                    break;
-            }
+            bool exercised = Exercises(dto, graph, record, mechanic, out string evidence);
 
             string value = prefix + "exercised=" + (exercised ? "true" : "false")
                 + "; evidence=" + evidence;
@@ -388,6 +300,128 @@ namespace CatMetro.Content.Validation
             return StageVerdict.Fail(Stage.NoveltyCheck,
                 "newMechanic liveness violation (CM-R06.2): " + id + " declares '" + mechanic
                 + "' but the solver-optimal trace never exercises it", value);
+        }
+
+        // The introduction-only liveness row above is useful for pacing, but it cannot prove
+        // that the other three levels in a mechanic's quartet actually use what their metadata
+        // promises. This second artifact check replays each winning log once and requires every
+        // declared mechanic to occupy or mutate authoritative simulation state.
+        public static StageVerdict DeclaredMechanicsLiveness(
+            LevelDto dto, LevelGraph graph, SolveResult solve)
+        {
+            string tag = "tag=CM-LADDER-declared-mechanics:" + dto.Id;
+            if (solve == null || solve.Verdict != SolveVerdict.Solved)
+                return new StageVerdict(Stage.NoveltyCheck, StageVerdictCode.Skipped,
+                    "SKIPPED(no winning log)", tag + "; exercised=false; evidence=none", false);
+
+            var record = Observe(graph, (ulong)dto.Seed, solve.OptimalLog);
+            var failures = new List<string>();
+            var measurements = new List<string>();
+            var mechanics = dto.Meta.Mechanics.Span;
+            for (int i = 0; i < mechanics.Length; i++)
+            {
+                string mechanic = mechanics[i];
+                if (!Dispositions.TryGetValue(mechanic, out var disposition)
+                    || disposition != MechanicDisposition.Observable)
+                {
+                    failures.Add(mechanic + "=unobservable");
+                    measurements.Add(mechanic + "=false(none)");
+                    continue;
+                }
+
+                bool exercised = Exercises(dto, graph, record, mechanic, out string evidence);
+                measurements.Add(mechanic + "="
+                    + exercised.ToString().ToLowerInvariant() + "(" + evidence + ")");
+                if (!exercised) failures.Add(mechanic);
+            }
+
+            string value = tag + "; exercised=" + (failures.Count == 0 ? "true" : "false")
+                + "; evidence=" + string.Join(";", measurements);
+            if (failures.Count == 0)
+                return new StageVerdict(Stage.NoveltyCheck, StageVerdictCode.Pass,
+                    "declared mechanics exercised by winning artifact: " + dto.Id,
+                    value, false);
+            return StageVerdict.Fail(Stage.NoveltyCheck,
+                "declared-mechanic liveness violation: " + dto.Id + " never exercises ["
+                    + string.Join(",", failures) + "] in its solver-optimal trace",
+                value);
+        }
+
+        private static bool Exercises(LevelDto dto, LevelGraph graph, ExerciseRecord record,
+            string mechanic, out string evidence)
+        {
+            switch (mechanic)
+            {
+                case "switch":
+                    evidence = "toggles=" + record.SwitchesUsed
+                        + ",routeChangedAtTick=" + record.RouteChangedAtTick;
+                    return record.RouteChanged && record.SwitchesUsed >= 1;
+                case "queue":
+                    evidence = "maxQueued=" + record.MaxQueued + "@tick " + record.MaxQueuedAtTick;
+                    return record.MaxQueued > 0;
+                case "second-source":
+                    var names = new List<string>();
+                    var nodes = dto.Nodes.Span;
+                    for (int i = 0; i < record.EmittingSourceNodes.Length; i++)
+                    {
+                        int node = record.EmittingSourceNodes[i];
+                        if (node >= 0 && node < nodes.Length) names.Add(nodes[node].Id);
+                    }
+                    evidence = "sources=" + (names.Count == 0 ? "none" : string.Join(",", names));
+                    return record.EmittingSourceNodes.Length >= 2;
+                case "wildcard":
+                    evidence = "wildDeliveries=" + record.WildDeliveries + "@tick "
+                        + record.FirstWildDeliveryAtTick;
+                    return record.WildDeliveries > 0;
+                case "shape":
+                    evidence = "nonRoundDeliveries=" + record.ShapeDeliveries;
+                    return record.ShapeDeliveries > 0;
+                case "budget":
+                    evidence = "used=" + record.SwitchesUsed + "/cap=" + graph.PerfectMaxSwitches;
+                    return graph.PerfectMaxSwitches >= 0
+                        && record.SwitchesUsed == graph.PerfectMaxSwitches;
+                case "cooldown":
+                    evidence = "maxCooldown=" + record.MaxCooldown;
+                    return record.SwitchesUsed > 0 && record.MaxCooldown > 0;
+                case "tunnel":
+                    evidence = "tunnelTraversed="
+                        + record.TunnelTraversed.ToString().ToLowerInvariant();
+                    return record.TunnelTraversed;
+                case "gate":
+                    evidence = "closedWaitThenTraverse="
+                        + record.GateWaitThenTraverse.ToString().ToLowerInvariant();
+                    return record.GateWaitThenTraverse;
+                case "reversible":
+                    evidence = "ordinaryReverse="
+                        + record.ReversibleTraversed.ToString().ToLowerInvariant();
+                    return record.ReversibleTraversed;
+                case "second-train":
+                    var zero = ReplayHasher.RunToEnd(graph, (ulong)dto.Seed, new CommandLog());
+                    bool zeroCollision = zero.Outcome.Kind == OutcomeKind.Failed
+                        && zero.Outcome.Reason == FailReason.Collision;
+                    evidence = "maxActive=" + record.MaxActiveTrains
+                        + ",zeroInputCollision=" + zeroCollision.ToString().ToLowerInvariant();
+                    return graph.CollisionsEnabled && record.MaxActiveTrains >= 2
+                        && zeroCollision;
+                case "hold":
+                    evidence = "holdTraversed=" + record.HoldTraversed.ToString().ToLowerInvariant();
+                    return record.HoldTraversed;
+                case "stray":
+                    evidence = "emitted=" + record.StrayEmitted.ToString().ToLowerInvariant()
+                        + ",autoToggle=" + record.StrayAutoToggled.ToString().ToLowerInvariant();
+                    return record.StrayEmitted && record.StrayAutoToggled;
+                case "express":
+                    evidence = "expressDeliveries=" + record.ExpressDeliveries
+                        + ",queued=" + record.ExpressQueued.ToString().ToLowerInvariant();
+                    return record.ExpressDeliveries > 0 && !record.ExpressQueued;
+                case "wildcard-express":
+                    evidence = "wildExpressDeliveries=" + record.WildExpressDeliveries
+                        + ",queued=" + record.ExpressQueued.ToString().ToLowerInvariant();
+                    return record.WildExpressDeliveries > 0 && !record.ExpressQueued;
+                default:
+                    evidence = "none";
+                    return false;
+            }
         }
 
         private static int SelectedEdge(LevelGraph graph, SimulationState state, int slot, int node)

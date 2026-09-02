@@ -396,6 +396,16 @@ namespace CatMetro.Content.Validation
                 foreach (var (dto, graph, solve) in campaign)
                     result.Add(MechanicExercise.Liveness(dto, graph, solve));
 
+            // Unlike the introduction-only row, this proves every active mechanic named by
+            // every shipped level against the exact winning replay artifact.
+            if (campaign.Count == 0)
+                result.Add(new StageVerdict(Stage.NoveltyCheck, StageVerdictCode.Skipped,
+                    "SKIPPED(no campaign members)",
+                    "tag=CM-LADDER-declared-mechanics", false));
+            else
+                foreach (var (dto, graph, solve) in campaign)
+                    result.Add(MechanicExercise.DeclaredMechanicsLiveness(dto, graph, solve));
+
             return result;
         }
     }

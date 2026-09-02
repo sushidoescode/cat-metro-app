@@ -84,6 +84,25 @@ namespace CatMetro.Tests.Validation
         }
 
         [Test]
+        public void EveryDeclaredMechanic_IsMeasured_NotOnlyTheIntroductionLabel()
+        {
+            var live = Import(Fixture("L004-live-queue.json"));
+            var dead = Import(Fixture("L004-dead-queue.json"));
+            var liveVerdict = MechanicExercise.DeclaredMechanicsLiveness(
+                live.Dto, live.Graph, Solve(live));
+            var deadVerdict = MechanicExercise.DeclaredMechanicsLiveness(
+                dead.Dto, dead.Graph, Solve(dead));
+
+            Assert.That(liveVerdict.Code, Is.EqualTo(StageVerdictCode.Pass));
+            Assert.That(liveVerdict.Value,
+                Does.StartWith("tag=CM-LADDER-declared-mechanics:")
+                    .And.Contain("queue=true(maxQueued=1@tick 8)"));
+            Assert.That(deadVerdict.Code, Is.EqualTo(StageVerdictCode.Fail));
+            Assert.That(deadVerdict.Blocks, Is.True);
+            Assert.That(deadVerdict.Value, Does.Contain("queue=false(maxQueued=0@tick -1)"));
+        }
+
+        [Test]
         public void DeclaredGateWithoutAClosedWaitAndTraversal_FailsBlocking()
         {
             var bytes = VFixtures.Level(level =>
