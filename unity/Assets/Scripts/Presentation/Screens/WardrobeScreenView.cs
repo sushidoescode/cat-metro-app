@@ -130,14 +130,20 @@ namespace CatMetro.Presentation.Screens
             _entry = new GameObject("WardrobeCapsule", typeof(RectTransform));
             _entry.transform.SetParent(parent, false);
             _entryRect = (RectTransform)_entry.transform;
-            Paint(_entry, Palette.DepotNavy, true);
+            var shadow = Paint(_entry, Palette.DepotNavy, true);
+            ApplyRoundedEntryPaint(shadow);
+
+            var face = MakeSurface(_entry.transform, "WardrobeButtonFace",
+                new Vector2(0.008f, 0.10f), new Vector2(0.992f, 0.99f),
+                Palette.CreamCard, true);
+            ApplyRoundedEntryPaint(face);
 
             var portraitMount = MakeRect(_entry.transform, "EntryPortraitMount",
                 new Vector2(0.035f, 0.08f), new Vector2(0.30f, 0.92f));
             _entryPortrait = CosmeticPortraitView.Create(portraitMount, _profile,
                 "EntryPortrait");
             var label = MakeText(_entry.transform, "WardrobeLabel", new Vector2(0.31f, 0f),
-                new Vector2(0.96f, 1f), Text("wardrobe.entry"), 24f, Palette.WarmPaper);
+                new Vector2(0.96f, 1f), Text("wardrobe.entry"), 28f, Palette.InkNavy);
             label.fontStyle = FontStyles.Bold;
         }
 
@@ -1002,6 +1008,12 @@ namespace CatMetro.Presentation.Screens
             image.color = color;
             image.raycastTarget = false;
             return image;
+        }
+
+        private static void ApplyRoundedEntryPaint(Image image)
+        {
+            image.sprite = HudShapeSprites.RoundedSquare;
+            image.type = Image.Type.Sliced;
         }
 
         private static TMP_Text MakeText(Transform parent, string name, Vector2 min,

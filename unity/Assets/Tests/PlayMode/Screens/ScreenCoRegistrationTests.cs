@@ -2,6 +2,7 @@ using System.Collections;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Input;
 using CatMetro.Presentation.Screens;
 
@@ -88,6 +89,12 @@ namespace CatMetro.Tests.PlayMode
             home.Show();
             yield return null;
 
+            // Unity's batch window can pair a small 640x480 viewport with a high reported DPI,
+            // pushing the stacked Home routes above the sheet's lower-quarter chip. This test
+            // owns modal priority, not live DPI binding, so use the project's injected reference
+            // scale to create a deterministic overlap; layout tests cover the runtime binding.
+            home.LayoutForViewport(Screen.safeArea, HudBands.FallbackDpi);
+
             // the modal opens OVER Home — a sheet naturally does not hide its parent
             _sheetHost = new GameObject("sheet-canvas");
             var sheetCanvas = _sheetHost.AddComponent<Canvas>();
@@ -100,12 +107,20 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Assert.That(regions.Count, Is.EqualTo(2), "both views registered into ONE registry");
 
-            // Use a point from the actual intersection. The Home CTA is now a short fixed-
-            // height action inside the sheet's taller thumb band, so their centers need not
-            // coincide on a tall phone even though the regions still overlap.
-            var overlapPoint = home.PinPaintedRectPx.center;
-            Assert.That(sheet.PlayChipRectPx.Contains(overlapPoint), Is.True,
-                "precondition: the chosen Home point is also covered by the modal chip");
+            // Use the actual intersection rather than assuming either region's center lies in
+            // the other. That keeps this test about priority when CTA geometry evolves.
+            var homeRect = home.PinPaintedRectPx;
+            var sheetRect = sheet.PlayChipRectPx;
+            var overlap = Rect.MinMaxRect(
+                Mathf.Max(homeRect.xMin, sheetRect.xMin),
+                Mathf.Max(homeRect.yMin, sheetRect.yMin),
+                Mathf.Min(homeRect.xMax, sheetRect.xMax),
+                Mathf.Min(homeRect.yMax, sheetRect.yMax));
+            Assert.That(overlap.width, Is.GreaterThan(0f),
+                "precondition: Home and sheet regions overlap horizontally");
+            Assert.That(overlap.height, Is.GreaterThan(0f),
+                "precondition: Home and sheet regions overlap vertically");
+            var overlapPoint = overlap.center;
             Assert.That(regions.TryResolve(overlapPoint, out var onTap), Is.True);
             onTap();
             Assert.That(playRequested, Is.EqualTo(1),

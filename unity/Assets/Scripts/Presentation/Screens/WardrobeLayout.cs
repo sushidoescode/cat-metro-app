@@ -18,16 +18,7 @@ namespace CatMetro.Presentation.Screens
         private const float ItemCardMaxWidthDp = 112f;
 
         public static Rect EntryRect(Rect safeArea, float dpi)
-        {
-            float px = HudBands.PxPerDp(dpi);
-            float inset = SideInsetDp * px;
-            float width = Mathf.Min(EntryWidthDp * px,
-                Mathf.Max(0f, safeArea.width - inset * 2f));
-            float height = EntryHeightDp * px;
-            var hero = HomeLayout.HeroRect(safeArea, dpi);
-            return new Rect(hero.xMax - width - GapDp * px,
-                hero.yMax - height - GapDp * px, width, height);
-        }
+            => HomeLayout.WardrobePinRect(safeArea, dpi);
 
         public static Rect BackRect(Rect safeArea, float dpi)
         {
