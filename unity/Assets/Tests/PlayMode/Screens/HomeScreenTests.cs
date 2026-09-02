@@ -215,6 +215,97 @@ namespace CatMetro.Tests.PlayMode
                 "the Image-built gear opens settings through ChromeRegions");
         }
 
+        [UnityTest]
+        public IEnumerator ConfigureAudio_ShowsCsvOnAndOffLabels_AndRegistersExactlyOnce()
+        {
+            CreateShown();
+            yield return null;
+            Assert.That(_regions.Count, Is.EqualTo(1),
+                "precondition: unconfigured Home registers only its primary pin");
+
+            _home.ConfigureAudio(true);
+            Assert.That(_home.AudioToggleTransform, Is.Not.Null,
+                "audio configuration creates the always-reachable Home control");
+            Assert.That(_home.AudioEnabled, Is.True);
+            Assert.That(_home.AudioToggleText,
+                Is.EqualTo(CatMetro.Presentation.Strings.UiStrings.Get("settings.audio.on")));
+            Assert.That(_home.AudioToggleText.Contains("??"), Is.False,
+                "the enabled label resolves through the csv rather than a missing-key sentinel");
+            Assert.That(_regions.IsRegistered("home.audio.toggle"), Is.True);
+            Assert.That(_regions.Count, Is.EqualTo(2),
+                "configuration adds one sound region alongside the primary pin");
+
+            _home.ConfigureAudio(false);
+            Assert.That(_home.AudioEnabled, Is.False);
+            Assert.That(_home.AudioToggleText,
+                Is.EqualTo(CatMetro.Presentation.Strings.UiStrings.Get("settings.audio.off")));
+            Assert.That(_home.AudioToggleText.Contains("??"), Is.False,
+                "the muted label resolves through the csv rather than a missing-key sentinel");
+            Assert.That(_regions.Count, Is.EqualTo(2),
+                "reconfiguration updates the existing control without duplicate registration");
+        }
+
+        [UnityTest]
+        public IEnumerator AudioToggle_RoutesInverseRequest_AndFollowsHomeLifetime()
+        {
+            CreateShown();
+            _home.ConfigureAudio(true);
+            _home.LayoutForViewport(new Rect(0f, 0f, 360f, 640f), 160f);
+            yield return null;
+
+            int callbackCount = 0;
+            bool requested = true;
+            _home.AudioEnabledChanged = value =>
+            {
+                callbackCount++;
+                requested = value;
+            };
+            Assert.That(_regions.TryResolve(_home.AudioToggleRectPx.center,
+                out var mute, out var feedback), Is.True,
+                "the painted sound-toggle center resolves through ChromeRegions");
+            Assert.That(feedback, Is.EqualTo(ChromeFeedback.WoodTap));
+            mute();
+            Assert.That(callbackCount, Is.EqualTo(1));
+            Assert.That(requested, Is.False,
+                "tapping enabled audio requests mute through the presentation callback");
+            Assert.That(_home.AudioEnabled, Is.True,
+                "the tap only requests a change; authoritative state is supplied by ConfigureAudio");
+
+            _home.ConfigureAudio(false);
+            Assert.That(_regions.TryResolve(_home.AudioToggleRectPx.center,
+                out var unmute), Is.True);
+            unmute();
+            Assert.That(callbackCount, Is.EqualTo(2));
+            Assert.That(requested, Is.True,
+                "tapping muted audio requests unmute through the same callback");
+
+            _home.gameObject.SetActive(false);
+            yield return null;
+            Assert.That(_regions.IsRegistered("home.audio.toggle"), Is.False,
+                "OnDisable removes the sound region with the rest of Home chrome");
+
+            _home.gameObject.SetActive(true);
+            yield return null;
+            Assert.That(_regions.IsRegistered("home.audio.toggle"), Is.True,
+                "OnEnable restores the sound region while Home remains shown");
+
+            _home.Hide();
+            yield return null;
+            Assert.That(_regions.IsRegistered("home.audio.toggle"), Is.False,
+                "Hide removes the sound region");
+
+            _home.Show();
+            yield return null;
+            Assert.That(_regions.IsRegistered("home.audio.toggle"), Is.True,
+                "Show restores exactly one sound region");
+            Assert.That(_regions.Count, Is.EqualTo(2));
+
+            Object.Destroy(_home.gameObject);
+            yield return null;
+            Assert.That(_regions.IsRegistered("home.audio.toggle"), Is.False,
+                "OnDestroy removes the sound region permanently");
+        }
+
         private static string FirstReminderNode(GameObject root)
         {
             foreach (var t in root.GetComponentsInChildren<Transform>(true))

@@ -8,6 +8,7 @@ using CatMetro.Content.Daily;
 using CatMetro.Integrations.OneSignal;
 using CatMetro.Services;
 using CatMetro.Presentation.Board;
+using CatMetro.Presentation.Audio;
 using CatMetro.Presentation.Cameras;
 using CatMetro.Presentation.Diagnostics;
 using CatMetro.Presentation.Hud;
@@ -40,6 +41,7 @@ namespace CatMetro.Bootstrap
         public CauseCameraController CauseCam { get; private set; }
         public WavePreviewStrip Preview { get; private set; }
         public Camera Cam { get; private set; }
+        public GameAudio Audio { get; private set; }
         public string ScreenState { get; private set; } = "Playing";
         private GameAnalyticsRuntime _analyticsRuntime;
         private NetworkReachability _lastNetworkReachability;
@@ -75,6 +77,7 @@ namespace CatMetro.Bootstrap
         private CatMetro.Services.Cosmetics.CosmeticProfileService _cosmetics;
         private DailyProgressTracker _dailyProgress;
         private DailyReminderPreferences _dailyReminderPreferences;
+        private AudioPreferences _audioPreferences;
         private IMessaging _messaging;
         private CancellationTokenSource _messagingPermissionCancellation;
         private System.Threading.Tasks.Task _messagingPermissionTask;
@@ -317,6 +320,8 @@ namespace CatMetro.Bootstrap
                 SaveRuntime.Install(_saveStore);
                 _dailyProgress = new DailyProgressTracker(_saveStore);
                 _dailyReminderPreferences = new DailyReminderPreferences(_saveStore);
+                _audioPreferences = new AudioPreferences(_saveStore);
+                Audio?.SetEnabled(_audioPreferences.Enabled);
                 _reminderPromptPending = _dailyReminderPreferences.CanOfferPrompt(
                     _dailyProgress.LifetimeCompletions);
             }
@@ -329,6 +334,7 @@ namespace CatMetro.Bootstrap
                 _saveStore = null;
                 _dailyProgress = null;
                 _dailyReminderPreferences = null;
+                _audioPreferences = null;
             }
 
             InitializeMessaging();
@@ -464,6 +470,10 @@ namespace CatMetro.Bootstrap
             var camGo = new GameObject("Camera");
             camGo.transform.SetParent(transform, false);
             Cam = camGo.AddComponent<Camera>();
+            Audio = GetComponent<GameAudio>();
+            if (Audio == null) Audio = gameObject.AddComponent<GameAudio>();
+            Audio.Initialize(Cam);
+            Audio.BindSession(Session);
             View = BoardView.Build(level, transform, Session);
             // LOOK steps 4-5: the camera stays axis-aligned so the existing screen-space
             // input/failure geometry remains exact; the complete board diorama is tilted as
@@ -476,6 +486,8 @@ namespace CatMetro.Bootstrap
             View.MotionOffSource = () => MotionOff;
             Input = gameObject.AddComponent<Presentation.Input.TapInput>();
             Input.Wire(Session, View, Cam);
+            Input.UiTapAccepted = Audio.PlayButtonTap;
+            Input.SwitchTapAccepted = Audio.PlaySwitchClunk;
             Input.RetryRegionActive = () => ScreenState == "FailureReview";
             Input.RetryTapped = Retry;
             // CM-UX-07 criterion 2: the board-input gate. F7 (round-1 review) correction: this
@@ -572,6 +584,8 @@ namespace CatMetro.Bootstrap
             Home = CatMetro.Presentation.Screens.HomeScreenView.Create(
                 canvasGo.transform, dailyUnlocked, LifetimeDailyCompletions, _cosmetics);
             Home.Attach(Input.Regions, () => MotionOff);
+            Home.ConfigureAudio(Audio == null || Audio.Enabled);
+            Home.AudioEnabledChanged = OnAudioEnabledChanged;
             Home.ReminderAccepted = BeginEnableDailyReminder;
             Home.ReminderDismissed = ConfigureReminderHome;
             Home.ReminderEnabledChanged = OnReminderEnabledChanged;
@@ -585,6 +599,7 @@ namespace CatMetro.Bootstrap
                 _cosmetics,
                 new CatMetro.Services.Cosmetics.RewardedAdCosmeticRoute());
             Wardrobe.Attach(Input.Regions);
+            Wardrobe.PurchaseConfirmed = () => Audio?.PlayPurchaseSuccess();
 
             Home.LevelSelected = () =>
             {
@@ -652,6 +667,21 @@ namespace CatMetro.Bootstrap
                 && available && permission == MessagingPermission.Authorized;
             Home.ConfigureReminder(configurationUnlocked: true, effectiveEnabled,
                 _dailyReminderPreferences.Slot, permission, canRequestPermission, available);
+        }
+
+        private void OnAudioEnabledChanged(bool enabled)
+        {
+            if (_audioPreferences != null && !_audioPreferences.TrySetEnabled(enabled))
+            {
+                Home?.ConfigureAudio(_audioPreferences.Enabled);
+                return;
+            }
+
+            Audio?.SetEnabled(enabled);
+            Home?.ConfigureAudio(enabled);
+            // The accepted tap that turns audio back on was necessarily silent. Confirm the new
+            // setting with the same soft wooden tap only after persistence succeeds.
+            if (enabled) Audio?.PlayButtonTap();
         }
 
         private void TryPresentEarnedReminderPrompt()
@@ -1092,6 +1122,7 @@ namespace CatMetro.Bootstrap
             _pendingHomeShowFrame = -1;
             _level = level;
             Session = new GameSession(level);
+            Audio?.BindSession(Session);
             if (View != null) Destroy(View.gameObject);
             View = BoardView.Build(level, transform, Session);
             BoardSceneLook.Apply(transform, Cam, View);
@@ -1530,6 +1561,20 @@ namespace CatMetro.Bootstrap
                     Input.Regions.Register("halt.escape",
                         () => new Rect(0f, 0f, Screen.width, Screen.height), Retry,
                         Presentation.Input.ChromeRegions.HaltEscapePriority);
+                    // Halt recovery is authoritative and complete before presentation work.
+                    // Every halt stops motion audio; only the pinned wrong-station snapshot
+                    // receives the specific muted thud. Audio failure cannot suppress escape.
+                    try
+                    {
+                        Audio?.StopGameplayLoop();
+                        if (Audio != null && GameAudio.HasWrongStationArrival(Session))
+                            Audio.PlayWrongStationThud();
+                    }
+                    catch (System.Exception audioEx)
+                    {
+                        Debug.LogWarning("audio halt feedback failed safely: "
+                            + audioEx.GetType().Name);
+                    }
                     Debug.LogError("run halted at a pinned/guarded Domain boundary: " + ex.Message);
                     return;
                 }
@@ -1600,6 +1645,15 @@ namespace CatMetro.Bootstrap
                     Banner.ShowKeySubstituted(key, token, causal >= 0 ? View.NodeId(causal) : "?");
                 else
                     Banner.ShowKey(key);
+            }
+            try
+            {
+                Audio?.Observe(Session, ScreenState == "Playing" && !ScreensVisible);
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning("audio snapshot observation failed safely: "
+                    + ex.GetType().Name);
             }
         }
 

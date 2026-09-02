@@ -27,6 +27,11 @@ namespace CatMetro.Presentation.Input
         public System.Func<bool> RetryRegionActive;
         public System.Action RetryTapped;
 
+        // Presentation-only feedback seams. They are optional and isolated per subscriber: a
+        // missing or faulty audio presenter must never block the already-resolved game action.
+        public System.Action UiTapAccepted;
+        public System.Action SwitchTapAccepted;
+
         // CM-UX-01: chrome hit routing + the board-input gate. Resolution order is law
         // (criterion 1): legacy retry band first (pinned), registered regions next, board discs
         // last. BoardInputActive gates ONLY the disc scan (null = active; the composition root
@@ -80,11 +85,14 @@ namespace CatMetro.Presentation.Input
             if (RetryRegionActive != null && RetryTapped != null && RetryRegionActive()
                 && screenPos.y < Screen.height * 0.25f)
             {
+                InvokeFeedbackSafely(UiTapAccepted);
                 RetryTapped();
                 return -2; // the retry verb consumed the tap
             }
-            if (Regions.TryResolve(screenPos, out var onTap))
+            if (Regions.TryResolve(screenPos, out var onTap, out var feedback))
             {
+                if (feedback == ChromeFeedback.WoodTap)
+                    InvokeFeedbackSafely(UiTapAccepted);
                 onTap();
                 return -3; // a chrome region consumed the tap — never falls through to a disc
             }
@@ -99,9 +107,20 @@ namespace CatMetro.Presentation.Input
                 _discCentersScratch[s] = _camera.WorldToScreenPoint(_view.SwitchWorldPos(s));
             int best = ResolveNearestDisc(screenPos, _discCentersScratch, radiusPx);
             if (best < 0) return -1;
+            InvokeFeedbackSafely(SwitchTapAccepted);
             _session.EnqueueToggle(best);
             _view.RefreshSwitches(); // the lever shows the committed route THIS frame
             return best;
+        }
+
+        private static void InvokeFeedbackSafely(System.Action feedback)
+        {
+            if (feedback == null) return;
+            foreach (System.Action listener in feedback.GetInvocationList())
+            {
+                try { listener(); }
+                catch { }
+            }
         }
     }
 }

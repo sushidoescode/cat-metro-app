@@ -24,6 +24,7 @@ namespace CatMetro.Presentation.Screens
 
         public Action OpenRequested;
         public Action BackRequested;
+        public Action PurchaseConfirmed;
 
         private PurchaseService _purchases;
         private CosmeticProfileService _profile;
@@ -500,6 +501,7 @@ namespace CatMetro.Presentation.Screens
                     && result.ConfirmedEntitlements.Value.IsAuthoritative
                     && _purchases.IsUnlocked(entitlementId))
                 {
+                    InvokeSafely(PurchaseConfirmed);
                     if (!_profile.TryEquip(catId, slot, itemId))
                         SaveFailed();
                     else SetStatus(Text("wardrobe.state.equipped"));
@@ -526,6 +528,16 @@ namespace CatMetro.Presentation.Screens
                 }
                 RebuildProjectionAndCards();
             });
+        }
+
+        private static void InvokeSafely(Action action)
+        {
+            if (action == null) return;
+            foreach (Action listener in action.GetInvocationList())
+            {
+                try { listener(); }
+                catch { }
+            }
         }
 
         private void BeginRewarded(CosmeticWardrobeRow row)

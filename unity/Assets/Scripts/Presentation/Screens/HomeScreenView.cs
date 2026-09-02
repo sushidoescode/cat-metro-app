@@ -32,6 +32,8 @@ namespace CatMetro.Presentation.Screens
         private const int DailyPinRegionPriority = ChromeRegions.HomeScreenPriority;
         private const string ReminderGearRegionId = "home.reminder.gear";
         private const int ReminderGearRegionPriority = ChromeRegions.HomeScreenPriority;
+        private const string AudioToggleRegionId = "home.audio.toggle";
+        private const int AudioToggleRegionPriority = ChromeRegions.HomeScreenPriority;
 
         public System.Action LevelSelected;
         public System.Action DailySelected;
@@ -39,12 +41,15 @@ namespace CatMetro.Presentation.Screens
         public System.Action ReminderDismissed;
         public System.Action<bool> ReminderEnabledChanged;
         public System.Action<DailyReminderSlot> ReminderSlotChanged;
+        public System.Action<bool> AudioEnabledChanged;
 
         private ChromeRegions _regions;
         private System.Func<bool> _motionOff;
         private bool _registered;
         private bool _dailyRegistered;
         private bool _reminderGearRegistered;
+        private bool _audioToggleRegistered;
+        private bool _audioEnabled = true;
         private bool _shown; // #46 review F4: Show()-left-shown intent, survives OnDisable/OnEnable
         private Image _background; // BEAUTIFUL-MENU: the warm-paper tabletop ground
         private TMP_Text _title;
@@ -59,12 +64,16 @@ namespace CatMetro.Presentation.Screens
         private TMP_Text _dailyTally;
         private TMP_Text _dailyStatus;
         private RectTransform _reminderGear;
+        private RectTransform _audioToggle;
+        private TMP_Text _audioToggleLabel;
+        private Image _audioTogglePaint;
         private DailyReminderSheet _reminderSheet;
         private CosmeticPortraitView _profilePortrait;
         private Rect _pinRectPx;
         private Rect _dailyPinRectPx;
         private Rect _heroRectPx;
         private Rect _reminderGearRectPx;
+        private Rect _audioToggleRectPx;
         private float _phase;
 
         public Rect PinPaintedRectPx => _pinRectPx;
@@ -99,6 +108,10 @@ namespace CatMetro.Presentation.Screens
         public RectTransform ReminderGearTransform => _reminderGear;
         public Rect ReminderGearRectPx => _reminderGearRectPx;
         public DailyReminderSheet ReminderSheet => _reminderSheet;
+        public RectTransform AudioToggleTransform => _audioToggle;
+        public Rect AudioToggleRectPx => _audioToggleRectPx;
+        public string AudioToggleText => _audioToggleLabel != null ? _audioToggleLabel.text : "";
+        public bool AudioEnabled => _audioEnabled;
         public CosmeticPortraitView ProfilePortrait => _profilePortrait;
         public RectTransform ProfilePortraitTransform => _profilePortrait != null
             ? _profilePortrait.RootTransform
@@ -144,6 +157,10 @@ namespace CatMetro.Presentation.Screens
             view._title = MakeText(go.transform, "Title",
                 new Vector2(0.08f, 0.87f), new Vector2(0.92f, 0.97f),
                 Strings.UiStrings.Get("home.title"), 48f, Palette.InkNavy); // key-only, never a literal
+            view._title.enableAutoSizing = true;
+            view._title.fontSizeMin = 24f;
+            view._title.fontSizeMax = 48f;
+            view._title.enableWordWrapping = false;
 
             // A single depot route-card gives the three existing cat holders somewhere to
             // belong. Every child is render-only geometry; the central rails and sleepers are
@@ -292,6 +309,33 @@ namespace CatMetro.Presentation.Screens
             _dailyTally.gameObject.SetActive(!hasStatus);
         }
 
+        // The sound setting is independent of Daily progression. GameRoot configures it on
+        // every real boot from the existing save-v3 settings.audio field, so mute is reachable
+        // from Home even when the reminder gear has not unlocked.
+        public void ConfigureAudio(bool enabled)
+        {
+            EnsureAudioToggle();
+            _audioEnabled = enabled;
+            _audioToggleLabel.text = Strings.UiStrings.Get(
+                enabled ? "settings.audio.on" : "settings.audio.off");
+            _audioTogglePaint.color = enabled ? Palette.MetroTeal : Palette.CreamCard;
+            LayoutForViewport(Screen.safeArea, Screen.dpi);
+            if (_shown && isActiveAndEnabled) RegisterAudioToggle();
+        }
+
+        private void EnsureAudioToggle()
+        {
+            if (_audioToggle != null) return;
+            _audioToggle = MakeChip(transform, "SoundToggle", Palette.MetroTeal);
+            _audioTogglePaint = _audioToggle.GetComponent<Image>();
+            _audioToggleLabel = MakeText(_audioToggle, "SoundToggleLabel",
+                Vector2.zero, Vector2.one, "", 17f, Palette.InkNavy);
+            _audioToggleLabel.enableAutoSizing = true;
+            _audioToggleLabel.fontSizeMin = 10f;
+            _audioToggleLabel.fontSizeMax = 17f;
+            _audioToggleLabel.fontStyle = FontStyles.Bold;
+        }
+
         public void ConfigureReminder(bool configurationUnlocked, bool enabled,
             DailyReminderSlot slot, MessagingPermission permission,
             bool canRequestPermission, bool providerAvailable)
@@ -429,6 +473,7 @@ namespace CatMetro.Presentation.Screens
             RegisterPin();
             RegisterDailyPin();
             RegisterReminderGear();
+            RegisterAudioToggle();
         }
 
         public void Hide()
@@ -438,6 +483,7 @@ namespace CatMetro.Presentation.Screens
             UnregisterPin();
             UnregisterDailyPin();
             UnregisterReminderGear();
+            UnregisterAudioToggle();
             gameObject.SetActive(false);
         }
 
@@ -446,6 +492,7 @@ namespace CatMetro.Presentation.Screens
             UnregisterPin(); // R1-F3 lifetime law
             UnregisterDailyPin();
             UnregisterReminderGear();
+            UnregisterAudioToggle();
         }
 
         // CM-UX-07 W-1 (R2-3, audit M-3): mirrors OnDestroy — a deactivated-but-not-destroyed
@@ -457,6 +504,7 @@ namespace CatMetro.Presentation.Screens
             UnregisterPin();
             UnregisterDailyPin();
             UnregisterReminderGear();
+            UnregisterAudioToggle();
         }
 
         // #46 review F4: mirrors OnDisable — a host reactivated directly (SetActive(true), not
@@ -474,6 +522,7 @@ namespace CatMetro.Presentation.Screens
                 RegisterPin();
                 RegisterDailyPin();
                 RegisterReminderGear();
+                RegisterAudioToggle();
             }
         }
 
@@ -539,6 +588,26 @@ namespace CatMetro.Presentation.Screens
             }
         }
 
+        private void RegisterAudioToggle()
+        {
+            if (_audioToggle != null && _regions != null && !_audioToggleRegistered)
+            {
+                _regions.Register(AudioToggleRegionId, () => _audioToggleRectPx,
+                    () => AudioEnabledChanged?.Invoke(!_audioEnabled),
+                    AudioToggleRegionPriority);
+                _audioToggleRegistered = true;
+            }
+        }
+
+        private void UnregisterAudioToggle()
+        {
+            if (_regions != null && _audioToggleRegistered)
+            {
+                _regions.Unregister(AudioToggleRegionId);
+                _audioToggleRegistered = false;
+            }
+        }
+
         // Pure layout injection keeps the capture and the runtime on the same law. Show() is
         // the only live Screen binding because the shipped orientation is portrait-locked.
         public void LayoutForViewport(Rect safeArea, float dpi)
@@ -554,7 +623,8 @@ namespace CatMetro.Presentation.Screens
             float shadowDy = 6f * HudBands.PxPerDp(dpi);
             ApplyPx(_heroShadow, new Rect(_heroRectPx.x + shadowDx,
                 _heroRectPx.y - shadowDy, _heroRectPx.width, _heroRectPx.height));
-            ApplyPx(_title.rectTransform, HomeLayout.HeaderRect(safeArea, dpi));
+            ApplyPx(_title.rectTransform, HomeLayout.TitleRect(safeArea, dpi,
+                _audioToggle != null, _reminderGear != null));
 
             // Guarded: null when Create() ran with dailyEntryUnlocked false (S-01).
             if (_dailyPin != null)
@@ -566,6 +636,11 @@ namespace CatMetro.Presentation.Screens
             {
                 _reminderGearRectPx = DailyReminderLayout.GearRect(safeArea, dpi);
                 ApplyPx(_reminderGear, _reminderGearRectPx);
+            }
+            if (_audioToggle != null)
+            {
+                _audioToggleRectPx = HomeLayout.AudioToggleRect(safeArea, dpi);
+                ApplyPx(_audioToggle, _audioToggleRectPx);
             }
             if (_reminderSheet != null && _reminderSheet.IsVisible)
                 _reminderSheet.LayoutForViewport(safeArea, dpi);

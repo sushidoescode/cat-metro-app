@@ -13,6 +13,10 @@ namespace CatMetro.Presentation.Screens
         public const float CtaBottomInsetDp = 16f;
         public const float HeaderHeightDp = 84f;
         public const float ContentGapDp = 16f;
+        public const float AudioToggleWidthDp = 72f;
+        public const float AudioToggleHeightDp = 52f;
+        public const float AudioToggleInsetDp = 16f;
+        public const float HeaderControlGapDp = 8f;
 
         public static Rect PinRect(Rect safeArea, float dpi) =>
             PrimaryPinRect(safeArea, dpi, dailyEntryUnlocked: false);
@@ -56,6 +60,42 @@ namespace CatMetro.Presentation.Screens
             float height = HeaderHeightDp * pxPerDp;
             return new Rect(safeArea.x + inset, safeArea.yMax - height,
                 safeArea.width - inset * 2f, height);
+        }
+
+        public static Rect AudioToggleRect(Rect safeArea, float dpi)
+        {
+            float pxPerDp = HudBands.PxPerDp(dpi);
+            float inset = AudioToggleInsetDp * pxPerDp;
+            float width = Mathf.Min(AudioToggleWidthDp * pxPerDp,
+                Mathf.Max(0f, safeArea.width - inset * 2f));
+            float height = Mathf.Min(AudioToggleHeightDp * pxPerDp,
+                Mathf.Max(0f, safeArea.height - inset * 2f));
+            return new Rect(safeArea.x + inset,
+                safeArea.yMax - inset - height, width, height);
+        }
+
+        public static Rect TitleRect(Rect safeArea, float dpi,
+            bool audioToggleVisible, bool reminderGearVisible)
+        {
+            var header = HeaderRect(safeArea, dpi);
+            float gap = HeaderControlGapDp * HudBands.PxPerDp(dpi);
+            float xMin = header.xMin;
+            float xMax = header.xMax;
+
+            if (audioToggleVisible)
+                xMin = Mathf.Max(xMin, AudioToggleRect(safeArea, dpi).xMax + gap);
+            if (reminderGearVisible)
+                xMax = Mathf.Min(xMax, DailyReminderLayout.GearRect(safeArea, dpi).xMin - gap);
+
+            if (xMax < xMin)
+            {
+                float center = Mathf.Clamp((xMin + xMax) * 0.5f,
+                    header.xMin, header.xMax);
+                xMin = center;
+                xMax = center;
+            }
+
+            return new Rect(xMin, header.y, xMax - xMin, header.height);
         }
 
         public static Rect HeroRect(Rect safeArea, float dpi)

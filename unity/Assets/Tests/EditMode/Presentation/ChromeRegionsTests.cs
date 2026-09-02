@@ -26,6 +26,47 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
+        public void Feedback_DefaultsToWoodTap_AndExplicitNoneRoundTrips()
+        {
+            var regions = new ChromeRegions();
+            int fired = 0;
+            regions.Register("button", () => new Rect(0, 0, 100, 100), () => fired++, 0);
+
+            Assert.That(regions.TryResolve(new Vector2(50, 50), out var button,
+                out var buttonFeedback), Is.True);
+            Assert.That(buttonFeedback, Is.EqualTo(ChromeFeedback.WoodTap),
+                "the compatible four-argument registration remains a tactile button");
+            button();
+
+            Assert.That(regions.Unregister("button"), Is.True);
+            regions.Register("blocker", () => new Rect(0, 0, 100, 100), () => fired++, 0,
+                ChromeFeedback.None);
+            Assert.That(regions.TryResolve(new Vector2(50, 50), out var blocker,
+                out var blockerFeedback), Is.True);
+            Assert.That(blockerFeedback, Is.EqualTo(ChromeFeedback.None),
+                "a consuming non-control can suppress tactile feedback without changing routing");
+            blocker();
+            Assert.That(fired, Is.EqualTo(2), "feedback metadata never suppresses the action");
+        }
+
+        [Test]
+        public void Feedback_ComesFromTheWinningRegion_AndMissReturnsNone()
+        {
+            var regions = new ChromeRegions();
+            regions.Register("low", () => new Rect(0, 0, 100, 100), () => { }, 1,
+                ChromeFeedback.WoodTap);
+            regions.Register("high", () => new Rect(0, 0, 100, 100), () => { }, 5,
+                ChromeFeedback.None);
+
+            Assert.That(regions.TryResolve(new Vector2(50, 50), out _, out var winning), Is.True);
+            Assert.That(winning, Is.EqualTo(ChromeFeedback.None));
+            Assert.That(regions.TryResolve(new Vector2(500, 500), out var action,
+                out var missed), Is.False);
+            Assert.That(action, Is.Null);
+            Assert.That(missed, Is.EqualTo(ChromeFeedback.None));
+        }
+
+        [Test]
         public void Miss_ResolvesNothing_PositiveControlInSameFixture()
         {
             var regions = new ChromeRegions();

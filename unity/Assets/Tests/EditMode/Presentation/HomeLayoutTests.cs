@@ -115,6 +115,40 @@ namespace CatMetro.Tests.Presentation
             Assert.That(HudBands.MeetsMinTargetPx(daily, dpi), Is.True);
         }
 
+        [Test]
+        public void Reference360x640_AudioToggleStaysSafe_AndClearsThe48DpFloor()
+        {
+            var safeArea = new Rect(0f, 0f, 360f, 640f); // 1 px per dp at 160 dpi
+            var toggle = HomeLayout.AudioToggleRect(safeArea, 160f);
+
+            Assert.That(toggle, Is.EqualTo(new Rect(16f, 572f, 72f, 52f))
+                .Using(RectComparer.Within(0.001f)),
+                "the compact sound control keeps its declared top/side inset");
+            Assert.That(toggle.xMin, Is.GreaterThanOrEqualTo(safeArea.xMin));
+            Assert.That(toggle.xMax, Is.LessThanOrEqualTo(safeArea.xMax));
+            Assert.That(toggle.yMin, Is.GreaterThanOrEqualTo(safeArea.yMin));
+            Assert.That(toggle.yMax, Is.LessThanOrEqualTo(safeArea.yMax));
+            Assert.That(HudBands.MeetsMinTargetPx(toggle, 160f), Is.True,
+                "both sound-toggle dimensions clear the 48dp touch-target floor");
+        }
+
+        [Test]
+        public void Reference360x640_TitleClearsBothHeaderControls()
+        {
+            var safeArea = new Rect(0f, 0f, 360f, 640f);
+            var title = HomeLayout.TitleRect(safeArea, 160f,
+                audioToggleVisible: true, reminderGearVisible: true);
+            var audio = HomeLayout.AudioToggleRect(safeArea, 160f);
+            var reminder = DailyReminderLayout.GearRect(safeArea, 160f);
+
+            Assert.That(title, Is.EqualTo(new Rect(96f, 556f, 188f, 84f))
+                .Using(RectComparer.Within(0.001f)));
+            Assert.That(title.xMin, Is.GreaterThanOrEqualTo(audio.xMax + 8f),
+                "the title leaves a tactile gap after the sound chip");
+            Assert.That(title.xMax, Is.LessThanOrEqualTo(reminder.xMin - 8f),
+                "the title leaves the same gap before the reminder gear");
+        }
+
         private sealed class RectComparer : System.Collections.IComparer
         {
             private readonly float _tolerance;
