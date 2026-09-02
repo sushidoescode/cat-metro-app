@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 2,
+  "id": "L036",
+  "name": "Window Queue",
+  "seed": 3036,
+  "meta": {
+    "band": "timed-gates",
+    "difficultyTarget": 0.72,
+    "mechanics": ["switch", "budget", "gate"],
+    "newMechanic": null,
+    "teachingGoal": "Stage three trains behind a closed gate and clear them in one generous window",
+    "minActionWindowTicks": 3,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 8 },
+      { "id": "J1", "x": 0, "y": 5 },
+      { "id": "WAIT", "x": -2, "y": 3, "queueCapacity": 4 },
+      { "id": "SIDING", "x": 2, "y": 3 },
+      { "id": "RED", "x": -2, "y": 0 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 3 },
+      { "id": "E_GO", "from": "J1", "to": "WAIT", "travelTicks": 2 },
+      { "id": "E_SIDING", "from": "J1", "to": "SIDING", "travelTicks": 2 },
+      { "id": "E_GATE", "from": "WAIT", "to": "RED", "travelTicks": 3 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 4 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_GO", "E_SIDING"], "initialRoute": 1 }
+  ],
+  "gates": [
+    { "edgeId": "E_GATE", "openWindows": [[16, 30]], "previewTicks": 12 }
+  ],
+  "waves": [
+    { "tick": 3, "sourceNode": "SRC", "color": "red", "count": 3, "spacingTicks": 4 }
+  ],
+  "win": {
+    "deliveries": 3,
+    "timeLimitTicks": 36,
+    "perfectMaxSwitches": 1,
+    "stars": { "two": 250, "three": 425 }
+  },
+  "economy": { "baseTickets": 60, "perfectBonus": 25 }
+}

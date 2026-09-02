@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 2,
+  "id": "L022",
+  "name": "Blue Red Blue",
+  "seed": 2022,
+  "meta": {
+    "band": "alternation",
+    "difficultyTarget": 0.43,
+    "mechanics": ["switch", "budget", "cooldown"],
+    "newMechanic": null,
+    "teachingGoal": "Space three accepted flips beyond the cooling lockout",
+    "minActionWindowTicks": 3,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 6 },
+      { "id": "J1", "x": 0, "y": 3, "queueCapacity": 4 },
+      { "id": "RED", "x": -2, "y": 0 },
+      { "id": "BLUE", "x": 2, "y": 0 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 3 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 4 },
+      { "id": "E_BLUE", "from": "J1", "to": "BLUE", "travelTicks": 4 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red", "blue"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 4 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 4 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_RED", "E_BLUE"], "initialRoute": 0, "cooldownTicks": 3 }
+  ],
+  "waves": [
+    { "tick": 2, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8 },
+    { "tick": 9, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8 },
+    { "tick": 16, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8 }
+  ],
+  "win": {
+    "deliveries": 3,
+    "timeLimitTicks": 24,
+    "perfectMaxSwitches": 3,
+    "stars": { "two": 140, "three": 250 }
+  },
+  "economy": { "baseTickets": 32, "perfectBonus": 13 }
+}

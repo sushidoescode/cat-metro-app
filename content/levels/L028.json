@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 2,
+  "id": "L028",
+  "name": "Portal Pulse",
+  "seed": 2028,
+  "meta": {
+    "band": "tunnel",
+    "difficultyTarget": 0.56,
+    "mechanics": ["switch", "budget", "tunnel"],
+    "newMechanic": null,
+    "teachingGoal": "Route a three-cat pulse after each cat crosses the portal pair",
+    "minActionWindowTicks": 3,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "PORTAL_A", "x": 0, "y": 6 },
+      { "id": "PORTAL_B", "x": 0, "y": 3, "queueCapacity": 4 },
+      { "id": "RED", "x": -2, "y": 0 },
+      { "id": "BLUE", "x": 2, "y": 0 }
+    ],
+    "edges": [
+      { "id": "E_TUNNEL", "from": "PORTAL_A", "to": "PORTAL_B", "travelTicks": 3, "tunnel": true },
+      { "id": "E_RED", "from": "PORTAL_B", "to": "RED", "travelTicks": 4 },
+      { "id": "E_BLUE", "from": "PORTAL_B", "to": "BLUE", "travelTicks": 4 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "PORTAL_A", "allowedColors": ["red", "blue"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 4 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 4 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "PORTAL_B", "routes": ["E_RED", "E_BLUE"], "initialRoute": 1 }
+  ],
+  "waves": [
+    { "tick": 2, "sourceNode": "PORTAL_A", "color": "red", "count": 1, "spacingTicks": 8 },
+    { "tick": 7, "sourceNode": "PORTAL_A", "color": "blue", "count": 1, "spacingTicks": 8 },
+    { "tick": 12, "sourceNode": "PORTAL_A", "color": "red", "count": 1, "spacingTicks": 8 }
+  ],
+  "win": {
+    "deliveries": 3,
+    "timeLimitTicks": 20,
+    "perfectMaxSwitches": 3,
+    "stars": { "two": 200, "three": 345 }
+  },
+  "economy": { "baseTickets": 44, "perfectBonus": 18 }
+}

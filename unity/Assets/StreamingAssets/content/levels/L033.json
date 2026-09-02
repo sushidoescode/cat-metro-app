@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 2,
+  "id": "L033",
+  "name": "Platform Pause",
+  "seed": 3033,
+  "meta": {
+    "band": "timed-gates",
+    "difficultyTarget": 0.65,
+    "mechanics": ["switch", "budget", "gate"],
+    "newMechanic": "gate",
+    "teachingGoal": "Route toward the station, then watch one train wait for the timed gate to open",
+    "minActionWindowTicks": 3,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 7 },
+      { "id": "J1", "x": 0, "y": 5 },
+      { "id": "WAIT", "x": -2, "y": 3, "queueCapacity": 4 },
+      { "id": "SIDING", "x": 2, "y": 3 },
+      { "id": "RED", "x": -2, "y": 0 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 2 },
+      { "id": "E_GO", "from": "J1", "to": "WAIT", "travelTicks": 2 },
+      { "id": "E_SIDING", "from": "J1", "to": "SIDING", "travelTicks": 2 },
+      { "id": "E_GATE", "from": "WAIT", "to": "RED", "travelTicks": 3 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 4 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_GO", "E_SIDING"], "initialRoute": 1 }
+  ],
+  "gates": [
+    { "edgeId": "E_GATE", "openWindows": [[10, 21]], "previewTicks": 8 }
+  ],
+  "waves": [
+    { "tick": 2, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8 }
+  ],
+  "win": {
+    "deliveries": 1,
+    "timeLimitTicks": 24,
+    "perfectMaxSwitches": 1,
+    "stars": { "two": 220, "three": 380 }
+  },
+  "economy": { "baseTickets": 54, "perfectBonus": 23 }
+}

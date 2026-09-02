@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 2,
+  "id": "L038",
+  "name": "Two-Way Spur",
+  "seed": 4038,
+  "meta": {
+    "band": "oneway",
+    "difficultyTarget": 0.75,
+    "mechanics": ["switch", "budget", "reversible"],
+    "newMechanic": null,
+    "teachingGoal": "Keep a two-way spur selected for a pair, then spend the one release flip",
+    "minActionWindowTicks": 3,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 7 },
+      { "id": "J1", "x": 0, "y": 4, "queueCapacity": 4 },
+      { "id": "RED", "x": -3, "y": 1 },
+      { "id": "BLUE", "x": 3, "y": 1 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 3 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 3 },
+      { "id": "E_SPUR", "from": "BLUE", "to": "J1", "travelTicks": 3, "oneWay": false }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red", "blue"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 4 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 4 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_SPUR", "E_RED"], "initialRoute": 0 }
+  ],
+  "waves": [
+    { "tick": 2, "sourceNode": "SRC", "color": "blue", "count": 2, "spacingTicks": 4 },
+    { "tick": 14, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8 }
+  ],
+  "win": {
+    "deliveries": 3,
+    "timeLimitTicks": 28,
+    "perfectMaxSwitches": 1,
+    "stars": { "two": 270, "three": 455 }
+  },
+  "economy": { "baseTickets": 64, "perfectBonus": 27 }
+}
