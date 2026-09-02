@@ -120,6 +120,19 @@ namespace CatMetro.Tests.Validation
                 maxNodesExpanded: 1));
         }
 
+        private static StageVerdict CampaignCountVerdict(int count)
+        {
+            var level = VFixtures.L001Bytes();
+            var members = Enumerable.Range(0, count)
+                .Select(index => new CorpusMember(
+                    "content/levels/count-fixture-" + index + ".json", level, true))
+                .ToArray();
+            var report = CorpusValidator.Validate(new ValidationRequest(
+                VFixtures.SchemaBytes(), VFixtures.BareConfig(), null, members,
+                maxNodesExpanded: 1));
+            return report.CampaignVerdicts.Single(v => v.Value == "tag=CM-R09.1");
+        }
+
         [Test]
         public void StressBoards_AreValidated_WithTheQPStageSet()
         {
@@ -153,16 +166,31 @@ namespace CatMetro.Tests.Validation
         }
 
         [Test]
-        public void CampaignAssertions_ComputeOverCampaignLevelsOnly()
+        public void IncompleteCampaignCount_BlocksAndExcludesStressBoards()
         {
             var report = FullRun();
             var count = report.CampaignVerdicts.Single(v => v.Value == "tag=CM-R09.1");
             Assert.That(count.Detail, Does.Contain("1/60"),
                 "the 60-level count sees content/levels/** only — never the stress boards");
-            Assert.That(count.Blocks, Is.False, "PENDING while the corpus grows");
+            Assert.That(count.Code, Is.EqualTo(StageVerdictCode.Fail));
+            Assert.That(count.Blocks, Is.True, "an incomplete shipped campaign blocks");
+            Assert.That(report.ExitFailure, Is.True);
             var proof = report.CampaignVerdicts.Single(v =>
                 v.Value == "tag=CM-LADDER-solve-proof");
             Assert.That(proof.Code, Is.EqualTo(StageVerdictCode.Pass), proof.Detail);
+        }
+
+        [TestCase(0, StageVerdictCode.Fail, true)]
+        [TestCase(59, StageVerdictCode.Fail, true)]
+        [TestCase(60, StageVerdictCode.Pass, false)]
+        [TestCase(61, StageVerdictCode.Fail, true)]
+        public void CampaignCount_RequiresExactly60(
+            int count, StageVerdictCode expectedCode, bool expectedBlocks)
+        {
+            var verdict = CampaignCountVerdict(count);
+            Assert.That(verdict.Detail, Does.Contain(count + "/60"));
+            Assert.That(verdict.Code, Is.EqualTo(expectedCode));
+            Assert.That(verdict.Blocks, Is.EqualTo(expectedBlocks));
         }
 
         [Test]
@@ -190,7 +218,7 @@ namespace CatMetro.Tests.Validation
         }
 
         [Test]
-        public void NonCampaignBudgetMiss_RemainsANonBlockingWarning()
+        public void NonCampaignBudgetMiss_RemainsAWarningWhileEmptyCampaignCountBlocks()
         {
             var report = BudgetLimitedReport(campaign: false);
             var level = report.Levels.Single();
@@ -207,7 +235,11 @@ namespace CatMetro.Tests.Validation
                 v.Value == "tag=CM-LADDER-solve-proof");
             Assert.That(proof.Code, Is.EqualTo(StageVerdictCode.Skipped));
             Assert.That(proof.Blocks, Is.False);
-            Assert.That(report.ExitFailure, Is.False);
+            var count = report.CampaignVerdicts.Single(v => v.Value == "tag=CM-R09.1");
+            Assert.That(count.Code, Is.EqualTo(StageVerdictCode.Fail));
+            Assert.That(count.Blocks, Is.True);
+            Assert.That(report.ExitFailure, Is.True,
+                "the empty campaign count blocks even though the non-campaign solver row does not");
         }
 
         [Test]
@@ -312,8 +344,8 @@ namespace CatMetro.Tests.Validation
                 "CM-R19.1 consumes CompletionTicks / 8");
             Assert.That((string)solve["secondsVerdict"], Is.EqualTo("PINNED(NEW-Q1)"),
                 "the 40-75 s range comparison is pinned, printed, non-blocking");
-            Assert.That((bool)json["exitFailure"], Is.False,
-                "the current corpus is green: nothing blocking fails");
+            Assert.That((bool)json["exitFailure"], Is.True,
+                "the one-level campaign is incomplete and the count assertion blocks");
         }
 
         [Test]

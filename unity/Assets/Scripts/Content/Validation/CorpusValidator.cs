@@ -318,18 +318,15 @@ namespace CatMetro.Content.Validation
                 : new StageVerdict(Stage.NoveltyCheck, StageVerdictCode.Pass,
                     "mechanic order OK (CM-R06.2)", "tag=CM-R06.2", false));
 
-            // CM-R09.1: 60 campaign levels. PENDING while the corpus grows; a hard count only at 60+.
+            // CM-R09.1: the shipped campaign is exactly 60 levels. Any shorter or longer corpus
+            // is incomplete/malformed and must block the canonical gate.
             int n = campaign.Count;
-            if (n < 60)
-                result.Add(new StageVerdict(Stage.NoveltyCheck, StageVerdictCode.Pending,
-                    "campaign corpus " + n + "/60 — PENDING until the corpus reaches 60 (CM-R09.1)",
-                    "tag=CM-R09.1", false));
-            else if (n == 60)
+            if (n == 60)
                 result.Add(new StageVerdict(Stage.NoveltyCheck, StageVerdictCode.Pass,
                     "campaign corpus 60/60 (CM-R09.1)", "tag=CM-R09.1", false));
             else
                 result.Add(StageVerdict.Fail(Stage.NoveltyCheck,
-                    "campaign corpus " + n + "/60 exceeds the locked 60 (CM-R09.1)",
+                    "campaign corpus " + n + "/60 — expected exactly 60 (CM-R09.1)",
                     "tag=CM-R09.1"));
 
             // A campaign cannot ship on the per-level solver warning alone: every authored

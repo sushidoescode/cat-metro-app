@@ -248,9 +248,10 @@ namespace CatMetro.Tests.Corpus
             Shared.Value.Levels.Single(l => l.LevelId == id);
 
         [Test]
-        public void DiscoveredCampaignCorpus_ExitsClean()
+        public void DiscoveredCampaignCorpus_ExitMatchesCampaignCompleteness()
         {
-            Assert.That(Shared.Value.ExitFailure, Is.False,
+            int count = QueueBandFixtures.CampaignFiles().Length;
+            Assert.That(Shared.Value.ExitFailure, Is.EqualTo(count != 60),
                 string.Join("\n", Shared.Value.Levels.SelectMany(l => l.Verdicts).Where(v => v.Blocks)
                     .Select(v => v.Stage + ": " + v.Detail)));
         }
@@ -341,8 +342,12 @@ namespace CatMetro.Tests.Corpus
         public void Campaign_CorpusCount_MatchesDiscoveredCampaign()
         {
             var count = Shared.Value.CampaignVerdicts.Single(v => v.Value == "tag=CM-R09.1");
-            Assert.That(count.Detail, Does.Contain(QueueBandFixtures.CampaignFiles().Length + "/60"));
-            Assert.That(count.Blocks, Is.False);
+            int discovered = QueueBandFixtures.CampaignFiles().Length;
+            Assert.That(count.Detail, Does.Contain(discovered + "/60"));
+            Assert.That(count.Code, Is.EqualTo(discovered == 60
+                ? CatMetro.Content.Validation.StageVerdictCode.Pass
+                : CatMetro.Content.Validation.StageVerdictCode.Fail));
+            Assert.That(count.Blocks, Is.EqualTo(discovered != 60));
         }
 
         [Test]

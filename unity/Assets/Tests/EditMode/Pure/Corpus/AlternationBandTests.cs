@@ -161,11 +161,11 @@ namespace CatMetro.Tests.Corpus
             Shared.Value.Levels.Single(l => l.LevelId == id);
 
         [Test]
-        public void FullTenLevelCorpus_ExitsClean()
+        public void PartialTenLevelCorpus_ExitsFailureUntilCampaignComplete()
         {
-            Assert.That(Shared.Value.ExitFailure, Is.False,
-                string.Join("\n", Shared.Value.Levels.SelectMany(l => l.Verdicts).Where(v => v.Blocks)
-                    .Select(v => v.Stage + ": " + v.Detail)));
+            Assert.That(Shared.Value.ExitFailure, Is.True);
+            var count = Shared.Value.CampaignVerdicts.Single(v => v.Value == "tag=CM-R09.1");
+            Assert.That(count.Blocks, Is.True, count.Detail);
         }
 
         [TestCaseSource(typeof(BandFixtures), nameof(BandFixtures.Ids))]
@@ -265,11 +265,12 @@ namespace CatMetro.Tests.Corpus
         }
 
         [Test]
-        public void Campaign_CorpusCount_Is10Of60Pending()
+        public void Campaign_CorpusCount_Is10Of60Blocking()
         {
             var count = Shared.Value.CampaignVerdicts.Single(v => v.Value == "tag=CM-R09.1");
             Assert.That(count.Detail, Does.Contain("10/60"));
-            Assert.That(count.Blocks, Is.False);
+            Assert.That(count.Code, Is.EqualTo(CatMetro.Content.Validation.StageVerdictCode.Fail));
+            Assert.That(count.Blocks, Is.True);
         }
 
         [Test]
