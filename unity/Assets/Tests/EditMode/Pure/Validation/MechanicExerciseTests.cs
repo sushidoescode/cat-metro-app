@@ -55,6 +55,7 @@ namespace CatMetro.Tests.Validation
             Assert.That(a.SwitchesUsed, Is.EqualTo(b.SwitchesUsed));
             Assert.That(a.MaxActiveTrains, Is.EqualTo(b.MaxActiveTrains));
             Assert.That(a.MaxQueued, Is.EqualTo(b.MaxQueued));
+            Assert.That(a.MaxQueuedAtTick, Is.EqualTo(b.MaxQueuedAtTick));
         }
 
         [Test]

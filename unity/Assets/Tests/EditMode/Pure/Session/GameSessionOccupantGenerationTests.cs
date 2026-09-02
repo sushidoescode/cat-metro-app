@@ -66,6 +66,24 @@ namespace CatMetro.Tests.Session
                 "queued presentation uses the same source edge normal as direct emission");
         }
 
+        [Test]
+        public void ReverseTraversal_RecordsItsTrueSourceAndDeliveryEndpoints()
+        {
+            var session = new GameSession(VFixtures.Import(ReverseSourceLevel()));
+
+            session.AdvanceMs(TickInterpolator.TICK_MS);
+
+            Assert.That(session.State.Trains[0].State, Is.EqualTo(TrainState.OnEdgeReverse));
+            Assert.That(session.TrainOccupantSpawnNode(0), Is.EqualTo(1));
+            Assert.That(session.TrainOccupantSpawnEdge(0), Is.EqualTo(0));
+
+            session.AdvanceMs(2 * TickInterpolator.TICK_MS);
+
+            Assert.That(session.State.Deliveries, Is.EqualTo(1));
+            Assert.That(session.TrainDeliveryGeneration(0), Is.EqualTo(1));
+            Assert.That(session.TrainDeliveryNode(0), Is.EqualTo(0));
+        }
+
         private static byte[] SameColourReuseLevel() => VFixtures.Level(level =>
         {
             level["meta"]["mechanics"] = new JArray();
@@ -122,6 +140,26 @@ namespace CatMetro.Tests.Session
                 VFixtures.Wave(0, "red", 1, 1),
                 VFixtures.Wave(0, "red", 1, 1));
             level["win"]["deliveries"] = 2;
+            level["win"]["timeLimitTicks"] = 20;
+        });
+
+        private static byte[] ReverseSourceLevel() => VFixtures.Level(level =>
+        {
+            level["meta"]["mechanics"] = new JArray("reversible");
+            level["meta"]["newMechanic"] = null;
+            level["board"]["nodes"] = new JArray(
+                VFixtures.Node("RED", 0, 0), VFixtures.Node("SRC", 0, 2));
+            var edge = VFixtures.Edge("E1", "RED", "SRC", 2);
+            edge["reversible"] = true;
+            level["board"]["edges"] = new JArray(edge);
+            level["sources"] = new JArray(new JObject
+            {
+                ["nodeId"] = "SRC", ["allowedColors"] = new JArray("red"),
+            });
+            level["stations"] = new JArray(VFixtures.Station("RED", 3, "red"));
+            level["switches"] = new JArray();
+            level["waves"] = new JArray(VFixtures.Wave(0, "red", 1, 1));
+            level["win"]["deliveries"] = 1;
             level["win"]["timeLimitTicks"] = 20;
         });
     }

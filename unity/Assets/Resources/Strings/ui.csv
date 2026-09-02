@@ -12,5 +12,60 @@ intro.play,Play
 intro.goal,Deliver {count} cats
 home.daily.label,Daily Line
 results.daily.done,Home
+home.daily.tally,Dailies completed: {count}
+home.daily.unavailable,Daily unavailable — try again
+daily.practice,Clock changed — practice run
+home.daily.loading,Preparing today's Line…
+reminder.prompt.title,Would you like tomorrow’s Daily Line delivered?
+reminder.prompt.body,One gentle reminder around the time you choose. Nothing expires.
+reminder.action.accept,Remind me
+reminder.action.dismiss,Not now
+reminder.settings.title,Daily reminder
+reminder.settings.on,On
+reminder.settings.off,Off
+reminder.slot.morning,Morning · around 10:00
+reminder.slot.afternoon,Afternoon · around 15:00
+reminder.slot.evening,Evening · around 18:00
+reminder.status.authorized,Notifications allowed.
+reminder.status.denied,Notifications are off in device settings.
+reminder.status.unknown,Notification permission not decided.
+reminder.status.unavailable,Notifications unavailable on this device.
+reminder.settings.open,Open notification settings
+reminder.settings.close,Close
+wardrobe.entry,Wardrobe
+wardrobe.title,Profile Wardrobe
+wardrobe.back,Back
+wardrobe.buy,Unlock · {price}
+wardrobe.restore,Restore purchases
+wardrobe.restore.running,Restoring…
+wardrobe.tab.outfit,Outfit
+wardrobe.tab.accessory,Accessory
+wardrobe.tab.frame,Frame
+wardrobe.state.equipped,Equipped
+wardrobe.state.owned,Owned
+wardrobe.action.equip,Equip
+wardrobe.action.unequip,Unequip
+wardrobe.action.rewarded,Watch to borrow
+wardrobe.time.remaining,{time} remaining
+wardrobe.empty,Nothing is waiting at the depot yet.
+wardrobe.store.opening,Opening store…
+wardrobe.status.checking,Checking the railway shop…
+wardrobe.status.opening,Opening the store…
+wardrobe.status.cancelled,Purchase cancelled
+wardrobe.status.pending,Purchase pending — it unlocks after approval
+wardrobe.status.unconfirmed,Purchase received — checking the entitlement
+wardrobe.status.save.failed,Access is ready but the outfit could not be saved
+wardrobe.status.restoring,Restoring purchases…
+wardrobe.status.restored,Purchases restored
+wardrobe.status.none,No purchases found
+wardrobe.status.restore.failed,Restore unavailable — please try again
+wardrobe.status.unavailable,The shop is offline — the game is still ready to play
+cosmetics.cat.red_tabby,Red Tabby
+cosmetics.cat.blue_siamese,Blue Siamese
+cosmetics.cat.yellow_longhair,Yellow Longhair
+cosmetics.item.outfit_conductor,Conductor's Coat
+cosmetics.item.frame_brass,Brass Ticket Frame
+cosmetics.item.frame_lantern,Lantern Frame
+cosmetics.earn.conductor,Complete the stationmaster route to earn this outfit.
 hud.flips,Flips {used}/{limit}
 fail.collision,Two trains bumped!

@@ -68,7 +68,7 @@ mkdir -p "$TMPROOT/live-meshy-out" "$TMPROOT/live-tripo-out"
 leak3=$(MESHY_API_KEY="$sm" MESHY_API_BASE="https://127.0.0.1:1" GEN_ASSETS_OUT_DIR="$TMPROOT/live-meshy-out" \
   bash "$script" meshy "a live cat" test-cat.glb 2>&1 || true)
 if grep -q "$sm" <<< "$leak3"; then echo "  FAIL: sentinel key leaked on the live meshy path"; fail=1; else echo "  ok: no key leak on live meshy path"; fi
-leak4=$(TRIPO_API_KEY="$st" TRIPO_API_BASE="https://127.0.0.1:1" GEN_ASSETS_OUT_DIR="$(mktemp -d)" \
+leak4=$(TRIPO_API_KEY="$st" TRIPO_API_BASE="https://127.0.0.1:1" GEN_ASSETS_OUT_DIR="$TMPROOT/live-tripo-out" \
   bash "$script" tripo "a live cat" test-cat.glb 2>&1 || true)
 if grep -q "$st" <<< "$leak4"; then echo "  FAIL: sentinel key leaked on the live tripo path"; fail=1; else echo "  ok: no key leak on live tripo path"; fi
 

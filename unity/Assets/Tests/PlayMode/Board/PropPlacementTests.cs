@@ -145,9 +145,11 @@ namespace CatMetro.Tests.PlayMode
                 + " + 3 fences + 3 bushes + 1 trail signpost");
             Assert.That(props.Count(x => x.AssetId == PropModelCatalog.FenceId), Is.EqualTo(3));
             Assert.That(props.Count(x => x.AssetId == PropModelCatalog.BushId), Is.EqualTo(3));
+            var stationIds = level.Dto.Stations.ToArray()
+                .Select(x => x.NodeId).OrderBy(x => x).ToArray();
             Assert.That(props.Where(x => x.AssetId == PropModelCatalog.LampPostId)
                 .Select(x => x.AnchorId).OrderBy(x => x).ToArray(),
-                Is.EqualTo(new[] { "BLU", "RED" }),
+                Is.EqualTo(stationIds),
                 "every station platform gets its own lantern");
             Assert.That(props.Single(x => x.AssetId == PropModelCatalog.SignpostId).AnchorId,
                 Is.EqualTo("SRC"), "the signpost stands by the depot");
@@ -489,14 +491,14 @@ namespace CatMetro.Tests.PlayMode
             // shape — which is strictly stronger than the checks it replaces, because it also
             // catches a plate that picked up a rotation of its own on top (the euler-x check
             // could not: 90 degrees of x with an arbitrary z still passed it).
-            var red = plates["RED"];
+            var red = plates[StationIdAccepting(level, "red")];
             AssertBuiltinMesh(red, "Cylinder.fbx", "the red plate is still a cylinder");
             AssertShapeRotation(red, "red");
             AssertSignFrameSize(red, 0.9f, 0.9f, 0.1f,
                 "the red plate is a 0.9 disc standing 0.1 off the board, whatever the builtin"
                 + " cylinder's intrinsic size turns out to be");
 
-            var blue = plates["BLU"];
+            var blue = plates[StationIdAccepting(level, "blue")];
             AssertBuiltinMesh(blue, "Cube.fbx", "the blue plate is still a cube");
             AssertShapeRotation(blue, "blue");
             AssertSignFrameSize(blue, 0.9f, 0.9f, 0.1f,
@@ -828,9 +830,9 @@ namespace CatMetro.Tests.PlayMode
         [Test]
         public void EveryStationPart_IsDecorationOnly_AndBindsItsOwnMaterial()
         {
-            // L009 because its COOL berth accepts two lines, so it grows the largest part set
-            // any authored level produces — the one most likely to have a straggler.
-            var level = ImportLevel("L009");
+            // A dedicated multi-accept fixture grows the largest station part set without making
+            // this presentation invariant depend on the campaign's evolving mechanic ladder.
+            var level = Import(MultiAcceptJson());
             var view = BuildBoard(level);
             BoardPropDecorator.Decorate(level, view.transform, KioskCatalog());
 
@@ -841,6 +843,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(parts.Length,
                 Is.GreaterThanOrEqualTo(7 * level.Dto.Stations.Length),
                 "the sweep must actually be finding the platform parts");
+            Assert.That(parts.Any(x => x.name == "station:plate-accept-0"), Is.True,
+                "the sweep must include the fixture's additional accepted-line chip");
 
             foreach (var part in parts)
             {
@@ -1076,12 +1080,13 @@ namespace CatMetro.Tests.PlayMode
         [Test]
         public void MultiAcceptBerth_AdvertisesEveryColourItAccepts_NotJustItsFirst()
         {
-            // L009's COOL berth takes blue AND yellow and used to badge a bare "B": the yellow
-            // half was unlearnable from the board. Real shipped level, not a fixture.
-            var level = ImportLevel("L009");
+            // COOL takes blue AND yellow and used to badge a bare "B": the yellow half was
+            // unlearnable from the board. Keep that visual contract in an owned fixture so a
+            // campaign edit cannot make this test fail—or silently stop exercising the chip.
+            var level = Import(MultiAcceptJson());
             var cool = level.Dto.Stations.ToArray().Single(x => x.NodeId == "COOL");
             Assert.That(cool.Accepts.ToArray(), Is.EqualTo(new[] { "blue", "yellow" }),
-                "precondition: L009 still berths two lines at COOL");
+                "precondition: the fixture berths two lines at COOL");
 
             var view = BuildBoard(level);
             BoardPropDecorator.Decorate(level, view.transform, KioskCatalog());
@@ -1344,6 +1349,39 @@ namespace CatMetro.Tests.PlayMode
             return result.Value;
         }
 
+        private static string StationIdAccepting(ImportedLevel level, string line) =>
+            level.Dto.Stations.ToArray().Single(x =>
+                x.Accepts.ToArray().Contains(line)).NodeId;
+
+        private static string MultiAcceptJson()
+        {
+            return @"{
+  ""schemaVersion"": 2, ""id"": ""T943"", ""name"": ""Multi Accept Fixture"", ""seed"": 943,
+  ""meta"": { ""band"": ""shape-sort"", ""difficultyTarget"": 0.1,
+    ""mechanics"": [""switch"", ""shape""], ""newMechanic"": null,
+    ""teachingGoal"": ""test fixture"", ""minActionWindowTicks"": 12,
+    ""authoredBy"": ""llm+validator"" },
+  ""board"": { ""nodes"": [
+      { ""id"": ""SRC"", ""x"": 3, ""y"": 9 }, { ""id"": ""J1"", ""x"": 3, ""y"": 6 },
+      { ""id"": ""RED"", ""x"": 1, ""y"": 2 }, { ""id"": ""COOL"", ""x"": 5, ""y"": 2 } ],
+    ""edges"": [
+      { ""id"": ""E1"", ""from"": ""SRC"", ""to"": ""J1"", ""travelTicks"": 10 },
+      { ""id"": ""E2"", ""from"": ""J1"", ""to"": ""RED"", ""travelTicks"": 10 },
+      { ""id"": ""E3"", ""from"": ""J1"", ""to"": ""COOL"", ""travelTicks"": 10 } ] },
+  ""sources"": [ { ""nodeId"": ""SRC"", ""allowedColors"": [""red"", ""blue"", ""yellow""] } ],
+  ""stations"": [
+    { ""nodeId"": ""RED"", ""accepts"": [""red""], ""capacity"": 6 },
+    { ""nodeId"": ""COOL"", ""accepts"": [""blue"", ""yellow""], ""capacity"": 6 } ],
+  ""switches"": [
+    { ""id"": ""S1"", ""nodeId"": ""J1"", ""routes"": [""E2"", ""E3""], ""initialRoute"": 0 } ],
+  ""waves"": [ { ""tick"": 3999, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 1,
+    ""spacingTicks"": 1 } ],
+  ""win"": { ""deliveries"": 99, ""timeLimitTicks"": 4000, ""perfectMaxSwitches"": 1,
+    ""stars"": { ""two"": 200, ""three"": 300 } },
+  ""economy"": { ""baseTickets"": 20, ""perfectBonus"": 10 }
+}";
+        }
+
         // One berth per line in CatLine.Names, so the vocabulary can be exercised whole. No
         // shipped level has a green destination yet — feat/level-variety is authoring the
         // first — and this lane does not touch level JSON.
@@ -1576,16 +1614,8 @@ namespace CatMetro.Tests.PlayMode
         [Test]
         public void AllAuthoredLevels_ProduceOneStableScenerySet()
         {
-            string levelsRoot = Path.Combine(UnityEngine.Application.streamingAssetsPath,
-                "content", "levels");
-            var levelPaths = Directory.GetFiles(levelsRoot, "L*.json")
-                .OrderBy(path => path, System.StringComparer.Ordinal)
-                .ToArray();
-            Assert.That(levelPaths, Is.Not.Empty,
-                "the prop-placement corpus assertion must inspect the shipped level artifact");
-            foreach (string path in levelPaths)
+            foreach (string levelId in AuthoredLevelIds())
             {
-                string levelId = Path.GetFileNameWithoutExtension(path);
                 var level = ImportLevel(levelId);
                 var view = BuildBoard(level);
                 var root = BoardPropDecorator.Decorate(level, view.transform, CompleteCatalog());
@@ -1781,12 +1811,8 @@ namespace CatMetro.Tests.PlayMode
             return go;
         }
 
-        // Derived from the corpus, never a literal bound. Both sweeps below are named
-        // AllAuthoredLevels and used to loop `levelNumber <= 17`, which was true when it was
-        // written and quietly stopped being true: feat/level-variety adds L018 and L019, so a
-        // hardcoded bound would skip the two newest boards while still reading as full
-        // coverage. That is the same class of measurement bug this branch has spent its time
-        // fixing, so it is not worth re-committing here in a smaller form.
+        // Derived from the corpus so future additions widen both sweeps automatically. The
+        // authoritative 60-level floor fails closed if either discovery root silently shrinks.
         private static string[] AuthoredLevelIds()
         {
             string staged = Path.Combine(UnityEngine.Application.streamingAssetsPath,
@@ -1797,9 +1823,9 @@ namespace CatMetro.Tests.PlayMode
 
             // Fail closed with a floor. A sweep that finds nothing — or finds a handful
             // because it is pointed at the wrong directory — must not report full coverage.
-            Assert.That(ids.Length, Is.GreaterThanOrEqualTo(17),
-                "anti-vacuity: the corpus held 17 authored levels when this was written, so"
-                + " finding fewer means this is reading the wrong place rather than that"
+            Assert.That(ids.Length, Is.GreaterThanOrEqualTo(60),
+                "anti-vacuity: the shipped corpus holds 60 authored levels, so"
+                + " finding fewer means this is reading the wrong place or that"
                 + " levels were deleted");
 
             // StreamingAssets holds tracked COPIES that scripts/stage-content.sh syncs from

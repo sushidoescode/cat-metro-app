@@ -1,16 +1,14 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Text;
 using CatMetro.Content;
 using CatMetro.Content.Validation;
 using CatMetro.Domain.Solver;
-using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace CatMetro.Tests.CM_C14a
 {
-    // CM-C14a acceptance: the locked L018 example is read directly with this file's own helper.
+    // CM-C14a acceptance: the locked L018 fixture is read directly with this file's own helper.
     // Tests may use the filesystem; the engine-free Content assembly may not.
     [TestFixture]
     public class L018MechanicsEnablementAcceptanceTests
@@ -35,7 +33,7 @@ namespace CatMetro.Tests.CM_C14a
                         ReadRepoBytes("content", "levels", "L001.json"), true),
                     new CorpusMember("content/levels/L004.json",
                         ReadRepoBytes("content", "levels", "L004.json"), true),
-                    new CorpusMember("docs/plan/data/example_levels.json#L018", bytes, true),
+                    new CorpusMember("tests/fixtures/corpus/l018-mechanics.json", bytes, true),
                 },
                 maxNodesExpanded: SolverBounds.MAX_NODES_EXPANDED));
 
@@ -72,12 +70,7 @@ namespace CatMetro.Tests.CM_C14a
 
         private static byte[] LockedL018Bytes()
         {
-            var root = JObject.Parse(Encoding.UTF8.GetString(
-                ReadRepoBytes("docs", "plan", "data", "example_levels.json")));
-            var level = ((JArray)root["levels"])
-                .OfType<JObject>()
-                .Single(o => (string)o["id"] == "L018");
-            return Encoding.UTF8.GetBytes(level.ToString(Newtonsoft.Json.Formatting.None));
+            return ReadRepoBytes("tests", "fixtures", "corpus", "l018-mechanics.json");
         }
 
         private static ValidatorConfig ParseShippedConfig()

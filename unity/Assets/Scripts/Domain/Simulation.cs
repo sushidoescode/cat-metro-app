@@ -456,7 +456,6 @@ namespace CatMetro.Domain
 
         private static int SwitchIndexAtNode(LevelGraph g, int node)
         {
-            LevelGraph g = state.Graph;
             for (int s = 0; s < g.SwitchNode.Length; s++)
                 if (g.SwitchNode[s] == node)
                     return s;
@@ -512,6 +511,14 @@ namespace CatMetro.Domain
                 }
             }
             return false;
+        }
+
+        // Read-only route selector shared with the session presentation seam. Returning only the
+        // edge id preserves the legacy API while OutgoingTraversalFor remains authoritative for
+        // direction on cyclic/reversible boards.
+        public static int SelectedOutgoingEdge(SimulationState state, int node)
+        {
+            return OutgoingTraversalFor(state.Graph, state, node).EdgeId;
         }
 
         // The traversal out of a node: a switch selects its current incident edge. Without a

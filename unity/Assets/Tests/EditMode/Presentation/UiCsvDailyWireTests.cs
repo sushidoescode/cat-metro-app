@@ -28,14 +28,25 @@ namespace CatMetro.Tests.Presentation
         public void DailyLiveRows_AreAppendOnlyAndBytePinned()
         {
             var rows = Rows();
-            // This slice owns rows 12-13. Later slices may append rows, but may not move,
-            // rewrite, reorder, or duplicate either owned key.
-            Assert.That(rows.Length, Is.GreaterThanOrEqualTo(14),
-                "the csv must retain the 12 merged rows and this slice's two rows");
+            // This legacy slice owns rows 0-17. Later slices may only append after them.
+            Assert.That(rows.Length, Is.GreaterThanOrEqualTo(18),
+                "the frozen Daily Live prefix must remain present; later rows may append");
             Assert.That(rows[12], Is.EqualTo("home.daily.label,Daily Line"), "DRAFT");
             Assert.That(rows[13], Is.EqualTo("results.daily.done,Home"), "DRAFT");
+            Assert.That(rows[14], Is.EqualTo(
+                "home.daily.tally,Dailies completed: {count}"));
+            Assert.That(rows[15], Is.EqualTo(
+                "home.daily.unavailable,Daily unavailable — try again"));
+            Assert.That(rows[16], Is.EqualTo(
+                "daily.practice,Clock changed — practice run"));
+            Assert.That(rows[17], Is.EqualTo(
+                "home.daily.loading,Preparing today's Line…"));
             AssertUniqueKey(rows, "home.daily.label");
             AssertUniqueKey(rows, "results.daily.done");
+            AssertUniqueKey(rows, "home.daily.tally");
+            AssertUniqueKey(rows, "home.daily.unavailable");
+            AssertUniqueKey(rows, "daily.practice");
+            AssertUniqueKey(rows, "home.daily.loading");
         }
 
         [Test]

@@ -80,75 +80,14 @@ if grep -q 'm_Shader: {fileID: 0}' "$MAT"; then
   fail "criterion 4: null shader reference — that is silent magenta"
 fi
 
-# --- criterion 5 static: every primitive result reaches its own project-material bind ---
-# Raw global counts proved a narrower property: helpers and non-primitive renderers legitimately
-# bind GreyboxMaterial too. Inspect each creation site instead, correlating either its direct
-# renderer expression or a renderer alias before the next primitive site.
-primitive_binding_violations() {
-  local root="$1" file line source lhs var end block
-  local alias_lines alias_line alias_lhs alias targets flat materials
-  while IFS=: read -r file line source; do
-    case "$source" in
-      *"="*)
-        lhs=$(sed 's/=.*//' <<< "$source")
-        var=$(awk '{ print $NF }' <<< "$lhs")
-        ;;
-      *) var="" ;;
-    esac
-    if ! grep -E -q '^[A-Za-z_][A-Za-z0-9_]*$' <<< "$var"; then
-      printf '%s:%s: creation result is not assigned\n' "$file" "$line"
-      continue
-    fi
-
-    end=$((line + 50))
-    block=$(awk -v start="$line" -v end="$end" '
-      NR < start { next }
-      NR > end { exit }
-      NR > start && /GameObject\.CreatePrimitive/ { exit }
-      { print }
-    ' "$file")
-    alias_lines=$(grep -E "$var\.GetComponent<Renderer>\(\)" <<< "$block" || true)
-    targets="$var\.GetComponent<Renderer>\(\)"
-    while IFS= read -r alias_line; do
-      [ -n "$alias_line" ] || continue
-      alias_lhs=$(sed 's/=.*//' <<< "$alias_line")
-      alias=$(awk '{ print $NF }' <<< "$alias_lhs")
-      if grep -E -q '^[A-Za-z_][A-Za-z0-9_]*$' <<< "$alias"; then
-        targets="$targets|$alias"
-      fi
-    done <<< "$alias_lines"
-
-    materials='(Board\.)?GreyboxMaterial\.Shared|TeachRingMaterial\(\)'
-    if grep -E -q 'committedMaterial[[:space:]]*=[[:space:]]*(Board\.)?GreyboxMaterial\.Shared' <<< "$block"; then
-      materials="$materials|committedMaterial"
-    fi
-    flat=$(tr '\n' ' ' <<< "$block")
-    if ! grep -E -q "($targets)\.sharedMaterial[[:space:]]*=[^;]*($materials)" <<< "$flat"; then
-      printf '%s:%s: %s has no project-material bind before the next primitive\n' \
-        "$file" "$line" "$var"
-    fi
-  done < <(grep -rEn --include='*.cs' 'GameObject\.CreatePrimitive' "$root" 2>/dev/null || true)
-}
-
-prim=$(grep -rEn --include='*.cs' 'GameObject\.CreatePrimitive' \
-  unity/Assets/Scripts/Presentation 2>/dev/null | wc -l | tr -d ' ')
-[ "$prim" -gt 0 ] || fail "criterion 5: no runtime primitive sites found (vacuous)"
-unbound=$(primitive_binding_violations unity/Assets/Scripts/Presentation)
-[ -z "$unbound" ] || fail "criterion 5: unbound runtime primitive: $unbound"
-
-# Preserve both anti-vacuity shapes: the committed fixture has an unassigned primitive, and a
-# mutation of a real alias-bound site removes only its material assignment.
-fixture_unbound=$(primitive_binding_violations "$FIX")
-[ -n "$fixture_unbound" ] || fail "criterion 5: unbound fixture failed to fire"
-mutdir=$(mktemp -d)
-wave="unity/Assets/Scripts/Presentation/Hud/WavePreview/WavePreviewStrip.cs"
-sed '/renderer.sharedMaterial = Board.GreyboxMaterial.Shared;/d' "$wave" > "$mutdir/WavePreviewStrip.cs"
-mutation_changed=1
-cmp -s "$wave" "$mutdir/WavePreviewStrip.cs" || mutation_changed=0
-mutation_unbound=$(primitive_binding_violations "$mutdir")
-rm -rf "$mutdir"
-[ "$mutation_changed" = "0" ] || fail "criterion 5: binding-removal mutation did not apply"
-[ -n "$mutation_unbound" ] || fail "criterion 5: assigned-but-unbound mutation failed to fire"
+# --- criterion 5 static: every runtime renderer creation has a site-local material bind ---
+BIND_CHECK=scripts/check-runtime-renderer-bindings.py
+[ -f "$BIND_CHECK" ] || fail "criterion 5: site-local renderer checker missing (fail-closed)"
+if ! rout=$(python3 "$BIND_CHECK" unity/Assets/Scripts/Presentation 2>&1); then
+  fail "criterion 5: unbound runtime renderer: $rout"
+fi
+echo "$rout" | grep -Eq 'OK \([1-9][0-9]* site-local bindings\)' \
+  || fail "criterion 5: renderer checker returned no non-zero proof count: $rout"
 
 if neg=$(python3 "$BIND_CHECK" "$FIX" 2>&1); then
   fail "criterion 5: site-local checker accepted the unassigned-creation fixture: $neg"

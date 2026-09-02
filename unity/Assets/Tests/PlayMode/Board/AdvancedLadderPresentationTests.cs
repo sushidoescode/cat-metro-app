@@ -8,6 +8,7 @@ using CatMetro.Bootstrap;
 using CatMetro.Content;
 using CatMetro.Presentation.Strings;
 using NUnit.Framework;
+using TMPro;
 using UnityEngine;
 using UnityEngine.TestTools;
 
@@ -41,7 +42,7 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
 
             Assert.That(_root.Preview.FlipSummary, Is.EqualTo("Flips 0/1"));
-            var previewTokens = Object.FindObjectsByType<TextMesh>(FindObjectsSortMode.None)
+            var previewTokens = Object.FindObjectsByType<TMP_Text>(FindObjectsSortMode.None)
                 .Where(label => label.name == "cat-token" && label.transform.IsChildOf(_root.Preview.transform))
                 .Select(label => label.text).ToArray();
             Assert.That(previewTokens, Does.Contain("O!"), "the stray is visible before emission");

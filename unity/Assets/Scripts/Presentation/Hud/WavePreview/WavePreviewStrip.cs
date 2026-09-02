@@ -50,21 +50,107 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private const float FaceGapFraction = 0.28f;   // of face size
 
         private GameSession _session;
-        private UnityEngine.Camera _camera;
-        private readonly List<GameObject> _chips = new List<GameObject>();
-        private readonly List<TextMesh> _counts = new List<TextMesh>();
-        private readonly List<TextMesh> _symbols = new List<TextMesh>();
-        private readonly List<Renderer> _renderers = new List<Renderer>(); // review S6: cached
-        private TextMesh _flipBudget;
+        private Canvas _canvas;
+        private RectTransform _canvasRect;
+        private RectTransform _hudRoot;
+        private System.Func<string> _screenState;
+        private Image _capsule;
+        private Image _wave;
+        private RectTransform _waveClip;
+        private RectTransform _faceRow;
+        private readonly List<CatFaceView> _faces = new List<CatFaceView>();
+        private readonly List<TMP_Text> _tokens = new List<TMP_Text>();
+        private TMP_Text _overflow;
+        private Image _deliveriesMark;
+        private TMP_Text _deliveries;
+        private Image _ridersMark;
+        private TMP_Text _riders;
+        private TMP_Text _flipBudget;
+
+        private Rect _capsulePx;
+        private Rect _counterPx;
+        private Rect _lastSafeArea = new Rect(-1f, -1f, -1f, -1f);
+        private float _lastDpi = -1f;
         private int _lastRefreshTick = -1;
 
         // --- legacy read-backs (pinned by FailureTests / DeviceConfigTests) ---
 
         // Pending WAVES represented, capped at two. Unchanged meaning.
         public int VisibleChipCount { get; private set; }
-        public string ChipSummary { get; private set; } = ""; // "red x2|blue x2" for asserts
+
+        // "red x2" / "red x6|red x6". Unchanged grammar.
+        public string ChipSummary { get; private set; } = "";
+
+        // --- per-cat read-backs (new) ---
+
+        public int FaceCount { get; private set; }
+
+        // "red|red|blue" — the queue in emission order, for order assertions.
+        public string FaceSummary { get; private set; } = "";
+
+        public int RemainingCats { get; private set; }
+        public string DeliveriesText => _deliveries != null ? _deliveries.text : "";
+        public string RidersText => _riders != null ? _riders.text : "";
         public string FlipSummary => _flipBudget != null && _flipBudget.gameObject.activeSelf
             ? _flipBudget.text : "";
+        public Rect CapsuleRectPx => _capsulePx;
+        public Rect CounterRowRectPx => _counterPx;
+        public Color CapsuleColor => _capsule != null ? _capsule.color : Color.clear;
+        public Color WaveColor => _wave != null ? _wave.color : Color.clear;
+        public IReadOnlyList<CatFaceView> Faces => _faces;
+
+        // The counter glyphs, so a test can assert they are the trophy and the people mark
+        // rather than the coloured dots they used to be — and that both bind palette tokens.
+        public Sprite DeliveriesMarkSprite =>
+            _deliveriesMark != null ? _deliveriesMark.sprite : null;
+        public Sprite RidersMarkSprite => _ridersMark != null ? _ridersMark.sprite : null;
+        public Color DeliveriesMarkColor =>
+            _deliveriesMark != null ? _deliveriesMark.color : Color.clear;
+        public Color RidersMarkColor => _ridersMark != null ? _ridersMark.color : Color.clear;
+        public Color DeliveriesTextColor =>
+            _deliveries != null ? _deliveries.color : Color.clear;
+        public Color RidersTextColor => _riders != null ? _riders.color : Color.clear;
+
+        // The face box the capsule allocates at the current viewport — the ruler every face's
+        // internal geometry is a fraction of, exposed so the badge-separation law can be
+        // asserted in real pixels rather than re-derived in the test.
+        public float FaceSizePx => FaceSize(_capsulePx.height);
+
+        // Static so a geometry test can derive the face box from a CapsuleRect without building
+        // a strip — and so the 0.62 lives in exactly one place rather than being re-typed into
+        // every test that needs it.
+        public static float FaceSize(float capsuleHeightPx) => capsuleHeightPx * FaceSizeFraction;
+
+        // Centre-to-centre spacing of two adjacent faces, as a pure law on the face box.
+        public static float FacePitch(float faceSizePx) => faceSizePx * (1f + FaceGapFraction);
+
+        // The "+N" tail, or "" when the whole queue fits.
+        public string OverflowText => _overflow != null ? _overflow.text : "";
+
+        public CatFaceView Face(int index) =>
+            index >= 0 && index < _faces.Count ? _faces[index] : null;
+
+        // --- the pure placement laws (injected inputs, no Screen reads — the HudBands idiom) ---
+
+        public static Rect CapsuleRect(Rect safeArea, float dpi)
+        {
+            float px = HudBands.PxPerDp(dpi);
+            float inset = Mathf.Max(safeArea.width * HorizontalInsetFraction, MinInsetDp * px);
+            float height = Mathf.Max(safeArea.height * HeightFraction, MinHeightDp * px);
+            float top = Mathf.Max(safeArea.height * TopMarginFraction, MinTopMarginDp * px);
+            float width = Mathf.Max(0f, safeArea.width - inset * 2f);
+            // Screen convention: y = 0 at the BOTTOM, so the capsule hangs off yMax.
+            return new Rect(safeArea.x + inset, safeArea.yMax - top - height, width, height);
+        }
+
+        public static Rect CounterRowRect(Rect safeArea, float dpi)
+        {
+            var capsule = CapsuleRect(safeArea, dpi);
+            float px = HudBands.PxPerDp(dpi);
+            float height = Mathf.Max(safeArea.height * CounterRowFraction, 20f * px);
+            float gap = Mathf.Max(safeArea.height * CounterGapFraction, 6f * px);
+            return new Rect(capsule.x, capsule.y - gap - height, capsule.width, height);
+        }
 
         public static WavePreviewStrip Create(Transform parent, GameSession session,
             UnityEngine.Camera cam)
@@ -73,51 +159,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
             go.transform.SetParent(parent, false);
             var strip = go.AddComponent<WavePreviewStrip>();
             strip._session = session;
-            strip._camera = cam;
-            for (int i = 0; i < 2; i++)
-            {
-                var chip = GameObject.CreatePrimitive(PrimitiveType.Quad);
-                var renderer = chip.GetComponent<Renderer>();
-                renderer.sharedMaterial = Board.GreyboxMaterial.Shared;
-                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                renderer.receiveShadows = false;
-                Object.Destroy(chip.GetComponent<Collider>()); // ZERO interactive elements
-                chip.name = "chip" + i;
-                chip.transform.SetParent(go.transform, false);
-                chip.transform.localScale = new Vector3(0.9f, 0.5f, 1f);
-                var text = new GameObject("count").AddComponent<TextMesh>();
-                text.transform.SetParent(chip.transform, false);
-                text.transform.localPosition = new Vector3(0.22f, 0f, -0.01f);
-                text.characterSize = 0.2f;
-                text.anchor = TextAnchor.MiddleCenter;
-                var textRenderer = text.GetComponent<Renderer>();
-                textRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                textRenderer.receiveShadows = false;
-                var symbol = new GameObject("cat-token").AddComponent<TextMesh>();
-                symbol.transform.SetParent(chip.transform, false);
-                symbol.transform.localPosition = new Vector3(-0.24f, 0f, -0.01f);
-                symbol.characterSize = 0.24f;
-                symbol.anchor = TextAnchor.MiddleCenter;
-                symbol.alignment = TextAlignment.Center;
-                symbol.color = Theme.Palette.InkNavy;
-                var symbolRenderer = symbol.GetComponent<Renderer>();
-                symbolRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                symbolRenderer.receiveShadows = false;
-                strip._chips.Add(chip);
-                strip._counts.Add(text);
-                strip._symbols.Add(symbol);
-                strip._renderers.Add(renderer);
-            }
-
-            strip._flipBudget = new GameObject("flip-budget").AddComponent<TextMesh>();
-            strip._flipBudget.transform.SetParent(go.transform, false);
-            strip._flipBudget.characterSize = 0.15f;
-            strip._flipBudget.anchor = TextAnchor.MiddleCenter;
-            strip._flipBudget.alignment = TextAlignment.Center;
-            strip._flipBudget.color = Theme.Palette.InkNavy;
-            var budgetRenderer = strip._flipBudget.GetComponent<Renderer>();
-            budgetRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            budgetRenderer.receiveShadows = false;
+            strip.Build(cam);
             strip.Refresh();
             strip.Layout();
             return strip;
@@ -171,8 +213,18 @@ namespace CatMetro.Presentation.Hud.WavePreview
             for (int i = 0; i < MaxFaces; i++)
             {
                 var face = CatFaceView.Create(_faceRow, "face" + i);
-                face.gameObject.SetActive(false);
                 _faces.Add(face);
+
+                // Authored shape/stray/express signals stay in the screen-space hierarchy.
+                // Parenting each token to its face also keeps the signal attached to the
+                // face's accessibility motion without introducing a scene Renderer.
+                var token = AddLabel(face.transform, "cat-token", Palette.InkNavy);
+                token.fontStyle = FontStyles.Bold;
+                token.gameObject.SetActive(false);
+                _tokens.Add(token);
+                // Construct TMP while the parent is active so its delayed Awake cannot restore
+                // the default raycastTarget=true after AddLabel has made it render-only.
+                face.gameObject.SetActive(false);
             }
             _overflow = AddLabel(_faceRow, "Overflow", Palette.InkNavy);
             _overflow.fontStyle = FontStyles.Bold;
@@ -200,6 +252,10 @@ namespace CatMetro.Presentation.Hud.WavePreview
             _ridersMark = AddImage(counters, "RidersMark", HudShapeSprites.People);
             _ridersMark.color = Palette.WarmPaper;
             _riders = AddLabel(counters, "Riders", Palette.WarmPaper);
+
+            _flipBudget = AddLabel(counters, "flip-budget", Palette.WarmPaper);
+            _flipBudget.fontStyle = FontStyles.Bold;
+            _flipBudget.gameObject.SetActive(false);
         }
 
         // Read-only on game state throughout: Level.Dto and State are only ever READ.
@@ -220,8 +276,10 @@ namespace CatMetro.Presentation.Hud.WavePreview
             {
                 bool used = i < queue.Count;
                 if (_faces[i].gameObject.activeSelf != used) _faces[i].gameObject.SetActive(used);
+                if (_tokens[i].gameObject.activeSelf != used) _tokens[i].gameObject.SetActive(used);
                 if (!used) continue;
                 _faces[i].Bind(queue[i].Color);
+                _tokens[i].text = TokenGlyph(waves.Span[queue[i].WaveIndex]);
                 if (summary.Length > 0) summary.Append('|');
                 summary.Append(queue[i].Color);
             }
@@ -235,6 +293,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 ? _session.State.Deliveries + "/" + win.Deliveries
                 : _session.State.Deliveries.ToString();
             _riders.text = RidersOnBoard().ToString();
+            RefreshFlipBudget();
 
             // Re-place the faces for the queue that just changed. Keep an injected viewport if
             // one is in force; otherwise derive from the canvas, never from raw Screen pixels.
@@ -265,39 +324,24 @@ namespace CatMetro.Presentation.Hud.WavePreview
             int shown = Mathf.Min(2, indexed.Count);
             for (int i = 0; i < shown; i++)
             {
-                if (i < pending.Count)
-                {
-                    _chips[i].SetActive(true);
-                    VisibleChipCount++;
-                    var band = _camera.ViewportToWorldPoint(new Vector3(0.35f + 0.3f * i, 0.93f,
-                        -_camera.transform.position.z));
-                    _chips[i].transform.position = new Vector3(band.x, band.y, -1.5f);
-                    _renderers[i].material.color = ColorFor(pending[i].Color);
-                    _counts[i].text = "x" + pending[i].Count;
-                    _symbols[i].text = TokenGlyph(pending[i]);
-                    if (summary.Length > 0) summary.Append('|');
-                    summary.Append(pending[i].Color).Append(" x").Append(pending[i].Count);
-                }
-                else
-                {
-                    _chips[i].SetActive(false);
-                }
+                if (summary.Length > 0) summary.Append('|');
+                summary.Append(indexed[i].w.Color).Append(" x").Append(indexed[i].w.Count);
             }
             VisibleChipCount = shown;
             ChipSummary = summary.ToString();
+        }
 
+        private void RefreshFlipBudget()
+        {
             var flipStatus = _session.FlipStatus;
             _flipBudget.gameObject.SetActive(flipStatus.IsBudgeted);
             if (flipStatus.IsBudgeted)
             {
-                var band = _camera.ViewportToWorldPoint(new Vector3(0.86f, 0.93f,
-                    -_camera.transform.position.z));
-                _flipBudget.transform.position = new Vector3(band.x, band.y, -1.5f);
                 _flipBudget.text = Strings.UiStrings.Get("hud.flips")
                     .Replace("{used}", flipStatus.Used.ToString())
                     .Replace("{limit}", flipStatus.PerfectMaxSwitches.ToString());
                 _flipBudget.color = flipStatus.RemainingToPerfect > 0
-                    ? Theme.Palette.InkNavy : Theme.Palette.SignalRed;
+                    ? Palette.WarmPaper : Palette.SignalRed;
             }
         }
 
@@ -383,12 +427,12 @@ namespace CatMetro.Presentation.Hud.WavePreview
             float cursor = -total * 0.5f + faceSize * 0.5f;
             for (int i = 0; i < FaceCount; i++)
             {
-                case "red": return new Color(0.85f, 0.2f, 0.2f);
-                case "blue": return new Color(0.2f, 0.4f, 0.9f);
-                case "yellow": return new Color(0.9f, 0.8f, 0.2f);
-                case "green": return new Color(0.2f, 0.75f, 0.3f);
-                case "wild": return Theme.Palette.CreamCard;
-                default: return Color.magenta;
+                _faces[i].LayoutAt(new Vector2(cursor, 0f), faceSize);
+                PlaceCentred((RectTransform)_tokens[i].transform,
+                    new Vector2(-faceSize * 0.28f, -faceSize * 0.30f),
+                    new Vector2(faceSize * 0.44f, faceSize * 0.28f));
+                _tokens[i].fontSizeMax = faceSize * 0.24f;
+                cursor += faceSize + gap;
             }
             if (hasOverflow)
             {
@@ -419,6 +463,16 @@ namespace CatMetro.Presentation.Hud.WavePreview
 
             _deliveries.fontSizeMax = row;
             _riders.fontSizeMax = row;
+
+            if (_flipBudget.gameObject.activeSelf)
+            {
+                float budgetWidth = _counterPx.width * 0.20f;
+                PlacePx((RectTransform)_flipBudget.transform,
+                    new Rect(_counterPx.xMax - budgetWidth, _counterPx.y,
+                        budgetWidth, _counterPx.height));
+                _flipBudget.alignment = TextAlignmentOptions.Right;
+                _flipBudget.fontSizeMax = row;
+            }
         }
 
         private static float PlaceCounter(Image mark, TMP_Text label, float x, float centreY,

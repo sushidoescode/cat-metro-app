@@ -50,15 +50,17 @@ namespace CatMetro.Tests.Presentation
         public void OwnedAppendedRows_StayBytePinned()
         {
             var rows = Rows();
-            // CM-UX-02 owns the two rows immediately after the five-row frozen base. Other
-            // slices own every later append, so their presence must not change this assertion.
-            Assert.That(rows.Length, Is.GreaterThanOrEqualTo(FrozenBaseRows.Length + 2),
-                "the csv must retain the five-row base and CM-UX-02's two rows");
+            // This legacy prefix also carries results.next at row 8; its owning lookup test
+            // delegates the append-order byte pin here. Later slices may only append.
+            Assert.That(rows.Length, Is.GreaterThanOrEqualTo(18),
+                "the frozen legacy prefix must remain present; later rows may append");
             Assert.That(rows[5], Is.EqualTo("retry.cta,Try again"), "LOCKED");
             Assert.That(rows[6], Is.EqualTo("halt.notice,Signal fault — the line stopped"),
                 "DRAFT, byte-pinned including U+2014");
+            Assert.That(rows[8], Is.EqualTo("results.next,Next"), "LOCKED");
             AssertUniqueKey(rows, "retry.cta");
             AssertUniqueKey(rows, "halt.notice");
+            AssertUniqueKey(rows, "results.next");
         }
 
         [Test]

@@ -86,13 +86,15 @@ namespace CatMetro.Tests.EditMode.Presentation
         [Test]
         public void EveryAuthoredLevel_BuildsContinuousForwardMovingTrackPaths()
         {
+            // Discovery keeps future additions in the sweep automatically; the floor prevents
+            // a missing subset of the shipped 60-level campaign from making "every" vacuous.
             string levelsRoot = Path.Combine(UnityEngine.Application.streamingAssetsPath,
                 "content", "levels");
             var levelPaths = Directory.GetFiles(levelsRoot, "L*.json")
                 .OrderBy(path => path, System.StringComparer.Ordinal)
                 .ToArray();
-            Assert.That(levelPaths, Is.Not.Empty,
-                "the spline corpus assertion must inspect the shipped level artifact");
+            Assert.That(levelPaths.Length, Is.GreaterThanOrEqualTo(60),
+                "the spline corpus assertion must inspect all 60 shipped level artifacts");
             foreach (string path in levelPaths)
             {
                 string levelId = Path.GetFileNameWithoutExtension(path);

@@ -51,6 +51,36 @@ namespace CatMetro.Application.Session
             Level.Graph.PerfectMaxSwitches,
             State.Outcome.Kind == OutcomeKind.Running ? Log.Entries.Count : State.SwitchesUsed);
 
+        /// <summary>
+        /// Read-only presentation identity for a fixed simulation slot. It increments after an
+        /// authoritative step changes that slot from empty to live, including refills hidden
+        /// inside a multi-step render hitch. It is runner metadata only: Simulation never reads
+        /// it and it is not part of the replay digest.
+        /// </summary>
+        public int TrainOccupantGeneration(int slotIndex) =>
+            _trainOccupantGenerations[slotIndex];
+
+        /// <summary>
+        /// Exact source anchor observed when the current occupant entered this fixed slot.
+        /// Presentation can reconstruct a source platform after a render hitch without
+        /// inferring it from the train's later position.
+        /// </summary>
+        public int TrainOccupantSpawnNode(int slotIndex) =>
+            _trainOccupantSpawnNodes[slotIndex];
+
+        public int TrainOccupantSpawnEdge(int slotIndex) =>
+            _trainOccupantSpawnEdges[slotIndex];
+
+        /// <summary>
+        /// Read-only runner metadata for presentation catch-up. Generation increments when the
+        /// fixed slot delivers; node is the exact station endpoint observed at that step. Both
+        /// stay outside SimulationState and are never read by Simulation.
+        /// </summary>
+        public int TrainDeliveryGeneration(int slotIndex) =>
+            _trainDeliveryGenerations[slotIndex];
+
+        public int TrainDeliveryNode(int slotIndex) => _trainDeliveryNodes[slotIndex];
+
         // Returns true only when this player flip is accepted into the authoritative replay.
         // Rejected budget/cooldown taps never enter the log, so pending lever presentation and
         // FlipStatus cannot visually commit a command the simulation will ignore.
@@ -105,12 +135,17 @@ namespace CatMetro.Application.Session
                     {
                         _trainOccupantGenerations[t] = NextGeneration(
                             _trainOccupantGenerations[t]);
-                        int spawnNode = State.Trains[t].State == TrainState.OnEdge
-                            ? State.Graph.EdgeFrom[State.Trains[t].EdgeId]
-                            : State.Trains[t].NodeId;
-                        int spawnEdge = State.Trains[t].State == TrainState.OnEdge
+                        byte spawnedState = State.Trains[t].State;
+                        bool spawnedOnEdge = spawnedState == TrainState.OnEdge
+                            || spawnedState == TrainState.OnEdgeReverse;
+                        int spawnEdge = spawnedOnEdge
                             ? State.Trains[t].EdgeId
-                            : Simulation.SelectedOutgoingEdge(State, spawnNode);
+                            : Simulation.SelectedOutgoingEdge(State, State.Trains[t].NodeId);
+                        int spawnNode = spawnedState == TrainState.OnEdge
+                            ? State.Graph.EdgeFrom[spawnEdge]
+                            : spawnedState == TrainState.OnEdgeReverse
+                                ? State.Graph.EdgeTo[spawnEdge]
+                                : State.Trains[t].NodeId;
                         bool validSpawnEdge = spawnEdge >= 0
                             && spawnEdge < State.Graph.EdgeFrom.Length;
                         _trainOccupantSpawnEdges[t] = validSpawnEdge ? spawnEdge : -1;
@@ -122,7 +157,10 @@ namespace CatMetro.Application.Session
                             _trainDeliveryGenerations[t]);
                         int edge = PrevTrains[t].EdgeId;
                         _trainDeliveryNodes[t] = edge >= 0 && edge < State.Graph.EdgeTo.Length
-                            ? State.Graph.EdgeTo[edge] : PrevTrains[t].NodeId;
+                            ? PrevTrains[t].State == TrainState.OnEdgeReverse
+                                ? State.Graph.EdgeFrom[edge]
+                                : State.Graph.EdgeTo[edge]
+                            : PrevTrains[t].NodeId;
                     }
                 }
             }

@@ -76,14 +76,29 @@ namespace CatMetro.Tests.Content
                 "authored capacities map, absent capacities materialize the schema maximum");
         }
 
-        [Test] // the imported artifact replays its solver-proved command log
-        public void L001_ImportedGraph_WinsUnderItsExactSolverReplay()
+        [Test] // the current imported artifact hashes and replays its solver-proved command log
+        public void L001_ImportedGraph_HashIsDeterministicAndExactSolverReplayWins()
         {
             var r = LevelImporter.Import(L001Bytes());
             Assert.That(r.Ok, Is.True);
             var solve = LevelSolver.Solve(r.Value.Graph, (ulong)r.Value.Dto.Seed, 2_000_000);
             Assert.That(solve.Verdict, Is.EqualTo(SolveVerdict.Solved));
             Assert.That(solve.BeamWidthUsed, Is.Zero, "campaign proofs must remain exact BFS");
+
+            string firstHash = ReplayHasher.ComputeReplayHash(
+                r.Value.Graph, (ulong)r.Value.Dto.Seed, solve.OptimalLog);
+            string secondHash = ReplayHasher.ComputeReplayHash(
+                r.Value.Graph, (ulong)r.Value.Dto.Seed, solve.OptimalLog);
+            Assert.That(firstHash, Does.Match("^[0-9a-f]{64}$"));
+            Assert.That(secondHash, Is.EqualTo(firstHash),
+                "the imported campaign artifact must replay deterministically");
+
+            string legacyFixtureHash = ReplayHasher.ComputeReplayHash(
+                Fixtures.L001Shape(), Fixtures.L001Seed, Fixtures.GoldenLog());
+            Assert.That(firstHash, Is.Not.EqualTo(legacyFixtureHash),
+                "this proof must hash the current authored L001, not substitute the legacy fixture");
+            TestContext.Out.WriteLine("L001_REPLAY_HASH=" + firstHash);
+
             var end = ReplayHasher.RunToEnd(r.Value.Graph, (ulong)r.Value.Dto.Seed, solve.OptimalLog);
             Assert.That(end.Outcome.Kind, Is.EqualTo(OutcomeKind.Won));
             Assert.That(end.Deliveries, Is.EqualTo(r.Value.Dto.Win.Deliveries));

@@ -118,11 +118,8 @@ namespace CatMetro.Tests.Validation
         private static JObject LockedL018()
         {
             var path = Path.Combine(Fixtures.RepoRoot(),
-                "docs", "plan", "data", "example_levels.json");
-            var wrapper = JObject.Parse(File.ReadAllText(path));
-            return (JObject)((JArray)wrapper["levels"])
-                .Single(o => (string)o["id"] == "L018")
-                .DeepClone();
+                "tests", "fixtures", "corpus", "l018-mechanics.json");
+            return JObject.Parse(File.ReadAllText(path));
         }
 
         private static int ShortestAuthoredTravel(
