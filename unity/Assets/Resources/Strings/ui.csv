@@ -12,3 +12,5 @@ intro.play,Play
 intro.goal,Deliver {count} cats
 home.daily.label,Daily Line
 results.daily.done,Home
+hud.flips,Flips {used}/{limit}
+fail.collision,Two trains bumped!

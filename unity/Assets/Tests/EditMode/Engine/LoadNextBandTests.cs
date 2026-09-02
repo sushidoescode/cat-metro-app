@@ -14,47 +14,30 @@ namespace CatMetro.Tests.Engine
     public sealed class LoadNextBandTests
     {
         [Test]
-        public void Band_IsTheSeventeenLevelCampaignInOrder()
+        public void Band_IsTheSixtyLevelCampaignInOrder()
         {
-            // CM-C12 criterion 7(b) re-pin: the band now runs the full authored campaign
-            // (L001-L010 shipped by CM-C10/CM-C11, L011-L017 by this contract) — extended
-            // two-sided (still Is.EqualTo, not loosened), per GameRoot.LevelBand.
-            Assert.That(GameRoot.LevelBand, Is.EqualTo(new[]
-            {
-                "L001", "L002", "L003", "L004", "L005",
-                "L006", "L007", "L008", "L009", "L010",
-                "L011", "L012", "L013", "L014", "L015", "L016", "L017",
-            }));
+            var expected = new string[60];
+            for (int i = 0; i < expected.Length; i++)
+                expected[i] = "L" + (i + 1).ToString("000");
+            Assert.That(GameRoot.LevelBand, Is.EqualTo(expected));
         }
 
-        [TestCase("L001", "L002")]
-        [TestCase("L002", "L003")]
-        [TestCase("L003", "L004")]
-        [TestCase("L004", "L005")]
-        [TestCase("L005", "L006")]
-        [TestCase("L006", "L007")]
-        [TestCase("L007", "L008")]
-        [TestCase("L008", "L009")]
-        [TestCase("L009", "L010")]
-        [TestCase("L010", "L011")]
-        [TestCase("L011", "L012")]
-        [TestCase("L012", "L013")]
-        [TestCase("L013", "L014")]
-        [TestCase("L014", "L015")]
-        [TestCase("L015", "L016")]
-        [TestCase("L016", "L017")]
-        public void NextLevelId_AdvancesOneStepThroughTheBand(string current, string expectedNext)
+        [Test]
+        public void NextLevelId_AdvancesOneStepThroughTheBand()
         {
-            Assert.That(GameRoot.NextLevelId(current), Is.EqualTo(expectedNext));
+            for (int i = 1; i < 60; i++)
+            {
+                string current = "L" + i.ToString("000");
+                string expectedNext = "L" + (i + 1).ToString("000");
+                Assert.That(GameRoot.NextLevelId(current), Is.EqualTo(expectedNext), current);
+            }
         }
 
         [Test]
         public void NextLevelId_AtTheEndOfTheBand_WrapsToTheFirstLevel()
         {
-            // THE assumption this contract flags: a demo-friendly infinite loop, not a dead
-            // end. A human override lands as a one-line edit to GameRoot.WrapAtEndOfBand.
-            // CM-C12 re-pin: the end of the band is now L017, not L005.
-            Assert.That(GameRoot.NextLevelId("L017"), Is.EqualTo("L001"));
+            // The shipped campaign remains a demo-friendly loop instead of a dead end.
+            Assert.That(GameRoot.NextLevelId("L060"), Is.EqualTo("L001"));
         }
 
         [Test]

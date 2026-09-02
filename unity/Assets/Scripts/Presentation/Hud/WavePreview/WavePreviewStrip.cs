@@ -14,11 +14,15 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private UnityEngine.Camera _camera;
         private readonly List<GameObject> _chips = new List<GameObject>();
         private readonly List<TextMesh> _counts = new List<TextMesh>();
+        private readonly List<TextMesh> _symbols = new List<TextMesh>();
         private readonly List<Renderer> _renderers = new List<Renderer>(); // review S6: cached
+        private TextMesh _flipBudget;
         private int _lastRefreshTick = -1;
 
         public int VisibleChipCount { get; private set; }
         public string ChipSummary { get; private set; } = ""; // "red x2|blue x2" for asserts
+        public string FlipSummary => _flipBudget != null && _flipBudget.gameObject.activeSelf
+            ? _flipBudget.text : "";
 
         public static WavePreviewStrip Create(Transform parent, GameSession session,
             UnityEngine.Camera cam)
@@ -41,16 +45,37 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 chip.transform.localScale = new Vector3(0.9f, 0.5f, 1f);
                 var text = new GameObject("count").AddComponent<TextMesh>();
                 text.transform.SetParent(chip.transform, false);
-                text.transform.localPosition = new Vector3(0f, 0f, -0.01f);
+                text.transform.localPosition = new Vector3(0.22f, 0f, -0.01f);
                 text.characterSize = 0.2f;
                 text.anchor = TextAnchor.MiddleCenter;
                 var textRenderer = text.GetComponent<Renderer>();
                 textRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 textRenderer.receiveShadows = false;
+                var symbol = new GameObject("cat-token").AddComponent<TextMesh>();
+                symbol.transform.SetParent(chip.transform, false);
+                symbol.transform.localPosition = new Vector3(-0.24f, 0f, -0.01f);
+                symbol.characterSize = 0.2f;
+                symbol.anchor = TextAnchor.MiddleCenter;
+                symbol.alignment = TextAlignment.Center;
+                symbol.color = Theme.Palette.InkNavy;
+                var symbolRenderer = symbol.GetComponent<Renderer>();
+                symbolRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                symbolRenderer.receiveShadows = false;
                 strip._chips.Add(chip);
                 strip._counts.Add(text);
+                strip._symbols.Add(symbol);
                 strip._renderers.Add(renderer);
             }
+
+            strip._flipBudget = new GameObject("flip-budget").AddComponent<TextMesh>();
+            strip._flipBudget.transform.SetParent(go.transform, false);
+            strip._flipBudget.characterSize = 0.15f;
+            strip._flipBudget.anchor = TextAnchor.MiddleCenter;
+            strip._flipBudget.alignment = TextAlignment.Center;
+            strip._flipBudget.color = Theme.Palette.InkNavy;
+            var budgetRenderer = strip._flipBudget.GetComponent<Renderer>();
+            budgetRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            budgetRenderer.receiveShadows = false;
             strip.Refresh();
             return strip;
         }
@@ -93,6 +118,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
                     _chips[i].transform.position = new Vector3(band.x, band.y, -1.5f);
                     _renderers[i].material.color = ColorFor(pending[i].Color);
                     _counts[i].text = "x" + pending[i].Count;
+                    _symbols[i].text = TokenGlyph(pending[i]);
                     if (summary.Length > 0) summary.Append('|');
                     summary.Append(pending[i].Color).Append(" x").Append(pending[i].Count);
                 }
@@ -102,6 +128,20 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 }
             }
             ChipSummary = summary.ToString();
+
+            var flipStatus = _session.FlipStatus;
+            _flipBudget.gameObject.SetActive(flipStatus.IsBudgeted);
+            if (flipStatus.IsBudgeted)
+            {
+                var band = _camera.ViewportToWorldPoint(new Vector3(0.86f, 0.93f,
+                    -_camera.transform.position.z));
+                _flipBudget.transform.position = new Vector3(band.x, band.y, -1.5f);
+                _flipBudget.text = Strings.UiStrings.Get("hud.flips")
+                    .Replace("{used}", flipStatus.Used.ToString())
+                    .Replace("{limit}", flipStatus.PerfectMaxSwitches.ToString());
+                _flipBudget.color = flipStatus.RemainingToPerfect > 0
+                    ? Theme.Palette.InkNavy : Theme.Palette.SignalRed;
+            }
         }
 
         // review S6: no per-frame churn — the pending set can only change when the sim tick
@@ -119,8 +159,23 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 case "blue": return new Color(0.2f, 0.4f, 0.9f);
                 case "yellow": return new Color(0.9f, 0.8f, 0.2f);
                 case "green": return new Color(0.2f, 0.75f, 0.3f);
+                case "wild": return Theme.Palette.CreamCard;
                 default: return Color.magenta;
             }
+        }
+
+        private static string TokenGlyph(WaveDto wave)
+        {
+            string glyph;
+            switch (wave.Shape)
+            {
+                case "square": glyph = "■"; break;
+                case "triangle": glyph = "▲"; break;
+                default: glyph = "●"; break;
+            }
+            if (wave.Stray) glyph += "↯";
+            if (wave.Express) glyph += "⚡";
+            return glyph;
         }
     }
 }

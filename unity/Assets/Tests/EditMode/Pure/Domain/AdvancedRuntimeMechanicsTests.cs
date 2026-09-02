@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using CatMetro.Application.Retry;
 using CatMetro.Domain;
 using NUnit.Framework;
 
@@ -223,6 +224,8 @@ namespace CatMetro.Tests.Domain
             Assert.That(enabled.Outcome.Reason, Is.EqualTo(FailReason.Collision));
             Assert.That(enabled.Deliveries, Is.Zero,
                 "collision is decided before either same-tick station delivery");
+            Assert.That(CauseAttribution.CausalNode(enabled), Is.EqualTo(2),
+                "the retry camera frames the junction where both arrivals completed");
 
             var disabled = ReplayHasher.RunToEnd(
                 SameNodeCollisionGraph(false), 508, new CommandLog());
@@ -237,6 +240,8 @@ namespace CatMetro.Tests.Domain
             Simulation.Step(ref enabled, ReadOnlySpan<ToggleSwitchCommand>.Empty);
             Assert.That(enabled.Outcome.Kind, Is.EqualTo(OutcomeKind.Failed));
             Assert.That(enabled.Outcome.Reason, Is.EqualTo(FailReason.Collision));
+            Assert.That(CauseAttribution.CausalNode(enabled), Is.EqualTo(1),
+                "an opposing-edge collision frames that edge's destination endpoint");
 
             var disabled = OpposingEdgeState(collisionsEnabled: false);
             Simulation.Step(ref disabled, ReadOnlySpan<ToggleSwitchCommand>.Empty);
