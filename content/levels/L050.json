@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 2,
+  "id": "L050",
+  "name": "Stray Return Pair",
+  "seed": 5050,
+  "meta": {
+    "band": "stray",
+    "difficultyTarget": 0.90,
+    "mechanics": ["switch", "budget", "hold", "stray"],
+    "newMechanic": null,
+    "teachingGoal": "Read the stray's two automatic route changes around a pair of red arrivals",
+    "minActionWindowTicks": 3,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 13 },
+      { "id": "J1", "x": 0, "y": 10, "queueCapacity": 4 },
+      { "id": "H1", "x": 3, "y": 7 },
+      { "id": "H2", "x": 3, "y": 9, "queueCapacity": 4 },
+      { "id": "RED", "x": -3, "y": 7 },
+      { "id": "BLUE", "x": 6, "y": 12 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 2 },
+      { "id": "E_HOLD", "from": "J1", "to": "H1", "travelTicks": 2, "hold": true },
+      { "id": "E_MID", "from": "H1", "to": "H2", "travelTicks": 2 },
+      { "id": "E_RETURN", "from": "H2", "to": "J1", "travelTicks": 3 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 3 },
+      { "id": "E_BLUE", "from": "H2", "to": "BLUE", "travelTicks": 3 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red", "blue", "yellow"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 5 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 4 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_HOLD", "E_RED"], "initialRoute": 0 },
+    { "id": "S2", "nodeId": "H2", "routes": ["E_BLUE", "E_RETURN"], "initialRoute": 0 }
+  ],
+  "waves": [
+    { "tick": 2, "sourceNode": "SRC", "color": "yellow", "count": 1, "spacingTicks": 8, "stray": true },
+    { "tick": 5, "sourceNode": "SRC", "color": "red", "count": 2, "spacingTicks": 2 },
+    { "tick": 12, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8 }
+  ],
+  "win": {
+    "deliveries": 3,
+    "timeLimitTicks": 32,
+    "perfectMaxSwitches": 1,
+    "stars": { "two": 390, "three": 635 }
+  },
+  "economy": { "baseTickets": 88, "perfectBonus": 38 }
+}
