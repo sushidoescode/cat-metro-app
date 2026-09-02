@@ -55,15 +55,20 @@ namespace CatMetro.Presentation.Board
         private const float EarLateral = 0.080f;
         private const float EarCenterZ = -0.080f;
         private const float EyeSize = 0.079f;
-        // A platform-centre offset measured in board units, not authored mesh space. The
-        // enlarged head radius (0.155) plus the carriage chassis half-width (0.20) consumes
-        // 0.355, so 0.40 leaves 0.045 board units of real clearance at the full endpoint.
-        public const float PlatformSideOffset = 0.40f;
+        // A platform-centre offset measured in board units, not authored mesh space. At the
+        // admitted rig's 0.46725 presentation scale, the baked artifact test crosses the
+        // released-lane envelope representable by the authored TrainsMax values; the current
+        // straight waiting cases at lanes 0..3; both current diagonal normals at lanes 0..1;
+        // departure Walk plus Celebrate at every current station-arrival heading and a sampled
+        // five-degree retained-heading envelope. Each case crosses the complete active clip at
+        // half-frame spacing, a 17-angle applied-ear corpus and independently measured maximum
+        // carriage-ward bob. A 0.584 endpoint must retain the declared 0.045 separating-plane
+        // clearance in that sampled corpus; fallback dimensions do not own it.
+        public const float PlatformSideOffset = 0.584f;
+        public const float PlatformEndpointClearance = 0.045f;
         // Queue cards are 0.24 units wide. At the conservative 93 px/unit yardstick, even the
         // frontal board's foreshortened axis projects 0.42 * cos(38) * 93 = 30.8 px versus a
-        // 22.3 px card, leaving a visible gap between simultaneous source waiters. The same
-        // numeric value as CatModelCatalog.PresenterScale is coincidental; that scale is
-        // dimensionless.
+        // 22.3 px card, leaving a visible gap between simultaneous source waiters.
         public const float PlatformQueueSpacing = 0.42f;
 
         private static float PlatformLaneOffset(int lane)
@@ -476,8 +481,23 @@ namespace CatMetro.Presentation.Board
             if (resolvePlatformPath && (!_hasPlatformAnchor
                 || _platformAnchorMovesToPlatform != movingToPlatform))
             {
-                _platformAnchorWorldPosition = _carriage.TransformPoint(
-                    _catBaseLocalPosition + Vector3.down * PlatformSideOffset);
+                if (movingToPlatform)
+                {
+                    // A catch-up frame can retain any previously rendered carriage heading at
+                    // a delivered station. Keep departures on board-local down so that stale
+                    // heading cannot turn the calibrated travel distance into a horizontal
+                    // safe-frame escape. Source anchors remain explicit and tangent-relative.
+                    Transform board = transform.parent;
+                    Vector3 seatBoard = board.InverseTransformPoint(
+                        _carriage.TransformPoint(_catBaseLocalPosition));
+                    _platformAnchorWorldPosition = board.TransformPoint(
+                        seatBoard + Vector3.down * PlatformSideOffset);
+                }
+                else
+                {
+                    _platformAnchorWorldPosition = _carriage.TransformPoint(
+                        _catBaseLocalPosition + Vector3.down * PlatformSideOffset);
+                }
                 _hasPlatformAnchor = true;
                 _platformAnchorMovesToPlatform = movingToPlatform;
             }

@@ -283,6 +283,33 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void DepartureEndpoint_UsesBoardDownDespiteRetainedForeignCarriageHeading()
+        {
+            var vertical = TrackSplineGraph.Build(
+                new[] { Vector3.zero, new Vector3(0f, 3f, 0f) },
+                new[] { 0 }, new[] { 1 });
+            _view.PlaceOnEdge(vertical, 0, vertical.Path(0).Length);
+            _view.PlaceAtNode(vertical, 0, Vector3.zero);
+            Transform carriage = _view.transform.Find("Carriage");
+            Assert.That(Mathf.Abs(Mathf.DeltaAngle(90f,
+                carriage.localEulerAngles.z)), Is.LessThan(0.001f),
+                "the foreign-node clamp must retain the previously rendered heading");
+
+            const float visualTime = 0.73f;
+            _view.ApplyPresentation(CatPresentationState.RideIdle, visualTime, false);
+            Vector3 seatedBoard = _host.transform.InverseTransformPoint(Cat().position);
+            _view.ApplyPresentation(CatPresentationState.Alight, 1f, true,
+                visualTime, false, 1f);
+            Vector3 endpointBoard = _host.transform.InverseTransformPoint(Cat().position);
+            Vector3 boardTravel = endpointBoard - seatedBoard;
+
+            Assert.That(boardTravel.x, Is.EqualTo(0f).Within(0.0001f),
+                "a retained carriage heading cannot turn departure into horizontal travel");
+            Assert.That(boardTravel.y,
+                Is.EqualTo(-ToyTrainView.PlatformSideOffset).Within(0.0001f));
+        }
+
+        [Test]
         public void BlinkScaleAxis_ProjectsVerticallyAtTheFixedCatYaw()
         {
             Vector3 projected = BoardSceneLook.BoardTilt * EyeLeft().TransformDirection(Vector3.up);

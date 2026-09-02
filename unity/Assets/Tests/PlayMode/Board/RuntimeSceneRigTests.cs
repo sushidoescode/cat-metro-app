@@ -6,6 +6,7 @@ using CatMetro.Bootstrap;
 using CatMetro.Content;
 using CatMetro.Domain;
 using CatMetro.Presentation.Board;
+using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Props;
 using NUnit.Framework;
 using UnityEngine;
@@ -303,15 +304,30 @@ namespace CatMetro.Tests.PlayMode
         [Test]
         public void TrainPassengerAndPin_StayInsideBand_AtEveryTickAndEighthTickSample()
         {
-            bool mutationProved = false;
+            bool meshMutationProved = false;
+            bool skinMutationProved = false;
+            int inspectedSkinPoses = 0;
+            int inspectedPlatformEndpoints = 0;
             foreach (string levelId in AuthoredLevelIds())
             {
                 var root = GameRoot.LaunchWith(ImportLevel(levelId));
+                var bakedSkin = new Mesh { name = "safe-frame-skinned-passenger" };
                 try
                 {
                     var camera = root.Cam;
                     camera.aspect = PhoneAspect;
                     var graph = root.Session.Level.Graph;
+                    Vector3[] nodePositions = root.Session.Level.Dto.Nodes.ToArray()
+                        .Select(node => new Vector3(node.X, node.Y, 0f)).ToArray();
+                    TrackSplineGraph paths = TrackSplineGraph.Build(nodePositions,
+                        graph.EdgeFrom, graph.EdgeTo);
+
+                    AssertSourcePlatformEndpointsInside(camera, root, bakedSkin,
+                        paths, nodePositions, ref inspectedSkinPoses,
+                        ref inspectedPlatformEndpoints, levelId);
+                    AssertRetainedHeadingEnvelopeAtStations(camera, root, bakedSkin,
+                        nodePositions, ref inspectedSkinPoses,
+                        ref inspectedPlatformEndpoints, levelId);
 
                     Assert.That(root.Session.Alpha, Is.EqualTo(0d),
                         "a newly launched session starts on a tick boundary");
@@ -338,7 +354,14 @@ namespace CatMetro.Tests.PlayMode
                                 for (int tick = 0; tick < travel; tick++)
                                 {
                                     PutTrainOnEdge(root, edge, tick);
-                                    AssertTrainInside(camera, root,
+                                    AssertSeatedTrainInside(camera, root, bakedSkin,
+                                        ref inspectedSkinPoses,
+                                        $"{levelId}/edge {edge}/tick {tick}+{eighth}/8"
+                                        + $"/history {history}");
+                                    AssertHitchReleasedSourceEndpointsInside(camera, root,
+                                        bakedSkin, paths, nodePositions,
+                                        ref inspectedSkinPoses,
+                                        ref inspectedPlatformEndpoints,
                                         $"{levelId}/edge {edge}/tick {tick}+{eighth}/8"
                                         + $"/history {history}");
                                 }
@@ -363,14 +386,20 @@ namespace CatMetro.Tests.PlayMode
                             }
                             PutTrainOnEdge(root, edge, graph.EdgeTravelTicks[edge] - 1);
                             PutTrainAtNode(root, graph.EdgeTo[edge]);
-                            AssertTrainInside(camera, root,
-                                $"{levelId}/arrival edge {edge}/history {history}");
+                            string arrivalLabel =
+                                $"{levelId}/arrival edge {edge}/history {history}";
+                            if (graph.StationNode.Contains(graph.EdgeTo[edge]))
+                                AssertTrainAndDepartureInside(camera, root, bakedSkin,
+                                    ref inspectedSkinPoses, arrivalLabel);
+                            else
+                                AssertSeatedTrainInside(camera, root, bakedSkin,
+                                    ref inspectedSkinPoses, arrivalLabel);
                         }
                     }
 
                     // A catch-up frame may park at a node unrelated to the remembered edge.
-                    // Exercise every remembered heading at every node, including the collapsed
-                    // consist branch that an arrival-only loop would silently skip.
+                    // Exercise each edge's near-terminal remembered heading at every node; the
+                    // separate five-degree station envelope above spans the headings between.
                     for (int prior = 0; prior < graph.EdgeFrom.Length; prior++)
                     {
                         for (int node = 0; node < graph.NodeCount; node++)
@@ -378,12 +407,18 @@ namespace CatMetro.Tests.PlayMode
                             ClearTrainHistory(root);
                             PutTrainOnEdge(root, prior, graph.EdgeTravelTicks[prior] - 1);
                             PutTrainAtNode(root, node);
-                            AssertTrainInside(camera, root,
-                                $"{levelId}/node {node}/prior edge {prior}");
+                            string catchUpLabel =
+                                $"{levelId}/node {node}/prior edge {prior}";
+                            if (graph.StationNode.Contains(node))
+                                AssertTrainAndDepartureInside(camera, root, bakedSkin,
+                                    ref inspectedSkinPoses, catchUpLabel);
+                            else
+                                AssertSeatedTrainInside(camera, root, bakedSkin,
+                                    ref inspectedSkinPoses, catchUpLabel);
                         }
                     }
 
-                    if (!mutationProved)
+                    if (!meshMutationProved)
                     {
                         Transform probe = TrainTransform(root);
                         Vector3 original = probe.position;
@@ -391,22 +426,74 @@ namespace CatMetro.Tests.PlayMode
                         try
                         {
                             probe.position += new Vector3(frameWidth, 0f, 0f);
-                            Assert.That(HorizontalGameplayViolation(camera, probe), Is.Not.Null,
+                            Assert.That(HorizontalGameplayViolation(camera, probe, bakedSkin,
+                                    ref inspectedSkinPoses),
+                                Is.Not.Null,
                                 "a one-frame train escape must trip the mesh-vertex guard");
-                            mutationProved = true;
+                            meshMutationProved = true;
                         }
                         finally
                         {
                             probe.position = original;
                         }
                     }
+                    if (!skinMutationProved)
+                    {
+                        Transform probe = TrainTransform(root);
+                        SkinnedMeshRenderer admittedSkin = probe
+                            .GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                            .FirstOrDefault(x => x.enabled && x.gameObject.activeInHierarchy);
+                        if (admittedSkin != null)
+                        {
+                            MeshRenderer[] staticRenderers = probe
+                                .GetComponentsInChildren<MeshRenderer>(true);
+                            bool[] rendererStates = staticRenderers
+                                .Select(x => x.enabled).ToArray();
+                            Vector3 original = probe.position;
+                            float frameWidth = 2f * camera.orthographicSize * camera.aspect;
+                            try
+                            {
+                                foreach (MeshRenderer renderer in staticRenderers)
+                                    renderer.enabled = false;
+                                probe.position += new Vector3(frameWidth, 0f, 0f);
+                                string violation = HorizontalGameplayViolation(camera, probe,
+                                    bakedSkin, ref inspectedSkinPoses);
+                                Assert.That(violation, Does.Contain("skinned vertex"),
+                                    "with every static renderer suppressed, only the admitted "
+                                    + "skin can prove the baked-skin guard's negative case");
+                                skinMutationProved = true;
+                            }
+                            finally
+                            {
+                                probe.position = original;
+                                for (int index = 0; index < staticRenderers.Length; index++)
+                                    staticRenderers[index].enabled = rendererStates[index];
+                            }
+                        }
+                    }
                 }
                 finally
                 {
+                    Object.DestroyImmediate(bakedSkin);
                     Object.DestroyImmediate(root.gameObject);
                 }
             }
-            Assert.That(mutationProved, Is.True);
+            Assert.That(meshMutationProved, Is.True);
+            int admittedRigs = CatModelCatalog.LoadResources().AdmittedEntryCount;
+            TestContext.Out.WriteLine("SAFE_FRAME_SKIN_READBACK admitted=" + admittedRigs
+                + " inspectedPoses=" + inspectedSkinPoses
+                + " platformEndpoints=" + inspectedPlatformEndpoints
+                + " animationNormalizedTime=0");
+            Assert.That(inspectedPlatformEndpoints, Is.GreaterThan(100),
+                "the safe-frame sweep must place production waiting and walking source endpoints");
+            if (admittedRigs == 1)
+            {
+                Assert.That(inspectedSkinPoses, Is.GreaterThan(100),
+                    "the spatial safe-frame sweep must inspect the visible licensed skin, "
+                    + "not only its hidden fallback MeshFilters");
+                Assert.That(skinMutationProved, Is.True,
+                    "the admitted-skin predicate needs its own isolated negative control");
+            }
         }
 
         [Test]
@@ -598,9 +685,209 @@ namespace CatMetro.Tests.PlayMode
             return null;
         }
 
-        private static void AssertTrainInside(Camera camera, GameRoot root, string label) =>
-            Assert.That(HorizontalGameplayViolation(camera, TrainTransform(root)), Is.Null,
+        private static void AssertTrainInside(Camera camera, GameRoot root, Mesh bakedSkin,
+            ref int inspectedSkinPoses, string label) =>
+            AssertViewInside(camera,
+                TrainTransform(root).GetComponent<ToyTrainView>(), bakedSkin,
+                ref inspectedSkinPoses, label);
+
+        private static void AssertViewInside(Camera camera, ToyTrainView view, Mesh bakedSkin,
+            ref int inspectedSkinPoses, string label) =>
+            Assert.That(HorizontalGameplayViolation(camera, view.transform, bakedSkin,
+                ref inspectedSkinPoses), Is.Null,
                 label + $" left x={GameplayMinX:F3}..{GameplayMaxX:F3}");
+
+        private static void AssertTrainAndDepartureInside(Camera camera, GameRoot root,
+            Mesh bakedSkin, ref int inspectedSkinPoses, string label)
+        {
+            ToyTrainView view = TrainTransform(root).GetComponent<ToyTrainView>();
+            AssertViewAndDepartureInside(camera, view, bakedSkin,
+                ref inspectedSkinPoses, label);
+        }
+
+        private static void AssertViewAndDepartureInside(Camera camera, ToyTrainView view,
+            Mesh bakedSkin, ref int inspectedSkinPoses, string label)
+        {
+            AssertViewSeatedInside(camera, view, bakedSkin, ref inspectedSkinPoses, label);
+            Animator animator = view.GetComponentInChildren<Animator>(true);
+            view.ApplyPresentation(CatPresentationState.Walk, 1f, true, 0f, false, 1f);
+            if (animator != null)
+            {
+                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+                animator.Play("Base Layer." + CatModelCatalog.WalkClip, 0, 0f);
+                animator.Update(0f);
+                view.ApplyPresentation(CatPresentationState.Walk,
+                    1f, true, 0f, false, 1f);
+            }
+            AssertViewInside(camera, view, bakedSkin, ref inspectedSkinPoses,
+                label + "/departure-endpoint");
+            view.ApplyPresentation(CatPresentationState.Celebrate,
+                1f, true, 0f, false, 1f);
+            if (animator != null)
+            {
+                animator.Play("Base Layer." + CatModelCatalog.CelebrateClip, 0, 0f);
+                animator.Update(0f);
+                view.ApplyPresentation(CatPresentationState.Celebrate,
+                    1f, true, 0f, false, 1f);
+            }
+            AssertViewInside(camera, view, bakedSkin, ref inspectedSkinPoses,
+                label + "/celebrate-endpoint");
+        }
+
+        private static void AssertSeatedTrainInside(Camera camera, GameRoot root,
+            Mesh bakedSkin, ref int inspectedSkinPoses, string label)
+        {
+            ToyTrainView view = TrainTransform(root).GetComponent<ToyTrainView>();
+            AssertViewSeatedInside(camera, view, bakedSkin,
+                ref inspectedSkinPoses, label);
+        }
+
+        private static void AssertViewSeatedInside(Camera camera, ToyTrainView view,
+            Mesh bakedSkin, ref int inspectedSkinPoses, string label)
+        {
+            Animator animator = view.GetComponentInChildren<Animator>(true);
+            view.ApplyPresentation(CatPresentationState.RideIdle, 0f, false);
+            if (animator != null)
+            {
+                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+                animator.Play("Base Layer." + CatModelCatalog.IdleSitClip, 0, 0f);
+                animator.Update(0f);
+                view.ApplyPresentation(CatPresentationState.RideIdle, 0f, false);
+            }
+            AssertViewInside(camera, view, bakedSkin, ref inspectedSkinPoses, label);
+        }
+
+        private static void AssertSourcePlatformEndpointsInside(Camera camera, GameRoot root,
+            Mesh bakedSkin, TrackSplineGraph paths, Vector3[] nodePositions,
+            ref int inspectedSkinPoses,
+            ref int inspectedPlatformEndpoints, string levelId)
+        {
+            var graph = root.Session.Level.Graph;
+            foreach (int sourceNode in graph.SourceNodes)
+            {
+                int outgoingEdge = Enumerable.Range(0, graph.EdgeFrom.Length)
+                    .Single(edge => graph.EdgeFrom[edge] == sourceNode);
+                Vector3 tangent = paths.Path(outgoingEdge)
+                    .TangentDistanceFraction(0f);
+                Vector3 side = new Vector3(tangent.y, -tangent.x, 0f);
+                // The four simultaneous source users occur on the straight L005/L011/L012/L013
+                // sources. A catch-up frame can expose two diagonal-source cats before one view
+                // update, so the hitch-proof global allocator must also cover diagonal lane one.
+                int maximumQueuePosition = Mathf.Abs(tangent.x) < 0.001f ? 3 : 1;
+
+                PutTrainAtNode(root, sourceNode);
+                ToyTrainView view = TrainTransform(root).GetComponent<ToyTrainView>();
+                // The first manual observation itself enters Walk at blend=1, so Cat.position
+                // is already a platform endpoint. The consist root's XY is BoardView's exact
+                // laid-out source node and avoids applying PlatformSideOffset twice.
+                Vector3 nodeBoard = view.transform.localPosition;
+                Animator animator = view.GetComponentInChildren<Animator>(true);
+                if (animator != null)
+                    animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+                for (int lane = 0; lane <= maximumQueuePosition; lane++)
+                {
+                    foreach (CatPresentationState state in new[]
+                        {
+                            CatPresentationState.WaitingIdle,
+                            CatPresentationState.Walk,
+                        })
+                    {
+                        view.SetSourcePlatformAnchor(nodeBoard, side, lane);
+                        view.ApplyPresentation(state, 1f, false, 0f, false, 1f);
+                        if (animator != null)
+                        {
+                            string clip = state == CatPresentationState.WaitingIdle
+                                ? CatModelCatalog.IdleSitClip
+                                : CatModelCatalog.WalkClip;
+                            animator.Play("Base Layer." + clip, 0, 0f);
+                            animator.Update(0f);
+                            view.ApplyPresentation(state, 1f, false, 0f, false, 1f);
+                        }
+                        AssertTrainInside(camera, root, bakedSkin,
+                            ref inspectedSkinPoses,
+                            $"{levelId}/source {sourceNode}/lane {lane}/{state}");
+                        inspectedPlatformEndpoints++;
+                    }
+                }
+            }
+        }
+
+        private static void AssertHitchReleasedSourceEndpointsInside(Camera camera,
+            GameRoot root, Mesh bakedSkin, TrackSplineGraph paths,
+            Vector3[] nodePositions, ref int inspectedSkinPoses,
+            ref int inspectedPlatformEndpoints, string poseLabel)
+        {
+            var graph = root.Session.Level.Graph;
+            ToyTrainView view = TrainTransform(root).GetComponent<ToyTrainView>();
+            Animator animator = view.GetComponentInChildren<Animator>(true);
+            if (animator != null)
+                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            foreach (int sourceNode in graph.SourceNodes)
+            {
+                int outgoingEdge = Enumerable.Range(0, graph.EdgeFrom.Length)
+                    .Single(edge => graph.EdgeFrom[edge] == sourceNode);
+                Vector3 tangent = paths.Path(outgoingEdge)
+                    .TangentDistanceFraction(0f);
+                Vector3 side = new Vector3(tangent.y, -tangent.x, 0f);
+                int maximumQueuePosition = Mathf.Abs(tangent.x) < 0.001f ? 3 : 1;
+                for (int lane = 0; lane <= maximumQueuePosition; lane++)
+                {
+                    view.SetSourcePlatformAnchor(nodePositions[sourceNode], side, lane);
+                    view.ApplyPresentation(CatPresentationState.Walk,
+                        1f, false, 0f, false, 1f);
+                    if (animator != null)
+                    {
+                        animator.Play("Base Layer." + CatModelCatalog.WalkClip, 0, 0f);
+                        animator.Update(0f);
+                        view.ApplyPresentation(CatPresentationState.Walk,
+                            1f, false, 0f, false, 1f);
+                    }
+                    AssertTrainInside(camera, root, bakedSkin, ref inspectedSkinPoses,
+                        poseLabel + $"/hitch-source {sourceNode}/lane {lane}/Walk");
+                    inspectedPlatformEndpoints++;
+                }
+            }
+        }
+
+        private static void AssertRetainedHeadingEnvelopeAtStations(Camera camera,
+            GameRoot root, Mesh bakedSkin, Vector3[] nodePositions,
+            ref int inspectedSkinPoses,
+            ref int inspectedPlatformEndpoints, string levelId)
+        {
+            var graph = root.Session.Level.Graph;
+            var probe = ToyTrainView.Create(root.View.transform,
+                "safe-frame-retained-heading-probe", new[] { 0 }, new[] { 1 });
+            long occupantKey = 0L;
+            try
+            {
+                foreach (int stationNode in graph.StationNode.Distinct())
+                {
+                    Vector3 station = new Vector3(
+                        nodePositions[stationNode].x, nodePositions[stationNode].y, 0f);
+                    for (int heading = 0; heading < 360; heading += 5)
+                    {
+                        Vector3 direction = Quaternion.Euler(0f, 0f, heading)
+                            * Vector3.right * 2f;
+                        TrackSplineGraph paths = TrackSplineGraph.Build(
+                            new[] { Vector3.zero, direction },
+                            new[] { 0 }, new[] { 1 });
+                        probe.SyncSlot(++occupantKey, CatColor.Red);
+                        probe.PlaceOnEdge(paths, 0, paths.Path(0).Length);
+                        // This is ToyTrainView's production foreign-node clamp: the consist
+                        // parks at the real station while retaining its last rendered heading.
+                        probe.PlaceAtNode(paths, 0, station);
+                        AssertViewAndDepartureInside(camera, probe, bakedSkin,
+                            ref inspectedSkinPoses,
+                            $"{levelId}/station {stationNode}/retained heading {heading}");
+                        inspectedPlatformEndpoints += 2;
+                    }
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(probe.gameObject);
+            }
+        }
 
         private static void PutTrainOnEdge(GameRoot root, int edge, int tick)
         {
@@ -651,11 +938,14 @@ namespace CatMetro.Tests.PlayMode
             root.View.GetComponentsInChildren<BoardElementId>(true)
                 .Single(x => x.Kind == "train" && x.gameObject.activeInHierarchy).transform;
 
-        private static string HorizontalGameplayViolation(Camera camera, Transform train)
+        private static string HorizontalGameplayViolation(Camera camera, Transform train,
+            Mesh bakedSkin, ref int inspectedSkinPoses)
         {
             foreach (var filter in train.GetComponentsInChildren<MeshFilter>(true))
             {
-                if (!filter.gameObject.activeInHierarchy || filter.sharedMesh == null) continue;
+                Renderer renderer = filter.GetComponent<Renderer>();
+                if (!filter.gameObject.activeInHierarchy || filter.sharedMesh == null
+                    || renderer == null || !renderer.enabled) continue;
                 Vector3[] vertices = filter.sharedMesh.vertices;
                 for (int i = 0; i < vertices.Length; i++)
                 {
@@ -664,6 +954,23 @@ namespace CatMetro.Tests.PlayMode
                     if (viewport.z <= 0f || viewport.x < GameplayMinX
                         || viewport.x > GameplayMaxX)
                         return $"{filter.name} vertex {i} projected to "
+                            + $"({viewport.x:F4}, {viewport.y:F4}, {viewport.z:F2})";
+                }
+            }
+            foreach (var skin in train.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (!skin.gameObject.activeInHierarchy || !skin.enabled
+                    || skin.sharedMesh == null) continue;
+                inspectedSkinPoses++;
+                skin.BakeMesh(bakedSkin, true);
+                Vector3[] vertices = bakedSkin.vertices;
+                for (int i = 0; i < vertices.Length; i++)
+                {
+                    Vector3 viewport = camera.WorldToViewportPoint(
+                        skin.transform.TransformPoint(vertices[i]));
+                    if (viewport.z <= 0f || viewport.x < GameplayMinX
+                        || viewport.x > GameplayMaxX)
+                        return $"{skin.name} skinned vertex {i} projected to "
                             + $"({viewport.x:F4}, {viewport.y:F4}, {viewport.z:F2})";
                 }
             }

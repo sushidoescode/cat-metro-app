@@ -5,6 +5,7 @@ using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using CatMetro.Application.Session;
 using CatMetro.Bootstrap;
 using CatMetro.Domain;
 using CatMetro.Presentation.Board;
@@ -461,6 +462,112 @@ namespace CatMetro.Tests.PlayMode
                 $"head is {widthRatio:P1} of the rendered carriage width; reference is ~70-85%");
             Assert.That(exposed, Is.GreaterThanOrEqualTo(0.72f),
                 $"only {exposed:P1} of the head projects above the carriage wall");
+        }
+
+        [UnityTest]
+        public IEnumerator AdmittedRigPassengerHeadAndEars_AreReadableAtPhoneScale()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+            Camera camera = _root.Cam;
+            camera.aspect = PinnedPhoneAspect;
+            SeedMidEdgePassenger(_root);
+            yield return null;
+
+            Transform train = _root.View.GetComponentsInChildren<BoardElementId>(true)
+                .Single(x => x.Kind == "train").transform;
+            var trainView = train.GetComponent<ToyTrainView>();
+            if (!trainView.RigAdmitted)
+                Assert.Ignore("the licensed local rig is absent; run this artifact test in the "
+                    + "combined asset workspace");
+            Assert.That(trainView.PresentationState, Is.EqualTo(CatPresentationState.RideIdle));
+            Assert.That(train.Find("Carriage/Cat/Head").GetComponent<Renderer>().enabled,
+                Is.False, "an admitted-rig metric must not measure hidden fallback geometry");
+
+            Animator animator = train.GetComponentInChildren<Animator>(true);
+            SkinnedMeshRenderer[] skins = animator
+                .GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            Assert.That(skins, Has.Length.EqualTo(1),
+                "the pinned licensed artifact owns one measured skinned renderer");
+            SkinnedMeshRenderer skin = skins[0];
+            Assert.That(skin.enabled, Is.True);
+            Transform headRoot = animator.transform.Find(
+                "Armature/tripo::Root/tripo::Head_0/tripo::Head_1/tripo::Head_2");
+            Assert.That(headRoot, Is.Not.Null,
+                "the head mask must bind the measured head-and-ear bone hierarchy");
+
+            const int maskWidth = 917;
+            const int maskHeight = 2048;
+            Texture2D fullRigMask = null;
+            Texture2D headMask = null;
+            // Freeze simulation after restoring the declared edge/tick/RideIdle evidence pose.
+            // Freeze the child Animator at an explicit clip phase too: disabling GameRoot alone
+            // would still let Animator advance during the mask's required RenderTexture frame.
+            SeedMidEdgePassenger(_root);
+            trainView.ApplyPresentation(CatPresentationState.RideIdle, 0f, false);
+            animator.Play("Base Layer." + CatModelCatalog.IdleSitClip, 0, 0f);
+            animator.Update(0f);
+            animator.speed = 0f;
+            _root.enabled = false;
+            trainView.enabled = false;
+            animator.enabled = false;
+            var fullRig = new ArtifactMaskRig(_root, animator.transform,
+                maskWidth, maskHeight, preserveOcclusion: true);
+            try
+            {
+                yield return null;
+                fullRigMask = fullRig.Read();
+            }
+            finally
+            {
+                fullRig.Dispose();
+            }
+
+            // Head_2 is the rig's neck-to-head joint. Cropping the rendered silhouette at its
+            // projected screen row measures the visible head and ears without counting the
+            // wider torso, and does not require Read/Write access to the licensed source mesh.
+            float headBaseViewportY = camera.WorldToViewportPoint(headRoot.position).y;
+            // Exclude the joint's own raster row. Geometry straddling that boundary belongs to
+            // the neck/torso and a one-row phase shift must not widen the claimed head silhouette.
+            int headBasePixelY = Mathf.Clamp(
+                Mathf.FloorToInt(headBaseViewportY * maskHeight) + 1, 0, maskHeight - 1);
+            headMask = CopyRowsAtOrAbove(fullRigMask, headBasePixelY);
+
+            RectInt visibleFullRig = OpaquePixelBounds(fullRigMask);
+            RectInt visibleHead = OpaquePixelBounds(headMask);
+            float fullRigWidth = visibleFullRig.width / (float)maskWidth;
+            float headWidth = visibleHead.width / (float)maskWidth;
+            int propEntries = PropModelCatalog.LoadResources().AdmittedEntryCount;
+            string metrics = string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "visible_rig_head_ears_width_fraction={0:F6}\n"
+                + "visible_full_rig_width_fraction={1:F6}\n"
+                + "head_base_viewport_y={2:F6}\n"
+                + "ortho_size={3:F6}\nprop_entries={4}\ncat_rig_admitted=1\n"
+                + "train_edge=1\ntrain_tick=6\n",
+                headWidth, fullRigWidth, headBaseViewportY,
+                camera.orthographicSize, propEntries);
+            TestContext.Out.WriteLine("COMPOSITION_RIG_"
+                + metrics.Replace("\n", " ").Trim());
+            string captureDir = System.Environment.GetEnvironmentVariable(
+                "CM_BOARD_LOOK_CAPTURE_DIR");
+            if (!string.IsNullOrEmpty(captureDir))
+            {
+                Directory.CreateDirectory(captureDir);
+                File.WriteAllBytes(Path.Combine(captureDir, "step-2-visible-rig-head-mask.png"),
+                    headMask.EncodeToPNG());
+                File.WriteAllBytes(Path.Combine(captureDir, "step-2-visible-full-rig-mask.png"),
+                    fullRigMask.EncodeToPNG());
+                File.WriteAllText(Path.Combine(captureDir, "step-2-rig-passenger-metrics.txt"),
+                    metrics);
+            }
+            Object.Destroy(headMask);
+            Object.Destroy(fullRigMask);
+
+            Assert.That(propEntries, Is.EqualTo(5).Or.EqualTo(10),
+                "the admitted-rig phone metric requires the furnished production framing");
+            Assert.That(headWidth, Is.InRange(0.05f, 0.06f),
+                $"licensed rig head and ears are {headWidth:P1} of frame width; target is 5-6%");
         }
 
         [UnityTest]
@@ -1051,6 +1158,14 @@ namespace CatMetro.Tests.PlayMode
 
         private static void SeedMidEdgePassenger(GameRoot root)
         {
+            // A yielded RenderTexture frame leaves the live session at a host-dependent
+            // interpolation fraction. Advance exactly to the next tick boundary before placing
+            // the evidence train so "edge 1 / tick 6" also pins alpha=0 rather than only the
+            // integer fields printed by the metric.
+            double alpha = root.Session.Alpha;
+            if (alpha > 0d)
+                root.Session.AdvanceMs((1d - alpha) * TickInterpolator.TICK_MS);
+            Assert.That(root.Session.Alpha, Is.EqualTo(0d).Within(0.000000001d));
             root.Session.State.Trains[0] = new TrainSlot
             {
                 Id = 1,
@@ -1115,6 +1230,23 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(maxX, Is.GreaterThanOrEqualTo(minX),
                 "the artifact mask must contain visible head pixels");
             return new RectInt(minX, minY, maxX - minX + 1, maxY - minY + 1);
+        }
+
+        private static Texture2D CopyRowsAtOrAbove(Texture2D source, int minimumY)
+        {
+            Assert.That(minimumY, Is.InRange(0, source.height - 1));
+            Color32[] pixels = source.GetPixels32();
+            for (int y = 0; y < minimumY; y++)
+            {
+                int row = y * source.width;
+                for (int x = 0; x < source.width; x++)
+                    pixels[row + x] = Color.black;
+            }
+            var copy = new Texture2D(source.width, source.height,
+                TextureFormat.RGBA32, false, true);
+            copy.SetPixels32(pixels);
+            copy.Apply(false, false);
+            return copy;
         }
 
         private static float WhitePixelFraction(Texture2D texture)
