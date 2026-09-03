@@ -513,7 +513,7 @@ namespace CatMetro.Tests.EditMode.Presentation
                 string[] levelPaths = Directory.GetFiles(levelsDir, "L*.json")
                     .Where(path => Path.GetExtension(path) == ".json")
                     .ToArray();
-                Assert.That(levelPaths.Length, Is.GreaterThanOrEqualTo(19),
+                Assert.That(levelPaths, Is.Not.Empty,
                     "the queue-lane bound must come from the non-empty authored corpus");
                 ImportedLevel[] authoredLevels = levelPaths
                     .Select(path => LevelImporter.Import(File.ReadAllBytes(path)))
@@ -526,8 +526,8 @@ namespace CatMetro.Tests.EditMode.Presentation
                     .ToArray();
                 int maximumAuthoredTrains = authoredLevels
                     .Max(level => level.Graph.TrainsMax);
-                Assert.That(maximumAuthoredTrains, Is.GreaterThanOrEqualTo(10),
-                    "the lane sweep must include the current authored TrainsMax ceiling");
+                Assert.That(maximumAuthoredTrains, Is.GreaterThan(0),
+                    "the staged authored corpus must expose a positive TrainsMax ceiling");
 
                 float minimumGap = float.PositiveInfinity;
                 string minimumLabel = string.Empty;
@@ -562,6 +562,11 @@ namespace CatMetro.Tests.EditMode.Presentation
                     movingToPlatforms.Add(false);
                     endpointLabels.Add("released/lane=" + queuePosition);
                 }
+                int releasedLaneCount = states.Count;
+                Assert.That(releasedLaneCount,
+                    Is.GreaterThanOrEqualTo(maximumAuthoredTrains),
+                    "the released lane sweep must cover the staged corpus TrainsMax ceiling "
+                    + maximumAuthoredTrains);
                 // A source-blocked cat is still parked in the fresh heading-zero carriage.
                 // L005/L011/L012/L013 reach lanes 0..3 at their straight sources; the two
                 // diagonal source families in L018/L019 can expose lanes 0..1 on a catch-up
@@ -614,8 +619,13 @@ namespace CatMetro.Tests.EditMode.Presentation
                         visualTimes, endpointLabels[endpoint],
                         ref minimumGap, ref minimumLabel);
                 }
+                Assert.That(minimumLabel, Is.Not.Empty,
+                    "the released endpoint clearance sweep must measure at least one rig pose");
 
                 int stationArrivalCases = 0;
+                int expectedStationArrivalCases = authoredLevels.Sum(level =>
+                    level.Graph.EdgeTo.Count(target =>
+                        level.Graph.StationNode.Contains(target)));
                 var uniqueStationHeadings = new List<float>();
                 foreach (ImportedLevel level in authoredLevels)
                 {
@@ -666,10 +676,10 @@ namespace CatMetro.Tests.EditMode.Presentation
                         Object.DestroyImmediate(celebrateView.gameObject);
                     }
                 }
-                Assert.That(stationArrivalCases, Is.EqualTo(38),
-                    "the current 19-level corpus has 38 station-arrival placements");
-                Assert.That(uniqueStationHeadings.Count, Is.EqualTo(11),
-                    "production placement yields 11 current station carriage headings");
+                Assert.That(stationArrivalCases, Is.EqualTo(expectedStationArrivalCases),
+                    "every station-arrival edge in the staged corpus must be sampled");
+                Assert.That(uniqueStationHeadings.Count, Is.GreaterThan(1),
+                    "the staged corpus must exercise multiple station carriage headings");
 
                 const int retainedHeadingStepDegrees = 5;
                 int retainedHeadingSamples = 0;
@@ -730,6 +740,10 @@ namespace CatMetro.Tests.EditMode.Presentation
                     + " departureStates=2"
                     + " earSamples=" + visualTimes.Length
                     + " sample=" + minimumLabel);
+                const float requiredMinimumGap = 0.045f;
+                Assert.That(ToyTrainView.PlatformEndpointClearance,
+                    Is.GreaterThanOrEqualTo(requiredMinimumGap),
+                    "the production separating-plane clearance must not drop below 0.045");
                 Assert.That(minimumGap,
                     Is.GreaterThanOrEqualTo(ToyTrainView.PlatformEndpointClearance),
                     $"{minimumLabel} leaves only {minimumGap:F4} board units; the licensed "

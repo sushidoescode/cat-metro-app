@@ -302,6 +302,8 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
+        // The 60-level corpus sweeps ~132k poses; the slot measured 226s with the licensed rig.
+        [Timeout(600000)]
         public void TrainPassengerAndPin_StayInsideBand_AtEveryTickAndEighthTickSample()
         {
             bool meshMutationProved = false;
