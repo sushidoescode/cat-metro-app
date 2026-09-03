@@ -95,6 +95,47 @@ namespace CatMetro.Presentation.Board
             ? badge.text : null;
 
         /// <summary>
+        /// The horizontal world-space envelope that source-platform cats can occupy after
+        /// launch. Those cats do not exist when the camera first fits its renderer union, so
+        /// the fit must reserve their authored side offset and every lane the train bound can
+        /// allocate. Vertical framing continues to come from the rendered tabletop itself.
+        /// </summary>
+        internal bool TryGetSourcePlatformHorizontalBounds(out Bounds bounds)
+        {
+            bounds = default;
+            bool found = false;
+            int maximumLane = Mathf.Max(0, _session.Level.Graph.TrainsMax - 1);
+            for (int source = 0; source < _sourceNode.Length; source++)
+            {
+                if (!_sourceNode[source]) continue;
+                for (int edge = 0; edge < _edgeFrom.Length; edge++)
+                {
+                    if (_edgeFrom[edge] != source) continue;
+                    Vector3 tangent = _trackPaths.Path(edge).TangentDistanceFraction(0f);
+                    Vector3 side = new Vector3(tangent.y, -tangent.x, 0f);
+                    for (int lane = 0; lane <= maximumLane; lane++)
+                    {
+                        Vector3 anchor = ToyTrainView.SourcePlatformAnchorBoard(
+                            _nodePos[source], side, 0f, lane);
+                        Vector3 world = transform.TransformPoint(anchor);
+                        Vector3 left = world + Vector3.left
+                            * ToyTrainView.PlatformFramingHalfWidth;
+                        Vector3 right = world + Vector3.right
+                            * ToyTrainView.PlatformFramingHalfWidth;
+                        if (!found)
+                        {
+                            bounds = new Bounds(left, Vector3.zero);
+                            found = true;
+                        }
+                        else bounds.Encapsulate(left);
+                        bounds.Encapsulate(right);
+                    }
+                }
+            }
+            return found;
+        }
+
+        /// <summary>
         /// Pure presentation derivation: delivery is a counter advance paired with this slot
         /// changing from live to empty. Both slots are caller-owned value snapshots.
         /// </summary>

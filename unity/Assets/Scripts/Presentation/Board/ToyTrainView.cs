@@ -66,18 +66,34 @@ namespace CatMetro.Presentation.Board
         // clearance in that sampled corpus; fallback dimensions do not own it.
         public const float PlatformSideOffset = 0.584f;
         public const float PlatformEndpointClearance = 0.045f;
+        // Horizontal half-extent reserved by the camera around a platform cat's root. The
+        // fallback head, ears and 0.24 card all fit inside one HeadDiameter; the admitted-rig
+        // artifact sweep remains the authority if that model's animated silhouette grows.
+        public const float PlatformFramingHalfWidth = HeadDiameter;
         // Queue cards are 0.24 units wide. At the conservative 93 px/unit yardstick, even the
         // frontal board's foreshortened axis projects 0.42 * cos(38) * 93 = 30.8 px versus a
         // 22.3 px card, leaving a visible gap between simultaneous source waiters.
         public const float PlatformQueueSpacing = 0.42f;
 
-        private static float PlatformLaneOffset(int lane)
+        internal static float PlatformLaneOffset(int lane)
         {
             if (lane <= 0) return 0f;
             int step = (lane + 1) / 2;
             return (lane & 1) == 1
                 ? step * PlatformQueueSpacing
                 : -step * PlatformQueueSpacing;
+        }
+
+        internal static Vector3 SourcePlatformAnchorBoard(Vector3 boardLocalNode,
+            Vector3 boardLocalSide, float boardLocalZ, int queuePosition)
+        {
+            Vector3 side = new Vector3(boardLocalSide.x, boardLocalSide.y, 0f);
+            if (side.sqrMagnitude <= 1e-8f) side = Vector3.down;
+            else side.Normalize();
+            Vector3 behind = new Vector3(side.y, -side.x, 0f);
+            return new Vector3(boardLocalNode.x, boardLocalNode.y, boardLocalZ)
+                + side * PlatformSideOffset
+                + behind * PlatformLaneOffset(queuePosition);
         }
         private const float WalkLegSwingDegrees = 22f;
         private const float TransitionLegSwingDegrees = 12f;
@@ -380,18 +396,12 @@ namespace CatMetro.Presentation.Board
             int queuePosition = 0)
         {
             Transform board = transform.parent;
-            Vector3 side = new Vector3(boardLocalSide.x, boardLocalSide.y, 0f);
-            if (side.sqrMagnitude <= 1e-8f) side = Vector3.down;
-            else side.Normalize();
-            // BoardView supplies right-normal(tangent). Its perpendicular below is therefore
-            // -tangent; stable lanes alternate on either side of the boarding point so the
-            // source group stays compact without coincident cats or destination cards.
-            Vector3 behind = new Vector3(side.y, -side.x, 0f);
             Vector3 seatBoard = board.InverseTransformPoint(
                 _carriage.TransformPoint(_catBaseLocalPosition));
-            Vector3 anchorBoard = new Vector3(boardLocalNode.x, boardLocalNode.y, seatBoard.z)
-                + side * PlatformSideOffset
-                + behind * PlatformLaneOffset(queuePosition);
+            // BoardView supplies right-normal(tangent). SourcePlatformAnchorBoard derives
+            // -tangent from it and alternates stable lanes around the boarding point.
+            Vector3 anchorBoard = SourcePlatformAnchorBoard(boardLocalNode, boardLocalSide,
+                seatBoard.z, queuePosition);
             _platformAnchorWorldPosition = board.TransformPoint(anchorBoard);
             _platformAnchorMovesToPlatform = false;
             _hasPlatformAnchor = true;
