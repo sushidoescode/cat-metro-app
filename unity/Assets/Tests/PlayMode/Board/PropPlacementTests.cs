@@ -527,16 +527,14 @@ namespace CatMetro.Tests.PlayMode
 
         // --- STATION-PLATFORM: LOOK step 4, the berth as a raised platform under a canopy ---
 
-        // The shipped diorama projection, so a dimension can be asserted in PIXELS rather than
-        // in board units nobody can picture. The camera is orthographic and identity-rotated,
-        // so at 917x2048 a board unit is 1024 / orthographicSize pixels. BoardSceneLook's fit
-        // gives 95.9 px on L001 and 82.1 on L008, the widest authored board — 82 is used
-        // throughout because a dimension that reads at the WORST zoom reads everywhere, and
-        // the cat lane independently measured ~93 for the median board, which lands between.
+        // A fixed conservative 82 px/unit yardstick lets dimensions be asserted in PIXELS
+        // rather than in board units nobody can picture, while keeping this pure geometry test
+        // independent of camera construction. It is intentionally not presented as the current
+        // authored-corpus minimum: actual camera fit varies with the level and admitted props.
         //
         // The ~4 px floor is not invented here either: the r6 orchestrator render is what
         // found that board detail below roughly that size stops reading at all.
-        private const float WorstZoomPixelsPerBoardUnit = 82f;
+        private const float ConservativePixelsPerBoardUnit = 82f;
         private const float ReadableFloorPixels = 4f;
 
         // Derived from the REAL tilt rather than restated, so a re-authored diorama angle
@@ -580,10 +578,10 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(deck.localScale.y, Is.GreaterThan(plinth.localScale.y));
 
                 float rise = -(deck.localPosition.z - deck.localScale.z * 0.5f);
-                Assert.That(rise * ScreenYPerBoardZ() * WorstZoomPixelsPerBoardUnit,
+                Assert.That(rise * ScreenYPerBoardZ() * ConservativePixelsPerBoardUnit,
                     Is.GreaterThan(12f),
-                    "the platform must stand at least 12 px off the board at the worst authored"
-                    + " zoom. The single 0.11 slab this replaces came to 5.6 px and read as a"
+                    "the platform must stand at least 12 px off the board at the conservative"
+                    + " 82 px/unit yardstick. The single 0.11 slab this replaces came to 5.6 px and read as a"
                     + " colour painted on the wood in the r6 render");
                 foreach (var course in new[] { plinth, deck })
                 {
@@ -619,7 +617,7 @@ namespace CatMetro.Tests.PlayMode
                 float deckTop = deck.localPosition.z - deck.localScale.z * 0.5f;
                 float roofUnder = roof.localPosition.z + roof.localScale.z * 0.5f;
                 Assert.That((deckTop - roofUnder) * ScreenYPerBoardZ()
-                        * WorstZoomPixelsPerBoardUnit, Is.GreaterThan(18f),
+                        * ConservativePixelsPerBoardUnit, Is.GreaterThan(18f),
                     "there must be real daylight between deck and roof — that gap is the whole"
                     + " difference between a shelter a cat waits under and a coloured plate"
                     + " lying on the kiosk's roofline, which is what shipped");
@@ -637,9 +635,9 @@ namespace CatMetro.Tests.PlayMode
                     Assert.That(Mathf.Abs(post.localPosition.y - roof.localPosition.y),
                         Is.LessThan(roof.localScale.y * 0.5f), post.name + " stands under the roof");
                     Assert.That(post.localScale.x * ScreenXPerBoardXY()
-                            * WorstZoomPixelsPerBoardUnit,
+                            * ConservativePixelsPerBoardUnit,
                         Is.GreaterThan(ReadableFloorPixels), post.name + " must be wide enough"
-                        + " to survive the worst authored zoom");
+                        + " at the conservative 82 px/unit yardstick");
                 }
                 Assert.That(posts.Select(x => Mathf.Round(x.localPosition.x * 1000f) + ","
                         + Mathf.Round(x.localPosition.y * 1000f)).Distinct().Count(),
@@ -694,12 +692,12 @@ namespace CatMetro.Tests.PlayMode
                     + " floats off its own pole, past it the pole punches through the badge");
 
                 Assert.That(mast.localScale.z * 0.6f * ScreenYPerBoardZ()
-                        * WorstZoomPixelsPerBoardUnit, Is.GreaterThan(20f),
+                        * ConservativePixelsPerBoardUnit, Is.GreaterThan(20f),
                     "the pole has to be tall enough to read as a pole (0.6 is the station"
                     + " anchor's scale, which is the space these numbers are in)");
                 Assert.That(mast.localScale.x * 0.6f * ScreenXPerBoardXY()
-                        * WorstZoomPixelsPerBoardUnit, Is.GreaterThan(ReadableFloorPixels),
-                    "and thick enough not to disappear at the worst authored zoom");
+                        * ConservativePixelsPerBoardUnit, Is.GreaterThan(ReadableFloorPixels),
+                    "and thick enough to read at the conservative 82 px/unit yardstick");
 
                 Assert.That(station.GetComponentsInChildren<Transform>(true)
                         .Count(x => x.name.StartsWith("station:signmast")), Is.EqualTo(1),
@@ -739,13 +737,12 @@ namespace CatMetro.Tests.PlayMode
                     Mathf.Cos(radians), Mathf.Sin(radians), 0f);
                 best = Mathf.Max(best, Vector3.Dot(candidate, Vector3.back));
             }
-            Assert.That(best, Is.EqualTo(0.744f).Within(0.01f),
-                "positive control on the diorama's geometry, not on this lane's code. The"
-                + " board's NORMAL is 48.07 degrees off the view axis (cos 0.669, which is what"
-                + " a plaque lying flat presents); the closest any direction IN the board plane"
-                + " gets is 41.93 degrees, cos 0.744. Standing the badge up therefore shows"
-                + " about 11% MORE face than lying it down, which is the opposite of the"
-                + " trade-off it looks like it should be");
+            Vector3 cameraInBoard = Quaternion.Inverse(board) * Vector3.back;
+            float analyticBest = new Vector2(cameraInBoard.x, cameraInBoard.y).magnitude;
+            Assert.That(best, Is.EqualTo(analyticBest).Within(0.01f),
+                "positive control on the current diorama geometry: the independent degree "
+                + "sweep must equal the camera direction's analytic projection into the board "
+                + "plane, without preserving a cosine from an older tilt");
 
             // Asserted on the SIGN's facing axis, deliberately not on any plate's local -Z. That
             // shortcut is true for the cube and the two extruded prisms and FALSE for the
@@ -759,7 +756,7 @@ namespace CatMetro.Tests.PlayMode
                 BoardPropDecorator.StationSignRotation * Vector3.back);
             Assert.That(Vector3.Dot(signFacing, Vector3.back), Is.GreaterThan(best - 0.002f),
                 "the badge must take the best camera-facing yaw available, not merely a"
-                + " positive one — the wrong sign here gives -0.744 and renders nothing");
+                + " positive one — the opposite face is backface-culled and renders nothing");
             Assert.That(StationPlates(view).Count, Is.EqualTo(CatLine.Names.Count),
                 "positive control: all four lines really did grow a badge to be turned");
         }
@@ -816,11 +813,11 @@ namespace CatMetro.Tests.PlayMode
                 "the station signs must derive directly from BoardSceneLook.BoardTilt");
 
             // The derivation itself, against the number the cat lane states for the same tilt
-            // from its own independent implementation. Two lanes agreeing on -131.4 is what
+            // from its own independent implementation. Two lanes agreeing on -90 is what
             // makes this a property of the diorama rather than of either file.
             Assert.That(BoardPropDecorator.CameraFacingYawDegrees(RealDioramaTilt()),
-                Is.EqualTo(-131.4f).Within(0.3f),
-                "the board-local yaw that faces the camera under Euler(38, -32, -4)");
+                Is.EqualTo(-90f).Within(0.3f),
+                "the board-local yaw that faces the camera under Euler(38, 0, 0)");
             Assert.That(Quaternion.Angle(BoardPropDecorator.StationSignRotation,
                     BoardPropDecorator.StandingSignRotation(RealDioramaTilt())),
                 Is.LessThan(0.01f),

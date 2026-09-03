@@ -31,7 +31,11 @@ namespace CatMetro.Tests.EditMode.Presentation
             _host = new GameObject("cat-presentation-host");
             _paths = TrackSplineGraph.Build(new[] { Vector3.zero, new Vector3(3f, 0f, 0f) },
                 new[] { 0 }, new[] { 1 });
-            _view = ToyTrainView.Create(_host.transform, "train:cat", new[] { 0 }, new[] { 1 });
+            // The directly constructed view specifies the licence-neutral fallback. Inject it
+            // explicitly so a workstation-only rig cannot silently turn its placeholder
+            // geometry checks into claims about a different rendered cat.
+            _view = ToyTrainView.Create(_host.transform, "train:cat", new[] { 0 }, new[] { 1 },
+                new CatModelCatalog(null));
             _view.SyncSlot(41L, CatMetro.Domain.CatColor.Red);
             _eyeBaseline = EyeLeft().localScale;
         }
@@ -150,6 +154,24 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void FallbackPlatformEndpoint_KeepsTheReadableHeadClearOfTheWholeCarriage()
+        {
+            _view.PlaceOnEdge(_paths, 0, 1.5f);
+
+            _view.ApplyPresentation(CatPresentationState.Walk, 1f, 0f, false);
+
+            Bounds head = Head().GetComponent<Renderer>().bounds;
+            foreach (string carriagePart in new[] { "Body", "Chassis" })
+            {
+                Bounds carriage = _view.transform.Find("Carriage/" + carriagePart)
+                    .GetComponent<Renderer>().bounds;
+                Assert.That(head.Intersects(carriage), Is.False,
+                    $"the full platform endpoint must clear Carriage/{carriagePart}; "
+                    + "the walking passenger cannot finish embedded in the vehicle");
+            }
+        }
+
+        [Test]
         public void DeliveryAdvance_IsDerivedFromCopiedSlotValuesAndCounterWithoutSlotMutation()
         {
             var previous = new TrainSlot { Id = 1, State = TrainState.AtNode };
@@ -210,6 +232,31 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void WalkingFallbackBodyAndLegs_BreakTheOpaqueHeadSilhouette()
+        {
+            _view.PlaceOnEdge(_paths, 0, 1.5f);
+
+            _view.ApplyPresentation(CatPresentationState.Walk, 1f, 0.73f, false);
+
+            float headRadius = WorldMeshSize(Head()).x * 0.5f;
+            foreach (string featureName in new[] { "Body", "LegLeft", "LegRight" })
+            {
+                Transform feature = Part(featureName);
+                float farthest = 0f;
+                foreach (Vector3 vertex in feature.GetComponent<MeshFilter>().sharedMesh.vertices)
+                {
+                    Vector3 offset = feature.TransformPoint(vertex) - Head().position;
+                    Vector3 projected = BoardSceneLook.BoardTilt * offset;
+                    farthest = Mathf.Max(farthest,
+                        new Vector2(projected.x, projected.y).magnitude);
+                }
+                Assert.That(farthest, Is.GreaterThan(headRadius + 0.005f),
+                    $"{featureName} must project beyond the opaque head while walking; "
+                    + $"silhouette radius {farthest:F4} versus head {headRadius:F4}");
+            }
+        }
+
+        [Test]
         public void IdleStates_HidePlaceholderBodyAndLegs()
         {
             _view.ApplyPresentation(CatPresentationState.RideIdle, 0f, false);
@@ -233,6 +280,33 @@ namespace CatMetro.Tests.EditMode.Presentation
 
             Assert.That(Mathf.Abs(bobbed.x - neutral.x), Is.LessThan(0.0001f));
             Assert.That(Mathf.Abs(bobbed.y - neutral.y), Is.EqualTo(expectedAmplitude).Within(0.0001f));
+        }
+
+        [Test]
+        public void DepartureEndpoint_UsesBoardDownDespiteRetainedForeignCarriageHeading()
+        {
+            var vertical = TrackSplineGraph.Build(
+                new[] { Vector3.zero, new Vector3(0f, 3f, 0f) },
+                new[] { 0 }, new[] { 1 });
+            _view.PlaceOnEdge(vertical, 0, vertical.Path(0).Length);
+            _view.PlaceAtNode(vertical, 0, Vector3.zero);
+            Transform carriage = _view.transform.Find("Carriage");
+            Assert.That(Mathf.Abs(Mathf.DeltaAngle(90f,
+                carriage.localEulerAngles.z)), Is.LessThan(0.001f),
+                "the foreign-node clamp must retain the previously rendered heading");
+
+            const float visualTime = 0.73f;
+            _view.ApplyPresentation(CatPresentationState.RideIdle, visualTime, false);
+            Vector3 seatedBoard = _host.transform.InverseTransformPoint(Cat().position);
+            _view.ApplyPresentation(CatPresentationState.Alight, 1f, true,
+                visualTime, false, 1f);
+            Vector3 endpointBoard = _host.transform.InverseTransformPoint(Cat().position);
+            Vector3 boardTravel = endpointBoard - seatedBoard;
+
+            Assert.That(boardTravel.x, Is.EqualTo(0f).Within(0.0001f),
+                "a retained carriage heading cannot turn departure into horizontal travel");
+            Assert.That(boardTravel.y,
+                Is.EqualTo(-ToyTrainView.PlatformSideOffset).Within(0.0001f));
         }
 
         [Test]
