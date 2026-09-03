@@ -66,7 +66,7 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Assert.That(_root.Home, Is.Not.Null);
             Assert.That(_root.Home.IsVisible, Is.True);
-            Capture(dir, "step-7-home.png", _root.Home, _root.Wardrobe);
+            yield return Capture(dir, "step-7-home.png", _root.Home, _root.Wardrobe);
         }
 
         [UnityTest]
@@ -293,7 +293,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Home, Is.Not.Null);
             Assert.That(_root.Home.IsVisible, Is.True);
             Assert.That(_root.Home.DailyPinTransform, Is.Not.Null);
-            Capture(dir, "step-7-home-daily.png", _root.Home, _root.Wardrobe);
+            yield return Capture(dir, "step-7-home-daily.png", _root.Home, _root.Wardrobe);
         }
 
         [UnityTest]
@@ -382,7 +382,7 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Assert.That(_root.Banner.CurrentText, Is.EqualTo("The last train left the depot"));
             Assert.That(_root.Banner.Visible, Is.True);
-            Capture(dir, "step-7-failure.png", _root.Banner);
+            yield return Capture(dir, "step-7-failure.png", _root.Banner);
         }
 
         // HUD-WAVE: the wave-preview capsule over the live board. Skips Home, because the
@@ -404,7 +404,7 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Assert.That(_root.Preview.FaceCount, Is.GreaterThan(0),
                 "precondition: L001 has upcoming cats to draw as faces");
-            Capture(dir, "step-7-wave-preview.png", _root.Preview);
+            yield return Capture(dir, "step-7-wave-preview.png", _root.Preview);
         }
 
         [UnityTest]
@@ -539,8 +539,18 @@ namespace CatMetro.Tests.PlayMode
         }
 
         private static void ApplyPhoneLayout(Component view)
-            => ApplyLayout(view, CaptureSafeArea, CaptureDpi,
-                CaptureWidth, CaptureHeight);
+        {
+            ApplyPhoneLayout(view, new CaptureRig.Size(CaptureWidth, CaptureHeight));
+        }
+
+        private static void ApplyPhoneLayout(Component view, CaptureRig.Size size)
+        {
+            ApplyLayout(view,
+                CaptureRig.ScaleSafeArea(CaptureSafeArea,
+                    CaptureWidth, CaptureHeight, size),
+                CaptureRig.ScaleDpi(CaptureDpi, CaptureHeight, size),
+                size.Width, size.Height);
+        }
 
         private static void ApplyLayout(Component view, Rect safeArea, float dpi,
             int width, int height)
@@ -700,27 +710,51 @@ namespace CatMetro.Tests.PlayMode
             return (float)(System.Math.Sqrt(System.Math.Max(0d, variance)) / 255d);
         }
 
-        private void Capture(string dir, string name, params Component[] layouts)
+        private IEnumerator Capture(string dir, string name, params Component[] layouts)
         {
+            CaptureRig.Size size = CaptureRig.ParseSize(
+                Environment.GetEnvironmentVariable("CM_CAPTURE_SIZE"),
+                CaptureWidth, CaptureHeight);
             Camera camera = _root.Cam;
             RenderTexture previousTarget = camera.targetTexture;
+            RenderTexture previousActive = RenderTexture.active;
             float previousAspect = camera.aspect;
-            var target = new RenderTexture(CaptureWidth, CaptureHeight, 24);
+            RenderTexture target = null;
+            Texture2D texture = null;
             try
             {
+                target = CaptureRig.CreateTarget(size);
+                Assert.That(target.sRGB, Is.True, "capture target must store sRGB pixels");
                 camera.targetTexture = target;
-                camera.aspect = CaptureWidth / (float)CaptureHeight;
+                camera.aspect = size.Width / (float)size.Height;
+                // The target must be bound for a full frame before any screen-space layout.
+                // Otherwise batchmode's Game view (often 619x489) becomes the UI ruler.
+                yield return null;
                 if (layouts != null)
                     foreach (Component view in layouts)
-                        if (view != null) ApplyPhoneLayout(view);
-                CaptureBound(camera, target, dir, name);
+                        if (view != null) ApplyPhoneLayout(view, size);
+                Canvas.ForceUpdateCanvases();
+                camera.Render();
+                RenderTexture.active = target;
+                texture = CaptureRig.ReadRgb24(target);
+                Assert.That(texture.isDataSRGB, Is.True,
+                    "readback must be encoded as sRGB");
+
+                Directory.CreateDirectory(dir);
+                File.WriteAllBytes(Path.Combine(dir, name),
+                    CaptureRig.EncodeOpaqueSrgbPng(texture));
             }
             finally
             {
                 camera.targetTexture = previousTarget;
+                RenderTexture.active = previousActive;
                 camera.aspect = previousAspect;
-                target.Release();
-                Object.Destroy(target);
+                if (texture != null) Object.Destroy(texture);
+                if (target != null)
+                {
+                    target.Release();
+                    Object.Destroy(target);
+                }
             }
         }
 

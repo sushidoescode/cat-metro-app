@@ -10,6 +10,7 @@ using CatMetro.Bootstrap;
 using CatMetro.Domain;
 using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Cats;
+using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Props;
 using CatMetro.Presentation.Theme;
 
@@ -1123,37 +1124,100 @@ namespace CatMetro.Tests.PlayMode
                 yield break;
             }
 
-            _root = GameRoot.Launch();
-            yield return null;
-            yield return null;
-            SeedMidEdgePassenger(_root);
-            yield return null;
-
             const int width = 917;
             const int height = 2048;
-            var rt = new RenderTexture(width, height, 24);
-            _root.Cam.targetTexture = rt;
-            // Screen-space canvases observe the RenderTexture dimensions on the next frame.
-            // Laying out before that frame silently measures the batchmode Game view instead.
-            yield return null;
-            // The session advances during that frame; restore the same declared edge, tick,
-            // and seated state as the masks immediately before rendering. This independently
-            // seeded capture does not claim their exact interpolation phase or pixel pose.
-            SeedMidEdgePassenger(_root);
-            _root.Preview.Refresh();
-            Canvas.ForceUpdateCanvases();
-            _root.Cam.Render();
-            RenderTexture.active = rt;
-            var tex = new Texture2D(width, height, TextureFormat.RGB24, false);
-            tex.ReadPixels(new Rect(0f, 0f, width, height), 0, 0);
-            tex.Apply();
-            _root.Cam.targetTexture = null;
-            RenderTexture.active = null;
+            CaptureRig.Size size = CaptureRig.ParseSize(
+                System.Environment.GetEnvironmentVariable("CM_CAPTURE_SIZE"), width, height);
+            string levelId = CaptureRig.ResolveLevel(
+                System.Environment.GetEnvironmentVariable("CM_CAPTURE_LEVEL"),
+                GameRoot.LevelBand);
+            int captureTick = CaptureRig.ParseTick(
+                System.Environment.GetEnvironmentVariable("CM_CAPTURE_TICK"), 14);
+            bool hudOn = CaptureRig.ParseHud(
+                System.Environment.GetEnvironmentVariable("CM_CAPTURE_HUD"));
 
-            Directory.CreateDirectory(dir);
-            File.WriteAllBytes(Path.Combine(dir, "step-2-board.png"), tex.EncodeToPNG());
-            Object.Destroy(tex);
-            Object.Destroy(rt);
+            _root = GameRoot.Launch(GameRoot.LevelPath(levelId));
+            _root.enabled = false;
+            var switchReceipts = CaptureRig.ParseSwitchReceipts(
+                System.Environment.GetEnvironmentVariable("CM_CAPTURE_SWITCHES"),
+                _root.Session.Level.IdMaps.Switches, captureTick);
+            CaptureRig.Replay(_root, captureTick, switchReceipts);
+
+            RenderTexture previousTarget = _root.Cam.targetTexture;
+            RenderTexture previousActive = RenderTexture.active;
+            Canvas previewCanvas = _root.Preview.GetComponent<Canvas>();
+            bool previousPreviewCanvasEnabled = previewCanvas.enabled;
+            RenderTexture rt = null;
+            Texture2D tex = null;
+            try
+            {
+                rt = CaptureRig.CreateTarget(size);
+                Assert.That(rt.sRGB, Is.True, "capture target must store sRGB pixels");
+                _root.Cam.targetTexture = rt;
+                // Screen-space canvases observe the RenderTexture dimensions on the next frame.
+                // Laying out before that frame silently measures the batchmode Game view instead.
+                yield return null;
+                // GameRoot is disabled, so the target-binding frame cannot advance Simulation.
+                // Re-apply only presentation at the same deterministic visual timestamp.
+                _root.View.UpdateFrom(_root.Session,
+                    captureTick * (float)TickInterpolator.TICK_MS / 1000f);
+                _root.Preview.Refresh();
+                _root.Preview.LayoutForViewport(
+                    CaptureRig.ScaleSafeArea(new Rect(0f, 64f, width, 1920f),
+                        width, height, size),
+                    CaptureRig.ScaleDpi(408f, height, size));
+                Canvas.ForceUpdateCanvases();
+                AssertOnlyWavePreviewHudCanPaint(_root);
+                byte[] stateBeforeHudToggle = new byte[_root.Session.State.DigestLength()];
+                _root.Session.State.WriteDigest(stateBeforeHudToggle);
+                previewCanvas.enabled = hudOn;
+                _root.Cam.Render();
+                byte[] stateAfterHudToggle = new byte[_root.Session.State.DigestLength()];
+                _root.Session.State.WriteDigest(stateAfterHudToggle);
+                CollectionAssert.AreEqual(stateBeforeHudToggle, stateAfterHudToggle,
+                    "the render-only HUD toggle must not mutate Simulation state");
+                RenderTexture.active = rt;
+                tex = CaptureRig.ReadRgb24(rt);
+                Assert.That(tex.isDataSRGB, Is.True, "readback must be encoded as sRGB");
+
+                Directory.CreateDirectory(dir);
+                File.WriteAllBytes(Path.Combine(dir, "step-2-board.png"),
+                    CaptureRig.EncodeOpaqueSrgbPng(tex));
+                File.WriteAllText(Path.Combine(dir, "step-2-board-state.txt"),
+                    CaptureRig.DescribeState(_root, switchReceipts, hudOn));
+            }
+            finally
+            {
+                previewCanvas.enabled = previousPreviewCanvasEnabled;
+                _root.Cam.targetTexture = previousTarget;
+                RenderTexture.active = previousActive;
+                if (tex != null) Object.Destroy(tex);
+                if (rt != null)
+                {
+                    rt.Release();
+                    Object.Destroy(rt);
+                }
+            }
+        }
+
+        private static void AssertOnlyWavePreviewHudCanPaint(GameRoot root)
+        {
+            Assert.That(root.ScreenState, Is.EqualTo("Playing"));
+            Assert.That(root.ScreensVisible, Is.False);
+            Assert.That(root.Banner.Visible, Is.False);
+            Assert.That(root.Preview.IsVisible, Is.True);
+
+            var chrome = root.GetComponent<ScreenChromeController>();
+            var hint = root.GetComponent<HintChipController>();
+            var results = root.GetComponent<ResultsPanel>();
+            Assert.That(chrome, Is.Not.Null);
+            Assert.That(chrome.Cta.IsVisible, Is.False);
+            Assert.That(chrome.Veil.IsVisible, Is.False);
+            Assert.That(hint, Is.Not.Null);
+            Assert.That(hint.Chip.IsVisible, Is.False);
+            Assert.That(results, Is.Not.Null);
+            Assert.That(results.IsVisible, Is.False,
+                "the wave capsule and its counters are the only capture HUD allowed to paint");
         }
 
         private static void SeedMidEdgePassenger(GameRoot root)
