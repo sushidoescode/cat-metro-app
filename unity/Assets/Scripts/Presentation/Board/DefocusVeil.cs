@@ -48,7 +48,7 @@ namespace CatMetro.Presentation.Board
     ///
     /// GAMEPLAY LEGIBILITY IS STRUCTURAL HERE, not a tuning choice. The hole is cut at the
     /// exact half-width the width fit solves the gameplay content into
-    /// (size * TargetPortraitAspect * SafeWidth * 1.05) and at the measured half-height of
+    /// (size * TargetPortraitAspect * SafeWidth * 1.052) and at the measured half-height of
     /// frameBounds plus a pad, so the board and every piece on it lie inside a region the
     /// mesh does not cover. There are no triangles over the diorama at all — not transparent
     /// ones, none.

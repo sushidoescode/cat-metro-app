@@ -16,14 +16,17 @@ namespace CatMetro.Presentation.Board
         // viewport x in (0.055, 0.945), y in (0.12, 0.87), asserted at the pinned phone
         // aspect 917/2048 (~0.4478). The fit must assume an aspect before the camera knows
         // its real surface, and TargetPortraitAspect (~0.4615) is wider than the pinned
-        // one, which squeezes content outward at assertion time. With the 1.05 pad:
-        //   x extremes = 0.5 +/- TargetAspect*SafeWidth / (2*1.05*0.4478) -> [0.068, 0.932]
-        //   y extremes = 0.495 +/- SafeHeight / (2*1.05)                  -> [0.133, 0.857]
+        // one, which squeezes content outward at assertion time. With the 1.052 pad:
+        //   x extremes = 0.5 +/- TargetAspect*SafeWidth / (2*1.052*0.4478) -> [0.069, 0.931]
+        //   y extremes = 0.495 +/- SafeHeight / (2*1.052)                  -> [0.134, 0.856]
         // ~0.013 inside the law on every edge. The old 0.93/0.78 put x extremes at 0.9565
         // (outside the law — the furnished-board signpost failure) and passed vertically by
-        // only 0.0036. Do not widen these without re-deriving both bands.
+        // only 0.0036. The extra 0.002 covers the rendered source-platform passenger envelope,
+        // which exists after launch and therefore is not part of the initial renderer union.
+        // Do not widen these or lower the pad without re-deriving both bands and that envelope.
         private const float SafeWidth = 0.88f;
         private const float SafeHeight = 0.76f;
+        private const float FitPadding = 1.052f;
         // The 2026-08-31 curated framing reference is frontal: the board's receding axis runs
         // vertically in the portrait frame instead of diagonally across it. Pitch retains the
         // raised wooden-toy depth; zero yaw and roll make that frontal composition explicit.
@@ -139,7 +142,7 @@ namespace CatMetro.Presentation.Board
             float requiredForWidth = contentBounds.size.x * 0.5f
                 / (TargetPortraitAspect * SafeWidth);
             float size = Mathf.Max(MinOrthoSize,
-                Mathf.Max(requiredForHeight, requiredForWidth) * 1.05f);
+                Mathf.Max(requiredForHeight, requiredForWidth) * FitPadding);
             float safeCenterY = (0.13f + 0.86f) * 0.5f;
             // Centre X on the gameplay content the law governs, not on decorative wood or a
             // lopsided prop cluster. BoardSurface is deliberately wide enough to bleed at both
