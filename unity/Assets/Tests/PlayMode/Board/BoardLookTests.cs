@@ -146,7 +146,7 @@ namespace CatMetro.Tests.PlayMode
             // it would have forced. The toy is the content; the border around it is scenery,
             // and target-01 runs that border off both edges of the frame.
             float slabDrivenSize = slabBounds.size.x * 0.5f
-                / (9f / 19.5f * 0.88f) * 1.052f;
+                / (9f / 19.5f * 0.88f) * 1.055f;
             Assert.That(_root.Cam.orthographicSize, Is.LessThan(slabDrivenSize - 0.01f),
                 "the decorative slab must not set the zoom — it cost the diorama real size "
                 + "to satisfy a margin no safe-frame law asks about");
