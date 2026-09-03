@@ -10,6 +10,13 @@ namespace CatMetro.Presentation.Cats
     public sealed class CatModelCatalog
     {
         public const string ResourcePath = "CatRigs/BoardCatRig";
+        // The admitted resource is authored +Z forward. A screen-space presentation looks
+        // toward the camera at -Z, so this asset's data-level correction turns it around before
+        // a surface adds its own small characterful yaw.
+        public const float ResourceFacingYaw = 180f;
+        // The single licensed resource depicts the orange starter. Other selected cats keep
+        // their complete 2D portrait until a matching admitted rig exists.
+        public const string ResourceCosmeticCatId = "red_tabby";
         public const string IdleSitClip = "Cat_IdleSit";
         public const string WalkClip = "Cat_Walk";
         public const string BoardClip = "Cat_Board";
@@ -22,6 +29,8 @@ namespace CatMetro.Presentation.Cats
             "Armature/tripo::Root/tripo::Head_0/tripo::Head_1/tripo::Head_2/bone_4";
         public const string EarDeformerPathB =
             "Armature/tripo::Root/tripo::Head_0/tripo::Head_1/tripo::Head_2/tripo::Head_3";
+        public const string HeadDeformerRootPath =
+            "Armature/tripo::Root/tripo::Head_0/tripo::Head_1/tripo::Head_2";
         public const float NormalizedStandingHeight = 1f;
         private const float PivotCenterTolerance = 1e-4f;
         // The admitted one-unit rig's head-and-ear silhouette rendered at 4.8% of the pinned
@@ -41,13 +50,35 @@ namespace CatMetro.Presentation.Cats
             IdleSitClip, WalkClip, BoardClip, AlightClip, CelebrateClip,
         };
 
+        public sealed class Entry
+        {
+            public Entry(GameObject prefab, float facingYaw,
+                string cosmeticCatId = "")
+            {
+                Prefab = prefab;
+                FacingYaw = facingYaw;
+                CosmeticCatId = cosmeticCatId ?? string.Empty;
+            }
+
+            public GameObject Prefab { get; }
+            public float FacingYaw { get; }
+            public string CosmeticCatId { get; }
+        }
+
         private readonly GameObject _prefab;
+        private readonly Entry _entry;
 
         public CatModelCatalog(GameObject prefab)
+            : this(prefab == null ? null : new Entry(prefab, 0f), true)
         {
-            if (TryValidate(prefab, out string reason))
+        }
+
+        private CatModelCatalog(Entry entry, bool _)
+        {
+            if (TryValidate(entry != null ? entry.Prefab : null, out string reason))
             {
-                _prefab = prefab;
+                _entry = entry;
+                _prefab = entry.Prefab;
                 RejectionReason = string.Empty;
             }
             else
@@ -61,16 +92,26 @@ namespace CatMetro.Presentation.Cats
         public string RejectionReason { get; }
 
         public static CatModelCatalog LoadResources() =>
-            new CatModelCatalog(Resources.Load<GameObject>(ResourcePath));
+            FromEntry(new Entry(Resources.Load<GameObject>(ResourcePath), ResourceFacingYaw,
+                ResourceCosmeticCatId));
+
+        public static CatModelCatalog FromEntry(Entry entry) =>
+            new CatModelCatalog(entry, true);
 
         public bool TryInstantiate(Transform parent, out GameObject instance)
+            => TryInstantiate(parent, out instance, out _);
+
+        public bool TryInstantiate(Transform parent, out GameObject instance,
+            out Entry entry)
         {
             instance = null;
+            entry = null;
             if (_prefab == null) return false;
 
             instance = UnityEngine.Object.Instantiate(_prefab, parent, false);
             var animator = instance.GetComponentInChildren<Animator>(true);
             animator.applyRootMotion = false;
+            entry = _entry;
             return true;
         }
 

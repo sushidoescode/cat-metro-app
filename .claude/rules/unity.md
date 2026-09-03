@@ -7,21 +7,20 @@ paths:
 
 Loads only when you touch `unity/`, so it doesn't tax every other session.
 
-**The board is greybox.** `BoardView` draws levels out of `GameObject.CreatePrimitive` — spheres,
-cubes and stretched quads. There is no track mesh, no wooden board, no lighting rig. That is the
-main reason the game doesn't look like `docs/LOOK.md` yet.
+**The board is runtime-built, not scene-authored.** `BoardView` owns the simulation geometry;
+`BoardSceneLook`, `BoardSurface`, `ToyTrackMeshBuilder`, `ToyTrainView`, and the prop decorator turn
+it into the tilted wooden diorama with shaped track and warm lights. Home deliberately reveals the
+already-loaded tick-0 board through its transparent window, so an opaque Home backdrop hides real
+menu art and breaks the composition.
 
-**`CatModelCatalog` holds direct prefab references** — no `Resources.Load`, no Addressables. A
-scene with no catalog has no cats, by design. Merging cat-wiring code alone still ships
-placeholders; the catalog has to be authored into the scene.
+**`CatModelCatalog` has one optional Resources entry** at `CatRigs/BoardCatRig`; there is no
+scene catalog, Addressables lookup, or runtime file/network load. A clean checkout without the
+ignored paid dependency keeps the existing placeholders. `AdmittedEntryCount` is the read-back.
 
-**`FindFor` resolves through `anchor.root`,** and `Game.unity` has one root, `GameRoot`. A
-catalog anywhere else returns null for both surfaces, silently.
-
-**Admission is silent.** A `Collider`, `Rigidbody`, `Selectable`, `GraphicRaycaster`, `Animator`
-or `Animation` anywhere in a prefab's hierarchy gets it rejected with no log. Unity adds an
-Animator on FBX import depending on the Rig setting — set `animationType = None`,
-`importAnimation = false`, `addCollider = false`.
+**Admission is strict and observable.** The rig must contain exactly one `Animator` with the five
+named in-place states, and must contain no `MonoBehaviour`, legacy `Animation`, physics component,
+or `StateMachineBehaviour`. The resource prefab keeps that Animator for board playback. Home alone
+samples `Cat_IdleSit` and removes the Animator from its mounted clone; admission itself is unchanged.
 
 **`HomeScreenView` never resets a model root's `localPosition`,** and the Home holder is scaled
 ~300x, so a non-identity prefab root throws the cat off screen. Keep prefab roots at identity and
@@ -36,9 +35,11 @@ detection), so it runs unsandboxed too.
 true` and it survives in the Library, so a later APK build can silently emit an AAB named `.apk`.
 Force it false.
 
-**Facing is per-asset data.** `Entry.FacingYaw` is added to each surface's own turn (board −22°,
-Home −20°). The generated set doesn't agree on a forward axis: the sitting Home poses and the
-standing board cats face opposite ways, so one shared value can't be right for all of them.
+**Facing is per-entry presentation data.** `Entry.FacingYaw` describes the admitted resource's
+camera correction; a surface may add its own turn without rotating the prefab root. The current
+resource entry uses 180° for its canonical +Z-forward rig, and Home adds −20° on its wrapper.
+`Entry.CosmeticCatId` maps that orange rig to `red_tabby`; unmatched selected cats retain the
+complete 2D portrait instead of making one licensed model impersonate another breed.
 
 **Known console noise, not a regression:** `Can't add component because class
 'CapsuleCollider'/'MeshCollider' doesn't exist!` — physics modules are stripped and the colliders

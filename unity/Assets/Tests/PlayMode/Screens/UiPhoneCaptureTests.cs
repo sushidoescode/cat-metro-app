@@ -1,14 +1,22 @@
+using System;
 using System.Collections;
+using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
 using CatMetro.Bootstrap;
+using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Hud.WavePreview;
 using CatMetro.Presentation.Theme;
+using CatMetro.Services;
+using CatMetro.Services.Cosmetics;
+using CatMetro.Services.Purchases;
+using Object = UnityEngine.Object;
 
 namespace CatMetro.Tests.PlayMode
 {
@@ -20,15 +28,26 @@ namespace CatMetro.Tests.PlayMode
         private const int CaptureHeight = 2048;
         private const float CaptureDpi = 408f;
         private static readonly Rect CaptureSafeArea = new Rect(0f, 64f, 917f, 1920f);
+        private const int HomeRigCaptureWidth = 1536;
+        private const int HomeRigCaptureHeight = 2752;
+        private const float HomeRigCaptureDpi = 683.4111f;
+        private static readonly Rect HomeRigCaptureSafeArea =
+            new Rect(0f, 86f, 1536f, 2580f);
         private GameRoot _root;
+        private CaptureStorageRoot _captureStorage;
 
         [TearDown]
         public void TearDown()
         {
             GameRoot.DevSkipShippedHome = false;
             GameRoot.DailyEntryUnlocked = false;
-            if (_root != null) Object.Destroy(_root.gameObject);
+            GameRoot.DailyStorageRootOverride = null;
+            if (_root != null) Object.DestroyImmediate(_root.gameObject);
             _root = null;
+            PurchaseRuntime.ResetForTests();
+            CosmeticRuntime.ResetForTests();
+            _captureStorage?.Dispose();
+            _captureStorage = null;
         }
 
         [UnityTest]
@@ -47,9 +66,213 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Assert.That(_root.Home, Is.Not.Null);
             Assert.That(_root.Home.IsVisible, Is.True);
-            ApplyPhoneLayout(_root.Home);
-            ApplyPhoneLayout(_root.Wardrobe);
-            Capture(dir, "step-7-home.png");
+            Capture(dir, "step-7-home.png", _root.Home, _root.Wardrobe);
+        }
+
+        [UnityTest]
+        public IEnumerator CaptureEvidence_ShippedHomeRig_1536x2752_WhenRequested()
+        {
+            var dir = Environment.GetEnvironmentVariable("CM_UI_CAPTURE_DIR");
+            if (string.IsNullOrEmpty(dir))
+            {
+                Assert.Pass("capture rig disarmed — set CM_UI_CAPTURE_DIR to emit phone frames");
+                yield break;
+            }
+
+            PurchaseRuntime.ResetForTests();
+            CosmeticRuntime.ResetForTests();
+            _captureStorage = new CaptureStorageRoot();
+            GameRoot.DailyStorageRootOverride = () => _captureStorage;
+
+            var productAsset = Resources.Load<TextAsset>("Monetization/product_catalog");
+            Assert.That(productAsset, Is.Not.Null);
+            var ledger = new EntitlementLedger();
+            ledger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant(EntitlementIds.OutfitConductor, GrantSource.Store),
+                new EntitlementGrant(EntitlementIds.FrameBrass, GrantSource.Store),
+            });
+            PurchaseRuntime.Install(new PurchaseService(
+                PurchaseCatalog.Parse(productAsset.text), new NullPurchaseBackend(),
+                () => 1_700_000_000L, ledger));
+
+            GameRoot.DevSkipShippedHome = false;
+            _root = GameRoot.Launch();
+            yield return null;
+            yield return null;
+
+            CosmeticProfileService profile = CosmeticRuntime.Current;
+            Assert.That(profile.SelectedCatId, Is.EqualTo("red_tabby"));
+            Assert.That(profile.TryEquip("red_tabby", CosmeticSlot.Outfit,
+                "outfit_conductor"), Is.True);
+            Assert.That(profile.TryEquip("red_tabby", CosmeticSlot.Frame,
+                "frame_brass"), Is.True);
+            yield return null;
+
+            Camera camera = _root.Cam;
+            RenderTexture previousTarget = camera.targetTexture;
+            RenderTexture previousActive = RenderTexture.active;
+            float previousAspect = camera.aspect;
+            var target = new RenderTexture(HomeRigCaptureWidth, HomeRigCaptureHeight, 24,
+                RenderTextureFormat.ARGB32);
+            target.Create();
+
+            try
+            {
+                // Head bounds are projected in screen pixels, so the exact output target must
+                // already be bound before Home solves the 2D cosmetic layers around the rig.
+                camera.targetTexture = target;
+                camera.aspect = HomeRigCaptureWidth / (float)HomeRigCaptureHeight;
+                ApplyLayout(_root.Home, HomeRigCaptureSafeArea, HomeRigCaptureDpi,
+                    HomeRigCaptureWidth, HomeRigCaptureHeight);
+                ApplyLayout(_root.Wardrobe, HomeRigCaptureSafeArea, HomeRigCaptureDpi,
+                    HomeRigCaptureWidth, HomeRigCaptureHeight);
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                ApplyLayout(_root.Home, HomeRigCaptureSafeArea, HomeRigCaptureDpi,
+                    HomeRigCaptureWidth, HomeRigCaptureHeight);
+                Canvas.ForceUpdateCanvases();
+
+                Assert.That(_root.Session.State.Tick, Is.Zero,
+                    "the evidence frame must be the already-loaded tick-0 board");
+                Assert.That(_root.Home.IsVisible, Is.True);
+                HomeProfileRigView rig = _root.Home.ProfileRig;
+                Assert.That(rig, Is.Not.Null,
+                    "the local licensed resource must pass admission for this armed capture");
+                Assert.That(rig.CatalogAdmittedEntryCount, Is.EqualTo(1));
+                Assert.That(rig.Mounted, Is.True);
+                Assert.That(rig.PrefabRoot, Is.Not.Null);
+                Assert.That(rig.AnimatorCount, Is.Zero);
+                Assert.That(rig.PrefabRoot.GetComponentsInChildren<Collider>(true), Is.Empty);
+                Assert.That(rig.PrefabRoot.GetComponentsInChildren<Collider2D>(true), Is.Empty);
+                Assert.That(rig.SkinnedMeshRendererCount, Is.GreaterThan(0));
+
+                SkinnedMeshRenderer[] skins = rig.PrefabRoot
+                    .GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                Assert.That(skins.Any(skin => skin.enabled && skin.sharedMesh != null
+                    && skin.sharedMaterial != null), Is.True,
+                    "at least one admitted skin must be enabled and materially renderable");
+                Assert.That(rig.SampledPose, Is.EqualTo(CatModelCatalog.IdleSitClip));
+                Assert.That(rig.AppliedFacingYaw,
+                    Is.EqualTo(CatModelCatalog.ResourceFacingYaw
+                        + HomeProfileRigView.HomeFacingYaw).Within(0.001f));
+                Assert.That(rig.PrefabRoot.localPosition, Is.EqualTo(Vector3.zero));
+                Assert.That(rig.PrefabRoot.localRotation, Is.EqualTo(Quaternion.identity));
+                Assert.That(rig.PrefabRoot.localScale, Is.EqualTo(Vector3.one));
+                Assert.That(rig.transform.parent.name, Is.EqualTo("ParkedDistrictB"));
+
+                CosmeticPortraitView portrait = _root.Home.ProfilePortrait;
+                Assert.That(portrait.AppliedCatId, Is.EqualTo("red_tabby"));
+                Assert.That(portrait.AppliedOutfitAssetId,
+                    Is.EqualTo("outfit.conductor"));
+                Assert.That(portrait.AppliedFrameAssetId, Is.EqualTo("frame.brass"));
+                Assert.That(portrait.BaseLayerTransform.gameObject.activeSelf, Is.False);
+                Assert.That(HasVisiblePaint(portrait.OutfitLayerTransform), Is.True,
+                    "the equipped conductor coat must contribute active paint over the rig");
+                Assert.That(HasVisiblePaint(portrait.FrameLayerTransform), Is.True,
+                    "the equipped brass frame must contribute active paint around the rig");
+
+                RectInt headPatch = InsetAndClamp(rig.RenderedHeadScreenRect,
+                    0.10f, 0.10f, HomeRigCaptureWidth, HomeRigCaptureHeight);
+                Assert.That(headPatch.width, Is.GreaterThanOrEqualTo(24));
+                Assert.That(headPatch.height, Is.GreaterThanOrEqualTo(24));
+                Color32[] composed = ReadFrame(camera, target);
+                Color32[] withoutRig;
+                bool[] enabledStates = skins.Select(skin => skin.enabled).ToArray();
+                try
+                {
+                    foreach (SkinnedMeshRenderer skin in skins) skin.enabled = false;
+                    withoutRig = ReadFrame(camera, target);
+                }
+                finally
+                {
+                    for (int i = 0; i < skins.Length; i++)
+                        skins[i].enabled = enabledStates[i];
+                }
+
+                float rigPixelDelta = MeanRgbDelta(composed, withoutRig,
+                    headPatch, HomeRigCaptureWidth);
+                float rigChangedFraction = ChangedFraction(composed, withoutRig,
+                    headPatch, HomeRigCaptureWidth, minimumPerChannelDelta: 4);
+                Assert.That(rigPixelDelta, Is.GreaterThan(4f / 255f),
+                    "the admitted skin must contribute visible pixels inside its head bounds");
+                Assert.That(rigChangedFraction, Is.GreaterThan(0.10f),
+                    "an enabled but offscreen or fully occluded rig must fail this capture");
+
+                RectInt cosmeticPatch = InsetAndClamp(
+                    ProjectedScreenRect(portrait.RootTransform, camera),
+                    0f, 0f, HomeRigCaptureWidth, HomeRigCaptureHeight);
+                Color32[] withoutCosmetics;
+                portrait.OutfitLayerTransform.gameObject.SetActive(false);
+                portrait.FrameLayerTransform.gameObject.SetActive(false);
+                try
+                {
+                    withoutCosmetics = ReadFrame(camera, target);
+                }
+                finally
+                {
+                    portrait.OutfitLayerTransform.gameObject.SetActive(true);
+                    portrait.FrameLayerTransform.gameObject.SetActive(true);
+                }
+                float cosmeticChangedFraction = ChangedFraction(composed,
+                    withoutCosmetics, cosmeticPatch, HomeRigCaptureWidth,
+                    minimumPerChannelDelta: 4);
+                Assert.That(cosmeticChangedFraction, Is.GreaterThan(0.04f),
+                    "the equipped coat/frame must contribute visible holder pixels");
+
+                Color32[] restored = ReadFrame(camera, target);
+                Color32[] stable = ReadFrame(camera, target);
+                float stablePixelDelta = MeanRgbDelta(restored, stable,
+                    headPatch, HomeRigCaptureWidth);
+                Assert.That(stablePixelDelta, Is.LessThanOrEqualTo(1f / 255f),
+                    "the frozen Home skin must be stable across rendered frames, not z-fight");
+
+                string outputPath = Path.Combine(dir,
+                    "home-rig-holder-1536x2752.png");
+                TestContext.Out.WriteLine("HOME_RIG_HOLDER_READBACK"
+                    + " Tick=" + _root.Session.State.Tick
+                    + " Size=1536x2752"
+                    + " Parent=" + rig.transform.parent.name
+                    + " AdmittedEntryCount=" + rig.CatalogAdmittedEntryCount
+                    + " Mounted=" + rig.Mounted
+                    + " Root=" + rig.PrefabRoot.name
+                    + " Animator=" + rig.AnimatorCount
+                    + " Collider=" + rig.PrefabRoot
+                        .GetComponentsInChildren<Collider>(true).Length
+                    + " Collider2D=" + rig.PrefabRoot
+                        .GetComponentsInChildren<Collider2D>(true).Length
+                    + " SkinnedMeshRenderer=" + rig.SkinnedMeshRendererCount
+                    + " Pose=" + rig.SampledPose
+                    + " Yaw=" + rig.AppliedFacingYaw.ToString(
+                        "F3", CultureInfo.InvariantCulture)
+                    + " EquippedCat=" + portrait.AppliedCatId
+                    + " Outfit=" + portrait.AppliedOutfitAssetId
+                    + " Frame=" + portrait.AppliedFrameAssetId
+                    + " BaseLayerVisible="
+                        + portrait.BaseLayerTransform.gameObject.activeSelf
+                    + " OutfitLayerVisible="
+                        + portrait.OutfitLayerTransform.gameObject.activeInHierarchy
+                    + " FrameLayerVisible="
+                        + portrait.FrameLayerTransform.gameObject.activeInHierarchy
+                    + " RigPixelDelta=" + rigPixelDelta.ToString(
+                        "F6", CultureInfo.InvariantCulture)
+                    + " RigChangedFraction=" + rigChangedFraction.ToString(
+                        "F6", CultureInfo.InvariantCulture)
+                    + " CosmeticChangedFraction=" + cosmeticChangedFraction.ToString(
+                        "F6", CultureInfo.InvariantCulture)
+                    + " StablePixelDelta=" + stablePixelDelta.ToString(
+                        "F6", CultureInfo.InvariantCulture)
+                    + " Capture=" + outputPath);
+                CaptureBound(camera, target, dir, Path.GetFileName(outputPath));
+            }
+            finally
+            {
+                camera.targetTexture = previousTarget;
+                camera.aspect = previousAspect;
+                RenderTexture.active = previousActive;
+                target.Release();
+                Object.Destroy(target);
+            }
         }
 
         [UnityTest]
@@ -70,9 +293,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Home, Is.Not.Null);
             Assert.That(_root.Home.IsVisible, Is.True);
             Assert.That(_root.Home.DailyPinTransform, Is.Not.Null);
-            ApplyPhoneLayout(_root.Home);
-            ApplyPhoneLayout(_root.Wardrobe);
-            Capture(dir, "step-7-home-daily.png");
+            Capture(dir, "step-7-home-daily.png", _root.Home, _root.Wardrobe);
         }
 
         [UnityTest]
@@ -161,8 +382,7 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Assert.That(_root.Banner.CurrentText, Is.EqualTo("The last train left the depot"));
             Assert.That(_root.Banner.Visible, Is.True);
-            ApplyPhoneLayout(_root.Banner);
-            Capture(dir, "step-7-failure.png");
+            Capture(dir, "step-7-failure.png", _root.Banner);
         }
 
         // HUD-WAVE: the wave-preview capsule over the live board. Skips Home, because the
@@ -184,8 +404,7 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             Assert.That(_root.Preview.FaceCount, Is.GreaterThan(0),
                 "precondition: L001 has upcoming cats to draw as faces");
-            ApplyPhoneLayout(_root.Preview);
-            Capture(dir, "step-7-wave-preview.png");
+            Capture(dir, "step-7-wave-preview.png", _root.Preview);
         }
 
         [UnityTest]
@@ -320,6 +539,11 @@ namespace CatMetro.Tests.PlayMode
         }
 
         private static void ApplyPhoneLayout(Component view)
+            => ApplyLayout(view, CaptureSafeArea, CaptureDpi,
+                CaptureWidth, CaptureHeight);
+
+        private static void ApplyLayout(Component view, Rect safeArea, float dpi,
+            int width, int height)
         {
             // The old views have no injectable viewport seam; once a responsive view lands,
             // this invokes its real layout law against the phone-safe rect before rendering.
@@ -331,12 +555,15 @@ namespace CatMetro.Tests.PlayMode
                 method.Invoke(view, parameters.Length == 3
                     ? new object[]
                     {
-                        CaptureSafeArea, CaptureDpi,
-                        new Rect(0f, 0f, CaptureWidth, CaptureHeight),
+                        safeArea, dpi, new Rect(0f, 0f, width, height),
                     }
-                    : new object[] { CaptureSafeArea, CaptureDpi });
+                    : new object[] { safeArea, dpi });
             }
         }
+
+        private static bool HasVisiblePaint(RectTransform layer)
+            => layer != null && layer.GetComponentsInChildren<Image>(true)
+                .Any(image => image.gameObject.activeInHierarchy && image.color.a > 0.01f);
 
         private static RectTransform FindRequiredRect(Transform root, string name)
         {
@@ -473,23 +700,79 @@ namespace CatMetro.Tests.PlayMode
             return (float)(System.Math.Sqrt(System.Math.Max(0d, variance)) / 255d);
         }
 
-        private void Capture(string dir, string name)
+        private void Capture(string dir, string name, params Component[] layouts)
         {
-            var rt = new RenderTexture(CaptureWidth, CaptureHeight, 24);
-            _root.Cam.targetTexture = rt;
-            Canvas.ForceUpdateCanvases();
-            _root.Cam.Render();
-            RenderTexture.active = rt;
-            var tex = new Texture2D(CaptureWidth, CaptureHeight, TextureFormat.RGB24, false);
-            tex.ReadPixels(new Rect(0f, 0f, CaptureWidth, CaptureHeight), 0, 0);
-            tex.Apply();
-            _root.Cam.targetTexture = null;
-            RenderTexture.active = null;
+            Camera camera = _root.Cam;
+            RenderTexture previousTarget = camera.targetTexture;
+            float previousAspect = camera.aspect;
+            var target = new RenderTexture(CaptureWidth, CaptureHeight, 24);
+            try
+            {
+                camera.targetTexture = target;
+                camera.aspect = CaptureWidth / (float)CaptureHeight;
+                if (layouts != null)
+                    foreach (Component view in layouts)
+                        if (view != null) ApplyPhoneLayout(view);
+                CaptureBound(camera, target, dir, name);
+            }
+            finally
+            {
+                camera.targetTexture = previousTarget;
+                camera.aspect = previousAspect;
+                target.Release();
+                Object.Destroy(target);
+            }
+        }
 
-            Directory.CreateDirectory(dir);
-            File.WriteAllBytes(Path.Combine(dir, name), tex.EncodeToPNG());
-            Object.Destroy(tex);
-            Object.Destroy(rt);
+        private static void CaptureBound(Camera camera, RenderTexture target,
+            string dir, string name)
+        {
+            RenderTexture previousActive = RenderTexture.active;
+            Texture2D texture = null;
+            try
+            {
+                Canvas.ForceUpdateCanvases();
+                camera.Render();
+                RenderTexture.active = target;
+                texture = new Texture2D(target.width, target.height,
+                    TextureFormat.RGB24, false);
+                texture.ReadPixels(new Rect(0f, 0f, target.width, target.height), 0, 0);
+                texture.Apply();
+
+                Directory.CreateDirectory(dir);
+                File.WriteAllBytes(Path.Combine(dir, name), texture.EncodeToPNG());
+            }
+            finally
+            {
+                RenderTexture.active = previousActive;
+                if (texture != null) Object.Destroy(texture);
+            }
+        }
+
+        private sealed class CaptureStorageRoot : IStorageRoot, IDisposable
+        {
+            public string SaveDirectory { get; }
+            public string CacheDirectory => SaveDirectory;
+
+            public CaptureStorageRoot()
+            {
+                SaveDirectory = Path.Combine(Path.GetTempPath(),
+                    "cm-home-rig-capture-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(SaveDirectory);
+            }
+
+            public void Dispose()
+            {
+                try
+                {
+                    if (Directory.Exists(SaveDirectory))
+                        Directory.Delete(SaveDirectory, true);
+                }
+                catch
+                {
+                    // Best-effort cleanup of isolated test state.
+                }
+            }
         }
     }
 }
