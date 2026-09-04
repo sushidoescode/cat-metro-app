@@ -1124,6 +1124,9 @@ namespace CatMetro.Tests.PlayMode
                 yield break;
             }
 
+            CaptureRig.RequireStoreCaptureArt(
+                System.Environment.GetEnvironmentVariable("CM_CAPTURE_ALLOW_PLACEHOLDER"));
+
             const int width = 917;
             const int height = 2048;
             CaptureRig.Size size = CaptureRig.ParseSize(

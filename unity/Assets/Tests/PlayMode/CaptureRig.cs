@@ -6,6 +6,8 @@ using CatMetro.Application.Session;
 using CatMetro.Bootstrap;
 using CatMetro.Content;
 using CatMetro.Domain;
+using CatMetro.Presentation.Cats;
+using CatMetro.Presentation.Props;
 using UnityEngine;
 
 namespace CatMetro.Tests.PlayMode
@@ -98,6 +100,28 @@ namespace CatMetro.Tests.PlayMode
             if (string.IsNullOrEmpty(value) || value == "on") return true;
             if (value == "off") return false;
             throw new FormatException("CM_CAPTURE_HUD must be exactly on or off");
+        }
+
+        public static void RequireStoreCaptureArt(string allowPlaceholder)
+        {
+            int admittedCatEntries = CatModelCatalog.LoadResources().AdmittedEntryCount;
+            int admittedPropEntries = PropModelCatalog.LoadResources().AdmittedEntryCount;
+            RequireStoreCaptureArt(allowPlaceholder,
+                admittedCatEntries, admittedPropEntries);
+        }
+
+        public static void RequireStoreCaptureArt(string allowPlaceholder,
+            int admittedCatEntries, int admittedPropEntries)
+        {
+            if (string.Equals(allowPlaceholder, "1", StringComparison.Ordinal)) return;
+            if (admittedCatEntries != 0 && admittedPropEntries != 0) return;
+
+            throw new InvalidOperationException(
+                "Store capture refused: CatModelCatalog.AdmittedEntryCount="
+                + admittedCatEntries + ", PropModelCatalog.AdmittedEntryCount="
+                + admittedPropEntries + ". Hero captures must run in the main checkout "
+                + "with its machine-local licensed art install. Set "
+                + "CM_CAPTURE_ALLOW_PLACEHOLDER=1 only for explicit placeholder diagnostics.");
         }
 
         public static IReadOnlyList<SwitchReceipt> ParseSwitchReceipts(string value,

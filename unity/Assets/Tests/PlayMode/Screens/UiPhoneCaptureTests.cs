@@ -79,6 +79,9 @@ namespace CatMetro.Tests.PlayMode
                 yield break;
             }
 
+            CaptureRig.RequireStoreCaptureArt(
+                Environment.GetEnvironmentVariable("CM_CAPTURE_ALLOW_PLACEHOLDER"));
+
             PurchaseRuntime.ResetForTests();
             CosmeticRuntime.ResetForTests();
             _captureStorage = new CaptureStorageRoot();
@@ -712,6 +715,8 @@ namespace CatMetro.Tests.PlayMode
 
         private IEnumerator Capture(string dir, string name, params Component[] layouts)
         {
+            CaptureRig.RequireStoreCaptureArt(
+                System.Environment.GetEnvironmentVariable("CM_CAPTURE_ALLOW_PLACEHOLDER"));
             CaptureRig.Size size = CaptureRig.ParseSize(
                 Environment.GetEnvironmentVariable("CM_CAPTURE_SIZE"),
                 CaptureWidth, CaptureHeight);

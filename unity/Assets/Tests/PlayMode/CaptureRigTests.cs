@@ -88,6 +88,49 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(() => CaptureRig.ParseHud(value), Throws.TypeOf<FormatException>());
         }
 
+        [TestCase(0, 5)]
+        [TestCase(1, 0)]
+        [TestCase(0, 0)]
+        public void RequireStoreCaptureArt_RefusesWhenEitherCatalogIsEmpty(
+            int admittedCatEntries, int admittedPropEntries)
+        {
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                CaptureRig.RequireStoreCaptureArt(null,
+                    admittedCatEntries, admittedPropEntries));
+
+            StringAssert.Contains(
+                $"CatModelCatalog.AdmittedEntryCount={admittedCatEntries}",
+                exception.Message);
+            StringAssert.Contains(
+                $"PropModelCatalog.AdmittedEntryCount={admittedPropEntries}",
+                exception.Message);
+            StringAssert.Contains("main checkout", exception.Message);
+            StringAssert.Contains("CM_CAPTURE_ALLOW_PLACEHOLDER=1", exception.Message);
+        }
+
+        [TestCase(null)]
+        [TestCase("")]
+        [TestCase("0")]
+        [TestCase("true")]
+        [TestCase(" 1")]
+        public void RequireStoreCaptureArt_OnlyExactOneBypassesMissingArt(string value)
+        {
+            Assert.That(() => CaptureRig.RequireStoreCaptureArt(value, 0, 0),
+                Throws.TypeOf<InvalidOperationException>());
+        }
+
+        [Test]
+        public void RequireStoreCaptureArt_ExplicitPlaceholderOverrideAllowsDiagnostics()
+        {
+            Assert.DoesNotThrow(() => CaptureRig.RequireStoreCaptureArt("1", 0, 0));
+        }
+
+        [Test]
+        public void RequireStoreCaptureArt_InstalledCatalogsNeedNoOverride()
+        {
+            Assert.DoesNotThrow(() => CaptureRig.RequireStoreCaptureArt(null, 1, 5));
+        }
+
         [Test]
         public void ParseSwitchReceipts_ResolvesAuthoredIdsAndPreservesReceiptOrder()
         {
