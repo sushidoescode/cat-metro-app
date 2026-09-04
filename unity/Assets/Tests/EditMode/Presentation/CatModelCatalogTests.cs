@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using CatMetro.Bootstrap;
 using CatMetro.Content;
 using CatMetro.Domain;
 using CatMetro.Presentation.Board;
@@ -456,6 +457,8 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        // The 60-level corpus took 251s in the slot with the licensed rig.
+        [Timeout(600000)]
         public void ResourcesRig_ReleasedLaneEnvelopeAndCurrentEndpointCasesClearTheCarriage()
         {
             GameObject prefab = Resources.Load<GameObject>(CatModelCatalog.ResourcePath);
@@ -513,8 +516,8 @@ namespace CatMetro.Tests.EditMode.Presentation
                 string[] levelPaths = Directory.GetFiles(levelsDir, "L*.json")
                     .Where(path => Path.GetExtension(path) == ".json")
                     .ToArray();
-                Assert.That(levelPaths, Is.Not.Empty,
-                    "the queue-lane bound must come from the non-empty authored corpus");
+                Assert.That(levelPaths.Length, Is.EqualTo(GameRoot.LevelBand.Length),
+                    "the staged corpus must contain every shipped level in the level band");
                 ImportedLevel[] authoredLevels = levelPaths
                     .Select(path => LevelImporter.Import(File.ReadAllBytes(path)))
                     .Select(import =>
