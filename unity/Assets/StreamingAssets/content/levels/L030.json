@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 2,
+  "id": "L030",
+  "name": "Crossfeed Relief",
+  "seed": 2030,
+  "meta": {
+    "band": "combination",
+    "difficultyTarget": 0.59,
+    "mechanics": ["switch", "budget", "second-source", "cooldown", "tunnel"],
+    "newMechanic": null,
+    "teachingGoal": "Recombine the blue feeder and red portal in the opposite order",
+    "minActionWindowTicks": 3,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SA", "x": -2, "y": 6 },
+      { "id": "SB", "x": 2, "y": 6 },
+      { "id": "J1", "x": 0, "y": 3, "queueCapacity": 4 },
+      { "id": "RED", "x": -2, "y": 0 },
+      { "id": "BLUE", "x": 2, "y": 0 }
+    ],
+    "edges": [
+      { "id": "E_PORTAL", "from": "SA", "to": "J1", "travelTicks": 3, "tunnel": true },
+      { "id": "E_FEED", "from": "SB", "to": "J1", "travelTicks": 3 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 4 },
+      { "id": "E_BLUE", "from": "J1", "to": "BLUE", "travelTicks": 4 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SA", "allowedColors": ["red"] },
+    { "nodeId": "SB", "allowedColors": ["blue"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 4 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 4 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_RED", "E_BLUE"], "initialRoute": 0, "cooldownTicks": 3 }
+  ],
+  "waves": [
+    { "tick": 2, "sourceNode": "SB", "color": "blue", "count": 1, "spacingTicks": 8 },
+    { "tick": 8, "sourceNode": "SA", "color": "red", "count": 1, "spacingTicks": 8 }
+  ],
+  "win": {
+    "deliveries": 2,
+    "timeLimitTicks": 20,
+    "perfectMaxSwitches": 2,
+    "stars": { "two": 220, "three": 375 }
+  },
+  "economy": { "baseTickets": 48, "perfectBonus": 20 }
+}

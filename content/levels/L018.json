@@ -1,171 +1,53 @@
 {
   "schemaVersion": 2,
   "id": "L018",
-  "name": "Two Platforms",
+  "name": "Crossing Arrivals",
   "seed": 1018,
   "meta": {
     "band": "two-source",
-    "difficultyTarget": 0.38,
-    "mechanics": [
-      "switch",
-      "queue",
-      "second-source"
-    ],
-    "newMechanic": "second-source",
-    "teachingGoal": "Prioritize between two interleaved sources sharing one junction",
-    "minActionWindowTicks": 10,
+    "difficultyTarget": 0.35,
+    "mechanics": ["switch", "budget", "second-source"],
+    "newMechanic": null,
+    "teachingGoal": "Hold blue for its source, then spend one change to gather both red arrivals",
+    "minActionWindowTicks": 16,
     "authoredBy": "llm+validator"
   },
   "board": {
     "nodes": [
-      {
-        "id": "SA",
-        "x": 1,
-        "y": 9
-      },
-      {
-        "id": "SB",
-        "x": 5,
-        "y": 9
-      },
-      {
-        "id": "M",
-        "x": 3,
-        "y": 7,
-        "queueCapacity": 3
-      },
-      {
-        "id": "J1",
-        "x": 3,
-        "y": 5,
-        "queueCapacity": 2
-      },
-      {
-        "id": "RED",
-        "x": 1,
-        "y": 2
-      },
-      {
-        "id": "BLU",
-        "x": 5,
-        "y": 2
-      }
+      { "id": "SRC_A", "x": 0, "y": 9 },
+      { "id": "SRC_B", "x": 8, "y": 10 },
+      { "id": "J1", "x": 4, "y": 6 },
+      { "id": "RED", "x": 1, "y": 1 },
+      { "id": "BLUE", "x": 7, "y": 1 }
     ],
     "edges": [
-      {
-        "id": "EA",
-        "from": "SA",
-        "to": "M",
-        "travelTicks": 8
-      },
-      {
-        "id": "EB",
-        "from": "SB",
-        "to": "M",
-        "travelTicks": 8
-      },
-      {
-        "id": "EM",
-        "from": "M",
-        "to": "J1",
-        "travelTicks": 6
-      },
-      {
-        "id": "ER",
-        "from": "J1",
-        "to": "RED",
-        "travelTicks": 10
-      },
-      {
-        "id": "EU",
-        "from": "J1",
-        "to": "BLU",
-        "travelTicks": 10
-      }
+      { "id": "E_A", "from": "SRC_A", "to": "J1", "travelTicks": 9 },
+      { "id": "E_B", "from": "SRC_B", "to": "J1", "travelTicks": 11 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 10 },
+      { "id": "E_BLUE", "from": "J1", "to": "BLUE", "travelTicks": 10 }
     ]
   },
   "sources": [
-    {
-      "nodeId": "SA",
-      "allowedColors": [
-        "red"
-      ]
-    },
-    {
-      "nodeId": "SB",
-      "allowedColors": [
-        "blue"
-      ]
-    }
+    { "nodeId": "SRC_A", "allowedColors": ["red"] },
+    { "nodeId": "SRC_B", "allowedColors": ["blue"] }
   ],
   "stations": [
-    {
-      "nodeId": "RED",
-      "accepts": [
-        "red"
-      ],
-      "capacity": 6
-    },
-    {
-      "nodeId": "BLU",
-      "accepts": [
-        "blue"
-      ],
-      "capacity": 6
-    }
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 8 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 8 }
   ],
   "switches": [
-    {
-      "id": "S1",
-      "nodeId": "J1",
-      "routes": [
-        "ER",
-        "EU"
-      ],
-      "initialRoute": 0
-    }
+    { "id": "S1", "nodeId": "J1", "routes": ["E_RED", "E_BLUE"], "initialRoute": 1 }
   ],
   "waves": [
-    {
-      "tick": 8,
-      "sourceNode": "SA",
-      "color": "red",
-      "count": 3,
-      "spacingTicks": 14
-    },
-    {
-      "tick": 50,
-      "sourceNode": "SB",
-      "color": "blue",
-      "count": 3,
-      "spacingTicks": 14
-    },
-    {
-      "tick": 106,
-      "sourceNode": "SA",
-      "color": "red",
-      "count": 2,
-      "spacingTicks": 14
-    },
-    {
-      "tick": 148,
-      "sourceNode": "SB",
-      "color": "blue",
-      "count": 2,
-      "spacingTicks": 14
-    }
+    { "tick": 8, "sourceNode": "SRC_A", "color": "red", "count": 1, "spacingTicks": 12 },
+    { "tick": 42, "sourceNode": "SRC_B", "color": "blue", "count": 1, "spacingTicks": 12 },
+    { "tick": 76, "sourceNode": "SRC_A", "color": "red", "count": 1, "spacingTicks": 12 }
   ],
   "win": {
-    "deliveries": 10,
-    "timeLimitTicks": 300,
-    "perfectMaxSwitches": 4,
-    "stars": {
-      "two": 900,
-      "three": 1200
-    }
+    "deliveries": 3,
+    "timeLimitTicks": 340,
+    "perfectMaxSwitches": 1,
+    "stars": { "two": 760, "three": 970 }
   },
-  "economy": {
-    "baseTickets": 30,
-    "perfectBonus": 20
-  }
+  "economy": { "baseTickets": 37, "perfectBonus": 19 }
 }

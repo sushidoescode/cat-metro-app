@@ -47,16 +47,21 @@ namespace CatMetro.Tests.PlayMode
 
             var elements = Object.FindObjectsByType<BoardElementId>(FindObjectsSortMode.None)
                 .Where(e => e.Kind != "train").ToList();
-            var ids = elements.Select(e => e.Id).OrderBy(x => x).ToArray();
-            Assert.That(ids, Is.EqualTo(new[] { "BLU", "E1", "E2", "E3", "J1", "RED", "S1", "SRC" }),
-                "exactly one view object per authored element");
-            Assert.That(elements.Count(e => e.Kind == "source"), Is.EqualTo(1));
-            Assert.That(elements.Count(e => e.Kind == "station"), Is.EqualTo(2));
-            Assert.That(elements.Count(e => e.Kind == "node"), Is.EqualTo(1));
-            Assert.That(elements.Count(e => e.Kind == "edge"), Is.EqualTo(3));
-            Assert.That(elements.Count(e => e.Kind == "switch"), Is.EqualTo(1));
-
             var dto = _root.Session.Level.Dto;
+            var ids = elements.Select(e => e.Id).OrderBy(x => x).ToArray();
+            var expectedIds = dto.Nodes.ToArray().Select(x => x.Id)
+                .Concat(dto.Edges.ToArray().Select(x => x.Id))
+                .Concat(dto.Switches.ToArray().Select(x => x.Id))
+                .OrderBy(x => x).ToArray();
+            Assert.That(ids, Is.EqualTo(expectedIds),
+                "exactly one view object per authored element");
+            Assert.That(elements.Count(e => e.Kind == "source"), Is.EqualTo(dto.Sources.Length));
+            Assert.That(elements.Count(e => e.Kind == "station"), Is.EqualTo(dto.Stations.Length));
+            Assert.That(elements.Count(e => e.Kind == "node"),
+                Is.EqualTo(dto.Nodes.Length - dto.Sources.Length - dto.Stations.Length));
+            Assert.That(elements.Count(e => e.Kind == "edge"), Is.EqualTo(dto.Edges.Length));
+            Assert.That(elements.Count(e => e.Kind == "switch"), Is.EqualTo(dto.Switches.Length));
+
             foreach (var n in dto.Nodes.ToArray())
             {
                 var view = elements.Single(e => e.Id == n.Id && e.Kind != "edge" && e.Kind != "switch");
@@ -159,27 +164,27 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Session.Log.Entries.Count, Is.EqualTo(entries + 1), "no phantom command");
         }
 
-        // Review round F2: the zero-tap L001 path hits the pinned NEW-Q4 boundary at ~t30 —
-        // the run must HALT loudly (no unhandled exception out of Update, no misleading
-        // banner, board intact), never limp to a wrong TimeOut fail.
+        // Mis-delivery is a normal refusal/dwell/reverse loop. A zero-tap L001 run must stay in
+        // normal gameplay and eventually reach its authored timeout, never the exceptional halt.
         [UnityTest]
-        public IEnumerator NoTapL001_HaltsAtThePinnedBoundary_NoUnhandledThrow()
+        public IEnumerator NoTapL001_RefusesAndTimesOutWithoutHalt()
         {
             _root = GameRoot.Launch();
             yield return null;
-            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex(
-                "run halted at a pinned/guarded Domain boundary"));
 
-            // REAL frames only — GameRoot.Update must be the code that meets the throw
-            // (a direct AdvanceMs here would detonate in the test instead of the halt path).
+            // Real frames exercise GameRoot.Update and its outcome-to-screen mapping.
             Time.timeScale = 8f;
             float deadline = Time.realtimeSinceStartup + 30f;
             while (_root.ScreenState == "Playing" && Time.realtimeSinceStartup < deadline)
                 yield return null;
             Time.timeScale = 1f;
 
-            Assert.That(_root.ScreenState, Is.EqualTo("Halted"));
-            Assert.That(_root.Banner.Visible, Is.False, "no misleading outcome banner");
+            Assert.That(_root.ScreenState, Is.EqualTo("FailureReview"));
+            Assert.That(_root.Session.State.Outcome.Reason,
+                Is.EqualTo(CatMetro.Domain.FailReason.TimeOut));
+            Assert.That(_root.Session.State.Rejections, Is.GreaterThan(0),
+                "the run reached at least one real refusal before timing out");
+            Assert.That(_root.Banner.Visible, Is.True, "the ordinary timeout banner is shown");
             Assert.That(Object.FindObjectsByType<BoardElementId>(FindObjectsSortMode.None).Length,
                 Is.GreaterThan(0), "the board is still visible");
         }
@@ -246,7 +251,7 @@ namespace CatMetro.Tests.PlayMode
             // Envelope-safe overflow: capacity 4 with a 2/tick flood then a 1/tick sustain
             // holds the source queue at 4-7 across the whole 16-tick Overload window (intra-tick
             // peak 7 < the 8-slot digest envelope), failing ~t27. Cats route to the MATCHING
-            // station (initialRoute 0 = RED, red cats) — zero NEW-Q4 pins on this path.
+            // station (initialRoute 0 = RED, red cats) — zero refusals on this path.
             _root.Session.AdvanceMs(40 * CatMetro.Application.Session.TickInterpolator.TICK_MS);
             yield return null;
 
@@ -265,7 +270,7 @@ namespace CatMetro.Tests.PlayMode
             // queueCapacity 4 with a 2/tick flood then a 1/tick sustain holds the source queue
             // at 4-7 for the whole 16-tick Overload window (peak 7 < the 8-slot envelope), so
             // Failed(QueueOverflow) lands ~t27. Cats route to the matching station (initialRoute
-            // 0 = RED, red cats) — zero NEW-Q4 pins anywhere on this path.
+            // 0 = RED, red cats) — zero refusals anywhere on this path.
             return @"{
   ""schemaVersion"": 2, ""id"": ""T901"", ""name"": ""Overflow Fixture"", ""seed"": 901,
   ""meta"": { ""band"": ""onboarding"", ""difficultyTarget"": 0.1, ""mechanics"": [""switch"", ""queue""],

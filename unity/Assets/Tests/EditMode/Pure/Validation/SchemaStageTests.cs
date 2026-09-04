@@ -60,6 +60,87 @@ namespace CatMetro.Tests.Validation
         public void NumericMinimum_Violation_Fails() =>
             AssertFails(VFixtures.Level(o => o["win"]["stars"]["two"] = 0), "minimum");
 
+        [TestCase("round")]
+        [TestCase("square")]
+        [TestCase("triangle")]
+        public void RuntimeMechanicFields_AcceptExplicitValues(string shape)
+        {
+            var level = VFixtures.Level(o =>
+            {
+                o["stations"][0]["shape"] = shape;
+                o["waves"][0]["shape"] = shape;
+                o["board"]["edges"][0]["tunnel"] = true;
+                o["board"]["edges"][0]["hold"] = false;
+                o["waves"][0]["stray"] = true;
+            });
+            var verdict = Check(level);
+            Assert.That(verdict.Code, Is.EqualTo(StageVerdictCode.Pass), verdict.Detail);
+        }
+
+        [TestCase("station-shape")]
+        [TestCase("wave-shape")]
+        [TestCase("tunnel")]
+        [TestCase("hold")]
+        [TestCase("stray")]
+        public void RuntimeMechanicFields_RejectWrongTypes(string field)
+        {
+            AssertFails(VFixtures.Level(o =>
+            {
+                switch (field)
+                {
+                    case "station-shape": o["stations"][0]["shape"] = 7; break;
+                    case "wave-shape": o["waves"][0]["shape"] = 7; break;
+                    case "tunnel": o["board"]["edges"][0]["tunnel"] = "yes"; break;
+                    case "hold": o["board"]["edges"][0]["hold"] = "yes"; break;
+                    case "stray": o["waves"][0]["stray"] = "yes"; break;
+                }
+            }), "type");
+        }
+
+        [TestCase("station")]
+        [TestCase("wave")]
+        public void ShapeFields_RejectUnknownValues(string owner)
+        {
+            AssertFails(VFixtures.Level(o =>
+            {
+                if (owner == "station") o["stations"][0]["shape"] = "hexagon";
+                else o["waves"][0]["shape"] = "hexagon";
+            }), "enum");
+        }
+
+        [TestCase("station")]
+        [TestCase("wave")]
+        [TestCase("edge")]
+        public void RuntimeMechanicObjects_RemainStrict(string owner)
+        {
+            AssertFails(VFixtures.Level(o =>
+            {
+                if (owner == "station") o["stations"][0]["surprise"] = true;
+                else if (owner == "wave") o["waves"][0]["surprise"] = true;
+                else o["board"]["edges"][0]["surprise"] = true;
+            }), "additional");
+        }
+
+        [Test]
+        public void RuntimeMechanicFields_DeclareLockedDefaults()
+        {
+            var schema = JObject.Parse(System.Text.Encoding.UTF8.GetString(VFixtures.SchemaBytes()));
+            var properties = schema["properties"];
+            var station = properties["stations"]["items"]["properties"];
+            var wave = properties["waves"]["items"]["properties"];
+            var edge = properties["board"]["properties"]["edges"]["items"]["properties"];
+
+            Assert.That(station["shape"]["enum"].Values<string>(),
+                Is.EqualTo(new[] { "round", "square", "triangle" }));
+            Assert.That((string)station["shape"]["default"], Is.EqualTo("round"));
+            Assert.That(wave["shape"]["enum"].Values<string>(),
+                Is.EqualTo(new[] { "round", "square", "triangle" }));
+            Assert.That((string)wave["shape"]["default"], Is.EqualTo("round"));
+            Assert.That((bool)wave["stray"]["default"], Is.False);
+            Assert.That((bool)edge["tunnel"]["default"], Is.False);
+            Assert.That((bool)edge["hold"]["default"], Is.False);
+        }
+
         [Test]
         public void UnparseableBytes_Fail()
         {

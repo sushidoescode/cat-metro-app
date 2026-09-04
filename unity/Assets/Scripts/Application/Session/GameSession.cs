@@ -45,8 +45,8 @@ namespace CatMetro.Application.Session
         public CommandLog Log { get; }
         public TrainSlot[] PrevTrains { get; private set; }
         public double Alpha => _clock.Alpha;
-        // Read-only HUD snapshot. During play it counts every committed tap immediately; after
-        // the run ends it freezes at the number the simulation actually applied.
+        // Read-only HUD snapshot. During play it counts every accepted committed tap immediately;
+        // after the run ends it freezes at the number the simulation actually applied.
         public FlipBudgetStatus FlipStatus => FlipBudget.Evaluate(
             Level.Graph.PerfectMaxSwitches,
             State.Outcome.Kind == OutcomeKind.Running ? Log.Entries.Count : State.SwitchesUsed);
@@ -81,8 +81,27 @@ namespace CatMetro.Application.Session
 
         public int TrainDeliveryNode(int slotIndex) => _trainDeliveryNodes[slotIndex];
 
-        public void EnqueueToggle(int switchId) =>
+        // Returns true only when this player flip is accepted into the authoritative replay.
+        // Rejected budget/cooldown taps never enter the log, so pending lever presentation and
+        // FlipStatus cannot visually commit a command the simulation will ignore.
+        public bool EnqueueToggle(int switchId)
+        {
+            if (State.Outcome.Kind != OutcomeKind.Running) return false;
+            if (switchId < 0 || switchId >= State.SwitchRoutes.Length) return false;
+            if (!FlipBudget.CanAccept(Level.Graph.PerfectMaxSwitches, Log.Entries.Count))
+                return false;
+
+            if (Level.Graph.SwitchCooldownTicks[switchId] > 0)
+            {
+                // A tap stamped now applies one processing tick later. Remaining==1 decays on
+                // the intervening tick and is eligible at application; remaining>=2 is not.
+                if (SwitchState.Cooldown(State.SwitchRoutes[switchId]) > 1) return false;
+                if (PendingToggleCount(switchId) > 0) return false;
+            }
+
             Log.Append(new ToggleSwitchCommand((ushort)switchId, State.Tick));
+            return true;
+        }
 
         // Toggles enqueued but not yet applied (the lever shows the COMMITTED route immediately;
         // the sim applies it at the next boundary — ux-flows S-02). Review round F1: a command
@@ -116,12 +135,17 @@ namespace CatMetro.Application.Session
                     {
                         _trainOccupantGenerations[t] = NextGeneration(
                             _trainOccupantGenerations[t]);
-                        int spawnNode = State.Trains[t].State == TrainState.OnEdge
-                            ? State.Graph.EdgeFrom[State.Trains[t].EdgeId]
-                            : State.Trains[t].NodeId;
-                        int spawnEdge = State.Trains[t].State == TrainState.OnEdge
+                        byte spawnedState = State.Trains[t].State;
+                        bool spawnedOnEdge = spawnedState == TrainState.OnEdge
+                            || spawnedState == TrainState.OnEdgeReverse;
+                        int spawnEdge = spawnedOnEdge
                             ? State.Trains[t].EdgeId
-                            : Simulation.SelectedOutgoingEdge(State, spawnNode);
+                            : Simulation.SelectedOutgoingEdge(State, State.Trains[t].NodeId);
+                        int spawnNode = spawnedState == TrainState.OnEdge
+                            ? State.Graph.EdgeFrom[spawnEdge]
+                            : spawnedState == TrainState.OnEdgeReverse
+                                ? State.Graph.EdgeTo[spawnEdge]
+                                : State.Trains[t].NodeId;
                         bool validSpawnEdge = spawnEdge >= 0
                             && spawnEdge < State.Graph.EdgeFrom.Length;
                         _trainOccupantSpawnEdges[t] = validSpawnEdge ? spawnEdge : -1;
@@ -133,7 +157,10 @@ namespace CatMetro.Application.Session
                             _trainDeliveryGenerations[t]);
                         int edge = PrevTrains[t].EdgeId;
                         _trainDeliveryNodes[t] = edge >= 0 && edge < State.Graph.EdgeTo.Length
-                            ? State.Graph.EdgeTo[edge] : PrevTrains[t].NodeId;
+                            ? PrevTrains[t].State == TrainState.OnEdgeReverse
+                                ? State.Graph.EdgeFrom[edge]
+                                : State.Graph.EdgeTo[edge]
+                            : PrevTrains[t].NodeId;
                     }
                 }
             }

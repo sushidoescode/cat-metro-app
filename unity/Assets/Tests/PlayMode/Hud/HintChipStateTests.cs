@@ -140,7 +140,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(ChipVisible(hint), Is.False,
                 "nothing decorates the halt surface — the CM-UX-02 veil owns it");
             Assert.That(hint.AttemptCount, Is.EqualTo(2),
-                "the Halted edge is not counted — Q-B/NEW-Q4 stays undecided");
+                "an unexpected halt is not a completed gameplay attempt");
 
             _state = "Playing";
             yield return null;

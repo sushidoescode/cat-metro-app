@@ -18,6 +18,12 @@ namespace CatMetro.Tests.Presentation
                 .Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0).ToArray();
         }
 
+        private static void AssertUniqueKey(string[] rows, string key)
+        {
+            Assert.That(rows.Count(row => row.StartsWith(key + ",")), Is.EqualTo(1),
+                key + " must occur exactly once in the append-only csv");
+        }
+
         [Test]
         public void DailyLiveRows_AreAppendOnlyAndBytePinned()
         {
@@ -35,6 +41,12 @@ namespace CatMetro.Tests.Presentation
                 "daily.practice,Clock changed — practice run"));
             Assert.That(rows[17], Is.EqualTo(
                 "home.daily.loading,Preparing today's Line…"));
+            AssertUniqueKey(rows, "home.daily.label");
+            AssertUniqueKey(rows, "results.daily.done");
+            AssertUniqueKey(rows, "home.daily.tally");
+            AssertUniqueKey(rows, "home.daily.unavailable");
+            AssertUniqueKey(rows, "daily.practice");
+            AssertUniqueKey(rows, "home.daily.loading");
         }
 
         [Test]

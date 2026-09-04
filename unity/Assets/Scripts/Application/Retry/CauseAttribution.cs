@@ -10,7 +10,8 @@ namespace CatMetro.Application.Retry
     //   TimeOut — no single causing node exists; the ANALYST-AUTHORED, UNRATIFIED rule (A-C3-2,
     //     Q-K, named in the PR): the node with the largest queue at the fail tick, ties broken
     //     by the lowest node id. Overruling Q-K costs the camera tree only.
-    // PlatformOverflow is unreachable while Q-J/NEW-Q4 are open — no rule is invented for it.
+    //   PlatformOverflow — the station whose simultaneous refused-cat occupancy exceeded its
+    //     capacity; authored station order breaks an impossible same-tick tie deterministically.
     public static class CauseAttribution
     {
         // Returns the causal node index, or -1 when no rule applies (the ambiguous variant:
@@ -40,6 +41,53 @@ namespace CatMetro.Application.Retry
                         best = n;
                     }
                 return best;
+            }
+
+            if (state.Outcome.Reason == FailReason.PlatformOverflow)
+            {
+                for (int station = 0; station < state.Graph.StationNode.Length; station++)
+                {
+                    int node = state.Graph.StationNode[station];
+                    int occupied = 0;
+                    for (int t = 0; t < state.Trains.Length; t++)
+                        if (state.Trains[t].State == TrainState.RejectedAtStation
+                            && state.Trains[t].NodeId == node)
+                            occupied++;
+                    if (occupied > state.Graph.StationCapacity[station]) return node;
+                }
+            }
+
+            if (state.Outcome.Reason == FailReason.Collision)
+            {
+                // Same-tick arrivals remain on their completed edges because collision wins
+                // before arrival resolution. Prefer that shared junction; otherwise an opposing
+                // edge collision frames the lower authored edge's destination endpoint.
+                var arrivals = new int[state.Graph.NodeCount];
+                for (int t = 0; t < state.Trains.Length; t++)
+                {
+                    var train = state.Trains[t];
+                    if ((train.State != TrainState.OnEdge
+                            && train.State != TrainState.OnEdgeReverse)
+                        || train.ProgressTicks < state.Graph.EdgeTravelTicks[train.EdgeId])
+                        continue;
+                    int node = train.State == TrainState.OnEdgeReverse
+                        ? state.Graph.EdgeFrom[train.EdgeId]
+                        : state.Graph.EdgeTo[train.EdgeId];
+                    if (++arrivals[node] >= 2) return node;
+                }
+
+                for (int edge = 0; edge < state.Graph.EdgeFrom.Length; edge++)
+                {
+                    bool forward = false, reverse = false;
+                    for (int t = 0; t < state.Trains.Length; t++)
+                    {
+                        var train = state.Trains[t];
+                        if (train.EdgeId != edge) continue;
+                        forward |= train.State == TrainState.OnEdge;
+                        reverse |= train.State == TrainState.OnEdgeReverse;
+                    }
+                    if (forward && reverse) return state.Graph.EdgeTo[edge];
+                }
             }
 
             return -1;

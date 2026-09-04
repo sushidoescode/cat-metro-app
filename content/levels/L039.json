@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 2,
+  "id": "L039",
+  "name": "Return Alternation",
+  "seed": 4039,
+  "meta": {
+    "band": "oneway",
+    "difficultyTarget": 0.77,
+    "mechanics": ["switch", "budget", "reversible"],
+    "newMechanic": null,
+    "teachingGoal": "Alternate away from and back onto the reversible route with exactly two flips",
+    "minActionWindowTicks": 3,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 7 },
+      { "id": "J1", "x": 0, "y": 4, "queueCapacity": 4 },
+      { "id": "RED", "x": -3, "y": 1 },
+      { "id": "BLUE", "x": 3, "y": 1 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 3 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 3 },
+      { "id": "E_SPUR", "from": "BLUE", "to": "J1", "travelTicks": 3, "reversible": true }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red", "blue"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 4 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 4 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_SPUR", "E_RED"], "initialRoute": 0 }
+  ],
+  "waves": [
+    { "tick": 2, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8 },
+    { "tick": 10, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8 },
+    { "tick": 18, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8 }
+  ],
+  "win": {
+    "deliveries": 3,
+    "timeLimitTicks": 32,
+    "perfectMaxSwitches": 2,
+    "stars": { "two": 280, "three": 470 }
+  },
+  "economy": { "baseTickets": 66, "perfectBonus": 28 }
+}

@@ -12,10 +12,9 @@ using CatMetro.Presentation.Strings;
 
 namespace CatMetro.Tests.PlayMode
 {
-    // CM-C3: fail/retry loop. Real Domain runs drive QueueOverflow and TimeOut; the
-    // PlatformOverflow limb uses a TEST-ONLY constructed presentation outcome (Q-J: no Domain
-    // run can reach it), asserting framing + string only — the [CI] grep bans any shipped
-    // construction of that reason in the render trees.
+    // CM-C3: fail/retry loop. Real Domain runs drive QueueOverflow and TimeOut. The focused
+    // PlatformOverflow test constructs the published outcome solely to isolate framing + copy;
+    // pure Domain coverage separately drives its live station-capacity producer.
     public sealed class FailureTests
     {
         private GameRoot _root;
@@ -87,11 +86,9 @@ namespace CatMetro.Tests.PlayMode
                 "A-C3-2 (Q-K): largest queue, ties to the lowest node id");
         }
 
-        // criterion 1's third limb + criterion 10's platform string (review S1): the TEST-ONLY
-        // constructed presentation-level outcome type lives HERE, under the test tree — it may
-        // never become a shipped parallel outcome type — and it drives the SHIPPED reason→key
-        // mapping (GameRoot.FailKey's else branch), so the day Q-J unpins the reason, the
-        // correct LOCKED string renders and this test proves the path.
+        // Criterion 1's third limb + criterion 10's platform string: this test-only wrapper
+        // isolates the shipped reason-to-key mapping and camera substitution. It is not a
+        // parallel production outcome type.
         private sealed class ConstructedPresentationOutcome
         {
             public CatMetro.Domain.FailReason Reason;
@@ -110,7 +107,7 @@ namespace CatMetro.Tests.PlayMode
             };
             var (key, token) = GameRoot.FailKey(constructed.Reason);
             Assert.That(key, Is.EqualTo("fail.platformoverflow"),
-                "the SHIPPED mapping routes the pinned reason to the platform string");
+                "the shipped mapping routes the live reason to the platform string");
             Assert.That(token, Is.EqualTo("{station}"));
             _root.CauseCam.FrameNode(constructed.CausalNodeId,
                 _root.View.NodeWorldPos(3), motionOff: true);
@@ -304,11 +301,13 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator WavePreview_NextTwoWaves_TopBand_NonInteractive_Updates()
         {
-            _root = GameRoot.Launch(); // L001: one authored wave
+            _root = GameRoot.Launch();
             yield return null;
 
-            // 1: shows the next wave's colour+count (L001 has one wave: red x2)
-            Assert.That(_root.Preview.ChipSummary, Is.EqualTo("red x2"));
+            // 1: shows the next authored wave's colour+count
+            var firstWave = _root.Session.Level.Dto.Waves.ToArray()[0];
+            Assert.That(_root.Preview.ChipSummary,
+                Is.EqualTo(firstWave.Color + " x" + firstWave.Count));
             Assert.That(_root.Preview.VisibleChipCount, Is.EqualTo(1));
             // 2: sits in the top 0-15% band
             Assert.That(_root.Preview.InTopBand(0), Is.True);

@@ -302,10 +302,14 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
+        // The 60-level corpus sweeps ~132k poses; the slot measured 226s with the licensed rig.
+        [Timeout(600000)]
         public void TrainPassengerAndPin_StayInsideBand_AtEveryTickAndEighthTickSample()
         {
             bool meshMutationProved = false;
+            bool verticalMeshMutationProved = false;
             bool skinMutationProved = false;
+            bool verticalSkinMutationProved = false;
             int inspectedSkinPoses = 0;
             int inspectedPlatformEndpoints = 0;
             foreach (string levelId in AuthoredLevelIds())
@@ -354,6 +358,17 @@ namespace CatMetro.Tests.PlayMode
                                 for (int tick = 0; tick < travel; tick++)
                                 {
                                     PutTrainOnEdge(root, edge, tick);
+                                    if (graph.EdgeTunnel[edge])
+                                    {
+                                        var hiddenTrain = root.View
+                                            .GetComponentsInChildren<BoardElementId>(true)
+                                            .Single(x => x.Kind == "train");
+                                        Assert.That(hiddenTrain.gameObject.activeInHierarchy,
+                                            Is.False,
+                                            $"{levelId}/tunnel edge {edge}/tick {tick} must "
+                                            + "hide its consist before safe-frame geometry is read");
+                                        continue;
+                                    }
                                     AssertSeatedTrainInside(camera, root, bakedSkin,
                                         ref inspectedSkinPoses,
                                         $"{levelId}/edge {edge}/tick {tick}+{eighth}/8"
@@ -418,26 +433,33 @@ namespace CatMetro.Tests.PlayMode
                         }
                     }
 
-                    if (!meshMutationProved)
+                    if (!meshMutationProved || !verticalMeshMutationProved)
                     {
                         Transform probe = TrainTransform(root);
                         Vector3 original = probe.position;
                         float frameWidth = 2f * camera.orthographicSize * camera.aspect;
+                        float frameHeight = 2f * camera.orthographicSize;
                         try
                         {
-                            probe.position += new Vector3(frameWidth, 0f, 0f);
-                            Assert.That(HorizontalGameplayViolation(camera, probe, bakedSkin,
+                            probe.position = original + new Vector3(frameWidth, 0f, 0f);
+                            Assert.That(GameplayBandViolation(camera, probe, bakedSkin,
                                     ref inspectedSkinPoses),
                                 Is.Not.Null,
-                                "a one-frame train escape must trip the mesh-vertex guard");
+                                "a horizontal train escape must trip the mesh-vertex guard");
                             meshMutationProved = true;
+                            probe.position = original + new Vector3(0f, frameHeight, 0f);
+                            Assert.That(GameplayBandViolation(camera, probe, bakedSkin,
+                                    ref inspectedSkinPoses),
+                                Is.Not.Null,
+                                "a vertical train escape must trip the mesh-vertex guard");
+                            verticalMeshMutationProved = true;
                         }
                         finally
                         {
                             probe.position = original;
                         }
                     }
-                    if (!skinMutationProved)
+                    if (!skinMutationProved || !verticalSkinMutationProved)
                     {
                         Transform probe = TrainTransform(root);
                         SkinnedMeshRenderer admittedSkin = probe
@@ -451,17 +473,25 @@ namespace CatMetro.Tests.PlayMode
                                 .Select(x => x.enabled).ToArray();
                             Vector3 original = probe.position;
                             float frameWidth = 2f * camera.orthographicSize * camera.aspect;
+                            float frameHeight = 2f * camera.orthographicSize;
                             try
                             {
                                 foreach (MeshRenderer renderer in staticRenderers)
                                     renderer.enabled = false;
-                                probe.position += new Vector3(frameWidth, 0f, 0f);
-                                string violation = HorizontalGameplayViolation(camera, probe,
+                                probe.position = original + new Vector3(frameWidth, 0f, 0f);
+                                string violation = GameplayBandViolation(camera, probe,
                                     bakedSkin, ref inspectedSkinPoses);
                                 Assert.That(violation, Does.Contain("skinned vertex"),
                                     "with every static renderer suppressed, only the admitted "
-                                    + "skin can prove the baked-skin guard's negative case");
+                                    + "skin can prove its horizontal negative case");
                                 skinMutationProved = true;
+                                probe.position = original + new Vector3(0f, frameHeight, 0f);
+                                violation = GameplayBandViolation(camera, probe,
+                                    bakedSkin, ref inspectedSkinPoses);
+                                Assert.That(violation, Does.Contain("skinned vertex"),
+                                    "with every static renderer suppressed, only the admitted "
+                                    + "skin can prove its vertical negative case");
+                                verticalSkinMutationProved = true;
                             }
                             finally
                             {
@@ -479,6 +509,7 @@ namespace CatMetro.Tests.PlayMode
                 }
             }
             Assert.That(meshMutationProved, Is.True);
+            Assert.That(verticalMeshMutationProved, Is.True);
             int admittedRigs = CatModelCatalog.LoadResources().AdmittedEntryCount;
             TestContext.Out.WriteLine("SAFE_FRAME_SKIN_READBACK admitted=" + admittedRigs
                 + " inspectedPoses=" + inspectedSkinPoses
@@ -493,6 +524,8 @@ namespace CatMetro.Tests.PlayMode
                     + "not only its hidden fallback MeshFilters");
                 Assert.That(skinMutationProved, Is.True,
                     "the admitted-skin predicate needs its own isolated negative control");
+                Assert.That(verticalSkinMutationProved, Is.True,
+                    "the admitted-skin predicate needs a vertical negative control");
             }
         }
 
@@ -693,9 +726,10 @@ namespace CatMetro.Tests.PlayMode
 
         private static void AssertViewInside(Camera camera, ToyTrainView view, Mesh bakedSkin,
             ref int inspectedSkinPoses, string label) =>
-            Assert.That(HorizontalGameplayViolation(camera, view.transform, bakedSkin,
+            Assert.That(GameplayBandViolation(camera, view.transform, bakedSkin,
                 ref inspectedSkinPoses), Is.Null,
-                label + $" left x={GameplayMinX:F3}..{GameplayMaxX:F3}");
+                label + $" left x={GameplayMinX:F3}..{GameplayMaxX:F3}, "
+                + $"y={GameplayMinY:F3}..{GameplayMaxY:F3}");
 
         private static void AssertTrainAndDepartureInside(Camera camera, GameRoot root,
             Mesh bakedSkin, ref int inspectedSkinPoses, string label)
@@ -770,10 +804,11 @@ namespace CatMetro.Tests.PlayMode
                 Vector3 tangent = paths.Path(outgoingEdge)
                     .TangentDistanceFraction(0f);
                 Vector3 side = new Vector3(tangent.y, -tangent.x, 0f);
-                // The four simultaneous source users occur on the straight L005/L011/L012/L013
-                // sources. A catch-up frame can expose two diagonal-source cats before one view
-                // update, so the hitch-proof global allocator must also cover diagonal lane one.
-                int maximumQueuePosition = Mathf.Abs(tangent.x) < 0.001f ? 3 : 1;
+                // The allocator is global across train slots and may assign every live slot a
+                // distinct lane before a delivery frees one. Exercise the complete imported
+                // digest bound, not only the largest queue the current wave timings happen to
+                // produce.
+                int maximumQueuePosition = Mathf.Max(0, graph.TrainsMax - 1);
 
                 PutTrainAtNode(root, sourceNode);
                 ToyTrainView view = TrainTransform(root).GetComponent<ToyTrainView>();
@@ -829,7 +864,7 @@ namespace CatMetro.Tests.PlayMode
                 Vector3 tangent = paths.Path(outgoingEdge)
                     .TangentDistanceFraction(0f);
                 Vector3 side = new Vector3(tangent.y, -tangent.x, 0f);
-                int maximumQueuePosition = Mathf.Abs(tangent.x) < 0.001f ? 3 : 1;
+                int maximumQueuePosition = Mathf.Max(0, graph.TrainsMax - 1);
                 for (int lane = 0; lane <= maximumQueuePosition; lane++)
                 {
                     view.SetSourcePlatformAnchor(nodePositions[sourceNode], side, lane);
@@ -938,9 +973,11 @@ namespace CatMetro.Tests.PlayMode
             root.View.GetComponentsInChildren<BoardElementId>(true)
                 .Single(x => x.Kind == "train" && x.gameObject.activeInHierarchy).transform;
 
-        private static string HorizontalGameplayViolation(Camera camera, Transform train,
+        private static string GameplayBandViolation(Camera camera, Transform train,
             Mesh bakedSkin, ref int inspectedSkinPoses)
         {
+            string worstViolation = null;
+            float worstOverflow = 0f;
             foreach (var filter in train.GetComponentsInChildren<MeshFilter>(true))
             {
                 Renderer renderer = filter.GetComponent<Renderer>();
@@ -951,10 +988,22 @@ namespace CatMetro.Tests.PlayMode
                 {
                     Vector3 viewport = camera.WorldToViewportPoint(
                         filter.transform.TransformPoint(vertices[i]));
-                    if (viewport.z <= 0f || viewport.x < GameplayMinX
-                        || viewport.x > GameplayMaxX)
-                        return $"{filter.name} vertex {i} projected to "
+                    if (viewport.z <= 0f)
+                        return $"{filter.name} vertex {i} projected behind camera at "
                             + $"({viewport.x:F4}, {viewport.y:F4}, {viewport.z:F2})";
+                    float horizontalOverflow = viewport.x < GameplayMinX
+                        ? GameplayMinX - viewport.x
+                        : viewport.x > GameplayMaxX ? viewport.x - GameplayMaxX : 0f;
+                    float verticalOverflow = viewport.y < GameplayMinY
+                        ? GameplayMinY - viewport.y
+                        : viewport.y > GameplayMaxY ? viewport.y - GameplayMaxY : 0f;
+                    float overflow = Mathf.Max(horizontalOverflow, verticalOverflow);
+                    if (overflow > worstOverflow)
+                    {
+                        worstOverflow = overflow;
+                        worstViolation = $"{filter.name} vertex {i} projected to "
+                            + $"({viewport.x:F4}, {viewport.y:F4}, {viewport.z:F2})";
+                    }
                 }
             }
             foreach (var skin in train.GetComponentsInChildren<SkinnedMeshRenderer>(true))
@@ -968,13 +1017,25 @@ namespace CatMetro.Tests.PlayMode
                 {
                     Vector3 viewport = camera.WorldToViewportPoint(
                         skin.transform.TransformPoint(vertices[i]));
-                    if (viewport.z <= 0f || viewport.x < GameplayMinX
-                        || viewport.x > GameplayMaxX)
-                        return $"{skin.name} skinned vertex {i} projected to "
+                    if (viewport.z <= 0f)
+                        return $"{skin.name} skinned vertex {i} projected behind camera at "
                             + $"({viewport.x:F4}, {viewport.y:F4}, {viewport.z:F2})";
+                    float horizontalOverflow = viewport.x < GameplayMinX
+                        ? GameplayMinX - viewport.x
+                        : viewport.x > GameplayMaxX ? viewport.x - GameplayMaxX : 0f;
+                    float verticalOverflow = viewport.y < GameplayMinY
+                        ? GameplayMinY - viewport.y
+                        : viewport.y > GameplayMaxY ? viewport.y - GameplayMaxY : 0f;
+                    float overflow = Mathf.Max(horizontalOverflow, verticalOverflow);
+                    if (overflow > worstOverflow)
+                    {
+                        worstOverflow = overflow;
+                        worstViolation = $"{skin.name} skinned vertex {i} projected to "
+                            + $"({viewport.x:F4}, {viewport.y:F4}, {viewport.z:F2})";
+                    }
                 }
             }
-            return null;
+            return worstViolation;
         }
 
         private static string[] AuthoredLevelIds()

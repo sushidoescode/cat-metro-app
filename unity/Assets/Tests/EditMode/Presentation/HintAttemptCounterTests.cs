@@ -60,7 +60,7 @@ namespace CatMetro.Tests.Presentation
             c.Observe("Playing");
             c.Observe("Halted");
             Assert.That(c.Count, Is.EqualTo(0),
-                "Halted edges are not counted — counting them would pre-decide Q-B/NEW-Q4");
+                "unexpected Halted edges are not completed gameplay attempts");
             // positive control: the same counter demonstrably CAN count
             c.Observe("FailureReview");
             Assert.That(c.Count, Is.EqualTo(1), "the fixture's counter is live, not inert");

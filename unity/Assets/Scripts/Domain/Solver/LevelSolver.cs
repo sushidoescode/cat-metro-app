@@ -63,11 +63,11 @@ namespace CatMetro.Domain.Solver
                 {
                     int t = end.Tick;
                     return new SolveResult(SolveVerdict.Solved, NotFoundReason.None, fixedLog,
-                        t - 1, fixedLog.Entries.Count, 0, 0, 0, "",
+                        t - 1, end.SwitchesUsed, 0, 0, 0, "",
                         ComputeProxy(graph, seed, fixedLog, t - 1));
                 }
                 return new SolveResult(SolveVerdict.NotFound, NotFoundReason.None, fixedLog,
-                    0, fixedLog.Entries.Count, 0, 0, 0, "", ZeroProxy(graph));
+                    0, end.SwitchesUsed, 0, 0, 0, "", ZeroProxy(graph));
             }
             catch (NotSupportedException e)
             {
@@ -94,11 +94,13 @@ namespace CatMetro.Domain.Solver
             string firstPin = "";
             int nodesExpanded = priorExpanded;
             int timeLimit = graph.TimeLimitTicks;
-            // SwitchesUsed is write-only during Simulation.Step, so a lower-command history that
-            // reaches the same remaining state dominates a higher-command one for every suffix.
-            // Apply that convergence only where pinned-prune diagnostics are statically zero;
-            // pin-bearing corpus boards retain their established full-digest counts verbatim.
-            bool commandCountDominance = exhaustiveIsProof && IsStaticallyPinFree(graph);
+            // Rejections is write-only. SwitchesUsed controls remaining inventory, but every
+            // search-generated log contains accepted commands only, so CommandCount equals
+            // SwitchesUsed. On equal behavioral state the existing lower-command replacement
+            // therefore retains the state with strictly more (or equal) budget; every suffix
+            // legal from the discarded state remains legal. Both counters can be normalized for
+            // exact BFS without erasing a win.
+            bool behavioralStateDominance = exhaustiveIsProof;
 
             // Layer L = distinct running states whose replay has taken exactly L steps. A state
             // is simulated once, while its minimum-command receipt histories travel as a compact
@@ -131,7 +133,7 @@ namespace CatMetro.Domain.Solver
                     // Transition depth -> depth+1: the (depth+1)th Step call has entry tick
                     // == depth, so its due commands carry entry.Tick == depth - 1. The very
                     // first step is uncommandable by Domain design.
-                    foreach (var combo in Combos(graph, depth - 1, depth == 0))
+                    foreach (var combo in Combos(graph, frontier.State, depth - 1, depth == 0))
                     {
                         // A high-route-count board may spend most of its time generating and
                         // digesting successor attempts rather than retaining states. Charge every
@@ -175,7 +177,7 @@ namespace CatMetro.Domain.Solver
                         }
                         else if (state.Outcome.Kind == OutcomeKind.Running)
                         {
-                            var key = DigestKey(state, commandCountDominance);
+                            var key = DigestKey(state, behavioralStateDominance);
                             if (!next.TryGetValue(key, out var incumbent))
                             {
                                 incumbent = new SearchFrontier(state, childLog);
@@ -340,7 +342,8 @@ namespace CatMetro.Domain.Solver
             {
                 var end = ReplayTo(graph, seed, candidate, replayTicks);
                 bool result = end.Outcome.Kind == OutcomeKind.Won
-                    && end.Tick - 1 == completionTicks;
+                    && end.Tick - 1 == completionTicks
+                    && end.SwitchesUsed == candidate.Entries.Count;
                 probeCache.Add(key, result);
                 return result;
             }
@@ -1258,7 +1261,8 @@ namespace CatMetro.Domain.Solver
         // Per switch, k = 0..routeCount-1 toggles at the given entry tick (k identical entries,
         // appended in switch-id order), cartesian across switches. On the uncommandable first
         // transition only the empty combo exists.
-        private static IEnumerable<ToggleSwitchCommand[]> Combos(LevelGraph graph, int entryTick, bool emptyOnly)
+        private static IEnumerable<ToggleSwitchCommand[]> Combos(
+            LevelGraph graph, SimulationState state, int entryTick, bool emptyOnly)
         {
             if (emptyOnly)
             {
@@ -1268,18 +1272,33 @@ namespace CatMetro.Domain.Solver
             int switches = graph.SwitchRoutes.Length;
             var counts = new int[switches];
             var k = new int[switches];
-            for (int s = 0; s < switches; s++) counts[s] = graph.SwitchRoutes[s].Length;
+            for (int s = 0; s < switches; s++)
+            {
+                if (SwitchState.Cooldown(state.SwitchRoutes[s]) > 0
+                    && !state.HasFreshAutomaticCooldown(s))
+                    counts[s] = 1; // k=0 only: every press would be ignored this tick
+                else if (graph.SwitchCooldownTicks[s] > 0)
+                    counts[s] = Math.Min(2, graph.SwitchRoutes[s].Length); // 0 or 1 accepted
+                else
+                    counts[s] = graph.SwitchRoutes[s].Length;
+            }
+            int remaining = graph.PerfectMaxSwitches == FlipBudget.Unbudgeted
+                ? int.MaxValue
+                : Math.Max(0, graph.PerfectMaxSwitches - state.SwitchesUsed);
 
             while (true)
             {
                 int total = 0;
                 for (int s = 0; s < switches; s++) total += k[s];
-                var combo = new ToggleSwitchCommand[total];
-                int idx = 0;
-                for (int s = 0; s < switches; s++)
-                    for (int i = 0; i < k[s]; i++)
-                        combo[idx++] = new ToggleSwitchCommand((ushort)s, entryTick);
-                yield return combo;
+                if (total <= remaining)
+                {
+                    var combo = new ToggleSwitchCommand[total];
+                    int idx = 0;
+                    for (int s = 0; s < switches; s++)
+                        for (int i = 0; i < k[s]; i++)
+                            combo[idx++] = new ToggleSwitchCommand((ushort)s, entryTick);
+                    yield return combo;
+                }
 
                 int carry = 1;
                 for (int s = 0; s < switches && carry > 0; s++)
@@ -1331,36 +1350,17 @@ namespace CatMetro.Domain.Solver
             return d;
         }
 
-        private static string DigestKey(SimulationState state, bool omitSwitchesUsed = false)
+        private static string DigestKey(SimulationState state, bool omitNonBehavioralCounters = false)
         {
             var digest = Digest(state);
-            if (omitSwitchesUsed)
+            if (omitNonBehavioralCounters)
             {
+                const int rejectionsOffset = 4 * 4; // fifth int in WriteDigest's frozen layout
                 const int switchesUsedOffset = 6 * 4; // seventh int in WriteDigest's frozen layout
+                Array.Clear(digest, rejectionsOffset, 4);
                 Array.Clear(digest, switchesUsedOffset, 4);
             }
             return Convert.ToBase64String(digest);
-        }
-
-        private static bool IsStaticallyPinFree(LevelGraph graph)
-        {
-            for (int w = 0; w < graph.WaveColor.Length; w++)
-            {
-                byte color = graph.WaveColor[w];
-                for (int station = 0; station < graph.StationAccepts.Length; station++)
-                {
-                    bool accepts = false;
-                    var colors = graph.StationAccepts[station];
-                    for (int i = 0; i < colors.Length; i++)
-                    {
-                        if (colors[i] != color) continue;
-                        accepts = true;
-                        break;
-                    }
-                    if (!accepts) return false;
-                }
-            }
-            return true;
         }
 
         // Difficulty proxy per the handoff rulings — populated only for a Solved verdict.
@@ -1390,7 +1390,13 @@ namespace CatMetro.Domain.Solver
                     {
                         foreach (var tr in state.Trains)
                         {
-                            if (tr.State == TrainState.OnEdge && graph.EdgeTo[tr.EdgeId] == node)
+                            bool forwardInbound = tr.State == TrainState.OnEdge
+                                && graph.EdgeTo[tr.EdgeId] == node;
+                            bool reverseInbound = tr.State == TrainState.OnEdgeReverse
+                                && graph.EdgeFrom[tr.EdgeId] == node;
+                            bool expressHeldAtSwitch = tr.State == TrainState.ExpressHeldAtSource
+                                && tr.NodeId == node;
+                            if (forwardInbound || reverseInbound || expressHeldAtSwitch)
                             {
                                 active = true;
                                 break;
@@ -1401,7 +1407,7 @@ namespace CatMetro.Domain.Solver
                 }
                 if (pending > maxPending) maxPending = pending;
 
-                // Axis H (queue term only, PARTIAL(Q-J)): find the peak-load tick and the
+                // Axis H (queue term only): find the peak-load tick and the
                 // minimum capacity slack at it; earliest peak wins ties.
                 int totalQueued = 0;
                 for (int n = 0; n < graph.NodeCount; n++) totalQueued += state.NodeQueueCounts[n];
@@ -1446,7 +1452,9 @@ namespace CatMetro.Domain.Solver
         {
             try
             {
-                return ReplayHasher.RunToEnd(graph, seed, log).Outcome.Kind == OutcomeKind.Won;
+                var end = ReplayHasher.RunToEnd(graph, seed, log);
+                return end.Outcome.Kind == OutcomeKind.Won
+                    && end.SwitchesUsed == log.Entries.Count;
             }
             catch (NotSupportedException)
             {

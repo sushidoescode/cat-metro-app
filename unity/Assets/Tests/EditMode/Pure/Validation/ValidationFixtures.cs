@@ -82,6 +82,7 @@ namespace CatMetro.Tests.Validation
                 o["board"]["edges"] = new JArray(
                     Edge("E1", "SRC", "J1", 4), Edge("E2", "J1", "RED", 5), Edge("E3", "J1", "RED", 9));
                 o["stations"] = new JArray(Station("RED", 6, "red"));
+                o["switches"][0]["routes"] = new JArray("E2", "E3");
                 o["switches"][0]["initialRoute"] = 0;
                 o["waves"][0]["count"] = 1;
                 o["waves"][0]["tick"] = 0;
@@ -89,11 +90,11 @@ namespace CatMetro.Tests.Validation
                 o["win"]["timeLimitTicks"] = 40;
             });
 
-        // Every line pins: both routes end at blue-only stations, one red cat.
+        // Every route refuses: both routes end at blue-only stations, one red cat.
         public static byte[] AllPinnedLevel() =>
             Level(o =>
             {
-                o["stations"] = new JArray(Station("RED", 6, "blue"), Station("BLU", 6, "blue"));
+                o["stations"] = new JArray(Station("RED", 6, "blue"), Station("BLUE", 6, "blue"));
                 o["waves"][0]["count"] = 1;
                 o["win"]["deliveries"] = 1;
             });
@@ -123,23 +124,14 @@ namespace CatMetro.Tests.Validation
                 o["win"]["timeLimitTicks"] = 40;
             });
 
-        // Brittle: init points at RED; a red then a blue cat arrive at J1 two ticks apart, so the
-        // toggle window is ~2 ticks < minActionWindowTicks 6. Band moved off onboarding so the
-        // 12-16 limb does not also fire.
-        public static byte[] BrittleLevel() =>
-            Level(o =>
-            {
-                o["meta"]["band"] = "alternation";
-                o["meta"]["minActionWindowTicks"] = 6;
-                o["meta"]["mechanics"] = new JArray("switch", "queue");
-                o["meta"]["newMechanic"] = null;
-                o["sources"][0]["allowedColors"] = new JArray("red", "blue");
-                o["switches"][0]["initialRoute"] = 0;
-                o["waves"] = new JArray(
-                    Wave(0, "red", 1, 1), Wave(2, "blue", 1, 1));
-                o["win"]["deliveries"] = 2;
-                o["win"]["timeLimitTicks"] = 60;
-            });
+        // A copy of the two-deadline loop fixture with a deliberately larger authored action
+        // window than either physical decision deadline can provide.
+        public static byte[] BrittleLevel()
+        {
+            var json = JObject.Parse(Encoding.UTF8.GetString(JitterLossLevel()));
+            json["meta"]["minActionWindowTicks"] = 8;
+            return Encoding.UTF8.GetBytes(json.ToString());
+        }
 
         // Review F1: a board whose jitter LOSSES are timeouts, never pins — red-only, so no
         // wrong-colour arrival exists. Direct path SRC->J1->J2->RED takes 8 ticks; either loop

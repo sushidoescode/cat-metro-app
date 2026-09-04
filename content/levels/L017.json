@@ -1,181 +1,52 @@
 {
   "schemaVersion": 2,
   "id": "L017",
-  "name": "Tight Headways",
+  "name": "Two Platforms Meet",
   "seed": 1017,
   "meta": {
-    "band": "queue-reading",
-    "difficultyTarget": 0.36,
-    "mechanics": [
-      "switch",
-      "queue"
-    ],
-    "newMechanic": null,
-    "teachingGoal": "Waves arrive close together -- watch the preview strip and flip right on cue",
-    "minActionWindowTicks": 12,
+    "band": "two-source",
+    "difficultyTarget": 0.33,
+    "mechanics": ["switch", "budget", "second-source"],
+    "newMechanic": "second-source",
+    "teachingGoal": "Watch both source platforms feed the same lever and reserve one change for each arrival",
+    "minActionWindowTicks": 16,
     "authoredBy": "llm+validator"
   },
   "board": {
     "nodes": [
-      {
-        "id": "SRC",
-        "x": 3,
-        "y": 9,
-        "queueCapacity": 3
-      },
-      {
-        "id": "GATE",
-        "x": 3,
-        "y": 7
-      },
-      {
-        "id": "HOLD",
-        "x": 5,
-        "y": 7,
-        "queueCapacity": 1
-      },
-      {
-        "id": "J1",
-        "x": 3,
-        "y": 5
-      },
-      {
-        "id": "RED",
-        "x": 1,
-        "y": 1
-      },
-      {
-        "id": "BLU",
-        "x": 5,
-        "y": 1
-      }
+      { "id": "SRC_A", "x": 1, "y": 10 },
+      { "id": "SRC_B", "x": 7, "y": 10 },
+      { "id": "J1", "x": 4, "y": 6 },
+      { "id": "RED", "x": 1, "y": 1 },
+      { "id": "BLUE", "x": 7, "y": 1 }
     ],
     "edges": [
-      {
-        "id": "E1",
-        "from": "SRC",
-        "to": "GATE",
-        "travelTicks": 6
-      },
-      {
-        "id": "E2",
-        "from": "GATE",
-        "to": "J1",
-        "travelTicks": 6
-      },
-      {
-        "id": "E3",
-        "from": "GATE",
-        "to": "HOLD",
-        "travelTicks": 20
-      },
-      {
-        "id": "E4",
-        "from": "J1",
-        "to": "RED",
-        "travelTicks": 8
-      },
-      {
-        "id": "E5",
-        "from": "J1",
-        "to": "BLU",
-        "travelTicks": 8
-      }
+      { "id": "E_A", "from": "SRC_A", "to": "J1", "travelTicks": 10 },
+      { "id": "E_B", "from": "SRC_B", "to": "J1", "travelTicks": 10 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 10 },
+      { "id": "E_BLUE", "from": "J1", "to": "BLUE", "travelTicks": 10 }
     ]
   },
   "sources": [
-    {
-      "nodeId": "SRC",
-      "allowedColors": [
-        "red",
-        "blue"
-      ]
-    }
+    { "nodeId": "SRC_A", "allowedColors": ["red"] },
+    { "nodeId": "SRC_B", "allowedColors": ["blue"] }
   ],
   "stations": [
-    {
-      "nodeId": "RED",
-      "accepts": [
-        "red"
-      ],
-      "capacity": 8
-    },
-    {
-      "nodeId": "BLU",
-      "accepts": [
-        "blue"
-      ],
-      "capacity": 8
-    }
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 8 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 8 }
   ],
   "switches": [
-    {
-      "id": "S1",
-      "nodeId": "GATE",
-      "routes": [
-        "E2",
-        "E3"
-      ],
-      "initialRoute": 0
-    },
-    {
-      "id": "S2",
-      "nodeId": "J1",
-      "routes": [
-        "E4",
-        "E5"
-      ],
-      "initialRoute": 0
-    }
+    { "id": "S1", "nodeId": "J1", "routes": ["E_RED", "E_BLUE"], "initialRoute": 1 }
   ],
   "waves": [
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 24,
-      "sourceNode": "SRC",
-      "color": "blue",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 40,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 56,
-      "sourceNode": "SRC",
-      "color": "blue",
-      "count": 2,
-      "spacingTicks": 12
-    },
-    {
-      "tick": 88,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 2,
-      "spacingTicks": 12
-    }
+    { "tick": 8, "sourceNode": "SRC_A", "color": "red", "count": 1, "spacingTicks": 12 },
+    { "tick": 48, "sourceNode": "SRC_B", "color": "blue", "count": 1, "spacingTicks": 12 }
   ],
   "win": {
-    "deliveries": 7,
-    "timeLimitTicks": 170,
-    "perfectMaxSwitches": 4,
-    "stars": {
-      "two": 650,
-      "three": 900
-    }
+    "deliveries": 2,
+    "timeLimitTicks": 300,
+    "perfectMaxSwitches": 2,
+    "stars": { "two": 730, "three": 930 }
   },
-  "economy": {
-    "baseTickets": 34,
-    "perfectBonus": 20
-  }
+  "economy": { "baseTickets": 36, "perfectBonus": 18 }
 }

@@ -8,21 +8,24 @@ namespace CatMetro.Tests.Domain
     public sealed class FlipBudgetTests
     {
         [Test]
-        public void Evaluate_AssignsTheThreeRatingBandsAtTheirBoundaries()
+        public void Evaluate_BudgetedStatusUsesTheBindingCeiling()
         {
             Assert.That(FlipBudget.Evaluate(3, 0).Rating, Is.EqualTo(FlipRating.Perfect));
             Assert.That(FlipBudget.Evaluate(3, 3).Rating, Is.EqualTo(FlipRating.Perfect));
-            Assert.That(FlipBudget.Evaluate(3, 4).Rating, Is.EqualTo(FlipRating.Efficient));
-            Assert.That(FlipBudget.Evaluate(3, 6).Rating, Is.EqualTo(FlipRating.Efficient));
+            Assert.That(FlipBudget.Evaluate(3, 4).Rating, Is.EqualTo(FlipRating.Solved),
+                "over-cap values are invalid snapshots, not a retired soft rating band");
             Assert.That(FlipBudget.Evaluate(3, 7).Rating, Is.EqualTo(FlipRating.Solved));
+            Assert.That(FlipBudget.Evaluate(3, 0).TwoStarMaxSwitches, Is.EqualTo(3));
         }
 
         [Test]
-        public void Evaluate_ParZeroRetainsARealTwoStarBand()
+        public void CanAccept_ZeroBudgetRejectsTheFirstFlip()
         {
             Assert.That(FlipBudget.Evaluate(0, 0).RatingStars, Is.EqualTo(3));
-            Assert.That(FlipBudget.Evaluate(0, 1).RatingStars, Is.EqualTo(2));
-            Assert.That(FlipBudget.Evaluate(0, 2).RatingStars, Is.EqualTo(1));
+            Assert.That(FlipBudget.CanAccept(0, 0), Is.False);
+            Assert.That(FlipBudget.CanAccept(1, 0), Is.True);
+            Assert.That(FlipBudget.CanAccept(1, 1), Is.False);
+            Assert.That(FlipBudget.CanAccept(FlipBudget.Unbudgeted, 200), Is.True);
         }
 
         [Test]
@@ -44,7 +47,8 @@ namespace CatMetro.Tests.Domain
 
             Assert.That(status.PerfectMaxSwitches, Is.EqualTo(4));
             Assert.That(status.Used, Is.EqualTo(7));
-            Assert.That(status.TwoStarMaxSwitches, Is.EqualTo(8));
+            Assert.That(status.TwoStarMaxSwitches, Is.EqualTo(4),
+                "compatibility field aliases the hard ceiling; no soft band remains");
             Assert.That(status.RemainingToPerfect, Is.EqualTo(-3));
             Assert.That(status.IsOverPerfect, Is.True);
         }
@@ -90,7 +94,7 @@ namespace CatMetro.Tests.Domain
         }
 
         [Test]
-        public void GoingOverBudgetChangesRatingButDoesNotChangeAWin()
+        public void ReplayCommandsBeyondTheHardCapAreIgnored()
         {
             var log = new CommandLog();
             log.Append(new ToggleSwitchCommand(0, 12));
@@ -101,8 +105,10 @@ namespace CatMetro.Tests.Domain
                 WithPar(Fixtures.L001Shape(), 1), Fixtures.L001Seed, log, 60);
 
             Assert.That(end.Outcome.Kind, Is.EqualTo(OutcomeKind.Won));
-            Assert.That(end.FlipStatus.Used, Is.EqualTo(3));
-            Assert.That(end.FlipStatus.Rating, Is.EqualTo(FlipRating.Solved));
+            Assert.That(end.SwitchesUsed, Is.EqualTo(1));
+            Assert.That(end.FlipStatus.Used, Is.EqualTo(1));
+            Assert.That(end.FlipStatus.Rating, Is.EqualTo(FlipRating.Perfect));
+            Assert.That(end.FlipStatus.IsOverPerfect, Is.False);
         }
 
         private static LevelGraph WithPar(LevelGraph graph, int par) => new LevelGraph(

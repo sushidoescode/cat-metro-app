@@ -1,77 +1,74 @@
-# Flip mastery rating
+# Flip budget
 
-**Status:** implemented. This is a soft mastery rating, not a failure condition and not the
-campaign's unfinished score-star award system.
+**Status:** implemented. `win.perfectMaxSwitches` is a binding cap on accepted player flips.
 
-## Decision
+## Runtime rule
 
-`win.perfectMaxSwitches` is par. Going over par never changes `SimOutcome`: a solved board stays
-solved. The pure Domain evaluator maps the applied or committed flip count to:
+When `perfectMaxSwitches >= 0`, the simulation accepts at most that many switch commands for the
+entire run. Once the count is exhausted, further commands are ignored: they do not change a route,
+do not increment `SwitchesUsed`, and do not change the outcome. A cap of zero therefore makes every
+switch read-only. When the optional field is absent, the importer uses `FlipBudget.Unbudgeted`
+(`-1`) and flips remain unlimited.
 
-| `FlipRating` | Condition | Display pips |
+`GameSession.EnqueueToggle` enforces the same rule before appending to the command log. It returns
+`true` only for a tap admitted into the authoritative replay. A budget-rejected tap therefore does
+not appear as pending UI state and does not change `GameSession.FlipStatus`. Direct or historical
+replay logs may still contain excess commands; `Simulation.Step` is the final authority and ignores
+them deterministically.
+
+Exhausting the cap is not a new failure outcome. Trains continue moving and the run may still win
+or fail under the existing rules; only additional player route changes are unavailable.
+
+## Cooldown interaction
+
+Budget and cooldown count accepted commands, not attempted taps. An accepted flip with authored
+`cooldownTicks: N` locks that switch for exactly the next `N` processing ticks. A press while it is
+locked is ignored by the simulation and does not consume budget. `GameSession` rejects the same tap
+before logging it, including a second tap while an earlier command for that switch is pending.
+
+The current route occupies the low two bits of the existing `SwitchRoutes` byte and remaining
+cooldown occupies its upper six bits. `SwitchState.Route`, `SwitchState.Cooldown`, and
+`SwitchState.Pack` are the only decoding/encoding surface. `Pack(route, 0)` preserves every legacy
+route byte, so no-cooldown replay digests keep their previous layout and values.
+
+## Compatibility HUD surface
+
+The existing `FlipBudgetStatus` and `FlipRating` shapes remain source-compatible, but the former
+soft middle band is retired:
+
+| Runtime snapshot | `Rating` | Display pips |
 |---|---:|---:|
-| `Perfect` | `used <= par` | 3 |
-| `Efficient` | `used <= par + max(1, par)` | 2 |
-| `Solved` | above the efficient ceiling | 1 |
-| `Ungated` | no par is authored | 0; hide the mastery target |
+| Budgeted and `used <= cap` | `Perfect` | 3 |
+| Fabricated budgeted snapshot with `used > cap` | `Solved` | 1 |
+| Unbudgeted | `Ungated` | 0; hide the cap |
 
-The `max(1, par)` term preserves a real middle band for a future par-zero board. An absent optional
-`perfectMaxSwitches` imports as `FlipBudget.Unbudgeted` (`-1`).
+`Efficient` remains an enum member only for API compatibility and is not emitted by
+`FlipBudget.Evaluate`. `TwoStarMaxSwitches` likewise remains a public member but aliases the hard
+cap. In valid budgeted runtime state, `IsOverPerfect` is always false because excess taps cannot be
+accepted.
 
-This is intentionally softer than a hard inventory wall. The engagement research recommends
-agency, legible near-misses, and low punishment for cosy play. A player may finish freely, then
-choose to replay a route more efficiently. The hard-wall alternative remains small because
-`FlipBudgetStatus.IsOverPerfect` is already the exact predicate it would need.
+During a running game, `GameSession.FlipStatus` uses the accepted log count so an admitted tap is
+visible immediately, before its next-boundary application. Once the outcome is terminal it uses
+`State.SwitchesUsed`. `SimulationState.FlipStatus` always reflects applied flips.
 
-## Authored-par gate
+## Solver and content proof
 
-Loading a par is not proof that it is fair. `PerfectMaxSwitchesCorpusTests` enumerates every
-`content/levels/L*.json`, runs the real `LevelImporter` and `LevelSolver`, and requires a winning
-trace whose `SwitchesUsed` is at or below the authored par. It is a blocking NUnit test, not a
-report-only check.
+The solver generates only commands the current state can accept. It prunes toggle successors when
+the hard cap is exhausted, waits through cooldown, and verifies that every command in a returned
+optimal log was applied. `EvaluateLog` preserves an externally supplied attempted log but reports
+the simulation's accepted `SwitchesUsed` count.
 
-All 17 current levels pass that proof. If a future level fails, do not weaken the assertion or ship
-an impossible target: remove its optional `perfectMaxSwitches` until the content is corrected. The
-importer will then expose that level as `Ungated`.
-
-## Read-only HUD surface
-
-The HUD gets one read-only entry point: `GameSession.FlipStatus`. It returns the immutable
-`FlipBudgetStatus` value:
-
-| Member | Meaning |
-|---|---|
-| `PerfectMaxSwitches` | Authored par, or `-1` |
-| `Used` | Count represented by this snapshot |
-| `TwoStarMaxSwitches` | Inclusive efficient-band ceiling |
-| `Rating` | `Ungated`, `Solved`, `Efficient`, or `Perfect` |
-| `IsBudgeted` | Whether the HUD should show a target |
-| `RemainingToPerfect` | `par - used`; negative means flips over par |
-| `IsOverPerfect` | True only after a real par is exceeded |
-| `RatingStars` | Numeric 0/1/2/3 display value; not a persisted campaign-star award |
-
-During a running game, `GameSession.FlipStatus` uses `Log.Entries.Count`, so a committed tap appears
-immediately instead of lagging until the next simulation boundary. Once the outcome is terminal,
-it uses `State.SwitchesUsed`, so a late command that can never be applied cannot alter the result.
-Code holding only a raw Domain state can read the corresponding `SimulationState.FlipStatus`,
-which always reflects applied flips.
-
-`WavePreviewStrip.cs` is deliberately untouched.
+Authored caps still require an artifact proof: import the actual level, solve it with the runtime
+rules, replay the returned log, and require both a win and `SwitchesUsed <= perfectMaxSwitches`.
+Merely loading a numeric cap does not prove the board is fair.
 
 ## Determinism and scope
 
-The evaluator is integer-only, deterministic, and has no `UnityEngine` dependency. Par lives on
-the immutable `LevelGraph`, outside the canonical state digest. Rating is computed on read from the
-existing `SwitchesUsed` counter, so no digest field or command format changed. A test runs the same
-winning replay with and without par and compares every digest byte.
+The cap and cooldown rules are integer-only and have no `UnityEngine` dependency. The command
+format, `TrainSlot` width, and switch-state byte width are unchanged. A later ladder rule adds a
+two-byte transient digest mask only when stray waves and nonzero cooldown coexist; graphs without
+that interaction keep their canonical digest width. The committed no-cooldown happy-path replay
+retains its previous hash.
 
-This change does not implement score, persistence, ticket bonuses, results-screen UI, or the
-schema's `win.stars.two` / `win.stars.three` thresholds. Those fields remain a separate unfinished
-score system.
-
-## If the human later chooses a hard wall
-
-The rating evaluator does not need replacement. After each applied toggle, the simulation could
-consult `state.FlipStatus.IsOverPerfect` and produce a new out-of-flips outcome. That decision
-would still require a new `FailReason`, failure UI/copy, solver pruning, and renewed replay/golden
-verification. None of that is implemented here.
+This does not implement campaign score, persistence, ticket bonuses, result-screen UI, or the
+schema's `win.stars.two` / `win.stars.three` thresholds.

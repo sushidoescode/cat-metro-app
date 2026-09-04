@@ -235,6 +235,30 @@ namespace CatMetro.Content.Validation
         }
     }
 
+    internal static class AuthoredEdgeTraversal
+    {
+        public static bool ReverseAllowed(EdgeDto edge) => !edge.OneWay || edge.Reversible;
+
+        public static bool TryTraverseFrom(EdgeDto edge, string nodeId, out string destination)
+        {
+            if (edge.From == nodeId)
+            {
+                destination = edge.To;
+                return true;
+            }
+            if (edge.To == nodeId && ReverseAllowed(edge))
+            {
+                destination = edge.From;
+                return true;
+            }
+            destination = null;
+            return false;
+        }
+
+        public static bool CanEnter(EdgeDto edge, string nodeId) =>
+            edge.To == nodeId || (edge.From == nodeId && ReverseAllowed(edge));
+    }
+
     public static class StaticAnalysisStage
     {
         // Stage 2 (A-C5-8): colour-compatible reachability, orphan switches, junction spacing
@@ -265,17 +289,7 @@ namespace CatMetro.Content.Validation
                 foreach (var source in dto.Sources.ToArray())
                 {
                     if (!SourceStationColorCompatibility.Matches(source, station)) continue;
-                    var seen = new HashSet<string> { source.NodeId };
-                    var queue = new Queue<string>();
-                    queue.Enqueue(source.NodeId);
-                    while (queue.Count > 0)
-                    {
-                        var at = queue.Dequeue();
-                        if (at == station.NodeId) { reachable = true; break; }
-                        foreach (var e in edges)
-                            if (e.From == at && seen.Add(e.To))
-                                queue.Enqueue(e.To);
-                    }
+                    reachable = IsReachable(source.NodeId, station.NodeId, edges);
                     if (reachable) break;
                 }
                 if (!reachable)
@@ -286,13 +300,29 @@ namespace CatMetro.Content.Validation
             // Orphan switches.
             foreach (var sw in dto.Switches.ToArray())
             {
-                if (!edges.Any(e => e.To == sw.NodeId))
+                if (!edges.Any(e => AuthoredEdgeTraversal.CanEnter(e, sw.NodeId)))
                     fails.Add("orphan switch " + sw.Id + ": node " + sw.NodeId + " has no inbound edge");
                 foreach (var route in sw.Routes.ToArray())
-                    if (!edges.Any(e => e.Id == route && e.From == sw.NodeId))
+                    if (!edges.Any(e => e.Id == route
+                        && AuthoredEdgeTraversal.TryTraverseFrom(e, sw.NodeId, out _)))
                         fails.Add("orphan switch " + sw.Id + ": route " + route
-                            + " is not an outbound edge of " + sw.NodeId);
+                            + " cannot be traversed from " + sw.NodeId);
             }
+
+            // A holding edge must actually return: after traversing its authored forward
+            // direction, the same directed graph must provide a path back to its start. A
+            // reverse-enabled hold edge itself is a valid two-way return path.
+            foreach (var edge in edges.Where(e => e.Hold))
+                if (!IsReachable(edge.To, edge.From, edges))
+                    fails.Add("hold edge " + edge.Id + " does not participate in a directed cycle");
+
+            // Strays are deliberate non-goal traffic. Only deliverable waves contribute to the
+            // authored win supply, and that supply must be exact so neither shortages nor
+            // surplus goal cats can hide an incorrect deliveries target.
+            int deliverableSupply = dto.Waves.ToArray().Where(w => !w.Stray).Sum(w => w.Count);
+            if (deliverableSupply != dto.Win.Deliveries)
+                fails.Add("deliverable wave supply " + deliverableSupply
+                    + " != win.deliveries " + dto.Win.Deliveries + " (stray waves excluded)");
 
             // Junction spacing >= 1.2 (CM-R07.6): Euclidean over authored coordinates.
             var switches = dto.Switches.ToArray();
@@ -328,6 +358,23 @@ namespace CatMetro.Content.Validation
             if (warns.Count > 0)
                 return StageVerdict.Warn(Stage.StaticAnalysis, string.Join("; ", warns));
             return StageVerdict.Pass(Stage.StaticAnalysis, "static analysis OK");
+        }
+
+        private static bool IsReachable(string from, string to, EdgeDto[] edges)
+        {
+            var seen = new HashSet<string> { from };
+            var queue = new Queue<string>();
+            queue.Enqueue(from);
+            while (queue.Count > 0)
+            {
+                var at = queue.Dequeue();
+                if (at == to) return true;
+                foreach (var edge in edges)
+                    if (AuthoredEdgeTraversal.TryTraverseFrom(edge, at, out string destination)
+                        && seen.Add(destination))
+                        queue.Enqueue(destination);
+            }
+            return false;
         }
     }
 
@@ -378,10 +425,11 @@ namespace CatMetro.Content.Validation
                 if (at == null) return dist;
                 done.Add(at);
                 foreach (var e in edges)
-                    if (e.From == at)
+                    if (AuthoredEdgeTraversal.TryTraverseFrom(e, at, out string destination))
                     {
                         int nd = atDist + e.TravelTicks;
-                        if (!dist.TryGetValue(e.To, out int old) || nd < old) dist[e.To] = nd;
+                        if (!dist.TryGetValue(destination, out int old) || nd < old)
+                            dist[destination] = nd;
                     }
             }
         }

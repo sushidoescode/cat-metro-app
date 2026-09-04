@@ -129,13 +129,8 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator RealWin_AtEndOfBand_WrapsToL001_ThroughTheRealSeam()
         {
-            // This PlayMode integration test carries the identical "end of band wraps to L001"
-            // assumption LoadNextBandTests.cs pins at the unit level, just exercised through the
-            // real seam. The wrap TARGET is unchanged (still L001) — only the synthetic fixture
-            // id driving "current = last level in the band" moves to match the band as the
-            // campaign grows: L005, then L017, now L019 (LEVEL-VARIETY added L018/L019, so
-            // L017 is no longer the end and would prove nothing about the wrap here).
-            _root = GameRoot.LaunchWith(Import(WinnableFixtureJson("L019")));
+            // Exercise the final-level wrap through the real scene-loading seam.
+            _root = GameRoot.LaunchWith(Import(WinnableFixtureJson("L060")));
             yield return null;
             _root.Session.AdvanceMs(200 * CatMetro.Application.Session.TickInterpolator.TICK_MS);
             yield return null;

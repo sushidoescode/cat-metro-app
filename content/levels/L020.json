@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 2,
+  "id": "L020",
+  "name": "Twin Source Finale",
+  "seed": 1020,
+  "meta": {
+    "band": "two-source",
+    "difficultyTarget": 0.40,
+    "mechanics": ["switch", "budget", "second-source"],
+    "newMechanic": null,
+    "teachingGoal": "Read both sources around a shared return loop, then spend one change per destination",
+    "minActionWindowTicks": 14,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC_A", "x": 1, "y": 11 },
+      { "id": "SRC_B", "x": 11, "y": 12 },
+      { "id": "J1", "x": 5, "y": 6 },
+      { "id": "LOOP_A", "x": 10, "y": 2 },
+      { "id": "LOOP_B", "x": 9, "y": 8 },
+      { "id": "RED", "x": 0, "y": 1 },
+      { "id": "GREEN", "x": 5, "y": 0 }
+    ],
+    "edges": [
+      { "id": "E_A", "from": "SRC_A", "to": "J1", "travelTicks": 10 },
+      { "id": "E_B", "from": "SRC_B", "to": "J1", "travelTicks": 8 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 12 },
+      { "id": "E_GREEN", "from": "J1", "to": "GREEN", "travelTicks": 10 },
+      { "id": "E_LOOP_IN", "from": "J1", "to": "LOOP_A", "travelTicks": 8 },
+      { "id": "E_LOOP_MID", "from": "LOOP_A", "to": "LOOP_B", "travelTicks": 8 },
+      { "id": "E_LOOP_RETURN", "from": "LOOP_B", "to": "J1", "travelTicks": 8 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC_A", "allowedColors": ["red"] },
+    { "nodeId": "SRC_B", "allowedColors": ["green"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 8 },
+    { "nodeId": "GREEN", "accepts": ["green"], "capacity": 8 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_RED", "E_GREEN", "E_LOOP_IN"], "initialRoute": 2 }
+  ],
+  "waves": [
+    { "tick": 8, "sourceNode": "SRC_A", "color": "red", "count": 1, "spacingTicks": 12 },
+    { "tick": 50, "sourceNode": "SRC_B", "color": "green", "count": 1, "spacingTicks": 12 }
+  ],
+  "win": {
+    "deliveries": 2,
+    "timeLimitTicks": 400,
+    "perfectMaxSwitches": 2,
+    "stars": { "two": 840, "three": 1080 }
+  },
+  "economy": { "baseTickets": 39, "perfectBonus": 20 }
+}

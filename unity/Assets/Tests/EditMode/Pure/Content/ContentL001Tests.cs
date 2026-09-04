@@ -1,15 +1,12 @@
 using System.IO;
 using System.Linq;
-using Newtonsoft.Json.Linq;
-using NUnit.Framework;
 using CatMetro.Content;
 using CatMetro.Tests.Domain;
+using Newtonsoft.Json.Linq;
+using NUnit.Framework;
 
 namespace CatMetro.Tests.Content
 {
-    // Criterion 1: every named authored field, asserted BOTH from the parsed DTO and from a raw
-    // JSON key walk, so a parser bug cannot mask a content bug. Tests may use System.IO; the
-    // shipped Content assembly may not.
     [TestFixture]
     public class ContentL001Tests
     {
@@ -21,82 +18,68 @@ namespace CatMetro.Tests.Content
 
         private static ImportedLevel Imported()
         {
-            var r = LevelImporter.Import(L001Bytes());
-            Assert.That(r.Ok, Is.True, $"L001 must import: {r.Error}");
-            return r.Value;
+            var result = LevelImporter.Import(L001Bytes());
+            Assert.That(result.Ok, Is.True, $"L001 must import: {result.Error}");
+            return result.Value;
         }
 
         [Test]
-        public void Dto_CarriesEveryAuthoredFieldValue()
+        public void Dto_CarriesTheAuthoredArtifactWithoutFrozenCampaignValues()
         {
+            var raw = L001Raw();
             var dto = Imported().Dto;
-            Assert.That(dto.SchemaVersion, Is.EqualTo(2));
-            Assert.That(dto.Id, Is.EqualTo("L001"));
-            Assert.That(dto.Seed, Is.EqualTo(1001));
-            Assert.That(dto.Meta.Band, Is.EqualTo("onboarding"));
-            Assert.That(dto.Meta.DifficultyTarget, Is.EqualTo(0.08).Within(1e-12));
-            Assert.That(dto.Meta.Mechanics.ToArray(), Is.EqualTo(new[] { "switch" }));
-            Assert.That(dto.Meta.NewMechanic, Is.EqualTo("switch"));
-            Assert.That(dto.Meta.MinActionWindowTicks, Is.EqualTo(16));
-            Assert.That(dto.Meta.AuthoredBy, Is.EqualTo("human"));
-            Assert.That(dto.Nodes.Length, Is.EqualTo(4));
-            Assert.That(dto.Edges.Length, Is.EqualTo(3));
-            Assert.That(dto.Sources.Length, Is.EqualTo(1));
-            Assert.That(dto.Stations.Length, Is.EqualTo(2));
-            Assert.That(dto.Switches.Length, Is.EqualTo(1));
-            Assert.That(dto.Switches.Span[0].InitialRoute, Is.EqualTo(1));
-            Assert.That(dto.Waves.Length, Is.EqualTo(1));
-            var w = dto.Waves.Span[0];
-            Assert.That(w.Tick, Is.EqualTo(8));
-            Assert.That(w.Color, Is.EqualTo("red"));
-            Assert.That(w.Count, Is.EqualTo(2));
-            Assert.That(w.SpacingTicks, Is.EqualTo(20));
-            Assert.That(dto.Win.Deliveries, Is.EqualTo(2));
-            Assert.That(dto.Win.TimeLimitTicks, Is.EqualTo(160));
-            Assert.That(dto.Win.PerfectMaxSwitches, Is.EqualTo(1));
-            Assert.That(dto.Win.Stars.Two, Is.EqualTo(200));
-            Assert.That(dto.Win.Stars.Three, Is.EqualTo(300));
-            Assert.That(dto.Economy.BaseTickets, Is.EqualTo(20));
-            Assert.That(dto.Economy.PerfectBonus, Is.EqualTo(10));
+
+            Assert.That(dto.SchemaVersion, Is.EqualTo((int)raw["schemaVersion"]));
+            Assert.That(dto.Id, Is.EqualTo((string)raw["id"]));
+            Assert.That(dto.Name, Is.EqualTo((string)raw["name"]));
+            Assert.That(dto.Seed, Is.EqualTo((long)raw["seed"]));
+            Assert.That(dto.Meta.Band, Is.EqualTo((string)raw["meta"]["band"]));
+            Assert.That(dto.Meta.DifficultyTarget,
+                Is.EqualTo((double)raw["meta"]["difficultyTarget"]).Within(1e-12));
+            Assert.That(dto.Meta.Mechanics.ToArray(),
+                Is.EqualTo(raw["meta"]["mechanics"].Select(token => (string)token).ToArray()));
+            Assert.That(dto.Meta.NewMechanic, Is.EqualTo((string)raw["meta"]["newMechanic"]));
+            Assert.That(dto.Meta.TeachingGoal, Is.EqualTo((string)raw["meta"]["teachingGoal"]));
+            Assert.That(dto.Meta.MinActionWindowTicks,
+                Is.EqualTo((int)raw["meta"]["minActionWindowTicks"]));
+            Assert.That(dto.Meta.AuthoredBy, Is.EqualTo((string)raw["meta"]["authoredBy"]));
+            Assert.That(dto.Nodes.Length, Is.EqualTo(((JArray)raw["board"]["nodes"]).Count));
+            Assert.That(dto.Edges.Length, Is.EqualTo(((JArray)raw["board"]["edges"]).Count));
+            Assert.That(dto.Sources.Length, Is.EqualTo(((JArray)raw["sources"]).Count));
+            Assert.That(dto.Stations.Length, Is.EqualTo(((JArray)raw["stations"]).Count));
+            Assert.That(dto.Switches.Length, Is.EqualTo(((JArray)raw["switches"]).Count));
+            Assert.That(dto.Waves.Length, Is.EqualTo(((JArray)raw["waves"]).Count));
+            Assert.That(dto.Win.Deliveries, Is.EqualTo((int)raw["win"]["deliveries"]));
+            Assert.That(dto.Win.TimeLimitTicks, Is.EqualTo((int)raw["win"]["timeLimitTicks"]));
+            Assert.That(dto.Win.Stars.Two, Is.EqualTo((int)raw["win"]["stars"]["two"]));
+            Assert.That(dto.Win.Stars.Three, Is.EqualTo((int)raw["win"]["stars"]["three"]));
+            Assert.That(dto.Economy.BaseTickets, Is.EqualTo((int)raw["economy"]["baseTickets"]));
+            Assert.That(dto.Economy.PerfectBonus, Is.EqualTo((int)raw["economy"]["perfectBonus"]));
         }
 
         [Test]
-        public void RawJson_CarriesEveryAuthoredFieldValue()
+        public void RawJson_HasCoherentLevelOneStructure()
         {
-            var j = L001Raw();
-            Assert.That((int)j["schemaVersion"], Is.EqualTo(2));
-            Assert.That((string)j["id"], Is.EqualTo("L001"));
-            Assert.That((long)j["seed"], Is.EqualTo(1001));
-            Assert.That((string)j["meta"]["band"], Is.EqualTo("onboarding"));
-            Assert.That((double)j["meta"]["difficultyTarget"], Is.EqualTo(0.08).Within(1e-12));
-            Assert.That(j["meta"]["mechanics"].Select(t => (string)t), Is.EqualTo(new[] { "switch" }));
-            Assert.That((string)j["meta"]["newMechanic"], Is.EqualTo("switch"));
-            Assert.That((int)j["meta"]["minActionWindowTicks"], Is.EqualTo(16));
-            Assert.That((string)j["meta"]["authoredBy"], Is.EqualTo("human"));
-            Assert.That(((JArray)j["board"]["nodes"]).Count, Is.EqualTo(4));
-            Assert.That(((JArray)j["board"]["edges"]).Count, Is.EqualTo(3));
-            Assert.That(((JArray)j["sources"]).Count, Is.EqualTo(1));
-            Assert.That(((JArray)j["stations"]).Count, Is.EqualTo(2));
-            Assert.That(((JArray)j["switches"]).Count, Is.EqualTo(1));
-            Assert.That((int)j["switches"][0]["initialRoute"], Is.EqualTo(1));
-            Assert.That(((JArray)j["waves"]).Count, Is.EqualTo(1));
-            Assert.That((int)j["waves"][0]["tick"], Is.EqualTo(8));
-            Assert.That((string)j["waves"][0]["color"], Is.EqualTo("red"));
-            Assert.That((int)j["waves"][0]["count"], Is.EqualTo(2));
-            Assert.That((int)j["waves"][0]["spacingTicks"], Is.EqualTo(20));
-            Assert.That((int)j["win"]["deliveries"], Is.EqualTo(2));
-            Assert.That((int)j["win"]["timeLimitTicks"], Is.EqualTo(160));
-            Assert.That((int)j["win"]["perfectMaxSwitches"], Is.EqualTo(1));
-            Assert.That((int)j["win"]["stars"]["two"], Is.EqualTo(200));
-            Assert.That((int)j["win"]["stars"]["three"], Is.EqualTo(300));
-            Assert.That((int)j["economy"]["baseTickets"], Is.EqualTo(20));
-            Assert.That((int)j["economy"]["perfectBonus"], Is.EqualTo(10));
+            var raw = L001Raw();
+            Assert.That((int)raw["schemaVersion"], Is.EqualTo(2));
+            Assert.That((string)raw["id"], Is.EqualTo("L001"));
+            Assert.That(raw["meta"]["mechanics"].Select(token => (string)token), Does.Contain("switch"));
+            Assert.That((string)raw["meta"]["newMechanic"], Is.EqualTo("switch"));
+            Assert.That((string)raw["meta"]["teachingGoal"], Is.Not.Empty);
+            Assert.That((string)raw["meta"]["authoredBy"], Is.EqualTo("llm+validator"));
+
+            foreach (string collection in new[] { "nodes", "edges" })
+                Assert.That(raw["board"][collection].Select(item => (string)item["id"]), Is.Unique, collection);
+            Assert.That(raw["switches"].Select(item => (string)item["id"]), Is.Unique, "switches");
+
+            int emitted = raw["waves"].Sum(wave => (int)wave["count"]);
+            Assert.That(emitted, Is.EqualTo((int)raw["win"]["deliveries"]),
+                "the introductory level must require its exact non-stray supply");
         }
 
         [Test]
         public void Meta_HasNoValidatedAtKey_EitherWay()
         {
-            // AMD-09 / ADR-0008:119-123: the key is DELETED when unvalidated, never null.
             Assert.That(((JObject)L001Raw()["meta"]).Property("validatedAt"), Is.Null,
                 "raw file must not carry a validatedAt key");
             var dto = Imported().Dto;

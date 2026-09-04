@@ -1,198 +1,55 @@
 {
   "schemaVersion": 2,
   "id": "L012",
-  "name": "Stall Rows",
+  "name": "Three-Way Sorting",
   "seed": 1012,
   "meta": {
-    "band": "queue-reading",
-    "difficultyTarget": 0.3,
-    "mechanics": [
-      "switch",
-      "queue"
-    ],
+    "band": "shape",
+    "difficultyTarget": 0.24,
+    "mechanics": ["switch", "shape"],
     "newMechanic": null,
-    "teachingGoal": "Cats can wait at the platform before the switch -- trust the queue to hold them, even with more stalls still ahead",
-    "minActionWindowTicks": 12,
+    "teachingGoal": "Use an entry split and a second shape lever to master a hierarchical badge route",
+    "minActionWindowTicks": 14,
     "authoredBy": "llm+validator"
   },
   "board": {
     "nodes": [
-      {
-        "id": "SRC",
-        "x": 3,
-        "y": 11,
-        "queueCapacity": 3
-      },
-      {
-        "id": "Q1",
-        "x": 3,
-        "y": 9,
-        "queueCapacity": 4
-      },
-      {
-        "id": "Q2",
-        "x": 3,
-        "y": 7,
-        "queueCapacity": 4
-      },
-      {
-        "id": "GATE",
-        "x": 3,
-        "y": 5
-      },
-      {
-        "id": "HOLD",
-        "x": 5,
-        "y": 5,
-        "queueCapacity": 1
-      },
-      {
-        "id": "J1",
-        "x": 3,
-        "y": 3
-      },
-      {
-        "id": "RED",
-        "x": 1,
-        "y": 1
-      },
-      {
-        "id": "BLU",
-        "x": 5,
-        "y": 1
-      }
+      { "id": "SRC", "x": 4, "y": 11 },
+      { "id": "ENTRY", "x": 4, "y": 8 },
+      { "id": "SORT", "x": 5, "y": 4 },
+      { "id": "ROUND", "x": 0, "y": 3 },
+      { "id": "SQUARE", "x": 3, "y": 0 },
+      { "id": "TRIANGLE", "x": 8, "y": 1 }
     ],
     "edges": [
-      {
-        "id": "E1",
-        "from": "SRC",
-        "to": "Q1",
-        "travelTicks": 5
-      },
-      {
-        "id": "E2",
-        "from": "Q1",
-        "to": "Q2",
-        "travelTicks": 5
-      },
-      {
-        "id": "E3",
-        "from": "Q2",
-        "to": "GATE",
-        "travelTicks": 5
-      },
-      {
-        "id": "E4",
-        "from": "GATE",
-        "to": "J1",
-        "travelTicks": 6
-      },
-      {
-        "id": "E5",
-        "from": "GATE",
-        "to": "HOLD",
-        "travelTicks": 20
-      },
-      {
-        "id": "E6",
-        "from": "J1",
-        "to": "RED",
-        "travelTicks": 7
-      },
-      {
-        "id": "E7",
-        "from": "J1",
-        "to": "BLU",
-        "travelTicks": 7
-      }
+      { "id": "E_IN", "from": "SRC", "to": "ENTRY", "travelTicks": 9 },
+      { "id": "E_ROUND", "from": "ENTRY", "to": "ROUND", "travelTicks": 13 },
+      { "id": "E_SORT", "from": "ENTRY", "to": "SORT", "travelTicks": 9 },
+      { "id": "E_SQUARE", "from": "SORT", "to": "SQUARE", "travelTicks": 11 },
+      { "id": "E_TRIANGLE", "from": "SORT", "to": "TRIANGLE", "travelTicks": 11 }
     ]
   },
   "sources": [
-    {
-      "nodeId": "SRC",
-      "allowedColors": [
-        "red",
-        "blue"
-      ]
-    }
+    { "nodeId": "SRC", "allowedColors": ["red"] }
   ],
   "stations": [
-    {
-      "nodeId": "RED",
-      "accepts": [
-        "red"
-      ],
-      "capacity": 10
-    },
-    {
-      "nodeId": "BLU",
-      "accepts": [
-        "blue"
-      ],
-      "capacity": 10
-    }
+    { "nodeId": "ROUND", "accepts": ["red"], "capacity": 8, "shape": "round" },
+    { "nodeId": "SQUARE", "accepts": ["red"], "capacity": 8, "shape": "square" },
+    { "nodeId": "TRIANGLE", "accepts": ["red"], "capacity": 8, "shape": "triangle" }
   ],
   "switches": [
-    {
-      "id": "S1",
-      "nodeId": "GATE",
-      "routes": [
-        "E4",
-        "E5"
-      ],
-      "initialRoute": 0
-    },
-    {
-      "id": "S2",
-      "nodeId": "J1",
-      "routes": [
-        "E6",
-        "E7"
-      ],
-      "initialRoute": 0
-    }
+    { "id": "S_ENTRY", "nodeId": "ENTRY", "routes": ["E_ROUND", "E_SORT"], "initialRoute": 0 },
+    { "id": "S_SORT", "nodeId": "SORT", "routes": ["E_SQUARE", "E_TRIANGLE"], "initialRoute": 0 }
   ],
   "waves": [
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 2,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 2,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 60,
-      "sourceNode": "SRC",
-      "color": "blue",
-      "count": 2,
-      "spacingTicks": 12
-    },
-    {
-      "tick": 95,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 2,
-      "spacingTicks": 12
-    }
+    { "tick": 8, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 12, "shape": "round" },
+    { "tick": 32, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 12, "shape": "square" },
+    { "tick": 56, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 12, "shape": "triangle" }
   ],
   "win": {
-    "deliveries": 8,
-    "timeLimitTicks": 150,
-    "perfectMaxSwitches": 2,
-    "stars": {
-      "two": 650,
-      "three": 900
-    }
+    "deliveries": 3,
+    "timeLimitTicks": 135,
+    "stars": { "two": 580, "three": 760 }
   },
-  "economy": {
-    "baseTickets": 32,
-    "perfectBonus": 18
-  }
+  "economy": { "baseTickets": 31, "perfectBonus": 16 }
 }

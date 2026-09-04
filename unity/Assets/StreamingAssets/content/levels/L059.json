@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 2,
+  "id": "L059",
+  "name": "Twin Line Window",
+  "seed": 1059,
+  "meta": {
+    "band": "capstone",
+    "difficultyTarget": 0.99,
+    "mechanics": ["switch", "budget", "second-source", "second-train"],
+    "newMechanic": null,
+    "teachingGoal": "Let red clear the shared junction before turning it for the two later blue trains",
+    "minActionWindowTicks": 4,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC_A", "x": -4, "y": 9 },
+      { "id": "SRC_B", "x": 4, "y": 10 },
+      { "id": "J1", "x": 0, "y": 5, "queueCapacity": 4 },
+      { "id": "RED", "x": -4, "y": 0 },
+      { "id": "BLUE", "x": 4, "y": 0 },
+      { "id": "LOOP_A", "x": 3, "y": 5 },
+      { "id": "LOOP_B", "x": 2, "y": 8 }
+    ],
+    "edges": [
+      { "id": "E_A", "from": "SRC_A", "to": "J1", "travelTicks": 4 },
+      { "id": "E_B", "from": "SRC_B", "to": "J1", "travelTicks": 9 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 8 },
+      { "id": "E_BLUE", "from": "J1", "to": "BLUE", "travelTicks": 8 },
+      { "id": "E_LOOP_OUT", "from": "J1", "to": "LOOP_A", "travelTicks": 5 },
+      { "id": "E_LOOP_TOP", "from": "LOOP_A", "to": "LOOP_B", "travelTicks": 5 },
+      { "id": "E_LOOP_BACK", "from": "LOOP_B", "to": "J1", "travelTicks": 5 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC_A", "allowedColors": ["red"] },
+    { "nodeId": "SRC_B", "allowedColors": ["blue"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 4 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 4 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_RED", "E_BLUE", "E_LOOP_OUT"], "initialRoute": 0 }
+  ],
+  "waves": [
+    { "tick": 2, "sourceNode": "SRC_A", "color": "red", "count": 1, "spacingTicks": 8 },
+    { "tick": 2, "sourceNode": "SRC_B", "color": "blue", "count": 2, "spacingTicks": 19 }
+  ],
+  "win": {
+    "deliveries": 3,
+    "timeLimitTicks": 105,
+    "perfectMaxSwitches": 1,
+    "stars": { "two": 1080, "three": 1380 }
+  },
+  "economy": { "baseTickets": 64, "perfectBonus": 34 }
+}

@@ -1,127 +1,54 @@
 {
   "schemaVersion": 2,
   "id": "L004",
-  "name": "Platform Queue",
+  "name": "The Depot Fork",
   "seed": 1004,
   "meta": {
     "band": "onboarding",
-    "difficultyTarget": 0.14,
-    "mechanics": [
-      "switch",
-      "queue"
-    ],
-    "newMechanic": "queue",
-    "teachingGoal": "Cats line up on the platform when the track is busy: the queue holds them, you set the route",
-    "minActionWindowTicks": 13,
+    "difficultyTarget": 0.11,
+    "mechanics": ["switch"],
+    "newMechanic": null,
+    "teachingGoal": "Open the route into the depot, then use its second lever to separate red and blue",
+    "minActionWindowTicks": 16,
     "authoredBy": "llm+validator"
   },
   "board": {
     "nodes": [
-      {
-        "id": "SRC",
-        "x": 3,
-        "y": 9,
-        "queueCapacity": 3
-      },
-      {
-        "id": "J1",
-        "x": 3,
-        "y": 6
-      },
-      {
-        "id": "RED",
-        "x": 1,
-        "y": 2
-      },
-      {
-        "id": "BLU",
-        "x": 5,
-        "y": 2
-      }
+      { "id": "SRC", "x": 4, "y": 10 },
+      { "id": "ENTRY", "x": 4, "y": 7 },
+      { "id": "SORT", "x": 4, "y": 4 },
+      { "id": "RED", "x": 1, "y": 1 },
+      { "id": "BLUE", "x": 7, "y": 1 },
+      { "id": "YARD", "x": 7, "y": 7 }
     ],
     "edges": [
-      {
-        "id": "E1",
-        "from": "SRC",
-        "to": "J1",
-        "travelTicks": 10
-      },
-      {
-        "id": "E2",
-        "from": "J1",
-        "to": "RED",
-        "travelTicks": 12
-      },
-      {
-        "id": "E3",
-        "from": "J1",
-        "to": "BLU",
-        "travelTicks": 12
-      }
+      { "id": "E_IN", "from": "SRC", "to": "ENTRY", "travelTicks": 8 },
+      { "id": "E_DEPOT", "from": "ENTRY", "to": "SORT", "travelTicks": 8 },
+      { "id": "E_YARD", "from": "ENTRY", "to": "YARD", "travelTicks": 12 },
+      { "id": "E_RED", "from": "SORT", "to": "RED", "travelTicks": 10 },
+      { "id": "E_BLUE", "from": "SORT", "to": "BLUE", "travelTicks": 10 }
     ]
   },
   "sources": [
-    {
-      "nodeId": "SRC",
-      "allowedColors": [
-        "red"
-      ]
-    }
+    { "nodeId": "SRC", "allowedColors": ["red", "blue"] }
   ],
   "stations": [
-    {
-      "nodeId": "RED",
-      "accepts": [
-        "red"
-      ],
-      "capacity": 6
-    },
-    {
-      "nodeId": "BLU",
-      "accepts": [
-        "blue"
-      ],
-      "capacity": 6
-    }
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 6 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 6 },
+    { "nodeId": "YARD", "accepts": ["green"], "capacity": 6 }
   ],
   "switches": [
-    {
-      "id": "S1",
-      "nodeId": "J1",
-      "routes": [
-        "E2",
-        "E3"
-      ],
-      "initialRoute": 1
-    }
+    { "id": "S_ENTRY", "nodeId": "ENTRY", "routes": ["E_DEPOT", "E_YARD"], "initialRoute": 1 },
+    { "id": "S_SORT", "nodeId": "SORT", "routes": ["E_RED", "E_BLUE"], "initialRoute": 0 }
   ],
   "waves": [
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 2,
-      "spacingTicks": 20
-    },
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 2,
-      "spacingTicks": 20
-    }
+    { "tick": 8, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 12 },
+    { "tick": 48, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 12 }
   ],
   "win": {
-    "deliveries": 4,
-    "timeLimitTicks": 100,
-    "perfectMaxSwitches": 1,
-    "stars": {
-      "two": 200,
-      "three": 300
-    }
+    "deliveries": 2,
+    "timeLimitTicks": 280,
+    "stars": { "two": 300, "three": 430 }
   },
-  "economy": {
-    "baseTickets": 20,
-    "perfectBonus": 10
-  }
+  "economy": { "baseTickets": 23, "perfectBonus": 12 }
 }

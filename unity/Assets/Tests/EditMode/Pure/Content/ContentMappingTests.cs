@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using CatMetro.Content;
+using CatMetro.Domain;
+using CatMetro.Domain.Solver;
 using CatMetro.Services;
 using CatMetro.Tests.Domain;
 
@@ -31,40 +33,75 @@ namespace CatMetro.Tests.Content
             Assert.That(r.Ok, Is.True, r.Ok ? "" : r.Error.ToString());
             var maps = r.Value.IdMaps;
             var graph = r.Value.Graph;
+            var raw = JObject.Parse(System.Text.Encoding.UTF8.GetString(L001Bytes()));
+            var nodes = ((JArray)raw["board"]["nodes"]).Cast<JObject>().ToArray();
+            var edges = ((JArray)raw["board"]["edges"]).Cast<JObject>().ToArray();
+            var switches = ((JArray)raw["switches"]).Cast<JObject>().ToArray();
 
-            Assert.That(maps.Nodes.Ids.ToArray(), Is.EqualTo(new[] { "SRC", "J1", "RED", "BLU" }), "authored node order");
-            Assert.That(maps.Edges.Ids.ToArray(), Is.EqualTo(new[] { "E1", "E2", "E3" }));
-            Assert.That(maps.Switches.Ids.ToArray(), Is.EqualTo(new[] { "S1" }));
-            Assert.That(maps.Stations.Ids.ToArray(), Is.EqualTo(new[] { "RED", "BLU" }));
-            Assert.That(maps.Sources.Ids.ToArray(), Is.EqualTo(new[] { "SRC" }));
-            Assert.That(maps.WaveCount, Is.EqualTo(1));
+            Assert.That(maps.Nodes.Ids.ToArray(),
+                Is.EqualTo(nodes.Select(node => (string)node["id"])), "authored node order");
+            Assert.That(maps.Edges.Ids.ToArray(),
+                Is.EqualTo(edges.Select(edge => (string)edge["id"])), "authored edge order");
+            Assert.That(maps.Switches.Ids.ToArray(),
+                Is.EqualTo(switches.Select(item => (string)item["id"])), "authored switch order");
+            Assert.That(maps.Stations.Ids.ToArray(),
+                Is.EqualTo(raw["stations"].Select(item => (string)item["nodeId"])), "authored station order");
+            Assert.That(maps.Sources.Ids.ToArray(),
+                Is.EqualTo(raw["sources"].Select(item => (string)item["nodeId"])), "authored source order");
+            Assert.That(maps.WaveCount, Is.EqualTo(((JArray)raw["waves"]).Count));
 
             foreach (var map in new[] { maps.Nodes, maps.Edges, maps.Switches, maps.Stations, maps.Sources })
                 for (int i = 0; i < map.Count; i++)
                     Assert.That(map.IndexOf(map.IdOf(i)), Is.EqualTo(i), "id<->index round trip");
 
-            Assert.That(graph.NodeCount, Is.EqualTo(4));
-            Assert.That(graph.EdgeTravelTicks, Is.EqualTo(new[] { 10, 12, 12 }));
-            Assert.That(graph.EdgeFrom, Is.EqualTo(new[] { 0, 1, 1 }));
-            Assert.That(graph.EdgeTo, Is.EqualTo(new[] { 1, 2, 3 }));
-            Assert.That(graph.SwitchInitialRoute, Is.EqualTo(new byte[] { 1 }));
-            Assert.That(graph.SwitchRoutes[0], Is.EqualTo(new[] { 1, 2 }), "routes as dense edge indices");
-            Assert.That(graph.WinDeliveries, Is.EqualTo(2));
-            Assert.That(graph.TimeLimitTicks, Is.EqualTo(160));
+            Assert.That(graph.NodeCount, Is.EqualTo(nodes.Length));
+            Assert.That(graph.EdgeTravelTicks, Is.EqualTo(edges.Select(edge => (int)edge["travelTicks"])));
+            Assert.That(graph.EdgeFrom,
+                Is.EqualTo(edges.Select(edge => maps.Nodes.IndexOf((string)edge["from"]))));
+            Assert.That(graph.EdgeTo,
+                Is.EqualTo(edges.Select(edge => maps.Nodes.IndexOf((string)edge["to"]))));
+            Assert.That(graph.SwitchInitialRoute,
+                Is.EqualTo(switches.Select(item => (byte)(int)item["initialRoute"])));
+            for (int i = 0; i < switches.Length; i++)
+                Assert.That(graph.SwitchRoutes[i],
+                    Is.EqualTo(switches[i]["routes"].Select(route => maps.Edges.IndexOf((string)route))),
+                    "routes as dense edge indices");
+            Assert.That(graph.WinDeliveries, Is.EqualTo((int)raw["win"]["deliveries"]));
+            Assert.That(graph.TimeLimitTicks, Is.EqualTo((int)raw["win"]["timeLimitTicks"]));
             Assert.That(graph.QCapBound, Is.EqualTo(8), "A-C2a-4: schema max");
-            Assert.That(graph.TrainsMax, Is.EqualTo(2), "A-C2a-4: sum of wave counts");
-            Assert.That(graph.NodeQueueCapacity, Is.EqualTo(new[] { 8, 8, 8, 8 }), "A-C2a-6: absent -> schema max");
+            Assert.That(graph.TrainsMax, Is.EqualTo(raw["waves"].Sum(wave => (int)wave["count"])),
+                "A-C2a-4: sum of wave counts");
+            Assert.That(graph.NodeQueueCapacity,
+                Is.EqualTo(nodes.Select(node => (int?)(node["queueCapacity"]) ?? graph.QCapBound)),
+                "authored capacities map, absent capacities materialize the schema maximum");
         }
 
-        [Test] // criterion 9 — the graph runs identically to CM-C1's in-code fixture path
-        public void L001_ImportedGraph_WinsUnderTheGoldenCommandLog()
+        [Test] // the current imported artifact hashes and replays its solver-proved command log
+        public void L001_ImportedGraph_HashIsDeterministicAndExactSolverReplayWins()
         {
             var r = LevelImporter.Import(L001Bytes());
             Assert.That(r.Ok, Is.True);
-            var end = Fixtures.RunThroughTick(r.Value.Graph, 1001, Fixtures.GoldenLog(), 159);
-            Assert.That(end.Outcome.Kind, Is.EqualTo(CatMetro.Domain.OutcomeKind.Won),
-                "the imported graph must play out exactly like the authored level");
-            Assert.That(end.Deliveries, Is.EqualTo(2));
+            var solve = LevelSolver.Solve(r.Value.Graph, (ulong)r.Value.Dto.Seed, 2_000_000);
+            Assert.That(solve.Verdict, Is.EqualTo(SolveVerdict.Solved));
+            Assert.That(solve.BeamWidthUsed, Is.Zero, "campaign proofs must remain exact BFS");
+
+            string firstHash = ReplayHasher.ComputeReplayHash(
+                r.Value.Graph, (ulong)r.Value.Dto.Seed, solve.OptimalLog);
+            string secondHash = ReplayHasher.ComputeReplayHash(
+                r.Value.Graph, (ulong)r.Value.Dto.Seed, solve.OptimalLog);
+            Assert.That(firstHash, Does.Match("^[0-9a-f]{64}$"));
+            Assert.That(secondHash, Is.EqualTo(firstHash),
+                "the imported campaign artifact must replay deterministically");
+
+            string legacyFixtureHash = ReplayHasher.ComputeReplayHash(
+                Fixtures.L001Shape(), Fixtures.L001Seed, Fixtures.GoldenLog());
+            Assert.That(firstHash, Is.Not.EqualTo(legacyFixtureHash),
+                "this proof must hash the current authored L001, not substitute the legacy fixture");
+            TestContext.Out.WriteLine("L001_REPLAY_HASH=" + firstHash);
+
+            var end = ReplayHasher.RunToEnd(r.Value.Graph, (ulong)r.Value.Dto.Seed, solve.OptimalLog);
+            Assert.That(end.Outcome.Kind, Is.EqualTo(OutcomeKind.Won));
+            Assert.That(end.Deliveries, Is.EqualTo(r.Value.Dto.Win.Deliveries));
         }
 
         [Test] // CM-C14a — the former pin sites now map both ratified mechanics

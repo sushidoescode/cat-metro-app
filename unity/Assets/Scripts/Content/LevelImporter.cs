@@ -196,12 +196,56 @@ namespace CatMetro.Content
             return (int)v;
         }
 
+        private static int OptIntIn(JObject o, string name, int defaultValue, long min, long max)
+        {
+            if (o.Property(name) == null) return defaultValue;
+            return ReqIntIn(o, name, min, max);
+        }
+
+        private static int TokenIntIn(JToken token, string name, long min, long max)
+        {
+            if (token.Type != JTokenType.Integer)
+                throw new WalkException(token.Type == JTokenType.Float
+                    ? ContentErrorKind.IntegerExpected
+                    : ContentErrorKind.MalformedJson, name + " must be an integer");
+            long value;
+            try
+            {
+                value = (long)token;
+            }
+            catch (OverflowException)
+            {
+                throw new WalkException(
+                    ContentErrorKind.BoundViolation, name + " magnitude exceeds the supported range");
+            }
+            if (value < min || value > max)
+                throw new WalkException(
+                    ContentErrorKind.BoundViolation, $"{name}={value} outside [{min},{max}]");
+            return (int)value;
+        }
+
+        private static bool OptBool(JObject o, string name, bool defaultValue)
+        {
+            var property = o.Property(name);
+            if (property == null) return defaultValue;
+            if (property.Value.Type != JTokenType.Boolean)
+                throw new WalkException(ContentErrorKind.MalformedJson, name + " must be a boolean");
+            return (bool)property.Value;
+        }
+
         private static string ReqStr(JObject o, string name)
         {
             var t = Req(o, name);
             if (t.Type != JTokenType.String)
                 throw new WalkException(ContentErrorKind.MalformedJson, name + " must be a string");
             return (string)t;
+        }
+
+        private static string TokenStr(JToken token, string name)
+        {
+            if (token.Type != JTokenType.String)
+                throw new WalkException(ContentErrorKind.MalformedJson, name + " must be a string");
+            return (string)token;
         }
 
         private static JArray ReqArr(JObject o, string name, int cap)
@@ -214,6 +258,18 @@ namespace CatMetro.Content
             return a;
         }
 
+        private static JArray OptArr(JObject o, string name, int cap)
+        {
+            var token = o[name];
+            if (token == null) return new JArray();
+            if (!(token is JArray array))
+                throw new WalkException(ContentErrorKind.MalformedJson, name + " must be an array");
+            if (array.Count > cap)
+                throw new WalkException(
+                    ContentErrorKind.CollectionOverCap, $"{name} count {array.Count} exceeds cap {cap}");
+            return array;
+        }
+
         private static JObject AsObj(JToken t, string what)
         {
             if (!(t is JObject o)) throw new WalkException(ContentErrorKind.MalformedJson, what + " must be an object");
@@ -224,7 +280,14 @@ namespace CatMetro.Content
         {
             ["red"] = CatColor.Red, ["blue"] = CatColor.Blue,
             ["yellow"] = CatColor.Yellow, ["green"] = CatColor.Green,
-            ["wild"] = CatColor.Wild, // parsed here; pinned out at the pin pre-check (NEW-Q35)
+            ["wild"] = CatColor.Wild,
+        };
+
+        private static readonly Dictionary<string, byte> ShapeCodes = new Dictionary<string, byte>
+        {
+            ["round"] = CatShape.Round,
+            ["square"] = CatShape.Square,
+            ["triangle"] = CatShape.Triangle,
         };
 
         private static byte ColorCode(string color, string where)
@@ -232,6 +295,24 @@ namespace CatMetro.Content
             if (!ColorCodes.TryGetValue(color, out var code))
                 throw new WalkException(ContentErrorKind.BoundViolation, $"{where} color '{color}' unknown");
             return code;
+        }
+
+        private static byte ShapeCode(string shape, string where)
+        {
+            if (!ShapeCodes.TryGetValue(shape, out var code))
+                throw new WalkException(ContentErrorKind.BoundViolation, $"{where} shape '{shape}' unknown");
+            return code;
+        }
+
+        private static string OptShape(JObject o, string where)
+        {
+            var property = o.Property("shape");
+            if (property == null) return "round";
+            if (property.Value.Type != JTokenType.String)
+                throw new WalkException(ContentErrorKind.MalformedJson, where + " shape must be a string");
+            string shape = (string)property.Value;
+            ShapeCode(shape, where);
+            return shape;
         }
 
         private static ContentResult<ImportedLevel> Build(JObject o)
@@ -252,7 +333,12 @@ namespace CatMetro.Content
                 // element is individually validated below.
                 var mechArr = ReqArr(metaObj, "mechanics", ContentBounds.MAX_NODES);
                 var mechanics = new string[mechArr.Count];
-                for (int i = 0; i < mechArr.Count; i++) mechanics[i] = (string)mechArr[i];
+                bool collisionsEnabled = false;
+                for (int i = 0; i < mechArr.Count; i++)
+                {
+                    mechanics[i] = (string)mechArr[i];
+                    if (mechanics[i] == "second-train") collisionsEnabled = true;
+                }
                 string validatedAt = null;
                 bool hasValidatedAt = false;
                 var vaProp = metaObj.Property("validatedAt");
@@ -311,7 +397,11 @@ namespace CatMetro.Content
                     if (edgeIndex.ContainsKey(eid))
                         throw new WalkException(ContentErrorKind.DuplicateId, $"edge id '{eid}' duplicated");
                     edges[i] = new EdgeDto(eid, ReqStr(e, "from"), ReqStr(e, "to"),
-                        ReqIntIn(e, "travelTicks", ContentBounds.TRAVEL_TICKS_MIN, ContentBounds.TRAVEL_TICKS_MAX));
+                        ReqIntIn(e, "travelTicks", ContentBounds.TRAVEL_TICKS_MIN, ContentBounds.TRAVEL_TICKS_MAX),
+                        OptBool(e, "oneWay", true),
+                        OptBool(e, "reversible", false),
+                        OptBool(e, "tunnel", false),
+                        OptBool(e, "hold", false));
                     edgeIndex[eid] = i;
                 }
 
@@ -335,7 +425,8 @@ namespace CatMetro.Content
                     var accepts = new string[acceptsArr.Count];
                     for (int c = 0; c < acceptsArr.Count; c++) accepts[c] = (string)acceptsArr[c];
                     stations[i] = new StationDto(ReqStr(s, "nodeId"), accepts,
-                        ReqIntIn(s, "capacity", ContentBounds.STATION_CAPACITY_MIN, ContentBounds.STATION_CAPACITY_MAX));
+                        ReqIntIn(s, "capacity", ContentBounds.STATION_CAPACITY_MIN, ContentBounds.STATION_CAPACITY_MAX),
+                        OptShape(s, "station"));
                 }
 
                 var switchesArr = ReqArr(o, "switches", ContentBounds.MAX_SWITCHES);
@@ -356,8 +447,47 @@ namespace CatMetro.Content
                     if (initialRoute >= routes.Length)
                         throw new WalkException(ContentErrorKind.BoundViolation,
                             $"initialRoute={initialRoute} >= routes.length {routes.Length}");
-                    switches[i] = new SwitchDto(sid, ReqStr(s, "nodeId"), routes, initialRoute);
+                    switches[i] = new SwitchDto(sid, ReqStr(s, "nodeId"), routes, initialRoute,
+                        OptIntIn(s, "cooldownTicks", ContentBounds.COOLDOWN_TICKS_DEFAULT,
+                            ContentBounds.COOLDOWN_TICKS_MIN, ContentBounds.COOLDOWN_TICKS_MAX));
                     switchIndex[sid] = i;
+                }
+
+                var gatesArr = OptArr(o, "gates", ContentBounds.MAX_GATES);
+                var gates = new GateDto[gatesArr.Count];
+                for (int i = 0; i < gatesArr.Count; i++)
+                {
+                    var gate = AsObj(gatesArr[i], "gate");
+                    var windowsArr = ReqArr(
+                        gate, "openWindows", ContentBounds.MAX_WAVES); // structural bound only
+                    if (windowsArr.Count == 0)
+                        throw new WalkException(
+                            ContentErrorKind.BoundViolation, "gate openWindows must contain at least one window");
+                    var windows = new GateWindowDto[windowsArr.Count];
+                    int previousEnd = -1;
+                    for (int w = 0; w < windowsArr.Count; w++)
+                    {
+                        if (!(windowsArr[w] is JArray pair))
+                            throw new WalkException(
+                                ContentErrorKind.MalformedJson, $"gate openWindows[{w}] must be an array");
+                        if (pair.Count != 2)
+                            throw new WalkException(
+                                ContentErrorKind.BoundViolation, $"gate openWindows[{w}] must contain exactly two ticks");
+                        int start = TokenIntIn(pair[0], $"gate openWindows[{w}][0]", 0, int.MaxValue);
+                        int end = TokenIntIn(pair[1], $"gate openWindows[{w}][1]", 0, int.MaxValue);
+                        if (end <= start)
+                            throw new WalkException(
+                                ContentErrorKind.BoundViolation, $"gate openWindows[{w}] must satisfy start < end");
+                        if (w > 0 && start < previousEnd)
+                            throw new WalkException(ContentErrorKind.BoundViolation,
+                                $"gate openWindows[{w}] overlaps or precedes the prior window");
+                        windows[w] = new GateWindowDto(start, end);
+                        previousEnd = end;
+                    }
+                    gates[i] = new GateDto(
+                        ReqStr(gate, "edgeId"), windows,
+                        OptIntIn(gate, "previewTicks", ContentBounds.GATE_PREVIEW_TICKS_DEFAULT,
+                            ContentBounds.GATE_PREVIEW_TICKS_MIN, int.MaxValue));
                 }
 
                 var wavesArr = ReqArr(o, "waves", ContentBounds.MAX_WAVES);
@@ -370,8 +500,16 @@ namespace CatMetro.Content
                         ReqStr(w, "sourceNode"),
                         ReqStr(w, "color"),
                         ReqIntIn(w, "count", ContentBounds.WAVE_COUNT_MIN, ContentBounds.WAVE_COUNT_MAX),
-                        ReqIntIn(w, "spacingTicks", ContentBounds.SPACING_TICKS_MIN, ContentBounds.SPACING_TICKS_MAX));
+                        ReqIntIn(w, "spacingTicks", ContentBounds.SPACING_TICKS_MIN, ContentBounds.SPACING_TICKS_MAX),
+                        OptBool(w, "express", false),
+                        OptShape(w, "wave"),
+                        OptBool(w, "stray", false));
                 }
+
+                var tagsArr = OptArr(o, "tags", ContentBounds.MAX_TAGS);
+                var tags = new string[tagsArr.Count];
+                for (int i = 0; i < tagsArr.Count; i++)
+                    tags[i] = TokenStr(tagsArr[i], $"tags[{i}]");
 
                 var winObj = AsObj(Req(o, "win"), "win");
                 var starsObj = AsObj(Req(winObj, "stars"), "win.stars");
@@ -423,6 +561,16 @@ namespace CatMetro.Content
                         if (!edgeIndex.ContainsKey(r))
                             throw new WalkException(ContentErrorKind.DanglingReference, $"switch '{s.Id}' route '{r}'");
                 }
+                var gateEdgeIds = new HashSet<string>();
+                foreach (var gate in gates)
+                {
+                    if (!edgeIndex.ContainsKey(gate.EdgeId))
+                        throw new WalkException(
+                            ContentErrorKind.DanglingReference, $"gate edgeId '{gate.EdgeId}'");
+                    if (!gateEdgeIds.Add(gate.EdgeId))
+                        throw new WalkException(
+                            ContentErrorKind.DuplicateId, $"gate edgeId '{gate.EdgeId}' duplicated");
+                }
                 foreach (var w in waves)
                     if (!sourceNodeIds.Contains(w.SourceNode))
                         throw new WalkException(ContentErrorKind.DanglingReference, $"wave sourceNode '{w.SourceNode}'");
@@ -455,7 +603,7 @@ namespace CatMetro.Content
 
                 // dense mapping (criterion 9): authored order IS the index order (A-C1-10)
                 var dto = new LevelDto(schemaVersion, id, name, seed, meta,
-                    nodes, edges, sources, stations, switches, waves, win, economy);
+                    nodes, edges, sources, stations, switches, waves, win, economy, gates, tags);
 
                 var nodeIds = new string[nodes.Length];
                 var nodeQueueCapacity = new int[nodes.Length];
@@ -469,12 +617,20 @@ namespace CatMetro.Content
                 var edgeFrom = new int[edges.Length];
                 var edgeTo = new int[edges.Length];
                 var edgeTravel = new int[edges.Length];
+                var edgeOneWay = new bool[edges.Length];
+                var edgeReversible = new bool[edges.Length];
+                var edgeTunnel = new bool[edges.Length];
+                var edgeHold = new bool[edges.Length];
                 for (int i = 0; i < edges.Length; i++)
                 {
                     edgeIds[i] = edges[i].Id;
                     edgeFrom[i] = nodeIndex[edges[i].From];
                     edgeTo[i] = nodeIndex[edges[i].To];
                     edgeTravel[i] = edges[i].TravelTicks;
+                    edgeOneWay[i] = edges[i].OneWay;
+                    edgeReversible[i] = edges[i].Reversible;
+                    edgeTunnel[i] = edges[i].Tunnel;
+                    edgeHold[i] = edges[i].Hold;
                 }
                 var sourceIds = new string[sources.Length];
                 var sourceNodes = new int[sources.Length];
@@ -487,6 +643,7 @@ namespace CatMetro.Content
                 var switchRoutes = new int[switches.Length][];
                 var switchNode = new int[switches.Length];
                 var switchInitial = new byte[switches.Length];
+                var switchCooldown = new int[switches.Length];
                 for (int i = 0; i < switches.Length; i++)
                 {
                     switchIds[i] = switches[i].Id;
@@ -496,11 +653,26 @@ namespace CatMetro.Content
                     switchRoutes[i] = routeIdx;
                     switchNode[i] = nodeIndex[switches[i].NodeId];
                     switchInitial[i] = (byte)switches[i].InitialRoute;
+                    switchCooldown[i] = switches[i].CooldownTicks;
+                }
+                var gateEdge = new int[gates.Length];
+                var gateOpenWindows = new GateWindow[gates.Length][];
+                var gatePreview = new int[gates.Length];
+                for (int i = 0; i < gates.Length; i++)
+                {
+                    gateEdge[i] = edgeIndex[gates[i].EdgeId];
+                    var span = gates[i].OpenWindows.Span;
+                    var windows = new GateWindow[span.Length];
+                    for (int w = 0; w < span.Length; w++)
+                        windows[w] = new GateWindow(span[w].StartTick, span[w].EndTick);
+                    gateOpenWindows[i] = windows;
+                    gatePreview[i] = gates[i].PreviewTicks;
                 }
                 var stationIds = new string[stations.Length];
                 var stationNode = new int[stations.Length];
                 var stationAccepts = new byte[stations.Length][];
                 var stationCapacity = new int[stations.Length];
+                var stationShape = new byte[stations.Length];
                 for (int i = 0; i < stations.Length; i++)
                 {
                     stationIds[i] = stations[i].NodeId;
@@ -510,12 +682,16 @@ namespace CatMetro.Content
                     for (int c = 0; c < span.Length; c++) codes[c] = ColorCode(span[c], "station accepts");
                     stationAccepts[i] = codes;
                     stationCapacity[i] = stations[i].Capacity;
+                    stationShape[i] = ShapeCode(stations[i].Shape, "station");
                 }
                 var waveTick = new int[waves.Length];
                 var waveSourceNode = new int[waves.Length];
                 var waveColor = new byte[waves.Length];
                 var waveCount = new int[waves.Length];
                 var waveSpacing = new int[waves.Length];
+                var waveExpress = new bool[waves.Length];
+                var waveShape = new byte[waves.Length];
+                var waveStray = new bool[waves.Length];
                 int trainsMax = 0;
                 for (int i = 0; i < waves.Length; i++)
                 {
@@ -524,6 +700,9 @@ namespace CatMetro.Content
                     waveColor[i] = ColorCode(waves[i].Color, "wave");
                     waveCount[i] = waves[i].Count;
                     waveSpacing[i] = waves[i].SpacingTicks;
+                    waveExpress[i] = waves[i].Express;
+                    waveShape[i] = ShapeCode(waves[i].Shape, "wave");
+                    waveStray[i] = waves[i].Stray;
                     trainsMax += waves[i].Count;
                 }
 
@@ -538,7 +717,20 @@ namespace CatMetro.Content
                         win.Deliveries, win.TimeLimitTicks,
                         qCapBound: ContentBounds.QUEUE_CAPACITY_MAX, trainsMax: trainsMax,
                         waveSourceNode: waveSourceNode,
-                        perfectMaxSwitches: win.PerfectMaxSwitches);
+                        perfectMaxSwitches: win.PerfectMaxSwitches,
+                        edgeOneWay: edgeOneWay,
+                        edgeReversible: edgeReversible,
+                        switchCooldownTicks: switchCooldown,
+                        gateEdge: gateEdge,
+                        gateOpenWindows: gateOpenWindows,
+                        gatePreviewTicks: gatePreview,
+                        waveExpress: waveExpress,
+                        edgeTunnel: edgeTunnel,
+                        stationShape: stationShape,
+                        waveShape: waveShape,
+                        edgeHold: edgeHold,
+                        waveStray: waveStray,
+                        collisionsEnabled: collisionsEnabled);
                 }
                 catch (NotSupportedException ex)
                 {

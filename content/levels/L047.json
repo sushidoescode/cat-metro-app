@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 2,
+  "id": "L047",
+  "name": "Loop Then Sort",
+  "seed": 4047,
+  "meta": {
+    "band": "combo",
+    "difficultyTarget": 0.87,
+    "mechanics": ["switch", "budget", "hold"],
+    "newMechanic": null,
+    "teachingGoal": "Release both trains from the circuit, then change the sorter only after red clears",
+    "authoredBy": "llm+validator",
+    "minActionWindowTicks": 5
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 14 },
+      { "id": "HUB", "x": 0, "y": 9 },
+      { "id": "RELEASE", "x": 0, "y": 5 },
+      { "id": "ARC_A", "x": 4, "y": 3 },
+      { "id": "ARC_B", "x": 8, "y": 5 },
+      { "id": "ARC_C", "x": 8, "y": 10 },
+      { "id": "ARC_D", "x": 4, "y": 13 },
+      { "id": "SORT", "x": -3, "y": 2 },
+      { "id": "RED", "x": -7, "y": -1 },
+      { "id": "BLUE", "x": -2, "y": -3 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "HUB", "travelTicks": 3 },
+      { "id": "E_HOLD", "from": "HUB", "to": "RELEASE", "travelTicks": 9, "hold": true },
+      { "id": "E_ARC_1", "from": "RELEASE", "to": "ARC_A", "travelTicks": 2 },
+      { "id": "E_ARC_2", "from": "ARC_A", "to": "ARC_B", "travelTicks": 2 },
+      { "id": "E_ARC_3", "from": "ARC_B", "to": "ARC_C", "travelTicks": 2 },
+      { "id": "E_ARC_4", "from": "ARC_C", "to": "ARC_D", "travelTicks": 2 },
+      { "id": "E_ARC_5", "from": "ARC_D", "to": "HUB", "travelTicks": 2 },
+      { "id": "E_SORT", "from": "RELEASE", "to": "SORT", "travelTicks": 3 },
+      { "id": "E_RED", "from": "SORT", "to": "RED", "travelTicks": 3 },
+      { "id": "E_BLUE", "from": "SORT", "to": "BLUE", "travelTicks": 3 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red", "blue"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 3 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 3 }
+  ],
+  "switches": [
+    { "id": "S_RELEASE", "nodeId": "RELEASE", "routes": ["E_ARC_1", "E_SORT"], "initialRoute": 0 },
+    { "id": "S_SORT", "nodeId": "SORT", "routes": ["E_RED", "E_BLUE"], "initialRoute": 0 }
+  ],
+  "waves": [
+    { "tick": 0, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8 },
+    { "tick": 18, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8 }
+  ],
+  "win": {
+    "deliveries": 2,
+    "timeLimitTicks": 52,
+    "perfectMaxSwitches": 2,
+    "stars": { "two": 350, "three": 580 }
+  },
+  "economy": { "baseTickets": 82, "perfectBonus": 36 }
+}

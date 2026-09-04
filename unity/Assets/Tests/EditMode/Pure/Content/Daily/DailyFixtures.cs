@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using CatMetro.Content;
 using CatMetro.Content.Daily;
@@ -36,11 +38,54 @@ namespace CatMetro.Tests.Daily
             Config("{\"DAILY_PREVALIDATION_DAYS\": 3, \"SALT_MAX_K\": " + saltMaxK
                 + ", \"PIPELINE_ANCHOR_DATE\": \"2026-08-24\"}");
 
-        public static LevelDto L001Dto() => VFixtures.Import(VFixtures.L001Bytes()).Dto;
+        public static LevelDto L001Dto() => DailySerializableDto(VFixtures.L001Bytes());
 
-        public static LevelDto UnsolvableDto() => VFixtures.Import(VFixtures.UnsolvableLevel()).Dto;
+        public static LevelDto UnsolvableDto() => DailySerializableDto(VFixtures.UnsolvableLevel());
 
-        public static LevelDto TrivialWinDto() => VFixtures.Import(VFixtures.TrivialWinLevel()).Dto;
+        public static LevelDto TrivialWinDto() => DailySerializableDto(VFixtures.TrivialWinLevel());
+
+        public static LevelDto AllFieldsDto() => new LevelDto(
+            2, "L800", "Daily Field Probe", 8080,
+            new MetaDto("daily", 0.625,
+                new[] { "switch", "reversible", "tunnel", "hold", "cooldown", "gate",
+                    "express", "shape", "stray" },
+                "gate", "Preserve every daily DTO field", 5, "generator+validator",
+                "2026-09-02", true),
+            new[]
+            {
+                new NodeDto("SRC", 1, 6, 3, true),
+                new NodeDto("J1", 2, 3, 0, false),
+                new NodeDto("ST", 4, 0, 0, false),
+            },
+            new[]
+            {
+                new EdgeDto("E_REV", "SRC", "J1", 3,
+                    oneWay: false, reversible: true, tunnel: true),
+                new EdgeDto("E_HOLD", "J1", "ST", 4, hold: true),
+            },
+            new[] { new SourceDto("SRC", new[] { "red", "wild" }) },
+            new[] { new StationDto("ST", new[] { "red" }, 4, "triangle") },
+            new[] { new SwitchDto("S1", "J1", new[] { "E_REV", "E_HOLD" }, 1, 5) },
+            new[] { new WaveDto(2, "SRC", "red", 1, 8,
+                express: true, shape: "square", stray: true) },
+            new WinDto(1, 40, 2, new StarsDto(120, 220)),
+            new EconomyDto(30, 12),
+            new[]
+            {
+                new GateDto("E_HOLD", new[]
+                {
+                    new GateWindowDto(2, 6),
+                    new GateWindowDto(10, 14),
+                }, 9),
+            },
+            new[] { "daily", "field-probe" });
+
+        private static LevelDto DailySerializableDto(byte[] bytes)
+        {
+            var json = JObject.Parse(Encoding.UTF8.GetString(bytes));
+            json["win"]["perfectMaxSwitches"] = 1;
+            return VFixtures.Import(Encoding.UTF8.GetBytes(json.ToString(Formatting.None))).Dto;
+        }
 
         public static LevelDto NullMetaDto()
         {

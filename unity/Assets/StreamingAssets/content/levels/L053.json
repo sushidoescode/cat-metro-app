@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 2,
+  "id": "L053",
+  "name": "Comet Cat",
+  "seed": 1053,
+  "meta": {
+    "band": "pressure",
+    "difficultyTarget": 0.93,
+    "mechanics": ["switch", "budget", "wildcard-express"],
+    "newMechanic": "wildcard-express",
+    "teachingGoal": "Give the comet cat a clear platform without letting it wait in the loop",
+    "minActionWindowTicks": 10,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 8 },
+      { "id": "J1", "x": 0, "y": 4, "queueCapacity": 4 },
+      { "id": "RED", "x": -4, "y": 0 },
+      { "id": "BLUE", "x": 4, "y": 0 },
+      { "id": "LOOP_A", "x": 4, "y": 4 },
+      { "id": "LOOP_B", "x": 3, "y": 7 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 6 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 7 },
+      { "id": "E_BLUE", "from": "J1", "to": "BLUE", "travelTicks": 7 },
+      { "id": "E_LOOP_OUT", "from": "J1", "to": "LOOP_A", "travelTicks": 5 },
+      { "id": "E_LOOP_TOP", "from": "LOOP_A", "to": "LOOP_B", "travelTicks": 5 },
+      { "id": "E_LOOP_BACK", "from": "LOOP_B", "to": "J1", "travelTicks": 5 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red", "wild"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 4 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 4 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_RED", "E_BLUE", "E_LOOP_OUT"], "initialRoute": 2 }
+  ],
+  "waves": [
+    { "tick": 3, "sourceNode": "SRC", "color": "wild", "count": 1, "spacingTicks": 8, "express": true },
+    { "tick": 24, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8 }
+  ],
+  "win": {
+    "deliveries": 2,
+    "timeLimitTicks": 120,
+    "perfectMaxSwitches": 1,
+    "stars": { "two": 900, "three": 1180 }
+  },
+  "economy": { "baseTickets": 58, "perfectBonus": 28 }
+}

@@ -54,6 +54,18 @@ namespace CatMetro.Tests.PlayMode
         private static ImportedLevel OverflowFixture() => Import(OverflowFixtureJson());
         private static ImportedLevel WinnableFixture() => Import(WinnableFixtureJson());
 
+        // Halt is now reserved for genuinely unexpected Domain/envelope faults. Corrupt the
+        // already-composed in-memory graph so the next source emission exercises GameRoot's
+        // shipped catch/escape wiring without pretending a normal refusal is exceptional.
+        private void ForceUnexpectedHaltAtFirstEmission()
+        {
+            var graph = _root.Session.State.Graph;
+            int source = graph.SourceNode;
+            for (int edge = 0; edge < graph.EdgeFrom.Length; edge++)
+                if (graph.EdgeFrom[edge] == source)
+                    graph.EdgeFrom[edge] = (source + 1) % graph.NodeCount;
+        }
+
         private IEnumerator RunToFail(ImportedLevel level)
         {
             _root = GameRoot.LaunchWith(level);
@@ -217,10 +229,11 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator HaltEscape_RealHalt_TapAnywhereRetries_RegionUnregisters()
         {
-            _root = GameRoot.Launch(); // L001 through the real seam — the F-DEV-4 fixture shape
+            _root = GameRoot.Launch();
             var chrome = _root.GetComponent<ScreenChromeController>();
             Assert.That(chrome, Is.Not.Null, "criterion 1 auto-attaches chrome");
-            LogAssert.Expect(LogType.Error, new Regex("run halted at a pinned/guarded Domain boundary"));
+            ForceUnexpectedHaltAtFirstEmission();
+            LogAssert.Expect(LogType.Error, new Regex("run halted at an unexpected Domain boundary"));
             Time.timeScale = 8f;
 
             int baseline = _root.Input.Regions.Count;
@@ -310,7 +323,8 @@ namespace CatMetro.Tests.PlayMode
             // (never assumed to be a bare 0) so the later +1/back-to-baseline asserts stay
             // meaningful even if some other future wiring adds a region at boot.
             int baseline = _root.Input.Regions.Count;
-            LogAssert.Expect(LogType.Error, new Regex("run halted at a pinned/guarded Domain boundary"));
+            ForceUnexpectedHaltAtFirstEmission();
+            LogAssert.Expect(LogType.Error, new Regex("run halted at an unexpected Domain boundary"));
             Time.timeScale = 8f;
             float deadline = Time.realtimeSinceStartup + 60f;
             while (_root.ScreenState != "Halted" && Time.realtimeSinceStartup < deadline)
@@ -329,16 +343,16 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Input.HandleTapAtScreen(corner), Is.EqualTo(-3), "escape consumed");
             Assert.That(_root.ScreenState, Is.EqualTo("Playing"));
 
-            // re-halt: L001 re-simulates identically from tick 0 (deterministic replay) and
-            // hits the SAME pinned boundary again — Register must not throw a duplicate-id
-            // ArgumentException (an unhandled exception would fail this test on its own).
-            LogAssert.Expect(LogType.Error, new Regex("run halted at a pinned/guarded Domain boundary"));
+            // Re-halt: Retry re-simulates the deliberately corrupted graph from tick 0 and hits
+            // the same unexpected guard again. Register must not throw a duplicate-id exception.
+            LogAssert.Expect(LogType.Error, new Regex("run halted at an unexpected Domain boundary"));
             Time.timeScale = 8f;
             deadline = Time.realtimeSinceStartup + 60f;
             while (_root.ScreenState != "Halted" && Time.realtimeSinceStartup < deadline)
                 yield return null;
             Time.timeScale = 1f;
-            Assert.That(_root.ScreenState, Is.EqualTo("Halted"), "L001 re-halts identically after retry");
+            Assert.That(_root.ScreenState, Is.EqualTo("Halted"),
+                "the corrupted graph re-halts identically after retry");
             Assert.That(_root.Input.Regions.Count, Is.EqualTo(baseline + 1),
                 "the escape re-registered — against the SAME baseline, not just any positive count");
         }

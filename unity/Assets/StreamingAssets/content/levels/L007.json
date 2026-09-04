@@ -1,169 +1,50 @@
 {
   "schemaVersion": 2,
   "id": "L007",
-  "name": "Ferry Timing",
+  "name": "Batch by Batch",
   "seed": 1007,
   "meta": {
-    "band": "alternation",
-    "difficultyTarget": 0.22,
-    "mechanics": [
-      "switch",
-      "queue"
-    ],
+    "band": "onboarding",
+    "difficultyTarget": 0.15,
+    "mechanics": ["switch", "queue"],
     "newMechanic": null,
-    "teachingGoal": "Three cats arrive together and queue for the short platform; the ferry route runs long, so flip early for it",
-    "minActionWindowTicks": 12,
+    "teachingGoal": "Clear a queued red pair, then reset the lever before a queued blue pair arrives",
+    "minActionWindowTicks": 14,
     "authoredBy": "llm+validator"
   },
   "board": {
     "nodes": [
-      {
-        "id": "SRC",
-        "x": 3,
-        "y": 9,
-        "queueCapacity": 4
-      },
-      {
-        "id": "J1",
-        "x": 3,
-        "y": 6
-      },
-      {
-        "id": "RED",
-        "x": 1,
-        "y": 1
-      },
-      {
-        "id": "BLU",
-        "x": 5,
-        "y": 1
-      },
-      {
-        "id": "TRAP",
-        "x": 5,
-        "y": 6,
-        "queueCapacity": 1
-      }
+      { "id": "SRC", "x": 3, "y": 10, "queueCapacity": 3 },
+      { "id": "J1", "x": 3, "y": 6 },
+      { "id": "RED", "x": 0, "y": 1 },
+      { "id": "BLUE", "x": 6, "y": 1 }
     ],
     "edges": [
-      {
-        "id": "E1",
-        "from": "SRC",
-        "to": "J1",
-        "travelTicks": 6
-      },
-      {
-        "id": "E2",
-        "from": "J1",
-        "to": "RED",
-        "travelTicks": 8
-      },
-      {
-        "id": "E3",
-        "from": "J1",
-        "to": "BLU",
-        "travelTicks": 22
-      },
-      {
-        "id": "E4",
-        "from": "J1",
-        "to": "TRAP",
-        "travelTicks": 4
-      }
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 12 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 10 },
+      { "id": "E_BLUE", "from": "J1", "to": "BLUE", "travelTicks": 10 }
     ]
   },
   "sources": [
-    {
-      "nodeId": "SRC",
-      "allowedColors": [
-        "red",
-        "blue"
-      ]
-    }
+    { "nodeId": "SRC", "allowedColors": ["red", "blue"] }
   ],
   "stations": [
-    {
-      "nodeId": "RED",
-      "accepts": [
-        "red"
-      ],
-      "capacity": 8
-    },
-    {
-      "nodeId": "BLU",
-      "accepts": [
-        "blue"
-      ],
-      "capacity": 8
-    }
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 8 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 8 }
   ],
   "switches": [
-    {
-      "id": "S1",
-      "nodeId": "J1",
-      "routes": [
-        "E2",
-        "E3",
-        "E4"
-      ],
-      "initialRoute": 0
-    }
+    { "id": "S1", "nodeId": "J1", "routes": ["E_RED", "E_BLUE"], "initialRoute": 1 }
   ],
   "waves": [
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 48,
-      "sourceNode": "SRC",
-      "color": "blue",
-      "count": 2,
-      "spacingTicks": 16
-    },
-    {
-      "tick": 88,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 2,
-      "spacingTicks": 16
-    },
-    {
-      "tick": 128,
-      "sourceNode": "SRC",
-      "color": "blue",
-      "count": 2,
-      "spacingTicks": 16
-    }
+    { "tick": 8, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 12 },
+    { "tick": 8, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 12 },
+    { "tick": 60, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 12 },
+    { "tick": 60, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 12 }
   ],
   "win": {
-    "deliveries": 9,
-    "timeLimitTicks": 240,
-    "perfectMaxSwitches": 4,
-    "stars": {
-      "two": 550,
-      "three": 800
-    }
+    "deliveries": 4,
+    "timeLimitTicks": 320,
+    "stars": { "two": 420, "three": 560 }
   },
-  "economy": {
-    "baseTickets": 20,
-    "perfectBonus": 12
-  }
+  "economy": { "baseTickets": 26, "perfectBonus": 13 }
 }

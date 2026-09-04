@@ -30,6 +30,12 @@ namespace CatMetro.Tests.Presentation
                 .Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0).ToArray();
         }
 
+        private static void AssertUniqueKey(string[] rows, string key)
+        {
+            Assert.That(rows.Count(row => row.StartsWith(key + ",")), Is.EqualTo(1),
+                key + " must occur exactly once in the append-only csv");
+        }
+
         [Test]
         public void BaseRows_ByteIdentical_InOrder()
         {
@@ -44,21 +50,17 @@ namespace CatMetro.Tests.Presentation
         public void OwnedAppendedRows_StayBytePinned()
         {
             var rows = Rows();
-            // R1-L6: this legacy slice owns its frozen prefix; later slices may append without
-            // weakening the byte pins below.
-            // Adoption-merge resolutions (2026-08-06, #39 and CM-UX-06): append order follows
-            // MERGE order — hint.tutorial row 7 (transitively pinned, #39 F9), results.next
-            // row 8, then CM-UX-06's three (home.title/intro.play/intro.goal) at rows 9-11,
-            // byte-pinned in UiCsvUx06Tests (indices shifted at adoption). CM-DAILYWIRE's own
-            // six rows (entry, return, tally, practice, error, loading) land at rows 12-17,
-            // byte-pinned in UiCsvDailyWireTests. Those merged slices establish 18 frozen rows.
+            // This legacy prefix also carries results.next at row 8; its owning lookup test
+            // delegates the append-order byte pin here. Later slices may only append.
             Assert.That(rows.Length, Is.GreaterThanOrEqualTo(18),
                 "the frozen legacy prefix must remain present; later rows may append");
             Assert.That(rows[5], Is.EqualTo("retry.cta,Try again"), "LOCKED");
             Assert.That(rows[6], Is.EqualTo("halt.notice,Signal fault — the line stopped"),
                 "DRAFT, byte-pinned including U+2014");
-            Assert.That(rows[8], Is.EqualTo("results.next,Next"),
-                "LOCKED (CM-UX-04's declared append, row 8 after the CM-UX-05 merge-order shift)");
+            Assert.That(rows[8], Is.EqualTo("results.next,Next"), "LOCKED");
+            AssertUniqueKey(rows, "retry.cta");
+            AssertUniqueKey(rows, "halt.notice");
+            AssertUniqueKey(rows, "results.next");
         }
 
         [Test]

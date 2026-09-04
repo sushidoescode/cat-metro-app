@@ -59,11 +59,13 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private RectTransform _waveClip;
         private RectTransform _faceRow;
         private readonly List<CatFaceView> _faces = new List<CatFaceView>();
+        private readonly List<TMP_Text> _tokens = new List<TMP_Text>();
         private TMP_Text _overflow;
         private Image _deliveriesMark;
         private TMP_Text _deliveries;
         private Image _ridersMark;
         private TMP_Text _riders;
+        private TMP_Text _flipBudget;
 
         private Rect _capsulePx;
         private Rect _counterPx;
@@ -89,6 +91,8 @@ namespace CatMetro.Presentation.Hud.WavePreview
         public int RemainingCats { get; private set; }
         public string DeliveriesText => _deliveries != null ? _deliveries.text : "";
         public string RidersText => _riders != null ? _riders.text : "";
+        public string FlipSummary => _flipBudget != null && _flipBudget.gameObject.activeSelf
+            ? _flipBudget.text : "";
         public Rect CapsuleRectPx => _capsulePx;
         public Rect CounterRowRectPx => _counterPx;
         public Color CapsuleColor => _capsule != null ? _capsule.color : Color.clear;
@@ -209,8 +213,18 @@ namespace CatMetro.Presentation.Hud.WavePreview
             for (int i = 0; i < MaxFaces; i++)
             {
                 var face = CatFaceView.Create(_faceRow, "face" + i);
-                face.gameObject.SetActive(false);
                 _faces.Add(face);
+
+                // Authored shape/stray/express signals stay in the screen-space hierarchy.
+                // Parenting each token to its face also keeps the signal attached to the
+                // face's accessibility motion without introducing a scene Renderer.
+                var token = AddLabel(face.transform, "cat-token", Palette.InkNavy);
+                token.fontStyle = FontStyles.Bold;
+                token.gameObject.SetActive(false);
+                _tokens.Add(token);
+                // Construct TMP while the parent is active so its delayed Awake cannot restore
+                // the default raycastTarget=true after AddLabel has made it render-only.
+                face.gameObject.SetActive(false);
             }
             _overflow = AddLabel(_faceRow, "Overflow", Palette.InkNavy);
             _overflow.fontStyle = FontStyles.Bold;
@@ -238,6 +252,10 @@ namespace CatMetro.Presentation.Hud.WavePreview
             _ridersMark = AddImage(counters, "RidersMark", HudShapeSprites.People);
             _ridersMark.color = Palette.WarmPaper;
             _riders = AddLabel(counters, "Riders", Palette.WarmPaper);
+
+            _flipBudget = AddLabel(counters, "flip-budget", Palette.WarmPaper);
+            _flipBudget.fontStyle = FontStyles.Bold;
+            _flipBudget.gameObject.SetActive(false);
         }
 
         // Read-only on game state throughout: Level.Dto and State are only ever READ.
@@ -258,8 +276,10 @@ namespace CatMetro.Presentation.Hud.WavePreview
             {
                 bool used = i < queue.Count;
                 if (_faces[i].gameObject.activeSelf != used) _faces[i].gameObject.SetActive(used);
+                if (_tokens[i].gameObject.activeSelf != used) _tokens[i].gameObject.SetActive(used);
                 if (!used) continue;
                 _faces[i].Bind(queue[i].Color);
+                _tokens[i].text = TokenGlyph(waves.Span[queue[i].WaveIndex]);
                 if (summary.Length > 0) summary.Append('|');
                 summary.Append(queue[i].Color);
             }
@@ -273,6 +293,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 ? _session.State.Deliveries + "/" + win.Deliveries
                 : _session.State.Deliveries.ToString();
             _riders.text = RidersOnBoard().ToString();
+            RefreshFlipBudget();
 
             // Re-place the faces for the queue that just changed. Keep an injected viewport if
             // one is in force; otherwise derive from the canvas, never from raw Screen pixels.
@@ -308,6 +329,20 @@ namespace CatMetro.Presentation.Hud.WavePreview
             }
             VisibleChipCount = shown;
             ChipSummary = summary.ToString();
+        }
+
+        private void RefreshFlipBudget()
+        {
+            var flipStatus = _session.FlipStatus;
+            _flipBudget.gameObject.SetActive(flipStatus.IsBudgeted);
+            if (flipStatus.IsBudgeted)
+            {
+                _flipBudget.text = Strings.UiStrings.Get("hud.flips")
+                    .Replace("{used}", flipStatus.Used.ToString())
+                    .Replace("{limit}", flipStatus.PerfectMaxSwitches.ToString());
+                _flipBudget.color = flipStatus.RemainingToPerfect > 0
+                    ? Palette.WarmPaper : Palette.SignalRed;
+            }
         }
 
         // Cats currently on the board — live train slots. State.Score/Chain are pinned at 0
@@ -393,6 +428,10 @@ namespace CatMetro.Presentation.Hud.WavePreview
             for (int i = 0; i < FaceCount; i++)
             {
                 _faces[i].LayoutAt(new Vector2(cursor, 0f), faceSize);
+                PlaceCentred((RectTransform)_tokens[i].transform,
+                    new Vector2(-faceSize * 0.28f, -faceSize * 0.30f),
+                    new Vector2(faceSize * 0.44f, faceSize * 0.28f));
+                _tokens[i].fontSizeMax = faceSize * 0.24f;
                 cursor += faceSize + gap;
             }
             if (hasOverflow)
@@ -424,6 +463,16 @@ namespace CatMetro.Presentation.Hud.WavePreview
 
             _deliveries.fontSizeMax = row;
             _riders.fontSizeMax = row;
+
+            if (_flipBudget.gameObject.activeSelf)
+            {
+                float budgetWidth = _counterPx.width * 0.20f;
+                PlacePx((RectTransform)_flipBudget.transform,
+                    new Rect(_counterPx.xMax - budgetWidth, _counterPx.y,
+                        budgetWidth, _counterPx.height));
+                _flipBudget.alignment = TextAlignmentOptions.Right;
+                _flipBudget.fontSizeMax = row;
+            }
         }
 
         private static float PlaceCounter(Image mark, TMP_Text label, float x, float centreY,
@@ -558,6 +607,20 @@ namespace CatMetro.Presentation.Hud.WavePreview
             rect.pivot = new Vector2(0.5f, 0.5f);
             rect.anchoredPosition = offset;
             rect.sizeDelta = size;
+        }
+
+        private static string TokenGlyph(WaveDto wave)
+        {
+            string glyph;
+            switch (wave.Shape)
+            {
+                case "square": glyph = "S"; break;
+                case "triangle": glyph = "T"; break;
+                default: glyph = "O"; break;
+            }
+            if (wave.Stray) glyph += "!";
+            if (wave.Express) glyph += "E";
+            return glyph;
         }
     }
 }

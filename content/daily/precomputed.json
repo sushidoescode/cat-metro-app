@@ -179,7 +179,7 @@
       "k": 0,
       "seed": 3466517912,
       "usedFallback": false,
-      "boardSha256": "87c5d390b725cafe0cd3c03c78a92df6e6c03aea43739f73611a3ba9776edad7",
+      "boardSha256": "223ce6f6ed97f6a4870b259e94e7b66879386ad3bd750a3bba3cd7d2ef3868c4",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -324,26 +324,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -511,7 +511,7 @@
       "k": 0,
       "seed": 69047575,
       "usedFallback": false,
-      "boardSha256": "3655bb161fb4420660d9d002753666686c72fbe4b5878bda4a96f4b6f728f6df",
+      "boardSha256": "aa9cfda91fcae6c925a0ed985a075c55c2894da1d07d7e4b078a69cdc8b470bd",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -656,26 +656,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -1809,7 +1809,7 @@
       "k": 0,
       "seed": 3806409491,
       "usedFallback": false,
-      "boardSha256": "0a05baaa0a133c364eeaac3b1a4855ec6e4490f4e0aa543e039961aeebcca6bb",
+      "boardSha256": "dc0cf417e8d91bc9aa935f8eca75be3a8f8a3bdba0a1bc6f8077e1f30ef1194a",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -1954,26 +1954,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -1992,7 +1992,7 @@
       "k": 0,
       "seed": 1455410323,
       "usedFallback": false,
-      "boardSha256": "430ecba534028ad753270e45dbf7fef7068ae1ab2be656daaae310c20498a3ba",
+      "boardSha256": "0130ab3e03364542fabc13ac351c458736717f0c26ca35574de4f5d1dc1c1a90",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -2137,26 +2137,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -2342,7 +2342,7 @@
       "k": 0,
       "seed": 4157588595,
       "usedFallback": false,
-      "boardSha256": "f96014f0437ed258d335636f3b508c82e99248d5b7b6f6970561110ccf5ded47",
+      "boardSha256": "8f5c30f98f07bcc41978b5bf86523731072c1932b00e8e431a42c662f6e20ac0",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -2487,26 +2487,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -2692,7 +2692,7 @@
       "k": 0,
       "seed": 1213684053,
       "usedFallback": false,
-      "boardSha256": "c0fe8762c3c3dca8256f7ed4e0c4bdb2cf3a008440bdd6d3df0d04c0b9de78f9",
+      "boardSha256": "a3060cbd832bd397e909b1a3c2f78e2cae8bafe8e08e9d4ee890b951f9658469",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -2837,26 +2837,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -2875,7 +2875,7 @@
       "k": 0,
       "seed": 1819656665,
       "usedFallback": false,
-      "boardSha256": "ef4570182042b899a3c829f4daf5a89b89bae98233df81f71a7d24f4332d6e1f",
+      "boardSha256": "bc99c241ef5354c700b7ed61afe59b695b6c5b3ccb953b609ff2600c6cfea139",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -3020,26 +3020,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -3207,7 +3207,7 @@
       "k": 0,
       "seed": 3574825318,
       "usedFallback": false,
-      "boardSha256": "29e2adcd7e51fe0bbb069b3541ea72171493251d9d86d31d2c9eeba55c1f6aa1",
+      "boardSha256": "c6feb6d5a96b4d4f6af07b0f4cad32e7cd9d6e0acfb6a934176d5a543dc4825e",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -3352,26 +3352,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -3891,7 +3891,7 @@
       "k": 0,
       "seed": 27531973,
       "usedFallback": false,
-      "boardSha256": "76f490df805604eb6002959b28970b134836e121997babc674e51990afef28ba",
+      "boardSha256": "c6d2db753045adb9413b3d57a4bc52772d8041f8f8ad283b521770271a3f2dd1",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -4036,26 +4036,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -4074,7 +4074,7 @@
       "k": 0,
       "seed": 1406552533,
       "usedFallback": false,
-      "boardSha256": "2355484cb0a526bd198930104a01c0874ce743d8ee3c9e3c81d32cb4157c2fa9",
+      "boardSha256": "0325391b1e2e26b4207770d0edc7f6207e9d7d794284819c49cc7d9bfb818b8d",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -4219,26 +4219,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -4573,7 +4573,7 @@
       "k": 0,
       "seed": 4076019054,
       "usedFallback": false,
-      "boardSha256": "8f4f62bedd94cfe7a8897db9f89342591221a6d104e8d6f6651e7665e6e8d692",
+      "boardSha256": "3ae511c77195de536c1db30c413cd6b1b425143d5aec7ea0fb98e684c1673de8",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -4718,26 +4718,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -5704,7 +5704,7 @@
       "k": 0,
       "seed": 1728451093,
       "usedFallback": false,
-      "boardSha256": "91cc8a2d5e082ddb66e10a7893355d9b1c00682786129cc82d7fcfe2697d2a87",
+      "boardSha256": "31597facd3dec60fad9db60852b7e5cf98a36a87eb3c4f29f8e4524d24d18f1b",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -5849,26 +5849,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -6054,7 +6054,7 @@
       "k": 0,
       "seed": 3446815105,
       "usedFallback": false,
-      "boardSha256": "8b410b64462be85491630cd8b4b85e6ee6794002786847d737c71c85beb7791b",
+      "boardSha256": "8b72143ac52c0f3c7644f2f744b3c3618fd7e5cd2d71b24b4af6bd92bdb4d1e6",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -6199,26 +6199,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -6404,7 +6404,7 @@
       "k": 0,
       "seed": 3617003932,
       "usedFallback": false,
-      "boardSha256": "66369da36dc6d6e3f8f7181db36241f51079e959e1f0d200c5340ee0b9a9efe9",
+      "boardSha256": "c2e130b18638287f817096bd8deab0b63c9ded0e4d8dca13050e786bdb82d7c8",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -6549,26 +6549,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -6587,7 +6587,7 @@
       "k": 0,
       "seed": 3907694489,
       "usedFallback": false,
-      "boardSha256": "264bbe23fd9edfddce7eefdf9b060c132d257c7289aa83f093195f2489e5f1ed",
+      "boardSha256": "6bb6689c7bf5b1c668a84ec3b55b32a9f6ecfeb0b8b3ae020cf97c13985a033f",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -6732,26 +6732,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -7551,7 +7551,7 @@
       "k": 0,
       "seed": 1795355363,
       "usedFallback": false,
-      "boardSha256": "992f24bbe408ea78e97ab65d3023d71c0f70977f1343f5ac8561f4046dbaa5bd",
+      "boardSha256": "3c4da77edb24da90fa452de02e7e2c7d9f715380647411e4132e5c07a7b927d8",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -7696,26 +7696,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -7734,7 +7734,7 @@
       "k": 0,
       "seed": 2949429899,
       "usedFallback": false,
-      "boardSha256": "5bed4bfd3d0f2030aad01d3985629019a92edd88783c3aa26be8987c3236f64f",
+      "boardSha256": "30ad63b482f43f7357259d30dfea4d6528974b2a32189d26682d49603d4d54d7",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -7879,26 +7879,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -8215,7 +8215,7 @@
       "k": 0,
       "seed": 2432591411,
       "usedFallback": false,
-      "boardSha256": "23d738ea504f56399b13ba9f98d23f99e2e7dc2995a6f59f5633378213e1b32c",
+      "boardSha256": "f92b3db8d0e95a24829676753abde6889affdff6309147f5d117d2b023511fdd",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -8360,26 +8360,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -8565,7 +8565,7 @@
       "k": 0,
       "seed": 3365656089,
       "usedFallback": false,
-      "boardSha256": "adab9e630785d450406937693f3b7388233b267102a7a794f138b899d13082c8",
+      "boardSha256": "7a7ea7d872efcae1ab01ccdda1f15271bd5a57aff5e8cdd5be38fcec32d24ebf",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -8710,26 +8710,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -8897,7 +8897,7 @@
       "k": 0,
       "seed": 1794574969,
       "usedFallback": false,
-      "boardSha256": "3c5f8f1f4bdc9f4dd6b9dd8f3fbf7bcc3f0a2d95015377f3e0d6b68dd7aa60df",
+      "boardSha256": "bf58b56d07150f25473248898732d1785df7c31021cd124618dc2dbcfd8f70dc",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -9042,26 +9042,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -9080,7 +9080,7 @@
       "k": 0,
       "seed": 3262601508,
       "usedFallback": false,
-      "boardSha256": "02eb76d66806d809cb3ca0591e806e8dfa06d44514a279c9cd8ae58afe713b9c",
+      "boardSha256": "a14d3bd8a0498ebe554bc478b346820e836dca67fe45e6458d37d365ef957193",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -9225,26 +9225,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -9263,7 +9263,7 @@
       "k": 0,
       "seed": 3933070790,
       "usedFallback": false,
-      "boardSha256": "244d8dd9f367ff16c87186999cd836a240cfeef11207180839efdfb4bc575e81",
+      "boardSha256": "3abd8524a60883fda78af3f0102d78e770aa62872896c16777f619c76dad8304",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -9408,26 +9408,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -9929,7 +9929,7 @@
       "k": 0,
       "seed": 1633377936,
       "usedFallback": false,
-      "boardSha256": "187dd170e5bc851c11ae61f76783e48bfdb92d26b2c14c486f0a9f8d6ac65918",
+      "boardSha256": "f6f065c28e15e96569bf7645beb42a4e200f89f40914aabf78b695234d93fe4c",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -10074,26 +10074,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -10279,7 +10279,7 @@
       "k": 0,
       "seed": 632837606,
       "usedFallback": false,
-      "boardSha256": "db449702e513bb270e99ac5b646e691bcd0b3fcc5011d2159b8730e7717b93c0",
+      "boardSha256": "1c350c19f0edb7933d424a0e9becda04a29c4f0da72e4e867fbd38a04253b735",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -10424,26 +10424,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -10927,7 +10927,7 @@
       "k": 0,
       "seed": 1260864350,
       "usedFallback": false,
-      "boardSha256": "a36a9f00913b90f4ba21d811b3ef6f46be62488543bf0f66ecfca6b397cb6344",
+      "boardSha256": "a5776e3348f43a6188a3f9cc7beb74dd0838e29c905786db9f518f42fe98a704",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -11072,26 +11072,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -11408,7 +11408,7 @@
       "k": 0,
       "seed": 2709361958,
       "usedFallback": false,
-      "boardSha256": "00a731bf0462e9cf3b7fa8718581c0d68a686c4e0e7d25d9bb9d7dd16808bcfd",
+      "boardSha256": "29d1f0e4faf5b3ce4fd877e969fea588f83f1be029ffa2c77f53a1c757be35fb",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -11553,26 +11553,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -12074,7 +12074,7 @@
       "k": 0,
       "seed": 1539256074,
       "usedFallback": false,
-      "boardSha256": "321ede5949af22132b59989bac1ef7215b08ece1e2a4c7ba6ea46b0bf83e6109",
+      "boardSha256": "be8ce0c7e688d01519f765b28dd8e9f1932ad0167465a4af5930fa3ac62e1bee",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -12219,26 +12219,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -12555,7 +12555,7 @@
       "k": 0,
       "seed": 2339501502,
       "usedFallback": false,
-      "boardSha256": "7610306385d755aaa82a7b789da7f60bc68f1094c7e685f7f94f11384a8bea80",
+      "boardSha256": "fc8e75ddb1783d344df8c7a065225dfda7e9b76d97f9547c2a2c4b68c80ea55b",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -12700,26 +12700,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -12887,7 +12887,7 @@
       "k": 0,
       "seed": 3632321508,
       "usedFallback": false,
-      "boardSha256": "037eecd2bc646751f004a34de128b752d71c28993b4dd37a86cfe82e63aad1f7",
+      "boardSha256": "2a30c16f3d79cddd7dc08e7049937211b733f33eb51d1a2e81742550759d8103",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -13032,26 +13032,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -13070,7 +13070,7 @@
       "k": 0,
       "seed": 407699349,
       "usedFallback": false,
-      "boardSha256": "b309ea2cf9c2194bfdc132bb9f76ab1ba2f44a54dcb0fdb56e841c245d099983",
+      "boardSha256": "bb248bfe7724a125c1e7a354da2c24c81706677010e49a52875414d141cbad76",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -13215,26 +13215,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -13551,7 +13551,7 @@
       "k": 0,
       "seed": 3240747740,
       "usedFallback": false,
-      "boardSha256": "f1112539415a68d293a8ae2204e39862eb9e396eacb31f6b15c75fe9e9b730b8",
+      "boardSha256": "2799655d6904634d3838de4ceefd331352247c243ba528de1aa46f981fa8846a",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -13696,26 +13696,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -13734,7 +13734,7 @@
       "k": 0,
       "seed": 603707621,
       "usedFallback": false,
-      "boardSha256": "58fad0f437f8eeb7f989b19f16c9b9876d26cfda996a6343b5657ca16e688b1d",
+      "boardSha256": "4948ae1e0a0b9033a1993106d0a4b55512239974b7ed3a78b36e10b18217c0be",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -13879,26 +13879,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "red",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {
@@ -14865,7 +14865,7 @@
       "k": 0,
       "seed": 3870137398,
       "usedFallback": false,
-      "boardSha256": "4fe09deac8791ce57f920762d81040ebd34ee14e3627fd4f472f235f690e1d57",
+      "boardSha256": "4d402adbb8c3735f26f4820d14f92c68feb8e4ba7249c0f041b0680a8d6c1d26",
       "board": {
         "schemaVersion": 2,
         "id": "L800",
@@ -15010,26 +15010,26 @@
             "tick": 8,
             "sourceNode": "SRC",
             "color": "green",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 56,
+            "tick": 40,
             "sourceNode": "SRC",
             "color": "yellow",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           },
           {
-            "tick": 104,
+            "tick": 72,
             "sourceNode": "SRC",
             "color": "blue",
-            "count": 2,
+            "count": 1,
             "spacingTicks": 16
           }
         ],
         "win": {
-          "deliveries": 6,
+          "deliveries": 3,
           "timeLimitTicks": 180,
           "perfectMaxSwitches": 3,
           "stars": {

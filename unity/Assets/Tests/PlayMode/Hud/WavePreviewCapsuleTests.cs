@@ -140,15 +140,15 @@ namespace CatMetro.Tests.PlayMode
         // --- data: faces come from the session's upcoming wave, in order ---
 
         [UnityTest]
-        public IEnumerator Faces_MatchL001sUpcomingCats_OneFacePerCat()
+        public IEnumerator Faces_MatchTwoRedPreviewFixture_OneFacePerCat()
         {
-            _root = GameRoot.Launch(); // L001: one wave, red x2
+            _root = GameRoot.LaunchWith(Import(TwoRedPreviewFixture()));
             yield return null;
 
             // The OLD strip could only say "red x2" — one chip for the whole wave. The capsule
             // shows the cats themselves, which is the whole point of the redesign.
             Assert.That(_root.Preview.FaceCount, Is.EqualTo(2),
-                "L001's single red wave of 2 is TWO faces, not one chip");
+                "the fixture's single red wave of 2 is TWO faces, not one chip");
             Assert.That(_root.Preview.FaceSummary, Is.EqualTo("red|red"));
             Assert.That(_root.Preview.RemainingCats, Is.EqualTo(2));
         }
@@ -232,11 +232,8 @@ namespace CatMetro.Tests.PlayMode
         }
 
         // The validation capture showed ONE face and the read was "our cap is too low". It is
-        // not: MaxFaces is 6 and has been. L001 authors a single red wave of 2 at tick 8 with
-        // spacing 20, so its cats emit at tick 8 and tick 28 — and the capture was taken between
-        // those, with one cat already riding (the riders counter read 1) and exactly one still
-        // to come. The capsule was telling the truth about a level that genuinely had one cat
-        // pending. These cases pin the whole range so that reading cannot be made again.
+        // not: MaxFaces is 6 and has been. These fixtures pin the whole one-to-three range so a
+        // campaign edit cannot silently rewrite what this presentation test is trying to prove.
         [UnityTest]
         public IEnumerator FaceCount_IsTheDerivedQueue_AtOneTwoAndThree(
             [Values(1, 2, 3)] int cats)
@@ -284,7 +281,7 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator Counters_ReadDeliveriesAgainstTheLevelsWinTarget()
         {
-            _root = GameRoot.Launch(); // L001 wins at 2 deliveries
+            _root = GameRoot.LaunchWith(Import(TwoRedPreviewFixture()));
             yield return null;
 
             Assert.That(_root.Preview.DeliveriesText, Is.EqualTo("0/2"),
@@ -637,7 +634,7 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator LegacyWaveReadbacks_KeepTheirOriginalMeanings()
         {
-            _root = GameRoot.Launch();
+            _root = GameRoot.LaunchWith(Import(TwoRedPreviewFixture()));
             yield return null;
 
             Assert.That(_root.Preview.ChipSummary, Is.EqualTo("red x2"),
@@ -698,13 +695,18 @@ namespace CatMetro.Tests.PlayMode
                 + @", ""spacingTicks"": 10 } ]", travelTicks: DrainTravelTicks);
         }
 
+        private static string TwoRedPreviewFixture() => FixtureJson(@"[
+    { ""tick"": 8, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 2,
+      ""spacingTicks"": 20 } ]", winDeliveries: 2);
+
         // More cats than the capsule can show, to exercise the "+N" tail.
         private static string FloodFixture() => FixtureJson(@"[
     { ""tick"": 8, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 6, ""spacingTicks"": 4 },
     { ""tick"": 40, ""sourceNode"": ""SRC"", ""color"": ""blue"", ""count"": 6, ""spacingTicks"": 4 } ]");
 
         // The FailureTests board shape (SRC -> J1 -> RED|BLU), with the waves swapped in.
-        private static string FixtureJson(string waves, int travelTicks = 12)
+        private static string FixtureJson(
+            string waves, int travelTicks = 12, int winDeliveries = 4)
         {
             return @"{
   ""schemaVersion"": 2, ""id"": ""T950"", ""name"": ""Hud Wave Fixture"", ""seed"": 950,
@@ -725,7 +727,8 @@ namespace CatMetro.Tests.PlayMode
     { ""nodeId"": ""BLU"", ""accepts"": [""blue""], ""capacity"": 6 } ],
   ""switches"": [ { ""id"": ""S1"", ""nodeId"": ""J1"", ""routes"": [""E2"", ""E3""], ""initialRoute"": 0 } ],
   ""waves"": " + waves + @",
-  ""win"": { ""deliveries"": 4, ""timeLimitTicks"": 4000, ""perfectMaxSwitches"": 1,
+  ""win"": { ""deliveries"": " + winDeliveries + @", ""timeLimitTicks"": 4000,
+    ""perfectMaxSwitches"": 1,
     ""stars"": { ""two"": 200, ""three"": 300 } },
   ""economy"": { ""baseTickets"": 20, ""perfectBonus"": 10 }
 }";

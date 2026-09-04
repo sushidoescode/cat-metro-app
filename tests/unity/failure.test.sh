@@ -5,13 +5,32 @@ set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 fail() { echo "failure.test.sh: FAIL — $1"; exit 1; }
 
-# criterion 1: no shipped construction of the pinned reason in the render trees...
-pin=$(grep -rEn --include='*.cs' 'FailReason\.PlatformOverflow' \
-  unity/Assets/Scripts/Presentation unity/Assets/Scripts/Application unity/Assets/Scripts/Bootstrap 2>/dev/null || true)
+# criterion 1: no shipped CONSTRUCTION of the pinned reason in the render trees. Comparisons
+# such as CauseAttribution's state.Outcome.Reason == FailReason.PlatformOverflow are consumers,
+# not constructors. Strip line comments so prose cannot satisfy or trip the source check.
+construction_re='(MakeFailed[[:space:]]*\([[:space:]]*|Reason[[:space:]]*=[[:space:]]*)(CatMetro\.Domain\.)?FailReason\.PlatformOverflow'
+construction_sites() {
+  local file hits
+  while IFS= read -r -d '' file; do
+    hits=$(sed 's|//.*||' "$file" | grep -En "$construction_re" || true)
+    if [ -n "$hits" ]; then
+      while IFS= read -r hit; do
+        printf '%s:%s\n' "$file" "$hit"
+      done <<< "$hits"
+    fi
+  done < <(find unity/Assets/Scripts/Presentation unity/Assets/Scripts/Application \
+    unity/Assets/Scripts/Bootstrap -type f -name '*.cs' -print0)
+}
+pin=$(construction_sites)
 [ -z "$pin" ] || fail "criterion 1: shipped PlatformOverflow construction: $pin"
-# ...with the negative fixture proving the pattern fires.
-grep -rEq 'FailReason\.PlatformOverflow' tests/fixtures/retry-bad \
-  || fail "criterion 1: pin pattern dead"
+# ...with both supported construction forms proving the pattern is live. These are source
+# mutations, never compiled production code.
+grep -E -q "$construction_re" <<< \
+  'state.Outcome = SimOutcome.MakeFailed(FailReason.PlatformOverflow);' \
+  || fail "criterion 1: MakeFailed construction pattern dead"
+grep -E -q "$construction_re" <<< \
+  'var shown = new DisplayOutcome { Reason = CatMetro.Domain.FailReason.PlatformOverflow };' \
+  || fail "criterion 1: reason-initializer construction pattern dead"
 
 # criterion 10: the three LOCKED strings live in ui.csv, zero literals in components.
 grep -q 'fail.queueoverflow,Platform overflowed at {node}' unity/Assets/Resources/Strings/ui.csv \

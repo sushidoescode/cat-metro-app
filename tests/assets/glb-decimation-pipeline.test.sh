@@ -4067,6 +4067,7 @@ import stat
 import struct
 import subprocess
 import sys
+import time
 import traceback
 from pathlib import Path
 from unittest import mock
@@ -5093,7 +5094,14 @@ def exercise_size_preflight(
     process = process_context.Process(target=child)
     process.start()
     send.close()
-    process.join(20)
+    deadline = time.monotonic() + 20
+    payload = None
+    if receive.poll(20):
+        try:
+            payload = receive.recv()
+        except EOFError:
+            payload = None
+    process.join(max(0, deadline - time.monotonic()))
     if process.is_alive():
         process.terminate()
         process.join(2)
@@ -5105,12 +5113,6 @@ def exercise_size_preflight(
         guarded_path.unlink(missing_ok=True)
         process.close()
         return
-    payload = None
-    if receive.poll(1):
-        try:
-            payload = receive.recv()
-        except EOFError:
-            payload = None
     receive.close()
     child_exitcode = process.exitcode
     process.close()

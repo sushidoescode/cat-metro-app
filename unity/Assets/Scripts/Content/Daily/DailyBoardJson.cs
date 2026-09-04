@@ -38,11 +38,18 @@ namespace CatMetro.Content.Daily
 
             var edges = new JArray();
             foreach (var e in dto.Edges.Span)
-                edges.Add(new JObject
+            {
+                var o = new JObject
                 {
                     ["id"] = e.Id, ["from"] = e.From, ["to"] = e.To,
                     ["travelTicks"] = e.TravelTicks,
-                });
+                };
+                if (!e.OneWay) o["oneWay"] = false;
+                if (e.Reversible) o["reversible"] = true;
+                if (e.Tunnel) o["tunnel"] = true;
+                if (e.Hold) o["hold"] = true;
+                edges.Add(o);
+            }
 
             var sources = new JArray();
             foreach (var s in dto.Sources.Span)
@@ -54,29 +61,60 @@ namespace CatMetro.Content.Daily
 
             var stations = new JArray();
             foreach (var s in dto.Stations.Span)
-                stations.Add(new JObject
+            {
+                var o = new JObject
                 {
                     ["nodeId"] = s.NodeId,
                     ["accepts"] = Strings(s.Accepts),
                     ["capacity"] = s.Capacity,
-                });
+                };
+                if (s.Shape != "round") o["shape"] = s.Shape;
+                stations.Add(o);
+            }
 
             var switches = new JArray();
             foreach (var s in dto.Switches.Span)
-                switches.Add(new JObject
+            {
+                var o = new JObject
                 {
                     ["id"] = s.Id, ["nodeId"] = s.NodeId,
                     ["routes"] = Strings(s.Routes),
                     ["initialRoute"] = s.InitialRoute,
-                });
+                };
+                if (s.CooldownTicks != ContentBounds.COOLDOWN_TICKS_DEFAULT)
+                    o["cooldownTicks"] = s.CooldownTicks;
+                switches.Add(o);
+            }
+
+            var gates = new JArray();
+            foreach (var g in dto.Gates.Span)
+            {
+                var windows = new JArray();
+                foreach (var w in g.OpenWindows.Span)
+                    windows.Add(new JArray(w.StartTick, w.EndTick));
+                var o = new JObject
+                {
+                    ["edgeId"] = g.EdgeId,
+                    ["openWindows"] = windows,
+                };
+                if (g.PreviewTicks != ContentBounds.GATE_PREVIEW_TICKS_DEFAULT)
+                    o["previewTicks"] = g.PreviewTicks;
+                gates.Add(o);
+            }
 
             var waves = new JArray();
             foreach (var w in dto.Waves.Span)
-                waves.Add(new JObject
+            {
+                var o = new JObject
                 {
                     ["tick"] = w.Tick, ["sourceNode"] = w.SourceNode, ["color"] = w.Color,
                     ["count"] = w.Count, ["spacingTicks"] = w.SpacingTicks,
-                });
+                };
+                if (w.Express) o["express"] = true;
+                if (w.Shape != "round") o["shape"] = w.Shape;
+                if (w.Stray) o["stray"] = true;
+                waves.Add(o);
+            }
 
             var root = new JObject
             {
@@ -89,24 +127,29 @@ namespace CatMetro.Content.Daily
                 ["sources"] = sources,
                 ["stations"] = stations,
                 ["switches"] = switches,
-                ["waves"] = waves,
-                ["win"] = new JObject
-                {
-                    ["deliveries"] = dto.Win.Deliveries,
-                    ["timeLimitTicks"] = dto.Win.TimeLimitTicks,
-                    ["perfectMaxSwitches"] = dto.Win.PerfectMaxSwitches,
-                    ["stars"] = new JObject
-                    {
-                        ["two"] = dto.Win.Stars.Two,
-                        ["three"] = dto.Win.Stars.Three,
-                    },
-                },
-                ["economy"] = new JObject
-                {
-                    ["baseTickets"] = dto.Economy.BaseTickets,
-                    ["perfectBonus"] = dto.Economy.PerfectBonus,
-                },
             };
+            if (gates.Count > 0) root["gates"] = gates;
+            root["waves"] = waves;
+
+            var win = new JObject
+            {
+                ["deliveries"] = dto.Win.Deliveries,
+                ["timeLimitTicks"] = dto.Win.TimeLimitTicks,
+            };
+            if (dto.Win.PerfectMaxSwitches != CatMetro.Domain.FlipBudget.Unbudgeted)
+                win["perfectMaxSwitches"] = dto.Win.PerfectMaxSwitches;
+            win["stars"] = new JObject
+            {
+                ["two"] = dto.Win.Stars.Two,
+                ["three"] = dto.Win.Stars.Three,
+            };
+            root["win"] = win;
+            root["economy"] = new JObject
+            {
+                ["baseTickets"] = dto.Economy.BaseTickets,
+                ["perfectBonus"] = dto.Economy.PerfectBonus,
+            };
+            if (dto.Tags.Length > 0) root["tags"] = Strings(dto.Tags);
             return root.ToString(Newtonsoft.Json.Formatting.Indented);
         }
 

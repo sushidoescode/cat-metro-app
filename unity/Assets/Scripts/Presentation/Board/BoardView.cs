@@ -45,11 +45,17 @@ namespace CatMetro.Presentation.Board
         private int[] _edgeFrom;
         private int[] _edgeTo;
         private int[] _edgeTravel;
+        private bool[] _edgeTunnel;
         private TrackSplineGraph _trackPaths;
         private int[][] _switchRouteTargetNode; // per switch, per route: target node index
         private int[] _switchNode;
         private ToySwitchView[] _switchView;
-        private readonly Dictionary<int, ToyTrainView> _trains = new Dictionary<int, ToyTrainView>();
+        private TextMesh[] _switchCooldownLabel;
+        private int[] _gateEdge;
+        private TextMesh[] _gateLabel;
+        private readonly Dictionary<int, ToyTrainView> _trains =
+            new Dictionary<int, ToyTrainView>();
+        private readonly Dictionary<int, TextMesh> _trainBadge = new Dictionary<int, TextMesh>();
         private readonly List<Material> _ownedNodeMaterials = new List<Material>();
         private CatPresentationTrack[] _catTracks;
         private int[] _catOccupantGenerations;
@@ -85,6 +91,49 @@ namespace CatMetro.Presentation.Board
         }
         public Vector3 SwitchWorldPos(int switchIndex) =>
             transform.TransformPoint(_nodePos[_switchNode[switchIndex]]); // F11: world, not local
+        public string TrainBadge(int slot) => _trainBadge.TryGetValue(slot, out var badge)
+            ? badge.text : null;
+
+        /// <summary>
+        /// The horizontal world-space envelope that source-platform cats can occupy after
+        /// launch. Those cats do not exist when the camera first fits its renderer union, so
+        /// the fit must reserve their authored side offset and every lane the train bound can
+        /// allocate. Vertical framing continues to come from the rendered tabletop itself.
+        /// </summary>
+        internal bool TryGetSourcePlatformHorizontalBounds(out Bounds bounds)
+        {
+            bounds = default;
+            bool found = false;
+            int maximumLane = Mathf.Max(0, _session.Level.Graph.TrainsMax - 1);
+            for (int source = 0; source < _sourceNode.Length; source++)
+            {
+                if (!_sourceNode[source]) continue;
+                for (int edge = 0; edge < _edgeFrom.Length; edge++)
+                {
+                    if (_edgeFrom[edge] != source) continue;
+                    Vector3 tangent = _trackPaths.Path(edge).TangentDistanceFraction(0f);
+                    Vector3 side = new Vector3(tangent.y, -tangent.x, 0f);
+                    for (int lane = 0; lane <= maximumLane; lane++)
+                    {
+                        Vector3 anchor = ToyTrainView.SourcePlatformAnchorBoard(
+                            _nodePos[source], side, 0f, lane);
+                        Vector3 world = transform.TransformPoint(anchor);
+                        Vector3 left = world + Vector3.left
+                            * ToyTrainView.PlatformFramingHalfWidth;
+                        Vector3 right = world + Vector3.right
+                            * ToyTrainView.PlatformFramingHalfWidth;
+                        if (!found)
+                        {
+                            bounds = new Bounds(left, Vector3.zero);
+                            found = true;
+                        }
+                        else bounds.Encapsulate(left);
+                        bounds.Encapsulate(right);
+                    }
+                }
+            }
+            return found;
+        }
 
         /// <summary>
         /// Pure presentation derivation: delivery is a counter advance paired with this slot
@@ -135,8 +184,12 @@ namespace CatMetro.Presentation.Board
             var sourceIds = new HashSet<string>();
             foreach (var s in dto.Sources.ToArray()) sourceIds.Add(s.NodeId);
             var stationAccept = new Dictionary<string, string>();
+            var stationShape = new Dictionary<string, string>();
             foreach (var s in dto.Stations.ToArray())
+            {
                 stationAccept[s.NodeId] = s.Accepts.Length > 0 ? s.Accepts.Span[0] : "";
+                stationShape[s.NodeId] = s.Shape;
+            }
 
             for (int i = 0; i < nodes.Length; i++)
             {
@@ -178,6 +231,17 @@ namespace CatMetro.Presentation.Board
                     // symbol half of the triple coding: first letter of the accepted colour
                     symbol.text = stationAccept[nodes[i].Id].Length > 0
                         ? stationAccept[nodes[i].Id].Substring(0, 1).ToUpperInvariant() : "?";
+
+                    // Match shape is a separate signal from the established line-colour badge.
+                    // Keeping both avoids teaching shape before its band while still making the
+                    // L009 same-colour stations distinguishable without colour.
+                    var matchShape = new GameObject("match-shape").AddComponent<TextMesh>();
+                    matchShape.transform.SetParent(prim.transform, false);
+                    matchShape.transform.localPosition = new Vector3(0.48f, -0.48f, -1.02f);
+                    matchShape.characterSize = 0.24f;
+                    matchShape.anchor = TextAnchor.MiddleCenter;
+                    matchShape.alignment = TextAlignment.Center;
+                    matchShape.text = ShapeGlyph(stationShape[nodes[i].Id]);
                 }
                 else if (kind == "source")
                     TintSharedRenderer(renderer, new Color(0.25f, 0.25f, 0.25f));
@@ -188,6 +252,7 @@ namespace CatMetro.Presentation.Board
             _edgeFrom = new int[edges.Length];
             _edgeTo = new int[edges.Length];
             _edgeTravel = new int[edges.Length];
+            _edgeTunnel = new bool[edges.Length];
             var edgeIndex = new Dictionary<string, int>();
             for (int i = 0; i < edges.Length; i++)
             {
@@ -195,14 +260,45 @@ namespace CatMetro.Presentation.Board
                 _edgeFrom[i] = nodeIndex[edges[i].From];
                 _edgeTo[i] = nodeIndex[edges[i].To];
                 _edgeTravel[i] = edges[i].TravelTicks;
+                _edgeTunnel[i] = edges[i].Tunnel;
             }
             _trackPaths = TrackSplineGraph.Build(_nodePos, _edgeFrom, _edgeTo);
             for (int i = 0; i < edges.Length; i++)
-                ToyTrackMeshBuilder.Build(edges[i].Id, _trackPaths.Path(i), transform);
+            {
+                if (!edges[i].Tunnel)
+                    ToyTrackMeshBuilder.Build(edges[i].Id, _trackPaths.Path(i), transform);
+                else
+                {
+                    CreateBoardLabel("tunnel-entry:" + edges[i].Id, "T",
+                        _nodePos[_edgeFrom[i]] + new Vector3(0f, 0f, -0.34f), 0.32f);
+                    CreateBoardLabel("tunnel-exit:" + edges[i].Id, "T",
+                        _nodePos[_edgeTo[i]] + new Vector3(0f, 0f, -0.34f), 0.32f);
+                }
+                if (edges[i].Hold)
+                    CreateBoardLabel("hold:" + edges[i].Id, "H",
+                        _trackPaths.Path(i).EvaluateDistanceFraction(0.5f)
+                            + new Vector3(0f, 0f, -0.34f), 0.24f);
+                if (!edges[i].OneWay || edges[i].Reversible)
+                    CreateBoardLabel("direction:" + edges[i].Id, "<->",
+                        _trackPaths.Path(i).EvaluateDistanceFraction(0.58f)
+                            + new Vector3(0f, 0f, -0.34f), 0.22f);
+            }
+
+            var gates = dto.Gates.ToArray();
+            _gateEdge = new int[gates.Length];
+            _gateLabel = new TextMesh[gates.Length];
+            for (int g = 0; g < gates.Length; g++)
+            {
+                _gateEdge[g] = edgeIndex[gates[g].EdgeId];
+                _gateLabel[g] = CreateBoardLabel("gate:" + gates[g].EdgeId, "X",
+                    _trackPaths.Path(_gateEdge[g]).EvaluateDistanceFraction(0.5f)
+                        + new Vector3(0f, 0f, -0.38f), 0.28f);
+            }
 
             var switches = dto.Switches.ToArray();
             _switchNode = new int[switches.Length];
             _switchView = new ToySwitchView[switches.Length];
+            _switchCooldownLabel = new TextMesh[switches.Length];
             _switchRouteTargetNode = new int[switches.Length][];
             for (int s = 0; s < switches.Length; s++)
             {
@@ -210,7 +306,11 @@ namespace CatMetro.Presentation.Board
                 var routes = switches[s].Routes.ToArray();
                 _switchRouteTargetNode[s] = new int[routes.Length];
                 for (int r = 0; r < routes.Length; r++)
-                    _switchRouteTargetNode[s][r] = _edgeTo[edgeIndex[routes[r]]];
+                {
+                    int edge = edgeIndex[routes[r]];
+                    _switchRouteTargetNode[s][r] = _edgeFrom[edge] == _switchNode[s]
+                        ? _edgeTo[edge] : _edgeFrom[edge];
+                }
 
                 // SWITCH-LEVERS: the toy assembly (teal base, tilted orange lever, arrow)
                 // replaces the disc + arm. Its root keeps the disc's exact contract: the
@@ -223,6 +323,10 @@ namespace CatMetro.Presentation.Board
                 var id = switchGo.AddComponent<BoardElementId>();
                 id.Id = switches[s].Id; id.Kind = "switch";
                 _switchView[s] = toySwitch;
+
+                _switchCooldownLabel[s] = CreateBoardLabel(
+                    "cooldown:" + switches[s].Id, "",
+                    _nodePos[_switchNode[s]] + new Vector3(0.58f, 0.38f, -0.48f), 0.2f);
 
                 // CM-UX-03: onboarding-band teach affordance — a STATIC raised ring behind
                 // the disc (shape carries the information; no BoardElementId, so the merged
@@ -253,6 +357,7 @@ namespace CatMetro.Presentation.Board
                 }
             }
             RefreshSwitches();
+            RefreshMechanicStatus(_session);
         }
 
         private static Material _teachRingMat; // one cached tinted instance per domain
@@ -303,7 +408,7 @@ namespace CatMetro.Presentation.Board
         public int CommittedRoute(int switchIndex)
         {
             int routes = _switchRouteTargetNode[switchIndex].Length;
-            return (_session.State.SwitchRoutes[switchIndex]
+            return (CatMetro.Domain.SwitchState.Route(_session.State.SwitchRoutes[switchIndex])
                 + _session.PendingToggleCount(switchIndex)) % routes;
         }
 
@@ -329,6 +434,7 @@ namespace CatMetro.Presentation.Board
         {
             RefreshSwitches();
             UpdateTeach(session);
+            RefreshMechanicStatus(session);
             float alpha = (float)session.Alpha;
             bool motionOff = MotionOffSource != null && MotionOffSource();
             // Copy first: presentation tracks must never hold a simulation slot reference or
@@ -446,19 +552,34 @@ namespace CatMetro.Presentation.Board
                     consist = ToyTrainView.Create(transform, "train:" + t, _edgeFrom, _edgeTo);
                     var id = consist.gameObject.AddComponent<BoardElementId>();
                     id.Id = "train-" + t; id.Kind = "train";
+                    var badge = new GameObject("cat-token").AddComponent<TextMesh>();
+                    badge.transform.SetParent(consist.transform, false);
+                    badge.transform.localPosition = new Vector3(0f, 0f, -1.05f);
+                    badge.characterSize = 0.48f;
+                    badge.anchor = TextAnchor.MiddleCenter;
+                    badge.alignment = TextAlignment.Center;
+                    badge.color = Palette.InkNavy;
+                    _trainBadge[t] = badge;
                     _trains[t] = consist;
                 }
                 consist.gameObject.SetActive(true);
-                // The CODE, not a resolved Color: the consist paints the cat AND cuts its
-                // destination pin from it, and both have to come off the one CatLine vocabulary
-                // or the pin's shape and the cat's colour can drift apart.
+                // Keep the rich consist on CatLine's code path: SyncSlot paints the rider and
+                // derives its destination pin from the same vocabulary. The compact text badge
+                // adds the ladder-only shape/stray/express flags without replacing that path.
                 consist.SyncSlot(PresentationOccupantKey(t, _catOccupantGenerations[t]),
                     trains[t].Color);
-                if (trains[t].State == CatMetro.Domain.TrainState.OnEdge)
+                _trainBadge[t].text = TokenGlyph(trains[t].Color);
+                bool hiddenInTunnel = false;
+                if (trains[t].State == CatMetro.Domain.TrainState.OnEdge
+                    || trains[t].State == CatMetro.Domain.TrainState.OnEdgeReverse)
                 {
                     int e = trains[t].EdgeId;
+                    hiddenInTunnel = _edgeTunnel[e];
                     float progress = Mathf.Min(1f, (trains[t].ProgressTicks + alpha) / _edgeTravel[e]);
-                    consist.PlaceOnEdge(_trackPaths, e, _trackPaths.Path(e).Length * progress);
+                    if (trains[t].State == CatMetro.Domain.TrainState.OnEdgeReverse)
+                        progress = 1f - progress;
+                    consist.PlaceOnEdge(_trackPaths, e,
+                        _trackPaths.Path(e).Length * progress);
                 }
                 else
                 {
@@ -487,6 +608,7 @@ namespace CatMetro.Presentation.Board
                 consist.ApplyPresentation(_catTracks[t].State,
                     _catTracks[t].PlatformBlend, _catTracks[t].MovingToPlatform,
                     visualTime, motionOff, _catTracks[t].PlatformBlendSpeed);
+                if (hiddenInTunnel) consist.gameObject.SetActive(false);
             }
             for (int t = 0; t < trains.Length; t++)
             {
@@ -498,6 +620,98 @@ namespace CatMetro.Presentation.Board
             }
             _previousDeliveryCount = deliveries;
             _hasPresentationSnapshot = true;
+        }
+
+        private void RefreshMechanicStatus(GameSession session)
+        {
+            if (_switchCooldownLabel != null)
+                for (int s = 0; s < _switchCooldownLabel.Length; s++)
+                {
+                    int remaining = CatMetro.Domain.SwitchState.Cooldown(
+                        session.State.SwitchRoutes[s]);
+                    _switchCooldownLabel[s].text = remaining > 0 ? remaining.ToString() : "";
+                    _switchCooldownLabel[s].color = remaining > 0
+                        ? Palette.SignalRed : Palette.CreamCard;
+                }
+
+            if (_gateLabel != null)
+                for (int g = 0; g < _gateLabel.Length; g++)
+                {
+                    bool open = GateOpenAt(session.Level.Graph, g, session.State.Tick);
+                    int transition = TicksToNextGateTransition(
+                        session.Level.Graph, g, session.State.Tick, open);
+                    string countdown = transition > 0
+                        && transition <= session.Level.Graph.GatePreviewTicks[g]
+                        ? " " + transition : "";
+                    _gateLabel[g].text = (open ? "|" : "X") + countdown;
+                    _gateLabel[g].color = open ? Palette.GardenGreen : Palette.SignalRed;
+                }
+        }
+
+        private TextMesh CreateBoardLabel(
+            string name, string text, Vector3 localPosition, float characterSize)
+        {
+            var label = new GameObject(name).AddComponent<TextMesh>();
+            label.transform.SetParent(transform, false);
+            label.transform.localPosition = localPosition;
+            label.characterSize = characterSize;
+            label.anchor = TextAnchor.MiddleCenter;
+            label.alignment = TextAlignment.Center;
+            label.text = text;
+            label.color = Palette.InkNavy;
+            return label;
+        }
+
+        private static bool GateOpenAt(CatMetro.Domain.LevelGraph graph, int gate, int tick)
+        {
+            var windows = graph.GateOpenWindows[gate];
+            for (int w = 0; w < windows.Length; w++)
+                if (tick >= windows[w].StartTick && tick < windows[w].EndTick)
+                    return true;
+            return false;
+        }
+
+        private static int TicksToNextGateTransition(
+            CatMetro.Domain.LevelGraph graph, int gate, int tick, bool open)
+        {
+            var windows = graph.GateOpenWindows[gate];
+            int next = int.MaxValue;
+            for (int w = 0; w < windows.Length; w++)
+            {
+                if (open && tick >= windows[w].StartTick && tick < windows[w].EndTick)
+                    return windows[w].EndTick - tick;
+                if (!open && windows[w].StartTick > tick)
+                    next = Mathf.Min(next, windows[w].StartTick - tick);
+            }
+            return next == int.MaxValue ? -1 : next;
+        }
+
+        private static string ShapeGlyph(string shape)
+        {
+            switch (shape)
+            {
+                case "square": return "S";
+                case "triangle": return "T";
+                default: return "O";
+            }
+        }
+
+        private static string ShapeGlyph(byte shape)
+        {
+            switch (shape)
+            {
+                case CatMetro.Domain.CatShape.Square: return "S";
+                case CatMetro.Domain.CatShape.Triangle: return "T";
+                default: return "O";
+            }
+        }
+
+        private static string TokenGlyph(byte token)
+        {
+            string glyph = ShapeGlyph(CatMetro.Domain.CatToken.Shape(token));
+            if (CatMetro.Domain.CatToken.IsStray(token)) glyph += "!";
+            if (CatMetro.Domain.CatToken.IsExpress(token)) glyph += "E";
+            return glyph;
         }
 
         private void EnsureCatTracks(int count)

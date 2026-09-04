@@ -22,7 +22,7 @@ namespace CatMetro.Tests.Content
                 .ToArray();
 
             Assert.That(files, Is.Not.Empty,
-                "corpus discovery must fail closed instead of letting the loop pass vacuously");
+                "the flip-budget importer proof must inspect the authored corpus artifact");
             foreach (var path in files)
             {
                 var import = LevelImporter.Import(File.ReadAllBytes(path));
@@ -37,7 +37,7 @@ namespace CatMetro.Tests.Content
         public void MissingOptionalParImportsAsUngated()
         {
             var json = L001Json();
-            ((JObject)json["win"]).Property("perfectMaxSwitches").Remove();
+            ((JObject)json["win"]).Property("perfectMaxSwitches")?.Remove();
 
             var import = LevelImporter.Import(Encoding.UTF8.GetBytes(json.ToString(Formatting.None)));
 

@@ -21,6 +21,12 @@ namespace CatMetro.Tests.Presentation
                 .Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0).ToArray();
         }
 
+        private static void AssertUniqueKey(string[] rows, string key)
+        {
+            Assert.That(rows.Count(row => row.StartsWith(key + ",")), Is.EqualTo(1),
+                key + " must occur exactly once in the append-only csv");
+        }
+
         [Test]
         public void HomeAndIntroRows_StayBytePinnedAtTheirAppendPositions()
         {
@@ -28,13 +34,16 @@ namespace CatMetro.Tests.Presentation
             // Adoption shift (2026-08-06): anchored at 7 merged rows; main gained
             // hint.tutorial + results.next before this slice merged, so 9 merged + 3 = 12
             // and this slice's pins sit at rows 9-11 (merge order governs; the #39 law).
-            // Daily Live appends six rows after this slice, at rows 12-17. That establishes the
-            // frozen legacy prefix; later slices may append while rows 9-11 remain byte-pinned.
-            Assert.That(rows.Length, Is.GreaterThanOrEqualTo(18),
-                "the frozen legacy prefix must remain present; later rows may append");
+            // Later slices may append freely; they may not move, rewrite, reorder, or duplicate
+            // this slice's three owned rows.
+            Assert.That(rows.Length, Is.GreaterThanOrEqualTo(12),
+                "the csv must retain the nine merged rows and this slice's three rows");
             Assert.That(rows[9], Is.EqualTo("home.title,Cat Metro"), "DRAFT");
             Assert.That(rows[10], Is.EqualTo("intro.play,Play"), "DRAFT");
             Assert.That(rows[11], Is.EqualTo("intro.goal,Deliver {count} cats"), "DRAFT");
+            AssertUniqueKey(rows, "home.title");
+            AssertUniqueKey(rows, "intro.play");
+            AssertUniqueKey(rows, "intro.goal");
         }
 
         [Test]

@@ -34,28 +34,28 @@ out_t=$(env -u MESHY_API_KEY -u TRIPO_API_KEY bash "$script" tripo "a test cat" 
 out_q=$(env -u MESHY_API_KEY -u TRIPO_API_KEY bash "$script" queue "$manifest" --dry-run 2>&1); t "queue dry-run keyless" 0 $?
 
 # dry-run must show the redacted auth header shape and the real hosts
-echo "$out_m" | grep -q 'api.meshy.ai' || { echo "  FAIL: meshy dry-run lacks api.meshy.ai"; fail=1; }
-echo "$out_t" | grep -q 'tripo3d.ai' || { echo "  FAIL: tripo dry-run lacks tripo3d.ai host"; fail=1; }
-echo "$out_m" | grep -q 'Authorization: Bearer \[REDACTED\]' || { echo "  FAIL: meshy dry-run lacks redacted auth header"; fail=1; }
-echo "$out_t" | grep -q 'Authorization: Bearer \[REDACTED\]' || { echo "  FAIL: tripo dry-run lacks redacted auth header"; fail=1; }
+grep -q 'api.meshy.ai' <<< "$out_m" || { echo "  FAIL: meshy dry-run lacks api.meshy.ai"; fail=1; }
+grep -q 'tripo3d.ai' <<< "$out_t" || { echo "  FAIL: tripo dry-run lacks tripo3d.ai host"; fail=1; }
+grep -q 'Authorization: Bearer \[REDACTED\]' <<< "$out_m" || { echo "  FAIL: meshy dry-run lacks redacted auth header"; fail=1; }
+grep -q 'Authorization: Bearer \[REDACTED\]' <<< "$out_t" || { echo "  FAIL: tripo dry-run lacks redacted auth header"; fail=1; }
 # queue must plan BOTH services from the real manifest
-echo "$out_q" | grep -q 'api.meshy.ai' || { echo "  FAIL: queue dry-run plans no meshy request"; fail=1; }
-echo "$out_q" | grep -q 'tripo3d.ai' || { echo "  FAIL: queue dry-run plans no tripo request"; fail=1; }
+grep -q 'api.meshy.ai' <<< "$out_q" || { echo "  FAIL: queue dry-run plans no meshy request"; fail=1; }
+grep -q 'tripo3d.ai' <<< "$out_q" || { echo "  FAIL: queue dry-run plans no tripo request"; fail=1; }
 
 # (b) live mode without the key fails and names the var
 msg=$(env -u MESHY_API_KEY -u TRIPO_API_KEY bash "$script" meshy "a test cat" test-cat.glb 2>&1); rc=$?
 t "meshy live keyless fails" 1 $rc
-echo "$msg" | grep -q 'MESHY_API_KEY' || { echo "  FAIL: missing-key message does not name MESHY_API_KEY"; fail=1; }
+grep -q 'MESHY_API_KEY' <<< "$msg" || { echo "  FAIL: missing-key message does not name MESHY_API_KEY"; fail=1; }
 msg=$(env -u MESHY_API_KEY -u TRIPO_API_KEY bash "$script" tripo "a test cat" test-cat.glb 2>&1); rc=$?
 t "tripo live keyless fails" 1 $rc
-echo "$msg" | grep -q 'TRIPO_API_KEY' || { echo "  FAIL: missing-key message does not name TRIPO_API_KEY"; fail=1; }
+grep -q 'TRIPO_API_KEY' <<< "$msg" || { echo "  FAIL: missing-key message does not name TRIPO_API_KEY"; fail=1; }
 
 # (c) sentinel key values never appear in any output, dry-run or usage/error paths
 sm="sentinel-meshy-0f3a9d1c"; st="sentinel-tripo-7be24c88"
 leak=$(MESHY_API_KEY="$sm" TRIPO_API_KEY="$st" bash "$script" queue "$manifest" --dry-run 2>&1)
-if echo "$leak" | grep -Eq "$sm|$st"; then echo "  FAIL: sentinel key leaked in dry-run output"; fail=1; else echo "  ok: no key leak in dry-run"; fi
+if grep -E -q "$sm|$st" <<< "$leak"; then echo "  FAIL: sentinel key leaked in dry-run output"; fail=1; else echo "  ok: no key leak in dry-run"; fi
 leak2=$(MESHY_API_KEY="$sm" TRIPO_API_KEY="$st" bash "$script" 2>&1 || true)
-if echo "$leak2" | grep -Eq "$sm|$st"; then echo "  FAIL: sentinel key leaked in usage output"; fail=1; else echo "  ok: no key leak in usage"; fi
+if grep -E -q "$sm|$st" <<< "$leak2"; then echo "  FAIL: sentinel key leaked in usage output"; fail=1; else echo "  ok: no key leak in usage"; fi
 
 # (c2) THE LIVE PATH must not leak the key either (the dry-run legs above never reach
 # need_key or api_curl — they return before it). This drives a real, non-dry-run
@@ -67,10 +67,10 @@ if echo "$leak2" | grep -Eq "$sm|$st"; then echo "  FAIL: sentinel key leaked in
 mkdir -p "$TMPROOT/live-meshy-out" "$TMPROOT/live-tripo-out"
 leak3=$(MESHY_API_KEY="$sm" MESHY_API_BASE="https://127.0.0.1:1" GEN_ASSETS_OUT_DIR="$TMPROOT/live-meshy-out" \
   bash "$script" meshy "a live cat" test-cat.glb 2>&1 || true)
-if echo "$leak3" | grep -Eq "$sm"; then echo "  FAIL: sentinel key leaked on the live meshy path"; fail=1; else echo "  ok: no key leak on live meshy path"; fi
+if grep -q "$sm" <<< "$leak3"; then echo "  FAIL: sentinel key leaked on the live meshy path"; fail=1; else echo "  ok: no key leak on live meshy path"; fi
 leak4=$(TRIPO_API_KEY="$st" TRIPO_API_BASE="https://127.0.0.1:1" GEN_ASSETS_OUT_DIR="$TMPROOT/live-tripo-out" \
   bash "$script" tripo "a live cat" test-cat.glb 2>&1 || true)
-if echo "$leak4" | grep -Eq "$st"; then echo "  FAIL: sentinel key leaked on the live tripo path"; fail=1; else echo "  ok: no key leak on live tripo path"; fi
+if grep -q "$st" <<< "$leak4"; then echo "  FAIL: sentinel key leaked on the live tripo path"; fail=1; else echo "  ok: no key leak on live tripo path"; fi
 
 # (c3) the redactor is not vacuous: extract redact() and prove it masks the key value —
 # if a future edit no-ops the redactor body (a real M4-class mutation), this turns RED.
@@ -79,15 +79,15 @@ sed -n '/^redact()/,/^}/p' "$script" > "$redfn"
 grep -q 'REDACTED' "$redfn" || { echo "  FAIL: could not extract a working redact() (vacuity guard broke)"; fail=1; }
 probe=$(MESHY_API_KEY="$sm" bash -c ". '$redfn'; redact \"leak \$MESHY_API_KEY here\"" 2>&1)
 rm -f "$redfn"
-if echo "$probe" | grep -q "$sm"; then echo "  FAIL: redactor does not mask the key (vacuity guard)"; fail=1
-elif echo "$probe" | grep -q 'REDACTED'; then echo "  ok: redactor masks the key"
+if grep -q "$sm" <<< "$probe"; then echo "  FAIL: redactor does not mask the key (vacuity guard)"; fail=1
+elif grep -q 'REDACTED' <<< "$probe"; then echo "  ok: redactor masks the key"
 else echo "  FAIL: redactor probe produced no redacted output (did not run)"; fail=1; fi
 
 # (f) manifest-driven path escape is refused (F5): an 'out' with .. or a separator must
 # not create files outside the gitignored candidate dir, even keyless.
 esc=$(env -u MESHY_API_KEY bash "$script" meshy "x" "../ESCAPED.glb" 2>&1); rc=$?
 t "path-escape out refused" 1 $rc
-echo "$esc" | grep -q 'bare filename' || { echo "  FAIL: escape refusal does not explain the bare-filename rule"; fail=1; }
+grep -q 'bare filename' <<< "$esc" || { echo "  FAIL: escape refusal does not explain the bare-filename rule"; fail=1; }
 if [ -e ../ESCAPED.glb ] || [ -e ../ESCAPED ]; then
   echo "  FAIL: path escape created a file/dir outside the candidate area"; fail=1
   # scoped cleanup: only the two exact names this leg could have produced (never rm -rf a
@@ -113,9 +113,9 @@ gout=$(PATH="$stubdir:$PATH" DOWNLOAD_TIMEOUT=5 bash -c '
   download_to "file:///etc/passwd" "'"$stubdir"'/c.glb"; echo "file_rc=$?"
 ' 2>&1)
 rm -rf "$stubdir"
-if echo "$gout" | grep -q CURL_INVOKED; then
+if grep -q CURL_INVOKED <<< "$gout"; then
   echo "  FAIL: download_to reached curl on a bad url (F1 scheme guard regressed)"; fail=1
-elif echo "$gout" | grep -q 'inj_rc=1' && echo "$gout" | grep -q 'http_rc=1' && echo "$gout" | grep -q 'file_rc=1'; then
+elif grep -q 'inj_rc=1' <<< "$gout" && grep -q 'http_rc=1' <<< "$gout" && grep -q 'file_rc=1' <<< "$gout"; then
   echo "  ok: download_to refuses bad urls before curl"
 else echo "  FAIL: download_to guard probe did not run as expected ($gout)"; fail=1; fi
 
@@ -130,16 +130,16 @@ rm -rf "$magdir"
 
 # g3: remaining F6 flags pinned on a COMMENT-STRIPPED view of download_to (code, not prose).
 dlcode=$(sed 's/#.*//' "$dlfn")
-echo "$dlcode" | grep -q 'max-filesize' || { echo "  FAIL: download_to lost its --max-filesize cap (F6)"; fail=1; }
-echo "$dlcode" | grep -q 'proto-redir'  || { echo "  FAIL: download_to lost its protocol pin (F6)"; fail=1; }
-echo "$dlcode" | grep -q -- '-- "\$url"' || { echo "  FAIL: download_to no longer passes url after -- (F1)"; fail=1; }
+grep -q 'max-filesize' <<< "$dlcode" || { echo "  FAIL: download_to lost its --max-filesize cap (F6)"; fail=1; }
+grep -q 'proto-redir' <<< "$dlcode" || { echo "  FAIL: download_to lost its protocol pin (F6)"; fail=1; }
+grep -q -- '-- "\$url"' <<< "$dlcode" || { echo "  FAIL: download_to no longer passes url after -- (F1)"; fail=1; }
 rm -f "$dlfn"
 
 # g4: each vendor base rejects an attacker host (F4 allowlist).
 badbase=$(MESHY_API_BASE="https://attacker.example/v2" bash "$script" meshy "x" y.glb --dry-run 2>&1); [ $? -ne 0 ] || { echo "  FAIL: MESHY_API_BASE accepts a non-Meshy host (F4 allowlist regressed)"; fail=1; }
-echo "$badbase" | grep -q 'Meshy host' || { echo "  FAIL: meshy base rejection does not name the host rule"; fail=1; }
+grep -q 'Meshy host' <<< "$badbase" || { echo "  FAIL: meshy base rejection does not name the host rule"; fail=1; }
 badtripo=$(TRIPO_API_BASE="https://attacker.example/v3" bash "$script" tripo "x" y.glb --dry-run 2>&1); [ $? -ne 0 ] || { echo "  FAIL: TRIPO_API_BASE accepts a non-Tripo host (F4 allowlist regressed)"; fail=1; }
-echo "$badtripo" | grep -q 'Tripo host' || { echo "  FAIL: tripo base rejection does not name the host rule"; fail=1; }
+grep -q 'Tripo host' <<< "$badtripo" || { echo "  FAIL: tripo base rejection does not name the host rule"; fail=1; }
 
 # (d) the script never references the human's key file by name
 if grep -q '\.env' "$script"; then echo "  FAIL: script references the key file path"; fail=1; else echo "  ok: no key-file reference in script"; fi

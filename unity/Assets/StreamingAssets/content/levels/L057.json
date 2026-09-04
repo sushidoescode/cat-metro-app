@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 2,
+  "id": "L057",
+  "name": "Clockwork Portal",
+  "seed": 1057,
+  "meta": {
+    "band": "capstone",
+    "difficultyTarget": 0.97,
+    "mechanics": ["switch", "queue", "budget", "cooldown", "tunnel", "gate"],
+    "newMechanic": null,
+    "teachingGoal": "Cool the lever while red waits for its tunnel gate, then turn the line blue",
+    "minActionWindowTicks": 8,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 10 },
+      { "id": "J1", "x": 0, "y": 6, "queueCapacity": 4 },
+      { "id": "WAIT", "x": -3, "y": 4, "queueCapacity": 4 },
+      { "id": "RED", "x": -4, "y": 0 },
+      { "id": "BLUE", "x": 4, "y": 0 },
+      { "id": "LOOP_A", "x": 4, "y": 6 },
+      { "id": "LOOP_B", "x": 3, "y": 9 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 6 },
+      { "id": "E_RED_APPROACH", "from": "J1", "to": "WAIT", "travelTicks": 3 },
+      { "id": "E_BLUE", "from": "J1", "to": "BLUE", "travelTicks": 7 },
+      { "id": "E_LOOP_OUT", "from": "J1", "to": "LOOP_A", "travelTicks": 5 },
+      { "id": "E_LOOP_TOP", "from": "LOOP_A", "to": "LOOP_B", "travelTicks": 5 },
+      { "id": "E_LOOP_BACK", "from": "LOOP_B", "to": "J1", "travelTicks": 5 },
+      { "id": "E_GATE_TUNNEL", "from": "WAIT", "to": "RED", "travelTicks": 6, "tunnel": true }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red", "blue"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 4 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 4 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_RED_APPROACH", "E_BLUE", "E_LOOP_OUT"], "initialRoute": 2, "cooldownTicks": 4 }
+  ],
+  "gates": [
+    { "edgeId": "E_GATE_TUNNEL", "openWindows": [[16, 70]], "previewTicks": 8 }
+  ],
+  "waves": [
+    { "tick": 3, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8 },
+    { "tick": 28, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8 }
+  ],
+  "win": {
+    "deliveries": 2,
+    "timeLimitTicks": 125,
+    "perfectMaxSwitches": 2,
+    "stars": { "two": 1010, "three": 1300 }
+  },
+  "economy": { "baseTickets": 62, "perfectBonus": 32 }
+}

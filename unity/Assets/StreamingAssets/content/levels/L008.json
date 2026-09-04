@@ -1,181 +1,55 @@
 {
   "schemaVersion": 2,
   "id": "L008",
-  "name": "Double Berth",
+  "name": "Queue to the Yard",
   "seed": 1008,
   "meta": {
-    "band": "alternation",
-    "difficultyTarget": 0.24,
-    "mechanics": [
-      "switch",
-      "queue"
-    ],
+    "band": "onboarding",
+    "difficultyTarget": 0.16,
+    "mechanics": ["switch", "queue"],
     "newMechanic": null,
-    "teachingGoal": "Two switches share one line: the gate opens for the red rush at once, and the berth switch is set before the blue rush",
+    "teachingGoal": "Release a waiting pair through the entry lever, then sort the final colour downstream",
     "minActionWindowTicks": 12,
     "authoredBy": "llm+validator"
   },
   "board": {
     "nodes": [
-      {
-        "id": "SRC",
-        "x": 3,
-        "y": 9,
-        "queueCapacity": 4
-      },
-      {
-        "id": "GATE",
-        "x": 3,
-        "y": 7
-      },
-      {
-        "id": "RED",
-        "x": 1,
-        "y": 3
-      },
-      {
-        "id": "J2",
-        "x": 5,
-        "y": 7
-      },
-      {
-        "id": "BLU",
-        "x": 5,
-        "y": 3
-      },
-      {
-        "id": "TRAP",
-        "x": 7,
-        "y": 7,
-        "queueCapacity": 1
-      }
+      { "id": "SRC", "x": 4, "y": 11, "queueCapacity": 3 },
+      { "id": "ENTRY", "x": 4, "y": 8 },
+      { "id": "SORT", "x": 4, "y": 4 },
+      { "id": "RED", "x": 1, "y": 1 },
+      { "id": "BLUE", "x": 7, "y": 1 },
+      { "id": "YARD", "x": 7, "y": 8 }
     ],
     "edges": [
-      {
-        "id": "E1",
-        "from": "SRC",
-        "to": "GATE",
-        "travelTicks": 6
-      },
-      {
-        "id": "E2",
-        "from": "GATE",
-        "to": "RED",
-        "travelTicks": 10
-      },
-      {
-        "id": "E3",
-        "from": "GATE",
-        "to": "J2",
-        "travelTicks": 6
-      },
-      {
-        "id": "E4",
-        "from": "J2",
-        "to": "BLU",
-        "travelTicks": 8
-      },
-      {
-        "id": "E5",
-        "from": "J2",
-        "to": "TRAP",
-        "travelTicks": 4
-      }
+      { "id": "E_IN", "from": "SRC", "to": "ENTRY", "travelTicks": 9 },
+      { "id": "E_SORT", "from": "ENTRY", "to": "SORT", "travelTicks": 9 },
+      { "id": "E_YARD", "from": "ENTRY", "to": "YARD", "travelTicks": 12 },
+      { "id": "E_RED", "from": "SORT", "to": "RED", "travelTicks": 10 },
+      { "id": "E_BLUE", "from": "SORT", "to": "BLUE", "travelTicks": 10 }
     ]
   },
   "sources": [
-    {
-      "nodeId": "SRC",
-      "allowedColors": [
-        "red",
-        "blue"
-      ]
-    }
+    { "nodeId": "SRC", "allowedColors": ["red", "blue"] }
   ],
   "stations": [
-    {
-      "nodeId": "RED",
-      "accepts": [
-        "red"
-      ],
-      "capacity": 8
-    },
-    {
-      "nodeId": "BLU",
-      "accepts": [
-        "blue"
-      ],
-      "capacity": 8
-    }
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 8 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 8 },
+    { "nodeId": "YARD", "accepts": ["green"], "capacity": 8 }
   ],
   "switches": [
-    {
-      "id": "S1",
-      "nodeId": "GATE",
-      "routes": [
-        "E2",
-        "E3"
-      ],
-      "initialRoute": 0
-    },
-    {
-      "id": "S2",
-      "nodeId": "J2",
-      "routes": [
-        "E4",
-        "E5"
-      ],
-      "initialRoute": 1
-    }
+    { "id": "S_ENTRY", "nodeId": "ENTRY", "routes": ["E_SORT", "E_YARD"], "initialRoute": 1 },
+    { "id": "S_SORT", "nodeId": "SORT", "routes": ["E_RED", "E_BLUE"], "initialRoute": 0 }
   ],
   "waves": [
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 8,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 70,
-      "sourceNode": "SRC",
-      "color": "blue",
-      "count": 3,
-      "spacingTicks": 12
-    },
-    {
-      "tick": 150,
-      "sourceNode": "SRC",
-      "color": "red",
-      "count": 2,
-      "spacingTicks": 16
-    }
+    { "tick": 8, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 12 },
+    { "tick": 8, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 12 },
+    { "tick": 64, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 12 }
   ],
   "win": {
-    "deliveries": 8,
-    "timeLimitTicks": 230,
-    "perfectMaxSwitches": 4,
-    "stars": {
-      "two": 520,
-      "three": 760
-    }
+    "deliveries": 3,
+    "timeLimitTicks": 340,
+    "stars": { "two": 450, "three": 600 }
   },
-  "economy": {
-    "baseTickets": 20,
-    "perfectBonus": 12
-  }
+  "economy": { "baseTickets": 27, "perfectBonus": 14 }
 }

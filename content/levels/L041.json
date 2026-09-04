@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 2,
+  "id": "L041",
+  "name": "Two Trains, One Return",
+  "seed": 4041,
+  "meta": {
+    "band": "multi-line",
+    "difficultyTarget": 0.79,
+    "mechanics": ["switch", "budget", "second-train"],
+    "newMechanic": "second-train",
+    "teachingGoal": "Separate the overlapping red and blue trains, then leave the route safe for the following blue train.",
+    "authoredBy": "llm+validator",
+    "minActionWindowTicks": 3
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 8 },
+      { "id": "J1", "x": 0, "y": 5, "queueCapacity": 4 },
+      { "id": "RED", "x": -4, "y": 1 },
+      { "id": "BLUE", "x": 4, "y": 1 },
+      { "id": "LOOP_A", "x": 0, "y": 0, "queueCapacity": 3 },
+      { "id": "LOOP_B", "x": 4, "y": -2, "queueCapacity": 3 },
+      { "id": "LOOP_C", "x": 7, "y": 2, "queueCapacity": 3 },
+      { "id": "LOOP_D", "x": 4, "y": 7, "queueCapacity": 3 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 3 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 3 },
+      { "id": "E_BLUE", "from": "J1", "to": "BLUE", "travelTicks": 3 },
+      { "id": "E_LOOP_OUT", "from": "J1", "to": "LOOP_A", "travelTicks": 2 },
+      { "id": "E_LOOP_LOW", "from": "LOOP_A", "to": "LOOP_B", "travelTicks": 2 },
+      { "id": "E_LOOP_RISE", "from": "LOOP_B", "to": "LOOP_C", "travelTicks": 2 },
+      { "id": "E_LOOP_HIGH", "from": "LOOP_C", "to": "LOOP_D", "travelTicks": 2 },
+      { "id": "E_LOOP_BACK", "from": "LOOP_D", "to": "J1", "travelTicks": 2 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red", "blue"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 3 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 3 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_RED", "E_BLUE"], "initialRoute": 1 }
+  ],
+  "waves": [
+    { "tick": 0, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8 },
+    { "tick": 3, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8 },
+    { "tick": 10, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8 }
+  ],
+  "win": {
+    "deliveries": 3,
+    "timeLimitTicks": 22,
+    "perfectMaxSwitches": 2,
+    "stars": { "two": 300, "three": 500 }
+  },
+  "economy": { "baseTickets": 70, "perfectBonus": 30 }
+}

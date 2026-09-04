@@ -694,17 +694,20 @@ namespace CatMetro.Tests.PlayMode
         public IEnumerator Carriage_TrailsTheEngineAlongTheRenderedSpline()
         {
             yield return BuildBoard();
-            PlaceOnEdge(edge: 1, progressTicks: 6); // fraction 0.5 of E2's arc
+            const int progressTicks = 6;
+            PlaceOnEdge(edge: 1, progressTicks: progressTicks);
             _view.UpdateFrom(_session);
 
             TrackSpline path = BuildTrackGraph().Path(1);
-            float headDistance = path.Length * 0.5f;
+            float fraction = (float)progressTicks
+                / _session.Level.Dto.Edges.ToArray()[1].TravelTicks;
+            float headDistance = path.Length * fraction;
             Vector3 expected = path.EvaluateDistanceFraction(
                 (headDistance - CarriageOffset) / path.Length) + HeadLift;
             Assert.That(Vector3.Distance(CarriageBoardLocal(), expected), Is.LessThan(0.001f),
                 "the carriage samples the identical spline a fixed arc-length behind the head");
 
-            Vector3 tangent = path.TangentDistanceFraction(0.5f);
+            Vector3 tangent = path.TangentDistanceFraction(fraction);
             Vector2 engineRight = TrainRoot().transform.Find("Engine").localRotation
                 * Vector3.right;
             Assert.That(Vector2.Dot(engineRight.normalized, (Vector2)tangent.normalized),
@@ -976,18 +979,18 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(actual.a, Is.EqualTo(expected.a).Within(0.002f), message + " (a)");
         }
 
-        private static TrackSplineGraph BuildTrackGraph()
+        private TrackSplineGraph BuildTrackGraph()
         {
-            // L001's authored graph, matching BoardView's own construction inputs.
-            var positions = new[]
-            {
-                new Vector3(3f, 9f, 0f), // SRC
-                new Vector3(3f, 6f, 0f), // J1
-                new Vector3(1f, 2f, 0f), // RED
-                new Vector3(5f, 2f, 0f), // BLU
-            };
+            // Derive the comparison graph from the same imported artifact BoardView rendered;
+            // a campaign retune must not leave this assertion measuring the legacy L001.
+            var nodes = _session.Level.Dto.Nodes.ToArray();
+            var edges = _session.Level.Dto.Edges.ToArray();
+            var index = nodes.Select((node, i) => new { node.Id, Index = i })
+                .ToDictionary(x => x.Id, x => x.Index);
+            var positions = nodes.Select(node => new Vector3(node.X, node.Y, 0f)).ToArray();
             return TrackSplineGraph.Build(positions,
-                new[] { 0, 1, 1 }, new[] { 1, 2, 3 });
+                edges.Select(edge => index[edge.From]).ToArray(),
+                edges.Select(edge => index[edge.To]).ToArray());
         }
 
         private static ImportedLevel ImportL001()

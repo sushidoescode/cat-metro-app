@@ -128,6 +128,9 @@ namespace CatMetro.Tests.PlayMode
             _root = GameRoot.Launch();
             yield return null;
             // exercise ALL FOUR creation surfaces and prove each before asserting:
+            // wave preview chips (inspect before advancing beyond a short authored wave)
+            Assert.That(_root.Preview.VisibleChipCount, Is.GreaterThanOrEqualTo(1),
+                "the chip surface was exercised");
             // trains (advance until at least one spawns and renders)
             _root.Session.AdvanceMs(12 * CatMetro.Application.Session.TickInterpolator.TICK_MS);
             yield return null;
@@ -153,10 +156,6 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(ringGo.GetComponent<Renderer>().sharedMaterial.shader,
                 Is.EqualTo(greybox.shader),
                 "the ring — the failure screen's primitive — binds the committed material");
-            // wave preview chips
-            Assert.That(_root.Preview.VisibleChipCount, Is.GreaterThanOrEqualTo(1),
-                "the chip surface was exercised");
-
             int checkedRenderers = 0;
             foreach (var r in _root.GetComponentsInChildren<Renderer>(true))
             {

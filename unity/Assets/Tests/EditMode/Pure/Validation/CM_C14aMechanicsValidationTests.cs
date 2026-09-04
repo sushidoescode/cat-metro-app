@@ -20,7 +20,8 @@ namespace CatMetro.Tests.Validation
                 o["sources"][0]["allowedColors"] = new JArray("wild");
                 o["waves"][0]["color"] = "wild";
             });
-            var dto = VFixtures.Import(bytes).Dto;
+            var imported = VFixtures.Import(bytes);
+            var dto = imported.Dto;
 
             var stage2 = StaticAnalysisStage.Check(dto);
             var stage3 = LowerBoundStage.Check(dto, VFixtures.BareConfig());
@@ -28,7 +29,10 @@ namespace CatMetro.Tests.Validation
             Assert.That(stage2.Code, Is.Not.EqualTo(StageVerdictCode.Fail), stage2.Detail);
             Assert.That(stage2.Detail, Does.Not.Contain("station RED is a decoy"));
             Assert.That(stage3.Code, Is.Not.EqualTo(StageVerdictCode.Fail), stage3.Detail);
-            Assert.That(stage3.Value, Does.Contain("minTravelTicks=22"));
+            int expectedMinTravel = ShortestAuthoredTravel(dto,
+                dto.Sources.Span[0].NodeId,
+                dto.Stations.ToArray().Select(station => station.NodeId).ToArray());
+            Assert.That(stage3.Value, Does.Contain("minTravelTicks=" + expectedMinTravel));
         }
 
         [Test]
@@ -116,6 +120,27 @@ namespace CatMetro.Tests.Validation
             var path = Path.Combine(Fixtures.RepoRoot(),
                 "tests", "fixtures", "corpus", "l018-mechanics.json");
             return JObject.Parse(File.ReadAllText(path));
+        }
+
+        private static int ShortestAuthoredTravel(
+            LevelDto dto, string sourceNode, string[] stationNodes)
+        {
+            var distances = dto.Nodes.ToArray().ToDictionary(node => node.Id, _ => int.MaxValue);
+            distances[sourceNode] = 0;
+            for (int pass = 0; pass < distances.Count - 1; pass++)
+            {
+                bool changed = false;
+                foreach (var edge in dto.Edges.ToArray())
+                {
+                    if (distances[edge.From] == int.MaxValue) continue;
+                    int candidate = distances[edge.From] + edge.TravelTicks;
+                    if (candidate >= distances[edge.To]) continue;
+                    distances[edge.To] = candidate;
+                    changed = true;
+                }
+                if (!changed) break;
+            }
+            return stationNodes.Min(node => distances[node]);
         }
     }
 }

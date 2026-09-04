@@ -4,25 +4,31 @@ using CatMetro.Domain;
 
 namespace CatMetro.Tests.Domain
 {
-    // Criterion 14: three-member enum + four loud pin guards. Pinned behaviours must be absent
-    // and NOISY, never silently invented (stop condition 1).
+    // Failure taxonomy and the remaining envelope guards.
     [TestFixture]
     public class GuardTests
     {
         [Test]
-        public void FailReason_HasExactlyThreeMembers()
+        public void FailReason_AppendsCollisionWithoutRenumberingPublishedReasons()
         {
             var names = Enum.GetNames(typeof(FailReason));
-            Assert.That(names.Length, Is.EqualTo(3), "adding a member is an ADR-0002 change");
-            Assert.That(names, Is.EquivalentTo(new[] { "QueueOverflow", "PlatformOverflow", "TimeOut" }));
+            Assert.That(names, Is.EqualTo(new[]
+                { "QueueOverflow", "PlatformOverflow", "TimeOut", "Collision" }));
+            Assert.That((byte)FailReason.QueueOverflow, Is.EqualTo(1));
+            Assert.That((byte)FailReason.PlatformOverflow, Is.EqualTo(2));
+            Assert.That((byte)FailReason.TimeOut, Is.EqualTo(3));
+            Assert.That((byte)FailReason.Collision, Is.EqualTo(4));
         }
 
         [Test]
-        public void Guard_NonMatchingStationArrival_Throws_NEWQ4()
+        public void NonMatchingStationArrival_IsARecoverableRefusal()
         {
-            var ex = Assert.Throws<NotSupportedException>(() =>
-                Fixtures.RunThroughTick(Fixtures.MismatchShape(), 3, new CommandLog(), 50));
-            Assert.That(ex.Message, Does.Contain("NEW-Q4"));
+            SimulationState state = null;
+            Assert.DoesNotThrow(() =>
+                state = Fixtures.RunThroughTick(Fixtures.MismatchShape(), 3, new CommandLog(), 50));
+            Assert.That(state.Rejections, Is.GreaterThan(1),
+                "the unchanged route sends the cat through repeated deterministic refusals");
+            Assert.That(state.Outcome.Kind, Is.EqualTo(OutcomeKind.Running));
         }
 
         [Test]
@@ -62,15 +68,12 @@ namespace CatMetro.Tests.Domain
         }
 
         [Test]
-        public void Guard_FailedPlatformOverflow_Throws()
+        public void EveryPublishedFailureReason_ConstructsNormally()
         {
-            // The member exists (digest layout + enum test stay stable) but nothing may raise it
-            // until Q-J is answered.
-            var ex = Assert.Throws<NotSupportedException>(() => SimOutcome.MakeFailed(FailReason.PlatformOverflow));
-            Assert.That(ex.Message, Does.Contain("Q-J"));
-            // The two raisable members construct normally.
             Assert.That(SimOutcome.MakeFailed(FailReason.QueueOverflow).Reason, Is.EqualTo(FailReason.QueueOverflow));
+            Assert.That(SimOutcome.MakeFailed(FailReason.PlatformOverflow).Reason, Is.EqualTo(FailReason.PlatformOverflow));
             Assert.That(SimOutcome.MakeFailed(FailReason.TimeOut).Reason, Is.EqualTo(FailReason.TimeOut));
+            Assert.That(SimOutcome.MakeFailed(FailReason.Collision).Reason, Is.EqualTo(FailReason.Collision));
         }
     }
 }

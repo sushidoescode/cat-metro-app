@@ -219,9 +219,9 @@ namespace CatMetro.Tests.Solver
             winDeliveries: 6, timeLimitTicks: 60,
             qCapBound: 8, trainsMax: 3);
 
-        // Review M3: every line dies pinned — 1 switch, both routes end at blue-only stations,
-        // one red train. BFS exhausts with pins > 0 and must report Indeterminate, never
-        // Unsolvable.
+        // Every route refuses: one switch, both routes end at blue-only stations, one red train.
+        // Refused cats return and retry, so exact BFS can exhaust this finite time-bounded state
+        // space and prove it Unsolvable without pins.
         public static LevelGraph AllPinned() => new LevelGraph(
             "FX-PIN", 4,
             new[] { 8, 8, 8, 8 },                          // SRC, J1, B1, B2
@@ -260,8 +260,8 @@ namespace CatMetro.Tests.Solver
             return sb.ToString();
         }
 
-        // Won-or-not under Q-N semantics: pinned throws count as not-won (mirrors the pruning
-        // rule so the brute-force comparator and the solver agree on what a win is).
+        // Won-or-not under solver semantics: unsupported throws count as not-won so the
+        // brute-force comparator and the solver agree on what a win is.
         public static bool RunsToWin(LevelGraph graph, ulong seed, CommandLog log, out int completionTicks)
         {
             completionTicks = 0;

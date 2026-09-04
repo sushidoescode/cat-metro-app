@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 2,
+  "id": "L046",
+  "name": "Two Click Release",
+  "seed": 4046,
+  "meta": {
+    "band": "combo",
+    "difficultyTarget": 0.86,
+    "mechanics": ["switch", "budget", "hold"],
+    "newMechanic": null,
+    "teachingGoal": "Keep the blue train circling while advancing past the yard route to its platform",
+    "authoredBy": "llm+validator",
+    "minActionWindowTicks": 4
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 1, "y": 13 },
+      { "id": "HUB", "x": 1, "y": 8 },
+      { "id": "RELEASE", "x": 1, "y": 4 },
+      { "id": "ARC_A", "x": -3, "y": 2 },
+      { "id": "ARC_B", "x": -7, "y": 4 },
+      { "id": "ARC_C", "x": -7, "y": 9 },
+      { "id": "ARC_D", "x": -3, "y": 12 },
+      { "id": "YARD", "x": 1, "y": 0 },
+      { "id": "BLUE", "x": 6, "y": 0 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "HUB", "travelTicks": 3 },
+      { "id": "E_HOLD", "from": "HUB", "to": "RELEASE", "travelTicks": 9, "hold": true },
+      { "id": "E_ARC_1", "from": "RELEASE", "to": "ARC_A", "travelTicks": 2 },
+      { "id": "E_ARC_2", "from": "ARC_A", "to": "ARC_B", "travelTicks": 2 },
+      { "id": "E_ARC_3", "from": "ARC_B", "to": "ARC_C", "travelTicks": 2 },
+      { "id": "E_ARC_4", "from": "ARC_C", "to": "ARC_D", "travelTicks": 2 },
+      { "id": "E_ARC_5", "from": "ARC_D", "to": "HUB", "travelTicks": 2 },
+      { "id": "E_YARD", "from": "RELEASE", "to": "YARD", "travelTicks": 3 },
+      { "id": "E_BLUE", "from": "RELEASE", "to": "BLUE", "travelTicks": 3 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["blue"] }
+  ],
+  "stations": [
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 3 }
+  ],
+  "switches": [
+    { "id": "S_RELEASE", "nodeId": "RELEASE", "routes": ["E_ARC_1", "E_YARD", "E_BLUE"], "initialRoute": 0 }
+  ],
+  "waves": [
+    { "tick": 0, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8 }
+  ],
+  "win": {
+    "deliveries": 1,
+    "timeLimitTicks": 44,
+    "perfectMaxSwitches": 2,
+    "stars": { "two": 345, "three": 570 }
+  },
+  "economy": { "baseTickets": 80, "perfectBonus": 35 }
+}

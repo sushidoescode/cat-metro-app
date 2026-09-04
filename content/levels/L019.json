@@ -1,187 +1,53 @@
 {
   "schemaVersion": 2,
   "id": "L019",
-  "name": "Wild Arrivals",
+  "name": "Shared Platform",
   "seed": 1019,
   "meta": {
     "band": "two-source",
-    "difficultyTarget": 0.39,
-    "mechanics": [
-      "switch",
-      "queue",
-      "second-source",
-      "wildcard"
-    ],
-    "newMechanic": "wildcard",
-    "teachingGoal": "The green line opens and wild cats ride to any berth -- spend your taps on the colors that need them",
-    "minActionWindowTicks": 12,
+    "difficultyTarget": 0.38,
+    "mechanics": ["switch", "queue", "budget", "second-source"],
+    "newMechanic": null,
+    "teachingGoal": "Merge two same-colour arrivals into a visible shared queue before routing the later blue cat",
+    "minActionWindowTicks": 14,
     "authoredBy": "llm+validator"
   },
   "board": {
     "nodes": [
-      {
-        "id": "GA",
-        "x": 1,
-        "y": 9
-      },
-      {
-        "id": "HB",
-        "x": 5,
-        "y": 9
-      },
-      {
-        "id": "M",
-        "x": 3,
-        "y": 7,
-        "queueCapacity": 3
-      },
-      {
-        "id": "J1",
-        "x": 3,
-        "y": 5,
-        "queueCapacity": 2
-      },
-      {
-        "id": "GRN",
-        "x": 1,
-        "y": 2
-      },
-      {
-        "id": "BLU",
-        "x": 5,
-        "y": 2
-      }
+      { "id": "SRC_A", "x": 1, "y": 10 },
+      { "id": "SRC_B", "x": 7, "y": 9 },
+      { "id": "J1", "x": 4, "y": 6, "queueCapacity": 3 },
+      { "id": "RED", "x": 1, "y": 1 },
+      { "id": "BLUE", "x": 7, "y": 1 }
     ],
     "edges": [
-      {
-        "id": "EA",
-        "from": "GA",
-        "to": "M",
-        "travelTicks": 8
-      },
-      {
-        "id": "EB",
-        "from": "HB",
-        "to": "M",
-        "travelTicks": 8
-      },
-      {
-        "id": "EM",
-        "from": "M",
-        "to": "J1",
-        "travelTicks": 6
-      },
-      {
-        "id": "EG",
-        "from": "J1",
-        "to": "GRN",
-        "travelTicks": 10
-      },
-      {
-        "id": "EU",
-        "from": "J1",
-        "to": "BLU",
-        "travelTicks": 10
-      }
+      { "id": "E_A", "from": "SRC_A", "to": "J1", "travelTicks": 10 },
+      { "id": "E_B", "from": "SRC_B", "to": "J1", "travelTicks": 8 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 11 },
+      { "id": "E_BLUE", "from": "J1", "to": "BLUE", "travelTicks": 11 }
     ]
   },
   "sources": [
-    {
-      "nodeId": "GA",
-      "allowedColors": [
-        "green"
-      ]
-    },
-    {
-      "nodeId": "HB",
-      "allowedColors": [
-        "blue",
-        "wild"
-      ]
-    }
+    { "nodeId": "SRC_A", "allowedColors": ["red"] },
+    { "nodeId": "SRC_B", "allowedColors": ["red", "blue"] }
   ],
   "stations": [
-    {
-      "nodeId": "GRN",
-      "accepts": [
-        "green"
-      ],
-      "capacity": 8
-    },
-    {
-      "nodeId": "BLU",
-      "accepts": [
-        "blue"
-      ],
-      "capacity": 8
-    }
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 8 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 8 }
   ],
   "switches": [
-    {
-      "id": "S1",
-      "nodeId": "J1",
-      "routes": [
-        "EG",
-        "EU"
-      ],
-      "initialRoute": 0
-    }
+    { "id": "S1", "nodeId": "J1", "routes": ["E_RED", "E_BLUE"], "initialRoute": 0 }
   ],
   "waves": [
-    {
-      "tick": 8,
-      "sourceNode": "GA",
-      "color": "green",
-      "count": 2,
-      "spacingTicks": 32
-    },
-    {
-      "tick": 24,
-      "sourceNode": "HB",
-      "color": "blue",
-      "count": 2,
-      "spacingTicks": 32
-    },
-    {
-      "tick": 72,
-      "sourceNode": "HB",
-      "color": "wild",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 104,
-      "sourceNode": "GA",
-      "color": "green",
-      "count": 2,
-      "spacingTicks": 16
-    },
-    {
-      "tick": 136,
-      "sourceNode": "HB",
-      "color": "blue",
-      "count": 1,
-      "spacingTicks": 1
-    },
-    {
-      "tick": 152,
-      "sourceNode": "HB",
-      "color": "wild",
-      "count": 1,
-      "spacingTicks": 1
-    }
+    { "tick": 8, "sourceNode": "SRC_A", "color": "red", "count": 1, "spacingTicks": 12 },
+    { "tick": 10, "sourceNode": "SRC_B", "color": "red", "count": 1, "spacingTicks": 12 },
+    { "tick": 56, "sourceNode": "SRC_B", "color": "blue", "count": 1, "spacingTicks": 12 }
   ],
   "win": {
-    "deliveries": 9,
-    "timeLimitTicks": 200,
-    "perfectMaxSwitches": 5,
-    "stars": {
-      "two": 900,
-      "three": 1200
-    }
+    "deliveries": 3,
+    "timeLimitTicks": 340,
+    "perfectMaxSwitches": 1,
+    "stars": { "two": 800, "three": 1020 }
   },
-  "economy": {
-    "baseTickets": 36,
-    "perfectBonus": 22
-  }
+  "economy": { "baseTickets": 38, "perfectBonus": 19 }
 }

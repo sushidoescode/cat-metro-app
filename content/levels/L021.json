@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 2,
+  "id": "L021",
+  "name": "Cooling Lever",
+  "seed": 2021,
+  "meta": {
+    "band": "alternation",
+    "difficultyTarget": 0.41,
+    "mechanics": ["switch", "budget", "cooldown"],
+    "newMechanic": "cooldown",
+    "teachingGoal": "Let the lever cool, then accept the second flip for the blue arrival",
+    "minActionWindowTicks": 3,
+    "authoredBy": "llm+validator"
+  },
+  "board": {
+    "nodes": [
+      { "id": "SRC", "x": 0, "y": 6 },
+      { "id": "J1", "x": 0, "y": 3, "queueCapacity": 4 },
+      { "id": "RED", "x": -2, "y": 0 },
+      { "id": "BLUE", "x": 2, "y": 0 }
+    ],
+    "edges": [
+      { "id": "E_IN", "from": "SRC", "to": "J1", "travelTicks": 3 },
+      { "id": "E_RED", "from": "J1", "to": "RED", "travelTicks": 4 },
+      { "id": "E_BLUE", "from": "J1", "to": "BLUE", "travelTicks": 4 }
+    ]
+  },
+  "sources": [
+    { "nodeId": "SRC", "allowedColors": ["red", "blue"] }
+  ],
+  "stations": [
+    { "nodeId": "RED", "accepts": ["red"], "capacity": 4 },
+    { "nodeId": "BLUE", "accepts": ["blue"], "capacity": 4 }
+  ],
+  "switches": [
+    { "id": "S1", "nodeId": "J1", "routes": ["E_RED", "E_BLUE"], "initialRoute": 1, "cooldownTicks": 6 }
+  ],
+  "waves": [
+    { "tick": 2, "sourceNode": "SRC", "color": "red", "count": 1, "spacingTicks": 8 },
+    { "tick": 14, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 8 }
+  ],
+  "win": {
+    "deliveries": 2,
+    "timeLimitTicks": 40,
+    "perfectMaxSwitches": 2,
+    "stars": { "two": 120, "three": 220 }
+  },
+  "economy": { "baseTickets": 30, "perfectBonus": 12 }
+}

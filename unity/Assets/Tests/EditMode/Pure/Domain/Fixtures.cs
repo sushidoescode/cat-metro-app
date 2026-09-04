@@ -6,7 +6,7 @@ using CatMetro.Domain;
 namespace CatMetro.Tests.Domain
 {
     // A-C1-2: fixtures are constructed in code, not loaded from JSON (parsing is CM-C2's).
-    // The L001 shape mirrors the shipped onboarding level field-for-field; its
+    // The L001 shape is the legacy committed replay fixture, not the current campaign L001. Its
     // construction order (nodes SRC,J1,RED,BLU; edges E1,E2,E3; switch S1) is part of the
     // golden's meaning (A-C1-10).
     public static class Fixtures
@@ -110,8 +110,8 @@ namespace CatMetro.Tests.Domain
             new[] { 0, 0 }, new[] { CatColor.Red, CatColor.Red }, new[] { 1, 1 }, new[] { 1, 1 },
             2, 400, qCapBound: 8, trainsMax: 2);
 
-        // Guard fixture: the only station rejects the only color -> first arrival must hit the
-        // NEW-Q4 NotSupportedException guard (contract criterion 14), never invented semantics.
+        // Refusal fixture: the only station rejects the only color, so the train repeatedly
+        // dwells, reverses to the source, and takes the same route again.
         public static LevelGraph MismatchShape() => new LevelGraph(
             "FX-MM", 2,
             new[] { 8, 8 },
@@ -121,6 +121,37 @@ namespace CatMetro.Tests.Domain
             new[] { 1 }, new[] { new[] { CatColor.Blue } }, new[] { 6 },
             new[] { 0 }, new[] { CatColor.Red }, new[] { 1 }, new[] { 1 },
             1, 100, qCapBound: 8, trainsMax: 1);
+
+        // A player tap stamped at tick 1 is accepted before the stray reaches J1 during that
+        // tick, then applies at tick 2. The stray's automatic press establishes cooldown in
+        // between. Route 0 is the only winning route for the later red train. An earlier tap
+        // sends the stray into a same-tick collision with the blue helper at BLU, while no tap
+        // leaves the red train on route 1. That makes the freshness race, rather than merely any
+        // one-flip solution, observable to both the session and exact solver.
+        public static LevelGraph StrayCooldownPriorityShape(
+            int perfectMaxSwitches = 1) => new LevelGraph(
+            "FX-STRAY-COOLDOWN-PRIORITY", 5,
+            new[] { 4, 4, 4, 4, 4 },
+            new[] { 0, 1, 1, 4 },
+            new[] { 1, 2, 3, 3 },
+            new[] { 1, 6, 4, 4 },
+            new[] { 0, 4 },
+            new[] { new[] { 1, 2 } },
+            new[] { 1 },
+            new byte[] { 0 },
+            new[] { 2, 3 },
+            new[] { new[] { CatColor.Red }, new[] { CatColor.Blue } },
+            new[] { 3, 3 },
+            new[] { 0, 1, 2 },
+            new[] { CatColor.Red, CatColor.Blue, CatColor.Red },
+            new[] { 1, 1, 1 },
+            new[] { 1, 1, 1 },
+            2, 14, qCapBound: 4, trainsMax: 3,
+            waveSourceNode: new[] { 0, 4, 0 },
+            perfectMaxSwitches: perfectMaxSwitches,
+            switchCooldownTicks: new[] { 2 },
+            waveStray: new[] { true, false, false },
+            collisionsEnabled: true);
 
         // Steps the sim to the END of processing tick `lastTick` (i.e. `lastTick + 1` Step calls),
         // feeding each call the log entries due at its boundary: an entry enqueued during tick t
