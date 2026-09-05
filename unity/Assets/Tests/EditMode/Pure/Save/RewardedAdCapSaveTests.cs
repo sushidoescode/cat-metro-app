@@ -17,6 +17,28 @@ namespace CatMetro.Tests.Save
         private static readonly long Noon = new DateTimeOffset(2026, 9, 5, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
         private const string Today = "2026-09-05";
 
+        [TestCase(1)]
+        [TestCase(1800)]
+        public void FailureRewind_ObservationsAcrossUtcMidnightDoNotRollSession(int elapsed)
+        {
+            using var root = new SFixtures.TempRoot();
+            var fs = new SFixtures.RecordingFs();
+            var store = SFixtures.Store(root, fs);
+            var caps = new RewardedAdSaveStore(store);
+            long beforeMidnight = Noon + 43200 - 1;
+            Assert.That(caps.TryTouchFailureRewindSession(beforeMidnight, Today, allowSessionRollover: true), Is.True);
+            Assert.That(caps.TryConsumeFailureRewind(beforeMidnight, Today), Is.True);
+            fs.Calls.Clear();
+            Assert.That(caps.CanOfferFailureRewind(beforeMidnight + elapsed, "2026-09-06"), Is.True);
+            Assert.That(fs.Calls, Is.Empty);
+            Assert.That(caps.TryConsumeFailureRewind(beforeMidnight + elapsed, "2026-09-06"), Is.True);
+            Assert.That((int)store.State.Payload["profile"]["sessionCount"], Is.EqualTo(1));
+            Assert.That((int)store.State.Payload["caps"]["sessionCounters"]["rewind_failure"], Is.EqualTo(2));
+            Assert.That((int)store.State.Payload["caps"]["counters"]["rewind_failure"], Is.EqualTo(1));
+            Assert.That(caps.CanOfferFailureRewind(beforeMidnight + elapsed, "2026-09-06"), Is.False);
+            Assert.That(caps.TryConsumeFailureRewind(beforeMidnight + elapsed, "2026-09-06"), Is.False);
+        }
+
         [Test]
         public void FailureRewind_RequiresDurableInitializationAndRetainsCapAcrossQuickRelaunch()
         {
@@ -26,14 +48,14 @@ namespace CatMetro.Tests.Save
             IFailureRewindCapStore caps = new RewardedAdSaveStore(store);
             Assert.That(caps.CanOfferFailureRewind(Noon, Today), Is.False);
             Assert.That(caps.TryConsumeFailureRewind(Noon, Today), Is.False);
-            Assert.That(caps.TryTouchFailureRewindSession(Noon, Today), Is.True);
+            Assert.That(caps.TryTouchFailureRewindSession(Noon, Today, allowSessionRollover: true), Is.True);
             Assert.That(caps.TryConsumeFailureRewind(Noon, Today), Is.True);
             Assert.That(caps.TryConsumeFailureRewind(Noon + 1, Today), Is.True);
 
             var reloaded = SFixtures.Store(root);
             Assert.That(reloaded.Load(), Is.EqualTo(CatMetro.Services.LoadResult.Ok));
             var restarted = new RewardedAdSaveStore(reloaded);
-            Assert.That(restarted.TryTouchFailureRewindSession(Noon + 60, Today), Is.True);
+            Assert.That(restarted.TryTouchFailureRewindSession(Noon + 60, Today, allowSessionRollover: true), Is.True);
             Assert.That(restarted.CanOfferFailureRewind(Noon + 60, Today), Is.False);
             Assert.That(restarted.TryConsumeFailureRewind(Noon + 60, Today), Is.False);
             Assert.That((int)reloaded.State.Payload["profile"]["sessionCount"], Is.EqualTo(1));
@@ -47,10 +69,10 @@ namespace CatMetro.Tests.Save
             using var root = new SFixtures.TempRoot();
             var store = SFixtures.Store(root);
             var caps = new RewardedAdSaveStore(store);
-            Assert.That(caps.TryTouchFailureRewindSession(Noon, Today), Is.True);
+            Assert.That(caps.TryTouchFailureRewindSession(Noon, Today, allowSessionRollover: true), Is.True);
             Assert.That(caps.TryConsumeFailureRewind(Noon, Today), Is.True);
             Assert.That(caps.TryConsumeFailureRewind(Noon, Today), Is.True);
-            Assert.That(caps.TryTouchFailureRewindSession(Noon + seconds, Today), Is.True);
+            Assert.That(caps.TryTouchFailureRewindSession(Noon + seconds, Today, allowSessionRollover: true), Is.True);
             Assert.That(caps.CanOfferFailureRewind(Noon + seconds, Today), Is.EqualTo(resets));
             Assert.That((int)store.State.Payload["profile"]["sessionCount"], Is.EqualTo(resets ? 2 : 1));
             Assert.That((int)store.State.Payload["caps"]["counters"]["rewind_failure"], Is.EqualTo(2));
@@ -58,21 +80,45 @@ namespace CatMetro.Tests.Save
         }
 
         [Test]
-        public void FailureRewind_TouchExtendsSessionAndUtcRolloverStartsNewSession()
+        public void FailureRewind_ActivityExtendsSessionAndForegroundEntryAtUtcRolloverStartsNewSession()
         {
             using var root = new SFixtures.TempRoot();
             var store = SFixtures.Store(root);
             var caps = new RewardedAdSaveStore(store);
             long midnight = Noon + 43200;
-            Assert.That(caps.TryTouchFailureRewindSession(midnight - 1700, Today), Is.True);
+            Assert.That(caps.TryTouchFailureRewindSession(midnight - 1700, Today, allowSessionRollover: true), Is.True);
             Assert.That(caps.TryConsumeFailureRewind(midnight - 1700, Today), Is.True);
-            Assert.That(caps.TryTouchFailureRewindSession(midnight - 100, Today), Is.True);
-            Assert.That(caps.TryTouchFailureRewindSession(midnight - 1, Today), Is.True);
+            Assert.That(caps.TryTouchFailureRewindSession(midnight - 100, Today, allowSessionRollover: false), Is.True);
+            Assert.That(caps.TryTouchFailureRewindSession(midnight - 1, Today, allowSessionRollover: false), Is.True);
             Assert.That((int)store.State.Payload["profile"]["sessionCount"], Is.EqualTo(1));
-            Assert.That(caps.TryTouchFailureRewindSession(midnight, Today), Is.True);
+            Assert.That(caps.TryTouchFailureRewindSession(midnight, Today, allowSessionRollover: true), Is.True);
             Assert.That((int)store.State.Payload["profile"]["sessionCount"], Is.EqualTo(2));
             Assert.That((int)store.State.Payload["caps"]["sessionCounters"]["rewind_failure"], Is.Zero);
             Assert.That((int)store.State.Payload["caps"]["counters"]["rewind_failure"], Is.EqualTo(1));
+        }
+
+        [TestCase(1)]
+        [TestCase(1800)]
+        public void FailureRewind_ActivityTouchAcrossMidnightPreservesDurableSessionCap(int elapsed)
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            var caps = new RewardedAdSaveStore(store);
+            long beforeMidnight = Noon + 43200 - 1;
+            Assert.That(caps.TryTouchFailureRewindSession(beforeMidnight, Today,
+                allowSessionRollover: true), Is.True);
+            Assert.That(caps.TryConsumeFailureRewind(beforeMidnight, Today), Is.True);
+            Assert.That(caps.TryConsumeFailureRewind(beforeMidnight, Today), Is.True);
+            Assert.That(caps.TryTouchFailureRewindSession(beforeMidnight + elapsed, "2026-09-06",
+                allowSessionRollover: false), Is.True);
+            Assert.That(caps.CanOfferFailureRewind(beforeMidnight + elapsed, "2026-09-06"), Is.False);
+            Assert.That(caps.TryConsumeFailureRewind(beforeMidnight + elapsed, "2026-09-06"), Is.False);
+            var reloaded = SFixtures.Store(root);
+            reloaded.Load();
+            Assert.That((int)reloaded.State.Payload["profile"]["sessionCount"], Is.EqualTo(1));
+            Assert.That((long)reloaded.State.Payload["profile"]["lastSeenAtUtc"], Is.EqualTo(beforeMidnight + elapsed));
+            Assert.That((int)reloaded.State.Payload["caps"]["sessionCounters"]["rewind_failure"], Is.EqualTo(2));
+            Assert.That((int)reloaded.State.Payload["caps"]["counters"]["rewind_failure"], Is.EqualTo(2));
         }
 
         [Test]
@@ -82,7 +128,7 @@ namespace CatMetro.Tests.Save
             var fs = new SFixtures.RecordingFs();
             var store = SFixtures.Store(root, fs);
             var caps = new RewardedAdSaveStore(store);
-            Assert.That(caps.TryTouchFailureRewindSession(Noon, Today), Is.True);
+            Assert.That(caps.TryTouchFailureRewindSession(Noon, Today, allowSessionRollover: true), Is.True);
             Assert.That(caps.TryConsumeFailureRewind(Noon, Today), Is.True);
             store.State.Payload["caps"]["counters"]["double_tickets"] = 3;
             store.State.Payload["caps"]["counters"]["future"] = new JArray(7);
@@ -111,7 +157,7 @@ namespace CatMetro.Tests.Save
             for (int i = 0; i < 5; i++)
             {
                 long now = Noon + (i / 2) * 1800;
-                Assert.That(caps.TryTouchFailureRewindSession(now, Today), Is.True);
+                Assert.That(caps.TryTouchFailureRewindSession(now, Today, allowSessionRollover: true), Is.True);
                 Assert.That(caps.TryConsumeFailureRewind(now, Today), Is.True);
             }
             var original = store.State.Payload;
@@ -137,13 +183,13 @@ namespace CatMetro.Tests.Save
             using var root = new SFixtures.TempRoot();
             var store = SFixtures.Store(root);
             var caps = new RewardedAdSaveStore(store);
-            Assert.That(caps.TryTouchFailureRewindSession(Noon, Today), Is.True);
+            Assert.That(caps.TryTouchFailureRewindSession(Noon, Today, allowSessionRollover: true), Is.True);
             store.State.Payload.SelectToken(path).Replace(new JArray("invalid"));
             var original = store.State.Payload;
             var before = original.ToString();
             Assert.That(caps.CanOfferFailureRewind(Noon + 1800, "2026-09-06"), Is.False);
             Assert.That(caps.TryConsumeFailureRewind(Noon + 1800, "2026-09-06"), Is.False);
-            Assert.That(caps.TryTouchFailureRewindSession(Noon + 1800, "2026-09-06"), Is.False);
+            Assert.That(caps.TryTouchFailureRewindSession(Noon + 1800, "2026-09-06", allowSessionRollover: true), Is.False);
             Assert.That(store.State.Payload, Is.SameAs(original));
             Assert.That(original.ToString(), Is.EqualTo(before));
         }
@@ -158,10 +204,10 @@ namespace CatMetro.Tests.Save
             var fs = new SFixtures.RecordingFs();
             var store = SFixtures.Store(root, fs);
             var caps = new RewardedAdSaveStore(store);
-            if (initialized) Assert.That(caps.TryTouchFailureRewindSession(Noon, Today), Is.True);
+            if (initialized) Assert.That(caps.TryTouchFailureRewindSession(Noon, Today, allowSessionRollover: true), Is.True);
             var original = store.State.Payload;
             fs.FaultPoint = fault;
-            Assert.That(caps.TryTouchFailureRewindSession(Noon + 1800, Today), Is.False);
+            Assert.That(caps.TryTouchFailureRewindSession(Noon + 1800, Today, allowSessionRollover: true), Is.False);
             Assert.That(store.State.Payload, Is.SameAs(original));
             Assert.That(caps.CanOfferFailureRewind(Noon + 1800, Today), Is.False);
             Assert.That(caps.TryConsumeFailureRewind(Noon + 1800, Today), Is.False);
@@ -175,7 +221,7 @@ namespace CatMetro.Tests.Save
             var fs = new SFixtures.RecordingFs();
             var store = SFixtures.Store(root, fs);
             var caps = new RewardedAdSaveStore(store);
-            Assert.That(caps.TryTouchFailureRewindSession(Noon, Today), Is.True);
+            Assert.That(caps.TryTouchFailureRewindSession(Noon, Today, allowSessionRollover: true), Is.True);
             Assert.That(caps.TryConsumeFailureRewind(Noon, Today), Is.True);
             var original = store.State.Payload;
             var before = original.ToString();
@@ -200,12 +246,12 @@ namespace CatMetro.Tests.Save
             using var root = new SFixtures.TempRoot();
             var store = SFixtures.Store(root);
             var caps = new RewardedAdSaveStore(store);
-            Assert.That(caps.TryTouchFailureRewindSession(Noon, Today), Is.True);
+            Assert.That(caps.TryTouchFailureRewindSession(Noon, Today, allowSessionRollover: true), Is.True);
             store.State.Payload.SelectToken(path).Replace(JToken.Parse(json));
             var before = store.State.Payload.ToString();
             Assert.That(caps.CanOfferFailureRewind(Noon, Today), Is.False);
             Assert.That(caps.TryConsumeFailureRewind(Noon + 1800, "2026-09-06"), Is.False);
-            Assert.That(caps.TryTouchFailureRewindSession(Noon + 1800, "2026-09-06"), Is.False);
+            Assert.That(caps.TryTouchFailureRewindSession(Noon + 1800, "2026-09-06", allowSessionRollover: true), Is.False);
             Assert.That(store.State.Payload.ToString(), Is.EqualTo(before));
         }
 
@@ -216,12 +262,12 @@ namespace CatMetro.Tests.Save
             using var root = new SFixtures.TempRoot();
             var store = SFixtures.Store(root);
             var caps = new RewardedAdSaveStore(store);
-            if (initialized) Assert.That(caps.TryTouchFailureRewindSession(Noon, Today), Is.True);
+            if (initialized) Assert.That(caps.TryTouchFailureRewindSession(Noon, Today, allowSessionRollover: true), Is.True);
             // Real SaveStore refusal before IO: exceed its configured byte ceiling.
             store.State.Payload["futurePadding"] = new string('x', SFixtures.RepoBounds().SaveMaxBytes);
             var original = store.State.Payload;
             Assert.That(initialized ? caps.TryConsumeFailureRewind(Noon, Today)
-                : caps.TryTouchFailureRewindSession(Noon, Today), Is.False);
+                : caps.TryTouchFailureRewindSession(Noon, Today, allowSessionRollover: true), Is.False);
             Assert.That(store.State.Payload, Is.SameAs(original));
             Assert.That(caps.CanOfferFailureRewind(Noon, Today), Is.False);
         }

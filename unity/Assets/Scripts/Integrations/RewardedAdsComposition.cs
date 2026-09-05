@@ -25,6 +25,7 @@ namespace CatMetro.Integrations
         private bool _subscribed;
         private bool _disposed;
         private bool _paused;
+        private bool _hasFocus = true;
         private bool _hasFailureSessionTouch;
         private long _lastFailureSessionTouchUnixSeconds;
 
@@ -55,8 +56,11 @@ namespace CatMetro.Integrations
         internal void OnApplicationPause(bool paused)
         {
             if (_disposed) return;
+            bool wasForeground = !_paused && _hasFocus;
             _paused = paused;
-            TouchFailureSession(force: true);
+            bool isForeground = !_paused && _hasFocus;
+            if (wasForeground != isForeground)
+                TouchFailureSession(force: true, allowSessionRollover: isForeground);
             try
             {
                 if (paused)
@@ -72,8 +76,13 @@ namespace CatMetro.Integrations
 
         internal void OnApplicationFocus(bool hasFocus)
         {
-            if (_disposed || !hasFocus) return;
-            TouchFailureSession(force: true);
+            if (_disposed) return;
+            bool wasForeground = !_paused && _hasFocus;
+            _hasFocus = hasFocus;
+            bool isForeground = !_paused && _hasFocus;
+            if (wasForeground != isForeground)
+                TouchFailureSession(force: true, allowSessionRollover: isForeground);
+            if (!hasFocus) return;
             try { _service?.RefreshEntitlements(); }
             catch { }
         }
@@ -104,10 +113,11 @@ namespace CatMetro.Integrations
                 // Retry/retention maintenance is optional monetization work. It cannot own the
                 // Unity frame even if a future coordinator implementation regresses.
             }
-            if (!_paused) TouchFailureSession(force: false);
+            if (!_paused && _hasFocus)
+                TouchFailureSession(force: false, allowSessionRollover: false);
         }
 
-        private void TouchFailureSession(bool force)
+        private void TouchFailureSession(bool force, bool allowSessionRollover)
         {
             var coordinator = _coordinator;
             if (_disposed || coordinator == null || _placements == null ||
@@ -124,7 +134,7 @@ namespace CatMetro.Integrations
                 if (_disposed || !ReferenceEquals(coordinator, _coordinator)) return;
                 _hasFailureSessionTouch = true;
                 _lastFailureSessionTouchUnixSeconds = now;
-                coordinator.TouchFailureRewindSession();
+                coordinator.TouchFailureRewindSession(allowSessionRollover);
             }
             catch { }
         }
@@ -203,7 +213,8 @@ namespace CatMetro.Integrations
                     ReleaseAttempt(coordinator);
                     return;
                 }
-                TouchFailureSession(force: true);
+                if (!_paused && _hasFocus)
+                    TouchFailureSession(force: true, allowSessionRollover: true);
                 if (!OwnsPublished(store, coordinator)) ReleaseAttempt(coordinator);
             }
             catch

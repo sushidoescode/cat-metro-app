@@ -21,10 +21,12 @@ namespace CatMetro.Application.Save
         private static readonly string[] DailyKeys =
             { FailureKey, "double_tickets", "daily_gift_double", "streak_saver", "theme_rental" };
 
-        public bool TryTouchFailureRewindSession(long nowUnixSeconds, string localDateKey)
+        public bool TryTouchFailureRewindSession(long nowUnixSeconds, string localDateKey,
+            bool allowSessionRollover)
         {
             _failureSessionReady = false;
-            return TryWriteFailureRewind(nowUnixSeconds, localDateKey, consume: false);
+            return TryWriteFailureRewind(nowUnixSeconds, localDateKey, consume: false,
+                allowSessionRollover);
         }
 
         public bool CanOfferFailureRewind(long nowUnixSeconds, string localDateKey)
@@ -33,7 +35,7 @@ namespace CatMetro.Application.Save
             try
             {
                 if (!TryReadFailureState(_store.State.Payload, nowUnixSeconds, localDateKey,
-                    out var state) || state.NewSession) return false;
+                    allowSessionRollover: false, out var state) || state.SessionCount == 0) return false;
                 return state.SessionUsed < 2 && state.DailyUsed < 5;
             }
             catch { return false; }
@@ -42,15 +44,18 @@ namespace CatMetro.Application.Save
         public bool TryConsumeFailureRewind(long nowUnixSeconds, string localDateKey)
         {
             if (!_failureSessionReady) return false;
-            return TryWriteFailureRewind(nowUnixSeconds, localDateKey, consume: true);
+            return TryWriteFailureRewind(nowUnixSeconds, localDateKey, consume: true,
+                allowSessionRollover: false);
         }
 
-        private bool TryWriteFailureRewind(long now, string dateKey, bool consume)
+        private bool TryWriteFailureRewind(long now, string dateKey, bool consume,
+            bool allowSessionRollover)
         {
             var original = _store.State.Payload;
             try
             {
-                if (_store.ReadOnlyMode || !TryReadFailureState(original, now, dateKey, out var state))
+                if (_store.ReadOnlyMode || !TryReadFailureState(original, now, dateKey,
+                    allowSessionRollover, out var state) || (state.SessionCount == 0 && !state.NewSession))
                 {
                     _failureSessionReady = false;
                     return false;
@@ -106,7 +111,7 @@ namespace CatMetro.Application.Save
         }
 
         private static bool TryReadFailureState(JObject payload, long now, string dateKey,
-            out FailureState state)
+            bool allowSessionRollover, out FailureState state)
         {
             state = default;
             if (now <= 0 || !IsLocalDate(dateKey) ||
@@ -124,8 +129,9 @@ namespace CatMetro.Application.Save
             foreach (var key in DailyKeys)
                 if (!TryReadCount(daily[key], out _)) return false;
             TryReadCount(daily[FailureKey], out int dailyUsed);
-            bool newSession = sessionCount == 0 || now - lastSeen >= AnalyticsAppSession.SessionTimeoutSeconds
-                || now / 86400L > lastSeen / 86400L;
+            bool newSession = allowSessionRollover && (sessionCount == 0
+                || now - lastSeen >= AnalyticsAppSession.SessionTimeoutSeconds
+                || now / 86400L > lastSeen / 86400L);
             bool newDate = !string.Equals(previousDate, dateKey, StringComparison.Ordinal);
             state = new FailureState(sessionCount, newSession ? 0 : sessionUsed,
                 newDate ? 0 : dailyUsed, newSession, newDate);

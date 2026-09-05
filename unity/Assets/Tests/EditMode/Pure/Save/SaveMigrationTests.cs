@@ -74,7 +74,7 @@ namespace CatMetro.Tests.Save
             Assert.That(store.Load(), Is.EqualTo(LoadResult.Ok));
             Assert.That(JToken.DeepEquals(store.State.Payload, expected), Is.True);
             var capStore = new RewardedAdSaveStore(store);
-            Assert.That(capStore.TryTouchFailureRewindSession(1788609600L, "2026-09-05"), Is.False);
+            Assert.That(capStore.TryTouchFailureRewindSession(1788609600L, "2026-09-05", allowSessionRollover: true), Is.False);
             Assert.That(capStore.CanOfferFailureRewind(1788609600L, "2026-09-05"), Is.False);
             Assert.That(capStore.TryConsumeFailureRewind(1788609600L, "2026-09-05"), Is.False);
             Assert.That(JToken.DeepEquals(store.State.Payload, expected), Is.True);
@@ -87,7 +87,7 @@ namespace CatMetro.Tests.Save
             Assert.That(reloaded.Load(), Is.EqualTo(LoadResult.Ok));
             Assert.That(JToken.DeepEquals(reloaded.State.Payload, expected), Is.True);
             Assert.That(new RewardedAdSaveStore(reloaded)
-                .TryTouchFailureRewindSession(1788611400L, "2026-09-05"), Is.False);
+                .TryTouchFailureRewindSession(1788611400L, "2026-09-05", allowSessionRollover: true), Is.False);
         }
 
         [Test]

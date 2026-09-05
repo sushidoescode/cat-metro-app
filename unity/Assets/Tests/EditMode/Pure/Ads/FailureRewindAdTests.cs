@@ -35,7 +35,7 @@ namespace CatMetro.Tests.Ads
             string before = f.Store.State.Payload.ToString();
             Assert.That(f.Coordinator.CanShowFailureRewind("rewind_failure"), Is.False);
             Assert.That(f.Store.State.Payload.ToString(), Is.EqualTo(before));
-            f.Coordinator.TouchFailureRewindSession();
+            f.Coordinator.TouchFailureRewindSession(allowSessionRollover: true);
             Assert.That(f.Coordinator.CanShowFailureRewind("rewind_failure"), Is.True);
             f.Provider.CappedPlacement = "rewind_failure";
             Assert.That(f.Coordinator.CanShowFailureRewind("rewind_failure"), Is.False);
@@ -238,13 +238,13 @@ namespace CatMetro.Tests.Ads
             using var restarted = new RewardedAdCoordinator(FailureFixture.Placements(), f.Service,
                 new RewardedAdFixtures.Provider(), f.Reporter, caps, () => FailureFixture.Today, () => now);
             restarted.Start();
-            restarted.TouchFailureRewindSession();
+            restarted.TouchFailureRewindSession(allowSessionRollover: true);
             Assert.That(restarted.CanShowFailureRewind("rewind_failure"), Is.False);
             now += 1799;
-            restarted.TouchFailureRewindSession();
+            restarted.TouchFailureRewindSession(allowSessionRollover: true);
             Assert.That(restarted.CanShowFailureRewind("rewind_failure"), Is.False);
             now += 1800;
-            restarted.TouchFailureRewindSession();
+            restarted.TouchFailureRewindSession(allowSessionRollover: true);
             Assert.That(restarted.CanShowFailureRewind("rewind_failure"), Is.True);
             Assert.That((int)reloaded.State.Payload["profile"]["sessionCount"], Is.EqualTo(2));
         }
@@ -258,7 +258,7 @@ namespace CatMetro.Tests.Ads
             using var coordinator = new RewardedAdCoordinator(FailureFixture.Placements(), f.Service,
                 null, f.Reporter, f.Caps, () => FailureFixture.Today, () => f.Now);
             coordinator.Start();
-            coordinator.TouchFailureRewindSession();
+            coordinator.TouchFailureRewindSession(allowSessionRollover: true);
             Assert.That(coordinator.CanShowFailureRewind("rewind_failure"), Is.False);
             coordinator.ShowFailureRewind("rewind_failure", null, f.Results.Add, out _);
             Assert.That(f.Results[0].Kind, Is.EqualTo(RewardedAdCompletionKind.Unavailable));
@@ -293,7 +293,7 @@ namespace CatMetro.Tests.Ads
             Coordinator = new RewardedAdCoordinator(Placements(), Service, Provider, Reporter,
                 Caps, () => Today, () => Now);
             Coordinator.Start();
-            if (touch) Coordinator.TouchFailureRewindSession();
+            if (touch) Coordinator.TouchFailureRewindSession(allowSessionRollover: true);
         }
 
         internal static RewardedPlacementCatalog Placements() => RewardedPlacementCatalog.Parse(@"{

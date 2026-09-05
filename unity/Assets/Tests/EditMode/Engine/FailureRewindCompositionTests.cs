@@ -22,6 +22,128 @@ namespace CatMetro.Tests
         [TearDown]
         public void TearDown() { SaveRuntime.ResetForTests(); RewardedAdRuntime.ResetForTests(); }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void DuplicateForegroundCallbackAcrossMidnightDoesNotRollSession(bool focusCallback)
+        {
+            using var root = new SFixtures.TempRoot();
+            var fs = new SFixtures.RecordingFs();
+            var store = SFixtures.Store(root, fs);
+            store.Load();
+            SaveRuntime.Install(store);
+            long now = Noon + 43200 - 1;
+            var provider = new RewardedAdFixtures.Provider();
+            using var composition = Composition(() => provider, () => now);
+            composition.Bind();
+            Reward(provider);
+            Reward(provider);
+            fs.Calls.Clear();
+            now++;
+            if (focusCallback) composition.OnApplicationFocus(true);
+            else composition.OnApplicationPause(false);
+            using var route = new RewardedAdFailureRewindRoute();
+            Assert.That(route.CanOffer("rewind_failure"), Is.False);
+            Assert.That((int)store.State.Payload["profile"]["sessionCount"], Is.EqualTo(1));
+            Assert.That((int)store.State.Payload["caps"]["sessionCounters"]["rewind_failure"], Is.EqualTo(2));
+            Assert.That(fs.Calls, Is.Empty);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ForegroundMidnightHeartbeatPreservesSessionCap(bool localDateChanges)
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            store.Load();
+            SaveRuntime.Install(store);
+            long midnight = Noon + 43200;
+            long now = midnight - 60;
+            var provider = new RewardedAdFixtures.Provider();
+            using var composition = Composition(() => provider, () => now,
+                () => localDateChanges && now >= midnight ? "2026-09-06" : "2026-09-05");
+            composition.Bind();
+            Reward(provider);
+            Reward(provider);
+            using var route = new RewardedAdFailureRewindRoute();
+            for (int second = 1; second <= 120; second++)
+            {
+                now = midnight - 60 + second;
+                composition.Tick(second);
+                Assert.That(route.CanOffer("rewind_failure"), Is.False, "foreground second " + second);
+            }
+            Assert.That((int)store.State.Payload["profile"]["sessionCount"], Is.EqualTo(1));
+            Assert.That((int)store.State.Payload["caps"]["sessionCounters"]["rewind_failure"], Is.EqualTo(2));
+            Assert.That((int)store.State.Payload["caps"]["counters"]["rewind_failure"], Is.EqualTo(2));
+        }
+
+        [Test]
+        public void UnfocusedTicksDoNotExtendSessionAndFocusAfterThirtyMinutesResetsIt()
+        {
+            using var root = new SFixtures.TempRoot();
+            var fs = new SFixtures.RecordingFs();
+            var store = SFixtures.Store(root, fs);
+            store.Load();
+            SaveRuntime.Install(store);
+            long now = Noon;
+            var provider = new RewardedAdFixtures.Provider();
+            using var composition = Composition(() => provider, () => now);
+            composition.Bind();
+            Reward(provider);
+            Reward(provider);
+            now += 20;
+            composition.OnApplicationFocus(false);
+            Assert.That((long)store.State.Payload["profile"]["lastSeenAtUtc"], Is.EqualTo(now));
+            fs.Calls.Clear();
+            for (int minute = 1; minute <= 30; minute++)
+            {
+                now = Noon + 20 + minute * 60;
+                composition.Tick(minute * 60);
+            }
+            Assert.That(fs.Calls, Is.Empty);
+            composition.OnApplicationFocus(true);
+            using var route = new RewardedAdFailureRewindRoute();
+            Assert.That(route.CanOffer("rewind_failure"), Is.True);
+            Assert.That((int)store.State.Payload["profile"]["sessionCount"], Is.EqualTo(2));
+            Assert.That((int)store.State.Payload["caps"]["counters"]["rewind_failure"], Is.EqualTo(2));
+        }
+
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void PairedLifecycleCallbacksOnlyTouchOnCombinedForegroundTransitions(
+            bool focusExitsFirst, bool focusEntersFirst)
+        {
+            using var root = new SFixtures.TempRoot();
+            var fs = new SFixtures.RecordingFs();
+            var store = SFixtures.Store(root, fs);
+            store.Load();
+            SaveRuntime.Install(store);
+            long now = Noon;
+            var provider = new RewardedAdFixtures.Provider();
+            using var composition = Composition(() => provider, () => now);
+            composition.Bind();
+            Reward(provider);
+            Reward(provider);
+            if (focusExitsFirst) composition.OnApplicationFocus(false);
+            else composition.OnApplicationPause(true);
+            now += 60;
+            if (focusExitsFirst) composition.OnApplicationPause(true);
+            else composition.OnApplicationFocus(false);
+            Assert.That((long)store.State.Payload["profile"]["lastSeenAtUtc"], Is.EqualTo(Noon));
+            now = Noon + 1800;
+            fs.Calls.Clear();
+            if (focusEntersFirst) composition.OnApplicationFocus(true);
+            else composition.OnApplicationPause(false);
+            composition.Tick(1800);
+            Assert.That(fs.Calls, Is.Empty, "one foreground signal must not end background inactivity");
+            if (focusEntersFirst) composition.OnApplicationPause(false);
+            else composition.OnApplicationFocus(true);
+            using var route = new RewardedAdFailureRewindRoute();
+            Assert.That(route.CanOffer("rewind_failure"), Is.True);
+            Assert.That((int)store.State.Payload["profile"]["sessionCount"], Is.EqualTo(2));
+        }
+
         [Test]
         public void ConfiguredProviderWithWritableSaveStartsDurableSessionAndMakesRouteAvailable()
         {
@@ -101,6 +223,7 @@ namespace CatMetro.Tests
             composition.OnApplicationPause(true);
             now++;
             composition.OnApplicationFocus(true);
+            composition.OnApplicationPause(false);
             using var route = new RewardedAdFailureRewindRoute();
             Assert.That(route.CanOffer("rewind_failure"), Is.True);
             Assert.That((int)store.State.Payload["caps"]["counters"]["rewind_failure"], Is.EqualTo(2));
@@ -170,6 +293,7 @@ namespace CatMetro.Tests
             Assert.That(route.CanOffer("rewind_failure"), Is.False);
             Assert.That((int)store.State.Payload["profile"]["sessionCount"], Is.Zero);
             fs.FaultPoint = SFixtures.Fault.None;
+            composition.OnApplicationPause(true);
             composition.OnApplicationPause(false);
             Assert.That(route.CanOffer("rewind_failure"), Is.True);
         }
@@ -245,12 +369,12 @@ namespace CatMetro.Tests
         }
 
         private static RewardedAdsComposition Composition(Func<IRewardedAdProvider> provider,
-            Func<long> clock = null)
+            Func<long> clock = null, Func<string> localDate = null)
         {
             var service = new PurchaseService(PFixtures.TinyCatalog());
             return new RewardedAdsComposition(service,
                 RewardedPlacementCatalog.Parse(PlacementJson, service.Catalog), provider,
-                new RewardedAdFixtures.Reporter(), () => "2026-09-05", clock ?? (() => Noon));
+                new RewardedAdFixtures.Reporter(), localDate ?? (() => "2026-09-05"), clock ?? (() => Noon));
         }
     }
 }

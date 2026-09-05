@@ -219,14 +219,15 @@ namespace CatMetro.Services.Ads
 
         // The composition calls this only after binding a configured provider to a writable save,
         // and at pause/foreground plus its throttled heartbeat. Queries never initialize a session.
-        public void TouchFailureRewindSession()
+        public void TouchFailureRewindSession(bool allowSessionRollover)
         {
             if (!_started || _disposed || _provider == null || _providerFailed ||
                 _reporter == null || _failureCaps == null || _localDateKey == null ||
                 _placements == null || !_placements.TryGet("rewind_failure", out var placement) ||
                 placement.RewardKind != RewardedRewardKind.FailureRewind || !placement.Enabled)
                 return;
-            try { _failureCaps.TryTouchFailureRewindSession(_nowUnixSeconds(), _localDateKey()); }
+            try { _failureCaps.TryTouchFailureRewindSession(_nowUnixSeconds(), _localDateKey(),
+                allowSessionRollover); }
             catch { }
             if (!_disposed) RaiseAvailabilityChanged();
         }
