@@ -12,6 +12,7 @@ namespace CatMetro.Presentation.Cosmetics
         private ICosmeticPortraitSource _source;
         private bool _subscribed;
         private bool _followsCurrentPortrait;
+        private bool _baseLayerSuppressed;
 
         public RectTransform RootTransform { get; private set; }
         public RectTransform BaseLayerTransform { get; private set; }
@@ -22,6 +23,7 @@ namespace CatMetro.Presentation.Cosmetics
         public string AppliedOutfitAssetId { get; private set; } = string.Empty;
         public string AppliedAccessoryAssetId { get; private set; } = string.Empty;
         public string AppliedFrameAssetId { get; private set; } = string.Empty;
+        internal event System.Action PortraitApplied;
 
         public static CosmeticPortraitView Create(Transform parent,
             ICosmeticPortraitSource source, string name = "CosmeticPortrait")
@@ -88,6 +90,7 @@ namespace CatMetro.Presentation.Cosmetics
             AppliedCatId = string.IsNullOrEmpty(baseAssetId)
                 ? string.Empty
                 : snapshot.CatId ?? string.Empty;
+            if (_baseLayerSuppressed) BaseLayerTransform.gameObject.SetActive(false);
             ApplyLayer(OutfitLayerTransform, snapshot.OutfitAssetId,
                 out var outfitAssetId);
             ApplyLayer(AccessoryLayerTransform, snapshot.AccessoryAssetId,
@@ -97,6 +100,20 @@ namespace CatMetro.Presentation.Cosmetics
             AppliedOutfitAssetId = outfitAssetId;
             AppliedAccessoryAssetId = accessoryAssetId;
             AppliedFrameAssetId = frameAssetId;
+            PortraitApplied?.Invoke();
+        }
+
+        internal void SetBaseLayerSuppressed(bool suppressed)
+        {
+            if (_baseLayerSuppressed == suppressed) return;
+            _baseLayerSuppressed = suppressed;
+            if (suppressed)
+            {
+                BaseLayerTransform.gameObject.SetActive(false);
+                return;
+            }
+
+            if (_source != null) ApplySnapshot(_source.CurrentPortrait);
         }
 
         private void OnEnable()
@@ -154,6 +171,7 @@ namespace CatMetro.Presentation.Cosmetics
             CosmeticPortraitPainter.Clear(OutfitLayerTransform);
             CosmeticPortraitPainter.Clear(AccessoryLayerTransform);
             CosmeticPortraitPainter.Clear(FrameLayerTransform);
+            PortraitApplied?.Invoke();
         }
 
         private static RectTransform MakeLayer(Transform parent, string name)

@@ -582,7 +582,8 @@ namespace CatMetro.Bootstrap
 #endif
             _dailyEntryUnlocked = dailyUnlocked;
             Home = CatMetro.Presentation.Screens.HomeScreenView.Create(
-                canvasGo.transform, dailyUnlocked, LifetimeDailyCompletions, _cosmetics);
+                canvasGo.transform, dailyUnlocked, LifetimeDailyCompletions, _cosmetics,
+                CatMetro.Presentation.Cats.CatModelCatalog.LoadResources());
             Home.Attach(Input.Regions, () => MotionOff);
             Home.ConfigureAudio(Audio == null || Audio.Enabled);
             Home.AudioEnabledChanged = OnAudioEnabledChanged;

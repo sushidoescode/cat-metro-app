@@ -30,6 +30,8 @@ namespace CatMetro.Tests.EditMode.Presentation
         public void Task17HandoffContract_UsesThePinnedResourceAndStateLiterals()
         {
             Assert.That(CatModelCatalog.ResourcePath, Is.EqualTo("CatRigs/BoardCatRig"));
+            Assert.That(CatModelCatalog.ResourceFacingYaw, Is.EqualTo(180f));
+            Assert.That(CatModelCatalog.ResourceCosmeticCatId, Is.EqualTo("red_tabby"));
             Assert.That(CatModelCatalog.IdleSitClip, Is.EqualTo("Cat_IdleSit"));
             Assert.That(CatModelCatalog.WalkClip, Is.EqualTo("Cat_Walk"));
             Assert.That(CatModelCatalog.BoardClip, Is.EqualTo("Cat_Board"));
@@ -56,6 +58,40 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(catalog.RejectionReason, Is.Not.Empty);
             Assert.That(catalog.TryInstantiate(null, out var instance), Is.False);
             Assert.That(instance, Is.Null);
+        }
+
+        [Test]
+        public void AdmittedEntry_ReturnsFacingMetadata_WithoutChangingThePrefabRootTransform()
+        {
+            using (var fixture = new ConformingRigFixture())
+            {
+                var parent = new GameObject("HomeRigFacing").transform;
+                var pinnedPosition = new Vector3(0.031f, -0.017f, 0.044f);
+                fixture.Prefab.transform.localPosition = pinnedPosition;
+                var entry = new CatModelCatalog.Entry(
+                    fixture.Prefab, 173f, "red_tabby");
+                var catalog = CatModelCatalog.FromEntry(entry);
+                GameObject instance = null;
+                try
+                {
+                    Assert.That(catalog.TryInstantiate(parent, out instance,
+                        out CatModelCatalog.Entry admitted), Is.True);
+                    Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(1));
+                    Assert.That(admitted, Is.SameAs(entry));
+                    Assert.That(admitted.FacingYaw, Is.EqualTo(173f));
+                    Assert.That(admitted.CosmeticCatId, Is.EqualTo("red_tabby"));
+                    Assert.That(instance.transform.parent, Is.SameAs(parent));
+                    Assert.That(instance.transform.localPosition, Is.EqualTo(pinnedPosition),
+                        "catalog instantiation must preserve the prefab root position");
+                    Assert.That(instance.transform.localRotation, Is.EqualTo(Quaternion.identity));
+                    Assert.That(instance.transform.localScale, Is.EqualTo(Vector3.one));
+                }
+                finally
+                {
+                    if (instance != null) Object.DestroyImmediate(instance);
+                    Object.DestroyImmediate(parent.gameObject);
+                }
+            }
         }
 
         [Test]

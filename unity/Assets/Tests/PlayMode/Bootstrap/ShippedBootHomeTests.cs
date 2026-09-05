@@ -172,6 +172,11 @@ namespace CatMetro.Tests.PlayMode
             typeof(UnityEngine.UI.Image), typeof(TextMeshProUGUI),
             typeof(CatMetro.Presentation.Screens.HomeScreenView),
             typeof(CatMetro.Presentation.Cosmetics.CosmeticPortraitView),
+            // The optional admitted Home cat remains render-only after its sitting pose is
+            // sampled: HomeProfileRigView owns layout/read-back, and the clone's Animator is
+            // removed before the first rendered frame.
+            typeof(CatMetro.Presentation.Cats.HomeProfileRigView),
+            typeof(SkinnedMeshRenderer),
         };
 
         private static Component FirstOffWhitelist(GameObject root)

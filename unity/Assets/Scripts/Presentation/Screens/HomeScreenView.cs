@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using CatMetro.Presentation.Cosmetics;
+using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Hud.WavePreview;
 using CatMetro.Presentation.Input;
@@ -81,6 +82,7 @@ namespace CatMetro.Presentation.Screens
         private Image _audioTogglePaint;
         private DailyReminderSheet _reminderSheet;
         private CosmeticPortraitView _profilePortrait;
+        private HomeProfileRigView _profileRig;
         private Rect _pinRectPx;
         private Rect _dailyPinRectPx;
         private Rect _heroRectPx;
@@ -126,6 +128,7 @@ namespace CatMetro.Presentation.Screens
         public string AudioToggleText => _audioToggleLabel != null ? _audioToggleLabel.text : "";
         public bool AudioEnabled => _audioEnabled;
         public CosmeticPortraitView ProfilePortrait => _profilePortrait;
+        public HomeProfileRigView ProfileRig => _profileRig;
         public RectTransform ProfilePortraitTransform => _profilePortrait != null
             ? _profilePortrait.RootTransform
             : null;
@@ -146,7 +149,8 @@ namespace CatMetro.Presentation.Screens
         // after a campaign win crosses that same threshold in the current run.
         public static HomeScreenView Create(Transform canvasParent,
             bool dailyEntryUnlocked = false, int lifetimeDailyCompletions = 0,
-            ICosmeticPortraitSource portraitSource = null)
+            ICosmeticPortraitSource portraitSource = null,
+            CatModelCatalog catCatalog = null)
         {
             var go = new GameObject("HomeScreen");
             go.transform.SetParent(canvasParent, false);
@@ -270,6 +274,9 @@ namespace CatMetro.Presentation.Screens
                 parkedDistrictB.color = Color.clear;
                 view._profilePortrait = CosmeticPortraitView.Create(
                     parkedDistrictB.transform, portraitSource, "HomeProfilePortrait");
+                if (catCatalog != null && catCatalog.AdmittedEntryCount == 1)
+                    view._profileRig = HomeProfileRigView.Create(
+                        parkedDistrictB.rectTransform, view._profilePortrait, catCatalog);
             }
 
             view._markers = new[]
@@ -767,6 +774,11 @@ namespace CatMetro.Presentation.Screens
             }
             if (_reminderSheet != null && _reminderSheet.IsVisible)
                 _reminderSheet.LayoutForViewport(safeArea, dpi);
+            if (_profileRig != null)
+            {
+                Canvas canvas = GetComponentInParent<Canvas>();
+                _profileRig.Layout(canvas != null ? canvas.worldCamera : null);
+            }
         }
 
         private static void ApplyPx(RectTransform rect, Rect px)
