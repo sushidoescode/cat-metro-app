@@ -17,6 +17,7 @@ using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Hud.WavePreview;
 using CatMetro.Services.Ads;
 using CatMetro.Services.Retry;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 namespace CatMetro.Bootstrap
@@ -1183,7 +1184,7 @@ namespace CatMetro.Bootstrap
             if (Session == null) return;
             if (_failureRewindOffer != null && _failureRewindOffer.isActiveAndEnabled &&
                 _failureRewindRequest == null)
-                LogFailureRewindEvent(Events.AdOfferDeclined(FailureRewindPlacement));
+                FailureRewindAnalytics.OfferDeclined(Analytics, FailureRewindPlacement);
             LoadLevel(_level);
             _analyticsRuntime?.RetryLevel(_level, _dailySession);
         }
@@ -1792,7 +1793,7 @@ namespace CatMetro.Bootstrap
             if (_failureRewindOffer != null) return;
             _failureRewindOffer = FailureRewindOfferView.Create(transform, Cam, Input.Regions,
                 RequestFailureRewind);
-            LogFailureRewindEvent(Events.AdOfferViewed(FailureRewindPlacement, CurrentLevelId));
+            FailureRewindAnalytics.OfferViewed(Analytics, FailureRewindPlacement, CurrentLevelId);
         }
 
         private void RequestFailureRewind()
@@ -1813,8 +1814,8 @@ namespace CatMetro.Bootstrap
                     if (!ReferenceEquals(_failureRewindRequest, request) || request.Displayed ||
                         !FailureRewindContextValid || adEvent.Kind != RewardedAdEventKind.Displayed) return;
                     request.Displayed = true;
-                    LogFailureRewindEvent(Events.RewardedAdStarted(FailureRewindPlacement,
-                        MetadataOrUnknown(adEvent.NetworkName), MetadataOrUnknown(adEvent.AdUnitId)));
+                    FailureRewindAnalytics.AdDisplayed(Analytics, FailureRewindPlacement,
+                        adEvent.NetworkName, adEvent.AdUnitId);
                 },
                 result => CompleteFailureRewind(request, result));
         }
@@ -1827,27 +1828,25 @@ namespace CatMetro.Bootstrap
             {
                 if (!FailureRewindContextValid || !ReferenceEquals(Session, request.Failed)) return;
                 LoadLevel(_level, request.Candidate);
-                LogFailureRewindEvent(Events.RewardedAdCompleted(FailureRewindPlacement,
-                    MetadataOrUnknown(result.NetworkName), "rewind", 1));
-                var balance = SaveRuntime.Current?.State.Payload["economy"]?["rewindBalance"];
-                string balanceAfter = balance == null ? "0" : ((int)balance).ToString(CultureInfo.InvariantCulture);
-                LogFailureRewindEvent(Events.RewindUsed(CurrentLevelId, "rewarded", balanceAfter));
+                FailureRewindAnalytics.AdCompleted(Analytics, FailureRewindPlacement, result.NetworkName);
+                string balanceAfter = FailureRewindBalanceForAnalytics();
+                FailureRewindAnalytics.RewindApplied(Analytics, CurrentLevelId, balanceAfter);
                 return;
             }
-            LogFailureRewindEvent(Events.RewardedAdFailed(FailureRewindPlacement,
-                MetadataOrUnknown(result.NetworkName),
-                result.ErrorCode?.ToString(CultureInfo.InvariantCulture) ?? result.Kind.ToString()));
+            FailureRewindAnalytics.AdFailed(Analytics, FailureRewindPlacement, result.NetworkName,
+                result.ErrorCode?.ToString(CultureInfo.InvariantCulture) ?? result.Kind.ToString());
             RefreshFailureRewindOffer();
         }
 
-        private static string MetadataOrUnknown(string value) =>
-            string.IsNullOrEmpty(value) ? "unknown" : value;
-
-        private void LogFailureRewindEvent(in AnalyticsEvent e)
+        private static string FailureRewindBalanceForAnalytics()
         {
-            // Analytics cannot interfere with cancellation, retry, or an earned gameplay grant.
-            try { Analytics?.Log(e); }
-            catch { }
+            var economy = SaveRuntime.Current?.State?.Payload?["economy"] as JObject;
+            var token = economy?["rewindBalance"];
+            if (token == null || token.Type != JTokenType.Integer ||
+                !int.TryParse(token.ToString(Newtonsoft.Json.Formatting.None), NumberStyles.Integer,
+                    CultureInfo.InvariantCulture, out int balance) || balance < 0)
+                return "0";
+            return balance.ToString(CultureInfo.InvariantCulture);
         }
 
         private void HideFailureRewindOffer()

@@ -72,6 +72,43 @@ namespace CatMetro.Tests.Retry
         }
 
         [Test]
+        public void TryCreateRewindBeforeLastDecision_SameTickReceipts_OnlyDropsTheLastAppendIndex()
+        {
+            var session = new GameSession(L001());
+            session.AdvanceMs(2 * TickInterpolator.TICK_MS);
+            Assert.That(session.EnqueueToggle(0), Is.True); // earlier receipt at tick 2
+            Assert.That(session.EnqueueToggle(0), Is.True); // later receipt at the same tick
+
+            Assert.That(session.Log.Entries.Count, Is.EqualTo(2));
+            Assert.That(session.Log.Entries[0].SwitchId, Is.EqualTo(0));
+            Assert.That(session.Log.Entries[0].Tick, Is.EqualTo(2));
+            Assert.That(session.Log.Entries[1].SwitchId, Is.EqualTo(0));
+            Assert.That(session.Log.Entries[1].Tick, Is.EqualTo(2));
+
+            // This independently specifies the retained append-order prefix; selecting by tick
+            // instead of append index would incorrectly remove both same-tick receipts.
+            var expectedPrefix = new CommandLog();
+            expectedPrefix.Append(new ToggleSwitchCommand(0, 2));
+            var expectedTerminal = ReplayHasher.RunToEnd(
+                session.Level.Graph, (ulong)session.Level.Dto.Seed, expectedPrefix);
+
+            Assert.That(session.TryCreateRewindBeforeLastDecision(out var rewound), Is.True);
+
+            Assert.That(rewound.Log.Entries.Count, Is.EqualTo(1));
+            Assert.That(rewound.Log.Entries[0].SwitchId, Is.EqualTo(0),
+                "the earlier append-index receipt remains");
+            Assert.That(rewound.Log.Entries[0].Tick, Is.EqualTo(2));
+            Assert.That(session.Log.Entries.Count, Is.EqualTo(2),
+                "the later append-index receipt is dropped only from the rewound copy");
+
+            while (rewound.State.Outcome.Kind == OutcomeKind.Running)
+                rewound.AdvanceMs(TickInterpolator.TICK_MS);
+
+            Assert.That(DigestBytes(rewound.State), Is.EqualTo(DigestBytes(expectedTerminal)),
+                "the rewound run must match the independently replayed one-receipt prefix");
+        }
+
+        [Test]
         public void TryCreateRewindBeforeLastDecision_OfARewoundRun_RemainsMarked()
         {
             var session = new GameSession(L001());

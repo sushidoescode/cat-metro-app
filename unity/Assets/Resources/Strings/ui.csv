@@ -4,7 +4,6 @@ fail.banner.timeout,The last train left the depot
 fail.queueoverflow,Platform overflowed at {node}
 fail.platformoverflow,{station} platform overflowed
 retry.cta,Try again
-failure.rewind,Watch to rewind
 halt.notice,Signal fault — the line stopped
 hint.tutorial,Tap the flashing switch
 results.next,Next
@@ -72,3 +71,4 @@ cosmetics.item.frame_lantern,Lantern Frame
 cosmetics.earn.conductor,Complete the stationmaster route to earn this outfit.
 hud.flips,Flips {used}/{limit}
 fail.collision,Two trains bumped!
+failure.rewind,Watch to rewind

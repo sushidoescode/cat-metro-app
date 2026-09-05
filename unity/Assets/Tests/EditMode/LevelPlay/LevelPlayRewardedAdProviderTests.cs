@@ -1484,9 +1484,23 @@ namespace CatMetro.Tests.LevelPlay
                 "CatMetro.Integrations.RewardedAdsComposition", throwOnError: true);
             Type pumpType = integrations.GetType(
                 "CatMetro.Integrations.MonetizationPump", throwOnError: true);
-            ConstructorInfo constructor = compositionType.GetConstructors(
-                BindingFlags.Instance | BindingFlags.NonPublic).Single();
-            object composition = constructor.Invoke(new object[] { null, null, null, null, null });
+            ConstructorInfo constructor = compositionType.GetConstructor(
+                BindingFlags.Instance | BindingFlags.NonPublic, binder: null,
+                types: new[]
+                {
+                    typeof(PurchaseService),
+                    typeof(RewardedPlacementCatalog),
+                    typeof(Func<IRewardedAdProvider>),
+                    typeof(IAdEventReporter),
+                    typeof(Func<string>),
+                    typeof(Func<long>),
+                }, modifiers: null);
+            Assert.That(constructor, Is.Not.Null,
+                "the pump fixture must explicitly match RewardedAdsComposition's dependencies");
+            object composition = constructor.Invoke(new object[]
+            {
+                null, null, null, null, null, (Func<long>)(() => 0L),
+            });
             FieldInfo drain = compositionType.GetField("_mainThreadDrain",
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(drain, Is.Not.Null);

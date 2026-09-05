@@ -431,6 +431,38 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator GrantWithMalformedBalanceStillRewindsAndReportsZero(
+            [Values("\"not-a-number\"", "null", "-1", "2147483648", "missing", "{}", "1.5")]
+            string savedValue)
+        {
+            using var storage = new RewardedAdsWiringTests.TempStorageRoot();
+            var store = new RewardedAdsWiringTests().NewStore(storage);
+            SaveRuntime.Install(store);
+            yield return Fail();
+            var economy = (JObject)store.State.Payload["economy"];
+            if (savedValue == "missing") economy.Remove("rewindBalance");
+            else economy["rewindBalance"] = JToken.Parse(savedValue);
+            var failed = _root.Session;
+            TapOffer();
+
+            Assert.DoesNotThrow(() => _ads.Finish(RewardedAdCompletionKind.Granted));
+
+            Assert.That(_root.Session, Is.Not.SameAs(failed));
+            Assert.That(_root.Session.HasUsedRewind, Is.True);
+            Assert.That(_root.Session.State.Tick, Is.EqualTo(5));
+            Assert.That(_root.ScreenState, Is.EqualTo("Playing"));
+            Assert.That(Count("rewarded_ad_completed"), Is.EqualTo(1));
+            Assert.That(Count("rewind_used"), Is.EqualTo(1));
+            Assert.That(_sink.Events.TakeLast(2).Select(e => e.Name),
+                Is.EqualTo(new[] { "rewarded_ad_completed", "rewind_used" }));
+            Assert.That((string)Event("rewind_used")["balance_after"], Is.EqualTo("0"));
+            Assert.That((string)Event("rewind_used")["source"], Is.EqualTo("rewarded"));
+            _ads.Finish(RewardedAdCompletionKind.Granted);
+            Assert.That(Count("rewarded_ad_completed"), Is.EqualTo(1));
+            Assert.That(Count("rewind_used"), Is.EqualTo(1));
+        }
+
+        [UnityTest]
         public IEnumerator LoadNextCancelsAndDestroyUnregistersWithoutStaleCallbacks()
         {
             yield return Fail();
