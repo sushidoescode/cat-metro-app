@@ -4,89 +4,108 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-if [[ $# -ne 1 ]]; then
-  echo "usage: $0 /absolute/path/to/pinned-cat-rig.glb" >&2
+if [[ $# -ne 0 ]]; then
+  echo "usage: $0" >&2
+  echo "the selected source is pinned inside docs/store/assets/source" >&2
   exit 2
 fi
 
-rig_path="$1"
-blender_bin="/opt/homebrew/bin/blender"
-font_path="$repo_root/unity/Assets/TextMesh Pro/Fonts/LiberationSans.ttf"
+source_icon="docs/store/assets/source/cat-metro-icon-source-chatgpt-1254.png"
+expected_source_sha="aa7166bee38a90aa2b2ba9bf25a1b8c24979248a89cebd25a5eb50a9960454e5"
 srgb_profile="/System/Library/ColorSync/Profiles/sRGB Profile.icc"
-source_dir="docs/store/assets/source"
+font_path="$repo_root/unity/Assets/TextMesh Pro/Fonts/LiberationSans.ttf"
 icon_dir="docs/store/assets/icon"
 review_dir="$icon_dir/review"
 feature_dir="docs/store/assets/feature"
 unity_icon_dir="unity/Assets/Store/Icons"
-render_path="/tmp/cat-metro-store-icon-rig-1024.png"
-mask_path="/tmp/cat-metro-store-icon-head-mask-1024.png"
-mask_alpha_path="/tmp/cat-metro-store-icon-head-mask-alpha-1024.png"
-portrait_path="/tmp/cat-metro-store-icon-portrait-1024.png"
-background_path="/tmp/cat-metro-store-icon-background-1024.png"
+manifest="docs/store/assets/raster-sha256.txt"
 
-for command in magick "$blender_bin"; do
+for command in magick python3 shasum; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "missing required command: $command" >&2
     exit 1
   fi
 done
 
-if [[ ! -f "$rig_path" || ! -f "$font_path" || ! -f "$srgb_profile" ]]; then
-  echo "missing pinned rig, checked-in font, or system sRGB profile" >&2
+if [[ ! -f "$source_icon" || ! -f "$srgb_profile" || ! -f "$font_path" ]]; then
+  echo "missing selected icon source, checked-in font, or system sRGB profile" >&2
+  exit 1
+fi
+
+source_sha="$(python3 - "$source_icon" <<'PY'
+from hashlib import sha256
+from pathlib import Path
+import sys
+
+print(sha256(Path(sys.argv[1]).read_bytes()).hexdigest())
+PY
+)"
+if [[ "$source_sha" != "$expected_source_sha" ]]; then
+  echo "selected icon source SHA-256 mismatch: $source_sha" >&2
+  exit 1
+fi
+
+IFS='|' read -r source_format source_width source_height source_colorspace source_channels source_opaque source_depth < <(
+  magick identify -quiet \
+    -format '%m|%w|%h|%[colorspace]|%[channels]|%[opaque]|%z\n' \
+    "$source_icon"
+)
+source_opaque_lower="$(printf '%s' "$source_opaque" | tr '[:upper:]' '[:lower:]')"
+if [[ "$source_format" != "PNG" || "$source_width" != "$source_height" ]]; then
+  echo "selected icon source must be a square PNG" >&2
+  exit 1
+fi
+if (( source_width < 1024 || source_height < 1024 )); then
+  echo "selected icon source would require upscaling (${source_width}x${source_height})" >&2
+  exit 1
+fi
+if [[ "$source_colorspace" != "sRGB" || "$source_channels" == *a* || "$source_opaque_lower" != "true" || "$source_depth" != "8" ]]; then
+  echo "selected icon source must decode as opaque 8-bit sRGB without alpha" >&2
   exit 1
 fi
 
 mkdir -p "$review_dir" "$feature_dir" "$unity_icon_dir"
+icon_build_tmp="$(mktemp -d)"
+trap 'rm -rf "$icon_build_tmp"' EXIT
 
-"$blender_bin" --background --factory-startup \
-  --python "$source_dir/render_icon.py" -- \
-  --source "$rig_path" --output "$render_path"
+master="$icon_dir/cat-metro-icon-master-1024.png"
+devpost="$icon_dir/cat-metro-icon-devpost-1024.png"
+play="$icon_dir/cat-metro-icon-play-512.png"
+adaptive_foreground_1024="$icon_build_tmp/adaptive-foreground-1024.png"
+adaptive_background_1024="$icon_build_tmp/adaptive-background-1024.png"
+adaptive_composite_1024="$icon_build_tmp/adaptive-composite-1024.png"
+roundel_mask="$icon_build_tmp/roundel-mask-1024.png"
+roundel_art="$icon_build_tmp/roundel-art-1024.png"
+roundel_art_scaled="$icon_build_tmp/roundel-art-scaled-942.png"
 
-# Keep this a face portrait without editing the licensed geometry. The mask is a
-# presentation crop made from the fresh render; it removes the torso below the
-# chin so the icon does not imply a baby head-to-body ratio.
-magick -size 1024x1024 xc:black -fill white -stroke none \
-  -draw "path 'M 0,0 L 1024,0 L 1024,760 C 930,790 875,810 760,832 C 675,846 595,850 512,850 C 429,850 349,846 264,832 C 149,810 94,790 0,760 Z'" \
-  "$mask_path"
-magick "$mask_path" -alpha copy "$mask_alpha_path"
-magick "$render_path" "$mask_alpha_path" -compose DstIn -composite "$portrait_path"
-
-# The plain roundel deliberately contains no bar, lettering, or authority geometry.
-magick -size 1024x1024 "canvas:#FAF6EC" \
-  -fill '#F08A3C' -draw 'circle 512,548 932,548' \
+# Candidate A is 1254 px, so this is an 81.6587% reduction. Resample in linear
+# RGB with a tuned Lanczos window, then return to sRGB. The source is never
+# modified, and the guard above makes upscaling impossible.
+magick "$source_icon" -colorspace RGB -filter Lanczos \
+  -define filter:blur=0.9891028367558475 -resize 1024x1024! \
   -colorspace sRGB -depth 8 -alpha off -define png:color-type=2 \
-  "$background_path"
+  "$master"
 
-magick "$background_path" "$portrait_path" -compose over -composite \
-  -colorspace sRGB -depth 8 -alpha off -define png:color-type=2 \
-  "$icon_dir/cat-metro-icon-master-1024.png"
+cp "$master" "$devpost"
 
-cp "$icon_dir/cat-metro-icon-master-1024.png" \
-  "$icon_dir/cat-metro-icon-devpost-1024.png"
-
-magick "$icon_dir/cat-metro-icon-master-1024.png" -filter Lanczos \
-  -resize 512x512 -alpha on -depth 8 -define png:color-type=6 \
-  "$icon_dir/cat-metro-icon-play-512.png"
+magick "$master" -colorspace RGB -filter Lanczos \
+  -define filter:blur=0.9891028367558475 -resize 512x512! \
+  -colorspace sRGB -alpha on -depth 8 -define png:color-type=6 \
+  "$play"
 
 for size in 192 96 48; do
-  magick "$icon_dir/cat-metro-icon-master-1024.png" -filter Lanczos \
-    -resize "${size}x${size}" -colorspace sRGB -depth 8 -alpha off \
-    -define png:color-type=2 "$review_dir/cat-metro-icon-${size}.png"
+  magick "$master" -colorspace RGB -filter Lanczos \
+    -define filter:blur=0.9891028367558475 -resize "${size}x${size}!" \
+    -colorspace sRGB -depth 8 -alpha off -define png:color-type=2 \
+    "$review_dir/cat-metro-icon-${size}.png"
 done
 
-magick "$icon_dir/cat-metro-icon-master-1024.png" -gravity center \
-  -crop 512x512+0+0 +repage -colorspace sRGB -depth 8 -alpha off \
-  -define png:color-type=2 "$review_dir/cat-metro-icon-safe-crop-512.png"
-
-magick "$icon_dir/cat-metro-icon-master-1024.png" \
-  -stroke '#D12B8A' -strokewidth 5 -fill none \
-  -draw 'rectangle 256,256 767,767' \
-  -stroke '#3BAFA8' -draw 'rectangle 102,102 921,921' \
+magick "$master" -gravity center -crop 512x512+0+0 +repage \
   -colorspace sRGB -depth 8 -alpha off -define png:color-type=2 \
-  "$review_dir/cat-metro-icon-safe-crop-overlay-1024.png"
+  "$review_dir/cat-metro-icon-safe-crop-512.png"
 
-magick "$icon_dir/cat-metro-icon-master-1024.png" -colorspace Gray \
-  -colorspace sRGB -type TrueColor -depth 8 -alpha off -define png:color-type=2 \
+magick "$master" -colorspace Gray -colorspace sRGB -type TrueColor \
+  -depth 8 -alpha off -define png:color-type=2 \
   "$review_dir/cat-metro-icon-grayscale-1024.png"
 
 for simulation in protan deutan tritan; do
@@ -95,14 +114,13 @@ for simulation in protan deutan tritan; do
     deutan) matrix='0.367322 0.860646 -0.227968 0.280085 0.672501 0.047413 -0.011820 0.042940 0.968881' ;;
     tritan) matrix='1.255528 -0.076749 -0.178779 -0.078411 0.930809 0.147602 0.004733 0.691367 0.303900' ;;
   esac
-  magick "$icon_dir/cat-metro-icon-master-1024.png" -colorspace RGB \
-    -color-matrix "$matrix" -clamp -colorspace sRGB \
-    -depth 8 -alpha off -define png:color-type=2 \
+  magick "$master" -colorspace RGB -color-matrix "$matrix" -clamp \
+    -colorspace sRGB -depth 8 -alpha off -define png:color-type=2 \
     "$review_dir/cat-metro-icon-${simulation}-1024.png"
 done
 
 magick -size 1024x640 "canvas:#FAF6EC" \
-  "$icon_dir/cat-metro-icon-play-512.png" -geometry +24+48 -composite \
+  "$play" -geometry +24+48 -composite \
   "$review_dir/cat-metro-icon-192.png" -geometry +554+368 -composite \
   "$review_dir/cat-metro-icon-96.png" -geometry +797+464 -composite \
   "$review_dir/cat-metro-icon-48.png" -geometry +926+512 -composite \
@@ -112,6 +130,7 @@ magick -size 1024x640 "canvas:#FAF6EC" \
 # Rasterize the checked-in SVG composition with equivalent explicit primitives.
 # ImageMagick's minimal SVG delegate drops inherited stroke widths on this host,
 # while the direct primitives preserve the intended rail weight deterministically.
+# Candidate A is not used here, so the raster remains byte-identical.
 magick -size 1024x500 "canvas:#FAF6EC" \
   -fill '#F08A3C' -stroke none -draw 'roundrectangle 70,72 430,80 4,4' \
   -fill none -stroke '#D8C9AF' -strokewidth 15 \
@@ -129,23 +148,47 @@ magick -size 1024x500 "canvas:#FAF6EC" \
   -colorspace sRGB -depth 8 -alpha remove -alpha off -define png:color-type=2 \
   "$feature_dir/cat-metro-feature-graphic-1024x500.png"
 
-# Unity consumes one 512 px source per icon layer and performs density downscales.
-# Every Unity source is generated directly from a 1024 px native render/master.
-cp "$icon_dir/cat-metro-icon-play-512.png" \
-  "$unity_icon_dir/cat-metro-icon-legacy-512.png"
-magick "$background_path" -filter Lanczos -resize 512x512 \
+# Candidate A is a deliberately flattened icon. For Android adaptive launchers,
+# keep the selected pixels intact by clipping the full motif to its roundel,
+# scaling that motif to 92% on a transparent foreground, and placing it over a
+# Cream Card background. This avoids inventing a replacement matte or redrawing
+# any part of the human-selected image.
+magick -size 1024x1024 xc:black -fill white -stroke none \
+  -draw 'circle 512,512 996,512' "$roundel_mask"
+magick "$master" "$roundel_mask" -alpha off -compose CopyOpacity -composite \
+  "$roundel_art"
+magick "$roundel_art" -filter Lanczos -resize 942x942 \
+  "$roundel_art_scaled"
+magick -size 1024x1024 canvas:none "$roundel_art_scaled" \
+  -gravity center -compose over -composite "$adaptive_foreground_1024"
+magick -size 1024x1024 "canvas:#FAF6EC" "$adaptive_background_1024"
+magick "$adaptive_background_1024" "$adaptive_foreground_1024" \
+  -compose over -composite "$adaptive_composite_1024"
+
+# The 66% Android safe circle has a 337.92 px radius on this 1024 proof.
+# Only this review image carries the magenta evidence stroke.
+magick "$adaptive_composite_1024" -stroke '#D12B8A' -strokewidth 7 \
+  -fill none -draw 'circle 512,512 850,512' \
+  -colorspace sRGB -depth 8 -alpha off -define png:color-type=2 \
+  "$review_dir/cat-metro-icon-safe-crop-overlay-1024.png"
+
+# Unity consumes one 512 px source per icon layer and performs density
+# downscales. Preserve the existing asset paths and GUID-bearing .meta files.
+cp "$play" "$unity_icon_dir/cat-metro-icon-legacy-512.png"
+magick "$adaptive_background_1024" -filter Lanczos -resize 512x512! \
   -colorspace sRGB -depth 8 -alpha off -define png:color-type=2 \
   "$unity_icon_dir/cat-metro-icon-background-512.png"
-magick "$portrait_path" -filter Lanczos -resize 512x512 \
+magick "$adaptive_foreground_1024" -filter Lanczos -resize 512x512! \
   -colorspace sRGB -depth 8 -alpha on -define png:color-type=6 \
   "$unity_icon_dir/cat-metro-icon-foreground-512.png"
 
-# Attach an explicit sRGB declaration and remove volatile PNG date chunks. The
-# alpha-bearing sources stay 32-bit RGBA even where every output pixel is opaque.
+# Attach an explicit sRGB declaration and remove volatile date chunks. The
+# human-selected source remains byte-identical so its C2PA/JUMBF record and
+# declared SHA remain intact; derivatives intentionally receive fresh metadata.
 generated_pngs=(
-  "$icon_dir/cat-metro-icon-master-1024.png"
-  "$icon_dir/cat-metro-icon-devpost-1024.png"
-  "$icon_dir/cat-metro-icon-play-512.png"
+  "$master"
+  "$devpost"
+  "$play"
   "$review_dir"/*.png
   "$feature_dir/cat-metro-feature-graphic-1024x500.png"
   "$unity_icon_dir/cat-metro-icon-legacy-512.png"
@@ -153,19 +196,31 @@ generated_pngs=(
   "$unity_icon_dir/cat-metro-icon-foreground-512.png"
 )
 for output in "${generated_pngs[@]}"; do
-  normalized="${output}.normalized.png"
-  stripped="${output}.stripped.png"
+  stripped="$icon_build_tmp/$(basename "$output").stripped.png"
+  normalized="$icon_build_tmp/$(basename "$output").normalized.png"
   color_type=2
   case "$output" in
     *icon-play-512.png|*icon-legacy-512.png|*icon-foreground-512.png) color_type=6 ;;
   esac
-  magick "$output" -strip -depth 8 -define "png:color-type=$color_type" "$stripped"
+  magick "$output" -strip -depth 8 -define "png:color-type=$color_type" \
+    "$stripped"
   magick "$stripped" +profile '*' -profile "$srgb_profile" \
     +set date:create +set date:modify +set date:timestamp \
-    -define png:exclude-chunk=time -depth 8 -define "png:color-type=$color_type" \
-    "$normalized"
-  rm "$stripped"
+    -define png:exclude-chunk=time -depth 8 \
+    -define "png:color-type=$color_type" "$normalized"
   mv "$normalized" "$output"
 done
 
-echo "store assets built from pinned rig: $rig_path"
+# Keep one exhaustive, sorted digest list for every committed store raster,
+# including the untouched feature graphic and the byte-identical source.
+manifest_tmp="$icon_build_tmp/raster-sha256.txt"
+while IFS= read -r raster; do
+  shasum -a 256 "$raster"
+done < <(
+  find docs/store/assets unity/Assets/Store -type f -name '*.png' -print \
+    | LC_ALL=C sort
+) > "$manifest_tmp"
+mv "$manifest_tmp" "$manifest"
+
+echo "store icon assets built from selected ChatGPT source: $source_icon"
+echo "source sha256=$source_sha"
