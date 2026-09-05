@@ -139,13 +139,14 @@ namespace CatMetro.Services.Purchases
                         ? (string)o["entitlement"] : null;
                     if (kind == RewardedRewardKind.FailureRewind)
                     {
-                        if (id != "rewind_failure" || (o["entitlement"] != null &&
+                        if (id != "rewind_failure" || o["enabled"]?.Type != JTokenType.Boolean ||
+                            !(bool)o["enabled"] || (o["entitlement"] != null &&
                             o["entitlement"].Type != JTokenType.Null) ||
                             !(o["caps"] is JObject failureCaps) || failureCaps.Count != 2 ||
                             failureCaps["session"]?.Type != JTokenType.Integer ||
                             failureCaps["localDate"]?.Type != JTokenType.Integer ||
                             (long)failureCaps["session"] != 2 || (long)failureCaps["localDate"] != 5)
-                        { problems.Add("placement " + id + " has invalid failure-rewind reward/caps"); continue; }
+                        { problems.Add("placement " + id + " has invalid failure-rewind reward/caps/enabled"); continue; }
                     }
                     else
                     {

@@ -11,10 +11,13 @@ namespace CatMetro.Application.Save
         public static JObject MigrateFromV3(JObject payload)
         {
             if (payload == null) return null;
-            if (payload["caps"] != null && !(payload["caps"] is JObject)) return null;
+            // Preserve malformed cap state for RewardedAdSaveStore's fail-closed validation.
+            // Returning null would invoke SaveStore's fresh-save fallback, losing progress and
+            // replacing exhausted/invalid counters with new capacity (SEC-24).
+            if (payload["caps"] != null && !(payload["caps"] is JObject)) return payload;
             var caps = payload["caps"] as JObject ?? new JObject();
             if (payload["caps"] == null) payload["caps"] = caps;
-            if (caps["sessionCounters"] != null && !(caps["sessionCounters"] is JObject)) return null;
+            if (caps["sessionCounters"] != null && !(caps["sessionCounters"] is JObject)) return payload;
             var counters = caps["sessionCounters"] as JObject;
             if (counters == null) caps["sessionCounters"] = DefaultSessionCounters();
             else if (counters["rewind_failure"] == null) counters["rewind_failure"] = 0;

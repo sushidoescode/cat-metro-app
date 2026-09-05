@@ -497,6 +497,32 @@ namespace CatMetro.Tests.Purchases
             Assert.That(placements.Problems, Is.Not.Empty);
         }
 
+        [TestCase("")]
+        [TestCase(",\"enabled\":false")]
+        [TestCase(",\"enabled\":\"true\"")]
+        [TestCase(",\"enabled\":null")]
+        [TestCase(",\"enabled\":{}")]
+        public void FailureRewindPlacement_RequiresExplicitBooleanEnabledTrue(string enabled)
+        {
+            var placements = RewardedPlacementCatalog.Parse("{\"placements\":[{\"id\":\"rewind_failure\","
+                + "\"rewardKind\":\"failure_rewind\",\"caps\":{\"session\":2,\"localDate\":5}" + enabled + "}]}", null);
+            Assert.That(placements.Placements, Is.Empty);
+            Assert.That(placements.Problems, Is.Not.Empty);
+        }
+
+        [TestCase("")]
+        [TestCase(",\"enabled\":false")]
+        [TestCase(",\"enabled\":\"true\"")]
+        public void CosmeticPlacement_PreservesDisabledDefaultCompatibility(string enabled)
+        {
+            var placements = RewardedPlacementCatalog.Parse("{\"placements\":[{\"id\":\"p\","
+                + "\"entitlement\":\"outfit_conductor\"" + enabled + "}]}", PFixtures.TinyCatalog());
+            Assert.That(placements.Problems, Is.Empty);
+            Assert.That(placements.TryGet("p", out var placement), Is.True);
+            Assert.That(placement.Enabled, Is.False);
+            Assert.That(placement.RewardKind, Is.EqualTo(RewardedRewardKind.EntitlementLease));
+        }
+
         [TestCase("{\"id\":[],\"rewardKind\":\"failure_rewind\"}")]
         [TestCase("{\"id\":\"rewind_failure\",\"rewardKind\":{}}")]
         [TestCase("{\"id\":\"rewind_failure\",\"rewardKind\":\"failure_rewind\",\"entitlement\":[]}")]

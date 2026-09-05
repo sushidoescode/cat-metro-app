@@ -43,12 +43,51 @@ namespace CatMetro.Tests.Save
 
         [TestCase("caps")]
         [TestCase("caps.sessionCounters")]
-        public void DefaultV3ToV4_MalformedContainerFailsClosed(string path)
+        public void DefaultV3ToV4_MalformedContainerIsPreservedForCapRefusal(string path)
         {
             var v3 = SaveDefaults.FreshPayload();
             if (path == "caps") v3["caps"] = "bad";
             else v3["caps"]["sessionCounters"] = "bad";
-            Assert.That(MigrationTable.CreateDefault().Migrate(v3, 3, 4), Is.Null);
+            var migrated = MigrationTable.CreateDefault().Migrate(v3, 3, 4);
+            Assert.That(migrated, Is.Not.Null);
+            Assert.That((string)migrated.SelectToken(path), Is.EqualTo("bad"));
+        }
+
+        [TestCase("caps")]
+        [TestCase("caps.sessionCounters")]
+        public void V3Load_MalformedCapsPreservesProgressAndCannotEstablishFreshRewindCapacity(string path)
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            var v3 = SaveDefaults.FreshPayload();
+            v3["saveVersion"] = 3;
+            v3["economy"]["tickets"] = 42;
+            v3["progress"]["levels"] = new JArray(new JObject { ["id"] = "L001", ["stars"] = 3 });
+            v3["caps"]["counters"]["rewind_failure"] = 5;
+            v3["future"] = new JArray("keep", 17);
+            v3.SelectToken(path).Replace(new JValue("bad"));
+            var originalBytes = SFixtures.FileWithVersion(3, v3);
+            SFixtures.WriteRaw(store.SavePath, originalBytes);
+            var expected = (JObject)v3.DeepClone();
+            expected["saveVersion"] = 4;
+
+            Assert.That(store.Load(), Is.EqualTo(LoadResult.Ok));
+            Assert.That(JToken.DeepEquals(store.State.Payload, expected), Is.True);
+            var capStore = new RewardedAdSaveStore(store);
+            Assert.That(capStore.TryTouchFailureRewindSession(1788609600L, "2026-09-05"), Is.False);
+            Assert.That(capStore.CanOfferFailureRewind(1788609600L, "2026-09-05"), Is.False);
+            Assert.That(capStore.TryConsumeFailureRewind(1788609600L, "2026-09-05"), Is.False);
+            Assert.That(JToken.DeepEquals(store.State.Payload, expected), Is.True);
+            Assert.That(SFixtures.RawFile(store.SavePath), Is.EqualTo(originalBytes));
+
+            // An unrelated successful save must retain the malformed cap and the refusal
+            // across the next (now v4) load, rather than restoring default capacity.
+            Assert.That(store.TryCommitAtomic(), Is.True);
+            var reloaded = SFixtures.Store(root);
+            Assert.That(reloaded.Load(), Is.EqualTo(LoadResult.Ok));
+            Assert.That(JToken.DeepEquals(reloaded.State.Payload, expected), Is.True);
+            Assert.That(new RewardedAdSaveStore(reloaded)
+                .TryTouchFailureRewindSession(1788611400L, "2026-09-05"), Is.False);
         }
 
         [Test]
