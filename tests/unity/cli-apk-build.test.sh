@@ -58,8 +58,9 @@ keystore_line=$(first_line 'PlayerSettings.Android.useCustomKeystore = false')
 # (by reflection, so the build tooling has no compile-time dependency on EDM4U) before BuildPlayer.
 has 'PlayServicesResolver' || fail "the APK builder does not invoke the Android dependency resolver before building"
 has 'ResolveSync' || fail "the APK builder must call the synchronous resolver entry point"
-[ "$(first_line 'ResolveSync')" -lt "$(first_line 'BuildPipeline.BuildPlayer')" ] \
-  || fail "dependency resolution must run before BuildPlayer"
+has 'ResolveAndroidDependencies()' || fail "the resolver wrapper is never called"
+[ "$(first_line 'ResolveAndroidDependencies()')" -lt "$(first_line 'BuildPipeline.BuildPlayer')" ] \
+  || fail "dependency resolution must be invoked before BuildPlayer"
 
 # Neither builder may ever touch keystore material. The ONLY Player Setting the APK builder may
 # write is the useCustomKeystore boolean above; every other PlayerSettings write stays banned.
