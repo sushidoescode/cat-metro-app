@@ -71,6 +71,10 @@ namespace CatMetro.Services.Ads
     public interface IRewardedAdFailureRewindSource
     {
         bool CanShowFailureRewind(string placementId);
+        // Exact request validity is separate from offer/next-fill readiness: opening an ad
+        // normally makes CanShow false before Displayed. Genuine pre-display invalidation
+        // returns false; a displayed/earned ad keeps its existing completion route.
+        bool CanContinueFailureRewind(long attemptId, string placementId);
         // Assign attemptId before invoking any provider/lifecycle callback, so reentrant route
         // cancellation can abandon that exact attempt even before Show has returned.
         RewardedShowOutcome ShowFailureRewind(string placementId,

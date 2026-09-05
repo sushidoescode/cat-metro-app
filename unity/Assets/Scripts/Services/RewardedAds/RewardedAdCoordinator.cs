@@ -235,6 +235,17 @@ namespace CatMetro.Services.Ads
             => _openAttempt == null && TryGetFailureRewindPlacement(placementId, out _) &&
                 CheckFailureRewindAvailability(placementId, null);
 
+        public bool CanContinueFailureRewind(long attemptId, string placementId)
+        {
+            var attempt = _openAttempt;
+            if (_disposed || attempt == null || !attempt.IsFailureRewind || attempt.Id != attemptId ||
+                !string.Equals(attempt.Placement.Id, placementId, StringComparison.Ordinal)) return false;
+            // The provider's IsReady is for the next Show. LevelPlay makes it false as soon as
+            // the current ad starts opening, so querying it here would cancel every real ad.
+            return attempt.DisplayLatched || attempt.RewardLatched ||
+                (TryGetFailureRewindPlacement(placementId, out _) && CheckFailureRewindCaps(attempt));
+        }
+
         private bool TryGetFailureRewindPlacement(string placementId, out RewardedPlacement placement)
         {
             placement = default;
@@ -250,16 +261,7 @@ namespace CatMetro.Services.Ads
 
         private bool CheckFailureRewindAvailability(string placementId, Attempt attempt)
         {
-            try
-            {
-                long now = _nowUnixSeconds();
-                if (!OwnsFailureRewindCheck(attempt)) return false;
-                string dateKey = _localDateKey();
-                if (!OwnsFailureRewindCheck(attempt)) return false;
-                if (!_failureCaps.CanOfferFailureRewind(now, dateKey) || !OwnsFailureRewindCheck(attempt))
-                    return false;
-            }
-            catch { return false; }
+            if (!CheckFailureRewindCaps(attempt)) return false;
             try
             {
                 bool ready = _provider is IRewardedAdPlacementReadiness perPlacement
@@ -272,6 +274,21 @@ namespace CatMetro.Services.Ads
                 RaiseAvailabilityChanged();
                 return false;
             }
+        }
+
+        private bool CheckFailureRewindCaps(Attempt attempt)
+        {
+            try
+            {
+                long now = _nowUnixSeconds();
+                if (!OwnsFailureRewindCheck(attempt)) return false;
+                string dateKey = _localDateKey();
+                if (!OwnsFailureRewindCheck(attempt)) return false;
+                if (!_failureCaps.CanOfferFailureRewind(now, dateKey) || !OwnsFailureRewindCheck(attempt))
+                    return false;
+                return true;
+            }
+            catch { return false; }
         }
 
         public RewardedShowOutcome ShowFailureRewind(string placementId,

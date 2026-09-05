@@ -47,6 +47,7 @@ namespace CatMetro.Tests.PlayMode
         {
             public event Action AvailabilityChanged;
             public bool Available = true;
+            private bool _displayed;
             public int Requests;
             public long Abandoned;
             public string RequestedPlacement;
@@ -55,11 +56,14 @@ namespace CatMetro.Tests.PlayMode
             public bool CanShow(string placementId) => false;
             public RewardedShowOutcome Show(string placementId) => RewardedShowOutcome.Unavailable;
             public bool CanShowFailureRewind(string placementId) => Available && placementId == Placement;
+            public bool CanContinueFailureRewind(long attemptId, string placementId) =>
+                attemptId == Requests && placementId == RequestedPlacement && (Available || _displayed);
             public RewardedShowOutcome ShowFailureRewind(string placementId,
                 Action<RewardedAdEvent> lifecycle, Action<FailureRewindAdCompletion> completed,
                 out long attemptId)
             {
                 attemptId = ++Requests;
+                _displayed = false;
                 RequestedPlacement = placementId;
                 Lifecycle = lifecycle;
                 Completed = completed;
@@ -71,8 +75,12 @@ namespace CatMetro.Tests.PlayMode
                 Available = available;
                 AvailabilityChanged?.Invoke();
             }
-            public void Display() => Lifecycle(new RewardedAdEvent(RewardedAdEventKind.Displayed,
-                Requests, Placement, "actual-unit", networkName: "actual-network"));
+            public void Display()
+            {
+                _displayed = true;
+                Lifecycle(new RewardedAdEvent(RewardedAdEventKind.Displayed,
+                    Requests, Placement, "actual-unit", networkName: "actual-network"));
+            }
             public void Finish(RewardedAdCompletionKind kind, bool metadata = true) =>
                 Completed(new FailureRewindAdCompletion(Requests, Placement, kind,
                     metadata ? "actual-unit" : null, metadata ? "actual-network" : null,
@@ -281,7 +289,7 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator UnavailableAfterAbandonUsesStableFallbackAndDoesNotReoffer()
+        public IEnumerator PreDisplayInvalidationUsesStableFallbackAndDoesNotReoffer()
         {
             yield return Fail();
             var failed = _root.Session;
@@ -291,9 +299,53 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Session, Is.SameAs(failed));
             Assert.That(_root.Input.Regions.IsRegistered(RegionId), Is.False);
             Assert.That((string)Event("rewarded_ad_failed")["network"], Is.EqualTo("unknown"));
-            Assert.That((string)Event("rewarded_ad_failed")["error_code"], Is.EqualTo("ClosedWithoutReward"));
+            Assert.That((string)Event("rewarded_ad_failed")["error_code"], Is.EqualTo("Cancelled"));
             yield return null;
             Assert.That(Offer, Is.Null);
+        }
+
+        [UnityTest]
+        public IEnumerator PreDisplayAvailabilityLossCancelsAndLateGrantPreservesExactFailure()
+        {
+            yield return Fail();
+            var failed = _root.Session;
+            var state = failed.State;
+            var log = failed.Log;
+            var receipts = log.Entries.ToArray();
+            var before = Digest(failed);
+            TapOffer();
+            _ads.SetAvailable(false);
+            Assert.That(_ads.Abandoned, Is.EqualTo(1), "availability loss abandons the exact attempt");
+            _ads.SetAvailable(false);
+            _ads.Finish(RewardedAdCompletionKind.Granted);
+            _ads.Finish(RewardedAdCompletionKind.Granted);
+            Assert.That(_root.Session, Is.SameAs(failed));
+            Assert.That(failed.State, Is.SameAs(state));
+            Assert.That(failed.Log, Is.SameAs(log));
+            Assert.That(log.Entries, Is.EqualTo(receipts));
+            Assert.That(Digest(failed), Is.EqualTo(before));
+            Assert.That(_root.ScreenState, Is.EqualTo("FailureReview"));
+            Assert.That(Count("rewarded_ad_failed"), Is.EqualTo(1));
+            Assert.That((string)Event("rewarded_ad_failed")["error_code"], Is.EqualTo("Cancelled"));
+            Assert.That(Count("rewarded_ad_completed"), Is.Zero);
+            Assert.That(Count("rewind_used"), Is.Zero);
+            Assert.That(_root.Input.Regions.IsRegistered(RegionId), Is.False);
+            Assert.That(_sceneLoads, Is.Zero);
+        }
+
+        [UnityTest]
+        public IEnumerator DisplayedAdStillGrantsWhenTheNextOfferBecomesUnavailable()
+        {
+            yield return Fail();
+            TapOffer();
+            _ads.Display();
+            _ads.SetAvailable(false);
+            Assert.That(_ads.Abandoned, Is.Zero, "next-fill readiness cannot revoke a displayed ad");
+            _ads.Finish(RewardedAdCompletionKind.Granted);
+            Assert.That(_root.ScreenState, Is.EqualTo("Playing"));
+            Assert.That(_root.Session.HasUsedRewind, Is.True);
+            Assert.That(Count("rewarded_ad_completed"), Is.EqualTo(1));
+            Assert.That(Count("rewarded_ad_failed"), Is.Zero);
         }
 
         [UnityTest]

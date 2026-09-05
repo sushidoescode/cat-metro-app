@@ -241,6 +241,28 @@ namespace CatMetro.Services.Retry
         {
             if (!IsLive(binding) || (binding.Subscription != SubscriptionState.Adding &&
                 binding.Subscription != SubscriptionState.Attached)) return;
+            var request = _activeRequest;
+            if (request != null && ReferenceEquals(request.Binding, binding) &&
+                !request.PendingCompletion.HasValue)
+            {
+                // Show may raise availability synchronously before returning its assigned ID.
+                // An already-buffered terminal result owns completion; do not revoke a reward
+                // earned earlier on that same stack when next-fill availability changes.
+                long id = request.AttemptId > 0 ? request.AttemptId :
+                    request.ReadPendingAttemptId?.Invoke() ?? 0L;
+                if (id > 0)
+                {
+                    request.AttemptId = id;
+                    bool valid = false;
+                    try
+                    {
+                        valid = ((IRewardedAdFailureRewindSource)binding.Source)
+                            .CanContinueFailureRewind(id, request.PlacementId);
+                    }
+                    catch { }
+                    if (Owns(request) && !valid) CancelRequest(request);
+                }
+            }
             RaiseAvailabilityChanged(binding);
         }
 

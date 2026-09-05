@@ -61,6 +61,86 @@ namespace CatMetro.Tests.Ads
             Assert.That(f.SessionUsed, Is.EqualTo(1));
         }
 
+        [Test]
+        public void PreDisplayReporterLossCancelsExactAttemptBeforeLateRewardCanConsumeCaps()
+        {
+            using var f = new FailureFixture();
+            RewardedAdRuntime.Install(f.Coordinator);
+            using var route = new RewardedAdFailureRewindRoute();
+            route.Request("rewind_failure", f.Lifecycle.Add, f.Results.Add);
+            long attempt = f.Provider.Shows[0].AttemptId;
+            f.Reporter.SetReady(false);
+            Assert.That(f.Results, Has.Count.EqualTo(1), "source invalidation terminates the route");
+            Assert.That(f.Results[0].Kind, Is.EqualTo(RewardedAdCompletionKind.Cancelled));
+            Assert.That(f.Results[0].AttemptId, Is.EqualTo(attempt));
+            f.Emit(RewardedAdEventKind.Rewarded, attempt);
+            f.Emit(RewardedAdEventKind.Closed, attempt);
+            Assert.That(f.Results, Has.Count.EqualTo(1));
+            Assert.That(f.SessionUsed, Is.Zero);
+            Assert.That(f.DailyUsed, Is.Zero);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void OrdinaryShowingAndDisplayedNextFillLossDoNotCancelReward(bool displayFirst)
+        {
+            using var f = new FailureFixture();
+            RewardedAdRuntime.Install(f.Coordinator);
+            using var route = new RewardedAdFailureRewindRoute();
+            f.Provider.OnShow = (id, _) =>
+            {
+                // Mirrors LevelPlay: the ad becomes unavailable for a second Show immediately,
+                // before its asynchronous Displayed callback can reach the route.
+                f.Provider.IsReady = false;
+                if (displayFirst) f.Emit(RewardedAdEventKind.Displayed, id);
+            };
+            route.Request("rewind_failure", f.Lifecycle.Add, f.Results.Add);
+            Assert.That(f.Results, Is.Empty, "busy/showing is not invalidation");
+            long attempt = f.Provider.Shows[0].AttemptId;
+            if (!displayFirst) f.Emit(RewardedAdEventKind.Displayed, attempt);
+            f.Reporter.SetReady(false);
+            Assert.That(f.Results, Is.Empty, "a displayed ad keeps its exact reward route");
+            f.Emit(RewardedAdEventKind.Rewarded, attempt);
+            Assert.That(f.Results, Has.Count.EqualTo(1));
+            Assert.That(f.Results[0].Kind, Is.EqualTo(RewardedAdCompletionKind.Granted));
+            Assert.That(f.SessionUsed, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void SynchronousEarnedCompletionWinsOverLaterAvailabilityLossBeforeShowReturns()
+        {
+            using var f = new FailureFixture();
+            RewardedAdRuntime.Install(f.Coordinator);
+            using var route = new RewardedAdFailureRewindRoute();
+            f.Provider.OnShow = (id, _) =>
+            {
+                f.Emit(RewardedAdEventKind.Rewarded, id);
+                f.Reporter.SetReady(false);
+            };
+            route.Request("rewind_failure", f.Lifecycle.Add, f.Results.Add);
+            Assert.That(f.Results, Has.Count.EqualTo(1));
+            Assert.That(f.Results[0].Kind, Is.EqualTo(RewardedAdCompletionKind.Granted));
+            Assert.That(f.SessionUsed, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void InvalidationInsideShowAbandonsBeforeSameStackLateReward()
+        {
+            using var f = new FailureFixture();
+            RewardedAdRuntime.Install(f.Coordinator);
+            using var route = new RewardedAdFailureRewindRoute();
+            f.Provider.OnShow = (id, _) =>
+            {
+                f.Reporter.SetReady(false);
+                f.Emit(RewardedAdEventKind.Rewarded, id);
+            };
+            route.Request("rewind_failure", f.Lifecycle.Add, f.Results.Add);
+            Assert.That(f.SessionUsed, Is.Zero, "cancel before the same-stack late reward writes caps");
+            Assert.That(f.Results, Has.Count.EqualTo(1));
+            Assert.That(f.Results[0].Kind, Is.EqualTo(RewardedAdCompletionKind.Cancelled));
+            Assert.That(f.Results[0].AttemptId, Is.EqualTo(f.Provider.Shows[0].AttemptId));
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void RuntimeReplacementOrUninstallAbandonsOldAttemptBeforeLateReward(bool uninstall)
@@ -229,6 +309,8 @@ namespace CatMetro.Tests.Ads
             public bool CanShow(string placementId) => false;
             public RewardedShowOutcome Show(string placementId) => RewardedShowOutcome.Unavailable;
             public bool CanShowFailureRewind(string placementId) { OnCanShow?.Invoke(); return true; }
+            public bool CanContinueFailureRewind(long attemptId, string placementId) =>
+                attemptId == Completions.Count && !Abandoned.Contains(attemptId);
             public RewardedShowOutcome ShowFailureRewind(string placementId,
                 Action<RewardedAdEvent> lifecycle, Action<FailureRewindAdCompletion> completed,
                 out long attemptId)
