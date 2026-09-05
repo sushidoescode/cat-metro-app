@@ -4,6 +4,7 @@ fail.banner.timeout,The last train left the depot
 fail.queueoverflow,Platform overflowed at {node}
 fail.platformoverflow,{station} platform overflowed
 retry.cta,Try again
+failure.rewind,Watch to rewind
 halt.notice,Signal fault — the line stopped
 hint.tutorial,Tap the flashing switch
 results.next,Next
