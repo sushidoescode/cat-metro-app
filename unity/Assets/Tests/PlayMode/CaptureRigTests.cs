@@ -161,37 +161,38 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator Replay_UsesShippedSessionForTheReachableL006HeroBoundary()
+        public IEnumerator Replay_UsesShippedSessionForTheReachableL032HeroBoundary()
         {
             GameRoot root = null;
             try
             {
                 GameRoot.DevSkipShippedHome = true;
-                root = GameRoot.Launch(GameRoot.LevelPath("L006"));
+                root = GameRoot.Launch(GameRoot.LevelPath("L032"));
                 root.enabled = false;
-                var receipts = CaptureRig.ParseSwitchReceipts("S1@43",
-                    root.Session.Level.IdMaps.Switches, captureTick: 56);
+                var receipts = CaptureRig.ParseSwitchReceipts("S1@1",
+                    root.Session.Level.IdMaps.Switches, captureTick: 5);
 
-                CaptureRig.Replay(root, captureTick: 56, receipts);
+                CaptureRig.Replay(root, captureTick: 5, receipts);
 
-                Assert.That(root.CurrentLevelId, Is.EqualTo("L006"));
-                Assert.That(root.Session.State.Tick, Is.EqualTo(56));
+                Assert.That(root.CurrentLevelId, Is.EqualTo("L032"));
+                Assert.That(root.Session.State.Tick, Is.EqualTo(5));
                 Assert.That(root.Session.Alpha, Is.Zero.Within(0.000000001d));
                 Assert.That(root.Session.State.Outcome.Kind, Is.EqualTo(OutcomeKind.Running));
-                Assert.That(root.Session.State.Deliveries, Is.EqualTo(2));
+                Assert.That(root.Session.State.Deliveries, Is.Zero);
                 Assert.That(root.Session.State.SwitchesUsed, Is.EqualTo(1));
                 Assert.That(root.Session.Log.Entries.Count, Is.EqualTo(1));
                 Assert.That(root.Session.Log.Entries[0].SwitchId, Is.EqualTo(0));
-                Assert.That(root.Session.Log.Entries[0].Tick, Is.EqualTo(43));
-                Assert.That(root.Session.State.SwitchRoutes[0], Is.EqualTo(1));
+                Assert.That(root.Session.Log.Entries[0].Tick, Is.EqualTo(1));
+                Assert.That(SwitchState.Route(root.Session.State.SwitchRoutes[0]), Is.EqualTo(1));
 
                 TrainSlot[] live = root.Session.State.Trains
                     .Where(train => train.Id != 0 && train.State != TrainState.None).ToArray();
                 Assert.That(live, Has.Length.EqualTo(1));
-                Assert.That(live[0].Color, Is.EqualTo(CatColor.Blue));
+                Assert.That(CatToken.Color(live[0].Color), Is.EqualTo(CatColor.Blue));
+                Assert.That(CatToken.Shape(live[0].Color), Is.EqualTo(CatShape.Round));
                 Assert.That(live[0].EdgeId,
-                    Is.EqualTo(root.Session.Level.IdMaps.Edges.IndexOf("E1")));
-                Assert.That(live[0].ProgressTicks, Is.EqualTo(7));
+                    Is.EqualTo(root.Session.Level.IdMaps.Edges.IndexOf("E_FEED")));
+                Assert.That(live[0].ProgressTicks, Is.EqualTo(2));
                 Assert.That(root.Session.TrainOccupantGeneration(0), Is.GreaterThan(0),
                     "the passenger must have spawned through GameSession, not hand placement");
                 Assert.That(root.Session.State.NodeQueueCounts, Is.All.Zero);
@@ -211,19 +212,23 @@ namespace CatMetro.Tests.PlayMode
             try
             {
                 GameRoot.DevSkipShippedHome = true;
-                root = GameRoot.Launch(GameRoot.LevelPath("L006"));
+                root = GameRoot.Launch(GameRoot.LevelPath("L030"));
                 root.enabled = false;
-                var receipts = CaptureRig.ParseSwitchReceipts("S1@43",
-                    root.Session.Level.IdMaps.Switches, captureTick: 43);
+                int initialRoute = SwitchState.Route(root.Session.State.SwitchRoutes[0]);
+                var receipts = CaptureRig.ParseSwitchReceipts("S1@1",
+                    root.Session.Level.IdMaps.Switches, captureTick: 1);
 
-                CaptureRig.Replay(root, captureTick: 43, receipts);
+                CaptureRig.Replay(root, captureTick: 1, receipts);
 
-                Assert.That(root.Session.State.Tick, Is.EqualTo(43));
-                Assert.That(root.Session.Log.Entries.Single().Tick, Is.EqualTo(43));
-                Assert.That(root.Session.State.SwitchRoutes[0], Is.EqualTo(0),
+                Assert.That(root.Session.State.Tick, Is.EqualTo(1));
+                Assert.That(root.Session.Log.Entries.Single().Tick, Is.EqualTo(1));
+                Assert.That(SwitchState.Route(root.Session.State.SwitchRoutes[0]),
+                    Is.EqualTo(initialRoute),
                     "a receipt stamped at T applies to authoritative state after boundary T");
                 Assert.That(root.Session.PendingToggleCount(0), Is.EqualTo(1),
                     "the shipped view uses the pending receipt as the committed lever route");
+                Assert.That(root.View.CommittedRoute(0),
+                    Is.EqualTo((initialRoute + 1) % root.Session.Level.Graph.SwitchRoutes[0].Length));
                 yield return null;
             }
             finally
@@ -243,9 +248,9 @@ namespace CatMetro.Tests.PlayMode
                 root = GameRoot.Launch(GameRoot.LevelPath("L001"));
                 root.enabled = false;
                 var receipts = CaptureRig.ParseSwitchReceipts("S1@0",
-                    root.Session.Level.IdMaps.Switches, captureTick: 51);
+                    root.Session.Level.IdMaps.Switches, captureTick: 29);
 
-                Assert.That(() => CaptureRig.Replay(root, captureTick: 51, receipts),
+                Assert.That(() => CaptureRig.Replay(root, captureTick: 29, receipts),
                     Throws.TypeOf<InvalidOperationException>()
                         .With.Message.Contains("terminal state"));
                 yield return null;
