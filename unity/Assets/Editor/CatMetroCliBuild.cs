@@ -18,6 +18,14 @@
 // passwords!". A dev APK is debug-signed by contract (scripts/build-apk.sh header), so this
 // entry point declares that itself: force the toggle false, restore it in the same finally.
 // It never reads or writes keystore paths, aliases or passwords.
+//
+// ANDROID DEPENDENCIES (2026-09-05): the External Dependency Manager (EDM4U) resolves the
+// RevenueCat / OneSignal / LevelPlay native libraries only from an interactive editor session;
+// a -executeMethod batch build never triggers it, so Gradle compiled without them and javac
+// died with "package com.revenuecat.purchases does not exist". The builder now calls
+// GooglePlayServices.PlayServicesResolver.ResolveSync(true) by reflection before BuildPlayer
+// (reflection so this Editor assembly has no compile-time dependency on EDM4U) and logs which
+// Gradle templates Unity will see, with their importer types, as CLI_BUILD_TEMPLATE lines.
 using System.IO;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
@@ -40,6 +48,14 @@ public static class CatMetroCliBuild
             Debug.LogError("CLI_BUILD_RESULT Failed reason=extension-not-apk out=" + outPath
                 + " — this entry point only emits APKs; use CatMetroCliAabBuild.BuildAndroidAab "
                 + "(scripts/build-aab.sh) for a Play upload bundle");
+            EditorApplication.Exit(1);
+            return;
+        }
+
+        LogGradleTemplateState();
+        if (!ResolveAndroidDependencies())
+        {
+            Debug.LogError("CLI_BUILD_RESULT Failed reason=android-dependency-resolution");
             EditorApplication.Exit(1);
             return;
         }
@@ -79,5 +95,64 @@ public static class CatMetroCliBuild
             PlayerSettings.Android.useCustomKeystore = previousCustomKeystore;
         }
         EditorApplication.Exit(exitCode);
+    }
+
+    // Evidence, not control: a custom template Unity silently ignores looks identical to one
+    // that was never enabled. Recording existence + importer per template makes the next
+    // "why are my dependencies missing" diagnosis a grep instead of an afternoon.
+    private static void LogGradleTemplateState()
+    {
+        foreach (var path in new[]
+        {
+            "Assets/Plugins/Android/mainTemplate.gradle",
+            "Assets/Plugins/Android/gradleTemplate.properties",
+            "Assets/Plugins/Android/settingsTemplate.gradle",
+            "Assets/Plugins/Android/launcherTemplate.gradle",
+        })
+        {
+            var importer = AssetImporter.GetAtPath(path);
+            Debug.Log("CLI_BUILD_TEMPLATE path=" + path
+                + " exists=" + File.Exists(path)
+                + " importer=" + (importer != null ? importer.GetType().Name : "none"));
+        }
+    }
+
+    // Returns false only when EDM4U is present and reports a failed resolution. A project
+    // without EDM4U resolves nothing and proceeds; that is the pre-2026-09-05 behaviour.
+    private static bool ResolveAndroidDependencies()
+    {
+        System.Type resolver = null;
+        foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
+        {
+            try { resolver = assembly.GetType("GooglePlayServices.PlayServicesResolver"); }
+            catch (System.Exception) { resolver = null; }
+            if (resolver != null) break;
+        }
+        if (resolver == null)
+        {
+            Debug.Log("CLI_BUILD_RESOLVE edm4u=absent");
+            return true;
+        }
+        var resolveSync = resolver.GetMethod("ResolveSync",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+            null, new[] { typeof(bool) }, null);
+        if (resolveSync == null)
+        {
+            Debug.LogWarning("CLI_BUILD_RESOLVE edm4u=present resolveSync=missing");
+            return true;
+        }
+        object result;
+        try
+        {
+            result = resolveSync.Invoke(null, new object[] { true });
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError("CLI_BUILD_RESOLVE edm4u=present ok=False error=" + ex.GetBaseException().Message);
+            return false;
+        }
+        bool ok = !(result is bool b) || b;
+        Debug.Log("CLI_BUILD_RESOLVE edm4u=present forced=True ok=" + ok);
+        return ok;
     }
 }

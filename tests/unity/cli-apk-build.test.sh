@@ -51,6 +51,17 @@ keystore_line=$(first_line 'PlayerSettings.Android.useCustomKeystore = false')
 [ -n "$keystore_line" ] && [ "$keystore_line" -lt "$(first_line 'BuildPipeline.BuildPlayer')" ] \
   || fail "useCustomKeystore must be forced before BuildPlayer runs"
 
+# Android dependency resolution (2026-09-05): the External Dependency Manager only auto-resolves
+# from an interactive editor session. In a batch build nothing runs it, so the RevenueCat,
+# OneSignal and LevelPlay native libraries never reach Gradle and javac dies with
+# "package com.revenuecat.purchases does not exist". The builder must invoke the resolver itself
+# (by reflection, so the build tooling has no compile-time dependency on EDM4U) before BuildPlayer.
+has 'PlayServicesResolver' || fail "the APK builder does not invoke the Android dependency resolver before building"
+has 'ResolveSync' || fail "the APK builder must call the synchronous resolver entry point"
+has 'ResolveAndroidDependencies()' || fail "the resolver wrapper is never called"
+[ "$(first_line 'ResolveAndroidDependencies()')" -lt "$(first_line 'BuildPipeline.BuildPlayer')" ] \
+  || fail "dependency resolution must be invoked before BuildPlayer"
+
 # Neither builder may ever touch keystore material. The ONLY Player Setting the APK builder may
 # write is the useCustomKeystore boolean above; every other PlayerSettings write stays banned.
 # Denylists run on the RAW source: a string literal carrying '//' would vanish from the stripped
