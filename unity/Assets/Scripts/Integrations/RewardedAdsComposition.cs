@@ -9,11 +9,13 @@ namespace CatMetro.Integrations
     // SaveRuntime can publish after monetization boot, so binding observes first and reads second.
     internal sealed class RewardedAdsComposition : IDisposable
     {
+        private const long FailureSessionHeartbeatSeconds = 60L;
         private readonly PurchaseService _service;
         private readonly RewardedPlacementCatalog _placements;
         private readonly Func<IRewardedAdProvider> _providerFactory;
         private readonly IAdEventReporter _reporter;
         private readonly Func<string> _localDateKey;
+        private readonly Func<long> _nowUnixSeconds;
 
         private SaveStore _boundStore;
         private RewardedAdCoordinator _coordinator;
@@ -22,16 +24,20 @@ namespace CatMetro.Integrations
         private bool _hasMonotonicSeconds;
         private bool _subscribed;
         private bool _disposed;
+        private bool _paused;
+        private bool _hasFailureSessionTouch;
+        private long _lastFailureSessionTouchUnixSeconds;
 
         internal RewardedAdsComposition(PurchaseService service,
             RewardedPlacementCatalog placements, Func<IRewardedAdProvider> providerFactory,
-            IAdEventReporter reporter, Func<string> localDateKey)
+            IAdEventReporter reporter, Func<string> localDateKey, Func<long> nowUnixSeconds = null)
         {
             _service = service;
             _placements = placements;
             _providerFactory = providerFactory;
             _reporter = reporter;
             _localDateKey = localDateKey;
+            _nowUnixSeconds = nowUnixSeconds ?? (() => DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         }
 
         internal void Bind()
@@ -49,6 +55,8 @@ namespace CatMetro.Integrations
         internal void OnApplicationPause(bool paused)
         {
             if (_disposed) return;
+            _paused = paused;
+            TouchFailureSession(force: true);
             try
             {
                 if (paused)
@@ -60,6 +68,14 @@ namespace CatMetro.Integrations
             {
                 // Save and store refresh are optional boundaries. Unity lifecycle must continue.
             }
+        }
+
+        internal void OnApplicationFocus(bool hasFocus)
+        {
+            if (_disposed || !hasFocus) return;
+            TouchFailureSession(force: true);
+            try { _service?.RefreshEntitlements(); }
+            catch { }
         }
 
         internal void DrainMainThreadAdEvents()
@@ -88,6 +104,29 @@ namespace CatMetro.Integrations
                 // Retry/retention maintenance is optional monetization work. It cannot own the
                 // Unity frame even if a future coordinator implementation regresses.
             }
+            if (!_paused) TouchFailureSession(force: false);
+        }
+
+        private void TouchFailureSession(bool force)
+        {
+            var coordinator = _coordinator;
+            if (_disposed || coordinator == null || _placements == null ||
+                !_placements.TryGet("rewind_failure", out var placement) ||
+                placement.RewardKind != RewardedRewardKind.FailureRewind) return;
+            try
+            {
+                long now = _nowUnixSeconds();
+                if (!force && _hasFailureSessionTouch &&
+                    now - _lastFailureSessionTouchUnixSeconds < FailureSessionHeartbeatSeconds &&
+                    now / 86400L <= _lastFailureSessionTouchUnixSeconds / 86400L) return;
+                // Claim the heartbeat before notifying observers; a reentrant store replacement
+                // owns its own timer. Failed writes retry at the next heartbeat/foreground edge.
+                if (_disposed || !ReferenceEquals(coordinator, _coordinator)) return;
+                _hasFailureSessionTouch = true;
+                _lastFailureSessionTouchUnixSeconds = now;
+                coordinator.TouchFailureRewindSession();
+            }
+            catch { }
         }
 
         public void Dispose()
@@ -148,7 +187,7 @@ namespace CatMetro.Integrations
                 }
 
                 coordinator = new RewardedAdCoordinator(_placements, _service, provider,
-                    _reporter, saveData, _localDateKey);
+                    _reporter, saveData, _localDateKey, _nowUnixSeconds);
                 _mainThreadDrain = provider as IMainThreadRewardedAdEventDrain;
                 _coordinator = coordinator;
                 if (_hasMonotonicSeconds) coordinator.Tick(_lastMonotonicSeconds);
@@ -159,6 +198,12 @@ namespace CatMetro.Integrations
                     return;
                 }
                 coordinator.Start();
+                if (!OwnsPublished(store, coordinator))
+                {
+                    ReleaseAttempt(coordinator);
+                    return;
+                }
+                TouchFailureSession(force: true);
                 if (!OwnsPublished(store, coordinator)) ReleaseAttempt(coordinator);
             }
             catch
@@ -174,6 +219,7 @@ namespace CatMetro.Integrations
             if (coordinator == null) return;
             _coordinator = null;
             _mainThreadDrain = null;
+            _hasFailureSessionTouch = false;
             try { coordinator?.Dispose(); }
             catch { }
             RewardedAdRuntime.Uninstall(coordinator);
@@ -192,6 +238,7 @@ namespace CatMetro.Integrations
             {
                 _coordinator = null;
                 _mainThreadDrain = null;
+                _hasFailureSessionTouch = false;
             }
             SafeDispose(coordinator);
             RewardedAdRuntime.Uninstall(coordinator);
