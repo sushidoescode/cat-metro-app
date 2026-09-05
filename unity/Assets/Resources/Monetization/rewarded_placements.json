@@ -1,8 +1,14 @@
 {
   "schemaVersion": 2,
-  "note": "The four enabled Wardrobe placements lend named entitlements from product_catalog.json for each entitlement's own adLeaseSeconds. Availability still fails closed when provider configuration, consent, caps, network, or fill is absent.",
+  "note": "The four Wardrobe placements lend named entitlements for each entitlement's own adLeaseSeconds. Failure rewind uses durable caps of 2/session and 5/local date. Availability fails closed when provider configuration, consent, caps, network, or fill is absent.",
 
   "placements": [
+    {
+      "id": "rewind_failure",
+      "rewardKind": "failure_rewind",
+      "caps": { "session": 2, "localDate": 5 },
+      "enabled": true
+    },
     {
       "id": "wardrobe_try_conductor",
       "entitlement": "outfit_conductor",

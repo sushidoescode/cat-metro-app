@@ -4,6 +4,8 @@ using Newtonsoft.Json.Linq;
 
 namespace CatMetro.Services.Purchases
 {
+    public enum RewardedRewardKind { EntitlementLease, FailureRewind }
+
     // A cap on how often one rewarded placement may pay out. Scope is a plain string
     // ("session", "localDate") rather than an enum so the ad lane can add a scope in data
     // without a code change here — the same reasoning that turned ProductIdentifier from an
@@ -20,22 +22,13 @@ namespace CatMetro.Services.Purchases
         }
     }
 
-    // Where in the game a rewarded ad may be offered, and what it lends.
-    //
-    // Evolved from the rescued foundation in one important way: `Reward` used to be an opaque
-    // string like "selected_skin_3_eligible_completed_levels" that only the ad code could
-    // interpret. It is now `EntitlementId` — a reference into the same entitlement table
-    // purchases grant against. That is the change that makes the ad path and the purchase path
-    // converge instead of running in parallel: an ad placement can only ever lend something the
-    // catalogue already knows how to unlock.
-    //
-    // The lease LENGTH is not here either — it lives on the entitlement definition, because how
-    // long the conductor's coat is lent for is a property of the coat, not of the button that
-    // offered it.
+    // Where a rewarded ad may be offered and what it grants. Cosmetic rows retain the default
+    // entitlement lease kind and catalogue-defined lease length. Failure rewind has no entitlement.
     public readonly struct RewardedPlacement
     {
         public readonly string Id;
         public readonly string EntitlementId;
+        public readonly RewardedRewardKind RewardKind;
         public readonly IReadOnlyList<RewardCap> Caps;
 
         // The ad lane owns flipping this on. It stays false until an ad network is wired, so a
@@ -45,10 +38,12 @@ namespace CatMetro.Services.Purchases
         public readonly string DisabledReason;
 
         public RewardedPlacement(string id, string entitlementId, IReadOnlyList<RewardCap> caps,
-            bool enabled, string disabledReason)
+            bool enabled, string disabledReason,
+            RewardedRewardKind rewardKind = RewardedRewardKind.EntitlementLease)
         {
             Id = id;
             EntitlementId = entitlementId;
+            RewardKind = rewardKind;
             Caps = caps;
             Enabled = enabled;
             DisabledReason = disabledReason;
@@ -89,9 +84,8 @@ namespace CatMetro.Services.Purchases
             return false;
         }
 
-        // `productCatalog` is required, not optional: a placement referencing an entitlement the
-        // product catalogue does not declare is dropped. Without that cross-check the ad lane
-        // could ship a button that plays an ad and then grants an entitlement nothing reads.
+        // Lease rows require a declared, ad-grantable entitlement. Failure rewind instead has
+        // its own exact placement/cap contract and can parse without an entitlement catalogue.
         public static RewardedPlacementCatalog Parse(string json, PurchaseCatalog productCatalog)
         {
             var problems = new List<string>();
@@ -121,64 +115,92 @@ namespace CatMetro.Services.Purchases
 
             foreach (var token in array)
             {
-                if (!(token is JObject o)) { problems.Add("placement entry is not an object"); continue; }
-
-                var id = (string)o["id"];
-                if (string.IsNullOrWhiteSpace(id)) { problems.Add("placement entry has no id"); continue; }
-                if (!seen.Add(id)) { problems.Add("duplicate placement id: " + id); continue; }
-
-                var entitlementId = (string)o["entitlement"];
-                if (string.IsNullOrWhiteSpace(entitlementId))
+                try
                 {
-                    problems.Add("placement " + id + " names no entitlement");
-                    continue;
-                }
+                    if (!(token is JObject o)) { problems.Add("placement entry is not an object"); continue; }
 
-                if (!catalog.TryGetEntitlement(entitlementId, out var definition))
-                {
-                    problems.Add("placement " + id + " grants undeclared entitlement: " + entitlementId);
-                    continue;
-                }
+                    var id = o["id"]?.Type == JTokenType.String ? (string)o["id"] : null;
+                    if (string.IsNullOrWhiteSpace(id)) { problems.Add("placement entry has no id"); continue; }
+                    if (!seen.Add(id)) { problems.Add("duplicate placement id: " + id); continue; }
 
-                // Catches the authoring mistake where a placement is pointed at a cosmetic whose
-                // adLeaseSeconds is 0 — the ad would play and grant nothing.
-                if (!definition.IsAdGrantable)
-                {
-                    problems.Add("placement " + id + " targets entitlement " + entitlementId +
-                                 " which is not ad-grantable (adLeaseSeconds is 0)");
-                    continue;
-                }
-
-                var caps = new List<RewardCap>();
-                if (o["caps"] is JObject capsObject)
-                {
-                    foreach (var prop in capsObject.Properties())
+                    var kind = RewardedRewardKind.EntitlementLease;
+                    if (o["rewardKind"] != null)
                     {
-                        int limit;
-                        try { limit = (int)prop.Value; }
-                        catch (Exception)
+                        if (o["rewardKind"].Type != JTokenType.String)
+                        { problems.Add("placement " + id + " has invalid rewardKind"); continue; }
+                        switch ((string)o["rewardKind"])
                         {
-                            problems.Add("placement " + id + " cap " + prop.Name + " is not numeric");
-                            continue;
+                            case "entitlement_lease": break;
+                            case "failure_rewind": kind = RewardedRewardKind.FailureRewind; break;
+                            default: problems.Add("placement " + id + " has unknown rewardKind"); continue;
                         }
-
-                        if (limit < 0)
-                        {
-                            problems.Add("placement " + id + " cap " + prop.Name + " is negative");
-                            continue;
-                        }
-
-                        caps.Add(new RewardCap(prop.Name, limit));
                     }
+                    var entitlementId = o["entitlement"]?.Type == JTokenType.String
+                        ? (string)o["entitlement"] : null;
+                    if (kind == RewardedRewardKind.FailureRewind)
+                    {
+                        if (id != "rewind_failure" || (o["entitlement"] != null &&
+                            o["entitlement"].Type != JTokenType.Null) ||
+                            !(o["caps"] is JObject failureCaps) || failureCaps.Count != 2 ||
+                            failureCaps["session"]?.Type != JTokenType.Integer ||
+                            failureCaps["localDate"]?.Type != JTokenType.Integer ||
+                            (long)failureCaps["session"] != 2 || (long)failureCaps["localDate"] != 5)
+                        { problems.Add("placement " + id + " has invalid failure-rewind reward/caps"); continue; }
+                    }
+                    else
+                    {
+                        if (id == "rewind_failure")
+                        { problems.Add("placement rewind_failure requires failure_rewind rewardKind"); continue; }
+                        if (string.IsNullOrWhiteSpace(entitlementId))
+                        { problems.Add("placement " + id + " names no entitlement"); continue; }
+                        if (!catalog.TryGetEntitlement(entitlementId, out var definition))
+                        {
+                            problems.Add("placement " + id + " grants undeclared entitlement: " + entitlementId);
+                            continue;
+                        }
+                        if (!definition.IsAdGrantable)
+                        {
+                            problems.Add("placement " + id + " targets entitlement " + entitlementId +
+                                         " which is not ad-grantable (adLeaseSeconds is 0)");
+                            continue;
+                        }
+                    }
+
+                    var caps = new List<RewardCap>();
+                    if (o["caps"] is JObject capsObject)
+                    {
+                        foreach (var prop in capsObject.Properties())
+                        {
+                            int limit;
+                            try { limit = (int)prop.Value; }
+                            catch (Exception)
+                            {
+                                problems.Add("placement " + id + " cap " + prop.Name + " is not numeric");
+                                continue;
+                            }
+
+                            if (limit < 0)
+                            {
+                                problems.Add("placement " + id + " cap " + prop.Name + " is negative");
+                                continue;
+                            }
+
+                            caps.Add(new RewardCap(prop.Name, limit));
+                        }
+                    }
+
+                    bool enabled = false;
+                    var enabledToken = o["enabled"];
+                    if (enabledToken != null && enabledToken.Type == JTokenType.Boolean)
+                        enabled = (bool)enabledToken;
+
+                    result.Add(new RewardedPlacement(id, entitlementId, caps, enabled,
+                        (string)o["disabledReason"], kind));
                 }
-
-                bool enabled = false;
-                var enabledToken = o["enabled"];
-                if (enabledToken != null && enabledToken.Type == JTokenType.Boolean)
-                    enabled = (bool)enabledToken;
-
-                result.Add(new RewardedPlacement(id, entitlementId, caps, enabled,
-                    (string)o["disabledReason"]));
+                catch (Exception)
+                {
+                    problems.Add("placement entry contains malformed fields");
+                }
             }
 
             return new RewardedPlacementCatalog(result, problems);

@@ -165,10 +165,11 @@ namespace CatMetro.Tests.Purchases
                 }
             };
 
-            var enabled = p.Placements.Where(placement => placement.Enabled).ToArray();
+            var enabled = p.Placements.Where(placement => placement.Enabled &&
+                placement.Id.StartsWith("wardrobe_try_", System.StringComparison.Ordinal)).ToArray();
             Assert.That(enabled.Select(placement => placement.Id),
                 Is.EquivalentTo(expected.Select(row => row.Id)),
-                "only genuine locked-item Wardrobe needs may ship enabled");
+                "all four cosmetic Wardrobe rows retain their behavior");
 
             foreach (var row in expected)
             {
@@ -181,9 +182,19 @@ namespace CatMetro.Tests.Purchases
                     Is.EquivalentTo(row.Caps), row.Id + " cap mapping changed");
             }
 
-            Assert.That(enabled.Any(placement =>
-                    !placement.Id.StartsWith("wardrobe_try_", System.StringComparison.Ordinal)),
-                Is.False, "no level-boundary, rewind, or generic monetization placement is enabled");
+            Assert.That(p.Placements.Where(placement => placement.Enabled).Select(placement => placement.Id),
+                Is.EquivalentTo(expected.Select(row => row.Id).Concat(new[] { "rewind_failure" })));
+        }
+
+        [Test]
+        public void ShippedFailureRewind_HasNoEntitlementAndBothCaps()
+        {
+            var p = RewardedPlacementCatalog.Parse(PFixtures.ShippedPlacementsJson(), Shipped());
+            Assert.That(p.TryGet("rewind_failure", out var placement), Is.True);
+            Assert.That(placement.Enabled, Is.True);
+            Assert.That(placement.EntitlementId, Is.Null.Or.Empty);
+            Assert.That(placement.Caps.Select(cap => (cap.Scope, cap.Limit)),
+                Is.EquivalentTo(new[] { ("session", 2), ("localDate", 5) }));
         }
 
         [Test]
