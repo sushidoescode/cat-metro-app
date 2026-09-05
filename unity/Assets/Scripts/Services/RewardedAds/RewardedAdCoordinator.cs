@@ -232,16 +232,31 @@ namespace CatMetro.Services.Ads
         }
 
         public bool CanShowFailureRewind(string placementId)
+            => _openAttempt == null && TryGetFailureRewindPlacement(placementId, out _) &&
+                CheckFailureRewindAvailability(placementId, null);
+
+        private bool TryGetFailureRewindPlacement(string placementId, out RewardedPlacement placement)
         {
-            if (!_started || _disposed || _providerFailed || _reporterFailed || !_reporterReady ||
-                _openAttempt != null || _provider == null || _reporter == null ||
-                _failureCaps == null || _localDateKey == null || _placements == null ||
-                !_placements.TryGet(placementId, out var placement) || !placement.Enabled ||
-                placement.RewardKind != RewardedRewardKind.FailureRewind)
-                return false;
+            placement = default;
+            return _started && !_disposed && !_providerFailed && !_reporterFailed && _reporterReady &&
+                _provider != null && _reporter != null && _failureCaps != null && _localDateKey != null &&
+                _placements != null && _placements.TryGet(placementId, out placement) && placement.Enabled &&
+                placement.RewardKind == RewardedRewardKind.FailureRewind;
+        }
+
+        private bool OwnsFailureRewindCheck(Attempt attempt)
+            => ReferenceEquals(_openAttempt, attempt) && !_disposed && _reporterReady &&
+                !_reporterFailed && !_providerFailed;
+
+        private bool CheckFailureRewindAvailability(string placementId, Attempt attempt)
+        {
             try
             {
-                if (!_failureCaps.CanOfferFailureRewind(_nowUnixSeconds(), _localDateKey()))
+                long now = _nowUnixSeconds();
+                if (!OwnsFailureRewindCheck(attempt)) return false;
+                string dateKey = _localDateKey();
+                if (!OwnsFailureRewindCheck(attempt)) return false;
+                if (!_failureCaps.CanOfferFailureRewind(now, dateKey) || !OwnsFailureRewindCheck(attempt))
                     return false;
             }
             catch { return false; }
@@ -249,8 +264,7 @@ namespace CatMetro.Services.Ads
             {
                 bool ready = _provider is IRewardedAdPlacementReadiness perPlacement
                     ? perPlacement.IsReadyForPlacement(placementId) : _provider.IsReady;
-                return ready && !_disposed && _openAttempt == null && _reporterReady &&
-                    !_reporterFailed && !_providerFailed;
+                return ready && OwnsFailureRewindCheck(attempt);
             }
             catch
             {
@@ -265,17 +279,11 @@ namespace CatMetro.Services.Ads
             out long attemptId)
         {
             attemptId = 0L;
-            bool available = _openAttempt == null && CanShowFailureRewind(placementId);
-            if (!available || _openAttempt != null || _disposed)
+            if (_openAttempt != null || !TryGetFailureRewindPlacement(placementId, out var placement))
             {
                 var outcome = _openAttempt != null ? RewardedShowOutcome.Busy : RewardedShowOutcome.Unavailable;
                 CompleteFailureImmediate(completed, placementId, RewardedAdCompletionKind.Unavailable);
                 return outcome;
-            }
-            if (!_placements.TryGet(placementId, out var placement))
-            {
-                CompleteFailureImmediate(completed, placementId, RewardedAdCompletionKind.Unavailable);
-                return RewardedShowOutcome.Unavailable;
             }
             try { attemptId = _nextAttemptId = checked(_nextAttemptId + 1L); }
             catch
@@ -292,6 +300,23 @@ namespace CatMetro.Services.Ads
             };
             _openAttempt = attempt;
             _pendingPlacements.Add(placementId);
+            // Reserve the cancellable ID before clocks, cap reads, or readiness accessors can
+            // reenter the route. Every continuation must still own this exact reservation.
+            bool available = CheckFailureRewindAvailability(placementId, attempt);
+            if (!ReferenceEquals(_openAttempt, attempt)) return RewardedShowOutcome.Unavailable;
+            if (!available)
+            {
+                _openAttempt = null;
+                _pendingPlacements.Remove(placementId);
+                attempt.CompletionLatched = true;
+                attempt.FailureCompleted = null;
+                attempt.ProviderLifecycle = null;
+                // A plain pre-display refusal retains the existing public no-attempt result.
+                // Cancellation above instead keeps the exact ID already delivered to the route.
+                attemptId = 0L;
+                CompleteFailureImmediate(completed, placementId, RewardedAdCompletionKind.Unavailable);
+                return RewardedShowOutcome.Unavailable;
+            }
             try
             {
                 if (_provider.TryShow(attemptId, placementId))

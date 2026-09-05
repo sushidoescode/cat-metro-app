@@ -133,6 +133,34 @@ namespace CatMetro.Tests.Ads
             Assert.That(old.Results[0].AttemptId, Is.EqualTo(old.Provider.Shows[0].AttemptId));
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void CancellationDuringSecondReadinessNeverShowsOrConsumes(bool replaceRuntime)
+        {
+            using var old = new FailureFixture();
+            using var next = new FailureFixture();
+            RewardedAdRuntime.Install(old.Coordinator);
+            using var route = new RewardedAdFailureRewindRoute();
+            int readinessChecks = 0;
+            old.Provider.OnPlacementReadinessCheck = _ =>
+            {
+                if (++readinessChecks != 2) return;
+                if (replaceRuntime) RewardedAdRuntime.Install(next.Coordinator);
+                else route.Cancel();
+            };
+            old.Provider.OnShow = (attempt, _) => old.Emit(RewardedAdEventKind.Rewarded, attempt);
+
+            route.Request("rewind_failure", old.Lifecycle.Add, old.Results.Add);
+
+            Assert.That(old.SessionUsed, Is.Zero);
+            Assert.That(old.DailyUsed, Is.Zero);
+            Assert.That(old.Provider.Shows, Is.Empty);
+            Assert.That(old.Results, Has.Count.EqualTo(1));
+            Assert.That(old.Results[0].Kind, Is.EqualTo(RewardedAdCompletionKind.Cancelled));
+            Assert.That(old.Lifecycle, Is.Empty);
+            Assert.That(route.CanOffer("rewind_failure"), Is.True);
+        }
+
         [Test]
         public void ConcurrentRequestCannotReplaceFirstAndStaleCallbackCannotCompleteNext()
         {
