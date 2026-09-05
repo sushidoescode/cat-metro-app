@@ -37,13 +37,29 @@ has 'finally' || fail "the app-bundle restore is not failure-proof"
 has 'Path.GetExtension' || fail "extension gate is missing"
 has '".apk"' || fail "the .apk extension is not fail-closed"
 
-# Neither builder may ever touch keystore material or WRITE Player Settings. Denylists run
-# on the RAW source: a string literal carrying '//' would vanish from the stripped view, and
-# for a denylist a prose false-positive is the desirable failure direction.
+# The second inherited-state trap (2026-09-05): PlayerSettings.Android.useCustomKeystore is
+# tracked in ProjectSettings.asset and a human's GUI upload-keystore session leaves it true.
+# Batch mode has no password seam, so an unguarded dev build dies with "Unable to sign the
+# application; please provide passwords!". A dev APK is debug-signed BY CONTRACT
+# (scripts/build-apk.sh header), so the builder must declare that itself, exactly as it
+# declares its artifact kind: force false, restore in finally, never inherit.
+has 'PlayerSettings.Android.useCustomKeystore = false' \
+  || fail "the APK builder does not force useCustomKeystore=false — an inherited upload-keystore setting has no batch password and the build cannot sign"
+has 'PlayerSettings.Android.useCustomKeystore = previousCustomKeystore' \
+  || fail "the previous custom-keystore state is not restored"
+keystore_line=$(first_line 'PlayerSettings.Android.useCustomKeystore = false')
+[ -n "$keystore_line" ] && [ "$keystore_line" -lt "$(first_line 'BuildPipeline.BuildPlayer')" ] \
+  || fail "useCustomKeystore must be forced before BuildPlayer runs"
+
+# Neither builder may ever touch keystore material. The ONLY Player Setting the APK builder may
+# write is the useCustomKeystore boolean above; every other PlayerSettings write stays banned.
+# Denylists run on the RAW source: a string literal carrying '//' would vanish from the stripped
+# view, and for a denylist a prose false-positive is the desirable failure direction.
 grep -Eq '\b(keystoreName|keyaliasName|keystorePass|keyaliasPass)\b|CM_KEYSTORE|KEYSTORE_PASS' "$src" \
   && fail "the builder must never touch keystore material"
-grep -Eq 'PlayerSettings\.[A-Za-z0-9_.]+[[:space:]]*=[^=]' "$src" \
-  && fail "the builder must never WRITE Player Settings"
+grep -E 'PlayerSettings\.[A-Za-z0-9_.]+[[:space:]]*=[^=]' "$src" \
+  | grep -Evq 'PlayerSettings\.Android\.useCustomKeystore[[:space:]]*=' \
+  && fail "the builder must never WRITE Player Settings other than the useCustomKeystore toggle"
 
 # Ordering: the flag must be set before BuildPlayer, and the result exit must sit below the
 # finally restore so the restore always runs before process death.
