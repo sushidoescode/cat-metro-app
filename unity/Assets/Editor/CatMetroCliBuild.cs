@@ -9,6 +9,15 @@
 // cause. Forcing it false here and restoring in a finally makes each entry point declare its
 // own artifact kind, so neither builder can be poisoned by the other's leftover state.
 // The extension gate refuses the inverse mistake (an .aab path handed to the APK builder).
+//
+// DEBUG SIGNING (2026-09-05): the same inherited-state trap, one layer over. A human GUI
+// session that configures the upload keystore for an .aab leaves
+// PlayerSettings.Android.useCustomKeystore=true in the tracked ProjectSettings.asset. Batch
+// mode has no keystore-password seam (deliberately — passwords are human-only), so the next
+// CLI dev build died in PrepareForBuild with "Unable to sign the application; please provide
+// passwords!". A dev APK is debug-signed by contract (scripts/build-apk.sh header), so this
+// entry point declares that itself: force the toggle false, restore it in the same finally.
+// It never reads or writes keystore paths, aliases or passwords.
 using System.IO;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
@@ -36,11 +45,15 @@ public static class CatMetroCliBuild
         }
 
         bool previousAppBundle = EditorUserBuildSettings.buildAppBundle;
+        bool previousCustomKeystore = PlayerSettings.Android.useCustomKeystore;
         int exitCode;
         try
         {
             // Explicit, never inherited: the persisted Library value is not trustworthy.
             EditorUserBuildSettings.buildAppBundle = false;
+            // Explicit, never inherited: a dev APK is debug-signed; the GUI's upload-keystore
+            // toggle has no batch password and would abort the build before compiling.
+            PlayerSettings.Android.useCustomKeystore = false;
             var opts = new BuildPlayerOptions
             {
                 scenes = new[] { "Assets/Scenes/Game.unity" },
@@ -52,6 +65,7 @@ public static class CatMetroCliBuild
             Debug.Log("CLI_BUILD_RESULT " + report.summary.result
                 + " dev=" + dev
                 + " appBundle=False"
+                + " signing=debug"
                 + " size=" + report.summary.totalSize
                 + " errors=" + report.summary.totalErrors
                 + " out=" + outPath);
@@ -62,6 +76,7 @@ public static class CatMetroCliBuild
             // Restore the human's editor state; runs before process death because the
             // result Exit sits below this block.
             EditorUserBuildSettings.buildAppBundle = previousAppBundle;
+            PlayerSettings.Android.useCustomKeystore = previousCustomKeystore;
         }
         EditorApplication.Exit(exitCode);
     }
