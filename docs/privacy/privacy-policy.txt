@@ -1,0 +1,83 @@
+Cat Metro
+
+Privacy Policy
+
+Effective date: September 3, 2026
+
+This policy explains what information Cat Metro collects, why it is used, and which service providers process it when you play the game.
+
+Our commitments
+
+No tracking. Cat Metro does not use information to track you across apps or websites owned by other companies, and does not authorize its service providers to do so on Cat Metro's behalf.
+
+No sale. We do not sell or rent your personal information.
+
+No accounts. Cat Metro does not offer or require a Cat Metro account. You do not provide a name, email address, or password to play. The app-scoped identifiers described below are not player accounts.
+
+Information collected
+
+Depending on the features you use and which optional services are enabled, Cat Metro and its service providers may collect the following five categories published in the app stores.
+
+Purchase History
+
+Records associated with in-app purchases, including the product, transaction status, and entitlement status.
+
+User ID
+
+An app-scoped pseudonymous identifier used to associate service records with the app installation. It is not a Cat Metro account, name, or email address.
+
+Device ID
+
+App-installation, device, or push-subscription identifiers used by enabled services to provide purchases, notifications, or rewarded ads.
+
+Product Interaction
+
+Interactions needed to operate an enabled feature, such as purchase and entitlement activity, notification preferences and interactions, or rewarded-ad activity.
+
+Other Diagnostics
+
+Technical information used to operate and troubleshoot the game and enabled services, such as app and operating-system versions, device characteristics, service errors, and performance diagnostics.
+
+Who processes information
+
+RevenueCat
+
+RevenueCat processes purchase history and app-scoped identifiers to validate purchases, restore purchases, and keep purchased entitlements available.
+
+OneSignal — When enabled
+
+When push notifications are configured and enabled, OneSignal processes push-subscription and device identifiers, notification preferences and interactions, and related diagnostics to deliver notifications.
+
+LevelPlay — When enabled
+
+When rewarded ads are live and enabled, LevelPlay processes device identifiers, rewarded-ad interactions, and related diagnostics to request, show, and measure rewarded ads.
+
+These providers process information to perform the services described above. Cat Metro does not authorize them to sell that information or use it to track players across other companies' apps or websites on Cat Metro's behalf.
+
+How information is used
+
+Validate and restore purchases and provide entitlements.
+
+Deliver push notifications when that feature is enabled.
+
+Request and deliver rewarded ads when that feature is enabled.
+
+Operate, protect, and troubleshoot the game and those services.
+
+Your choices
+
+You can play Cat Metro without creating an account.
+
+When push notifications are enabled, you can turn them off in your device settings.
+
+When rewarded ads are enabled, you can choose not to request one.
+
+You can contact us with privacy questions or requests.
+
+Changes to this policy
+
+If this policy changes, the updated version will be posted here with a new effective date.
+
+Contact
+
+For privacy questions or requests, email sushantsrikrish@gmail.com.
