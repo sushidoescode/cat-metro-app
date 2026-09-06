@@ -26,6 +26,71 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private static Sprite _waveBand;
         private static Sprite _trophy;
         private static Sprite _people;
+        private static readonly System.Collections.Generic.Dictionary<int, Sprite> DashedRings =
+            new System.Collections.Generic.Dictionary<int, Sprite>();
+        private static Sprite _softRoundedHalo;
+
+        // Two texels per dp at the primary pin's 320dp width. Sliced endcaps preserve the
+        // rounded stitches; the long straight spans contain many separate dashes.
+        public static Sprite DashedRoundedRing => DashedRoundedRingForWidth(306f);
+
+        // Cache at the supplied dp width so half-width Home pins keep the same stitch
+        // length as Next/Play. Stretching one wide border compresses its dashes into dots.
+        public static Sprite DashedRoundedRingForWidth(float widthDp)
+        {
+            int width = Mathf.Clamp(Mathf.RoundToInt(widthDp * 2f), 92, 2048);
+            if (DashedRings.TryGetValue(width, out var sprite) && sprite != null) return sprite;
+            sprite = Build("HudDashedRoundedRing", width, 92,
+                (u, v) => InsideDashedRoundedRing(u, v, width), new Vector4(46, 46, 46, 46));
+            DashedRings[width] = sprite;
+            return sprite;
+        }
+
+        public static Sprite SoftRoundedHalo => _softRoundedHalo != null ? _softRoundedHalo
+            : (_softRoundedHalo = BuildSoftRoundedHalo());
+
+        private static bool InsideDashedRoundedRing(float u, float v, float width)
+        {
+            float x = (u - .5f) * width, y = (v - .5f) * 92f;
+            const float radius = 41f;
+            float coreX = (width - 92f) * .5f;
+            float qx = Mathf.Max(Mathf.Abs(x) - coreX, 0f);
+            float distance = Mathf.Sqrt(qx * qx + y * y);
+            if (Mathf.Abs(distance - radius) > 1.3f) return false;
+            float along = qx > 0f
+                ? coreX + Mathf.Atan2(qx, Mathf.Abs(y)) * radius
+                : Mathf.Abs(x);
+            return Mathf.Repeat(along, 18f) < 10f;
+        }
+
+        private static Sprite BuildSoftRoundedHalo()
+        {
+            const int side = 128;
+            var texture = new Texture2D(side, side, TextureFormat.RGBA32, false)
+            {
+                name = "HudSoftRoundedHalo", filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp, hideFlags = HideFlags.HideAndDontSave
+            };
+            var pixels = new Color32[side * side];
+            for (int y = 0; y < side; y++)
+                for (int x = 0; x < side; x++)
+                {
+                    float qx = Mathf.Max(Mathf.Abs(x + .5f - 64f) - 20f, 0f);
+                    float qy = Mathf.Max(Mathf.Abs(y + .5f - 64f) - 20f, 0f);
+                    float alpha = 1f - Mathf.SmoothStep(0f, 1f,
+                        Mathf.InverseLerp(29f, 43f, Mathf.Sqrt(qx * qx + qy * qy)));
+                    pixels[y * side + x] = new Color32(255, 255, 255,
+                        (byte)Mathf.RoundToInt(alpha * 255f));
+                }
+            texture.SetPixels32(pixels);
+            texture.Apply(false, false);
+            var sprite = Sprite.Create(texture, new Rect(0, 0, side, side),
+                new Vector2(.5f, .5f), 100f, 0, SpriteMeshType.FullRect,
+                new Vector4(48, 48, 48, 48));
+            sprite.name = "HudSoftRoundedHalo";
+            sprite.hideFlags = HideFlags.HideAndDontSave;
+            return sprite;
+        }
 
         // A filled circle. Cat heads, eyes, and the circle destination badge.
         public static Sprite Disc => _disc != null ? _disc
