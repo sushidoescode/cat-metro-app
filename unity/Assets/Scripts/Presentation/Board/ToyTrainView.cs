@@ -320,6 +320,10 @@ namespace CatMetro.Presentation.Board
         private float _headingDegrees;
         private byte _appliedColorCode;
         private bool _catColorApplied;
+        public Color CatTint => CatLine.ColorOf(_appliedColorCode);
+        public DestinationShape PinShape { get; private set; }
+        private PassengerStatusMarks _statusMarks;
+        public void SetTokenFlags(bool stray, bool express) => _statusMarks.Bind(stray, express);
 
         public bool RigAdmitted => _rigAdmitted;
         public string RigFallbackReason => _rigFallbackReason;
@@ -357,7 +361,8 @@ namespace CatMetro.Presentation.Board
         // apart. It also fixes a quiet bug in passing — BoardView.ColorForCode has no wild
         // case, so a wild passenger used to ride out MAGENTA; CatLine.ColorOf gives it the
         // catnip violet the manifest pinned.
-        public void SyncSlot(long presentationOccupantKey, byte colorCode)
+        public void SyncSlot(long presentationOccupantKey, byte colorCode,
+            DestinationShape? shape = null)
         {
             if (!_hasSeenOccupant || presentationOccupantKey != _seenOccupantKey)
             {
@@ -375,7 +380,8 @@ namespace CatMetro.Presentation.Board
                 ClearRigEarTwitch();
                 ResetVisualPose();
             }
-            if (!_catColorApplied || colorCode != _appliedColorCode)
+            DestinationShape resolved = shape ?? CatLine.ShapeOf(CatLine.NameOfCode(colorCode));
+            if (!_catColorApplied || colorCode != _appliedColorCode || PinShape != resolved)
             {
                 _appliedColorCode = colorCode;
                 _catColorApplied = true;
@@ -384,7 +390,8 @@ namespace CatMetro.Presentation.Board
                 var pinProperties = new MaterialPropertyBlock();
                 pinProperties.SetColor("_BaseColor", catColor);
                 pinProperties.SetColor("_Color", catColor);
-                ApplyPinShape(CatLine.ShapeOf(CatLine.NameOfCode(colorCode)), pinProperties);
+                PinShape = resolved;
+                ApplyPinShape(resolved, pinProperties);
             }
         }
 
@@ -918,6 +925,9 @@ namespace CatMetro.Presentation.Board
                 new Vector3(PinSymbolSize, PinSymbolSize, PinSymbolDepth),
                 Quaternion.identity, CatBasisMaterial());
             _pinSymbolFilter = _pinSymbol.GetComponent<MeshFilter>();
+            _statusMarks = PassengerStatusMarks.Create(_pin, false);
+            _statusMarks.transform.localPosition = new Vector3(-0.077f, -0.076f, -0.046f);
+            _statusMarks.transform.localScale = Vector3.one * 0.055f;
 
             SetCarriageHeading(0f); // a consist faces the camera before its first placement
             _catBaseLocalPosition = _cat.localPosition;

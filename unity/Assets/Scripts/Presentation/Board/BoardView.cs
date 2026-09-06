@@ -59,7 +59,7 @@ namespace CatMetro.Presentation.Board
         private TextMesh[] _gateLabel;
         private readonly Dictionary<int, ToyTrainView> _trains =
             new Dictionary<int, ToyTrainView>();
-        private readonly Dictionary<int, TextMesh> _trainBadge = new Dictionary<int, TextMesh>();
+        private bool _usesShapes;
         private readonly List<Material> _ownedNodeMaterials = new List<Material>();
         private CatPresentationTrack[] _catTracks;
         private int[] _catOccupantGenerations;
@@ -95,8 +95,6 @@ namespace CatMetro.Presentation.Board
         }
         public Vector3 SwitchWorldPos(int switchIndex) =>
             transform.TransformPoint(_nodePos[_switchNode[switchIndex]]); // F11: world, not local
-        public string TrainBadge(int slot) => _trainBadge.TryGetValue(slot, out var badge)
-            ? badge.text : null;
 
         /// <summary>
         /// The horizontal world-space envelope that source-platform cats can occupy after
@@ -159,6 +157,7 @@ namespace CatMetro.Presentation.Board
             go.transform.SetParent(parent, false);
             var view = go.AddComponent<BoardView>();
             view._session = session;
+            view._usesShapes = DestinationBadge.UsesShapes(level.Dto);
             view.BuildElements(level);
             BoardSurface.Build(level, view.transform);
             BoardPropDecorator.Decorate(level, view.transform,
@@ -193,11 +192,9 @@ namespace CatMetro.Presentation.Board
             var sourceIds = new HashSet<string>();
             foreach (var s in dto.Sources.ToArray()) sourceIds.Add(s.NodeId);
             var stationAccept = new Dictionary<string, string>();
-            var stationShape = new Dictionary<string, string>();
             foreach (var s in dto.Stations.ToArray())
             {
                 stationAccept[s.NodeId] = s.Accepts.Length > 0 ? s.Accepts.Span[0] : "";
-                stationShape[s.NodeId] = s.Shape;
             }
 
             for (int i = 0; i < nodes.Length; i++)
@@ -232,25 +229,6 @@ namespace CatMetro.Presentation.Board
                         _ownedNodeMaterials.Add(stationMaterial);
                         renderer.sharedMaterial = stationMaterial;
                     }
-                    var symbol = new GameObject("Symbol").AddComponent<TextMesh>();
-                    symbol.transform.SetParent(prim.transform, false);
-                    symbol.transform.localPosition = new Vector3(0f, 0f, -1f);
-                    symbol.characterSize = 0.3f;
-                    symbol.anchor = TextAnchor.MiddleCenter;
-                    // symbol half of the triple coding: first letter of the accepted colour
-                    symbol.text = stationAccept[nodes[i].Id].Length > 0
-                        ? stationAccept[nodes[i].Id].Substring(0, 1).ToUpperInvariant() : "?";
-
-                    // Match shape is a separate signal from the established line-colour badge.
-                    // Keeping both avoids teaching shape before its band while still making the
-                    // L009 same-colour stations distinguishable without colour.
-                    var matchShape = new GameObject("match-shape").AddComponent<TextMesh>();
-                    matchShape.transform.SetParent(prim.transform, false);
-                    matchShape.transform.localPosition = new Vector3(0.48f, -0.48f, -1.02f);
-                    matchShape.characterSize = 0.24f;
-                    matchShape.anchor = TextAnchor.MiddleCenter;
-                    matchShape.alignment = TextAlignment.Center;
-                    matchShape.text = ShapeGlyph(stationShape[nodes[i].Id]);
                 }
                 else if (kind == "source")
                     TintSharedRenderer(renderer, new Color(0.25f, 0.25f, 0.25f));
@@ -561,23 +539,14 @@ namespace CatMetro.Presentation.Board
                     consist = ToyTrainView.Create(transform, "train:" + t, _edgeFrom, _edgeTo);
                     var id = consist.gameObject.AddComponent<BoardElementId>();
                     id.Id = "train-" + t; id.Kind = "train";
-                    var badge = new GameObject("cat-token").AddComponent<TextMesh>();
-                    badge.transform.SetParent(consist.transform, false);
-                    badge.transform.localPosition = new Vector3(0f, 0f, -1.05f);
-                    badge.characterSize = 0.48f;
-                    badge.anchor = TextAnchor.MiddleCenter;
-                    badge.alignment = TextAlignment.Center;
-                    badge.color = Palette.InkNavy;
-                    _trainBadge[t] = badge;
                     _trains[t] = consist;
                 }
                 consist.gameObject.SetActive(true);
-                // Keep the rich consist on CatLine's code path: SyncSlot paints the rider and
-                // derives its destination pin from the same vocabulary. The compact text badge
-                // adds the ladder-only shape/stray/express flags without replacing that path.
+                // The packed token carries independent colour, shape, and status channels.
                 consist.SyncSlot(PresentationOccupantKey(t, _catOccupantGenerations[t]),
-                    trains[t].Color);
-                _trainBadge[t].text = TokenGlyph(trains[t].Color);
+                    CatToken.Color(trains[t].Color),
+                    DestinationBadge.Resolve(trains[t].Color, _usesShapes));
+                consist.SetTokenFlags(CatToken.IsStray(trains[t].Color), CatToken.IsExpress(trains[t].Color));
                 bool hiddenInTunnel = false;
                 if (trains[t].State == CatMetro.Domain.TrainState.OnEdge
                     || trains[t].State == CatMetro.Domain.TrainState.OnEdgeReverse)
@@ -693,34 +662,6 @@ namespace CatMetro.Presentation.Board
                     next = Mathf.Min(next, windows[w].StartTick - tick);
             }
             return next == int.MaxValue ? -1 : next;
-        }
-
-        private static string ShapeGlyph(string shape)
-        {
-            switch (shape)
-            {
-                case "square": return "S";
-                case "triangle": return "T";
-                default: return "O";
-            }
-        }
-
-        private static string ShapeGlyph(byte shape)
-        {
-            switch (shape)
-            {
-                case CatMetro.Domain.CatShape.Square: return "S";
-                case CatMetro.Domain.CatShape.Triangle: return "T";
-                default: return "O";
-            }
-        }
-
-        private static string TokenGlyph(byte token)
-        {
-            string glyph = ShapeGlyph(CatMetro.Domain.CatToken.Shape(token));
-            if (CatMetro.Domain.CatToken.IsStray(token)) glyph += "!";
-            if (CatMetro.Domain.CatToken.IsExpress(token)) glyph += "E";
-            return glyph;
         }
 
         private void EnsureCatTracks(int count)

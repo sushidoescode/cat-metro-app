@@ -7,6 +7,7 @@ using CatMetro.Application.Session;
 using CatMetro.Bootstrap;
 using CatMetro.Content;
 using CatMetro.Presentation.Board;
+using CatMetro.Presentation.Theme;
 using CatMetro.Presentation.Strings;
 using NUnit.Framework;
 using TMPro;
@@ -43,23 +44,26 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
 
             Assert.That(_root.Preview.FlipSummary, Is.EqualTo("0/1"));
-            var previewTokens = Object.FindObjectsByType<TMP_Text>(FindObjectsSortMode.None)
-                .Where(label => label.name == "cat-token" && label.transform.IsChildOf(_root.Preview.transform))
-                .Select(label => label.text).ToArray();
-            Assert.That(previewTokens, Does.Contain("O!"), "the stray is visible before emission");
-            Assert.That(previewTokens, Does.Contain("OE"), "the express flag is visible before emission");
+            var previewMarks = _root.Preview.GetComponentsInChildren<PassengerStatusMarks>();
+            Assert.That(previewMarks.Any(mark => mark.StrayVisible), Is.True,
+                "the stray punctuation is visible before emission");
+            Assert.That(previewMarks.Any(mark => mark.ExpressVisible), Is.True,
+                "speed chevrons identify the express before emission");
 
             var labels = Object.FindObjectsByType<TextMesh>(FindObjectsSortMode.None);
             Assert.That(labels.Any(label => label.name == "tunnel-entry:E_RED_TUNNEL"), Is.True);
             Assert.That(labels.Any(label => label.name == "tunnel-exit:E_RED_TUNNEL"), Is.True);
             Assert.That(labels.Single(label => label.name == "hold:E_HOLD_OUT").text, Is.EqualTo("H"));
-            Assert.That(labels.Any(label => label.name == "match-shape" && label.text == "T"), Is.True,
-                "the triangle station has an independent non-colour match signal");
+            var triangle = _root.View.transform.Find("station:BLUE_TRIANGLE/station:plate-generated");
+            Assert.That(triangle.GetComponent<MeshFilter>().sharedMesh,
+                Is.SameAs(DestinationShapeMesh.ForShape(DestinationShape.Triangle)));
 
             _root.Session.AdvanceMs(4 * TickInterpolator.TICK_MS);
             yield return null;
-            Assert.That(_root.View.TrainBadge(0), Is.EqualTo("O!"),
-                "the emitted train carries the same token badge as its preview");
+            var rider = _root.View.GetComponentsInChildren<ToyTrainView>().Single();
+            Assert.That(rider.GetComponentInChildren<PassengerStatusMarks>().StrayVisible, Is.True,
+                "the emitted train carries the same status mark as its preview");
+            Assert.That(rider.GetComponentsInChildren<TextMesh>(true), Is.Empty);
         }
 
         [UnityTest]
