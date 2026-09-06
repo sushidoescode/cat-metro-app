@@ -34,6 +34,40 @@ audit that produced your lane is .catshots/playtest-2026-09-05/polish-audits.jso
   did NOT verify. The validation slot re-runs everything at your exact SHA before merge.
 
 
+## DESIGN DECISIONS (made by the orchestrator from the round-2 references; not open)
+
+Read the "Round 2 references" section at the end of docs/reference/gen-ref-NOTES.md — it names,
+per image, what to take and what never to copy, and lists the decisions. In short: Fredoka
+(display) + Nunito (body), both OFL, baked as TMP atlases with Fredoka SemiBold as the TMP
+default; white-disc shape badges on a post, no letters; one stitched cream pill vocabulary for
+every button; teal outline = selected; the licensed rig in a gilt frame in the Home window and
+on a plinth in the Wardrobe; Daily teased with a locked pin and seven pips; Accessory tab hidden
+while empty; Unity splash off; ladder content edits allowed as scoped in lane A; MSAA 4x.
+
+## REFERENCE IMAGES PER LANE (open them before you touch anything visual)
+
+- Lane A: docs/reference/gen-ref-v2-board.png (fill + scale), gen-ref-v2-props.png (station
+  platforms, depot, buffer stop, trees).
+- Lane B: gen-ref-v2-props.png and -alt (badge law), gen-ref-v2-board.png (cat scale),
+  gen-ref-v2-moments.png and -alt (lever swing, hearts, smoke, wrong-station recoil).
+- Lane C: gen-ref-v2-home.png (sign, window, pills, lamp, vignette).
+- Lane D: gen-ref-v2-flow.png and -alt (ticket, win plaque, confetti, Next pin).
+- Lane E: no image; the reference is the recording's silence and gen-ref-v2-moments for what
+  each sound accompanies.
+- Lane F: gen-ref-v2-wardrobe.png and -alt (plinth, nameplate, cards, price chips, Equip,
+  Restore link).
+Every lane still honours docs/LOOK.md and the original gen-ref-NOTES exclusions (no coins, no
+text on stations, no Score/Moves/timer HUD).
+
+## LANE E SOURCING RULE (supersedes the synth-only wording in its items)
+
+Commercial-free-use music and SFX (CC0 or royalty-free with a licence that permits a paid app)
+and Gemini-generated audio are BOTH allowed. For every clip: save the licence text or the
+generation prompt beside the file, add a PROVENANCE.md row (source URL or generator, licence,
+SHA-256), and keep the existing synthesized set as the fallback so no build is ever silent.
+Target a warm wooden-toy loop with 4 stems (bed, melody, percussion, celebration) that the
+MusicDirector crossfades; cat mews and musical SFX may be sourced or generated the same way.
+
 ## LANE A. Board frame, light and content  (6 days)
 
 Goal: The board fills the portrait on every level, the desk is warm wood to the edge, and the shape-band levels are fair.

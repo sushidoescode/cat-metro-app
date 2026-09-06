@@ -65,18 +65,14 @@ polish-plan.synth.json` (`sprint[]`), mirrored into the TASK 27 builder brief.
 - **Sep 17–18**: Play production submission (Android primary per ruling). Apple after.
 - **Sep 22–25**: public-live target; Sep 26–27 capture final media; **Sep 28 submit**; 29–30 buffer.
 
-## Decisions the human owns (answer in one line each)
+## Decisions (made 2026-09-06 by the orchestrator from the round-2 references; human may veto)
 
-1. Font: Fredoka One / Baloo 2 ExtraBold / Nunito Black — lane C renders all three on day 1.
-2. Music: offline synth stems (licence-clean, in-repo) for the shipped loop, or a paid Suno/Udio
-   account theme (claim-ledger + provenance entry)? Mews: synthesized only, or CC0 recordings?
-3. Ladder content edits (L010/L011 route order, L009–L012 time limits ×1.3): allowed?
-   Recommendation: yes, solver re-proves; 60 levels and the 7-win Daily gate stay.
-4. Budget levels L013–L015: early "Out of flips" end, or fix L014's lever start? Neither is
-   scheduled until answered.
-5. Unity splash: Unity 6 lets any tier disable it — turn it off (recommended).
-6. Daily locked pin on Home before unlock ("Unlocks after 7 station wins"): tease or hide?
-7. Empty Accessory tab: hide (scheduled) or author a rewarded accessory later?
+Font Fredoka + Nunito (OFL). Music and SFX: commercial-free-use libraries or Gemini generation,
+each with a provenance row; synth set stays as fallback. Ladder content edits in lane A allowed;
+budget levels get the L014 lever-start fix, no rules change. Unity splash off. Daily teased with
+a locked pin and seven pips. Accessory tab hidden while empty. MSAA 4x, verified on device.
+Restore purchases as a text link. Haptics needs no data-safety change. Full list and the
+per-image take/don't-copy table: docs/reference/gen-ref-NOTES.md, "Round 2 references".
 
 ## Explicitly rejected this sprint (see synth.json `rejected[]`)
 
