@@ -65,6 +65,7 @@ namespace CatMetro.Presentation.Screens
         private RectTransform _titlePlaqueShadow;
         private RectTransform _titlePlaque;
         private TMP_Text _title;
+        private TMP_Text _titleCarve;
         private RectTransform _heroShadow;
         private RectTransform _hero;
         private RectTransform _dioramaWindow;
@@ -190,7 +191,7 @@ namespace CatMetro.Presentation.Screens
             MakeSurface(view._titlePlaque, "TitleNailRight",
                 new Vector2(0.925f, 0.38f), new Vector2(0.965f, 0.62f),
                 Palette.TicketOrange, rounded: true);
-            var titleCarve = MakeText(view._titlePlaque, "TitleCarveShadow",
+            var titleCarve = view._titleCarve = MakeText(view._titlePlaque, "TitleCarveShadow",
                 new Vector2(0.08f, 0.08f), new Vector2(0.92f, 0.94f),
                 Strings.UiStrings.Get("home.title"), 48f, Palette.DepotNavy);
             titleCarve.rectTransform.anchoredPosition = new Vector2(0f, -2f);
@@ -360,13 +361,13 @@ namespace CatMetro.Presentation.Screens
                     new Vector2(0.22f, 0.08f), new Vector2(0.94f, 0.53f),
                     "", 14f, Palette.InkNavy);
                 _dailyTally.enableAutoSizing = true;
-                _dailyTally.fontSizeMin = 9f;
+                _dailyTally.fontSizeMin = TypeScale.Minimum;
                 _dailyTally.fontSizeMax = 14f;
                 _dailyStatus = MakeText(dailyFace.transform, "DailyStatus",
                     new Vector2(0.22f, 0.08f), new Vector2(0.94f, 0.53f),
                     "", 14f, Palette.InkNavy);
                 _dailyStatus.enableAutoSizing = true;
-                _dailyStatus.fontSizeMin = 9f;
+                _dailyStatus.fontSizeMin = TypeScale.Minimum;
                 _dailyStatus.fontSizeMax = 14f;
                 _dailyStatus.gameObject.SetActive(false);
             }
@@ -418,7 +419,7 @@ namespace CatMetro.Presentation.Screens
             _audioToggleLabel = MakeText(_audioToggle, "SoundToggleLabel",
                 Vector2.zero, Vector2.one, "", 17f, Palette.InkNavy);
             _audioToggleLabel.enableAutoSizing = true;
-            _audioToggleLabel.fontSizeMin = 10f;
+            _audioToggleLabel.fontSizeMin = TypeScale.Minimum;
             _audioToggleLabel.fontSizeMax = 17f;
             _audioToggleLabel.fontStyle = FontStyles.Bold;
         }
@@ -720,6 +721,13 @@ namespace CatMetro.Presentation.Screens
         // offscreen rig supplies its exact RenderTexture bounds.
         public void LayoutForViewport(Rect safeArea, float dpi, Rect viewport = default)
         {
+            TypeScale.Apply(_title, TypeScale.Display, dpi);
+            TypeScale.Apply(_titleCarve, TypeScale.Display, dpi);
+            TypeScale.Apply(_primaryLabel, TypeScale.Title, dpi);
+            TypeScale.Apply(_dailyLabel, TypeScale.Body, dpi);
+            TypeScale.Apply(_dailyTally, TypeScale.Caption, dpi, body: true);
+            TypeScale.Apply(_dailyStatus, TypeScale.Caption, dpi, body: true);
+            TypeScale.Apply(_audioToggleLabel, TypeScale.Caption, dpi, body: true);
             bool hasDaily = _dailyPin != null;
             _pinRectPx = HomeLayout.PrimaryPinRect(safeArea, dpi, hasDaily);
             ApplyPx(_pin, _pinRectPx);

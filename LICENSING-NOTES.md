@@ -1,5 +1,21 @@
 # Polyfork furnish set — licensing notes (for the human to fold into the custody record)
 
+## UI fonts — 2026-09-06
+
+Fredoka SemiBold (display) and Nunito Regular (body) come from the Google Fonts OFL
+directories. Pinned upstream URLs, source and derived SHA-256 values, and the static
+weight-instancing recipe are in `unity/Assets/Fonts/PROVENANCE.json`. Full OFL 1.1
+notices accompany each TTF and are included in the game as
+`Resources/Licenses/Fredoka-OFL.txt` and `Nunito-OFL.txt`.
+
+TMP atlases are static 1024×1024 SDFs, baked at 64pt with 8px padding by
+`CatMetroFontBaker.Bake` (also available as Cat Metro → Art → Bake UI Fonts).
+They cover printable ASCII, Latin-1, curly quotes, dashes, ellipsis and the euro sign.
+Liberation Sans stays as fallback. No paid model bytes or their custody record changed.
+
+Sources: [Fredoka](https://github.com/google/fonts/tree/main/ofl/fredoka),
+[Nunito](https://github.com/google/fonts/tree/main/ofl/nunito).
+
 This branch adds five board-furnish prop roles sourced from the Polyfork library
 (polyfork.dev). **No licensing ADR or custody record was modified** — this file is the
 raw material for extending that record deliberately.

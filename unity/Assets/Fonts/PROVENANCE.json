@@ -1,0 +1,27 @@
+[
+  {
+    "font": "Fredoka",
+    "style": "SemiBold",
+    "source": "https://raw.githubusercontent.com/google/fonts/eda3fe521878f70de0e2d91fd6d800f93f8c4758/ofl/fredoka/Fredoka%5Bwdth%2Cwght%5D.ttf",
+    "axes": {
+      "wght": 600,
+      "wdth": 100
+    },
+    "upstreamSha256": "2ba02e68b152868aef9ba28e24b3648c7d457fe6f25c761f2c2c53fb61a73fc8",
+    "derivedSha256": "aff6f682f404e234be352937b52d4e24f43f834780e3e7739b0a386195bbe4cb",
+    "licenceSha256": "5c9e7eee5c6b25f4b05b8d53b2e470ea4962f9ced742d044a98f7d95d1375bab",
+    "generator": "fontTools 4.59.2 varLib.instancer"
+  },
+  {
+    "font": "Nunito",
+    "style": "Regular",
+    "source": "https://raw.githubusercontent.com/google/fonts/604936664fd62c14271209b51f98e7f495dd1a3e/ofl/nunito/Nunito%5Bwght%5D.ttf",
+    "axes": {
+      "wght": 400
+    },
+    "upstreamSha256": "bb55a5ca5c2042335b3991af27c4d0705d0ef41cac6164ac737fd8f2a1e85207",
+    "derivedSha256": "ab768ede70c799438fcd35cb8238be220ad844f6584d740d27b9509bc572af11",
+    "licenceSha256": "580df76c95a1ec5ab878ceb25bb3d85c6a076804e9c970c8c6972aea775fdf65",
+    "generator": "fontTools 4.59.2 varLib.instancer"
+  }
+]

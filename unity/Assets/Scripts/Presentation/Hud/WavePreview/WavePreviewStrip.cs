@@ -431,7 +431,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 PlaceCentred((RectTransform)_tokens[i].transform,
                     new Vector2(-faceSize * 0.28f, -faceSize * 0.30f),
                     new Vector2(faceSize * 0.44f, faceSize * 0.28f));
-                _tokens[i].fontSizeMax = faceSize * 0.24f;
+                _tokens[i].fontSizeMax = Mathf.Max(TypeScale.Minimum, faceSize * 0.24f);
                 cursor += faceSize + gap;
             }
             if (hasOverflow)
@@ -439,7 +439,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 cursor += -faceSize * 0.5f + overflowWidth * 0.5f;
                 PlaceCentred((RectTransform)_overflow.transform,
                     new Vector2(cursor, 0f), new Vector2(overflowWidth, faceSize));
-                _overflow.fontSizeMax = faceSize * 0.62f;
+                _overflow.fontSizeMax = Mathf.Max(TypeScale.Minimum, faceSize * 0.62f);
             }
 
             LayoutCounters();
@@ -461,8 +461,11 @@ namespace CatMetro.Presentation.Hud.WavePreview
             x += gap;
             PlaceCounter(_ridersMark, _riders, x, centreY, mark, textWidth, gap, row);
 
-            _deliveries.fontSizeMax = row;
-            _riders.fontSizeMax = row;
+            TypeScale.Apply(_deliveries, TypeScale.Body, _lastDpi, body: true);
+            TypeScale.Apply(_riders, TypeScale.Body, _lastDpi, body: true);
+            TypeScale.Apply(_flipBudget, TypeScale.Caption, _lastDpi, body: true);
+            _deliveries.fontSizeMax = Mathf.Max(_deliveries.fontSizeMin, row);
+            _riders.fontSizeMax = Mathf.Max(_riders.fontSizeMin, row);
 
             if (_flipBudget.gameObject.activeSelf)
             {
@@ -471,7 +474,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
                     new Rect(_counterPx.xMax - budgetWidth, _counterPx.y,
                         budgetWidth, _counterPx.height));
                 _flipBudget.alignment = TextAlignmentOptions.Right;
-                _flipBudget.fontSizeMax = row;
+                _flipBudget.fontSizeMax = Mathf.Max(_flipBudget.fontSizeMin, row);
             }
         }
 
@@ -574,8 +577,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
             text.alignment = TextAlignmentOptions.Center;
             text.enableWordWrapping = false;
             text.enableAutoSizing = true;
-            text.fontSizeMin = 6f;
-            text.fontSizeMax = 40f;
+            TypeScale.Apply(text, TypeScale.Caption, body: true);
             text.color = color;
             text.raycastTarget = false;
             return text;
