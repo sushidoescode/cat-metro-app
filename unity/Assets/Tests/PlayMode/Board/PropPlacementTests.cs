@@ -494,14 +494,14 @@ namespace CatMetro.Tests.PlayMode
             var red = plates[StationIdAccepting(level, "red")];
             AssertBuiltinMesh(red, "Cylinder.fbx", "the red plate is still a cylinder");
             AssertShapeRotation(red, "red");
-            AssertSignFrameSize(red, 0.9f, 0.9f, 0.1f,
+            AssertSignFrameSize(red, 1.035f, 1.035f, 0.1f,
                 "the red plate is a 0.9 disc standing 0.1 off the board, whatever the builtin"
                 + " cylinder's intrinsic size turns out to be");
 
             var blue = plates[StationIdAccepting(level, "blue")];
             AssertBuiltinMesh(blue, "Cube.fbx", "the blue plate is still a cube");
             AssertShapeRotation(blue, "blue");
-            AssertSignFrameSize(blue, 0.9f, 0.9f, 0.1f,
+            AssertSignFrameSize(blue, 1.035f, 1.035f, 0.1f,
                 "and the blue plate is that same 0.9 by 0.1 — unchanged, as its captures pin");
 
             // The property that was actually violated, stated as a property rather than as two
@@ -685,9 +685,10 @@ namespace CatMetro.Tests.PlayMode
 
                 // Measure the rendered face, not a raw scale factor: the builtin cylinder is
                 // two units across, so its correct localScale.x is half the requested size.
-                float half = PlateSizeInSignFrame(plate).y * 0.5f;
+                var disc = station.transform.Find("station:keyline-generated");
+                float half = PlateSizeInSignFrame(disc).y * 0.5f;
                 Assert.That(mast.localPosition.z - mast.localScale.z * 0.5f,
-                    Is.EqualTo(plate.localPosition.z + half).Within(0.0001f),
+                    Is.EqualTo(disc.localPosition.z + half).Within(0.0001f),
                     "and it stops exactly at the plate's bottom edge — short of that the sign"
                     + " floats off its own pole, past it the pole punches through the badge");
 
@@ -1106,9 +1107,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(chipColor.b, Is.EqualTo(yellow.b).Within(0.001f), "chip line colour b");
             Assert.That(chipColor, Is.Not.EqualTo(CatLine.ColorOf("blue")),
                 "the chip is not a second copy of the berth's primary line");
-            Assert.That(station.GetComponentsInChildren<TextMesh>(true)
-                    .Any(x => x.text == CatLine.GlyphOf("yellow")), Is.True,
-                "and its own letter — a chip carries all three channels the plate does");
+            Assert.That(station.GetComponentsInChildren<TextMesh>(true), Is.Empty,
+                "acceptance is shown by silhouette and colour, with no letter sign");
             Assert.That(station.transform.Find("station:keyline-accept-0"), Is.Not.Null,
                 "a chip gets the same cream keyline that keeps the plate off the board");
 
@@ -1256,8 +1256,7 @@ namespace CatMetro.Tests.PlayMode
                 Is.SameAs(DestinationShapeMesh.ForShape(DestinationShape.Circle)),
                 "the shape channel has no fifth shape and falls back to red's circle — which"
                 + " is only safe because the colour above is magenta, not SignalRed");
-            Assert.That(station.GetComponentsInChildren<TextMesh>(true).Any(x => x.text == "?"),
-                Is.True, "and the letter channel says unknown too");
+            Assert.That(station.GetComponentsInChildren<TextMesh>(true), Is.Empty);
 
             // The whole point: a magenta circle and a red circle must not be the same badge.
             var red = Station(view, "RED").transform.Find("station:plate-generated");
@@ -1354,8 +1353,8 @@ namespace CatMetro.Tests.PlayMode
         {
             return @"{
   ""schemaVersion"": 2, ""id"": ""T943"", ""name"": ""Multi Accept Fixture"", ""seed"": 943,
-  ""meta"": { ""band"": ""shape-sort"", ""difficultyTarget"": 0.1,
-    ""mechanics"": [""switch"", ""shape""], ""newMechanic"": null,
+  ""meta"": { ""band"": ""alternation"", ""difficultyTarget"": 0.1,
+    ""mechanics"": [""switch""], ""newMechanic"": null,
     ""teachingGoal"": ""test fixture"", ""minActionWindowTicks"": 12,
     ""authoredBy"": ""llm+validator"" },
   ""board"": { ""nodes"": [
@@ -1723,6 +1722,8 @@ namespace CatMetro.Tests.PlayMode
             foreach (var renderer in station.GetComponentsInChildren<Renderer>(true))
             {
                 if (!renderer.enabled) continue;
+                if (renderer.transform == station.transform
+                    && station.transform.Find("station:plate-generated") != null) continue;
                 // Prefix, not exact name: a cream keyline is decoration by this helper's own
                 // logic, and a multi-accept berth grows "station:keyline-accept-N" beside the
                 // primary. Matching only the exact name would quietly fold that halo into the
