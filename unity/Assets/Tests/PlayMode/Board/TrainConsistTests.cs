@@ -781,7 +781,7 @@ namespace CatMetro.Tests.PlayMode
 
             var train = TrainRoot();
             Assert.That(Vector3.Distance(train.transform.localPosition,
-                    new Vector3(3f, 6f, 0f) + HeadLift), Is.LessThan(0.001f),
+                    new Vector3(2.4f, 7.5f, 0f) + HeadLift), Is.LessThan(0.001f),
                 "a parked head anchors on its node, exactly like the old capsule");
             TrackSpline arrival = BuildTrackGraph().Path(0);
             Vector3 expected = arrival.EvaluateDistanceFraction(
@@ -987,7 +987,7 @@ namespace CatMetro.Tests.PlayMode
             var edges = _session.Level.Dto.Edges.ToArray();
             var index = nodes.Select((node, i) => new { node.Id, Index = i })
                 .ToDictionary(x => x.Id, x => x.Index);
-            var positions = nodes.Select(node => new Vector3(node.X, node.Y, 0f)).ToArray();
+            var positions = nodes.Select(node => new Vector3(node.X * 0.8f, node.Y * 1.25f, 0f)).ToArray();
             return TrackSplineGraph.Build(positions,
                 edges.Select(edge => index[edge.From]).ToArray(),
                 edges.Select(edge => index[edge.To]).ToArray());

@@ -26,6 +26,35 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator BoardBuild_StretchesThePresentationGridAndKeepsTheSlabUnderEveryNode()
+        {
+            var level = ImportL001();
+            _host = new GameObject("board-portrait-grid-host");
+            _view = BoardView.Build(level, _host.transform, new GameSession(level));
+            yield return null;
+
+            // Authored L001 is (3,9), (3,6), (1,2), (5,2). Only the presentation
+            // stretches: trains, track endpoints, props and the slab must agree on it.
+            var expected = new[]
+            {
+                new Vector3(2.4f, 11.25f, 0f), new Vector3(2.4f, 7.5f, 0f),
+                new Vector3(0.8f, 2.5f, 0f), new Vector3(4f, 2.5f, 0f),
+            };
+            var top = _view.transform.Find("BoardBody/WoodTop");
+            for (int i = 0; i < expected.Length; i++)
+            {
+                Assert.That(Vector3.Distance(_view.NodeWorldPos(i), expected[i]),
+                    Is.LessThan(0.001f), _view.NodeId(i));
+                Vector3 onSlab = top.InverseTransformPoint(_view.NodeWorldPos(i));
+                Assert.That(Mathf.Abs(onSlab.x), Is.LessThan(0.5f), _view.NodeId(i));
+                Assert.That(Mathf.Abs(onSlab.y), Is.LessThan(0.5f), _view.NodeId(i));
+            }
+            Assert.That(level.Dto.Nodes.Span[0].X, Is.EqualTo(3));
+            Assert.That(level.Dto.Nodes.Span[0].Y, Is.EqualTo(9),
+                "the authored simulation grid is unchanged");
+        }
+
+        [UnityTest]
         public IEnumerator BoardBuild_ReplacesEveryEdgeCubeWithPhysicalToyTrack()
         {
             var level = ImportL001();
@@ -81,7 +110,7 @@ namespace CatMetro.Tests.PlayMode
                 "train progress and rendered rail must evaluate the identical spline");
 
             Vector3 oldStraightMidpoint =
-                Vector3.Lerp(new Vector3(3f, 6f, 0f), new Vector3(1f, 2f, 0f), 0.5f)
+                Vector3.Lerp(new Vector3(2.4f, 7.5f, 0f), new Vector3(0.8f, 2.5f, 0f), 0.5f)
                 + new Vector3(0f, 0f, -0.2f);
             Assert.That(Vector2.Distance(train.transform.localPosition, oldStraightMidpoint),
                 Is.GreaterThan(0.10f),
@@ -152,7 +181,7 @@ namespace CatMetro.Tests.PlayMode
             for (int node = 0; node < nodes.Length; node++)
             {
                 nodeIndex.Add(nodes[node].Id, node);
-                positions[node] = new Vector3(nodes[node].X, nodes[node].Y, 0f);
+                positions[node] = new Vector3(nodes[node].X * 0.8f, nodes[node].Y * 1.25f, 0f);
             }
             return TrackSplineGraph.Build(positions,
                 edges.Select(edge => nodeIndex[edge.From]).ToArray(),

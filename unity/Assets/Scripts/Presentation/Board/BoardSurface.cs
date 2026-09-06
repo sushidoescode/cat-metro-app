@@ -111,10 +111,10 @@ namespace CatMetro.Presentation.Board
             var nodes = level.Dto.Nodes.ToArray();
             if (nodes.Length == 0) return null;
 
-            float minX = nodes.Min(node => node.X);
-            float maxX = nodes.Max(node => node.X);
-            float minY = nodes.Min(node => node.Y);
-            float maxY = nodes.Max(node => node.Y);
+            float minX = nodes.Min(node => node.X * BoardView.GridX);
+            float maxX = nodes.Max(node => node.X * BoardView.GridX);
+            float minY = nodes.Min(node => node.Y * BoardView.GridY);
+            float maxY = nodes.Max(node => node.Y * BoardView.GridY);
             float width = maxX - minX + MarginSide * 2f;
             float height = maxY - minY + MarginNear + MarginFar;
             // `center` stays the AUTHORED node centre. Two things depend on that and must not

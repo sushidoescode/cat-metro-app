@@ -47,10 +47,10 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(body.Find("NavyBase"), Is.Not.Null, "the dark base makes thickness readable");
 
             var nodes = _root.Session.Level.Dto.Nodes.ToArray();
-            float minX = nodes.Min(n => n.X);
-            float maxX = nodes.Max(n => n.X);
-            float minY = nodes.Min(n => n.Y);
-            float maxY = nodes.Max(n => n.Y);
+            float minX = nodes.Min(n => n.X * 0.8f);
+            float maxX = nodes.Max(n => n.X * 0.8f);
+            float minY = nodes.Min(n => n.Y * 1.25f);
+            float maxY = nodes.Max(n => n.Y * 1.25f);
             var top = body.Find("WoodTop");
             Assert.That(top.localPosition.x - top.localScale.x * 0.5f,
                 Is.LessThanOrEqualTo(minX - 0.75f));
@@ -251,8 +251,8 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
 
             var nodes = _root.Session.Level.Dto.Nodes.ToArray();
-            float minX = nodes.Min(n => n.X), maxX = nodes.Max(n => n.X);
-            float minY = nodes.Min(n => n.Y), maxY = nodes.Max(n => n.Y);
+            float minX = nodes.Min(n => n.X * 0.8f), maxX = nodes.Max(n => n.X * 0.8f);
+            float minY = nodes.Min(n => n.Y * 1.25f), maxY = nodes.Max(n => n.Y * 1.25f);
             var top = _root.View.transform.Find("BoardBody/WoodTop");
             Assert.That(top, Is.Not.Null);
 

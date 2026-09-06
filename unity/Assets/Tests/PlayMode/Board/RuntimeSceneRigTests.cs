@@ -322,7 +322,7 @@ namespace CatMetro.Tests.PlayMode
                     camera.aspect = PhoneAspect;
                     var graph = root.Session.Level.Graph;
                     Vector3[] nodePositions = root.Session.Level.Dto.Nodes.ToArray()
-                        .Select(node => new Vector3(node.X, node.Y, 0f)).ToArray();
+                        .Select(node => new Vector3(node.X * 0.8f, node.Y * 1.25f, 0f)).ToArray();
                     TrackSplineGraph paths = TrackSplineGraph.Build(nodePositions,
                         graph.EdgeFrom, graph.EdgeTo);
 

@@ -18,6 +18,10 @@ namespace CatMetro.Presentation.Board
     [ExecuteAlways]
     public sealed class BoardView : MonoBehaviour
     {
+        // Presentation spacing only; authored coordinates and simulation ticks stay intact.
+        public const float GridX = 0.8f;
+        public const float GridY = 1.25f;
+
         // CM-UX-03: the onboarding teach affordance — a static raised ring behind every switch
         // disc plus a scale pulse, band-gated INSIDE Build (survives Retry's rebuild by
         // construction; live via the existing composition call). The affordance marks the
@@ -195,7 +199,7 @@ namespace CatMetro.Presentation.Board
             {
                 nodeIndex[nodes[i].Id] = i;
                 _nodeIds[i] = nodes[i].Id;
-                _nodePos[i] = new Vector3(nodes[i].X, nodes[i].Y, 0f);
+                _nodePos[i] = new Vector3(nodes[i].X * GridX, nodes[i].Y * GridY, 0f);
                 _sourceNode[i] = sourceIds.Contains(nodes[i].Id);
                 string kind = sourceIds.Contains(nodes[i].Id) ? "source"
                     : stationAccept.ContainsKey(nodes[i].Id) ? "station" : "node";
