@@ -78,6 +78,16 @@ namespace CatMetro.Tests.PlayMode
             return go.AddComponent<GameRoot>();
         }
 
+        internal static void ExpectHomeRigDiagnostic()
+        {
+            bool admitted = CatMetro.Presentation.Cats.CatModelCatalog.LoadResources()
+                .AdmittedEntryCount == 1;
+            LogAssert.Expect(admitted ? LogType.Log : LogType.Warning,
+                new System.Text.RegularExpressions.Regex(admitted
+                    ? "^HOME_RIG mounted=true admitted=1$"
+                    : "^HOME_RIG fallback branch=5 admitted=0 reason=.+$"));
+        }
+
         // CM-SEAMS: N nested `{"<key>": ...}` wraps around an innermost `true` — depth is N
         // regardless of key content, so key length is a free knob for controlling how long the
         // resulting JsonReaderException's Path string gets once MaxDepth throws.
@@ -167,6 +177,7 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator MalformedFile_WrongKey_ShippedBoot_NoThrow_NoLog()
         {
+            ExpectHomeRigDiagnostic();
             File.WriteAllText(Path.Combine(_tmpDir, "boot.json"), "{\"boot_to_home\": true}");
             // the SEAM_LOADED line is the NORMAL shipped-boot log (GameRoot.cs) — expected
             // here, never an "unexpected" log; only DEVCAP_BOOT_OVERRIDE_INVALID may not fire
@@ -192,6 +203,7 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator MalformedFile_ExplicitFalseValue_ShippedBoot_NoThrow_NoLog()
         {
+            ExpectHomeRigDiagnostic();
             File.WriteAllText(Path.Combine(_tmpDir, "boot.json"), "{\"bootToHome\": false}");
             LogAssert.Expect(LogType.Log, "SEAM_LOADED content/levels/L001.json");
             LogAssert.Expect(LogType.Log, CosmeticBootWiringTests.ExpectedDiagnostic);
