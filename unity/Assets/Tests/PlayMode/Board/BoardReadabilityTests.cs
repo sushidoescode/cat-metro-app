@@ -16,6 +16,7 @@ namespace CatMetro.Tests.PlayMode
     public sealed class BoardReadabilityTests
     {
         private GameRoot _root;
+        private GameObject _host;
 
         [SetUp]
         public void SetUp()
@@ -28,6 +29,7 @@ namespace CatMetro.Tests.PlayMode
         public void TearDown()
         {
             if (_root != null) Object.DestroyImmediate(_root.gameObject);
+            if (_host != null) Object.DestroyImmediate(_host);
             GameRoot.DevSkipShippedHome = false;
             Time.timeScale = 1f;
         }
@@ -100,6 +102,32 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator WildAcceptingStation_StillBuildsAndUsesTheStarMesh()
+        {
+            var level = WildStationLevel();
+            _host = new GameObject("wild berth fixture");
+            var view = BoardView.Build(level, _host.transform, new GameSession(level));
+            yield return null;
+            var plate = view.transform.Find("station:BLUE/station:plate-generated");
+            Assert.That(plate.GetComponent<MeshFilter>().sharedMesh,
+                Is.SameAs(CatPinMeshBuilder.StarBadge()));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void CombinedStrayAndExpressMarks_HaveSeparateSpace(bool hud)
+        {
+            _host = new GameObject("combined status fixture");
+            var marks = PassengerStatusMarks.Create(_host.transform, hud);
+            marks.Bind(true, true);
+            Assert.That(marks.StrayVisible && marks.ExpressVisible, Is.True);
+            Assert.That(marks.transform.Find("Express").localPosition.x
+                - marks.transform.Find("Stray").localPosition.x, Is.GreaterThan(0.7f));
+            marks.Bind(true, false);
+            Assert.That(marks.transform.Find("Stray").localPosition, Is.EqualTo(Vector3.zero));
+        }
+
+        [UnityTest]
         public IEnumerator DailyQueuedFork_UsesLineShapesWithoutLetterSigns()
         {
             var factory = new CatMetro.Content.Daily.DailyBoardFactory();
@@ -134,6 +162,17 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(blue.Shape, Is.EqualTo(DestinationShape.Square));
         }
 
+        private static ImportedLevel WildStationLevel()
+        {
+            var source = new StreamingAssetsContentSource().ReadAsync(
+                "content/levels/L001.json", CancellationToken.None).GetAwaiter().GetResult();
+            var json = System.Text.Encoding.UTF8.GetString(source)
+                .Replace("\"accepts\": [\"blue\"]", "\"accepts\": [\"wild\"]");
+            var level = LevelImporter.Import(System.Text.Encoding.UTF8.GetBytes(json));
+            Assert.That(level.Ok, Is.True);
+            return level.Value;
+        }
+
         private static ImportedLevel ReadLevel(string id)
         {
             var bytes = new StreamingAssetsContentSource().ReadAsync(
@@ -159,16 +198,19 @@ namespace CatMetro.Tests.PlayMode
             camera.cullingMask = 1 << 30;
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = Palette.InkNavy;
-            var rt = new RenderTexture(960, 720, 24);
+            var rt = new RenderTexture(1280, 720, 24);
             var previous = RenderTexture.active;
             camera.targetTexture = rt;
             try
             {
                 var stations = _root.View.GetComponentsInChildren<BoardElementId>()
-                    .Where(e => e.Kind == "station").ToArray();
-                for (int i = 0; i < 3; i++)
+                    .Where(e => e.Kind == "station").ToList();
+                var wildLevel = WildStationLevel();
+                var wildBoard = BoardView.Build(wildLevel, fixture.transform, new GameSession(wildLevel));
+                stations.Add(wildBoard.GetComponentsInChildren<BoardElementId>().Single(e => e.Kind == "station" && e.Id == "BLUE"));
+                for (int i = 0; i < 4; i++)
                 {
-                    float x = (i - 1) * 1.55f;
+                    float x = (i - 1.5f) * 1.5f;
                     var sign = Object.Instantiate(stations[i].gameObject, fixture.transform).transform;
                     sign.GetComponent<Renderer>().enabled = false;
                     sign.rotation = Quaternion.Inverse(CatMetro.Presentation.Props.BoardPropDecorator.StationSignRotation);
@@ -177,8 +219,9 @@ namespace CatMetro.Tests.PlayMode
                     foreach (var part in sign.GetComponentsInChildren<Transform>()) part.gameObject.layer = 30;
 
                     var train = ToyTrainView.Create(fixture.transform, "Fixture train", new[] { 0 }, new[] { 1 });
-                    train.SyncSlot(i + 1, CatColor.Red, (DestinationShape)i);
-                    train.SetTokenFlags(i == 0, i == 1);
+                    train.SyncSlot(i + 1, i == 3 ? CatColor.Wild : CatColor.Red,
+                        i == 3 ? DestinationShape.Star : (DestinationShape)i);
+                    train.SetTokenFlags(i == 0 || i == 2, i == 1 || i == 2);
                     // Only the project-owned pin is captured. Licensed cat geometry stays out
                     // of this isolated glyph fixture; full board captures use the main checkout.
                     var pin = train.transform.Find("Carriage/Pin");

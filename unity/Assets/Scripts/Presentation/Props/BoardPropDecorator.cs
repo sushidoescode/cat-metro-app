@@ -630,8 +630,15 @@ namespace CatMetro.Presentation.Props
             // apex somewhere else, so the order is pinned by a test rather than by this comment.
             part.transform.localRotation =
                 StationSignRotation * DestinationShapeMesh.PlateRotation(shape);
-            part.transform.localScale = DestinationShapeMesh.PlateScale(shape, size, depth);
-            part.AddComponent<MeshFilter>().sharedMesh = DestinationShapeMesh.ForShape(shape);
+            // Legacy content permits wild-only berths. Their concave star uses the pin's
+            // triangulation; the convex destination-mesh builder deliberately rejects it.
+            var mesh = shape == DestinationShape.Star
+                ? CatPinMeshBuilder.StarBadge() : DestinationShapeMesh.ForShape(shape);
+            var intrinsic = mesh.bounds.size;
+            part.transform.localScale = shape == DestinationShape.Star
+                ? new Vector3(size / intrinsic.x, size / intrinsic.y, depth / intrinsic.z)
+                : DestinationShapeMesh.PlateScale(shape, size, depth);
+            part.AddComponent<MeshFilter>().sharedMesh = mesh;
             var renderer = part.AddComponent<MeshRenderer>();
             renderer.sharedMaterial = GreyboxMaterial.Shared;
             return renderer;
