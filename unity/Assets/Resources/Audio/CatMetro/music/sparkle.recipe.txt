@@ -1,0 +1,9 @@
+Cat Metro original audio — music/sparkle.wav
+Generator: ls-clad build-music 1.0.0; scripts/generate-game-music.js
+Version: cat-metro-audio-v2
+Seed: 0x019D5ED4
+Generation brief: 96 BPM C-major music-box arpeggios in alternating bars; high register, small-room release.
+No sampled audio, model weights, or third-party recordings.
+Original composition/synthesis for Cat Metro; commercial use in a paid app permitted.
+The sample-free ls-clad engine is Apache-2.0; its licence and copyright notice
+are saved in music/ENGINE-LICENSE.txt and music/ENGINE-NOTICE.txt.

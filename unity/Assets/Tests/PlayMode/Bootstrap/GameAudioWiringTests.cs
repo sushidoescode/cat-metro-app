@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using CatMetro.Application.Save;
 using CatMetro.Bootstrap;
 using CatMetro.Bootstrap.DevCapture;
+using CatMetro.Presentation.Screens;
 using CatMetro.Services;
 using CatMetro.Services.Cosmetics;
 using CatMetro.Services.Purchases;
@@ -47,7 +48,7 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator RealBoot_WiresClipsListenerAndDurableHomeMute()
+        public IEnumerator RealBoot_WiresAllChannelsAndPersistsSettingsAcrossRelaunch()
         {
             _root = GameRoot.Launch();
             yield return null;
@@ -66,7 +67,7 @@ namespace CatMetro.Tests.PlayMode
                 "only one managed listener is active in the test scene");
 
             var sources = _root.Audio.GetComponents<AudioSource>();
-            Assert.That(sources, Has.Length.EqualTo(3));
+            Assert.That(sources, Has.Length.EqualTo(6));
             foreach (var source in sources)
             {
                 Assert.That(source.playOnAwake, Is.False);
@@ -75,6 +76,12 @@ namespace CatMetro.Tests.PlayMode
             }
 
             Assert.That(_root.Audio.Enabled, Is.True);
+            Assert.That(_root.Music, Is.Not.Null);
+            Assert.That(_root.Music.LoadedClipCount, Is.EqualTo(5));
+            Assert.That(_root.Music.Enabled, Is.True);
+            Assert.That(_root.Haptics, Is.Not.Null);
+            Assert.That(_root.Haptics.Enabled, Is.True);
+            Assert.That(_root.MotionOffToggle, Is.False);
             Assert.That(_root.Home.AudioEnabled, Is.True);
             Assert.That(_root.Audio.SnapshotObservationCount, Is.GreaterThan(0),
                 "GameRoot explicitly feeds presentation snapshots after its state/view update");
@@ -86,8 +93,20 @@ namespace CatMetro.Tests.PlayMode
                 "composition binds confirmed purchases to audio");
             Assert.That(_root.Input.HandleTapAtScreen(_root.Home.AudioToggleRectPx.center),
                 Is.EqualTo(-3));
+            Assert.That(_root.Settings, Is.Not.Null);
+            Assert.That(_root.Settings.IsVisible, Is.True);
+            Assert.That(_root.Stack.Current, Is.EqualTo("settings"));
+            Assert.That(_root.Audio.Enabled, Is.True, "opening settings does not mute a channel");
+            foreach (SettingsChannel channel in Enum.GetValues(typeof(SettingsChannel)))
+                Assert.That(_root.Input.HandleTapAtScreen(_root.Settings.RowRectPx(channel).center), Is.EqualTo(-3));
             Assert.That(_root.Audio.Enabled, Is.False);
             Assert.That(_root.Home.AudioEnabled, Is.False);
+            Assert.That(_root.Music.Enabled, Is.False);
+            Assert.That(_root.Haptics.Enabled, Is.False);
+            Assert.That(_root.MotionOffToggle, Is.True);
+            Assert.That(_root.Input.HandleTapAtScreen(_root.Settings.CloseRectPx.center), Is.EqualTo(-3));
+            Assert.That(_root.Settings.IsVisible, Is.False);
+            Assert.That(_root.Stack.Current, Is.EqualTo("home"));
 
             UnityEngine.Object.DestroyImmediate(_root.gameObject);
             _root = null;
@@ -97,6 +116,48 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Audio.Enabled, Is.False,
                 "the real boot reads the canonical saved audio preference");
             Assert.That(_root.Home.AudioEnabled, Is.False);
+            Assert.That(_root.Music.Enabled, Is.False);
+            Assert.That(_root.Haptics.Enabled, Is.False);
+            Assert.That(_root.MotionOffToggle, Is.True, "settings.motion=false binds the runtime reduce-motion toggle at boot");
+        }
+
+        [UnityTest]
+        public IEnumerator DailyNavigationClosesSettingsAndItsBlocker()
+        {
+            GameRoot.DailyEntryUnlocked = true;
+            _root = GameRoot.Launch();
+            yield return null;
+            _root.ShowSettings();
+            Assert.That(_root.Settings.IsVisible, Is.True);
+            _root.DailyClockUnixSeconds = () => 1787572800L;
+            _root.SelectDaily();
+            float deadline = Time.realtimeSinceStartup + 10f;
+            while (!_root.IsDailySession && Time.realtimeSinceStartup < deadline) yield return null;
+            Assert.That(_root.IsDailySession, Is.True);
+            Assert.That(_root.Settings.IsVisible, Is.False);
+            Assert.That(_root.Input.Regions.IsRegistered("settings.blocker"), Is.False);
+            Assert.That(_root.ScreensVisible, Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator UnlockedDailyReminderRefreshesBeforeTheFirstDailyCompletion()
+        {
+            GameRoot.DailyEntryUnlocked = true;
+            GameRoot.MessagingFactoryOverride = () => new InertMessaging(available: true);
+            _root = GameRoot.Launch();
+            yield return null;
+            Assert.That(_root.LifetimeDailyCompletions, Is.Zero);
+            _root.ShowSettings();
+            Assert.That(_root.Settings.ReminderVisible, Is.True);
+            _root.Input.HandleTapAtScreen(_root.Settings.ReminderRectPx.center);
+            Assert.That(_root.Home.ReminderSheet.IsVisible, Is.True);
+            _root.Input.HandleTapAtScreen(_root.Home.ReminderSheet.EveningRectPx.center);
+            Assert.That(_root.Home.ReminderSheet.SelectedSlot, Is.EqualTo(DailyReminderSlot.Evening));
+            Assert.That(_root.Home.ReminderSheet.OpenSettingsVisible, Is.False);
+            _root.Input.HandleTapAtScreen(_root.Home.ReminderSheet.OnRectPx.center);
+            yield return null;
+            Assert.That(_root.Home.ReminderSheet.OpenSettingsVisible, Is.True,
+                "a denied permission must refresh the fallback control before the first Daily completion");
         }
 
         private static void ResetSeams()
@@ -123,10 +184,13 @@ namespace CatMetro.Tests.PlayMode
 
         private sealed class InertMessaging : IMessaging
         {
-            public bool IsAvailable => false;
+            private readonly bool _available;
+            private MessagingPermission _permission = MessagingPermission.Unknown;
+            public InertMessaging(bool available = false) { _available = available; }
+            public bool IsAvailable => _available;
             public string SubscriptionId => string.Empty;
-            public MessagingPermission Permission => MessagingPermission.Unknown;
-            public bool CanRequestPermission => false;
+            public MessagingPermission Permission => _permission;
+            public bool CanRequestPermission => _available && _permission == MessagingPermission.Unknown;
             public event Action<MessagingRoute> LinkOpened
             {
                 add { }
@@ -134,8 +198,11 @@ namespace CatMetro.Tests.PlayMode
             }
 
             public Task<MessagingPermission> PromptAsync(bool fallbackToSettings,
-                CancellationToken cancellationToken) =>
-                Task.FromResult(MessagingPermission.Unknown);
+                CancellationToken cancellationToken)
+            {
+                _permission = _available ? MessagingPermission.Denied : MessagingPermission.Unknown;
+                return Task.FromResult(_permission);
+            }
 
             public void Schedule(DailyChallengeNotification notification) { }
             public void Cancel(string notificationId) { }

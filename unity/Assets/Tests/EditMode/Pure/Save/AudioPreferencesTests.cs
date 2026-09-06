@@ -6,6 +6,71 @@ namespace CatMetro.Tests.Save
 {
     public sealed class AudioPreferencesTests
     {
+        [TestCase("music")]
+        [TestCase("haptics")]
+        [TestCase("motion")]
+        public void ChannelsPersistIndependentlyWithoutChangingAudioOrFutureKeys(string channel)
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            store.Load();
+            ((JObject)store.State.Payload["settings"])["futureMixerMode"] = "wood";
+            var prefs = new AudioPreferences(store);
+            Assert.That(Read(prefs, channel), Is.True);
+            Assert.That(Write(prefs, channel, false), Is.True);
+            var reloaded = SFixtures.Store(root);
+            reloaded.Load();
+            var saved = new AudioPreferences(reloaded);
+            Assert.That(Read(saved, channel), Is.False);
+            Assert.That(saved.Enabled, Is.True, "music and motion are independent of the old SFX setting");
+            foreach (var other in new[] { "music", "haptics", "motion" })
+                if (other != channel) Assert.That(Read(saved, other), Is.True);
+            Assert.That((string)reloaded.State.Payload["settings"]["futureMixerMode"], Is.EqualTo("wood"));
+            Assert.That(Write(saved, channel, true), Is.True);
+            Assert.That(Read(saved, channel), Is.True);
+        }
+
+        [TestCase("music")]
+        [TestCase("haptics")]
+        [TestCase("motion")]
+        public void MissingAndMalformedChannelsDefaultOnAndRepairOnWrite(string channel)
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            store.Load();
+            ((JObject)store.State.Payload["settings"]).Remove(channel);
+            var prefs = new AudioPreferences(store);
+            Assert.That(Read(prefs, channel), Is.True);
+            store.State.Payload["settings"][channel] = "false";
+            Assert.That(Read(prefs, channel), Is.True);
+            store.State.Payload["settings"] = "damaged";
+            Assert.That(Write(prefs, channel, false), Is.True);
+            Assert.That(Read(prefs, channel), Is.False);
+        }
+
+        [TestCase("music")]
+        [TestCase("haptics")]
+        [TestCase("motion")]
+        public void FailedChannelSaveRestoresTheExactAuthoritativePayload(string channel)
+        {
+            using var root = new SFixtures.TempRoot();
+            var fs = new SFixtures.RecordingFs();
+            var store = SFixtures.Store(root, fs);
+            store.Load();
+            var original = store.State.Payload;
+            fs.FaultPoint = SFixtures.Fault.InReplace;
+            var prefs = new AudioPreferences(store);
+            Assert.That(Write(prefs, channel, false), Is.False);
+            Assert.That(store.State.Payload, Is.SameAs(original));
+            Assert.That(Read(prefs, channel), Is.True);
+        }
+
+        private static bool Read(AudioPreferences prefs, string channel) => channel == "music"
+            ? prefs.MusicEnabled : channel == "haptics" ? prefs.HapticsEnabled : prefs.MotionEnabled;
+        private static bool Write(AudioPreferences prefs, string channel, bool value) => channel == "music"
+            ? prefs.TrySetMusicEnabled(value) : channel == "haptics"
+                ? prefs.TrySetHapticsEnabled(value) : prefs.TrySetMotionEnabled(value);
+
         [Test]
         public void FreshPreference_DefaultsOn_AndWritesReloadFromCanonicalSetting()
         {
