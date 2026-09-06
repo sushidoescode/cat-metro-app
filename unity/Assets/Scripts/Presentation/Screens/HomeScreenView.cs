@@ -277,6 +277,7 @@ namespace CatMetro.Presentation.Screens
                 if (catCatalog != null && catCatalog.AdmittedEntryCount == 1)
                     view._profileRig = HomeProfileRigView.Create(
                         parkedDistrictB.rectTransform, view._profilePortrait, catCatalog);
+                else HomeProfileRigView.ReportUnavailable(catCatalog);
             }
 
             view._markers = new[]
