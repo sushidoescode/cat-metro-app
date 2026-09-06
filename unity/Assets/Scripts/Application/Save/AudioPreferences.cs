@@ -17,6 +17,12 @@ namespace CatMetro.Application.Save
         // Audio is the historical opt-out setting. A missing or malformed value therefore keeps
         // the default-on behaviour instead of silently muting the game.
         public bool Enabled => BooleanValue(Settings?["audio"], defaultValue: true);
+        public bool MusicEnabled => BooleanValue(Settings?["music"], defaultValue: true);
+        public bool HapticsEnabled => BooleanValue(Settings?["haptics"], defaultValue: true);
+        public bool MotionEnabled => BooleanValue(Settings?["motion"], defaultValue: true);
+        public bool TrySetMusicEnabled(bool enabled) => TryUpdate(settings => settings["music"] = enabled);
+        public bool TrySetHapticsEnabled(bool enabled) => TryUpdate(settings => settings["haptics"] = enabled);
+        public bool TrySetMotionEnabled(bool enabled) => TryUpdate(settings => settings["motion"] = enabled);
 
         public bool TrySetEnabled(bool enabled) =>
             TryUpdate(settings => settings["audio"] = enabled);

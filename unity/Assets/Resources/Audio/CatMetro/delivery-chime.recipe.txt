@@ -1,0 +1,9 @@
+Cat Metro original audio — delivery-chime.wav
+Generator: scripts/generate-game-audio.py
+Version: cat-metro-audio-v2
+Seed: 0xC47A2304
+Generation brief: G4 then D5, struck as warm inharmonic wooden-bar resonators with soft mallets.
+No sampled audio, model weights, or third-party recordings.
+Original composition/synthesis for Cat Metro; commercial use in a paid app permitted.
+The sample-free ls-clad engine is Apache-2.0; its licence and copyright notice
+are saved in music/ENGINE-LICENSE.txt and music/ENGINE-NOTICE.txt.

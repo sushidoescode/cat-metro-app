@@ -34,6 +34,12 @@ reminder.settings.open,Open notification settings
 reminder.settings.close,Close
 settings.audio.on,SFX on
 settings.audio.off,SFX off
+settings.title,Settings
+settings.sound,Sound
+settings.music,Music
+settings.haptics,Haptics
+settings.motion,Reduce motion
+settings.save.failed,Could not save. Please try again.
 wardrobe.entry,Wardrobe
 wardrobe.title,Profile Wardrobe
 wardrobe.back,Back

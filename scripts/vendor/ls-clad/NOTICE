@@ -1,0 +1,8 @@
+Copyright 2026 Specs Inc.
+SPDX-License-Identifier: Apache-2.0
+
+Build-music and build-sfx tools from the installed ls-clad 1.0.0 skill.
+Cat Metro modified build-sfx/tools/synth_voices.js to pass the seeded RNG to
+nylonGuitar's body noise. All other engine files retain their upstream code.
+Source: installed ls-extensions/ls-clad 1.0.0 plugin; tools retain their upstream headers.
+No samples, datasets, or model weights. Cat Metro compositions are original.

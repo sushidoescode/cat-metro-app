@@ -6,6 +6,31 @@ namespace CatMetro.Tests.Presentation.Audio
 {
     public sealed class GameplayAudioCueTrackerTests
     {
+        [TestCase(0, 1f)]
+        [TestCase(1, 1f)]
+        [TestCase(2, 1.122462f)]
+        [TestCase(3, 1.259921f)]
+        [TestCase(4, 1.498307f)]
+        [TestCase(5, 1.681793f)]
+        [TestCase(6, 2f)]
+        [TestCase(40, 2f)]
+        public void DeliveryChain_ClimbsPentatonicSteps_AndCapsAtOctave(int deliveries, float pitch)
+        {
+            Assert.That(GameAudio.DeliveryPitch(deliveries), Is.EqualTo(pitch).Within(0.00001f));
+        }
+
+        [Test]
+        public void Failure_PlaysOnce_AndRebaselineDoesNotReplayIt()
+        {
+            var tracker = new GameplayAudioCueTracker();
+            tracker.Rebaseline(0, 0, OutcomeKind.Running);
+            Assert.That(tracker.Observe(0, 1, OutcomeKind.Failed),
+                Is.EqualTo(GameplayAudioCues.WrongStation | GameplayAudioCues.Failed));
+            Assert.That(tracker.Observe(0, 1, OutcomeKind.Failed), Is.EqualTo(GameplayAudioCues.None));
+            tracker.Rebaseline(0, 1, OutcomeKind.Failed);
+            Assert.That(tracker.Observe(0, 1, OutcomeKind.Failed), Is.EqualTo(GameplayAudioCues.None));
+        }
+
         [Test]
         public void DeliveryAndWin_AreEdges_NotFrameOrClipTiming()
         {

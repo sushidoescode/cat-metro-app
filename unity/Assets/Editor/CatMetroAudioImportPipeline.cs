@@ -24,7 +24,7 @@ namespace CatMetro.EditorTools
 
         public override uint GetVersion()
         {
-            return 1;
+            return 2;
         }
 
         public static bool IsManagedAsset(string path)
@@ -52,10 +52,20 @@ namespace CatMetro.EditorTools
             if (importer == null)
                 throw new ArgumentNullException(nameof(importer));
 
+            bool music = importer.assetPath.StartsWith(AssetRoot + "/music/", StringComparison.Ordinal);
             importer.forceToMono = true;
+            if (music) importer.forceToMono = false;
             importer.loadInBackground = false;
             importer.ambisonic = false;
-            importer.defaultSampleSettings = DesiredSampleSettings();
+            var settings = DesiredSampleSettings();
+            if (music)
+            {
+                settings.loadType = AudioClipLoadType.Streaming;
+                settings.compressionFormat = AudioCompressionFormat.Vorbis;
+                settings.quality = .5f;
+                settings.preloadAudioData = false;
+            }
+            importer.defaultSampleSettings = settings;
 
             // Unity 6 still serializes the mono-downmix normalization flag but no longer
             // exposes it on AudioImporter. Pin the real importer field so quiet cues are not
