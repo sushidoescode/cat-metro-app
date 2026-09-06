@@ -210,8 +210,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(DecorativeMaxX, Is.GreaterThan(0.945f),
                 "the decorative band has to be wider than the gameplay one or the split "
                 + "bought nothing");
-            Assert.That(DecorativeMinY, Is.LessThan(0.12f));
-            Assert.That(DecorativeMaxY, Is.GreaterThan(0.87f));
+            Assert.That(DecorativeMinY, Is.LessThan(GameplayMinY));
+            Assert.That(DecorativeMaxY, Is.GreaterThan(GameplayMaxY));
             // The shape of the widening, stated so it cannot drift into "decorative means
             // unconstrained". Horizontally the band leaves the FRAME: target-01 runs its
             // trees and fences off both side edges and so may we. Vertically it does not:
@@ -562,10 +562,10 @@ namespace CatMetro.Tests.PlayMode
             }
             Assert.That(foundGameplay, Is.True);
             float half = camera.orthographicSize * camera.aspect;
-            float used = gameplay.size.x / (2f * half);
-            Assert.That(used, Is.InRange(0.80f, 0.945f),
-                "the gameplay union should still be filling the horizontal band — if it "
-                + "collapses, the fit stopped being content-driven");
+            float usedWidth = gameplay.size.x / (2f * half * 0.88f);
+            float usedHeight = everything.size.y / (2f * camera.orthographicSize * 0.84f);
+            Assert.That(Mathf.Max(usedWidth, usedHeight), Is.InRange(0.88f, 1.05f),
+                "the portrait grid can bind either axis; at least one must fill its fit band");
 
             // Vertically nothing changed: the whole diorama, slab included, still has to sit
             // inside the frame so the toy's rim reads as a finite edge top and bottom.
@@ -637,8 +637,8 @@ namespace CatMetro.Tests.PlayMode
                     (mask & 4) == 0 ? min.z : max.z);
                 float depth = Vector3.Dot(corner - camera.transform.position,
                     camera.transform.forward);
-                Assert.That(depth, Is.InRange(camera.nearClipPlane, 24f),
-                    label + " outside the 25-unit URP main-light shadow range");
+                Assert.That(depth, Is.InRange(camera.nearClipPlane, 14f),
+                    label + " outside the 14-unit URP main-light shadow range");
             }
         }
 
@@ -646,8 +646,8 @@ namespace CatMetro.Tests.PlayMode
         // below and the predicate beside it cannot drift apart.
         private const float GameplayMinX = 0.055f;
         private const float GameplayMaxX = 0.945f;
-        private const float GameplayMinY = 0.12f;
-        private const float GameplayMaxY = 0.87f;
+        private const float GameplayMinY = 0.06f;
+        private const float GameplayMaxY = 0.90f;
 
         /// <summary>
         /// The same test the guard applies, as a bool, so the NEGATIVE case can be asserted

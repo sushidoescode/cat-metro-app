@@ -36,16 +36,16 @@
     { "nodeId": "TRIANGLE", "accepts": ["blue"], "capacity": 8, "shape": "triangle" }
   ],
   "switches": [
-    { "id": "S1", "nodeId": "J1", "routes": ["E_ROUND", "E_TRIANGLE", "E_SQUARE"], "initialRoute": 0 }
+    { "id": "S1", "nodeId": "J1", "routes": ["E_ROUND", "E_SQUARE", "E_TRIANGLE"], "initialRoute": 0 }
   ],
   "waves": [
-    { "tick": 8, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 12, "shape": "triangle" },
+    { "tick": 8, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 12, "shape": "round" },
     { "tick": 28, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 12, "shape": "square" },
-    { "tick": 48, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 12, "shape": "round" }
+    { "tick": 48, "sourceNode": "SRC", "color": "blue", "count": 1, "spacingTicks": 12, "shape": "triangle" }
   ],
   "win": {
     "deliveries": 3,
-    "timeLimitTicks": 120,
+    "timeLimitTicks": 160,
     "stars": { "two": 500, "three": 660 }
   },
   "economy": { "baseTickets": 29, "perfectBonus": 15 }

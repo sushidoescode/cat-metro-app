@@ -102,7 +102,7 @@ namespace CatMetro.Presentation.Board
         /// The horizontal world-space envelope that source-platform cats can occupy after
         /// launch. Those cats do not exist when the camera first fits its renderer union, so
         /// the fit must reserve their authored side offset and every lane the train bound can
-        /// allocate. Vertical framing continues to come from the rendered tabletop itself.
+        /// allocate. The future card and cat also reserve vertical room above the source.
         /// </summary>
         internal bool TryGetSourcePlatformHorizontalBounds(out Bounds bounds)
         {
@@ -133,6 +133,11 @@ namespace CatMetro.Presentation.Board
                         }
                         else bounds.Encapsulate(left);
                         bounds.Encapsulate(right);
+                        bounds.Encapsulate(world + Vector3.up * ToyTrainView.PlatformFramingHalfWidth);
+                        bounds.Encapsulate(world - Vector3.up * ToyTrainView.PlatformFramingHalfWidth);
+                        Vector3 pin = transform.TransformPoint(anchor + ToyTrainView.PinBoardOffset);
+                        bounds.Encapsulate(pin + Vector3.up * ToyTrainView.PinCardSize);
+                        bounds.Encapsulate(pin - Vector3.up * ToyTrainView.PinCardSize);
                     }
                 }
             }

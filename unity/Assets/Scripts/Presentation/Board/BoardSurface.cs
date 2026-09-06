@@ -88,20 +88,9 @@ namespace CatMetro.Presentation.Board
         // exactly. Contrast against the CreamCard ballast stays at 0.328, well over the
         // 0.262 floor.
         private static readonly Color WarmWood = new Color(0.823f, 0.555f, 0.374f);
-        // Walnut for the room-scale desk. Calibrated against the 2026-08-25 slot render:
-        // the amber key plus warm ambient multiply channel ratios by roughly (1.15 r/g,
-        // 1.84 r/b), so a red-leaning albedo (the old 0.55/0.36/0.22, r/b 2.5) rendered as
-        // burnt-orange terracotta (measured r/b ~4.6 vs the target desk's ~2.5). To land on
-        // target-01's rich brown the albedo must be a desaturated walnut and let the light
-        // supply the warmth. The DeskGrain sheet multiplies this toward ~1.05x at the board
-        // and ~0.46x cooler at the frame corners.
-        // Re-solved through the same inversion as WarmWood, for the same reason: the rig's
-        // amber is gone, so the walnut has to be walnut in the albedo. rendered stays at the
-        // measured (120, 74, 46); grain_linear is the desk sheet's median near the board
-        // (0.8225 * 1.05 lum = 0.8636 sRGB). The desk's own warm-centre/cool-edge falloff
-        // survives untouched, and now reads more clearly than it did under a light that was
-        // already staining the whole slab amber.
-        private static readonly Color WarmDesk = new Color(0.495f, 0.299f, 0.137f);
+        // Calibrated at the Pixel aspect after the veil and grain multiplication. A .62/.40/.22
+        // albedo still left the sampled desk below .35 luminance; this warmer mid-tone clears it.
+        private static readonly Color WarmDesk = new Color(0.70f, 0.48f, 0.30f);
         private static Mesh _cubeMesh;
         private static Texture2D _woodGrain;
         private static Texture2D _deskGrain;
@@ -410,7 +399,8 @@ namespace CatMetro.Presentation.Board
                         + (streak - 0.5f) * 0.10f + (hash - 0.5f) * 0.08f) * focus)
                         * seamMul;
 
-                    float lum = Mathf.Lerp(1.05f, 0.46f, fall);
+                    // The old .46 edge floor multiplied the warm albedo back into darkness.
+                    float lum = Mathf.Lerp(1.05f, 0.96f, fall);
                     float warm = Mathf.Lerp(1.02f, 0.90f, fall);
                     float cool = Mathf.Lerp(0.97f, 1.06f, fall);
                     pixels[y * size + x] = new Color32(
