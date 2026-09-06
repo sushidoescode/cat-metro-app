@@ -11,6 +11,8 @@ home.title,Cat Metro
 intro.play,Play
 intro.goal,Deliver {count} cats
 home.daily.label,Daily Line
+home.daily.locked,Unlocks after 7 station wins
+home.daily.ready,Today's Line is ready
 results.daily.done,Home
 home.daily.tally,Dailies completed: {count}
 home.daily.unavailable,Daily unavailable — try again

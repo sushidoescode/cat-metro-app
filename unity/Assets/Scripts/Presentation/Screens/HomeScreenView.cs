@@ -13,9 +13,9 @@ using CatMetro.Services.Cosmetics;
 namespace CatMetro.Presentation.Screens
 {
     // LOOK Home: a carved navy/cream menu frame over the real, already-loaded tick-0 board,
-    // with tactile full-width routes and three preserved cosmetics holders. The default remains
-    // commerce-free; Daily is constructed only when progress/config unlocks it, including a
-    // threshold crossed during the current run. Hit regions retain the existing unregister
+    // with tactile routes and one shared cosmetics holder. The default remains
+    // commerce-free; Daily is teased while locked and becomes interactive when the existing
+    // progress/config gate opens, including a threshold crossed during the current run. Hit regions retain the existing unregister
     // lifecycle, and motion-off keeps the action's static raised-ring cue.
     public sealed class HomeScreenView : MonoBehaviour
     {
@@ -34,10 +34,10 @@ namespace CatMetro.Presentation.Screens
         private const int DailyPinRegionPriority = ChromeRegions.HomeScreenPriority;
         private const string ReminderGearRegionId = "home.reminder.gear";
         private const int ReminderGearRegionPriority = ChromeRegions.HomeScreenPriority;
-        private const float WindowXMin = 0.075f;
-        private const float WindowXMax = 0.925f;
-        private const float WindowYMin = 0.075f;
-        private const float WindowYMax = 0.93f;
+        private const float WindowXMin = 0.05f;
+        private const float WindowXMax = 0.95f;
+        private const float WindowYMin = 0.05f;
+        private const float WindowYMax = 0.95f;
         private const string AudioToggleRegionId = "home.audio.toggle";
         private const int AudioToggleRegionPriority = ChromeRegions.HomeScreenPriority;
 
@@ -58,22 +58,37 @@ namespace CatMetro.Presentation.Screens
         private bool _audioEnabled = true;
         private bool _shown; // #46 review F4: Show()-left-shown intent, survives OnDisable/OnEnable
         private Image _background;
-        private RectTransform _backdropTop;
-        private RectTransform _backdropBottom;
-        private RectTransform _backdropLeft;
-        private RectTransform _backdropRight;
+        private Image _backdrop;
+        private Sprite _vignetteSprite;
+        private Rect _vignetteAperture;
+        private float _vignetteUnderFrame;
+        private RectTransform _lampGlow;
+        private RectTransform _lampCore;
+        private RectTransform _lampCord;
+        private RectTransform _lampShade;
+        private Image[] _heroShadowEdges;
         private RectTransform _titlePlaqueShadow;
         private RectTransform _titlePlaque;
+        private RectTransform[] _titleNails;
+        private RectTransform _titleCatMark;
         private TMP_Text _title;
         private TMP_Text _titleCarve;
         private RectTransform _heroShadow;
         private RectTransform _hero;
         private RectTransform _dioramaWindow;
-        private Image[] _markers;
         private RectTransform _pin;
         private RectTransform _ring;
         private TMP_Text _primaryLabel;
         private RectTransform _dailyPin;
+        private RectTransform _dailyUnlockRing;
+        private Image _dailyLock;
+        private Image[] _dailyPips;
+        private bool _dailyUnlocked;
+        private bool _dailyUnlockAttention;
+        private int _dailyLifetimeCount;
+        private string _dailyTransientKey;
+        private Graphic[] _dailyPaint;
+        private Color[] _dailyColours;
         private TMP_Text _dailyLabel;
         private TMP_Text _dailyTally;
         private TMP_Text _dailyStatus;
@@ -81,6 +96,8 @@ namespace CatMetro.Presentation.Screens
         private RectTransform _audioToggle;
         private TMP_Text _audioToggleLabel;
         private Image _audioTogglePaint;
+        private Image _audioSpeaker;
+        private Rect _audioToggleHitRectPx;
         private DailyReminderSheet _reminderSheet;
         private CosmeticPortraitView _profilePortrait;
         private HomeProfileRigView _profileRig;
@@ -133,21 +150,10 @@ namespace CatMetro.Presentation.Screens
         public RectTransform ProfilePortraitTransform => _profilePortrait != null
             ? _profilePortrait.RootTransform
             : null;
-        public int MarkerCount => _markers != null ? _markers.Length : 0;
-        public Color[] MarkerColors
-        {
-            get
-            {
-                if (_markers == null) return new Color[0];
-                var colors = new Color[_markers.Length];
-                for (int i = 0; i < _markers.Length; i++) colors[i] = _markers[i].color;
-                return colors;
-            }
-        }
+        public int MarkerCount => 0;
+        public Color[] MarkerColors => System.Array.Empty<Color>();
 
-        // dailyEntryUnlocked (CM-DAILYWIRE, default false): the session-1 tree stays free of
-        // Daily objects until the save/config gate opens. GameRoot may also call UnlockDaily
-        // after a campaign win crosses that same threshold in the current run.
+        // The teaser is always visible; only the saved/configured unlock enables its input.
         public static HomeScreenView Create(Transform canvasParent,
             bool dailyEntryUnlocked = false, int lifetimeDailyCompletions = 0,
             ICosmeticPortraitSource portraitSource = null,
@@ -168,32 +174,47 @@ namespace CatMetro.Presentation.Screens
             view._background = MakeSurface(go.transform, "Background",
                 Vector2.zero, Vector2.one,
                 Palette.WithAlpha(Palette.WarmPaper, 0f), rounded: false);
-            var surroundShade = Palette.WithAlpha(Palette.DepotNavy, 0.48f);
-            view._backdropTop = MakeSurface(go.transform, "BackdropTop",
-                Vector2.zero, Vector2.one, surroundShade, false).rectTransform;
-            view._backdropBottom = MakeSurface(go.transform, "BackdropBottom",
-                Vector2.zero, Vector2.one, surroundShade, false).rectTransform;
-            view._backdropLeft = MakeSurface(go.transform, "BackdropLeft",
-                Vector2.zero, Vector2.one, surroundShade, false).rectTransform;
-            view._backdropRight = MakeSurface(go.transform, "BackdropRight",
-                Vector2.zero, Vector2.one, surroundShade, false).rectTransform;
+            view._backdrop = MakeSurface(go.transform, "HomeVignette",
+                Vector2.zero, Vector2.one, new Color(42f / 255f, 26f / 255f, 16f / 255f), false);
+            var lampGlow = MakeSurface(go.transform, "TitleLampGlow", Vector2.zero, Vector2.one,
+                Palette.WithAlpha(Palette.TicketOrange, 0.18f), false);
+            lampGlow.sprite = HudShapeSprites.RadialGlow;
+            view._lampGlow = lampGlow.rectTransform;
+            var lampCore = MakeSurface(go.transform, "TitleLampCore", Vector2.zero, Vector2.one,
+                Palette.WithAlpha(Palette.WarmPaper, 0.85f), false);
+            lampCore.sprite = HudShapeSprites.RadialGlow;
+            view._lampCore = lampCore.rectTransform;
+            view._lampCord = MakeSurface(go.transform, "LampCord", Vector2.zero, Vector2.one,
+                Palette.DepotNavy, false).rectTransform;
+            var lampShade = MakeSurface(go.transform, "LampShade", Vector2.zero, Vector2.one,
+                Palette.InkNavy, false);
+            lampShade.sprite = HudShapeSprites.Disc;
+            view._lampShade = lampShade.rectTransform;
 
             // A navy, raised sign carries the same carved-toy identity as the board labels.
             view._titlePlaqueShadow = MakeChip(go.transform, "TitlePlaqueShadow",
-                Palette.WithAlpha(Palette.DepotNavy, 0.72f));
+                Palette.WithAlpha(Palette.DepotNavy, 0.45f));
+            view._titlePlaqueShadow.GetComponent<Image>().sprite = HudShapeSprites.SoftShadow;
             view._titlePlaque = MakeChip(go.transform, "TitlePlaque", Palette.DepotNavy);
             MakeSurface(view._titlePlaque, "TitlePlaqueFace",
-                new Vector2(0.018f, 0.09f), new Vector2(0.982f, 0.98f),
+                new Vector2(0.018f, 0.045f), new Vector2(0.982f, 0.975f),
                 Palette.InkNavy, rounded: true);
-            MakeSurface(view._titlePlaque, "TitleNailLeft",
-                new Vector2(0.035f, 0.38f), new Vector2(0.075f, 0.62f),
-                Palette.TicketOrange, rounded: true);
-            MakeSurface(view._titlePlaque, "TitleNailRight",
-                new Vector2(0.925f, 0.38f), new Vector2(0.965f, 0.62f),
-                Palette.TicketOrange, rounded: true);
+            MakeSurface(view._titlePlaque, "TitleBevelTop",
+                new Vector2(0.022f, 0.93f), new Vector2(0.978f, 0.976f),
+                Color.Lerp(Palette.InkNavy, Palette.CreamCard, 0.12f), true);
+            view._titleNails = new RectTransform[4];
+            for (int i = 0; i < view._titleNails.Length; i++)
+            {
+                var nail = MakeSurface(view._titlePlaque, "TitleNail" + i,
+                    Vector2.zero, Vector2.zero,
+                    Color.Lerp(Palette.CreamCard, Palette.DepotNavy, 0.35f), false);
+                nail.sprite = HudShapeSprites.Disc;
+                view._titleNails[i] = nail.rectTransform;
+            }
+            string wordmark = Strings.UiStrings.Get("home.title").Replace(" ", "\n");
             var titleCarve = view._titleCarve = MakeText(view._titlePlaque, "TitleCarveShadow",
                 new Vector2(0.08f, 0.08f), new Vector2(0.92f, 0.94f),
-                Strings.UiStrings.Get("home.title"), 48f, Palette.DepotNavy);
+                wordmark, 48f, Palette.DepotNavy);
             titleCarve.rectTransform.anchoredPosition = new Vector2(0f, -2f);
             titleCarve.fontStyle = FontStyles.Bold;
             titleCarve.enableAutoSizing = true;
@@ -202,12 +223,18 @@ namespace CatMetro.Presentation.Screens
             titleCarve.enableWordWrapping = false;
             view._title = MakeText(view._titlePlaque, "Title",
                 new Vector2(0.08f, 0.10f), new Vector2(0.92f, 0.96f),
-                Strings.UiStrings.Get("home.title"), 48f, Palette.CreamCard);
+                wordmark, 48f, Palette.CreamCard);
             view._title.fontStyle = FontStyles.Bold;
             view._title.enableAutoSizing = true;
             view._title.fontSizeMin = 28f;
             view._title.fontSizeMax = 48f;
             view._title.enableWordWrapping = false;
+            var catMark = MakeSurface(view._titlePlaque, "TitleCatMark",
+                Vector2.zero, Vector2.zero, Color.white, false);
+            catMark.sprite = Resources.Load<Sprite>("Theme/HomeCatMark");
+            catMark.useSpriteMesh = true;
+            catMark.preserveAspect = true;
+            view._titleCatMark = catMark.rectTransform;
 
             // The frame is opaque, but its center is not an Image: pixels there come straight
             // from the real board camera. Split edge geometry avoids the classic full-card fill
@@ -215,61 +242,39 @@ namespace CatMetro.Presentation.Screens
             view._heroShadow = MakeRect(go.transform, "HeroShadow");
             MakeSurface(view._heroShadow, "DioramaShadowTop",
                 new Vector2(0.018f, 0.918f), new Vector2(0.982f, 0.992f),
-                Palette.WithAlpha(Palette.DepotNavy, 0.72f), false);
+                Palette.WithAlpha(Palette.DepotNavy, 0.45f), false);
             MakeSurface(view._heroShadow, "DioramaShadowBottom",
                 new Vector2(0.018f, 0.008f), new Vector2(0.982f, 0.082f),
-                Palette.WithAlpha(Palette.DepotNavy, 0.72f), false);
+                Palette.WithAlpha(Palette.DepotNavy, 0.45f), false);
             MakeSurface(view._heroShadow, "DioramaShadowLeft",
                 new Vector2(0.018f, 0.07f), new Vector2(0.082f, 0.93f),
-                Palette.WithAlpha(Palette.DepotNavy, 0.72f), false);
+                Palette.WithAlpha(Palette.DepotNavy, 0.45f), false);
             MakeSurface(view._heroShadow, "DioramaShadowRight",
                 new Vector2(0.918f, 0.07f), new Vector2(0.982f, 0.93f),
-                Palette.WithAlpha(Palette.DepotNavy, 0.72f), false);
+                Palette.WithAlpha(Palette.DepotNavy, 0.45f), false);
+
+            view._heroShadowEdges = view._heroShadow.GetComponentsInChildren<Image>();
+            foreach (var edge in view._heroShadowEdges)
+            {
+                edge.sprite = HudShapeSprites.SoftShadow;
+                edge.type = Image.Type.Sliced;
+            }
 
             view._hero = MakeRect(go.transform, "HeroCard");
             view._dioramaWindow = MakeRect(view._hero, "DioramaWindow",
                 new Vector2(WindowXMin, WindowYMin),
                 new Vector2(WindowXMax, WindowYMax));
             MakeSurface(view._hero, "DioramaFrameTop",
-                new Vector2(0.025f, 0.925f), new Vector2(0.975f, 0.99f),
-                Palette.CreamCard, false);
+                new Vector2(0.02f, 0.95f), new Vector2(0.98f, 0.99f), Palette.CreamCard, false);
             MakeSurface(view._hero, "DioramaFrameBottom",
-                new Vector2(0.025f, 0.01f), new Vector2(0.975f, 0.08f),
-                Palette.CreamCard, false);
+                new Vector2(0.02f, 0.01f), new Vector2(0.98f, 0.05f), Palette.CreamCard, false);
             MakeSurface(view._hero, "DioramaFrameLeft",
-                new Vector2(0.025f, 0.07f), new Vector2(0.08f, 0.935f),
-                Palette.CreamCard, false);
+                new Vector2(0.02f, 0.05f), new Vector2(0.05f, 0.95f), Palette.CreamCard, false);
             MakeSurface(view._hero, "DioramaFrameRight",
-                new Vector2(0.92f, 0.07f), new Vector2(0.975f, 0.935f),
-                Palette.CreamCard, false);
-            MakeSurface(view._hero, "DioramaInnerTop",
-                new Vector2(0.075f, 0.918f), new Vector2(0.925f, 0.93f),
-                Palette.InkNavy, false);
-            MakeSurface(view._hero, "DioramaInnerBottom",
-                new Vector2(0.075f, 0.075f), new Vector2(0.925f, 0.087f),
-                Palette.InkNavy, false);
-            MakeSurface(view._hero, "DioramaInnerLeft",
-                new Vector2(0.068f, 0.075f), new Vector2(0.08f, 0.93f),
-                Palette.InkNavy, false);
-            MakeSurface(view._hero, "DioramaInnerRight",
-                new Vector2(0.92f, 0.075f), new Vector2(0.932f, 0.93f),
-                Palette.InkNavy, false);
-            MakeSurface(view._hero, "WindowLampLeft",
-                new Vector2(0.085f, 0.938f), new Vector2(0.125f, 0.975f),
-                Palette.TicketOrange, true);
-            MakeSurface(view._hero, "WindowLampRight",
-                new Vector2(0.875f, 0.938f), new Vector2(0.915f, 0.975f),
-                Palette.TicketOrange, true);
-
-            // These exact direct-child Image holders are an integration seam. Cosmetics may
-            // mount portrait/model roots beneath them; Home never traverses or normalizes those
-            // roots, whose provider-authored localPosition and ~300x holder scale stay intact.
-            MakeSilhouette(view._hero, "ParkedDistrictA",
-                new Vector2(0.11f, 0.665f), new Vector2(0.33f, 0.815f));
+                new Vector2(0.95f, 0.05f), new Vector2(0.98f, 0.95f), Palette.CreamCard, false);
+            // B remains the shared portrait/rig mount; empty furniture has no Home role.
             var parkedDistrictB = MakeSilhouette(view._hero, "ParkedDistrictB",
                 new Vector2(0.67f, 0.455f), new Vector2(0.89f, 0.605f));
-            MakeSilhouette(view._hero, "ParkedDistrictC",
-                new Vector2(0.11f, 0.245f), new Vector2(0.33f, 0.395f));
             if (portraitSource != null)
             {
                 parkedDistrictB.color = Color.clear;
@@ -280,16 +285,6 @@ namespace CatMetro.Presentation.Screens
                         parkedDistrictB.rectTransform, view._profilePortrait, catCatalog);
                 else HomeProfileRigView.ReportUnavailable(catCatalog);
             }
-
-            view._markers = new[]
-            {
-                MakeSurface(view._hero, "RouteMarkerA", new Vector2(0.135f, 0.845f),
-                    new Vector2(0.17f, 0.885f), Palette.SignalRed, true),
-                MakeSurface(view._hero, "RouteMarkerB", new Vector2(0.83f, 0.845f),
-                    new Vector2(0.865f, 0.885f), Palette.HarborBlue, true),
-                MakeSurface(view._hero, "RouteMarkerC", new Vector2(0.135f, 0.095f),
-                    new Vector2(0.17f, 0.135f), Palette.TabbyYellow, true),
-            };
 
             // The raised-ring shape twin sits BEHIND the pin (sibling order = draw order).
             // The ring is the single warm CTA glow; the navy lip and cream face make the route
@@ -325,77 +320,99 @@ namespace CatMetro.Presentation.Screens
             view._primaryLabel.fontSizeMax = 42f;
             view._primaryLabel.fontStyle = FontStyles.Bold;
 
+            view.BuildDailyPin();
             if (dailyEntryUnlocked) view.UnlockDaily(lifetimeDailyCompletions);
+            else view.RefreshDailyPaint();
 
             go.SetActive(false);
             return view;
         }
 
-        // Opens the same save/config-gated surface both at boot and when the threshold is
-        // crossed during play. Idempotent so a duplicate outcome observation cannot stack
-        // render objects or input regions.
-        public void UnlockDaily(int lifetimeDailyCompletions)
+        private void BuildDailyPin()
         {
-            if (_dailyPin == null)
+            _dailyUnlockRing = MakeChip(transform, "DailyUnlockRing", Palette.TicketOrange);
+            _dailyUnlockRing.gameObject.SetActive(false);
+            _dailyPin = MakeChip(transform, "PinDaily", Palette.DepotNavy);
+            var face = MakeSurface(_dailyPin, "DailyButtonFace",
+                new Vector2(0.008f, 0.10f), new Vector2(0.992f, 0.99f), Palette.CreamCard, true);
+            _dailyLock = MakeSurface(face.transform, "DailyLock", Vector2.zero, Vector2.zero,
+                Palette.DepotNavy, false);
+            _dailyLock.sprite = HudShapeSprites.Padlock;
+            _dailyLock.preserveAspect = true;
+            _dailyLabel = MakeText(face.transform, "PinDailyLabel",
+                new Vector2(0.22f, 0.22f), new Vector2(0.93f, 0.94f),
+                Strings.UiStrings.Get("home.daily.label"), TypeScale.Body, Palette.InkNavy);
+            _dailyLabel.enableWordWrapping = false;
+            _dailyPips = new Image[7];
+            for (int i = 0; i < _dailyPips.Length; i++)
             {
-                _dailyPin = MakeChip(transform, "PinDaily", Palette.DepotNavy);
-                var dailyFace = MakeSurface(_dailyPin, "DailyButtonFace",
-                    new Vector2(0.008f, 0.10f), new Vector2(0.992f, 0.99f),
-                    Palette.CreamCard, true);
-                var dailyIcon = MakeSurface(dailyFace.transform, "DailyIconTile",
-                    new Vector2(0.035f, 0.14f), new Vector2(0.185f, 0.88f),
-                    Palette.MetroTeal, true);
-                MakeSurface(dailyIcon.transform, "DailyIconPage",
-                    new Vector2(0.20f, 0.18f), new Vector2(0.80f, 0.72f),
-                    Palette.CreamCard, true);
-                MakeSurface(dailyIcon.transform, "DailyIconBinding",
-                    new Vector2(0.20f, 0.67f), new Vector2(0.80f, 0.81f),
-                    Palette.TicketOrange, true);
-                _dailyLabel = MakeText(dailyFace.transform, "PinDailyLabel",
-                    new Vector2(0.22f, 0.50f), new Vector2(0.94f, 0.94f),
-                    Strings.UiStrings.Get("home.daily.label"), 28f, Palette.InkNavy); // key-only, never a literal
-                _dailyLabel.enableAutoSizing = true;
-                _dailyLabel.fontSizeMin = 18f;
-                _dailyLabel.fontSizeMax = 28f;
-                _dailyLabel.fontStyle = FontStyles.Bold;
-                _dailyTally = MakeText(dailyFace.transform, "LifetimeTally",
-                    new Vector2(0.22f, 0.08f), new Vector2(0.94f, 0.53f),
-                    "", 14f, Palette.InkNavy);
-                _dailyTally.enableAutoSizing = true;
-                _dailyTally.fontSizeMin = TypeScale.Minimum;
-                _dailyTally.fontSizeMax = 14f;
-                _dailyStatus = MakeText(dailyFace.transform, "DailyStatus",
-                    new Vector2(0.22f, 0.08f), new Vector2(0.94f, 0.53f),
-                    "", 14f, Palette.InkNavy);
-                _dailyStatus.enableAutoSizing = true;
-                _dailyStatus.fontSizeMin = TypeScale.Minimum;
-                _dailyStatus.fontSizeMax = 14f;
-                _dailyStatus.gameObject.SetActive(false);
+                _dailyPips[i] = MakeSurface(face.transform, "DailyWinPip" + i,
+                    Vector2.zero, Vector2.zero, Palette.DepotNavy, false);
+                _dailyPips[i].sprite = HudShapeSprites.Disc;
             }
+            // Caption sits in the reserved bottom breathing room, so a half-width pill never
+            // squeezes the 12dp type floor to fit a two-line explanation.
+            _dailyTally = MakeText(_dailyPin, "LifetimeTally", Vector2.zero, Vector2.zero,
+                "", TypeScale.Caption, Palette.CreamCard);
+            _dailyStatus = MakeText(_dailyPin, "DailyStatus", Vector2.zero, Vector2.zero,
+                "", TypeScale.Caption, Palette.CreamCard);
+            _dailyTally.enableWordWrapping = _dailyStatus.enableWordWrapping = true;
+            _dailyPaint = _dailyPin.GetComponentsInChildren<Graphic>(true);
+            _dailyColours = new Color[_dailyPaint.Length];
+            for (int i = 0; i < _dailyPaint.Length; i++) _dailyColours[i] = _dailyPaint[i].color;
+            SetCampaignWinCount(0);
+        }
 
+        public void UnlockDaily(int lifetimeDailyCompletions, bool highlight = false)
+        {
+            if (!_dailyUnlocked && highlight) _dailyUnlockAttention = true;
+            _dailyUnlocked = true;
             SetDailyLifetimeCompletions(lifetimeDailyCompletions);
+            SetCampaignWinCount(7);
+            RefreshDailyPaint();
             LayoutForViewport(Screen.safeArea, Screen.dpi);
             if (_shown && isActiveAndEnabled) RegisterDailyPin();
         }
 
-        public void SetDailyLifetimeCompletions(int count)
+        public void SetCampaignWinCount(int count)
         {
-            if (_dailyTally == null) return;
-            int safeCount = Mathf.Max(0, count);
-            _dailyTally.text = Strings.UiStrings.Get("home.daily.tally")
-                .Replace("{count}", safeCount.ToString(
-                    System.Globalization.CultureInfo.InvariantCulture));
+            if (_dailyPips == null) return;
+            int filled = _dailyUnlocked ? 7 : Mathf.Clamp(count, 0, 7);
+            for (int i = 0; i < _dailyPips.Length; i++)
+                _dailyPips[i].color = i < filled ? Palette.MetroTeal
+                    : Palette.WithAlpha(Palette.DepotNavy, 0.25f);
         }
 
-        // Cache fallback work and failures stay on Home. Surface that state in the existing
-        // Daily chip so the tap never appears dead; null/empty clears it and restores the tally.
+        private void RefreshDailyPaint()
+        {
+            for (int i = 0; i < _dailyPaint.Length; i++)
+                if (!_dailyPaint[i].name.StartsWith("DailyWinPip"))
+                    _dailyPaint[i].color = Palette.WithAlpha(_dailyColours[i], _dailyUnlocked ? 1f : 0.6f);
+            _dailyLock.gameObject.SetActive(!_dailyUnlocked);
+            _dailyLabel.rectTransform.anchorMin = new Vector2(_dailyUnlocked ? 0.07f : 0.22f, 0.22f);
+            _dailyUnlockRing.gameObject.SetActive(_dailyUnlocked && _dailyUnlockAttention);
+            SetDailyStatusKey(_dailyTransientKey);
+        }
+
+        public void SetDailyLifetimeCompletions(int count)
+        {
+            _dailyLifetimeCount = Mathf.Max(0, count);
+            _dailyTally.text = _dailyLifetimeCount > 0
+                ? Strings.UiStrings.Get("home.daily.tally").Replace("{count}", _dailyLifetimeCount.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture)) : "";
+            SetDailyStatusKey(_dailyTransientKey);
+        }
+
         public void SetDailyStatusKey(string key)
         {
             if (_dailyStatus == null || _dailyTally == null) return;
-            bool hasStatus = !string.IsNullOrEmpty(key);
-            _dailyStatus.text = hasStatus ? Strings.UiStrings.Get(key) : "";
-            _dailyStatus.gameObject.SetActive(hasStatus);
-            _dailyTally.gameObject.SetActive(!hasStatus);
+            _dailyTransientKey = key;
+            string statusKey = !_dailyUnlocked ? "home.daily.locked"
+                : !string.IsNullOrEmpty(key) ? key
+                : _dailyLifetimeCount == 0 ? "home.daily.ready" : null;
+            _dailyStatus.text = statusKey != null ? Strings.UiStrings.Get(statusKey) : "";
+            _dailyStatus.gameObject.SetActive(statusKey != null);
+            _dailyTally.gameObject.SetActive(_dailyUnlocked && _dailyLifetimeCount > 0 && statusKey == null);
         }
 
         // The sound setting is independent of Daily progression. GameRoot configures it on
@@ -407,7 +424,8 @@ namespace CatMetro.Presentation.Screens
             _audioEnabled = enabled;
             _audioToggleLabel.text = Strings.UiStrings.Get(
                 enabled ? "settings.audio.on" : "settings.audio.off");
-            _audioTogglePaint.color = enabled ? Palette.MetroTeal : Palette.CreamCard;
+            _audioTogglePaint.color = Palette.CreamCard;
+            _audioSpeaker.sprite = enabled ? HudShapeSprites.SpeakerOn : HudShapeSprites.SpeakerOff;
             LayoutForViewport(Screen.safeArea, Screen.dpi);
             if (_shown && isActiveAndEnabled) RegisterAudioToggle();
         }
@@ -415,14 +433,23 @@ namespace CatMetro.Presentation.Screens
         private void EnsureAudioToggle()
         {
             if (_audioToggle != null) return;
-            _audioToggle = MakeChip(transform, "SoundToggle", Palette.MetroTeal);
+            _audioToggle = MakeChip(transform, "SoundToggle", Palette.CreamCard);
             _audioTogglePaint = _audioToggle.GetComponent<Image>();
+            _audioTogglePaint.sprite = HudShapeSprites.Disc;
+            _audioTogglePaint.type = Image.Type.Simple;
+            _audioTogglePaint.preserveAspect = true;
+            _audioSpeaker = MakeSurface(_audioToggle, "SpeakerGlyph",
+                new Vector2(0.20f, 0.20f), new Vector2(0.80f, 0.80f), Palette.InkNavy, false);
+            _audioSpeaker.sprite = HudShapeSprites.SpeakerOn;
+            _audioSpeaker.preserveAspect = true;
             _audioToggleLabel = MakeText(_audioToggle, "SoundToggleLabel",
                 Vector2.zero, Vector2.one, "", 17f, Palette.InkNavy);
             _audioToggleLabel.enableAutoSizing = true;
             _audioToggleLabel.fontSizeMin = TypeScale.Minimum;
             _audioToggleLabel.fontSizeMax = 17f;
             _audioToggleLabel.fontStyle = FontStyles.Bold;
+            // Keep the CSV-backed semantic label available to accessibility/read-back callers.
+            _audioToggleLabel.gameObject.SetActive(false);
         }
 
         public void ConfigureReminder(bool configurationUnlocked, bool enabled,
@@ -588,6 +615,8 @@ namespace CatMetro.Presentation.Screens
         public void Hide()
         {
             _shown = false;
+            _dailyUnlockAttention = false;
+            if (_dailyUnlockRing != null) _dailyUnlockRing.gameObject.SetActive(false);
             if (_reminderSheet != null) _reminderSheet.Hide();
             UnregisterPin();
             UnregisterDailyPin();
@@ -598,6 +627,7 @@ namespace CatMetro.Presentation.Screens
 
         private void OnDestroy()
         {
+            ReleaseVignette();
             UnregisterPin(); // R1-F3 lifetime law
             UnregisterDailyPin();
             UnregisterReminderGear();
@@ -654,14 +684,10 @@ namespace CatMetro.Presentation.Screens
             }
         }
 
-        // CM-DAILYWIRE: the Daily pin's own register/unregister pair — same shape as
-        // RegisterPin/UnregisterPin above, a second call site into the identical lifetime law
-        // (R1-F3), never a parallel implementation of it. Guarded on _dailyPin != null: when
-        // Create() ran with dailyEntryUnlocked false, no pin exists to register a hit region
-        // for — S-01 forbids even an invisible one.
+        // Teaser paint does not bypass the existing campaign unlock gate.
         private void RegisterDailyPin()
         {
-            if (_dailyPin != null && _regions != null && !_dailyRegistered)
+            if (_dailyUnlocked && _regions != null && !_dailyRegistered)
             {
                 _regions.Register(DailyPinRegionId, () => _dailyPinRectPx,
                     () => DailySelected?.Invoke(), DailyPinRegionPriority);
@@ -701,7 +727,7 @@ namespace CatMetro.Presentation.Screens
         {
             if (_audioToggle != null && _regions != null && !_audioToggleRegistered)
             {
-                _regions.Register(AudioToggleRegionId, () => _audioToggleRectPx,
+                _regions.Register(AudioToggleRegionId, () => _audioToggleHitRectPx,
                     () => AudioEnabledChanged?.Invoke(!_audioEnabled),
                     AudioToggleRegionPriority);
                 _audioToggleRegistered = true;
@@ -745,40 +771,84 @@ namespace CatMetro.Presentation.Screens
             float windowXMax = _heroRectPx.x + _heroRectPx.width * WindowXMax;
             float windowYMin = _heroRectPx.y + _heroRectPx.height * WindowYMin;
             float windowYMax = _heroRectPx.y + _heroRectPx.height * WindowYMax;
-            ApplyPx(_backdropBottom, new Rect(viewport.xMin, viewport.yMin,
-                viewport.width, Mathf.Max(0f, windowYMin - viewport.yMin)));
-            ApplyPx(_backdropTop, new Rect(viewport.xMin, windowYMax, viewport.width,
-                Mathf.Max(0f, viewport.yMax - windowYMax)));
-            ApplyPx(_backdropLeft, new Rect(viewport.xMin, windowYMin,
-                Mathf.Max(0f, windowXMin - viewport.xMin),
-                Mathf.Max(0f, windowYMax - windowYMin)));
-            ApplyPx(_backdropRight, new Rect(windowXMax, windowYMin,
-                Mathf.Max(0f, viewport.xMax - windowXMax),
-                Mathf.Max(0f, windowYMax - windowYMin)));
+            var aperture = Rect.MinMaxRect(
+                (windowXMin - viewport.xMin) / viewport.width,
+                (windowYMin - viewport.yMin) / viewport.height,
+                (windowXMax - viewport.xMin) / viewport.width,
+                (windowYMax - viewport.yMin) / viewport.height);
+            float px = HudBands.PxPerDp(dpi);
+            float underFrame = (windowYMin - _heroRectPx.yMin + 40f * px) / viewport.height;
+            if (_vignetteSprite == null || _vignetteAperture != aperture
+                || !Mathf.Approximately(_vignetteUnderFrame, underFrame))
+            {
+                ReleaseVignette();
+                _vignetteAperture = aperture;
+                _vignetteUnderFrame = underFrame;
+                _vignetteSprite = HudShapeSprites.CreateHomeVignette(aperture, underFrame);
+                _backdrop.sprite = _vignetteSprite;
+            }
+            ApplyPx(_backdrop.rectTransform, viewport);
             ApplyPx(_hero, _heroRectPx);
-            float shadowDx = 4f * HudBands.PxPerDp(dpi);
-            float shadowDy = 6f * HudBands.PxPerDp(dpi);
-            ApplyPx(_heroShadow, new Rect(_heroRectPx.x + shadowDx,
-                _heroRectPx.y - shadowDy, _heroRectPx.width, _heroRectPx.height));
+            float margin = HomeLayout.ShadowMarginDp * px;
+            var outer = new Rect(_heroRectPx.x - margin, _heroRectPx.y - margin,
+                _heroRectPx.width + margin * 2f, _heroRectPx.height + margin * 2f);
+            ApplyPx(_heroShadow, outer);
+            LayoutShadowEdge(_heroShadowEdges[0], Rect.MinMaxRect(outer.xMin, windowYMax,
+                outer.xMax, outer.yMax), outer);
+            LayoutShadowEdge(_heroShadowEdges[1], Rect.MinMaxRect(outer.xMin, outer.yMin,
+                outer.xMax, windowYMin), outer);
+            LayoutShadowEdge(_heroShadowEdges[2], Rect.MinMaxRect(outer.xMin, windowYMin,
+                windowXMin, windowYMax), outer);
+            LayoutShadowEdge(_heroShadowEdges[3], Rect.MinMaxRect(windowXMax, windowYMin,
+                outer.xMax, windowYMax), outer);
+            foreach (var edge in _heroShadowEdges) edge.pixelsPerUnitMultiplier = 1f / px;
+            _titlePlaqueShadow.GetComponent<Image>().pixelsPerUnitMultiplier = 1f / px;
+            float lampY = viewport.yMax - 11f * px;
+            float lampX = safeArea.center.x;
+            ApplyPx(_lampGlow, new Rect(lampX - 80f * px, lampY - 48f * px, 160f * px, 80f * px));
+            ApplyPx(_lampCore, new Rect(lampX - 13f * px, lampY - 13f * px, 26f * px, 10f * px));
+            ApplyPx(_lampCord, new Rect(lampX - px, lampY, 2f * px, viewport.yMax - lampY));
+            ApplyPx(_lampShade, new Rect(lampX - 14f * px, lampY - 6f * px, 28f * px, 12f * px));
             var titlePlaque = HomeLayout.TitleRect(safeArea, dpi,
                 _audioToggle != null, _reminderGear != null);
             ApplyPx(_titlePlaque, titlePlaque);
             ApplyPx(_titlePlaqueShadow, HomeLayout.TitleShadowRect(titlePlaque, dpi));
+            _title.lineSpacing = _titleCarve.lineSpacing = -4f * px;
+            _titleCarve.rectTransform.anchoredPosition = new Vector2(0f, -2f * px);
+            for (int i = 0; i < _titleNails.Length; i++)
+            {
+                float x = i % 2 == 0 ? 10f * px : titlePlaque.width - 10f * px;
+                float y = i < 2 ? 10f * px : titlePlaque.height - 10f * px;
+                ApplyPx(_titleNails[i], new Rect(x - 3f * px, y - 3f * px, 6f * px, 6f * px));
+            }
+            ApplyPx(_titleCatMark, new Rect(-46f * px, 4f * px, 48f * px, 48f * px));
 
-            // Guarded: null when Create() ran with dailyEntryUnlocked false (S-01).
+            // The two secondary routes retain their geometry across Daily unlock.
             if (_dailyPin != null)
             {
                 _dailyPinRectPx = HomeLayout.DailyPinRect(safeArea, dpi);
                 ApplyPx(_dailyPin, _dailyPinRectPx);
+                var daily = _dailyPinRectPx;
+                ApplyPx(_dailyUnlockRing, new Rect(daily.x - 2f * px, daily.y - 2f * px,
+                    daily.width + 4f * px, daily.height + 4f * px));
+                ApplyPx(_dailyLock.rectTransform, new Rect(8f * px, 17f * px, 20f * px, 22f * px));
+                float pipStart = daily.width * 0.5f - 30f * px;
+                for (int i = 0; i < 7; i++)
+                    ApplyPx(_dailyPips[i].rectTransform,
+                        new Rect(pipStart + i * 9f * px, 6f * px, 6f * px, 6f * px));
+                var caption = new Rect(0f, -35f * px, daily.width, 34f * px);
+                ApplyPx(_dailyTally.rectTransform, caption);
+                ApplyPx(_dailyStatus.rectTransform, caption);
             }
             if (_reminderGear != null)
             {
-                _reminderGearRectPx = DailyReminderLayout.GearRect(safeArea, dpi);
+                _reminderGearRectPx = HomeLayout.ReminderGearRect(safeArea, dpi);
                 ApplyPx(_reminderGear, _reminderGearRectPx);
             }
             if (_audioToggle != null)
             {
                 _audioToggleRectPx = HomeLayout.AudioToggleRect(safeArea, dpi);
+                _audioToggleHitRectPx = HomeLayout.AudioToggleHitRect(safeArea, dpi);
                 ApplyPx(_audioToggle, _audioToggleRectPx);
             }
             if (_reminderSheet != null && _reminderSheet.IsVisible)
@@ -788,6 +858,30 @@ namespace CatMetro.Presentation.Screens
                 Canvas canvas = GetComponentInParent<Canvas>();
                 _profileRig.Layout(canvas != null ? canvas.worldCamera : null);
             }
+        }
+
+        private static void LayoutShadowEdge(Image edge, Rect screenRect, Rect outer)
+        {
+            screenRect.position -= outer.position;
+            ApplyPx(edge.rectTransform, screenRect);
+        }
+
+        private void ReleaseVignette()
+        {
+            if (_vignetteSprite == null) return;
+#if UNITY_EDITOR
+            if (!UnityEngine.Application.isPlaying)
+            {
+                DestroyImmediate(_vignetteSprite.texture);
+                DestroyImmediate(_vignetteSprite);
+            }
+            else
+#endif
+            {
+                Destroy(_vignetteSprite.texture);
+                Destroy(_vignetteSprite);
+            }
+            _vignetteSprite = null;
         }
 
         private static void ApplyPx(RectTransform rect, Rect px)

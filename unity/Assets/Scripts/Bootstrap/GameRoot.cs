@@ -37,6 +37,8 @@ namespace CatMetro.Bootstrap
     public sealed class GameRoot : MonoBehaviour
     {
         private static bool _factoryConstructing; // review N1
+        private UnityEngine.UI.Image _homeBootFade;
+        private float _homeBootElapsed;
 
         public GameSession Session { get; private set; }
         public BoardView View { get; private set; }
@@ -529,7 +531,7 @@ namespace CatMetro.Bootstrap
             // HUD-WAVE: the preview hides itself on Won/FailureReview. Explicit state binding,
             // NOT z-order — the banner happens to sort above the HUD, but two views owned by
             // different lanes must not depend on that to stay correct.
-            Preview.BindScreenState(() => ScreenState);
+            Preview.BindScreenState(() => ScreensVisible ? "Home" : ScreenState);
             Log = gameObject.AddComponent<FrameLog>();
             Log.SimTickSource = () => Session.State.Tick;
             Log.ScreenStateSource = () => ScreenState;
@@ -613,6 +615,7 @@ namespace CatMetro.Bootstrap
                 canvasGo.transform, dailyUnlocked, LifetimeDailyCompletions, _cosmetics,
                 CatMetro.Presentation.Cats.CatModelCatalog.LoadResources());
             Home.Attach(Input.Regions, () => MotionOff);
+            Home.SetCampaignWinCount(_dailyProgress?.CampaignCompletions ?? 0);
             Home.ConfigureAudio(Audio == null || Audio.Enabled);
             Home.AudioEnabledChanged = OnAudioEnabledChanged;
             Home.ReminderAccepted = BeginEnableDailyReminder;
@@ -677,6 +680,25 @@ namespace CatMetro.Bootstrap
             };
 
             ShowHomeForPresentation();
+            var cover = new GameObject("HomeBootFade", typeof(RectTransform));
+            cover.transform.SetParent(canvasGo.transform, false);
+            var coverRect = (RectTransform)cover.transform;
+            coverRect.anchorMin = Vector2.zero;
+            coverRect.anchorMax = Vector2.one;
+            coverRect.offsetMin = coverRect.offsetMax = Vector2.zero;
+            _homeBootFade = cover.AddComponent<UnityEngine.UI.Image>();
+            _homeBootFade.color = CatMetro.Presentation.Theme.Palette.InkNavy;
+            _homeBootFade.raycastTarget = false;
+        }
+
+        private void AdvanceHomeBootFade(float seconds)
+        {
+            if (_homeBootFade == null || !_homeBootFade.gameObject.activeSelf) return;
+            _homeBootElapsed += Mathf.Max(0f, seconds);
+            float alpha = MotionOff ? 0f : Mathf.Clamp01(1f - _homeBootElapsed / 0.3f);
+            _homeBootFade.color = CatMetro.Presentation.Theme.Palette.WithAlpha(
+                CatMetro.Presentation.Theme.Palette.InkNavy, alpha);
+            if (alpha <= 0f) _homeBootFade.gameObject.SetActive(false);
         }
 
         private void ShowHomeForPresentation()
@@ -1177,7 +1199,7 @@ namespace CatMetro.Bootstrap
             if (Preview != null) Destroy(Preview.gameObject);
             Preview = WavePreviewStrip.Create(transform, Session, Cam);
             BindPreviewCatMotion();
-            Preview.BindScreenState(() => ScreenState); // rebind on the REBUILT preview
+            Preview.BindScreenState(() => ScreensVisible ? "Home" : ScreenState); // rebind on the REBUILT preview
             Banner.Hide();
             CauseCam.Reset(); // clears the ring AND restores this level's fitted play pose
             _halted = false;
@@ -1595,6 +1617,7 @@ namespace CatMetro.Bootstrap
 
         private void Update()
         {
+            AdvanceHomeBootFade(Time.unscaledDeltaTime);
             if (!IsTransitioning) PumpDailyFallback();
             PumpMessagingRoutes();
             PumpForegroundPermissionRecheck();
@@ -1699,11 +1722,12 @@ namespace CatMetro.Bootstrap
                 {
                     int campaignCompletions =
                         _dailyProgress.RecordCampaignCompletion(_level.Dto.Id);
+                    Home?.SetCampaignWinCount(campaignCompletions);
                     if (!_dailyEntryUnlocked
                         && campaignCompletions >= DailyUnlockAfterCampaignCompletions)
                     {
                         _dailyEntryUnlocked = true;
-                        Home?.UnlockDaily(LifetimeDailyCompletions);
+                        Home?.UnlockDaily(LifetimeDailyCompletions, highlight: true);
                         _returnHomeAfterCampaignUnlock = true;
                         var results = GetComponent<ResultsPanel>();
                         if (results != null) results.SetCtaTextKey("results.daily.done");

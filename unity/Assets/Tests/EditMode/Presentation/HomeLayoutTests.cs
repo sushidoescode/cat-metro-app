@@ -18,9 +18,9 @@ namespace CatMetro.Tests.Presentation
 
             Assert.That(pin.width, Is.EqualTo(320f).Within(0.001f),
                 "the primary action spans the safe card width, not a lone square");
-            Assert.That(pin.height, Is.EqualTo(60f).Within(0.001f));
+            Assert.That(pin.height, Is.EqualTo(64f).Within(0.001f));
             Assert.That(pin.x, Is.EqualTo(20f).Within(0.001f), "20dp side inset");
-            Assert.That(pin.y, Is.EqualTo(84f).Within(0.001f),
+            Assert.That(pin.y, Is.EqualTo(96f).Within(0.001f),
                 "Play stacks immediately above the bottom Wardrobe route");
 
             Assert.That(HudBands.MeetsMinTargetPx(pin, 160f), Is.True,
@@ -53,11 +53,11 @@ namespace CatMetro.Tests.Presentation
             var pin = HomeLayout.PinRect(safeArea, 160f);
             var band = HudBands.ThumbBand(safeArea);
 
-            Assert.That(pin.y, Is.EqualTo(132f).Within(0.001f),
+            Assert.That(pin.y, Is.EqualTo(144f).Within(0.001f),
                 "the complete route stack rises with the safe bottom");
             Assert.That(HudBands.MeetsMinTargetPx(pin, 160f), Is.True);
             Assert.That(pin.yMin, Is.GreaterThanOrEqualTo(band.yMin));
-            Assert.That(pin.yMax, Is.LessThanOrEqualTo(band.yMax));
+            Assert.That(pin.yMax, Is.LessThan(HomeLayout.HeroRect(safeArea, 160f).yMin));
         }
 
         [Test]
@@ -82,14 +82,14 @@ namespace CatMetro.Tests.Presentation
             var hero = HomeLayout.HeroRect(safeArea, dpi);
             var cta = HomeLayout.PinRect(safeArea, dpi);
 
-            Assert.That(header, Is.EqualTo(new Rect(51f, 1769.8f, 815f, 214.2f))
+            Assert.That(header, Is.EqualTo(new Rect(51f, 1652.5f, 815f, 331.5f))
                 .Using(RectComparer.Within(0.01f)));
-            Assert.That(hero, Is.EqualTo(new Rect(51f, 472f, 815f, 1257f))
+            Assert.That(hero, Is.EqualTo(new Rect(51f, 512.8f, 815f, 1098.9f))
                 .Using(RectComparer.Within(0.01f)));
-            Assert.That(cta, Is.EqualTo(new Rect(51f, 278.2f, 815f, 153f))
+            Assert.That(cta, Is.EqualTo(new Rect(51f, 308.8f, 815f, 163.2f))
                 .Using(RectComparer.Within(0.01f)));
 
-            Assert.That(hero.height, Is.GreaterThan(cta.height * 7f),
+            Assert.That(hero.height, Is.GreaterThan(safeArea.height * 0.55f),
                 "the depot stage is the visual focal point");
             Assert.That(hero.yMax, Is.LessThan(header.yMin));
             Assert.That(hero.yMin, Is.GreaterThan(cta.yMax));
@@ -98,7 +98,7 @@ namespace CatMetro.Tests.Presentation
         }
 
         [Test]
-        public void DailyLayout_AddsAMiddleRoute_WithoutLeavingTheSafeArea()
+        public void DailyLayout_SharesTheWardrobeRow_WithoutLeavingTheSafeArea()
         {
             var safeArea = new Rect(0f, 64f, 917f, 1920f);
             const float dpi = 408f;
@@ -107,45 +107,18 @@ namespace CatMetro.Tests.Presentation
             var daily = HomeLayout.DailyPinRect(safeArea, dpi);
             var wardrobe = WardrobeLayout.EntryRect(safeArea, dpi);
 
-            Assert.That(wardrobe.yMax, Is.LessThanOrEqualTo(daily.yMin),
-                "Daily stacks above Wardrobe");
+            Assert.That(wardrobe.y, Is.EqualTo(daily.y));
+            Assert.That(daily.xMax, Is.LessThan(wardrobe.xMin), "the secondary routes have separate tap regions");
             Assert.That(daily.yMax, Is.LessThanOrEqualTo(primary.yMin),
                 "Play stacks above Daily");
             Assert.That(primary.xMin, Is.GreaterThanOrEqualTo(safeArea.xMin));
             Assert.That(primary.xMax, Is.LessThanOrEqualTo(safeArea.xMax));
             Assert.That(daily.x, Is.EqualTo(primary.x).Within(0.01f));
-            Assert.That(daily.width, Is.EqualTo(primary.width).Within(0.01f));
+            Assert.That(daily.width, Is.EqualTo(wardrobe.width).Within(0.01f));
             Assert.That(primary.yMin, Is.GreaterThanOrEqualTo(safeArea.yMin));
             Assert.That(daily.yMax, Is.LessThanOrEqualTo(safeArea.yMax));
             Assert.That(HudBands.MeetsMinTargetPx(primary, dpi), Is.True);
             Assert.That(HudBands.MeetsMinTargetPx(daily, dpi), Is.True);
-        }
-
-        [Test]
-        public void HomeRoutes_StackAsFullWidthButtons_WithoutAnEmptyLockedDailySlot()
-        {
-            var safeArea = new Rect(0f, 0f, 360f, 640f);
-            const float dpi = 160f;
-
-            var wardrobe = WardrobeLayout.EntryRect(safeArea, dpi);
-            var lockedPlay = HomeLayout.PrimaryPinRect(
-                safeArea, dpi, dailyEntryUnlocked: false);
-            var daily = HomeLayout.DailyPinRect(safeArea, dpi);
-            var unlockedPlay = HomeLayout.PrimaryPinRect(
-                safeArea, dpi, dailyEntryUnlocked: true);
-
-            Assert.That(wardrobe, Is.EqualTo(new Rect(20f, 16f, 320f, 60f))
-                .Using(RectComparer.Within(0.001f)),
-                "Wardrobe owns the fixed bottom slot");
-            Assert.That(lockedPlay, Is.EqualTo(new Rect(20f, 84f, 320f, 60f))
-                .Using(RectComparer.Within(0.001f)),
-                "before Daily unlocks, Play sits directly above Wardrobe");
-            Assert.That(daily, Is.EqualTo(new Rect(20f, 84f, 320f, 60f))
-                .Using(RectComparer.Within(0.001f)),
-                "Daily occupies the middle slot only when it exists");
-            Assert.That(unlockedPlay, Is.EqualTo(new Rect(20f, 152f, 320f, 60f))
-                .Using(RectComparer.Within(0.001f)),
-                "after Daily unlocks, Play rises by exactly one slot");
         }
 
         [Test]
@@ -154,15 +127,15 @@ namespace CatMetro.Tests.Presentation
             var safeArea = new Rect(0f, 0f, 360f, 640f); // 1 px per dp at 160 dpi
             var toggle = HomeLayout.AudioToggleRect(safeArea, 160f);
 
-            Assert.That(toggle, Is.EqualTo(new Rect(16f, 572f, 72f, 52f))
+            Assert.That(toggle, Is.EqualTo(new Rect(300f, 580f, 44f, 44f))
                 .Using(RectComparer.Within(0.001f)),
                 "the compact sound control keeps its declared top/side inset");
             Assert.That(toggle.xMin, Is.GreaterThanOrEqualTo(safeArea.xMin));
             Assert.That(toggle.xMax, Is.LessThanOrEqualTo(safeArea.xMax));
             Assert.That(toggle.yMin, Is.GreaterThanOrEqualTo(safeArea.yMin));
             Assert.That(toggle.yMax, Is.LessThanOrEqualTo(safeArea.yMax));
-            Assert.That(HudBands.MeetsMinTargetPx(toggle, 160f), Is.True,
-                "both sound-toggle dimensions clear the 48dp touch-target floor");
+            Assert.That(HudBands.MeetsMinTargetPx(HomeLayout.AudioToggleHitRect(safeArea, 160f), 160f), Is.True,
+                "the 44dp speaker paint has a separate 48dp touch target");
         }
 
         [Test]
@@ -173,16 +146,16 @@ namespace CatMetro.Tests.Presentation
                 audioToggleVisible: true, reminderGearVisible: true);
             var shadow = HomeLayout.TitleShadowRect(title, 160f);
             var audio = HomeLayout.AudioToggleRect(safeArea, 160f);
-            var reminder = DailyReminderLayout.GearRect(safeArea, 160f);
+            var reminder = HomeLayout.ReminderGearRect(safeArea, 160f);
 
-            Assert.That(title, Is.EqualTo(new Rect(96f, 556f, 185f, 84f))
+            Assert.That(title, Is.EqualTo(new Rect(87f, 510f, 186f, 130f))
                 .Using(RectComparer.Within(0.001f)));
-            Assert.That(shadow, Is.EqualTo(new Rect(99f, 551f, 185f, 84f))
+            Assert.That(shadow, Is.EqualTo(new Rect(82f, 497f, 202f, 146f))
                 .Using(RectComparer.Within(0.001f)));
-            Assert.That(title.xMin - audio.xMax, Is.EqualTo(8f).Within(0.001f),
-                "the carved title face leaves an exact tactile gap after the SFX chip");
-            Assert.That(reminder.xMin - shadow.xMax, Is.EqualTo(8f).Within(0.001f),
-                "the plaque's visible toy shadow also clears the reminder gear by 8dp");
+            Assert.That(title.xMin - reminder.xMax, Is.GreaterThanOrEqualTo(8f),
+                "the carved title face leaves at least 8dp after the reminder control");
+            Assert.That(audio.xMin - shadow.xMax, Is.GreaterThanOrEqualTo(8f),
+                "the plaque's visible toy shadow also clears the speaker by 8dp");
         }
 
         [Test]
@@ -195,14 +168,29 @@ namespace CatMetro.Tests.Presentation
                 audioToggleVisible: true, reminderGearVisible: true);
             var shadow = HomeLayout.TitleShadowRect(title, dpi);
             var audio = HomeLayout.AudioToggleRect(safeArea, dpi);
-            var reminder = DailyReminderLayout.GearRect(safeArea, dpi);
+            var reminder = HomeLayout.ReminderGearRect(safeArea, dpi);
 
-            Assert.That(title, Is.EqualTo(new Rect(244.8f, 1769.8f, 470.75f, 214.2f))
+            Assert.That(title, Is.EqualTo(new Rect(221.85f, 1652.5f, 473.3f, 331.5f))
                 .Using(RectComparer.Within(0.01f)));
-            Assert.That(title.xMin - audio.xMax,
-                Is.EqualTo(expectedGap).Within(0.01f));
-            Assert.That(reminder.xMin - shadow.xMax,
-                Is.EqualTo(expectedGap).Within(0.01f));
+            Assert.That(title.xMin - reminder.xMax,
+                Is.GreaterThanOrEqualTo(expectedGap));
+            Assert.That(audio.xMin - shadow.xMax,
+                Is.GreaterThanOrEqualTo(expectedGap));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void SecondaryRow_IsTwoEqualHalves_WithOneFullWidthPlay(bool unlocked)
+        {
+            var safe = new Rect(0, 0, 360, 640);
+            var daily = HomeLayout.DailyPinRect(safe, 160);
+            var wardrobe = HomeLayout.WardrobePinRect(safe, 160);
+            var play = HomeLayout.PrimaryPinRect(safe, 160, unlocked);
+            Assert.That(daily, Is.EqualTo(new Rect(20, 36, 156, 52)).Using(RectComparer.Within(.001f)));
+            Assert.That(wardrobe, Is.EqualTo(new Rect(184, 36, 156, 52)).Using(RectComparer.Within(.001f)));
+            Assert.That(play, Is.EqualTo(new Rect(20, 96, 320, 64)).Using(RectComparer.Within(.001f)));
+            Assert.That(HomeLayout.HeroRect(safe, 160, unlocked),
+                Is.EqualTo(HomeLayout.HeroRect(safe, 160, !unlocked)), "unlock must not shrink the window");
         }
 
         private sealed class RectComparer : System.Collections.IComparer

@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Collections;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -126,22 +127,19 @@ namespace CatMetro.Tests.PlayMode
                 "Daily fallback did not finish before the real-time deadline");
         }
 
-        // --- a fresh save below the configured threshold builds zero Daily objects ---
+        // The teaser is visible below the same configured threshold; input stays locked.
 
         [UnityTest]
-        public IEnumerator FreshSave_BelowConfiguredThreshold_BuildsZeroDailyObjects()
+        public IEnumerator FreshSave_BelowConfiguredThreshold_TeasesDailyWithoutEnablingEntry()
         {
-            GameRoot.DailyEntryUnlocked = false; // exercise save/config rather than force-on
+            GameRoot.DailyEntryUnlocked = false;
             _root = LaunchWithCampaignFixture("L001");
             yield return null;
 
-            Assert.That(_root.Home, Is.Not.Null, "precondition: the screen flow composed");
-            Assert.That(_root.Home.DailyPinTransform, Is.Null,
-                "zero Daily objects constructed — not merely hidden (the CM-UX-07 shipped-boot "
-                + "precedent) — S-01 and product_spec §18 (\"after L007 win\") both forbid it "
-                + "here");
-            Assert.That(_root.Home.DailyLabelText, Is.EqualTo(""),
-                "no label component exists to read");
+            Assert.That(_root.Home, Is.Not.Null);
+            Assert.That(_root.Home.DailyPinTransform, Is.Not.Null);
+            Assert.That(_root.Input.Regions.IsRegistered("home.pin.daily"), Is.False);
+            Assert.That(_root.Home.DailyStatusText, Is.EqualTo("Unlocks after 7 station wins"));
             Assert.That(_root.DailyUnlockAfterCampaignCompletions, Is.EqualTo(7),
                 "the shipped config defaults to seven unique campaign clears");
 
@@ -203,8 +201,12 @@ namespace CatMetro.Tests.PlayMode
             _root.MotionOffToggle = true;
             yield return null;
 
-            Assert.That(_root.Home.DailyPinTransform, Is.Null,
-                "six unique clears are still below the shipped threshold");
+            Assert.That(_root.Home.DailyPinTransform, Is.Not.Null);
+            Assert.That(_root.Input.Regions.IsRegistered("home.pin.daily"), Is.False,
+                "six unique clears keep the teaser locked");
+            var pips = _root.Home.GetComponentsInChildren<UnityEngine.UI.Image>(true)
+                .Where(i => i.name.StartsWith("DailyWinPip") && i.color == CatMetro.Presentation.Theme.Palette.MetroTeal);
+            Assert.That(pips.Count(), Is.EqualTo(6), "the pin reflects lifetime campaign progress");
             Assert.That(_root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center),
                 Is.EqualTo(-3));
             Assert.That(_root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center),
@@ -431,8 +433,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.IsDailySession, Is.False,
                 "a detached worker cannot install over the newer campaign navigation state");
             Assert.That(_root.Intro.IsVisible, Is.True);
-            Assert.That(_root.Home.DailyStatusText, Is.Empty,
-                "logical cancellation clears the transient loading state");
+            Assert.That(_root.Home.DailyStatusText, Is.EqualTo("Today's Line is ready"),
+                "logical cancellation restores readiness after clearing the transient loading state");
         }
 
         // --- F4 (review fix round): a second SelectDaily() call while already in a Daily

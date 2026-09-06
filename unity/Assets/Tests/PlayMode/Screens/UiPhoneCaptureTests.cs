@@ -60,8 +60,11 @@ namespace CatMetro.Tests.PlayMode
                 yield break;
             }
 
+            _captureStorage = new CaptureStorageRoot();
+            GameRoot.DailyStorageRootOverride = () => _captureStorage;
             GameRoot.DevSkipShippedHome = false;
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true; // still captures settle the cold-boot reveal on the next frame
             yield return null;
             yield return null;
             Assert.That(_root.Home, Is.Not.Null);
@@ -203,6 +206,7 @@ namespace CatMetro.Tests.PlayMode
 
             GameRoot.DevSkipShippedHome = false;
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true; // still captures settle the cold-boot reveal on the next frame
             yield return null;
             yield return null;
 
@@ -390,9 +394,12 @@ namespace CatMetro.Tests.PlayMode
                 yield break;
             }
 
+            _captureStorage = new CaptureStorageRoot();
+            GameRoot.DailyStorageRootOverride = () => _captureStorage;
             GameRoot.DevSkipShippedHome = false;
             GameRoot.DailyEntryUnlocked = true;
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true; // still captures settle the cold-boot reveal on the next frame
             yield return null;
             yield return null;
             Assert.That(_root.Home, Is.Not.Null);
@@ -406,6 +413,7 @@ namespace CatMetro.Tests.PlayMode
         {
             GameRoot.DevSkipShippedHome = false;
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true; // still captures settle the cold-boot reveal on the next frame
             yield return null;
             yield return null;
 
@@ -480,6 +488,7 @@ namespace CatMetro.Tests.PlayMode
 
             GameRoot.DevSkipShippedHome = false;
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true; // still captures settle the cold-boot reveal on the next frame
             yield return null;
             _root.Home.Hide();
             _root.Banner.ShowKey("fail.banner.timeout");
@@ -505,6 +514,7 @@ namespace CatMetro.Tests.PlayMode
 
             GameRoot.DevSkipShippedHome = true;
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true; // still captures settle the cold-boot reveal on the next frame
             yield return null;
             yield return null;
             Assert.That(_root.Preview.FaceCount, Is.GreaterThan(0),
@@ -517,6 +527,7 @@ namespace CatMetro.Tests.PlayMode
         {
             GameRoot.DevSkipShippedHome = false;
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true; // still captures settle the cold-boot reveal on the next frame
             yield return null;
             _root.Home.Hide();
             _root.Banner.ShowKey("fail.banner.timeout");
@@ -541,6 +552,7 @@ namespace CatMetro.Tests.PlayMode
         {
             GameRoot.DevSkipShippedHome = false;
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true; // still captures settle the cold-boot reveal on the next frame
             yield return null;
             yield return null;
 

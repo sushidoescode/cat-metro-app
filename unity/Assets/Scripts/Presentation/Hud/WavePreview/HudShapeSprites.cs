@@ -28,6 +28,12 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private static Sprite _people;
         private static Sprite _lever;
         private static Sprite _check;
+        private static Sprite _speakerOn;
+        private static Sprite _speakerOff;
+        private static Sprite _radialGlow;
+        private static Sprite _softShadow;
+        private static Sprite _padlock;
+
         private static readonly System.Collections.Generic.Dictionary<int, Sprite> DashedRings =
             new System.Collections.Generic.Dictionary<int, Sprite>();
         private static Sprite _softRoundedHalo;
@@ -166,6 +172,78 @@ namespace CatMetro.Presentation.Hud.WavePreview
             float t = Mathf.Clamp01(Vector2.Dot(point, delta) / delta.sqrMagnitude);
             return (point - delta * t).sqrMagnitude <= radius * radius;
         }
+
+        public static Sprite SpeakerOn => _speakerOn != null ? _speakerOn
+            : (_speakerOn = Build("HudSpeakerOn", 64, 64, InsideSpeakerOn, Vector4.zero));
+
+        public static Sprite SpeakerOff => _speakerOff != null ? _speakerOff
+            : (_speakerOff = Build("HudSpeakerOff", 64, 64, InsideSpeakerOff, Vector4.zero));
+
+        public static Sprite Padlock => _padlock != null ? _padlock
+            : (_padlock = Build("HudPadlock", 64, 64, (x, y) =>
+            {
+                float dx = x - 0.5f, dy = y - 0.63f;
+                float ring = dx * dx + dy * dy;
+                bool bow = y >= 0.55f && ring <= 0.25f * 0.25f && ring >= 0.14f * 0.14f;
+                bool body = x >= 0.18f && x <= 0.82f && y >= 0.08f && y <= 0.61f;
+                bool keyhole = dx * dx + (y - 0.38f) * (y - 0.38f) < 0.065f * 0.065f
+                    || (Mathf.Abs(dx) < 0.035f && y >= 0.22f && y <= 0.38f);
+                return bow || body && !keyhole;
+            }, Vector4.zero));
+
+        public static Sprite RadialGlow => _radialGlow != null ? _radialGlow
+            : (_radialGlow = BuildAlpha("HudRadialGlow", 128, 128, (x, y) =>
+            {
+                float r2 = (x - 0.5f) * (x - 0.5f) * 4f + (y - 0.5f) * (y - 0.5f) * 4f;
+                float a = Mathf.Max(0f, 1f - r2);
+                return a * a;
+            }, Vector4.zero));
+
+        public static Sprite SoftShadow => _softShadow != null ? _softShadow
+            : (_softShadow = BuildAlpha("HudSoftShadow", 128, 128, (x, y) =>
+            {
+                float qx = Mathf.Max(Mathf.Abs(x - 0.5f) - 0.26f, 0f);
+                float qy = Mathf.Max(Mathf.Abs(y - 0.5f) - 0.26f, 0f);
+                float distance = Mathf.Sqrt(qx * qx + qy * qy) - 0.12f;
+                return 1f - Mathf.SmoothStep(0f, 1f, distance / 0.12f);
+            }, new Vector4(32, 32, 32, 32)));
+
+        // This sprite belongs to its Home view, which releases it when layout changes or the
+        // view is destroyed. Padding the hole by two texels prevents bilinear edge bleed.
+        public static Sprite CreateHomeVignette(Rect aperture, float underFrameFraction)
+        {
+            const int width = 256, height = 512;
+            var hole = Rect.MinMaxRect(aperture.xMin - 2f / width, aperture.yMin - 2f / height,
+                aperture.xMax + 2f / width, aperture.yMax + 2f / height);
+            return BuildAlpha("HomeVignette", width, height, (x, y) =>
+            {
+                if (hole.Contains(new Vector2(x, y))) return 0f;
+                float dx = (x - aperture.center.x) * 1.2f;
+                float dy = (y - aperture.center.y) * 0.85f;
+                float radial = Mathf.Clamp01(Mathf.Sqrt(dx * dx + dy * dy) * 1.7f);
+                float edge = Mathf.Pow(Mathf.Max(Mathf.Abs(x - 0.5f) * 2f,
+                    Mathf.Abs(y - 0.5f) * 2f), 4f);
+                float alpha = Mathf.Lerp(0.25f, 0.98f,
+                    Mathf.Max(Mathf.SmoothStep(0f, 1f, radial), edge));
+                if (y < aperture.yMin && y >= aperture.yMin - underFrameFraction)
+                    alpha = Mathf.Max(alpha, 0.9f);
+                return alpha;
+            }, Vector4.zero);
+        }
+
+        private static bool InsideSpeakerBody(float x, float y) =>
+            (x >= 0.08f && x <= 0.28f && Mathf.Abs(y - 0.5f) <= 0.13f)
+            || (x >= 0.25f && x <= 0.51f && Mathf.Abs(y - 0.5f) <= x - 0.12f);
+
+        private static bool InsideSpeakerOn(float x, float y)
+        {
+            float r = Mathf.Sqrt((x - 0.47f) * (x - 0.47f) + (y - 0.5f) * (y - 0.5f));
+            return InsideSpeakerBody(x, y) || (x > 0.58f
+                && (Mathf.Abs(r - 0.25f) < 0.045f || Mathf.Abs(r - 0.43f) < 0.045f));
+        }
+
+        private static bool InsideSpeakerOff(float x, float y) => InsideSpeakerBody(x, y)
+            || (x >= 0.18f && x <= 0.88f && Mathf.Abs(y - (1.04f - x)) <= 0.045f);
 
         public static Sprite ForShape(DestinationShape shape)
         {
@@ -317,6 +395,29 @@ namespace CatMetro.Presentation.Hud.WavePreview
             if (y < bodyBottom || y > bodyTop) return false;
             float t = (y - bodyBottom) / (bodyTop - bodyBottom);
             return Mathf.Abs(x - cx) <= bodyHalf * (1f - 0.45f * t * t);
+        }
+
+        private static Sprite BuildAlpha(string name, int width, int height,
+            System.Func<float, float, float> alpha, Vector4 border)
+        {
+            var texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
+            {
+                name = name, filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            var pixels = new Color32[width * height];
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                    pixels[y * width + x] = new Color32(255, 255, 255,
+                        (byte)Mathf.RoundToInt(255f * Mathf.Clamp01(alpha(
+                            (x + 0.5f) / width, (y + 0.5f) / height))));
+            texture.SetPixels32(pixels);
+            texture.Apply(false, false);
+            var sprite = Sprite.Create(texture, new Rect(0, 0, width, height),
+                new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, border);
+            sprite.name = name;
+            sprite.hideFlags = HideFlags.HideAndDontSave;
+            return sprite;
         }
 
         private static Sprite Build(string name, int width, int height,

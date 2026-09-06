@@ -62,7 +62,7 @@ namespace CatMetro.Tests.PlayMode
 
             // the restyle must not disturb what HomeScreenTests locks: csv title, ring visible.
             Assert.That(_home.TitleText,
-                Is.EqualTo(CatMetro.Presentation.Strings.UiStrings.Get("home.title")),
+                Is.EqualTo(CatMetro.Presentation.Strings.UiStrings.Get("home.title").Replace(" ", "\n")),
                 "the restyle keeps the csv-keyed title");
             Assert.That(_home.RingVisible, Is.True, "the ring still renders after the restyle");
         }
@@ -86,9 +86,9 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(ImageColor("DioramaFrameBottom"), Is.EqualTo(Palette.CreamCard));
             Assert.That(ImageColor("DioramaFrameLeft"), Is.EqualTo(Palette.CreamCard));
             Assert.That(ImageColor("DioramaFrameRight"), Is.EqualTo(Palette.CreamCard));
-            Assert.That(ImageColor("DioramaInnerTop"), Is.EqualTo(Palette.InkNavy));
-            Assert.That(ImageColor("BackdropLeft"),
-                Is.EqualTo(Palette.WithAlpha(Palette.DepotNavy, 0.48f)),
+            Assert.That(Find("DioramaInnerTop"), Is.Null, "the thin cream frame has no inner navy border");
+            Assert.That(ImageColor("HomeVignette"),
+                Is.EqualTo(new Color(42f / 255f, 26f / 255f, 16f / 255f)),
                 "palette shade surrounds the window without filling its center");
 
             var plaque = Find("TitlePlaque");
@@ -127,7 +127,7 @@ namespace CatMetro.Tests.PlayMode
             Transform holderB = null;
             foreach (var name in new[]
                      {
-                         "ParkedDistrictA", "ParkedDistrictB", "ParkedDistrictC",
+                         "ParkedDistrictB",
                      })
             {
                 var holder = DirectChild(hero, name);
@@ -158,7 +158,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(hero, Is.Not.Null);
             foreach (var name in new[]
                      {
-                         "ParkedDistrictA", "ParkedDistrictB", "ParkedDistrictC",
+                         "ParkedDistrictB",
                      })
             {
                 var holder = DirectChild(hero, name);
@@ -181,16 +181,13 @@ namespace CatMetro.Tests.PlayMode
             Canvas.ForceUpdateCanvases();
 
             Assert.That(_home.HeroRectPx.x, Is.EqualTo(51f).Within(0.01f));
-            Assert.That(_home.HeroRectPx.y, Is.EqualTo(472f).Within(0.01f));
+            Assert.That(_home.HeroRectPx.y, Is.EqualTo(512.8f).Within(0.01f));
             Assert.That(_home.HeroRectPx.width, Is.EqualTo(815f).Within(0.01f));
-            Assert.That(_home.HeroRectPx.height, Is.EqualTo(1257f).Within(0.01f));
+            Assert.That(_home.HeroRectPx.height, Is.EqualTo(1098.9f).Within(0.01f));
             Assert.That(_home.PrimaryLabelText,
                 Is.EqualTo(CatMetro.Presentation.Strings.UiStrings.Get("intro.play")));
-            Assert.That(_home.MarkerCount, Is.EqualTo(3));
-            CollectionAssert.AreEqual(new[]
-            {
-                Palette.SignalRed, Palette.HarborBlue, Palette.TabbyYellow,
-            }, _home.MarkerColors);
+            Assert.That(_home.MarkerCount, Is.Zero);
+            Assert.That(_home.MarkerColors, Is.Empty);
             yield return null;
         }
 
@@ -213,13 +210,12 @@ namespace CatMetro.Tests.PlayMode
             AssertRect(paintedAudio, HomeLayout.AudioToggleRect(safeArea, 160f));
             AssertRect(paintedTitle, HomeLayout.TitleRect(safeArea, 160f, true, true));
             AssertRect(paintedShadow, HomeLayout.TitleShadowRect(paintedTitle, 160f));
-            AssertRect(paintedGear, DailyReminderLayout.GearRect(safeArea, 160f));
-            Assert.That(paintedTitle.xMin - paintedAudio.xMax,
-                Is.EqualTo(8f).Within(0.001f),
-                "the actual carved plaque face clears the actual SFX chip by 8dp");
-            Assert.That(paintedGear.xMin - paintedShadow.xMax,
-                Is.EqualTo(8f).Within(0.001f),
-                "the actual reminder gear clears the plaque's visible shadow by 8dp");
+            AssertRect(paintedGear, HomeLayout.ReminderGearRect(safeArea, 160f));
+            Assert.That(paintedTitle.center.x, Is.EqualTo(safeArea.center.x).Within(0.001f));
+            Assert.That(paintedTitle.xMin - paintedGear.xMax,
+                Is.GreaterThanOrEqualTo(8f), "the sign clears the left reminder control");
+            Assert.That(paintedAudio.xMin - paintedShadow.xMax,
+                Is.GreaterThanOrEqualTo(8f), "the shadow clears the right speaker control");
             yield return null;
         }
 
@@ -232,18 +228,18 @@ namespace CatMetro.Tests.PlayMode
             _home.LayoutForViewport(safeArea, 408f, viewport);
 
             var hero = HomeLayout.HeroRect(safeArea, 408f);
-            float xMin = hero.x + hero.width * 0.075f;
-            float xMax = hero.x + hero.width * 0.925f;
-            float yMin = hero.y + hero.height * 0.075f;
-            float yMax = hero.y + hero.height * 0.93f;
-            AssertRect(PaintedRect(Find("BackdropTop") as RectTransform),
-                new Rect(0f, yMax, viewport.width, viewport.height - yMax));
-            AssertRect(PaintedRect(Find("BackdropBottom") as RectTransform),
-                new Rect(0f, 0f, viewport.width, yMin));
-            AssertRect(PaintedRect(Find("BackdropLeft") as RectTransform),
-                new Rect(0f, yMin, xMin, yMax - yMin));
-            AssertRect(PaintedRect(Find("BackdropRight") as RectTransform),
-                new Rect(xMax, yMin, viewport.width - xMax, yMax - yMin));
+            float xMin = hero.x + hero.width * 0.05f;
+            float xMax = hero.x + hero.width * 0.95f;
+            float yMin = hero.y + hero.height * 0.05f;
+            float yMax = hero.y + hero.height * 0.95f;
+            var backdrop = Find("HomeVignette").GetComponent<Image>();
+            AssertRect(PaintedRect(backdrop.rectTransform), viewport);
+            foreach (float x in new[] { xMin, (xMin + xMax) * 0.5f, xMax })
+                foreach (float y in new[] { yMin, (yMin + yMax) * 0.5f, yMax })
+                    Assert.That(backdrop.sprite.texture.GetPixelBilinear(
+                        x / viewport.width, y / viewport.height).a, Is.Zero);
+            Assert.That(backdrop.sprite.texture.GetPixelBilinear(0.01f, 0.01f).a,
+                Is.GreaterThan(0.85f), "outside the aperture the surround really paints");
             yield return null;
         }
 
@@ -263,7 +259,7 @@ namespace CatMetro.Tests.PlayMode
             _home.LayoutForViewport(safeArea, 408f);
             Assert.That(_home.HeroRectPx,
                 Is.EqualTo(HomeLayout.HeroRect(safeArea, 408f, dailyEntryUnlocked: true)),
-                "the window rises above all three unlocked routes");
+                "the shared secondary row keeps the window as large after unlock");
             yield return null;
         }
 
