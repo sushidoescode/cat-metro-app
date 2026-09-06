@@ -177,13 +177,13 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator MalformedFile_WrongKey_ShippedBoot_NoThrow_NoLog()
         {
-            ExpectHomeRigDiagnostic();
             File.WriteAllText(Path.Combine(_tmpDir, "boot.json"), "{\"boot_to_home\": true}");
             // the SEAM_LOADED line is the NORMAL shipped-boot log (GameRoot.cs) — expected
             // here, never an "unexpected" log; only DEVCAP_BOOT_OVERRIDE_INVALID may not fire
             LogAssert.Expect(LogType.Log, "SEAM_LOADED content/levels/L001.json");
             // Every real boot also emits the exact independent numeric catalogue read-back.
             LogAssert.Expect(LogType.Log, CosmeticBootWiringTests.ExpectedDiagnostic);
+            ExpectHomeRigDiagnostic();
             _root = GameRoot.Launch();
             yield return null;
             Assert.That(_root.Session, Is.Not.Null);
@@ -203,10 +203,10 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator MalformedFile_ExplicitFalseValue_ShippedBoot_NoThrow_NoLog()
         {
-            ExpectHomeRigDiagnostic();
             File.WriteAllText(Path.Combine(_tmpDir, "boot.json"), "{\"bootToHome\": false}");
             LogAssert.Expect(LogType.Log, "SEAM_LOADED content/levels/L001.json");
             LogAssert.Expect(LogType.Log, CosmeticBootWiringTests.ExpectedDiagnostic);
+            ExpectHomeRigDiagnostic();
             _root = GameRoot.Launch();
             yield return null;
             Assert.That(_root.Session, Is.Not.Null);
