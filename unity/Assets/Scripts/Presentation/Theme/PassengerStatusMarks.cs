@@ -16,6 +16,8 @@ namespace CatMetro.Presentation.Theme
         {
             _stray.SetActive(stray);
             _express.SetActive(express);
+            _stray.transform.localPosition = stray && express ? Vector3.left * 0.48f : Vector3.zero;
+            _express.transform.localPosition = stray && express ? Vector3.right * 0.32f : Vector3.zero;
         }
 
         public static PassengerStatusMarks Create(Transform parent, bool hud)
