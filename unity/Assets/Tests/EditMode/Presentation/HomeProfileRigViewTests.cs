@@ -5,6 +5,7 @@ using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Screens;
 using CatMetro.Services.Cosmetics;
+using CatMetro.Services.Purchases;
 using NUnit.Framework;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -97,6 +98,66 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(view.Layout(_camera), Is.True);
             Assert.That(view.Layout(_camera), Is.True);
             LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void WardrobeMount_UsesTheMatchingRig_AndKeepsOtherBreedsAsPortraits()
+        {
+            _fixture = new ConformingSkinnedRigFixture();
+            var catalog = CatModelCatalog.FromEntry(new CatModelCatalog.Entry(
+                _fixture.Prefab, 180f, "red_tabby"));
+            var inventory = CosmeticAssetInventory.Parse(
+                Resources.Load<TextAsset>("Cosmetics/portrait_assets").text,
+                CosmeticPortraitPainter.SupportedRendererTokens);
+            var cosmetics = CosmeticCatalog.Parse(
+                Resources.Load<TextAsset>("Cosmetics/cosmetic_catalog").text,
+                inventory.AssetIds, inventory.ProvenanceAssetIds);
+            using var profile = new CosmeticProfileService(cosmetics, inventory,
+                new InMemoryCosmeticProfilePersistence(CosmeticProfileSnapshot.Empty),
+                PurchaseRuntime.Current);
+            var wardrobe = WardrobeScreenView.Create(_canvasHost.transform,
+                PurchaseRuntime.Current, profile, new DisabledCosmeticRewardedRoute(), catalog);
+            wardrobe.Open();
+            wardrobe.LayoutForViewport(new Rect(0, 0, 600, 1100), 160f);
+            var mount = wardrobe.GetComponentInChildren<ProfileRigMount>(true);
+            Assert.That(mount, Is.Not.Null, "Wardrobe must mount the admitted rig under its hero");
+            Assert.That(mount.Mounted, Is.True);
+            Assert.That(mount.transform.parent.name, Is.EqualTo("LargePortraitMount"));
+            Assert.That(mount.AppliedFacingYaw, Is.EqualTo(180f).Within(0.01f));
+            Assert.That(wardrobe.LargePortrait.BaseLayerTransform.gameObject.activeSelf, Is.False);
+            Assert.That(profile.TrySelectCat("blue_siamese"), Is.True);
+            Assert.That(mount.Mounted, Is.False);
+            Assert.That(wardrobe.LargePortrait.BaseLayerTransform.gameObject.activeSelf, Is.True);
+            Assert.That(profile.TrySelectCat("red_tabby"), Is.True);
+            Assert.That(mount.Mounted, Is.True);
+            wardrobe.Hide();
+            Assert.That(mount.gameObject.activeInHierarchy, Is.False);
+            Object.DestroyImmediate(wardrobe.gameObject);
+        }
+
+        [Test]
+        public void Turntable_ChangesTheWrapperYawAndKeepsCosmeticsAligned_WithNoPrefabMutation()
+        {
+            _fixture = new ConformingSkinnedRigFixture();
+            var mount = ProfileRigMount.Create(_holder, _portrait,
+                CatModelCatalog.FromEntry(new CatModelCatalog.Entry(_fixture.Prefab, 180f)),
+                0f, "WARDROBE_RIG");
+            mount.TurntableAmplitude = 15f;
+            Assert.That(mount.Layout(_camera), Is.True);
+            mount.AdvanceTurntable(3f);
+            Assert.That(mount.AppliedFacingYaw, Is.EqualTo(195f).Within(0.01f));
+            AssertRectWithin(mount.RenderedHeadScreenRect,
+                IndependentlyProjectedFixtureHead(mount.PrefabRoot), 3f,
+                "turntable cosmetics track the live head at the positive yaw limit");
+            mount.AdvanceTurntable(6f);
+            Assert.That(mount.AppliedFacingYaw, Is.EqualTo(165f).Within(0.01f));
+            AssertRectWithin(mount.RenderedHeadScreenRect,
+                IndependentlyProjectedFixtureHead(mount.PrefabRoot), 3f,
+                "turntable cosmetics track the live head at the negative yaw limit");
+            Assert.That(mount.PrefabRoot.localRotation, Is.EqualTo(Quaternion.identity));
+            Assert.That(mount.PrefabRoot.localScale, Is.EqualTo(Vector3.one));
+            Assert.That(mount.RenderedHeadScreenRect.width, Is.GreaterThan(1f));
+            Assert.That(_portrait.BaseLayerTransform.gameObject.activeSelf, Is.False);
         }
 
         [Test]

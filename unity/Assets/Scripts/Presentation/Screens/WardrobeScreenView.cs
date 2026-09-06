@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using CatMetro.Presentation.Cosmetics;
+using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Hud.WavePreview;
 using CatMetro.Presentation.Input;
@@ -47,6 +48,10 @@ namespace CatMetro.Presentation.Screens
         private TMP_Text _restoreLabel;
         private TMP_Text _statusLabel;
         private TMP_Text _emptyLabel;
+        private TMP_Text _standNameLabel;
+        private static Sprite _portraitGlowSprite;
+        private ProfileRigMount _profileRig;
+        private CatModelCatalog _catCatalog;
         private CosmeticPortraitView _largePortrait;
         private CosmeticPortraitView _entryPortrait;
 
@@ -94,6 +99,7 @@ namespace CatMetro.Presentation.Screens
         public bool PanelVisible => _panel != null && _panel.activeInHierarchy;
         public CosmeticSlot SelectedSlot => _selectedSlot;
         public IReadOnlyList<CosmeticItemCardView> VisibleCards => _cards.AsReadOnly();
+        public ProfileRigMount ProfileRig => _profileRig;
         public CosmeticPortraitView LargePortrait => _largePortrait;
         public CosmeticPortraitView EntryPortrait => _entryPortrait;
         public string BuyLabelText => _primaryLabel != null ? _primaryLabel.text : string.Empty;
@@ -109,7 +115,7 @@ namespace CatMetro.Presentation.Screens
 
         public static WardrobeScreenView Create(Transform canvasParent,
             PurchaseService purchases, CosmeticProfileService profile,
-            ICosmeticRewardedRoute rewarded)
+            ICosmeticRewardedRoute rewarded, CatModelCatalog catCatalog = null)
         {
             var root = new GameObject("WardrobeSurface", typeof(RectTransform));
             root.transform.SetParent(canvasParent, false);
@@ -118,6 +124,7 @@ namespace CatMetro.Presentation.Screens
             view._purchases = purchases ?? PurchaseRuntime.Current;
             view._profile = profile ?? CosmeticRuntime.Current;
             view._rewarded = rewarded ?? new DisabledCosmeticRewardedRoute();
+            view._catCatalog = catCatalog ?? CatModelCatalog.LoadResources();
             view.BuildEntry(root.transform);
             view.BuildPanel(root.transform);
             view._entry.SetActive(false);
@@ -175,22 +182,32 @@ namespace CatMetro.Presentation.Screens
             _portraitRect = MakeChip(_panel.transform, "LargePortraitCard", Palette.DepotNavy);
             MakeSurface(_portraitRect, "PortraitPaper", new Vector2(0.018f, 0.018f),
                 new Vector2(0.982f, 0.982f), Palette.WarmPaper, true);
-            MakeSurface(_portraitRect, "PortraitGlow", new Vector2(0.05f, 0.05f),
-                new Vector2(0.95f, 0.95f), Palette.WithAlpha(Palette.MetroTeal, 0.14f), true);
+            var glow = MakeSurface(_portraitRect, "PortraitGlow", new Vector2(0.02f, 0.06f),
+                new Vector2(0.98f, 0.98f), Palette.WithAlpha(Palette.TicketOrange, 0.20f), true);
+            glow.sprite = PortraitGlowSprite();
             var stand = MakeRect(_portraitRect, "PortraitStand",
-                new Vector2(0.12f, 0.015f), new Vector2(0.88f, 0.35f));
+                new Vector2(0.13f, 0.02f), new Vector2(0.87f, 0.24f));
             MakeShapedSurface(stand, "StandShadow", new Vector2(0.04f, 0.00f),
-                new Vector2(0.96f, 0.36f), Palette.WithAlpha(Palette.InkNavy, 0.45f),
+                new Vector2(0.96f, 0.40f), Palette.WithAlpha(Palette.InkNavy, 0.30f),
                 HudShapeSprites.Disc);
-            MakeShapedSurface(stand, "StandBase", new Vector2(0.02f, 0.13f),
-                new Vector2(0.98f, 0.76f), Palette.TicketOrange, HudShapeSprites.Disc);
-            MakeShapedSurface(stand, "StandPlaque", new Vector2(0.31f, 0.03f),
-                new Vector2(0.69f, 0.28f), Palette.CreamCard,
+            MakeShapedSurface(stand, "StandBase", new Vector2(0.02f, 0.08f),
+                new Vector2(0.98f, 0.68f), Palette.WoodShadow, HudShapeSprites.Disc);
+            MakeShapedSurface(stand, "StandTop", new Vector2(0.02f, 0.22f),
+                new Vector2(0.98f, 0.95f), Palette.WarmWood, HudShapeSprites.Disc);
+            var plaque = MakeShapedSurface(stand, "StandPlaque", new Vector2(0.22f, 0.05f),
+                new Vector2(0.78f, 0.38f), Color.Lerp(Palette.TabbyYellow, Palette.CreamCard, 0.25f),
                 HudShapeSprites.RoundedSquare);
+            _standNameLabel = MakeText(plaque.transform, "StandNameLabel",
+                new Vector2(0.04f, 0.03f), new Vector2(0.96f, 0.97f),
+                string.Empty, 17f, Palette.InkNavy);
+            _standNameLabel.fontStyle = FontStyles.Bold;
             var largeMount = MakeRect(_portraitRect, "LargePortraitMount",
-                new Vector2(0.06f, 0.04f), new Vector2(0.94f, 0.98f));
+                new Vector2(0.06f, 0.12f), new Vector2(0.94f, 0.98f));
             _largePortrait = CosmeticPortraitView.Create(largeMount, _profile,
                 "LargePortrait");
+            _profileRig = ProfileRigMount.Create(largeMount, _largePortrait, _catCatalog,
+                0f, null); // Wardrobe reports its mounted state when opened, below.
+            _profileRig.TurntableAmplitude = 15f;
 
             _tabsRect = MakeRect(_panel.transform, "TabsBand");
             BuildTabs();
@@ -204,15 +221,16 @@ namespace CatMetro.Presentation.Screens
             _statusRect = MakeRect(_panel.transform, "WardrobeStatus");
             _statusLabel = MakeText(_statusRect, "StatusLabel", Vector2.zero, Vector2.one,
                 string.Empty, 21f, Palette.InkNavy);
-            _primaryRect = MakeChip(_panel.transform, "PrimaryActionChip", Palette.TicketOrange);
+            _primaryRect = MakePrimaryChip(_panel.transform);
             _primaryLabel = MakeText(_primaryRect, "PrimaryActionLabel", Vector2.zero,
                 Vector2.one, string.Empty, 27f, Palette.DepotNavy);
             _primaryLabel.fontStyle = FontStyles.Bold;
             _primaryRect.gameObject.SetActive(false);
-            _restoreRect = MakeChip(_panel.transform, "RestoreChip", Palette.MetroTeal);
+            _restoreRect = MakeRect(_panel.transform, "RestoreChip");
             _restoreLabel = MakeText(_restoreRect, "RestoreLabel", Vector2.zero, Vector2.one,
-                Text("wardrobe.restore"), 23f, Palette.DepotNavy);
-            _restoreLabel.fontStyle = FontStyles.Bold;
+                Text("wardrobe.restore"), 16f, Palette.InkNavy);
+            _restoreLabel.fontStyle = FontStyles.Underline;
+            _statusRect.SetAsLastSibling();
         }
 
         private void BuildCatSelectors()
@@ -278,6 +296,8 @@ namespace CatMetro.Presentation.Screens
             RegisterStaticPanelRegions();
             SetStatus(Text("wardrobe.status.checking"));
             RebuildProjectionAndCards();
+            Debug.Log("WARDROBE_RIG mounted=" + (_profileRig.Mounted ? "true" : "false")
+                + " admitted=" + _profileRig.CatalogAdmittedEntryCount, this);
             long session = _sessionGeneration;
             _purchases.Refresh(() =>
             {
@@ -358,10 +378,26 @@ namespace CatMetro.Presentation.Screens
             ApplyPx(_restoreRect, _restoreRectPx);
             ApplyPx(_statusRect, WardrobeLayout.StatusRect(safeArea, _dpi,
                 hasPrimaryAction));
+            float px = HudBands.PxPerDp(_dpi);
+            _restoreLabel.fontSize = _restoreLabel.fontSizeMax = 16f * px;
+            _restoreLabel.fontSizeMin = 14f * px;
+            _primaryLabel.fontSize = _primaryLabel.fontSizeMax = 22f * px;
+            _primaryLabel.fontSizeMin = 16f * px;
+            _statusLabel.fontSize = _statusLabel.fontSizeMax = 13f * px;
+            _statusLabel.fontSizeMin = 12f * px;
+            _standNameLabel.fontSize = _standNameLabel.fontSizeMax = 17f * px;
+            _standNameLabel.fontSizeMin = 14f * px;
+            LayoutActionLabel();
             LayoutHorizontal(_catTargets, WardrobeLayout.CatSelectorRect(safeArea, _dpi), _dpi);
             LayoutHorizontal(_tabTargets, WardrobeLayout.TabsRect(safeArea, _dpi,
                 visibleCount, hasPrimaryAction), _dpi);
             LayoutCards();
+            if (_panelShown && _profileRig != null)
+            {
+                Canvas.ForceUpdateCanvases();
+                var canvas = _portraitRect.GetComponentInParent<Canvas>();
+                _profileRig.Layout(canvas != null ? canvas.worldCamera : null);
+            }
         }
 
         private void RebuildProjectionAndCards()
@@ -378,6 +414,7 @@ namespace CatMetro.Presentation.Screens
                 Destroy(_cards[i].gameObject);
             }
             _cards.Clear();
+            UpdateAvailableTabs();
             _rows = CosmeticWardrobeProjection.Build(_profile.Catalog, _profile, _purchases,
                 _rewarded, _profile.SelectedCatId, _selectedSlot);
 
@@ -394,6 +431,13 @@ namespace CatMetro.Presentation.Screens
                 _previewItemId = string.Empty;
                 _selectedRow = null;
                 ApplyAuthoritativePortrait();
+                // Selection exposes a route immediately. Only an explicit card tap previews
+                // a cosmetic; selecting a route never equips or extends an entitlement.
+                if (_rows.Count > 0)
+                {
+                    _selectedRow = _rows[0];
+                    _previewItemId = _rows[0].Item.Id;
+                }
             }
             else _selectedRow = stillSelected;
 
@@ -426,6 +470,7 @@ namespace CatMetro.Presentation.Screens
                 var localRect = new Rect(screenRect.position - _itemsRectPx.position,
                     screenRect.size);
                 ApplyPx(_cards[i].RootTransform, localRect);
+                _cards[i].LayoutForDpi(_dpi);
             }
         }
 
@@ -442,12 +487,46 @@ namespace CatMetro.Presentation.Screens
         private void OnCatTapped(string catId)
         {
             if (IsOperationBusy) return;
+            bool alreadySelected = string.Equals(catId, _profile.SelectedCatId,
+                StringComparison.Ordinal);
             ClearPreview();
             if (!_profile.TrySelectCat(catId))
             {
                 SetStatus(Text("wardrobe.status.save.failed"));
                 RebuildProjectionAndCards();
             }
+            else if (alreadySelected) RebuildProjectionAndCards();
+        }
+
+        private void UpdateAvailableTabs()
+        {
+            SelectorTarget? firstAvailable = null;
+            bool selectedAvailable = false;
+            foreach (var target in _tabTargets)
+            {
+                bool available = HasCatalogItems(target.Slot, _profile.SelectedCatId);
+                target.Rect.gameObject.SetActive(available);
+                if (available)
+                {
+                    if (!firstAvailable.HasValue) firstAvailable = target;
+                    selectedAvailable |= target.Slot == _selectedSlot;
+                }
+            }
+            if (!selectedAvailable && firstAvailable.HasValue)
+                _selectedSlot = firstAvailable.Value.Slot;
+            if (_staticRegistered) RegisterTabRegions();
+        }
+
+        private bool HasCatalogItems(CosmeticSlot slot, string catId)
+        {
+            foreach (var item in _profile.Catalog.Items)
+            {
+                if (item.Slot != slot) continue;
+                foreach (string compatibleCat in item.CompatibleCatIds)
+                    if (string.Equals(compatibleCat, catId, StringComparison.Ordinal))
+                        return true;
+            }
+            return false;
         }
 
         private void OnTabTapped(CosmeticSlot slot)
@@ -754,6 +833,9 @@ namespace CatMetro.Presentation.Screens
 
         private void PaintSelectors()
         {
+            foreach (var cat in _profile.Catalog.Cats)
+                if (string.Equals(cat.Id, _profile.SelectedCatId, StringComparison.Ordinal))
+                    _standNameLabel.text = Text(cat.DisplayNameKey);
             for (int i = 0; i < _catTargets.Count; i++)
             {
                 var image = _catTargets[i].Rect.GetComponent<Image>();
@@ -852,13 +934,20 @@ namespace CatMetro.Presentation.Screens
                 _regions.Register("wardrobe.cat." + target.Id,
                     () => RectFor(target.Rect), () => OnCatTapped(target.Id), ModalPriority);
             }
+            RegisterTabRegions();
+            _staticRegistered = true;
+        }
+
+        private void RegisterTabRegions()
+        {
             for (int i = 0; i < _tabTargets.Count; i++)
             {
                 var target = _tabTargets[i];
+                _regions.Unregister("wardrobe.tab." + target.Id);
+                if (!target.Rect.gameObject.activeSelf) continue;
                 _regions.Register("wardrobe.tab." + target.Id,
                     () => RectFor(target.Rect), () => OnTabTapped(target.Slot), ModalPriority);
             }
-            _staticRegistered = true;
         }
 
         private void RegisterCardRegions()
@@ -917,12 +1006,17 @@ namespace CatMetro.Presentation.Screens
         private static void LayoutHorizontal(IReadOnlyList<SelectorTarget> targets, Rect band,
             float dpi)
         {
-            if (targets.Count == 0) return;
+            int count = 0;
+            for (int i = 0; i < targets.Count; i++)
+                if (targets[i].Rect.gameObject.activeSelf) count++;
+            if (count == 0) return;
             float gap = 6f * HudBands.PxPerDp(dpi);
-            float width = Mathf.Max(0f, (band.width - gap * (targets.Count - 1)) / targets.Count);
+            float width = Mathf.Max(0f, (band.width - gap * (count - 1)) / count);
+            int column = 0;
             for (int i = 0; i < targets.Count; i++)
             {
-                var local = new Rect(i * (width + gap), 0f, width, band.height);
+                if (!targets[i].Rect.gameObject.activeSelf) continue;
+                var local = new Rect(column++ * (width + gap), 0f, width, band.height);
                 ApplyPx(targets[i].Rect, local);
             }
         }
@@ -970,7 +1064,21 @@ namespace CatMetro.Presentation.Screens
             if (label != null) label.text = value ?? string.Empty;
         }
 
-        private void SetStatus(string value) => SetStatus(_statusLabel, value);
+        private void SetStatus(string value)
+        {
+            SetStatus(_statusLabel, value);
+            LayoutActionLabel();
+        }
+
+        private void LayoutActionLabel()
+        {
+            if (_primaryLabel == null) return;
+            var rect = _primaryLabel.rectTransform;
+            rect.anchorMin = new Vector2(0.04f,
+                string.IsNullOrEmpty(StatusText) ? 0.05f : 0.35f);
+            rect.anchorMax = new Vector2(0.96f, 0.95f);
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
+        }
         private static string Text(string key) => Strings.UiStrings.Get(key);
 
         private static RectTransform MakeRect(Transform parent, string name)
@@ -978,6 +1086,33 @@ namespace CatMetro.Presentation.Screens
             var go = new GameObject(name, typeof(RectTransform));
             go.transform.SetParent(parent, false);
             return (RectTransform)go.transform;
+        }
+
+        private static Sprite PortraitGlowSprite()
+        {
+            if (_portraitGlowSprite != null) return _portraitGlowSprite;
+            const int size = 64;
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                name = "WardrobeWarmGlow", hideFlags = HideFlags.HideAndDontSave,
+                wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear,
+            };
+            var pixels = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    float radius = new Vector2((x + 0.5f) / size - 0.5f,
+                        (y + 0.5f) / size - 0.5f).magnitude * 2f;
+                    float alpha = Mathf.SmoothStep(1f, 0f, Mathf.Clamp01(radius));
+                    pixels[y * size + x] = new Color32(255, 255, 255,
+                        (byte)Mathf.RoundToInt(alpha * 255f));
+                }
+            texture.SetPixels32(pixels);
+            texture.Apply(false, true);
+            _portraitGlowSprite = Sprite.Create(texture, new Rect(0f, 0f, size, size),
+                new Vector2(0.5f, 0.5f), size);
+            _portraitGlowSprite.hideFlags = HideFlags.HideAndDontSave;
+            return _portraitGlowSprite;
         }
 
         private static RectTransform MakeRect(Transform parent, string name,
@@ -997,6 +1132,11 @@ namespace CatMetro.Presentation.Screens
             Paint(rect.gameObject, color, true);
             return rect;
         }
+
+        // Temporary paint adapter until lane D's shared ChromeChip foundation merges.
+        // Wardrobe keeps ownership of this face rect and its input region when it switches.
+        private static RectTransform MakePrimaryChip(Transform parent) =>
+            MakeChip(parent, "PrimaryActionChip", Palette.TicketOrange);
 
         private static Image MakeSurface(Transform parent, string name, Vector2 min,
             Vector2 max, Color color, bool rounded)

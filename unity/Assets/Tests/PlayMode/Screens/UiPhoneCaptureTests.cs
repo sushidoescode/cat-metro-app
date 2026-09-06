@@ -70,6 +70,108 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator CaptureEvidence_WardrobeRig_917x2048_WhenRequested()
+        {
+            string dir = Environment.GetEnvironmentVariable("CM_UI_CAPTURE_DIR");
+            if (string.IsNullOrEmpty(dir))
+            {
+                Assert.Pass("capture rig disarmed — set CM_UI_CAPTURE_DIR to emit phone frames");
+                yield break;
+            }
+            PurchaseRuntime.ResetForTests();
+            CosmeticRuntime.ResetForTests();
+            _captureStorage = new CaptureStorageRoot();
+            GameRoot.DailyStorageRootOverride = () => _captureStorage;
+            var ledger = new EntitlementLedger();
+            ledger.ReplaceStoreGrants(new[]
+            {
+                new EntitlementGrant(EntitlementIds.OutfitConductor, GrantSource.Store),
+                new EntitlementGrant(EntitlementIds.FrameBrass, GrantSource.Store),
+                new EntitlementGrant(EntitlementIds.FrameLantern, GrantSource.Store),
+            });
+            PurchaseRuntime.Install(new PurchaseService(PurchaseCatalog.Parse(
+                Resources.Load<TextAsset>("Monetization/product_catalog").text),
+                new NullPurchaseBackend(), () => 1_700_000_000L, ledger));
+            _root = GameRoot.Launch();
+            yield return null;
+            _root.Wardrobe.OpenRequested.Invoke();
+            yield return null;
+            Camera camera = _root.Cam;
+            var previousTarget = camera.targetTexture;
+            var previousActive = RenderTexture.active;
+            float previousAspect = camera.aspect;
+            var target = new RenderTexture(CaptureWidth, CaptureHeight, 24,
+                RenderTextureFormat.ARGB32);
+            target.Create();
+            try
+            {
+                camera.targetTexture = target;
+                camera.aspect = CaptureWidth / (float)CaptureHeight;
+                yield return null; // A camera-space canvas adopts its target on the next frame.
+                ApplyLayout(_root.Wardrobe, CaptureSafeArea, CaptureDpi,
+                    CaptureWidth, CaptureHeight);
+                Canvas.ForceUpdateCanvases();
+                ProfileRigMount rig = _root.Wardrobe.ProfileRig;
+                Assert.That(rig.CatalogAdmittedEntryCount, Is.EqualTo(1),
+                    "armed Wardrobe evidence requires the licensed resource in the main checkout");
+                Assert.That(rig.Mounted, Is.True, rig.FallbackReason);
+                Assert.That(_root.Wardrobe.PrimaryActionText, Is.EqualTo("Equip"),
+                    "the first card's action is painted without tapping a card");
+                var primary = _root.Wardrobe.GetComponentsInChildren<RectTransform>(true)
+                    .Single(rect => rect.name == "PrimaryActionChip");
+                Assert.That(primary.gameObject.activeInHierarchy, Is.True);
+                Assert.That(_root.Wardrobe.GetComponentsInChildren<RectTransform>(true)
+                    .Single(rect => rect.name == "Tab-accessory").gameObject.activeSelf, Is.False);
+                Assert.That(_root.Wardrobe.LargePortrait.BaseLayerTransform.gameObject.activeSelf,
+                    Is.False);
+                rig.TurntableAmplitude = 0f;
+                rig.Layout(camera);
+                var skins = rig.PrefabRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                var composed = ReadFrame(camera, target);
+                Color32[] withoutRig;
+                foreach (var skin in skins) skin.enabled = false;
+                try { withoutRig = ReadFrame(camera, target); }
+                finally { foreach (var skin in skins) skin.enabled = true; }
+                var head = InsetAndClamp(rig.RenderedHeadScreenRect, 0.1f, 0.1f,
+                    CaptureWidth, CaptureHeight);
+                Assert.That(ChangedFraction(composed, withoutRig, head, CaptureWidth, 4),
+                    Is.GreaterThan(0.1f), "the mounted rig must contribute visible head pixels");
+                CaptureBound(camera, target, dir, "wardrobe-rig-917x2048.png");
+
+                var frameTab = _root.Wardrobe.GetComponentsInChildren<RectTransform>(true)
+                    .Single(rect => rect.name == "Tab-frame");
+                _root.Input.HandleTapAtScreen(ProjectedScreenRect(frameTab, camera).center);
+                yield return null;
+                ApplyLayout(_root.Wardrobe, CaptureSafeArea, CaptureDpi,
+                    CaptureWidth, CaptureHeight);
+                Assert.That(_root.Wardrobe.VisibleCards.Count, Is.EqualTo(2));
+                var cards = _root.Wardrobe.VisibleCards.OrderBy(card => card.ScreenRect.x).ToArray();
+                float span = cards.Last().ScreenRect.xMax - cards.First().ScreenRect.xMin;
+                Assert.That(span / _root.Wardrobe.ItemsRectPx.width, Is.GreaterThanOrEqualTo(0.9f));
+                CaptureBound(camera, target, dir, "wardrobe-frames-917x2048.png");
+
+                var blue = _root.Wardrobe.GetComponentsInChildren<RectTransform>(true)
+                    .Single(rect => rect.name == "CatSelector-blue_siamese");
+                _root.Input.HandleTapAtScreen(ProjectedScreenRect(blue, camera).center);
+                yield return null;
+                ApplyLayout(_root.Wardrobe, CaptureSafeArea, CaptureDpi,
+                    CaptureWidth, CaptureHeight);
+                Assert.That(rig.Mounted, Is.False);
+                Assert.That(_root.Wardrobe.LargePortrait.BaseLayerTransform.gameObject.activeSelf,
+                    Is.True);
+                CaptureBound(camera, target, dir, "wardrobe-blue-fallback-917x2048.png");
+            }
+            finally
+            {
+                camera.targetTexture = previousTarget;
+                camera.aspect = previousAspect;
+                RenderTexture.active = previousActive;
+                target.Release();
+                Object.Destroy(target);
+            }
+        }
+
+        [UnityTest]
         public IEnumerator CaptureEvidence_ShippedHomeRig_1536x2752_WhenRequested()
         {
             var dir = Environment.GetEnvironmentVariable("CM_UI_CAPTURE_DIR");

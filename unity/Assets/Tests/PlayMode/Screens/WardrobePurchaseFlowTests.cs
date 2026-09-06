@@ -57,6 +57,94 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator OpenAndSelectorChanges_PaintTheFirstLiveActionWithoutATapOrAnEquip()
+        {
+            var setup = CreateSetup();
+            CreateView(setup);
+            int writes = setup.Persistence.ReplaceCalls;
+            _view.Open();
+            Layout();
+            yield return null;
+            Assert.That(FindRect("PrimaryActionChip").gameObject.activeInHierarchy, Is.True);
+            Assert.That(_view.PrimaryActionText, Is.EqualTo("Unlock · CA$2.79"));
+            Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.True);
+            Assert.That(setup.Persistence.ReplaceCalls, Is.EqualTo(writes));
+            Assert.That(setup.Profile.CurrentPortrait.OutfitAssetId, Is.Empty);
+            Tap(FindRect("CatSelector-blue_siamese"));
+            yield return null;
+            Assert.That(_view.PrimaryActionText, Is.EqualTo("Unlock · CA$2.79"));
+            Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.True);
+            Tap(FindRect("Tab-frame"));
+            yield return null;
+            Assert.That(_view.PrimaryActionText, Is.EqualTo("Unlock · €0.99"));
+            Assert.That(setup.Profile.CurrentPortrait.FrameAssetId, Is.Empty);
+        }
+
+        [UnityTest]
+        public IEnumerator EmptyCatalogTabs_HideAndLoseTheirInputRegion_ForTheSelectedCat()
+        {
+            var catalog = ShippedCosmeticCatalogRoot();
+            Item(catalog, "outfit_conductor")["compatibleCatIds"] = new JArray("red_tabby");
+            var setup = CreateSetup(catalogRoot: catalog);
+            CreateView(setup);
+            _view.Open();
+            Layout();
+            yield return null;
+            Assert.That(FindRect("Tab-accessory").gameObject.activeInHierarchy, Is.False);
+            Assert.That(_regions.IsRegistered("wardrobe.tab.accessory"), Is.False);
+            Tap(FindRect("CatSelector-blue_siamese"));
+            yield return null;
+            Assert.That(FindRect("Tab-outfit").gameObject.activeInHierarchy, Is.False);
+            Assert.That(_regions.IsRegistered("wardrobe.tab.outfit"), Is.False);
+            Assert.That(_view.SelectedSlot, Is.EqualTo(CosmeticSlot.Frame));
+            Assert.That(_view.PrimaryActionText, Is.EqualTo("Unlock · €0.99"));
+            Assert.That(_view.VisibleCards.Count, Is.EqualTo(2));
+        }
+
+        [UnityTest]
+        public IEnumerator StoreLayout_GivesTheItemRailAndActionPriority_WithRestoreAsATextLink()
+        {
+            var setup = CreateSetup();
+            CreateView(setup);
+            _view.Open();
+            Layout();
+            yield return null;
+            float px = HudBands.PxPerDp(408f);
+            var restore = FindRect("RestoreChip");
+            Assert.That(ScreenRect(restore).height, Is.EqualTo(44f * px).Within(1f));
+            Assert.That(restore.GetComponent<Image>(), Is.Null, "Restore is a text link");
+            Assert.That(ScreenRect(FindRect("PrimaryActionChip")).height,
+                Is.EqualTo(64f * px).Within(1f));
+            AssertContained(FindRect("WardrobeStatus"), FindRect("PrimaryActionChip"),
+                "operation status belongs inside the action subtitle");
+            Assert.That(_view.ItemsRectPx.height, Is.EqualTo(156f * px).Within(1f));
+            Assert.That(Card("outfit_conductor").ScreenRect.width,
+                Is.EqualTo(_view.ItemsRectPx.width).Within(1f));
+            var crop = FindChildRect(Card("outfit_conductor").transform, "ItemPortraitMount");
+            Assert.That(crop.GetComponent<RectMask2D>(), Is.Not.Null,
+                "the enlarged item must remain inside its tile");
+            Assert.That(FindChildText(Card("outfit_conductor").transform, "ItemNameLabel")
+                .fontSizeMin, Is.GreaterThanOrEqualTo(16f * px));
+            var coat = ScreenRect(FindChildRect(Card("outfit_conductor").transform, "Coat"));
+            Assert.That(coat.width / coat.height, Is.InRange(0.9f, 1.4f),
+                "a wide card must not flatten the coat or its round buttons");
+
+            Tap(FindRect("Tab-frame"));
+            yield return null;
+            foreach (var card in ActiveCards())
+            {
+                Assert.That(card.ItemPortrait.BaseLayerTransform.gameObject.activeSelf, Is.False,
+                    "frame tiles show the frame itself");
+                Assert.That(card.ItemPortrait.OutfitLayerTransform.gameObject.activeSelf, Is.False);
+                Assert.That(card.ItemPortrait.FrameLayerTransform.gameObject.activeInHierarchy,
+                    Is.True);
+                var frame = ScreenRect(card.ItemPortrait.RootTransform);
+                Assert.That(frame.width / frame.height, Is.EqualTo(1f).Within(0.01f),
+                    "frame proportions are independent of the number of cards");
+            }
+        }
+
+        [UnityTest]
         public IEnumerator StarterCats_ArePaintedRegisteredPersistFirst_AndRepaintBothPortraits()
         {
             var order = new List<string>();
@@ -161,7 +249,7 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator Tabs_ProjectOnlyOneSlot_AndAccessoryIsOneUntappableEmptyState()
+        public IEnumerator Tabs_ProjectOnlyAvailableSlots_AndRuntimeFilteringKeepsOneUntappableEmptyState()
         {
             var setup = CreateSetup();
             CreateView(setup);
@@ -169,7 +257,7 @@ namespace CatMetro.Tests.PlayMode
             Layout();
             yield return null;
 
-            foreach (var slot in new[] { "outfit", "accessory", "frame" })
+            foreach (var slot in new[] { "outfit", "frame" })
             {
                 var target = FindRect("Tab-" + slot);
                 Assert.That(target.gameObject.activeInHierarchy, Is.True);
@@ -178,7 +266,12 @@ namespace CatMetro.Tests.PlayMode
             }
             Assert.That(_regions.IsRegistered("wardrobe.item.outfit_conductor"), Is.True);
 
-            Tap(FindRect("Tab-accessory"));
+            Assert.That(FindRect("Tab-accessory").gameObject.activeSelf, Is.False);
+            setup.Backend.ClearProducts();
+            setup.Purchases.Refresh();
+            _view.Hide();
+            _view.Open();
+            Layout();
             yield return null;
             Assert.That(ActiveCards().Count, Is.EqualTo(0));
             Assert.That(_regions.IsRegistered("wardrobe.item.outfit_conductor"), Is.False);
@@ -211,29 +304,39 @@ namespace CatMetro.Tests.PlayMode
 
             foreach (var fixture in new[]
                      {
-                         (Safe: PhoneSafeArea, Dpi: 408f, ThreeWidthDp: 106.54f),
-                         (Safe: TallPhoneSafeArea, Dpi: 495f, ThreeWidthDp: 112f),
+                         (Safe: PhoneSafeArea, Dpi: 408f),
+                         (Safe: TallPhoneSafeArea, Dpi: 495f),
                      })
             {
                 Layout(fixture.Safe, fixture.Dpi);
                 Tap(FindRect("Tab-frame"));
                 Tap(CardRect("frame_brass"));
                 Canvas.ForceUpdateCanvases();
-                AssertHorizontalCardBand(3, fixture.Safe, fixture.Dpi,
-                    fixture.ThreeWidthDp);
+                AssertHorizontalCardBand(3, fixture.Safe, fixture.Dpi);
+                var status = FindChildText(Card("frame_third").transform, "ItemStatusLabel");
+                status.ForceMeshUpdate();
+                var tile = Card("frame_third").RootTransform;
+                Vector3 paintedBottom = tile.InverseTransformPoint(
+                    status.transform.TransformPoint(status.textBounds.min));
+                Assert.That(paintedBottom.y, Is.GreaterThanOrEqualTo(tile.rect.yMin - 1f),
+                    "a long earned instruction must not spill out of its tile");
                 Assert.That(ScreenRect(FindRect("LargePortraitCard")).height /
-                    HudBands.PxPerDp(fixture.Dpi), Is.GreaterThanOrEqualTo(320f),
-                    "selected three-card state must retain the 320dp hero floor");
+                    HudBands.PxPerDp(fixture.Dpi), Is.GreaterThanOrEqualTo(265f),
+                    "the larger rail and full-width action retain at least a 265dp hero");
 
                 Tap(FindRect("Tab-outfit"));
                 Canvas.ForceUpdateCanvases();
-                AssertHorizontalCardBand(1, fixture.Safe, fixture.Dpi, 112f);
+                AssertHorizontalCardBand(1, fixture.Safe, fixture.Dpi);
             }
 
             Layout(PhoneSafeArea, 408f);
             var oneItemBand = ScreenRect(FindRect("ItemsBand"));
             var onePortrait = ScreenRect(FindRect("LargePortraitCard"));
-            Tap(FindRect("Tab-accessory"));
+            setup.Backend.ClearProducts();
+            setup.Purchases.Refresh();
+            _view.Hide();
+            _view.Open();
+            Layout();
             Canvas.ForceUpdateCanvases();
             AssertEmptyBand();
             Assert.That(ScreenRect(FindRect("ItemsBand")), Is.EqualTo(oneItemBand),
@@ -365,12 +468,15 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_view.LargePortrait.AppliedFrameAssetId, Is.EqualTo("frame.brass"));
             var heroPixels = RenderPixels();
             var heroRect = ScreenRect(heroMount);
-            Assert.That(CountColor(heroPixels, heroRect,
-                new Color32(225, 90, 71, 255), 30), Is.GreaterThan(500), "hero base cat");
-            Assert.That(CountColor(heroPixels, heroRect,
-                new Color32(34, 48, 74, 255), 30), Is.GreaterThan(500), "hero coat");
-            Assert.That(CountColor(heroPixels, heroRect,
-                new Color32(239, 193, 61, 255), 30), Is.GreaterThan(100), "hero frame");
+            if (!_view.ProfileRig.Mounted)
+            {
+                Assert.That(CountColor(heroPixels, heroRect,
+                    new Color32(225, 90, 71, 255), 30), Is.GreaterThan(500), "hero base cat");
+                Assert.That(CountColor(heroPixels, heroRect,
+                    new Color32(34, 48, 74, 255), 30), Is.GreaterThan(500), "hero coat");
+                Assert.That(CountColor(heroPixels, heroRect,
+                    new Color32(239, 193, 61, 255), 30), Is.GreaterThan(100), "hero frame");
+            }
             AssertPaintedAgainstDisabledControl(_view.LargePortrait.RootTransform, 2_000,
                 "large portrait");
 
@@ -384,9 +490,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(CountColor(conductorPixels, conductorRect,
                 new Color32(34, 48, 74, 255), 30), Is.GreaterThan(80),
                 "Conductor card contains admitted navy coat pixels");
-            Assert.That(CountColor(conductorPixels, conductorRect,
-                new Color32(225, 90, 71, 255), 30), Is.GreaterThan(80),
-                "Conductor card contains its complete Red Tabby base");
+            Assert.That(conductorPortrait.BaseLayerTransform.gameObject.activeSelf, Is.False,
+                "the tile isolates the coat; the complete cat belongs on the hero");
             AssertPaintedAgainstDisabledControl(conductorPortrait.RootTransform, 250,
                 "Conductor item portrait");
 
@@ -475,7 +580,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(CardBool(ownedCard, "PriceChipVisible"), Is.False);
             Assert.That(FindChildRect(ownedCard.transform, "PriceChip").gameObject.activeSelf,
                 Is.False, "an owned non-purchase row has no price chip");
-            AssertHorizontalCardBand(1, PhoneSafeArea, 408f, 112f);
+            AssertHorizontalCardBand(1, PhoneSafeArea, 408f);
         }
 
         [UnityTest]
@@ -1212,8 +1317,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_regions.IsRegistered("wardrobe.item.frame_lantern"), Is.True);
             Assert.That(cards[0].transform.parent.childCount, Is.EqualTo(1),
                 "omission leaves no inactive blank card child");
-            AssertHorizontalCardBand(1, PhoneSafeArea, 408f, 112f);
-            AssertActionGeometry(primaryVisible: false);
+            AssertHorizontalCardBand(1, PhoneSafeArea, 408f);
+            AssertActionGeometry(primaryVisible: true);
 
             setup.Backend.WithStoreEntitlement("frame_brass");
             setup.Purchases.RefreshEntitlements();
@@ -1228,7 +1333,7 @@ namespace CatMetro.Tests.PlayMode
             Tap(FindRect("Tab-frame"));
             Assert.That(ActiveCards().Any(card => CardString(card, "ItemId") == "frame_brass"),
                 Is.True, "accessible content remains visible without a live price");
-            AssertHorizontalCardBand(2, PhoneSafeArea, 408f, 112f);
+            AssertHorizontalCardBand(2, PhoneSafeArea, 408f);
         }
 
         [UnityTest]
@@ -1242,12 +1347,12 @@ namespace CatMetro.Tests.PlayMode
             AssertCoreRegions(shouldExist: true);
             Assert.That(_regions.Count, Is.EqualTo(9));
             Assert.That(_regions.IsRegistered("wardrobe.item.outfit_conductor"), Is.True);
-            Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.False);
+            Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.True);
             AssertCardArtifacts(expectedCards: 1, expectedVisiblePrices: 1);
 
             Tap(CardRect("outfit_conductor"));
             yield return null;
-            Assert.That(_regions.Count, Is.EqualTo(10));
+            Assert.That(_regions.Count, Is.EqualTo(9));
             Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.True);
             AssertCardArtifacts(expectedCards: 1, expectedVisiblePrices: 1);
 
@@ -1256,14 +1361,14 @@ namespace CatMetro.Tests.PlayMode
             _view.gameObject.SetActive(true);
             yield return null;
             AssertCoreRegions(shouldExist: true);
-            Assert.That(_regions.Count, Is.EqualTo(10));
+            Assert.That(_regions.Count, Is.EqualTo(9));
             Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.True);
             AssertCardArtifacts(expectedCards: 1, expectedVisiblePrices: 1);
 
             Tap(FindRect("CatSelector-blue_siamese"));
             yield return null;
             Assert.That(_regions.Count, Is.EqualTo(9));
-            Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.False);
+            Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.True);
             Assert.That(_regions.IsRegistered("wardrobe.item.outfit_conductor"), Is.True);
             AssertCardArtifacts(expectedCards: 1, expectedVisiblePrices: 1);
 
@@ -1315,7 +1420,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_view.LargePortrait.AppliedCatId, Is.EqualTo("red_tabby"));
             Assert.That(ActiveCards().Count, Is.EqualTo(0),
                 "the bridge supplies DisabledCosmeticRewardedRoute when price is absent");
-            Assert.That(_regions.Count, Is.EqualTo(8));
+            Assert.That(_regions.Count, Is.EqualTo(7));
         }
 
         [UnityTest]
@@ -1385,6 +1490,64 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator CaptureEvidence_BlueFallbackStore_917x2048_WhenRequested()
+        {
+            string directory = Environment.GetEnvironmentVariable("CM_UI_CAPTURE_DIR");
+            if (string.IsNullOrEmpty(directory))
+            {
+                Assert.Pass("capture rig disarmed — set CM_UI_CAPTURE_DIR");
+                yield break;
+            }
+            Directory.CreateDirectory(directory);
+            var setup = CreateSetup();
+            Assert.That(setup.Profile.TrySelectCat("blue_siamese"), Is.True);
+            CreateCamera();
+            CreateView(setup, camera: _cameraHost.GetComponent<Camera>());
+            yield return null;
+            _view.Open();
+            Layout();
+            yield return null;
+            Assert.That(_view.ProfileRig.Mounted, Is.False,
+                "Blue Siamese deliberately keeps its own portrait this sprint");
+            Assert.That(_view.PrimaryActionText, Is.EqualTo("Unlock · CA$2.79"));
+            Assert.That(FindRect("Tab-accessory").gameObject.activeSelf, Is.False);
+            Capture(directory, "wardrobe-blue-coat-917x2048.png");
+
+            Tap(FindRect("Tab-frame"));
+            yield return null;
+            AssertHorizontalCardBand(2, PhoneSafeArea, 408f);
+            Capture(directory, "wardrobe-blue-frames-917x2048.png");
+
+            Tap(FindRect("CatSelector-yellow_longhair"));
+            yield return null;
+            Assert.That(_view.ProfileRig.Mounted, Is.False);
+            Capture(directory, "wardrobe-yellow-frames-917x2048.png");
+
+            // The shipped tabs contain one coat and two frames. Exercise the requested
+            // three-card rail with an earned test-only row, without introducing a store SKU.
+            ResetView();
+            var catalogRoot = ShippedCosmeticCatalogRoot();
+            var third = (JObject)Item(catalogRoot, "frame_brass").DeepClone();
+            third["id"] = "frame_third";
+            third["acquisition"] = "earned";
+            third["earnInstructionKey"] = "cosmetics.earn.conductor";
+            third["order"] = 40;
+            third.Remove("entitlementId");
+            third.Remove("productId");
+            ((JArray)catalogRoot["items"]).Add(third);
+            var threeSetup = CreateSetup(catalogRoot: catalogRoot);
+            Assert.That(threeSetup.Profile.TrySelectCat("blue_siamese"), Is.True);
+            CreateView(threeSetup, camera: _cameraHost.GetComponent<Camera>());
+            yield return null;
+            _view.Open();
+            Layout();
+            Tap(FindRect("Tab-frame"));
+            yield return null;
+            AssertHorizontalCardBand(3, PhoneSafeArea, 408f);
+            Capture(directory, "wardrobe-three-card-fixture-917x2048.png");
+        }
+
+        [UnityTest]
         public IEnumerator CaptureEvidence_EmitsAllPhoneStatesAndPaintedPixelProof_WhenArmed()
         {
             string directory = Environment.GetEnvironmentVariable("CM_WARDROBE_CAPTURE_DIR");
@@ -1415,12 +1578,15 @@ namespace CatMetro.Tests.PlayMode
                 "card read-back must expose camera-converted screen coordinates");
             yield return null;
 
+            _view.ProfileRig.TurntableAmplitude = 0f;
+            _view.ProfileRig.Layout(_cameraHost.GetComponent<Camera>());
             var captures = new List<string>();
             captures.Add(Capture(directory, "wardrobe-plain.png"));
-            AssertPortraitHasInk(captures.Last(), FindRect("LargePortrait"), navy: false,
-                brass: false, red: true);
+            if (!_view.ProfileRig.Mounted)
+                AssertPortraitHasInk(captures.Last(), FindRect("LargePortrait"), navy: false,
+                    brass: false, red: true);
             AssertCaptureColor(captures.Last(), FindRect("StandBase"),
-                new Color32(240, 138, 60, 255), 100, "painted toy stand base");
+                (Color32)Palette.WoodShadow, 100, "painted wooden stand edge");
             var plainCard = Card("outfit_conductor");
             AssertCaptureColor(captures.Last(), CardPortrait(plainCard).RootTransform,
                 new Color32(34, 48, 74, 255), 50, "Conductor card coat preview");
@@ -1430,7 +1596,7 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             captures.Add(Capture(directory, "wardrobe-locked-preview.png"));
             AssertPortraitHasInk(captures.Last(), CardPortrait(Card("outfit_conductor"))
-                .RootTransform, navy: true, brass: true, red: true);
+                .RootTransform, navy: true, brass: true);
             AssertPortraitHasInk(captures.Last(), FindRect("LargePortrait"), navy: true,
                 brass: true);
             Tap(FindRect("PrimaryActionChip"));
@@ -1456,7 +1622,7 @@ namespace CatMetro.Tests.PlayMode
             var brassPixels = LoadPixels(captures.Last());
             AssertFrameBorder(noFramePixels, brassPixels, portraitRect,
                 new Color32(239, 193, 61, 255), "Brass yellow rails/corners");
-            AssertCenterCat(brassPixels, portraitRect);
+            if (!_view.ProfileRig.Mounted) AssertCenterCat(brassPixels, portraitRect);
 
             Tap(CardRect("frame_lantern"));
             Tap(FindRect("PrimaryActionChip"));
@@ -1468,7 +1634,7 @@ namespace CatMetro.Tests.PlayMode
             var lanternPixels = LoadPixels(captures.Last());
             AssertFrameBorder(noFramePixels, lanternPixels, portraitRect,
                 new Color32(59, 175, 168, 255), "Lantern teal rails");
-            AssertCenterCat(lanternPixels, portraitRect);
+            if (!_view.ProfileRig.Mounted) AssertCenterCat(lanternPixels, portraitRect);
             Assert.That(BorderPixelDelta(brassPixels, lanternPixels, portraitRect),
                 Is.GreaterThan(5_000), "Brass and Lantern borders must be visibly distinct");
 
@@ -1706,7 +1872,7 @@ namespace CatMetro.Tests.PlayMode
                      {
                          "wardrobe.back", "wardrobe.restore", "wardrobe.cat.red_tabby",
                          "wardrobe.cat.blue_siamese", "wardrobe.cat.yellow_longhair",
-                         "wardrobe.tab.outfit", "wardrobe.tab.accessory", "wardrobe.tab.frame",
+                         "wardrobe.tab.outfit", "wardrobe.tab.frame",
                      })
                 Assert.That(_regions.IsRegistered(id), Is.EqualTo(shouldExist), id);
         }
@@ -1718,7 +1884,7 @@ namespace CatMetro.Tests.PlayMode
                 FindRect("BackChip"), FindRect("RestoreChip"),
                 FindRect("CatSelector-red_tabby"), FindRect("CatSelector-blue_siamese"),
                 FindRect("CatSelector-yellow_longhair"), FindRect("Tab-outfit"),
-                FindRect("Tab-accessory"), FindRect("Tab-frame"),
+                FindRect("Tab-frame"),
             };
             targets.AddRange(ActiveCards().Select(card => card.RootTransform));
             var primary = FindRect("PrimaryActionChip");
@@ -1732,38 +1898,27 @@ namespace CatMetro.Tests.PlayMode
             var restoreRect = ScreenRect(FindRect("RestoreChip"));
             Assert.That(restoreRect.yMin,
                 Is.EqualTo(PhoneSafeArea.yMin + inset).Within(1f));
-            Assert.That(restoreRect.height, Is.EqualTo(56f * px).Within(1f));
+            Assert.That(restoreRect.height, Is.EqualTo(44f * px).Within(1f));
+            Assert.That(restoreRect.width, Is.EqualTo(contentWidth).Within(1f));
             if (primaryVisible)
             {
                 var primaryRect = ScreenRect(primary);
-                float half = (contentWidth - gap) / 2f;
                 Assert.That(primaryRect.xMin,
                     Is.EqualTo(PhoneSafeArea.xMin + inset).Within(1f));
-                Assert.That(primaryRect.width, Is.EqualTo(half).Within(1f));
-                Assert.That(primaryRect.y, Is.EqualTo(restoreRect.y).Within(1f));
-                Assert.That(primaryRect.height, Is.EqualTo(restoreRect.height).Within(1f));
-                Assert.That(restoreRect.xMin - primaryRect.xMax, Is.EqualTo(gap).Within(1f));
-                Assert.That(restoreRect.width, Is.EqualTo(half).Within(1f));
-                Assert.That(restoreRect.xMax,
-                    Is.EqualTo(PhoneSafeArea.xMax - inset).Within(1f));
+                Assert.That(primaryRect.width, Is.EqualTo(contentWidth).Within(1f));
+                Assert.That(primaryRect.yMin, Is.EqualTo(restoreRect.yMax + gap).Within(1f));
+                Assert.That(primaryRect.height, Is.EqualTo(64f * px).Within(1f));
             }
-            else
-            {
-                Assert.That(restoreRect.xMin,
-                    Is.EqualTo(PhoneSafeArea.xMin + inset).Within(1f));
-                Assert.That(restoreRect.width, Is.EqualTo(contentWidth).Within(1f),
-                    "Restore fills the action band when no row is selected");
-            }
-            Assert.That(ScreenRect(FindRect("WardrobeStatus")).yMin,
-                Is.EqualTo(restoreRect.yMax + gap).Within(1f),
-                "status sits directly above the one shared action band");
+            AssertContained(FindRect("WardrobeStatus"), primary,
+                "status is the action subtitle, with no separate status band");
 
             var rects = targets.Select(ScreenRect).ToArray();
             for (int i = 0; i < rects.Length; i++)
             {
                 var rect = rects[i];
-                Assert.That(HudBands.MeetsMinTargetPx(rect, 408f), Is.True,
-                    targets[i].name + " violates the 48dp action floor");
+                if (targets[i].name != "RestoreChip")
+                    Assert.That(HudBands.MeetsMinTargetPx(rect, 408f), Is.True,
+                        targets[i].name + " violates the 48dp action floor");
                 Assert.That(rect.xMin, Is.GreaterThanOrEqualTo(PhoneSafeArea.xMin - 1f));
                 Assert.That(rect.yMin, Is.GreaterThanOrEqualTo(PhoneSafeArea.yMin - 1f));
                 Assert.That(rect.xMax, Is.LessThanOrEqualTo(PhoneSafeArea.xMax + 1f));
@@ -1774,15 +1929,14 @@ namespace CatMetro.Tests.PlayMode
             }
         }
 
-        private void AssertHorizontalCardBand(int expectedCount, Rect safeArea, float dpi,
-            float expectedWidthDp)
+        private void AssertHorizontalCardBand(int expectedCount, Rect safeArea, float dpi)
         {
             var cards = ActiveCards().OrderBy(card => card.ScreenRect.xMin).ToArray();
             Assert.That(cards.Length, Is.EqualTo(expectedCount));
             var band = ScreenRect(FindRect("ItemsBand"));
             float px = HudBands.PxPerDp(dpi);
-            Assert.That(band.height, Is.EqualTo(112f * px).Within(1f),
-                "the item rail remains one fixed 112dp band");
+            Assert.That(band.height, Is.EqualTo(156f * px).Within(1f),
+                "the item rail remains one fixed 156dp band");
             float expectedGap = 8f * px;
             float firstY = cards[0].ScreenRect.y;
             float firstHeight = cards[0].ScreenRect.height;
@@ -1796,7 +1950,8 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(card.ScreenRect.y, Is.EqualTo(firstY).Within(1f));
                 Assert.That(card.ScreenRect.height, Is.EqualTo(firstHeight).Within(1f));
                 Assert.That(card.ScreenRect.width / px,
-                    Is.EqualTo(expectedWidthDp).Within(0.05f));
+                    Is.EqualTo((band.width / px - 8f * (expectedCount - 1)) / expectedCount)
+                        .Within(0.05f));
                 Assert.That(HudBands.MeetsMinTargetPx(card.ScreenRect, dpi), Is.True,
                     card.ItemId + " is below 48dp");
                 Assert.That(card.ScreenRect.xMin, Is.GreaterThanOrEqualTo(band.xMin - 1f));
@@ -1808,8 +1963,10 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(cards[0].ScreenRect.height, Is.EqualTo(band.height).Within(1f));
             float railMin = cards[0].ScreenRect.xMin;
             float railMax = cards[cards.Length - 1].ScreenRect.xMax;
+            Assert.That((railMax - railMin) / band.width, Is.GreaterThanOrEqualTo(0.90f),
+                "one, two, and three available items span the rail");
             Assert.That((railMin + railMax) * 0.5f, Is.EqualTo(band.center.x).Within(1f),
-                "the capped card rail is centered inside the content band");
+                "the card rail is centered inside the content band");
             Assert.That(band.xMin, Is.EqualTo(safeArea.xMin + 12f * px).Within(1f));
         }
 
@@ -1818,28 +1975,28 @@ namespace CatMetro.Tests.PlayMode
             var band = ScreenRect(FindRect("ItemsBand"));
             var empty = FindText("EmptyStateLabel");
             Assert.That(empty.gameObject.activeInHierarchy, Is.True);
-            Assert.That(band.height, Is.EqualTo(112f * HudBands.PxPerDp(408f)).Within(1f));
+            Assert.That(band.height, Is.EqualTo(156f * HudBands.PxPerDp(408f)).Within(1f));
             var emptyRect = ScreenRect((RectTransform)empty.transform);
             Assert.That(emptyRect.xMin, Is.GreaterThanOrEqualTo(band.xMin - 1f));
             Assert.That(emptyRect.yMin, Is.GreaterThanOrEqualTo(band.yMin - 1f));
             Assert.That(emptyRect.xMax, Is.LessThanOrEqualTo(band.xMax + 1f));
             Assert.That(emptyRect.yMax, Is.LessThanOrEqualTo(band.yMax + 1f));
-            Assert.That(_regions.Count, Is.EqualTo(8),
-                "empty slot has only back, restore, three cats, and three tabs");
+            Assert.That(_regions.Count, Is.EqualTo(7),
+                "runtime-filtered slot has only back, restore, three cats, and two catalog tabs");
         }
 
         private void AssertSelectedRoute(string itemId, CosmeticWardrobeRoute route,
             string expectedLabel)
         {
-            AssertActionGeometry(primaryVisible: false);
+            AssertActionGeometry(primaryVisible: true);
             var card = Card(itemId);
             Assert.That(card.Route, Is.EqualTo(route));
             Tap(card.RootTransform);
             Canvas.ForceUpdateCanvases();
             Assert.That(_view.PrimaryActionText, Is.EqualTo(expectedLabel));
             Assert.That(_regions.IsRegistered("wardrobe.primary"), Is.True);
-            Assert.That(_regions.Count, Is.EqualTo(10),
-                "eight static targets, one preview-only card, and one selected-row action");
+            Assert.That(_regions.Count, Is.EqualTo(9),
+                "seven static targets, one preview-only card, and one selected-row action");
             AssertActionGeometry(primaryVisible: true);
             AssertNoAcquisitionModeTabsOrCardActions();
         }

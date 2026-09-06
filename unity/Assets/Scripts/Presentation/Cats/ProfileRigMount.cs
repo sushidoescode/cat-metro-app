@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CatMetro.Presentation.Cosmetics;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -33,6 +34,22 @@ namespace CatMetro.Presentation.Cats
         private string _logPrefix;
         private string _lastDiagnostic;
         private string _initializationFailure;
+        private readonly List<HeadSample> _headSamples = new List<HeadSample>();
+        private string _headSampleFailure = "no head-weighted vertices";
+
+        public float TurntableAmplitude { get; set; }
+        private float _turntableTime;
+
+        private void Update() => AdvanceTurntable(Time.unscaledDeltaTime);
+
+        public void AdvanceTurntable(float deltaSeconds)
+        {
+            if (!isActiveAndEnabled || !Mounted || TurntableAmplitude <= 0f
+                || _layoutCamera == null || !float.IsFinite(deltaSeconds) || deltaSeconds <= 0f)
+                return;
+            _turntableTime = (_turntableTime + deltaSeconds) % 12f;
+            ApplyPose(Mathf.Min(_holder.rect.width, _holder.rect.height));
+        }
 
         public int FallbackBranch { get; private set; }
         public string FallbackReason { get; private set; } = string.Empty;
@@ -134,6 +151,7 @@ namespace CatMetro.Presentation.Cats
             animator.speed = 0f;
             view.SampledPose = CatModelCatalog.IdleSitClip;
             DestroyImmediate(animator);
+            view.CacheHeadSamples();
             portrait.PortraitApplied += view.OnPortraitApplied;
             view._portraitSubscribed = true;
             return component;
@@ -161,17 +179,25 @@ namespace CatMetro.Presentation.Cats
             _fit.localScale = new Vector3(scale, scale, scale * CanvasDepthScale);
             _fit.anchoredPosition3D = new Vector3(0f, -0.5f * scale,
                 -shortSide * CanvasLift);
-            AppliedFacingYaw = _entry.FacingYaw + _surfaceFacingYaw;
+            Canvas.ForceUpdateCanvases();
+            return ApplyPose(shortSide);
+        }
+
+        private bool ApplyPose(float shortSide)
+        {
+            AppliedFacingYaw = _entry.FacingYaw + _surfaceFacingYaw
+                + TurntableAmplitude * Mathf.Sin(_turntableTime * Mathf.PI / 6f);
             _facing.localRotation = Quaternion.Euler(0f, AppliedFacingYaw, 0f);
 
-            Canvas.ForceUpdateCanvases();
-            if (!TryGetRenderedHeadScreenRect(canvasCamera, out Rect renderedHead)
-                || !TryAlignPortrait(renderedHead, canvasCamera, shortSide))
+            if (!TryGetRenderedHeadScreenRect(_layoutCamera, out Rect renderedHead)
+                || !TryAlignPortrait(renderedHead, _layoutCamera, shortSide))
             {
-                UsePortraitFallback(3, "head bounds or portrait alignment unavailable");
+                UsePortraitFallback(3, _headSamples.Count == 0 ? _headSampleFailure
+                    : "head bounds or portrait alignment unavailable");
                 return false;
             }
 
+            bool becameMounted = !Mounted;
             RenderedHeadScreenRect = renderedHead;
             foreach (SkinnedMeshRenderer skin in _skins)
                 if (skin != null && skin.sharedMesh != null) skin.enabled = true;
@@ -179,74 +205,94 @@ namespace CatMetro.Presentation.Cats
             Mounted = true;
             FallbackBranch = 0;
             FallbackReason = string.Empty;
-            Report(_logPrefix + " mounted=true admitted=" + CatalogAdmittedEntryCount, false);
+            if (becameMounted)
+                Report(_logPrefix + " mounted=true admitted=" + CatalogAdmittedEntryCount, false);
             return true;
+        }
+
+        private void CacheHeadSamples()
+        {
+            // Bone membership never changes after sampling the pose. Retain the head indices
+            // and reuse each bake buffer; Canvas scaling still needs Unity's live skin projection.
+            foreach (SkinnedMeshRenderer skin in _skins)
+            {
+                if (skin == null || skin.sharedMesh == null || _headRoot == null) continue;
+                Mesh source = skin.sharedMesh;
+                _headSampleFailure = "no head sample mesh=" + source.name
+                    + " readable=" + source.isReadable.ToString().ToLowerInvariant();
+                try
+                {
+                    BoneWeight[] weights = source.boneWeights;
+                    Transform[] bones = skin.bones;
+                    if (weights.Length != source.vertexCount || bones.Length == 0) continue;
+                    var headBones = new bool[bones.Length];
+                    for (int i = 0; i < bones.Length; i++)
+                    {
+                        Transform bone = bones[i];
+                        headBones[i] = bone != null
+                            && (bone == _headRoot || bone.IsChildOf(_headRoot));
+                    }
+                    var indices = new List<int>();
+                    for (int i = 0; i < weights.Length; i++)
+                        if (HeadWeight(weights[i], headBones) >= HeadWeightThreshold)
+                            indices.Add(i);
+                    if (indices.Count > 0)
+                        _headSamples.Add(new HeadSample(skin, indices.ToArray()));
+                }
+                catch (UnityException exception)
+                {
+                    _headSampleFailure += " error=" + exception.Message;
+                }
+            }
         }
 
         private bool TryGetRenderedHeadScreenRect(Camera camera, out Rect result)
         {
             bool initialized = false;
             float xMin = 0f, xMax = 0f, yMin = 0f, yMax = 0f;
-            foreach (SkinnedMeshRenderer skin in _skins)
+            foreach (HeadSample sample in _headSamples)
             {
-                if (skin == null || skin.sharedMesh == null) continue;
-                Mesh source = skin.sharedMesh;
-                BoneWeight[] weights = source.boneWeights;
-                Transform[] bones = skin.bones;
-                if (weights == null || weights.Length != source.vertexCount
-                    || bones == null || bones.Length == 0)
-                    continue;
-
-                var headBones = new bool[bones.Length];
-                bool hasHeadBone = false;
-                for (int i = 0; i < bones.Length; i++)
+                if (sample.Skin == null) continue;
+                sample.Skin.BakeMesh(sample.Buffer, false);
+                sample.Buffer.GetVertices(sample.Vertices);
+                foreach (int index in sample.Indices)
                 {
-                    Transform bone = bones[i];
-                    bool belongsToHead = bone != null
-                        && (bone == _headRoot || bone.IsChildOf(_headRoot));
-                    headBones[i] = belongsToHead;
-                    hasHeadBone |= belongsToHead;
-                }
-                if (!hasHeadBone) continue;
-
-                var baked = new Mesh { name = "ProfileHeadSample" };
-                try
-                {
-                    skin.BakeMesh(baked, false);
-                    Vector3[] vertices = baked.vertices;
-                    int count = Mathf.Min(vertices.Length, weights.Length);
-                    for (int i = 0; i < count; i++)
+                    if (index >= sample.Vertices.Count) continue;
+                    Vector3 screen = camera.WorldToScreenPoint(
+                        sample.Skin.transform.TransformPoint(sample.Vertices[index]));
+                    if (screen.z <= 0f) continue;
+                    if (!initialized)
                     {
-                        if (HeadWeight(weights[i], headBones) < HeadWeightThreshold)
-                            continue;
-                        Vector3 screen = camera.WorldToScreenPoint(
-                            skin.transform.TransformPoint(vertices[i]));
-                        if (screen.z <= 0f) continue;
-                        if (!initialized)
-                        {
-                            xMin = xMax = screen.x;
-                            yMin = yMax = screen.y;
-                            initialized = true;
-                        }
-                        else
-                        {
-                            xMin = Mathf.Min(xMin, screen.x);
-                            xMax = Mathf.Max(xMax, screen.x);
-                            yMin = Mathf.Min(yMin, screen.y);
-                            yMax = Mathf.Max(yMax, screen.y);
-                        }
+                        xMin = xMax = screen.x;
+                        yMin = yMax = screen.y;
+                        initialized = true;
+                    }
+                    else
+                    {
+                        xMin = Mathf.Min(xMin, screen.x);
+                        xMax = Mathf.Max(xMax, screen.x);
+                        yMin = Mathf.Min(yMin, screen.y);
+                        yMax = Mathf.Max(yMax, screen.y);
                     }
                 }
-                finally
-                {
-                    DestroyImmediate(baked);
-                }
             }
-
-            result = initialized
-                ? Rect.MinMaxRect(xMin, yMin, xMax, yMax)
-                : default;
+            result = initialized ? Rect.MinMaxRect(xMin, yMin, xMax, yMax) : default;
             return initialized && result.width > 0f && result.height > 0f;
+        }
+
+        private sealed class HeadSample
+        {
+            public readonly SkinnedMeshRenderer Skin;
+            public readonly int[] Indices;
+            public readonly Mesh Buffer = new Mesh { name = "ProfileHeadSample" };
+            public readonly List<Vector3> Vertices;
+
+            public HeadSample(SkinnedMeshRenderer skin, int[] indices)
+            {
+                Skin = skin;
+                Indices = indices;
+                Vertices = new List<Vector3>(skin.sharedMesh.vertexCount);
+            }
         }
 
         private bool TryAlignPortrait(Rect headScreenRect, Camera camera, float shortSide)
@@ -289,6 +335,7 @@ namespace CatMetro.Presentation.Cats
 
         private void Report(string message, bool warning)
         {
+            if (string.IsNullOrEmpty(_logPrefix)) return;
             // Layout is called repeatedly; log state transitions, not one warning per frame.
             if (_lastDiagnostic == message) return;
             _lastDiagnostic = message;
@@ -339,6 +386,8 @@ namespace CatMetro.Presentation.Cats
             if (_portraitSubscribed && _portrait != null)
                 _portrait.PortraitApplied -= OnPortraitApplied;
             _portraitSubscribed = false;
+            foreach (HeadSample sample in _headSamples) DestroyMountedInstance(sample.Buffer);
+            _headSamples.Clear();
         }
 
         private static float HeadWeight(BoneWeight weight, bool[] headBones)
