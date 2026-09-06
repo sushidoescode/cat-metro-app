@@ -95,6 +95,7 @@ namespace CatMetro.Tests.PlayMode
                 "C's speaker keeps the existing Home audio entry region");
             Assert.That(_root.Input.HandleTapAtScreen(_root.Home.AudioToggleRectPx.center),
                 Is.EqualTo(-3));
+            yield return new WaitForSecondsRealtime(.2f);
             Assert.That(_root.Settings, Is.Not.Null);
             Assert.That(_root.Settings.IsVisible, Is.True);
             Assert.That(_root.Stack.Current, Is.EqualTo("settings"));
@@ -161,10 +162,11 @@ namespace CatMetro.Tests.PlayMode
             _root.Input.HandleTapAtScreen(_root.Settings.ReminderRectPx.center);
             Assert.That(_root.Home.ReminderSheet.IsVisible, Is.True);
             _root.Input.HandleTapAtScreen(_root.Home.ReminderSheet.EveningRectPx.center);
+            yield return new WaitForSecondsRealtime(.2f);
             Assert.That(_root.Home.ReminderSheet.SelectedSlot, Is.EqualTo(DailyReminderSlot.Evening));
             Assert.That(_root.Home.ReminderSheet.OpenSettingsVisible, Is.False);
             _root.Input.HandleTapAtScreen(_root.Home.ReminderSheet.OnRectPx.center);
-            yield return null;
+            yield return new WaitForSecondsRealtime(.2f);
             Assert.That(_root.Home.ReminderSheet.OpenSettingsVisible, Is.True,
                 "a denied permission must refresh the fallback control before the first Daily completion");
         }

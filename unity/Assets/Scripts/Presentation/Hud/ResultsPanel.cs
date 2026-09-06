@@ -105,6 +105,7 @@ namespace CatMetro.Presentation.Hud
             if (show && !_registered && _regions != null)
             {
                 _regions.Register(RegionId, () => _chipPaintedPx, InvokeNext, RegionPriority);
+                _regions.BindVisual(RegionId, _chipRect);
                 _registered = true;
             }
             else if (!show) Unregister();

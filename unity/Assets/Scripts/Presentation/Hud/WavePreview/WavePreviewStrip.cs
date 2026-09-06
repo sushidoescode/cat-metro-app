@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using CatMetro.Application.Session;
 using CatMetro.Content;
 using CatMetro.Presentation.Theme;
+using CatMetro.Presentation.Fx;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -48,6 +49,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private const float FaceGapFraction = 0.28f;   // of face size
 
         private GameSession _session;
+        public System.Func<bool> MotionOffSource;
         private Canvas _canvas;
         private RectTransform _canvasRect;
         private RectTransform _hudRoot;
@@ -362,10 +364,18 @@ namespace CatMetro.Presentation.Hud.WavePreview
             if (flipStatus.IsBudgeted)
             {
                 _flipBudget.text = flipStatus.Used + "/" + flipStatus.PerfectMaxSwitches;
-                _flipBudget.color = flipStatus.RemainingToPerfect > 0
-                    ? Palette.InkNavy : Palette.SignalRed;
+                _flipBudget.color = flipStatus.RemainingToPerfect > 0 ? Palette.WarmPaper
+                    : flipStatus.RemainingToPerfect == 0 ? Palette.TabbyYellow : Palette.SignalRed;
                 _flipMark.color = _flipBudget.color;
             }
+        }
+
+        public void PulseFlips()
+        {
+            RefreshFlipBudget();
+            if (!_flipBudget.gameObject.activeInHierarchy) return;
+            BoardFx.GetOrCreate(transform.parent, () => MotionOffSource != null && MotionOffSource())
+                .Punch(_flipBudget.transform, 1.15f, 0.2f);
         }
 
         // Cats currently on the board — live train slots. State.Score/Chain are pinned at 0

@@ -5,6 +5,7 @@ using CatMetro.Domain;
 using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Props;
 using CatMetro.Presentation.Theme;
+using CatMetro.Presentation.Fx;
 using UnityEngine;
 
 namespace CatMetro.Presentation.Board
@@ -32,8 +33,6 @@ namespace CatMetro.Presentation.Board
         public System.Func<bool> MotionOffSource;
 
         private Transform[] _teachRing;   // static shape twin — never animated
-        private Transform[] _teachDisc;   // the pulsing disc transforms
-        private Vector3 _teachDiscBaseScale;
         private bool[] _teachCleared;
 
         public bool TeachAffordancePresent(int switchIndex)
@@ -43,8 +42,26 @@ namespace CatMetro.Presentation.Board
         }
 
         private GameSession _session;
+        public BoardFx Fx { get; private set; }
+        private BoardAmbientFx _ambient;
+        private System.Func<bool> _gameplayVisible;
+        public void BindAmbient(Camera camera, System.Func<bool> screensVisible,
+            System.Func<bool> homeVisible, System.Func<bool> gameplayVisible = null)
+        {
+            _ambient?.Stop();
+            _ambient = new BoardAmbientFx(Fx, camera, screensVisible, homeVisible);
+            _gameplayVisible = gameplayVisible;
+        }
+        public void StopAmbient() => _ambient?.Stop();
+        public void StopMotion()
+        {
+            StopAmbient();
+            foreach (var train in _trains.Values) if (train != null) train.SetMoving(false);
+            Fx.enabled = false;
+        }
         private string[] _nodeIds;
         private Vector3[] _nodePos;
+        private Transform[] _stations;
         private bool[] _sourceNode;
         private int[] _edgeFrom;
         private int[] _edgeTo;
@@ -71,6 +88,7 @@ namespace CatMetro.Presentation.Board
         private int[] _currentSessionDeliveryGenerations;
         private int[] _previousSessionDeliveryGenerations;
         private int _previousDeliveryCount;
+        private int _previousRejectionCount;
         private bool _hasPresentationSnapshot;
         private readonly List<DeliveredPassenger> _deliveredPassengers = new List<DeliveredPassenger>();
         private readonly Dictionary<int, int> _renderedOccupants = new Dictionary<int, int>();
@@ -89,6 +107,10 @@ namespace CatMetro.Presentation.Board
         }
 
         public int SwitchCount => _switchNode.Length;
+        public void RefuseSwitchTap(int index)
+        {
+            if (index >= 0 && index < _switchView.Length) _switchView[index].RefuseTap();
+        }
         public string NodeId(int nodeIndex) => _nodeIds[nodeIndex];
         public Vector3 NodeWorldPos(int nodeIndex) => transform.TransformPoint(_nodePos[nodeIndex]);
         public Vector3 PresentationCenterLocal
@@ -172,6 +194,8 @@ namespace CatMetro.Presentation.Board
             go.transform.SetParent(parent, false);
             var view = go.AddComponent<BoardView>();
             view._session = session;
+            view.Fx = BoardFx.GetOrCreate(view.transform,
+                () => view.MotionOffSource != null && view.MotionOffSource());
             view._usesShapes = DestinationBadge.UsesShapes(level.Dto);
             view.BuildElements(level);
             BoardSurface.Build(level, view.transform);
@@ -201,6 +225,7 @@ namespace CatMetro.Presentation.Board
             var edges = dto.Edges.ToArray();
             var nodeIndex = new Dictionary<string, int>();
             _nodePos = new Vector3[nodes.Length];
+            _stations = new Transform[nodes.Length];
             _nodeIds = new string[nodes.Length];
             _sourceNode = new bool[nodes.Length];
 
@@ -231,6 +256,7 @@ namespace CatMetro.Presentation.Board
                 renderer.sharedMaterial = GreyboxMaterial.Shared;
                 if (kind == "station")
                 {
+                    _stations[i] = prim.transform;
                     // A station's material is shared with its generated primary badge, so it
                     // must carry the line tint on the material itself. Create it explicitly,
                     // bind it through sharedMaterial, and tear it down with this BoardView.
@@ -339,9 +365,7 @@ namespace CatMetro.Presentation.Board
                     if (_teachRing == null)
                     {
                         _teachRing = new Transform[switches.Length];
-                        _teachDisc = new Transform[switches.Length];
                         _teachCleared = new bool[switches.Length];
-                        _teachDiscBaseScale = switchGo.transform.localScale;
                     }
                     // Human ruling 2026-08-06 (#36 review finding 2): the ring carries the
                     // motion-off information, so it must READ as a ring — a distinct darker
@@ -355,7 +379,6 @@ namespace CatMetro.Presentation.Board
                     _teachRing[s] = ToySwitchView.BuildTeachRing(switches[s].Id, transform,
                         _nodePos[_switchNode[s]] + new Vector3(0f, 0f, -0.35f),
                         TeachRingMaterial());
-                    _teachDisc[s] = switchGo.transform;
                 }
             }
             RefreshSwitches();
@@ -397,12 +420,11 @@ namespace CatMetro.Presentation.Board
                 {
                     _teachCleared[s] = true;
                     _teachRing[s].gameObject.SetActive(false);
-                    _teachDisc[s].localScale = _teachDiscBaseScale;
+                    _switchView[s].SetTeachScale(1f);
                     continue;
                 }
-                _teachDisc[s].localScale = motionOff
-                    ? _teachDiscBaseScale
-                    : _teachDiscBaseScale * (1f + 0.12f * Mathf.Sin(Time.time * 4f + s));
+                _switchView[s].SetTeachScale(motionOff
+                    ? 1f : 1f + 0.12f * Mathf.Sin(Time.time * 4f + s));
             }
         }
 
@@ -416,6 +438,7 @@ namespace CatMetro.Presentation.Board
 
         public void RefreshSwitches()
         {
+            UpdateTeach(_session);
             for (int s = 0; s < _switchView.Length; s++)
             {
                 // Board-local math: node positions all live in this view's XY plane, so the
@@ -434,8 +457,8 @@ namespace CatMetro.Presentation.Board
         /// </summary>
         public void UpdateFrom(GameSession session, float visualTime)
         {
+            _ambient?.Advance(visualTime);
             RefreshSwitches();
-            UpdateTeach(session);
             RefreshMechanicStatus(session);
             float alpha = (float)session.Alpha;
             bool motionOff = MotionOffSource != null && MotionOffSource();
@@ -453,6 +476,8 @@ namespace CatMetro.Presentation.Board
             int deliveries = session.State.Deliveries;
             bool deliveryCounterAdvanced = _hasPresentationSnapshot
                 && deliveries > _previousDeliveryCount;
+            bool rejectionAdvanced = _hasPresentationSnapshot
+                && session.State.Rejections > _previousRejectionCount;
             for (int t = 0; t < trains.Length; t++)
             {
                 TrainSlot previous = _hasPresentationSnapshot && t < _previousTrainSlots.Length
@@ -509,6 +534,7 @@ namespace CatMetro.Presentation.Board
                 {
                     if (_trains.TryGetValue(t, out var dead))
                     {
+                        dead.SetMoving(false);
                         if (deliveryAdvanced && displayedOccupantDelivered)
                         {
                             int deliveryNode = session.TrainDeliveryNode(t);
@@ -581,6 +607,10 @@ namespace CatMetro.Presentation.Board
                 {
                     consist.PlaceAtNode(_trackPaths, trains[t].NodeId, _nodePos[trains[t].NodeId]);
                 }
+                consist.SetMoving(!hiddenInTunnel && session.State.Outcome.Kind == OutcomeKind.Running
+                    && (_gameplayVisible == null || _gameplayVisible())
+                    && (trains[t].State == TrainState.OnEdge || trains[t].State == TrainState.OnEdgeReverse),
+                    trains[t].State == TrainState.OnEdgeReverse);
                 // New riders need a hitch-proof source endpoint. Waiting cats reapply their
                 // stable presentation lane; once released, they retain that stored endpoint
                 // for the boarding walk. Lanes outlive FIFO-rank changes until the cat reaches
@@ -604,6 +634,21 @@ namespace CatMetro.Presentation.Board
                 consist.ApplyPresentation(_catTracks[t].State,
                     _catTracks[t].PlatformBlend, _catTracks[t].MovingToPlatform,
                     visualTime, motionOff, _catTracks[t].PlatformBlendSpeed);
+                int node = trains[t].NodeId;
+                bool newRefusal = trains[t].State == TrainState.RejectedAtStation
+                    && (newOccupant || previous.State != TrainState.RejectedAtStation || previous.NodeId != node);
+                bool expressBounce = CatToken.IsExpress(trains[t].Color)
+                    && !CatToken.IsStray(trains[t].Color) && previous.State != TrainState.RejectedAtStation
+                    && (trains[t].State == TrainState.OnEdgeReverse || trains[t].State == TrainState.OnEdge)
+                    && previous.State != trains[t].State;
+                if (rejectionAdvanced && (newRefusal || expressBounce)
+                    && node >= 0 && node < _stations.Length && _stations[node] != null)
+                {
+                    int edge = trains[t].EdgeId;
+                    consist.ShowRejection(visualTime, edge >= 0 && edge < _edgeFrom.Length
+                        && _edgeFrom[edge] == node && _edgeTo[edge] != node);
+                    Fx.RejectStation(_stations[node]);
+                }
                 if (hiddenInTunnel) consist.gameObject.SetActive(false);
             }
             for (int t = 0; t < trains.Length; t++)
@@ -615,6 +660,7 @@ namespace CatMetro.Presentation.Board
                     _currentSessionDeliveryGenerations[t];
             }
             _previousDeliveryCount = deliveries;
+            _previousRejectionCount = session.State.Rejections;
             _hasPresentationSnapshot = true;
             UpdateDeliveredPassengers(session, visualTime, motionOff);
         }
@@ -832,6 +878,7 @@ namespace CatMetro.Presentation.Board
 
         private void OnDestroy()
         {
+            _ambient?.Stop();
             for (int i = 0; i < _ownedNodeMaterials.Count; i++)
             {
                 Material material = _ownedNodeMaterials[i];

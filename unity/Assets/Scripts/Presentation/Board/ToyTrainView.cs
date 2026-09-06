@@ -1,5 +1,6 @@
 using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Theme;
+using CatMetro.Presentation.Fx;
 using UnityEngine;
 
 namespace CatMetro.Presentation.Board
@@ -249,6 +250,13 @@ namespace CatMetro.Presentation.Board
 
         private Transform _engine;
         private Transform _carriage;
+        private BoardFx _fx;
+        private Transform _rejected;
+        private Vector3 _carriagePosition, _recoil;
+        private float _rejectedUntil;
+        private ParticleSystem _steam;
+        private bool _moving;
+        private float _engineBob;
         private Transform _cat;
         private Transform _pin;
         private Transform _head;
@@ -401,6 +409,7 @@ namespace CatMetro.Presentation.Board
             var root = new GameObject(name);
             root.transform.SetParent(parent, false);
             var view = root.AddComponent<ToyTrainView>();
+            view._fx = BoardFx.GetOrCreate(parent != null ? parent : root.transform);
             view._edgeFrom = edgeFrom;
             view._edgeTo = edgeTo;
             view._catCatalog = catCatalog;
@@ -425,6 +434,7 @@ namespace CatMetro.Presentation.Board
         {
             if (!_hasSeenOccupant || presentationOccupantKey != _seenOccupantKey)
             {
+                ResetFeedback();
                 _hasSeenOccupant = true;
                 _seenOccupantKey = presentationOccupantKey;
                 _currentEdge = -1;
@@ -516,6 +526,11 @@ namespace CatMetro.Presentation.Board
             float platformBlendSpeed, bool scaleWalkPlayback)
         {
             _presentationState = state;
+            _engineBob = _moving && !motionOff
+                ? Mathf.Sin(visualTime * Mathf.PI * 2f * (8f / 1.2f)) * 0.004f : 0f;
+            ApplyVehicleOffsets();
+            if (_rejected != null && visualTime >= _rejectedUntil)
+                _rejected.gameObject.SetActive(false);
             bool hidden = state == CatPresentationState.Hidden;
             if (hidden)
             {
@@ -732,6 +747,105 @@ namespace CatMetro.Presentation.Board
             }
         }
 
+        public void ShowRejection(float visualTime, bool arrivedInReverse = false)
+        {
+            _fx.Finish(this, 10);
+            if (_rejected == null)
+            {
+                _rejected = new GameObject("Rejected").transform;
+                _rejected.SetParent(_pin, false);
+                _rejected.localPosition = new Vector3(0f, 0.34f, -0.04f);
+                _rejected.localScale = Vector3.one * 1.6f;
+                CreatePart("Card", _rejected, CatPinMeshBuilder.Card(), Vector3.zero,
+                    new Vector3(PinCardSize, PinCardSize, PinCardDepth), Quaternion.identity, PinCardMaterial());
+                CreatePart("Symbol", _rejected, CatPinMeshBuilder.StarBadge(),
+                    new Vector3(0f, 0f, PinSymbolLocalZ), Vector3.one, Quaternion.identity, CatBasisMaterial());
+                CreatePart("Cross-bar", _rejected, CubeMesh(), new Vector3(0f, 0f, -0.045f),
+                    new Vector3(0.225f, 0.024f, 0.014f), Quaternion.Euler(0f, 0f, 42f), NavyMaterial());
+            }
+            var symbol = _rejected.Find("Symbol");
+            var mesh = PinShape == DestinationShape.Star ? CatPinMeshBuilder.StarBadge()
+                : DestinationShapeMesh.ForShape(PinShape);
+            symbol.GetComponent<MeshFilter>().sharedMesh = mesh;
+            symbol.localRotation = DestinationShapeMesh.PlateRotation(PinShape);
+            symbol.localScale = ScaleForWorldSize(mesh, SymbolWorldSize(PinShape));
+            var tint = new MaterialPropertyBlock();
+            tint.SetColor("_BaseColor", CatTint);
+            tint.SetColor("_Color", CatTint);
+            symbol.GetComponent<Renderer>().SetPropertyBlock(tint);
+            _rejectedUntil = visualTime + 0.6f;
+            _rejected.gameObject.SetActive(true);
+            Vector3 back = -(Quaternion.Euler(0f, 0f, _headingDegrees) * Vector3.right) * 0.08f;
+            if (arrivedInReverse) back = -back;
+            _fx.Tween(this, 0.3f, p =>
+            {
+                _recoil = p >= 1f ? Vector3.zero : back * Mathf.Cos(p * Mathf.PI * 3f) * (1f - p) * (1f - p);
+                ApplyVehicleOffsets();
+            }, channel: 10);
+        }
+
+        private void ApplyVehicleOffsets()
+        {
+            if (_engine != null) _engine.localPosition = _recoil + Vector3.back * _engineBob;
+            if (_carriage != null) _carriage.localPosition = _carriagePosition + _recoil;
+        }
+
+        private void ResetFeedback()
+        {
+            SetMoving(false);
+            if (_fx != null) _fx.Finish(this, 10);
+            _recoil = Vector3.zero;
+            if (_rejected != null) _rejected.gameObject.SetActive(false);
+            ApplyVehicleOffsets();
+        }
+
+        private void OnDisable()
+        {
+            ResetFeedback();
+            if (_steam != null) _steam.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        }
+
+        public void SetMoving(bool moving, bool reverse = false)
+        {
+            moving = moving && _fx != null && !_fx.MotionOff;
+            if (moving && _steam == null)
+            {
+                _steam = _fx.CreateParticles(_engine.Find("Funnel"), "Steam", BoardFxSprite.Puff);
+                _steam.transform.localPosition = Vector3.down;
+                var main = _steam.main;
+                main.loop = true;
+                main.startLifetime = 0.9f;
+                main.startSize = 0.2f; // the shared 0.35 -> 1 curve gives 0.07 -> 0.20
+                main.startSpeed = 0f;
+                main.startColor = Palette.WarmPaper;
+                main.scalingMode = ParticleSystemScalingMode.Shape;
+                var emission = _steam.emission;
+                emission.rateOverTime = 5f;
+            }
+            if (_steam != null)
+            {
+                var emission = _steam.emission;
+                emission.enabled = moving;
+                if (moving)
+                {
+                    Vector3 heading = transform.parent.TransformDirection(
+                        Quaternion.Euler(0f, 0f, _headingDegrees) * Vector3.right).normalized;
+                    if (reverse) heading = -heading;
+                    var drift = _steam.velocityOverLifetime;
+                    drift.enabled = true;
+                    drift.space = ParticleSystemSimulationSpace.World;
+                    Vector3 velocity = Vector3.back * 0.15f - heading * 0.1f;
+                    drift.x = velocity.x; drift.y = velocity.y; drift.z = velocity.z;
+                    if (!_steam.isPlaying) _steam.Play();
+                }
+                else if (_moving || _fx.MotionOff)
+                    _steam.Stop(true, _fx.MotionOff ? ParticleSystemStopBehavior.StopEmittingAndClear
+                        : ParticleSystemStopBehavior.StopEmitting);
+            }
+            _moving = moving;
+            if (!moving) { _engineBob = 0f; ApplyVehicleOffsets(); }
+        }
+
         // The pin's symbol, in the shape the shared vocabulary gives this cat's line and the
         // same tint the cat itself wears.
         //
@@ -811,7 +925,8 @@ namespace CatMetro.Presentation.Board
             _currentEdge = -1;  // the head is provably somewhere this history never led
             _previousEdge = -1;
             _engine.localRotation = Quaternion.Euler(0f, 0f, _headingDegrees);
-            _carriage.localPosition = Vector3.zero;
+            _carriagePosition = Vector3.zero;
+            ApplyVehicleOffsets();
             SetCarriageHeading(_headingDegrees);
         }
 
@@ -824,7 +939,8 @@ namespace CatMetro.Presentation.Board
             var path = paths.Path(sample.OnPreviousEdge ? _previousEdge : headEdge);
             float fraction = path.Length > 0f ? sample.Distance / path.Length : 0f;
             // The root is unrotated, so a board-local delta IS the child's local pose.
-            _carriage.localPosition = path.EvaluateDistanceFraction(fraction) - headPosition;
+            _carriagePosition = path.EvaluateDistanceFraction(fraction) - headPosition;
+            ApplyVehicleOffsets();
             SetCarriageHeading(HeadingDegrees(path.TangentDistanceFraction(fraction)));
         }
 

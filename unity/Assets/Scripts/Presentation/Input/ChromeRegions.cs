@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace CatMetro.Presentation.Input
 {
@@ -66,6 +67,8 @@ namespace CatMetro.Presentation.Input
             public int Priority;
             public long Seq;
             public ChromeFeedback Feedback;
+            public RectTransform Visual;
+            public Graphic Face;
         }
 
         private readonly List<Entry> _entries = new List<Entry>();
@@ -81,6 +84,27 @@ namespace CatMetro.Presentation.Input
                     if (_entries[i].Priority >= StackedModalPriority) return true;
                 return false;
             }
+        }
+
+        public bool ContainsRegistration(long registration)
+        {
+            for (int i = 0; i < _entries.Count; i++)
+                if (_entries[i].Seq == registration) return true;
+            return false;
+        }
+        // The chip factory supplies the painted root after registering its tap region.
+        public void BindVisual(string id, RectTransform target, Graphic face = null)
+        {
+            for (int i = 0; i < _entries.Count; i++)
+                if (_entries[i].Id == id)
+                {
+                    var entry = _entries[i];
+                    entry.Visual = target;
+                    entry.Face = face != null ? face : target != null ? target.GetComponent<Graphic>() : null;
+                    _entries[i] = entry;
+                    return;
+                }
+            throw new ArgumentException("unregistered region '" + id + "'");
         }
 
         // Diagnostic query for lifecycle tests and device self-tests. Counts cannot prove that
@@ -146,10 +170,21 @@ namespace CatMetro.Presentation.Input
         // API-compatible metadata overload: existing action-only callers retain their exact
         // behavior, while TapInput can suppress feedback for a consuming non-control region.
         public bool TryResolve(Vector2 screenPos, out Action onTap,
-            out ChromeFeedback feedback)
+            out ChromeFeedback feedback) => TryResolve(screenPos, out onTap, out feedback, out _, out _);
+
+        public bool TryResolve(Vector2 screenPos, out Action onTap,
+            out ChromeFeedback feedback, out RectTransform visual, out Graphic face)
+            => TryResolve(screenPos, out onTap, out feedback, out visual, out face, out _);
+
+        public bool TryResolve(Vector2 screenPos, out Action onTap,
+            out ChromeFeedback feedback, out RectTransform visual, out Graphic face,
+            out long registration)
         {
             onTap = null;
             feedback = ChromeFeedback.None;
+            visual = null;
+            face = null;
+            registration = -1;
             int bestPriority = 0;
             long bestSeq = 0;
             bool found = false;
@@ -165,6 +200,9 @@ namespace CatMetro.Presentation.Input
                     bestSeq = _entries[i].Seq;
                     onTap = _entries[i].OnTap;
                     feedback = _entries[i].Feedback;
+                    visual = _entries[i].Visual;
+                    face = _entries[i].Face;
+                    registration = _entries[i].Seq;
                 }
             }
             return found;

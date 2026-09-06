@@ -226,10 +226,12 @@ namespace CatMetro.Tests.PlayMode
             // criterion 5 first: NO subscriber — the tap is a silent no-op, never a throw
             Assert.That(_root.Input.HandleTapAtScreen(center), Is.EqualTo(-3),
                 "the chrome region consumes the tap (CM-UX-01's -3 code)");
+            _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>().Advance(0.14f);
 
             int fired = 0;
             panel.NextRequested = () => fired++;
             Assert.That(_root.Input.HandleTapAtScreen(center), Is.EqualTo(-3));
+            _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>().Advance(0.14f);
             Assert.That(fired, Is.EqualTo(1), "the seam fires exactly once per tap");
             Assert.That(_root.Session.Log.Entries.Count, Is.EqualTo(commandsBefore),
                 "no session command — the tap never falls through to a disc");
