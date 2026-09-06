@@ -69,8 +69,8 @@ namespace CatMetro.Tests.PlayMode
             {
                 var filter = edge.GetComponent<MeshFilter>();
                 Assert.That(filter, Is.Not.Null, edge.Id);
-                Assert.That(filter.sharedMesh.subMeshCount, Is.EqualTo(2),
-                    edge.Id + " must contain cream sleepers and navy rails");
+                Assert.That(filter.sharedMesh.subMeshCount, Is.EqualTo(3),
+                    edge.Id + " must contain cream sleepers, navy rails and a warm wood bed");
                 Assert.That(edge.GetComponentsInChildren<Collider>(true), Is.Empty,
                     edge.Id + " must not keep the old primitive collider");
             }

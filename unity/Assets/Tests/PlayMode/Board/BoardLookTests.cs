@@ -955,9 +955,11 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             var materials = _root.View.GetComponentsInChildren<BoardElementId>()
                 .First(e => e.Kind == "edge").GetComponent<Renderer>().sharedMaterials;
-            Assert.That(materials[0].color, Is.EqualTo(Palette.CreamCard));
+            Assert.That(Vector4.Distance(materials[0].color, Palette.CreamCard),
+                Is.LessThan(0.0001f));
             Assert.That(Vector4.Distance(materials[1].color, new Vector4(64f / 255f, 73f / 255f, 105f / 255f, 1f)), Is.LessThan(0.0001f));
-            Assert.That(materials[2].color, Is.EqualTo(Palette.WarmWood));
+            Assert.That(Vector4.Distance(materials[2].color, Palette.WarmWood),
+                Is.LessThan(0.0001f));
         }
 
         [UnityTest]

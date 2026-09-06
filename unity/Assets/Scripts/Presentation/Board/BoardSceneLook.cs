@@ -389,7 +389,7 @@ namespace CatMetro.Presentation.Board
             //
             // The board is now frontal at Euler(38,0,0). This key remains intentionally off the
             // board normal so vertical faces split into lit and shaded sides; the scene tests
-            // measure that result and the 24-unit shadow-distance envelope directly rather
+            // measure that result and the 14-unit shadow-distance envelope directly rather
             // than preserving an angle computed for the superseded diagonal pose.
             key.transform.localRotation = Quaternion.Euler(19f, -56f, 0f);
         }
