@@ -44,12 +44,15 @@ namespace CatMetro.Presentation.Board
         private GameSession _session;
         public BoardFx Fx { get; private set; }
         private BoardAmbientFx _ambient;
+        private BoardVignette _vignette;
         private System.Func<bool> _gameplayVisible;
         public void BindAmbient(Camera camera, System.Func<bool> screensVisible,
             System.Func<bool> homeVisible, System.Func<bool> gameplayVisible = null)
         {
             _ambient?.Stop();
             _ambient = new BoardAmbientFx(Fx, camera, screensVisible, homeVisible);
+            _vignette = GetComponent<BoardVignette>() ?? gameObject.AddComponent<BoardVignette>();
+            _vignette.Bind(Fx, camera);
             _gameplayVisible = gameplayVisible;
         }
         public void StopAmbient() => _ambient?.Stop();
@@ -630,6 +633,7 @@ namespace CatMetro.Presentation.Board
                     consist.ShowRejection(visualTime, edge >= 0 && edge < _edgeFrom.Length
                         && _edgeFrom[edge] == node && _edgeTo[edge] != node);
                     Fx.RejectStation(_stations[node]);
+                    _vignette?.Pulse();
                 }
                 if (hiddenInTunnel) consist.gameObject.SetActive(false);
             }

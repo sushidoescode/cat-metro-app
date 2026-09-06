@@ -434,6 +434,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(rect.width, Is.GreaterThan(0f));
             Assert.That(rect.height, Is.GreaterThan(0f));
             Assert.That(rig.Input.HandleTapAtScreen(rect.center), Is.EqualTo(-3));
+            rig.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
         }
 
         private static RectTransform FindRect(WardrobeScreenView view, string name)

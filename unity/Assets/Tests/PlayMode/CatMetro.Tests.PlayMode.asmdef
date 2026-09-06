@@ -10,6 +10,7 @@
         "CatMetro.Bootstrap",
         "CatMetro.Integrations",
         "Unity.RenderPipelines.Universal.Runtime",
+        "Unity.RenderPipelines.Core.Runtime",
         "UnityEngine.UI",
         "Unity.TextMeshPro",
         "UnityEngine.TestRunner",

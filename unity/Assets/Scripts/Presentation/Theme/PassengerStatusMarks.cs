@@ -22,7 +22,8 @@ namespace CatMetro.Presentation.Theme
 
         public static PassengerStatusMarks Create(Transform parent, bool hud)
         {
-            var root = new GameObject("Passenger status", hud ? typeof(RectTransform) : typeof(Transform));
+            var root = hud ? new GameObject("Passenger status", typeof(RectTransform))
+                : new GameObject("Passenger status");
             root.transform.SetParent(parent, false);
             var marks = root.AddComponent<PassengerStatusMarks>();
             marks._stray = NewMark(root.transform, "Stray", hud);
@@ -40,14 +41,14 @@ namespace CatMetro.Presentation.Theme
 
         private static GameObject NewMark(Transform parent, string name, bool hud)
         {
-            var go = new GameObject(name, hud ? typeof(RectTransform) : typeof(Transform));
+            var go = hud ? new GameObject(name, typeof(RectTransform)) : new GameObject(name);
             go.transform.SetParent(parent, false);
             return go;
         }
 
         private static void Part(Transform parent, bool hud, Vector2 position, Vector2 size, float angle = 0f)
         {
-            var go = new GameObject("stroke", hud ? typeof(RectTransform) : typeof(Transform));
+            var go = hud ? new GameObject("stroke", typeof(RectTransform)) : new GameObject("stroke");
             go.transform.SetParent(parent, false);
             go.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
             if (hud)

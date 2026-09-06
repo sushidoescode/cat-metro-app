@@ -111,6 +111,7 @@ namespace CatMetro.Tests.PlayMode
                 int r = _root.Input.HandleTapAtScreen(
                     new Vector2(Screen.width * 0.5f, Screen.height * 0.1f));
                 Assert.That(r, Is.EqualTo(-2), "retry consumed the tap");
+                yield return new WaitForSecondsRealtime(0.17f);
                 Assert.That(_root.ScreenState, Is.EqualTo("Playing"));
                 for (int i = 0; i < 10; i++) yield return null;
                 Assert.That(cap.CauseVisibleFrames.Count, Is.EqualTo(cycle),

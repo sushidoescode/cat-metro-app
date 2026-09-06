@@ -76,10 +76,12 @@ namespace CatMetro.Tests.PlayMode
                 "loading L001 behind Home is not a player start");
 
             _root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center);
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(_sink.Records, Is.Empty,
                 "showing Intro is not a player start");
 
             _root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center);
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
 
             Assert.That(_sink.Records.Select(x => x.Name),
                 Is.EqualTo(new[] { "level_started" }));
@@ -100,7 +102,9 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
 
             _root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center);
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             _root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center);
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
 
             Assert.That(_sink.Records.Select(x => x.Name), Is.EqualTo(new[]
             {

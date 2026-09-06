@@ -168,6 +168,16 @@ namespace CatMetro.Tests.PlayMode
                     continue;
                 }
                 Assert.That(r.sharedMaterial, Is.Not.Null, r.gameObject.name);
+                if (r is ParticleSystemRenderer)
+                {
+                    Assert.That(r.sharedMaterial.shader, Is.EqualTo(
+                        Resources.Load<Material>("Materials/Particle").shader),
+                        "steam and bursts use the retained URP particle material");
+                    Assert.That(r.sharedMaterial.GetTexture("_BaseMap"), Is.Not.Null,
+                        "the runtime puff/heart/star texture must be bound");
+                    checkedRenderers++;
+                    continue;
+                }
                 var prop = r.GetComponentInParent<BoardPropInstance>();
                 var generatedModel = prop == null ? null : prop.transform.Find("Model");
                 if (generatedModel != null && (r.transform == generatedModel
