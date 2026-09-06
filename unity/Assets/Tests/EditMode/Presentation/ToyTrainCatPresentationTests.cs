@@ -524,6 +524,105 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void DeliveredPassenger_HitchUsesTheSameFloorLiftAsTheTrainPassenger()
+        {
+            BuildBoard(TwoCollapsedLifecyclesLevel());
+            _session.AdvanceMs(4 * TickInterpolator.TICK_MS);
+            _board.UpdateFrom(_session, 0f);
+            Assert.That(_board.transform.Find("delivered-cat:0").localPosition.z,
+                Is.EqualTo(-.2f).Within(.001f), "the feet stay above the tabletop");
+        }
+
+        [Test]
+        public void DeliveredPassenger_ObservedHandoffKeepsTheArrivalEndpoint()
+        {
+            BuildBoard(NonFinalReuseLevel());
+            for (int i = 0; i < 3; i++)
+            {
+                _session.AdvanceMs(TickInterpolator.TICK_MS);
+                _board.UpdateFrom(_session, i * .1f);
+            }
+            _board.UpdateFrom(_session, .7f);
+            var endpoint = BoardTrain().Find("Carriage/Cat").position;
+            _board.UpdateFrom(_session, 1.2f);
+            var resident = _board.transform.Find("delivered-cat:0/Carriage/Cat");
+            Assert.That(Vector3.Distance(resident.position, endpoint), Is.LessThan(.05f),
+                "handoff keeps the actual endpoint, allowing only the small idle bob");
+        }
+
+        [Test]
+        public void DeliveredCats_SurviveSlotReuseAndDepartureExpiry_WithoutChangingTheRun()
+        {
+            BuildBoard(TwoCollapsedLifecyclesLevel());
+            _session.AdvanceMs(4 * TickInterpolator.TICK_MS);
+            Assert.That(_session.State.Deliveries, Is.EqualTo(2));
+            var outcome = _session.State.Outcome;
+            int tick = _session.State.Tick;
+            _board.UpdateFrom(_session, 0f);
+            _board.UpdateFrom(_session, 2f);
+            var a = _board.transform.Find("delivered-cat:0");
+            var b = _board.transform.Find("delivered-cat:1");
+            Assert.That(a, Is.Not.Null, "a hitch must not lose the first delivered cat");
+            Assert.That(b, Is.Not.Null, "slot reuse must not replace the first cat");
+            Assert.That(a.gameObject.activeSelf && b.gameObject.activeSelf, Is.True);
+            Assert.That(a.position, Is.Not.EqualTo(b.position));
+            Assert.That(_session.State.Tick, Is.EqualTo(tick));
+            Assert.That(_session.State.Outcome.Kind, Is.EqualTo(outcome.Kind));
+            Assert.That(a.GetComponent<ToyTrainView>().PresentationState,
+                Is.EqualTo(CatPresentationState.WaitingIdle));
+            Assert.That(a.Find("Engine").gameObject.activeSelf, Is.False);
+            var host = _boardHost;
+            Object.DestroyImmediate(host);
+            Assert.That(a == null && b == null, Is.True, "board teardown owns retained cats");
+        }
+
+        [Test]
+        public void WonCats_HopAtSixTenthsWithNinetyMillisecondStagger_ThenRemain()
+        {
+            BuildBoard(TwoCollapsedLifecyclesLevel());
+            _session.AdvanceMs(4 * TickInterpolator.TICK_MS);
+            _session.State.Outcome = SimOutcome.Won;
+            _board.UpdateFrom(_session, 10f);
+            var a = _board.transform.Find("delivered-cat:0");
+            var b = _board.transform.Find("delivered-cat:1");
+            Assert.That(a, Is.Not.Null);
+            Assert.That(b, Is.Not.Null);
+            _board.UpdateFrom(_session, 10.59f);
+            Assert.That(a.GetComponent<ToyTrainView>().PresentationState,
+                Is.EqualTo(CatPresentationState.WaitingIdle));
+            _board.UpdateFrom(_session, 10.60f);
+            Assert.That(a.GetComponent<ToyTrainView>().PresentationState,
+                Is.EqualTo(CatPresentationState.Celebrate));
+            Assert.That(b.GetComponent<ToyTrainView>().PresentationState,
+                Is.EqualTo(CatPresentationState.WaitingIdle));
+            _board.UpdateFrom(_session, 10.69f);
+            Assert.That(b.GetComponent<ToyTrainView>().PresentationState,
+                Is.EqualTo(CatPresentationState.Celebrate));
+            _board.UpdateFrom(_session, 12f);
+            Assert.That(a.gameObject.activeSelf && b.gameObject.activeSelf, Is.True);
+        }
+
+        [Test]
+        public void WonCats_MotionOffKeepsStaticPlatformPassengers()
+        {
+            BuildBoard(TwoCollapsedLifecyclesLevel());
+            _session.AdvanceMs(4 * TickInterpolator.TICK_MS);
+            _session.State.Outcome = SimOutcome.Won;
+            _board.MotionOffSource = () => true;
+            _board.UpdateFrom(_session, 10f);
+            var a = _board.transform.Find("delivered-cat:0");
+            Assert.That(a, Is.Not.Null);
+            var cat = a.Find("Carriage/Cat");
+            var pose = cat.position;
+            var scale = cat.localScale;
+            _board.UpdateFrom(_session, 10.8f);
+            Assert.That(a.GetComponent<ToyTrainView>().PresentationState,
+                Is.EqualTo(CatPresentationState.WaitingIdle));
+            Assert.That(cat.position, Is.EqualTo(pose));
+            Assert.That(cat.localScale, Is.EqualTo(scale));
+        }
+
+        [Test]
         public void BoardUpdateFrom_ActualDeliveryPlacesRetainedConsistAtRecordedStation()
         {
             BuildBoard(NonFinalReuseLevel());
@@ -553,6 +652,23 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void RetainedPassenger_LongHitchUsesRecordedStation_WhenOldRendererNeverArrived()
+        {
+            BuildBoard(TwoCollapsedLifecyclesLevel(4, 5, 4));
+            _session.AdvanceMs(TickInterpolator.TICK_MS);
+            _board.UpdateFrom(_session, 0f);
+            _session.AdvanceMs(9 * TickInterpolator.TICK_MS);
+            Assert.That(_session.State.Deliveries, Is.EqualTo(2));
+            Assert.That(_session.TrainOccupantGeneration(0), Is.EqualTo(2),
+                "both complete lifecycles reused the rendered slot");
+            _board.UpdateFrom(_session, .1f);
+            Vector3 resident = _board.transform.Find("delivered-cat:0").position;
+            Assert.That(Vector3.Distance(resident, _board.NodeWorldPos(1)),
+                Is.LessThan(Vector3.Distance(resident, _board.NodeWorldPos(0))),
+                "an unseen arrival cannot borrow the old source pose");
+        }
+
+        [Test]
         public void BoardUpdateFrom_TwoCollapsedLifecyclesHidesTheStaleDeliveredCat()
         {
             BuildBoard(TwoCollapsedLifecyclesLevel());
@@ -574,6 +690,10 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(retained.PresentationState, Is.EqualTo(CatPresentationState.Hidden));
             Assert.That(retained.gameObject.activeSelf, Is.False,
                 "never replay visible cat A at unseen cat B's latest delivery node");
+            Vector3 resident = _board.transform.Find("delivered-cat:0").position;
+            Assert.That(Vector3.Distance(resident, _board.NodeWorldPos(1)),
+                Is.LessThan(Vector3.Distance(resident, _board.NodeWorldPos(0))),
+                "the retained cat belongs at its recorded destination, not its stale source pose");
         }
 
         [Test]
@@ -603,6 +723,10 @@ namespace CatMetro.Tests.EditMode.Presentation
                 "unseen blue delivery must not move lingering red to the blue station");
             Assert.That(retained.PresentationState, Is.EqualTo(CatPresentationState.Alight));
             Assert.That(retained.gameObject.activeSelf, Is.True);
+            Assert.That(_board.transform.Find("delivered-cat:0").gameObject.activeSelf,
+                Is.False, "the still-alighting red cat must not be duplicated");
+            Assert.That(_board.transform.Find("delivered-cat:1").gameObject.activeSelf,
+                Is.True, "the unseen blue cat uses its own recorded station");
         }
 
         [Test]
@@ -828,17 +952,17 @@ namespace CatMetro.Tests.EditMode.Presentation
             o["win"]["timeLimitTicks"] = 20;
         });
 
-        private static byte[] TwoCollapsedLifecyclesLevel() => VFixtures.Level(o =>
+        private static byte[] TwoCollapsedLifecyclesLevel(int travel = 1, int spacing = 2, int span = 1) => VFixtures.Level(o =>
         {
             o["meta"]["mechanics"] = new JArray();
             o["meta"]["newMechanic"] = null;
             o["board"]["nodes"] = new JArray(
-                VFixtures.Node("SRC", 0, 1), VFixtures.Node("RED", 0, 0));
-            o["board"]["edges"] = new JArray(VFixtures.Edge("E1", "SRC", "RED", 1));
+                VFixtures.Node("SRC", 0, span), VFixtures.Node("RED", 0, 0));
+            o["board"]["edges"] = new JArray(VFixtures.Edge("E1", "SRC", "RED", travel));
             o["sources"] = new JArray(Source("SRC", "red"));
             o["stations"] = new JArray(VFixtures.Station("RED", 3, "red"));
             o["switches"] = new JArray();
-            o["waves"] = new JArray(VFixtures.Wave(0, "red", 2, 2));
+            o["waves"] = new JArray(VFixtures.Wave(0, "red", 2, spacing));
             o["win"]["deliveries"] = 2;
             o["win"]["timeLimitTicks"] = 20;
         });

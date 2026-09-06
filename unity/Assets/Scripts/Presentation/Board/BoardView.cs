@@ -72,6 +72,21 @@ namespace CatMetro.Presentation.Board
         private int[] _previousSessionDeliveryGenerations;
         private int _previousDeliveryCount;
         private bool _hasPresentationSnapshot;
+        private readonly List<DeliveredPassenger> _deliveredPassengers = new List<DeliveredPassenger>();
+        private readonly Dictionary<int, int> _renderedOccupants = new Dictionary<int, int>();
+        private float _winStartedAt = -1f;
+
+        private sealed class DeliveredPassenger
+        {
+            public CatDelivery Delivery;
+            public ToyTrainView View;
+            public readonly CatPresentationTrack Track = new CatPresentationTrack();
+            public bool HandedOff;
+            public ToyTrainView DepartingView;
+            public long DepartingKey;
+            public Vector3 AnchorFrom, AnchorTo;
+            public float HandedOffAt;
+        }
 
         public int SwitchCount => _switchNode.Length;
         public string NodeId(int nodeIndex) => _nodeIds[nodeIndex];
@@ -486,8 +501,11 @@ namespace CatMetro.Presentation.Board
                         != _previousSessionOccupantGenerations[t];
                 bool newOccupant = live
                     && (!_hasPresentationSnapshot || !previousLive || sessionOccupantChanged);
-                if (newOccupant) _catOccupantGenerations[t] = NextGeneration(
-                    _catOccupantGenerations[t]);
+                if (newOccupant)
+                {
+                    _catOccupantGenerations[t] = NextGeneration(_catOccupantGenerations[t]);
+                    _renderedOccupants[t] = session.TrainOccupantGeneration(t);
+                }
 
                 // GameSession observes every authoritative step, so its read-only generation
                 // catches same-colour refills even when a render hitch collapses delivery,
@@ -629,6 +647,74 @@ namespace CatMetro.Presentation.Board
             }
             _previousDeliveryCount = deliveries;
             _hasPresentationSnapshot = true;
+            UpdateDeliveredPassengers(session, visualTime, motionOff);
+        }
+
+        private void UpdateDeliveredPassengers(GameSession session, float visualTime, bool motionOff)
+        {
+            bool won = session.State.Outcome.Kind == OutcomeKind.Won;
+            if (won && _winStartedAt < 0f) _winStartedAt = visualTime;
+            if (!won) _winStartedAt = -1f;
+            for (int i = _deliveredPassengers.Count; i < session.CatDeliveryCount; i++)
+            {
+                var delivery = session.CatDeliveryAt(i);
+                int lane = 0;
+                foreach (var existing in _deliveredPassengers)
+                    if (existing.Delivery.Node == delivery.Node) lane++;
+                // Stable positions grow toward the board's centre at outer stations.
+                // Campaign boards deliver at most five passengers this sprint.
+                int side = lane == 0 ? 0 : (lane + 1) / 2 * (lane % 2 == 1 ? 1 : -1);
+                float inward = PresentationCenterLocal.x - _nodePos[delivery.Node].x;
+                if (Mathf.Abs(inward) > .1f) side = lane * (inward > 0f ? 1 : -1);
+                Vector3 anchor = _nodePos[delivery.Node] + Vector3.down * .62f
+                    + Vector3.forward * ToyTrainView.HeadAnchorZ;
+                var passenger = ToyTrainView.Create(transform, "delivered-cat:" + i, _edgeFrom, _edgeTo);
+                passenger.SyncSlot(i + 1L, delivery.Colour);
+                passenger.PrepareDeliveredPassenger(anchor);
+                passenger.gameObject.SetActive(false);
+                var retained = new DeliveredPassenger { Delivery = delivery, View = passenger };
+                if (_renderedOccupants.TryGetValue(delivery.Slot, out int generation)
+                    && generation == delivery.OccupantGeneration
+                    // A collapsed lifecycle can leave a matching renderer at its old source.
+                    // Only a verified departure has an endpoint worth handing over.
+                    && _catTracks[delivery.Slot].MovingToPlatform
+                    && _trains.TryGetValue(delivery.Slot, out var original))
+                {
+                    retained.DepartingView = original;
+                    retained.DepartingKey = original.PresentationOccupantKey;
+                    anchor = transform.InverseTransformPoint(original.PlatformEndpointWorld);
+                }
+                retained.AnchorFrom = anchor;
+                retained.AnchorTo = anchor + Vector3.right * (side * ToyTrainView.PlatformQueueSpacing);
+                _deliveredPassengers.Add(retained);
+            }
+            for (int i = 0; i < _deliveredPassengers.Count; i++)
+            {
+                var passenger = _deliveredPassengers[i];
+                int slot = passenger.Delivery.Slot;
+                var departing = passenger.DepartingView;
+                bool departureVisible = departing != null
+                    && departing.PresentationOccupantKey == passenger.DepartingKey
+                    && departing.gameObject.activeSelf && !IsLive(session.State.Trains[slot])
+                    && _catTracks[slot].State != CatPresentationState.Hidden;
+                if (!passenger.HandedOff)
+                {
+                    // Finish an observed alight path before handing off. Hitches and slot
+                    // reuse can skip that path, but never erase a recorded passenger.
+                    if (departureVisible && !motionOff
+                        && (!won || _catTracks[slot].PlatformBlend < .999f)) continue;
+                    passenger.HandedOff = true;
+                    passenger.HandedOffAt = visualTime;
+                    passenger.View.gameObject.SetActive(true);
+                }
+                if (departureVisible) departing.gameObject.SetActive(false);
+                float settle = motionOff ? 1f : Mathf.SmoothStep(0f, 1f,
+                    Mathf.Clamp01((visualTime - passenger.HandedOffAt) / .22f));
+                passenger.View.SetDeliveredAnchor(Vector3.Lerp(passenger.AnchorFrom,
+                    passenger.AnchorTo, settle));
+                passenger.Track.SampleWin(won ? visualTime - _winStartedAt : -1f, i, motionOff);
+                passenger.View.ApplyDeliveredPose(passenger.Track, visualTime, motionOff);
+            }
         }
 
         private void RefreshMechanicStatus(GameSession session)

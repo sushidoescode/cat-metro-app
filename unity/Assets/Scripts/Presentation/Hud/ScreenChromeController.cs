@@ -13,23 +13,29 @@ namespace CatMetro.Presentation.Hud
     {
         private System.Func<string> _screenState;
         private Canvas _canvas;
+        private System.Func<bool> _motionOff;
 
         public RetryCtaView Cta { get; private set; }
         public HaltVeilView Veil { get; private set; }
+        public TransitionVeil Transition { get; private set; }
 
-        // R1-H2: the whole chrome tree hangs off this root — tests walk IT, never a subtree.
+        // Retry and halt paint. Transition owns a separate canvas above every screen.
         public GameObject ChromeRoot => _canvas != null ? _canvas.gameObject : null;
 
-        public void Attach(System.Func<string> screenState)
+        public void Attach(System.Func<string> screenState, System.Func<bool> motionOff = null,
+            CatMetro.Presentation.Input.ChromeRegions regions = null)
         {
             _screenState = screenState;
+            if (motionOff != null) _motionOff = motionOff;
             EnsureViews();
+            if (regions != null) Transition.Bind(regions);
             Apply();
         }
 
         private void Update()
         {
             if (_screenState != null) Apply();
+            Transition?.Advance(Time.unscaledDeltaTime, _motionOff != null && _motionOff());
         }
 
         private void EnsureViews()
@@ -54,6 +60,7 @@ namespace CatMetro.Presentation.Hud
             _canvas.sortingOrder = 100;
             Cta = RetryCtaView.Create(_canvas.transform);
             Veil = HaltVeilView.Create(_canvas.transform);
+            Transition = TransitionVeil.Create(transform, cam, null);
         }
 
         private void Apply()
@@ -62,5 +69,8 @@ namespace CatMetro.Presentation.Hud
             if (Cta != null) Cta.SetVisible(state == "FailureReview");
             if (Veil != null) Veil.SetVisible(state == "Halted");
         }
+
+        private void OnDisable() => Transition?.Cancel();
+        private void OnDestroy() => Transition?.Cancel();
     }
 }

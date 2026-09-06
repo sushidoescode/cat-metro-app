@@ -4,6 +4,18 @@ using CatMetro.Domain;
 
 namespace CatMetro.Application.Session
 {
+    // A copied delivery identity for retained platform passengers. Simulation and replay
+    // never consume these records; unlike a slot's latest node they survive render hitches.
+    public readonly struct CatDelivery
+    {
+        public readonly int Slot, OccupantGeneration, Node;
+        public readonly byte Colour;
+        public CatDelivery(int slot, int occupantGeneration, int node, byte colour)
+        {
+            Slot = slot; OccupantGeneration = occupantGeneration; Node = node; Colour = colour;
+        }
+    }
+
     // CM-C2b: the engine-free run driver (overview.md §3). Presentation NEVER simulates — it
     // hands real elapsed milliseconds in and reads snapshots + Alpha out. Command scheduling is
     // the CM-C1 law: an enqueue stamps the CURRENT tick; Step at stepTick T applies entries
@@ -19,6 +31,7 @@ namespace CatMetro.Application.Session
         private readonly int[] _trainOccupantSpawnEdges;
         private readonly int[] _trainDeliveryGenerations;
         private readonly int[] _trainDeliveryNodes;
+        private readonly List<CatDelivery> _catDeliveries = new List<CatDelivery>();
 
         public GameSession(ImportedLevel level)
         {
@@ -82,6 +95,8 @@ namespace CatMetro.Application.Session
             _trainDeliveryGenerations[slotIndex];
 
         public int TrainDeliveryNode(int slotIndex) => _trainDeliveryNodes[slotIndex];
+        public int CatDeliveryCount => _catDeliveries.Count;
+        public CatDelivery CatDeliveryAt(int index) => _catDeliveries[index];
 
         // Returns true only when this player flip is accepted into the authoritative replay.
         // Rejected budget/cooldown taps never enter the log, so pending lever presentation and
@@ -190,6 +205,8 @@ namespace CatMetro.Application.Session
                                 ? State.Graph.EdgeFrom[edge]
                                 : State.Graph.EdgeTo[edge]
                             : PrevTrains[t].NodeId;
+                        _catDeliveries.Add(new CatDelivery(t, _trainOccupantGenerations[t],
+                            _trainDeliveryNodes[t], PrevTrains[t].Color));
                     }
                 }
             }

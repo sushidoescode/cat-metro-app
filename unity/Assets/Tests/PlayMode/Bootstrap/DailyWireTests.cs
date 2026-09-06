@@ -93,7 +93,11 @@ namespace CatMetro.Tests.PlayMode
         private GameRoot LaunchWithCampaignFixture(string campaignId = "L001")
         {
             File.WriteAllText(Path.Combine(_tmpDir, "level.json"), CampaignFixtureJson(campaignId));
-            return GameRoot.Launch();
+            var root = GameRoot.Launch();
+            // These policy/lockout assertions use the shipped reduced-motion route.
+            // Animated Next and Retry are exercised in FlowPolishTests.
+            root.MotionOffToggle = true;
+            return root;
         }
 
         // CM-BOOT-HOME: the old in-memory Import() helper is retired — the fixture now reaches
@@ -196,6 +200,7 @@ namespace CatMetro.Tests.PlayMode
                     GameRoot.LevelPath("L007")),
                 Path.Combine(_tmpDir, "level.json"), overwrite: true);
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true;
             yield return null;
 
             Assert.That(_root.Home.DailyPinTransform, Is.Null,

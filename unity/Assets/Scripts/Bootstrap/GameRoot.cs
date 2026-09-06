@@ -60,6 +60,9 @@ namespace CatMetro.Bootstrap
         // truth for "what level is this." Null only before the first Wire() (never observable
         // through Launch/LaunchWith, which always Wire synchronously before returning).
         public string CurrentLevelId => _level?.Dto.Id;
+        private ScreenChromeController _chrome;
+        public bool IsTransitioning => _chrome != null && _chrome.Transition != null
+            && _chrome.Transition.IsInFlight;
 
         // CM-DAILYWIRE: the session marker — true from a successful SelectDaily() until
         // ReturnHomeFromDaily() (or a fresh campaign LoadNext, defensively). Read-only so the
@@ -202,6 +205,11 @@ namespace CatMetro.Bootstrap
         // ReturnHomeFromDaily defers Home for the one-frame input lockout in shipped builds too.
         // -1 means there is no pending show.
         private int _pendingHomeShowFrame = -1;
+        private int _introAdvancedFrame = -1;
+        private float _winFxAt = -1f;
+        // Lane B binds BoardFx.Confetti here when its shared foundation lands. The flow
+        // owns timing/cancellation; the particle implementation remains in BoardFx.
+        public System.Action<Transform, Camera> WinConfettiRequested;
 
         // CM-UX-07 criterion 2 / CM-BOOT-HOME criterion 1: true iff a screen (Home or
         // LevelIntro) currently shows — derived from the stack so there is one source of truth.
@@ -505,7 +513,7 @@ namespace CatMetro.Bootstrap
             Input.Wire(Session, View, Cam);
             Input.UiTapAccepted = Audio.PlayButtonTap;
             Input.SwitchTapAccepted = Audio.PlaySwitchClunk;
-            Input.RetryRegionActive = () => ScreenState == "FailureReview";
+            Input.RetryRegionActive = () => ScreenState == "FailureReview" && !IsTransitioning;
             Input.RetryTapped = Retry;
             // CM-UX-07 criterion 2: the board-input gate. F7 (round-1 review) correction: this
             // is NOT behavior-unchanged in shipped boot as a whole — previously BoardInputActive
@@ -515,8 +523,9 @@ namespace CatMetro.Bootstrap
             // term is LIVE in shipped boot now too (Home composes by default there, criterion 1)
             // — it degenerates to false only on the LaunchWith-only gameplay-fixture seam, which
             // never composes a screen flow at all (EDIT 2).
-            Input.BoardInputActive = () => ScreenState == "Playing" && !ScreensVisible;
+            Input.BoardInputActive = () => ScreenState == "Playing" && !ScreensVisible && !IsTransitioning;
             Banner = BannerView.Create(transform);
+            Banner.MotionOffSource = () => MotionOff;
             Preview = WavePreviewStrip.Create(transform, Session, Cam);
             BindPreviewCatMotion();
             // HUD-WAVE: the preview hides itself on Won/FailureReview. Explicit state binding,
@@ -539,7 +548,8 @@ namespace CatMetro.Bootstrap
             if (GetComponent<ScreenChromeController>() == null)
                 gameObject.AddComponent<ScreenChromeController>();
             var chrome = GetComponent<ScreenChromeController>();
-            chrome.Attach(() => ScreenState);
+            _chrome = chrome;
+            chrome.Attach(() => ScreenState, () => MotionOff, Input.Regions);
             if (GetComponent<HintChipController>() == null)
                 gameObject.AddComponent<HintChipController>();
             var hint = GetComponent<HintChipController>();
@@ -557,7 +567,7 @@ namespace CatMetro.Bootstrap
             if (GetComponent<ResultsPanel>() == null)
                 gameObject.AddComponent<ResultsPanel>();
             var results = GetComponent<ResultsPanel>();
-            results.Attach(() => ScreenState, Input.Regions);
+            results.Attach(() => ScreenState, Input.Regions, () => MotionOff);
             // CM-DAILYWIRE: the seam now routes through a small router instead of binding
             // LoadNext directly — a Daily win must never reach campaign progression.
             results.NextRequested = OnResultsCtaRequested;
@@ -624,6 +634,7 @@ namespace CatMetro.Bootstrap
 
             Home.LevelSelected = () =>
             {
+                _introAdvancedFrame = -1;
                 CancelPendingDailyFallback();
                 // A stack push navigates OFF Home (ScreenStack's own navigation law — only the
                 // top of the stack is current): Home.Hide() also unregisters its pin, which
@@ -631,7 +642,7 @@ namespace CatMetro.Bootstrap
                 // thumb band at the identical point — the earliest registration wins ties).
                 Wardrobe.Hide();
                 Home.Hide();
-                Intro.Show(_level.Dto.Name, _level.Dto.Win.Deliveries);
+                Intro.Show(_level.Dto.Name, _level.Dto.Win.Deliveries, _level.Dto.Meta.TeachingGoal);
                 Stack.Push("intro");
             };
             // CM-DAILYWIRE: the Daily entry — no Intro sheet (the pin's own label is
@@ -644,6 +655,9 @@ namespace CatMetro.Bootstrap
             Home.DailySelected = SelectDaily;
             Intro.PlayRequested = () =>
             {
+                // Next and Play share a band. Reduced motion must still swallow a second
+                // tap in the navigation frame instead of silently starting the new board.
+                if (Time.frameCount == _introAdvancedFrame) return;
                 Intro.Hide();
                 Wardrobe.Hide();
                 Home.Hide(); // idempotent — already hidden by the push above
@@ -1056,22 +1070,21 @@ namespace CatMetro.Bootstrap
 
         private void PumpMessagingRoutes()
         {
+            if (IsTransitioning) return;
             while (_pendingMessagingRoutes.TryDequeue(out MessagingRoute route))
                 if (route == MessagingRoute.Daily) SelectDaily();
         }
 
-        // CM-C3 criterion 10's reason→key mapping, PURE and test-drivable (review S1): the
-        // PlatformOverflow is the ELSE: the correct station-specific string renders with the
-        // causal station substitution supplied by CauseAttribution.
+        // The camera and ring carry location. Internal JSON node ids never enter player copy.
         public static (string key, string token) FailKey(CatMetro.Domain.FailReason reason)
         {
             if (reason == CatMetro.Domain.FailReason.QueueOverflow)
-                return ("fail.queueoverflow", "{node}");
+                return ("fail.queueoverflow.generic", null);
             if (reason == CatMetro.Domain.FailReason.Collision)
                 return ("fail.collision", null);
             if (reason == CatMetro.Domain.FailReason.TimeOut)
                 return ("fail.banner.timeout", null);
-            return ("fail.platformoverflow", "{station}");
+            return ("fail.platformoverflow.generic", null);
         }
 
         // CM-LOADNEXT: the campaign band, in play order — the level-progression POLICY (save-
@@ -1151,7 +1164,9 @@ namespace CatMetro.Bootstrap
             // ReturnHomeFromDaily arms its OWN fresh value immediately afterward — so the
             // ordering never fights itself.
             _pendingHomeShowFrame = -1;
+            _introAdvancedFrame = -1;
             _level = level;
+            _winFxAt = -1f;
             Session = preparedSession ?? new GameSession(level);
             Audio?.BindSession(Session);
             if (View != null) Destroy(View.gameObject);
@@ -1186,8 +1201,11 @@ namespace CatMetro.Bootstrap
             if (_failureRewindOffer != null && _failureRewindOffer.isActiveAndEnabled &&
                 _failureRewindRequest == null)
                 FailureRewindAnalytics.OfferDeclined(Analytics, FailureRewindPlacement);
-            LoadLevel(_level);
-            _analyticsRuntime?.RetryLevel(_level, _dailySession);
+            Navigate(() =>
+            {
+                LoadLevel(_level);
+                _analyticsRuntime?.RetryLevel(_level, _dailySession);
+            });
         }
 
         // CM-LOADNEXT: the NextRequested seam's Bootstrap-owned half (CM-UX-04 criterion 5 —
@@ -1202,6 +1220,23 @@ namespace CatMetro.Bootstrap
         {
             if (Session == null) return;
             CancelFailureRewind();
+            Navigate(() => LoadNextLevel(announce: true));
+        }
+
+        private void Navigate(System.Action load)
+        {
+            if (IsTransitioning) return;
+            _winFxAt = -1f;
+            Audio?.CancelCelebrate();
+            // LaunchWith is the synchronous gameplay fixture seam. The shipped screen flow
+            // owns navigation paint; reduced motion keeps its existing immediate behavior.
+            if (Home == null) { load(); return; }
+            _chrome.Transition.Begin(load, MotionOff);
+        }
+
+        private void LoadNextLevel(bool announce)
+        {
+            if (Session == null) return;
             // CM-DAILYWIRE: defensive — campaign progression must never run inside a Daily
             // session. Unreachable via any wired UI (OnResultsCtaRequested routes Daily to
             // ReturnHomeFromDaily instead), but LoadNext is a public method any caller could
@@ -1220,8 +1255,18 @@ namespace CatMetro.Bootstrap
             // (InitializeFromSeam's own precedent, GameRoot.cs above).
             Debug.Log("SEAM_LOADED " + nextPath);
             LoadLevel(imported.Value);
-            _analyticsRuntime?.BeginCampaignLevel(_level, retry: false,
-                fromScreen: "results");
+            if (announce && Home != null)
+            {
+                _introAdvancedFrame = Time.frameCount;
+                Home.Hide();
+                Wardrobe.Hide();
+                Intro.Show(_level.Dto.Name, _level.Dto.Win.Deliveries, _level.Dto.Meta.TeachingGoal);
+                while (Stack.TryPop(out _)) { }
+                Stack.Push("intro");
+            }
+            else
+                _analyticsRuntime?.BeginCampaignLevel(_level, retry: false,
+                    fromScreen: "results");
             // CM-UX-05 forward obligation (state/handoffs/CM-UX-05.md): a NEW level resets the
             // per-level hint attempt-run; Retry() of the SAME level must not (that accumulation
             // is the mechanic) — LoadLevel() stays silent on this by design so Retry() keeps its
@@ -1236,10 +1281,11 @@ namespace CatMetro.Bootstrap
         // routing straight to LoadNext again) is the named mutation proof.
         private void OnResultsCtaRequested()
         {
-            if (_dailySession) { ReturnHomeFromDaily(); return; }
+            if (IsTransitioning) return;
+            if (_dailySession) { Navigate(ReturnHomeFromDaily); return; }
             if (_returnHomeAfterCampaignUnlock)
             {
-                ReturnHomeAfterCampaignUnlock();
+                Navigate(ReturnHomeAfterCampaignUnlock);
                 return;
             }
             LoadNext();
@@ -1253,7 +1299,7 @@ namespace CatMetro.Bootstrap
             _returnHomeAfterCampaignUnlock = false;
             var results = GetComponent<ResultsPanel>();
             if (results != null) results.SetCtaTextKey("results.next");
-            LoadNext();
+            LoadNextLevel(announce: false);
             if (Home != null)
             {
                 Home.SetDailyLifetimeCompletions(LifetimeDailyCompletions);
@@ -1301,6 +1347,11 @@ namespace CatMetro.Bootstrap
         public void SelectDaily()
         {
             if (Session == null) return;
+            if (IsTransitioning)
+            {
+                QueueMessagingRoute(MessagingRoute.Daily);
+                return;
+            }
             if (Home != null && !_dailyEntryUnlocked) return;
             if (_dailyFallbackTask != null) return;
             // CM-DAILYWIRE F4 (review fix round): defensive — a second SelectDaily() call
@@ -1541,7 +1592,7 @@ namespace CatMetro.Bootstrap
 
         private void Update()
         {
-            PumpDailyFallback();
+            if (!IsTransitioning) PumpDailyFallback();
             PumpMessagingRoutes();
             PumpForegroundPermissionRecheck();
             _analyticsRuntime?.Tick();
@@ -1575,7 +1626,7 @@ namespace CatMetro.Bootstrap
             // Once the Play tap drains the stack (ScreensVisible -> false), the sim resumes from
             // tick 0 exactly as if this frame were the very first one.
             if (Session.State.Outcome.Kind == CatMetro.Domain.OutcomeKind.Running
-                && ScreenState == "Playing" && !ScreensVisible)
+                && ScreenState == "Playing" && !ScreensVisible && !IsTransitioning)
             {
                 try
                 {
@@ -1618,6 +1669,8 @@ namespace CatMetro.Bootstrap
             if (outcome.Kind == CatMetro.Domain.OutcomeKind.Won && ScreenState != "Won")
             {
                 ScreenState = "Won";
+                _winFxAt = MotionOff ? -1f
+                    : Time.unscaledTime + CatMetro.Presentation.Cats.CatPresentationTrack.WinBeatDelay;
                 _analyticsRuntime?.CompleteLevel(_level, Session.State);
                 Banner.ShowKey("win.banner");
                 // CM-DAILYWIRE criterion 9 (A-DL-6): surfaced the moment a REAL Daily win
@@ -1673,17 +1726,20 @@ namespace CatMetro.Bootstrap
                     CauseCam.FrameNode(View.NodeId(causal), View.NodeWorldPos(causal), MotionOff);
                 // CM-C2b review F3 lineage: the banner keys by the REASON — never a wrong
                 // string for the fail the player actually hit.
-                var (key, token) = FailKey(outcome.Reason);
-                if (token != null)
-                    Banner.ShowKeySubstituted(key, token, causal >= 0 ? View.NodeId(causal) : "?");
-                else
-                    Banner.ShowKey(key);
+                var (key, _) = FailKey(outcome.Reason);
+                Banner.ShowKey(key);
                 PrepareFailureRewind();
+            }
+            if (_winFxAt >= 0f && Time.unscaledTime >= _winFxAt)
+            {
+                _winFxAt = -1f;
+                if (!MotionOff && ScreenState == "Won" && !IsTransitioning)
+                    WinConfettiRequested?.Invoke(View.transform, Cam);
             }
             RefreshFailureRewindOffer();
             try
             {
-                Audio?.Observe(Session, ScreenState == "Playing" && !ScreensVisible);
+                Audio?.Observe(Session, ScreenState == "Playing" && !ScreensVisible && !IsTransitioning);
             }
             catch (System.Exception ex)
             {
