@@ -172,6 +172,7 @@ namespace CatMetro.Presentation.Hud
                 // The rect provider tracks the live layout; the registration lives only
                 // while the panel is shown (idempotent across state flips).
                 _regions.Register(RegionId, () => _chipPaintedPx, InvokeNext, RegionPriority);
+                _regions.BindVisual(RegionId, _chipRect);
                 _registered = true;
             }
             else if (!show && _registered)

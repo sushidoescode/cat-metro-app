@@ -86,6 +86,7 @@ namespace CatMetro.Tests.PlayMode
                 "composition binds confirmed purchases to audio");
             Assert.That(_root.Input.HandleTapAtScreen(_root.Home.AudioToggleRectPx.center),
                 Is.EqualTo(-3));
+            yield return new WaitForSecondsRealtime(0.17f);
             Assert.That(_root.Audio.Enabled, Is.False);
             Assert.That(_root.Home.AudioEnabled, Is.False);
 

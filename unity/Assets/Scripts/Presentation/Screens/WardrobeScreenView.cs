@@ -829,6 +829,7 @@ namespace CatMetro.Presentation.Screens
             if (_regions == null || _entryRegistered || !_entryShown) return;
             _regions.Register(EntryRegionId, () => _entryRectPx,
                 () => OpenRequested?.Invoke(), EntryPriority);
+            _regions.BindVisual(EntryRegionId, _entryRect);
             _entryRegistered = true;
         }
 
@@ -846,17 +847,21 @@ namespace CatMetro.Presentation.Screens
                 () => BackRequested?.Invoke(), ModalPriority);
             _regions.Register(RestoreRegionId, () => _restoreRectPx,
                 OnRestoreTapped, ModalPriority);
+            _regions.BindVisual(BackRegionId, _backRect);
+            _regions.BindVisual(RestoreRegionId, _restoreRect);
             for (int i = 0; i < _catTargets.Count; i++)
             {
                 var target = _catTargets[i];
                 _regions.Register("wardrobe.cat." + target.Id,
                     () => RectFor(target.Rect), () => OnCatTapped(target.Id), ModalPriority);
+                _regions.BindVisual("wardrobe.cat." + target.Id, target.Rect);
             }
             for (int i = 0; i < _tabTargets.Count; i++)
             {
                 var target = _tabTargets[i];
                 _regions.Register("wardrobe.tab." + target.Id,
                     () => RectFor(target.Rect), () => OnTabTapped(target.Slot), ModalPriority);
+                _regions.BindVisual("wardrobe.tab." + target.Id, target.Rect);
             }
             _staticRegistered = true;
         }
@@ -872,6 +877,7 @@ namespace CatMetro.Presentation.Screens
                 string id = "wardrobe.item." + row.Item.Id;
                 _regions.Register(id, () => RectFor(card.RootTransform),
                     () => OnCardTapped(row), ModalPriority);
+                _regions.BindVisual(id, (RectTransform)card.RootTransform);
                 _registeredItemIds.Add(id);
             }
         }
@@ -890,6 +896,7 @@ namespace CatMetro.Presentation.Screens
                 || !_primaryRect.gameObject.activeInHierarchy) return;
             _regions.Register(PrimaryRegionId, () => _primaryRectPx,
                 OnPrimaryTapped, ModalPriority);
+            _regions.BindVisual(PrimaryRegionId, _primaryRect);
             _primaryRegistered = true;
         }
 

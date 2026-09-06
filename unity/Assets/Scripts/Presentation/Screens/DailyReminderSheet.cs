@@ -255,6 +255,13 @@ namespace CatMetro.Presentation.Screens
         {
             string id = RegionPrefix + suffix;
             _regions.Register(id, rect, action, priority, feedback);
+            TMP_Text label = suffix switch
+            {
+                "morning" => _morning, "afternoon" => _afternoon, "evening" => _evening,
+                "accept" => _accept, "dismiss" => _dismiss, "on" => _on, "off" => _off,
+                "open-settings" => _openSettings, "close" => _close, _ => null,
+            };
+            if (label != null) _regions.BindVisual(id, (RectTransform)label.transform.parent);
             _registered.Add(id);
         }
 

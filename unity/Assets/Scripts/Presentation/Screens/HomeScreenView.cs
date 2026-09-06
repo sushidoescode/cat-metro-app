@@ -641,6 +641,7 @@ namespace CatMetro.Presentation.Screens
             {
                 _regions.Register(PinRegionId, () => _pinRectPx,
                     () => LevelSelected?.Invoke(), PinRegionPriority);
+                _regions.BindVisual(PinRegionId, _pin);
                 _registered = true;
             }
         }
@@ -665,6 +666,7 @@ namespace CatMetro.Presentation.Screens
             {
                 _regions.Register(DailyPinRegionId, () => _dailyPinRectPx,
                     () => DailySelected?.Invoke(), DailyPinRegionPriority);
+                _regions.BindVisual(DailyPinRegionId, _dailyPin);
                 _dailyRegistered = true;
             }
         }
@@ -684,6 +686,7 @@ namespace CatMetro.Presentation.Screens
             {
                 _regions.Register(ReminderGearRegionId, () => _reminderGearRectPx,
                     ShowReminderSettings, ReminderGearRegionPriority);
+                _regions.BindVisual(ReminderGearRegionId, _reminderGear);
                 _reminderGearRegistered = true;
             }
         }
@@ -704,6 +707,7 @@ namespace CatMetro.Presentation.Screens
                 _regions.Register(AudioToggleRegionId, () => _audioToggleRectPx,
                     () => AudioEnabledChanged?.Invoke(!_audioEnabled),
                     AudioToggleRegionPriority);
+                _regions.BindVisual(AudioToggleRegionId, _audioToggle);
                 _audioToggleRegistered = true;
             }
         }
@@ -806,6 +810,8 @@ namespace CatMetro.Presentation.Screens
         private void Update()
         {
             if (_pin == null) return;
+            var fx = GetComponentInParent<CatMetro.Presentation.Fx.BoardFx>();
+            if (fx != null && fx.IsAnimating(_pin)) return;
             float scale = 1f;
             bool off = _motionOff != null && _motionOff();
             if (!off)

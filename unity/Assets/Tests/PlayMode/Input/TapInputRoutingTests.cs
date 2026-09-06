@@ -5,6 +5,8 @@ using UnityEngine;
 using UnityEngine.TestTools;
 using CatMetro.Bootstrap;
 using CatMetro.Content;
+using CatMetro.Presentation.Fx;
+using UnityEngine.UI;
 
 namespace CatMetro.Tests.PlayMode
 {
@@ -20,8 +22,79 @@ namespace CatMetro.Tests.PlayMode
         [TearDown]
         public void TearDown()
         {
+            Time.timeScale = 1f;
             if (_root != null) Object.Destroy(_root.gameObject);
             _root = null;
+        }
+
+        [UnityTest]
+        public IEnumerator AcceptedChromeTap_PressesItsResolvedVisual_WithoutMovingTheBoard()
+        {
+            Time.timeScale = 0f;
+            _root = GameRoot.LaunchWith(Fixture());
+            yield return null;
+            var button = new GameObject("Test chip", typeof(RectTransform), typeof(Image));
+            button.transform.SetParent(_root.transform, false);
+            var rect = (RectTransform)button.transform;
+            var face = button.GetComponent<Image>();
+            int actions = 0;
+            _root.Input.Regions.Register("press-test", () => new Rect(0f, 0f, 100f, 100f), () => actions++, 99);
+            _root.Input.Regions.BindVisual("press-test", rect, face);
+            var fx = BoardFx.GetOrCreate(_root.transform, () => _root.MotionOff);
+            int commands = _root.Session.Log.Entries.Count;
+            Assert.That(_root.Input.HandleTapAtScreen(new Vector2(50f, 50f)), Is.EqualTo(-3));
+            Assert.That(actions, Is.Zero, "the chip stays on screen for its visible press");
+            Assert.That(face.color.r, Is.EqualTo(0.9f).Within(0.001f));
+            fx.Advance(0.042f);
+            Assert.That(rect.localScale.x, Is.EqualTo(0.95f).Within(0.001f));
+            Assert.That(_root.Session.Log.Entries.Count, Is.EqualTo(commands));
+            _root.Input.HandleTapAtScreen(new Vector2(50f, 50f));
+            fx.Advance(0.10f);
+            Assert.That(actions, Is.EqualTo(1), "a second tap during the press cannot navigate twice");
+            _root.MotionOffToggle = true;
+            fx.Advance(0.01f);
+            Assert.That(rect.localScale, Is.EqualTo(Vector3.one));
+            Assert.That(face.color, Is.EqualTo(Color.white));
+            _root.Input.HandleTapAtScreen(new Vector2(50f, 50f));
+            Assert.That(actions, Is.EqualTo(2), "motion preference cannot suppress the action");
+            Assert.That(fx.ActiveTweenCount, Is.Zero);
+        }
+
+        [UnityTest]
+        public IEnumerator PendingChromeAction_IsCancelledWhenItsRegionDisappears()
+        {
+            Time.timeScale = 0f;
+            _root = GameRoot.LaunchWith(Fixture());
+            yield return null;
+            var button = new GameObject("Test chip", typeof(RectTransform), typeof(Image));
+            button.transform.SetParent(_root.transform, false);
+            int actions = 0;
+            _root.Input.Regions.Register("press-cancel", () => new Rect(0f, 0f, 100f, 100f), () => actions++, 99);
+            _root.Input.Regions.BindVisual("press-cancel", (RectTransform)button.transform);
+            var fx = BoardFx.GetOrCreate(_root.transform, () => _root.MotionOff);
+            _root.Input.HandleTapAtScreen(new Vector2(50f, 50f));
+            _root.Input.Regions.Unregister("press-cancel");
+            fx.Advance(0.2f);
+            Assert.That(actions, Is.Zero, "a dismissed screen cannot execute its old navigation");
+        }
+
+        [UnityTest]
+        public IEnumerator ReRegisteredChip_CannotExecuteThePreviousPress()
+        {
+            _root = GameRoot.LaunchWith(Fixture());
+            yield return null;
+            int actions = 0;
+            System.Action action = () => actions++;
+            var chip = new GameObject("refreshed chip", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+            chip.transform.SetParent(_root.transform, false);
+            _root.Input.Regions.Register("refresh", () => new Rect(0, 0, 100, 100), action, 100);
+            _root.Input.Regions.BindVisual("refresh", (RectTransform)chip.transform);
+            _root.Input.HandleTapAtScreen(new Vector2(50, 50));
+            _root.Input.Regions.Unregister("refresh");
+            _root.Input.Regions.Register("refresh", () => new Rect(0, 0, 100, 100), action, 100);
+            _root.Input.Regions.BindVisual("refresh", (RectTransform)chip.transform);
+            _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>().Advance(0.2f);
+            Assert.That(actions, Is.Zero, "a refreshed price/route needs a fresh tap, even with the same delegate");
         }
 
         private static ImportedLevel Fixture()
@@ -29,6 +102,81 @@ namespace CatMetro.Tests.PlayMode
             var r = LevelImporter.Import(Encoding.UTF8.GetBytes(FixtureJson()));
             Assert.That(r.Ok, Is.True, $"fixture must import: {r.Error}");
             return r.Value;
+        }
+
+        [UnityTest]
+        public IEnumerator RefusedBudgetTap_HasNoAcceptedClunk_ShakesLeverAndPulsesFlips()
+        {
+            Time.timeScale = 0f;
+            var json = FixtureJson().Replace("\"win\": {", "\"win\": { \"perfectMaxSwitches\": 1,");
+            var imported = LevelImporter.Import(Encoding.UTF8.GetBytes(json));
+            Assert.That(imported.Ok, Is.True, $"{imported.Error}");
+            _root = GameRoot.LaunchWith(imported.Value);
+            yield return null;
+            int accepted = 0;
+            _root.Input.SwitchTapAccepted += () => accepted++;
+            _root.Input.HandleTapAtScreen(SwitchScreenPos());
+            Assert.That(accepted, Is.EqualTo(1));
+            _root.View.Fx.Advance(0.14f);
+            _root.Preview.Refresh();
+            var label = System.Array.Find(_root.Preview.GetComponentsInChildren<TMPro.TMP_Text>(),
+                t => t.name == "flip-budget");
+            Assert.That(label, Is.Not.Null);
+            Assert.That(label.color, Is.EqualTo(CatMetro.Presentation.Theme.Palette.TabbyYellow),
+                "a perfect run at its cap is yellow, never an error red");
+            var lever = _root.View.GetComponentInChildren<CatMetro.Presentation.Board.ToySwitchView>();
+            Quaternion neutral = lever.LeverPivot.localRotation;
+            _root.Input.HandleTapAtScreen(SwitchScreenPos());
+            Assert.That(accepted, Is.EqualTo(1), "a refused tap cannot play the accepted clunk");
+            Assert.That(_root.Session.Log.Entries.Count, Is.EqualTo(1));
+            _root.View.Fx.Advance(0.035f);
+            _root.GetComponent<BoardFx>()?.Advance(0.035f);
+            Assert.That(Quaternion.Angle(lever.LeverPivot.localRotation, neutral), Is.GreaterThan(0.5f));
+            Assert.That(label.transform.localScale.x, Is.GreaterThan(1.01f));
+            _root.View.Fx.Advance(0.2f);
+            _root.GetComponent<BoardFx>()?.Advance(0.2f);
+            Assert.That(Quaternion.Angle(lever.LeverPivot.localRotation, neutral), Is.LessThan(0.001f));
+            Assert.That(label.transform.localScale.x, Is.EqualTo(1f));
+        }
+
+        [UnityTest]
+        public IEnumerator RefusedCooldownTap_OnlyFiresTheLockedFeedback()
+        {
+            Time.timeScale = 0f;
+            var json = FixtureJson().Replace("\"initialRoute\": 0", "\"initialRoute\": 0, \"cooldownTicks\": 2");
+            var imported = LevelImporter.Import(Encoding.UTF8.GetBytes(json));
+            Assert.That(imported.Ok, Is.True, $"{imported.Error}");
+            _root = GameRoot.LaunchWith(imported.Value);
+            yield return null;
+            int accepted = 0, refused = 0;
+            _root.Input.SwitchTapAccepted += () => accepted++;
+            _root.Input.SwitchTapRefused += () => refused++;
+            _root.Input.HandleTapAtScreen(SwitchScreenPos());
+            _root.Input.HandleTapAtScreen(SwitchScreenPos());
+            Assert.That(accepted, Is.EqualTo(1));
+            Assert.That(refused, Is.EqualTo(1));
+            Assert.That(_root.Session.Log.Entries.Count, Is.EqualTo(1));
+            _root.Session.AdvanceMs(250);
+            _root.Input.HandleTapAtScreen(SwitchScreenPos());
+            Assert.That(refused, Is.EqualTo(2));
+            _root.Session.AdvanceMs(125);
+            _root.Input.HandleTapAtScreen(SwitchScreenPos());
+            Assert.That(accepted, Is.EqualTo(2), "the cooldown's last tick admits the next scheduled command");
+        }
+
+        [UnityTest]
+        public IEnumerator LockedFeedback_HasItsOwnShortAudibleSynthClip()
+        {
+            _root = GameRoot.LaunchWith(Fixture());
+            yield return null;
+            var clip = _root.Audio.SwitchLockedClip;
+            Assert.That(clip, Is.Not.Null);
+            Assert.That(clip.length, Is.EqualTo(0.08f).Within(0.001f));
+            var samples = new float[clip.samples];
+            Assert.That(clip.GetData(samples, 0), Is.True);
+            float peak = 0f;
+            foreach (float value in samples) peak = Mathf.Max(peak, Mathf.Abs(value));
+            Assert.That(peak, Is.InRange(0.1f, 0.5f));
         }
 
         private Vector2 SwitchScreenPos()

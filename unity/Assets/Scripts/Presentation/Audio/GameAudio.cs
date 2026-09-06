@@ -58,7 +58,7 @@ namespace CatMetro.Presentation.Audio
     public sealed class GameAudio : MonoBehaviour
     {
         public const string ResourceRoot = "Audio/CatMetro/";
-        public const int ExpectedClipCount = 7;
+        public const int ExpectedClipCount = 8;
 
         private const float TapVolume = 0.48f;
         private const float SwitchVolume = 0.62f;
@@ -81,6 +81,7 @@ namespace CatMetro.Presentation.Audio
         private AudioListener _listener;
         private AudioClip _woodTap;
         private AudioClip _switchClunk;
+        private AudioClip _switchLocked;
         private AudioClip _trainChuff;
         private AudioClip _deliveryChime;
         private AudioClip _wrongStationThud;
@@ -92,6 +93,7 @@ namespace CatMetro.Presentation.Audio
         public bool Enabled => _enabled;
         public bool ChuffPlaying => _chuffSource != null && _chuffSource.isPlaying;
         public int SnapshotObservationCount { get; private set; }
+        public AudioClip SwitchLockedClip => _switchLocked;
 
         public int LoadedClipCount
         {
@@ -100,6 +102,7 @@ namespace CatMetro.Presentation.Audio
                 int count = 0;
                 if (_woodTap != null) count++;
                 if (_switchClunk != null) count++;
+                if (_switchLocked != null) count++;
                 if (_trainChuff != null) count++;
                 if (_deliveryChime != null) count++;
                 if (_wrongStationThud != null) count++;
@@ -116,6 +119,7 @@ namespace CatMetro.Presentation.Audio
 
             _woodTap = LoadClip("wooden-tap");
             _switchClunk = LoadClip("switch-clunk");
+            if (_switchLocked == null) _switchLocked = MakeLockedTick();
             _trainChuff = LoadClip("train-chuff-loop");
             _deliveryChime = LoadClip("delivery-chime");
             _wrongStationThud = LoadClip("wrong-station-thud");
@@ -176,6 +180,24 @@ namespace CatMetro.Presentation.Audio
         public void PlayButtonTap() => PlayOneShot(_woodTap, TapVolume);
 
         public void PlaySwitchClunk() => PlayOneShot(_switchClunk, SwitchVolume);
+        public void PlaySwitchLocked() => PlayOneShot(_switchLocked, 0.52f);
+
+        private static AudioClip MakeLockedTick()
+        {
+            const int rate = 44100;
+            var samples = new float[(int)(rate * 0.08f)];
+            for (int i = 0; i < samples.Length; i++)
+            {
+                float t = (float)i / rate;
+                float attack = Mathf.Clamp01(t / 0.0015f);
+                samples[i] = attack * Mathf.Exp(-75f * t) * 0.30f
+                    * (Mathf.Sin(2f * Mathf.PI * 880f * t) + 0.28f * Mathf.Sin(2f * Mathf.PI * 1320f * t));
+                samples[i] *= Mathf.Clamp01((0.08f - t) / 0.006f);
+            }
+            var clip = AudioClip.Create("switch-locked-tick", samples.Length, 1, rate, false);
+            clip.SetData(samples, 0);
+            return clip;
+        }
 
         public void PlayWrongStationThud()
         {
@@ -298,6 +320,7 @@ namespace CatMetro.Presentation.Audio
         private void OnDestroy()
         {
             StopOwnedPlayback();
+            if (_switchLocked != null) Destroy(_switchLocked);
             ManagedListeners.Remove(_listener);
             if (_activeManagedListener != _listener) return;
 

@@ -178,6 +178,7 @@ namespace CatMetro.Presentation.Screens
             {
                 _regions.Register(PlayRegionId, () => _chipRectPx,
                     () => PlayRequested?.Invoke(), PlayRegionPriority);
+                _regions.BindVisual(PlayRegionId, _chip);
                 _registered = true;
             }
         }

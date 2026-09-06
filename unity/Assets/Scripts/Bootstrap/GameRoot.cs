@@ -496,6 +496,8 @@ namespace CatMetro.Bootstrap
             // input/failure geometry remains exact; the complete board diorama is tilted as
             // one presentation space, then framed from its actual renderer bounds.
             BoardSceneLook.Apply(transform, Cam, View);
+            View.BindAmbient(Cam, () => ScreensVisible, () => Home != null && Home.IsVisible,
+                () => ScreenState == "Playing" && !ScreensVisible);
             CauseCam = camGo.AddComponent<CauseCameraController>();
             CauseCam.Wire(Cam, -View.transform.forward); // captures the fitted play pose
             // CM-UX-07 criterion 3 (#36 F1/F5): a Wire-only binding dies at first Retry, since
@@ -505,6 +507,7 @@ namespace CatMetro.Bootstrap
             Input.Wire(Session, View, Cam);
             Input.UiTapAccepted = Audio.PlayButtonTap;
             Input.SwitchTapAccepted = Audio.PlaySwitchClunk;
+            Input.SwitchTapRefused = () => { Audio.PlaySwitchLocked(); Preview?.PulseFlips(); };
             Input.RetryRegionActive = () => ScreenState == "FailureReview";
             Input.RetryTapped = Retry;
             // CM-UX-07 criterion 2: the board-input gate. F7 (round-1 review) correction: this
@@ -644,6 +647,7 @@ namespace CatMetro.Bootstrap
             Home.DailySelected = SelectDaily;
             Intro.PlayRequested = () =>
             {
+                View.StopAmbient();
                 Intro.Hide();
                 Wardrobe.Hide();
                 Home.Hide(); // idempotent — already hidden by the push above
@@ -1157,6 +1161,8 @@ namespace CatMetro.Bootstrap
             if (View != null) Destroy(View.gameObject);
             View = BoardView.Build(level, transform, Session);
             BoardSceneLook.Apply(transform, Cam, View);
+            View.BindAmbient(Cam, () => ScreensVisible, () => Home != null && Home.IsVisible,
+                () => ScreenState == "Playing" && !ScreensVisible);
             CauseCam.CapturePlayPose(-View.transform.forward);
             View.MotionOffSource = () => MotionOff; // criterion 3: rebind on the REBUILT view
             Input.Wire(Session, View, Cam);
@@ -1176,6 +1182,7 @@ namespace CatMetro.Bootstrap
         private void BindPreviewCatMotion()
         {
             if (Preview == null) return;
+            Preview.MotionOffSource = () => MotionOff;
             foreach (var face in Preview.GetComponentsInChildren<CatFaceView>(true))
                 face.BindMotionOff(() => MotionOff);
         }
@@ -1588,6 +1595,7 @@ namespace CatMetro.Bootstrap
                     // as a game outcome.
                     _halted = true;
                     ScreenState = "Halted";
+                    View.StopMotion();
                     // CM-UX-07 criterion 4 (Q-2, human-approved): the halt escape is a chrome
                     // REGION, never a CTA/veil component edit — the F-DEV-4 "no Try-again on
                     // halt" assert stays true untouched. Full-screen, HaltEscapePriority (5,

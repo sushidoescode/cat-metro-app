@@ -75,12 +75,15 @@ namespace CatMetro.Tests.PlayMode
             // never a hand-invoked delegate)
             int pinTap = _root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center);
             Assert.That(pinTap, Is.EqualTo(-3), "the pin is a chrome region");
-            yield return null;
+            Assert.That(_root.Home.IsVisible, Is.True, "the pin stays painted during its press");
+            yield return new WaitForSecondsRealtime(0.17f);
             Assert.That(_root.Session.State.Tick, Is.EqualTo(0),
                 "still held — Intro is up now, ScreensVisible is still true");
 
             int playTap = _root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center);
             Assert.That(playTap, Is.EqualTo(-3), "the Play chip is a chrome region");
+            Assert.That(_root.Session.State.Tick, Is.Zero, "the press cannot advance the puzzle");
+            yield return new WaitForSecondsRealtime(0.17f);
             Assert.That(_root.ScreensVisible, Is.False, "the stack drained on the Play tap");
 
             Time.timeScale = 8f;
@@ -107,12 +110,14 @@ namespace CatMetro.Tests.PlayMode
 
             int pinTap = _root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center);
             Assert.That(pinTap, Is.EqualTo(-3), "the pin is a chrome region");
+            yield return new WaitForSecondsRealtime(0.17f);
             Assert.That(_root.Intro.IsVisible, Is.True, "Intro visible after the pin tap");
             Assert.That(_root.Home.IsVisible, Is.False, "Home hides once Intro shows");
             CollectionAssert.AreEqual(new[] { "home", "intro" }, _root.Stack.ToBreadcrumb());
 
             int playTap = _root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center);
             Assert.That(playTap, Is.EqualTo(-3), "the Play chip is a chrome region");
+            yield return new WaitForSecondsRealtime(0.17f);
             Assert.That(_root.Intro.IsVisible, Is.False);
             Assert.That(_root.Home.IsVisible, Is.False);
             Assert.That(_root.ScreensVisible, Is.False, "screens gone — the stack popped to empty");

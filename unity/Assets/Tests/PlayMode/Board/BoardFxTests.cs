@@ -32,6 +32,34 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
+        public void Flash_DoesNotOverwriteAStateChangeDuringThePress()
+        {
+            var face = _target.gameObject.AddComponent<Image>();
+            face.color = Color.white;
+            _fx.Flash(face, Color.gray);
+            face.color = Color.green;
+            _fx.Advance(0.01f, Time.frameCount + 1);
+            Assert.That(face.color, Is.EqualTo(Color.green), "selection owns the new paint");
+            _fx.Advance(0.2f, Time.frameCount + 2);
+            Assert.That(face.color, Is.EqualTo(Color.green), "completion cannot restore stale paint");
+        }
+
+        [Test]
+        public void Press_KeepsThePaintedCenterWithACornerPivot()
+        {
+            var rect = (RectTransform)_target;
+            rect.sizeDelta = new Vector2(400, 100);
+            rect.pivot = Vector2.zero;
+            rect.localPosition = new Vector3(80, 120, 0);
+            Vector3 center = rect.TransformPoint(rect.rect.center);
+            _fx.Press(rect);
+            _fx.Advance(0.042f);
+            Assert.That(Vector3.Distance(rect.TransformPoint(rect.rect.center), center), Is.LessThan(0.001f));
+            _fx.Advance(0.1f);
+            Assert.That(rect.localPosition, Is.EqualTo(new Vector3(80, 120, 0)));
+        }
+
+        [Test]
         public void Punch_RisesAndSettles_WithoutCompoundingOnRepeatedTaps()
         {
             _target.localScale = new Vector3(2f, 3f, 1f);
