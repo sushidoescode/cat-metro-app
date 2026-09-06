@@ -217,6 +217,7 @@ namespace CatMetro.Tests.PlayMode
             _root.Input.RetryTapped = () => retried = true;
             var inBand = new Vector2(Screen.width * 0.5f, Screen.height * 0.10f);
             Assert.That(_root.Input.HandleTapAtScreen(inBand), Is.EqualTo(-2));
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(retried, Is.True);
         }
 

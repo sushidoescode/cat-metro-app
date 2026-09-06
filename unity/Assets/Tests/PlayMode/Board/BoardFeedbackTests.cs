@@ -9,6 +9,8 @@ using CatMetro.Presentation.Theme;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 namespace CatMetro.Tests.PlayMode
 {
@@ -23,6 +25,113 @@ namespace CatMetro.Tests.PlayMode
             Time.timeScale = 1f;
             GameRoot.DevSkipShippedHome = false;
         }
+
+        [UnityTest]
+        public IEnumerator WrongStation_VignettePeaksAndRestoresTheIdleCamera()
+        {
+            _root = GameRoot.LaunchWith(Level());
+            yield return null;
+            var cameraData = _root.Cam.GetUniversalAdditionalCameraData();
+            bool restingPost = cameraData.renderPostProcessing;
+            _root.Cam.cullingMask = 0;
+            _root.Cam.clearFlags = CameraClearFlags.SolidColor;
+            _root.Cam.backgroundColor = Palette.WarmPaper;
+            foreach (var canvas in _root.GetComponentsInChildren<Canvas>()) canvas.enabled = false;
+            Color[] idle = RenderVignetteProbe("idle");
+            ReachFirstRejection(_root);
+            var volume = _root.View.GetComponentInChildren<Volume>(true);
+            Assert.That(volume, Is.Not.Null, "a rejected arrival must pulse the camera edge");
+            Assert.That(volume.sharedProfile.TryGet<Vignette>(out var vignette), Is.True);
+            Assert.That(vignette.intensity.value, Is.EqualTo(0.25f).Within(0.001f));
+            Assert.That(cameraData.renderPostProcessing, Is.True);
+            _root.View.Fx.Advance(0.2f);
+            Assert.That(volume.weight, Is.EqualTo(1f).Within(0.001f));
+            Assert.That(vignette.intensity.value, Is.EqualTo(0.42f).Within(0.001f));
+            Color[] peak = RenderVignetteProbe("peak-200ms");
+            Assert.That(peak[0].grayscale, Is.LessThan(idle[0].grayscale - 0.04f),
+                "the rendered corner must darken; an authored volume alone is not evidence");
+            Assert.That(peak[1].grayscale, Is.EqualTo(idle[1].grayscale).Within(0.025f),
+                "the center stays clear for the cat and station");
+            _root.View.Fx.Advance(0.2f);
+            Assert.That(volume.weight, Is.Zero);
+            Assert.That(cameraData.renderPostProcessing, Is.EqualTo(restingPost),
+                "the existing idle look and rendering path return after 0.4 seconds");
+            Color[] restored = RenderVignetteProbe("restored-400ms");
+            Assert.That(restored[0].grayscale, Is.EqualTo(idle[0].grayscale).Within(0.01f));
+        }
+
+        private Color[] RenderVignetteProbe(string name)
+        {
+            var camera = _root.Cam;
+            var rt = new RenderTexture(917, 2048, 24);
+            var texture = new Texture2D(rt.width, rt.height, TextureFormat.RGB24, false);
+            var oldTarget = camera.targetTexture;
+            var oldActive = RenderTexture.active;
+            try
+            {
+                camera.targetTexture = rt;
+                camera.Render();
+                RenderTexture.active = rt;
+                texture.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+                texture.Apply();
+                string directory = Environment.GetEnvironmentVariable("CM_VIGNETTE_CAPTURE_DIR");
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                    File.WriteAllBytes(Path.Combine(directory, "vignette-" + name + ".png"), texture.EncodeToPNG());
+                }
+                return new[] { texture.GetPixel(20, 20), texture.GetPixel(rt.width / 2, rt.height / 2) };
+            }
+            finally
+            {
+                camera.targetTexture = oldTarget;
+                RenderTexture.active = oldActive;
+                UnityEngine.Object.DestroyImmediate(texture);
+                UnityEngine.Object.DestroyImmediate(rt);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator RejectionVignette_MotionOffAndHaltRestoreTheCameraImmediately()
+        {
+            _root = GameRoot.LaunchWith(Level());
+            yield return null;
+            var cameraData = _root.Cam.GetUniversalAdditionalCameraData();
+            bool restingPost = cameraData.renderPostProcessing;
+            ReachFirstRejection(_root);
+            var volume = _root.View.GetComponentInChildren<Volume>(true);
+            Assert.That(volume, Is.Not.Null);
+            _root.View.Fx.Advance(0.1f);
+            _root.MotionOffToggle = true;
+            _root.View.Fx.Advance(0.001f);
+            Assert.That(volume.weight, Is.Zero);
+            Assert.That(cameraData.renderPostProcessing, Is.EqualTo(restingPost));
+            _root.MotionOffToggle = false;
+            // A second independent rejection restores through the same halt path.
+            _root.Session.State.Rejections++;
+            int slot = Array.FindIndex(_root.Session.State.Trains,
+                t => t.State == TrainState.RejectedAtStation);
+            _root.Session.State.Trains[slot].State = TrainState.AtNode;
+            _root.View.UpdateFrom(_root.Session, 20f);
+            _root.Session.State.Rejections++;
+            _root.Session.State.Trains[slot].State = TrainState.RejectedAtStation;
+            _root.View.UpdateFrom(_root.Session, 20.1f);
+            Assert.That(cameraData.renderPostProcessing, Is.True);
+            _root.View.StopMotion();
+            Assert.That(volume.weight, Is.Zero);
+            Assert.That(cameraData.renderPostProcessing, Is.EqualTo(restingPost));
+        }
+
+#if UNITY_EDITOR
+        [Test]
+        public void BoardRenderer_RetainsPostProcessingShaders()
+        {
+            var renderer = UnityEditor.AssetDatabase.LoadAssetAtPath<UniversalRendererData>(
+                "Assets/Settings/CatMetro_Renderer.asset");
+            Assert.That(renderer.postProcessData, Is.Not.Null,
+                "a runtime volume is invisible if the renderer carries no post-process shaders");
+        }
+#endif
 
         [UnityTest]
         public IEnumerator WrongStation_RecoilsAndShakesOnce_ShowsTheCatsShape_WithoutChangingState()

@@ -265,6 +265,9 @@ namespace CatMetro.Tests.PlayMode
                 // retry: tap-down -> first frame in Playing
                 long tapMs = _root.Log.Records[_root.Log.Records.Count - 1].MonotonicMs;
                 _root.Input.HandleTapAtScreen(new Vector2(Screen.width * 0.5f, Screen.height * 0.1f));
+                float retryDeadline = Time.realtimeSinceStartup + 1f;
+                while (_root.ScreenState == "FailureReview" && Time.realtimeSinceStartup < retryDeadline)
+                    yield return null;
                 yield return null;
                 var post = _root.Log.Records[_root.Log.Records.Count - 1];
                 Assert.That(post.ScreenState, Is.EqualTo("Playing"));

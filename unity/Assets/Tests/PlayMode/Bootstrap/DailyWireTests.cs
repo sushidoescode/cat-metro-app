@@ -209,8 +209,10 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(pips.Count(), Is.EqualTo(6), "the pin reflects lifetime campaign progress");
             Assert.That(_root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center),
                 Is.EqualTo(-3));
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(_root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center),
                 Is.EqualTo(-3));
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(_root.ScreensVisible, Is.False, "campaign play has started");
 
             var level = _root.Session.Level;
@@ -258,6 +260,7 @@ namespace CatMetro.Tests.PlayMode
             _root.DailyClockUnixSeconds = () => PinnedUnixSeconds;
             Assert.That(_root.Input.HandleTapAtScreen(
                 _root.Home.DailyPinPaintedRectPx.center), Is.EqualTo(-3));
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(_root.IsDailySession, Is.True,
                 "the newly constructed region is live, not only visible");
         }
@@ -282,6 +285,7 @@ namespace CatMetro.Tests.PlayMode
             // routes to the real production handler, not merely that the handler works in
             // isolation.
             int tapResult = _root.Input.HandleTapAtScreen(_root.Home.DailyPinPaintedRectPx.center);
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(tapResult, Is.EqualTo(-3), "the Daily pin is a registered chrome region");
             Assert.That(_root.Home.IsVisible, Is.False, "Home hides once Daily is selected");
             Assert.That(_root.IsDailySession, Is.True,
@@ -308,6 +312,7 @@ namespace CatMetro.Tests.PlayMode
 
             LogAssert.Expect(LogType.Log, new Regex(@"SEAM_LOADED daily:2026-08-24"));
             int tapResult = _root.Input.HandleTapAtScreen(_root.Home.DailyPinPaintedRectPx.center);
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(tapResult, Is.EqualTo(-3), "the Daily pin is a registered chrome region");
 
             Assert.That(_root.IsDailySession, Is.True);
@@ -425,6 +430,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Home.DailyStatusText, Is.EqualTo("Preparing today's Line…"));
             Assert.That(_root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center),
                 Is.EqualTo(-3), "campaign navigation consumes the tap while fallback is pending");
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(_root.Intro.IsVisible, Is.True);
 
             float deadline = Time.realtimeSinceStartup + 2f;
@@ -588,6 +594,7 @@ namespace CatMetro.Tests.PlayMode
 
             Assert.That(panel.IsVisible, Is.True, "precondition: the panel is showing");
             int tapResult = _root.Input.HandleTapAtScreen(panel.ChipPaintedRectPx.center);
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(tapResult, Is.EqualTo(-3), "the chrome region consumed the tap");
 
             Assert.That(_root.IsDailySession, Is.False);
@@ -658,6 +665,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(panel.IsVisible, Is.True);
             Assert.That(_root.Input.HandleTapAtScreen(panel.ChipPaintedRectPx.center),
                 Is.EqualTo(-3));
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             yield return null;
             yield return null;
 
@@ -698,6 +706,7 @@ namespace CatMetro.Tests.PlayMode
             var center = panel.ChipPaintedRectPx.center;
 
             int tap1 = _root.Input.HandleTapAtScreen(center);
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(tap1, Is.EqualTo(-3), "precondition: the first tap returned home");
             Assert.That(_root.IsDailySession, Is.False, "precondition: the router fired once");
 
@@ -707,6 +716,7 @@ namespace CatMetro.Tests.PlayMode
             // (once shown) center in the same thumb band the results CTA occupied, so this
             // is the coordinate a real accidental double-tap would land on.
             int tap2 = _root.Input.HandleTapAtScreen(center);
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(tap2, Is.Not.EqualTo(-3),
                 "the lockout window must still be active one yield after the transition — "
                 + "the repeat tap must not resolve to a chrome region at all");

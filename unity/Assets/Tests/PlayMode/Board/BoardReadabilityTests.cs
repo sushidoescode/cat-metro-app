@@ -52,6 +52,7 @@ namespace CatMetro.Tests.PlayMode
             var train = _root.View.transform.Find("train:" + slot).GetComponent<ToyTrainView>();
             foreach (var toy in _root.View.GetComponentsInChildren<ToyTrainView>(true))
             {
+                Assert.That(toy.CatTint, Is.Not.EqualTo(Color.magenta));
                 var paint = new MaterialPropertyBlock();
                 toy.transform.Find("Carriage/Cat/Head").GetComponent<Renderer>().GetPropertyBlock(paint);
                 Assert.That(paint.GetColor("_BaseColor"), Is.Not.EqualTo(Color.magenta));
