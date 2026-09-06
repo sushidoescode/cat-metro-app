@@ -43,6 +43,7 @@ public static class CatMetroFontBaker
         preset.SetColor("_UnderlayColor", new Color(19f / 255f, 28f / 255f, 48f / 255f, 0.3f));
         preset.SetFloat("_UnderlayOffsetY", -0.6f);
         preset.SetFloat("_UnderlaySoftness", 0.25f);
+        ShaderUtilities.UpdateShaderRatios(preset);
         EditorUtility.SetDirty(preset);
         AssetDatabase.SaveAssets();
         Debug.Log("CAT_METRO_FONTS baked Fredoka SemiBold + Nunito Regular, 1024x1024 static SDF");
@@ -76,7 +77,7 @@ public static class CatMetroFontBaker
             // Keep the asset GUID stable for every caller, TMP default, and material preset.
             foreach (var child in AssetDatabase.LoadAllAssetsAtPath(path))
                 if (child != existing) UnityEngine.Object.DestroyImmediate(child, true);
-            EditorUtility.CopySerialized(baked, existing);
+            ReplaceFontDefinition(baked, existing);
             baked = existing;
         }
         AssetDatabase.AddObjectToAsset(baked.atlasTextures[0], baked);
@@ -90,5 +91,14 @@ public static class CatMetroFontBaker
             licenses + "/" + family + "-OFL.txt", true);
         AssetDatabase.ImportAsset(licenses + "/" + family + "-OFL.txt");
         return baked;
+    }
+
+    public static void ReplaceFontDefinition(TMP_FontAsset source, TMP_FontAsset destination)
+    {
+        EditorUtility.CopySerialized(source, destination);
+        // TMP keeps nonserialized lookup tables after CopySerialized; refresh already-open
+        // labels and the font inspector just as Font Asset Creator does after a rebake.
+        destination.ReadFontAssetDefinition();
+        TMPro_EventManager.ON_FONT_PROPERTY_CHANGED(true, destination);
     }
 }

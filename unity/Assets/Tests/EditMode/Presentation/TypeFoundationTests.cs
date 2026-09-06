@@ -81,5 +81,42 @@ namespace CatMetro.Tests.Presentation
             }
             finally { Object.DestroyImmediate(go); }
         }
+
+        [Test]
+        public void Rebake_ReplacesAnAlreadyLoadedGlyphLookup()
+        {
+            var baker = System.AppDomain.CurrentDomain.GetAssemblies()
+                .Select(a => a.GetType("CatMetroFontBaker")).FirstOrDefault(t => t != null);
+            Assert.That(baker, Is.Not.Null);
+            var replace = baker.GetMethod("ReplaceFontDefinition",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
+            Assert.That(replace, Is.Not.Null, "the baker refreshes serialized and cached definitions together");
+            var source = Object.Instantiate(TMP_Settings.defaultFontAsset);
+            var destination = Object.Instantiate(TMP_Settings.defaultFontAsset);
+            try
+            {
+                float expected = source.characterLookupTable['A'].glyph.metrics.horizontalAdvance;
+                var oldGlyph = destination.characterLookupTable['A'].glyph;
+                var oldMetrics = oldGlyph.metrics;
+                oldMetrics.horizontalAdvance = 1f;
+                oldGlyph.metrics = oldMetrics;
+                Assert.That(destination.characterLookupTable['A'].glyph.metrics.horizontalAdvance,
+                    Is.EqualTo(1f), "positive control: this font has a loaded stale lookup");
+                replace.Invoke(null, new object[] { source, destination });
+                Assert.That(destination.characterLookupTable['A'].glyph.metrics.horizontalAdvance,
+                    Is.EqualTo(expected).Within(0.001f));
+            }
+            finally
+            {
+                // The clones borrow the shipped atlas/material; TMP destroys those references
+                // from OnDestroy, so detach them before releasing these temporary definitions.
+                destination.atlasTextures = System.Array.Empty<Texture2D>();
+                destination.material = null;
+                source.atlasTextures = System.Array.Empty<Texture2D>();
+                source.material = null;
+                Object.DestroyImmediate(destination);
+                Object.DestroyImmediate(source);
+            }
+        }
     }
 }

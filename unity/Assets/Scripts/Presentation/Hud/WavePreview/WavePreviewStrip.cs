@@ -418,6 +418,9 @@ namespace CatMetro.Presentation.Hud.WavePreview
             float faceSize = _capsulePx.height * FaceSizeFraction;
             float gap = faceSize * FaceGapFraction;
             PlacePx(_faceRow, _capsulePx);
+            foreach (var token in _tokens)
+                TypeScale.Apply(token, TypeScale.Caption, dpi, body: true);
+            TypeScale.Apply(_overflow, TypeScale.Body, dpi, body: true);
 
             // Centre the row of faces (plus the overflow tail) inside the capsule.
             bool hasOverflow = _overflow.text.Length > 0;
@@ -430,8 +433,9 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 _faces[i].LayoutAt(new Vector2(cursor, 0f), faceSize);
                 PlaceCentred((RectTransform)_tokens[i].transform,
                     new Vector2(-faceSize * 0.28f, -faceSize * 0.30f),
-                    new Vector2(faceSize * 0.44f, faceSize * 0.28f));
-                _tokens[i].fontSizeMax = Mathf.Max(TypeScale.Minimum, faceSize * 0.24f);
+                    new Vector2(Mathf.Max(faceSize * 0.44f, _tokens[i].fontSizeMin * 1.5f),
+                        Mathf.Max(faceSize * 0.40f, _tokens[i].fontSizeMin)));
+                _tokens[i].fontSizeMax = Mathf.Max(_tokens[i].fontSizeMin, faceSize * 0.24f);
                 cursor += faceSize + gap;
             }
             if (hasOverflow)
@@ -439,7 +443,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 cursor += -faceSize * 0.5f + overflowWidth * 0.5f;
                 PlaceCentred((RectTransform)_overflow.transform,
                     new Vector2(cursor, 0f), new Vector2(overflowWidth, faceSize));
-                _overflow.fontSizeMax = Mathf.Max(TypeScale.Minimum, faceSize * 0.62f);
+                _overflow.fontSizeMax = Mathf.Max(_overflow.fontSizeMin, faceSize * 0.62f);
             }
 
             LayoutCounters();
