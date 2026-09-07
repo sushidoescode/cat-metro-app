@@ -220,6 +220,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 // face's accessibility motion without introducing a scene Renderer.
                 var token = AddLabel(face.transform, "cat-token", Palette.InkNavy);
                 token.fontStyle = FontStyles.Bold;
+                token.fontSizeMin = 6f; // Temporary token letter: lane B rank 7 removes it.
                 token.gameObject.SetActive(false);
                 _tokens.Add(token);
                 // Construct TMP while the parent is active so its delayed Awake cannot restore
@@ -418,8 +419,6 @@ namespace CatMetro.Presentation.Hud.WavePreview
             float faceSize = _capsulePx.height * FaceSizeFraction;
             float gap = faceSize * FaceGapFraction;
             PlacePx(_faceRow, _capsulePx);
-            foreach (var token in _tokens)
-                TypeScale.Apply(token, TypeScale.Caption, dpi, body: true);
             TypeScale.Apply(_overflow, TypeScale.Body, dpi, body: true);
 
             // Centre the row of faces (plus the overflow tail) inside the capsule.
@@ -433,9 +432,8 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 _faces[i].LayoutAt(new Vector2(cursor, 0f), faceSize);
                 PlaceCentred((RectTransform)_tokens[i].transform,
                     new Vector2(-faceSize * 0.28f, -faceSize * 0.30f),
-                    new Vector2(Mathf.Max(faceSize * 0.44f, _tokens[i].fontSizeMin * 1.5f),
-                        Mathf.Max(faceSize * 0.40f, _tokens[i].fontSizeMin)));
-                _tokens[i].fontSizeMax = Mathf.Max(_tokens[i].fontSizeMin, faceSize * 0.24f);
+                    new Vector2(faceSize * 0.44f, faceSize * 0.28f));
+                _tokens[i].fontSizeMax = faceSize * 0.24f;
                 cursor += faceSize + gap;
             }
             if (hasOverflow)

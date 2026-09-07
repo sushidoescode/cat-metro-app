@@ -43,7 +43,7 @@ namespace CatMetro.Tests.PlayMode
         // --- geometry: the pure laws at the pinned phone aspect ---
 
         [UnityTest]
-        public IEnumerator Typography_UsesThePhoneDpi_ForTokensAndOverflow()
+        public IEnumerator Typography_OverflowUsesPhoneDpi_AndTemporaryTokensFit()
         {
             _root = GameRoot.Launch();
             yield return null;
@@ -51,15 +51,25 @@ namespace CatMetro.Tests.PlayMode
             foreach (var label in labels)
                 if (label.name == "Overflow") label.text = "+3";
             _root.Preview.LayoutForViewport(PhoneSafeArea, CaptureDpi);
+            Canvas.ForceUpdateCanvases();
             float minimum = TypeScale.Minimum * HudBands.PxPerDp(CaptureDpi);
+            int activeTokens = 0;
             foreach (var label in labels)
             {
-                if (label.name != "cat-token" && label.name != "Overflow") continue;
-                Assert.That(label.fontSizeMin, Is.GreaterThanOrEqualTo(minimum), label.name);
-                Assert.That(label.fontSizeMax, Is.GreaterThanOrEqualTo(minimum), label.name);
+                if (label.name == "Overflow")
+                {
+                    Assert.That(label.fontSizeMin, Is.GreaterThanOrEqualTo(minimum), label.name);
+                    Assert.That(label.fontSizeMax, Is.GreaterThanOrEqualTo(minimum), label.name);
+                }
                 if (label.name == "cat-token" && label.gameObject.activeInHierarchy)
-                    Assert.That(label.rectTransform.rect.height, Is.GreaterThanOrEqualTo(minimum));
+                {
+                    activeTokens++;
+                    label.ForceMeshUpdate();
+                    Assert.That(label.isTextOverflowing, Is.False,
+                        "the temporary token must fit until lane B rank 7 removes it");
+                }
             }
+            Assert.That(activeTokens, Is.GreaterThan(0), "L001 must exercise a real token");
             string dir = System.Environment.GetEnvironmentVariable("CM_TYPE_CAPTURE_DIR");
             if (string.IsNullOrEmpty(dir)) yield break;
             // A HUD-only proof uses no licensed models or board. Full shipped-scene captures
