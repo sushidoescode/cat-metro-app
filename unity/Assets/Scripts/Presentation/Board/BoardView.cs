@@ -20,7 +20,7 @@ namespace CatMetro.Presentation.Board
     {
         // Presentation spacing only; authored coordinates and simulation ticks stay intact.
         public const float GridX = 0.8f;
-        public const float GridY = 1.25f;
+        public const float GridY = 1.47f;
 
         // CM-UX-03: the onboarding teach affordance — a static raised ring behind every switch
         // disc plus a scale pulse, band-gated INSIDE Build (survives Retry's rebuild by

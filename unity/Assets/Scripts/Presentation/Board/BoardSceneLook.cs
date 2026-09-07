@@ -160,12 +160,12 @@ namespace CatMetro.Presentation.Board
             // realistically — a level whose only non-slab renderers were decorative.
             if (!foundContent) contentBounds = frameBounds;
 
-            // Home contains the decorative edges too; gameplay keeps its original content
-            // width and safe band. Derive both fits from geometry, never the previous pose.
+            // Home contains the decorative edges too; gameplay keeps its separate content
+            // width fit. Derive both fits from geometry, never the previous camera pose.
             Bounds horizontalBounds = contentBounds;
             if (viewport.HasValue) horizontalBounds.Encapsulate(frameBounds);
             float fitWidth = viewport.HasValue ? viewport.Value.width : SafeWidth;
-            // Until the counters move into the capsule, reserve their actual layout. The
+            // Rank 30 places counters inside the capsule, so reserve its full height. The
             // canonical capture safe area scales with the Pixel frame; on a device use its
             // real cutouts and dpi. This follows the HUD factory when that layout changes.
             const float phoneHeight = 2048f;
@@ -179,7 +179,7 @@ namespace CatMetro.Presentation.Board
                 hudHeight = Screen.height;
             }
             float hudBottom = CatMetro.Presentation.Hud.WavePreview.WavePreviewStrip
-                .CounterRowRect(hudSafeArea, hudDpi).yMin / hudHeight - 0.008f;
+                .CapsuleRect(hudSafeArea, hudDpi).yMin / hudHeight - 0.008f;
             float playTop = Mathf.Min(0.90f, hudBottom);
             float fitHeight = viewport?.height ?? Mathf.Min(SafeHeight, playTop - 0.06f);
             float aspect = viewport.HasValue ? camera.aspect : TargetPortraitAspect;

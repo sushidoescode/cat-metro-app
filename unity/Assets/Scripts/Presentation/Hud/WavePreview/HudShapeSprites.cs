@@ -26,6 +26,8 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private static Sprite _waveBand;
         private static Sprite _trophy;
         private static Sprite _people;
+        private static Sprite _lever;
+        private static Sprite _check;
         private static readonly System.Collections.Generic.Dictionary<int, Sprite> DashedRings =
             new System.Collections.Generic.Dictionary<int, Sprite>();
         private static Sprite _softRoundedHalo;
@@ -131,18 +133,39 @@ namespace CatMetro.Presentation.Hud.WavePreview
 
         // The DELIVERIES counter's glyph. target-01 draws a trophy here, not a coloured dot —
         // a dot says "some number of something", a trophy says "how far through the win
-        // condition you are" without a legend. Measured off the target it gets ~42px on a
-        // 917x2048 phone (counter row 57.6px x the 0.72 mark fraction), which is what the
-        // proportions below are drawn for: the cup/stem/base SILHOUETTE carries the identity
-        // and survives any downscale, while the handles are a 4.2px secondary cue.
+        // condition you are" without a legend. The capsule's compact counter row gives this
+        // mark about 27px at 917x2048. The cup/stem/base silhouette carries its identity;
+        // the handle arcs are a secondary cue.
         public static Sprite Trophy => _trophy != null ? _trophy
             : (_trophy = Build("HudTrophy", 64, 64, InsideTrophy, Vector4.zero));
 
         // The RIDERS counter's glyph: three figures, one forward and two behind. Reads as a
-        // crowd rather than as three resolvable people — at 42px the heads sit ~2px apart, so
-        // the group silhouette is the signal and that is exactly how the target art draws it.
+        // crowd rather than as three resolvable people: the group silhouette is the signal.
         public static Sprite People => _people != null ? _people
             : (_people = Build("HudPeople", 64, 64, InsidePeople, Vector4.zero));
+
+        public static Sprite Lever => _lever != null ? _lever
+            : (_lever = Build("HudLever", 64, 64, InsideLever, Vector4.zero));
+
+        public static Sprite Check => _check != null ? _check
+            : (_check = Build("HudCheck", 64, 64, InsideCheck, Vector4.zero));
+
+        private static bool InsideLever(float x, float y) =>
+            (y >= 0.08f && y <= 0.25f && x >= 0.12f && x <= 0.88f)
+            || OnStroke(x, y, new Vector2(0.46f, 0.22f), new Vector2(0.73f, 0.76f), 0.075f)
+            || (new Vector2(x - 0.73f, y - 0.78f).sqrMagnitude <= 0.16f * 0.16f);
+
+        private static bool InsideCheck(float x, float y) =>
+            OnStroke(x, y, new Vector2(0.15f, 0.48f), new Vector2(0.40f, 0.22f), 0.09f)
+            || OnStroke(x, y, new Vector2(0.40f, 0.22f), new Vector2(0.86f, 0.80f), 0.09f);
+
+        private static bool OnStroke(float x, float y, Vector2 start, Vector2 end, float radius)
+        {
+            Vector2 delta = end - start;
+            Vector2 point = new Vector2(x, y) - start;
+            float t = Mathf.Clamp01(Vector2.Dot(point, delta) / delta.sqrMagnitude);
+            return (point - delta * t).sqrMagnitude <= radius * radius;
+        }
 
         public static Sprite ForShape(DestinationShape shape)
         {

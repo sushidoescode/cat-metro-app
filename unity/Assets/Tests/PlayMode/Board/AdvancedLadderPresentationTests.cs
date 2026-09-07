@@ -41,7 +41,7 @@ namespace CatMetro.Tests.PlayMode
             _root = GameRoot.LaunchWith(ReadLevel("L060"));
             yield return null;
 
-            Assert.That(_root.Preview.FlipSummary, Is.EqualTo("Flips 0/1"));
+            Assert.That(_root.Preview.FlipSummary, Is.EqualTo("0/1"));
             var previewTokens = Object.FindObjectsByType<TMP_Text>(FindObjectsSortMode.None)
                 .Where(label => label.name == "cat-token" && label.transform.IsChildOf(_root.Preview.transform))
                 .Select(label => label.text).ToArray();
@@ -77,7 +77,7 @@ namespace CatMetro.Tests.PlayMode
             _root.Session.AdvanceMs(2 * TickInterpolator.TICK_MS);
             yield return null;
             Assert.That(cooldown.text, Is.EqualTo("4"));
-            Assert.That(_root.Preview.FlipSummary, Is.EqualTo("Flips 1/2"));
+            Assert.That(_root.Preview.FlipSummary, Is.EqualTo("1/2"));
 
             _root.Session.AdvanceMs(7 * TickInterpolator.TICK_MS);
             yield return null;

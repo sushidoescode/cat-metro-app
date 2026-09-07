@@ -68,7 +68,7 @@ namespace CatMetro.Tests.PlayMode
                 var authoredPosition = _root.View.transform.InverseTransformPoint(
                     view.transform.position);
                 Assert.That(authoredPosition.x, Is.EqualTo(n.X * 0.8f).Within(0.001));
-                Assert.That(authoredPosition.y, Is.EqualTo(n.Y * 1.25f).Within(0.001));
+                Assert.That(authoredPosition.y, Is.EqualTo(n.Y * 1.47f).Within(0.001));
             }
         }
 

@@ -37,8 +37,8 @@ namespace CatMetro.Tests.PlayMode
             // stretches: trains, track endpoints, props and the slab must agree on it.
             var expected = new[]
             {
-                new Vector3(2.4f, 11.25f, 0f), new Vector3(2.4f, 7.5f, 0f),
-                new Vector3(0.8f, 2.5f, 0f), new Vector3(4f, 2.5f, 0f),
+                new Vector3(2.4f, 13.23f, 0f), new Vector3(2.4f, 8.82f, 0f),
+                new Vector3(0.8f, 2.94f, 0f), new Vector3(4f, 2.94f, 0f),
             };
             var top = _view.transform.Find("BoardBody/WoodTop");
             for (int i = 0; i < expected.Length; i++)
@@ -110,7 +110,7 @@ namespace CatMetro.Tests.PlayMode
                 "train progress and rendered rail must evaluate the identical spline");
 
             Vector3 oldStraightMidpoint =
-                Vector3.Lerp(new Vector3(2.4f, 7.5f, 0f), new Vector3(0.8f, 2.5f, 0f), 0.5f)
+                Vector3.Lerp(new Vector3(2.4f, 8.82f, 0f), new Vector3(0.8f, 2.94f, 0f), 0.5f)
                 + new Vector3(0f, 0f, -0.2f);
             Assert.That(Vector2.Distance(train.transform.localPosition, oldStraightMidpoint),
                 Is.GreaterThan(0.10f),
@@ -181,7 +181,7 @@ namespace CatMetro.Tests.PlayMode
             for (int node = 0; node < nodes.Length; node++)
             {
                 nodeIndex.Add(nodes[node].Id, node);
-                positions[node] = new Vector3(nodes[node].X * 0.8f, nodes[node].Y * 1.25f, 0f);
+                positions[node] = new Vector3(nodes[node].X * 0.8f, nodes[node].Y * 1.47f, 0f);
             }
             return TrackSplineGraph.Build(positions,
                 edges.Select(edge => nodeIndex[edge.From]).ToArray(),

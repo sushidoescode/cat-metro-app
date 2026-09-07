@@ -49,8 +49,8 @@ namespace CatMetro.Tests.PlayMode
             var nodes = _root.Session.Level.Dto.Nodes.ToArray();
             float minX = nodes.Min(n => n.X * 0.8f);
             float maxX = nodes.Max(n => n.X * 0.8f);
-            float minY = nodes.Min(n => n.Y * 1.25f);
-            float maxY = nodes.Max(n => n.Y * 1.25f);
+            float minY = nodes.Min(n => n.Y * 1.47f);
+            float maxY = nodes.Max(n => n.Y * 1.47f);
             var top = body.Find("WoodTop");
             Assert.That(top.localPosition.x - top.localScale.x * 0.5f,
                 Is.LessThanOrEqualTo(minX - 0.75f));
@@ -255,7 +255,7 @@ namespace CatMetro.Tests.PlayMode
 
             var nodes = _root.Session.Level.Dto.Nodes.ToArray();
             float minX = nodes.Min(n => n.X * 0.8f), maxX = nodes.Max(n => n.X * 0.8f);
-            float minY = nodes.Min(n => n.Y * 1.25f), maxY = nodes.Max(n => n.Y * 1.25f);
+            float minY = nodes.Min(n => n.Y * 1.47f), maxY = nodes.Max(n => n.Y * 1.47f);
             var top = _root.View.transform.Find("BoardBody/WoodTop");
             Assert.That(top, Is.Not.Null);
 
@@ -378,8 +378,13 @@ namespace CatMetro.Tests.PlayMode
 
             float minX = corners.Min(c => c.x), maxX = corners.Max(c => c.x);
             float minY = corners.Min(c => c.y), maxY = corners.Max(c => c.y);
-            // Target-01 runs its board off the left AND right edges. Ours does now too, and
-            // that is the whole point of the slab being outside the safe-frame law.
+            // L001's authored four-column span now uses GridX=.8, with the same 2.05-unit
+            // side rims: 4*.8 + 2*2.05 = 7.30 units. Pin that exact projected width instead
+            // of the old 15% left overscan, which assumed a square, width-bound grid.
+            Assert.That((maxX - minX) * 2f * camera.orthographicSize * camera.aspect,
+                Is.EqualTo(7.30f).Within(0.001f));
+            // Both portrait edges must still be covered; the taller fit never permits a
+            // visible side seam just because its required overscan amount has changed.
             Assert.That(minX, Is.LessThan(0f), "the slab must bleed off the left edge");
             Assert.That(maxX, Is.GreaterThan(1f), "and off the right edge, not merely touch it");
             // Vertically it must NOT, because that is what keeps the toy reading as a finite
@@ -612,7 +617,7 @@ namespace CatMetro.Tests.PlayMode
 
             Assert.That(propEntries, Is.EqualTo(5).Or.EqualTo(10),
                 "the admitted-rig phone metric requires the furnished production framing");
-            Assert.That(headWidth, Is.InRange(Mathf.FloorToInt(maskWidth * 0.05f) / (float)maskWidth, 0.06f),
+            Assert.That(headWidth, Is.InRange(0.05f, 0.06f),
                 $"licensed rig head and ears are {headWidth:P1} of frame width; target is 5-6%");
         }
 
