@@ -43,16 +43,71 @@ The ASO P0 phrase `train puzzle` appears exactly once in the title, once in the 
 and once in the opening sentence. The full description also uses `cat puzzle`, heading-only
 `metro puzzle`, and `route puzzle` exactly once each. The stale `no forced ads` phrase is omitted.
 
+## Apple metadata
+
+These fields reuse the verified claims above. They add no platform-availability or feature claim.
+
+### Subtitle
+
+- Apple limit: 30 characters
+- Exact count: 25 characters
+- Headroom: 5 characters
+- Title-word overlap: none
+
+```text
+Route by Color and Symbol
+```
+
+### Keywords
+
+- Apple limit: 100 characters
+- Exact count: 100 characters
+- Headroom: 0 characters
+- Format: comma-separated with no spaces; no word from `Cat Metro: Train Puzzle`
+
+```text
+switches,stations,routing,tabletop,railway,miniature,waves,level,guide,matching,warm,decisions,model
+```
+
+### Description
+
+397 characters of 4,000 (3,603 remaining). This is the existing full description with only the
+platform-specific wording removed; the claims and paragraph structure are otherwise unchanged.
+
+```text
+Cat Metro is a train puzzle about routing cat trains. Tap switches to guide each train toward its matching color-and-symbol station.
+
+Read the next waves, choose the route, and finish a level to move to the next. This cat puzzle focuses on switch decisions.
+
+A TABLETOP METRO PUZZLE
+
+Built toward a tabletop model-railway look, Cat Metro pairs a focused route puzzle with a warm miniature premise.
+```
+
+### Support URL
+
+**PENDING — DO NOT PASTE INTO APP STORE CONNECT.** GitHub Pages is not enabled, so no public
+support URL is available. Keep this field pending until `docs/privacy/index.html` is served
+publicly over HTTPS, returns HTTP 200, and its contact content is confirmed acceptable for Apple's
+Support URL field; then replace this note with that public URL.
+
 ## Claim mapping
 
 | Field text | Claim IDs |
 |---|---|
 | `Cat Metro is an Android train puzzle about routing cat trains.` | C-01 |
+| Apple description: `Cat Metro is a train puzzle about routing cat trains.` | C-01 |
 | `Tap switches…` / `choose the route` / `switch decisions` | C-01 |
 | `matching color-and-symbol station` | C-04 |
 | `Read the next waves` | C-05 |
 | `finish a level to move to the next` | C-08 |
 | `tabletop model-railway look` / `warm miniature premise` | C-13 |
+| Apple subtitle: `Route by Color and Symbol` | C-01, C-04 |
+| Apple keywords: `switches`, `routing`, `guide`, `matching`, `decisions` | C-01 |
+| Apple keyword: `stations` | C-04 |
+| Apple keyword: `waves` | C-05 |
+| Apple keyword: `level` | C-08 |
+| Apple keywords: `tabletop`, `railway`, `miniature`, `warm`, `model` | C-13 |
 
 ## Stale ledger rows — source evidence is not publication evidence
 
