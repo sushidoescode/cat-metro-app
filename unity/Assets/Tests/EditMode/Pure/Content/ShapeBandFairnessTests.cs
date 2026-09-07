@@ -36,6 +36,24 @@ namespace CatMetro.Tests.Content
                 "the first cat uses the set route; each later badge advances one stop");
         }
 
+        [Test]
+        public void BadgeParade_RepeatsTheCentreBadgeBeforeAdvancingRight()
+        {
+            var level = Read("L011");
+            Assert.That(level.Dto.Meta.Mechanics.ToArray(), Is.EqualTo(new[] { "switch", "shape" }));
+            Assert.That(level.Dto.Meta.TeachingGoal, Is.EqualTo(
+                "Hold one shape route for a repeated badge before moving on to the final platform"));
+            Assert.That(level.Dto.Waves.ToArray().OrderBy(w => w.Tick).Select(w => w.Shape),
+                Is.EqualTo(new[] { "round", "triangle", "triangle", "square" }),
+                "hold the centre route for the repeated badge, then advance once to the right");
+            var solve = LevelSolver.Solve(level.Graph, (ulong)level.Dto.Seed, 2_000_000);
+            Assert.That(solve.Verdict, Is.EqualTo(SolveVerdict.Solved));
+            Assert.That(solve.BeamWidthUsed, Is.Zero);
+            Assert.That(ReplayHasher.ComputeReplayHash(level.Graph, (ulong)level.Dto.Seed,
+                solve.OptimalLog), Is.EqualTo(
+                "2765e19002f5fcaef87ab3f3792c92a8d82ba8a623e0c6fca2d1e3069a48c264"));
+        }
+
         [TestCase("L009")]
         [TestCase("L010")]
         [TestCase("L011")]

@@ -40,9 +40,9 @@
   ],
   "waves": [
     { "tick": 8, "sourceNode": "SRC", "color": "green", "count": 1, "spacingTicks": 12, "shape": "round" },
-    { "tick": 28, "sourceNode": "SRC", "color": "green", "count": 1, "spacingTicks": 12, "shape": "square" },
-    { "tick": 48, "sourceNode": "SRC", "color": "green", "count": 1, "spacingTicks": 12, "shape": "square" },
-    { "tick": 68, "sourceNode": "SRC", "color": "green", "count": 1, "spacingTicks": 12, "shape": "triangle" }
+    { "tick": 28, "sourceNode": "SRC", "color": "green", "count": 1, "spacingTicks": 12, "shape": "triangle" },
+    { "tick": 48, "sourceNode": "SRC", "color": "green", "count": 1, "spacingTicks": 12, "shape": "triangle" },
+    { "tick": 68, "sourceNode": "SRC", "color": "green", "count": 1, "spacingTicks": 12, "shape": "square" }
   ],
   "win": {
     "deliveries": 4,
