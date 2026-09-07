@@ -1094,6 +1094,9 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator SceneLook_RestoresGlobalEnvironmentWhenRootIsDestroyed()
         {
+            var pipeline = (UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset)
+                UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline;
+            float previousShadowDistance = pipeline.shadowDistance;
             Material previousSkybox = RenderSettings.skybox;
             var previousMode = RenderSettings.ambientMode;
             Color previousSky = RenderSettings.ambientSkyColor;
@@ -1104,9 +1107,11 @@ namespace CatMetro.Tests.PlayMode
             var sentinelSky = new Color(0.11f, 0.22f, 0.33f);
             var sentinelEquator = new Color(0.17f, 0.19f, 0.21f);
             var sentinelGround = new Color(0.05f, 0.07f, 0.09f);
+            GameRoot retiringRoot = null;
 
             try
             {
+                pipeline.shadowDistance = 19.25f;
                 RenderSettings.skybox = sentinel;
                 RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
                 RenderSettings.ambientSkyColor = sentinelSky;
@@ -1117,8 +1122,10 @@ namespace CatMetro.Tests.PlayMode
                 _root = GameRoot.Launch();
                 yield return null;
                 Assert.That(RenderSettings.skybox, Is.Null);
+                Assert.That(pipeline.shadowDistance, Is.EqualTo(14f),
+                    "the live board owns its shadow range without editing the pipeline asset");
 
-                var retiringRoot = _root;
+                retiringRoot = _root;
                 Object.Destroy(retiringRoot.gameObject);
                 _root = GameRoot.Launch();
                 yield return null;
@@ -1128,6 +1135,8 @@ namespace CatMetro.Tests.PlayMode
                     "an overlapping live root must retain the diorama environment");
                 Assert.That(RenderSettings.ambientMode,
                     Is.EqualTo(UnityEngine.Rendering.AmbientMode.Trilight));
+                Assert.That(pipeline.shadowDistance, Is.EqualTo(14f),
+                    "an overlapping root retains the live board's shadow range");
 
                 Object.DestroyImmediate(_root.gameObject);
                 _root = null;
@@ -1138,9 +1147,15 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(RenderSettings.ambientEquatorColor, Is.EqualTo(sentinelEquator));
                 Assert.That(RenderSettings.ambientGroundColor, Is.EqualTo(sentinelGround));
                 Assert.That(RenderSettings.ambientIntensity, Is.EqualTo(0.42f).Within(0.001f));
+                Assert.That(pipeline.shadowDistance, Is.EqualTo(19.25f),
+                    "the final owner restores the pipeline's original setting");
             }
             finally
             {
+                if (_root != null) Object.DestroyImmediate(_root.gameObject);
+                _root = null;
+                if (retiringRoot != null) Object.DestroyImmediate(retiringRoot.gameObject);
+                pipeline.shadowDistance = previousShadowDistance;
                 RenderSettings.skybox = previousSkybox;
                 RenderSettings.ambientMode = previousMode;
                 RenderSettings.ambientSkyColor = previousSky;

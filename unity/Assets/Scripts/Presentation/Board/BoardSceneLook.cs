@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using CatMetro.Presentation.Props;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 namespace CatMetro.Presentation.Board
 {
@@ -406,6 +407,8 @@ namespace CatMetro.Presentation.Board
         private static Color _ambientEquator;
         private static Color _ambientGround;
         private static float _ambientIntensity;
+        private static UniversalRenderPipelineAsset _pipeline;
+        private static float _shadowDistance;
         private bool _ownsLease;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -414,6 +417,7 @@ namespace CatMetro.Presentation.Board
             _activeOwners = 0;
             _hasSnapshot = false;
             _skybox = null;
+            _pipeline = null;
         }
 
         public void Capture()
@@ -427,6 +431,12 @@ namespace CatMetro.Presentation.Board
                 _ambientEquator = RenderSettings.ambientEquatorColor;
                 _ambientGround = RenderSettings.ambientGroundColor;
                 _ambientIntensity = RenderSettings.ambientIntensity;
+                _pipeline = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
+                if (_pipeline != null)
+                {
+                    _shadowDistance = _pipeline.shadowDistance;
+                    _pipeline.shadowDistance = 14f;
+                }
                 _hasSnapshot = true;
             }
             _activeOwners++;
@@ -445,8 +455,10 @@ namespace CatMetro.Presentation.Board
             RenderSettings.ambientEquatorColor = _ambientEquator;
             RenderSettings.ambientGroundColor = _ambientGround;
             RenderSettings.ambientIntensity = _ambientIntensity;
+            if (_pipeline != null) _pipeline.shadowDistance = _shadowDistance;
             _hasSnapshot = false;
             _skybox = null;
+            _pipeline = null;
         }
     }
 }
