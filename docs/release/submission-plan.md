@@ -17,8 +17,8 @@ plus review needs roughly 25 days. Store uploads, signing, asset-distribution ap
 release are human-only steps.
 
 The primary tracks are **Best Game**, **OneSignal — Keep Them Coming Back**, **Design**, and
-**HAMM**. **Do not enter Catvertising on the current candidate:** its rewarded placements are
-disabled and no ad network is wired.
+**HAMM**. **Do not enter Catvertising on the current candidate:** rewarded placements are enabled
+in configuration, but no ad network is configured, so this build contains no ad surface.
 
 This plan mines the earlier submission draft, the supplied Shipaton research brief, and
 `docs/store/*`, and uses `docs/LOOK.md` plus the human-curated
@@ -281,8 +281,9 @@ proven on the iOS candidate.
 
 **Current submission status: do not enter this track.** The honest current blurb is:
 
-> Cat Metro contains no interstitial, banner, or app-open ad. Rewarded placements are disabled in
-> this release candidate and no ad network is wired, so this build makes no Catvertising claim.
+> Cat Metro contains no interstitial, banner, or app-open ad. Rewarded placements are enabled in
+> configuration, but no ad network is configured, so this build contains no ad surface and makes
+> no Catvertising claim.
 
 Only if a player-initiated rewarded surface, reward grant, failure path, privacy treatment, and
 RevenueCat Ads reporting all ship and are filmed may the entry replace that note with:
@@ -322,6 +323,11 @@ RevenueCat Ads reporting all ship and are filmed may the entry replace that note
 ---
 
 ## 4. Capture plan
+
+**Final-capture hold (recorded 2026-09-06):** Do not produce final store screenshots S1–S6 until
+the polish sprint merges, targeted for approximately September 13. Any earlier exact-capture output
+is rehearsal evidence only. Capture the final store screenshots from the frozen exact candidate
+during the September 26–27 window.
 
 Final dynamic proof comes from the signed iOS candidate. Unity rigs are valuable for controlled
 art iteration, but a fixture screenshot cannot prove StoreKit, RevenueCat, OneSignal, public
@@ -392,7 +398,7 @@ points are the order in which claims become safe.
 | **6 — core content proof** | L001–L019 pass final corpus/solver validation, all are reachable through normal progression, and the chosen opening/hero states occur in ordinary play. Failure, retry, clear, and counters match the script. | Nineteen level assets and an ordered band exist; this audit did not run reachability or the suite. The repo overview's older count of 17 is stale. | Retained headless validation output, clean progression receipt, and actual source takes. Unlocks the numerical claim and shot 4. |
 | **7 — exact capture tooling** | The board rig can output 1179×2556 after one bound RenderTexture frame; deterministic level/state/tick selection reproduces the opening and hero without hand placement; signed-iPhone capture procedure is rehearsed. | `CM_BOARD_LOOK_CAPTURE_DIR` and `CM_UI_CAPTURE_DIR` are fixed at 917×2048. There is no video recorder or exact hero-state seam. | Rig output, device-parity comparison, and five successful opening rehearsals. Unlocks final hero production and lowers re-shoot risk. |
 | **8 — Daily + OneSignal proof** | Seven campaign completions unlock Daily; a real Daily completion increments a durable lifetime tally exactly once; the permission ask follows demonstrated value; the OneSignal notification arrives within the chosen window and deep-links to Daily. | Daily/tally and routing are present in source, but the committed OneSignal app ID is blank and no runtime/device behavior was verified. | Physical-device sequence with relaunch persistence, notification receipt, and deep link. Unlocks shot 7 and Keep Them Coming Back. |
-| **9 — Catvertising fork** | Either a fully player-initiated rewarded flow ships with completed-view grant, failure handling, privacy/ATT independence, and RevenueCat Ads reporting, or the track remains absent everywhere. | All rewarded placements are disabled and explicitly say no ad network is wired. | Default acceptance is deletion: no video beat, category card entry, or promotional blurb. Only end-to-end candidate evidence changes this decision. |
+| **9 — Catvertising fork** | Either a fully player-initiated rewarded flow ships with completed-view grant, failure handling, privacy/ATT independence, and RevenueCat Ads reporting, or the track remains absent everywhere. | Rewarded placements are enabled in configuration, but no ad network is configured, so this build contains no ad surface. | Default acceptance is deletion: no video beat, category card entry, or promotional blurb. Only end-to-end candidate evidence changes this decision. |
 | **10 — signed release candidate** | The exact signed iOS build boots from cold, shows no missing material/placeholder art, survives purchase/restore and core progression, contains the approved assets, and matches every planned shot. | No Xcode archive, installation, iOS device run, or candidate render was verified here. | Candidate receipt, device matrix, visual inspection, purchase/restore, Daily/push evidence, and final claims ledger. Final media shooting may begin. |
 | **11 — public-live gate** | The human submits and releases the candidate; the App Store page is publicly downloadable before the deadline. | No public URL is proven. TestFlight, “Waiting for Review,” and approval without release do not qualify. | Logged-out install from the public URL. Unlocks shot 9 and eligibility. No automated or agent-run upload. |
 | **12 — final media and submission** | All footage and the one hero PNG come from the accepted candidate; captions, claims, privacy, audio, dimensions, track names, public URL, and runtime receive a cold review. | Nothing has been captured in this docs task. | 1:45 master, exactly one 1179×2556 hero, final text, media receipts, and a submission completed before 23:45 PDT. |
@@ -402,13 +408,18 @@ points are the order in which claims become safe.
 These are buffer targets, not store-review guarantees:
 
 - **Sep 1–4:** close gates 0–1 while restoring the visual asset path.
-- **Sep 5–9:** close cats/props, board, Home, Wardrobe, and exact capture tooling.
+- **Sep 5–13:** close cats/props, board, Home, Wardrobe, and exact capture tooling in the polish
+  sprint; hold final store screenshots until that sprint merges.
 - **Sep 10:** physical-device RevenueCat purchase/restore and OneSignal proof.
-- **Sep 11:** freeze and validate the signed iOS candidate.
-- **Sep 12:** human submits to App Store review.
+- **Sep 11–13:** prepare signing and review materials; do not freeze or submit the candidate before
+  the polish sprint merges and the merged result is validated.
+- **After the polish merge (target approximately Sep 13):** freeze and validate the signed iOS
+  candidate, then the human submits it to App Store review.
 - **Sep 22:** target public-live date, leaving eight days of contingency.
-- **Sep 23–26:** final candidate capture and edit.
-- **Sep 27:** lock screenshot, copy, video, and links.
+- **Sep 23–25:** rehearse the frozen candidate and finish capture/edit setup; do not export final
+  media.
+- **Sep 26–27:** capture and edit the final store screenshots, submission hero, and video, then lock
+  screenshot, copy, video, and links.
 - **Sep 28:** target Shipaton submission; Sep 29–30 are contingency, not planned work time.
 
 If the public candidate, RevenueCat purchase, real cats/props, five-second causal loop, or exact hero
