@@ -42,6 +42,7 @@ namespace CatMetro.Presentation.Screens
         private RectTransform _itemsRect;
         private RectTransform _cardsRoot;
         private RectTransform _primaryRect;
+        private ChromeChip _primaryChrome;
         private RectTransform _restoreRect;
         private RectTransform _statusRect;
         private TMP_Text _primaryLabel;
@@ -221,9 +222,13 @@ namespace CatMetro.Presentation.Screens
             _statusRect = MakeRect(_panel.transform, "WardrobeStatus");
             _statusLabel = MakeText(_statusRect, "StatusLabel", Vector2.zero, Vector2.one,
                 string.Empty, 21f, Palette.InkNavy);
-            _primaryRect = MakePrimaryChip(_panel.transform);
-            _primaryLabel = MakeText(_primaryRect, "PrimaryActionLabel", Vector2.zero,
-                Vector2.one, string.Empty, 27f, Palette.DepotNavy);
+            _primaryChrome = ChromeChip.PaintPrimary(_panel.transform, default, string.Empty,
+                Palette.TicketOrange, null, 160f);
+            _primaryRect = _primaryChrome.Root;
+            _primaryRect.name = "PrimaryActionChip";
+            _primaryLabel = _primaryChrome.Label;
+            _primaryLabel.name = "PrimaryActionLabel";
+            _primaryLabel.enableAutoSizing = true;
             _primaryLabel.fontStyle = FontStyles.Bold;
             _primaryRect.gameObject.SetActive(false);
             _restoreRect = MakeRect(_panel.transform, "RestoreChip");
@@ -374,15 +379,16 @@ namespace CatMetro.Presentation.Screens
             ApplyPx(_tabsRect, WardrobeLayout.TabsRect(safeArea, _dpi, visibleCount,
                 hasPrimaryAction));
             ApplyPx(_itemsRect, _itemsRectPx);
-            ApplyPx(_primaryRect, _primaryRectPx);
+            float px = HudBands.PxPerDp(_dpi);
+            // ChromeChip measures the label; set the new viewport's type bounds first.
+            _primaryLabel.fontSize = _primaryLabel.fontSizeMax = 22f * px;
+            _primaryLabel.fontSizeMin = 16f * px;
+            _primaryChrome.LayoutFace(_primaryRectPx, _dpi);
             ApplyPx(_restoreRect, _restoreRectPx);
             ApplyPx(_statusRect, WardrobeLayout.StatusRect(safeArea, _dpi,
                 hasPrimaryAction));
-            float px = HudBands.PxPerDp(_dpi);
             _restoreLabel.fontSize = _restoreLabel.fontSizeMax = 16f * px;
             _restoreLabel.fontSizeMin = 14f * px;
-            _primaryLabel.fontSize = _primaryLabel.fontSizeMax = 22f * px;
-            _primaryLabel.fontSizeMin = 16f * px;
             _statusLabel.fontSize = _statusLabel.fontSizeMax = 13f * px;
             _statusLabel.fontSizeMin = 12f * px;
             _standNameLabel.fontSize = _standNameLabel.fontSizeMax = 17f * px;
@@ -826,7 +832,8 @@ namespace CatMetro.Presentation.Screens
                         return;
                 }
             }
-            _primaryLabel.text = text;
+            _primaryChrome.SetLabel(text);
+            LayoutActionLabel();
             _primaryRect.gameObject.SetActive(true);
             RegisterPrimaryRegion();
         }
@@ -1132,11 +1139,6 @@ namespace CatMetro.Presentation.Screens
             Paint(rect.gameObject, color, true);
             return rect;
         }
-
-        // Temporary paint adapter until lane D's shared ChromeChip foundation merges.
-        // Wardrobe keeps ownership of this face rect and its input region when it switches.
-        private static RectTransform MakePrimaryChip(Transform parent) =>
-            MakeChip(parent, "PrimaryActionChip", Palette.TicketOrange);
 
         private static Image MakeSurface(Transform parent, string name, Vector2 min,
             Vector2 max, Color color, bool rounded)

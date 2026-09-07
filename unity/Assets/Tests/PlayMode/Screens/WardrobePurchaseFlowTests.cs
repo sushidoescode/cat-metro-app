@@ -113,8 +113,26 @@ namespace CatMetro.Tests.PlayMode
             var restore = FindRect("RestoreChip");
             Assert.That(ScreenRect(restore).height, Is.EqualTo(44f * px).Within(1f));
             Assert.That(restore.GetComponent<Image>(), Is.Null, "Restore is a text link");
-            Assert.That(ScreenRect(FindRect("PrimaryActionChip")).height,
+            var action = FindRect("PrimaryActionChip");
+            Assert.That(ScreenRect(action).height,
                 Is.EqualTo(64f * px).Within(1f));
+            var face = action.Find("Face");
+            Assert.That(face, Is.Not.Null, "the action uses the shared cream ChromeChip face");
+            Assert.That(face.GetComponent<Image>().color, Is.EqualTo(Palette.CreamCard));
+            Assert.That(action.Find("Stitches").GetComponent<Image>().sprite, Is.Not.Null);
+            Assert.That(action.GetComponentsInChildren<TMP_Text>(true), Has.Length.EqualTo(1),
+                "the shared paint must keep a single action label");
+            Assert.That(Vector2.Distance(_view.PrimaryActionRectPx.center, ScreenRect(action).center),
+                Is.LessThan(1f),
+                "switching the paint must preserve the action's registered face rect");
+            Assert.That(Vector2.Distance(_view.PrimaryActionRectPx.size, ScreenRect(action).size),
+                Is.LessThan(1f));
+            var actionLabel = FindText("PrimaryActionLabel");
+            actionLabel.ForceMeshUpdate();
+            Assert.That(actionLabel.isTextTruncated, Is.False,
+                "the complete localized price must fit: " + actionLabel.text
+                + " font=" + actionLabel.fontSize + " width=" + actionLabel.rectTransform.rect.width
+                + " preferred=" + actionLabel.preferredWidth);
             AssertContained(FindRect("WardrobeStatus"), FindRect("PrimaryActionChip"),
                 "operation status belongs inside the action subtitle");
             Assert.That(_view.ItemsRectPx.height, Is.EqualTo(156f * px).Within(1f));
