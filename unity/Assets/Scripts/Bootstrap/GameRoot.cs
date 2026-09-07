@@ -1197,7 +1197,7 @@ namespace CatMetro.Bootstrap
 
         public void Retry()
         {
-            if (Session == null) return;
+            if (Session == null || IsTransitioning) return;
             if (_failureRewindOffer != null && _failureRewindOffer.isActiveAndEnabled &&
                 _failureRewindRequest == null)
                 FailureRewindAnalytics.OfferDeclined(Analytics, FailureRewindPlacement);
@@ -1226,6 +1226,9 @@ namespace CatMetro.Bootstrap
         private void Navigate(System.Action load)
         {
             if (IsTransitioning) return;
+            // A tap commits navigation now. A late ad callback must not replace the
+            // old failed session while it remains on screen during the cover.
+            CancelFailureRewind();
             _winFxAt = -1f;
             Audio?.CancelCelebrate();
             // LaunchWith is the synchronous gameplay fixture seam. The shipped screen flow
@@ -1816,10 +1819,14 @@ namespace CatMetro.Bootstrap
                 PrepareFailureRewind();
         }
 
-        private void OnDisable() => CancelFailureRewind();
+        private void OnDisable()
+        {
+            CancelFailureRewind();
+            _chrome?.Transition?.Cancel();
+        }
 
         private bool FailureRewindContextValid => isActiveAndEnabled && !_destroying &&
-            !ScreensVisible && ScreenState == "FailureReview" &&
+            !ScreensVisible && !IsTransitioning && ScreenState == "FailureReview" &&
             ReferenceEquals(Session, _failureRewindSession) && _failureRewindCandidate != null &&
             Session.State.Outcome.Kind == CatMetro.Domain.OutcomeKind.Failed;
 

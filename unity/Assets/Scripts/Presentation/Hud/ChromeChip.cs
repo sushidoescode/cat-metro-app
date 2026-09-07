@@ -136,10 +136,13 @@ namespace CatMetro.Presentation.Hud
             float iconSize = _icon != null ? 26f * _pxPerDp : 0f;
             float gap = _icon != null ? 10f * _pxPerDp : 0f;
             float available = Mathf.Max(0f, FaceRectPx.width - 40f * _pxPerDp - iconSize - gap);
-            Label.fontSize = 24f * _pxPerDp;
+            TypeScale.Apply(Label, 24f, _pxPerDp * HudBands.FallbackDpi);
+            // Group measurement owns the fitted size; retain TypeScale's font and floor
+            // while keeping TMP from independently enlarging the measured label later.
+            Label.enableAutoSizing = false;
             float preferred = Label.GetPreferredValues(Label.text).x;
             if (preferred > available && preferred > 0f)
-                Label.fontSize = Mathf.Max(12f * _pxPerDp, Label.fontSize * available / preferred);
+                Label.fontSize = Mathf.Max(Label.fontSizeMin, Label.fontSize * available / preferred);
             float labelWidth = Mathf.Min(available, Label.GetPreferredValues(Label.text).x);
             _content.anchorMin = _content.anchorMax = new Vector2(.5f, .5f);
             _content.pivot = new Vector2(.5f, .5f);

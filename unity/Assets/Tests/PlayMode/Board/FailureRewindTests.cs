@@ -1,14 +1,20 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using CatMetro.Application.Save;
 using CatMetro.Application.Session;
 using CatMetro.Bootstrap;
+using CatMetro.Bootstrap.DevCapture;
 using CatMetro.Content;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Input;
+using CatMetro.Presentation.Theme;
 using CatMetro.Services;
 using CatMetro.Services.Ads;
 using Newtonsoft.Json.Linq;
@@ -29,6 +35,10 @@ namespace CatMetro.Tests.PlayMode
         private FakeAds _ads;
         private Sink _sink;
         private int _sceneLoads;
+        private string _temporary;
+        private Vector3 _playCameraPosition;
+        private Quaternion _playCameraRotation;
+        private float _playCameraSize;
 
         private sealed class Sink : IAnalytics
         {
@@ -106,6 +116,17 @@ namespace CatMetro.Tests.PlayMode
             RewardedAdRuntime.ResetForTests();
             SaveRuntime.ResetForTests();
             Time.timeScale = 1f;
+            if (_temporary != null)
+            {
+                GameRoot.AnalyticsRuntimeFactory = null;
+                GameRoot.DailyStorageRootOverride = null;
+                GameRoot.MessagingFactoryOverride = null;
+                GameRoot.DevSkipShippedHome = false;
+                DevLevelOverride.DirectoryOverride = null;
+                DevBootOverride.DirectoryOverride = null;
+                Directory.Delete(_temporary, true);
+                _temporary = null;
+            }
         }
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode) => _sceneLoads++;
@@ -115,7 +136,7 @@ namespace CatMetro.Tests.PlayMode
         private Vector2 OfferPoint => new Vector2(Screen.safeArea.center.x,
             HudBands.ThumbBand(Screen.safeArea).yMax + 24f * HudBands.PxPerDp(Screen.dpi));
 
-        private IEnumerator Fail(bool configured = true, bool decision = true)
+        private IEnumerator Fail(bool configured = true, bool decision = true, bool shippedFlow = false)
         {
             if (configured)
             {
@@ -124,8 +145,32 @@ namespace CatMetro.Tests.PlayMode
             }
             var imported = LevelImporter.Import(Encoding.UTF8.GetBytes(Fixture));
             Assert.That(imported.Ok, Is.True, imported.Error?.ToString());
-            _root = GameRoot.LaunchWith(imported.Value, new GameAnalyticsRuntime(_sink));
-            _root.MotionOffToggle = true;
+            if (shippedFlow)
+            {
+                _temporary = Path.Combine(Path.GetTempPath(), "cm-rewind-flow-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(_temporary);
+                File.WriteAllText(Path.Combine(_temporary, "level.json"), Fixture);
+                DevLevelOverride.DirectoryOverride = _temporary;
+                DevBootOverride.DirectoryOverride = _temporary;
+                GameRoot.DailyStorageRootOverride = () => new FlowStorage(_temporary);
+                GameRoot.AnalyticsRuntimeFactory = () => new GameAnalyticsRuntime(_sink);
+                GameRoot.MessagingFactoryOverride = () => new InertMessaging();
+                GameRoot.DevSkipShippedHome = false;
+                _root = GameRoot.Launch();
+                _root.MotionOffToggle = false;
+                yield return null;
+                _root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center);
+                _root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center);
+                Assert.That(_root.ScreensVisible, Is.False);
+            }
+            else
+            {
+                _root = GameRoot.LaunchWith(imported.Value, new GameAnalyticsRuntime(_sink));
+                _root.MotionOffToggle = true;
+            }
+            _playCameraPosition = _root.Cam.transform.position;
+            _playCameraRotation = _root.Cam.transform.rotation;
+            _playCameraSize = _root.Cam.orthographicSize;
             Assert.That(_root.Input.Regions.IsRegistered(RegionId), Is.False);
             Assert.That(Offer, Is.Null, "no offer while Playing");
             _root.Session.AdvanceMs(5 * TickInterpolator.TICK_MS);
@@ -142,6 +187,234 @@ namespace CatMetro.Tests.PlayMode
                 "eligible failure must expose a rewind region");
             Assert.That(_root.Input.HandleTapAtScreen(OfferPoint), Is.EqualTo(-3));
             Assert.That(_ads.RequestedPlacement, Is.EqualTo(Placement));
+        }
+
+        [UnityTest]
+        public IEnumerator ShippedRetry_DeclinesAndRemovesOfferBeforeTheDelayedRebuild()
+        {
+            yield return Fail(shippedFlow: true);
+            var failed = _root.Session;
+            var offerCanvas = Offer.GetComponentInParent<Canvas>();
+            _root.Retry();
+            var veil = _root.GetComponent<ScreenChromeController>().Transition;
+            Assert.That(veil.IsInFlight, Is.True);
+            Assert.That(_root.Session, Is.SameAs(failed), "the old board remains until cover is opaque");
+            Assert.That(Count("ad_offer_declined"), Is.EqualTo(1), "decline belongs to the tap, not the rebuild");
+            Assert.That(_root.Input.Regions.IsRegistered(RegionId), Is.False);
+            Assert.That(offerCanvas.gameObject.activeSelf, Is.False);
+            _ads.SetAvailable(true);
+            Assert.That(_root.Input.Regions.IsRegistered(RegionId), Is.False,
+                "availability must not reopen an offer during the cover");
+            _root.Retry();
+            Assert.That(Count("ad_offer_declined"), Is.EqualTo(1));
+            veil.Advance(.11f, false);
+            Assert.That(_root.Session, Is.SameAs(failed));
+            veil.Advance(.11f, false);
+            Assert.That(veil.Alpha, Is.EqualTo(1f));
+            Assert.That(_root.Session, Is.Not.SameAs(failed));
+            Assert.That(_root.Session.State.Tick, Is.Zero);
+            Assert.That(Count("level_started"), Is.EqualTo(2), "initial play plus one committed retry");
+        }
+
+        [UnityTest]
+        public IEnumerator ShippedRetry_CancelsDisplayedRequestBeforeVeilMidpoint()
+        {
+            yield return Fail(shippedFlow: true);
+            var failed = _root.Session;
+            TapOffer();
+            _ads.Display();
+            _root.Retry();
+            var veil = _root.GetComponent<ScreenChromeController>().Transition;
+            Assert.That(veil.IsInFlight, Is.True);
+            Assert.That(_root.Session, Is.SameAs(failed));
+            Assert.That(_ads.Abandoned, Is.EqualTo(1), "cancel on the tap while the old board still exists");
+            Assert.That(Count("ad_offer_declined"), Is.Zero);
+            _ads.Finish(RewardedAdCompletionKind.Granted);
+            _ads.Display();
+            Assert.That(_root.Session, Is.SameAs(failed), "late reward cannot replace the pending Retry");
+            Assert.That(Count("rewind_used"), Is.Zero);
+            Assert.That(Count("rewarded_ad_completed"), Is.Zero);
+            veil.Advance(.22f, false);
+            var retried = _root.Session;
+            Assert.That(retried, Is.Not.SameAs(failed));
+            Assert.That(retried.State.Tick, Is.Zero);
+            Assert.That(retried.HasUsedRewind, Is.False);
+            veil.Advance(.28f, false);
+            _ads.Finish(RewardedAdCompletionKind.Granted);
+            Assert.That(_root.Session, Is.SameAs(retried));
+        }
+
+        [UnityTest]
+        public IEnumerator DisableDuringRetryCover_CancelsPendingBoardRebuild()
+        {
+            yield return Fail(shippedFlow: true);
+            var failed = _root.Session;
+            _root.Retry();
+            var veil = _root.GetComponent<ScreenChromeController>().Transition;
+            Assert.That(veil.IsInFlight, Is.True);
+            _root.enabled = false;
+            Assert.That(veil.IsInFlight, Is.False, "a disabled flow owner cannot retain a rebuild callback");
+            veil.Advance(1f, false);
+            Assert.That(_root.Session, Is.SameAs(failed));
+            Assert.That(_root.Input.Regions.IsRegistered("transition.cover"), Is.False);
+            Assert.That(_root.Input.Regions.IsRegistered(RegionId), Is.False);
+            _root.enabled = true;
+            Assert.That(_root.Input.Regions.IsRegistered(RegionId), Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator ShippedGrant_InstallsExactPreparedSessionWithMotionEnabled()
+        {
+            yield return Fail(shippedFlow: true);
+            var candidate = (GameSession)typeof(GameRoot)
+                .GetField("_failureRewindCandidate", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(_root);
+            Assert.That(candidate, Is.Not.Null);
+            var before = Digest(candidate);
+            TapOffer();
+            _ads.Display();
+            _ads.Finish(RewardedAdCompletionKind.Granted);
+            Assert.That(_root.Session, Is.SameAs(candidate),
+                "an earned rewind installs the prepared object immediately, without a cancellable deferred grant");
+            Assert.That(Digest(_root.Session), Is.EqualTo(before));
+            Assert.That(_root.Session.State.Tick, Is.EqualTo(5));
+            Assert.That(_root.Session.HasUsedRewind, Is.True);
+            var veil = _root.GetComponent<ScreenChromeController>().Transition;
+            Assert.That(veil.IsInFlight, Is.False);
+            veil.Advance(.5f, false);
+            _ads.Finish(RewardedAdCompletionKind.Granted);
+            Assert.That(_root.Session, Is.SameAs(candidate));
+            Assert.That(Count("rewind_used"), Is.EqualTo(1));
+        }
+
+        [UnityTest]
+        public IEnumerator SuccessfulRewind_ClearsExistingFailureMoodAndRestoresPlayCamera()
+        {
+            yield return Fail(shippedFlow: true);
+            // TimeOut has no causal node; stage the existing fail framing so the reset
+            // assertions exercise a visible ring and displaced camera rather than a no-op.
+            _root.CauseCam.FrameNode("SRC", _root.View.NodeWorldPos(0), true);
+            Assert.That(_root.CauseCam.RingVisible, Is.True);
+            Assert.That(_root.Banner.Visible, Is.True);
+            Assert.That(_root.GetComponent<ScreenChromeController>().Cta.IsVisible, Is.True);
+            Assert.That(Vector3.Distance(_root.Cam.transform.position, _playCameraPosition),
+                Is.GreaterThan(.1f));
+            TapOffer();
+            _ads.Finish(RewardedAdCompletionKind.Granted);
+            Assert.That(_root.ScreenState, Is.EqualTo("Playing"));
+            Assert.That(_root.Banner.Visible, Is.False);
+            Assert.That(_root.CauseCam.RingVisible, Is.False);
+            Assert.That(_root.CauseCam.TargetNodeId, Is.Empty);
+            Assert.That(Vector3.Distance(_root.Cam.transform.position, _playCameraPosition), Is.LessThan(.001f));
+            Assert.That(Quaternion.Angle(_root.Cam.transform.rotation, _playCameraRotation), Is.LessThan(.001f));
+            Assert.That(_root.Cam.orthographicSize, Is.EqualTo(_playCameraSize).Within(.001f));
+            yield return null;
+            Assert.That(_root.GetComponent<ScreenChromeController>().Cta.IsVisible, Is.False);
+            Assert.That(_root.GetComponent<ResultsPanel>().IsVisible, Is.False);
+            Assert.That(_root.Audio.CelebratePending, Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator RetryAndBannerStayClearOfTheFullWidthRewindStrip()
+        {
+            yield return Fail();
+            var view = Offer.GetComponent<FailureRewindOfferView>();
+            var band = HudBands.ThumbBand(Screen.safeArea);
+            Assert.That(view.PaintedRectPx, Is.EqualTo(FailureRewindOfferView.ChipRect(Screen.safeArea, Screen.dpi)));
+            Assert.That(view.PaintedRectPx.x, Is.EqualTo(Screen.safeArea.x));
+            Assert.That(view.PaintedRectPx.width, Is.EqualTo(Screen.safeArea.width));
+            Assert.That(view.PaintedRectPx.yMin, Is.EqualTo(band.yMax));
+            Assert.That(view.PaintedRectPx.height, Is.EqualTo(48f * HudBands.PxPerDp(Screen.dpi)));
+            var retry = _root.GetComponent<ScreenChromeController>().Cta;
+            Assert.That(retry.PaintedRectPx, Is.EqualTo(band));
+            Assert.That(view.PaintedRectPx.Overlaps(retry.FaceRectPx), Is.False);
+            Assert.That(view.PaintedRectPx.Overlaps(_root.Banner.PaintedRectPx), Is.False);
+            foreach (var phone in new[] { new Vector3(917, 2048, 408), new Vector3(1179, 2556, 460),
+                new Vector3(480, 1080, 240) })
+            {
+                var safe = new Rect(0, 64, phone.x, phone.y - 128);
+                var strip = FailureRewindOfferView.ChipRect(safe, phone.z);
+                retry.LayoutForViewport(safe, phone.z);
+                _root.Banner.LayoutForViewport(safe, phone.z);
+                Assert.That(retry.FaceRectPx.yMax + 6f * HudBands.PxPerDp(phone.z),
+                    Is.LessThan(strip.yMin), "the halo stays below the offer too");
+                Assert.That(strip.Overlaps(_root.Banner.PaintedRectPx), Is.False);
+                Assert.That(retry.PaintedRectPx.yMax, Is.EqualTo(strip.yMin));
+            }
+            CaptureOfferUiOnlyIfRequested(view);
+        }
+
+        private sealed class FlowStorage : IStorageRoot
+        {
+            public string SaveDirectory { get; }
+            public string CacheDirectory => SaveDirectory;
+            public FlowStorage(string directory)
+            {
+                SaveDirectory = Path.Combine(directory, "save");
+                Directory.CreateDirectory(SaveDirectory);
+            }
+        }
+
+        private sealed class InertMessaging : IMessaging
+        {
+            public bool IsAvailable => false;
+            public string SubscriptionId => string.Empty;
+            public MessagingPermission Permission => MessagingPermission.Unknown;
+            public bool CanRequestPermission => false;
+            public event Action<MessagingRoute> LinkOpened { add { } remove { } }
+            public Task<MessagingPermission> PromptAsync(bool fallbackToSettings, CancellationToken cancellationToken)
+                => Task.FromResult(MessagingPermission.Unknown);
+            public void Schedule(DailyChallengeNotification notification) { }
+            public void Cancel(string notificationId) { }
+            public void Dispose() { }
+        }
+
+        private void CaptureOfferUiOnlyIfRequested(FailureRewindOfferView offer)
+        {
+            string path = Environment.GetEnvironmentVariable("CM_REWIND_FLOW_UI_CAPTURE");
+            if (string.IsNullOrEmpty(path)) return;
+            var camera = _root.Cam;
+            var priorTarget = camera.targetTexture;
+            var priorActive = RenderTexture.active;
+            int priorMask = camera.cullingMask;
+            var target = new RenderTexture(917, 2048, 24);
+            var pixels = new Texture2D(917, 2048, TextureFormat.RGB24, false);
+            try
+            {
+                // Only these three UI canvases enter this frame. No board or licensed art
+                // is rendered, so this geometry review can run in the isolated worktree.
+                foreach (var canvas in new[] { offer.GetComponentInParent<Canvas>(),
+                    _root.Banner.GetComponent<Canvas>(),
+                    _root.GetComponent<ScreenChromeController>().Cta.GetComponentInParent<Canvas>() })
+                    foreach (var child in canvas.GetComponentsInChildren<Transform>(true))
+                        child.gameObject.layer = 5;
+                camera.cullingMask = 1 << 5;
+                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.backgroundColor = Palette.WarmPaper;
+                camera.targetTexture = target;
+                camera.aspect = 917f / 2048f;
+                var safe = new Rect(0, 64, 917, 1920);
+                _root.Banner.LayoutForViewport(safe, 408f);
+                _root.GetComponent<ScreenChromeController>().Cta.LayoutForViewport(safe, 408f);
+                var rect = offer.GetComponent<RectTransform>();
+                var strip = FailureRewindOfferView.ChipRect(safe, 408f);
+                rect.anchoredPosition = strip.position;
+                rect.sizeDelta = strip.size;
+                Canvas.ForceUpdateCanvases();
+                camera.Render();
+                RenderTexture.active = target;
+                pixels.ReadPixels(new Rect(0, 0, 917, 2048), 0, 0);
+                pixels.Apply();
+                File.WriteAllBytes(path, pixels.EncodeToPNG());
+            }
+            finally
+            {
+                camera.targetTexture = priorTarget;
+                camera.cullingMask = priorMask;
+                RenderTexture.active = priorActive;
+                Object.DestroyImmediate(pixels);
+                Object.DestroyImmediate(target);
+            }
         }
 
         [UnityTest]

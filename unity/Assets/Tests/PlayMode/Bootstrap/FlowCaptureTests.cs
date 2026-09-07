@@ -35,11 +35,19 @@ namespace CatMetro.Tests.PlayMode
             if (_root != null) Object.DestroyImmediate(_root.gameObject);
             if (_uiCanvas != null) Object.DestroyImmediate(_uiCanvas);
             if (_uiCamera != null) Object.DestroyImmediate(_uiCamera.gameObject);
+            _root = null;
+            _uiCanvas = null;
+            _uiCamera = null;
+            _uiSheet = null;
+            _uiResults = null;
+            _uiBanner = null;
+            _uiRetry = null;
             GameRoot.DevSkipShippedHome = false;
             DevLevelOverride.DirectoryOverride = null;
             GameRoot.DailyStorageRootOverride = null;
             Time.timeScale = 1f;
             if (_temporary != null && Directory.Exists(_temporary)) Directory.Delete(_temporary, true);
+            _temporary = null;
         }
 
         [UnityTest]

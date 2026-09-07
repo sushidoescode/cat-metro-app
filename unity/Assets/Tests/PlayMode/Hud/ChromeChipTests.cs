@@ -65,6 +65,21 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(content.rect.width, Is.LessThanOrEqualTo(root.rect.width - 40f));
         }
 
+        [TestCase(72f)]
+        [TestCase(408f)]
+        public void LocalizedLabel_KeepsTheSharedFontMinimumAtEditorAndPhoneDpi(float dpi)
+        {
+            float scale = HudBands.PxPerDp(dpi);
+            var root = Paint(new Rect(0, 0, 220f * scale, 160f * scale), dpi,
+                "Recommencer le parcours quotidien", HudShapeSprites.Triangle);
+            var label = root.GetComponentInChildren<TMP_Text>();
+            float minimum = Mathf.Max(TypeScale.Minimum, TypeScale.Minimum * scale);
+            Assert.That(label.font.faceInfo.familyName, Is.EqualTo("Fredoka"));
+            Assert.That(label.fontSizeMin, Is.GreaterThanOrEqualTo(minimum));
+            Assert.That(label.fontSize, Is.GreaterThanOrEqualTo(minimum));
+            Assert.That(label.overflowMode, Is.EqualTo(TextOverflowModes.Ellipsis));
+        }
+
         [Test]
         public void PinPaint_IsCreamWithStitchGaps_AndOwnsNoInputOrMotionComponents()
         {

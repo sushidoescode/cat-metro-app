@@ -95,6 +95,7 @@ namespace CatMetro.Presentation.Screens
                 Palette.TicketOrange);
             view._playLabel = view._playPaint.Label;
 
+            view.LayoutForViewport(Screen.safeArea, Screen.dpi);
             go.SetActive(false);
             return view;
         }
