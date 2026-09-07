@@ -46,37 +46,44 @@ namespace CatMetro.Tests.PlayMode
                 _root.enabled = false;
                 var target = new RenderTexture(917, 2048, 24, RenderTextureFormat.ARGB32,
                     RenderTextureReadWrite.sRGB) { antiAliasing = 4 };
-                _root.Cam.targetTexture = target;
-                yield return null;
-                BoardSceneLook.FitCamera(_root.Cam, _root.View);
-                _root.Preview.Refresh();
-                _root.Preview.LayoutForViewport(new Rect(0, 64, 917, 1920), 408f);
-                Canvas.ForceUpdateCanvases();
-
-                var slab = _root.View.transform.Find("BoardBody");
-                var ys = slab.GetComponentsInChildren<MeshFilter>()
-                    .SelectMany(f => f.sharedMesh.vertices.Select(v =>
-                        _root.Cam.WorldToViewportPoint(f.transform.TransformPoint(v)).y)).ToArray();
-                float height = ys.Max() - ys.Min();
-                metrics.Add(string.Format(CultureInfo.InvariantCulture, "{0},{1:F6},{2:F6},{3:F6},{4:F6}",
-                    id, height, ys.Min(), ys.Max(), _root.Cam.orthographicSize));
-                if (number <= 15 && height < 0.65f)
-                    failures.Add(id + " slab height " + height.ToString("P1"));
-                if (ys.Min() < 0.02f || ys.Max() > 0.98f)
-                    failures.Add(id + " slab leaves the portrait vertically");
-                if (!string.IsNullOrEmpty(dir) && captures.Contains(number))
-                    WriteFrame(_root.Cam, target, Path.Combine(dir, "ladder-" + id + "-tick000.png"), failures);
-                if (!string.IsNullOrEmpty(dir) && number == 1)
+                var previousTarget = _root.Cam.targetTexture;
+                try
                 {
-                    _root.Preview.GetComponent<Canvas>().enabled = false;
-                    BoardSceneLook.FitCamera(_root.Cam, _root.View, new Rect(.075f, .28f, .85f, .49f));
-                    WriteFrame(_root.Cam, target, Path.Combine(dir, "home-L001-window-fit.png"));
+                    _root.Cam.targetTexture = target;
+                    yield return null;
+                    BoardSceneLook.FitCamera(_root.Cam, _root.View);
+                    _root.Preview.Refresh();
+                    _root.Preview.LayoutForViewport(new Rect(0, 64, 917, 1920), 408f);
+                    Canvas.ForceUpdateCanvases();
+
+                    var slab = _root.View.transform.Find("BoardBody");
+                    var ys = slab.GetComponentsInChildren<MeshFilter>()
+                        .SelectMany(f => f.sharedMesh.vertices.Select(v =>
+                            _root.Cam.WorldToViewportPoint(f.transform.TransformPoint(v)).y)).ToArray();
+                    float height = ys.Max() - ys.Min();
+                    metrics.Add(string.Format(CultureInfo.InvariantCulture, "{0},{1:F6},{2:F6},{3:F6},{4:F6}",
+                        id, height, ys.Min(), ys.Max(), _root.Cam.orthographicSize));
+                    if (number <= 15 && height < 0.65f)
+                        failures.Add(id + " slab height " + height.ToString("P1"));
+                    if (ys.Min() < 0.02f || ys.Max() > 0.98f)
+                        failures.Add(id + " slab leaves the portrait vertically");
+                    if (!string.IsNullOrEmpty(dir) && captures.Contains(number))
+                        WriteFrame(_root.Cam, target, Path.Combine(dir, "ladder-" + id + "-tick000.png"), failures);
+                    if (!string.IsNullOrEmpty(dir) && number == 1)
+                    {
+                        _root.Preview.GetComponent<Canvas>().enabled = false;
+                        BoardSceneLook.FitCamera(_root.Cam, _root.View, new Rect(.075f, .28f, .85f, .49f));
+                        WriteFrame(_root.Cam, target, Path.Combine(dir, "home-L001-window-fit.png"));
+                    }
                 }
-                _root.Cam.targetTexture = null;
-                target.Release();
-                Object.DestroyImmediate(target);
-                Object.DestroyImmediate(_root.gameObject);
-                _root = null;
+                finally
+                {
+                    _root.Cam.targetTexture = previousTarget;
+                    target.Release();
+                    Object.DestroyImmediate(target);
+                    Object.DestroyImmediate(_root.gameObject);
+                    _root = null;
+                }
             }
             TestContext.Out.WriteLine(string.Join("\n", metrics));
             if (!string.IsNullOrEmpty(dir))
@@ -87,34 +94,39 @@ namespace CatMetro.Tests.PlayMode
         private static void WriteFrame(Camera camera, RenderTexture target, string path, List<string> failures = null)
         {
             var previous = RenderTexture.active;
-            camera.Render();
-            RenderTexture.active = target;
-            var texture = new Texture2D(target.width, target.height, TextureFormat.RGB24, false);
-            texture.ReadPixels(new Rect(0, 0, target.width, target.height), 0, 0);
-            texture.Apply();
-            File.WriteAllBytes(path, texture.EncodeToPNG());
-            if (path.EndsWith("ladder-L002-tick000.png"))
+            Texture2D texture = null;
+            try
             {
-                var rows = new List<string>();
-                foreach (float fraction in new[] { 0.05f, 0.95f })
+                camera.Render();
+                RenderTexture.active = target;
+                texture = CaptureRig.ReadRgb24(target);
+                File.WriteAllBytes(path, CaptureRig.EncodeOpaqueSrgbPng(texture));
+                if (path.EndsWith("ladder-L002-tick000.png"))
                 {
-                    float luminance = 0f;
-                    int y = Mathf.RoundToInt(texture.height * fraction);
-                    for (int x = 0; x < texture.width; x++)
+                    var rows = new List<string>();
+                    foreach (float fraction in new[] { 0.05f, 0.95f })
                     {
-                        Color c = texture.GetPixel(x, y);
-                        luminance += .2126f * c.r + .7152f * c.g + .0722f * c.b;
+                        float luminance = 0f;
+                        int y = Mathf.RoundToInt(texture.height * fraction);
+                        for (int x = 0; x < texture.width; x++)
+                        {
+                            Color c = texture.GetPixel(x, y);
+                            luminance += .2126f * c.r + .7152f * c.g + .0722f * c.b;
+                        }
+                        luminance /= texture.width;
+                        if (luminance < 0.35f)
+                            failures?.Add("L002 desk luminance at " + fraction + " is " + luminance);
+                        rows.Add(fraction.ToString(CultureInfo.InvariantCulture) + ","
+                            + luminance.ToString(CultureInfo.InvariantCulture));
                     }
-                    luminance /= texture.width;
-                    if (luminance < 0.35f)
-                        failures?.Add("L002 desk luminance at " + fraction + " is " + luminance);
-                    rows.Add(fraction.ToString(CultureInfo.InvariantCulture) + ","
-                        + luminance.ToString(CultureInfo.InvariantCulture));
+                    File.WriteAllLines(Path.ChangeExtension(path, ".desk-luminance.csv"), rows);
                 }
-                File.WriteAllLines(Path.ChangeExtension(path, ".desk-luminance.csv"), rows);
             }
-            Object.DestroyImmediate(texture);
-            RenderTexture.active = previous;
+            finally
+            {
+                RenderTexture.active = previous;
+                if (texture != null) Object.DestroyImmediate(texture);
+            }
         }
     }
 }

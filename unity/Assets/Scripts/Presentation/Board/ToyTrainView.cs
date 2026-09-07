@@ -56,7 +56,7 @@ namespace CatMetro.Presentation.Board
         private const float EarCenterZ = -0.080f;
         private const float EyeSize = 0.079f;
         // A platform-centre offset measured in board units, not authored mesh space. At the
-        // admitted rig's 0.46725 presentation scale, the baked artifact test crosses the
+        // admitted rig's current presentation scale, the baked artifact test crosses the
         // released-lane envelope representable by the authored TrainsMax values; the current
         // straight waiting cases at lanes 0..3; both current diagonal normals at lanes 0..1;
         // departure Walk plus Celebrate at every current station-arrival heading and a sampled

@@ -153,7 +153,9 @@ namespace CatMetro.Presentation.Hud.WavePreview
 
         private static Rect CountersInside(Rect capsule, float fullHeight)
         {
-            float height = Mathf.Min(fullHeight * 0.30f, capsule.height * 0.70f);
+            // Nunito's 12dp minimum needs 16.37dp of line height. Even a minimum-height
+            // 48dp capsule must reserve 16.8dp, including a little raster rounding slack.
+            float height = Mathf.Min(fullHeight * 0.35f, capsule.height * 0.70f);
             float inset = fullHeight * 0.12f;
             return new Rect(capsule.x + capsule.width * 2f / 3f,
                 capsule.center.y - height * 0.5f,
