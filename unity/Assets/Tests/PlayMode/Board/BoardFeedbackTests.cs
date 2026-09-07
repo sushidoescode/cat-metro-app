@@ -27,48 +27,64 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator WrongStation_VignettePeaksAndRestoresTheIdleCamera()
+        public IEnumerator WrongStation_VignettePeaksAndRestoresTheIdleCamera(
+            [Values(1, 4)] int samples)
         {
-            _root = GameRoot.LaunchWith(Level());
-            yield return null;
-            var cameraData = _root.Cam.GetUniversalAdditionalCameraData();
-            bool restingPost = cameraData.renderPostProcessing;
-            _root.Cam.cullingMask = 0;
-            _root.Cam.clearFlags = CameraClearFlags.SolidColor;
-            _root.Cam.backgroundColor = Palette.WarmPaper;
-            foreach (var canvas in _root.GetComponentsInChildren<Canvas>()) canvas.enabled = false;
-            Color[] idle = RenderVignetteProbe("idle");
-            ReachFirstRejection(_root);
-            var volume = _root.View.GetComponentInChildren<Volume>(true);
-            Assert.That(volume, Is.Not.Null, "a rejected arrival must pulse the camera edge");
-            Assert.That(volume.sharedProfile.TryGet<Vignette>(out var vignette), Is.True);
-            Assert.That(vignette.intensity.value, Is.EqualTo(0.25f).Within(0.001f));
-            Assert.That(cameraData.renderPostProcessing, Is.True);
-            _root.View.Fx.Advance(0.2f);
-            Assert.That(volume.weight, Is.EqualTo(1f).Within(0.001f));
-            Assert.That(vignette.intensity.value, Is.EqualTo(0.42f).Within(0.001f));
-            Color[] peak = RenderVignetteProbe("peak-200ms");
-            Assert.That(peak[0].grayscale, Is.LessThan(idle[0].grayscale - 0.04f),
-                "the rendered corner must darken; an authored volume alone is not evidence");
-            Assert.That(peak[1].grayscale, Is.EqualTo(idle[1].grayscale).Within(0.025f),
-                "the center stays clear for the cat and station");
-            _root.View.Fx.Advance(0.2f);
-            Assert.That(volume.weight, Is.Zero);
-            Assert.That(cameraData.renderPostProcessing, Is.EqualTo(restingPost),
-                "the existing idle look and rendering path return after 0.4 seconds");
-            Color[] restored = RenderVignetteProbe("restored-400ms");
-            Assert.That(restored[0].grayscale, Is.EqualTo(idle[0].grayscale).Within(0.01f));
+            var pipeline = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
+            Assert.That(pipeline, Is.Not.Null);
+            int restingSamples = pipeline.msaaSampleCount;
+            try
+            {
+                pipeline.msaaSampleCount = samples;
+                _root = GameRoot.LaunchWith(Level());
+                yield return null;
+                Assert.That(_root.Cam.allowMSAA, Is.True);
+                var cameraData = _root.Cam.GetUniversalAdditionalCameraData();
+                bool restingPost = cameraData.renderPostProcessing;
+                _root.Cam.cullingMask = 0;
+                _root.Cam.clearFlags = CameraClearFlags.SolidColor;
+                _root.Cam.backgroundColor = Palette.WarmPaper;
+                foreach (var canvas in _root.GetComponentsInChildren<Canvas>()) canvas.enabled = false;
+                Color[] idle = RenderVignetteProbe("idle", samples);
+                ReachFirstRejection(_root);
+                var volume = _root.View.GetComponentInChildren<Volume>(true);
+                Assert.That(volume, Is.Not.Null, "a rejected arrival must pulse the camera edge");
+                Assert.That(volume.sharedProfile.TryGet<Vignette>(out var vignette), Is.True);
+                Assert.That(vignette.intensity.value, Is.EqualTo(0.25f).Within(0.001f));
+                Assert.That(cameraData.renderPostProcessing, Is.True);
+                _root.View.Fx.Advance(0.2f);
+                Assert.That(volume.weight, Is.EqualTo(1f).Within(0.001f));
+                Assert.That(vignette.intensity.value, Is.EqualTo(0.42f).Within(0.001f));
+                Color[] peak = RenderVignetteProbe("peak-200ms", samples);
+                Assert.That(peak[0].grayscale, Is.LessThan(idle[0].grayscale - 0.04f),
+                    "the rendered corner must darken; an authored volume alone is not evidence");
+                Assert.That(peak[1].grayscale, Is.EqualTo(idle[1].grayscale).Within(0.025f),
+                    "the center stays clear for the cat and station");
+                _root.View.Fx.Advance(0.2f);
+                Assert.That(volume.weight, Is.Zero);
+                Assert.That(cameraData.renderPostProcessing, Is.EqualTo(restingPost),
+                    "the existing idle look and rendering path return after 0.4 seconds");
+                Color[] restored = RenderVignetteProbe("restored-400ms", samples);
+                Assert.That(restored[0].grayscale, Is.EqualTo(idle[0].grayscale).Within(0.01f));
+                Assert.That(pipeline.msaaSampleCount, Is.EqualTo(samples),
+                    "the rejection effect must preserve the pipeline's MSAA setting");
+                TestContext.Out.WriteLine($"VIGNETTE_MSAA samples={samples} backend={SystemInfo.graphicsDeviceType} "
+                    + $"idle={idle[0].grayscale:F5} peak={peak[0].grayscale:F5} restored={restored[0].grayscale:F5}");
+            }
+            finally { pipeline.msaaSampleCount = restingSamples; }
         }
 
-        private Color[] RenderVignetteProbe(string name)
+        private Color[] RenderVignetteProbe(string name, int samples)
         {
             var camera = _root.Cam;
-            var rt = new RenderTexture(917, 2048, 24);
+            var rt = new RenderTexture(917, 2048, 24) { antiAliasing = samples };
             var texture = new Texture2D(rt.width, rt.height, TextureFormat.RGB24, false);
             var oldTarget = camera.targetTexture;
             var oldActive = RenderTexture.active;
             try
             {
+                Assert.That(SystemInfo.GetRenderTextureSupportedMSAASampleCount(rt.descriptor),
+                    Is.EqualTo(samples), "this probe requires the actual requested sample count");
                 camera.targetTexture = rt;
                 camera.Render();
                 RenderTexture.active = rt;
@@ -78,7 +94,7 @@ namespace CatMetro.Tests.PlayMode
                 if (!string.IsNullOrEmpty(directory))
                 {
                     Directory.CreateDirectory(directory);
-                    File.WriteAllBytes(Path.Combine(directory, "vignette-" + name + ".png"), texture.EncodeToPNG());
+                    File.WriteAllBytes(Path.Combine(directory, $"vignette-{samples}x-{name}.png"), texture.EncodeToPNG());
                 }
                 return new[] { texture.GetPixel(20, 20), texture.GetPixel(rt.width / 2, rt.height / 2) };
             }
