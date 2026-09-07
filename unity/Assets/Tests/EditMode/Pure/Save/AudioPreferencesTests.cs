@@ -8,6 +8,30 @@ namespace CatMetro.Tests.Save
     {
         [TestCase("music")]
         [TestCase("haptics")]
+        public void ChannelWritesPreserveVersionFourPayloadAndPopulatedRewindCaps(string channel)
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            store.Load();
+            Assert.That(SaveDefaults.SAVE_VERSION, Is.EqualTo(4));
+            store.State.Payload["economy"]["rewindBalance"] = 2;
+            store.State.Payload["economy"]["freeRewindDateKey"] = "2026-09-07";
+            store.State.Payload["caps"]["sessionCounters"]["rewind_failure"] = 1;
+            store.State.Payload["caps"]["counters"]["rewind_failure"] = 2;
+            ((JObject)store.State.Payload["settings"])["futureMixerMode"] = "wood";
+            var expected = (JObject)store.State.Payload.DeepClone();
+            expected["settings"][channel] = false;
+
+            Assert.That(Write(new AudioPreferences(store), channel, false), Is.True);
+            var reloaded = SFixtures.Store(root);
+            Assert.That(reloaded.Load(), Is.EqualTo(CatMetro.Services.LoadResult.Ok));
+            Assert.That((int)reloaded.State.Payload["saveVersion"], Is.EqualTo(4));
+            Assert.That(JToken.DeepEquals(reloaded.State.Payload, expected), Is.True,
+                "a channel opt-out changes only its additive settings key, preserving rewind state and unknown data");
+        }
+
+        [TestCase("music")]
+        [TestCase("haptics")]
         [TestCase("motion")]
         public void ChannelsPersistIndependentlyWithoutChangingAudioOrFutureKeys(string channel)
         {

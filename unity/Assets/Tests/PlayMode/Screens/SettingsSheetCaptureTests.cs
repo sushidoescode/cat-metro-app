@@ -31,10 +31,12 @@ namespace CatMetro.Tests.PlayMode
             canvas.worldCamera = camera; canvas.planeDistance = 1;
             var sheet = SettingsSheet.Create(canvasGo.transform);
             sheet.Attach(new ChromeRegions());
-            var target = new RenderTexture(917, 2048, 24, RenderTextureFormat.ARGB32);
+            CaptureRig.Size size = CaptureRig.ParseSize(
+                Environment.GetEnvironmentVariable("CM_CAPTURE_SIZE"), 917, 2048);
+            var target = CaptureRig.CreateTarget(size);
             var previous = RenderTexture.active;
-            target.Create(); camera.targetTexture = target;
-            camera.aspect = 917f / 2048;
+            camera.targetTexture = target;
+            camera.aspect = size.Width / (float)size.Height;
             try
             {
                 Directory.CreateDirectory(dir);
@@ -43,12 +45,14 @@ namespace CatMetro.Tests.PlayMode
                     sheet.Configure(!daily, true, !daily, daily, daily);
                     sheet.Show();
                     yield return null;
-                    sheet.LayoutForViewport(new Rect(0, 64, 917, 1920), 408);
+                    sheet.LayoutForViewport(CaptureRig.ScaleSafeArea(
+                        new Rect(0, 64, 917, 1920), 917, 2048, size),
+                        CaptureRig.ScaleDpi(408, 2048, size));
                     Canvas.ForceUpdateCanvases();
                     camera.Render(); RenderTexture.active = target;
-                    var pixels = new Texture2D(917, 2048, TextureFormat.RGB24, false);
-                    pixels.ReadPixels(new Rect(0, 0, 917, 2048), 0, 0); pixels.Apply();
-                    File.WriteAllBytes(Path.Combine(dir, daily ? "settings-daily.png" : "settings-default.png"), pixels.EncodeToPNG());
+                    var pixels = CaptureRig.ReadRgb24(target);
+                    File.WriteAllBytes(Path.Combine(dir, daily ? "settings-daily.png" : "settings-default.png"),
+                        CaptureRig.EncodeOpaqueSrgbPng(pixels));
                     Object.DestroyImmediate(pixels);
                 }
             }
