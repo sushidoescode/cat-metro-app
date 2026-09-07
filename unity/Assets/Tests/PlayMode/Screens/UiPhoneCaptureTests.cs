@@ -409,7 +409,7 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator ShippedHome_WardrobeEntry_IsRaisedCreamToyButton_WithoutReplacingPortraitMount()
+        public IEnumerator ShippedHome_WardrobeEntry_UsesSharedChromeWithItsLivePortraitInTheIconSlot()
         {
             GameRoot.DevSkipShippedHome = false;
             _root = GameRoot.Launch();
@@ -426,11 +426,11 @@ namespace CatMetro.Tests.PlayMode
             var capsule = FindRequiredRect(_root.Wardrobe.transform, "WardrobeCapsule");
             Assert.That(capsule.parent, Is.SameAs(_root.Wardrobe.transform),
                 "WardrobeCapsule remains the entry root under WardrobeSurface");
-            var shadow = capsule.GetComponent<Image>();
+            Assert.That(capsule.GetComponent<Image>(), Is.Null, "ChromeChip's root owns geometry only");
+            var shadow = capsule.Find("Shadow").GetComponent<Image>();
             Assert.That(shadow, Is.Not.Null);
-            Assert.That(shadow.color, Is.EqualTo(Palette.DepotNavy),
-                "WardrobeCapsule stays the navy raised-button shadow/root");
-            Assert.That(shadow.sprite, Is.SameAs(HudShapeSprites.RoundedSquare));
+            Assert.That(shadow.color, Is.EqualTo(Palette.WithAlpha(Palette.DepotNavy, .24f)));
+            Assert.That(shadow.sprite, Is.SameAs(HudShapeSprites.SoftRoundedHalo));
             Assert.That(shadow.type, Is.EqualTo(Image.Type.Sliced));
 
             var face = FindRequiredRect(capsule, "WardrobeButtonFace");
@@ -441,29 +441,19 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(faceImage.type, Is.EqualTo(Image.Type.Sliced));
 
             var label = FindRequiredRect(capsule, "WardrobeLabel");
-            Assert.That(label.parent, Is.SameAs(capsule));
+            var content = capsule.Find("Content");
+            Assert.That(label.parent, Is.SameAs(content));
             Assert.That(label.GetComponent<TMPro.TMP_Text>().color,
                 Is.EqualTo(Palette.InkNavy));
 
-            RectTransform portraitMount = null;
-            int mountCount = 0;
-            for (int i = 0; i < capsule.childCount; i++)
-            {
-                var child = capsule.GetChild(i) as RectTransform;
-                if (child == null || child.name != "EntryPortraitMount") continue;
-                portraitMount = child;
-                mountCount++;
-            }
-            Assert.That(mountCount, Is.EqualTo(1),
-                "the cosmetics seam remains one direct WardrobeCapsule child");
-            Assert.That(portraitMount.anchorMin,
-                Is.EqualTo(new Vector2(0.035f, 0.08f)));
-            Assert.That(portraitMount.anchorMax,
-                Is.EqualTo(new Vector2(0.30f, 0.92f)));
-            Assert.That(face.GetSiblingIndex(), Is.LessThan(portraitMount.GetSiblingIndex()),
-                "the cream face paints behind the existing portrait mount");
-            Assert.That(face.GetSiblingIndex(), Is.LessThan(label.GetSiblingIndex()),
-                "the cream face paints behind the existing label");
+            var portraitMount = content.Find("Icon") as RectTransform;
+            Assert.That(portraitMount, Is.Not.Null, "the shared icon slot hosts the selected cat");
+            Assert.That(portraitMount.rect.width, Is.EqualTo(26f * 2.55f).Within(.01f));
+            Assert.That(portraitMount.rect.height, Is.EqualTo(26f * 2.55f).Within(.01f));
+            Assert.That(portraitMount.GetComponent<Image>().enabled, Is.False,
+                "only the live portrait paints in the icon slot");
+            Assert.That(face.GetSiblingIndex(), Is.LessThan(content.GetSiblingIndex()),
+                "the cream face paints behind the measured portrait and label group");
 
             CosmeticPortraitView entryPortrait = _root.Wardrobe.EntryPortrait;
             Assert.That(entryPortrait, Is.Not.Null);
