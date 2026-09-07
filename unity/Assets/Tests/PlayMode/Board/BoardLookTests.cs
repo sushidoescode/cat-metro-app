@@ -516,12 +516,29 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator AdmittedRigPassengerHeadAndEars_AreReadableAtPhoneScale()
+        public IEnumerator AdmittedRigPassengerHeadAndEars_AreReadableAtPhoneScale(
+            [Values("L001", "L002", "L009", "L015")] string levelId)
         {
-            _root = GameRoot.Launch();
+            _root = GameRoot.Launch(GameRoot.LevelPath(levelId));
+            _root.enabled = false; // keep every level at tick zero before the evidence pose
+            Assert.That(_root.Session.Level.Dto.Id, Is.EqualTo(levelId));
             yield return null;
             Camera camera = _root.Cam;
             camera.aspect = PinnedPhoneAspect;
+            // Use the same canonical safe band as the saved ladder frames even if the
+            // editor's Game view is portrait with different cutouts or display DPI.
+            var fitTarget = new RenderTexture(917, 2048, 24);
+            var previousFitTarget = camera.targetTexture;
+            try
+            {
+                camera.targetTexture = fitTarget;
+                BoardSceneLook.FitCamera(camera, _root.View);
+            }
+            finally
+            {
+                camera.targetTexture = previousFitTarget;
+                Object.DestroyImmediate(fitTarget);
+            }
             SeedMidEdgePassenger(_root);
             yield return null;
 
@@ -562,6 +579,14 @@ namespace CatMetro.Tests.PlayMode
             _root.enabled = false;
             trainView.enabled = false;
             animator.enabled = false;
+            string captureDir = System.Environment.GetEnvironmentVariable("CM_BOARD_LOOK_CAPTURE_DIR");
+            if (!string.IsNullOrEmpty(captureDir))
+            {
+                if (levelId != "L001") captureDir = Path.Combine(captureDir, levelId);
+                Directory.CreateDirectory(captureDir);
+                yield return CaptureFrozenRigFrame(_root,
+                    Path.Combine(captureDir, "step-2-frozen-rig-board.png"));
+            }
             var fullRig = new ArtifactMaskRig(_root, animator.transform,
                 maskWidth, maskHeight, preserveOcclusion: true);
             try
@@ -598,10 +623,15 @@ namespace CatMetro.Tests.PlayMode
                 + "train_edge=1\ntrain_tick=6\n",
                 headWidth, fullRigWidth, headBaseViewportY,
                 camera.orthographicSize, propEntries);
+            var slab = _root.View.transform.Find("BoardBody");
+            float[] slabYs = slab.GetComponentsInChildren<MeshFilter>()
+                .SelectMany(filter => filter.sharedMesh.vertices.Select(vertex =>
+                    camera.WorldToViewportPoint(filter.transform.TransformPoint(vertex)).y)).ToArray();
+            metrics = "level_id=" + levelId + "\nslab_height_fraction="
+                + (slabYs.Max() - slabYs.Min()).ToString("F6", System.Globalization.CultureInfo.InvariantCulture)
+                + "\n" + metrics;
             TestContext.Out.WriteLine("COMPOSITION_RIG_"
                 + metrics.Replace("\n", " ").Trim());
-            string captureDir = System.Environment.GetEnvironmentVariable(
-                "CM_BOARD_LOOK_CAPTURE_DIR");
             if (!string.IsNullOrEmpty(captureDir))
             {
                 Directory.CreateDirectory(captureDir);
@@ -617,8 +647,43 @@ namespace CatMetro.Tests.PlayMode
 
             Assert.That(propEntries, Is.EqualTo(5).Or.EqualTo(10),
                 "the admitted-rig phone metric requires the furnished production framing");
-            Assert.That(headWidth, Is.InRange(0.05f, 0.06f),
-                $"licensed rig head and ears are {headWidth:P1} of frame width; target is 5-6%");
+            Assert.That(headWidth, Is.GreaterThan(0f), "each reported level needs visible head pixels");
+            // Preserve the established L001 size gate. The other requested levels provide
+            // measured evidence; this capture extension does not invent a new threshold.
+            if (levelId == "L001")
+                Assert.That(headWidth, Is.InRange(0.05f, 0.06f),
+                    $"licensed rig head and ears are {headWidth:P1} of frame width; target is 5-6%");
+        }
+
+        private static IEnumerator CaptureFrozenRigFrame(GameRoot root, string path)
+        {
+            var camera = root.Cam;
+            var previousTarget = camera.targetTexture;
+            var previousActive = RenderTexture.active;
+            var target = new RenderTexture(917, 2048, 24, RenderTextureFormat.ARGB32,
+                RenderTextureReadWrite.sRGB) { antiAliasing = 4 };
+            target.Create();
+            Texture2D pixels = null;
+            try
+            {
+                camera.targetTexture = target;
+                yield return null;
+                root.Preview.Refresh();
+                root.Preview.LayoutForViewport(new Rect(0, 64, 917, 1920), 408f);
+                Canvas.ForceUpdateCanvases();
+                camera.Render();
+                RenderTexture.active = target;
+                pixels = CaptureRig.ReadRgb24(target);
+                File.WriteAllBytes(path, CaptureRig.EncodeOpaqueSrgbPng(pixels));
+            }
+            finally
+            {
+                camera.targetTexture = previousTarget;
+                RenderTexture.active = previousActive;
+                if (pixels != null) Object.DestroyImmediate(pixels);
+                target.Release();
+                Object.DestroyImmediate(target);
+            }
         }
 
         [UnityTest]

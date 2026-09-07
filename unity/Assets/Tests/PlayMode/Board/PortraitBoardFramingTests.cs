@@ -38,7 +38,7 @@ namespace CatMetro.Tests.PlayMode
             }
             var failures = new List<string>();
             var metrics = new List<string> { "level,slabHeight,slabMinY,slabMaxY,orthoSize" };
-            var captures = new HashSet<int> { 1, 2, 9, 41, 52 };
+            var captures = new HashSet<int> { 1, 2, 9, 15, 41, 52 };
             foreach (int number in Enumerable.Range(1, 15).Concat(new[] { 41, 52 }))
             {
                 string id = "L" + number.ToString("000");
