@@ -43,7 +43,7 @@ namespace CatMetro.Tests.PlayMode
         // --- geometry: the pure laws at the pinned phone aspect ---
 
         [UnityTest]
-        public IEnumerator Typography_OverflowUsesPhoneDpi_AndTemporaryTokensFit()
+        public IEnumerator Typography_OverflowUsesPhoneDpi_AndFacesUseShapeBadges()
         {
             _root = GameRoot.Launch();
             yield return null;
@@ -53,23 +53,29 @@ namespace CatMetro.Tests.PlayMode
             _root.Preview.LayoutForViewport(PhoneSafeArea, CaptureDpi);
             Canvas.ForceUpdateCanvases();
             float minimum = TypeScale.Minimum * HudBands.PxPerDp(CaptureDpi);
-            int activeTokens = 0;
+            int overflowLabels = 0;
             foreach (var label in labels)
             {
+                Assert.That(label.name, Is.Not.EqualTo("cat-token"),
+                    "destination shapes replace the temporary token letters");
                 if (label.name == "Overflow")
                 {
+                    overflowLabels++;
                     Assert.That(label.fontSizeMin, Is.GreaterThanOrEqualTo(minimum), label.name);
                     Assert.That(label.fontSizeMax, Is.GreaterThanOrEqualTo(minimum), label.name);
                 }
-                if (label.name == "cat-token" && label.gameObject.activeInHierarchy)
-                {
-                    activeTokens++;
-                    label.ForceMeshUpdate();
-                    Assert.That(label.isTextOverflowing, Is.False,
-                        "the temporary token must fit until lane B rank 7 removes it");
-                }
             }
-            Assert.That(activeTokens, Is.GreaterThan(0), "L001 must exercise a real token");
+            Assert.That(overflowLabels, Is.EqualTo(1), "exercise the real overflow label");
+            Assert.That(_root.Preview.FaceCount, Is.GreaterThan(0), "L001 must show a queued cat");
+            for (int i = 0; i < _root.Preview.FaceCount; i++)
+            {
+                var face = _root.Preview.Face(i);
+                Assert.That(face.gameObject.activeInHierarchy, Is.True);
+                Assert.That(face.Shape, Is.EqualTo(DestinationShape.Circle), "L001's red destination");
+                Assert.That(face.BadgeSprite, Is.SameAs(HudShapeSprites.Disc));
+                Assert.That(face.BadgeRect.rect.width, Is.GreaterThan(0f));
+                Assert.That(face.GetComponentsInChildren<TMPro.TMP_Text>(true), Is.Empty);
+            }
             string dir = System.Environment.GetEnvironmentVariable("CM_TYPE_CAPTURE_DIR");
             if (string.IsNullOrEmpty(dir)) yield break;
             // A HUD-only proof uses no licensed models or board. Full shipped-scene captures
