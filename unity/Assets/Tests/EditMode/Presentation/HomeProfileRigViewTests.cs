@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Screens;
@@ -8,6 +9,7 @@ using NUnit.Framework;
 using UnityEditor.Animations;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 
 namespace CatMetro.Tests.EditMode.Presentation
@@ -67,6 +69,34 @@ namespace CatMetro.Tests.EditMode.Presentation
                 Object.DestroyImmediate(_target);
             }
             _fixture?.Dispose();
+        }
+
+        [Test]
+        public void MissingCatalogAtHome_ReportsAdmissionFailureBeforeTheMountIsCreated()
+        {
+            LogAssert.Expect(LogType.Warning,
+                new Regex("HOME_RIG fallback branch=5 admitted=0 reason=.*Missing cat rig"));
+            HomeScreenView home = HomeScreenView.Create(_canvasHost.transform,
+                portraitSource: new PortraitSource(), catCatalog: new CatModelCatalog(null));
+            Assert.That(home.ProfilePortrait.BaseLayerTransform.gameObject.activeSelf, Is.True);
+            LogAssert.NoUnexpectedReceived();
+            Object.DestroyImmediate(home.gameObject);
+        }
+
+        [Test]
+        public void LostCamera_ReportsFallbackAndRecovery_WithoutRepeatingOnEveryLayout()
+        {
+            _fixture = new ConformingSkinnedRigFixture();
+            HomeProfileRigView view = HomeProfileRigView.Create(_holder, _portrait,
+                CatModelCatalog.FromEntry(new CatModelCatalog.Entry(_fixture.Prefab, 180f)));
+            LogAssert.Expect(LogType.Warning,
+                new Regex("HOME_RIG fallback branch=1 admitted=1 reason=.*camera"));
+            Assert.That(view.Layout(null), Is.False);
+            Assert.That(view.Layout(null), Is.False);
+            LogAssert.Expect(LogType.Log, new Regex("HOME_RIG mounted=true admitted=1"));
+            Assert.That(view.Layout(_camera), Is.True);
+            Assert.That(view.Layout(_camera), Is.True);
+            LogAssert.NoUnexpectedReceived();
         }
 
         [Test]

@@ -118,6 +118,7 @@ namespace CatMetro.Tests.PlayMode
                 @"^DEVCAP_LEVEL_OVERRIDE .+[/\\]devcap[/\\]level\.json$"));
             // Every real boot also emits the exact independent numeric catalogue read-back.
             LogAssert.Expect(LogType.Log, CosmeticBootWiringTests.ExpectedDiagnostic);
+            DevBootOverrideTests.ExpectHomeRigDiagnostic();
             _root = SceneBoot();
             yield return null;
             Assert.That(_root.Session, Is.Not.Null, "booted");

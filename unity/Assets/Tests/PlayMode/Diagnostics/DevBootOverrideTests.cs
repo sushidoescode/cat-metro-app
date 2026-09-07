@@ -78,6 +78,16 @@ namespace CatMetro.Tests.PlayMode
             return go.AddComponent<GameRoot>();
         }
 
+        internal static void ExpectHomeRigDiagnostic()
+        {
+            bool admitted = CatMetro.Presentation.Cats.CatModelCatalog.LoadResources()
+                .AdmittedEntryCount == 1;
+            LogAssert.Expect(admitted ? LogType.Log : LogType.Warning,
+                new System.Text.RegularExpressions.Regex(admitted
+                    ? "^HOME_RIG mounted=true admitted=1$"
+                    : "^HOME_RIG fallback branch=5 admitted=0 reason=.+$"));
+        }
+
         // CM-SEAMS: N nested `{"<key>": ...}` wraps around an innermost `true` — depth is N
         // regardless of key content, so key length is a free knob for controlling how long the
         // resulting JsonReaderException's Path string gets once MaxDepth throws.
@@ -173,6 +183,7 @@ namespace CatMetro.Tests.PlayMode
             LogAssert.Expect(LogType.Log, "SEAM_LOADED content/levels/L001.json");
             // Every real boot also emits the exact independent numeric catalogue read-back.
             LogAssert.Expect(LogType.Log, CosmeticBootWiringTests.ExpectedDiagnostic);
+            ExpectHomeRigDiagnostic();
             _root = GameRoot.Launch();
             yield return null;
             Assert.That(_root.Session, Is.Not.Null);
@@ -195,6 +206,7 @@ namespace CatMetro.Tests.PlayMode
             File.WriteAllText(Path.Combine(_tmpDir, "boot.json"), "{\"bootToHome\": false}");
             LogAssert.Expect(LogType.Log, "SEAM_LOADED content/levels/L001.json");
             LogAssert.Expect(LogType.Log, CosmeticBootWiringTests.ExpectedDiagnostic);
+            ExpectHomeRigDiagnostic();
             _root = GameRoot.Launch();
             yield return null;
             Assert.That(_root.Session, Is.Not.Null);
