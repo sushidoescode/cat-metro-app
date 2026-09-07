@@ -83,7 +83,25 @@ namespace CatMetro.Presentation.Board
             board.transform.localPosition = center - BoardTilt * center;
         }
 
-        private static void FitCamera(Camera camera, BoardView board)
+        /// <summary>Restores the gameplay composition without accumulating a Home offset.</summary>
+        public static void FitCamera(Camera camera, BoardView board) =>
+            FitCameraInternal(camera, board, null);
+
+        /// <summary>
+        /// Fits the complete diorama inside a normalized screen-space window. The camera
+        /// still renders the whole screen so the surrounding desk remains visible.
+        /// </summary>
+        public static void FitCamera(Camera camera, BoardView board, Rect viewport)
+        {
+            if (!(viewport.width > 0f && viewport.height > 0f
+                && viewport.xMin >= 0f && viewport.yMin >= 0f
+                && viewport.xMax <= 1f && viewport.yMax <= 1f))
+                throw new System.ArgumentOutOfRangeException(nameof(viewport),
+                    "The diorama window must have positive size and lie inside the screen.");
+            FitCameraInternal(camera, board, viewport);
+        }
+
+        private static void FitCameraInternal(Camera camera, BoardView board, Rect? viewport)
         {
             // Two unions, because the frame owes them different things.
             //   frameBounds   — everything except the desk. Nothing here may leave the frame
@@ -148,17 +166,26 @@ namespace CatMetro.Presentation.Board
             // realistically — a level whose only non-slab renderers were decorative.
             if (!foundContent) contentBounds = frameBounds;
 
-            float requiredForHeight = frameBounds.size.y * 0.5f / SafeHeight;
-            float requiredForWidth = contentBounds.size.x * 0.5f
-                / (TargetPortraitAspect * SafeWidth);
+            // Home contains the decorative edges too; gameplay keeps its original content
+            // width and safe band. Derive both fits from geometry, never the previous pose.
+            Bounds horizontalBounds = contentBounds;
+            if (viewport.HasValue) horizontalBounds.Encapsulate(frameBounds);
+            float fitHeight = viewport.HasValue ? viewport.Value.height : SafeHeight;
+            float fitWidth = viewport.HasValue ? viewport.Value.width : SafeWidth;
+            float aspect = viewport.HasValue ? camera.aspect : TargetPortraitAspect;
+            float requiredForHeight = frameBounds.size.y * 0.5f / fitHeight;
+            float requiredForWidth = horizontalBounds.size.x * 0.5f / (aspect * fitWidth);
             float size = Mathf.Max(MinOrthoSize,
                 Mathf.Max(requiredForHeight, requiredForWidth) * FitPadding);
-            float safeCenterY = (0.13f + 0.86f) * 0.5f;
+            float safeCenterY = viewport.HasValue ? viewport.Value.center.y
+                : (0.13f + 0.86f) * 0.5f;
             // Centre X on the gameplay content the law governs, not on decorative wood or a
             // lopsided prop cluster. BoardSurface is deliberately wide enough to bleed at both
             // portrait sides despite that choice. Centre Y on the complete non-desk frame so
             // the compact near/far rims remain visible as a finite tabletop.
-            float cameraX = contentBounds.center.x;
+            float cameraX = horizontalBounds.center.x;
+            if (viewport.HasValue)
+                cameraX -= (viewport.Value.center.x - 0.5f) * 2f * size * aspect;
             float cameraY = frameBounds.center.y - (safeCenterY - 0.5f) * 2f * size;
 
             float cameraZ = -10f;

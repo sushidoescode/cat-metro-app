@@ -196,6 +196,55 @@ namespace CatMetro.Tests.PlayMode
         private const float PinnedPhoneAspect = 917f / 2048f;
 
         [UnityTest]
+        public IEnumerator HomeWindowFit_ContainsTheDioramaAndRestoresGameplayWithoutDrift()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+            _root.enabled = false;
+            var camera = _root.Cam;
+            camera.aspect = PinnedPhoneAspect;
+            BoardSceneLook.FitCamera(camera, _root.View);
+            var playPosition = camera.transform.position;
+            float playSize = camera.orthographicSize;
+            var desk = _root.View.transform.Find("DeskSurface");
+            Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+                BoardSceneLook.FitCamera(camera, _root.View, new Rect(0f, 0f, 0f, 1f)));
+            Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+                BoardSceneLook.FitCamera(camera, _root.View, new Rect(-0.1f, 0f, 1f, 1f)));
+
+            foreach (var window in new[] { new Rect(0.075f, 0.28f, 0.85f, 0.49f),
+                new Rect(0.12f, 0.31f, 0.63f, 0.35f) })
+            {
+                BoardSceneLook.FitCamera(camera, _root.View, window);
+                Assert.That(camera.rect, Is.EqualTo(new Rect(0f, 0f, 1f, 1f)),
+                    "the desk still fills the screen around the Home window");
+                foreach (var renderer in _root.View.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (!renderer.enabled || renderer.transform.IsChildOf(desk)) continue;
+                    Bounds bounds = renderer.bounds;
+                    foreach (float x in new[] { bounds.min.x, bounds.max.x })
+                        foreach (float y in new[] { bounds.min.y, bounds.max.y })
+                            foreach (float z in new[] { bounds.min.z, bounds.max.z })
+                            {
+                                Vector3 point = camera.WorldToViewportPoint(new Vector3(x, y, z));
+                                Assert.That(point.x, Is.InRange(window.xMin, window.xMax), renderer.name);
+                                Assert.That(point.y, Is.InRange(window.yMin, window.yMax), renderer.name);
+                                Assert.That(point.z, Is.InRange(camera.nearClipPlane, camera.farClipPlane),
+                                    renderer.name);
+                            }
+                }
+                var firstPosition = camera.transform.position;
+                float firstSize = camera.orthographicSize;
+                BoardSceneLook.FitCamera(camera, _root.View, window);
+                Assert.That(camera.transform.position, Is.EqualTo(firstPosition));
+                Assert.That(camera.orthographicSize, Is.EqualTo(firstSize));
+            }
+            BoardSceneLook.FitCamera(camera, _root.View);
+            Assert.That(Vector3.Distance(camera.transform.position, playPosition), Is.LessThan(0.001f));
+            Assert.That(camera.orthographicSize, Is.EqualTo(playSize).Within(0.001f));
+        }
+
+        [UnityTest]
         public IEnumerator BoardBody_UsesSideBleedWithCompactFrontalRims()
         {
             _root = GameRoot.Launch();
