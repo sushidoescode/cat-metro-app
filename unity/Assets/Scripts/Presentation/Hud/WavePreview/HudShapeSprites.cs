@@ -33,6 +33,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private static Sprite _radialGlow;
         private static Sprite _softShadow;
         private static Sprite _padlock;
+        private static Sprite _train;
 
         private static readonly System.Collections.Generic.Dictionary<int, Sprite> DashedRings =
             new System.Collections.Generic.Dictionary<int, Sprite>();
@@ -175,6 +176,24 @@ namespace CatMetro.Presentation.Hud.WavePreview
 
         public static Sprite SpeakerOn => _speakerOn != null ? _speakerOn
             : (_speakerOn = Build("HudSpeakerOn", 64, 64, InsideSpeakerOn, Vector4.zero));
+
+        public static Sprite Train => _train != null ? _train
+            : (_train = Build("HudTrain", 64, 64, (x, y) =>
+            {
+                bool cab = x >= .12f && x <= .44f && y >= .29f && y <= .76f;
+                bool window = x >= .20f && x <= .36f && y >= .53f && y <= .67f;
+                bool boiler = x >= .40f && x <= .86f && y >= .30f && y <= .61f;
+                bool chimney = x >= .69f && x <= .81f && y >= .59f && y <= .83f;
+                bool roof = x >= .07f && x <= .48f && y >= .73f && y <= .82f;
+                bool buffer = x >= .10f && x <= .94f && y >= .28f && y <= .36f;
+                bool wheels = false;
+                for (int i = 0; i < 3; i++)
+                {
+                    float cx = .25f + i * .265f;
+                    wheels |= (x - cx) * (x - cx) + (y - .18f) * (y - .18f) <= .010f;
+                }
+                return cab && !window || boiler || chimney || roof || buffer || wheels;
+            }, Vector4.zero));
 
         public static Sprite SpeakerOff => _speakerOff != null ? _speakerOff
             : (_speakerOff = Build("HudSpeakerOff", 64, 64, InsideSpeakerOff, Vector4.zero));

@@ -206,12 +206,13 @@ namespace CatMetro.Tests.PlayMode
             home.Hide();
             home.UnlockDaily(0, highlight: true);
             home.Show();
-            var ring = home.transform.Find("DailyUnlockRing").GetComponent<Image>();
+            var ring = home.DailyPinTransform.Find("Ring").GetComponent<Image>();
             Assert.That(ring.gameObject.activeInHierarchy, Is.True);
             Assert.That(ring.color, Is.EqualTo(CatMetro.Presentation.Theme.Palette.TicketOrange));
             home.Hide();
             home.Show();
-            Assert.That(ring.gameObject.activeSelf, Is.False, "ordinary later visits do not replay the unlock cue");
+            Assert.That(ring.color, Is.EqualTo(CatMetro.Presentation.Theme.Palette.CreamCard),
+                "ordinary later visits return to the shared cream outline");
         }
 
         [Test]

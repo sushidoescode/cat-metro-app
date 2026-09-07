@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -6,6 +7,7 @@ using UnityEngine.UI;
 using TMPro;
 using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Input;
+using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Hud.WavePreview;
 using CatMetro.Presentation.Screens;
 using CatMetro.Presentation.Theme;
@@ -115,6 +117,36 @@ namespace CatMetro.Tests.PlayMode
             AssertRoundedToySurface(Find("DailyButtonFace"), "Daily's raised face");
             Assert.That(Find("PinDailyLabel").GetComponent<TMP_Text>().color,
                 Is.EqualTo(Palette.InkNavy));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AllThreeHomeRoutes_UseSharedStitches_AndFitPhoneLabels(bool unlocked)
+        {
+            CreateShown();
+            if (unlocked) _home.UnlockDaily(0);
+            var wardrobe = WardrobeScreenView.Create(_canvasGo.transform, null);
+            wardrobe.Attach(new ChromeRegions());
+            wardrobe.ShowEntry();
+            var safe = new Rect(0, 64, 917, 1920);
+            _home.LayoutForViewport(safe, 408, new Rect(0, 0, 917, 2048));
+            wardrobe.LayoutForViewport(safe, 408);
+            Canvas.ForceUpdateCanvases();
+            var routes = new[] { _home.PinTransform, _home.DailyPinTransform,
+                (RectTransform)wardrobe.transform.Find("WardrobeCapsule") };
+            foreach (var route in routes)
+            {
+                var stitches = route.Find("Stitches")?.GetComponent<Image>();
+                Assert.That(stitches, Is.Not.Null, route.name + " uses ChromeChip's stitched border");
+                Assert.That(stitches.sprite.name, Is.EqualTo("HudDashedRoundedRing"));
+                Assert.That(stitches.material, Is.SameAs(UiChromeMaterial.Shared));
+                var label = route.Find("Content").GetComponentsInChildren<TMP_Text>().Single();
+                label.ForceMeshUpdate();
+                Assert.That(label.isTextOverflowing, Is.False, route.name + " label fits at phone dpi");
+                Assert.That(label.fontSize, Is.GreaterThanOrEqualTo(12f * 2.55f));
+                Assert.That(label.fontSizeMin, Is.GreaterThanOrEqualTo(12f * 2.55f));
+            }
+            Assert.That(wardrobe.EntryPortrait, Is.Not.Null, "the Wardrobe pin keeps the selected cat");
         }
 
         [UnityTest]

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Cats;
+using CatMetro.Presentation.Fx;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Hud.WavePreview;
 using CatMetro.Presentation.Input;
@@ -31,6 +32,8 @@ namespace CatMetro.Presentation.Screens
         private CosmeticProfileService _profile;
         private ICosmeticRewardedRoute _rewarded;
         private ChromeRegions _regions;
+        private ChromeChip _entryChip;
+        private BoardFx _hideFx;
         private GameObject _entry;
         private GameObject _panel;
         private RectTransform _entryRect;
@@ -96,7 +99,7 @@ namespace CatMetro.Presentation.Screens
         public Rect RestoreRectPx => _restoreRectPx;
         public Rect PortraitRectPx => _portraitRectPx;
         public Rect ItemsRectPx => _itemsRectPx;
-        public bool EntryVisible => _entry != null && _entry.activeInHierarchy;
+        public bool EntryVisible => _entryShown && _entry != null && _entry.activeInHierarchy;
         public bool PanelVisible => _panel != null && _panel.activeInHierarchy;
         public CosmeticSlot SelectedSlot => _selectedSlot;
         public IReadOnlyList<CosmeticItemCardView> VisibleCards => _cards.AsReadOnly();
@@ -136,24 +139,17 @@ namespace CatMetro.Presentation.Screens
 
         private void BuildEntry(Transform parent)
         {
-            _entry = new GameObject("WardrobeCapsule", typeof(RectTransform));
-            _entry.transform.SetParent(parent, false);
-            _entryRect = (RectTransform)_entry.transform;
-            var shadow = Paint(_entry, Palette.DepotNavy, true);
-            ApplyRoundedEntryPaint(shadow);
-
-            var face = MakeSurface(_entry.transform, "WardrobeButtonFace",
-                new Vector2(0.008f, 0.10f), new Vector2(0.992f, 0.99f),
-                Palette.CreamCard, true);
-            ApplyRoundedEntryPaint(face);
-
-            var portraitMount = MakeRect(_entry.transform, "EntryPortraitMount",
-                new Vector2(0.035f, 0.08f), new Vector2(0.30f, 0.92f));
-            _entryPortrait = CosmeticPortraitView.Create(portraitMount, _profile,
-                "EntryPortrait");
-            var label = MakeText(_entry.transform, "WardrobeLabel", new Vector2(0.31f, 0f),
-                new Vector2(0.96f, 1f), Text("wardrobe.entry"), 28f, Palette.InkNavy);
-            label.fontStyle = FontStyles.Bold;
+            _entryChip = ChromeChip.PaintPrimary(parent, default, Text("wardrobe.entry"),
+                Palette.CreamCard, HudShapeSprites.Disc);
+            _entry = _entryChip.Root.gameObject;
+            _entry.name = "WardrobeCapsule";
+            _entryRect = _entryChip.Root;
+            _entryChip.Face.name = "WardrobeButtonFace";
+            _entryChip.Label.name = "WardrobeLabel";
+            // Reuse the factory's measured icon slot for the existing live cosmetic portrait.
+            var icon = _entryRect.Find("Content/Icon").GetComponent<Image>();
+            icon.enabled = false;
+            _entryPortrait = CosmeticPortraitView.Create(icon.rectTransform, _profile, "EntryPortrait");
         }
 
         private void BuildPanel(Transform parent)
@@ -273,6 +269,7 @@ namespace CatMetro.Presentation.Screens
 
         public void ShowEntry()
         {
+            _hideFx?.Finish(this);
             InvalidatePresentationSession();
             ClearPreview();
             _entryShown = true;
@@ -288,6 +285,7 @@ namespace CatMetro.Presentation.Screens
 
         public void Open()
         {
+            _hideFx?.Finish(this);
             InvalidatePresentationSession();
             ClearPreview();
             _entryShown = false;
@@ -312,8 +310,13 @@ namespace CatMetro.Presentation.Screens
             });
         }
 
-        public void Hide()
+        public void Hide() => Hide(null);
+
+        public void HideEntryWithFade(BoardFx fx) => Hide(fx);
+
+        private void Hide(BoardFx fx)
         {
+            _hideFx?.Finish(this);
             InvalidatePresentationSession();
             ClearPreview();
             _entryShown = false;
@@ -321,9 +324,26 @@ namespace CatMetro.Presentation.Screens
             UnregisterEntry();
             UnregisterPanelRegions();
             UnsubscribeProfile();
-            if (_entry != null) _entry.SetActive(false);
             if (_panel != null) _panel.SetActive(false);
-            gameObject.SetActive(false);
+            if (fx == null || _entry == null || !_entry.activeInHierarchy)
+            {
+                if (_entry != null) _entry.SetActive(false);
+                gameObject.SetActive(false);
+                return;
+            }
+            _hideFx = fx;
+            var paint = _entry.GetComponentsInChildren<Graphic>(true);
+            fx.Tween(this, .25f, progress =>
+            {
+                foreach (var graphic in paint)
+                    if (graphic != null) graphic.canvasRenderer.SetAlpha(1f - progress);
+                if (progress < 1f) return;
+                _entry.SetActive(false);
+                gameObject.SetActive(false);
+                foreach (var graphic in paint)
+                    if (graphic != null) graphic.canvasRenderer.SetAlpha(1f);
+                _hideFx = null;
+            });
         }
 
         private void OnDisable()
@@ -371,7 +391,7 @@ namespace CatMetro.Presentation.Screens
                 hasPrimaryAction);
             _itemsRectPx = WardrobeLayout.ItemsRect(safeArea, _dpi, visibleCount,
                 hasPrimaryAction);
-            ApplyPx(_entryRect, _entryRectPx);
+            _entryChip.LayoutFace(_entryRectPx, _dpi);
             ApplyPx(_backRect, _backRectPx);
             ApplyPx(_titleRect, WardrobeLayout.TitleRect(safeArea, _dpi));
             ApplyPx(_catSelectorRect, WardrobeLayout.CatSelectorRect(safeArea, _dpi));

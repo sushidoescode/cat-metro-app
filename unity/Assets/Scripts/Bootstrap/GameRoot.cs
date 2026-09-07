@@ -13,8 +13,8 @@ using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Audio;
 using CatMetro.Presentation.Cameras;
 using CatMetro.Presentation.Diagnostics;
-using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Fx;
+using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Hud.WavePreview;
 using CatMetro.Services.Ads;
 using CatMetro.Services.Retry;
@@ -39,6 +39,8 @@ namespace CatMetro.Bootstrap
         private static bool _factoryConstructing; // review N1
         private UnityEngine.UI.Image _homeBootFade;
         private float _homeBootElapsed;
+        private BoardFx _homeFx;
+        private const int HomeCameraChannel = 27;
 
         public GameSession Session { get; private set; }
         public BoardView View { get; private set; }
@@ -615,6 +617,8 @@ namespace CatMetro.Bootstrap
                 canvasGo.transform, dailyUnlocked, LifetimeDailyCompletions, _cosmetics,
                 CatMetro.Presentation.Cats.CatModelCatalog.LoadResources());
             Home.Attach(Input.Regions, () => MotionOff);
+            _homeFx = BoardFx.GetOrCreate(transform, () => MotionOff);
+            Home.DioramaLaidOut = RefitHomeDiorama;
             Home.SetCampaignWinCount(_dailyProgress?.CampaignCompletions ?? 0);
             Home.ConfigureAudio(Audio == null || Audio.Enabled);
             Home.AudioEnabledChanged = OnAudioEnabledChanged;
@@ -637,12 +641,10 @@ namespace CatMetro.Bootstrap
             {
                 _introAdvancedFrame = -1;
                 CancelPendingDailyFallback();
-                // A stack push navigates OFF Home (ScreenStack's own navigation law — only the
-                // top of the stack is current): Home.Hide() also unregisters its pin, which
-                // would otherwise tie-break ahead of Intro's Play chip (both center in the
-                // thumb band at the identical point — the earliest registration wins ties).
-                Wardrobe.Hide();
-                Home.Hide();
+                // Drop Home's hit regions immediately; its paint settles out underneath the
+                // intro. The camera keeps the Home pose until the intro's Play request.
+                Wardrobe.HideEntryWithFade(_homeFx);
+                Home.HideWithFade(_homeFx);
                 Intro.Show(_level.Dto.Name, _level.Dto.Win.Deliveries, _level.Dto.Meta.TeachingGoal);
                 Stack.Push("intro");
             };
@@ -662,6 +664,7 @@ namespace CatMetro.Bootstrap
                 Intro.Hide();
                 Wardrobe.Hide();
                 Home.Hide(); // idempotent — already hidden by the push above
+                DollyToPlay();
                 while (Stack.TryPop(out _)) { }
                 _analyticsRuntime?.BeginCampaignLevel(_level, retry: false,
                     fromScreen: "intro");
@@ -708,6 +711,44 @@ namespace CatMetro.Bootstrap
             Wardrobe.ShowEntry();
             Stack.Push("home");
             _checkReminderAfterHomePresentation = true;
+        }
+
+        private void RefitHomeDiorama(Rect aperturePx)
+        {
+            if (Home == null || !Home.IsVisible || Cam == null || View == null) return;
+            var screen = Cam.pixelRect;
+            if (screen.width <= 0f || screen.height <= 0f) return;
+            var window = Rect.MinMaxRect(
+                Mathf.Clamp01((aperturePx.xMin - screen.xMin) / screen.width),
+                Mathf.Clamp01((aperturePx.yMin - screen.yMin) / screen.height),
+                Mathf.Clamp01((aperturePx.xMax - screen.xMin) / screen.width),
+                Mathf.Clamp01((aperturePx.yMax - screen.yMin) / screen.height));
+            if (window.width <= 0f || window.height <= 0f) return;
+            _homeFx?.Finish(Cam, HomeCameraChannel);
+            BoardSceneLook.FitCamera(Cam, View, window);
+            // The profile mount lays itself out next, against the canvas at the new pose.
+            Canvas.ForceUpdateCanvases();
+        }
+
+        private void DollyToPlay()
+        {
+            if (Cam == null || View == null) return;
+            _homeFx?.Finish(Cam, HomeCameraChannel);
+            Vector3 from = Cam.transform.position;
+            float fromSize = Cam.orthographicSize;
+            float fromFar = Cam.farClipPlane;
+            BoardSceneLook.FitCamera(Cam, View);
+            Vector3 to = Cam.transform.position;
+            float toSize = Cam.orthographicSize;
+            float toFar = Cam.farClipPlane;
+            CauseCam.CapturePlayPose(-View.transform.forward);
+            _homeFx.Tween(Cam, .4f, progress =>
+            {
+                float eased = Mathf.SmoothStep(0f, 1f, progress);
+                Cam.transform.position = Vector3.Lerp(from, to, eased);
+                Cam.orthographicSize = Mathf.Lerp(fromSize, toSize, eased);
+                Cam.farClipPlane = progress < 1f ? Mathf.Max(fromFar, toFar) : toFar;
+            }, channel: HomeCameraChannel);
         }
 
         private void ConfigureReminderHome()
@@ -1152,6 +1193,7 @@ namespace CatMetro.Bootstrap
             if (preparedSession != null && !ReferenceEquals(preparedSession.Level, level))
                 throw new System.ArgumentException("prepared session must belong to the exact level");
             CancelFailureRewind();
+            _homeFx?.Finish(Cam, HomeCameraChannel);
             // A navigation or retry supersedes any off-thread Daily fallback. The pure worker
             // may already be inside the solver, but its cancellation token prevents its result
             // from being installed over the newer navigation state.
@@ -1749,6 +1791,7 @@ namespace CatMetro.Bootstrap
                 {
                     Debug.LogError("error_caught domain=cause_attribution: " + ex.Message);
                 }
+                _homeFx?.Finish(Cam, HomeCameraChannel);
                 if (causal >= 0)
                     CauseCam.FrameNode(View.NodeId(causal), View.NodeWorldPos(causal), MotionOff);
                 // CM-C2b review F3 lineage: the banner keys by the REASON — never a wrong

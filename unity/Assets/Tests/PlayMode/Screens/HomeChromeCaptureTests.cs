@@ -4,6 +4,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using CatMetro.Presentation.Input;
+using CatMetro.Presentation.Fx;
 using CatMetro.Presentation.Screens;
 using CatMetro.Presentation.Theme;
 
@@ -61,6 +62,27 @@ namespace CatMetro.Tests.PlayMode
                         "even over a cream test background the outer corners read as dark warm wood");
                     File.WriteAllBytes(Path.Combine(dir,
                         unlocked ? "chrome-only-daily.png" : "chrome-only-fresh.png"), pixels.EncodeToPNG());
+                    Object.Destroy(pixels);
+                    pixels = null;
+                }
+                var fx = BoardFx.GetOrCreate(cameraObject.transform, () => false);
+                var intro = LevelIntroSheet.Create(canvas.transform);
+                intro.Attach(new ChromeRegions());
+                home.HideWithFade(fx);
+                wardrobe.HideEntryWithFade(fx);
+                intro.Show("Wake the Lever", 1);
+                intro.LayoutForViewport(new Rect(0, 64, 917, 1920), 408);
+                foreach (int milliseconds in new[] { 125, 250 })
+                {
+                    fx.Advance(.125f);
+                    Canvas.ForceUpdateCanvases();
+                    camera.Render();
+                    RenderTexture.active = target;
+                    pixels = new Texture2D(917, 2048, TextureFormat.RGB24, false);
+                    pixels.ReadPixels(new Rect(0, 0, 917, 2048), 0, 0);
+                    pixels.Apply();
+                    File.WriteAllBytes(Path.Combine(dir,
+                        "chrome-only-intro-fade-" + milliseconds + "ms.png"), pixels.EncodeToPNG());
                     Object.Destroy(pixels);
                     pixels = null;
                 }

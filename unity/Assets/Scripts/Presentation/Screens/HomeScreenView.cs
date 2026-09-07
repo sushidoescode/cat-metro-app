@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Cats;
+using CatMetro.Presentation.Fx;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Hud.WavePreview;
 using CatMetro.Presentation.Input;
@@ -48,6 +49,9 @@ namespace CatMetro.Presentation.Screens
         public System.Action<bool> ReminderEnabledChanged;
         public System.Action<DailyReminderSlot> ReminderSlotChanged;
         public System.Action<bool> AudioEnabledChanged;
+        // Pixel bounds of the same aperture used by the window and its vignette. Bootstrap
+        // normalizes against the camera's screen or capture target before fitting the board.
+        public System.Action<Rect> DioramaLaidOut;
 
         private ChromeRegions _regions;
         private System.Func<bool> _motionOff;
@@ -57,6 +61,7 @@ namespace CatMetro.Presentation.Screens
         private bool _audioToggleRegistered;
         private bool _audioEnabled = true;
         private bool _shown; // #46 review F4: Show()-left-shown intent, survives OnDisable/OnEnable
+        private BoardFx _hideFx;
         private Image _background;
         private Image _backdrop;
         private Sprite _vignetteSprite;
@@ -76,19 +81,18 @@ namespace CatMetro.Presentation.Screens
         private RectTransform _heroShadow;
         private RectTransform _hero;
         private RectTransform _dioramaWindow;
+        private ChromeChip _playChip;
+        private ChromeChip _dailyChip;
         private RectTransform _pin;
         private RectTransform _ring;
         private TMP_Text _primaryLabel;
         private RectTransform _dailyPin;
-        private RectTransform _dailyUnlockRing;
         private Image _dailyLock;
         private Image[] _dailyPips;
         private bool _dailyUnlocked;
         private bool _dailyUnlockAttention;
         private int _dailyLifetimeCount;
         private string _dailyTransientKey;
-        private Graphic[] _dailyPaint;
-        private Color[] _dailyColours;
         private TMP_Text _dailyLabel;
         private TMP_Text _dailyTally;
         private TMP_Text _dailyStatus;
@@ -114,7 +118,7 @@ namespace CatMetro.Presentation.Screens
         public RectTransform PinTransform => _pin;
         public bool RingVisible => _ring != null && _ring.gameObject.activeInHierarchy;
         public float PinScale => _pin != null ? _pin.localScale.x : 1f;
-        public bool IsVisible => gameObject.activeSelf;
+        public bool IsVisible => _shown && gameObject.activeSelf;
         public string TitleText => _title != null ? _title.text : "";
         // BEAUTIFUL-MENU: style read-backs (the TitleText/RingVisible accessor precedent) —
         // tests measure the REAL painted colors against the Palette source of truth.
@@ -286,39 +290,14 @@ namespace CatMetro.Presentation.Screens
                 else HomeProfileRigView.ReportUnavailable(catCatalog);
             }
 
-            // The raised-ring shape twin sits BEHIND the pin (sibling order = draw order).
-            // The ring is the single warm CTA glow; the navy lip and cream face make the route
-            // read as a raised wooden button. Every paint comes from the Palette source.
-            view._ring = MakeChip(go.transform, "PinRingL001", Palette.TicketOrange);
-            view._pin = MakeChip(go.transform, "PinL001", Palette.DepotNavy);
-            var playFace = MakeSurface(view._pin, "PlayButtonFace",
-                new Vector2(0.008f, 0.10f), new Vector2(0.992f, 0.99f),
-                Palette.CreamCard, true);
-            var playIcon = MakeSurface(playFace.transform, "PlayIconTile",
-                new Vector2(0.035f, 0.14f), new Vector2(0.185f, 0.88f),
-                Palette.InkNavy, true);
-            MakeSurface(playIcon.transform, "PlayIconWindowA",
-                new Vector2(0.20f, 0.55f), new Vector2(0.43f, 0.78f),
-                Palette.CreamCard, true);
-            MakeSurface(playIcon.transform, "PlayIconWindowB",
-                new Vector2(0.57f, 0.55f), new Vector2(0.80f, 0.78f),
-                Palette.CreamCard, true);
-            MakeSurface(playIcon.transform, "PlayIconRail",
-                new Vector2(0.18f, 0.25f), new Vector2(0.82f, 0.38f),
-                Palette.TicketOrange, true);
-            MakeSurface(playIcon.transform, "PlayIconWheelA",
-                new Vector2(0.20f, 0.08f), new Vector2(0.40f, 0.28f),
-                Palette.CreamCard, true);
-            MakeSurface(playIcon.transform, "PlayIconWheelB",
-                new Vector2(0.60f, 0.08f), new Vector2(0.80f, 0.28f),
-                Palette.CreamCard, true);
-            view._primaryLabel = MakeText(playFace.transform, "PlayLabel",
-                new Vector2(0.22f, 0f), new Vector2(0.94f, 1f),
-                Strings.UiStrings.Get("intro.play"), 42f, Palette.InkNavy);
-            view._primaryLabel.enableAutoSizing = true;
-            view._primaryLabel.fontSizeMin = 24f;
-            view._primaryLabel.fontSizeMax = 42f;
-            view._primaryLabel.fontStyle = FontStyles.Bold;
+            view._playChip = ChromeChip.PaintPrimary(go.transform, default,
+                Strings.UiStrings.Get("intro.play"), Palette.TicketOrange, HudShapeSprites.Train);
+            view._pin = view._playChip.Root;
+            view._pin.name = "PinL001";
+            view._ring = (RectTransform)view._pin.Find("Ring");
+            view._playChip.Face.name = "PlayButtonFace";
+            view._primaryLabel = view._playChip.Label;
+            view._primaryLabel.name = "PlayLabel";
 
             view.BuildDailyPin();
             if (dailyEntryUnlocked) view.UnlockDaily(lifetimeDailyCompletions);
@@ -330,19 +309,16 @@ namespace CatMetro.Presentation.Screens
 
         private void BuildDailyPin()
         {
-            _dailyUnlockRing = MakeChip(transform, "DailyUnlockRing", Palette.TicketOrange);
-            _dailyUnlockRing.gameObject.SetActive(false);
-            _dailyPin = MakeChip(transform, "PinDaily", Palette.DepotNavy);
-            var face = MakeSurface(_dailyPin, "DailyButtonFace",
-                new Vector2(0.008f, 0.10f), new Vector2(0.992f, 0.99f), Palette.CreamCard, true);
-            _dailyLock = MakeSurface(face.transform, "DailyLock", Vector2.zero, Vector2.zero,
-                Palette.DepotNavy, false);
-            _dailyLock.sprite = HudShapeSprites.Padlock;
-            _dailyLock.preserveAspect = true;
-            _dailyLabel = MakeText(face.transform, "PinDailyLabel",
-                new Vector2(0.22f, 0.22f), new Vector2(0.93f, 0.94f),
-                Strings.UiStrings.Get("home.daily.label"), TypeScale.Body, Palette.InkNavy);
-            _dailyLabel.enableWordWrapping = false;
+            _dailyChip = ChromeChip.PaintPrimary(transform, default,
+                Strings.UiStrings.Get("home.daily.label"), Palette.CreamCard, HudShapeSprites.Padlock);
+            _dailyPin = _dailyChip.Root;
+            _dailyPin.name = "PinDaily";
+            var face = _dailyChip.Face;
+            face.name = "DailyButtonFace";
+            _dailyLock = _dailyPin.Find("Content/Icon").GetComponent<Image>();
+            _dailyLock.name = "DailyLock";
+            _dailyLabel = _dailyChip.Label;
+            _dailyLabel.name = "PinDailyLabel";
             _dailyPips = new Image[7];
             for (int i = 0; i < _dailyPips.Length; i++)
             {
@@ -357,9 +333,6 @@ namespace CatMetro.Presentation.Screens
             _dailyStatus = MakeText(_dailyPin, "DailyStatus", Vector2.zero, Vector2.zero,
                 "", TypeScale.Caption, Palette.CreamCard);
             _dailyTally.enableWordWrapping = _dailyStatus.enableWordWrapping = true;
-            _dailyPaint = _dailyPin.GetComponentsInChildren<Graphic>(true);
-            _dailyColours = new Color[_dailyPaint.Length];
-            for (int i = 0; i < _dailyPaint.Length; i++) _dailyColours[i] = _dailyPaint[i].color;
             SetCampaignWinCount(0);
         }
 
@@ -385,12 +358,10 @@ namespace CatMetro.Presentation.Screens
 
         private void RefreshDailyPaint()
         {
-            for (int i = 0; i < _dailyPaint.Length; i++)
-                if (!_dailyPaint[i].name.StartsWith("DailyWinPip"))
-                    _dailyPaint[i].color = Palette.WithAlpha(_dailyColours[i], _dailyUnlocked ? 1f : 0.6f);
-            _dailyLock.gameObject.SetActive(!_dailyUnlocked);
-            _dailyLabel.rectTransform.anchorMin = new Vector2(_dailyUnlocked ? 0.07f : 0.22f, 0.22f);
-            _dailyUnlockRing.gameObject.SetActive(_dailyUnlocked && _dailyUnlockAttention);
+            _dailyChip.SetRingColour(_dailyUnlocked && _dailyUnlockAttention
+                ? Palette.TicketOrange : Palette.CreamCard);
+            _dailyChip.SetOpacity(_dailyUnlocked ? 1f : 0.6f);
+            _dailyLock.sprite = _dailyUnlocked ? HudShapeSprites.Star : HudShapeSprites.Padlock;
             SetDailyStatusKey(_dailyTransientKey);
         }
 
@@ -603,6 +574,7 @@ namespace CatMetro.Presentation.Screens
 
         public void Show()
         {
+            _hideFx?.Finish(this);
             _shown = true;
             gameObject.SetActive(true);
             LayoutForViewport(Screen.safeArea, Screen.dpi);
@@ -612,17 +584,34 @@ namespace CatMetro.Presentation.Screens
             RegisterAudioToggle();
         }
 
-        public void Hide()
+        public void Hide() => Hide(null);
+
+        public void HideWithFade(BoardFx fx) => Hide(fx);
+
+        private void Hide(BoardFx fx)
         {
+            _hideFx?.Finish(this);
             _shown = false;
             _dailyUnlockAttention = false;
-            if (_dailyUnlockRing != null) _dailyUnlockRing.gameObject.SetActive(false);
+            if (_dailyChip != null) _dailyChip.SetRingColour(Palette.CreamCard);
             if (_reminderSheet != null) _reminderSheet.Hide();
             UnregisterPin();
             UnregisterDailyPin();
             UnregisterReminderGear();
             UnregisterAudioToggle();
-            gameObject.SetActive(false);
+            if (fx == null || !gameObject.activeSelf) { gameObject.SetActive(false); return; }
+            _hideFx = fx;
+            var paint = GetComponentsInChildren<Graphic>(true);
+            fx.Tween(this, .25f, progress =>
+            {
+                foreach (var graphic in paint)
+                    if (graphic != null) graphic.canvasRenderer.SetAlpha(1f - progress);
+                if (progress < 1f) return;
+                gameObject.SetActive(false);
+                foreach (var graphic in paint)
+                    if (graphic != null) graphic.canvasRenderer.SetAlpha(1f);
+                _hideFx = null;
+            });
         }
 
         private void OnDestroy()
@@ -750,15 +739,12 @@ namespace CatMetro.Presentation.Screens
         {
             TypeScale.Apply(_title, TypeScale.Display, dpi);
             TypeScale.Apply(_titleCarve, TypeScale.Display, dpi);
-            TypeScale.Apply(_primaryLabel, TypeScale.Title, dpi);
-            TypeScale.Apply(_dailyLabel, TypeScale.Body, dpi);
             TypeScale.Apply(_dailyTally, TypeScale.Caption, dpi, body: true);
             TypeScale.Apply(_dailyStatus, TypeScale.Caption, dpi, body: true);
             TypeScale.Apply(_audioToggleLabel, TypeScale.Caption, dpi, body: true);
             bool hasDaily = _dailyPin != null;
             _pinRectPx = HomeLayout.PrimaryPinRect(safeArea, dpi, hasDaily);
-            ApplyPx(_pin, _pinRectPx);
-            ApplyPx(_ring, HomeLayout.RingRect(safeArea, dpi, hasDaily));
+            _playChip.LayoutFace(_pinRectPx, dpi);
 
             _heroRectPx = HomeLayout.HeroRect(safeArea, dpi, hasDaily);
             if (viewport.width <= 0f || viewport.height <= 0f)
@@ -827,15 +813,14 @@ namespace CatMetro.Presentation.Screens
             if (_dailyPin != null)
             {
                 _dailyPinRectPx = HomeLayout.DailyPinRect(safeArea, dpi);
-                ApplyPx(_dailyPin, _dailyPinRectPx);
+                _dailyChip.LayoutFace(_dailyPinRectPx, dpi);
                 var daily = _dailyPinRectPx;
-                ApplyPx(_dailyUnlockRing, new Rect(daily.x - 2f * px, daily.y - 2f * px,
-                    daily.width + 4f * px, daily.height + 4f * px));
-                ApplyPx(_dailyLock.rectTransform, new Rect(8f * px, 17f * px, 20f * px, 22f * px));
+                // Keep the measured icon/label group together above the seven progress pips.
+                ((RectTransform)_dailyLabel.transform.parent).anchoredPosition = new Vector2(0, 4f * px);
                 float pipStart = daily.width * 0.5f - 30f * px;
                 for (int i = 0; i < 7; i++)
                     ApplyPx(_dailyPips[i].rectTransform,
-                        new Rect(pipStart + i * 9f * px, 6f * px, 6f * px, 6f * px));
+                        new Rect(pipStart + i * 9f * px, 12f * px, 4f * px, 4f * px));
                 var caption = new Rect(0f, -35f * px, daily.width, 34f * px);
                 ApplyPx(_dailyTally.rectTransform, caption);
                 ApplyPx(_dailyStatus.rectTransform, caption);
@@ -853,6 +838,8 @@ namespace CatMetro.Presentation.Screens
             }
             if (_reminderSheet != null && _reminderSheet.IsVisible)
                 _reminderSheet.LayoutForViewport(safeArea, dpi);
+            if (IsVisible)
+                DioramaLaidOut?.Invoke(Rect.MinMaxRect(windowXMin, windowYMin, windowXMax, windowYMax));
             if (_profileRig != null)
             {
                 Canvas canvas = GetComponentInParent<Canvas>();
@@ -899,7 +886,7 @@ namespace CatMetro.Presentation.Screens
         // never enters the sim (P-6).
         private void Update()
         {
-            if (_pin == null) return;
+            if (_pin == null || !_shown) return;
             float scale = 1f;
             bool off = _motionOff != null && _motionOff();
             if (!off)
