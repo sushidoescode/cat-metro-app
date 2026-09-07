@@ -2,9 +2,9 @@ using Newtonsoft.Json.Linq;
 
 namespace CatMetro.Application.Save
 {
-    // The fresh v3 payload extends the ADR-0006 §2 block additively. Unrelated OPEN sub-shapes
+    // The fresh v4 payload extends the ADR-0006 §2 block additively. Unrelated OPEN sub-shapes
     // remain ABSENT, not guessed:
-    // no caps.sessionCounters, flags.paywall_placements stays bool, breadcrumbs.purchase is null
+    // flags.paywall_placements stays bool, breadcrumbs.purchase is null
     // (when present: exactly {productId, placement, startedAtUtc, state}, state an OPAQUE string
     // round-tripped untouched — enumerating it would invent an RC API, RK-39).
     // Flag defaults mirror the ADR block, which marks them illustrative of TYPE — launch values
@@ -13,7 +13,7 @@ namespace CatMetro.Application.Save
     public static class SaveDefaults
     {
         public const ushort FORMAT_VERSION = 1;
-        public const ushort SAVE_VERSION = 3;
+        public const ushort SAVE_VERSION = 4;
         public const string MAGIC = "CMSV";
 
         public static JObject FreshPayload()
@@ -48,6 +48,7 @@ namespace CatMetro.Application.Save
                 ["caps"] = new JObject
                 {
                     ["dateKey"] = "",
+                    ["sessionCounters"] = SaveSchemaV4.DefaultSessionCounters(),
                     ["counters"] = new JObject
                     {
                         // the five locked ad surfaces, verbatim (ADR-0006:106-110)

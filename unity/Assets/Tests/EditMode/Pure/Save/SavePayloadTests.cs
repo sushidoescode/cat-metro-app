@@ -5,8 +5,8 @@ using CatMetro.Application.Save;
 
 namespace CatMetro.Tests.Save
 {
-    // The v3 payload remains additive over ADR-0006's v1 shape. Cosmetics belong to profile;
-    // Daily Live, reminders, local leases, and rewarded-video caps remain unchanged.
+    // The v4 payload remains additive over ADR-0006's v1 shape. Failure rewind session caps
+    // are durable; cosmetics, Daily Live, reminders, local leases and cosmetic caps are retained.
     public sealed class SavePayloadTests
     {
         private static readonly string[] TopLevel =
@@ -23,12 +23,12 @@ namespace CatMetro.Tests.Save
         }
 
         [Test]
-        public void FreshPayload_IsV3_WithEveryReservedDefault()
+        public void FreshPayload_IsV4_WithEveryReservedDefault()
         {
             var payload = SaveDefaults.FreshPayload();
 
-            Assert.That(SaveDefaults.SAVE_VERSION, Is.EqualTo(3));
-            Assert.That((int)payload["saveVersion"], Is.EqualTo(3));
+            Assert.That(SaveDefaults.SAVE_VERSION, Is.EqualTo(4));
+            Assert.That((int)payload["saveVersion"], Is.EqualTo(4));
             Assert.That((int)payload["daily"]["lifetimeCompletions"], Is.Zero);
             Assert.That((string)payload["daily"]["trustedDateKey"], Is.Empty);
             Assert.That(payload["daily"]["completedKeys"], Is.InstanceOf<JArray>());
@@ -44,11 +44,11 @@ namespace CatMetro.Tests.Save
         }
 
         [Test]
-        public void FreshPayload_IsV3_AndCosmeticsLivesOnlyInsideProfile()
+        public void FreshPayload_IsV4_AndCosmeticsLivesOnlyInsideProfile()
         {
             var payload = SaveDefaults.FreshPayload();
 
-            Assert.That((int)payload["saveVersion"], Is.EqualTo(3));
+            Assert.That((int)payload["saveVersion"], Is.EqualTo(4));
             Assert.That(payload["cosmetics"], Is.Null, "cosmetics is not a top-level sibling");
             var cosmetics = (JObject)payload["profile"]["cosmetics"];
             Assert.That(cosmetics.Properties().Select(p => p.Name), Is.EquivalentTo(new[]
@@ -141,7 +141,7 @@ namespace CatMetro.Tests.Save
             Assert.That(((JObject)p["economy"]).Properties().Select(x => x.Name),
                 Is.EquivalentTo(new[] { "tickets", "rewindBalance", "freeRewindDateKey" }));
             Assert.That(((JObject)p["caps"]).Properties().Select(x => x.Name),
-                Is.EquivalentTo(new[] { "dateKey", "counters", "rewarded" }));
+                Is.EquivalentTo(new[] { "dateKey", "counters", "sessionCounters", "rewarded" }));
             Assert.That(((JObject)p["caps"]["rewarded"]).Properties().Select(x => x.Name),
                 Is.EquivalentTo(new[] { "dateKey", "counters" }));
             Assert.That(((JObject)p["entitlements"]).Properties().Select(x => x.Name),
@@ -156,10 +156,14 @@ namespace CatMetro.Tests.Save
                 }));
         }
 
-        // Criterion 3: the three OPEN sub-shapes are ABSENT, not guessed.
         [Test]
-        public void OpenShape_CapsSessionCounters_IsAbsent() =>
-            Assert.That(SaveDefaults.FreshPayload()["caps"]["sessionCounters"], Is.Null);
+        public void FailureRewindSessionCounter_DefaultsToZero()
+        {
+            var counters = SaveDefaults.FreshPayload()["caps"]["sessionCounters"] as JObject;
+            Assert.That(counters, Is.Not.Null);
+            Assert.That(counters.Properties().Select(p => p.Name), Is.EqualTo(new[] { "rewind_failure" }));
+            Assert.That((int)counters["rewind_failure"], Is.Zero);
+        }
 
         [Test]
         public void OpenShape_PaywallPlacements_StaysBool() =>

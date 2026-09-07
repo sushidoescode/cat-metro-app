@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Threading;
+using System.Globalization;
+using CatMetro.Application.EventTaxonomy;
 using CatMetro.Application.Retry;
 using CatMetro.Application.Save;
 using CatMetro.Application.Session;
@@ -13,7 +15,9 @@ using CatMetro.Presentation.Cameras;
 using CatMetro.Presentation.Diagnostics;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Hud.WavePreview;
-using CatMetro.Services;
+using CatMetro.Services.Ads;
+using CatMetro.Services.Retry;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 namespace CatMetro.Bootstrap
@@ -139,6 +143,19 @@ namespace CatMetro.Bootstrap
 
         private ImportedLevel _level;
         private bool _halted;
+        private const string FailureRewindPlacement = "rewind_failure";
+        private RewardedAdFailureRewindRoute _failureRewindRoute;
+        private FailureRewindOfferView _failureRewindOffer;
+        private GameSession _failureRewindSession;
+        private GameSession _failureRewindCandidate;
+        private FailureRewindRequest _failureRewindRequest;
+
+        private sealed class FailureRewindRequest
+        {
+            public GameSession Failed;
+            public GameSession Candidate;
+            public bool Displayed;
+        }
 
         // CM-BOOT-HOME criterion 1: unfenced (was dev-only behind the retired BootToHome gate)
         // — a shipped build composes Home over every real boot (InitializeFromSeam, below), so
@@ -544,6 +561,9 @@ namespace CatMetro.Bootstrap
             // CM-DAILYWIRE: the seam now routes through a small router instead of binding
             // LoadNext directly — a Daily win must never reach campaign progression.
             results.NextRequested = OnResultsCtaRequested;
+
+            _failureRewindRoute = new RewardedAdFailureRewindRoute();
+            _failureRewindRoute.AvailabilityChanged += RefreshFailureRewindOffer;
 
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             if (GetComponent<DevCapture.DevFrameCapture>() == null)
@@ -1091,13 +1111,14 @@ namespace CatMetro.Bootstrap
 
         public static string LevelPath(string levelId) => "content/levels/" + levelId + ".json";
 
-        // CM-C3 criteria 8/9 (Retry) + CM-LOADNEXT (LoadNext): the shared rebuild both callers
-        // use — fresh session over the GIVEN level (SAME level for Retry, a NEWLY IMPORTED one
-        // for LoadNext); zero scene loads; the board view rebuilds; every switch back at
-        // initialRoute by construction (ADR-0002 §9's "no scene load, no snapshot" holds either
-        // way — only the DATA behind Session/View changes, never the Unity scene).
-        private void LoadLevel(ImportedLevel level)
+        // Shared presentation rebuild: fresh session for Retry/navigation, or the exact
+        // re-simulated candidate after an earned failure rewind. The scene and input owner
+        // persist; all board, preview, and camera bindings follow the installed session.
+        private void LoadLevel(ImportedLevel level, GameSession preparedSession = null)
         {
+            if (preparedSession != null && !ReferenceEquals(preparedSession.Level, level))
+                throw new System.ArgumentException("prepared session must belong to the exact level");
+            CancelFailureRewind();
             // A navigation or retry supersedes any off-thread Daily fallback. The pure worker
             // may already be inside the solver, but its cancellation token prevents its result
             // from being installed over the newer navigation state.
@@ -1131,7 +1152,7 @@ namespace CatMetro.Bootstrap
             // ordering never fights itself.
             _pendingHomeShowFrame = -1;
             _level = level;
-            Session = new GameSession(level);
+            Session = preparedSession ?? new GameSession(level);
             Audio?.BindSession(Session);
             if (View != null) Destroy(View.gameObject);
             View = BoardView.Build(level, transform, Session);
@@ -1162,6 +1183,9 @@ namespace CatMetro.Bootstrap
         public void Retry()
         {
             if (Session == null) return;
+            if (_failureRewindOffer != null && _failureRewindOffer.isActiveAndEnabled &&
+                _failureRewindRequest == null)
+                FailureRewindAnalytics.OfferDeclined(Analytics, FailureRewindPlacement);
             LoadLevel(_level);
             _analyticsRuntime?.RetryLevel(_level, _dailySession);
         }
@@ -1177,6 +1201,7 @@ namespace CatMetro.Bootstrap
         public void LoadNext()
         {
             if (Session == null) return;
+            CancelFailureRewind();
             // CM-DAILYWIRE: defensive — campaign progression must never run inside a Daily
             // session. Unreachable via any wired UI (OnResultsCtaRequested routes Daily to
             // ReturnHomeFromDaily instead), but LoadNext is a public method any caller could
@@ -1653,7 +1678,9 @@ namespace CatMetro.Bootstrap
                     Banner.ShowKeySubstituted(key, token, causal >= 0 ? View.NodeId(causal) : "?");
                 else
                     Banner.ShowKey(key);
+                PrepareFailureRewind();
             }
+            RefreshFailureRewindOffer();
             try
             {
                 Audio?.Observe(Session, ScreenState == "Playing" && !ScreensVisible);
@@ -1668,6 +1695,13 @@ namespace CatMetro.Bootstrap
         private void OnDestroy()
         {
             _destroying = true;
+            CancelFailureRewind();
+            if (_failureRewindRoute != null)
+            {
+                _failureRewindRoute.AvailabilityChanged -= RefreshFailureRewindOffer;
+                _failureRewindRoute.Dispose();
+                _failureRewindRoute = null;
+            }
             SupersedePermissionRequest();
             ClearSettingsEnableIntent();
             _foregroundPermissionRecheckPending = false;
@@ -1717,6 +1751,118 @@ namespace CatMetro.Bootstrap
             }
             _analyticsRuntime?.Dispose();
             _analyticsRuntime = null;
+        }
+
+        private void OnEnable()
+        {
+            if (Session != null && ScreenState == "FailureReview" &&
+                Session.State.Outcome.Kind == CatMetro.Domain.OutcomeKind.Failed)
+                PrepareFailureRewind();
+        }
+
+        private void OnDisable() => CancelFailureRewind();
+
+        private bool FailureRewindContextValid => isActiveAndEnabled && !_destroying &&
+            !ScreensVisible && ScreenState == "FailureReview" &&
+            ReferenceEquals(Session, _failureRewindSession) && _failureRewindCandidate != null &&
+            Session.State.Outcome.Kind == CatMetro.Domain.OutcomeKind.Failed;
+
+        private void PrepareFailureRewind()
+        {
+            CancelFailureRewind();
+            if (Session.TryCreateRewindBeforeLastDecision(out var candidate))
+            {
+                _failureRewindSession = Session;
+                _failureRewindCandidate = candidate;
+            }
+            RefreshFailureRewindOffer();
+        }
+
+        private void RefreshFailureRewindOffer()
+        {
+            if (!FailureRewindContextValid)
+            {
+                CancelFailureRewind();
+                return;
+            }
+            if (_failureRewindRequest != null || _failureRewindRoute == null ||
+                !_failureRewindRoute.CanOffer(FailureRewindPlacement))
+            {
+                HideFailureRewindOffer();
+                return;
+            }
+            if (_failureRewindOffer != null) return;
+            _failureRewindOffer = FailureRewindOfferView.Create(transform, Cam, Input.Regions,
+                RequestFailureRewind);
+            FailureRewindAnalytics.OfferViewed(Analytics, FailureRewindPlacement, CurrentLevelId);
+        }
+
+        private void RequestFailureRewind()
+        {
+            if (_failureRewindRequest != null || _failureRewindOffer == null ||
+                !_failureRewindOffer.isActiveAndEnabled ||
+                !FailureRewindContextValid) return;
+            var request = new FailureRewindRequest
+            {
+                Failed = Session,
+                Candidate = _failureRewindCandidate,
+            };
+            _failureRewindRequest = request;
+            HideFailureRewindOffer();
+            _failureRewindRoute.Request(FailureRewindPlacement,
+                adEvent =>
+                {
+                    if (!ReferenceEquals(_failureRewindRequest, request) || request.Displayed ||
+                        !FailureRewindContextValid || adEvent.Kind != RewardedAdEventKind.Displayed) return;
+                    request.Displayed = true;
+                    FailureRewindAnalytics.AdDisplayed(Analytics, FailureRewindPlacement,
+                        adEvent.NetworkName, adEvent.AdUnitId);
+                },
+                result => CompleteFailureRewind(request, result));
+        }
+
+        private void CompleteFailureRewind(FailureRewindRequest request, FailureRewindAdCompletion result)
+        {
+            if (!ReferenceEquals(_failureRewindRequest, request)) return;
+            _failureRewindRequest = null;
+            if (result.Kind == RewardedAdCompletionKind.Granted)
+            {
+                if (!FailureRewindContextValid || !ReferenceEquals(Session, request.Failed)) return;
+                LoadLevel(_level, request.Candidate);
+                FailureRewindAnalytics.AdCompleted(Analytics, FailureRewindPlacement, result.NetworkName);
+                string balanceAfter = FailureRewindBalanceForAnalytics();
+                FailureRewindAnalytics.RewindApplied(Analytics, CurrentLevelId, balanceAfter);
+                return;
+            }
+            FailureRewindAnalytics.AdFailed(Analytics, FailureRewindPlacement, result.NetworkName,
+                result.ErrorCode?.ToString(CultureInfo.InvariantCulture) ?? result.Kind.ToString());
+            RefreshFailureRewindOffer();
+        }
+
+        private static string FailureRewindBalanceForAnalytics()
+        {
+            var economy = SaveRuntime.Current?.State?.Payload?["economy"] as JObject;
+            var token = economy?["rewindBalance"];
+            if (token == null || token.Type != JTokenType.Integer ||
+                !int.TryParse(token.ToString(Newtonsoft.Json.Formatting.None), NumberStyles.Integer,
+                    CultureInfo.InvariantCulture, out int balance) || balance < 0)
+                return "0";
+            return balance.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private void HideFailureRewindOffer()
+        {
+            if (_failureRewindOffer != null) _failureRewindOffer.Dismiss();
+            _failureRewindOffer = null;
+        }
+
+        private void CancelFailureRewind()
+        {
+            _failureRewindSession = null;
+            _failureRewindCandidate = null;
+            HideFailureRewindOffer();
+            _failureRewindRoute?.Cancel();
+            _failureRewindRequest = null;
         }
 
         private static void ObserveDetachedPermissionTask(System.Threading.Tasks.Task task)

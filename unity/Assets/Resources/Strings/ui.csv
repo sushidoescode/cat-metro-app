@@ -71,3 +71,4 @@ cosmetics.item.frame_lantern,Lantern Frame
 cosmetics.earn.conductor,Complete the stationmaster route to earn this outfit.
 hud.flips,Flips {used}/{limit}
 fail.collision,Two trains bumped!
+failure.rewind,Watch to rewind

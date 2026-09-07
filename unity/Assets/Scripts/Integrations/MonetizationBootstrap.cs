@@ -192,7 +192,10 @@ namespace CatMetro.Integrations
 
         private void OnApplicationFocus(bool hasFocus)
         {
-            if (hasFocus) _service?.RefreshEntitlements();
+            if (_rewardedAds != null)
+                _rewardedAds.OnApplicationFocus(hasFocus);
+            else if (hasFocus)
+                _service?.RefreshEntitlements();
         }
 
         internal void OnApplicationPause(bool paused)

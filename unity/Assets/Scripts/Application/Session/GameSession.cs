@@ -43,6 +43,8 @@ namespace CatMetro.Application.Session
         public ImportedLevel Level { get; }
         public SimulationState State { get; }
         public CommandLog Log { get; }
+        // Runner provenance only: rewind must not alter SimulationState or its canonical digest.
+        public bool HasUsedRewind { get; private set; }
         public TrainSlot[] PrevTrains { get; private set; }
         public double Alpha => _clock.Alpha;
         // Read-only HUD snapshot. During play it counts every accepted committed tap immediately;
@@ -100,6 +102,33 @@ namespace CatMetro.Application.Session
             }
 
             Log.Append(new ToggleSwitchCommand((ushort)switchId, State.Tick));
+            return true;
+        }
+
+        // Rebuilds the pre-decision state from the append-order command-log prefix. The receiver
+        // remains untouched so callers can retain the failed run for local review.
+        public bool TryCreateRewindBeforeLastDecision(out GameSession rewound)
+        {
+            rewound = null;
+            int selectedIndex = Log.Entries.Count - 1;
+            if (selectedIndex < 0) return false;
+
+            var selected = Log.Entries[selectedIndex];
+            var replay = new GameSession(Level);
+            for (int i = 0; i < selectedIndex; i++)
+                replay.Log.Append(Log.Entries[i]);
+
+            // ADR-0002 section 9: rewind reaches prior state by fresh fixed-tick re-simulation,
+            // never by snapshots or serialized SimulationState.
+            while (replay.State.Outcome.Kind == OutcomeKind.Running
+                && replay.State.Tick < selected.Tick)
+                replay.AdvanceMs(TickInterpolator.TICK_MS);
+
+            // A hostile/impossible log prefix cannot manufacture a rewind after terminal state.
+            if (replay.State.Tick != selected.Tick) return false;
+
+            replay.HasUsedRewind = true;
+            rewound = replay;
             return true;
         }
 

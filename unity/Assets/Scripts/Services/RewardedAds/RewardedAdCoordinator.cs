@@ -7,7 +7,7 @@ namespace CatMetro.Services.Ads
     // Owns the policy around one reusable rewarded ad. Vendor adapters only translate callbacks;
     // this class owns attempt IDs, reload decisions, exact reward attribution, and caps.
     public sealed class RewardedAdCoordinator : IRewardedAds, IRewardedAdExactCompletionSource,
-        IDisposable
+        IRewardedAdFailureRewindSource, IDisposable
     {
         // A callback that never arrives cannot retain memory forever. FIFO eviction releases the
         // placement but deliberately discards any later reward for that evicted exact attempt.
@@ -22,6 +22,8 @@ namespace CatMetro.Services.Ads
         private readonly IAdEventReporter _reporter;
         private readonly IRewardedAdCapStore _capStore;
         private readonly Func<string> _localDateKey;
+        private readonly IFailureRewindCapStore _failureCaps;
+        private readonly Func<long> _nowUnixSeconds;
         private readonly Dictionary<string, int> _sessionGrantCounts =
             new Dictionary<string, int>(StringComparer.Ordinal);
         private readonly Dictionary<LocalDatePlacementKey, int> _failedLocalDateCounts =
@@ -56,7 +58,8 @@ namespace CatMetro.Services.Ads
 
         public RewardedAdCoordinator(RewardedPlacementCatalog placements,
             PurchaseService purchases, IRewardedAdProvider provider, IAdEventReporter reporter,
-            IRewardedAdCapStore capStore, Func<string> localDateKey)
+            IRewardedAdCapStore capStore, Func<string> localDateKey,
+            Func<long> nowUnixSeconds = null)
         {
             _placements = placements;
             _purchases = purchases;
@@ -64,6 +67,8 @@ namespace CatMetro.Services.Ads
             _reporter = reporter;
             _capStore = capStore;
             _localDateKey = localDateKey;
+            _failureCaps = capStore as IFailureRewindCapStore;
+            _nowUnixSeconds = nowUnixSeconds ?? (() => DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         }
 
         public void Start()
@@ -176,6 +181,7 @@ namespace CatMetro.Services.Ads
                 _capStore == null || _localDateKey == null ||
                 string.IsNullOrEmpty(placementId) ||
                 !_placements.TryGet(placementId, out var placement) || !placement.Enabled ||
+                placement.RewardKind != RewardedRewardKind.EntitlementLease ||
                 _pendingPlacements.Contains(placementId) ||
                 !_purchases.CanPersistRewardedAdGrants)
                 return false;
@@ -209,6 +215,162 @@ namespace CatMetro.Services.Ads
         public RewardedShowOutcome Show(string placementId)
         {
             return ShowCore(placementId, null, null);
+        }
+
+        // The composition calls this only after binding a configured provider to a writable save,
+        // and at pause/foreground plus its throttled heartbeat. Queries never initialize a session.
+        public void TouchFailureRewindSession(bool allowSessionRollover)
+        {
+            if (!_started || _disposed || _provider == null || _providerFailed ||
+                _reporter == null || _failureCaps == null || _localDateKey == null ||
+                _placements == null || !_placements.TryGet("rewind_failure", out var placement) ||
+                placement.RewardKind != RewardedRewardKind.FailureRewind || !placement.Enabled)
+                return;
+            try { _failureCaps.TryTouchFailureRewindSession(_nowUnixSeconds(), _localDateKey(),
+                allowSessionRollover); }
+            catch { }
+            if (!_disposed) RaiseAvailabilityChanged();
+        }
+
+        public bool CanShowFailureRewind(string placementId)
+            => _openAttempt == null && TryGetFailureRewindPlacement(placementId, out _) &&
+                CheckFailureRewindAvailability(placementId, null);
+
+        public bool CanContinueFailureRewind(long attemptId, string placementId)
+        {
+            var attempt = _openAttempt;
+            if (_disposed || attempt == null || !attempt.IsFailureRewind || attempt.Id != attemptId ||
+                !string.Equals(attempt.Placement.Id, placementId, StringComparison.Ordinal)) return false;
+            // The provider's IsReady is for the next Show. LevelPlay makes it false as soon as
+            // the current ad starts opening, so querying it here would cancel every real ad.
+            return attempt.DisplayLatched || attempt.RewardLatched ||
+                (TryGetFailureRewindPlacement(placementId, out _) && CheckFailureRewindCaps(attempt));
+        }
+
+        private bool TryGetFailureRewindPlacement(string placementId, out RewardedPlacement placement)
+        {
+            placement = default;
+            return _started && !_disposed && !_providerFailed && !_reporterFailed && _reporterReady &&
+                _provider != null && _reporter != null && _failureCaps != null && _localDateKey != null &&
+                _placements != null && _placements.TryGet(placementId, out placement) && placement.Enabled &&
+                placement.RewardKind == RewardedRewardKind.FailureRewind;
+        }
+
+        private bool OwnsFailureRewindCheck(Attempt attempt)
+            => ReferenceEquals(_openAttempt, attempt) && !_disposed && _reporterReady &&
+                !_reporterFailed && !_providerFailed;
+
+        private bool CheckFailureRewindAvailability(string placementId, Attempt attempt)
+        {
+            if (!CheckFailureRewindCaps(attempt)) return false;
+            try
+            {
+                bool ready = _provider is IRewardedAdPlacementReadiness perPlacement
+                    ? perPlacement.IsReadyForPlacement(placementId) : _provider.IsReady;
+                return ready && OwnsFailureRewindCheck(attempt);
+            }
+            catch
+            {
+                _providerFailed = true;
+                RaiseAvailabilityChanged();
+                return false;
+            }
+        }
+
+        private bool CheckFailureRewindCaps(Attempt attempt)
+        {
+            try
+            {
+                long now = _nowUnixSeconds();
+                if (!OwnsFailureRewindCheck(attempt)) return false;
+                string dateKey = _localDateKey();
+                if (!OwnsFailureRewindCheck(attempt)) return false;
+                if (!_failureCaps.CanOfferFailureRewind(now, dateKey) || !OwnsFailureRewindCheck(attempt))
+                    return false;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        public RewardedShowOutcome ShowFailureRewind(string placementId,
+            Action<RewardedAdEvent> providerLifecycle, Action<FailureRewindAdCompletion> completed,
+            out long attemptId)
+        {
+            attemptId = 0L;
+            if (_openAttempt != null || !TryGetFailureRewindPlacement(placementId, out var placement))
+            {
+                var outcome = _openAttempt != null ? RewardedShowOutcome.Busy : RewardedShowOutcome.Unavailable;
+                CompleteFailureImmediate(completed, placementId, RewardedAdCompletionKind.Unavailable);
+                return outcome;
+            }
+            try { attemptId = _nextAttemptId = checked(_nextAttemptId + 1L); }
+            catch
+            {
+                _providerFailed = true;
+                CompleteFailureImmediate(completed, placementId, RewardedAdCompletionKind.Unavailable);
+                RaiseAvailabilityChanged();
+                return RewardedShowOutcome.Unavailable;
+            }
+            var attempt = new Attempt(attemptId, placement, null)
+            {
+                FailureCompleted = completed,
+                ProviderLifecycle = providerLifecycle,
+            };
+            _openAttempt = attempt;
+            _pendingPlacements.Add(placementId);
+            // Reserve the cancellable ID before clocks, cap reads, or readiness accessors can
+            // reenter the route. Every continuation must still own this exact reservation.
+            bool available = CheckFailureRewindAvailability(placementId, attempt);
+            if (!ReferenceEquals(_openAttempt, attempt)) return RewardedShowOutcome.Unavailable;
+            if (!available)
+            {
+                _openAttempt = null;
+                _pendingPlacements.Remove(placementId);
+                attempt.CompletionLatched = true;
+                attempt.FailureCompleted = null;
+                attempt.ProviderLifecycle = null;
+                // A plain pre-display refusal retains the existing public no-attempt result.
+                // Cancellation above instead keeps the exact ID already delivered to the route.
+                attemptId = 0L;
+                CompleteFailureImmediate(completed, placementId, RewardedAdCompletionKind.Unavailable);
+                return RewardedShowOutcome.Unavailable;
+            }
+            try
+            {
+                if (_provider.TryShow(attemptId, placementId))
+                {
+                    RaiseAvailabilityChanged();
+                    return RewardedShowOutcome.Started;
+                }
+            }
+            catch { _providerFailed = true; }
+            // Synchronous terminal callbacks already own completion and cleanup.
+            if (!ReferenceEquals(_openAttempt, attempt)) return RewardedShowOutcome.Unavailable;
+            _openAttempt = null;
+            _pendingPlacements.Remove(placementId);
+            CompleteAttempt(attempt, RewardedAdCompletionKind.DisplayFailed);
+            SafeLoad();
+            RaiseAvailabilityChanged();
+            return RewardedShowOutcome.Unavailable;
+        }
+
+        public void AbandonFailureRewind(long attemptId)
+        {
+            var attempt = _openAttempt;
+            if (attempt == null || attempt.Id != attemptId || !attempt.IsFailureRewind ||
+                attempt.RewardLatched) return;
+            _openAttempt = null;
+            _pendingPlacements.Remove(attempt.Placement.Id);
+            CompleteAttempt(attempt, RewardedAdCompletionKind.Cancelled);
+            SafeLoad();
+            if (!_disposed) RaiseAvailabilityChanged();
+        }
+
+        private static void CompleteFailureImmediate(Action<FailureRewindAdCompletion> completed,
+            string placementId, RewardedAdCompletionKind kind)
+        {
+            try { completed?.Invoke(new FailureRewindAdCompletion(0L, placementId, kind)); }
+            catch { }
         }
 
         public bool CanShow(string placementId, string entitlementId)
@@ -426,6 +588,9 @@ namespace CatMetro.Services.Ads
 
                 switch (adEvent.Kind)
                 {
+                    case RewardedAdEventKind.Displayed:
+                        OnDisplayed(adEvent);
+                        break;
                     case RewardedAdEventKind.Rewarded:
                         OnRewarded(adEvent);
                         break;
@@ -462,6 +627,16 @@ namespace CatMetro.Services.Ads
             // Set first: lease persistence can synchronously publish observers that re-enter the
             // provider fake/native bridge with a duplicate reward callback.
             attempt.RewardLatched = true;
+            if (attempt.IsFailureRewind)
+            {
+                bool consumed = false;
+                try { consumed = _failureCaps.TryConsumeFailureRewind(_nowUnixSeconds(), _localDateKey()); }
+                catch { }
+                CompleteAttempt(attempt, consumed ? RewardedAdCompletionKind.Granted
+                    : RewardedAdCompletionKind.GrantFailed, adEvent);
+                RaiseAvailabilityChanged();
+                return;
+            }
             AdGrantOutcome outcome;
             try { outcome = _purchases.GrantRewardedAdEntitlement(attempt.Placement.EntitlementId); }
             catch { outcome = AdGrantOutcome.PersistenceFailed; }
@@ -486,12 +661,12 @@ namespace CatMetro.Services.Ads
                 return;
             var attempt = _openAttempt;
             _openAttempt = null;
-            if (attempt.RewardLatched)
+            if (attempt.RewardLatched || attempt.IsFailureRewind)
                 _pendingPlacements.Remove(attempt.Placement.Id);
             else
                 RetainClosed(attempt);
             if (!attempt.RewardLatched)
-                CompleteAttempt(attempt, RewardedAdCompletionKind.ClosedWithoutReward);
+                CompleteAttempt(attempt, RewardedAdCompletionKind.ClosedWithoutReward, adEvent);
             SafeLoad();
             RaiseAvailabilityChanged();
         }
@@ -501,9 +676,12 @@ namespace CatMetro.Services.Ads
             var attempt = FindAttempt(adEvent.AttemptId, adEvent.PlacementId);
             if (attempt == null) return;
             if (ReferenceEquals(attempt, _openAttempt)) _openAttempt = null;
-            CompleteAttempt(attempt, RewardedAdCompletionKind.DisplayFailed);
+            if (!attempt.IsFailureRewind)
+                CompleteAttempt(attempt, RewardedAdCompletionKind.DisplayFailed);
             RemoveRetained(attempt);
             _pendingPlacements.Remove(attempt.Placement.Id);
+            if (attempt.IsFailureRewind)
+                CompleteAttempt(attempt, RewardedAdCompletionKind.DisplayFailed, adEvent);
             SafeLoad();
             RaiseAvailabilityChanged();
         }
@@ -517,6 +695,17 @@ namespace CatMetro.Services.Ads
                 StringComparison.Ordinal) ? attempt : null;
         }
 
+        private void OnDisplayed(RewardedAdEvent adEvent)
+        {
+            var attempt = FindAttempt(adEvent.AttemptId, adEvent.PlacementId);
+            if (attempt == null || !attempt.IsFailureRewind || attempt.CompletionLatched ||
+                attempt.DisplayLatched) return;
+            attempt.DisplayLatched = true;
+            attempt.LastProviderEvent = adEvent;
+            try { attempt.ProviderLifecycle?.Invoke(adEvent); }
+            catch { }
+        }
+
         private static void CompleteImmediate(Action<RewardedAdCompletion> completed,
             string placementId, string entitlementId, RewardedAdCompletionKind kind)
         {
@@ -524,10 +713,26 @@ namespace CatMetro.Services.Ads
             catch { }
         }
 
-        private static void CompleteAttempt(Attempt attempt, RewardedAdCompletionKind kind)
+        private static void CompleteAttempt(Attempt attempt, RewardedAdCompletionKind kind,
+            RewardedAdEvent? providerEvent = null)
         {
             if (attempt == null || attempt.CompletionLatched) return;
             attempt.CompletionLatched = true;
+            if (attempt.IsFailureRewind)
+            {
+                var failureCompleted = attempt.FailureCompleted;
+                attempt.FailureCompleted = null;
+                attempt.ProviderLifecycle = null;
+                var metadata = providerEvent ?? attempt.LastProviderEvent;
+                try
+                {
+                    failureCompleted?.Invoke(new FailureRewindAdCompletion(attempt.Id,
+                        attempt.Placement.Id, kind, metadata.AdUnitId, metadata.NetworkName,
+                        metadata.ErrorCode));
+                }
+                catch { }
+                return;
+            }
             var completed = attempt.Completed;
             attempt.Completed = null;
             try
@@ -769,6 +974,11 @@ namespace CatMetro.Services.Ads
             public bool RewardLatched;
             public bool CompletionLatched;
             public Action<RewardedAdCompletion> Completed;
+            public Action<FailureRewindAdCompletion> FailureCompleted;
+            public Action<RewardedAdEvent> ProviderLifecycle;
+            public bool DisplayLatched;
+            public RewardedAdEvent LastProviderEvent;
+            public bool IsFailureRewind => Placement.RewardKind == RewardedRewardKind.FailureRewind;
             public LinkedListNode<long> RetainedNode;
             public double RetainedUntilMonotonicSeconds;
             public bool RetainedDeadlineAnchored;

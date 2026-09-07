@@ -339,11 +339,31 @@ dashboard and confirm the PostHog integration is disabled:
 TASK 2 and TASK 3 must merge the commerce lane's actual RevenueCat SDK fields into this declaration.
 This branch did not inspect or claim those device payloads.
 
-No rewarded-ad producer was manufactured. `GameRoot.Analytics` remains the seam for TASK 11 to bind
-from the real ad-network start/completion/failure callbacks using the existing sanctioned
-`Events.RewardedAdStarted`, `Events.RewardedAdCompleted`, and `Events.RewardedAdFailed`
-constructors. TASK 11 must add its exact outbound fields to this declaration when that callback is
-real.
+Failure rewind now emits through `GameRoot.Analytics` and the metrics-only
+`Application/EventTaxonomy/FailureRewindAnalytics` adapter, using the existing sanctioned
+constructors. Its event parameters are:
+
+| Event | Parameters |
+| --- | --- |
+| `ad_offer_viewed` | `placement` = `rewind_failure`; `level_id` |
+| `ad_offer_declined` | `placement` = `rewind_failure` |
+| `rewarded_ad_started` | `placement` = `rewind_failure`; callback `network` and `ad_unit` |
+| `rewarded_ad_completed` | `placement` = `rewind_failure`; callback `network`; `reward_type` = `rewind`; `reward_amount` = 1 |
+| `rewarded_ad_failed` | `placement` = `rewind_failure`; callback `network`; `error_code` |
+| `rewind_used` | `level_id`; `source` = `rewarded`; `balance_after` as an invariant string |
+
+Viewing means the eligible offer was shown. Declining means choosing ordinary Retry while that
+offer is visible and no ad request is active. Started follows the provider's Displayed callback,
+not the offer tap. Completion and rewind usage follow a granted result after the prepared session
+has been installed; the reported balance is the current unchanged nonnegative Int32 rewind
+balance, or `0` when absent or malformed. Failed covers non-granted results: the numeric error code
+is an invariant string when present, otherwise the completion-kind name (including `Cancelled`). Missing network or ad-unit
+metadata is `unknown`. This path supplies no `eligibility_reason` or `revenue_micros` parameter.
+
+These are the application-produced fields, subject to the same capture and transport gates above.
+Native provider metadata and actual device network payloads still require verification; the pure
+adapter tests do not establish native ad delivery, RevenueCat AdTracker forwarding, or on-device
+privacy/consent behavior.
 
 ## TASK 2 / TASK 3 store-form handoff
 

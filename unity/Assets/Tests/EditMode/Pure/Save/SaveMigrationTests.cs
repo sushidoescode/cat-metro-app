@@ -11,6 +11,86 @@ namespace CatMetro.Tests.Save
     public sealed class SaveMigrationTests
     {
         [Test]
+        public void DefaultV3ToV4_AddsSessionCounterAndPreservesDailyAndUnknownSiblings()
+        {
+            var v3 = SaveDefaults.FreshPayload();
+            v3["saveVersion"] = 3;
+            var caps = (JObject)v3["caps"];
+            caps.Remove("sessionCounters");
+            caps["counters"]["rewind_failure"] = 4;
+            caps["future"] = new JArray("opaque", 3);
+            var before = v3.DeepClone();
+            var migrated = MigrationTable.CreateDefault().Migrate(v3, 3, 4);
+            Assert.That(migrated, Is.Not.Null);
+            Assert.That((int)migrated["saveVersion"], Is.EqualTo(4));
+            Assert.That((int)migrated["caps"]["sessionCounters"]["rewind_failure"], Is.Zero);
+            ((JObject)migrated["caps"]).Remove("sessionCounters");
+            migrated["saveVersion"] = 3;
+            Assert.That(JToken.DeepEquals(migrated, before), Is.True);
+        }
+
+        [Test]
+        public void DefaultV3ToV4_PreservesExistingSessionCounterAndUnknownKeys()
+        {
+            var v3 = SaveDefaults.FreshPayload();
+            v3["caps"]["sessionCounters"] = new JObject
+                { ["rewind_failure"] = 2, ["future"] = new JArray(3, 5) };
+            var migrated = MigrationTable.CreateDefault().Migrate(v3, 3, 4);
+            Assert.That(migrated, Is.Not.Null);
+            Assert.That((int)migrated["caps"]["sessionCounters"]["rewind_failure"], Is.EqualTo(2));
+            Assert.That(JToken.DeepEquals(migrated["caps"]["sessionCounters"]["future"], new JArray(3, 5)), Is.True);
+        }
+
+        [TestCase("caps")]
+        [TestCase("caps.sessionCounters")]
+        public void DefaultV3ToV4_MalformedContainerIsPreservedForCapRefusal(string path)
+        {
+            var v3 = SaveDefaults.FreshPayload();
+            if (path == "caps") v3["caps"] = "bad";
+            else v3["caps"]["sessionCounters"] = "bad";
+            var migrated = MigrationTable.CreateDefault().Migrate(v3, 3, 4);
+            Assert.That(migrated, Is.Not.Null);
+            Assert.That((string)migrated.SelectToken(path), Is.EqualTo("bad"));
+        }
+
+        [TestCase("caps")]
+        [TestCase("caps.sessionCounters")]
+        public void V3Load_MalformedCapsPreservesProgressAndCannotEstablishFreshRewindCapacity(string path)
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            var v3 = SaveDefaults.FreshPayload();
+            v3["saveVersion"] = 3;
+            v3["economy"]["tickets"] = 42;
+            v3["progress"]["levels"] = new JArray(new JObject { ["id"] = "L001", ["stars"] = 3 });
+            v3["caps"]["counters"]["rewind_failure"] = 5;
+            v3["future"] = new JArray("keep", 17);
+            v3.SelectToken(path).Replace(new JValue("bad"));
+            var originalBytes = SFixtures.FileWithVersion(3, v3);
+            SFixtures.WriteRaw(store.SavePath, originalBytes);
+            var expected = (JObject)v3.DeepClone();
+            expected["saveVersion"] = 4;
+
+            Assert.That(store.Load(), Is.EqualTo(LoadResult.Ok));
+            Assert.That(JToken.DeepEquals(store.State.Payload, expected), Is.True);
+            var capStore = new RewardedAdSaveStore(store);
+            Assert.That(capStore.TryTouchFailureRewindSession(1788609600L, "2026-09-05", allowSessionRollover: true), Is.False);
+            Assert.That(capStore.CanOfferFailureRewind(1788609600L, "2026-09-05"), Is.False);
+            Assert.That(capStore.TryConsumeFailureRewind(1788609600L, "2026-09-05"), Is.False);
+            Assert.That(JToken.DeepEquals(store.State.Payload, expected), Is.True);
+            Assert.That(SFixtures.RawFile(store.SavePath), Is.EqualTo(originalBytes));
+
+            // An unrelated successful save must retain the malformed cap and the refusal
+            // across the next (now v4) load, rather than restoring default capacity.
+            Assert.That(store.TryCommitAtomic(), Is.True);
+            var reloaded = SFixtures.Store(root);
+            Assert.That(reloaded.Load(), Is.EqualTo(LoadResult.Ok));
+            Assert.That(JToken.DeepEquals(reloaded.State.Payload, expected), Is.True);
+            Assert.That(new RewardedAdSaveStore(reloaded)
+                .TryTouchFailureRewindSession(1788611400L, "2026-09-05", allowSessionRollover: true), Is.False);
+        }
+
+        [Test]
         public void MigrationTable_AppliesRegisteredStepsInOrder_V2ToV3()
         {
             var table = new MigrationTable()
@@ -221,7 +301,7 @@ namespace CatMetro.Tests.Save
         }
 
         [Test]
-        public void SaveStore_DefaultMigration_RoundTripsRealV1FileAsUnionedV3Bytes()
+        public void SaveStore_DefaultMigration_RoundTripsRealV1FileAsUnionedV4Bytes()
         {
             using var root = new SFixtures.TempRoot();
             var store = SFixtures.Store(root);
@@ -254,15 +334,15 @@ namespace CatMetro.Tests.Save
             SFixtures.WriteRaw(store.SavePath, SFixtures.FileWithVersion(1, legacy));
 
             Assert.That(store.Load(), Is.EqualTo(LoadResult.Ok));
-            Assert.That((int)store.State.Payload["saveVersion"], Is.EqualTo(3));
+            Assert.That((int)store.State.Payload["saveVersion"], Is.EqualTo(4));
             Assert.That(store.TryCommitAtomic(), Is.True);
 
             var header = SaveHeader.TryParse(SFixtures.RawFile(store.SavePath),
                 SaveDefaults.MAGIC, out var payloadBytes);
             Assert.That(header, Is.Not.Null);
-            Assert.That(header.SaveVersion, Is.EqualTo(3));
+            Assert.That(header.SaveVersion, Is.EqualTo(4));
             var filePayload = JObject.Parse(System.Text.Encoding.UTF8.GetString(payloadBytes));
-            Assert.That((int)filePayload["saveVersion"], Is.EqualTo(3));
+            Assert.That((int)filePayload["saveVersion"], Is.EqualTo(4));
             Assert.That(filePayload["daily"]["completedKeys"], Is.InstanceOf<JArray>());
             Assert.That((bool)filePayload["settings"]["dailyReminderEnabled"], Is.False);
             Assert.That(filePayload["entitlements"]["localLeases"], Is.InstanceOf<JArray>());
@@ -274,12 +354,12 @@ namespace CatMetro.Tests.Save
             Assert.That(JToken.DeepEquals(filePayload["futureExperiment"], expectedUnknown), Is.True);
             Assert.That(JToken.DeepEquals(filePayload["caps"]["counters"],
                 expectedLegacyCounters), Is.True,
-                "the committed v3 artifact must retain every legacy cap value");
+                "the committed v4 artifact must retain every legacy cap value");
 
             var reloaded = SFixtures.Store(root);
             Assert.That(reloaded.Load(), Is.EqualTo(LoadResult.Ok));
             Assert.That(JToken.DeepEquals(reloaded.State.Payload, filePayload), Is.True,
-                "the serialized v3 artifact must reload without another migration or data loss");
+                "the serialized v4 artifact must reload without another migration or data loss");
             Assert.That(JToken.DeepEquals(reloaded.State.Payload["profile"]["cosmetics"],
                 expectedDefaultCosmetics), Is.True,
                 "the reloaded artifact must retain the canonical cosmetics default inserted for v1");
@@ -291,7 +371,7 @@ namespace CatMetro.Tests.Save
             var table = MigrationTable.CreateDefault();
             Assert.That(table.Migrate(SaveDefaults.FreshPayload(), SaveDefaults.SAVE_VERSION,
                 SaveDefaults.SAVE_VERSION + 1), Is.Null,
-                "the default table must contain no unpublished v3->v4 production step");
+                "the default table must contain no unpublished migration beyond the current version");
         }
 
         [Test]

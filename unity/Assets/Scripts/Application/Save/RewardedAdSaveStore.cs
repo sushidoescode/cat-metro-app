@@ -1,16 +1,155 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using CatMetro.Application.Analytics;
 using CatMetro.Services.Ads;
 using CatMetro.Services.Purchases;
 using Newtonsoft.Json.Linq;
 
 namespace CatMetro.Application.Save
 {
-    // Stores only local rewarded-ad leases in the existing durable payload. It has no catalogue
-    // or clock policy: PurchaseService validates restore rows against the live game data.
-    public sealed class RewardedAdSaveStore : IEntitlementLeasePersistence, IRewardedAdCapStore
+    // Stores local rewarded-ad leases and caps in the durable payload. PurchaseService validates
+    // lease rows. Failure rewind uses the ADR-0006 §2 dual cap for account health (SEC-24),
+    // not anti-cheat: a local save/clock remains player-controlled.
+    public sealed class RewardedAdSaveStore : IEntitlementLeasePersistence, IRewardedAdCapStore,
+        IFailureRewindCapStore
     {
         private readonly SaveStore _store;
+
+        private bool _failureSessionReady;
+        private const string FailureKey = "rewind_failure";
+        private static readonly string[] DailyKeys =
+            { FailureKey, "double_tickets", "daily_gift_double", "streak_saver", "theme_rental" };
+
+        public bool TryTouchFailureRewindSession(long nowUnixSeconds, string localDateKey,
+            bool allowSessionRollover)
+        {
+            _failureSessionReady = false;
+            return TryWriteFailureRewind(nowUnixSeconds, localDateKey, consume: false,
+                allowSessionRollover);
+        }
+
+        public bool CanOfferFailureRewind(long nowUnixSeconds, string localDateKey)
+        {
+            if (!_failureSessionReady || _store.ReadOnlyMode) return false;
+            try
+            {
+                if (!TryReadFailureState(_store.State.Payload, nowUnixSeconds, localDateKey,
+                    allowSessionRollover: false, out var state) || state.SessionCount == 0) return false;
+                return state.SessionUsed < 2 && state.DailyUsed < 5;
+            }
+            catch { return false; }
+        }
+
+        public bool TryConsumeFailureRewind(long nowUnixSeconds, string localDateKey)
+        {
+            if (!_failureSessionReady) return false;
+            return TryWriteFailureRewind(nowUnixSeconds, localDateKey, consume: true,
+                allowSessionRollover: false);
+        }
+
+        private bool TryWriteFailureRewind(long now, string dateKey, bool consume,
+            bool allowSessionRollover)
+        {
+            var original = _store.State.Payload;
+            try
+            {
+                if (_store.ReadOnlyMode || !TryReadFailureState(original, now, dateKey,
+                    allowSessionRollover, out var state) || (state.SessionCount == 0 && !state.NewSession))
+                {
+                    _failureSessionReady = false;
+                    return false;
+                }
+                if (consume && (state.SessionUsed >= 2 || state.DailyUsed >= 5)) return false;
+                var candidate = (JObject)original.DeepClone();
+                var profile = (JObject)candidate["profile"];
+                var caps = (JObject)candidate["caps"];
+                if (state.NewSession)
+                {
+                    profile["sessionCount"] = state.SessionCount == int.MaxValue
+                        ? int.MaxValue : state.SessionCount + 1;
+                    caps["sessionCounters"][FailureKey] = 0;
+                }
+                profile["lastSeenAtUtc"] = now;
+                if (consume)
+                {
+                    // Daily rollover and both increments share this one durable transaction.
+                    // Unknown counters/siblings and the separate cosmetic rewarded caps survive.
+                    if (state.NewDate)
+                    {
+                        caps["dateKey"] = dateKey;
+                        foreach (var key in DailyKeys) caps["counters"][key] = 0;
+                    }
+                    caps["sessionCounters"][FailureKey] = state.SessionUsed + 1;
+                    caps["counters"][FailureKey] = state.DailyUsed + 1;
+                }
+                _store.State.Payload = candidate;
+                if (_store.TryCommitAtomic())
+                {
+                    _failureSessionReady = true;
+                    return true;
+                }
+            }
+            catch
+            {
+                // Initialization, touch, session reset and consumption all fail closed on IO.
+            }
+            _store.State.Payload = original;
+            _failureSessionReady = false;
+            return false;
+        }
+
+        private readonly struct FailureState
+        {
+            public readonly int SessionCount, SessionUsed, DailyUsed;
+            public readonly bool NewSession, NewDate;
+            public FailureState(int count, int sessionUsed, int dailyUsed, bool newSession, bool newDate)
+            {
+                SessionCount = count; SessionUsed = sessionUsed; DailyUsed = dailyUsed;
+                NewSession = newSession; NewDate = newDate;
+            }
+        }
+
+        private static bool TryReadFailureState(JObject payload, long now, string dateKey,
+            bool allowSessionRollover, out FailureState state)
+        {
+            state = default;
+            if (now <= 0 || !IsLocalDate(dateKey) ||
+                !(payload?["profile"] is JObject profile) || !(payload["caps"] is JObject caps) ||
+                !(caps["counters"] is JObject daily) || !(caps["sessionCounters"] is JObject session) ||
+                !TryReadCount(session[FailureKey], out int sessionUsed) ||
+                !TryReadCount(profile["sessionCount"], out int sessionCount) ||
+                !(profile["lastSeenAtUtc"] is JValue seen) || seen.Type != JTokenType.Integer ||
+                !(caps["dateKey"] is JValue savedDate) || savedDate.Type != JTokenType.String)
+                return false;
+            long lastSeen = (long)seen;
+            if (lastSeen < 0 || ((sessionCount == 0) != (lastSeen == 0))) return false;
+            string previousDate = (string)savedDate;
+            if (previousDate != "" && !IsLocalDate(previousDate)) return false;
+            foreach (var key in DailyKeys)
+                if (!TryReadCount(daily[key], out _)) return false;
+            TryReadCount(daily[FailureKey], out int dailyUsed);
+            bool newSession = allowSessionRollover && (sessionCount == 0
+                || now - lastSeen >= AnalyticsAppSession.SessionTimeoutSeconds
+                || now / 86400L > lastSeen / 86400L);
+            bool newDate = !string.Equals(previousDate, dateKey, StringComparison.Ordinal);
+            state = new FailureState(sessionCount, newSession ? 0 : sessionUsed,
+                newDate ? 0 : dailyUsed, newSession, newDate);
+            return true;
+        }
+
+        private static bool IsLocalDate(string value) => DateTime.TryParseExact(value, "yyyy-MM-dd",
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
+
+        private static bool TryReadCount(JToken token, out int count)
+        {
+            count = 0;
+            if (!(token is JValue value) || value.Type != JTokenType.Integer) return false;
+            long number = (long)value;
+            if (number < 0 || number > int.MaxValue) return false;
+            count = (int)number;
+            return true;
+        }
 
         public RewardedAdSaveStore(SaveStore store)
         {

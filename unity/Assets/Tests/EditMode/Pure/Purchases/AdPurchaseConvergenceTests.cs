@@ -433,6 +433,108 @@ namespace CatMetro.Tests.Purchases
         // ---- placements are checked against the same entitlement table -------------------
 
         [Test]
+        public void FailureRewindPlacement_ParsesWithoutEntitlementCatalog()
+        {
+            var placements = RewardedPlacementCatalog.Parse(@"{
+              ""placements"": [ { ""id"": ""rewind_failure"", ""rewardKind"": ""failure_rewind"",
+                ""caps"": { ""session"": 2, ""localDate"": 5 }, ""enabled"": true } ]
+            }", null);
+            Assert.That(placements.Problems, Is.Empty);
+            Assert.That(placements.TryGet("rewind_failure", out var placement), Is.True);
+            Assert.That(placement.EntitlementId, Is.Null.Or.Empty);
+            Assert.That(placement.RewardKind, Is.EqualTo(RewardedRewardKind.FailureRewind));
+            Assert.That(placement.Enabled, Is.True);
+        }
+
+        [TestCase("unknown")]
+        [TestCase("failure_rewind")]
+        public void InvalidRewardKindOrFailureWithEntitlement_IsDropped(string kind)
+        {
+            var placements = RewardedPlacementCatalog.Parse("{\"placements\":[{\"id\":\"p\","
+                + "\"rewardKind\":\"" + kind + "\",\"entitlement\":\"outfit_conductor\",\"enabled\":true}]}",
+                PFixtures.TinyCatalog());
+            Assert.That(placements.Placements, Is.Empty);
+            Assert.That(placements.Problems, Is.Not.Empty);
+        }
+
+        [TestCase("")]
+        [TestCase(",\"rewardKind\":\"entitlement_lease\"")]
+        public void CosmeticPlacement_DefaultAndExplicitKindRemainEntitlementLeases(string kind)
+        {
+            var placements = RewardedPlacementCatalog.Parse("{\"placements\":[{\"id\":\"p\","
+                + "\"entitlement\":\"outfit_conductor\",\"enabled\":true" + kind + "}]}", PFixtures.TinyCatalog());
+            Assert.That(placements.Problems, Is.Empty);
+            Assert.That(placements.TryGet("p", out var placement), Is.True);
+            Assert.That(placement.RewardKind, Is.EqualTo(RewardedRewardKind.EntitlementLease));
+        }
+
+        [TestCase("rewind_failure", "entitlement_lease", "outfit_conductor")]
+        [TestCase("other_failure", "failure_rewind", null)]
+        public void FailureRewindPlacement_RejectsWrongIdOrLeaseKind(string id, string kind, string entitlement)
+        {
+            var row = new Newtonsoft.Json.Linq.JObject
+            {
+                ["id"] = id, ["rewardKind"] = kind, ["entitlement"] = entitlement,
+                ["caps"] = new Newtonsoft.Json.Linq.JObject { ["session"] = 2, ["localDate"] = 5 },
+                ["enabled"] = true,
+            };
+            var placements = RewardedPlacementCatalog.Parse("{\"placements\":[" + row + "]}", PFixtures.TinyCatalog());
+            Assert.That(placements.Placements, Is.Empty);
+            Assert.That(placements.Problems, Is.Not.Empty);
+        }
+
+        [TestCase("{}")]
+        [TestCase("{\"session\":3,\"localDate\":5}")]
+        [TestCase("{\"session\":2,\"localDate\":6}")]
+        [TestCase("{\"session\":\"2\",\"localDate\":5}")]
+        [TestCase("{\"session\":2,\"localDate\":5,\"unknown\":1}")]
+        [TestCase("{\"session\":2,\"localDate\":-1}")]
+        public void FailureRewindPlacement_RejectsInvalidCapContract(string caps)
+        {
+            var placements = RewardedPlacementCatalog.Parse("{\"placements\":[{\"id\":\"rewind_failure\","
+                + "\"rewardKind\":\"failure_rewind\",\"enabled\":true,\"caps\":" + caps + "}]}", null);
+            Assert.That(placements.Placements, Is.Empty);
+            Assert.That(placements.Problems, Is.Not.Empty);
+        }
+
+        [TestCase("")]
+        [TestCase(",\"enabled\":false")]
+        [TestCase(",\"enabled\":\"true\"")]
+        [TestCase(",\"enabled\":null")]
+        [TestCase(",\"enabled\":{}")]
+        public void FailureRewindPlacement_RequiresExplicitBooleanEnabledTrue(string enabled)
+        {
+            var placements = RewardedPlacementCatalog.Parse("{\"placements\":[{\"id\":\"rewind_failure\","
+                + "\"rewardKind\":\"failure_rewind\",\"caps\":{\"session\":2,\"localDate\":5}" + enabled + "}]}", null);
+            Assert.That(placements.Placements, Is.Empty);
+            Assert.That(placements.Problems, Is.Not.Empty);
+        }
+
+        [TestCase("")]
+        [TestCase(",\"enabled\":false")]
+        [TestCase(",\"enabled\":\"true\"")]
+        public void CosmeticPlacement_PreservesDisabledDefaultCompatibility(string enabled)
+        {
+            var placements = RewardedPlacementCatalog.Parse("{\"placements\":[{\"id\":\"p\","
+                + "\"entitlement\":\"outfit_conductor\"" + enabled + "}]}", PFixtures.TinyCatalog());
+            Assert.That(placements.Problems, Is.Empty);
+            Assert.That(placements.TryGet("p", out var placement), Is.True);
+            Assert.That(placement.Enabled, Is.False);
+            Assert.That(placement.RewardKind, Is.EqualTo(RewardedRewardKind.EntitlementLease));
+        }
+
+        [TestCase("{\"id\":[],\"rewardKind\":\"failure_rewind\"}")]
+        [TestCase("{\"id\":\"rewind_failure\",\"rewardKind\":{}}")]
+        [TestCase("{\"id\":\"rewind_failure\",\"rewardKind\":\"failure_rewind\",\"entitlement\":[]}")]
+        public void MalformedPlacementRow_FailsClosedWithoutThrowing(string row)
+        {
+            RewardedPlacementCatalog placements = null;
+            Assert.DoesNotThrow(() => placements = RewardedPlacementCatalog.Parse("{\"placements\":[" + row + "]}", null));
+            Assert.That(placements.Placements, Is.Empty);
+            Assert.That(placements.Problems, Is.Not.Empty);
+        }
+
+        [Test]
         public void APlacementTargetingAnUndeclaredEntitlement_IsDropped()
         {
             var placements = RewardedPlacementCatalog.Parse(@"{
