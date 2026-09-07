@@ -17,7 +17,7 @@ namespace CatMetro.Presentation.Screens
         private static readonly string[] Keys = { "settings.sound", "settings.music", "settings.haptics", "settings.motion" };
         private readonly bool[] _values = new bool[4];
         private readonly Rect[] _rows = new Rect[4];
-        private readonly SettingsPill[] _pills = new SettingsPill[5];
+        private readonly ChromeChip[] _pills = new ChromeChip[5];
         private ChromeRegions _regions;
         private Rect _safeArea;
         private float _dpi;
@@ -47,7 +47,11 @@ namespace CatMetro.Presentation.Screens
             sheet._restore = MakeText(go.transform, "SettingsRestore", UiStrings.Get("wardrobe.restore"));
             sheet._status = MakeText(go.transform, "SettingsStatus", "");
             for (int i = 0; i < sheet._pills.Length; i++)
-                sheet._pills[i] = new SettingsPill(go.transform, "SettingsRow" + i);
+            {
+                sheet._pills[i] = ChromeChip.PaintPrimary(go.transform,
+                    new Rect(0, 0, 360, 56), "", Palette.MetroTeal, null, 160f);
+                sheet._pills[i].Root.name = "SettingsRow" + i;
+            }
             sheet.Hide();
             return sheet;
         }
@@ -63,9 +67,14 @@ namespace CatMetro.Presentation.Screens
             _daily = daily;
             if (_pills[0] == null) return;
             for (int i = 0; i < _values.Length; i++)
+            {
                 _pills[i].SetLabel(UiStrings.Get(Keys[i]) + "   " + UiStrings.Get(
-                    _values[i] ? "reminder.settings.on" : "reminder.settings.off"), _values[i]);
-            _pills[4].SetLabel(UiStrings.Get("reminder.settings.title"), false);
+                    _values[i] ? "reminder.settings.on" : "reminder.settings.off"));
+                _pills[i].SetRingColour(_values[i] ? Palette.MetroTeal
+                    : Color.Lerp(Palette.CreamCard, Palette.InkNavy, .3f));
+            }
+            _pills[4].SetLabel(UiStrings.Get("reminder.settings.title"));
+            _pills[4].SetRingColour(Color.Lerp(Palette.CreamCard, Palette.InkNavy, .3f));
             _pills[4].Root.gameObject.SetActive(_daily);
             if (IsVisible)
             {
@@ -92,19 +101,23 @@ namespace CatMetro.Presentation.Screens
             _title.alignment = TextAlignmentOptions.MidlineLeft;
             CloseRectPx = new Rect(CardRectPx.xMax - 82f * p, CardRectPx.yMax - 66f * p, 68f * p, 44f * p);
             ApplyPx(_close.rectTransform, CloseRectPx);
+            float layoutDpi = p * HudBands.FallbackDpi;
             for (int i = 0; i < count; i++)
             {
                 var row = new Rect(CardRectPx.x + 18f * p, CardRectPx.yMax - (140f + i * 68f) * p,
                     width - 36f * p, 56f * p);
                 if (i < 4) _rows[i] = row; else ReminderRectPx = row;
-                _pills[i].LayoutFace(row, p);
+                TypeScale.Apply(_pills[i].Label, TypeScale.Body, layoutDpi);
+                _pills[i].LayoutFace(row, layoutDpi);
             }
             if (!_daily) ReminderRectPx = default;
             RestoreRectPx = new Rect(CardRectPx.x + 18f * p, CardRectPx.y + 28f * p, width - 36f * p, 40f * p);
             ApplyPx(_restore.rectTransform, RestoreRectPx);
             ApplyPx(_status.rectTransform, new Rect(CardRectPx.x + 12f * p, CardRectPx.y + 4f * p, width - 24f * p, 24f * p));
-            ApplyType(_title, 28, p); ApplyType(_close, 14, p);
-            ApplyType(_restore, 14, p); ApplyType(_status, 12, p);
+            TypeScale.Apply(_title, TypeScale.Title, layoutDpi);
+            TypeScale.Apply(_close, TypeScale.Caption, layoutDpi);
+            TypeScale.Apply(_restore, TypeScale.Caption, layoutDpi, body: true);
+            TypeScale.Apply(_status, TypeScale.Minimum, layoutDpi, body: true);
         }
 
         public void Show()
@@ -161,40 +174,6 @@ namespace CatMetro.Presentation.Screens
         private void OnDisable() => Unregister();
         private void OnDestroy() => Unregister();
 
-        // Temporary lane D adapter. Replace this paint with ChromeChip.PaintPrimary + LayoutFace
-        // after the foundation reaches main; sheet behavior and hit regions stay here.
-        private sealed class SettingsPill
-        {
-            public readonly RectTransform Root;
-            private readonly Image _ring;
-            private readonly TMP_Text _label;
-            public SettingsPill(Transform parent, string name)
-            {
-                _ring = MakeImage(parent, name, Palette.MetroTeal, true);
-                Root = _ring.rectTransform;
-                var face = MakeImage(Root, "CreamFace", Palette.CreamCard, true);
-                face.rectTransform.offsetMin = Vector2.one * 2;
-                face.rectTransform.offsetMax = -Vector2.one * 2;
-                _label = MakeText(Root, "Label", "");
-                Stretch(_label.rectTransform);
-                _label.rectTransform.offsetMin = new Vector2(14, 4);
-                _label.rectTransform.offsetMax = new Vector2(-14, -4);
-            }
-            public void SetLabel(string label, bool selected)
-            {
-                _label.text = label;
-                _ring.color = selected ? Palette.MetroTeal : Palette.WithAlpha(Palette.InkNavy, .35f);
-            }
-            public void LayoutFace(Rect rect, float p) { ApplyPx(Root, rect); ApplyType(_label, 20, p); }
-        }
-        // Temporary lane C call site: TMP defaults to Fredoka when C's atlas foundation lands.
-        private static void ApplyType(TMP_Text text, float dp, float pxPerDp)
-        {
-            text.enableAutoSizing = true;
-            text.fontSizeMin = 12f * pxPerDp;
-            text.fontSizeMax = dp * pxPerDp;
-            text.fontSize = text.fontSizeMax;
-        }
         private static TMP_Text MakeText(Transform parent, string name, string value)
         {
             var go = new GameObject(name, typeof(RectTransform));
