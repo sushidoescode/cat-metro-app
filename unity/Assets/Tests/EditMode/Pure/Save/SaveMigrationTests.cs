@@ -30,6 +30,69 @@ namespace CatMetro.Tests.Save
         }
 
         [Test]
+        public void V3FileToV4_RoundTripPreservesOwnedEquippedConductorDailyUnlockCompletionAndMutedAudio()
+        {
+            using var root = new SFixtures.TempRoot();
+            var store = SFixtures.Store(root);
+            var v3 = SaveDefaults.FreshPayload();
+            v3["saveVersion"] = 3;
+            ((JObject)v3["caps"]).Remove("sessionCounters");
+            v3["profile"]["cosmetics"]["selectedCatId"] = "red_tabby";
+            v3["profile"]["cosmetics"]["loadouts"] = new JArray(new JObject
+            {
+                ["catId"] = "red_tabby",
+                ["outfitId"] = "outfit_conductor",
+                ["accessoryId"] = "",
+                ["frameId"] = "",
+            });
+            v3["entitlements"]["active"] = new JArray("outfit_conductor");
+            v3["progress"]["levels"] = new JArray(
+                new JObject { ["id"] = "L001", ["stars"] = 3, ["bestScore"] = 101, ["clears"] = 1 },
+                new JObject { ["id"] = "L002", ["stars"] = 3, ["bestScore"] = 102, ["clears"] = 1 },
+                new JObject { ["id"] = "L003", ["stars"] = 3, ["bestScore"] = 103, ["clears"] = 1 },
+                new JObject { ["id"] = "L004", ["stars"] = 3, ["bestScore"] = 104, ["clears"] = 1 },
+                new JObject { ["id"] = "L005", ["stars"] = 3, ["bestScore"] = 105, ["clears"] = 1 },
+                new JObject { ["id"] = "L006", ["stars"] = 3, ["bestScore"] = 106, ["clears"] = 1 },
+                new JObject { ["id"] = "L007", ["stars"] = 3, ["bestScore"] = 107, ["clears"] = 1 });
+            v3["daily"]["trustedDateKey"] = "2026-09-05";
+            v3["daily"]["completedKeys"] = new JArray("2026-09-05");
+            v3["daily"]["lifetimeCompletions"] = 1;
+            v3["settings"]["audio"] = false;
+            var before = (JObject)v3.DeepClone();
+            SFixtures.WriteRaw(store.SavePath, SFixtures.FileWithVersion(3, v3));
+
+            Assert.That(store.Load(), Is.EqualTo(LoadResult.Ok));
+            Assert.That((int)store.State.Payload["saveVersion"], Is.EqualTo(4));
+            Assert.That(JToken.DeepEquals(store.State.Payload["caps"]["sessionCounters"],
+                new JObject { ["rewind_failure"] = 0 }), Is.True);
+            var daily = new DailyProgressTracker(store);
+            Assert.That(daily.CampaignCompletions, Is.EqualTo(7));
+            Assert.That(daily.IsDailyUnlocked(7), Is.True);
+            Assert.That(daily.LifetimeCompletions, Is.EqualTo(1));
+            Assert.That(store.State.Payload["daily"]["completedKeys"].Values<string>(),
+                Is.EqualTo(new[] { "2026-09-05" }));
+            Assert.That((bool)store.State.Payload["settings"]["audio"], Is.False);
+            Assert.That(store.State.Payload["entitlements"]["active"].Values<string>(),
+                Is.EqualTo(new[] { "outfit_conductor" }));
+            var loadout = (JObject)store.State.Payload["profile"]["cosmetics"]["loadouts"][0];
+            Assert.That((string)loadout["catId"], Is.EqualTo("red_tabby"));
+            Assert.That((string)loadout["outfitId"], Is.EqualTo("outfit_conductor"));
+            Assert.That(store.TryCommitAtomic(), Is.True);
+
+            var header = SaveHeader.TryParse(SFixtures.RawFile(store.SavePath),
+                SaveDefaults.MAGIC, out _);
+            Assert.That(header, Is.Not.Null);
+            Assert.That(header.SaveVersion, Is.EqualTo(4));
+            var reloaded = SFixtures.Store(root);
+            Assert.That(reloaded.Load(), Is.EqualTo(LoadResult.Ok));
+            var normalized = (JObject)reloaded.State.Payload.DeepClone();
+            ((JObject)normalized["caps"]).Remove("sessionCounters");
+            normalized["saveVersion"] = 3;
+            Assert.That(JToken.DeepEquals(normalized, before), Is.True,
+                "v3-to-v4 may add only the durable failure-rewind session counter");
+        }
+
+        [Test]
         public void DefaultV3ToV4_PreservesExistingSessionCounterAndUnknownKeys()
         {
             var v3 = SaveDefaults.FreshPayload();
