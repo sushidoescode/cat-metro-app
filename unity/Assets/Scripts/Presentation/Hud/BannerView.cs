@@ -1,5 +1,6 @@
 using UnityEngine;
 using TMPro;
+using CatMetro.Presentation.Theme;
 
 namespace CatMetro.Presentation.Hud
 {
@@ -52,8 +53,8 @@ namespace CatMetro.Presentation.Hud
             view._text.alignment = TextAlignmentOptions.Center;
             view._text.enableWordWrapping = true;
             view._text.enableAutoSizing = true;
-            view._text.fontSizeMin = 22f;
-            view._text.fontSizeMax = 50f;
+            TypeScale.Apply(view._text, TypeScale.Title, Screen.dpi);
+            view._text.fontSharedMaterial = TypeScale.BoardTitleMaterial;
             view._text.color = Color.white;
             view.Layout(Screen.safeArea, Screen.dpi);
             return view;
@@ -90,6 +91,8 @@ namespace CatMetro.Presentation.Hud
         // renders a capture, rather than trusting the editor's convenient landscape Game view.
         public void LayoutForViewport(Rect safeArea, float dpi)
         {
+            TypeScale.Apply(_text, TypeScale.Title, dpi);
+            _text.fontSharedMaterial = TypeScale.BoardTitleMaterial;
             float inset = Mathf.Max(safeArea.width * HorizontalInsetFraction,
                 16f * HudBands.PxPerDp(dpi));
             float width = Mathf.Max(0f, safeArea.width - inset * 2f);

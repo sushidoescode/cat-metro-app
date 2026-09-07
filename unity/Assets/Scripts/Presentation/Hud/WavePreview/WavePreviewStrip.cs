@@ -220,6 +220,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 // face's accessibility motion without introducing a scene Renderer.
                 var token = AddLabel(face.transform, "cat-token", Palette.InkNavy);
                 token.fontStyle = FontStyles.Bold;
+                token.fontSizeMin = 6f; // Temporary token letter: lane B rank 7 removes it.
                 token.gameObject.SetActive(false);
                 _tokens.Add(token);
                 // Construct TMP while the parent is active so its delayed Awake cannot restore
@@ -418,6 +419,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
             float faceSize = _capsulePx.height * FaceSizeFraction;
             float gap = faceSize * FaceGapFraction;
             PlacePx(_faceRow, _capsulePx);
+            TypeScale.Apply(_overflow, TypeScale.Body, dpi, body: true);
 
             // Centre the row of faces (plus the overflow tail) inside the capsule.
             bool hasOverflow = _overflow.text.Length > 0;
@@ -439,7 +441,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 cursor += -faceSize * 0.5f + overflowWidth * 0.5f;
                 PlaceCentred((RectTransform)_overflow.transform,
                     new Vector2(cursor, 0f), new Vector2(overflowWidth, faceSize));
-                _overflow.fontSizeMax = faceSize * 0.62f;
+                _overflow.fontSizeMax = Mathf.Max(_overflow.fontSizeMin, faceSize * 0.62f);
             }
 
             LayoutCounters();
@@ -461,8 +463,11 @@ namespace CatMetro.Presentation.Hud.WavePreview
             x += gap;
             PlaceCounter(_ridersMark, _riders, x, centreY, mark, textWidth, gap, row);
 
-            _deliveries.fontSizeMax = row;
-            _riders.fontSizeMax = row;
+            TypeScale.Apply(_deliveries, TypeScale.Body, _lastDpi, body: true);
+            TypeScale.Apply(_riders, TypeScale.Body, _lastDpi, body: true);
+            TypeScale.Apply(_flipBudget, TypeScale.Caption, _lastDpi, body: true);
+            _deliveries.fontSizeMax = Mathf.Max(_deliveries.fontSizeMin, row);
+            _riders.fontSizeMax = Mathf.Max(_riders.fontSizeMin, row);
 
             if (_flipBudget.gameObject.activeSelf)
             {
@@ -471,7 +476,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
                     new Rect(_counterPx.xMax - budgetWidth, _counterPx.y,
                         budgetWidth, _counterPx.height));
                 _flipBudget.alignment = TextAlignmentOptions.Right;
-                _flipBudget.fontSizeMax = row;
+                _flipBudget.fontSizeMax = Mathf.Max(_flipBudget.fontSizeMin, row);
             }
         }
 
@@ -574,8 +579,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
             text.alignment = TextAlignmentOptions.Center;
             text.enableWordWrapping = false;
             text.enableAutoSizing = true;
-            text.fontSizeMin = 6f;
-            text.fontSizeMax = 40f;
+            TypeScale.Apply(text, TypeScale.Caption, body: true);
             text.color = color;
             text.raycastTarget = false;
             return text;

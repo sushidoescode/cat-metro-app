@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using CatMetro.Presentation.Theme;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Input;
 
@@ -80,6 +81,9 @@ namespace CatMetro.Presentation.Screens
                 Vector2.zero, Vector2.one, 40f);
             view._playLabel.text = Strings.UiStrings.Get("intro.play"); // key-only
 
+            TypeScale.Apply(view._name, TypeScale.Display, Screen.dpi);
+            TypeScale.Apply(view._goal, TypeScale.Body, Screen.dpi, body: true);
+            TypeScale.Apply(view._playLabel, TypeScale.Title, Screen.dpi);
             go.SetActive(false);
             return view;
         }
@@ -189,9 +193,14 @@ namespace CatMetro.Presentation.Screens
 
         // The live binding site (A-UX1-5): Screen.safeArea read HERE, handed to pure math;
         // the chip IS the safe-area thumb band — full-width, bottom-anchored (§1.1).
-        private void LayoutChip()
+        private void LayoutChip() => LayoutForViewport(Screen.safeArea, Screen.dpi);
+
+        public void LayoutForViewport(Rect safeArea, float dpi)
         {
-            _chipRectPx = HudBands.ThumbBand(Screen.safeArea);
+            TypeScale.Apply(_name, TypeScale.Display, dpi);
+            TypeScale.Apply(_goal, TypeScale.Body, dpi, body: true);
+            TypeScale.Apply(_playLabel, TypeScale.Title, dpi);
+            _chipRectPx = HudBands.ThumbBand(safeArea);
             _chip.anchorMin = Vector2.zero;
             _chip.anchorMax = Vector2.zero;
             _chip.pivot = Vector2.zero;

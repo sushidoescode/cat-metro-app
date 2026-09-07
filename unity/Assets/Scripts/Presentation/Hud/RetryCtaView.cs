@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using CatMetro.Presentation.Theme;
 
 namespace CatMetro.Presentation.Hud
 {
@@ -43,7 +44,7 @@ namespace CatMetro.Presentation.Hud
             view._text = textGo.AddComponent<TextMeshProUGUI>();
             view._text.text = Strings.UiStrings.Get("retry.cta"); // key-only, never a literal
             view._text.alignment = TextAlignmentOptions.Center;
-            view._text.fontSize = 40f;
+            TypeScale.Apply(view._text, TypeScale.Title, Screen.dpi);
             view._text.color = Color.white;
 
             go.SetActive(false);

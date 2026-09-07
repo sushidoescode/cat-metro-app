@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using CatMetro.Presentation.Theme;
 using CatMetro.Presentation.Input;
 
 namespace CatMetro.Presentation.Hud
@@ -144,7 +145,7 @@ namespace CatMetro.Presentation.Hud
             _ctaText = labelGo.AddComponent<TextMeshProUGUI>();
             _ctaText.text = Strings.UiStrings.Get("results.next"); // key-only, never a literal
             _ctaText.alignment = TextAlignmentOptions.Center;
-            _ctaText.fontSize = 40f;
+            TypeScale.Apply(_ctaText, TypeScale.Title, Screen.dpi);
             _ctaText.color = Color.white;
 
             // TG-4's structurally-empty footer: it EXISTS so its emptiness is assertable,

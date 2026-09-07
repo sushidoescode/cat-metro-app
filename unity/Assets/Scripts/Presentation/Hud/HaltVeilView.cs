@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using CatMetro.Presentation.Theme;
 
 namespace CatMetro.Presentation.Hud
 {
@@ -43,7 +44,7 @@ namespace CatMetro.Presentation.Hud
             view._text = textGo.AddComponent<TextMeshProUGUI>();
             view._text.text = Strings.UiStrings.Get("halt.notice"); // key-only, never a literal
             view._text.alignment = TextAlignmentOptions.Center;
-            view._text.fontSize = 44f;
+            TypeScale.Apply(view._text, TypeScale.Body, Screen.dpi, body: true);
             view._text.color = Color.white;
 
             go.SetActive(false);

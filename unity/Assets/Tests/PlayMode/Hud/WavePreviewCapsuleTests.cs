@@ -42,6 +42,73 @@ namespace CatMetro.Tests.PlayMode
 
         // --- geometry: the pure laws at the pinned phone aspect ---
 
+        [UnityTest]
+        public IEnumerator Typography_OverflowUsesPhoneDpi_AndTemporaryTokensFit()
+        {
+            _root = GameRoot.Launch();
+            yield return null;
+            var labels = _root.Preview.GetComponentsInChildren<TMPro.TMP_Text>(true);
+            foreach (var label in labels)
+                if (label.name == "Overflow") label.text = "+3";
+            _root.Preview.LayoutForViewport(PhoneSafeArea, CaptureDpi);
+            Canvas.ForceUpdateCanvases();
+            float minimum = TypeScale.Minimum * HudBands.PxPerDp(CaptureDpi);
+            int activeTokens = 0;
+            foreach (var label in labels)
+            {
+                if (label.name == "Overflow")
+                {
+                    Assert.That(label.fontSizeMin, Is.GreaterThanOrEqualTo(minimum), label.name);
+                    Assert.That(label.fontSizeMax, Is.GreaterThanOrEqualTo(minimum), label.name);
+                }
+                if (label.name == "cat-token" && label.gameObject.activeInHierarchy)
+                {
+                    activeTokens++;
+                    label.ForceMeshUpdate();
+                    Assert.That(label.isTextOverflowing, Is.False,
+                        "the temporary token must fit until lane B rank 7 removes it");
+                }
+            }
+            Assert.That(activeTokens, Is.GreaterThan(0), "L001 must exercise a real token");
+            string dir = System.Environment.GetEnvironmentVariable("CM_TYPE_CAPTURE_DIR");
+            if (string.IsNullOrEmpty(dir)) yield break;
+            // A HUD-only proof uses no licensed models or board. Full shipped-scene captures
+            // remain in the main checkout, where the local art is installed.
+            var target = new RenderTexture(917, 2048, 24);
+            var camera = _root.Cam;
+            var previousTarget = camera.targetTexture;
+            var previousActive = RenderTexture.active;
+            Texture2D pixels = null;
+            try
+            {
+                foreach (var child in _root.Preview.GetComponentsInChildren<Transform>(true))
+                    child.gameObject.layer = 31;
+                camera.cullingMask = 1 << 31;
+                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.backgroundColor = Palette.InkNavy;
+                camera.targetTexture = target;
+                camera.aspect = 917f / 2048f;
+                _root.Preview.LayoutForViewport(PhoneSafeArea, CaptureDpi);
+                Canvas.ForceUpdateCanvases();
+                camera.Render();
+                RenderTexture.active = target;
+                pixels = new Texture2D(917, 448, TextureFormat.RGB24, false);
+                pixels.ReadPixels(new Rect(0, 1600, 917, 448), 0, 0);
+                pixels.Apply();
+                System.IO.Directory.CreateDirectory(dir);
+                System.IO.File.WriteAllBytes(System.IO.Path.Combine(dir, "type-hud-only.png"),
+                    pixels.EncodeToPNG());
+            }
+            finally
+            {
+                camera.targetTexture = previousTarget;
+                RenderTexture.active = previousActive;
+                target.Release();
+                Object.Destroy(target);
+                if (pixels != null) Object.Destroy(pixels);
+            }
+        }
+
         [Test]
         public void Capsule_SitsAtTheTOPOfTheFrame_AsTheTargetArtHasIt()
         {
