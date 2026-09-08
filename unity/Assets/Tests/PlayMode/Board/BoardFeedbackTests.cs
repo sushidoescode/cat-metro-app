@@ -164,6 +164,20 @@ namespace CatMetro.Tests.PlayMode
                 Is.SameAs(DestinationShapeMesh.ForShape(DestinationShape.Square)));
             Assert.That(rejected.Find("Cross-bar"), Is.Not.Null);
             Assert.That(rejected.localScale.x, Is.EqualTo(1.6f).Within(0.001f));
+            float CardEdge(Transform card, bool upper)
+            {
+                float edge = upper ? float.NegativeInfinity : float.PositiveInfinity;
+                foreach (Vector3 vertex in card.GetComponent<MeshFilter>().sharedMesh.vertices)
+                {
+                    float height = Vector3.Dot(_root.Cam.transform.up, card.TransformPoint(vertex));
+                    edge = upper ? Mathf.Max(edge, height) : Mathf.Min(edge, height);
+                }
+                return edge;
+            }
+            float cardGap = CardEdge(rejected.Find("Card"), false)
+                - CardEdge(rejected.parent.Find("Card"), true);
+            Assert.That(cardGap, Is.InRange(0.02f, 0.04f),
+                "both destination cards need a visible gap during the enlarged rejection beat");
             Assert.That(engine.localPosition.magnitude, Is.EqualTo(0.08f).Within(0.001f));
             var station = _root.View.transform.Find("station:" +
                 _root.Session.Level.Dto.Nodes.Span[_root.Session.State.Trains[slot].NodeId].Id);

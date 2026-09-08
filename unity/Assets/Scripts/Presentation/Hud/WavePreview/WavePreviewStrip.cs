@@ -66,6 +66,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private TMP_Text _riders;
         private TMP_Text _flipBudget;
         private Image _flipMark;
+        private Image _flipBacking;
         private Image _tailStatusMark;
         private int _displayFaceCount;
         private float _faceSizePx;
@@ -256,6 +257,11 @@ namespace CatMetro.Presentation.Hud.WavePreview
             _ridersMark.color = Palette.InkNavy;
             _riders = AddLabel(counters, "Riders", Palette.InkNavy);
 
+            // The flip law starts cream and changes to yellow/red. Keep its own navy well
+            // inside the cream capsule so every budget state has a contrasting background.
+            _flipBacking = AddImage(counters, "FlipBacking", HudShapeSprites.Capsule);
+            _flipBacking.type = Image.Type.Sliced;
+            _flipBacking.color = Palette.InkNavy;
             _flipMark = AddImage(counters, "FlipMark", HudShapeSprites.Lever);
             _flipBudget = AddLabel(counters, "flip-budget", Palette.InkNavy);
             _flipBudget.fontStyle = FontStyles.Bold;
@@ -361,6 +367,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
             var flipStatus = _session.FlipStatus;
             _flipBudget.gameObject.SetActive(flipStatus.IsBudgeted);
             _flipMark.gameObject.SetActive(flipStatus.IsBudgeted);
+            _flipBacking.gameObject.SetActive(flipStatus.IsBudgeted);
             if (flipStatus.IsBudgeted)
             {
                 _flipBudget.text = flipStatus.Used + "/" + flipStatus.PerfectMaxSwitches;
@@ -510,7 +517,12 @@ namespace CatMetro.Presentation.Hud.WavePreview
             x = PlaceCounter(_ridersMark, _riders, x + gap, centreY,
                 mark, wideText * 0.5f, gap, row);
             if (budgeted)
-                PlaceCounter(_flipMark, _flipBudget, x + gap, centreY, mark, wideText, gap, row);
+            {
+                float end = PlaceCounter(_flipMark, _flipBudget, x + gap, centreY,
+                    mark, wideText, gap, row);
+                PlacePx(_flipBacking.rectTransform,
+                    new Rect(x + gap * 0.5f, centreY - row * 0.5f, end - x, row));
+            }
             TypeScale.Apply(_deliveries, TypeScale.Body, _lastDpi, body: true);
             TypeScale.Apply(_riders, TypeScale.Body, _lastDpi, body: true);
             TypeScale.Apply(_flipBudget, TypeScale.Caption, _lastDpi, body: true);

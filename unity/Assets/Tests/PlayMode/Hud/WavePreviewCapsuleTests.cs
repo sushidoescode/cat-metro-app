@@ -336,7 +336,84 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Session.EnqueueToggle(0), Is.True);
             _root.Preview.Refresh();
             Assert.That(_root.Preview.FlipSummary, Is.EqualTo("1/1"));
-            Assert.That(lever.GetComponent<Image>().color, Is.EqualTo(Palette.SignalRed));
+            Assert.That(lever.GetComponent<Image>().color, Is.EqualTo(Palette.TabbyYellow),
+                "using the perfect budget is yellow; only exceeding it is red");
+        }
+
+        [UnityTest]
+        public IEnumerator PositiveFlipBudget_HasVisibleInkAgainstItsCapsule()
+        {
+            _root = GameRoot.LaunchWith(Import(TwoRedPreviewFixture()));
+            _root.enabled = false;
+            yield return null;
+            _root.Preview.enabled = false;
+            foreach (var renderer in _root.GetComponentsInChildren<Renderer>(true))
+                renderer.enabled = false;
+            foreach (var canvas in _root.GetComponentsInChildren<Canvas>(true))
+                if (canvas != _root.Preview.GetComponent<Canvas>()) canvas.enabled = false;
+            var camera = _root.Cam;
+            var previousTarget = camera.targetTexture;
+            var previousActive = RenderTexture.active;
+            var target = new RenderTexture(917, 2048, 24) { antiAliasing = 4 };
+            var pixels = new Texture2D(917, 2048, TextureFormat.RGB24, false);
+            var mark = _root.Preview.transform.Find("Hud/Counters/FlipMark").GetComponent<Image>();
+            var label = _root.Preview.transform.Find("Hud/Counters/flip-budget").GetComponent<TMPro.TMP_Text>();
+            try
+            {
+                camera.targetTexture = target;
+                yield return null;
+                _root.Preview.LayoutForViewport(PhoneSafeArea, CaptureDpi);
+                Canvas.ForceUpdateCanvases();
+                Assert.That(mark.color, Is.EqualTo(Palette.WarmPaper));
+                Assert.That(label.color, Is.EqualTo(Palette.WarmPaper));
+                Color[] Read()
+                {
+                    camera.Render();
+                    RenderTexture.active = target;
+                    pixels.ReadPixels(new Rect(0, 0, 917, 2048), 0, 0);
+                    pixels.Apply();
+                    return pixels.GetPixels();
+                }
+                Color[] painted = Read();
+                string dir = System.Environment.GetEnvironmentVariable("CM_UI_CAPTURE_DIR");
+                if (!string.IsNullOrEmpty(dir))
+                {
+                    System.IO.Directory.CreateDirectory(dir);
+                    System.IO.File.WriteAllBytes(System.IO.Path.Combine(dir, "capsule-positive-flips.png"),
+                        pixels.EncodeToPNG());
+                }
+                mark.enabled = false;
+                label.enabled = false;
+                Canvas.ForceUpdateCanvases();
+                Color[] backing = Read();
+                foreach (var graphic in new Graphic[] { mark, label })
+                {
+                    var corners = new Vector3[4];
+                    graphic.rectTransform.GetWorldCorners(corners);
+                    Vector3 min = camera.WorldToScreenPoint(corners[0]);
+                    Vector3 max = camera.WorldToScreenPoint(corners[2]);
+                    int visibleInk = 0;
+                    for (int y = Mathf.Max(0, Mathf.CeilToInt(min.y)); y < Mathf.Min(2048, max.y); y++)
+                        for (int x = Mathf.Max(0, Mathf.CeilToInt(min.x)); x < Mathf.Min(917, max.x); x++)
+                        {
+                            int index = y * 917 + x;
+                            if (Mathf.Abs(painted[index].grayscale - backing[index].grayscale) > 0.25f)
+                                visibleInk++;
+                        }
+                    Assert.That(visibleInk, Is.GreaterThan(30),
+                        graphic.name + " must paint contrasting strokes, not cream on cream");
+                }
+            }
+            finally
+            {
+                mark.enabled = true;
+                label.enabled = true;
+                camera.targetTexture = previousTarget;
+                RenderTexture.active = previousActive;
+                Object.DestroyImmediate(pixels);
+                target.Release();
+                Object.DestroyImmediate(target);
+            }
         }
 
         [UnityTest]
