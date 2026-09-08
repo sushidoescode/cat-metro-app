@@ -99,7 +99,7 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator ExactOffer_MountsOneRealCardAndOne48DpPrimaryTarget()
+        public IEnumerator ExactOffer_MountsOneRealCardAndPrimaryTargetWithoutAnItemTap()
         {
             var rig = NewRig(NewProfile());
             OpenAndLayout(rig);
@@ -112,12 +112,6 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(card.DisplayedPriceText, Is.Empty);
             Assert.That(rig.Input.Regions.IsRegistered(
                 "wardrobe.item.outfit_conductor"), Is.True);
-            Assert.That(rig.Input.Regions.IsRegistered("wardrobe.primary"), Is.False);
-
-            Tap(rig, card.ScreenRect);
-            yield return null;
-            Canvas.ForceUpdateCanvases();
-
             var primary = FindRect(rig.View, "PrimaryActionChip");
             var primaryRect = ProjectedScreenRect(primary);
             Assert.That(primary.gameObject.activeInHierarchy, Is.True);
@@ -126,6 +120,15 @@ namespace CatMetro.Tests.PlayMode
                 "the registered, painted primary action must meet the 48dp floor");
             Assert.That(rig.View.PrimaryActionText,
                 Is.EqualTo(UiStrings.Get("wardrobe.action.rewarded")));
+            Assert.That(_provider.ShowCalls, Is.Zero,
+                "auto-selecting the available row cannot start an ad");
+            Assert.That(_purchases.IsUnlocked(ConductorItemId), Is.False,
+                "painting the action cannot grant ownership");
+
+            Tap(rig, card.ScreenRect);
+            yield return null;
+            Canvas.ForceUpdateCanvases();
+
             Assert.That(rig.View.LargePortrait.AppliedOutfitAssetId,
                 Is.EqualTo("outfit.conductor"),
                 "the actual admitted Conductor card must preview its shipped portrait layer");
@@ -142,8 +145,8 @@ namespace CatMetro.Tests.PlayMode
                 "CatSelector-blue_siamese")));
             yield return null;
             Assert.That(profile.SelectedCatId, Is.EqualTo("blue_siamese"));
-            Tap(rig, ConductorCard(rig).ScreenRect);
-            yield return null;
+            Assert.That(rig.Input.Regions.IsRegistered("wardrobe.primary"), Is.True,
+                "changing cats immediately exposes the first available item action");
             byte[] beforeStarted = ReadSaveBytes();
             Tap(rig, ProjectedScreenRect(FindRect(rig.View, "PrimaryActionChip")));
 
@@ -401,10 +404,12 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(rig.Input.Regions.IsRegistered(
                 "wardrobe.item.outfit_conductor"), Is.False, caseName);
             Assert.That(rig.Input.Regions.IsRegistered("wardrobe.primary"), Is.False, caseName);
-            Assert.That(rig.Input.Regions.Count, Is.EqualTo(8),
+            Assert.That(rig.Input.Regions.IsRegistered("wardrobe.tab.accessory"), Is.False,
+                caseName + " exposed an empty catalogue slot");
+            Assert.That(rig.Input.Regions.Count, Is.EqualTo(7),
                 caseName + " left a ghost action region");
             Assert.That(rig.View.ItemsRectPx.height,
-                Is.EqualTo(112f * HudBands.PxPerDp(PhoneDpi)).Within(1f),
+                Is.EqualTo(156f * HudBands.PxPerDp(PhoneDpi)).Within(1f),
                 caseName + " must retain the stable one-rail empty-state band");
             var empty = rig.View.GetComponentsInChildren<TMP_Text>(true)
                 .Single(label => label.name == "EmptyStateLabel");

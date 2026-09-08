@@ -84,7 +84,7 @@ namespace CatMetro.Tests.PlayMode
                 .AdmittedEntryCount == 1;
             LogAssert.Expect(admitted ? LogType.Log : LogType.Warning,
                 new System.Text.RegularExpressions.Regex(admitted
-                    ? "^HOME_RIG mounted=true admitted=1$"
+                    ? @"^HOME_RIG mounted=true admitted=1 scale=\d+\.\d{3} shortSide=\d+\.\d{3} holder=\d+\.\d{3}x\d+\.\d{3} headPx=\d+\.\d{3}x\d+\.\d{3}$"
                     : "^HOME_RIG fallback branch=5 admitted=0 reason=.+$"));
         }
 

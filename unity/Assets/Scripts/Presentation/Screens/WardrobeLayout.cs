@@ -12,10 +12,10 @@ namespace CatMetro.Presentation.Screens
         private const float BackSideDp = 50f;
         private const float CatSelectorHeightDp = 50f;
         private const float TabsHeightDp = 50f;
-        private const float ActionHeightDp = 56f;
-        private const float StatusHeightDp = 40f;
-        private const float ItemRailHeightDp = 112f;
-        private const float ItemCardMaxWidthDp = 112f;
+        private const float ActionHeightDp = 64f;
+        private const float RestoreHeightDp = 44f;
+        private const float StatusHeightDp = 20f;
+        private const float ItemRailHeightDp = 156f;
 
         public static Rect EntryRect(Rect safeArea, float dpi)
             => HomeLayout.WardrobePinRect(safeArea, dpi);
@@ -84,8 +84,8 @@ namespace CatMetro.Presentation.Screens
         {
             float px = HudBands.PxPerDp(dpi);
             float inset = SideInsetDp * px;
-            var status = StatusRect(safeArea, dpi, hasPrimaryAction);
-            float y = status.yMax + GapDp * px;
+            var action = PrimaryActionRect(safeArea, dpi);
+            float y = action.yMax + GapDp * px;
             return new Rect(safeArea.x + inset, y,
                 Mathf.Max(0f, safeArea.width - inset * 2f), ItemRailHeightDp * px);
         }
@@ -98,7 +98,7 @@ namespace CatMetro.Presentation.Screens
             float px = HudBands.PxPerDp(dpi);
             float gap = GapDp * px;
             float available = Mathf.Max(0f, itemsRect.width - gap * (visibleCount - 1));
-            float width = Mathf.Min(ItemCardMaxWidthDp * px, available / visibleCount);
+            float width = available / visibleCount;
             float total = width * visibleCount + gap * (visibleCount - 1);
             float x = itemsRect.x + Mathf.Max(0f, (itemsRect.width - total) * 0.5f)
                 + visibleIndex * (width + gap);
@@ -109,17 +109,13 @@ namespace CatMetro.Presentation.Screens
         {
             float px = HudBands.PxPerDp(dpi);
             float inset = SideInsetDp * px;
-            return new Rect(safeArea.x + inset, safeArea.y + inset,
+            return new Rect(safeArea.x + inset,
+                safeArea.y + inset + (RestoreHeightDp + GapDp) * px,
                 Mathf.Max(0f, safeArea.width - inset * 2f), ActionHeightDp * px);
         }
 
         public static Rect PrimaryActionRect(Rect safeArea, float dpi)
-        {
-            float gap = GapDp * HudBands.PxPerDp(dpi);
-            var band = ActionBandRect(safeArea, dpi);
-            return new Rect(band.x, band.y, Mathf.Max(0f, (band.width - gap) * 0.5f),
-                band.height);
-        }
+            => ActionBandRect(safeArea, dpi);
 
         public static Rect BuyRect(Rect safeArea, float dpi) => PrimaryActionRect(safeArea, dpi);
 
@@ -128,11 +124,10 @@ namespace CatMetro.Presentation.Screens
 
         public static Rect RestoreRect(Rect safeArea, float dpi, bool hasPrimaryAction)
         {
-            var band = ActionBandRect(safeArea, dpi);
-            if (!hasPrimaryAction) return band;
-            float gap = GapDp * HudBands.PxPerDp(dpi);
-            var primary = PrimaryActionRect(safeArea, dpi);
-            return new Rect(primary.xMax + gap, band.y, primary.width, band.height);
+            float px = HudBands.PxPerDp(dpi);
+            float inset = SideInsetDp * px;
+            return new Rect(safeArea.x + inset, safeArea.y + inset,
+                Mathf.Max(0f, safeArea.width - inset * 2f), RestoreHeightDp * px);
         }
 
         public static Rect StatusRect(Rect safeArea, float dpi)
@@ -142,8 +137,8 @@ namespace CatMetro.Presentation.Screens
         {
             float px = HudBands.PxPerDp(dpi);
             var band = ActionBandRect(safeArea, dpi);
-            return new Rect(band.x, band.yMax + GapDp * px,
-                band.width, StatusHeightDp * px);
+            return new Rect(band.x + GapDp * px, band.y + 4f * px,
+                Mathf.Max(0f, band.width - GapDp * px * 2f), StatusHeightDp * px);
         }
     }
 }

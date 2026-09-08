@@ -563,8 +563,12 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(view.PanelVisible, Is.True);
             Assert.That(input.Regions.IsRegistered("wardrobe.back"), Is.True);
             Assert.That(input.Regions.IsRegistered("wardrobe.restore"), Is.True);
-            Assert.That(input.Regions.IsRegistered("wardrobe.primary"), Is.False,
-                "the single row action exists only after selecting an actual item card");
+            Assert.That(input.Regions.IsRegistered("wardrobe.primary"), Is.True,
+                "the first available catalogue row exposes its action on Open");
+            Assert.That(view.transform.Find("WardrobePanel/PrimaryActionChip")
+                .gameObject.activeInHierarchy, Is.True);
+            Assert.That(input.Regions.IsRegistered("wardrobe.tab.accessory"), Is.False,
+                "the empty accessory slot has no input target");
 
             var conductor = view.VisibleCards.SingleOrDefault(card => card != null
                 && card.IsActive && card.ItemId == EntitlementIds.OutfitConductor);
@@ -574,7 +578,7 @@ namespace CatMetro.Tests.PlayMode
                 "WardrobePanel/ItemsBand/CardsRoot/ItemCard-outfit_conductor"), Is.Not.Null);
             Assert.That(input.Regions.IsRegistered("wardrobe.item.outfit_conductor"), Is.True);
             Assert.That(input.Regions.Count, Is.EqualTo(9),
-                "Back, Restore, three cats, three tabs, and the admitted conductor card only");
+                "Back, Restore, three cats, two populated tabs, the conductor card, and its action");
 
             if (!conductorOwned.HasValue) return;
             string owned = UiStrings.Get("wardrobe.state.owned");

@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Screens;
 using CatMetro.Services.Cosmetics;
+using CatMetro.Services.Purchases;
 using NUnit.Framework;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -97,6 +99,219 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(view.Layout(_camera), Is.True);
             Assert.That(view.Layout(_camera), Is.True);
             LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void Layout_SettlesPreferredHolderSizeBeforeComputingScale()
+        {
+            _fixture = new ConformingSkinnedRigFixture();
+            var mount = HomeProfileRigView.Create(_holder, _portrait,
+                CatModelCatalog.FromEntry(new CatModelCatalog.Entry(_fixture.Prefab, 180f)));
+            _holder.sizeDelta = Vector2.one;
+            var preferred = _holder.gameObject.AddComponent<LayoutElement>();
+            preferred.preferredWidth = preferred.preferredHeight = 300f;
+            var fitter = _holder.gameObject.AddComponent<ContentSizeFitter>();
+            fitter.horizontalFit = fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            Assert.That(_holder.rect.width, Is.LessThan(10f),
+                "the pending UI layout must not already be settled in this reproduction");
+
+            Assert.That(mount.Layout(_camera), Is.True);
+
+            Assert.That(_holder.rect.size, Is.EqualTo(new Vector2(300f, 300f)));
+            Assert.That(mount.PrefabRoot.parent.parent.localScale.x, Is.EqualTo(276f).Within(.01f),
+                "fit must use the settled 300-unit holder, not its initial one-unit rect");
+            Assert.That(mount.RenderedHeadScreenRect.width, Is.GreaterThan(50f));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void CanvasRender_RefitsAChangedHolder_AndRecoversAfterEnable(bool homeWrapper)
+        {
+            _fixture = new ConformingSkinnedRigFixture();
+            _holder.sizeDelta = new Vector2(120f, 120f);
+            var catalog = CatModelCatalog.FromEntry(new CatModelCatalog.Entry(_fixture.Prefab, 180f));
+            ProfileRigMount mount = homeWrapper
+                ? HomeProfileRigView.Create(_holder, _portrait, catalog)
+                : ProfileRigMount.Create(_holder, _portrait, catalog);
+            Assert.That(mount.Layout(_camera), Is.True);
+            float originalHeadWidth = mount.RenderedHeadScreenRect.width;
+
+            _holder.sizeDelta = new Vector2(300f, 300f);
+            Canvas.ForceUpdateCanvases(); // No second screen-level Layout call.
+
+            Assert.That(mount.PrefabRoot.parent.parent.localScale.x, Is.EqualTo(276f).Within(.01f));
+            Assert.That(mount.RenderedHeadScreenRect.width, Is.GreaterThan(originalHeadWidth * 2f));
+            AssertRectWithin(mount.RenderedHeadScreenRect,
+                IndependentlyProjectedFixtureHead(mount.PrefabRoot), 3f,
+                "head read-back must describe the resized frame");
+
+            mount.gameObject.SetActive(false);
+            _holder.sizeDelta = new Vector2(240f, 240f);
+            Canvas.ForceUpdateCanvases();
+            Assert.That(mount.PrefabRoot.parent.parent.localScale.x, Is.EqualTo(276f).Within(.01f),
+                "a hidden mount must not refit until it is shown again");
+            mount.gameObject.SetActive(true);
+            Canvas.ForceUpdateCanvases();
+            Assert.That(mount.PrefabRoot.parent.parent.localScale.x, Is.EqualTo(220.8f).Within(.01f));
+        }
+
+        [Test]
+        public void CanvasRender_AfterMountDestruction_DoesNotAccessDestroyedGeometry()
+        {
+            _fixture = new ConformingSkinnedRigFixture();
+            var mount = HomeProfileRigView.Create(_holder, _portrait,
+                CatModelCatalog.FromEntry(new CatModelCatalog.Entry(_fixture.Prefab, 180f)));
+            LogAssert.Expect(LogType.Log, new Regex("HOME_RIG mounted=true admitted=1"));
+            Assert.That(mount.Layout(_camera), Is.True);
+            Object.DestroyImmediate(mount.gameObject);
+            _holder.sizeDelta = new Vector2(240f, 240f);
+
+            Canvas.ForceUpdateCanvases();
+            Canvas.ForceUpdateCanvases();
+
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        [TestCase(0f)]
+        [TestCase(.001f)]
+        public void UnusableHolder_StaysFallback_AndRecoversWhenCanvasSizeSettles(float shortSide)
+        {
+            _fixture = new ConformingSkinnedRigFixture();
+            _holder.sizeDelta = new Vector2(shortSide, shortSide);
+            var mount = HomeProfileRigView.Create(_holder, _portrait,
+                CatModelCatalog.FromEntry(new CatModelCatalog.Entry(_fixture.Prefab, 180f)));
+            Assert.That(mount.Layout(_camera), Is.False,
+                "an empty or subpixel head cannot establish a successful mount");
+            Assert.That(mount.Mounted, Is.False);
+            Assert.That(_portrait.BaseLayerTransform.gameObject.activeSelf, Is.True);
+
+            _holder.sizeDelta = new Vector2(300f, 300f);
+            Canvas.ForceUpdateCanvases();
+
+            Assert.That(mount.Mounted, Is.True,
+                "recovery must retain the requested camera even when the initial rect was empty");
+            Assert.That(mount.RenderedHeadScreenRect.width, Is.GreaterThan(50f));
+            Assert.That(_portrait.BaseLayerTransform.gameObject.activeSelf, Is.False);
+        }
+
+        [Test]
+        public void CanvasRender_RefreshesHeadReadbackWhenCameraViewportChanges()
+        {
+            _fixture = new ConformingSkinnedRigFixture();
+            var mount = HomeProfileRigView.Create(_holder, _portrait,
+                CatModelCatalog.FromEntry(new CatModelCatalog.Entry(_fixture.Prefab, 180f)));
+            Assert.That(mount.Layout(_camera), Is.True);
+            Rect original = mount.RenderedHeadScreenRect;
+
+            _camera.rect = new Rect(.1f, .15f, .7f, .7f);
+            Canvas.ForceUpdateCanvases();
+
+            Assert.That(mount.RenderedHeadScreenRect, Is.Not.EqualTo(original));
+            AssertRectWithin(mount.RenderedHeadScreenRect,
+                IndependentlyProjectedFixtureHead(mount.PrefabRoot), 3f,
+                "viewport changes must update the projected head before drawing");
+        }
+
+        [Test]
+        public void NumericMountDiagnostic_UsesInvariantNumbers_AndReportsGeometryChangesOnce()
+        {
+            var messages = new List<string>();
+            void Capture(string message, string trace, LogType type)
+            {
+                if (message.StartsWith("HOME_RIG mounted=true", StringComparison.Ordinal))
+                    messages.Add(message);
+            }
+            CultureInfo previousCulture = CultureInfo.CurrentCulture;
+            UnityEngine.Application.logMessageReceived += Capture;
+            try
+            {
+                CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
+                _fixture = new ConformingSkinnedRigFixture();
+                _holder.sizeDelta = new Vector2(123.5f, 234.75f);
+                var mount = HomeProfileRigView.Create(_holder, _portrait,
+                    CatModelCatalog.FromEntry(new CatModelCatalog.Entry(_fixture.Prefab, 180f)));
+                Assert.That(mount.Layout(_camera), Is.True);
+                Assert.That(messages, Has.Count.EqualTo(1));
+                Assert.That(messages[0], Does.Contain("scale=113.620 shortSide=123.500"));
+                Assert.That(messages[0], Does.Contain("holder=123.500x234.750 headPx="));
+
+                mount.Layout(_camera);
+                Canvas.ForceUpdateCanvases();
+                Canvas.ForceUpdateCanvases();
+                Assert.That(messages, Has.Count.EqualTo(1), "stable geometry must not spam logcat");
+
+                _holder.sizeDelta = new Vector2(246.5f, 234.75f);
+                Canvas.ForceUpdateCanvases();
+                Assert.That(messages, Has.Count.EqualTo(2));
+                Assert.That(messages[1], Does.Contain("scale=215.970 shortSide=234.750"));
+                Canvas.ForceUpdateCanvases();
+                Assert.That(messages, Has.Count.EqualTo(2));
+            }
+            finally
+            {
+                UnityEngine.Application.logMessageReceived -= Capture;
+                CultureInfo.CurrentCulture = previousCulture;
+            }
+        }
+
+        [Test]
+        public void WardrobeMount_UsesTheMatchingRig_AndKeepsOtherBreedsAsPortraits()
+        {
+            _fixture = new ConformingSkinnedRigFixture();
+            var catalog = CatModelCatalog.FromEntry(new CatModelCatalog.Entry(
+                _fixture.Prefab, 180f, "red_tabby"));
+            var inventory = CosmeticAssetInventory.Parse(
+                Resources.Load<TextAsset>("Cosmetics/portrait_assets").text,
+                CosmeticPortraitPainter.SupportedRendererTokens);
+            var cosmetics = CosmeticCatalog.Parse(
+                Resources.Load<TextAsset>("Cosmetics/cosmetic_catalog").text,
+                inventory.AssetIds, inventory.ProvenanceAssetIds);
+            using var profile = new CosmeticProfileService(cosmetics, inventory,
+                new InMemoryCosmeticProfilePersistence(CosmeticProfileSnapshot.Empty),
+                PurchaseRuntime.Current);
+            var wardrobe = WardrobeScreenView.Create(_canvasHost.transform,
+                PurchaseRuntime.Current, profile, new DisabledCosmeticRewardedRoute(), catalog);
+            wardrobe.Open();
+            wardrobe.LayoutForViewport(new Rect(0, 0, 600, 1100), 160f);
+            var mount = wardrobe.GetComponentInChildren<ProfileRigMount>(true);
+            Assert.That(mount, Is.Not.Null, "Wardrobe must mount the admitted rig under its hero");
+            Assert.That(mount.Mounted, Is.True);
+            Assert.That(mount.transform.parent.name, Is.EqualTo("LargePortraitMount"));
+            Assert.That(mount.AppliedFacingYaw, Is.EqualTo(180f).Within(0.01f));
+            Assert.That(wardrobe.LargePortrait.BaseLayerTransform.gameObject.activeSelf, Is.False);
+            Assert.That(profile.TrySelectCat("blue_siamese"), Is.True);
+            Assert.That(mount.Mounted, Is.False);
+            Assert.That(wardrobe.LargePortrait.BaseLayerTransform.gameObject.activeSelf, Is.True);
+            Assert.That(profile.TrySelectCat("red_tabby"), Is.True);
+            Assert.That(mount.Mounted, Is.True);
+            wardrobe.Hide();
+            Assert.That(mount.gameObject.activeInHierarchy, Is.False);
+            Object.DestroyImmediate(wardrobe.gameObject);
+        }
+
+        [Test]
+        public void Turntable_ChangesTheWrapperYawAndKeepsCosmeticsAligned_WithNoPrefabMutation()
+        {
+            _fixture = new ConformingSkinnedRigFixture();
+            var mount = ProfileRigMount.Create(_holder, _portrait,
+                CatModelCatalog.FromEntry(new CatModelCatalog.Entry(_fixture.Prefab, 180f)),
+                0f, "WARDROBE_RIG");
+            mount.TurntableAmplitude = 15f;
+            Assert.That(mount.Layout(_camera), Is.True);
+            mount.AdvanceTurntable(3f);
+            Assert.That(mount.AppliedFacingYaw, Is.EqualTo(195f).Within(0.01f));
+            AssertRectWithin(mount.RenderedHeadScreenRect,
+                IndependentlyProjectedFixtureHead(mount.PrefabRoot), 3f,
+                "turntable cosmetics track the live head at the positive yaw limit");
+            mount.AdvanceTurntable(6f);
+            Assert.That(mount.AppliedFacingYaw, Is.EqualTo(165f).Within(0.01f));
+            AssertRectWithin(mount.RenderedHeadScreenRect,
+                IndependentlyProjectedFixtureHead(mount.PrefabRoot), 3f,
+                "turntable cosmetics track the live head at the negative yaw limit");
+            Assert.That(mount.PrefabRoot.localRotation, Is.EqualTo(Quaternion.identity));
+            Assert.That(mount.PrefabRoot.localScale, Is.EqualTo(Vector3.one));
+            Assert.That(mount.RenderedHeadScreenRect.width, Is.GreaterThan(1f));
+            Assert.That(_portrait.BaseLayerTransform.gameObject.activeSelf, Is.False);
         }
 
         [Test]
