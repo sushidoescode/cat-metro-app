@@ -449,8 +449,8 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(catBoard.x,
                 Is.EqualTo(-ToyTrainView.PlatformSideOffset).Within(0.04f));
             Assert.That(catBoard.y,
-                Is.EqualTo(3.36f).Within(0.04f),
-                "authored source Y=2 uses GridY=1.47, plus its unchanged 0.42-unit FIFO lane");
+                Is.EqualTo(3.42f).Within(0.04f),
+                "authored source Y=2 uses GridY=1.47, plus the enlarged 0.48-unit FIFO lane");
             Assert.That(Vector3.Distance(boardingCat.position, cat.position),
                 Is.GreaterThan(ToyTrainView.PlatformQueueSpacing - 0.04f),
                 "the actively boarding cat and FIFO head occupy different platform lanes");
@@ -466,7 +466,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(secondCatBoard.x,
                 Is.EqualTo(-ToyTrainView.PlatformSideOffset).Within(0.04f));
             Assert.That(secondCatBoard.y,
-                Is.EqualTo(2.52f).Within(0.04f));
+                Is.EqualTo(2.46f).Within(0.04f));
             Assert.That(Vector3.Distance(secondCat.position, cat.position),
                 Is.GreaterThan(ToyTrainView.PlatformQueueSpacing - 0.04f),
                 "simultaneous source waiters do not coincide");
@@ -484,13 +484,13 @@ namespace CatMetro.Tests.EditMode.Presentation
                 advancedWaiter.position);
             Vector3 newTailBoard = _board.transform.InverseTransformPoint(newTail.position);
             Assert.That(advancedBoard.y,
-                Is.EqualTo(2.52f).Within(0.04f),
+                Is.EqualTo(2.46f).Within(0.04f),
                 "older waiter retains its non-colliding presentation lane through releases");
             Assert.That(Vector3.Distance(cat.position, advancedWaiter.position),
                 Is.GreaterThan(ToyTrainView.PlatformQueueSpacing - 0.04f),
                 "released boarding cat cannot collide with the new FIFO head");
             Assert.That(newTailBoard.y,
-                Is.EqualTo(3.78f).Within(0.04f));
+                Is.EqualTo(3.90f).Within(0.04f));
             Assert.That(Vector3.Distance(advancedWaiter.position, newTail.position),
                 Is.GreaterThan(ToyTrainView.PlatformQueueSpacing - 0.04f),
                 "release plus same-tick emission cannot collapse two waiters onto one anchor");
@@ -513,7 +513,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(catBoard.x,
                 Is.EqualTo(-ToyTrainView.PlatformSideOffset).Within(0.0001f));
             Assert.That(catBoard.y,
-                Is.EqualTo(3.36f).Within(0.0001f));
+                Is.EqualTo(3.42f).Within(0.0001f));
             Assert.That(cat.Find("Body").gameObject.activeSelf, Is.True);
             Vector3 staticEndpoint = cat.position;
 

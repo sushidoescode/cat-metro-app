@@ -76,6 +76,16 @@ namespace CatMetro.Tests.PlayMode
             Vector3 headSize = RenderedWorldSize(head);
             Vector3 bodySize = RenderedWorldSize(body);
 
+            Assert.That(headSize.x, Is.GreaterThanOrEqualTo(0.358f),
+                "the portrait grid needs a rendered 0.36-unit head");
+            Assert.That(bodySize.x, Is.GreaterThanOrEqualTo(0.398f),
+                "the carriage grows to 0.40 units along the track");
+            Assert.That(bodySize.y, Is.GreaterThanOrEqualTo(0.438f),
+                "the 0.44-unit carriage keeps the larger cat seated inside its walls");
+            var chassisSize = RenderedWorldSize(TrainRoot().transform.Find("Carriage/Chassis"));
+            Assert.That(chassisSize.x, Is.GreaterThan(bodySize.x), "the chassis supports the whole box");
+            Assert.That(chassisSize.y, Is.GreaterThan(bodySize.y), "the navy rim clears both carriage sides");
+
             Assert.That(headSize.x, Is.EqualTo(ToyTrainView.HeadDiameter).Within(0.002f),
                 "the head must RENDER at the diameter its constant names — builtin meshes are " +
                 "not unit-sized, and assuming they are is what buried the whole face");
@@ -453,7 +463,7 @@ namespace CatMetro.Tests.PlayMode
         // swing around its cat like a bucket on a rope as the train turned, and a pin whose
         // position depends on heading is a pin the player has to hunt for.
         [UnityTest]
-        public IEnumerator Pin_SitsDIRECTLYAboveItsOwnCat_AtEveryHeading()
+        public IEnumerator Pin_SitsDirectlyAboveItsFallbackHead_AtEveryHeading()
         {
             yield return BuildBoard();
             SeatFirstCat();
@@ -462,14 +472,18 @@ namespace CatMetro.Tests.PlayMode
                 PlaceOnEdge(edge: edge, progressTicks: 4);
                 _view.UpdateFrom(_session);
 
-                Vector2 head = ScreenPoint(TrainRoot().transform.Find("Carriage/Cat/Head"));
+                var headTransform = TrainRoot().transform.Find("Carriage/Cat/Head");
+                Vector2 head = ScreenPoint(headTransform);
                 Vector2 pin = ScreenPoint(Pin());
                 Assert.That(pin.x - head.x, Is.EqualTo(0f).Within(0.001f),
                     $"on edge {edge} the pin must sit dead above its cat, not off to one side " +
                     "— the board-plane offset is SOLVED for zero screen drift, so any wander " +
                     "here means the heading counter-rotation was dropped");
-                Assert.That(pin.y - head.y, Is.EqualTo(0.30f).Within(0.001f),
-                    $"on edge {edge} the pin must hold the same screen rise at every heading");
+                float headToCardGap = pin.y - head.y
+                    - (RenderedWorldSize(headTransform).x + RenderedWorldSize(Pin().Find("Card")).y) * 0.5f;
+                Assert.That(headToCardGap, Is.InRange(0.02f, 0.04f),
+                    $"on edge {edge} the card must leave visible air above the enlarged fallback head; "
+                    + "licensed rig clearance requires the separate furnished artifact");
             }
         }
 

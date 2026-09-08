@@ -27,7 +27,7 @@ namespace CatMetro.Presentation.Board
     public sealed class ToyTrainView : MonoBehaviour
     {
         // Arc-length from the engine anchor back to the carriage centre: half an engine
-        // (0.23) + a toy-tight coupling gap (0.07) + half a carriage (0.18), sized against
+        // (0.23) + a toy-tight coupling gap (0.04) + half a carriage chassis (0.21), sized against
         // the 0.5 track gauge (ToyTrackMeshBuilder.RailOffset * 2).
         public const float CarriageOffset = 0.48f;
 
@@ -37,25 +37,20 @@ namespace CatMetro.Presentation.Board
         private const float HeadAnchorZ = -0.2f;
 
         // ── Cat geometry ────────────────────────────────────────────────────────────────
-        // The 2026-08-31 curated references make two scale requirements explicit: the head is
-        // roughly 70-85% of its carriage width, and most of it sits above the carriage wall.
-        // At the production L001 phone projection, the old 0.19 head rendered at only 3.2% of
-        // frame width after the frontal-camera change; 0.31 renders just over 5% with the
-        // explicit 5-6% delivery target. The carriage grows with it below, keeping the head at
-        // ~82% of the open box rather than turning it into a ball balanced on a tiny wagon.
-        //
-        // Height remains constrained by the switch-disc slab. The bigger head grows mostly
-        // downward into a lower wall: its crown moves by less than a hundredth of a board unit.
-        // Ears keep their tips below the pinned switch midpoint and gain readability through
-        // lateral spread. All values are WORLD sizes passed through ScaleForWorldSize; builtin
-        // Sphere.fbx is ~3.33 units across and a raw localScale would repeat the r3 regression.
-        public const float HeadDiameter = 0.31f;
-        private const float HeadCenterZ = 0.010f;
-        private const float EarThickness = 0.050f; // along travel; ears are flat wedges
-        private const float EarSize = 0.140f;      // the 45-degree diamond's box size
-        private const float EarLateral = 0.080f;
-        private const float EarCenterZ = -0.080f;
-        private const float EyeSize = 0.079f;
+        // Rank 15 on the portrait grid: a 0.36-unit head in a 0.44-unit carriage keeps the
+        // reference's ~82% proportion. BoardLookTests measures the rendered head and ears at
+        // >=5% of L001's frame width and >=4% at L002/L009; the licensed rig has its own scale.
+        // +z points into the board. Lower the enlarged head's centre by 0.03 so its crown
+        // stays below switch furniture, and lower the carriage wall to leave the face exposed.
+        // Scale facial features about the head centre so they remain on the sphere's surface.
+        public const float HeadDiameter = 0.36f;
+        private const float HeadCenterZ = 0.040f;
+        private const float CatFeatureScale = HeadDiameter / 0.31f;
+        private const float EarThickness = 0.050f * CatFeatureScale;
+        private const float EarSize = 0.140f * CatFeatureScale;
+        private const float EarLateral = 0.080f * CatFeatureScale;
+        private const float EarCenterZ = HeadCenterZ - 0.090f * CatFeatureScale;
+        private const float EyeSize = 0.079f * CatFeatureScale;
         // A platform-centre offset measured in board units, not authored mesh space. At the
         // admitted rig's current presentation scale, the baked artifact test crosses the
         // released-lane envelope representable by the authored TrainsMax values; the current
@@ -63,19 +58,18 @@ namespace CatMetro.Presentation.Board
         // departure Walk plus Celebrate at every current station-arrival heading and a sampled
         // five-degree retained-heading envelope. Each case crosses the complete active clip at
         // half-frame spacing, a 17-angle applied-ear corpus and independently measured maximum
-        // carriage-ward bob. At the portrait-calibrated 0.52 rig scale, a 0.584 endpoint
-        // measured only 0.018424 clearance. Moving it out by 0.028 restores the declared
-        // 0.045 separating-plane clearance; fallback dimensions do not own it.
-        public const float PlatformSideOffset = 0.612f;
+        // carriage-ward bob. Lane A's 0.52 rig passed at a 0.612 endpoint. The wider carriage
+        // adds 0.03 on both planar half-extents: at any heading its support grows by at most
+        // sqrt(2)*0.03. Move the endpoint another 0.044 to preserve that separating plane.
+        public const float PlatformSideOffset = 0.656f;
         public const float PlatformEndpointClearance = 0.045f;
         // Horizontal half-extent reserved by the camera around a platform cat's root. The
-        // fallback head, ears and 0.24 card all fit inside one HeadDiameter; the admitted-rig
+        // fallback head, ears and 0.28 card all fit inside one HeadDiameter; the admitted-rig
         // artifact sweep remains the authority if that model's animated silhouette grows.
         public const float PlatformFramingHalfWidth = HeadDiameter;
-        // Queue cards are 0.24 units wide. At the conservative 93 px/unit yardstick, even the
-        // frontal board's foreshortened axis projects 0.42 * cos(38) * 93 = 30.8 px versus a
-        // 22.3 px card, leaving a visible gap between simultaneous source waiters.
-        public const float PlatformQueueSpacing = 0.42f;
+        // At 93 px/unit, the foreshortened queue pitch is 0.48*cos(38)*93 = 35.2 px,
+        // leaving a visible gap around each enlarged 26 px card and its waiting cat.
+        public const float PlatformQueueSpacing = 0.48f;
 
         internal static float PlatformLaneOffset(int lane)
         {
@@ -105,19 +99,24 @@ namespace CatMetro.Presentation.Board
         // render can establish how much of that deformation is visible.
         public const float RigEarTwitchGain = 2f;
         public static readonly Vector3 PlaceholderBodyWorldSize =
-            new Vector3(0.200f, 0.175f, 0.165f);
+            new Vector3(0.200f, 0.175f, 0.165f) * CatFeatureScale;
         private static readonly Vector3 PlaceholderLegWorldSize =
-            new Vector3(0.060f, 0.058f, 0.130f);
-        private static readonly Vector3 EyeOffset = new Vector3(0.0862f, 0.0602f, -0.0673f);
-        private static readonly Vector3 MuzzleOffset = new Vector3(0.1253f, 0f, -0.0370f);
-        private static readonly Vector3 MuzzleSize = new Vector3(0.082f, 0.111f, 0.071f);
+            new Vector3(0.060f, 0.058f, 0.130f) * CatFeatureScale;
+        private static readonly Vector3 EyeOffset =
+            new Vector3(0.0862f, 0.0602f, -0.0773f) * CatFeatureScale
+            + Vector3.forward * HeadCenterZ;
+        private static readonly Vector3 MuzzleOffset =
+            new Vector3(0.1253f, 0f, -0.0470f) * CatFeatureScale
+            + Vector3.forward * HeadCenterZ;
+        private static readonly Vector3 MuzzleSize =
+            new Vector3(0.082f, 0.111f, 0.071f) * CatFeatureScale;
 
         // ── The destination pin ─────────────────────────────────────────────────────────
         // target-01's single most important readability device: above every riding cat floats
         // a small white card carrying that cat's destination symbol. It is the reason you can
         // tell at a glance where a passenger is going; without it the cat's LINE is legible
         // (it is tinted) but its DESTINATION is not, and a colour-blind player has nothing at
-        // all. The shape comes from CatLine.ShapeOf and nowhere else.
+        // all. Authored token shapes take priority; legacy lines retain CatLine.ShapeOf.
         //
         // SIZING, in the projection the camera actually performs. The diorama camera is
         // orthographic and identity-rotated, so px-per-board-unit is (screenHeight / 2) /
@@ -125,19 +124,18 @@ namespace CatMetro.Presentation.Board
         // the fixed conservative sizing yardstick used below. It is not claimed as the current
         // corpus minimum; BoardLookTests measures the delivery target from a rendered artifact.
         //
-        //     cat head    0.31  x 93 = 28.8 px
-        //     pin card    0.24  x 93 = 22.3 px   (77% of the enlarged head; card height is
+        //     cat head    0.36  x 93 = 33.5 px
+        //     pin card    0.28  x 93 = 26.0 px   (78% of the enlarged head; card height is
         //                                         constrained by rail/switch clearance)
-        //     symbol      0.17  x 93 = 15.8 px
-        //     white margin      each side 3.3 px  (the card still reads as a card behind it)
-        //     star point  (0.5-0.45) x 0.17 x 93 = 4.3 px
+        //     symbol      0.20  x 93 = 18.6 px
+        //     white margin      each side 3.7 px  (the card still reads as a card behind it)
+        //     star point  0.5 * (1-0.45) * 0.20 * 93 = 5.1 px
         //
         // The star's point length is the binding constraint on the whole design: it is the
         // finest detail any of the five symbols carries, and under ~4 px it stops reading as a
-        // star at all. That is what fixes the symbol at 0.17 rather than something daintier,
-        // and the card at 0.24 rather than something daintier.
-        public const float PinCardSize = 0.24f;
-        public const float PinSymbolSize = 0.17f;
+        // star at all. Keep that detail and the cream keyline substantial beside the head.
+        public const float PinCardSize = 0.28f;
+        public const float PinSymbolSize = 0.20f;
         private const float PinCardDepth = 0.02f;
         private const float PinSymbolDepth = 0.02f;
         // The symbol rides proud of the card toward the camera, its back face buried 0.002
@@ -145,17 +143,14 @@ namespace CatMetro.Presentation.Board
         // floats. It reads as an embossed badge from the only angle anyone sees it from.
         private const float PinSymbolLocalZ = -0.018f;
 
-        // Screen-space board-units from the cat's head CENTRE up to the pin's centre. 0.30
-        // leaves 0.30 - 0.12 - 0.155 = 0.025 of clear air between the larger head and card
-        // (2.3 px even at the 93 px/unit yardstick) without spending more switch clearance.
-        private const float PinScreenRise = 0.30f;
+        // Preserve a 0.03-unit screen gap above the enlarged head: 0.35 - 0.14 - 0.18.
+        // PinBoardZ separately keeps the card under the switch furniture.
+        private const float PinScreenRise = 0.35f;
 
         // Carriage-local board z for the pin's centre, i.e. board z -0.155. This is the ONLY
-        // number the switch discs constrain, and it is centred in the gap they leave. A card
-        // this size, held square to the camera above the tilted board, spans 0.2353 of
-        // board z all by itself, against a window running from the rail crowns (+0.035) up to
-        // the lowest switch furniture (the onboarding teach ring's underside, -0.31). Centring
-        // in that window leaves 0.0373 of clearance under the switch furniture and 0.0723 over
+        // number the switch discs constrain. The enlarged card stays inside the window from
+        // the rail crowns (+0.035) to the lowest switch furniture (-0.31); TrainConsistTests
+        // checks its actual rendered corners at every heading, with at least 0.01 clearance over
         // the rails. See TrainConsistTests.Pin_ClearsTheSwitchDiscSlab_AndTheRailCrowns, which
         // measures the shipped mesh's real vertices rather than trusting this comment.
         private const float PinBoardZ = 0.045f;
@@ -602,7 +597,7 @@ namespace CatMetro.Presentation.Board
             _cat.localPosition = pathLocalPosition
                 + carriageLocalBob;
             // The destination card labels the cat, not its empty seat. Carry the exact same
-            // presentation-only path and bob deltas so the solved 0.30 screen rise remains
+            // presentation-only path and bob deltas so the solved screen rise remains
             // invariant while neither transform can affect the authoritative train root.
             _pin.localPosition = _pinBaseLocalPosition + pathOffset + carriageLocalBob;
             ApplyPlaceholderGait(state, safeTime);
@@ -695,8 +690,10 @@ namespace CatMetro.Presentation.Board
             {
                 _rejected = new GameObject("Rejected").transform;
                 _rejected.SetParent(_pin, false);
-                _rejected.localPosition = new Vector3(0f, 0.34f, -0.04f);
-                _rejected.localScale = Vector3.one * 1.6f;
+                const float rejectionScale = 1.6f;
+                float rise = PinCardSize * (1f + rejectionScale) * 0.5f + 0.03f;
+                _rejected.localPosition = new Vector3(0f, rise, -0.04f);
+                _rejected.localScale = Vector3.one * rejectionScale;
                 CreatePart("Card", _rejected, CatPinMeshBuilder.Card(), Vector3.zero,
                     new Vector3(PinCardSize, PinCardSize, PinCardDepth), Quaternion.identity, PinCardMaterial());
                 CreatePart("Symbol", _rejected, CatPinMeshBuilder.StarBadge(),
@@ -940,10 +937,10 @@ namespace CatMetro.Presentation.Board
             _carriage = new GameObject("Carriage").transform;
             _carriage.SetParent(transform, false);
             CreatePart("Chassis", _carriage, CubeMesh(),
-                new Vector3(0f, 0f, 0.205f), new Vector3(0.36f, 0.40f, 0.06f),
+                new Vector3(0f, 0f, 0.205f), new Vector3(0.42f, 0.46f, 0.06f),
                 Quaternion.identity, NavyMaterial());
             CreatePart("Body", _carriage, CubeMesh(),
-                new Vector3(0f, 0f, 0.145f), new Vector3(0.34f, 0.38f, 0.10f),
+                new Vector3(0f, 0f, 0.185f), new Vector3(0.40f, 0.44f, 0.10f),
                 Quaternion.identity, CreamMaterial());
 
             // The passenger: a chibi head at 82% of the body's width. Its lower fifth intersects
@@ -1006,13 +1003,16 @@ namespace CatMetro.Presentation.Board
             // These use the same builtin meshes and bounds-derived scale as every train part:
             // no primitive factory, colliders, or owned generated asset.
             var body = CreatePart("Body", _cat, SphereMesh(),
-                new Vector3(-0.050f, 0f, 0.115f), PlaceholderBodyWorldSize,
+                new Vector3(-0.050f * CatFeatureScale, 0f,
+                    -HeadAnchorZ - PlaceholderBodyWorldSize.z * 0.5f), PlaceholderBodyWorldSize,
                 Quaternion.identity, CatBasisMaterial());
             var legLeft = CreatePart("LegLeft", _cat, CubeMesh(),
-                new Vector3(-0.055f, 0.078f, 0.135f), PlaceholderLegWorldSize,
+                new Vector3(-0.055f * CatFeatureScale, 0.078f * CatFeatureScale,
+                    -HeadAnchorZ - PlaceholderLegWorldSize.z * 0.5f), PlaceholderLegWorldSize,
                 Quaternion.identity, CatBasisMaterial());
             var legRight = CreatePart("LegRight", _cat, CubeMesh(),
-                new Vector3(-0.055f, -0.078f, 0.135f), PlaceholderLegWorldSize,
+                new Vector3(-0.055f * CatFeatureScale, -0.078f * CatFeatureScale,
+                    -HeadAnchorZ - PlaceholderLegWorldSize.z * 0.5f), PlaceholderLegWorldSize,
                 Quaternion.identity, CatBasisMaterial());
             _legLeft = legLeft.transform;
             _legRight = legRight.transform;
