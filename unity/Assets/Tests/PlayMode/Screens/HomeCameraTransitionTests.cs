@@ -3,6 +3,7 @@ using System.IO;
 using CatMetro.Bootstrap;
 using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Fx;
+using CatMetro.Presentation.Hud;
 using CatMetro.Services;
 using NUnit.Framework;
 using UnityEngine;
@@ -173,17 +174,27 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
-        public void RetryDuringTheDolly_CannotReplayThePreviousHomePose()
+        public void RetryDuringTheDolly_SettlesAtTheCoveredLoad_WithoutReplayingHomePose()
         {
             _root.Home.LevelSelected.Invoke();
             _root.Intro.PlayRequested.Invoke();
             var fx = _root.GetComponent<BoardFx>();
             Assert.That(fx, Is.Not.Null);
             fx.Advance(.1f);
+            var previousSession = _root.Session;
             _root.Retry();
+            Assert.That(_root.IsTransitioning, Is.True);
+            Assert.That(_root.Session, Is.SameAs(previousSession), "retry waits for D's opaque veil");
+            var veil = _root.GetComponent<ScreenChromeController>().Transition;
+            veil.Advance(TransitionVeil.CoverSeconds, false);
+            Assert.That(veil.Alpha, Is.EqualTo(1f));
+            Assert.That(_root.Session, Is.Not.SameAs(previousSession), "the covered load replaces the board");
             var position = _root.Cam.transform.position;
             float size = _root.Cam.orthographicSize;
             fx.Advance(.1f);
+            AssertPose(position, size);
+            veil.Advance(TransitionVeil.RevealSeconds, false);
+            Assert.That(_root.IsTransitioning, Is.False);
             AssertPose(position, size);
         }
 

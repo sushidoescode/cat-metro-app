@@ -144,7 +144,9 @@ namespace CatMetro.Tests.PlayMode
                 label.ForceMeshUpdate();
                 Assert.That(label.isTextOverflowing, Is.False, route.name + " label fits at phone dpi");
                 Assert.That(label.fontSize, Is.GreaterThanOrEqualTo(12f * 2.55f));
-                Assert.That(label.fontSizeMin, Is.GreaterThanOrEqualTo(12f * 2.55f));
+                Assert.That(label.enableAutoSizing, Is.True, route.name + " retains the shared live fitting");
+                Assert.That(label.fontSizeMin, Is.EqualTo(12f * 2.55f).Within(.001f));
+                Assert.That(label.fontSizeMax, Is.EqualTo(24f * 2.55f).Within(.001f));
             }
             Assert.That(wardrobe.EntryPortrait, Is.Not.Null, "the Wardrobe pin keeps the selected cat");
         }
