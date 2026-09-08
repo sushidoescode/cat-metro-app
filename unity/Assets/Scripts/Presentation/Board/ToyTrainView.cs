@@ -33,7 +33,7 @@ namespace CatMetro.Presentation.Board
         // The pinned head anchor lift off the board plane (the old capsule's -0.2). Part
         // z-offsets below are anchor-local: +z points down into the table, and the rail
         // crowns (board z +0.035) sit at +0.235, which is where the chassis parts bottom out.
-        private const float HeadAnchorZ = -0.2f;
+        public const float HeadAnchorZ = -0.2f;
 
         // ── Cat geometry ────────────────────────────────────────────────────────────────
         // The 2026-08-31 curated references make two scale requirements explicit: the head is
@@ -322,6 +322,65 @@ namespace CatMetro.Presentation.Board
         private bool _catColorApplied;
 
         public bool RigAdmitted => _rigAdmitted;
+        private Vector3 _deliveredBaseScale;
+        private int _deliveredIdleState, _deliveredCelebrateState;
+        public Vector3 PlatformEndpointWorld => _hasPlatformAnchor ? _platformAnchorWorldPosition
+            : transform.parent.TransformPoint(transform.parent.InverseTransformPoint(
+                _carriage.TransformPoint(_catBaseLocalPosition)) + Vector3.down * PlatformSideOffset);
+
+        // The existing rig/placeholder renderer also paints passengers after delivery.
+        // Vehicle geometry is hidden; no second model implementation or licensed asset.
+        public void PrepareDeliveredPassenger(Vector3 boardAnchor)
+        {
+            SetDeliveredAnchor(boardAnchor);
+            for (int i = 0; i < transform.childCount; i++)
+                if (transform.GetChild(i) != _carriage)
+                    transform.GetChild(i).gameObject.SetActive(false);
+            for (int i = 0; i < _carriage.childCount; i++)
+            {
+                var child = _carriage.GetChild(i);
+                if (child != _cat && child != _pin) child.gameObject.SetActive(false);
+            }
+            _carriage.localPosition = Vector3.zero;
+            _carriage.localRotation = Quaternion.identity;
+            _hasPlatformAnchor = true;
+            _platformAnchorMovesToPlatform = true;
+            _platformAnchorWorldPosition = transform.position;
+            _deliveredBaseScale = _cat.localScale;
+            if (_rigAnimator != null)
+            {
+                string layer = _rigAnimator.GetLayerName(0) + ".";
+                _deliveredIdleState = Animator.StringToHash(layer + CatModelCatalog.IdleSitClip);
+                _deliveredCelebrateState = Animator.StringToHash(layer + CatModelCatalog.CelebrateClip);
+            }
+        }
+
+        public void SetDeliveredAnchor(Vector3 boardAnchor)
+        {
+            transform.localPosition = boardAnchor;
+            _platformAnchorWorldPosition = transform.position;
+        }
+
+        public void ApplyDeliveredPose(CatPresentationTrack track, float visualTime, bool motionOff)
+        {
+            ApplyPresentation(track.State, 1f, true, visualTime, motionOff, 0f);
+            // The current imported Cat_Celebrate is a bind-pose fallback. Keep a visible
+            // presentation hop for it as well as placeholders while the named clip plays.
+            float hop = !motionOff && track.State == CatPresentationState.Celebrate
+                ? Mathf.Sin(Mathf.PI * Mathf.Clamp01(track.StateElapsed
+                    / CatPresentationTrack.CelebrateDuration)) : 0f;
+            _cat.localScale = _deliveredBaseScale * (1f + .13f * hop);
+            if (!motionOff && _rigAnimator != null)
+            {
+                bool celebrate = track.State == CatPresentationState.Celebrate;
+                float duration = Mathf.Max(.01f, _rigAnimator.GetCurrentAnimatorStateInfo(0).length);
+                float phase = celebrate ? track.StateElapsed / CatPresentationTrack.CelebrateDuration
+                    : Mathf.Repeat(visualTime / duration, 1f);
+                _rigAnimator.Play(celebrate ? _deliveredCelebrateState : _deliveredIdleState, 0, phase);
+                _rigAnimator.Update(0f);
+                _rigAnimator.speed = 0f; // the board's unscaled presentation clock owns this pose
+            }
+        }
         public string RigFallbackReason => _rigFallbackReason;
         public CatPresentationState PresentationState => _presentationState;
         public long PresentationOccupantKey => _seenOccupantKey;

@@ -791,6 +791,33 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator DailyNotification_DuringNextWaitsForTheTransition_ThenOpensDaily()
+        {
+            Launch(new FakeMessaging());
+            _root.MotionOffToggle = false;
+            _root.DailyClockUnixSeconds = () => PinnedUnixSeconds;
+            yield return null;
+            Tap(_root.Home.PinPaintedRectPx);
+            Tap(_root.Intro.PlayChipRectPx);
+            _root.Session.State.Outcome = CatMetro.Domain.SimOutcome.Won;
+            yield return null;
+            yield return null;
+            TapResultsCta();
+            Assert.That(_root.IsTransitioning, Is.True);
+            _messaging.RaiseLinkOpened(MessagingRoute.Daily);
+            yield return null;
+            Assert.That(_root.IsDailySession, Is.False, "the notification stays queued while covered");
+            var veil = _root.GetComponent<ScreenChromeController>().Transition;
+            veil.Advance(.22f, false);
+            Assert.That(_root.CurrentLevelId, Is.EqualTo("L002"));
+            veil.Advance(.28f, false);
+            yield return null;
+            Assert.That(_root.IsDailySession, Is.True, "the queued route is retained");
+            Assert.That(_root.ActiveDailyDateKey, Is.EqualTo(PinnedDateKey));
+            Assert.That(_root.Intro.IsVisible, Is.False);
+        }
+
+        [UnityTest]
         public IEnumerator WorkerThreadCallback_MutatesNoUnityStateUntilMainThreadUpdate()
         {
             Launch(new FakeMessaging());
@@ -881,6 +908,9 @@ namespace CatMetro.Tests.PlayMode
             _messaging = messaging;
             GameRoot.MessagingFactoryOverride = () => messaging;
             _root = GameRoot.Launch();
+            // Reminder policy is independent of the fade duration. The notification-during-
+            // Next regression explicitly restores animation before exercising its timing.
+            _root.MotionOffToggle = true;
         }
 
         private IEnumerator DestroyRoot()

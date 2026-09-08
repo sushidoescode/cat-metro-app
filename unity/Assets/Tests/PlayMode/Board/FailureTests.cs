@@ -106,17 +106,17 @@ namespace CatMetro.Tests.PlayMode
                 CausalNodeId = "BLU",
             };
             var (key, token) = GameRoot.FailKey(constructed.Reason);
-            Assert.That(key, Is.EqualTo("fail.platformoverflow"),
+            Assert.That(key, Is.EqualTo("fail.platformoverflow.generic"),
                 "the shipped mapping routes the live reason to the platform string");
-            Assert.That(token, Is.EqualTo("{station}"));
+            Assert.That(token, Is.Null);
             _root.CauseCam.FrameNode(constructed.CausalNodeId,
                 _root.View.NodeWorldPos(3), motionOff: true);
-            _root.Banner.ShowKeySubstituted(key, token, constructed.CausalNodeId);
+            _root.Banner.ShowKey(key);
             yield return null;
 
             Assert.That(_root.CauseCam.TargetNodeId, Is.EqualTo("BLU"));
-            Assert.That(_root.Banner.CurrentText, Is.EqualTo("BLU platform overflowed"),
-                "the LOCKED string with the station substituted");
+            Assert.That(_root.Banner.CurrentText, Is.EqualTo("A platform overflowed"),
+                "the camera and ring locate the cause; player copy contains no internal id");
         }
 
         // --- criteria 3/5: motion-off is a one-frame cut + static ring; no information lost ---
@@ -284,12 +284,12 @@ namespace CatMetro.Tests.PlayMode
 
         // --- criterion 10: the remaining real-reason strings render with substitution ---
         [UnityTest]
-        public IEnumerator FailStrings_RenderWithSubstitution()
+        public IEnumerator FailStrings_RenderWithoutInternalNodeIds()
         {
             yield return RunToFail(Overflow(), motionOff: true);
-            Assert.That(_root.Banner.CurrentText, Is.EqualTo("Platform overflowed at SRC"));
-            Assert.That(UiStrings.CameFromCsv("fail.queueoverflow",
-                _root.Banner.CurrentText.Replace("SRC", "{node}")), Is.True);
+            Assert.That(_root.Banner.CurrentText, Is.EqualTo("A junction overflowed"));
+            Assert.That(UiStrings.CameFromCsv("fail.queueoverflow.generic",
+                _root.Banner.CurrentText), Is.True);
             _root.Input.HandleTapAtScreen(new Vector2(Screen.width * 0.5f, Screen.height * 0.1f));
 
             Object.Destroy(_root.gameObject);

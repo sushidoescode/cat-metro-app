@@ -88,6 +88,8 @@ namespace CatMetro.Presentation.Audio
         private AudioClip _purchaseSuccess;
         private bool _enabled = true;
         private bool _applicationPaused;
+        private float _celebrateAt = -1f;
+        public bool CelebratePending => _celebrateAt >= 0f;
 
         public bool Enabled => _enabled;
         public bool ChuffPlaying => _chuffSource != null && _chuffSource.isPlaying;
@@ -127,6 +129,7 @@ namespace CatMetro.Presentation.Audio
 
         public void BindSession(GameSession session)
         {
+            CancelCelebrate();
             StopChuff();
             if (session == null)
             {
@@ -254,7 +257,21 @@ namespace CatMetro.Presentation.Audio
             _flourishSource.Stop();
             _flourishSource.clip = _celebrateFlourish;
             _flourishSource.volume = CelebrateVolume;
-            _flourishSource.PlayDelayed(0.16f);
+            _celebrateAt = Time.unscaledTime + Cats.CatPresentationTrack.WinBeatDelay;
+        }
+
+        private void Update()
+        {
+            if (!CelebratePending || Time.unscaledTime < _celebrateAt) return;
+            _celebrateAt = -1f;
+            if (_enabled && !_applicationPaused && _flourishSource != null)
+                _flourishSource.Play();
+        }
+
+        public void CancelCelebrate()
+        {
+            _celebrateAt = -1f;
+            if (_flourishSource != null) _flourishSource.Stop();
         }
 
         private void SetChuffPlaying(bool shouldPlay)
@@ -277,6 +294,7 @@ namespace CatMetro.Presentation.Audio
 
         private void StopOwnedPlayback()
         {
+            CancelCelebrate();
             if (_oneShotSource != null) _oneShotSource.Stop();
             if (_flourishSource != null) _flourishSource.Stop();
             StopChuff();

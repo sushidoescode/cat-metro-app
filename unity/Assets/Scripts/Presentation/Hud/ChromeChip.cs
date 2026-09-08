@@ -136,10 +136,13 @@ namespace CatMetro.Presentation.Hud
             float iconSize = _icon != null ? 26f * _pxPerDp : 0f;
             float gap = _icon != null ? 10f * _pxPerDp : 0f;
             float available = Mathf.Max(0f, FaceRectPx.width - 40f * _pxPerDp - iconSize - gap);
-            Label.fontSize = 24f * _pxPerDp;
+            TypeScale.Apply(Label, 24f, _pxPerDp * HudBands.FallbackDpi);
+            // Measure the icon/label group at the title size, then leave fitting live:
+            // owners can inset the label again to reserve space for a status subtitle.
+            Label.enableAutoSizing = false;
             float preferred = Label.GetPreferredValues(Label.text).x;
             if (preferred > available && preferred > 0f)
-                Label.fontSize = Mathf.Max(12f * _pxPerDp, Label.fontSize * available / preferred);
+                Label.fontSize = Mathf.Max(Label.fontSizeMin, Label.fontSize * available / preferred);
             float labelWidth = Mathf.Min(available, Label.GetPreferredValues(Label.text).x);
             _content.anchorMin = _content.anchorMax = new Vector2(.5f, .5f);
             _content.pivot = new Vector2(.5f, .5f);
@@ -149,6 +152,7 @@ namespace CatMetro.Presentation.Hud
                 PlaceInContent(_icon.rectTransform, iconSize * .5f, iconSize, iconSize);
             PlaceInContent(Label.rectTransform, iconSize + gap + labelWidth * .5f,
                 labelWidth, FaceRectPx.height);
+            Label.enableAutoSizing = true;
         }
 
         private static void PlaceInContent(RectTransform rect, float x, float width, float height)

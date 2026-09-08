@@ -23,6 +23,8 @@ namespace CatMetro.Presentation.Cats
         public const float AlightDuration = 0.18f;
         public const float DeliveryWalkDuration = 0.28f;
         public const float CelebrateDuration = 0.48f;
+        public const float WinBeatDelay = 0.6f;
+        public const float WinStagger = 0.09f;
         private const float BoardStartBlend = 0.35f;
         private const float DeliveryWalkMinimumBlend = 0.45f;
         // Absolute presentation-clock tolerance. Decimal phase endpoints such as 10.22 + 0.18
@@ -69,6 +71,20 @@ namespace CatMetro.Presentation.Cats
         /// the rig's +X presentation-forward axis along travel; gameplay never consumes it.
         /// </summary>
         public bool MovingToPlatform => _departureActive;
+
+        // A retained passenger has finished the seat/platform path. Its one win beat is
+        // sampled from the board's clock, then it keeps the informational platform pose.
+        public void SampleWin(float elapsed, int order, bool motionOff)
+        {
+            float phase = elapsed - WinBeatDelay - Mathf.Max(0, order) * WinStagger;
+            bool celebrate = !motionOff && phase + PhaseBoundaryTolerance >= 0f
+                && phase < CelebrateDuration;
+            State = celebrate ? CatPresentationState.Celebrate : CatPresentationState.WaitingIdle;
+            StateElapsed = celebrate ? Mathf.Max(0f, phase) : 0f;
+            _waitingOnPlatform = true;
+            _departureActive = true;
+            PlatformBlend = 1f;
+        }
 
         /// <summary>
         /// Consumes a copied simulation snapshot plus the presentation-owned generation for

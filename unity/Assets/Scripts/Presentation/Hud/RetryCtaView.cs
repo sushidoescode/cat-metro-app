@@ -1,79 +1,52 @@
 using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
 using CatMetro.Presentation.Theme;
 
 namespace CatMetro.Presentation.Hud
 {
-    // CM-UX-02 criterion 3: the LOCKED Try-again chip. Render-only by law (CM-UX-01: inside
-    // the retry band during FailureReview the band's own RetryTapped IS the action; registering
-    // a region here is dead code). Full-width in HudBands.ThumbBand(safeArea) — the live
-    // Screen.safeArea binding lives HERE, injected into the pure math (A-UX1-5/A-UX2-4); the
-    // 48dp floor holds on the TAPPABLE rect, painted overhang bounded by the pinned divergence
-    // height. Text is TMP; the background binds the Resources-loaded UI material (the
-    // GreyboxMaterial F-DEV-2 lesson: never depend on a strippable engine default).
+    // The input owner retains the full thumb band. This view paints the shared 60dp
+    // retry pin and adds no input region of its own.
     public sealed class RetryCtaView : MonoBehaviour
     {
         private RectTransform _rect;
-        private TMP_Text _text;
+        private ChromeChip _chip;
         private Rect _paintedPx;
+        private Rect _lastSafeArea = new Rect(-1f, -1f, -1f, -1f);
+        private float _lastDpi = -1f;
 
         public bool IsVisible => gameObject.activeSelf;
         public Rect PaintedRectPx => _paintedPx;
-        public string RenderedText => _text != null ? _text.text : "";
+        public Rect FaceRectPx => ChromeChip.PrimaryFaceRect(_paintedPx, _lastDpi);
+        public string RenderedText => _chip != null ? _chip.Label.text : "";
 
         public static RetryCtaView Create(Transform canvasParent)
         {
-            var go = new GameObject("RetryCta");
+            var go = new GameObject("RetryCta", typeof(RectTransform));
             go.transform.SetParent(canvasParent, false);
             var view = go.AddComponent<RetryCtaView>();
-            view._rect = go.AddComponent<RectTransform>();
-
-            var bg = go.AddComponent<Image>();
-            var mat = UiChromeMaterial.Shared;
-            if (mat != null) bg.material = mat;
-            bg.color = new Color(0.13f, 0.19f, 0.29f, 0.92f); // ink-navy chip, text carries meaning
-
-            var textGo = new GameObject("Label");
-            textGo.transform.SetParent(go.transform, false);
-            var trect = textGo.AddComponent<RectTransform>();
-            trect.anchorMin = Vector2.zero;
-            trect.anchorMax = Vector2.one;
-            trect.offsetMin = Vector2.zero;
-            trect.offsetMax = Vector2.zero;
-            view._text = textGo.AddComponent<TextMeshProUGUI>();
-            view._text.text = Strings.UiStrings.Get("retry.cta"); // key-only, never a literal
-            view._text.alignment = TextAlignmentOptions.Center;
-            TypeScale.Apply(view._text, TypeScale.Title, Screen.dpi);
-            view._text.color = Color.white;
-
+            view._rect = (RectTransform)go.transform;
+            view._chip = ChromeChip.PaintPrimary(go.transform, HudBands.ThumbBand(Screen.safeArea),
+                Strings.UiStrings.Get("retry.cta"), Palette.MetroTeal);
             go.SetActive(false);
             return view;
         }
 
         public void SetVisible(bool visible)
         {
-            if (visible) LayoutInThumbBand();
+            if (visible && (Screen.safeArea != _lastSafeArea || Screen.dpi != _lastDpi))
+                LayoutForViewport(Screen.safeArea, Screen.dpi);
             if (gameObject.activeSelf != visible) gameObject.SetActive(visible);
         }
 
-        // The live binding site: Screen.safeArea/dpi are read HERE and handed to pure math.
-        // R1-L7: re-layout only when the safe area actually changes — a static screen must not
-        // dirty the RectTransform every frame (DEVFIX's frame-rate policy). The cache key is
-        // the safe area ALONE: if the band formula ever gains another input, key on it too.
-        private Rect _lastSafeArea = new Rect(-1f, -1f, -1f, -1f);
-
-        private void LayoutInThumbBand()
+        public void LayoutForViewport(Rect safeArea, float dpi)
         {
-            if (Screen.safeArea == _lastSafeArea) return;
-            _lastSafeArea = Screen.safeArea;
-            var band = HudBands.ThumbBand(Screen.safeArea);
-            _paintedPx = band;
-            _rect.anchorMin = Vector2.zero;
-            _rect.anchorMax = Vector2.zero;
+            _lastSafeArea = safeArea;
+            _lastDpi = dpi;
+            _paintedPx = HudBands.ThumbBand(safeArea);
+            _rect.anchorMin = _rect.anchorMax = Vector2.zero;
             _rect.pivot = Vector2.zero;
-            _rect.anchoredPosition = new Vector2(band.x, band.y);
-            _rect.sizeDelta = new Vector2(band.width, band.height);
+            _rect.anchoredPosition = _paintedPx.position;
+            _rect.sizeDelta = _paintedPx.size;
+            _chip.Layout(new Rect(Vector2.zero, _paintedPx.size), dpi);
         }
     }
 }

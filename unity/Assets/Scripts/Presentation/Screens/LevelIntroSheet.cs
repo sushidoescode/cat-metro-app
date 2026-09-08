@@ -1,9 +1,10 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-using CatMetro.Presentation.Theme;
 using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Input;
+using CatMetro.Presentation.Hud.WavePreview;
+using CatMetro.Presentation.Theme;
 
 namespace CatMetro.Presentation.Screens
 {
@@ -39,14 +40,23 @@ namespace CatMetro.Presentation.Screens
         private bool _shown; // #46 review F4: Show()-left-shown intent, survives OnDisable/OnEnable
         private TMP_Text _name;
         private TMP_Text _goal;
+        private TMP_Text _teaching;
         private TMP_Text _playLabel;
         private RectTransform _chip;
+        private ChromeChip _playPaint;
+        private Image _ticket;
+        private Image _ticketFace;
+        private Image _shadow;
         private Rect _chipRectPx;
+        private Rect _lastSafeArea;
+        private float _lastDpi = -1f;
 
         public string NameText => _name != null ? _name.text : "";
         public string GoalText => _goal != null ? _goal.text : "";
+        public string TeachingText => _teaching != null ? _teaching.text : "";
         public string PlayText => _playLabel != null ? _playLabel.text : "";
         public Rect PlayChipRectPx => _chipRectPx;
+        public Rect PlayFaceRectPx => ChromeChip.PrimaryFaceRect(_chipRectPx, _lastDpi);
         public RectTransform ChipTransform => _chip; // #42 F1 read-back seam
         public bool IsVisible => gameObject.activeSelf;
 
@@ -61,35 +71,37 @@ namespace CatMetro.Presentation.Screens
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
 
-            MakePanel(go.transform, "SheetPanel",
-                new Vector2(0.06f, 0.40f), new Vector2(0.94f, 0.76f),
-                new Color(0.13f, 0.19f, 0.29f, 0.92f));
-            view._name = MakeText(go.transform, "LevelName",
-                new Vector2(0.10f, 0.62f), new Vector2(0.90f, 0.74f), 52f);
-            view._goal = MakeText(go.transform, "GoalLine",
-                new Vector2(0.10f, 0.44f), new Vector2(0.90f, 0.58f), 36f);
+            MakePanel(go.transform, "FullScreenShade", Vector2.zero, Vector2.one,
+                Palette.WithAlpha(Palette.DepotNavy, .48f));
+            view._shadow = MakePanel(go.transform, "TicketShadow", Vector2.zero, Vector2.zero,
+                Palette.WithAlpha(Palette.DepotNavy, .24f), HudShapeSprites.SoftRoundedHalo);
+            view._ticket = MakePanel(go.transform, "CreamTicket", Vector2.zero, Vector2.zero,
+                Palette.TicketOrange, HudShapeSprites.RoundedSquare);
+            view._ticketFace = MakePanel(view._ticket.transform, "Paper", Vector2.zero, Vector2.one,
+                Palette.CreamCard, HudShapeSprites.RoundedSquare);
+            view._name = MakeText(view._ticket.transform, "LevelName",
+                new Vector2(.08f, .69f), new Vector2(.92f, .94f), 32f);
+            view._goal = MakeText(view._ticket.transform, "GoalLine",
+                new Vector2(.08f, .48f), new Vector2(.92f, .66f), 20f);
+            view._teaching = MakeText(view._ticket.transform, "TeachingLine",
+                new Vector2(.10f, .10f), new Vector2(.90f, .42f), 16f);
 
             // The Play chip: px-laid to the thumb band at Show (live Screen reads there only).
             var chipGo = new GameObject("PlayChip");
             chipGo.transform.SetParent(go.transform, false);
             view._chip = chipGo.AddComponent<RectTransform>();
-            var bg = chipGo.AddComponent<Image>();
-            var mat = UiChromeMaterial.Shared;
-            if (mat != null) bg.material = mat;
-            bg.color = new Color(0.13f, 0.19f, 0.29f, 0.95f);
-            view._playLabel = MakeText(chipGo.transform, "PlayLabel",
-                Vector2.zero, Vector2.one, 40f);
-            view._playLabel.text = Strings.UiStrings.Get("intro.play"); // key-only
+            view._playPaint = ChromeChip.PaintPrimary(chipGo.transform,
+                HudBands.ThumbBand(Screen.safeArea), Strings.UiStrings.Get("intro.play"),
+                Palette.TicketOrange);
+            view._playLabel = view._playPaint.Label;
 
-            TypeScale.Apply(view._name, TypeScale.Display, Screen.dpi);
-            TypeScale.Apply(view._goal, TypeScale.Body, Screen.dpi, body: true);
-            TypeScale.Apply(view._playLabel, TypeScale.Title, Screen.dpi);
+            view.LayoutForViewport(Screen.safeArea, Screen.dpi);
             go.SetActive(false);
             return view;
         }
 
-        private static void MakePanel(Transform parent, string name,
-            Vector2 anchorMin, Vector2 anchorMax, Color color)
+        private static Image MakePanel(Transform parent, string name,
+            Vector2 anchorMin, Vector2 anchorMax, Color color, Sprite sprite = null)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
@@ -102,6 +114,10 @@ namespace CatMetro.Presentation.Screens
             var mat = UiChromeMaterial.Shared;
             if (mat != null) img.material = mat;
             img.color = color;
+            img.sprite = sprite;
+            img.type = Image.Type.Sliced;
+            img.raycastTarget = false;
+            return img;
         }
 
         private static TMP_Text MakeText(Transform parent, string name,
@@ -118,7 +134,9 @@ namespace CatMetro.Presentation.Screens
             tmp.text = "";
             tmp.alignment = TextAlignmentOptions.Center;
             tmp.fontSize = size;
-            tmp.color = Color.white;
+            tmp.color = Palette.InkNavy;
+            tmp.raycastTarget = false;
+            tmp.enableAutoSizing = true;
             return tmp;
         }
 
@@ -127,11 +145,15 @@ namespace CatMetro.Presentation.Screens
             _regions = regions;
         }
 
-        public void Show(string levelName, int deliveries)
+        public void Show(string levelName, int deliveries) => Show(levelName, deliveries, null);
+
+        public void Show(string levelName, int deliveries, string teachingGoal)
         {
             _name.text = levelName; // injected level data, not UI copy
-            _goal.text = Strings.UiStrings.Get("intro.goal")
+            _goal.text = Strings.UiStrings.Get(deliveries == 1 ? "intro.goal.one" : "intro.goal")
                 .Replace("{count}", deliveries.ToString());
+            _teaching.text = teachingGoal ?? "";
+            _teaching.gameObject.SetActive(!string.IsNullOrWhiteSpace(teachingGoal));
             _shown = true;
             gameObject.SetActive(true);
             LayoutChip();
@@ -193,19 +215,52 @@ namespace CatMetro.Presentation.Screens
 
         // The live binding site (A-UX1-5): Screen.safeArea read HERE, handed to pure math;
         // the chip IS the safe-area thumb band — full-width, bottom-anchored (§1.1).
-        private void LayoutChip() => LayoutForViewport(Screen.safeArea, Screen.dpi);
+        private void LayoutChip()
+        {
+            LayoutForViewport(Screen.safeArea, Screen.dpi);
+        }
+
+        private void Update()
+        {
+            if (Screen.safeArea != _lastSafeArea || Screen.dpi != _lastDpi) LayoutChip();
+        }
 
         public void LayoutForViewport(Rect safeArea, float dpi)
         {
-            TypeScale.Apply(_name, TypeScale.Display, dpi);
-            TypeScale.Apply(_goal, TypeScale.Body, dpi, body: true);
-            TypeScale.Apply(_playLabel, TypeScale.Title, dpi);
+            _lastSafeArea = safeArea;
+            _lastDpi = dpi;
+            float scale = HudBands.PxPerDp(dpi);
+            float width = Mathf.Min(320f * scale, Mathf.Max(0f, safeArea.width - 40f * scale));
+            float height = Mathf.Min(230f * scale, safeArea.height * .42f);
+            var ticket = new Rect(safeArea.center.x - width * .5f,
+                safeArea.center.y - height * .5f + 24f * scale, width, height);
+            Place(_ticket.rectTransform, ticket);
+            Place(_shadow.rectTransform, new Rect(ticket.x - 6f * scale,
+                ticket.y - 10f * scale, ticket.width + 12f * scale, ticket.height + 12f * scale));
+            _ticket.pixelsPerUnitMultiplier = _ticketFace.pixelsPerUnitMultiplier = .9f / scale;
+            _shadow.pixelsPerUnitMultiplier = 1.4f / scale;
+            _ticketFace.rectTransform.offsetMin = Vector2.one * (2f * scale);
+            _ticketFace.rectTransform.offsetMax = -Vector2.one * (2f * scale);
+            SizeText(_name, 32f, 24f, scale);
+            SizeText(_goal, 20f, 16f, scale, body: true);
+            SizeText(_teaching, 16f, 12f, scale, body: true);
             _chipRectPx = HudBands.ThumbBand(safeArea);
-            _chip.anchorMin = Vector2.zero;
-            _chip.anchorMax = Vector2.zero;
-            _chip.pivot = Vector2.zero;
-            _chip.anchoredPosition = new Vector2(_chipRectPx.x, _chipRectPx.y);
-            _chip.sizeDelta = new Vector2(_chipRectPx.width, _chipRectPx.height);
+            Place(_chip, _chipRectPx);
+            _playPaint.Layout(new Rect(Vector2.zero, _chipRectPx.size), dpi);
+        }
+
+        private static void SizeText(TMP_Text text, float sizeDp, float minimumDp, float scale,
+            bool body = false)
+        {
+            TypeScale.Apply(text, sizeDp, scale * HudBands.FallbackDpi, body, minimumDp);
+        }
+
+        private static void Place(RectTransform rect, Rect pixels)
+        {
+            rect.anchorMin = rect.anchorMax = Vector2.zero;
+            rect.pivot = Vector2.zero;
+            rect.anchoredPosition = pixels.position;
+            rect.sizeDelta = pixels.size;
         }
     }
 }

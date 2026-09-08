@@ -198,7 +198,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Intro.IsVisible, Is.True);
             Assert.That(_root.Intro.NameText, Is.EqualTo(_root.Session.Level.Dto.Name));
             Assert.That(_root.Intro.GoalText, Is.EqualTo(
-                CatMetro.Presentation.Strings.UiStrings.Get("intro.goal")
+                CatMetro.Presentation.Strings.UiStrings.Get(
+                    _root.Session.Level.Dto.Win.Deliveries == 1 ? "intro.goal.one" : "intro.goal")
                     .Replace("{count}", _root.Session.Level.Dto.Win.Deliveries.ToString())),
                 "no new I/O — the count is substituted from the already-loaded level");
             CollectionAssert.AreEqual(new[] { "home", "intro" }, _root.Stack.ToBreadcrumb());
