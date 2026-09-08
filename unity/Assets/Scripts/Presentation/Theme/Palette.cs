@@ -20,7 +20,6 @@ namespace CatMetro.Presentation.Theme
         public static readonly Color DepotNavy    = new Color( 19f / 255f,  28f / 255f,  48f / 255f); // #131C30 shadow/parked
         public static readonly Color MetroTeal    = new Color( 59f / 255f, 175f / 255f, 168f / 255f); // #3BAFA8 accent/success
         public static readonly Color TicketOrange = new Color(240f / 255f, 138f / 255f,  60f / 255f); // #F08A3C CTA
-        public static readonly Color WarmWood     = new Color(186f / 255f, 129f / 255f,  80f / 255f); // #BA8150 plinth top
         public static readonly Color WoodShadow   = new Color(128f / 255f,  83f / 255f,  51f / 255f); // #805333 plinth edge
 
         // line palette (content)
