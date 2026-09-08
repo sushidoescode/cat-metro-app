@@ -80,9 +80,9 @@ namespace CatMetro.Presentation.Board
         /// <summary>
         /// Fits the complete diorama inside a normalized screen-space window. The camera
         /// still renders the whole screen so the surrounding desk remains visible.
-        /// This API guarantees geometric containment. Small or very high windows can place
-        /// distant geometry beyond the pipeline's 14-unit shadow range; the Home composition
-        /// must retain its measured window and validate shadows when that window changes.
+        /// The owning scene lease requests a 16-unit Home shadow range; the two-argument
+        /// gameplay fit restores 14. This API guarantees geometric containment. Small or very
+        /// high windows can still exceed that range, so changed windows must validate shadows.
         /// </summary>
         public static void FitCamera(Camera camera, BoardView board, Rect viewport)
         {
@@ -252,6 +252,8 @@ namespace CatMetro.Presentation.Board
             float contentHalfHeight = Mathf.Max(
                 Mathf.Abs(frameBounds.max.y - cameraY), Mathf.Abs(cameraY - frameBounds.min.y));
             DefocusVeil.Apply(camera, size, contentHalfHeight);
+            var environment = board.GetComponentInParent<BoardSceneEnvironmentScope>();
+            if (environment != null) environment.SetHomeFit(viewport.HasValue);
         }
 
         private static bool IsUnderAny(Transform candidate, List<Transform> roots)
@@ -399,7 +401,12 @@ namespace CatMetro.Presentation.Board
     /// <summary>Returns scene-global render settings when the owning game root goes away.</summary>
     internal sealed class BoardSceneEnvironmentScope : MonoBehaviour
     {
+        private const float GameplayShadowDistance = 14f;
+        // The admitted GridY=1.47 Home fit measured 15.0697 units at the NavyBase.
+        // The approved 16-unit range retains it with ~0.93 units of margin.
+        private const float HomeShadowDistance = 16f;
         private static int _activeOwners;
+        private static int _homeOwners;
         private static bool _hasSnapshot;
         private static Material _skybox;
         private static AmbientMode _ambientMode;
@@ -410,11 +417,13 @@ namespace CatMetro.Presentation.Board
         private static UniversalRenderPipelineAsset _pipeline;
         private static float _shadowDistance;
         private bool _ownsLease;
+        private bool _homeFit;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetSharedState()
         {
             _activeOwners = 0;
+            _homeOwners = 0;
             _hasSnapshot = false;
             _skybox = null;
             _pipeline = null;
@@ -435,7 +444,7 @@ namespace CatMetro.Presentation.Board
                 if (_pipeline != null)
                 {
                     _shadowDistance = _pipeline.shadowDistance;
-                    _pipeline.shadowDistance = 14f;
+                    ApplyShadowDistance();
                 }
                 _hasSnapshot = true;
             }
@@ -443,12 +452,35 @@ namespace CatMetro.Presentation.Board
             _ownsLease = true;
         }
 
+        public void SetHomeFit(bool home)
+        {
+            if (!_ownsLease || _homeFit == home) return;
+            _homeFit = home;
+            _homeOwners += home ? 1 : -1;
+            ApplyShadowDistance();
+        }
+
+        private static void ApplyShadowDistance()
+        {
+            // During root replacement, retain the farther range until the last Home
+            // owner releases it; a newly fitted gameplay root must not clip that Home.
+            if (_pipeline != null)
+                _pipeline.shadowDistance = _homeOwners > 0
+                    ? HomeShadowDistance : GameplayShadowDistance;
+        }
+
         private void OnDestroy()
         {
             if (!_ownsLease) return;
             _ownsLease = false;
+            if (_homeFit) _homeOwners--;
             _activeOwners = Mathf.Max(0, _activeOwners - 1);
-            if (_activeOwners != 0 || !_hasSnapshot) return;
+            if (_activeOwners != 0)
+            {
+                ApplyShadowDistance();
+                return;
+            }
+            if (!_hasSnapshot) return;
             RenderSettings.skybox = _skybox;
             RenderSettings.ambientMode = _ambientMode;
             RenderSettings.ambientSkyColor = _ambientSky;

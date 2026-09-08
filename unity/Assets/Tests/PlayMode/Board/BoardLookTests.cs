@@ -199,11 +199,15 @@ namespace CatMetro.Tests.PlayMode
         public IEnumerator HomeWindowFit_ContainsTheDioramaAndRestoresGameplayWithoutDrift()
         {
             _root = GameRoot.Launch();
-            yield return null;
             _root.enabled = false;
+            yield return null;
             var camera = _root.Cam;
+            var pipeline = (UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset)
+                UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline;
             camera.aspect = PinnedPhoneAspect;
             BoardSceneLook.FitCamera(camera, _root.View);
+            Assert.That(pipeline.shadowDistance, Is.EqualTo(14f),
+                "gameplay keeps the tighter 14-unit shadow range");
             var playPosition = camera.transform.position;
             float playSize = camera.orthographicSize;
             var desk = _root.View.transform.Find("DeskSurface");
@@ -216,15 +220,23 @@ namespace CatMetro.Tests.PlayMode
                 new Rect(0.12f, 0.31f, 0.63f, 0.35f) })
             {
                 BoardSceneLook.FitCamera(camera, _root.View, window);
+                Assert.That(pipeline.shadowDistance, Is.EqualTo(16f),
+                    "Home's scoped range must cover the measured 15.0697-unit licensed "
+                    + "NavyBase depth plus about 0.93 units of margin");
                 Assert.That(camera.rect, Is.EqualTo(new Rect(0f, 0f, 1f, 1f)),
                     "the desk still fills the screen around the Home window");
+                float farthestDepth = 0f;
                 foreach (var renderer in _root.View.GetComponentsInChildren<Renderer>(true))
                 {
                     if (!renderer.enabled || renderer.transform.IsChildOf(desk)) continue;
                     Bounds bounds = renderer.bounds;
+                    float depth = camera.WorldToViewportPoint(bounds.max).z;
+                    farthestDepth = Mathf.Max(farthestDepth, depth);
                     if (window.width > 0.8f)
-                        Assert.That(camera.WorldToViewportPoint(bounds.max).z, Is.LessThanOrEqualTo(14f),
-                            "the shipping Home window must retain " + renderer.name + " shadows");
+                        Assert.That(depth, Is.LessThanOrEqualTo(16f),
+                            "the licensed GridY=1.47 NavyBase measured 15.0697 units; "
+                            + "the approved 16-unit Home range adds about 0.93 units of margin "
+                            + "and must retain " + renderer.name + " shadows");
                     foreach (float x in new[] { bounds.min.x, bounds.max.x })
                         foreach (float y in new[] { bounds.min.y, bounds.max.y })
                             foreach (float z in new[] { bounds.min.z, bounds.max.z })
@@ -236,6 +248,26 @@ namespace CatMetro.Tests.PlayMode
                                     renderer.name);
                             }
                 }
+                TestContext.Out.WriteLine($"HOME_SHADOW_READBACK window={window} "
+                    + $"farthestDepth={farthestDepth:F6} range={pipeline.shadowDistance:F1} "
+                    + $"propEntries={PropModelCatalog.LoadResources().AdmittedEntryCount}");
+                string captureDir = System.Environment.GetEnvironmentVariable("CM_BOARD_LOOK_CAPTURE_DIR");
+                if (window.width > 0.8f && !string.IsNullOrEmpty(captureDir))
+                {
+                    bool admitted = CatModelCatalog.LoadResources().AdmittedEntryCount > 0;
+                    CaptureRig.RequireStoreCaptureArt(System.Environment.GetEnvironmentVariable(
+                        "CM_CAPTURE_ALLOW_PLACEHOLDER"));
+                    Directory.CreateDirectory(captureDir);
+                    var previewCanvas = _root.Preview.GetComponent<Canvas>();
+                    bool wasEnabled = previewCanvas.enabled;
+                    try
+                    {
+                        previewCanvas.enabled = false;
+                        yield return CaptureFrozenRigFrame(_root, Path.Combine(captureDir,
+                            admitted ? "home-shadow-admitted-16.png" : "home-shadow-fallback-16.png"));
+                    }
+                    finally { previewCanvas.enabled = wasEnabled; }
+                }
                 var firstPosition = camera.transform.position;
                 float firstSize = camera.orthographicSize;
                 BoardSceneLook.FitCamera(camera, _root.View, window);
@@ -243,6 +275,8 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(camera.orthographicSize, Is.EqualTo(firstSize));
             }
             BoardSceneLook.FitCamera(camera, _root.View);
+            Assert.That(pipeline.shadowDistance, Is.EqualTo(14f),
+                "returning from Home must release its extra range without changing gameplay framing");
             Assert.That(Vector3.Distance(camera.transform.position, playPosition), Is.LessThan(0.001f));
             Assert.That(camera.orthographicSize, Is.EqualTo(playSize).Within(0.001f));
         }
@@ -1195,9 +1229,13 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(pipeline.shadowDistance, Is.EqualTo(14f),
                     "the live board owns its shadow range without editing the pipeline asset");
 
+                BoardSceneLook.FitCamera(_root.Cam, _root.View, new Rect(.075f, .28f, .85f, .49f));
+                Assert.That(pipeline.shadowDistance, Is.EqualTo(16f));
                 retiringRoot = _root;
                 Object.Destroy(retiringRoot.gameObject);
                 _root = GameRoot.Launch();
+                Assert.That(pipeline.shadowDistance, Is.EqualTo(16f),
+                    "the retiring Home root retains its range until its lease is destroyed");
                 yield return null;
                 Assert.That(retiringRoot == null, Is.True,
                     "the old root is destroyed after the replacement has acquired the look");
@@ -1206,7 +1244,15 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(RenderSettings.ambientMode,
                     Is.EqualTo(UnityEngine.Rendering.AmbientMode.Trilight));
                 Assert.That(pipeline.shadowDistance, Is.EqualTo(14f),
-                    "an overlapping root retains the live board's shadow range");
+                    "destroying the last Home owner returns the surviving gameplay root to 14");
+
+                BoardSceneLook.FitCamera(_root.Cam, _root.View, new Rect(.075f, .28f, .85f, .49f));
+                BoardSceneLook.FitCamera(_root.Cam, _root.View, new Rect(.075f, .28f, .85f, .49f));
+                Assert.That(pipeline.shadowDistance, Is.EqualTo(16f));
+                BoardSceneLook.FitCamera(_root.Cam, _root.View);
+                Assert.That(pipeline.shadowDistance, Is.EqualTo(14f),
+                    "repeated Home fits must not acquire duplicate shadow leases");
+                BoardSceneLook.FitCamera(_root.Cam, _root.View, new Rect(.075f, .28f, .85f, .49f));
 
                 Object.DestroyImmediate(_root.gameObject);
                 _root = null;
@@ -1218,7 +1264,7 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(RenderSettings.ambientGroundColor, Is.EqualTo(sentinelGround));
                 Assert.That(RenderSettings.ambientIntensity, Is.EqualTo(0.42f).Within(0.001f));
                 Assert.That(pipeline.shadowDistance, Is.EqualTo(19.25f),
-                    "the final owner restores the pipeline's original setting");
+                    "the final Home owner restores the pipeline's original setting");
             }
             finally
             {
