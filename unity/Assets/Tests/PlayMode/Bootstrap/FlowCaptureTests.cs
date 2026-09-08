@@ -12,6 +12,7 @@ using CatMetro.Presentation.Hud;
 using CatMetro.Presentation.Screens;
 using CatMetro.Presentation.Theme;
 using CatMetro.Presentation.Input;
+using CatMetro.Presentation.Fx;
 using Object = UnityEngine.Object;
 
 namespace CatMetro.Tests.PlayMode
@@ -231,6 +232,7 @@ namespace CatMetro.Tests.PlayMode
             float aspect = camera.aspect;
             var target = new RenderTexture(917, 2048, 24, RenderTextureFormat.ARGB32);
             Texture2D frame = null;
+            BoardFx uiFx = null;
             try
             {
                 camera.targetTexture = target;
@@ -247,6 +249,14 @@ namespace CatMetro.Tests.PlayMode
                     if (_root != null) _root.View.UpdateFrom(_root.Session, _winCaptureStart + winElapsed);
                     banner.SamplePresentation(winElapsed);
                     results.SamplePresentation(winElapsed);
+                }
+                if (_root == null && winElapsed >= .6f)
+                {
+                    // Isolated win paint evidence: no board or licensed cat is loaded here.
+                    uiFx = BoardFx.GetOrCreate(camera.transform);
+                    uiFx.Confetti(camera);
+                    camera.transform.Find("Win confetti").GetComponent<ParticleSystem>()
+                        .Simulate(winElapsed - .6f, true, false);
                 }
                 Canvas.ForceUpdateCanvases();
                 camera.Render();
@@ -284,6 +294,7 @@ namespace CatMetro.Tests.PlayMode
             }
             finally
             {
+                uiFx?.StopConfetti();
                 camera.targetTexture = previous;
                 camera.aspect = aspect;
                 RenderTexture.active = previousActive;

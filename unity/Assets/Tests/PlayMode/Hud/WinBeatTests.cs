@@ -84,25 +84,103 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator WinFxHook_FiresOnceAtTheBeat_AndReducedMotionSuppressesIt()
+        public IEnumerator WinConfetti_StartsWithTheCatHop_AndExpiresWithoutAdvancingTheSession()
         {
             Launch();
-            int calls = 0;
-            _root.WinConfettiRequested = (board, camera) => calls++;
+            Time.timeScale = 0f;
+            _root.Session.EnqueueToggle(0);
+            _root.Session.AdvanceMs(200 * CatMetro.Application.Session.TickInterpolator.TICK_MS);
+            Assert.That(_root.Session.State.Outcome.Kind, Is.EqualTo(OutcomeKind.Won));
+            int tick = _root.Session.State.Tick;
+            yield return null;
+            yield return new WaitForSecondsRealtime(.4f);
+            Assert.That(Confetti(), Is.Null, "the burst waits for the same beat as the cat");
+            var cat = _root.View.transform.Find("delivered-cat:0/Carriage/Cat");
+            Assert.That(cat, Is.Not.Null);
+            var neutral = cat.localScale;
+            yield return new WaitForSecondsRealtime(.3f);
+            var confetti = Confetti();
+            Assert.That(confetti, Is.Not.Null, "the shipped win beat must emit BoardFx confetti");
+            Assert.That(confetti.particleCount, Is.EqualTo(100));
+            Assert.That(cat.localScale.magnitude, Is.GreaterThan(neutral.magnitude * 1.05f),
+                "the retained cat is hopping while the burst enters");
+            yield return new WaitForSecondsRealtime(2f);
+            Assert.That(confetti.particleCount, Is.Zero, "the one burst ends after two unscaled seconds");
+            Assert.That(_root.Session.State.Tick, Is.EqualTo(tick));
+            Assert.That(cat.gameObject.activeInHierarchy, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator WinConfetti_RetryCancelsThePendingBeat_AndMotionOffSuppressesIt()
+        {
+            Launch();
+            Time.timeScale = 0f;
             _root.Session.State.Outcome = SimOutcome.Won;
             yield return null;
             yield return new WaitForSecondsRealtime(.4f);
-            Assert.That(calls, Is.Zero);
-            yield return new WaitForSecondsRealtime(.3f);
-            Assert.That(calls, Is.EqualTo(1));
-            yield return new WaitForSecondsRealtime(.2f);
-            Assert.That(calls, Is.EqualTo(1));
             _root.Retry();
+            yield return new WaitForSecondsRealtime(.3f);
+            Assert.That(Confetti(), Is.Null, "the dismissed win cannot emit over the next board");
             _root.MotionOffToggle = true;
             _root.Session.State.Outcome = SimOutcome.Won;
             yield return null;
             yield return new WaitForSecondsRealtime(.7f);
-            Assert.That(calls, Is.EqualTo(1));
+            Assert.That(Confetti(), Is.Null);
+        }
+
+        [UnityTest]
+        public IEnumerator WinConfetti_ActiveBurstStopsWhenMotionIsDisabledOrTheLevelIsDismissed()
+        {
+            Launch();
+            Time.timeScale = 0f;
+            _root.Session.State.Outcome = SimOutcome.Won;
+            yield return null;
+            yield return new WaitForSecondsRealtime(.7f);
+            var confetti = Confetti();
+            Assert.That(confetti, Is.Not.Null);
+            _root.MotionOffToggle = true;
+            yield return null;
+            yield return null;
+            Assert.That(confetti.particleCount, Is.Zero);
+            _root.MotionOffToggle = false;
+            _root.Retry();
+            _root.Session.State.Outcome = SimOutcome.Won;
+            yield return null;
+            yield return new WaitForSecondsRealtime(.7f);
+            confetti = Confetti();
+            Assert.That(confetti.particleCount, Is.EqualTo(100));
+            _root.Retry();
+            Assert.That(confetti.particleCount, Is.Zero,
+                "navigation clears the burst before the old board is destroyed");
+            yield return null;
+            Assert.That(confetti == null, Is.True);
+        }
+
+        private ParticleSystem Confetti() =>
+            _root.View.transform.Find("Win confetti")?.GetComponent<ParticleSystem>();
+
+        [UnityTest]
+        public IEnumerator WinConfetti_DisablingTheRootCancelsItsPendingAndActiveBeat()
+        {
+            Launch();
+            Time.timeScale = 0f;
+            _root.Session.State.Outcome = SimOutcome.Won;
+            yield return null;
+            yield return new WaitForSecondsRealtime(.4f);
+            _root.enabled = false;
+            yield return new WaitForSecondsRealtime(.3f);
+            _root.enabled = true;
+            yield return null;
+            yield return null;
+            Assert.That(Confetti(), Is.Null, "enabling the root must not replay a cancelled win");
+            _root.Retry();
+            _root.Session.State.Outcome = SimOutcome.Won;
+            yield return null;
+            yield return new WaitForSecondsRealtime(.7f);
+            var confetti = Confetti();
+            Assert.That(confetti, Is.Not.Null);
+            _root.enabled = false;
+            Assert.That(confetti.particleCount, Is.Zero);
         }
 
         [UnityTest]

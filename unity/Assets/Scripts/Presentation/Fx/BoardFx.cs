@@ -2,10 +2,11 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using CatMetro.Presentation.Theme;
 
 namespace CatMetro.Presentation.Fx
 {
-    public enum BoardFxSprite { Puff, Heart, Star }
+    public enum BoardFxSprite { Puff, Heart, Star, Confetti }
 
     public sealed class BoardFx : MonoBehaviour
     {
@@ -25,8 +26,12 @@ namespace CatMetro.Presentation.Fx
         private readonly List<TweenState> _tick = new List<TweenState>(32);
         private readonly List<ParticleSystem> _particles = new List<ParticleSystem>(16);
         private readonly ParticleSystem[] _bursts = new ParticleSystem[4];
-        private readonly Material[] _materials = new Material[3];
-        private readonly Texture2D[] _textures = new Texture2D[3];
+        private readonly Material[] _materials = new Material[4];
+        private readonly Texture2D[] _textures = new Texture2D[4];
+        private ParticleSystem _confetti;
+        private static readonly Color[] ConfettiColours = { Palette.CreamCard,
+            Palette.TicketOrange, Palette.MetroTeal, Palette.SignalRed,
+            Palette.HarborBlue, Palette.TabbyYellow };
         private int _nextBurst;
         private long _nextTween;
         private bool _advancing;
@@ -186,6 +191,66 @@ namespace CatMetro.Presentation.Fx
             ps.Emit(Mathf.Min(count, 24));
         }
 
+        // One short shower in camera space, owned by the board so it cannot survive a load.
+        // Its local seed never consumes the simulation or Unity's shared random stream.
+        public void Confetti(Camera camera)
+        {
+            if (camera == null || MotionOff || !isActiveAndEnabled) return;
+            if (_confetti == null)
+            {
+                _confetti = CreateParticles(transform, "Win confetti", BoardFxSprite.Confetti);
+                _confetti.useAutoRandomSeed = false;
+                _confetti.randomSeed = 27;
+                var main = _confetti.main;
+                main.maxParticles = 100;
+                main.startLifetime = 2f;
+                main.startSpeed = 0f;
+                main.startSize3D = true;
+                main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+                var shape = _confetti.shape;
+                shape.enabled = false;
+                var size = _confetti.sizeOverLifetime;
+                size.enabled = false;
+                var spin = _confetti.rotationOverLifetime;
+                spin.enabled = true;
+                spin.z = new ParticleSystem.MinMaxCurve(-3f, 3f);
+                var fade = _confetti.colorOverLifetime;
+                var gradient = new Gradient();
+                gradient.SetKeys(new[] { new GradientColorKey(Color.white, 0f),
+                        new GradientColorKey(Color.white, 1f) },
+                    new[] { new GradientAlphaKey(1f, 0f),
+                        new GradientAlphaKey(1f, .7f), new GradientAlphaKey(0f, 1f) });
+                fade.color = gradient;
+            }
+            StopConfetti();
+            float depth = camera.nearClipPlane + 1f;
+            Vector3 bottomLeft = camera.ViewportToWorldPoint(new Vector3(0f, 0f, depth));
+            Vector3 right = camera.ViewportToWorldPoint(new Vector3(1f, 0f, depth)) - bottomLeft;
+            Vector3 up = camera.ViewportToWorldPoint(new Vector3(0f, 1f, depth)) - bottomLeft;
+            var random = new System.Random(27);
+            _confetti.Play();
+            for (int i = 0; i < 100; i++)
+            {
+                float x = .03f + .94f * (float)random.NextDouble();
+                float y = 1.01f + .18f * (float)random.NextDouble();
+                float width = right.magnitude * Mathf.Lerp(.012f, .022f, (float)random.NextDouble());
+                _confetti.Emit(new ParticleSystem.EmitParams
+                {
+                    position = bottomLeft + right * x + up * y,
+                    velocity = up * -Mathf.Lerp(.5f, .75f, (float)random.NextDouble())
+                        + right * Mathf.Lerp(-.06f, .06f, (float)random.NextDouble()),
+                    startColor = ConfettiColours[i % ConfettiColours.Length],
+                    startSize3D = new Vector3(width, width * 1.4f, 1f),
+                }, 1);
+            }
+        }
+
+        public void StopConfetti()
+        {
+            if (_confetti != null)
+                _confetti.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        }
+
         public ParticleSystem CreateParticles(Transform parent, string name, BoardFxSprite sprite)
         {
             var go = new GameObject(name);
@@ -254,7 +319,9 @@ namespace CatMetro.Presentation.Fx
                     float v = (y + 0.5f) / size * 2f - 1f;
                     float radius = Mathf.Sqrt(u * u + v * v);
                     float alpha;
-                    if (sprite == BoardFxSprite.Puff)
+                    if (sprite == BoardFxSprite.Confetti)
+                        alpha = 1f;
+                    else if (sprite == BoardFxSprite.Puff)
                         alpha = Mathf.SmoothStep(0f, 1f, (0.95f - radius) / 0.35f);
                     else if (sprite == BoardFxSprite.Heart)
                     {

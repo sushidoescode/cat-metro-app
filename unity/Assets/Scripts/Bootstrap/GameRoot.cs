@@ -14,6 +14,7 @@ using CatMetro.Presentation.Audio;
 using CatMetro.Presentation.Cameras;
 using CatMetro.Presentation.Diagnostics;
 using CatMetro.Presentation.Hud;
+using CatMetro.Presentation.Fx;
 using CatMetro.Presentation.Hud.WavePreview;
 using CatMetro.Services.Ads;
 using CatMetro.Services.Retry;
@@ -207,9 +208,6 @@ namespace CatMetro.Bootstrap
         private int _pendingHomeShowFrame = -1;
         private int _introAdvancedFrame = -1;
         private float _winFxAt = -1f;
-        // Lane B binds BoardFx.Confetti here when its shared foundation lands. The flow
-        // owns timing/cancellation; the particle implementation remains in BoardFx.
-        public System.Action<Transform, Camera> WinConfettiRequested;
 
         // CM-UX-07 criterion 2 / CM-BOOT-HOME criterion 1: true iff a screen (Home or
         // LevelIntro) currently shows — derived from the stack so there is one source of truth.
@@ -1167,6 +1165,7 @@ namespace CatMetro.Bootstrap
             _introAdvancedFrame = -1;
             _level = level;
             _winFxAt = -1f;
+            if (View != null) View.GetComponent<BoardFx>()?.StopConfetti();
             Session = preparedSession ?? new GameSession(level);
             Audio?.BindSession(Session);
             if (View != null) Destroy(View.gameObject);
@@ -1230,6 +1229,7 @@ namespace CatMetro.Bootstrap
             // old failed session while it remains on screen during the cover.
             CancelFailureRewind();
             _winFxAt = -1f;
+            if (View != null) View.GetComponent<BoardFx>()?.StopConfetti();
             Audio?.CancelCelebrate();
             // LaunchWith is the synchronous gameplay fixture seam. The shipped screen flow
             // owns navigation paint; reduced motion keeps its existing immediate behavior.
@@ -1737,7 +1737,7 @@ namespace CatMetro.Bootstrap
             {
                 _winFxAt = -1f;
                 if (!MotionOff && ScreenState == "Won" && !IsTransitioning)
-                    WinConfettiRequested?.Invoke(View.transform, Cam);
+                    BoardFx.GetOrCreate(View.transform, () => MotionOff).Confetti(Cam);
             }
             RefreshFailureRewindOffer();
             try
@@ -1823,6 +1823,8 @@ namespace CatMetro.Bootstrap
         {
             CancelFailureRewind();
             _chrome?.Transition?.Cancel();
+            _winFxAt = -1f;
+            if (View != null) View.GetComponent<BoardFx>()?.StopConfetti();
         }
 
         private bool FailureRewindContextValid => isActiveAndEnabled && !_destroying &&

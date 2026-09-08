@@ -80,6 +80,30 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(label.overflowMode, Is.EqualTo(TextOverflowModes.Ellipsis));
         }
 
+        [TestCase("Unlock · CA$2.79")]
+        [TestCase("Débloquer · 2,79 $CA")]
+        [TestCase("Equip")]
+        public void LocalizedActionLabel_RefitsAfterTheOwnerInsetsItsTextRect(string text)
+        {
+            var root = Paint(new Rect(0, 64, 917, 280), 408f, text);
+            var label = root.GetComponentInChildren<TMP_Text>();
+            // Wardrobe reserves an inset and a subtitle after the shared paint is measured.
+            // A fixed measured font truncates even short labels when this rect contracts.
+            label.rectTransform.anchorMin = new Vector2(.04f, .35f);
+            label.rectTransform.anchorMax = new Vector2(.96f, .95f);
+            label.rectTransform.offsetMin = label.rectTransform.offsetMax = Vector2.zero;
+            Canvas.ForceUpdateCanvases();
+            label.ForceMeshUpdate();
+            Assert.That(label.isTextTruncated, Is.False,
+                "the whole action must fit: " + text + " font=" + label.fontSize
+                + " width=" + label.rectTransform.rect.width);
+            Assert.That(label.isTextOverflowing, Is.False);
+            Assert.That(label.enableAutoSizing, Is.True);
+            Assert.That(label.fontSizeMin, Is.GreaterThanOrEqualTo(30.6f - .001f));
+            Assert.That(label.fontSize, Is.InRange(label.fontSizeMin, 61.2f));
+            Assert.That(label.fontSizeMax, Is.EqualTo(61.2f).Within(.01f));
+        }
+
         [Test]
         public void PinPaint_IsCreamWithStitchGaps_AndOwnsNoInputOrMotionComponents()
         {
@@ -164,15 +188,24 @@ namespace CatMetro.Tests.PlayMode
                 canvas.renderMode = RenderMode.ScreenSpaceCamera;
                 canvas.worldCamera = camera;
                 canvas.planeDistance = 1f;
-                string[] labels = { "Play", "Next", "Try again", "Home" };
+                string[] labels = { "Play", "Next", "Try again", "Home",
+                    "Unlock · CA$2.79", "Débloquer · 2,79 $CA" };
                 Color[] rings = { Palette.TicketOrange, Palette.TicketOrange,
-                    Palette.MetroTeal, Palette.InkNavy };
+                    Palette.MetroTeal, Palette.InkNavy, Palette.TicketOrange, Palette.TicketOrange };
                 for (int i = 0; i < labels.Length; i++)
-                    ChromeChip.PaintPrimary(canvas.transform,
-                        new Rect(0, 1490 - 340 * i, 917, 280), labels[i], rings[i],
+                {
+                    var chip = ChromeChip.PaintPrimary(canvas.transform,
+                        new Rect(0, 1730 - 270 * i, 917, 280), labels[i], rings[i],
                         i == 0 ? HudShapeSprites.Triangle : null, 408f);
+                    if (i >= 4)
+                    {
+                        chip.Label.rectTransform.anchorMin = new Vector2(.04f, .05f);
+                        chip.Label.rectTransform.anchorMax = new Vector2(.96f, .95f);
+                        chip.Label.rectTransform.offsetMin = chip.Label.rectTransform.offsetMax = Vector2.zero;
+                    }
+                }
                 var small = ChromeChip.PaintPrimary(canvas.transform,
-                    new Rect(0, 0, 917, 280), "Daily route", Palette.MetroTeal, null, 408f);
+                    new Rect(0, 0, 917, 280), "Equip", Palette.MetroTeal, null, 408f);
                 small.LayoutFace(new Rect(51, 60, 397.8f, 153), 408f);
                 var wardrobe = ChromeChip.PaintPrimary(canvas.transform,
                     new Rect(0, 0, 917, 280), "Wardrobe", Palette.InkNavy, null, 408f);
