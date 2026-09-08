@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using CatMetro.Presentation.Props;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 namespace CatMetro.Presentation.Board
 {
@@ -12,22 +13,11 @@ namespace CatMetro.Presentation.Board
 
         private const string KeyLightName = "Diorama Warm Key";
         private const float TargetPortraitAspect = 9f / 19.5f;
-        // These fractions serve the safe-frame law in RuntimeSceneRigTests.AssertInside:
-        // viewport x in (0.055, 0.945), y in (0.12, 0.87), asserted at the pinned phone
-        // aspect 917/2048 (~0.4478). The fit must assume an aspect before the camera knows
-        // its real surface, and TargetPortraitAspect (~0.4615) is wider than the pinned
-        // one, which squeezes content outward at assertion time. With the 1.05 pad:
-        //   x extremes = 0.5 +/- TargetAspect*SafeWidth / (2*1.05*0.4478) -> [0.068, 0.932]
-        //   y extremes = 0.495 +/- SafeHeight / (2*1.05)                  -> [0.133, 0.857]
-        // ~0.013 inside the law on every edge. The old 0.93/0.78 put x extremes at 0.9565
-        // (outside the law — the furnished-board signpost failure) and passed vertically by
-        // only 0.0036. Source-platform cats do not exist in the launch-time renderer union;
-        // BoardView contributes their complete horizontal lane envelope below instead of
-        // shrinking every board to compensate. Do not widen these without re-deriving both
-        // bands.
+        // Gameplay uses the .06..90 portrait band, with the current HUD's lower edge
+        // as a further top limit. The 2% pad leaves mesh/animation rounding clearance.
         private const float SafeWidth = 0.88f;
-        private const float SafeHeight = 0.76f;
-        private const float FitPadding = 1.05f;
+        private const float SafeHeight = 0.84f;
+        private const float FitPadding = 1.02f;
         // The 2026-08-31 curated framing reference is frontal: the board's receding axis runs
         // vertically in the portrait frame instead of diagonally across it. Pitch retains the
         // raised wooden-toy depth; zero yaw and roll make that frontal composition explicit.
@@ -90,6 +80,9 @@ namespace CatMetro.Presentation.Board
         /// <summary>
         /// Fits the complete diorama inside a normalized screen-space window. The camera
         /// still renders the whole screen so the surrounding desk remains visible.
+        /// The owning scene lease requests a 16-unit Home shadow range; the two-argument
+        /// gameplay fit restores 14. This API guarantees geometric containment. Small or very
+        /// high windows can still exceed that range, so changed windows must validate shadows.
         /// </summary>
         public static void FitCamera(Camera camera, BoardView board, Rect viewport)
         {
@@ -154,6 +147,7 @@ namespace CatMetro.Presentation.Board
             {
                 if (!foundContent) { contentBounds = platformBounds; foundContent = true; }
                 else contentBounds.Encapsulate(platformBounds);
+                if (foundFrame) frameBounds.Encapsulate(platformBounds);
             }
 
             if (!foundFrame)
@@ -166,19 +160,35 @@ namespace CatMetro.Presentation.Board
             // realistically — a level whose only non-slab renderers were decorative.
             if (!foundContent) contentBounds = frameBounds;
 
-            // Home contains the decorative edges too; gameplay keeps its original content
-            // width and safe band. Derive both fits from geometry, never the previous pose.
+            // Home contains the decorative edges too; gameplay keeps its separate content
+            // width fit. Derive both fits from geometry, never the previous camera pose.
             Bounds horizontalBounds = contentBounds;
             if (viewport.HasValue) horizontalBounds.Encapsulate(frameBounds);
-            float fitHeight = viewport.HasValue ? viewport.Value.height : SafeHeight;
             float fitWidth = viewport.HasValue ? viewport.Value.width : SafeWidth;
+            // Rank 30 places counters inside the capsule, so reserve its full height. The
+            // canonical capture safe area scales with the Pixel frame; on a device use its
+            // real cutouts and dpi. This follows the HUD factory when that layout changes.
+            const float phoneHeight = 2048f;
+            var hudSafeArea = new Rect(0f, 64f, 917f, 1920f);
+            float hudDpi = 408f;
+            float hudHeight = phoneHeight;
+            if (camera.targetTexture == null && Screen.height > Screen.width)
+            {
+                hudSafeArea = Screen.safeArea;
+                hudDpi = Screen.dpi;
+                hudHeight = Screen.height;
+            }
+            float hudBottom = CatMetro.Presentation.Hud.WavePreview.WavePreviewStrip
+                .CapsuleRect(hudSafeArea, hudDpi).yMin / hudHeight - 0.008f;
+            float playTop = Mathf.Min(0.90f, hudBottom);
+            float fitHeight = viewport?.height ?? Mathf.Min(SafeHeight, playTop - 0.06f);
             float aspect = viewport.HasValue ? camera.aspect : TargetPortraitAspect;
             float requiredForHeight = frameBounds.size.y * 0.5f / fitHeight;
             float requiredForWidth = horizontalBounds.size.x * 0.5f / (aspect * fitWidth);
             float size = Mathf.Max(MinOrthoSize,
                 Mathf.Max(requiredForHeight, requiredForWidth) * FitPadding);
             float safeCenterY = viewport.HasValue ? viewport.Value.center.y
-                : (0.13f + 0.86f) * 0.5f;
+                : (0.06f + playTop) * 0.5f;
             // Centre X on the gameplay content the law governs, not on decorative wood or a
             // lopsided prop cluster. BoardSurface is deliberately wide enough to bleed at both
             // portrait sides despite that choice. Centre Y on the complete non-desk frame so
@@ -188,7 +198,7 @@ namespace CatMetro.Presentation.Board
                 cameraX -= (viewport.Value.center.x - 0.5f) * 2f * size * aspect;
             float cameraY = frameBounds.center.y - (safeCenterY - 0.5f) * 2f * size;
 
-            float cameraZ = -10f;
+            float cameraZ = frameBounds.min.z - DeskNearClearance;
             float farthestZ = frameBounds.max.z;
             foreach (var renderer in board.GetComponentsInChildren<Renderer>(true))
             {
@@ -231,8 +241,7 @@ namespace CatMetro.Presentation.Board
             camera.nearClipPlane = 0.1f;
             camera.farClipPlane = Mathf.Max(50f, farthestZ - cameraZ + 1f);
             camera.allowHDR = false;
-            // Inert today: Assets/Settings/CatMetro_URP.asset has m_MSAA: 1, i.e. one sample.
-            // Left set so the camera does not have to be revisited if that asset ever moves.
+            // The shipped URP asset supplies 4 samples; capture targets must also request 4.
             camera.allowMSAA = true;
 
             // Depth-of-field stand-in. Sized from what the fit just solved, so the hole it
@@ -243,6 +252,8 @@ namespace CatMetro.Presentation.Board
             float contentHalfHeight = Mathf.Max(
                 Mathf.Abs(frameBounds.max.y - cameraY), Mathf.Abs(cameraY - frameBounds.min.y));
             DefocusVeil.Apply(camera, size, contentHalfHeight);
+            var environment = board.GetComponentInParent<BoardSceneEnvironmentScope>();
+            if (environment != null) environment.SetHomeFit(viewport.HasValue);
         }
 
         private static bool IsUnderAny(Transform candidate, List<Transform> roots)
@@ -368,25 +379,8 @@ namespace CatMetro.Presentation.Board
             key.color = new Color(1f, 0.936f, 0.805f);
             key.intensity = 0.957f;
             key.shadows = LightShadows.Soft;
-            // A change against integration/look-stack (0.38) that earlier summaries of this
-            // branch failed to call out: it went to 0.55 with the raking-key work below.
-            //
-            // It is 0.45 here for a reason that turned out to be WRONG, and the correction is
-            // worth more than the constant. Round 2 read a rail sample of (40, 48, 62), whose
-            // effective illuminant divided out to a key visibility of 0.454 — 1 - 0.55 to
-            // three decimals — and concluded the rails were fully shadowed with this constant
-            // setting how dark. Slot 7 then measured the real boot seam: rails at
-            // (51, 59, 73), giving a key visibility of (0.754, 0.845, 0.939). The rails get
-            // roughly 85% of the key. They are barely shadowed at all, the 0.454 match was
-            // numerology on a superseded sample, and taking 0.55 -> 0.45 correctly moved them
-            // by nothing.
-            //
-            // Kept at 0.45 only because that is the value slot 7 measured and found harmless,
-            // so code and last-known-good render agree. It has no remaining justification of
-            // its own. If the raking work's deliberate 0.55 is wanted back, this is a
-            // one-line revert with no measured downside in either direction — the sampled
-            // elements did not respond to it.
-            key.shadowStrength = 0.45f;
+            // Stronger grounding under the depot, trees, sleepers and front rim.
+            key.shadowStrength = 0.62f;
             key.shadowBias = 0.08f;
             key.shadowNormalBias = 0.25f;
             key.shadowNearPlane = 0.2f;
@@ -398,7 +392,7 @@ namespace CatMetro.Presentation.Board
             //
             // The board is now frontal at Euler(38,0,0). This key remains intentionally off the
             // board normal so vertical faces split into lit and shaded sides; the scene tests
-            // measure that result and the 24-unit shadow-distance envelope directly rather
+            // measure that result and the 14-unit shadow-distance envelope directly rather
             // than preserving an angle computed for the superseded diagonal pose.
             key.transform.localRotation = Quaternion.Euler(19f, -56f, 0f);
         }
@@ -407,7 +401,12 @@ namespace CatMetro.Presentation.Board
     /// <summary>Returns scene-global render settings when the owning game root goes away.</summary>
     internal sealed class BoardSceneEnvironmentScope : MonoBehaviour
     {
+        private const float GameplayShadowDistance = 14f;
+        // The admitted GridY=1.47 Home fit measured 15.0697 units at the NavyBase.
+        // The approved 16-unit range retains it with ~0.93 units of margin.
+        private const float HomeShadowDistance = 16f;
         private static int _activeOwners;
+        private static int _homeOwners;
         private static bool _hasSnapshot;
         private static Material _skybox;
         private static AmbientMode _ambientMode;
@@ -415,14 +414,19 @@ namespace CatMetro.Presentation.Board
         private static Color _ambientEquator;
         private static Color _ambientGround;
         private static float _ambientIntensity;
+        private static UniversalRenderPipelineAsset _pipeline;
+        private static float _shadowDistance;
         private bool _ownsLease;
+        private bool _homeFit;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetSharedState()
         {
             _activeOwners = 0;
+            _homeOwners = 0;
             _hasSnapshot = false;
             _skybox = null;
+            _pipeline = null;
         }
 
         public void Capture()
@@ -436,26 +440,57 @@ namespace CatMetro.Presentation.Board
                 _ambientEquator = RenderSettings.ambientEquatorColor;
                 _ambientGround = RenderSettings.ambientGroundColor;
                 _ambientIntensity = RenderSettings.ambientIntensity;
+                _pipeline = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
+                if (_pipeline != null)
+                {
+                    _shadowDistance = _pipeline.shadowDistance;
+                    ApplyShadowDistance();
+                }
                 _hasSnapshot = true;
             }
             _activeOwners++;
             _ownsLease = true;
         }
 
+        public void SetHomeFit(bool home)
+        {
+            if (!_ownsLease || _homeFit == home) return;
+            _homeFit = home;
+            _homeOwners += home ? 1 : -1;
+            ApplyShadowDistance();
+        }
+
+        private static void ApplyShadowDistance()
+        {
+            // During root replacement, retain the farther range until the last Home
+            // owner releases it; a newly fitted gameplay root must not clip that Home.
+            if (_pipeline != null)
+                _pipeline.shadowDistance = _homeOwners > 0
+                    ? HomeShadowDistance : GameplayShadowDistance;
+        }
+
         private void OnDestroy()
         {
             if (!_ownsLease) return;
             _ownsLease = false;
+            if (_homeFit) _homeOwners--;
             _activeOwners = Mathf.Max(0, _activeOwners - 1);
-            if (_activeOwners != 0 || !_hasSnapshot) return;
+            if (_activeOwners != 0)
+            {
+                ApplyShadowDistance();
+                return;
+            }
+            if (!_hasSnapshot) return;
             RenderSettings.skybox = _skybox;
             RenderSettings.ambientMode = _ambientMode;
             RenderSettings.ambientSkyColor = _ambientSky;
             RenderSettings.ambientEquatorColor = _ambientEquator;
             RenderSettings.ambientGroundColor = _ambientGround;
             RenderSettings.ambientIntensity = _ambientIntensity;
+            if (_pipeline != null) _pipeline.shadowDistance = _shadowDistance;
             _hasSnapshot = false;
             _skybox = null;
+            _pipeline = null;
         }
     }
 }

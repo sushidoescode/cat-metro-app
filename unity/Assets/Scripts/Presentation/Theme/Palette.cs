@@ -15,6 +15,8 @@ namespace CatMetro.Presentation.Theme
         public static readonly Color CreamCard    = new Color(242f / 255f, 234f / 255f, 217f / 255f); // #F2EAD9 board/table
         public static readonly Color WarmPaper    = new Color(250f / 255f, 246f / 255f, 236f / 255f); // #FAF6EC panels/bg
         public static readonly Color InkNavy      = new Color( 34f / 255f,  48f / 255f,  74f / 255f); // #22304A outlines/text
+        public static readonly Color RailNavy     = new Color( 64f / 255f,  73f / 255f, 105f / 255f); // #404969 lit rails
+        public static readonly Color WarmWood     = new Color(184f / 255f, 120f / 255f,  63f / 255f); // #B8783F toy track bed
         public static readonly Color DepotNavy    = new Color( 19f / 255f,  28f / 255f,  48f / 255f); // #131C30 shadow/parked
         public static readonly Color MetroTeal    = new Color( 59f / 255f, 175f / 255f, 168f / 255f); // #3BAFA8 accent/success
         public static readonly Color TicketOrange = new Color(240f / 255f, 138f / 255f,  60f / 255f); // #F08A3C CTA

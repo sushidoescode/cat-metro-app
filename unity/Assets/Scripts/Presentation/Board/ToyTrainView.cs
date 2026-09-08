@@ -56,15 +56,16 @@ namespace CatMetro.Presentation.Board
         private const float EarCenterZ = -0.080f;
         private const float EyeSize = 0.079f;
         // A platform-centre offset measured in board units, not authored mesh space. At the
-        // admitted rig's 0.46725 presentation scale, the baked artifact test crosses the
+        // admitted rig's current presentation scale, the baked artifact test crosses the
         // released-lane envelope representable by the authored TrainsMax values; the current
         // straight waiting cases at lanes 0..3; both current diagonal normals at lanes 0..1;
         // departure Walk plus Celebrate at every current station-arrival heading and a sampled
         // five-degree retained-heading envelope. Each case crosses the complete active clip at
         // half-frame spacing, a 17-angle applied-ear corpus and independently measured maximum
-        // carriage-ward bob. A 0.584 endpoint must retain the declared 0.045 separating-plane
-        // clearance in that sampled corpus; fallback dimensions do not own it.
-        public const float PlatformSideOffset = 0.584f;
+        // carriage-ward bob. At the portrait-calibrated 0.52 rig scale, a 0.584 endpoint
+        // measured only 0.018424 clearance. Moving it out by 0.028 restores the declared
+        // 0.045 separating-plane clearance; fallback dimensions do not own it.
+        public const float PlatformSideOffset = 0.612f;
         public const float PlatformEndpointClearance = 0.045f;
         // Horizontal half-extent reserved by the camera around a platform cat's root. The
         // fallback head, ears and 0.24 card all fit inside one HeadDiameter; the admitted-rig

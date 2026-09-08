@@ -6,6 +6,7 @@ using System.Threading;
 using CatMetro.Application.Session;
 using CatMetro.Bootstrap;
 using CatMetro.Content;
+using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Strings;
 using NUnit.Framework;
 using TMPro;
@@ -41,7 +42,7 @@ namespace CatMetro.Tests.PlayMode
             _root = GameRoot.LaunchWith(ReadLevel("L060"));
             yield return null;
 
-            Assert.That(_root.Preview.FlipSummary, Is.EqualTo("Flips 0/1"));
+            Assert.That(_root.Preview.FlipSummary, Is.EqualTo("0/1"));
             var previewTokens = Object.FindObjectsByType<TMP_Text>(FindObjectsSortMode.None)
                 .Where(label => label.name == "cat-token" && label.transform.IsChildOf(_root.Preview.transform))
                 .Select(label => label.text).ToArray();
@@ -77,7 +78,7 @@ namespace CatMetro.Tests.PlayMode
             _root.Session.AdvanceMs(2 * TickInterpolator.TICK_MS);
             yield return null;
             Assert.That(cooldown.text, Is.EqualTo("4"));
-            Assert.That(_root.Preview.FlipSummary, Is.EqualTo("Flips 1/2"));
+            Assert.That(_root.Preview.FlipSummary, Is.EqualTo("1/2"));
 
             _root.Session.AdvanceMs(7 * TickInterpolator.TICK_MS);
             yield return null;
@@ -138,29 +139,40 @@ namespace CatMetro.Tests.PlayMode
             }
 
             _root = GameRoot.LaunchWith(ReadLevel("L060"));
-            yield return null;
-            _root.Session.AdvanceMs(4 * TickInterpolator.TICK_MS);
-            yield return null;
+            _root.enabled = false;
+            CaptureRig.Replay(_root, 4, new CaptureRig.SwitchReceipt[0]);
 
             const int width = 917;
             const int height = 2048;
-            var rt = new RenderTexture(width, height, 24);
-            _root.Cam.targetTexture = rt;
-            yield return null; // camera aspect must settle before screen-space layout
-            _root.Preview.Refresh();
-            Canvas.ForceUpdateCanvases();
-            _root.Cam.Render();
-            RenderTexture.active = rt;
-            var tex = new Texture2D(width, height, TextureFormat.RGB24, false);
-            tex.ReadPixels(new Rect(0f, 0f, width, height), 0, 0);
-            tex.Apply();
-            _root.Cam.targetTexture = null;
-            RenderTexture.active = null;
-
-            Directory.CreateDirectory(dir);
-            File.WriteAllBytes(Path.Combine(dir, "ladder-L060-tick004.png"), tex.EncodeToPNG());
-            Object.Destroy(tex);
-            Object.Destroy(rt);
+            var rt = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32,
+                RenderTextureReadWrite.sRGB) { antiAliasing = 4 };
+            var previousTarget = _root.Cam.targetTexture;
+            var previousActive = RenderTexture.active;
+            Texture2D tex = null;
+            try
+            {
+                _root.Cam.targetTexture = rt;
+                yield return null;
+                _root.View.UpdateFrom(_root.Session, 4 * (float)TickInterpolator.TICK_MS / 1000f);
+                BoardSceneLook.FitCamera(_root.Cam, _root.View);
+                _root.Preview.Refresh();
+                _root.Preview.LayoutForViewport(new Rect(0f, 64f, width, 1920f), 408f);
+                Canvas.ForceUpdateCanvases();
+                _root.Cam.Render();
+                RenderTexture.active = rt;
+                tex = CaptureRig.ReadRgb24(rt);
+                Directory.CreateDirectory(dir);
+                File.WriteAllBytes(Path.Combine(dir, "ladder-L060-tick004.png"),
+                    CaptureRig.EncodeOpaqueSrgbPng(tex));
+            }
+            finally
+            {
+                _root.Cam.targetTexture = previousTarget;
+                RenderTexture.active = previousActive;
+                if (tex != null) Object.Destroy(tex);
+                rt.Release();
+                Object.Destroy(rt);
+            }
         }
 
         private static ImportedLevel ReadLevel(string id)

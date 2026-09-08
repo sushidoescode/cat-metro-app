@@ -18,6 +18,10 @@ namespace CatMetro.Presentation.Board
     [ExecuteAlways]
     public sealed class BoardView : MonoBehaviour
     {
+        // Presentation spacing only; authored coordinates and simulation ticks stay intact.
+        public const float GridX = 0.8f;
+        public const float GridY = 1.47f;
+
         // CM-UX-03: the onboarding teach affordance — a static raised ring behind every switch
         // disc plus a scale pulse, band-gated INSIDE Build (survives Retry's rebuild by
         // construction; live via the existing composition call). The affordance marks the
@@ -98,7 +102,7 @@ namespace CatMetro.Presentation.Board
         /// The horizontal world-space envelope that source-platform cats can occupy after
         /// launch. Those cats do not exist when the camera first fits its renderer union, so
         /// the fit must reserve their authored side offset and every lane the train bound can
-        /// allocate. Vertical framing continues to come from the rendered tabletop itself.
+        /// allocate. The future card and cat also reserve vertical room above the source.
         /// </summary>
         internal bool TryGetSourcePlatformHorizontalBounds(out Bounds bounds)
         {
@@ -129,6 +133,11 @@ namespace CatMetro.Presentation.Board
                         }
                         else bounds.Encapsulate(left);
                         bounds.Encapsulate(right);
+                        bounds.Encapsulate(world + Vector3.up * ToyTrainView.PlatformFramingHalfWidth);
+                        bounds.Encapsulate(world - Vector3.up * ToyTrainView.PlatformFramingHalfWidth);
+                        Vector3 pin = transform.TransformPoint(anchor + ToyTrainView.PinBoardOffset);
+                        bounds.Encapsulate(pin + Vector3.up * ToyTrainView.PinCardSize);
+                        bounds.Encapsulate(pin - Vector3.up * ToyTrainView.PinCardSize);
                     }
                 }
             }
@@ -195,7 +204,7 @@ namespace CatMetro.Presentation.Board
             {
                 nodeIndex[nodes[i].Id] = i;
                 _nodeIds[i] = nodes[i].Id;
-                _nodePos[i] = new Vector3(nodes[i].X, nodes[i].Y, 0f);
+                _nodePos[i] = new Vector3(nodes[i].X * GridX, nodes[i].Y * GridY, 0f);
                 _sourceNode[i] = sourceIds.Contains(nodes[i].Id);
                 string kind = sourceIds.Contains(nodes[i].Id) ? "source"
                     : stationAccept.ContainsKey(nodes[i].Id) ? "station" : "node";

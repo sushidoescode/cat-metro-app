@@ -22,7 +22,7 @@
       { "id": "YARD", "x": 7, "y": 7 }
     ],
     "edges": [
-      { "id": "E_IN", "from": "SRC", "to": "ENTRY", "travelTicks": 8 },
+      { "id": "E_IN", "from": "SRC", "to": "ENTRY", "travelTicks": 12 },
       { "id": "E_DEPOT", "from": "ENTRY", "to": "SORT", "travelTicks": 8 },
       { "id": "E_YARD", "from": "ENTRY", "to": "YARD", "travelTicks": 12 },
       { "id": "E_RED", "from": "SORT", "to": "RED", "travelTicks": 10 },

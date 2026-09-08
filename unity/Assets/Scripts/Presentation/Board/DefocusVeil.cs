@@ -5,71 +5,10 @@ using UnityEngine.Rendering;
 namespace CatMetro.Presentation.Board
 {
     /// <summary>
-    /// The stand-in for depth of field. Target-01's near foreground is strongly blurred and
-    /// its far edge falls off, and that bokeh is most of what makes the toy read as a real
-    /// object on a real desk. We cannot have the real thing here, for reasons that are worth
-    /// writing down because they are structural rather than budgetary:
-    ///
-    ///   1. Assets/Settings/CatMetro_Renderer.asset has `postProcessData: {fileID: 0}`. That
-    ///      field is what supplies URP with the shaders for every post-processing pass; with
-    ///      it null URP builds no PostProcessPasses at all. A Volume carrying a DepthOfField
-    ///      override would be authored, serialised, evaluated — and silently do nothing. That
-    ///      is exactly the failure class AGENTS.md warns about (a material that passes every
-    ///      test and still renders as a grey ghost), so it is the last thing to reach for.
-    ///   2. Assets/Settings/CatMetro_URP.asset has `m_RequireDepthTexture: 0`. DoF needs
-    ///      _CameraDepthTexture, so turning it on adds a depth prepass or copy for every
-    ///      camera in the game, not just this one.
-    ///   3. `m_IntermediateTextureMode: 0` is Auto, and enabling post-processing forces an
-    ///      intermediate colour target. On a tiled mobile GPU that trades a straight-to-
-    ///      backbuffer path for a full-screen resolve plus blit every frame.
-    ///   4. URP's Depth of Field is written for a perspective projection. Bokeh's circle of
-    ///      confusion is solved from focal length, aperture and focus distance, and the
-    ///      Gaussian path reads LinearEyeDepth with _ZBufferParams, which is the perspective
-    ///      reciprocal mapping. BoardSceneLook.FitCamera sets `camera.orthographic = true`
-    ///      with an identity rotation. Even fully wired, the CoC would be wrong.
-    ///
-    ///   (Related, and worth knowing before anyone budgets against MSAA: the pipeline asset
-    ///   has `m_MSAA: 1`, i.e. one sample. MSAA is OFF. The `camera.allowMSAA = true` in
-    ///   FitCamera is inert until that asset changes.)
-    ///
-    /// So this fakes it, in the one place a fake is honest: everything the veil touches is
-    /// desk. It is a four-quad frame band parented to the camera, with a hole cut for the
-    /// diorama, carrying one procedural RGBA sheet. Two cues, one draw call, no post stack,
-    /// no depth texture:
-    ///
-    ///   * a falloff into a cool, dark edge (Palette.DepotNavy) at the top and bottom of the
-    ///     frame, which is where the empty desk actually is — the fit leaves 86% of the frame
-    ///     width to gameplay but only ~63% of its height, so the vertical is the only axis
-    ///     with room for a vignette to read at all;
-    ///   * an out-of-focus foreground lobe in the bottom-left (Palette.CreamCard), rising off
-    ///     the bottom edge where target-01 puts its coffee cup. Its edge is a cubed smoothstep
-    ///     several hundred pixels wide, which is what a defocused silhouette looks like and
-    ///     what no amount of geometry will give you on a sharp orthographic camera.
-    ///
-    /// GAMEPLAY LEGIBILITY IS STRUCTURAL HERE, not a tuning choice. The hole is cut at the
-    /// exact half-width the width fit solves the gameplay content into
-    /// (size * TargetPortraitAspect * SafeWidth * 1.05) and at the measured half-height of
-    /// frameBounds plus a pad, so the board and every piece on it lie inside a region the
-    /// mesh does not cover. There are no triangles over the diorama at all — not transparent
-    /// ones, none.
-    ///
-    /// The veil is a child of the CAMERA and never of BoardView, which keeps it out of both
-    /// unions in FitCamera (it would otherwise feed its own size back into the fit) and out
-    /// of every renderer sweep in RuntimeSceneRigTests.
-    /// DefocusVeil_IsAnAuthoredTransparentMaterialOutsideTheBoard pins that so a later
-    /// refactor cannot quietly move it.
-    ///
-    /// KNOWN AND NOT FIXED HERE. Being a camera child means the bands pan with
-    /// CauseCameraController.FrameNode, which recentres the camera on a single node without
-    /// changing orthographicSize. The hole is solved for the REST pose, so during a cause
-    /// frame a renderer near the far or near edge of the board can drift into a band. It is a
-    /// soft tint and not an occlusion — the inner third of the band is under 2% alpha by the
-    /// cubed ramp, so the worst case is roughly a 13% darkening at one edge of the board while
-    /// the cause ring is already the thing being looked at — and it lasts only as long as the
-    /// framing does. The fix is to hide the veil while the camera is framed, which means
-    /// reaching into a file another lane owns, so it is recorded rather than done. Enlarging
-    /// the hole by the maximum pan distance is not the cheap alternative it looks like: the
-    /// pan is bounded by the board's own extent and would consume the entire band.
+    /// A gentle screen-space falloff over the surrounding desk, using four quads with an
+    /// open centre. The camera-owned mesh stays outside BoardView's fit bounds and paints no
+    /// triangles over gameplay. It needs neither a depth texture nor a post-processing pass.
+    /// The foreground lobe is disabled: the old white shape had no prop beneath it.
     /// </summary>
     public static class DefocusVeil
     {
@@ -89,16 +28,10 @@ namespace CatMetro.Presentation.Board
         public const float PlainHalfMin = 0.52f;
         public const float PlainHalfMax = 0.98f;
 
-        // Peak opacity of the edge falloff, reached at the outer frame edge. 0.5 darkens the
-        // far desk by half toward DepotNavy, which is the same direction and roughly the same
-        // strength DeskGrain's own radial falloff already runs (lum 1.05 -> 0.46, warm -> cool
-        // over its outer 72%); the veil continues that law past where the desk sheet's Clamp
-        // stops varying, and unlike the sheet it also covers whatever props sit out there.
-        public const float EdgeAlpha = 0.5f;
-        // The foreground lobe. Peak 0.8 rather than 1.0 on purpose: a defocused near object
-        // is not only soft-edged, it is translucent at its edge because the lens integrates
-        // over it. A fully opaque blob reads as a decal.
-        public const float LobeAlpha = 0.8f;
+        // The desk keeps its warm mid-tone colour even at the outside edge.
+        public const float EdgeAlpha = 0.25f;
+        // Retain the sheet coordinates for compatibility, without painting a fake object.
+        public const float LobeAlpha = 0f;
         // Lobe centre and radii in sheet space, with v = 0 at the hole and v = 1 at the outer
         // frame edge. The centre sits BELOW the frame (v 1.10) so only the lobe's top arc is
         // on screen, which is how target-01 frames its cup. u 0.10 within [0.02, 0.48] puts

@@ -178,16 +178,17 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
-        public void CounterRow_SitsDirectlyBelowTheCapsule_WithoutOverlapping()
+        public void CounterRow_FitsInsideTheCapsulesRightThird_OnTheSameRow()
         {
             var capsule = WavePreviewStrip.CapsuleRect(PhoneSafeArea, CaptureDpi);
             var counters = WavePreviewStrip.CounterRowRect(PhoneSafeArea, CaptureDpi);
 
-            Assert.That(counters.yMax, Is.LessThan(capsule.yMin),
-                "the counters clear the capsule — the target stacks them, never overlaps");
-            Assert.That(counters.yMin, Is.GreaterThan(PhoneSafeArea.yMin));
-            Assert.That(counters.x, Is.EqualTo(capsule.x).Within(0.01f),
-                "the counter row shares the capsule's column");
+            Assert.That(counters.yMin, Is.GreaterThanOrEqualTo(capsule.yMin));
+            Assert.That(counters.yMax, Is.LessThanOrEqualTo(capsule.yMax));
+            Assert.That(counters.center.y, Is.EqualTo(capsule.center.y).Within(0.01f));
+            Assert.That(counters.xMin, Is.GreaterThanOrEqualTo(capsule.x + capsule.width * 2f / 3f),
+                "rank 30 reserves the right third without a second row below the capsule");
+            Assert.That(counters.xMax, Is.LessThan(capsule.xMax));
         }
 
         [Test]
@@ -218,6 +219,7 @@ namespace CatMetro.Tests.PlayMode
                 "the fixture's single red wave of 2 is TWO faces, not one chip");
             Assert.That(_root.Preview.FaceSummary, Is.EqualTo("red|red"));
             Assert.That(_root.Preview.RemainingCats, Is.EqualTo(2));
+            yield return CaptureHud("capsule-two-upcoming");
         }
 
         [UnityTest]
@@ -283,6 +285,55 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator EmittedQueue_BecomesASlimProgressChip_AndChecksOnlyDeliveredCats()
+        {
+            _root = GameRoot.LaunchWith(Import(DrainFixture()));
+            yield return null;
+            _root.enabled = false;
+            _root.Preview.LayoutForViewport(PhoneSafeArea, CaptureDpi);
+            float fullHeight = _root.Preview.CapsuleRectPx.height;
+            _root.Session.AdvanceMs(DrainWindowTicks
+                * CatMetro.Application.Session.TickInterpolator.TICK_MS);
+            _root.Preview.Refresh();
+            Assert.That(_root.Preview.FaceCount, Is.Zero);
+            Assert.That(_root.Preview.CapsuleRectPx.height, Is.LessThan(fullHeight * 0.8f),
+                "after the final emission the capsule collapses into a slim progress chip");
+            var status = _root.Preview.transform.Find("Hud/Faces/TailStatusMark");
+            Assert.That(status, Is.Not.Null, "a travelling group mark prevents a blank pill before delivery");
+            Assert.That(status.gameObject.activeSelf, Is.True);
+            Assert.That(status.GetComponent<Image>().sprite, Is.SameAs(HudShapeSprites.People),
+                "emission alone never claims that a cat was delivered");
+            yield return CaptureHud("capsule-in-flight");
+
+            while (_root.Session.State.Deliveries == 0 && _root.Session.State.Tick < 100)
+                _root.Session.AdvanceMs(CatMetro.Application.Session.TickInterpolator.TICK_MS);
+            _root.Preview.Refresh();
+            Assert.That(_root.Session.State.Deliveries, Is.GreaterThan(0), "one cat has arrived");
+            Assert.That(_root.Preview.RidersText, Is.Not.EqualTo("0"), "another cat is still travelling");
+            Assert.That(_root.Preview.Face(0).gameObject.activeSelf, Is.True,
+                "the slim chip retains delivered faces while the final train travels");
+            Assert.That(_root.Preview.Face(0).HeadColor,
+                Is.EqualTo(Palette.WithAlpha(Palette.InkNavy, 0.35f)));
+            Assert.That(status.GetComponent<Image>().sprite.name, Is.EqualTo("HudCheck"));
+            yield return CaptureHud("capsule-delivered-tail");
+        }
+
+        [UnityTest]
+        public IEnumerator LeverGlyph_ReplacesTheFlipsWord_AndKeepsAcceptedTapCounts()
+        {
+            _root = GameRoot.LaunchWith(Import(TwoRedPreviewFixture()));
+            yield return null;
+            Assert.That(_root.Preview.FlipSummary, Is.EqualTo("0/1"));
+            var lever = _root.Preview.transform.Find("Hud/Counters/FlipMark");
+            Assert.That(lever, Is.Not.Null);
+            Assert.That(lever.GetComponent<Image>().sprite.name, Is.EqualTo("HudLever"));
+            Assert.That(_root.Session.EnqueueToggle(0), Is.True);
+            _root.Preview.Refresh();
+            Assert.That(_root.Preview.FlipSummary, Is.EqualTo("1/1"));
+            Assert.That(lever.GetComponent<Image>().color, Is.EqualTo(Palette.SignalRed));
+        }
+
+        [UnityTest]
         public IEnumerator Overflow_CollapsesTheTail_WhenMoreCatsThanFacesRemain()
         {
             _root = GameRoot.LaunchWith(Import(FloodFixture()));
@@ -296,11 +347,14 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Preview.OverflowText, Is.EqualTo(
                 "+" + (_root.Preview.RemainingCats - WavePreviewStrip.MaxFaces)),
                 "the hidden remainder is counted in the tail, not silently dropped");
+            _root.Preview.LayoutForViewport(PhoneSafeArea, CaptureDpi);
+            Assert.That(CatFaceView.BadgeDiameter(_root.Preview.FaceSizePx), Is.GreaterThan(24f),
+                "the actual overflow layout must preserve the existing readable badge floor");
+            yield return CaptureHud("capsule-overflow");
         }
 
-        // The validation capture showed ONE face and the read was "our cap is too low". It is
-        // not: MaxFaces is 6 and has been. These fixtures pin the whole one-to-three range so a
-        // campaign edit cannot silently rewrite what this presentation test is trying to prove.
+        // The capsule still shows each of one, two and three pending cats individually;
+        // rank 30's readable four-face limit never turns those small queues into wave chips.
         [UnityTest]
         public IEnumerator FaceCount_IsTheDerivedQueue_AtOneTwoAndThree(
             [Values(1, 2, 3)] int cats)
@@ -325,7 +379,7 @@ namespace CatMetro.Tests.PlayMode
 
         [UnityTest]
         public IEnumerator TheFaceRow_StaysInsideTheCapsule_AtEveryQueueLength(
-            [Values(1, 2, 3, 6)] int cats)
+            [Values(1, 2, 3, WavePreviewStrip.MaxFaces)] int cats)
         {
             _root = GameRoot.LaunchWith(Import(QueueFixture(cats)));
             yield return null;
@@ -341,6 +395,47 @@ namespace CatMetro.Tests.PlayMode
 
             Assert.That(width, Is.LessThan(capsule.width),
                 cats + " faces fit inside the capsule with room to spare");
+            var faceRow = (RectTransform)_root.Preview.Face(0).transform.parent;
+            float origin = faceRow.anchoredPosition.x + faceRow.rect.width * 0.5f;
+            float right = origin + _root.Preview.Face(cats - 1).FaceRect.anchoredPosition.x
+                + CatFaceView.InkRightOfCentre(face);
+            float left = origin + _root.Preview.Face(0).FaceRect.anchoredPosition.x
+                - CatFaceView.InkLeftOfCentre(face);
+            Assert.That(left, Is.GreaterThan(capsule.xMin));
+            Assert.That(right, Is.LessThan(_root.Preview.CounterRowRectPx.xMin - 8f),
+                "the last badge leaves clear space before the first counter");
+            Assert.That(WavePreviewStrip.FacePitch(face) - CatFaceView.InkRightOfCentre(face)
+                - CatFaceView.InkLeftOfCentre(face), Is.GreaterThan(8f),
+                "the compressed queue still separates each destination badge from the next head");
+            Assert.That(CatFaceView.BadgeDiameter(face), Is.GreaterThan(24f),
+                "the actual displayed badge keeps its readability floor at every queue length");
+        }
+
+        [UnityTest]
+        public IEnumerator MixedShapeOverflow_PreservesFourReadableDestinationSymbols()
+        {
+            string fixture = FixtureJson(@"[
+    { ""tick"": 5, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 2, ""spacingTicks"": 20 },
+    { ""tick"": 6, ""sourceNode"": ""SRC"", ""color"": ""blue"", ""count"": 2, ""spacingTicks"": 20 },
+    { ""tick"": 7, ""sourceNode"": ""SRC"", ""color"": ""yellow"", ""count"": 2, ""spacingTicks"": 20 },
+    { ""tick"": 8, ""sourceNode"": ""SRC"", ""color"": ""green"", ""count"": 2, ""spacingTicks"": 20 } ]")
+                .Replace("\"allowedColors\": [\"red\", \"blue\"]",
+                    "\"allowedColors\": [\"red\", \"blue\", \"yellow\", \"green\"]")
+                .Replace("\"accepts\": [\"red\"]", "\"accepts\": [\"red\", \"yellow\"]")
+                .Replace("\"accepts\": [\"blue\"]", "\"accepts\": [\"blue\", \"green\"]");
+            _root = GameRoot.LaunchWith(Import(fixture));
+            yield return null;
+            _root.Preview.LayoutForViewport(PhoneSafeArea, CaptureDpi);
+            Assert.That(_root.Preview.FaceSummary, Is.EqualTo("red|blue|yellow|green"));
+            Assert.That(_root.Preview.OverflowText, Is.EqualTo("+4"));
+            var symbols = new[] { HudShapeSprites.Disc, HudShapeSprites.RoundedSquare,
+                HudShapeSprites.Triangle, HudShapeSprites.Diamond };
+            for (int i = 0; i < symbols.Length; i++)
+            {
+                Assert.That(_root.Preview.Face(i).BadgeSprite, Is.SameAs(symbols[i]));
+                Assert.That(_root.Preview.Face(i).BadgeRect.sizeDelta.x, Is.GreaterThan(24f));
+            }
+            yield return CaptureHud("capsule-mixed-shape-overflow");
         }
 
         // --- counters ---
@@ -384,13 +479,9 @@ namespace CatMetro.Tests.PlayMode
             _root = GameRoot.Launch();
             yield return null;
 
-            // One cream for the whole row. The counters sit on the bare diorama with no card
-            // behind them, so a tinted mark beside a cream numeral reads as two objects — which
-            // is what the teal and orange dots did. Glyph and numeral share ONE token, and the
-            // assertion is written as that equality rather than as two independent checks so it
-            // keeps its meaning if the row is ever restyled to a different cream.
-            Assert.That(_root.Preview.DeliveriesMarkColor, Is.EqualTo(Palette.WarmPaper));
-            Assert.That(_root.Preview.RidersMarkColor, Is.EqualTo(Palette.WarmPaper));
+            // Rank 30 puts the whole row on cream, so both marks and numbers use navy.
+            Assert.That(_root.Preview.DeliveriesMarkColor, Is.EqualTo(Palette.InkNavy));
+            Assert.That(_root.Preview.RidersMarkColor, Is.EqualTo(Palette.InkNavy));
             Assert.That(_root.Preview.DeliveriesMarkColor,
                 Is.EqualTo(_root.Preview.DeliveriesTextColor),
                 "the trophy and its numeral are one object");
@@ -402,18 +493,24 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator CounterGlyphs_RasteriseWithRealInk_AtTheirOnScreenSize()
         {
-            // A procedural glyph that silently rasterises to nothing would still pass every
-            // structural assertion above and ship a blank counter row. At the pinned phone
-            // frame the mark is ~41px, so read the sprites' own coverage back and require a
-            // plausible amount of it — enough to be a shape, far from a filled square.
+            // Sample at the real compact counter size, so a full-resolution sprite cannot
+            // pass while its on-phone strokes disappear after shrinking into the capsule.
+            _root = GameRoot.Launch();
             yield return null;
+            _root.Preview.LayoutForViewport(PhoneSafeArea, CaptureDpi);
 
-            foreach (var sprite in new[] { HudShapeSprites.Trophy, HudShapeSprites.People })
+            foreach (string name in new[] { "DeliveredMark", "RidersMark", "FlipMark" })
             {
-                var pixels = sprite.texture.GetPixels32();
+                var mark = _root.Preview.transform.Find("Hud/Counters/" + name).GetComponent<Image>();
+                var sprite = mark.sprite;
+                int size = Mathf.FloorToInt(mark.rectTransform.sizeDelta.x);
+                Assert.That(size, Is.GreaterThanOrEqualTo(24), name + " keeps a readable pixel footprint");
                 int inked = 0;
-                foreach (var p in pixels) if (p.a > 128) inked++;
-                float coverage = (float)inked / pixels.Length;
+                for (int y = 0; y < size; y++)
+                    for (int x = 0; x < size; x++)
+                        if (sprite.texture.GetPixelBilinear((x + 0.5f) / size, (y + 0.5f) / size).a > 0.5f)
+                            inked++;
+                float coverage = (float)inked / (size * size);
 
                 // Rasterising these offline gives trophy 0.44 and people 0.66, so the bounds
                 // are set to catch the two failures that matter — an empty tile and a solid
@@ -727,6 +824,48 @@ namespace CatMetro.Tests.PlayMode
         }
 
         // --- fixtures ---
+
+        private IEnumerator CaptureHud(string name)
+        {
+            string dir = System.Environment.GetEnvironmentVariable("CM_UI_CAPTURE_DIR");
+            if (string.IsNullOrEmpty(dir)) yield break;
+            // This isolates UGUI on a plain field. It needs no licensed board art and does
+            // not substitute for the main-checkout furnished composition captures.
+            _root.enabled = false;
+            _root.Preview.enabled = false;
+            foreach (var renderer in _root.GetComponentsInChildren<Renderer>(true))
+                renderer.enabled = false;
+            foreach (var canvas in _root.GetComponentsInChildren<Canvas>(true))
+                if (canvas != _root.Preview.GetComponent<Canvas>()) canvas.enabled = false;
+            var camera = _root.Cam;
+            var previous = camera.targetTexture;
+            var target = new RenderTexture(917, 2048, 24) { antiAliasing = 4 };
+            target.Create();
+            camera.targetTexture = target;
+            Texture2D pixels = null;
+            var active = RenderTexture.active;
+            try
+            {
+                yield return null;
+                _root.Preview.LayoutForViewport(PhoneSafeArea, CaptureDpi);
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                RenderTexture.active = target;
+                pixels = new Texture2D(917, 2048, TextureFormat.RGB24, false);
+                pixels.ReadPixels(new Rect(0, 0, 917, 2048), 0, 0);
+                pixels.Apply();
+                System.IO.Directory.CreateDirectory(dir);
+                System.IO.File.WriteAllBytes(System.IO.Path.Combine(dir, name + ".png"), pixels.EncodeToPNG());
+            }
+            finally
+            {
+                RenderTexture.active = active;
+                camera.targetTexture = previous;
+                if (pixels != null) Object.Destroy(pixels);
+                target.Release();
+                Object.Destroy(target);
+            }
+        }
 
         private static ImportedLevel Import(string json)
         {

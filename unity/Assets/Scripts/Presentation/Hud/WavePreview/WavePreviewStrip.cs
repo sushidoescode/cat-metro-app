@@ -10,7 +10,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
 {
     // HUD-WAVE: the wave preview as docs/reference/target-01-tabletop.png draws it — a rounded
     // cream capsule across the top of the safe area holding the upcoming cats in order as round
-    // colour-coded faces, with the run counters on a row beneath it.
+    // colour-coded faces, with the run counters inside its right third.
     //
     // What changed and why. The original strip was TWO WORLD-SPACE QUADS parked at viewport
     // y 0.93, one per pending WAVE, labelled "x2" — which is the bare red chip the validation
@@ -30,9 +30,9 @@ namespace CatMetro.Presentation.Hud.WavePreview
     // because FailureTests and DeviceConfigTests pin them; the new per-cat surface is additive.
     public sealed class WavePreviewStrip : MonoBehaviour
     {
-        // How many faces fit before the queue collapses into a "+N" tail. Six is what the
-        // target's widest capsule (target-02-diorama.png) shows.
-        public const int MaxFaces = 6;
+        // Four faces plus a +N tail retain >=24px destination badges at the pinned phone
+        // size after rank 30 reserves the capsule's right third for counters.
+        public const int MaxFaces = 4;
 
         // Capsule geometry as fractions of the SAFE AREA, with dp floors so a short viewport
         // cannot shrink the capsule into illegibility. Measured off target-01: the capsule
@@ -40,8 +40,6 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private const float HorizontalInsetFraction = 0.10f;
         private const float HeightFraction = 0.072f;
         private const float TopMarginFraction = 0.028f;
-        private const float CounterRowFraction = 0.030f;
-        private const float CounterGapFraction = 0.008f;
         private const float MinHeightDp = 48f;
         private const float MinInsetDp = 16f;
         private const float MinTopMarginDp = 12f;
@@ -66,6 +64,10 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private Image _ridersMark;
         private TMP_Text _riders;
         private TMP_Text _flipBudget;
+        private Image _flipMark;
+        private Image _tailStatusMark;
+        private int _displayFaceCount;
+        private float _faceSizePx;
 
         private Rect _capsulePx;
         private Rect _counterPx;
@@ -114,7 +116,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
         // The face box the capsule allocates at the current viewport — the ruler every face's
         // internal geometry is a fraction of, exposed so the badge-separation law can be
         // asserted in real pixels rather than re-derived in the test.
-        public float FaceSizePx => FaceSize(_capsulePx.height);
+        public float FaceSizePx => _faceSizePx;
 
         // Static so a geometry test can derive the face box from a CapsuleRect without building
         // a strip — and so the 0.62 lives in exactly one place rather than being re-typed into
@@ -146,10 +148,18 @@ namespace CatMetro.Presentation.Hud.WavePreview
         public static Rect CounterRowRect(Rect safeArea, float dpi)
         {
             var capsule = CapsuleRect(safeArea, dpi);
-            float px = HudBands.PxPerDp(dpi);
-            float height = Mathf.Max(safeArea.height * CounterRowFraction, 20f * px);
-            float gap = Mathf.Max(safeArea.height * CounterGapFraction, 6f * px);
-            return new Rect(capsule.x, capsule.y - gap - height, capsule.width, height);
+            return CountersInside(capsule, capsule.height);
+        }
+
+        private static Rect CountersInside(Rect capsule, float fullHeight)
+        {
+            // Nunito's 12dp minimum needs 16.37dp of line height. Even a minimum-height
+            // 48dp capsule must reserve 16.8dp, including a little raster rounding slack.
+            float height = Mathf.Min(fullHeight * 0.35f, capsule.height * 0.70f);
+            float inset = fullHeight * 0.12f;
+            return new Rect(capsule.x + capsule.width * 2f / 3f,
+                capsule.center.y - height * 0.5f,
+                Mathf.Max(0f, capsule.width / 3f - inset), height);
         }
 
         public static WavePreviewStrip Create(Transform parent, GameSession session,
@@ -229,6 +239,9 @@ namespace CatMetro.Presentation.Hud.WavePreview
             }
             _overflow = AddLabel(_faceRow, "Overflow", Palette.InkNavy);
             _overflow.fontStyle = FontStyles.Bold;
+            _tailStatusMark = AddImage(_faceRow, "TailStatusMark", HudShapeSprites.People);
+            _tailStatusMark.color = Palette.MetroTeal;
+            _tailStatusMark.gameObject.SetActive(false);
 
             var counters = NewRect(_hudRoot, "Counters");
             // Stretched to the canvas: the counter children are placed in ABSOLUTE canvas
@@ -243,18 +256,17 @@ namespace CatMetro.Presentation.Hud.WavePreview
             // outright, so these do too: a TROPHY for deliveries against the win condition, a
             // group of PEOPLE for cats currently riding.
             //
-            // Both are WarmPaper, not the accent tokens. The counters sit on the diorama with
-            // no card behind them, so the glyph and its numeral have to read as one object;
-            // colouring the mark and not the number split them into two. The target draws the
-            // whole row in one cream, and cream on the dark tabletop is the contrast that works.
+            // Rank 30 folds the counters into the cream capsule: navy marks and numerals
+            // share one baseline and one contrast token, with no row left on the desk.
             _deliveriesMark = AddImage(counters, "DeliveredMark", HudShapeSprites.Trophy);
-            _deliveriesMark.color = Palette.WarmPaper;
-            _deliveries = AddLabel(counters, "Delivered", Palette.WarmPaper);
+            _deliveriesMark.color = Palette.InkNavy;
+            _deliveries = AddLabel(counters, "Delivered", Palette.InkNavy);
             _ridersMark = AddImage(counters, "RidersMark", HudShapeSprites.People);
-            _ridersMark.color = Palette.WarmPaper;
-            _riders = AddLabel(counters, "Riders", Palette.WarmPaper);
+            _ridersMark.color = Palette.InkNavy;
+            _riders = AddLabel(counters, "Riders", Palette.InkNavy);
 
-            _flipBudget = AddLabel(counters, "flip-budget", Palette.WarmPaper);
+            _flipMark = AddImage(counters, "FlipMark", HudShapeSprites.Lever);
+            _flipBudget = AddLabel(counters, "flip-budget", Palette.InkNavy);
             _flipBudget.fontStyle = FontStyles.Bold;
             _flipBudget.gameObject.SetActive(false);
         }
@@ -271,14 +283,33 @@ namespace CatMetro.Presentation.Hud.WavePreview
             var queue = UpcomingCats.Next(waves, tick, MaxFaces);
             RemainingCats = UpcomingCats.RemainingCount(waves, tick);
             FaceCount = queue.Count;
+            bool completedQueue = FaceCount == 0;
+            // Completed faces are neutral progress marks, not guessed destination colours:
+            // a train can arrive out of emission order. Before the first delivery, the people
+            // silhouette says that the emitted group is still travelling, without a check.
+            _displayFaceCount = completedQueue ? Mathf.Min(_session.State.Deliveries, 3) : FaceCount;
+            _tailStatusMark.gameObject.SetActive(completedQueue);
+            _tailStatusMark.sprite = _session.State.Deliveries > 0
+                ? HudShapeSprites.Check : HudShapeSprites.People;
+            _waveClip.gameObject.SetActive(!completedQueue);
 
             var summary = new System.Text.StringBuilder();
             for (int i = 0; i < _faces.Count; i++)
             {
-                bool used = i < queue.Count;
+                bool used = i < _displayFaceCount;
                 if (_faces[i].gameObject.activeSelf != used) _faces[i].gameObject.SetActive(used);
-                if (_tokens[i].gameObject.activeSelf != used) _tokens[i].gameObject.SetActive(used);
+                _tokens[i].gameObject.SetActive(used && !completedQueue);
                 if (!used) continue;
+                _faces[i].transform.Find("badge").gameObject.SetActive(!completedQueue);
+                _faces[i].transform.Find("badgeRing").gameObject.SetActive(!completedQueue);
+                if (completedQueue)
+                {
+                    _faces[i].Bind("red");
+                    foreach (string part in new[] { "head", "earL", "earR" })
+                        _faces[i].transform.Find(part).GetComponent<Image>().color =
+                            Palette.WithAlpha(Palette.InkNavy, 0.35f);
+                    continue;
+                }
                 _faces[i].Bind(queue[i].Color);
                 _tokens[i].text = TokenGlyph(waves.Span[queue[i].WaveIndex]);
                 if (summary.Length > 0) summary.Append('|');
@@ -336,13 +367,13 @@ namespace CatMetro.Presentation.Hud.WavePreview
         {
             var flipStatus = _session.FlipStatus;
             _flipBudget.gameObject.SetActive(flipStatus.IsBudgeted);
+            _flipMark.gameObject.SetActive(flipStatus.IsBudgeted);
             if (flipStatus.IsBudgeted)
             {
-                _flipBudget.text = Strings.UiStrings.Get("hud.flips")
-                    .Replace("{used}", flipStatus.Used.ToString())
-                    .Replace("{limit}", flipStatus.PerfectMaxSwitches.ToString());
+                _flipBudget.text = flipStatus.Used + "/" + flipStatus.PerfectMaxSwitches;
                 _flipBudget.color = flipStatus.RemainingToPerfect > 0
-                    ? Palette.WarmPaper : Palette.SignalRed;
+                    ? Palette.InkNavy : Palette.SignalRed;
+                _flipMark.color = _flipBudget.color;
             }
         }
 
@@ -402,7 +433,14 @@ namespace CatMetro.Presentation.Hud.WavePreview
         public void LayoutForViewport(Rect safeArea, float dpi)
         {
             _capsulePx = CapsuleRect(safeArea, dpi);
-            _counterPx = CounterRowRect(safeArea, dpi);
+            float fullHeight = _capsulePx.height;
+            if (FaceCount == 0)
+            {
+                float height = fullHeight * 0.70f;
+                _capsulePx = new Rect(_capsulePx.x, _capsulePx.yMax - height,
+                    _capsulePx.width, height);
+            }
+            _counterPx = CountersInside(_capsulePx, fullHeight);
             _lastSafeArea = safeArea;
             _lastDpi = dpi;
 
@@ -416,18 +454,26 @@ namespace CatMetro.Presentation.Hud.WavePreview
             _waveClip.offsetMin = new Vector2(capInset, 0f);
             _waveClip.offsetMax = new Vector2(-capInset, 0f);
 
-            float faceSize = _capsulePx.height * FaceSizeFraction;
-            float gap = faceSize * FaceGapFraction;
-            PlacePx(_faceRow, _capsulePx);
+            float inset = fullHeight * 0.22f;
+            var faceRect = new Rect(_capsulePx.x + inset, _capsulePx.y,
+                Mathf.Max(0f, _counterPx.xMin - _capsulePx.x - 2f * inset), _capsulePx.height);
+            PlacePx(_faceRow, faceRect);
             TypeScale.Apply(_overflow, TypeScale.Body, dpi, body: true);
 
             // Centre the row of faces (plus the overflow tail) inside the capsule.
             bool hasOverflow = _overflow.text.Length > 0;
+            bool hasStatus = _tailStatusMark.gameObject.activeSelf;
+            float units = _displayFaceCount > 0
+                ? _displayFaceCount + (_displayFaceCount - 1) * FaceGapFraction : 0f;
+            if (hasOverflow || hasStatus) units += FaceGapFraction + 0.95f;
+            float faceSize = Mathf.Min(FaceSize(_capsulePx.height),
+                faceRect.width / Mathf.Max(1f, units + 0.26f));
+            _faceSizePx = faceSize;
+            float gap = faceSize * FaceGapFraction;
             float overflowWidth = hasOverflow ? faceSize * 0.95f : 0f;
-            float total = FaceCount > 0 ? FaceCount * faceSize + (FaceCount - 1) * gap : 0f;
-            if (hasOverflow) total += gap + overflowWidth;
+            float total = units * faceSize;
             float cursor = -total * 0.5f + faceSize * 0.5f;
-            for (int i = 0; i < FaceCount; i++)
+            for (int i = 0; i < _displayFaceCount; i++)
             {
                 _faces[i].LayoutAt(new Vector2(cursor, 0f), faceSize);
                 PlaceCentred((RectTransform)_tokens[i].transform,
@@ -443,6 +489,9 @@ namespace CatMetro.Presentation.Hud.WavePreview
                     new Vector2(cursor, 0f), new Vector2(overflowWidth, faceSize));
                 _overflow.fontSizeMax = Mathf.Max(_overflow.fontSizeMin, faceSize * 0.62f);
             }
+            if (hasStatus)
+                PlaceCentred(_tailStatusMark.rectTransform, new Vector2(cursor, 0f),
+                    Vector2.one * faceSize * 0.65f);
 
             LayoutCounters();
         }
@@ -450,34 +499,27 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private void LayoutCounters()
         {
             float row = _counterPx.height;
-            float mark = row * 0.72f;
-            float textWidth = row * 2.6f;
-            float gap = row * 0.28f;
-            // Two [mark][gap/2][text] pairs with one full gap between them, centred as a group.
-            float pair = mark + gap * 0.5f + textWidth;
-            float total = pair * 2f + gap;
-            float x = _counterPx.x + _counterPx.width * 0.5f - total * 0.5f;
+            bool budgeted = _flipBudget.gameObject.activeSelf;
+            float mark = Mathf.Min(row * 0.70f, _counterPx.width * 0.12f);
+            float gap = mark * 0.15f;
+            int pairs = budgeted ? 3 : 2;
+            float textSpace = Mathf.Max(0f, _counterPx.width - pairs * (mark + gap * 0.5f)
+                - (pairs - 1) * gap);
+            float wideText = textSpace / (budgeted ? 2.5f : 1.5f);
+            float x = _counterPx.x;
             float centreY = _counterPx.y + row * 0.5f;
 
-            x = PlaceCounter(_deliveriesMark, _deliveries, x, centreY, mark, textWidth, gap, row);
-            x += gap;
-            PlaceCounter(_ridersMark, _riders, x, centreY, mark, textWidth, gap, row);
-
+            x = PlaceCounter(_deliveriesMark, _deliveries, x, centreY, mark, wideText, gap, row);
+            x = PlaceCounter(_ridersMark, _riders, x + gap, centreY,
+                mark, wideText * 0.5f, gap, row);
+            if (budgeted)
+                PlaceCounter(_flipMark, _flipBudget, x + gap, centreY, mark, wideText, gap, row);
             TypeScale.Apply(_deliveries, TypeScale.Body, _lastDpi, body: true);
             TypeScale.Apply(_riders, TypeScale.Body, _lastDpi, body: true);
             TypeScale.Apply(_flipBudget, TypeScale.Caption, _lastDpi, body: true);
-            _deliveries.fontSizeMax = Mathf.Max(_deliveries.fontSizeMin, row);
-            _riders.fontSizeMax = Mathf.Max(_riders.fontSizeMin, row);
-
-            if (_flipBudget.gameObject.activeSelf)
-            {
-                float budgetWidth = _counterPx.width * 0.20f;
-                PlacePx((RectTransform)_flipBudget.transform,
-                    new Rect(_counterPx.xMax - budgetWidth, _counterPx.y,
-                        budgetWidth, _counterPx.height));
-                _flipBudget.alignment = TextAlignmentOptions.Right;
-                _flipBudget.fontSizeMax = Mathf.Max(_flipBudget.fontSizeMin, row);
-            }
+            _deliveries.fontSizeMax = Mathf.Max(_deliveries.fontSizeMin, row * 0.70f);
+            _riders.fontSizeMax = Mathf.Max(_riders.fontSizeMin, row * 0.70f);
+            _flipBudget.fontSizeMax = Mathf.Max(_flipBudget.fontSizeMin, row * 0.70f);
         }
 
         private static float PlaceCounter(Image mark, TMP_Text label, float x, float centreY,

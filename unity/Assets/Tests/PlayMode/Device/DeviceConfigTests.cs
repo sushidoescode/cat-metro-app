@@ -67,7 +67,8 @@ namespace CatMetro.Tests.PlayMode
             var urp = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
             Assert.That(urp, Is.Not.Null, "criterion 1 first");
             Assert.That(urp.supportsHDR, Is.False, "HDR off: tile bandwidth for nothing");
-            Assert.That(urp.msaaSampleCount, Is.EqualTo(1), "MSAA disabled");
+            Assert.That(urp.msaaSampleCount, Is.EqualTo(4),
+                "four samples soften the small toy silhouettes on the portrait board");
             Assert.That(urp.renderScale, Is.EqualTo(1f).Within(0.001f), "no hidden scaling");
             Assert.That(urp.supportsCameraDepthTexture, Is.False, "no depth pass");
             Assert.That(urp.supportsCameraOpaqueTexture, Is.False, "no opaque copy");

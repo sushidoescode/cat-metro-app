@@ -48,7 +48,7 @@
   ],
   "win": {
     "deliveries": 3,
-    "timeLimitTicks": 135,
+    "timeLimitTicks": 180,
     "stars": { "two": 580, "three": 760 }
   },
   "economy": { "baseTickets": 31, "perfectBonus": 16 }

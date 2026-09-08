@@ -191,7 +191,8 @@ namespace CatMetro.Tests.PlayMode
         private Vector2 RouteDirection(int routeIndex)
         {
             var dto = _root.Session.Level.Dto;
-            var nodes = dto.Nodes.ToArray().ToDictionary(n => n.Id, n => new Vector2(n.X, n.Y));
+            var nodes = dto.Nodes.ToArray().ToDictionary(n => n.Id,
+                n => new Vector2(n.X * BoardView.GridX, n.Y * BoardView.GridY));
             var edges = dto.Edges.ToArray().ToDictionary(e => e.Id, e => e);
             var sw = dto.Switches.ToArray()[0];
             string routeEdge = sw.Routes.ToArray()[routeIndex];

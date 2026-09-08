@@ -37,7 +37,8 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(CatModelCatalog.BoardClip, Is.EqualTo("Cat_Board"));
             Assert.That(CatModelCatalog.AlightClip, Is.EqualTo("Cat_Alight"));
             Assert.That(CatModelCatalog.CelebrateClip, Is.EqualTo("Cat_Celebrate"));
-            Assert.That(CatModelCatalog.PresenterScale, Is.EqualTo(0.46725f));
+            Assert.That(CatModelCatalog.PresenterScale, Is.EqualTo(0.52f),
+                "the GridY=1.47 phone composition retains the strict 5-6% rendered head target");
             Assert.That(CatModelCatalog.NormalizedWalkTravelSpeedAtOneX,
                 Is.EqualTo(0.238969f));
             Assert.That(CatModelCatalog.WalkTravelSpeedAtOneX,

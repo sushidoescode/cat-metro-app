@@ -210,8 +210,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(DecorativeMaxX, Is.GreaterThan(0.945f),
                 "the decorative band has to be wider than the gameplay one or the split "
                 + "bought nothing");
-            Assert.That(DecorativeMinY, Is.LessThan(0.12f));
-            Assert.That(DecorativeMaxY, Is.GreaterThan(0.87f));
+            Assert.That(DecorativeMinY, Is.LessThan(GameplayMinY));
+            Assert.That(DecorativeMaxY, Is.GreaterThan(GameplayMaxY));
             // The shape of the widening, stated so it cannot drift into "decorative means
             // unconstrained". Horizontally the band leaves the FRAME: target-01 runs its
             // trees and fences off both side edges and so may we. Vertically it does not:
@@ -322,7 +322,7 @@ namespace CatMetro.Tests.PlayMode
                     camera.aspect = PhoneAspect;
                     var graph = root.Session.Level.Graph;
                     Vector3[] nodePositions = root.Session.Level.Dto.Nodes.ToArray()
-                        .Select(node => new Vector3(node.X, node.Y, 0f)).ToArray();
+                        .Select(node => new Vector3(node.X * 0.8f, node.Y * 1.47f, 0f)).ToArray();
                     TrackSplineGraph paths = TrackSplineGraph.Build(nodePositions,
                         graph.EdgeFrom, graph.EdgeTo);
 
@@ -540,45 +540,91 @@ namespace CatMetro.Tests.PlayMode
             if (admittedEntries != 5 && admittedEntries != 10)
                 Assert.Ignore("needs the licensed local prop install");
 
-            // The fit solved its size from gameplay alone, so the union of the GAMEPLAY
-            // renderers is what fills the horizontal band — the decorative ones are allowed
-            // to be wider than it, and on L001 the perimeter trees are exactly that.
-            var deskSurface = root.View.transform.Find("DeskSurface");
-            var slab = root.View.transform.Find("BoardBody");
-            var decorative = root.View.GetComponentsInChildren<BoardPropInstance>(true)
-                .Where(x => x.IsDecorative).Select(x => x.transform).ToArray();
-            Bounds gameplay = default, everything = default;
-            bool foundGameplay = false, foundAll = false;
-            foreach (var renderer in root.View.GetComponentsInChildren<Renderer>(true))
+            var previousTarget = camera.targetTexture;
+            var target = new RenderTexture(917, 2048, 24);
+            target.Create();
+            camera.targetTexture = target;
+            try
             {
-                if (!renderer.enabled) continue;
-                if (deskSurface != null && renderer.transform.IsChildOf(deskSurface)) continue;
-                if (!foundAll) { everything = renderer.bounds; foundAll = true; }
-                else everything.Encapsulate(renderer.bounds);
-                if (slab != null && renderer.transform.IsChildOf(slab)) continue;
-                if (decorative.Any(d => renderer.transform.IsChildOf(d))) continue;
-                if (!foundGameplay) { gameplay = renderer.bounds; foundGameplay = true; }
-                else gameplay.Encapsulate(renderer.bounds);
-            }
-            Assert.That(foundGameplay, Is.True);
-            float half = camera.orthographicSize * camera.aspect;
-            float used = gameplay.size.x / (2f * half);
-            Assert.That(used, Is.InRange(0.80f, 0.945f),
-                "the gameplay union should still be filling the horizontal band — if it "
-                + "collapses, the fit stopped being content-driven");
+                // Force the canonical capture ruler even in a portrait Game view/device.
+                BoardSceneLook.FitCamera(camera, root.View);
+                // GridY 1.47 makes L008 height-bound. Assert the binding axis against the exact
+                // portrait band instead of requiring a width-bound result from this taller board.
+                var deskSurface = root.View.transform.Find("DeskSurface");
+                var slab = root.View.transform.Find("BoardBody");
+                var decorative = root.View.GetComponentsInChildren<BoardPropInstance>(true)
+                    .Where(x => x.IsDecorative).Select(x => x.transform).ToArray();
+                Bounds gameplay = default, everything = default;
+                bool foundGameplay = false, foundAll = false;
+                foreach (var renderer in root.View.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (!renderer.enabled) continue;
+                    if (deskSurface != null && renderer.transform.IsChildOf(deskSurface)) continue;
+                    if (!foundAll) { everything = renderer.bounds; foundAll = true; }
+                    else everything.Encapsulate(renderer.bounds);
+                    if (slab != null && renderer.transform.IsChildOf(slab)) continue;
+                    if (decorative.Any(d => renderer.transform.IsChildOf(d))) continue;
+                    if (!foundGameplay) { gameplay = renderer.bounds; foundGameplay = true; }
+                    else gameplay.Encapsulate(renderer.bounds);
+                }
+                Assert.That(foundGameplay, Is.True);
+                var platformReadback = typeof(BoardView).GetMethod("TryGetSourcePlatformHorizontalBounds",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                Assert.That(platformReadback, Is.Not.Null);
+                var platformArgs = new object[] { default(Bounds) };
+                Assert.That((bool)platformReadback.Invoke(root.View, platformArgs), Is.True);
+                Bounds platforms = (Bounds)platformArgs[0];
+                gameplay.Encapsulate(platforms);
+                everything.Encapsulate(platforms);
+                // At the 917x2048/408dpi capture ruler the capsule starts at y=1792. The 0.008
+                // roof clearance sets playTop=.867; the lower edge remains .06. With the 1.02
+                // padding, the binding axis occupies exactly 1/1.02 of its permitted span.
+                float usedWidth = gameplay.size.x / (2f * camera.orthographicSize * (9f / 19.5f) * 0.88f);
+                float usedHeight = everything.size.y / (2f * camera.orthographicSize * 0.807f);
+                Assert.That(Mathf.Max(usedWidth, usedHeight), Is.EqualTo(1f / 1.02f).Within(0.002f),
+                    "a precise binding-axis pin replaces the obsolete minimum-width assertion");
 
-            // Vertically nothing changed: the whole diorama, slab included, still has to sit
-            // inside the frame so the toy's rim reads as a finite edge top and bottom.
-            foreach (var renderer in root.View.GetComponentsInChildren<Renderer>(true))
+                // Prove the distinction by moving real scenery: horizontal decoration cannot
+                // zoom gameplay out, while a taller decoration must still receive vertical room.
+                Transform probe = decorative[0];
+                Vector3 original = probe.position;
+                float originalSize = camera.orthographicSize;
+                float originalX = camera.transform.position.x;
+                try
+                {
+                    probe.position = original + Vector3.right * 100f;
+                    BoardSceneLook.FitCamera(camera, root.View);
+                    Assert.That(camera.orthographicSize, Is.EqualTo(originalSize).Within(0.001f));
+                    Assert.That(camera.transform.position.x, Is.EqualTo(originalX).Within(0.001f));
+                    probe.position = original + Vector3.up * 20f;
+                    BoardSceneLook.FitCamera(camera, root.View);
+                    Assert.That(camera.orthographicSize, Is.GreaterThan(originalSize + 1f));
+                }
+                finally
+                {
+                    probe.position = original;
+                    BoardSceneLook.FitCamera(camera, root.View);
+                }
+
+                // Vertically nothing changed: the whole diorama, slab included, still has to sit
+                // inside the frame so the toy's rim reads as a finite edge top and bottom.
+                foreach (var renderer in root.View.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (!renderer.enabled) continue;
+                    if (deskSurface != null && renderer.transform.IsChildOf(deskSurface)) continue;
+                    Vector3 lo = camera.WorldToViewportPoint(renderer.bounds.min);
+                    Vector3 hi = camera.WorldToViewportPoint(renderer.bounds.max);
+                    Assert.That(Mathf.Min(lo.y, hi.y), Is.GreaterThan(-0.02f),
+                        renderer.name + " fell off the bottom of the frame");
+                    Assert.That(Mathf.Max(lo.y, hi.y), Is.LessThan(1.02f),
+                        renderer.name + " ran off the top of the frame");
+                }
+            }
+            finally
             {
-                if (!renderer.enabled) continue;
-                if (deskSurface != null && renderer.transform.IsChildOf(deskSurface)) continue;
-                Vector3 lo = camera.WorldToViewportPoint(renderer.bounds.min);
-                Vector3 hi = camera.WorldToViewportPoint(renderer.bounds.max);
-                Assert.That(Mathf.Min(lo.y, hi.y), Is.GreaterThan(-0.02f),
-                    renderer.name + " fell off the bottom of the frame");
-                Assert.That(Mathf.Max(lo.y, hi.y), Is.LessThan(1.02f),
-                    renderer.name + " ran off the top of the frame");
+                camera.targetTexture = previousTarget;
+                target.Release();
+                Object.DestroyImmediate(target);
             }
         }
 
@@ -637,8 +683,8 @@ namespace CatMetro.Tests.PlayMode
                     (mask & 4) == 0 ? min.z : max.z);
                 float depth = Vector3.Dot(corner - camera.transform.position,
                     camera.transform.forward);
-                Assert.That(depth, Is.InRange(camera.nearClipPlane, 24f),
-                    label + " outside the 25-unit URP main-light shadow range");
+                Assert.That(depth, Is.InRange(camera.nearClipPlane, 14f),
+                    label + " outside the 14-unit URP main-light shadow range");
             }
         }
 
@@ -646,8 +692,8 @@ namespace CatMetro.Tests.PlayMode
         // below and the predicate beside it cannot drift apart.
         private const float GameplayMinX = 0.055f;
         private const float GameplayMaxX = 0.945f;
-        private const float GameplayMinY = 0.12f;
-        private const float GameplayMaxY = 0.87f;
+        private const float GameplayMinY = 0.06f;
+        private const float GameplayMaxY = 0.90f;
 
         /// <summary>
         /// The same test the guard applies, as a bool, so the NEGATIVE case can be asserted

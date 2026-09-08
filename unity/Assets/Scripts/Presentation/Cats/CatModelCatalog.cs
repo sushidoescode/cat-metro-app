@@ -33,11 +33,10 @@ namespace CatMetro.Presentation.Cats
             "Armature/tripo::Root/tripo::Head_0/tripo::Head_1/tripo::Head_2";
         public const float NormalizedStandingHeight = 1f;
         private const float PivotCenterTolerance = 1e-4f;
-        // The admitted one-unit rig's head-and-ear silhouette rendered at 4.8% of the pinned
-        // phone frame at 0.42 scale. Scale by the chosen fallback-matched 5.34 / 4.8 ratio so
-        // the admitted licensed rig, rather than the differently proportioned fallback cat,
-        // owns this value.
-        public const float PresenterScale = 0.46725f;
+        // With GridY=1.47 the admitted head/ears measured 43/917 pixels at scale .46725,
+        // below the unchanged 5-6% phone target. Calibrate the presentation wrapper to that
+        // rendered artifact; the licensed model bytes and normalized admission stay fixed.
+        public const float PresenterScale = 0.52f;
         // TASK 17 measured the source walk at 0.238969 normalized standing heights/second.
         // Derive board-space speed from PresenterScale so visual scale and foot cadence remain
         // one law whenever the admitted rig is recalibrated.

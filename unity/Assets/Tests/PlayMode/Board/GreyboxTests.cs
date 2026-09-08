@@ -67,8 +67,8 @@ namespace CatMetro.Tests.PlayMode
                 var view = elements.Single(e => e.Id == n.Id && e.Kind != "edge" && e.Kind != "switch");
                 var authoredPosition = _root.View.transform.InverseTransformPoint(
                     view.transform.position);
-                Assert.That(authoredPosition.x, Is.EqualTo(n.X).Within(0.001));
-                Assert.That(authoredPosition.y, Is.EqualTo(n.Y).Within(0.001));
+                Assert.That(authoredPosition.x, Is.EqualTo(n.X * 0.8f).Within(0.001));
+                Assert.That(authoredPosition.y, Is.EqualTo(n.Y * 1.47f).Within(0.001));
             }
         }
 

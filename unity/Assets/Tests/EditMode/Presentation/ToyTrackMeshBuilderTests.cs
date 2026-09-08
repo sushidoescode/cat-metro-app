@@ -46,16 +46,23 @@ namespace CatMetro.Tests.EditMode.Presentation
 
             var mesh = _track.GetComponent<MeshFilter>().sharedMesh;
             var renderer = _track.GetComponent<MeshRenderer>();
-            Assert.That(mesh.subMeshCount, Is.EqualTo(2),
+            Assert.That(mesh.subMeshCount, Is.EqualTo(3),
                 "sleepers and rails need independently coloured physical geometry");
             Assert.That(mesh.GetIndexCount(0), Is.GreaterThan(0), "cream sleepers are present");
             Assert.That(mesh.GetIndexCount(1), Is.GreaterThan(0), "both navy rails are present");
-            Assert.That(renderer.sharedMaterials.Length, Is.EqualTo(2));
+            Assert.That(renderer.sharedMaterials.Length, Is.EqualTo(3));
             AssertColor(renderer.sharedMaterials[0].color, Palette.CreamCard);
-            AssertColor(renderer.sharedMaterials[1].color, Palette.InkNavy);
+            AssertColor(renderer.sharedMaterials[1].color, new Color(64f / 255f, 73f / 255f, 105f / 255f));
+            AssertColor(renderer.sharedMaterials[2].color, new Color(184f / 255f, 120f / 255f, 63f / 255f));
+            Assert.That(mesh.bounds.size.x, Is.EqualTo(0.88f).Within(0.001f));
             Assert.That(renderer.sharedMaterials[0].shader, Is.EqualTo(GreyboxMaterial.Shared.shader));
             Assert.That(renderer.sharedMaterials[1].shader, Is.EqualTo(GreyboxMaterial.Shared.shader));
         }
+
+        private static int[] SleeperAndBedTriangles(Mesh mesh) =>
+            mesh.subMeshCount == 3
+                ? mesh.GetTriangles(0).Concat(mesh.GetTriangles(2)).ToArray()
+                : mesh.GetTriangles(0);
 
         [Test]
         public void Build_HasChunkyWidthAndVisibleThicknessInsteadOfAFlatQuad()
@@ -86,7 +93,7 @@ namespace CatMetro.Tests.EditMode.Presentation
 
             Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
             Vector3[] vertices = mesh.vertices;
-            int[] triangles = mesh.GetTriangles(0);
+            int[] triangles = SleeperAndBedTriangles(mesh);
             for (int triangle = 0; triangle < triangles.Length; triangle += 3)
             {
                 Vector3 a = vertices[triangles[triangle]];
@@ -183,7 +190,7 @@ namespace CatMetro.Tests.EditMode.Presentation
 
             Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
             Vector3[] vertices = mesh.vertices;
-            int[] bed = LargestComponent(mesh.GetTriangles(0));
+            int[] bed = LargestComponent(SleeperAndBedTriangles(mesh));
 
             // The edge runs down -y, so the sweep's lateral axis is +x.
             for (float distance = 0.05f; distance <= path.Length - 0.05f; distance += 0.1f)
@@ -203,8 +210,8 @@ namespace CatMetro.Tests.EditMode.Presentation
                 Assert.That(covered, Is.True,
                     "the ballast bed must be unbroken along the whole edge — a row of "
                     + "separate sleepers is what read as thin lines on bare board");
-                Assert.That(right, Is.GreaterThanOrEqualTo(0.5f), "at distance " + distance);
-                Assert.That(left, Is.LessThanOrEqualTo(-0.5f), "at distance " + distance);
+                Assert.That(right, Is.GreaterThanOrEqualTo(0.43f), "at distance " + distance);
+                Assert.That(left, Is.LessThanOrEqualTo(-0.43f), "at distance " + distance);
             }
         }
 
@@ -225,7 +232,7 @@ namespace CatMetro.Tests.EditMode.Presentation
                 Vector3[] vertices = mesh.vertices;
 
                 float nearest = float.PositiveInfinity;
-                foreach (int index in LargestComponent(mesh.GetTriangles(0)))
+                foreach (int index in LargestComponent(SleeperAndBedTriangles(mesh)))
                     nearest = Mathf.Min(nearest, Vector2.Distance(
                         new Vector2(vertices[index].x, vertices[index].y),
                         new Vector2(shared.x, shared.y)));
@@ -248,7 +255,7 @@ namespace CatMetro.Tests.EditMode.Presentation
 
             Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
             Vector3[] vertices = mesh.vertices;
-            int[] bed = LargestComponent(mesh.GetTriangles(0));
+            int[] bed = LargestComponent(SleeperAndBedTriangles(mesh));
             int[] rails = mesh.GetTriangles(1);
 
             // Board-local -z is up, so a top surface is a band of SMALL z.
@@ -284,7 +291,7 @@ namespace CatMetro.Tests.EditMode.Presentation
 
             Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
             Vector3[] vertices = mesh.vertices;
-            int[] cream = mesh.GetTriangles(0);
+            int[] cream = SleeperAndBedTriangles(mesh);
             List<int[]> islands = ConnectedVertexComponents(cream);
             int[] bed = islands.OrderByDescending(island => island.Length).First();
 
@@ -325,7 +332,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(mesh.bounds.min.z,
                 Is.EqualTo(ToyTrackMeshBuilder.RailCrownZ).Within(0.0001f),
                 "the rail crown is the highest thing on the track, and it is a contract");
-            Assert.That(mesh.GetTriangles(0).Min(index => vertices[index].z),
+            Assert.That(SleeperAndBedTriangles(mesh).Min(index => vertices[index].z),
                 Is.GreaterThan(ToyTrackMeshBuilder.RailCrownZ),
                 "no cream surface may rise through the running plane or the train sinks");
         }
@@ -432,7 +439,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
             Assert.That(SeamIsland(mesh), Is.Empty,
                 "a short edge must go without rather than carry a stranded seam");
-            foreach (int[] island in ConnectedVertexComponents(mesh.GetTriangles(0)))
+            foreach (int[] island in ConnectedVertexComponents(SleeperAndBedTriangles(mesh)))
                 Assert.That(island.Length == 16 || island.Length > 16 * 3, Is.True,
                     "submesh 0 should hold only the bed and 16-vertex sleeper ticks here");
         }
@@ -459,7 +466,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             // it hangs is a placement decision, not what this test is about.
             float reach = outline.Max(p => Mathf.Abs(p.y));
 
-            Assert.That(lateral, Is.GreaterThan(0.9f),
+            Assert.That(lateral, Is.GreaterThan(0.72f),
                 "the seam must read right across the bed, not just between the rails");
             Assert.That(reach, Is.GreaterThan(0.25f),
                 "a straight butt joint is not a puzzle piece — a lobe has to stand "
@@ -493,7 +500,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(seam, Is.Not.Empty);
 
             var members = new HashSet<int>(seam);
-            int[] triangles = mesh.GetTriangles(0);
+            int[] triangles = SleeperAndBedTriangles(mesh);
             double volume = 0.0;
             float highest = seam.Min(index => vertices[index].z);
             int checkedLids = 0;
@@ -534,7 +541,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
             Vector3[] vertices = mesh.vertices;
             int[] seam = SeamIsland(mesh);
-            int[] bed = LargestComponent(mesh.GetTriangles(0));
+            int[] bed = LargestComponent(SleeperAndBedTriangles(mesh));
 
             float seamTop = seam.Min(index => vertices[index].z);
             float bedCrown = bed.Min(index => vertices[index].z);
@@ -612,7 +619,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
             Vector3[] vertices = mesh.vertices;
             int[] seam = SeamIsland(mesh);
-            List<int[]> ticks = ConnectedVertexComponents(mesh.GetTriangles(0))
+            List<int[]> ticks = ConnectedVertexComponents(SleeperAndBedTriangles(mesh))
                 .Where(island => island.Length == 16).ToList();
 
             Assert.That(ticks.Count, Is.GreaterThan(3),
@@ -728,7 +735,7 @@ namespace CatMetro.Tests.EditMode.Presentation
         // seam is the second island, and its absence is what a short edge looks like.
         private static int[] SeamIsland(Mesh mesh)
         {
-            List<int[]> islands = ConnectedVertexComponents(mesh.GetTriangles(0))
+            List<int[]> islands = ConnectedVertexComponents(SleeperAndBedTriangles(mesh))
                 .OrderByDescending(island => island.Length)
                 .ToList();
             if (islands.Count < 2 || islands[1].Length <= 16) return new int[0];
@@ -785,7 +792,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             int counted = 0;
             foreach (int index in seam)
             {
-                if (Mathf.Abs(Vector3.Dot(vertices[index] - centre, lateral)) < 0.4f) continue;
+                if (Mathf.Abs(Vector3.Dot(vertices[index] - centre, lateral)) < 0.32f) continue;
                 total += vertices[index];
                 counted++;
             }

@@ -8,13 +8,8 @@ namespace CatMetro.Presentation.Board
     // SMALLER number is the higher surface. The board deck is at z +0.35; the camera and
     // the whole toy sit on the -z side of it.
     //
-    // Shape, from target-01/target-02: the track is ONE continuous pale ballast ribbon
-    // swept along the edge spline, wider than the gauge, with the twin navy rails sunk
-    // into it so roughly half of each rail is buried and only a shallow crown stands
-    // proud. Sleeper ticks survive as low cream blocks embossed into the bed — the
-    // rhythm reads, but the bed is still a single object. The old shape (isolated
-    // sleeper blocks with a 0.125 gap under free-floating rails) is what made the track
-    // read as thin dark lines on bare board.
+    // A continuous warm wooden ribbon with navy rails and low cream sleeper marks.
+    // Separate material slots keep the ties legible without painting the whole bed white.
     public static class ToyTrackMeshBuilder
     {
         // ---- Rails ----------------------------------------------------------------
@@ -31,9 +26,9 @@ namespace CatMetro.Presentation.Board
         private const float RailBackZ = 0.165f;  // underside; the bed closes over it
 
         // ---- Ballast bed ----------------------------------------------------------
-        // The ribbon. 1.08 wide against a 2.0 minimum node spacing across all 17 levels,
+        // The ribbon. 0.88 wide against a 1.6 minimum horizontal node spacing,
         // so parallel runs still leave most of a cell of board showing between them.
-        private const float BedHalfWidth = 0.54f;
+        private const float BedHalfWidth = 0.44f;
         private const float BedChamfer = 0.07f;
         private const float BedTopZ = 0.105f;    // top surface at the flat-top edges
         private const float BedCrownRise = 0.008f; // gentle camber: reads as moulded wood,
@@ -58,7 +53,7 @@ namespace CatMetro.Presentation.Board
         // left; fully clearing it would need 1.0+, which strips short edges back to a
         // single tick. Properly fixing the rest needs the builder to know its neighbours,
         // which the one-edge-at-a-time API does not carry.
-        private const float SleeperLength = 0.88f;  // inside the bed's 0.94 flat top
+        private const float SleeperLength = 0.70f;  // inside the bed's 0.74 flat top
         private const float SleeperWidth = 0.16f;
         private const float SleeperSpacing = 0.34f;
         private const float SleeperEndInset = 0.72f;
@@ -165,6 +160,7 @@ namespace CatMetro.Presentation.Board
             new Vector2(-RailWidth * 0.5f, RailShoulderZ),
         };
 
+        private static Material _bedMaterial;
         private static Material _sleeperMaterial;
         private static Material _railMaterial;
 
@@ -173,11 +169,12 @@ namespace CatMetro.Presentation.Board
             var vertices = new List<Vector3>(1024);
             var bedTriangles = new List<int>(1536);
             var railTriangles = new List<int>(1536);
+            var ribbonTriangles = new List<int>(1536);
 
             // The bed runs the WHOLE spline — no end inset. Edges that share a node
             // butt their beds together there, which is what makes a route read as one
             // ribbon instead of a row of separate track pieces.
-            AppendSweep(path, BedSection, vertices, bedTriangles);
+            AppendSweep(path, BedSection, vertices, ribbonTriangles);
             AppendSleeperTicks(path, vertices, bedTriangles);
             AppendJoinSeam(path, vertices, bedTriangles);
             AppendSweep(path.CreateLateralRail(-RailOffset), RailSection,
@@ -187,9 +184,10 @@ namespace CatMetro.Presentation.Board
 
             var mesh = new Mesh { name = "Toy track " + edgeId };
             mesh.SetVertices(vertices);
-            mesh.subMeshCount = 2;
+            mesh.subMeshCount = 3;
             mesh.SetTriangles(bedTriangles, 0);
             mesh.SetTriangles(railTriangles, 1);
+            mesh.SetTriangles(ribbonTriangles, 2);
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
 
@@ -200,9 +198,16 @@ namespace CatMetro.Presentation.Board
             id.Kind = "edge";
             root.AddComponent<MeshFilter>().sharedMesh = mesh;
             var renderer = root.AddComponent<MeshRenderer>();
-            renderer.sharedMaterials = new[] { SleeperMaterial(), RailMaterial() };
+            renderer.sharedMaterials = new[] { SleeperMaterial(), RailMaterial(), BedMaterial() };
             root.AddComponent<GeneratedTrackMeshOwner>().Mesh = mesh;
             return root;
+        }
+
+        private static Material BedMaterial()
+        {
+            if (_bedMaterial == null)
+                _bedMaterial = GreyboxMaterial.CreateTinted("Toy Track — Wood Bed", Palette.WarmWood);
+            return _bedMaterial;
         }
 
         private static Material SleeperMaterial()
@@ -217,7 +222,7 @@ namespace CatMetro.Presentation.Board
         {
             if (_railMaterial == null)
                 _railMaterial = GreyboxMaterial.CreateTinted(
-                    "Toy Track — Navy Rails", Palette.InkNavy);
+                    "Toy Track — Navy Rails", Palette.RailNavy);
             return _railMaterial;
         }
 

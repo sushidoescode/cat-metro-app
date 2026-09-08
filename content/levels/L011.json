@@ -36,17 +36,17 @@
     { "nodeId": "SQUARE", "accepts": ["green"], "capacity": 8, "shape": "square" }
   ],
   "switches": [
-    { "id": "S1", "nodeId": "J1", "routes": ["E_ROUND", "E_SQUARE", "E_TRIANGLE"], "initialRoute": 0 }
+    { "id": "S1", "nodeId": "J1", "routes": ["E_ROUND", "E_TRIANGLE", "E_SQUARE"], "initialRoute": 0 }
   ],
   "waves": [
     { "tick": 8, "sourceNode": "SRC", "color": "green", "count": 1, "spacingTicks": 12, "shape": "round" },
-    { "tick": 28, "sourceNode": "SRC", "color": "green", "count": 1, "spacingTicks": 12, "shape": "square" },
-    { "tick": 48, "sourceNode": "SRC", "color": "green", "count": 1, "spacingTicks": 12, "shape": "square" },
-    { "tick": 68, "sourceNode": "SRC", "color": "green", "count": 1, "spacingTicks": 12, "shape": "triangle" }
+    { "tick": 28, "sourceNode": "SRC", "color": "green", "count": 1, "spacingTicks": 12, "shape": "triangle" },
+    { "tick": 48, "sourceNode": "SRC", "color": "green", "count": 1, "spacingTicks": 12, "shape": "triangle" },
+    { "tick": 68, "sourceNode": "SRC", "color": "green", "count": 1, "spacingTicks": 12, "shape": "square" }
   ],
   "win": {
     "deliveries": 4,
-    "timeLimitTicks": 145,
+    "timeLimitTicks": 190,
     "stars": { "two": 540, "three": 710 }
   },
   "economy": { "baseTickets": 30, "perfectBonus": 15 }
