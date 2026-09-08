@@ -83,6 +83,7 @@ namespace CatMetro.Presentation.Audio
             new GameplayAudioCueTracker();
 
         private readonly AudioSource[] _voices = new AudioSource[4];
+        private readonly bool[] _celebrationVoices = new bool[4];
         private readonly AudioClip[] _mews = new AudioClip[5];
         private readonly AudioClip[] _purrs = new AudioClip[2];
         private int _nextVoice;
@@ -271,12 +272,15 @@ namespace CatMetro.Presentation.Audio
             return clip;
         }
 
-        private void PlayOneShot(AudioClip clip, float volume, float pitch = 0f, float delay = 0f)
+        private void PlayOneShot(AudioClip clip, float volume, float pitch = 0f, float delay = 0f,
+            bool celebration = false)
         {
             if (!_enabled || _applicationPaused || !isActiveAndEnabled || clip == null) return;
-            var source = _voices[_nextVoice++ % _voices.Length];
+            int voiceIndex = _nextVoice++ % _voices.Length;
+            var source = _voices[voiceIndex];
             if (source == null) return;
             source.Stop();
+            _celebrationVoices[voiceIndex] = celebration;
             source.clip = clip;
             source.pitch = pitch > 0f ? pitch : UnityEngine.Random.Range(.96f, 1.04f);
             source.volume = volume;
@@ -287,11 +291,10 @@ namespace CatMetro.Presentation.Audio
         private void PlayCelebrate()
         {
             if (_celebrateFlourish == null || _flourishSource == null) return;
-            _flourishSource.Stop();
+            CancelCelebrate();
             _flourishSource.clip = _celebrateFlourish;
             _flourishSource.volume = CelebrateVolume;
             _celebrateAt = Time.unscaledTime + CatPresentationTrack.WinBeatDelay;
-            for (int i = 0; i < 3; i++) PlayMew(i * 2, i * .08f);
         }
 
         private void PlayCadence(AudioClip clip, float volume)
@@ -303,9 +306,9 @@ namespace CatMetro.Presentation.Audio
             _flourishSource.Play();
         }
 
-        private void PlayMew(int semitones = 0, float delay = 0f) =>
+        private void PlayMew(int semitones = 0, float delay = 0f, bool celebration = false) =>
             PlayOneShot(_mews[_nextMew++ % _mews.Length], .43f,
-                Mathf.Pow(2f, semitones / 12f) * UnityEngine.Random.Range(.96f, 1.04f), delay);
+                Mathf.Pow(2f, semitones / 12f) * UnityEngine.Random.Range(.96f, 1.04f), delay, celebration);
 
         // Use the rig's presentation blink clock, never the simulation RNG or game ticks.
         public void ObserveHome(bool visible, float elapsedSeconds)
@@ -360,6 +363,12 @@ namespace CatMetro.Presentation.Audio
         {
             _celebrateAt = -1f;
             if (_flourishSource != null) _flourishSource.Stop();
+            for (int i = 0; i < _voices.Length; i++)
+            {
+                if (!_celebrationVoices[i]) continue;
+                if (_voices[i] != null) _voices[i].Stop();
+                _celebrationVoices[i] = false;
+            }
         }
 
         private void Update()
@@ -368,7 +377,10 @@ namespace CatMetro.Presentation.Audio
             {
                 _celebrateAt = -1f;
                 if (_enabled && !_applicationPaused && _flourishSource != null)
+                {
                     _flourishSource.Play();
+                    for (int i = 0; i < 3; i++) PlayMew(i * 2, i * .08f, celebration: true);
+                }
             }
             if (_chuffRelease < 0f || _chuffSource == null) return;
             _chuffRelease += Time.unscaledDeltaTime;
