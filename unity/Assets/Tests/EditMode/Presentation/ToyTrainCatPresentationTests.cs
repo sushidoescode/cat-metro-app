@@ -526,28 +526,50 @@ namespace CatMetro.Tests.EditMode.Presentation
         [Test]
         public void DeliveredPassenger_HitchUsesTheSameFloorLiftAsTheTrainPassenger()
         {
-            BuildBoard(TwoCollapsedLifecyclesLevel());
+            BuildBoard(TwoCollapsedLifecyclesLevel(stationX: 3, stationY: 2));
             _session.AdvanceMs(4 * TickInterpolator.TICK_MS);
             _board.UpdateFrom(_session, 0f);
-            Assert.That(_board.transform.Find("delivered-cat:0").localPosition.z,
-                Is.EqualTo(-.2f).Within(.001f), "the feet stay above the tabletop");
+            var passenger = _board.transform.Find("delivered-cat:0");
+            Assert.That(passenger.localPosition.x, Is.EqualTo(2.4f).Within(.0001f),
+                "recorded station X=3 maps to 3 × GridX 0.8, even when both arrivals were unseen");
+            Assert.That(passenger.localPosition.y, Is.EqualTo(2.328f).Within(.0001f),
+                "station Y=2 maps to 2.94; the calibrated 0.612 platform offset stays in board units");
+            Assert.That(passenger.localPosition.z, Is.EqualTo(-.2f).Within(.0001f),
+                "HeadAnchorZ is the unchanged tabletop lift; the X/Y grid must not scale depth");
         }
 
-        [Test]
-        public void DeliveredPassenger_ObservedHandoffKeepsTheArrivalEndpoint()
+        [TestCase(0, 2, 2.4f, 2.808f)]
+        [TestCase(-2, 0, 1.92f, 2.328f)]
+        [TestCase(-2, 2, 2.170553f, 2.749609f)]
+        public void DeliveredPassenger_ObservedHandoffKeepsTheArrivalEndpoint(
+            int approachX, int approachY, float endpointX, float endpointY)
         {
-            BuildBoard(NonFinalReuseLevel());
+            BuildBoard(NonFinalReuseLevel(3, 2, approachX, approachY));
+            _boardHost.transform.SetPositionAndRotation(new Vector3(2f, -3f, 5f),
+                Quaternion.Euler(17f, -12f, 9f));
             for (int i = 0; i < 3; i++)
             {
                 _session.AdvanceMs(TickInterpolator.TICK_MS);
                 _board.UpdateFrom(_session, i * .1f);
             }
+            var arriving = BoardTrain().GetComponent<ToyTrainView>();
+            // Hand-derived from station (2.4,2.94), a 0.48 carriage trailing distance,
+            // and board-down 0.612. The diagonal uses direction (1.6,-2.94), not (2,-2).
+            Vector3 expectedWorld = _board.transform.TransformPoint(
+                new Vector3(endpointX, endpointY, -.2f));
+            Assert.That(Vector3.Distance(arriving.PlatformEndpointWorld, expectedWorld),
+                Is.LessThan(.001f),
+                "the arrival endpoint follows the anisotropic grid and transforms with the tilted board");
             _board.UpdateFrom(_session, .7f);
             var endpoint = BoardTrain().Find("Carriage/Cat").position;
             _board.UpdateFrom(_session, 1.2f);
             var resident = _board.transform.Find("delivered-cat:0/Carriage/Cat");
-            Assert.That(Vector3.Distance(resident.position, endpoint), Is.LessThan(.05f),
-                "handoff keeps the actual endpoint, allowing only the small idle bob");
+            var retained = _board.transform.Find("delivered-cat:0").GetComponent<ToyTrainView>();
+            Assert.That(Vector3.Distance(retained.PlatformEndpointWorld, expectedWorld),
+                Is.LessThan(.001f),
+                "handoff preserves the measured carriage-side endpoint instead of rebuilding a node-centred guess");
+            Assert.That(Vector3.Distance(resident.position, endpoint), Is.LessThan(.054f),
+                "two 0.021 screen-unit bobs differ by at most 2 × 0.021 / cos(38°) ≈ 0.0533 board units");
         }
 
         [Test]
@@ -579,7 +601,7 @@ namespace CatMetro.Tests.EditMode.Presentation
         [Test]
         public void WonCats_HopAtSixTenthsWithNinetyMillisecondStagger_ThenRemain()
         {
-            BuildBoard(TwoCollapsedLifecyclesLevel());
+            BuildBoard(TwoCollapsedLifecyclesLevel(stationX: 3, stationY: 2));
             _session.AdvanceMs(4 * TickInterpolator.TICK_MS);
             _session.State.Outcome = SimOutcome.Won;
             _board.UpdateFrom(_session, 10f);
@@ -588,18 +610,37 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(a, Is.Not.Null);
             Assert.That(b, Is.Not.Null);
             _board.UpdateFrom(_session, 10.59f);
+            Vector3 anchor = a.localPosition;
+            Vector3 neutralScale = a.Find("Carriage/Cat").localScale;
+            Assert.That(Vector3.Distance(anchor, new Vector3(2.4f, 2.328f, -.2f)),
+                Is.LessThan(.0001f),
+                "the win starts on the scaled station's 0.612-offset platform, with unchanged depth");
+            Assert.That(Vector3.Distance(b.localPosition, new Vector3(2.82f, 2.328f, -.2f)),
+                Is.LessThan(.0001f),
+                "the second retained cat keeps 0.42 board-unit lane spacing; GridX does not compress it");
             Assert.That(a.GetComponent<ToyTrainView>().PresentationState,
-                Is.EqualTo(CatPresentationState.WaitingIdle));
+                Is.EqualTo(CatPresentationState.WaitingIdle), "the 0.6-second beat does not depend on board scale");
             _board.UpdateFrom(_session, 10.60f);
             Assert.That(a.GetComponent<ToyTrainView>().PresentationState,
-                Is.EqualTo(CatPresentationState.Celebrate));
+                Is.EqualTo(CatPresentationState.Celebrate), "the first cat starts at 0.6 seconds");
             Assert.That(b.GetComponent<ToyTrainView>().PresentationState,
-                Is.EqualTo(CatPresentationState.WaitingIdle));
+                Is.EqualTo(CatPresentationState.WaitingIdle), "the second cat waits for its 90ms stagger");
             _board.UpdateFrom(_session, 10.69f);
             Assert.That(b.GetComponent<ToyTrainView>().PresentationState,
-                Is.EqualTo(CatPresentationState.Celebrate));
+                Is.EqualTo(CatPresentationState.Celebrate), "the second beat remains at 0.69 seconds");
+            _board.UpdateFrom(_session, 10.84f);
+            Assert.That(Vector3.Distance(a.Find("Carriage/Cat").localScale, neutralScale * 1.13f),
+                Is.LessThan(.0001f),
+                "the peak is 13% of the current rig/fallback scale, never the old absolute rig size");
+            Assert.That(a.localPosition, Is.EqualTo(anchor),
+                "the hop changes cat paint only; the calibrated platform anchor cannot move");
             _board.UpdateFrom(_session, 12f);
-            Assert.That(a.gameObject.activeSelf && b.gameObject.activeSelf, Is.True);
+            Assert.That(a.gameObject.activeSelf && b.gameObject.activeSelf, Is.True,
+                "both passengers remain on the platform after the beat");
+            Assert.That(a.Find("Carriage/Cat").localScale, Is.EqualTo(neutralScale),
+                "the hop settles to the newly calibrated base scale without compounding");
+            Assert.That(a.localPosition, Is.EqualTo(anchor),
+                "settling preserves the same station endpoint");
         }
 
         [Test]
@@ -625,7 +666,7 @@ namespace CatMetro.Tests.EditMode.Presentation
         [Test]
         public void BoardUpdateFrom_ActualDeliveryPlacesRetainedConsistAtRecordedStation()
         {
-            BuildBoard(NonFinalReuseLevel());
+            BuildBoard(NonFinalReuseLevel(3, 2));
             _session.AdvanceMs(TickInterpolator.TICK_MS); // tick 0: emit
             _board.UpdateFrom(_session, 0f);
             _session.AdvanceMs(TickInterpolator.TICK_MS); // tick 1: approach
@@ -637,9 +678,12 @@ namespace CatMetro.Tests.EditMode.Presentation
             _board.UpdateFrom(_session, 0.2f);
 
             Transform train = BoardTrain();
-            Vector3 stationLocal = _board.transform.InverseTransformPoint(_board.NodeWorldPos(1));
-            Assert.That(train.localPosition.x, Is.EqualTo(stationLocal.x).Within(0.0001f));
-            Assert.That(train.localPosition.y, Is.EqualTo(stationLocal.y).Within(0.0001f));
+            Assert.That(train.localPosition.x, Is.EqualTo(2.4f).Within(0.0001f),
+                "the delivered head uses authored station X=3 × GridX 0.8");
+            Assert.That(train.localPosition.y, Is.EqualTo(2.94f).Within(0.0001f),
+                "the delivered head uses authored station Y=2 × GridY 1.47");
+            Assert.That(train.localPosition.z, Is.EqualTo(-.2f).Within(0.0001f),
+                "the same HeadAnchorZ lifts both the arriving train and retained passenger");
             Assert.That(train.GetComponent<ToyTrainView>().PresentationState,
                 Is.EqualTo(CatPresentationState.Alight));
             Transform carriage = train.Find("Carriage");
@@ -903,12 +947,14 @@ namespace CatMetro.Tests.EditMode.Presentation
             o["win"]["timeLimitTicks"] = 20;
         });
 
-        private static byte[] NonFinalReuseLevel() => VFixtures.Level(o =>
+        private static byte[] NonFinalReuseLevel(int stationX = 0, int stationY = 0,
+            int approachX = 0, int approachY = 2) => VFixtures.Level(o =>
         {
             o["meta"]["mechanics"] = new JArray();
             o["meta"]["newMechanic"] = null;
             o["board"]["nodes"] = new JArray(
-                VFixtures.Node("SRC", 0, 2), VFixtures.Node("RED", 0, 0));
+                VFixtures.Node("SRC", stationX + approachX, stationY + approachY),
+                VFixtures.Node("RED", stationX, stationY));
             o["board"]["edges"] = new JArray(VFixtures.Edge("E1", "SRC", "RED", 2));
             o["sources"] = new JArray(Source("SRC", "red"));
             o["stations"] = new JArray(VFixtures.Station("RED", 3, "red"));
@@ -952,12 +998,14 @@ namespace CatMetro.Tests.EditMode.Presentation
             o["win"]["timeLimitTicks"] = 20;
         });
 
-        private static byte[] TwoCollapsedLifecyclesLevel(int travel = 1, int spacing = 2, int span = 1) => VFixtures.Level(o =>
+        private static byte[] TwoCollapsedLifecyclesLevel(int travel = 1, int spacing = 2, int span = 1,
+            int stationX = 0, int stationY = 0) => VFixtures.Level(o =>
         {
             o["meta"]["mechanics"] = new JArray();
             o["meta"]["newMechanic"] = null;
             o["board"]["nodes"] = new JArray(
-                VFixtures.Node("SRC", 0, span), VFixtures.Node("RED", 0, 0));
+                VFixtures.Node("SRC", stationX, stationY + span),
+                VFixtures.Node("RED", stationX, stationY));
             o["board"]["edges"] = new JArray(VFixtures.Edge("E1", "SRC", "RED", travel));
             o["sources"] = new JArray(Source("SRC", "red"));
             o["stations"] = new JArray(VFixtures.Station("RED", 3, "red"));

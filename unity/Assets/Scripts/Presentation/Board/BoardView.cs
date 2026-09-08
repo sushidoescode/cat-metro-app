@@ -666,7 +666,9 @@ namespace CatMetro.Presentation.Board
                 int side = lane == 0 ? 0 : (lane + 1) / 2 * (lane % 2 == 1 ? 1 : -1);
                 float inward = PresentationCenterLocal.x - _nodePos[delivery.Node].x;
                 if (Mathf.Abs(inward) > .1f) side = lane * (inward > 0f ? 1 : -1);
-                Vector3 anchor = _nodePos[delivery.Node] + Vector3.down * .62f
+                // Unseen arrivals use the same calibrated board-unit platform offset as
+                // observed departures; the presentation grid scales node coordinates only.
+                Vector3 anchor = _nodePos[delivery.Node] + Vector3.down * ToyTrainView.PlatformSideOffset
                     + Vector3.forward * ToyTrainView.HeadAnchorZ;
                 var passenger = ToyTrainView.Create(transform, "delivered-cat:" + i, _edgeFrom, _edgeTo);
                 passenger.SyncSlot(i + 1L, delivery.Colour);
