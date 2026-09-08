@@ -91,6 +91,8 @@ namespace CatMetro.Tests.PlayMode
                 "composition binds accepted switch taps to audio");
             Assert.That(_root.Wardrobe.PurchaseConfirmed, Is.Not.Null,
                 "composition binds confirmed purchases to audio");
+            Assert.That(_root.Input.Regions.IsRegistered("home.audio.toggle"), Is.True,
+                "C's speaker keeps the existing Home audio entry region");
             Assert.That(_root.Input.HandleTapAtScreen(_root.Home.AudioToggleRectPx.center),
                 Is.EqualTo(-3));
             Assert.That(_root.Settings, Is.Not.Null);
@@ -119,6 +121,13 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Music.Enabled, Is.False);
             Assert.That(_root.Haptics.Enabled, Is.False);
             Assert.That(_root.MotionOffToggle, Is.True, "settings.motion=false binds the runtime reduce-motion toggle at boot");
+            Assert.That(_root.Input.HandleTapAtScreen(_root.Home.AudioToggleRectPx.center), Is.EqualTo(-3));
+            Assert.That(_root.Settings.IsVisible, Is.True);
+            Assert.That(_root.Audio.Enabled, Is.False, "a muted speaker opens settings without enabling Sound");
+            Assert.That(_root.Input.HandleTapAtScreen(_root.Settings.RowRectPx(SettingsChannel.Sound).center), Is.EqualTo(-3));
+            Assert.That(_root.Home.AudioEnabled, Is.True, "Sound updates the state used to paint the Home speaker");
+            Assert.That(_root.Music.Enabled, Is.False);
+            Assert.That(_root.Haptics.Enabled, Is.False);
         }
 
         [UnityTest]
