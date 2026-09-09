@@ -134,7 +134,7 @@ namespace CatMetro.Presentation.Hud
         private void LayoutContent()
         {
             float iconSize = _icon != null ? 26f * _pxPerDp : 0f;
-            float gap = _icon != null ? 10f * _pxPerDp : 0f;
+            float gap = _icon != null && !string.IsNullOrEmpty(Label.text) ? 10f * _pxPerDp : 0f;
             float available = Mathf.Max(0f, FaceRectPx.width - 40f * _pxPerDp - iconSize - gap);
             TypeScale.Apply(Label, 24f, _pxPerDp * HudBands.FallbackDpi);
             // Measure the icon/label group at the title size, then leave fitting live:

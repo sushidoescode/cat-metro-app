@@ -195,6 +195,63 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_ads.RequestedPlacement, Is.EqualTo(Placement));
         }
 
+        private void OpenGameplayPause()
+        {
+            Assert.That(_root.Input.Regions.IsRegistered("game.pause"), Is.True);
+            var pin = _root.GetComponentsInChildren<RectTransform>().Single(t => t.name == "PausePin");
+            _root.Input.HandleTapAtScreen(_root.Cam.WorldToScreenPoint(pin.TransformPoint(pin.rect.center)));
+            Assert.That(_root.Stack.Current, Is.EqualTo("pause"));
+        }
+
+        private void TapPauseLabel(string text)
+        {
+            var label = _root.GetComponentsInChildren<TMP_Text>().Single(t => t.text == text);
+            _root.Input.HandleTapAtScreen(_root.Cam.WorldToScreenPoint(
+                label.rectTransform.TransformPoint(label.rectTransform.rect.center)));
+        }
+
+        [UnityTest]
+        public IEnumerator GameplayHome_CancelsDisplayedRewindBeforeTheVeil_AndRejectsLateGrant()
+        {
+            yield return Fail(shippedFlow: true);
+            var failed = _root.Session;
+            TapOffer();
+            _ads.Display();
+            OpenGameplayPause();
+            Assert.That(_ads.Abandoned, Is.EqualTo(1), "the stacked sheet invalidates a pending reward route");
+            TapPauseLabel("Home");
+            var veil = _root.GetComponent<ScreenChromeController>().Transition;
+            Assert.That(veil.IsInFlight, Is.True);
+            _ads.Finish(RewardedAdCompletionKind.Granted);
+            Assert.That(_root.Session, Is.SameAs(failed), "a stale grant cannot replace the covered board");
+            veil.Advance(.22f, false);
+            var homeSession = _root.Session;
+            Assert.That(homeSession, Is.Not.SameAs(failed));
+            _ads.Finish(RewardedAdCompletionKind.Granted);
+            Assert.That(_root.Session, Is.SameAs(homeSession));
+            for (int i = 0; i < 4; i++) yield return null;
+            Assert.That(_root.Home.IsVisible, Is.True);
+            Assert.That(_root.Input.Regions.IsRegistered(RegionId), Is.False);
+            Assert.That(Count("rewind_applied"), Is.Zero);
+        }
+
+        [UnityTest]
+        public IEnumerator GameplayPauseResume_ReoffersForTheSameFailure_AndRetryKeepsFirstClaim()
+        {
+            yield return Fail(shippedFlow: true);
+            var failed = _root.Session;
+            OpenGameplayPause();
+            Assert.That(_root.Input.Regions.IsRegistered(RegionId), Is.False);
+            _root.MotionOffToggle = true;
+            TapPauseLabel("Resume");
+            Assert.That(_root.Session, Is.SameAs(failed));
+            Assert.That(_root.Input.Regions.IsRegistered(RegionId), Is.True);
+            int before = _ads.Requests;
+            Assert.That(_root.Input.HandleTapAtScreen(new Vector2(Screen.width * .5f, 1)), Is.EqualTo(-2));
+            Assert.That(_root.Session, Is.Not.SameAs(failed));
+            Assert.That(_ads.Requests, Is.EqualTo(before), "Retry never falls through to the offer");
+        }
+
         [UnityTest]
         public IEnumerator ShippedRetry_DeclinesAndRemovesOfferBeforeTheDelayedRebuild()
         {
@@ -297,6 +354,11 @@ namespace CatMetro.Tests.PlayMode
         public IEnumerator SuccessfulRewind_ClearsExistingFailureMoodAndRestoresPlayCamera()
         {
             yield return Fail(shippedFlow: true);
+            var mood = _root.CauseCam.GetComponent<UnityEngine.Rendering.Volume>();
+            Assert.That(mood, Is.Not.Null);
+            _root.CauseCam.GetComponent<CatMetro.Presentation.Fx.BoardFx>().Advance(.35f);
+            Assert.That(mood.sharedProfile.TryGet<UnityEngine.Rendering.Universal.ColorAdjustments>(out var colour), Is.True);
+            Assert.That(colour.saturation.value, Is.EqualTo(-35f));
             // TimeOut has no causal node; stage the existing fail framing so the reset
             // assertions exercise a visible ring and displaced camera rather than a no-op.
             _root.CauseCam.FrameNode("SRC", _root.View.NodeWorldPos(0), true);
@@ -308,6 +370,8 @@ namespace CatMetro.Tests.PlayMode
             TapOffer();
             _ads.Finish(RewardedAdCompletionKind.Granted);
             Assert.That(_root.ScreenState, Is.EqualTo("Playing"));
+            Assert.That(mood.weight, Is.Zero, "the prepared rewind clears the real failure volume");
+            Assert.That(colour.saturation.value, Is.Zero);
             Assert.That(_root.Banner.Visible, Is.False);
             Assert.That(_root.CauseCam.RingVisible, Is.False);
             Assert.That(_root.CauseCam.TargetNodeId, Is.Empty);

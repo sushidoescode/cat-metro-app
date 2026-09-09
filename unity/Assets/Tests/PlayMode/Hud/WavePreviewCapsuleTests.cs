@@ -495,7 +495,14 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator MixedShapeOverflow_PreservesFourReadableDestinationSymbols()
+        public IEnumerator MixedShapeOverflow_PreservesFourReadableDestinationSymbols() =>
+            MixedShapeOverflow(false);
+
+        [UnityTest]
+        public IEnumerator NavigationPin_PreservesFourReadableDestinationSymbolsAndOverflow() =>
+            MixedShapeOverflow(true);
+
+        private IEnumerator MixedShapeOverflow(bool navigation)
         {
             string fixture = FixtureJson(@"[
     { ""tick"": 5, ""sourceNode"": ""SRC"", ""color"": ""red"", ""count"": 2, ""spacingTicks"": 20 },
@@ -508,6 +515,7 @@ namespace CatMetro.Tests.PlayMode
                 .Replace("\"accepts\": [\"blue\"]", "\"accepts\": [\"blue\", \"green\"]");
             _root = GameRoot.LaunchWith(Import(fixture));
             yield return null;
+            if (navigation) _root.Preview.ReserveNavigationSpace();
             _root.Preview.LayoutForViewport(PhoneSafeArea, CaptureDpi);
             Assert.That(_root.Preview.FaceSummary, Is.EqualTo("red|blue|yellow|green"));
             Assert.That(_root.Preview.OverflowText, Is.EqualTo("+4"));
@@ -518,7 +526,7 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(_root.Preview.Face(i).BadgeSprite, Is.SameAs(symbols[i]));
                 Assert.That(_root.Preview.Face(i).BadgeRect.sizeDelta.x, Is.GreaterThan(24f));
             }
-            yield return CaptureHud("capsule-mixed-shape-overflow");
+            yield return CaptureHud(navigation ? "capsule-navigation-mixed-overflow" : "capsule-mixed-shape-overflow");
         }
 
         // --- counters ---

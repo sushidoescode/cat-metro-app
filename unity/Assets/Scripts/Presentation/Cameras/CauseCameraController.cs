@@ -1,4 +1,8 @@
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+using CatMetro.Presentation.Fx;
+using CatMetro.Presentation.Theme;
 
 namespace CatMetro.Presentation.Cameras
 {
@@ -25,7 +29,14 @@ namespace CatMetro.Presentation.Cameras
         private float _restOrthographicSize;
         private Vector3 _boardFacingNormal = Vector3.back;
         private float _ringAlpha;
-        private static Mesh _cylinderMesh;
+        private static Mesh _ringMesh, _rimMesh;
+        private BoardFx _fx;
+        private Volume _volume;
+        private VolumeProfile _profile;
+        private ColorAdjustments _colour;
+        private Vignette _vignette;
+        private bool _failing, _previousPostProcessing;
+        public System.Func<bool> MotionOffSource;
 
         public string TargetNodeId { get; private set; } = "";
         public bool IsFramed => !_panning;
@@ -74,6 +85,7 @@ namespace CatMetro.Presentation.Cameras
 
         public void Reset()
         {
+            ClearFailureMood();
             TargetNodeId = "";
             _panning = false;
             if (_ring != null) _ring.SetActive(false);
@@ -91,6 +103,7 @@ namespace CatMetro.Presentation.Cameras
         {
             if (!_panning) return;
             _panElapsedMs += Time.deltaTime * 1000.0;
+            if (MotionOffSource != null && MotionOffSource()) _panElapsedMs = PAN_DURATION_MS;
             float t = Mathf.Clamp01((float)(_panElapsedMs / PAN_DURATION_MS));
             // smoothstep ease; endpoint exact at t == 1
             float eased = t * t * (3f - 2f * t);
@@ -100,12 +113,17 @@ namespace CatMetro.Presentation.Cameras
 
         private void OnDestroy()
         {
+            ClearFailureMood();
+            if (_volume != null) _volume.sharedProfile = null;
+            if (_profile != null)
+            {
+                foreach (var component in _profile.components) DestroyOwned(component);
+                DestroyOwned(_profile);
+            }
             // The ring is world-rooted so it never rides the camera, but it is still owned by
             // this controller. Release it with GameRoot instead of leaking an inactive marker
             // and renderer material across level-test fixtures or scene teardown.
-            if (_ring == null) return;
-            if (UnityEngine.Application.isPlaying) Destroy(_ring);
-            else DestroyImmediate(_ring);
+            DestroyOwned(_ring);
             _ring = null;
         }
 
@@ -115,9 +133,9 @@ namespace CatMetro.Presentation.Cameras
             {
                 _ring = new GameObject("CauseRing");
                 var filter = _ring.AddComponent<MeshFilter>();
-                if (_cylinderMesh == null)
-                    _cylinderMesh = Resources.GetBuiltinResource<Mesh>("Cylinder.fbx");
-                filter.sharedMesh = _cylinderMesh;
+                if (_ringMesh == null) _ringMesh = Annulus(.61f, .70f);
+                if (_rimMesh == null) _rimMesh = Annulus(.70f, .74f);
+                filter.sharedMesh = _ringMesh;
                 var renderer = _ring.AddComponent<MeshRenderer>();
                 renderer.sharedMaterial = Board.GreyboxMaterial.Shared;
                 renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -125,13 +143,22 @@ namespace CatMetro.Presentation.Cameras
                 // Review B1: NEVER parented to the camera — the controller lives on the camera
                 // object, so a camera-parented ring rides the cut/pan and ends 3.5 units off
                 // the causal node. World-positioned, unparented: it stays ON the node.
-                _ring.transform.localScale = new Vector3(1.4f, 0.02f, 1.4f);
-                var color = new Color(1f, 0.35f, 0.1f, 0.85f);
+                var color = Palette.TicketOrange;
                 var properties = new MaterialPropertyBlock();
                 properties.SetColor("_BaseColor", color);
                 properties.SetColor("_Color", color);
                 renderer.SetPropertyBlock(properties);
                 _ringAlpha = color.a;
+                var rim = new GameObject("Cream rim", typeof(MeshFilter), typeof(MeshRenderer));
+                rim.transform.SetParent(_ring.transform, false);
+                rim.GetComponent<MeshFilter>().sharedMesh = _rimMesh;
+                var rimRenderer = rim.GetComponent<MeshRenderer>();
+                rimRenderer.sharedMaterial = Board.GreyboxMaterial.Shared;
+                rimRenderer.shadowCastingMode = ShadowCastingMode.Off;
+                rimRenderer.receiveShadows = false;
+                properties.SetColor("_BaseColor", Palette.CreamCard);
+                properties.SetColor("_Color", Palette.CreamCard);
+                rimRenderer.SetPropertyBlock(properties);
             }
             _ring.transform.rotation = Quaternion.FromToRotation(Vector3.up, _boardFacingNormal);
             // Keep the ring screen-centred on the node (the failure-review information law)
@@ -139,6 +166,82 @@ namespace CatMetro.Presentation.Cameras
             // normal still follows the board, so the marker reads as part of the diorama.
             _ring.transform.position = worldPos - _camera.transform.forward * 0.6f;
             _ring.SetActive(true);
+        }
+
+        // This profile belongs to the current camera and is enabled only during failure.
+        // Normal Home/gameplay keeps its previous post-processing setting and colour grade.
+        public void ShowFailureMood(bool motionOff)
+        {
+            if (_failing) return;
+            _failing = true;
+            var data = _camera.GetUniversalAdditionalCameraData();
+            _previousPostProcessing = data.renderPostProcessing;
+            if (_profile == null)
+            {
+                _profile = ScriptableObject.CreateInstance<VolumeProfile>();
+                _profile.name = "Failure mood";
+                _colour = _profile.Add<ColorAdjustments>();
+                _colour.saturation.overrideState = true;
+                _vignette = _profile.Add<Vignette>();
+                _vignette.intensity.overrideState = true;
+                _vignette.color.Override(Palette.DepotNavy);
+                _vignette.smoothness.Override(.55f);
+                _volume = gameObject.AddComponent<Volume>();
+                _volume.isGlobal = true;
+                _volume.priority = 100f;
+                _volume.sharedProfile = _profile;
+            }
+            data.renderPostProcessing = true;
+            _volume.weight = 1f;
+            _fx = BoardFx.GetOrCreate(transform, () => MotionOffSource != null && MotionOffSource());
+            _fx.Tween(this, motionOff ? 0f : .35f, p =>
+            {
+                if (!_failing) return;
+                float eased = Mathf.SmoothStep(0f, 1f, p);
+                _colour.saturation.value = Mathf.Lerp(0f, -35f, eased);
+                _vignette.intensity.value = Mathf.Lerp(.25f, .45f, eased);
+            });
+        }
+
+        private void ClearFailureMood()
+        {
+            if (!_failing) return;
+            _failing = false;
+            _fx?.Finish(this);
+            if (_volume != null) _volume.weight = 0f;
+            if (_colour != null) _colour.saturation.value = 0f;
+            if (_vignette != null) _vignette.intensity.value = .25f;
+            if (_camera != null)
+                _camera.GetUniversalAdditionalCameraData().renderPostProcessing = _previousPostProcessing;
+        }
+
+        private static Mesh Annulus(float inner, float outer)
+        {
+            const int segments = 64;
+            var vertices = new Vector3[segments * 2];
+            var normals = new Vector3[vertices.Length];
+            var triangles = new int[segments * 6];
+            for (int i = 0; i < segments; i++)
+            {
+                float angle = i * Mathf.PI * 2f / segments;
+                var direction = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+                int a = i * 2, b = (i + 1) % segments * 2, t = i * 6;
+                vertices[a] = direction * inner; vertices[a + 1] = direction * outer;
+                normals[a] = normals[a + 1] = Vector3.up;
+                triangles[t] = a; triangles[t + 1] = b + 1; triangles[t + 2] = a + 1;
+                triangles[t + 3] = a; triangles[t + 4] = b; triangles[t + 5] = b + 1;
+            }
+            var mesh = new Mesh { name = "Open cause ring", vertices = vertices,
+                normals = normals, triangles = triangles };
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static void DestroyOwned(Object value)
+        {
+            if (value == null) return;
+            if (UnityEngine.Application.isPlaying) Destroy(value);
+            else DestroyImmediate(value);
         }
     }
 }

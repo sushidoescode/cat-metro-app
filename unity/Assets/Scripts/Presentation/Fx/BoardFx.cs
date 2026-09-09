@@ -236,7 +236,7 @@ namespace CatMetro.Presentation.Fx
         }
 
         public void Emit(BoardFxSprite sprite, Vector3 worldPosition, Color color, int count = 6,
-            float spread = 0.025f)
+            float spread = 0.025f, float sizeWorld = 0f, Vector3? velocityWorld = null)
         {
             if (MotionOff || !isActiveAndEnabled || count <= 0) return;
             if (_bursts[0] == null)
@@ -250,13 +250,15 @@ namespace CatMetro.Presentation.Fx
             var main = ps.main;
             main.startColor = color;
             main.startLifetime = sprite == BoardFxSprite.Puff ? 0.4f : 0.7f;
-            main.startSize = sprite == BoardFxSprite.Puff ? 0.10f : 0.15f;
+            main.startSize = sizeWorld > 0f ? sizeWorld : sprite == BoardFxSprite.Puff ? 0.10f : 0.15f;
             main.startSpeed = 0.35f;
             main.gravityModifier = sprite == BoardFxSprite.Puff ? 0f : -0.3f;
             var shape = ps.shape;
             shape.radius = Mathf.Max(0f, spread);
             ps.Play();
-            ps.Emit(Mathf.Min(count, 24));
+            if (velocityWorld.HasValue)
+                ps.Emit(new ParticleSystem.EmitParams { velocity = velocityWorld.Value }, Mathf.Min(count, 24));
+            else ps.Emit(Mathf.Min(count, 24));
         }
 
         // One short shower in camera space, owned by the board so it cannot survive a load.
