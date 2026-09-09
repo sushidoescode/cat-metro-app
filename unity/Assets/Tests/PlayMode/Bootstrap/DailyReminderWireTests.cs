@@ -859,8 +859,12 @@ namespace CatMetro.Tests.PlayMode
                 "Daily entry must remove the visible Intro overlay");
             Assert.That(_root.Home.IsVisible, Is.False);
             Assert.That(_root.Stack.Count, Is.Zero);
-            Assert.That(_root.Input.Regions.Count, Is.Zero,
+            Assert.That(_root.Input.Regions.IsRegistered("intro.play"), Is.False,
                 "Intro's Play region must not remain live over the Daily board");
+            Assert.That(_root.Input.Regions.IsRegistered("game.pause"), Is.True,
+                "Daily gameplay keeps the new route back Home");
+            Assert.That(_root.Input.Regions.Count, Is.EqualTo(1),
+                "only the gameplay pause pin survives; no Home/Intro region leaks through");
         }
 
         [UnityTest]
