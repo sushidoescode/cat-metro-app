@@ -673,6 +673,12 @@ namespace CatMetro.Bootstrap
             Wardrobe.OpenRequested = () =>
             {
                 Home.Hide();
+                // Home left the shared camera on its diorama aperture, which is a larger
+                // orthographicSize than the play fit. Any screen reached from Home without the
+                // dolly must measure against the play fit: the screens canvas sits one world
+                // unit in front of the camera and a mounted rig's toward-camera lift scales
+                // with orthographicSize, so a larger fit pushes the rig past the near plane.
+                RestorePlayComposition();
                 Wardrobe.Open();
                 Stack.Push("wardrobe");
             };
@@ -737,6 +743,13 @@ namespace CatMetro.Bootstrap
             canvas.worldCamera = null;
             canvas.worldCamera = Cam;
             Canvas.ForceUpdateCanvases();
+        }
+
+        private void RestorePlayComposition()
+        {
+            if (Cam == null || View == null) return;
+            _homeFx?.Finish(Cam, HomeCameraChannel);
+            BoardSceneLook.FitCamera(Cam, View);
         }
 
         private void DollyToPlay()

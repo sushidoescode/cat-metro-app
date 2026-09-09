@@ -120,6 +120,19 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
+        public void WardrobeOpen_RestoresThePlayComposition_NotTheHomeAperture()
+        {
+            // Home leaves the shared camera on its diorama sub-aperture, whose orthographicSize
+            // is larger than the play fit. Every screen reached from Home without the dolly must
+            // measure against the play fit: a ScreenSpaceCamera canvas sits one world unit in
+            // front of the camera, and the rig's toward-camera lift scales with orthographicSize,
+            // so a Wardrobe opened on the Home fit pushes its portrait rig past the near plane.
+            PlayPose(out var playPosition, out float playSize);
+            _root.Wardrobe.OpenRequested.Invoke();
+            AssertPose(playPosition, playSize);
+        }
+
+        [Test]
         public void IntroPlay_DolliesOverPointFourSeconds_UsingTheUnscaledClock()
         {
             PlayPose(out var playPosition, out float playSize);

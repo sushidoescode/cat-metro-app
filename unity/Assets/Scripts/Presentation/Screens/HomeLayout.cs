@@ -21,6 +21,11 @@ namespace CatMetro.Presentation.Screens
         public const float TitleShadowXDp = 3f;
         public const float TitleShadowYDp = 5f;
         public const float ShadowMarginDp = 8f;
+        // On a viewport too short for both, the diorama is the protected quantity and the
+        // decorative sign compacts. A hero that survives as a few pixels still reports the rig
+        // mounted while rendering nothing, so the sign's floor must not outrank the hero's.
+        public const float HeroMinDp = 96f;
+        public const float HeaderMinDp = 40f;
 
         public static Rect PinRect(Rect safeArea, float dpi) =>
             PrimaryPinRect(safeArea, dpi, dailyEntryUnlocked: false);
@@ -71,9 +76,9 @@ namespace CatMetro.Presentation.Screens
             // A short editor/landscape viewport must still leave the holder real height.
             // Compact only the decorative sign; controls and type keep their physical dp.
             float belowHeader = (PinSideDp + DailyPinSideDp + DailyPinGapDp
-                + CtaBottomInsetDp + BottomBreathDp + 2f * ContentGapDp + 64f) * pxPerDp;
+                + CtaBottomInsetDp + BottomBreathDp + 2f * ContentGapDp + HeroMinDp) * pxPerDp;
             float height = Mathf.Clamp(safeArea.height - belowHeader,
-                80f * pxPerDp, HeaderHeightDp * pxPerDp);
+                HeaderMinDp * pxPerDp, HeaderHeightDp * pxPerDp);
             return new Rect(safeArea.x + inset, safeArea.yMax - height,
                 safeArea.width - inset * 2f, height);
         }

@@ -15,7 +15,14 @@ namespace CatMetro.Tests.Presentation
         {
             var safe = new Rect(0, 0, 640, 480);
             var hero = HomeLayout.HeroRect(safe, 255);
+            var header = HomeLayout.HeaderRect(safe, 255);
             Assert.That(hero.height, Is.GreaterThan(0f), "the first holder measurement cannot be empty");
+            // "not empty" is not the gate: the rig holder is a fraction of the hero, so a hero
+            // that survives as a few pixels still reports mounted=true and renders nothing.
+            Assert.That(header.height, Is.LessThan(HomeLayout.HeaderHeightDp * (255f / 160f)),
+                "a short viewport compacts the decorative sign");
+            Assert.That(hero.height, Is.GreaterThan(header.height),
+                "...and the diorama, not the sign, is what survives the squeeze");
             Assert.That(HomeLayout.PinRect(safe, 255).height / (255f / 160f), Is.EqualTo(64f));
             Assert.That(HomeLayout.DailyPinRect(safe, 255).height / (255f / 160f), Is.EqualTo(52f));
             Assert.That(HomeLayout.WardrobePinRect(safe, 255).height / (255f / 160f), Is.EqualTo(52f));
