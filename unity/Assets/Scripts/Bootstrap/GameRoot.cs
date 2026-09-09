@@ -635,16 +635,17 @@ namespace CatMetro.Bootstrap
                 _cosmetics,
                 new CatMetro.Services.Cosmetics.RewardedAdCosmeticRoute());
             Wardrobe.Attach(Input.Regions);
+            // The intro dimmer also covers the retained Wardrobe pin during Home's exit.
+            Intro.transform.SetAsLastSibling();
             Wardrobe.PurchaseConfirmed = () => Audio?.PlayPurchaseSuccess();
 
             Home.LevelSelected = () =>
             {
                 _introAdvancedFrame = -1;
                 CancelPendingDailyFallback();
-                // Drop Home's hit regions immediately; its paint settles out underneath the
-                // intro. The camera keeps the Home pose until the intro's Play request.
-                Wardrobe.HideEntryWithFade(_homeFx);
-                Home.HideWithFade(_homeFx);
+                // The intro owns input; retain the frame/pins until Play starts the dolly.
+                Wardrobe.SuspendEntryForIntro();
+                Home.SuspendForIntro();
                 Intro.Show(_level.Dto.Name, _level.Dto.Win.Deliveries, _level.Dto.Meta.TeachingGoal);
                 Stack.Push("intro");
             };
@@ -662,8 +663,8 @@ namespace CatMetro.Bootstrap
                 // tap in the navigation frame instead of silently starting the new board.
                 if (Time.frameCount == _introAdvancedFrame) return;
                 Intro.Hide();
-                Wardrobe.Hide();
-                Home.Hide(); // idempotent — already hidden by the push above
+                Wardrobe.HideEntryWithFade(_homeFx);
+                Home.HideWithFade(_homeFx);
                 DollyToPlay();
                 while (Stack.TryPop(out _)) { }
                 _analyticsRuntime?.BeginCampaignLevel(_level, retry: false,
@@ -692,6 +693,7 @@ namespace CatMetro.Bootstrap
             _homeBootFade = cover.AddComponent<UnityEngine.UI.Image>();
             _homeBootFade.color = CatMetro.Presentation.Theme.Palette.InkNavy;
             _homeBootFade.raycastTarget = false;
+            Home.SetRigCovered(true);
         }
 
         private void AdvanceHomeBootFade(float seconds)
@@ -701,7 +703,11 @@ namespace CatMetro.Bootstrap
             float alpha = MotionOff ? 0f : Mathf.Clamp01(1f - _homeBootElapsed / 0.3f);
             _homeBootFade.color = CatMetro.Presentation.Theme.Palette.WithAlpha(
                 CatMetro.Presentation.Theme.Palette.InkNavy, alpha);
-            if (alpha <= 0f) _homeBootFade.gameObject.SetActive(false);
+            if (alpha <= 0f)
+            {
+                _homeBootFade.gameObject.SetActive(false);
+                Home.SetRigCovered(false);
+            }
         }
 
         private void ShowHomeForPresentation()
@@ -726,7 +732,10 @@ namespace CatMetro.Bootstrap
             if (window.width <= 0f || window.height <= 0f) return;
             _homeFx?.Finish(Cam, HomeCameraChannel);
             BoardSceneLook.FitCamera(Cam, View, window);
-            // The profile mount lays itself out next, against the canvas at the new pose.
+            // Rebinding applies the new camera projection before the first holder measurement.
+            var canvas = Home.GetComponentInParent<Canvas>();
+            canvas.worldCamera = null;
+            canvas.worldCamera = Cam;
             Canvas.ForceUpdateCanvases();
         }
 

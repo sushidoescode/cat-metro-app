@@ -11,6 +11,21 @@ namespace CatMetro.Tests.Presentation
     public sealed class HomeLayoutTests
     {
         [Test]
+        public void ShortViewport_LeavesARealHolderBetweenTheHeaderAndEveryPin()
+        {
+            var safe = new Rect(0, 0, 640, 480);
+            var hero = HomeLayout.HeroRect(safe, 255);
+            Assert.That(hero.height, Is.GreaterThan(0f), "the first holder measurement cannot be empty");
+            Assert.That(HomeLayout.PinRect(safe, 255).height / (255f / 160f), Is.EqualTo(64f));
+            Assert.That(HomeLayout.DailyPinRect(safe, 255).height / (255f / 160f), Is.EqualTo(52f));
+            Assert.That(HomeLayout.WardrobePinRect(safe, 255).height / (255f / 160f), Is.EqualTo(52f));
+            Assert.That(hero.yMax, Is.LessThan(HomeLayout.HeaderRect(safe, 255).yMin));
+            Assert.That(hero.yMin, Is.GreaterThan(HomeLayout.PinRect(safe, 255).yMax));
+            Assert.That(hero.Overlaps(HomeLayout.DailyPinRect(safe, 255)), Is.False);
+            Assert.That(hero.Overlaps(HomeLayout.WardrobePinRect(safe, 255)), Is.False);
+        }
+
+        [Test]
         public void Reference360x640_Dpi160_PinIsWidePrimaryCta_InsideThumbBand()
         {
             var safeArea = new Rect(0f, 0f, 360f, 640f); // 1 px per dp at 160 dpi

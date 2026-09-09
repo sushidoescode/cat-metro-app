@@ -11,6 +11,23 @@ namespace CatMetro.Tests.Presentation
     public sealed class ChromeRegionsTests
     {
         [Test]
+        public void StackedModalChanges_TrackTheFirstOpenAndLastClose_WithoutChangingTapPriority()
+        {
+            var regions = new ChromeRegions();
+            var changes = new System.Collections.Generic.List<bool>();
+            regions.StackedModalChanged += () => changes.Add(regions.HasStackedModal);
+            regions.Register("home", () => new Rect(0, 0, 10, 10), () => { }, ChromeRegions.HomeScreenPriority);
+            Assert.That(regions.HasStackedModal, Is.False);
+            regions.Register("modal", () => new Rect(0, 0, 10, 10), () => { }, ChromeRegions.StackedModalPriority);
+            regions.Register("nested", () => new Rect(0, 0, 10, 10), () => { }, ChromeRegions.StackedModalPriority + 1);
+            regions.Unregister("modal");
+            Assert.That(regions.HasStackedModal, Is.True);
+            regions.Unregister("nested");
+            Assert.That(regions.HasStackedModal, Is.False);
+            CollectionAssert.AreEqual(new[] { true, false }, changes);
+        }
+
+        [Test]
         public void Hit_FiresExactlyThatRegionsAction()
         {
             var regions = new ChromeRegions();

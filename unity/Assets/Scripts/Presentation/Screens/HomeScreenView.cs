@@ -105,6 +105,7 @@ namespace CatMetro.Presentation.Screens
         private DailyReminderSheet _reminderSheet;
         private CosmeticPortraitView _profilePortrait;
         private HomeProfileRigView _profileRig;
+        private bool _rigCovered;
         private Rect _pinRectPx;
         private Rect _dailyPinRectPx;
         private Rect _heroRectPx;
@@ -567,7 +568,10 @@ namespace CatMetro.Presentation.Screens
 
         public void Attach(ChromeRegions regions, System.Func<bool> motionOff)
         {
+            if (_regions != null) _regions.StackedModalChanged -= RefreshRigVisibility;
             _regions = regions;
+            if (_regions != null) _regions.StackedModalChanged += RefreshRigVisibility;
+            RefreshRigVisibility();
             _motionOff = motionOff; // GameRoot.MotionOff binding is CM-UX-07's (P-3)
             if (_reminderSheet != null) _reminderSheet.Attach(regions);
         }
@@ -584,6 +588,28 @@ namespace CatMetro.Presentation.Screens
             RegisterAudioToggle();
         }
 
+        public void SetRigCovered(bool covered)
+        {
+            _rigCovered = covered;
+            RefreshRigVisibility();
+        }
+
+        private void RefreshRigVisibility() => _profileRig?.SetVisible(
+            _shown && isActiveAndEnabled && !_rigCovered && !(_regions?.HasStackedModal ?? false));
+
+        // Keep the frame and route paint for the Play dolly while the intro owns input.
+        public void SuspendForIntro()
+        {
+            _hideFx?.Finish(this);
+            _shown = false;
+            if (_reminderSheet != null) _reminderSheet.Hide();
+            UnregisterPin();
+            UnregisterDailyPin();
+            UnregisterReminderGear();
+            UnregisterAudioToggle();
+            RefreshRigVisibility();
+        }
+
         public void Hide() => Hide(null);
 
         public void HideWithFade(BoardFx fx) => Hide(fx);
@@ -592,6 +618,7 @@ namespace CatMetro.Presentation.Screens
         {
             _hideFx?.Finish(this);
             _shown = false;
+            RefreshRigVisibility();
             _dailyUnlockAttention = false;
             if (_dailyChip != null) _dailyChip.SetRingColour(Palette.CreamCard);
             if (_reminderSheet != null) _reminderSheet.Hide();
@@ -616,6 +643,7 @@ namespace CatMetro.Presentation.Screens
 
         private void OnDestroy()
         {
+            if (_regions != null) _regions.StackedModalChanged -= RefreshRigVisibility;
             ReleaseVignette();
             UnregisterPin(); // R1-F3 lifetime law
             UnregisterDailyPin();
@@ -629,6 +657,7 @@ namespace CatMetro.Presentation.Screens
         // frames.
         private void OnDisable()
         {
+            RefreshRigVisibility();
             UnregisterPin();
             UnregisterDailyPin();
             UnregisterReminderGear();
@@ -645,6 +674,7 @@ namespace CatMetro.Presentation.Screens
         // nothing (Hide()'s "not shown" intent survives OnEnable too).
         private void OnEnable()
         {
+            RefreshRigVisibility();
             if (_shown)
             {
                 RegisterPin();
@@ -840,9 +870,13 @@ namespace CatMetro.Presentation.Screens
                 _reminderSheet.LayoutForViewport(safeArea, dpi);
             if (IsVisible)
                 DioramaLaidOut?.Invoke(Rect.MinMaxRect(windowXMin, windowYMin, windowXMax, windowYMax));
-            if (_profileRig != null)
+            if (_profileRig != null && gameObject.activeInHierarchy)
             {
+                // Show first sizes the hero; settle its anchored holder before the first mount.
+                _hero.ForceUpdateRectTransforms();
+                ((RectTransform)_profileRig.transform.parent).ForceUpdateRectTransforms();
                 Canvas canvas = GetComponentInParent<Canvas>();
+                RefreshRigVisibility();
                 _profileRig.Layout(canvas != null ? canvas.worldCamera : null);
             }
         }

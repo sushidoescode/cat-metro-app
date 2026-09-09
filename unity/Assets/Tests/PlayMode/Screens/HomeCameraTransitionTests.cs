@@ -64,7 +64,7 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
-        public void HomeTap_FadesChromeOverPointTwoFiveSeconds_AfterDroppingItsInput()
+        public void IntroPlay_FadesChromeOverPointTwoFiveSeconds_AfterDroppingItsInput()
         {
             var frame = _root.Home.transform.Find("HeroCard/DioramaFrameTop")
                 .GetComponent<UnityEngine.UI.Image>();
@@ -78,6 +78,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(frame.gameObject.activeInHierarchy, Is.True, "paint fades after input is removed");
             var fx = _root.GetComponent<BoardFx>();
             Assert.That(fx, Is.Not.Null);
+            fx.Advance(1f); // Reading the intro must not consume the Play dolly fade.
+            _root.Intro.PlayRequested.Invoke();
             fx.Advance(.125f);
             Assert.That(frame.canvasRenderer.GetAlpha(), Is.EqualTo(.5f).Within(.01f));
             Assert.That(wardrobeFace.canvasRenderer.GetAlpha(), Is.EqualTo(.5f).Within(.01f));
@@ -91,10 +93,11 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
-        public void MotionOff_HomeTapHidesChromeImmediately()
+        public void MotionOff_IntroPlayHidesChromeImmediately()
         {
             _root.MotionOffToggle = true;
             _root.Home.LevelSelected.Invoke();
+            _root.Intro.PlayRequested.Invoke();
             Assert.That(_root.Home.gameObject.activeSelf, Is.False);
             Assert.That(_root.Wardrobe.gameObject.activeSelf, Is.False);
         }

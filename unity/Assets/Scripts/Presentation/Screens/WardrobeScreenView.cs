@@ -310,6 +310,12 @@ namespace CatMetro.Presentation.Screens
             });
         }
 
+        public void SuspendEntryForIntro()
+        {
+            _entryShown = false;
+            UnregisterEntry();
+        }
+
         public void Hide() => Hide(null);
 
         public void HideEntryWithFade(BoardFx fx) => Hide(fx);

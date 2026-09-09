@@ -68,7 +68,12 @@ namespace CatMetro.Presentation.Screens
         {
             float pxPerDp = HudBands.PxPerDp(dpi);
             float inset = SideInsetDp * pxPerDp;
-            float height = HeaderHeightDp * pxPerDp;
+            // A short editor/landscape viewport must still leave the holder real height.
+            // Compact only the decorative sign; controls and type keep their physical dp.
+            float belowHeader = (PinSideDp + DailyPinSideDp + DailyPinGapDp
+                + CtaBottomInsetDp + BottomBreathDp + 2f * ContentGapDp + 64f) * pxPerDp;
+            float height = Mathf.Clamp(safeArea.height - belowHeader,
+                80f * pxPerDp, HeaderHeightDp * pxPerDp);
             return new Rect(safeArea.x + inset, safeArea.yMax - height,
                 safeArea.width - inset * 2f, height);
         }
