@@ -1,8 +1,4 @@
 win.banner,All cats home!
-pause.title,Paused
-pause.body,Your trains will wait.
-pause.resume,Resume
-pause.home,Home
 fail.banner,Overloaded!
 fail.banner.timeout,The last train left the depot
 fail.queueoverflow,Platform overflowed at {node}
@@ -87,3 +83,7 @@ fail.platformoverflow.generic,A platform overflowed
 fail.queueoverflow.generic,A junction overflowed
 home.daily.locked,Unlocks after 7 station wins
 home.daily.ready,Today's Line is ready
+pause.title,Paused
+pause.body,Your trains will wait.
+pause.resume,Resume
+pause.home,Home
