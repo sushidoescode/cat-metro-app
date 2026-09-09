@@ -39,6 +39,14 @@ A TABLETOP METRO PUZZLE
 Built toward a tabletop model-railway look, Cat Metro pairs a focused route puzzle with a warm miniature premise.
 ```
 
+### Play privacy policy URL
+
+Verified live over HTTPS on 2026-09-09 (HTTP 200).
+
+```text
+https://sushidoescode.github.io/cat-metro-app/privacy/
+```
+
 The ASO P0 phrase `train puzzle` appears exactly once in the title, once in the short description,
 and once in the opening sentence. The full description also uses `cat puzzle`, heading-only
 `metro puzzle`, and `route puzzle` exactly once each. The stale `no forced ads` phrase is omitted.
@@ -86,10 +94,15 @@ Built toward a tabletop model-railway look, Cat Metro pairs a focused route puzz
 
 ### Support URL
 
-**PENDING — DO NOT PASTE INTO APP STORE CONNECT.** GitHub Pages is not enabled, so no public
-support URL is available. Keep this field pending until `docs/privacy/index.html` is served
-publicly over HTTPS, returns HTTP 200, and its contact content is confirmed acceptable for Apple's
-Support URL field; then replace this note with that public URL.
+```text
+https://sushidoescode.github.io/cat-metro-app/privacy/
+```
+
+### Privacy Policy URL
+
+```text
+https://sushidoescode.github.io/cat-metro-app/privacy/
+```
 
 ## Claim mapping
 
