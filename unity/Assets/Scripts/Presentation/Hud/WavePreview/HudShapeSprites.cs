@@ -28,6 +28,11 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private static Sprite _people;
         private static Sprite _lever;
         private static Sprite _check;
+        private static Sprite _pause;
+
+        public static Sprite Pause => _pause != null ? _pause
+            : (_pause = Build("HudPause", 64, 64, (u, v) => v >= .16f && v <= .84f
+                && ((u >= .19f && u <= .40f) || (u >= .60f && u <= .81f)), Vector4.zero));
         private static readonly System.Collections.Generic.Dictionary<int, Sprite> DashedRings =
             new System.Collections.Generic.Dictionary<int, Sprite>();
         private static Sprite _softRoundedHalo;

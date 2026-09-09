@@ -74,6 +74,13 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private Rect _lastSafeArea = new Rect(-1f, -1f, -1f, -1f);
         private float _lastDpi = -1f;
         private int _lastRefreshTick = -1;
+        private bool _navigationSpace;
+
+        public void ReserveNavigationSpace()
+        {
+            _navigationSpace = true;
+            LayoutForViewport(CanvasSafeArea(), CanvasDpi());
+        }
 
         // --- legacy read-backs (pinned by FailureTests / DeviceConfigTests) ---
 
@@ -433,6 +440,13 @@ namespace CatMetro.Presentation.Hud.WavePreview
         public void LayoutForViewport(Rect safeArea, float dpi)
         {
             _capsulePx = CapsuleRect(safeArea, dpi);
+            if (_navigationSpace)
+            {
+                float px = HudBands.PxPerDp(dpi);
+                float left = safeArea.x + 16f * px;
+                float right = Screens.GameplayPauseView.EntryRect(safeArea, dpi).xMin - 10f * px;
+                _capsulePx = new Rect(left, _capsulePx.y, Mathf.Max(0f, right - left), _capsulePx.height);
+            }
             float fullHeight = _capsulePx.height;
             if (FaceCount == 0)
             {
@@ -454,7 +468,9 @@ namespace CatMetro.Presentation.Hud.WavePreview
             _waveClip.offsetMin = new Vector2(capInset, 0f);
             _waveClip.offsetMax = new Vector2(-capInset, 0f);
 
-            float inset = fullHeight * 0.22f;
+            // The navigation pin costs horizontal space. Trim paper padding, keeping the
+            // four destination badges above 24px at the phone viewport, including overflow.
+            float inset = fullHeight * (_navigationSpace ? 0.15f : 0.22f);
             var faceRect = new Rect(_capsulePx.x + inset, _capsulePx.y,
                 Mathf.Max(0f, _counterPx.xMin - _capsulePx.x - 2f * inset), _capsulePx.height);
             PlacePx(_faceRow, faceRect);

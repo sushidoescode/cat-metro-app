@@ -62,6 +62,7 @@ namespace CatMetro.Bootstrap
         // through Launch/LaunchWith, which always Wire synchronously before returning).
         public string CurrentLevelId => _level?.Dto.Id;
         private ScreenChromeController _chrome;
+        private CatMetro.Presentation.Screens.GameplayPauseView _pause;
         public bool IsTransitioning => _chrome != null && _chrome.Transition != null
             && _chrome.Transition.IsInFlight;
 
@@ -504,6 +505,7 @@ namespace CatMetro.Bootstrap
             BoardSceneLook.Apply(transform, Cam, View);
             CauseCam = camGo.AddComponent<CauseCameraController>();
             CauseCam.Wire(Cam, -View.transform.forward); // captures the fitted play pose
+            CauseCam.MotionOffSource = () => MotionOff;
             // CM-UX-07 criterion 3 (#36 F1/F5): a Wire-only binding dies at first Retry, since
             // Retry rebuilds View — bound again there too.
             View.MotionOffSource = () => MotionOff;
@@ -511,7 +513,7 @@ namespace CatMetro.Bootstrap
             Input.Wire(Session, View, Cam);
             Input.UiTapAccepted = Audio.PlayButtonTap;
             Input.SwitchTapAccepted = Audio.PlaySwitchClunk;
-            Input.RetryRegionActive = () => ScreenState == "FailureReview" && !IsTransitioning;
+            Input.RetryRegionActive = () => ScreenState == "FailureReview" && !ScreensVisible && !IsTransitioning;
             Input.RetryTapped = Retry;
             // CM-UX-07 criterion 2: the board-input gate. F7 (round-1 review) correction: this
             // is NOT behavior-unchanged in shipped boot as a whole — previously BoardInputActive
@@ -521,7 +523,8 @@ namespace CatMetro.Bootstrap
             // term is LIVE in shipped boot now too (Home composes by default there, criterion 1)
             // — it degenerates to false only on the LaunchWith-only gameplay-fixture seam, which
             // never composes a screen flow at all (EDIT 2).
-            Input.BoardInputActive = () => ScreenState == "Playing" && !ScreensVisible && !IsTransitioning;
+            Input.BoardInputActive = () => ScreenState == "Playing" && !ScreensVisible
+                && !IsTransitioning && _pendingHomeShowFrame < 0;
             Banner = BannerView.Create(transform);
             Banner.MotionOffSource = () => MotionOff;
             Preview = WavePreviewStrip.Create(transform, Session, Cam);
@@ -676,7 +679,44 @@ namespace CatMetro.Bootstrap
                 if (Stack.Current == "wardrobe") Stack.TryPop(out _);
             };
 
+            _pause = CatMetro.Presentation.Screens.GameplayPauseView.Create(transform, Cam,
+                Input.Regions, () => isActiveAndEnabled && !ScreensVisible && !IsTransitioning
+                    && _pendingHomeShowFrame < 0 && ScreenState != "Halted", () => MotionOff,
+                OpenGameplayPause, ResumeGameplay, ReturnHome);
+            Preview.ReserveNavigationSpace();
+            Banner.ReserveNavigationSpace();
+
             ShowHomeForPresentation();
+        }
+
+        private void OpenGameplayPause()
+        {
+            if (!isActiveAndEnabled || ScreensVisible || IsTransitioning || _pendingHomeShowFrame >= 0) return;
+            Stack.Push("pause");
+            CancelFailureRewind();
+            _pause.Show();
+        }
+
+        private void ResumeGameplay()
+        {
+            if (!isActiveAndEnabled) return;
+            if (Stack.Current == "pause") Stack.TryPop(out _);
+            if (ScreenState == "FailureReview") PrepareFailureRewind();
+        }
+
+        public void ReturnHome()
+        {
+            if (!isActiveAndEnabled || Home == null || Session == null || IsTransitioning) return;
+            Navigate(() =>
+            {
+                if (_dailySession) ReturnHomeFromDaily();
+                else if (_returnHomeAfterCampaignUnlock) ReturnHomeAfterCampaignUnlock();
+                else
+                {
+                    LoadLevel(_level);
+                    _pendingHomeShowFrame = Time.frameCount;
+                }
+            });
         }
 
         private void ShowHomeForPresentation()
@@ -1130,6 +1170,8 @@ namespace CatMetro.Bootstrap
             if (preparedSession != null && !ReferenceEquals(preparedSession.Level, level))
                 throw new System.ArgumentException("prepared session must belong to the exact level");
             CancelFailureRewind();
+            _pause?.Hide();
+            if (Stack != null && Stack.Current == "pause") Stack.TryPop(out _);
             // A navigation or retry supersedes any off-thread Daily fallback. The pure worker
             // may already be inside the solver, but its cancellation token prevents its result
             // from being installed over the newer navigation state.
@@ -1178,6 +1220,7 @@ namespace CatMetro.Bootstrap
             Preview = WavePreviewStrip.Create(transform, Session, Cam);
             BindPreviewCatMotion();
             Preview.BindScreenState(() => ScreenState); // rebind on the REBUILT preview
+            if (_pause != null) Preview.ReserveNavigationSpace();
             Banner.Hide();
             CauseCam.Reset(); // clears the ring AND restores this level's fitted play pose
             _halted = false;
@@ -1629,7 +1672,8 @@ namespace CatMetro.Bootstrap
             // Once the Play tap drains the stack (ScreensVisible -> false), the sim resumes from
             // tick 0 exactly as if this frame were the very first one.
             if (Session.State.Outcome.Kind == CatMetro.Domain.OutcomeKind.Running
-                && ScreenState == "Playing" && !ScreensVisible && !IsTransitioning)
+                && ScreenState == "Playing" && !ScreensVisible && !IsTransitioning
+                && _pendingHomeShowFrame < 0)
             {
                 try
                 {
@@ -1714,6 +1758,7 @@ namespace CatMetro.Bootstrap
                 && ScreenState != "FailureReview")
             {
                 ScreenState = "FailureReview";
+                CauseCam.ShowFailureMood(MotionOff);
                 // ux-flows S-03 ST-ERR (review N9): attribution may NEVER block the fail sheet
                 // or the retry — a throw falls back to the ambiguous variant (no framing).
                 int causal = -1;
@@ -1726,7 +1771,13 @@ namespace CatMetro.Bootstrap
                     Debug.LogError("error_caught domain=cause_attribution: " + ex.Message);
                 }
                 if (causal >= 0)
+                {
                     CauseCam.FrameNode(View.NodeId(causal), View.NodeWorldPos(causal), MotionOff);
+                    if (!MotionOff && View.TryGetCausalFunnel(causal, out var funnel))
+                        BoardFx.GetOrCreate(View.transform, () => MotionOff).Emit(
+                            BoardFxSprite.Puff, funnel, new Color(.58f, .58f, .58f, .9f), 1, .44f,
+                            Cam.transform.up * .55f - Cam.transform.forward * .3f);
+                }
                 // CM-C2b review F3 lineage: the banner keys by the REASON — never a wrong
                 // string for the fail the player actually hit.
                 var (key, _) = FailKey(outcome.Reason);
@@ -1821,6 +1872,10 @@ namespace CatMetro.Bootstrap
 
         private void OnDisable()
         {
+            // Disabling this component leaves child views alive. Finish their pending
+            // animation without invoking Resume, and revoke their navigation callbacks.
+            _pause?.Hide();
+            if (Stack?.Current == "pause") Stack.TryPop(out _);
             CancelFailureRewind();
             _chrome?.Transition?.Cancel();
             _winFxAt = -1f;

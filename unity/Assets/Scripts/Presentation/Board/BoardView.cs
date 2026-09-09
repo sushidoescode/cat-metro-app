@@ -113,6 +113,65 @@ namespace CatMetro.Presentation.Board
         public string TrainBadge(int slot) => _trainBadge.TryGetValue(slot, out var badge)
             ? badge.text : null;
 
+        public bool TryGetCausalFunnel(int causalNode, out Vector3 mouth)
+        {
+            mouth = default;
+            if (_session == null || causalNode < 0 || _session.State.Outcome.Kind != OutcomeKind.Failed)
+                return false;
+            int slot = CausalTrainSlot(causalNode);
+            if (slot < 0 || !_trains.TryGetValue(slot, out var view)
+                || view == null || !view.gameObject.activeInHierarchy) return false;
+            // One lookup on the fail edge; derive the mouth from the actual normalized
+            // part rather than assuming the builtin cylinder is one unit tall.
+            var funnel = view.transform.Find("Engine/Funnel");
+            var mesh = funnel != null ? funnel.GetComponent<MeshFilter>() : null;
+            if (mesh == null || mesh.sharedMesh == null) return false;
+            mouth = funnel.TransformPoint(new Vector3(0f, mesh.sharedMesh.bounds.min.y, 0f));
+            return true;
+        }
+
+        private int CausalTrainSlot(int node)
+        {
+            var trains = _session.State.Trains;
+            var reason = _session.State.Outcome.Reason;
+            int firstArrival = -1;
+            for (int slot = 0; slot < trains.Length; slot++)
+            {
+                var train = trains[slot];
+                if (train.Id == 0) continue;
+                if (reason == FailReason.PlatformOverflow && train.NodeId == node
+                    && train.State == TrainState.RejectedAtStation) return slot;
+                if ((reason == FailReason.QueueOverflow || reason == FailReason.TimeOut)
+                    && train.NodeId == node && (train.State == TrainState.AtNode
+                        || train.State == TrainState.ExpressHeldAtSource)) return slot;
+                if (reason != FailReason.Collision
+                    || (train.State != TrainState.OnEdge && train.State != TrainState.OnEdgeReverse)
+                    || train.ProgressTicks < _edgeTravel[train.EdgeId]) continue;
+                int arrival = train.State == TrainState.OnEdgeReverse
+                    ? _edgeFrom[train.EdgeId] : _edgeTo[train.EdgeId];
+                if (arrival != node) continue;
+                if (firstArrival >= 0) return firstArrival;
+                firstArrival = slot;
+            }
+            if (reason != FailReason.Collision) return -1;
+            // Match CauseAttribution's second collision rule only after checking shared
+            // completed arrivals: an opposing pair on the lowest authored edge.
+            for (int edge = 0; edge < _edgeTo.Length; edge++)
+            {
+                if (_edgeTo[edge] != node) continue;
+                int forward = -1, reverse = -1;
+                for (int slot = 0; slot < trains.Length; slot++)
+                {
+                    var train = trains[slot];
+                    if (train.Id == 0 || train.EdgeId != edge) continue;
+                    if (train.State == TrainState.OnEdge && forward < 0) forward = slot;
+                    if (train.State == TrainState.OnEdgeReverse && reverse < 0) reverse = slot;
+                }
+                if (forward >= 0 && reverse >= 0) return Mathf.Min(forward, reverse);
+            }
+            return -1;
+        }
+
         /// <summary>
         /// The horizontal world-space envelope that source-platform cats can occupy after
         /// launch. Those cats do not exist when the camera first fits its renderer union, so
