@@ -12,6 +12,7 @@ using CatMetro.Bootstrap;
 using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Hud.WavePreview;
+using CatMetro.Presentation.Screens;
 using CatMetro.Presentation.Theme;
 using CatMetro.Services;
 using CatMetro.Services.Cosmetics;
@@ -843,6 +844,15 @@ namespace CatMetro.Tests.PlayMode
                     foreach (Component view in layouts)
                         if (view != null) ApplyPhoneLayout(view, size);
                 Canvas.ForceUpdateCanvases();
+                if (layouts != null && layouts.Any(view => view is HomeScreenView))
+                {
+                    // Let the resized skin render once, as the dedicated holder capture does.
+                    // Home holds tick zero while this presentation frame settles.
+                    yield return null;
+                    foreach (Component view in layouts)
+                        if (view != null) ApplyPhoneLayout(view, size);
+                    Canvas.ForceUpdateCanvases();
+                }
                 camera.Render();
                 RenderTexture.active = target;
                 texture = CaptureRig.ReadRgb24(target);
@@ -852,6 +862,9 @@ namespace CatMetro.Tests.PlayMode
                 Directory.CreateDirectory(dir);
                 File.WriteAllBytes(Path.Combine(dir, name),
                     CaptureRig.EncodeOpaqueSrgbPng(texture));
+                if (layouts != null)
+                    foreach (HomeScreenView home in layouts.OfType<HomeScreenView>())
+                        AssertCapturedHomeRigPixels(home, camera, target, texture.GetPixels32());
             }
             finally
             {
@@ -865,6 +878,35 @@ namespace CatMetro.Tests.PlayMode
                     Object.Destroy(target);
                 }
             }
+        }
+
+        private static void AssertCapturedHomeRigPixels(HomeScreenView home, Camera camera,
+            RenderTexture target, Color32[] composed)
+        {
+            HomeProfileRigView rig = home.ProfileRig;
+            if ((rig == null || !rig.Mounted) && string.Equals(
+                Environment.GetEnvironmentVariable("CM_CAPTURE_ALLOW_PLACEHOLDER"),
+                "1", StringComparison.Ordinal)) return; // Explicit placeholder diagnostics stay available.
+            Assert.That(rig, Is.Not.Null, "an armed Home capture requires the admitted rig");
+            Assert.That(rig.Mounted, Is.True);
+            RectInt headPatch = InsetAndClamp(rig.RenderedHeadScreenRect,
+                .10f, .10f, target.width, target.height);
+            var skins = rig.PrefabRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            bool[] enabledStates = skins.Select(skin => skin.enabled).ToArray();
+            Color32[] withoutRig;
+            try
+            {
+                foreach (var skin in skins) skin.enabled = false;
+                withoutRig = ReadFrame(camera, target);
+            }
+            finally
+            {
+                for (int i = 0; i < skins.Length; i++) skins[i].enabled = enabledStates[i];
+            }
+            float changed = ChangedFraction(composed, withoutRig, headPatch, target.width, 4);
+            Debug.Log("HOME_CAPTURE rigHeadChangedFraction=" + changed + " headPatch=" + headPatch);
+            Assert.That(changed, Is.GreaterThan(.10f),
+                "the captured rig must paint at its fitted head bounds after the viewport change");
         }
 
         private static void CaptureBound(Camera camera, RenderTexture target,
