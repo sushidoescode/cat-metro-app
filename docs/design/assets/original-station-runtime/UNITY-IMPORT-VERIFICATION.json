@@ -303,5 +303,61 @@
       "Current native EditMode checks and wider-carriage platform clearance >=0.045",
       "Actual device rendering and performance"
     ]
+  },
+  "original_carriage_platform_clearance_calibration": {
+    "runtime_source_candidate": "fd0451b99e5be107d25b6ebfda39d02c2c9b192a",
+    "focused_test_source_commit": "36b8edac2fb75cb81f6cda5d849d28ed5e217c38",
+    "evidence_directory": "/private/tmp/catmetro-owner-original-assets-20260910-104917",
+    "full_corpus_at_previous_offset": {
+      "offset": 0.704,
+      "xml": "results/original-edit-and-clearance.xml",
+      "combined_passed": 12,
+      "combined_failed": 1,
+      "minimum_gap": 0.020663172,
+      "endpoint_samples": 395,
+      "required_gap": 0.045
+    },
+    "trial_xml": "results/clearance-trials.xml",
+    "trial_xml_sha256": "4cd3b5f4dcbc5e88edc56495221c82356ef60e28f2f9a60d6da6f0b641503c17",
+    "trial_json": "captures/clearance-trials/diagonal-waiting-offsets.json",
+    "trial_json_sha256": "5e155f0bbbf18c15b135fc4d98749429bf6bc6cdcebfd35de1cf1173222db2aa",
+    "trial_run_result": {
+      "passed": 0,
+      "failed": 1,
+      "note": "Expected failure at production offset .704; all six candidate trial measurements were written before the unchanged .045 assertion."
+    },
+    "scope": "Actual original OpenShell and Undercarriage, diagonal-source-b waiting lane1, complete Cat_IdleSit at half-frame spacing, 17 ear samples and conservative independent maximum carriage-ward bob. Source-node trial displacement retains production anchor and facing calculations.",
+    "selected_platform_offset": 0.734,
+    "previous_platform_offset": 0.704,
+    "required_gap_unchanged": 0.045,
+    "selection": "First sampled offset with more than .005 board-unit clearance margin; not a global minimum-offset claim.",
+    "selected_trial": {
+      "offset": 0.734,
+      "minimumGap": 0.05169317,
+      "required": 0.045,
+      "margin": 0.00669316947,
+      "catYaw": 281.8173,
+      "sample": "offset-trial/0.734/vehicle=OpenShell+Undercarriage/clip=Cat_IdleSit/halfFrame=96/384/earSample=4/sourceEar=-7.000/appliedEar=-14.000/bobCorrection=0.035454/maxRoot=-0.715156/currentRoot=-0.750610"
+    },
+    "comparison_trial": {
+      "offset": 0.729,
+      "minimumGap": 0.0465172231,
+      "required": 0.045,
+      "margin": 0.00151722133,
+      "catYaw": 281.637634,
+      "sample": "offset-trial/0.729/vehicle=OpenShell+Undercarriage/clip=Cat_IdleSit/halfFrame=96/384/earSample=10/sourceEar=3.500/appliedEar=7.000/bobCorrection=0.002244/maxRoot=-0.710156/currentRoot=-0.712400"
+    },
+    "exact_vehicle_diagonal_extent": {
+      "old_chassis_minimum": -0.3111269837220809,
+      "original_undercarriage_minimum": -0.33845435587123085,
+      "extra_extent": 0.02732737214914993,
+      "note": "Computed from committed project-original float32 vertices after the existing +X-forward/+Y-up to board conversion, not the union bounding-box corner."
+    },
+    "pending_at_receipt": [
+      "Focused production regression at selected offset .734",
+      "Unchanged full395-endpoint clearance corpus at selected offset",
+      "Actual configured board/arrival/win and camera framing captures at selected offset",
+      "Android rendering and performance"
+    ]
   }
 }
