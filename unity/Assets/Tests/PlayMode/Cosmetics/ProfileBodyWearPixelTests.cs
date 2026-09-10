@@ -124,6 +124,25 @@ namespace CatMetro.Tests.PlayMode
 
         private void AssertFaceClear(string name, ProfileRigMount mount, CosmeticPortraitView portrait)
         {
+            SkinnedMeshRenderer[] skins = mount.PrefabRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            bool[] refresh = skins.Select(s => s.forceMatrixRecalculationPerRender).ToArray();
+            Save(name + "-before-matrix-refresh", Read());
+            try
+            {
+                // Unity requires this flag when manually rendering different skin snapshots
+                // more than once in one update. Without it the GPU can retain the tiny pose
+                // from before the test's phone layout while BakeMesh sees current transforms.
+                foreach (SkinnedMeshRenderer skin in skins) skin.forceMatrixRecalculationPerRender = true;
+                AssertFaceClearRefreshed(name, mount, portrait);
+            }
+            finally
+            {
+                for (int i = 0; i < skins.Length; i++) skins[i].forceMatrixRecalculationPerRender = refresh[i];
+            }
+        }
+
+        private void AssertFaceClearRefreshed(string name, ProfileRigMount mount, CosmeticPortraitView portrait)
+        {
             Image[] body = portrait.OutfitLayerTransform.GetComponentsInChildren<Image>(true)
                 .Where(i => BodyNames.Contains(i.name)).ToArray();
             Assert.That(body.Length, Is.EqualTo(5));
@@ -197,20 +216,21 @@ namespace CatMetro.Tests.PlayMode
                 Save(name + "-actual-skin-full", realFull);
                 // Both diagnostics retain the complete skin localToWorld matrix via an identity
                 // child; no TRS decomposition can discard the flattened hierarchy's shear.
-                // The scaled comparison is preserved before checking the unscaled local bake.
-                using (var scaled = new WeightedHeadMaskGeometry(skin, head, useScale: true))
+                // Preserve the alternate scale interpretation before the unchanged strict
+                // full-topology comparison. Neither comparison is selected by image similarity.
+                using (var unscaled = new WeightedHeadMaskGeometry(skin, head, useScale: false))
                 {
-                    scaled.Material.SetFloat("_HeadOnly", 0f);
+                    unscaled.Material.SetFloat("_HeadOnly", 0f);
                     Color32[] full = Read();
-                    Save(name + "-scaled-bake-full", full);
-                    LogMaskGeometry(name, "scaled", skin, scaled, realFull, full);
+                    Save(name + "-unscaled-bake-full", full);
+                    LogMaskGeometry(name, "unscaled", skin, unscaled, realFull, full);
                 }
-                using (var geometry = new WeightedHeadMaskGeometry(skin, head, useScale: false))
+                using (var geometry = new WeightedHeadMaskGeometry(skin, head, useScale: true))
                 {
                     geometry.Material.SetFloat("_HeadOnly", 0f);
                     Color32[] bakedFull = Read();
-                    Save(name + "-unscaled-bake-full", bakedFull);
-                    LogMaskGeometry(name, "unscaled", skin, geometry, realFull, bakedFull);
+                    Save(name + "-scaled-bake-full", bakedFull);
+                    LogMaskGeometry(name, "scaled", skin, geometry, realFull, bakedFull);
                     AssertContoursAgree(realFull, bakedFull);
                     geometry.Material.SetFloat("_HeadOnly", 1f);
                     Color32[] weighted = Read();
@@ -243,6 +263,7 @@ namespace CatMetro.Tests.PlayMode
             var values = new Newtonsoft.Json.Linq.JObject
             {
                 ["mode"] = mode,
+                ["force_matrix_recalculation"] = skin.forceMatrixRecalculationPerRender,
                 ["actual_white_pixels"] = actual.Count(White),
                 ["diagnostic_white_pixels"] = diagnostic.Count(White),
                 ["skin_renderer_local_to_world"] = MatrixValues(skin.localToWorldMatrix),
