@@ -298,6 +298,7 @@ namespace CatMetro.Presentation.Board
         private GameObject _rigInstance;
         private Animator _rigAnimator;
         private CatRigPresentation _rigPresentation;
+        private BoardFurTint _rigFurTint;
         private Transform _rigEarDeformerA;
         private Transform _rigEarDeformerB;
         private Quaternion _rigEarAPreviousOffset = Quaternion.identity;
@@ -750,6 +751,11 @@ namespace CatMetro.Presentation.Board
                 properties.Clear();
             }
             if (_rigInstance == null) return;
+            if (_rigFurTint != null)
+            {
+                _rigFurTint.Apply(color);
+                return;
+            }
             var rigRenderers = _rigInstance.GetComponentsInChildren<Renderer>(true);
             for (int i = 0; i < rigRenderers.Length; i++)
             {
@@ -1185,6 +1191,9 @@ namespace CatMetro.Presentation.Board
 
             _rigAnimator = animators[0];
             _rigPresentation = _rigAnimator.GetComponent<CatRigPresentation>();
+            // Resource/weighted-head admission already identifies the calibrated paid rig.
+            // Only its board clone gets a coat material; profile mounts keep the source atlas.
+            if (_rigPresentation != null) _rigFurTint = BoardFurTint.TryInstall(_rigInstance);
             _rigAnimator.applyRootMotion = false;
             _rigInstance.transform.localPosition = Vector3.zero;
             // TASK 17 imports conventional +Y-up, +Z-forward content. This presentation-only
