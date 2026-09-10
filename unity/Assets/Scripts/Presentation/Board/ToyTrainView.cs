@@ -679,7 +679,14 @@ namespace CatMetro.Presentation.Board
             _eyeRight.localScale = new Vector3(_eyeRightBaseLocalScale.x,
                 _eyeRightBaseLocalScale.y * pose.EyeYScale, _eyeRightBaseLocalScale.z);
             SetRigEarTwitch(pose.EarTwitchDegrees);
-            PlayRig(state, false, desiredTravelSpeed);
+            // WaitingIdle also describes source/platform passengers. At the carriage seat,
+            // keep the authored Ride loop and cache that effective playback state so stopping,
+            // reversing and resuming do not restart it or replace the seated body with Idle.
+            CatPresentationState rigState = state == CatPresentationState.WaitingIdle
+                && safePlatformBlend == 0f && _rigPresentation != null
+                && _rigPresentation.AuthoredMotionInstalled
+                ? CatPresentationState.RideIdle : state;
+            PlayRig(rigState, false, desiredTravelSpeed);
             ApplyRigEarTwitch();
         }
 
