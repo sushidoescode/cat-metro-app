@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!221 &22100000
+AnimatorOverrideController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: OpenCarriageMotion
+  m_Controller: {fileID: 9100000, guid: b2e894f9324bd439bb262c7510c9696c, type: 2}
+  m_Clips:
+  - m_OriginalClip: {fileID: 7400000, guid: 07ca2156e143c4813b774f463ac510b2, type: 2}
+    m_OverrideClip: {fileID: 0}
+  - m_OriginalClip: {fileID: 7400000, guid: 48ba39c974559431ca69899c1ad6bb42, type: 2}
+    m_OverrideClip: {fileID: 0}
+  - m_OriginalClip: {fileID: 7400000, guid: d6f24c83533c84cbea28cf03d6ddc028, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: 996d4d434e8aa4f2fa6b4623be42835b, type: 2}
+  - m_OriginalClip: {fileID: 7400000, guid: 4d9feb169abf1416382fcaf9d15167c9, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: bf79eb07ae0f347e084334b3c2b82e06, type: 2}
+  - m_OriginalClip: {fileID: 7400000, guid: db5508c54959a46138db6c55c846ad33, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: 3a646291818364e2289b95cc2cecbd69, type: 2}
+  - m_OriginalClip: {fileID: 3025555403109970599, guid: 1f5990a7cffc8436c975e5c682aad59e, type: 3}
+    m_OverrideClip: {fileID: 0}
