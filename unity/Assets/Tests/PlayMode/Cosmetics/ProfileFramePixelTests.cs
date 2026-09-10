@@ -22,7 +22,7 @@ namespace CatMetro.Tests.PlayMode
     {
         private const int Width = 917, Height = 2048;
 
-        [UnityTest]
+        [UnityTest, Timeout(600000)]
         public IEnumerator HomeAndWardrobe_FrameClearsActualSkinAndHat_AcrossIdleYawAndReopen()
         {
             string directory = Environment.GetEnvironmentVariable("CM_PROFILE_FRAME_CAPTURE_DIR");
@@ -73,7 +73,7 @@ namespace CatMetro.Tests.PlayMode
                         {
                             elapsed += delta;
                             mount.AdvanceTurntable(delta);
-                            Measure(root.Cam, target, mount, portrait, directory,
+                            Measure(root, target, mount, portrait, directory,
                                 name + "-" + frame + "-advance-" + elapsed.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture), delta == 0f);
                             Vector3[] current = FrameCorners(portrait);
                             for (int i = 0; i < stationary.Length; i++)
@@ -82,7 +82,7 @@ namespace CatMetro.Tests.PlayMode
                         source.Set(Snapshot("red_tabby", ""));
                         Assert.That(portrait.FrameLayerTransform.gameObject.activeSelf, Is.False);
                         source.Set(Snapshot("red_tabby", frame));
-                        Measure(root.Cam, target, mount, portrait, directory, name + "-" + frame + "-reequipped", false);
+                        Measure(root, target, mount, portrait, directory, name + "-" + frame + "-reequipped", false);
                         foreach (string fallback in new[] { "blue_siamese", "yellow_longhair" })
                         {
                             source.Set(Snapshot(fallback, frame));
@@ -93,7 +93,7 @@ namespace CatMetro.Tests.PlayMode
                         GameObject holder = portrait.transform.parent.gameObject;
                         holder.SetActive(false); holder.SetActive(true);
                         Assert.That(mount.Layout(root.Cam), Is.True);
-                        Measure(root.Cam, target, mount, portrait, directory, name + "-" + frame + "-reopened", false);
+                        Measure(root, target, mount, portrait, directory, name + "-" + frame + "-reopened", false);
                         mount.BindMotionOff(() => true);
                         mount.AdvanceTurntable(0f);
                         Color32[] rest = Read(root.Cam, target);
@@ -115,9 +115,10 @@ namespace CatMetro.Tests.PlayMode
         private static CosmeticPortraitSnapshot Snapshot(string cat, string frame) =>
             new CosmeticPortraitSnapshot(cat, "cat." + cat, "outfit.conductor", "", frame);
 
-        private static void Measure(Camera camera, RenderTexture target, ProfileRigMount mount,
+        private static void Measure(GameRoot root, RenderTexture target, ProfileRigMount mount,
             CosmeticPortraitView portrait, string directory, string name, bool captureControls)
         {
+            Camera camera = root.Cam;
             SkinnedMeshRenderer skin = mount.PrefabRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single();
             RectTransform hat = (RectTransform)portrait.OutfitLayerTransform.Find("outfit.conductor/HeadWear");
             RectTransform frame = portrait.FrameLayerTransform;
@@ -171,16 +172,50 @@ namespace CatMetro.Tests.PlayMode
                 }
                 finally { rail.localPosition = position; rail.localScale = scale; }
                 Assert.That(Read(camera, target), Is.EqualTo(equipped), "forced rail restores exact local transform and paint");
-                TestContext.Out.WriteLine($"PROFILE_FRAME {name} visible={visibleFrame} over_skin={overSkin} over_hat={overHat}");
+                Transform token = frame.Find(portrait.AppliedFrameAssetId);
+                string prefix = portrait.AppliedFrameAssetId == "frame.brass" ? "Outer" : "NavyOuter";
+                float verticalStroke = Project(camera, (RectTransform)token.Find(prefix + "Left")).width;
+                float horizontalStroke = Project(camera, (RectTransform)token.Find(prefix + "Top")).height;
+                Rect frameBounds = Project(camera, frame);
+                TestContext.Out.WriteLine($"PROFILE_FRAME {name} visible={visibleFrame} over_skin={overSkin} over_hat={overHat} stroke_px={verticalStroke:R}/{horizontalStroke:R} frame_bounds={frameBounds}");
+                Assert.That(verticalStroke, Is.EqualTo(horizontalStroke).Within(.05f), "rails retain a uniform physical stroke");
+                Assert.That(horizontalStroke, Is.GreaterThanOrEqualTo(1.5f), "a narrow free strip must not collapse the visible outer rail");
                 Assert.That(visibleFrame, Is.GreaterThan(100), "the frame must remain visibly present");
                 Assert.That(overSkin, Is.Zero, name + " frame crosses the actual skin projection");
                 Assert.That(overHat, Is.Zero, name + " frame crosses the independently visible hat");
+                AssertNeighbourClearance(root, portrait, frameBounds);
             }
             finally
             {
                 hat.gameObject.SetActive(true); frame.gameObject.SetActive(true);
                 skin.forceMatrixRecalculationPerRender = refresh;
             }
+        }
+
+        private static void AssertNeighbourClearance(GameRoot root, CosmeticPortraitView portrait, Rect frame)
+        {
+            if (portrait == root.Home.ProfilePortrait)
+            {
+                Assert.That(root.Home.HeroRectPx.Contains(frame.min) && root.Home.HeroRectPx.Contains(frame.max),
+                    Is.True, "the frame stays in the Home diorama, clear of title and controls");
+                foreach (Rect control in new[] { root.Home.PinPaintedRectPx, root.Home.DailyPinPaintedRectPx,
+                    root.Home.AudioToggleRectPx, root.Wardrobe.EntryRectPx })
+                    Assert.That(frame.Overlaps(control), Is.False, "frame cannot cover Home controls");
+                return;
+            }
+            Transform card = portrait.transform.parent.parent;
+            Transform panel = card.parent;
+            foreach (string band in new[] { "CatSelectorBand", "TabsBand", "ItemsBand" })
+            {
+                var rect = panel.Find(band) as RectTransform;
+                Assert.That(rect, Is.Not.Null, band);
+                Assert.That(frame.Overlaps(Project(root.Cam, rect)), Is.False, "frame cannot cover " + band);
+            }
+            var plaque = card.Find("PortraitStand/StandPlaque") as RectTransform;
+            Assert.That(plaque, Is.Not.Null);
+            Assert.That(frame.Overlaps(Project(root.Cam, plaque)), Is.False, "frame cannot cover the name plaque");
+            Assert.That(frame.Overlaps(root.Wardrobe.BackRectPx), Is.False);
+            Assert.That(frame.Overlaps(root.Wardrobe.PrimaryActionRectPx), Is.False);
         }
 
         private static void ForceRail(RectTransform rail, Camera camera, Vector2 screen)

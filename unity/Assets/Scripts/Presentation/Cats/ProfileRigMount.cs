@@ -745,12 +745,16 @@ namespace CatMetro.Presentation.Cats
                 Vector2 screen = _layoutCamera.WorldToScreenPoint(world);
                 outerMin = Vector2.Min(outerMin, screen); outerMax = Vector2.Max(outerMax, screen);
             }
-            // Keep an idle/antialiasing gap as well as the measured yaw envelope. Normally
-            // the existing holder supplies the border; only an overhanging hat can extend it.
-            float gap = Mathf.Max(2f, Mathf.Min(outerMax.x - outerMin.x, outerMax.y - outerMin.y) * .01f);
+            // Keep an idle/antialiasing gap as well as the measured yaw envelope. A four
+            // pixel border gives the original outer/inner rail ratios at least 1.73/.93
+            // pixels of paint; larger portraits retain proportionally visible decoration.
+            // Extend only an edge that lacks this minimum, without moving the mounted cat.
+            float shortSide = Mathf.Min(outerMax.x - outerMin.x, outerMax.y - outerMin.y);
+            float gap = Mathf.Max(2f, shortSide * .01f);
+            float minimumBorder = Mathf.Max(4f, shortSide * .015f);
             Vector2 openingMin = min - Vector2.one * gap, openingMax = max + Vector2.one * gap;
-            outerMin = Vector2.Min(outerMin, openingMin - Vector2.one * gap);
-            outerMax = Vector2.Max(outerMax, openingMax + Vector2.one * gap);
+            outerMin = Vector2.Min(outerMin, openingMin - Vector2.one * minimumBorder);
+            outerMax = Vector2.Max(outerMax, openingMax + Vector2.one * minimumBorder);
             if (!FrameLocal(outerMin, out Vector2 localOuterMin) || !FrameLocal(outerMax, out Vector2 localOuterMax)
                 || !FrameLocal(openingMin, out Vector2 localMin) || !FrameLocal(openingMax, out Vector2 localMax)) return;
             _frameFitted = _portrait.FitFrame(Rect.MinMaxRect(localOuterMin.x, localOuterMin.y, localOuterMax.x, localOuterMax.y),

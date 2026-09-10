@@ -200,8 +200,14 @@ namespace CatMetro.Presentation.Cosmetics
             FrameLayerTransform.anchorMin = FrameLayerTransform.anchorMax = new Vector2(.5f, .5f);
             FrameLayerTransform.sizeDelta = outerInPortrait.size;
             MoveFrameCenter(outerInPortrait.center);
-            Vector2 min = (openingInPortrait.min - outerInPortrait.min) / outerInPortrait.size;
-            Vector2 max = (openingInPortrait.max - outerInPortrait.min) / outerInPortrait.size;
+            // Use one physical border width on every side. Independent x/y compression
+            // makes the tall rails broad capsules while the horizontal rails disappear.
+            float border = Mathf.Min(openingInPortrait.xMin - outerInPortrait.xMin,
+                outerInPortrait.xMax - openingInPortrait.xMax,
+                openingInPortrait.yMin - outerInPortrait.yMin,
+                outerInPortrait.yMax - openingInPortrait.yMax);
+            Vector2 min = new Vector2(border / outerInPortrait.width, border / outerInPortrait.height);
+            Vector2 max = Vector2.one - min;
             foreach (FramePart part in _frameParts) part.Fit(min, max, outerInPortrait.size);
             return true;
         }

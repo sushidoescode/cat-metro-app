@@ -48,6 +48,19 @@ namespace CatMetro.Tests.EditMode.Presentation
                         && bounds.yMin < opening.yMax - tolerance && bounds.yMax > opening.yMin + tolerance;
                     Assert.That(intersects, Is.False, image.name + " rotated bounds cross the opening");
                 }
+                Transform fittedToken = portrait.FrameLayerTransform.Find(token);
+                string outerPrefix = token == "frame.brass" ? "Outer" : "NavyOuter";
+                string innerPrefix = token == "frame.brass" ? "Inner" : "TealInner";
+                foreach (string prefix in new[] { outerPrefix, innerPrefix })
+                {
+                    float left = LocalBounds(portrait.RootTransform, (RectTransform)fittedToken.Find(prefix + "Left")).width;
+                    float right = LocalBounds(portrait.RootTransform, (RectTransform)fittedToken.Find(prefix + "Right")).width;
+                    float top = LocalBounds(portrait.RootTransform, (RectTransform)fittedToken.Find(prefix + "Top")).height;
+                    float bottom = LocalBounds(portrait.RootTransform, (RectTransform)fittedToken.Find(prefix + "Bottom")).height;
+                    Assert.That(left, Is.EqualTo(top).Within(.001f), prefix + " uses equal physical stroke in both axes");
+                    Assert.That(right, Is.EqualTo(top).Within(.001f));
+                    Assert.That(bottom, Is.EqualTo(top).Within(.001f));
+                }
                 Assert.That(ImageCorners(portrait.OutfitLayerTransform), Is.EqualTo(outfit), "frame fit must not move the coat or hat");
                 if (token == "frame.lantern")
                 {
