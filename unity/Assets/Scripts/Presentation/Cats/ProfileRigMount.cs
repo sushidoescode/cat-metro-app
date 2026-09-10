@@ -49,6 +49,12 @@ namespace CatMetro.Presentation.Cats
         private Rect _measuredHead;
         private float _measuredShortSide;
         private float _measuredScale;
+        private CatRigPresentation _rigPresentation;
+        private Func<bool> _motionOffSource;
+        private bool _motionSuppressed;
+        private float _idleTime;
+        private Vector2 _cosmeticHeadCenter;
+        private Vector3 _cosmeticBasePosition;
 
         public float TurntableAmplitude { get; set; }
         private float _turntableTime;
@@ -59,6 +65,12 @@ namespace CatMetro.Presentation.Cats
         {
             _hasLayoutGeometry = false;
             if (_layoutCamera != null) SubscribeRenderCallback();
+            if (_rigPresentation != null && _rigPresentation.AuthoredMotionInstalled)
+            {
+                _idleTime = _turntableTime = 0f;
+                _rigPresentation.SampleIdle(0f);
+                _motionSuppressed = false;
+            }
         }
 
         private void SubscribeRenderCallback()
@@ -87,7 +99,7 @@ namespace CatMetro.Presentation.Cats
                 UnsubscribeRenderCallback();
                 return;
             }
-            if (_layingOut || !isActiveAndEnabled || _holder == null
+            if (_layingOut || !_visible || !isActiveAndEnabled || _holder == null
                 || _layoutCamera == null || PrefabRoot == null) return;
             var geometry = new LayoutGeometry(_holder, _layoutCamera);
             if (!_hasLayoutGeometry || !geometry.Equals(_layoutGeometry))
@@ -96,11 +108,37 @@ namespace CatMetro.Presentation.Cats
 
         public void AdvanceTurntable(float deltaSeconds)
         {
-            if (!isActiveAndEnabled || !Mounted || TurntableAmplitude <= 0f
-                || _layoutCamera == null || !float.IsFinite(deltaSeconds) || deltaSeconds <= 0f)
+            if (!isActiveAndEnabled || !_visible || !Mounted || _layoutCamera == null)
                 return;
-            _turntableTime = (_turntableTime + deltaSeconds) % 12f;
-            ApplyPose(Mathf.Min(_holder.rect.width, _holder.rect.height), reportGeometry: false);
+            bool authored = _rigPresentation != null && _rigPresentation.AuthoredMotionInstalled;
+            if (_motionOffSource?.Invoke() == true)
+            {
+                if (_motionSuppressed) return;
+                _motionSuppressed = true;
+                _idleTime = _turntableTime = 0f;
+                if (authored) _rigPresentation.SampleIdle(0f);
+                if (authored) ApplyAnimatedPose();
+                else ApplyPose(Mathf.Min(_holder.rect.width, _holder.rect.height), reportGeometry: false);
+                return;
+            }
+            _motionSuppressed = false;
+            if (!float.IsFinite(deltaSeconds) || deltaSeconds <= 0f) return;
+            if (authored)
+            {
+                _idleTime = Mathf.Repeat(_idleTime + deltaSeconds, _rigPresentation.IdleClip.length);
+                _rigPresentation.SampleIdle(_idleTime);
+            }
+            if (TurntableAmplitude > 0f) _turntableTime = (_turntableTime + deltaSeconds) % 12f;
+            if (authored) ApplyAnimatedPose();
+            else if (TurntableAmplitude > 0f)
+                ApplyPose(Mathf.Min(_holder.rect.width, _holder.rect.height), reportGeometry: false);
+        }
+
+        public void BindMotionOff(Func<bool> source)
+        {
+            _motionOffSource = source;
+            _motionSuppressed = false;
+            AdvanceTurntable(0f);
         }
 
         public int FallbackBranch { get; private set; }
@@ -122,6 +160,7 @@ namespace CatMetro.Presentation.Cats
         {
             _visible = visible;
             ApplyRendererVisibility();
+            if (visible) AdvanceTurntable(0f);
         }
 
         private void ApplyRendererVisibility()
@@ -213,16 +252,21 @@ namespace CatMetro.Presentation.Cats
             Animator animator = instance.GetComponentInChildren<Animator>(true);
             // Imported bone paths are controller-relative. The admitted prefab deliberately
             // keeps its identity root and ModelCorrection wrapper above that Animator.
-            view._headRoot = animator.transform.Find(CatModelCatalog.HeadDeformerRootPath);
+            view._rigPresentation = animator.GetComponent<CatRigPresentation>();
+            view._headRoot = view._rigPresentation != null
+                ? view._rigPresentation.HeadTransform
+                : animator.transform.Find(CatModelCatalog.HeadDeformerRootPath);
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             animator.applyRootMotion = false;
             animator.Rebind();
             animator.Play(animator.GetLayerName(0) + "." + CatModelCatalog.IdleSitClip,
                 0, 0f);
             animator.Update(0f);
+            view._rigPresentation?.ApplyHeadShape();
             animator.speed = 0f;
             view.SampledPose = CatModelCatalog.IdleSitClip;
             DestroyImmediate(animator);
+            view._rigPresentation?.SampleIdle(0f);
             view.CacheHeadSamples();
             portrait.PortraitApplied += view.OnPortraitApplied;
             view._portraitSubscribed = true;
@@ -310,6 +354,9 @@ namespace CatMetro.Presentation.Cats
             bool becameMounted = !Mounted;
             RenderedHeadScreenRect = renderedHead;
             _portrait.SetBaseLayerSuppressed(true);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(_holder,
+                renderedHead.center, _layoutCamera, out _cosmeticHeadCenter);
+            _cosmeticBasePosition = _portrait.RootTransform.anchoredPosition3D;
             Mounted = true;
             ApplyRendererVisibility();
             FallbackBranch = 0;
@@ -318,6 +365,22 @@ namespace CatMetro.Presentation.Cats
                 Report(_logPrefix + " mounted=true admitted=" + CatalogAdmittedEntryCount
                     + GeometryDiagnostic(), false);
             return true;
+        }
+
+        private void ApplyAnimatedPose()
+        {
+            AppliedFacingYaw = _entry.FacingYaw + _surfaceFacingYaw
+                + TurntableAmplitude * Mathf.Sin(_turntableTime * Mathf.PI / 6f);
+            _facing.localRotation = Quaternion.Euler(0f, AppliedFacingYaw, 0f);
+            if (!TryGetRenderedHeadScreenRect(_layoutCamera, out Rect head)) return;
+            RenderedHeadScreenRect = head;
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(_holder,
+                head.center, _layoutCamera, out Vector2 center)) return;
+            Vector2 delta = center - _cosmeticHeadCenter;
+            // Keep the settled fit and cosmetic size. Breathing/tilt may move the anchor,
+            // but must not repeatedly resize the portrait or drive a canvas layout pass.
+            _portrait.RootTransform.anchoredPosition3D = _cosmeticBasePosition
+                + new Vector3(delta.x, delta.y, 0f);
         }
 
         private static bool UsableDimension(float value) => float.IsFinite(value) && value > 0f;

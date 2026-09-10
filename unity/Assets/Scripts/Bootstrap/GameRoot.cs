@@ -640,6 +640,7 @@ namespace CatMetro.Bootstrap
                 canvasGo.transform, dailyUnlocked, LifetimeDailyCompletions, _cosmetics,
                 CatMetro.Presentation.Cats.CatModelCatalog.LoadResources());
             Home.Attach(Input.Regions, () => MotionOff);
+            Home.ProfileRig?.BindMotionOff(() => MotionOff);
             _homeFx = BoardFx.GetOrCreate(transform, () => MotionOff);
             Home.DioramaLaidOut = RefitHomeDiorama;
             Home.SetCampaignWinCount(_dailyProgress?.CampaignCompletions ?? 0);
@@ -660,6 +661,7 @@ namespace CatMetro.Bootstrap
                 _cosmetics,
                 new CatMetro.Services.Cosmetics.RewardedAdCosmeticRoute());
             Wardrobe.Attach(Input.Regions);
+            Wardrobe.ProfileRig?.BindMotionOff(() => MotionOff);
             // The intro dimmer also covers the retained Wardrobe pin during Home's exit.
             Intro.transform.SetAsLastSibling();
             Wardrobe.PurchaseConfirmed = () => { Audio?.PlayPurchaseSuccess(); Haptics?.PlayPurchaseSuccess(); };

@@ -292,6 +292,7 @@ namespace CatMetro.Presentation.Board
         private CatModelCatalog _catCatalog;
         private GameObject _rigInstance;
         private Animator _rigAnimator;
+        private CatRigPresentation _rigPresentation;
         private Transform _rigEarDeformerA;
         private Transform _rigEarDeformerB;
         private Quaternion _rigEarAPreviousOffset = Quaternion.identity;
@@ -385,6 +386,7 @@ namespace CatMetro.Presentation.Board
                     : Mathf.Repeat(visualTime / duration, 1f);
                 _rigAnimator.Play(celebrate ? _deliveredCelebrateState : _deliveredIdleState, 0, phase);
                 _rigAnimator.Update(0f);
+                _rigPresentation?.ApplyHeadShape();
                 _rigAnimator.speed = 0f; // the board's unscaled presentation clock owns this pose
             }
         }
@@ -1169,6 +1171,7 @@ namespace CatMetro.Presentation.Board
             }
 
             _rigAnimator = animators[0];
+            _rigPresentation = _rigAnimator.GetComponent<CatRigPresentation>();
             _rigAnimator.applyRootMotion = false;
             _rigInstance.transform.localPosition = Vector3.zero;
             // TASK 17 imports conventional +Y-up, +Z-forward content. This presentation-only
@@ -1281,6 +1284,7 @@ namespace CatMetro.Presentation.Board
                 _rigAnimator.Play(_rigAnimator.GetLayerName(0) + "."
                     + CatModelCatalog.IdleSitClip, 0, 0f);
                 _rigAnimator.Update(0f);
+                _rigPresentation?.ApplyHeadShape();
                 _rigAnimator.speed = 0f;
                 _rigNeutralSampleCount++;
                 _lastRigState = CatPresentationState.Hidden;
@@ -1300,8 +1304,12 @@ namespace CatMetro.Presentation.Board
             // presentation-state transition, so retime before the same-state early return.
             _rigAnimator.speed = playbackSpeed;
             if (_lastRigState == state) return;
-            _rigAnimator.Play(_rigAnimator.GetLayerName(0) + "." + CatModelCatalog.ClipFor(state), 0, 0f);
+            string clip = state == CatPresentationState.RideIdle
+                && _rigPresentation != null && _rigPresentation.AuthoredMotionInstalled
+                ? CatRigPresentation.RideClip : CatModelCatalog.ClipFor(state);
+            _rigAnimator.Play(_rigAnimator.GetLayerName(0) + "." + clip, 0, 0f);
             _rigAnimator.Update(0f); // presentation sampling only; root motion stays disabled.
+            _rigPresentation?.ApplyHeadShape();
             _lastRigState = state;
         }
 

@@ -110,6 +110,7 @@ namespace CatMetro.Presentation.Cats
             instance = UnityEngine.Object.Instantiate(_prefab, parent, false);
             var animator = instance.GetComponentInChildren<Animator>(true);
             animator.applyRootMotion = false;
+            CatRigPresentation.TryInstall(instance, _prefab);
             entry = _entry;
             return true;
         }
