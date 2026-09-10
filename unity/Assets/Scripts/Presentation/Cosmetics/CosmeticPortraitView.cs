@@ -13,6 +13,9 @@ namespace CatMetro.Presentation.Cosmetics
         private bool _subscribed;
         private bool _followsCurrentPortrait;
         private bool _baseLayerSuppressed;
+        private RectTransform _bodyWear;
+        private Vector2 _bodyWearCenterOffset;
+        private readonly Vector3[] _bodyCorners = new Vector3[4];
 
         public RectTransform RootTransform { get; private set; }
         public RectTransform BaseLayerTransform { get; private set; }
@@ -86,6 +89,7 @@ namespace CatMetro.Presentation.Cosmetics
                 return;
             }
 
+            ResetBodyWear();
             ApplyLayer(BaseLayerTransform, snapshot.BaseAssetId, out var baseAssetId);
             AppliedCatId = string.IsNullOrEmpty(baseAssetId)
                 ? string.Empty
@@ -97,10 +101,59 @@ namespace CatMetro.Presentation.Cosmetics
                 out var accessoryAssetId);
             ApplyLayer(FrameLayerTransform, snapshot.FrameAssetId,
                 out var frameAssetId);
+            _bodyWear = CosmeticPortraitPainter.FindBodyWear(OutfitLayerTransform);
             AppliedOutfitAssetId = outfitAssetId;
             AppliedAccessoryAssetId = accessoryAssetId;
             AppliedFrameAssetId = frameAssetId;
             PortraitApplied?.Invoke();
+        }
+
+        internal bool HasBodyWear => _bodyWear != null
+            && OutfitLayerTransform.gameObject.activeSelf;
+
+        internal bool FitBodyWear(Rect regionInPortrait)
+        {
+            if (!HasBodyWear || regionInPortrait.width <= 0f || regionInPortrait.height <= 0f)
+                return false;
+            ResetBodyWear();
+            // Measure every rotated corner, including both collars, before scaling the group.
+            // The resulting rectangle bounds all five pieces, not just the coat capsule.
+            Vector2 min = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
+            Vector2 max = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
+            for (int i = 0; i < _bodyWear.childCount; i++)
+            {
+                if (!(_bodyWear.GetChild(i) is RectTransform part)) continue;
+                part.GetWorldCorners(_bodyCorners);
+                foreach (Vector3 world in _bodyCorners)
+                {
+                    Vector2 local = _bodyWear.InverseTransformPoint(world);
+                    min = Vector2.Min(min, local);
+                    max = Vector2.Max(max, local);
+                }
+            }
+            Vector2 size = max - min;
+            if (!float.IsFinite(size.x) || !float.IsFinite(size.y) || size.x <= 0f || size.y <= 0f)
+                return false;
+            Vector2 scale = new Vector2(regionInPortrait.width / size.x, regionInPortrait.height / size.y);
+            _bodyWear.localScale = new Vector3(scale.x, scale.y, 1f);
+            _bodyWearCenterOffset = Vector2.Scale((min + max) * .5f, scale);
+            MoveBodyWearCenter(regionInPortrait.center);
+            return true;
+        }
+
+        internal void MoveBodyWearCenter(Vector2 centerInPortrait)
+        {
+            if (HasBodyWear) _bodyWear.anchoredPosition = centerInPortrait - _bodyWearCenterOffset;
+        }
+
+        internal void ResetBodyWear()
+        {
+            if (_bodyWear == null) return;
+            Stretch(_bodyWear);
+            _bodyWear.localScale = Vector3.one;
+            _bodyWear.localRotation = Quaternion.identity;
+            _bodyWear.anchoredPosition3D = Vector3.zero;
+            _bodyWearCenterOffset = Vector2.zero;
         }
 
         internal void SetBaseLayerSuppressed(bool suppressed)
@@ -163,6 +216,7 @@ namespace CatMetro.Presentation.Cosmetics
 
         private void ClearAll()
         {
+            ResetBodyWear();
             AppliedCatId = string.Empty;
             AppliedOutfitAssetId = string.Empty;
             AppliedAccessoryAssetId = string.Empty;

@@ -151,25 +151,32 @@ namespace CatMetro.Presentation.Cosmetics
             AddWhiskers(parent);
         }
 
+        internal static RectTransform FindBodyWear(RectTransform layer) =>
+            layer != null ? layer.Find(Conductor + "/BodyWear") as RectTransform : null;
+
         private static void BuildConductor(Transform parent)
         {
-            Add(parent, "Coat", HudShapeSprites.Capsule, Palette.InkNavy,
+            // Identity groups preserve the original flat portraits. Only a mounted paid
+            // profile supplies a separate body fit; the hat keeps its existing head guide.
+            RectTransform body = MakeGroup(parent, "BodyWear");
+            RectTransform head = MakeGroup(parent, "HeadWear");
+            Add(body, "Coat", HudShapeSprites.Capsule, Palette.InkNavy,
                 V(0.24f, 0.06f), V(0.76f, 0.45f));
-            Add(parent, "CollarLeft", HudShapeSprites.Triangle, Palette.CreamCard,
+            Add(body, "CollarLeft", HudShapeSprites.Triangle, Palette.CreamCard,
                 V(0.37f, 0.34f), V(0.51f, 0.49f), -18f);
-            Add(parent, "CollarRight", HudShapeSprites.Triangle, Palette.CreamCard,
+            Add(body, "CollarRight", HudShapeSprites.Triangle, Palette.CreamCard,
                 V(0.49f, 0.34f), V(0.63f, 0.49f), 18f);
-            Add(parent, "ButtonTop", HudShapeSprites.Disc, Palette.TabbyYellow,
+            Add(body, "ButtonTop", HudShapeSprites.Disc, Palette.TabbyYellow,
                 V(0.475f, 0.26f), V(0.525f, 0.31f));
-            Add(parent, "ButtonBottom", HudShapeSprites.Disc, Palette.TabbyYellow,
+            Add(body, "ButtonBottom", HudShapeSprites.Disc, Palette.TabbyYellow,
                 V(0.475f, 0.16f), V(0.525f, 0.21f));
-            Add(parent, "HatBrim", HudShapeSprites.Capsule, Palette.InkNavy,
+            Add(head, "HatBrim", HudShapeSprites.Capsule, Palette.InkNavy,
                 V(0.20f, 0.76f), V(0.80f, 0.84f));
-            Add(parent, "HatCrown", HudShapeSprites.RoundedSquare, Palette.InkNavy,
+            Add(head, "HatCrown", HudShapeSprites.RoundedSquare, Palette.InkNavy,
                 V(0.31f, 0.76f), V(0.69f, 0.95f));
-            Add(parent, "HatBand", HudShapeSprites.Capsule, Palette.CreamCard,
+            Add(head, "HatBand", HudShapeSprites.Capsule, Palette.CreamCard,
                 V(0.33f, 0.80f), V(0.67f, 0.84f));
-            Add(parent, "HatBadge", HudShapeSprites.Disc, Palette.TabbyYellow,
+            Add(head, "HatBadge", HudShapeSprites.Disc, Palette.TabbyYellow,
                 V(0.455f, 0.84f), V(0.545f, 0.93f));
         }
 

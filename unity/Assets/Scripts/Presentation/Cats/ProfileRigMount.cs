@@ -19,6 +19,9 @@ namespace CatMetro.Presentation.Cats
         private const float CanvasLift = 0.12f;
         private const float CosmeticLift = 0.20f;
         private const float HeadWeightThreshold = 0.05f;
+        private const float StrongHeadWeightThreshold = 0.25f;
+        private const float BodyWeightThreshold = 0.5f;
+        private const float NecklineGapInHeadHeights = 0.025f;
         private static readonly Rect PortraitHeadGuide =
             Rect.MinMaxRect(0.18f, 0.28f, 0.82f, 0.94f);
 
@@ -58,6 +61,11 @@ namespace CatMetro.Presentation.Cats
         private Mesh _fitBuffer;
         private readonly List<Vector3> _fitVertices = new List<Vector3>();
         private readonly List<Vector3> _fitPoints = new List<Vector3>();
+        private Transform _bodyRoot;
+        private Rect _strongHeadScreenRect;
+        private Rect _bodyWearScreenRect;
+        private Vector2 _bodyAnchorScreen;
+        private bool _bodyWearFitted;
 
         public float TurntableAmplitude { get; set; }
         private float _turntableTime;
@@ -270,6 +278,9 @@ namespace CatMetro.Presentation.Cats
             view.SampledPose = CatModelCatalog.IdleSitClip;
             DestroyImmediate(animator);
             view._rigPresentation?.SampleIdle(0f);
+            // Paid anatomy was independently localized by deformation/weights. Generic fixtures
+            // retain the flat portrait layout; the weak Head_2 joint is never a chest guide.
+            view._bodyRoot = view._rigPresentation != null ? view._headRoot.parent : null;
             view.CacheHeadSamples();
             portrait.PortraitApplied += view.OnPortraitApplied;
             view._portraitSubscribed = true;
@@ -447,6 +458,7 @@ namespace CatMetro.Presentation.Cats
             RectTransformUtility.ScreenPointToLocalPointInRectangle(_holder,
                 renderedHead.center, _layoutCamera, out _cosmeticHeadCenter);
             _cosmeticBasePosition = _portrait.RootTransform.anchoredPosition3D;
+            FitBodyWear();
             Mounted = true;
             ApplyRendererVisibility();
             FallbackBranch = 0;
@@ -471,6 +483,7 @@ namespace CatMetro.Presentation.Cats
             // but must not repeatedly resize the portrait or drive a canvas layout pass.
             _portrait.RootTransform.anchoredPosition3D = _cosmeticBasePosition
                 + new Vector3(delta.x, delta.y, 0f);
+            FollowBodyWear();
         }
 
         private static bool UsableDimension(float value) => float.IsFinite(value) && value > 0f;
@@ -529,12 +542,30 @@ namespace CatMetro.Presentation.Cats
                         headBones[i] = bone != null
                             && (bone == _headRoot || bone.IsChildOf(_headRoot));
                     }
+                    int bodyBone = _bodyRoot != null ? Array.IndexOf(bones, _bodyRoot) : -1;
+                    Transform tail = _bodyRoot != null ? _bodyRoot.Find("bone_9/bone_12") : null;
+                    var tailBones = new bool[bones.Length];
+                    for (int i = 0; i < bones.Length; i++)
+                        tailBones[i] = tail != null && bones[i] != null
+                            && (bones[i] == tail || bones[i].IsChildOf(tail));
                     var indices = new List<int>();
+                    var bodyIndices = new List<int>();
+                    var strongHead = new bool[weights.Length];
                     for (int i = 0; i < weights.Length; i++)
-                        if (HeadWeight(weights[i], headBones) >= HeadWeightThreshold)
-                            indices.Add(i);
+                    {
+                        float headWeight = HeadWeight(weights[i], headBones);
+                        strongHead[i] = headWeight >= StrongHeadWeightThreshold;
+                        if (headWeight >= HeadWeightThreshold) indices.Add(i);
+                        // Direct torso weighting, not the entire Head_0 subtree (which also owns
+                        // the head and legs). The projected hip-to-neck band further excludes paws.
+                        // Even weak tail weights identify tail vertices: Head_0 dominates much
+                        // of the tail, so a .25 tail cutoff would incorrectly widen the coat.
+                        if (bodyBone >= 0 && BoneWeightFor(weights[i], bodyBone) >= BodyWeightThreshold
+                            && !strongHead[i] && HeadWeight(weights[i], tailBones) == 0f)
+                            bodyIndices.Add(i);
+                    }
                     if (indices.Count > 0)
-                        _headSamples.Add(new HeadSample(skin, indices.ToArray()));
+                        _headSamples.Add(new HeadSample(skin, indices.ToArray(), strongHead, bodyIndices.ToArray()));
                 }
                 catch (UnityException exception)
                 {
@@ -547,6 +578,8 @@ namespace CatMetro.Presentation.Cats
         {
             bool initialized = false;
             float xMin = 0f, xMax = 0f, yMin = 0f, yMax = 0f;
+            Vector2 strongMin = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
+            Vector2 strongMax = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
             foreach (HeadSample sample in _headSamples)
             {
                 if (sample.Skin == null) continue;
@@ -561,6 +594,11 @@ namespace CatMetro.Presentation.Cats
                         sample.Skin.transform.TransformPoint(sample.Vertices[index]));
                     if (!float.IsFinite(screen.x) || !float.IsFinite(screen.y)
                         || !UsableDimension(screen.z)) continue;
+                    if (sample.StrongHead[index])
+                    {
+                        strongMin = Vector2.Min(strongMin, screen);
+                        strongMax = Vector2.Max(strongMax, screen);
+                    }
                     if (!initialized)
                     {
                         xMin = xMax = screen.x;
@@ -576,6 +614,8 @@ namespace CatMetro.Presentation.Cats
                     }
                 }
             }
+            _strongHeadScreenRect = strongMax.x > strongMin.x && strongMax.y > strongMin.y
+                ? Rect.MinMaxRect(strongMin.x, strongMin.y, strongMax.x, strongMax.y) : default;
             result = initialized ? Rect.MinMaxRect(xMin, yMin, xMax, yMax) : default;
             return initialized && result.width > 0f && result.height > 0f;
         }
@@ -584,16 +624,74 @@ namespace CatMetro.Presentation.Cats
         {
             public readonly SkinnedMeshRenderer Skin;
             public readonly int[] Indices;
+            public readonly bool[] StrongHead;
+            public readonly int[] BodyIndices;
             public readonly Mesh Buffer = new Mesh { name = "ProfileHeadSample" };
             public readonly List<Vector3> Vertices;
 
-            public HeadSample(SkinnedMeshRenderer skin, int[] indices)
+            public HeadSample(SkinnedMeshRenderer skin, int[] indices, bool[] strongHead, int[] bodyIndices)
             {
                 Skin = skin;
                 Indices = indices;
+                StrongHead = strongHead;
+                BodyIndices = bodyIndices;
                 Vertices = new List<Vector3>(skin.sharedMesh.vertexCount);
             }
         }
+
+        private void FitBodyWear()
+        {
+            _bodyWearFitted = false;
+            _portrait.ResetBodyWear();
+            if (_bodyRoot == null || !_portrait.HasBodyWear || _strongHeadScreenRect.height <= 0f) return;
+            Vector3 anchor = _layoutCamera.WorldToScreenPoint(_bodyRoot.position);
+            float top = _strongHeadScreenRect.yMin - _strongHeadScreenRect.height * NecklineGapInHeadHeights;
+            float bottom = anchor.y;
+            float left = float.PositiveInfinity, right = float.NegativeInfinity;
+            int count = 0;
+            // TryGetRenderedHeadScreenRect already baked these buffers for this settled pose.
+            // No extra bake, buffer creation, or full-mesh read is needed for coat placement.
+            foreach (HeadSample sample in _headSamples)
+            foreach (int index in sample.BodyIndices)
+            {
+                if (sample.Skin == null || index >= sample.Vertices.Count) continue;
+                Vector3 point = _layoutCamera.WorldToScreenPoint(
+                    sample.Skin.transform.TransformPoint(sample.Vertices[index]));
+                if (!float.IsFinite(point.x) || !float.IsFinite(point.y) || point.z <= 0f
+                    || point.y < bottom || point.y > top) continue;
+                left = Mathf.Min(left, point.x);
+                right = Mathf.Max(right, point.x);
+                count++;
+            }
+            if (count < 8 || !UsableDimension(right - left) || !UsableDimension(top - bottom)) return;
+            _bodyWearScreenRect = Rect.MinMaxRect(left, bottom, right, top);
+            RectTransform portrait = _portrait.RootTransform;
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(portrait,
+                    _bodyWearScreenRect.min, _layoutCamera, out Vector2 min)
+                || !RectTransformUtility.ScreenPointToLocalPointInRectangle(portrait,
+                    _bodyWearScreenRect.max, _layoutCamera, out Vector2 max)) return;
+            _bodyWearFitted = _portrait.FitBodyWear(Rect.MinMaxRect(min.x, min.y, max.x, max.y));
+            _bodyAnchorScreen = anchor;
+        }
+
+        private void FollowBodyWear()
+        {
+            if (!_bodyWearFitted || _bodyRoot == null || !_portrait.HasBodyWear) return;
+            Vector2 anchor = _layoutCamera.WorldToScreenPoint(_bodyRoot.position);
+            Vector2 center = _bodyWearScreenRect.center + anchor - _bodyAnchorScreen;
+            // Keep the settled dimensions. A downward head tilt can lower the neckline, but
+            // cannot pull a collar into the face; all rotated corners were included in the fit.
+            center.y = Mathf.Min(center.y, _strongHeadScreenRect.yMin
+                - _strongHeadScreenRect.height * NecklineGapInHeadHeights - _bodyWearScreenRect.height * .5f);
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(_portrait.RootTransform,
+                center, _layoutCamera, out Vector2 local)) _portrait.MoveBodyWearCenter(local);
+        }
+
+        private static float BoneWeightFor(BoneWeight weight, int bone) =>
+            (weight.boneIndex0 == bone ? weight.weight0 : 0f)
+            + (weight.boneIndex1 == bone ? weight.weight1 : 0f)
+            + (weight.boneIndex2 == bone ? weight.weight2 : 0f)
+            + (weight.boneIndex3 == bone ? weight.weight3 : 0f);
 
         private bool TryAlignPortrait(Rect headScreenRect, Camera camera, float shortSide)
         {
@@ -655,6 +753,8 @@ namespace CatMetro.Presentation.Cats
             bool ownsChangeGuard = !_changingRepresentation;
             if (ownsChangeGuard) _changingRepresentation = true;
             Mounted = false;
+            _bodyWearFitted = false;
+            _portrait?.ResetBodyWear();
             RenderedHeadScreenRect = default;
             ApplyRendererVisibility();
             if (_portrait != null)
