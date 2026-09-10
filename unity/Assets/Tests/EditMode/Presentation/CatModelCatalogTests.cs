@@ -1085,10 +1085,16 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(towardCarriage.sqrMagnitude, Is.GreaterThan(0.999f),
                 caseLabel + " must declare a non-zero platform side");
             float carriageMinimum = float.PositiveInfinity;
-            foreach (string partName in new[] { "Body", "Chassis" })
+            Transform pin = carriage.Find("Pin");
+            MeshFilter[] vehicleParts = carriage.GetComponentsInChildren<MeshFilter>()
+                .Where(part => !part.transform.IsChildOf(cat) && !part.transform.IsChildOf(pin)
+                    && part.TryGetComponent<MeshRenderer>(out var renderer) && renderer.enabled)
+                .ToArray();
+            Assert.That(vehicleParts, Is.Not.Empty, caseLabel + " needs visible carriage geometry");
+            foreach (MeshFilter part in vehicleParts)
             {
-                MeshFilter part = carriage.Find(partName).GetComponent<MeshFilter>();
-                Assert.That(part, Is.Not.Null, caseLabel + "/" + partName);
+                Assert.That(part.sharedMesh, Is.Not.Null, caseLabel + "/" + part.name);
+                Assert.That(part.sharedMesh.vertexCount, Is.GreaterThan(0), caseLabel + "/" + part.name);
                 carriageMinimum = Mathf.Min(carriageMinimum,
                     MinimumProjectionIn(carriage, part.transform,
                         part.sharedMesh.vertices, towardCarriage));
@@ -1143,6 +1149,7 @@ namespace CatMetro.Tests.EditMode.Presentation
                         state == CatPresentationState.Celebrate);
                     minimumGap = gap;
                     minimumLabel = caseLabel
+                        + "/vehicle=" + string.Join("+", vehicleParts.Select(part => part.name))
                         + "/clip=" + clipName
                         + "/halfFrame=" + clipSample + "/" + halfFrameSamples
                         + "/earSample=" + earSample

@@ -42,6 +42,7 @@ namespace CatMetro.Presentation.Board
         }
 
         private GameSession _session;
+        private CarriageModelCatalog _carriageCatalog;
         public BoardFx Fx { get; private set; }
         private BoardAmbientFx _ambient;
         private BoardVignette _vignette;
@@ -251,12 +252,13 @@ namespace CatMetro.Presentation.Board
             IsLive(previous) && !IsLive(current) && currentDeliveryCount > previousDeliveryCount;
 
         public static BoardView Build(ImportedLevel level, Transform parent, GameSession session,
-            PropModelCatalog propCatalog = null)
+            PropModelCatalog propCatalog = null, CarriageModelCatalog carriageCatalog = null)
         {
             var go = new GameObject("Board");
             go.transform.SetParent(parent, false);
             var view = go.AddComponent<BoardView>();
             view._session = session;
+            view._carriageCatalog = carriageCatalog ?? CarriageModelCatalog.LoadResources();
             view.Fx = BoardFx.GetOrCreate(view.transform,
                 () => view.MotionOffSource != null && view.MotionOffSource());
             view._usesShapes = DestinationBadge.UsesShapes(level.Dto);
@@ -643,7 +645,8 @@ namespace CatMetro.Presentation.Board
                     // "train" inventory id; everything under it is decoration (no
                     // BoardElementId, no collider), and its localPosition keeps the capsule's
                     // exact head-anchor contract on the shared spline.
-                    consist = ToyTrainView.Create(transform, "train:" + t, _edgeFrom, _edgeTo);
+                    consist = ToyTrainView.Create(transform, "train:" + t, _edgeFrom, _edgeTo,
+                        carriageCatalog: _carriageCatalog);
                     var id = consist.gameObject.AddComponent<BoardElementId>();
                     id.Id = "train-" + t; id.Kind = "train";
                     _trains[t] = consist;
@@ -749,7 +752,8 @@ namespace CatMetro.Presentation.Board
                 // observed departures; the presentation grid scales node coordinates only.
                 Vector3 anchor = _nodePos[delivery.Node] + Vector3.down * ToyTrainView.PlatformSideOffset
                     + Vector3.forward * ToyTrainView.HeadAnchorZ;
-                var passenger = ToyTrainView.Create(transform, "delivered-cat:" + i, _edgeFrom, _edgeTo);
+                var passenger = ToyTrainView.Create(transform, "delivered-cat:" + i, _edgeFrom, _edgeTo,
+                    carriageCatalog: _carriageCatalog);
                 passenger.SyncSlot(i + 1L, CatToken.Color(delivery.Colour),
                     DestinationBadge.Resolve(delivery.Colour, _usesShapes));
                 passenger.SetTokenFlags(CatToken.IsStray(delivery.Colour),

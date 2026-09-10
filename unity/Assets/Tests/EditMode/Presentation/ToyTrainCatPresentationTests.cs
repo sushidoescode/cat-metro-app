@@ -161,12 +161,15 @@ namespace CatMetro.Tests.EditMode.Presentation
             _view.ApplyPresentation(CatPresentationState.Walk, 1f, 0f, false);
 
             Bounds head = Head().GetComponent<Renderer>().bounds;
-            foreach (string carriagePart in new[] { "Body", "Chassis" })
+            Transform carriageRoot = _view.transform.Find("Carriage");
+            var vehicleRenderers = carriageRoot.GetComponentsInChildren<MeshRenderer>()
+                .Where(renderer => renderer.enabled && !renderer.transform.IsChildOf(Cat())
+                    && !renderer.transform.IsChildOf(Pin())).ToArray();
+            Assert.That(vehicleRenderers, Is.Not.Empty, "measure the carriage actually rendered");
+            foreach (MeshRenderer renderer in vehicleRenderers)
             {
-                Bounds carriage = _view.transform.Find("Carriage/" + carriagePart)
-                    .GetComponent<Renderer>().bounds;
-                Assert.That(head.Intersects(carriage), Is.False,
-                    $"the full platform endpoint must clear Carriage/{carriagePart}; "
+                Assert.That(head.Intersects(renderer.bounds), Is.False,
+                    $"the full platform endpoint must clear Carriage/{renderer.name}; "
                     + "the walking passenger cannot finish embedded in the vehicle");
             }
         }

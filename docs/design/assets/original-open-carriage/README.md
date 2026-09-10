@@ -61,11 +61,11 @@ The total footprint includes the wheel hubs. The source has no hidden scaling.
 | Wall thickness near upper side | approximately 0.031 |
 | Wheel diameter | 0.108 |
 
-The proposed board conversion is Blender `(x, y, z)` to board-local
+The board conversion is Blender `(x, y, z)` to board-local
 `(x, -y, .235 - z)`, preserving +X forward. For an ordinary Unity +Y-up import,
-rotate -90 degrees about X and translate board-local Z by .235. Check the actual
-imported axes before mounting. This would put the floor at board-local Z .150
-and the rim at .070; those are prototype targets, not tested runtime placement.
+rotate -90 degrees about X and translate board-local Z by .235. The runtime
+wrapper uses this conversion, placing the floor at board-local Z .150 and the
+rim at .070. Actual Unity import and rendered placement still need owner checks.
 
 The current `ToyTrainView` body spans board-local Z .135–.235. The new lower
 floor and higher rim create room for the passenger and a possible paw contact
@@ -139,6 +139,26 @@ importer's Unity-created `.cs.meta`. Include new parent folder `.meta` files
 only when those folders did not already exist from the original station import.
 There are no generated Unity assets or `.meta` files in this candidate yet.
 
-Unity import, URP texture binding, actual passenger placement/occlusion,
-gameplay clearances and Android rendering/performance are not verified. This
-candidate does not alter runtime placement or load the prefab automatically.
+## Runtime candidate
+
+`CarriageModelCatalog` admits the optional original Resources prefab only with
+its two active named meshes, identity transforms, fixed imported bounds and one
+neutral URP/Lit atlas material. Absent or malformed input keeps the complete
+primitive carriage. `ToyTrainView` mounts the admitted model on a visual child;
+the engine, carriage anchor, rider, destination pin and simulation remain under
+their existing transforms. Changing the passenger line does not tint the atlas.
+`BoardView` resolves this optional catalog once per board and supports explicit
+fallback injection for the legacy box/head proportion fixture.
+
+The runtime tests compare original and fallback travel, rider/pin identity,
+rejection cues, slot reuse and delivery. Independent synthetic meshes exercise
+admission and the actual mounted geometry; an installed-resource case must use
+the imported meshes when present. Clearance tests now measure active carriage
+geometry instead of looking for hidden `Body`/`Chassis` boxes, preserving the
+0.045 minimum. The phone fallback-cat capture measures the active shell's
+carriage-axis width and keeps its existing exposure limits.
+
+Unity import, test execution, URP texture binding, actual passenger placement/
+occlusion, gameplay clearances and Android rendering/performance are not
+verified. No cat offset, tint, platform clearance constant or licensed asset
+bytes were changed by this runtime candidate.

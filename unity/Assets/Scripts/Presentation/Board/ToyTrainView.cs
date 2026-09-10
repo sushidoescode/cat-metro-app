@@ -1,4 +1,5 @@
 using CatMetro.Presentation.Cats;
+using CatMetro.Presentation.Props;
 using CatMetro.Presentation.Theme;
 using CatMetro.Presentation.Fx;
 using UnityEngine;
@@ -290,6 +291,7 @@ namespace CatMetro.Presentation.Board
         private CatPresentationState _presentationState = CatPresentationState.Hidden;
         private CatPresentationState _lastRigState = CatPresentationState.Hidden;
         private CatModelCatalog _catCatalog;
+        private CarriageModelCatalog _carriageCatalog;
         private GameObject _rigInstance;
         private Animator _rigAnimator;
         private CatRigPresentation _rigPresentation;
@@ -330,6 +332,8 @@ namespace CatMetro.Presentation.Board
         public void SetTokenFlags(bool stray, bool express) => _statusMarks.Bind(stray, express);
 
         public bool RigAdmitted => _rigAdmitted;
+        public bool OriginalCarriageAdmitted { get; private set; }
+        public string CarriageFallbackReason { get; private set; } = "Carriage has not been evaluated.";
         private Vector3 _deliveredBaseScale;
         private int _deliveredIdleState, _deliveredCelebrateState;
         public Vector3 PlatformEndpointWorld => _hasPlatformAnchor ? _platformAnchorWorldPosition
@@ -401,7 +405,8 @@ namespace CatMetro.Presentation.Board
         public bool RigBlinkSupported => false;
 
         public static ToyTrainView Create(Transform parent, string name,
-            int[] edgeFrom, int[] edgeTo, CatModelCatalog catCatalog = null)
+            int[] edgeFrom, int[] edgeTo, CatModelCatalog catCatalog = null,
+            CarriageModelCatalog carriageCatalog = null)
         {
             var root = new GameObject(name);
             root.transform.SetParent(parent, false);
@@ -410,6 +415,7 @@ namespace CatMetro.Presentation.Board
             view._edgeFrom = edgeFrom;
             view._edgeTo = edgeTo;
             view._catCatalog = catCatalog;
+            view._carriageCatalog = carriageCatalog;
             view.BuildConsist();
             return view;
         }
@@ -1004,16 +1010,11 @@ namespace CatMetro.Presentation.Board
 
             _carriage = new GameObject("Carriage").transform;
             _carriage.SetParent(transform, false);
-            CreatePart("Chassis", _carriage, CubeMesh(),
-                new Vector3(0f, 0f, 0.205f), new Vector3(0.42f, 0.46f, 0.06f),
-                Quaternion.identity, NavyMaterial());
-            CreatePart("Body", _carriage, CubeMesh(),
-                new Vector3(0f, 0f, 0.185f), new Vector3(0.40f, 0.44f, 0.10f),
-                Quaternion.identity, CreamMaterial());
+            BuildCarriageVisual();
 
-            // The passenger: a chibi head at 82% of the body's width. Its lower fifth intersects
-            // the low wall in board-local geometry, while the frontal artifact keeps nearly all
-            // of its face visible, so it remains seated IN the open box and reads clearly.
+            // Keep the existing passenger anchors with either carriage. The primitive
+            // fallback's chibi head spans 82% of its box width and its lower fifth intersects
+            // the low wall; the authored open shell has separate rendered exposure checks.
             // Head and ears carry the line tint; the face is deliberately OUTSIDE the tinted
             // set, so the eyes stay near-black and the muzzle cream whatever colour the cat
             // is. Ears are 45-degree diamonds anchored in the head, splayed up and out.
@@ -1327,6 +1328,31 @@ namespace CatMetro.Presentation.Board
             _eyeLeft.GetComponent<MeshRenderer>().enabled = visible;
             _eyeRight.GetComponent<MeshRenderer>().enabled = visible;
             _cat.Find("Muzzle").GetComponent<MeshRenderer>().enabled = visible;
+        }
+
+        private void BuildCarriageVisual()
+        {
+            CarriageModelCatalog catalog = _carriageCatalog ?? CarriageModelCatalog.LoadResources();
+            OriginalCarriageAdmitted = catalog.TryGetPrefab(out GameObject prefab);
+            CarriageFallbackReason = catalog.RejectionReason;
+            if (OriginalCarriageAdmitted)
+            {
+                // The original model is +X forward / +Y up at immutable scale. Only
+                // this visual wrapper adapts it to board-local -Z up and the rail crown.
+                // Cat, pin, vehicle anchors and simulation never inherit this correction.
+                GameObject model = Instantiate(prefab, _carriage, false);
+                model.name = "OriginalCarriage";
+                model.transform.localPosition = new Vector3(0f, 0f, .235f);
+                model.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+                model.transform.localScale = Vector3.one;
+                return;
+            }
+            CreatePart("Chassis", _carriage, CubeMesh(),
+                new Vector3(0f, 0f, 0.205f), new Vector3(0.42f, 0.46f, 0.06f),
+                Quaternion.identity, NavyMaterial());
+            CreatePart("Body", _carriage, CubeMesh(),
+                new Vector3(0f, 0f, 0.185f), new Vector3(0.40f, 0.44f, 0.10f),
+                Quaternion.identity, CreamMaterial());
         }
 
         private static void DestroyOwned(GameObject instance)

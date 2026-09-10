@@ -6,6 +6,7 @@ using CatMetro.Content;
 using CatMetro.Domain;
 using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Cats;
+using CatMetro.Presentation.Props;
 using CatMetro.Presentation.Theme;
 using NUnit.Framework;
 using UnityEngine;
@@ -61,7 +62,10 @@ namespace CatMetro.Tests.PlayMode
         [UnityTest]
         public IEnumerator CatHead_SeatedInTheCarriage_ChibiProportions()
         {
-            yield return BuildBoard();
+            // This fixture pins the primitive fallback's box/head geometry. The optional
+            // original has an actual cavity; its mounted mesh bounds and unchanged rider
+            // anchors are covered separately, with phone exposure measured in BoardLook.
+            yield return BuildBoard(CarriageModelCatalog.Empty);
             PlaceOnEdge(edge: 1, progressTicks: 6);
             _view.UpdateFrom(_session);
 
@@ -912,12 +916,13 @@ namespace CatMetro.Tests.PlayMode
             LogAssert.NoUnexpectedReceived();
         }
 
-        private IEnumerator BuildBoard()
+        private IEnumerator BuildBoard(CarriageModelCatalog carriageCatalog = null)
         {
             var level = ImportL001();
             _session = new GameSession(level);
             _host = new GameObject("train-consist-host");
-            _view = BoardView.Build(level, _host.transform, _session);
+            _view = BoardView.Build(level, _host.transform, _session,
+                carriageCatalog: carriageCatalog);
             yield return null;
         }
 

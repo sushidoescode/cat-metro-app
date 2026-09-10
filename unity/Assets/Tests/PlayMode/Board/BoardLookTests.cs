@@ -475,7 +475,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(trainView.RigAdmitted, Is.False,
                 "the catalog precondition must remain licence-neutral for every measured level");
             var head = train.Find("Carriage/Cat/Head");
-            var body = train.Find("Carriage/Body");
+            var carriage = train.Find("Carriage");
+            var body = carriage.Find("OriginalCarriage/OpenShell") ?? carriage.Find("Body");
             Assert.That(head, Is.Not.Null);
             Assert.That(body, Is.Not.Null);
             Assert.That(head.GetComponent<Renderer>().enabled, Is.True,
@@ -483,7 +484,8 @@ namespace CatMetro.Tests.PlayMode
             var cat = head.parent;
 
             Rect headRect = ProjectedMeshRect(camera, head);
-            float widthRatio = RenderedAxisSize(head, 0) / RenderedAxisSize(body, 1);
+            float widthRatio = RenderedSpanAlong(head, carriage.right)
+                / RenderedSpanAlong(body, carriage.up);
 
             const int maskWidth = 917;
             const int maskHeight = 2048;
@@ -1545,12 +1547,24 @@ namespace CatMetro.Tests.PlayMode
             return Rect.MinMaxRect(minX, minY, maxX, maxY);
         }
 
-        private static float RenderedAxisSize(Transform part, int axis)
+        private static float RenderedSpanAlong(Transform part, Vector3 worldAxis)
         {
             var filter = part.GetComponent<MeshFilter>();
-            Vector3 mesh = filter.sharedMesh.bounds.size;
-            Vector3 scale = part.lossyScale;
-            return Mathf.Abs(axis == 0 ? mesh.x * scale.x : mesh.y * scale.y);
+            Assert.That(filter, Is.Not.Null, part.name + " needs an actual mesh");
+            Assert.That(filter.sharedMesh, Is.Not.Null);
+            var renderer = part.GetComponent<MeshRenderer>();
+            Assert.That(renderer.enabled && renderer.gameObject.activeInHierarchy, Is.True,
+                "do not measure hidden fallback geometry");
+            Vector3[] vertices = filter.sharedMesh.vertices;
+            Assert.That(vertices, Is.Not.Empty);
+            float minimum = float.PositiveInfinity, maximum = float.NegativeInfinity;
+            foreach (Vector3 vertex in vertices)
+            {
+                float projection = Vector3.Dot(part.TransformPoint(vertex), worldAxis.normalized);
+                minimum = Mathf.Min(minimum, projection);
+                maximum = Mathf.Max(maximum, projection);
+            }
+            return maximum - minimum;
         }
 
         private static RectInt OpaquePixelBounds(Texture2D texture)
