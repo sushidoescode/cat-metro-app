@@ -168,6 +168,17 @@ namespace CatMetro.Tests.PlayMode
                 int[] navy = ProtectedPixels(natural, silhouette, 1);
                 int[] pink = ProtectedPixels(natural, silhouette, 2);
                 checks.Add("protected_cream=" + cream.Length + " navy=" + navy.Length + " pink=" + pink.Length);
+                checks.Add(pink.Length > 0 ? "real_pink_face_view=observed" :
+                    "real_pink_face_view=not_observed;named_GPU_pink_swatch_is_the_only_pink_control");
+                // Select visibly warm coat from the natural photograph, independently of
+                // the shader mask. An all-black paid-atlas mask must fail even if the
+                // procedural swatches and all unchanged-face assertions pass.
+                int[] warmCoat = WarmCoatPixels(natural, silhouette);
+                int[] positiveCoat = warmCoat.Where(index => mask[index].r > 200
+                    && mask[index].g > 200 && mask[index].b > 200).ToArray();
+                checks.Add("natural_warm_coat=" + warmCoat.Length
+                    + " real_mask_positive_warm_coat=" + positiveCoat.Length);
+                var routeCoat = new List<(byte Route, int Changed, Color Mean)>();
                 var protectedSets = new[] { cream, navy, pink };
                 foreach (byte route in Routes)
                 {
@@ -180,6 +191,13 @@ namespace CatMetro.Tests.PlayMode
                     fur.SetPreview(1f, false);
                     SavePair(camera, target, directory, CatLine.NameOfCode(route), boardPosition, boardOrtho,
                         closePosition, closeOrtho, out Color32[] coloured);
+                    int coatChanged = positiveCoat.Count(index => ChannelDelta(natural[index], coloured[index]) > 8);
+                    Color meanCoat = Color.clear;
+                    foreach (int index in positiveCoat) meanCoat += (Color)coloured[index];
+                    if (positiveCoat.Length > 0) meanCoat /= positiveCoat.Length;
+                    routeCoat.Add((route, coatChanged, meanCoat));
+                    checks.Add(CatLine.NameOfCode(route) + "/coat_changed_gt8=" + coatChanged
+                        + "/mean_coat=" + meanCoat.ToString("F4"));
                     for (int group = 0; group < protectedSets.Length; group++)
                     {
                         int[] indices = protectedSets[group];
@@ -198,6 +216,15 @@ namespace CatMetro.Tests.PlayMode
                     "zero-strength fur shader must retain stock URP lighting and atlas appearance");
                 Assert.That(cream.Length, Is.GreaterThan(100), "real cream regions must be present");
                 Assert.That(navy.Length, Is.GreaterThan(100), "real navy eye/nose regions must be present");
+                Assert.That(warmCoat.Length, Is.GreaterThan(100), "the actual photograph must expose warm fur");
+                Assert.That(positiveCoat.Length, Is.GreaterThan(100),
+                    "the actual paid-atlas mask must select visible warm fur; all-black masks cannot pass");
+                foreach (var result in routeCoat)
+                {
+                    Assert.That(result.Changed, Is.GreaterThan(positiveCoat.Length / 2),
+                        CatLine.NameOfCode(result.Route) + " must visibly recolour the majority of strongly masked coat pixels");
+                    AssertRouteHue(result.Mean, result.Route);
+                }
                 foreach (int[] indices in protectedSets)
                     Assert.That(indices.Count(index => mask[index].r > 12), Is.Zero,
                         "natural cream/navy/pink pixels must stay black in the actual GPU mask");
@@ -381,6 +408,22 @@ namespace CatMetro.Tests.PlayMode
                     : c.r > .2f && c.r > 1.15f * c.g && c.r < 1.65f * c.g
                         && c.b > .74f * c.g && c.b < 1.05f * c.g;
                 if (protect) indices.Add(i);
+            }
+            return indices.ToArray();
+        }
+
+        private static int[] WarmCoatPixels(Color32[] natural, Color32[] silhouette)
+        {
+            var indices = new List<int>();
+            for (int i = 0; i < natural.Length; i++)
+            {
+                if (silhouette[i].r < 250 || silhouette[i].g < 250 || silhouette[i].b < 250) continue;
+                Color c = natural[i];
+                // Broad gamma-space photograph classifier, not the production linear-space
+                // mask arithmetic. Excludes cream, navy and pink; includes orange fur and
+                // sufficiently lit dark stripes. Owner reviews the actual debug image too.
+                if (c.r > .2f && c.g > .4f * c.r && c.g < .85f * c.r && c.b < .6f * c.g)
+                    indices.Add(i);
             }
             return indices.ToArray();
         }

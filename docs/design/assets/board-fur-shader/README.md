@@ -88,3 +88,12 @@ installed Unity 6000.3.16f1 references. No Unity process was run by this author.
 Shader compilation, GPU test results, exact mask coverage, opened candidate
 renders, Android rendering and performance remain unverified. The owner must
 open the actual mask and route frames before judging this candidate visually.
+
+The real-board probe also selects warm coat from the natural photograph independently of the
+shader's linear mask, requires more than 100 of those visible pixels to be strongly positive
+in the real GPU mask, and requires every route to change most of that selected coat by more
+than eight byte levels with the expected mean route hue. This prevents an all-black paid-atlas
+mask or disconnected tint from passing facial protection checks. The readback explicitly says
+whether pink pixels were observed in this face view; absent pink uses the named GPU swatch
+control and does not claim actual pink-region coverage. All beauty/mask renders precede these
+assertions. These new real-atlas controls still require owner Unity execution.
