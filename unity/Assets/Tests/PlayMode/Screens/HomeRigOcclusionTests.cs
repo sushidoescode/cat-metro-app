@@ -9,6 +9,7 @@ using CatMetro.Services;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using UnityEngine.Rendering.Universal;
 using Object = UnityEngine.Object;
 
 namespace CatMetro.Tests.PlayMode
@@ -301,26 +302,85 @@ namespace CatMetro.Tests.PlayMode
         private void AssertProfileRasterContained(ProfileRigMount mount, Rect holder,
             int width, int height, string name)
         {
-            Color32[] actual = ProfileRaster(width, height, name);
-            mount.PrefabRoot.gameObject.SetActive(false);
-            Color32[] without;
-            try { without = ProfileRaster(width, height, null); }
-            finally { mount.PrefabRoot.gameObject.SetActive(true); }
-            int inside = 0, outside = 0;
-            for (int y = 0; y < height; y++)
-                for (int x = 0; x < width; x++)
-                {
-                    int i = y * width + x;
-                    if (Math.Abs(actual[i].r - without[i].r) <= 4
-                        && Math.Abs(actual[i].g - without[i].g) <= 4
-                        && Math.Abs(actual[i].b - without[i].b) <= 4) continue;
-                    if (holder.Contains(new Vector2(x + .5f, y + .5f))) inside++;
-                    else outside++;
-                }
-            TestContext.Out.WriteLine(name + " " + width + "x" + height
-                + " inside=" + inside + " outside=" + outside + " holder=" + holder);
-            Assert.That(inside, Is.GreaterThan(100), "positive control: actual licensed rig must paint");
-            Assert.That(outside, Is.Zero, "no rig pixels may escape the holder or cover selector tiles");
+            // A full-scene before/after subtraction also measures unrelated board changes.
+            // Isolate the actual paid skin, without replacing or rebuilding its geometry.
+            var skins = mount.PrefabRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            Assert.That(skins, Has.Length.EqualTo(1), "isolate every skin in the admitted licensed fixture");
+            var skin = skins[0];
+            Assert.That(skin.enabled && skin.gameObject.activeInHierarchy, Is.True);
+            Material[] materials = skin.sharedMaterials;
+            var block = new MaterialPropertyBlock(); skin.GetPropertyBlock(block);
+            var slotBlocks = new MaterialPropertyBlock[materials.Length];
+            for (int i = 0; i < slotBlocks.Length; i++)
+            {
+                slotBlocks[i] = new MaterialPropertyBlock();
+                skin.GetPropertyBlock(slotBlocks[i], i);
+            }
+            int layer = skin.gameObject.layer, culling = _root.Cam.cullingMask;
+            bool forceRefresh = skin.forceMatrixRecalculationPerRender;
+            bool wasActive = mount.PrefabRoot.gameObject.activeSelf;
+            CameraClearFlags clear = _root.Cam.clearFlags;
+            Color background = _root.Cam.backgroundColor;
+            var cameraData = _root.Cam.GetUniversalAdditionalCameraData();
+            bool post = cameraData.renderPostProcessing;
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            Assert.That(shader, Is.Not.Null);
+            Assert.That(shader.isSupported, Is.True);
+            var white = new Material(shader);
+            white.SetColor("_BaseColor", Color.white);
+            try
+            {
+                // Manual Camera.Render calls occur without a player-loop skinning update.
+                skin.forceMatrixRecalculationPerRender = true;
+                ProfileRaster(width, height, name); // Keep the complete beauty capture for review.
+                _root.Cam.cullingMask = 1 << 31;
+                _root.Cam.clearFlags = CameraClearFlags.SolidColor;
+                _root.Cam.backgroundColor = Color.black;
+                cameraData.renderPostProcessing = false;
+                skin.gameObject.layer = 31;
+                var whiteMaterials = new Material[materials.Length];
+                for (int i = 0; i < whiteMaterials.Length; i++) whiteMaterials[i] = white;
+                skin.sharedMaterials = whiteMaterials;
+                skin.SetPropertyBlock(null);
+                for (int i = 0; i < slotBlocks.Length; i++) skin.SetPropertyBlock(null, i);
+                Color32[] actual = ProfileRaster(width, height, name + "-actual-skin");
+                mount.PrefabRoot.gameObject.SetActive(false);
+                Color32[] hidden = ProfileRaster(width, height, name + "-hidden-skin-control");
+                mount.PrefabRoot.gameObject.SetActive(wasActive);
+                Color32[] restored = ProfileRaster(width, height, name + "-restored-skin-control");
+                Assert.That(restored, Is.EqualTo(actual), "restoring the actual skin must restore every mask pixel");
+                int inside = 0, outside = 0, hiddenPixels = 0;
+                for (int y = 0; y < height; y++)
+                    for (int x = 0; x < width; x++)
+                    {
+                        int i = y * width + x;
+                        if (hidden[i].r != 0 || hidden[i].g != 0 || hidden[i].b != 0) hiddenPixels++;
+                        if (actual[i].r <= 4 && actual[i].g <= 4 && actual[i].b <= 4) continue;
+                        if (holder.Contains(new Vector2(x + .5f, y + .5f))) inside++;
+                        else outside++;
+                    }
+                TestContext.Out.WriteLine(name + " " + width + "x" + height
+                    + " isolatedSkinInside=" + inside + " outside=" + outside
+                    + " hiddenPixels=" + hiddenPixels + " holder=" + holder);
+                Assert.That(hiddenPixels, Is.Zero, "the isolated pass must be black with the actual skin hidden");
+                Assert.That(inside, Is.GreaterThan(100), "positive control: actual licensed skin must paint");
+                Assert.That(outside, Is.Zero, "no actual skin pixels may escape the holder or cover selector tiles");
+            }
+            finally
+            {
+                skin.sharedMaterials = materials;
+                skin.SetPropertyBlock(block.isEmpty ? null : block);
+                for (int i = 0; i < slotBlocks.Length; i++)
+                    skin.SetPropertyBlock(slotBlocks[i].isEmpty ? null : slotBlocks[i], i);
+                skin.gameObject.layer = layer;
+                skin.forceMatrixRecalculationPerRender = forceRefresh;
+                mount.PrefabRoot.gameObject.SetActive(wasActive);
+                _root.Cam.cullingMask = culling;
+                _root.Cam.clearFlags = clear;
+                _root.Cam.backgroundColor = background;
+                cameraData.renderPostProcessing = post;
+                Object.DestroyImmediate(white);
+            }
         }
 
         private Color32[] ProfileRaster(int width, int height, string name)
