@@ -26,6 +26,8 @@ namespace CatMetro.Tests.PlayMode
         private readonly List<Object> _owned = new List<Object>();
         private GameRoot _root;
         private float _timeScale;
+        private bool _previousDevSkip, _previousForceMatrices;
+        private SkinnedMeshRenderer _sampledSkin;
         private string _directory;
         private readonly List<object> _evidence = new List<object>();
         private static readonly string[] Regions =
@@ -39,10 +41,11 @@ namespace CatMetro.Tests.PlayMode
         {
             if (_directory != null) File.WriteAllText(Path.Combine(_directory, "seat-anatomy.json"),
                 JsonConvert.SerializeObject(_evidence, Formatting.Indented));
+            if (_sampledSkin != null) _sampledSkin.forceMatrixRecalculationPerRender = _previousForceMatrices;
             if (_root != null) Object.DestroyImmediate(_root.gameObject);
             foreach (Object value in _owned) if (value != null) Object.DestroyImmediate(value);
             _owned.Clear();
-            GameRoot.DevSkipShippedHome = false;
+            GameRoot.DevSkipShippedHome = _previousDevSkip;
             Time.timeScale = _timeScale;
         }
 
@@ -50,6 +53,7 @@ namespace CatMetro.Tests.PlayMode
         public IEnumerator CaptureActualPawsAndOpenCarriage_WhenRequested()
         {
             _timeScale = Time.timeScale;
+            _previousDevSkip = GameRoot.DevSkipShippedHome;
             _directory = Environment.GetEnvironmentVariable("CM_RIDING_SEAT_PROBE_DIR");
             if (string.IsNullOrEmpty(_directory)) { _directory = null; yield break; }
             Directory.CreateDirectory(_directory);
@@ -87,6 +91,11 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(rigPresentation.AuthoredMotionInstalled, Is.True);
             animator.Rebind(); animator.Update(0f); animator.enabled = false;
             var skin = animator.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single();
+            _sampledSkin = skin;
+            _previousForceMatrices = skin.forceMatrixRecalculationPerRender;
+            // Synchronous SampleAnimation/Camera.Render can otherwise reuse stale GPU
+            // matrices while CPU/Bake report the new pose. Diagnostic only; restored below.
+            skin.forceMatrixRecalculationPerRender = true;
             Assert.That(skin.sharedMesh.vertexCount, Is.EqualTo(7841));
             Transform rigRoot = animator.transform;
             while (rigRoot.parent != cat) rigRoot = rigRoot.parent;
@@ -113,6 +122,7 @@ namespace CatMetro.Tests.PlayMode
             }).ToArray();
             _evidence.Add(new { kind = "source", mesh = sourceMesh.name, sourceMesh.isReadable,
                 vertexCount = vertices.Length, weightCount = weights.Length,
+                forceMatricesForSynchronousRender = skin.forceMatrixRecalculationPerRender,
                 sourceFbx = UnityEditor.AssetDatabase.GetAssetPath(sourceMesh),
                 anatomy = Enumerable.Range(1, Regions.Length - 1).Select(r => new {
                     region = Regions[r], count = regions.Count(value => value == r),

@@ -43,7 +43,10 @@ need visual confirmation; provider names alone are explicitly insufficient.
 
 Independent CPU skinning uses each source vertex and `bone.localToWorldMatrix * bindpose`,
 then checks every sampled position against the baked skin within .0001 world units.
-This catches a scaling/projection error before using it to claim contact.
+This catches a scaling/projection error before using it to claim contact. The diagnostic scopes
+`forceMatrixRecalculationPerRender=true` to the actual sampled skin so a synchronous camera
+render cannot reuse a previous pose's GPU matrices; teardown restores the previous flag. It also
+restores the prior Home-skip global, including when the opt-in variable is absent.
 
 ## Actual carriage and captures
 
