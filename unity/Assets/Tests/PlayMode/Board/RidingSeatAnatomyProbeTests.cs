@@ -221,7 +221,11 @@ namespace CatMetro.Tests.PlayMode
                 foreach (var spec in new[] { (ride, new[] { 0f, .4f, 1.2f }, .4f),
                     (celebrate, new[] { 0f, .22f, .48f }, .22f) })
                 {
-                    // Measure full phase set; screenshots use the distinct ride/rear apex poses.
+                    bool requiredSeatPose = spec.Item1 == ride;
+                    string poseContext = requiredSeatPose ? "required carriage Ride"
+                        : "exploratory: platform Celebrate sampled on carriage, outside production state";
+                    // Preserve the old Celebrate comparison as exploration. Production
+                    // Celebrate has PlatformBlend=1 and cannot constrain a carriage seat fit.
                     foreach (float seconds in spec.Item2)
                     {
                         Sample(spec.Item1, seconds, animator, rigPresentation);
@@ -232,6 +236,7 @@ namespace CatMetro.Tests.PlayMode
                         {
                             var m = Measure(edge, spec.Item1.name, seconds, region, soles[region], current,
                                 carriage, shellVertices, shellTriangles);
+                            m.poseContext = poseContext;
                             measurements.Add(m); _evidence.Add(m);
                         }
                     }
@@ -258,22 +263,34 @@ namespace CatMetro.Tests.PlayMode
                     {
                         sheets[view].Apply();
                         string name = "edge-" + edge + "-" + spec.Item1.name + "-" + new[] { "phone", "side", "front" }[view];
-                        File.WriteAllBytes(Path.Combine(_directory, name + "-offsets-0-100-130mm.png"),
+                        if (!requiredSeatPose) name = "exploratory-out-of-production-state-" + name;
+                        string file = name + "-offsets-0-100-130mm.png";
+                        File.WriteAllBytes(Path.Combine(_directory, file),
                             CaptureRig.EncodeOpaqueSrgbPng(sheets[view]));
+                        _evidence.Add(new { kind = "beauty-comparison", file, clip = spec.Item1.name, poseContext });
                         Object.DestroyImmediate(sheets[view]);
                     }
                 }
             }
             rigRoot.localPosition = baselineOffset;
             // Compute, but do not force, the intersection needed to bring BOTH rear soles
-            // within 10 mm of a real floor without >5 mm penetration over all sampled poses.
-            var rear = measurements.Where(m => m.region.StartsWith("rear-", StringComparison.Ordinal)).ToArray();
+            // within 10 mm of a real floor without >5 mm penetration over required Ride poses.
+            // The raw out-of-production-state Celebrate samples remain in the evidence above.
+            var rear = measurements.Where(m => m.clip == ride.name
+                && m.region.StartsWith("rear-", StringComparison.Ordinal)).ToArray();
+            foreach (string side in new[] { "rear-minus-Z", "rear-plus-Z" })
+                Assert.That(rear.Where(m => m.region == side).Select(m => m.edge).Distinct(),
+                    Is.EquivalentTo(Enumerable.Range(0, 3)), "required seat evidence includes both rear soles at every heading");
+            Assert.That(measurements.Any(m => m.clip == celebrate.name), Is.True,
+                "exploratory Celebrate measurements remain available for review");
             bool allHaveFloor = rear.All(m => m.floorSamples > 0);
             float lower = allHaveFloor ? rear.Max(m => m.minimumFloorGap - .010f) : float.NaN;
             float upper = allHaveFloor ? rear.Min(m => m.minimumFloorGap + .005f) : float.NaN;
-            _evidence.Add(new { kind = "candidate-offset-interval", allHaveFloor, lower, upper,
+            _evidence.Add(new { kind = "candidate-offset-interval", requiredClip = ride.name,
+                requiredRearSamples = rear.Length, excludedExploratoryClip = celebrate.name,
+                allHaveFloor, lower, upper,
                 hasCommonVerticalOffset = allHaveFloor && lower <= upper,
-                warning = "Anatomy mask and actual beauty frames require owner review. This interval uses minimum rear-sole gap only; rim collisions/footprint coverage and lower torso/tail remain separate constraints." });
+                warning = "Required carriage Ride only; platform Celebrate sampled on the carriage is exploratory and excluded. Anatomy mask and actual beauty frames require owner review. This interval uses minimum rear-sole gap only; rim collisions/footprint coverage and lower torso/tail remain separate constraints." });
             TestContext.Out.WriteLine("RIDING_SEAT_PROBE " + JsonConvert.SerializeObject(_evidence.Last()));
             Assert.That(skin.sharedMesh, Is.SameAs(sourceMesh));
             // Do not assert that one trial offset fits: the purpose is to expose counterexamples.
@@ -348,7 +365,7 @@ namespace CatMetro.Tests.PlayMode
             + (w.boneIndex3 == b ? w.weight3 : 0f);
         private sealed class Measurement
         {
-            public string kind = "sole-contact", clip, region;
+            public string kind = "sole-contact", clip, region, poseContext;
             public int edge, soleSamples, floorSamples, rimOrWallSamples, outsideSamples;
             public float seconds, minimumFloorGap, medianFloorGap, minimumRimGap;
             public object carriageLocalBounds;

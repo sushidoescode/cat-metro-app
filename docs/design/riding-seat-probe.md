@@ -11,7 +11,7 @@ The imported `Resources/CatMetroOriginal/OpenCarriage` prefab and the admitted p
 motion controller must exist. The original carriage importer on `art/original-station-track`
 is the input; no invented box or floor replaces a missing asset. No `.meta` is hand-authored.
 
-The fixture runs on base `53f60131` without requiring carriage production changes. If the
+The fixture originated on base `53f60131` and also supports the integrated original assets. If the
 production `Carriage/OriginalCarriage` wrapper exists, it uses that actual wrapper. Otherwise
 it mounts the real imported prefab at the runtime candidate's `(0,0,.235)`, X rotation -90°,
 unit scale, and hides only the old `Carriage/Body` and `Carriage/Chassis`. JSON labels which path
@@ -55,17 +55,28 @@ Z .070. A horizontal ray at Z .10 must hit a real inner wall; one above the rim 
 miss. An old slab at rim height fails the floor control. Empty actual carriage side/front/top
 views show the cavity separately. No synthetic floor has a path to a green result.
 
-All three L001 authored spline edges are used at progress 6/10. Each has ride phases
-0/.4/1.2 seconds and celebrate phases 0/.22/.48 seconds measured. Beauty comparisons use
-ride .4 and celebrate .22. Every comparison image has three fixed-camera columns:
+All three L001 authored spline edges are used at progress 6/10. Required carriage measurements
+use Ride phases 0/.4/1.2 seconds. Celebrate phases 0/.22/.48 remain as exploratory samples on
+the carriage, outside the production state: `CatPresentationTrack.ResolvePlatformBlend` assigns
+Celebrate a platform blend of 1, and retained passengers also use blend 1 in
+`ToyTrainView.ApplyDeliveredPose`. The authored Celebrate is intentionally a neutral platform
+pose. Its artificial carriage samples must not constrain the required Ride seat fit or motivate
+changing Celebrate back to a seated pose.
+
+Beauty comparisons use Ride .4 and exploratory Celebrate .22. Celebrate filenames begin
+`exploratory-out-of-production-state-`; every raw contact row and beauty record includes its
+`poseContext`. Every comparison image has three fixed-camera columns:
 **current offset, +.100, +.130 down**. Phone columns are 917×2048; side/front columns are 768².
 There are 18 comparison sheets plus the baseline/cavity/anatomy control views. Colors/tints and
 nearby board geometry stay real; canvas visibility changes only for close views.
 
 For each sole/phase/heading the JSON reports actual floor, rim/wall, or outside-footprint hits;
 minimum/median floor gap; minimum rim/wall gap; and carriage-space bounds. Positive gap means
-floating, negative means penetration. A final interval intersects the translations needed to
-put **both** rear soles within .010 of a real floor while allowing at most .005 penetration.
+floating, negative means penetration. The final interval uses only records for the actual Ride
+clip and intersects the translations needed to put **both** rear soles within .010 of a real
+floor while allowing at most .005 penetration. It requires both rear soles to have recorded
+Ride samples at every heading. All raw Celebrate measurements and beauty sheets are retained
+for exploration, and are explicitly excluded from that interval.
 No shared interval is an explicit result, not grounds to loosen the metric. Coverage, wall
 intersections, lower torso, and tail remain independent constraints even if an interval exists.
 
