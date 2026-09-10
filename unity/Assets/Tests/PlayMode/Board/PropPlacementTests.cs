@@ -77,6 +77,29 @@ namespace CatMetro.Tests.PlayMode
                 "a grey/atlasless kiosk must leave the project-owned station visible");
         }
 
+        [Test]
+        public void OriginalStation_VisibleBodyAndRoofAreAdmitted()
+        {
+            var prefab = MultipartRenderPrefab("VisibleOriginalStation", 2);
+            prefab.transform.GetChild(0).name = "Body";
+            prefab.transform.GetChild(1).name = "RoofTint";
+            var catalog = new PropModelCatalog(new[] { Entry(PropModelCatalog.StationKioskId, prefab) });
+            Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(1));
+            Assert.That(catalog.RejectedEntryCount, Is.Zero);
+            Assert.That(catalog.TryGet(PropModelCatalog.StationKioskId, out var entry), Is.True);
+            Assert.That(entry.Prefab, Is.SameAs(prefab));
+            var level = ImportLevel("L001");
+            var board = BuildBoard(level);
+            BoardPropDecorator.Decorate(level, board.transform, catalog);
+            var stations = board.GetComponentsInChildren<BoardPropInstance>(true);
+            Assert.That(stations.Length, Is.EqualTo(level.Dto.Stations.Length));
+            foreach (var station in stations)
+            {
+                Assert.That(station.GetComponentsInChildren<Renderer>()
+                    .Count(r => r.enabled && (r.name == "Body" || r.name == "RoofTint")), Is.EqualTo(2));
+            }
+        }
+
         [TestCase("disabled-body")]
         [TestCase("inactive-roof")]
         [TestCase("missing-mesh")]
