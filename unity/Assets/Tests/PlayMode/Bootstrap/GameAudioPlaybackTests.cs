@@ -23,6 +23,37 @@ namespace CatMetro.Tests.PlayMode
         }
         [TearDown] public void TearDown() { Object.DestroyImmediate(_owner); Time.timeScale = 1f; }
 
+        [Test]
+        public void RepeatedInitialize_CountsAllClipsAndReusesTheLockedCue()
+        {
+            var lockedClip = _audio.SwitchLockedClip;
+            Assert.That(lockedClip, Is.Not.Null);
+            Assert.That(_audio.LoadedClipCount, Is.EqualTo(19),
+                "eighteen resource clips plus the generated locked-switch tick");
+            for (int i = 0; i < 3; i++)
+            {
+                _audio.Initialize(_owner.GetComponent<Camera>());
+                Assert.That(_audio.LoadedClipCount, Is.EqualTo(19),
+                    "reusing the generated tick must still count it after the diagnostic resets");
+                Assert.That(_audio.SwitchLockedClip, Is.SameAs(lockedClip));
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator DestroyingAudioOwner_ReleasesOnlyTheGeneratedLockedCue()
+        {
+            var lockedClip = _audio.SwitchLockedClip;
+            var resourceClip = Resources.Load<AudioClip>(GameAudio.ResourceRoot + "wooden-tap");
+            Assert.That(lockedClip, Is.Not.Null);
+            Assert.That(resourceClip, Is.Not.Null);
+            Object.Destroy(_owner);
+            _owner = null;
+            float deadline = Time.realtimeSinceStartup + 1f;
+            while (lockedClip != null && Time.realtimeSinceStartup < deadline) yield return null;
+            Assert.That(lockedClip == null, Is.True, "the owner disposes its generated clip");
+            Assert.That(resourceClip != null, Is.True, "resource clips remain owned by Resources");
+        }
+
         [UnityTest]
         public IEnumerator WinChorusWaitsForTheSharedBeat_AndCancellationSuppressesIt()
         {
