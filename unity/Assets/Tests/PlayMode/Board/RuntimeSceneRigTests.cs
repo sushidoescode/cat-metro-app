@@ -112,6 +112,61 @@ namespace CatMetro.Tests.PlayMode
                     AssertBoundsInsideShadowDistance(camera, renderer.bounds, renderer.name);
         }
 
+        [TestCase("L025"), TestCase("L048")]
+        public void PlainTrackNodes_LeaveRailsClear_AndSwitchesKeepWoodSupport(string levelId)
+        {
+            var root = GameRoot.LaunchWith(ImportLevel(levelId));
+            _owned.Add(root.gameObject);
+            var dto = root.Session.Level.Dto;
+            var nodes = dto.Nodes.ToArray();
+            var switches = dto.Switches.ToArray();
+            var switchNodes = new HashSet<string>(switches.Select(s => s.NodeId));
+            var anchors = root.View.GetComponentsInChildren<BoardElementId>(true)
+                .Where(e => e.Kind == "node" || e.Kind == "source" || e.Kind == "station").ToArray();
+            Assert.That(anchors.Select(e => e.Id).OrderBy(id => id),
+                Is.EqualTo(nodes.Select(n => n.Id).OrderBy(id => id)), "retain every authored node identity");
+            for (int i = 0; i < nodes.Length; i++)
+                Assert.That(Vector3.Distance(anchors.Single(e => e.Id == nodes[i].Id).transform.position,
+                    root.View.NodeWorldPos(i)), Is.LessThan(.00001f), "gameplay anchors must not move");
+
+            var ordinary = anchors.Where(e => e.Kind == "node" && !switchNodes.Contains(e.Id)).ToArray();
+            Assert.That(ordinary, Is.Not.Empty, "exercise real intermediate/dead-end track nodes");
+            Vector3[] InBoard(MeshFilter filter) => filter.sharedMesh.vertices.Select(v =>
+                root.View.transform.InverseTransformPoint(filter.transform.TransformPoint(v))).ToArray();
+            var violations = new List<string>();
+            foreach (var node in ordinary)
+                foreach (var filter in node.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    var renderer = filter.GetComponent<Renderer>();
+                    if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy) continue;
+                    float highest = InBoard(filter).Min(v => v.z);
+                    if (highest < ToyTrackMeshBuilder.RailCrownZ)
+                        violations.Add(node.Id + " projects geometry above the running surface: z=" + highest);
+                }
+
+            Assert.That(switches, Is.Not.Empty, "retain actual switch support controls");
+            foreach (var definition in switches)
+            {
+                var support = anchors.Single(e => e.Id == definition.NodeId);
+                var renderer = support.GetComponent<Renderer>();
+                Assert.That(renderer != null && renderer.enabled && renderer.gameObject.activeInHierarchy, Is.True,
+                    "a raised switch must retain its physical support");
+                var lever = root.View.GetComponentsInChildren<BoardElementId>(true)
+                    .Single(e => e.Kind == "switch" && e.Id == definition.Id);
+                Vector3[] supportPoints = InBoard(support.GetComponent<MeshFilter>());
+                Vector3[] leverBase = InBoard(lever.GetComponent<MeshFilter>());
+                Assert.That(supportPoints.Min(v => v.z), Is.EqualTo(leverBase.Max(v => v.z)).Within(.00001f),
+                    "support touches the actual teal switch base");
+                Assert.That(supportPoints.Max(v => v.z), Is.GreaterThanOrEqualTo(ToyTrackMeshBuilder.RailCrownZ),
+                    "support reaches the track instead of floating");
+                var block = new MaterialPropertyBlock(); renderer.GetPropertyBlock(block);
+                Color paint = block.GetColor("_BaseColor");
+                if (paint.r - paint.b <= .1f)
+                    violations.Add(definition.Id + " support remains grey instead of warm wood: " + paint);
+            }
+            Assert.That(violations, Is.Empty, string.Join("\n", violations));
+        }
+
         [Test]
         public void CauseFrameAndRetry_PreserveTheFrontalRestRig()
         {
