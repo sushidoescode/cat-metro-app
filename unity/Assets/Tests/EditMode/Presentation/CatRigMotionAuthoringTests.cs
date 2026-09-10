@@ -131,8 +131,8 @@ namespace CatMetro.Tests.EditMode.Presentation
             }
             foreach (string path in new[] { Body, Head, EarA, EarB, Tail, Paw })
             {
-                Quaternion seat = SampleRotation(Clip("Cat_IdleSit"), 0f, path);
-                foreach (string name in new[] { "Cat_IdleSit", "Cat_Ride", "Cat_Celebrate" })
+                Quaternion seat = SampleRotation(Clip("Cat_Ride"), 0f, path);
+                foreach (string name in new[] { "Cat_Ride", "Cat_Celebrate" })
                 {
                     AnimationClip clip = Clip(name);
                     AssertRotation(SampleRotation(clip, 0f, path), seat);
@@ -146,6 +146,40 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(Quaternion.Angle(SampleRotation(Clip("Cat_Celebrate"), 0f, Body),
                 SampleRotation(Clip("Cat_Celebrate"), 0.22f, Body)), Is.GreaterThan(3f),
                 "celebration must actually rear through the proven body control");
+        }
+
+        [Test]
+        public void IdleKeepsSourceNeutralChestAtLoopEndpointsWhileBreathingAndAccentsRemainVisible()
+        {
+            _neutral.SampleAnimation(_root, 0f);
+            Transform body = _root.transform.Find(Body), head = _root.transform.Find(Head);
+            Transform tail = _root.transform.Find(Tail);
+            Quaternion neutralBody = body.rotation, neutralHead = head.rotation, neutralTail = tail.rotation;
+            _clips = Generate();
+            AnimationClip idle = Clip("Cat_IdleSit");
+            foreach (float time in new[] { 0f, idle.length })
+            {
+                idle.SampleAnimation(_root, time);
+                AssertRotation(body.rotation, neutralBody);
+                AssertRotation(head.rotation, neutralHead);
+                AssertRotation(tail.rotation, Quaternion.AngleAxis(45f, _root.transform.forward) * neutralTail);
+            }
+            // These samples exercise the generated curves on a rotated hierarchy, rather
+            // than reproducing the generator's sine/pulse formula or accepting distinct keys alone.
+            foreach (float phase in new[] { .25f, .75f })
+            {
+                idle.SampleAnimation(_root, idle.length * phase);
+                Assert.That(Quaternion.Angle(body.rotation, neutralBody), Is.InRange(.25f, 1.5f),
+                    "breathing moves the torso gently around the original chest pose");
+                Assert.That(Quaternion.Angle(head.rotation, neutralHead), Is.InRange(.1f, 2f),
+                    "head sway remains visible without the seated counter-rotation");
+            }
+            foreach (var accent in new[] { (Tail, .25f), (EarA, .64f), (EarB, .715f) })
+            {
+                Quaternion start = SampleRotation(idle, 0f, accent.Item1);
+                Quaternion moving = SampleRotation(idle, idle.length * accent.Item2, accent.Item1);
+                Assert.That(Quaternion.Angle(start, moving), Is.InRange(.5f, 5f), accent.Item1);
+            }
         }
 
         [Test]

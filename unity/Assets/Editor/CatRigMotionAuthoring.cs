@@ -110,9 +110,9 @@ namespace CatMetro.EditorTools
                         + "bone_4 and Head_3 weighted ears. Coupled/mislabeled limb chains remain at sampled rest. "
                         + "Celebrate lifts forepaws through a small body rear, not a direct limb-chain rotation.",
                     timing = "60 Hz endpoint-inclusive sampling; IdleSit 3.2 s, Ride 1.6 s loops; "
-                        + "Board/Alight 0.18 s smooth transitions; Celebrate 0.48 s returns to seated idle.",
-                    motionParameters = "Degrees relative to seat: Idle body 0.65*sin, head -0.35*sin, roll 1.2*sin, "
-                        + "tail 3*sin; ears +3.5/-2.5 pulse. Ride body 0.8*sin, head -0.5*sin, roll 0.8*sin, "
+                        + "Board/Alight 0.18 s smooth transitions; Celebrate 0.48 s returns to the Ride seat.",
+                    motionParameters = "Idle degrees from source neutral: body 0.65*sin, head -0.35*sin, roll 1.2*sin, "
+                        + "tail 45+3*sin; ears +3.5/-2.5 pulse. Ride degrees relative to seat: body 0.8*sin, head -0.5*sin, roll 0.8*sin, "
                         + "tail 2*sin. Celebrate body +3 at 0.10 s, -8 at 0.22 s, 0 at 0.48 s; head -0.5*body, "
                         + "tail +12 pulse, head roll +2 pulse, ears +/-2 pulse. Animator +Z is pitch, +X head roll.",
                     seatedAnimatorDegrees = new Vector3(-35f, 32f, 45f),
@@ -221,8 +221,10 @@ namespace CatMetro.EditorTools
             float wave = Mathf.Sin(phase * Mathf.PI * 2f);
             if (clip == 0)
             {
-                body += 0.65f * wave; // Small rib-cage rise reads as breathing, with no scale animation.
-                head -= 0.35f * wave;
+                // The neutral torso/head preserve the weighted chest tuft in profile portraits.
+                // Breathing stays small; the carriage seat remains specific to the other clips.
+                body = 0.65f * wave;
+                head = -0.35f * wave;
                 roll = 1.2f * wave;
                 tail += 3f * wave;
                 earA = 3.5f * Pulse(phase, 0.58f, 0.7f);
