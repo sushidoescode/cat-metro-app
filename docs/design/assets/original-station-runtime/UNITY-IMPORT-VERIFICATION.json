@@ -198,7 +198,7 @@
     },
     {
       "path": "unity/Assets/Art/Original/Track/Resources/Track/original-toy-atlas.png.meta",
-      "sha256": "be83ab36d67ede50da3a7112696b4e7e7f5a750523d1cd8e9dd857a6aa51d32f",
+      "sha256": "94d6eb99398507f8ce7da1d30dc8a486a0b19858a3a050ced61c9eb2c7f8460c",
       "bytes": 3717
     },
     {
@@ -257,7 +257,51 @@
     "Full native suites on the generated candidate",
     "Dense-level station placement",
     "Original carriage paw contact: diagnostic CPU-vs-Bake error .0243187323 before captures",
-    "Track importer configuration",
     "Device rendering/performance"
-  ]
+  ],
+  "track_native_configuration": {
+    "source_candidate": "cbd7869c270d64e0d8d573bda7742c81a885de75",
+    "unity_version": "6000.3.16f1",
+    "entry_point": "CatMetro.EditorTools.CatMetroOriginalTrackImportPipeline.BuildAndExit",
+    "evidence_directory": "/private/tmp/catmetro-owner-original-assets-20260910-104917",
+    "log": "track-config.log",
+    "log_sha256": "f851ca96463cab163efe18722c8eb44a327067f71750f5244c23a0863b52b4fe",
+    "native_log_result": "ORIGINAL_TRACK_ATLAS PASS path=Assets/Art/Original/Track/Resources/Track/original-toy-atlas.png sha256=3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45 srgb=true mipmaps=true readable=false wrap=Clamp",
+    "unity_process_exit_code_reported_by_owner": 0,
+    "atlas_path": "unity/Assets/Art/Original/Track/Resources/Track/original-toy-atlas.png",
+    "atlas_sha256": "3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45",
+    "atlas_dimensions": [
+      1024,
+      512
+    ],
+    "meta_path": "unity/Assets/Art/Original/Track/Resources/Track/original-toy-atlas.png.meta",
+    "previous_meta_sha256": "be83ab36d67ede50da3a7112696b4e7e7f5a750523d1cd8e9dd857a6aa51d32f",
+    "native_meta_sha256": "94d6eb99398507f8ce7da1d30dc8a486a0b19858a3a050ced61c9eb2c7f8460c",
+    "native_meta_bytes": 3717,
+    "guid_unchanged": "c81ecf15c1fce4d149e6433bf099f8c8",
+    "settings_changed": {
+      "anisotropy": {
+        "before": 1,
+        "after": 2
+      },
+      "wrap_u_v_w": {
+        "before": "Repeat",
+        "after": "Clamp"
+      },
+      "alpha_source": {
+        "before": "FromInput",
+        "after": "None"
+      },
+      "default_platform_max_texture_size": {
+        "before": 2048,
+        "after": 1024
+      }
+    },
+    "other_generated_files_unchanged": 40,
+    "pending_at_receipt": [
+      "Current original station and configured L001/L009/L015/L048 board render validation",
+      "Current native EditMode checks and wider-carriage platform clearance >=0.045",
+      "Actual device rendering and performance"
+    ]
+  }
 }
