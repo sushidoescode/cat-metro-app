@@ -1965,6 +1965,10 @@ namespace CatMetro.Bootstrap
                 && ScreenState != "FailureReview")
             {
                 ScreenState = "FailureReview";
+                // The failure mood takes over from any rejection pulse. Restore the idle
+                // camera flag first so that pulse cannot later turn the failure effect off,
+                // and Retry restores the actual idle setting rather than a temporary true.
+                View.StopRejectionVignette();
                 CauseCam.ShowFailureMood(MotionOff);
                 // ux-flows S-03 ST-ERR (review N9): attribution may NEVER block the fail sheet
                 // or the retry — a throw falls back to the ambiguous variant (no framing).

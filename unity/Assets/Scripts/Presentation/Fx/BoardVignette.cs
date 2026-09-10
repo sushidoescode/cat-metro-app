@@ -57,6 +57,12 @@ namespace CatMetro.Presentation.Fx
             });
         }
 
+        public void Stop()
+        {
+            _fx?.Finish(this);
+            Restore();
+        }
+
         private void Restore()
         {
             if (_volume != null) { _volume.weight = 0f; _volume.enabled = false; }

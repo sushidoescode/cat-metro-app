@@ -73,7 +73,14 @@ namespace CatMetro.Tests.PlayMode
             _root.Input.GetComponent<BoardFx>()?.Advance(.14f);
             Assert.That(_root.Intro.IsVisible, Is.False);
             Assert.That(_root.ScreensVisible, Is.False);
-            yield return null;
+            // The Play callback starts C's camera dolly and Home fades. Finish that
+            // transition before recording tap coordinates for the settled gameplay tests.
+            var fx = _root.GetComponent<BoardFx>();
+            fx.Advance(.4f);
+            Assert.That(fx.IsAnimating(_root.Cam), Is.False);
+            Assert.That(_root.Home.gameObject.activeInHierarchy, Is.False);
+            Assert.That(_root.Wardrobe.gameObject.activeInHierarchy, Is.False);
+            yield return null; // Let the camera-space canvases adopt the settled projection.
         }
 
         private RectTransform Pin => _root.GetComponentsInChildren<RectTransform>()

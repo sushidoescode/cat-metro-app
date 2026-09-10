@@ -56,6 +56,7 @@ namespace CatMetro.Presentation.Board
             _gameplayVisible = gameplayVisible;
         }
         public void StopAmbient() => _ambient?.Stop();
+        public void StopRejectionVignette() => _vignette?.Stop();
         public void StopMotion()
         {
             StopAmbient();
