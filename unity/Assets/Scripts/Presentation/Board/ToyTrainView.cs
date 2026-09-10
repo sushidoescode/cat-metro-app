@@ -292,6 +292,9 @@ namespace CatMetro.Presentation.Board
         private CatPresentationState _lastRigState = CatPresentationState.Hidden;
         private CatModelCatalog _catCatalog;
         private CarriageModelCatalog _carriageCatalog;
+        private EngineModelCatalog _engineCatalog;
+        public bool OriginalEngineAdmitted { get; private set; }
+        public string EngineFallbackReason { get; private set; }
         private GameObject _rigInstance;
         private Animator _rigAnimator;
         private CatRigPresentation _rigPresentation;
@@ -406,7 +409,7 @@ namespace CatMetro.Presentation.Board
 
         public static ToyTrainView Create(Transform parent, string name,
             int[] edgeFrom, int[] edgeTo, CatModelCatalog catCatalog = null,
-            CarriageModelCatalog carriageCatalog = null)
+            CarriageModelCatalog carriageCatalog = null, EngineModelCatalog engineCatalog = null)
         {
             var root = new GameObject(name);
             root.transform.SetParent(parent, false);
@@ -416,6 +419,7 @@ namespace CatMetro.Presentation.Board
             view._edgeTo = edgeTo;
             view._catCatalog = catCatalog;
             view._carriageCatalog = carriageCatalog;
+            view._engineCatalog = engineCatalog;
             view.BuildConsist();
             return view;
         }
@@ -1007,6 +1011,7 @@ namespace CatMetro.Presentation.Board
             CreatePart("Funnel", _engine, CylinderMesh(),
                 new Vector3(0.15f, 0f, -0.085f), new Vector3(0.09f, 0.10f, 0.09f),
                 Quaternion.Euler(90f, 0f, 0f), NavyMaterial()); // cylinder axis off the board
+            BuildEngineVisual();
 
             _carriage = new GameObject("Carriage").transform;
             _carriage.SetParent(transform, false);
@@ -1328,6 +1333,23 @@ namespace CatMetro.Presentation.Board
             _eyeLeft.GetComponent<MeshRenderer>().enabled = visible;
             _eyeRight.GetComponent<MeshRenderer>().enabled = visible;
             _cat.Find("Muzzle").GetComponent<MeshRenderer>().enabled = visible;
+        }
+
+        private void BuildEngineVisual()
+        {
+            EngineModelCatalog catalog = _engineCatalog ?? EngineModelCatalog.LoadResources();
+            OriginalEngineAdmitted = catalog.TryGetPrefab(out GameObject prefab);
+            EngineFallbackReason = catalog.RejectionReason;
+            if (!OriginalEngineAdmitted) return;
+            GameObject model = Instantiate(prefab, _engine, false);
+            model.name = "OriginalEngine";
+            model.transform.localPosition = new Vector3(0f, 0f, .235f);
+            model.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+            model.transform.localScale = Vector3.one;
+            // Retain every legacy attachment transform, especially Funnel's original
+            // scale/rotation used by Steam. Only its primitive renderer is replaced.
+            foreach (string name in new[] { "Chassis", "Boiler", "Cab", "CabRoof", "Funnel" })
+                _engine.Find(name).GetComponent<MeshRenderer>().enabled = false;
         }
 
         private void BuildCarriageVisual()
