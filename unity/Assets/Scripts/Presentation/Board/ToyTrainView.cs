@@ -308,6 +308,7 @@ namespace CatMetro.Presentation.Board
         private Quaternion _rigEarBLastApplied;
         private bool _rigAdmitted;
         private bool _rigMotionSuppressed;
+        private bool _rigStaticSeated;
         private bool _rigEarTwitchSupported;
         private bool _rigEarPoseApplied;
         private bool _rigEarTwitchActive;
@@ -544,9 +545,10 @@ namespace CatMetro.Presentation.Board
             if (hidden)
             {
                 // Animator.Update cannot sample an inactive hierarchy. A first motion-off
-                // transition therefore takes its one neutral sample before Cat is hidden;
-                // already-suppressed frames do not reactivate or resample it.
-                if (motionOff && !_rigMotionSuppressed)
+                // transition therefore takes its one neutral sample before Cat is hidden.
+                // A previously seated static pose also returns to neutral before hiding.
+                // Repeated hidden frames do not reactivate or resample it.
+                if (motionOff && (!_rigMotionSuppressed || _rigStaticSeated))
                     _cat.gameObject.SetActive(true);
                 ClearRigEarTwitch();
                 ResetVisualPose();
@@ -651,7 +653,16 @@ namespace CatMetro.Presentation.Board
                     _cat.localPosition = pathLocalPosition;
                     _pin.localPosition = _pinBaseLocalPosition + pathOffset;
                 }
-                PlayRig(state, true, desiredTravelSpeed);
+                // Reduced motion cuts inbound walking/boarding to the actual seat. Source
+                // waits and retained platform passengers keep their neutral standing pose.
+                bool staticSeated = OriginalCarriageAdmitted && _rigPresentation != null
+                    && _rigPresentation.OpenCarriageMotionInstalled
+                    && (state == CatPresentationState.RideIdle
+                        || (state == CatPresentationState.WaitingIdle && safePlatformBlend == 0f)
+                        || (!movingToPlatform && (state == CatPresentationState.Walk
+                            || state == CatPresentationState.Board)));
+                PlayRig(state, true, desiredTravelSpeed, staticSeated);
+                ApplyRigSeatDepth();
                 return;
             }
 
@@ -717,16 +728,20 @@ namespace CatMetro.Presentation.Board
             if (_rigInstance == null) return;
             float weight = 0f;
             if (OriginalCarriageAdmitted && _rigPresentation != null
-                && _rigPresentation.OpenCarriageMotionInstalled && !_rigMotionSuppressed
+                && _rigPresentation.OpenCarriageMotionInstalled
                 && _presentationState != CatPresentationState.Hidden && _rigAnimator != null)
             {
-                weight = SeatWeight(_rigAnimator.GetCurrentAnimatorStateInfo(0));
-                if (_rigAnimator.IsInTransition(0))
-                    weight = Mathf.Lerp(weight, SeatWeight(_rigAnimator.GetNextAnimatorStateInfo(0)),
-                        Mathf.Clamp01(_rigAnimator.GetAnimatorTransitionInfo(0).normalizedTime));
+                if (_rigMotionSuppressed) weight = _rigStaticSeated ? 1f : 0f;
+                else
+                {
+                    weight = SeatWeight(_rigAnimator.GetCurrentAnimatorStateInfo(0));
+                    if (_rigAnimator.IsInTransition(0))
+                        weight = Mathf.Lerp(weight, SeatWeight(_rigAnimator.GetNextAnimatorStateInfo(0)),
+                            Mathf.Clamp01(_rigAnimator.GetAnimatorTransitionInfo(0).normalizedTime));
+                }
             }
-            // Only the visual rig wrapper moves. Read the evaluated animation clock rather
-            // than PlatformBlend: boarding begins at platform blend .35 with a neutral pose.
+            // Only the visual rig wrapper moves. Animated depth follows the evaluated clock
+            // rather than PlatformBlend: boarding starts at blend .35 with a neutral pose.
             _rigInstance.transform.localPosition = Vector3.forward * (OpenCarriageSeatDepth * weight);
         }
 
@@ -1329,17 +1344,18 @@ namespace CatMetro.Presentation.Board
         }
 
         private void PlayRig(CatPresentationState state, bool motionOff,
-            float desiredTravelSpeed)
+            float desiredTravelSpeed, bool staticSeated = false)
         {
             if (!_rigAdmitted || _rigAnimator == null) return;
             _rigAnimator.applyRootMotion = false;
             if (motionOff)
             {
-                if (_rigMotionSuppressed) return;
+                if (_rigMotionSuppressed && _rigStaticSeated == staticSeated) return;
                 _rigMotionSuppressed = true;
+                _rigStaticSeated = staticSeated;
                 _rigAnimator.Rebind();
                 _rigAnimator.Play(_rigAnimator.GetLayerName(0) + "."
-                    + CatModelCatalog.IdleSitClip, 0, 0f);
+                    + (staticSeated ? CatRigPresentation.RideClip : CatModelCatalog.IdleSitClip), 0, 0f);
                 _rigAnimator.Update(0f);
                 _rigPresentation?.ApplyHeadShape();
                 _rigAnimator.speed = 0f;
@@ -1349,6 +1365,7 @@ namespace CatMetro.Presentation.Board
             }
 
             _rigMotionSuppressed = false;
+            _rigStaticSeated = false;
             float playbackSpeed = 1f;
             if (state == CatPresentationState.Walk)
             {
