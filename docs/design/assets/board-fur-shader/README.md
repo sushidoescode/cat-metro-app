@@ -63,14 +63,20 @@ test requires the admitted licensed rig and renders 917 × 2048 files:
 - `mask-debug-{board,close}.png`: raw candidate coat selection.
 - `{red,blue,yellow,green,wild}-{board,close}.png`: production session-to-view
   colour binding, reusing the same train slot.
+- `measurement-*.png`: the same close view at one sample per pixel, including
+  natural/stock lighting, source atlas without lighting, silhouette, mask and routes.
 - `readback.txt`: stock-material equivalence and protected-region differences.
 
 The full board retains its HUD. Close-ups hide canvases temporarily and keep the
 actual cat, pin, carriage, surrounding geometry and camera projection. A separate
 temporary white-cat/black-occluder pass identifies visible skin pixels for checks;
-it restores every material/property block. Natural-image colour regions are
-independent of the shader's linear-atlas classifier, but are still heuristic and
-must be interpreted alongside the opened renders. No simulation ticks advance
+it restores every material/property block. Protected regions are classified from
+the unlit source atlas independently of the shader's linear mask, at one sample
+per pixel. Lighting can make orange fur satisfy a pink/cream photograph predicate;
+an MSAA-resolved pixel can mix fur and protected samples with different masks.
+Neither is a valid single-region protection measurement. The 4x MSAA beauty
+captures remain intact, and all measurement mask/colour assertions still require
+zero changed protected pixels. No simulation ticks advance
 during the colour comparison. This is a frozen presentation probe, not a complete
 live puzzle replay.
 
@@ -83,11 +89,13 @@ inspect the admitted fur channel on live and retained cats.
 
 ## Verification so far
 
-The Presentation, EditMode and PlayMode C# source assemblies compile against the
-installed Unity 6000.3.16f1 references. No Unity process was run by this author.
-Shader compilation, GPU test results, exact mask coverage, opened candidate
-renders, Android rendering and performance remain unverified. The owner must
-open the actual mask and route frames before judging this candidate visually.
+The owner verified the six EditMode cases and the always-running GPU swatch test
+in Unity 6000.3.16f1. Native unlit controls at one sample per pixel selected
+50,991 cream, 19,592 navy and 5,725 pink pixels with zero mask leakage, while the
+lit-photograph predicates still failed. This established the measurement issue;
+the final paired beauty/measurement fixture requires its own native run. Android
+rendering and performance remain unverified. The owner must open the actual mask
+and route frames before judging this candidate visually.
 
 The real-board probe also selects warm coat from the natural photograph independently of the
 shader's linear mask, requires more than 100 of those visible pixels to be strongly positive

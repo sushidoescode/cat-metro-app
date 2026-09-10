@@ -121,8 +121,14 @@ namespace CatMetro.Tests.PlayMode
             var target = new RenderTexture(917, 2048, 24, RenderTextureFormat.ARGB32,
                 RenderTextureReadWrite.sRGB) { antiAliasing = 4 };
             target.Create();
+            // Keep the actual antialiased beauty separately. A resolved MSAA pixel
+            // can mix protected atlas and fur samples; it has no single material class.
+            var measurement = new RenderTexture(917, 2048, 24, RenderTextureFormat.ARGB32,
+                RenderTextureReadWrite.sRGB) { antiAliasing = 1 };
+            measurement.Create();
             camera.targetTexture = target;
             var checks = new List<string>();
+            checks.Add("beauty_samples=4 measurement_samples=1 classification=unlit_atlas");
             bool previousForceMatrices = skin.forceMatrixRecalculationPerRender;
             try
             {
@@ -144,7 +150,9 @@ namespace CatMetro.Tests.PlayMode
 
                 fur.SetPreview(0f, false);
                 SavePair(camera, target, directory, "natural-control", boardPosition, boardOrtho,
-                    closePosition, closeOrtho, out Color32[] natural);
+                    closePosition, closeOrtho, out _);
+                Color32[] natural = ReadClose(camera, measurement);
+                Save(Path.Combine(directory, "measurement-natural.png"), natural, measurement);
 
                 // A stock-Lit source-material control catches accidental lighting or texture
                 // changes in the wrapper, independently of its zero-strength arithmetic.
@@ -159,7 +167,9 @@ namespace CatMetro.Tests.PlayMode
                     skin.sharedMaterials = sourceSkin.sharedMaterials;
                     skin.SetPropertyBlock(null);
                     SavePair(camera, target, directory, "stock-lit-control", boardPosition, boardOrtho,
-                        closePosition, closeOrtho, out Color32[] stock);
+                        closePosition, closeOrtho, out _);
+                    Color32[] stock = ReadClose(camera, measurement);
+                    Save(Path.Combine(directory, "measurement-stock-lit.png"), stock, measurement);
                     stockDifferent = CountDifferent(stock, natural, 3);
                     checks.Add("stock_lit_different_pixels_gt3=" + stockDifferent);
                 }
@@ -168,13 +178,20 @@ namespace CatMetro.Tests.PlayMode
                     skin.sharedMaterials = mountedMaterials;
                     skin.SetPropertyBlock(mountedProperties);
                 }
-                Color32[] silhouette = ReadSkinSilhouette(camera, target, skin, _root.gameObject);
+                // Classify the source atlas before lighting. A lit orange surface can
+                // satisfy a pink/cream photograph predicate without being pink/cream fur.
+                Color32[] atlas = ReadUnlitAtlas(camera, measurement, skin);
+                Save(Path.Combine(directory, "measurement-unlit-atlas.png"), atlas, measurement);
+                Color32[] silhouette = ReadSkinSilhouette(camera, measurement, skin, _root.gameObject);
+                Save(Path.Combine(directory, "measurement-silhouette.png"), silhouette, measurement);
                 fur.SetPreview(1f, true);
                 SavePair(camera, target, directory, "mask-debug", boardPosition, boardOrtho,
-                    closePosition, closeOrtho, out Color32[] mask);
-                int[] cream = ProtectedPixels(natural, silhouette, 0);
-                int[] navy = ProtectedPixels(natural, silhouette, 1);
-                int[] pink = ProtectedPixels(natural, silhouette, 2);
+                    closePosition, closeOrtho, out _);
+                Color32[] mask = ReadClose(camera, measurement);
+                Save(Path.Combine(directory, "measurement-mask.png"), mask, measurement);
+                int[] cream = ProtectedPixels(atlas, silhouette, 0);
+                int[] navy = ProtectedPixels(atlas, silhouette, 1);
+                int[] pink = ProtectedPixels(atlas, silhouette, 2);
                 checks.Add("protected_cream=" + cream.Length + " navy=" + navy.Length + " pink=" + pink.Length);
                 checks.Add(pink.Length > 0 ? "real_pink_face_view=observed" :
                     "real_pink_face_view=not_observed;named_GPU_pink_swatch_is_the_only_pink_control");
@@ -198,7 +215,10 @@ namespace CatMetro.Tests.PlayMode
                     _root.View.UpdateFrom(_root.Session, 1f);
                     fur.SetPreview(1f, false);
                     SavePair(camera, target, directory, CatLine.NameOfCode(route), boardPosition, boardOrtho,
-                        closePosition, closeOrtho, out Color32[] coloured);
+                        closePosition, closeOrtho, out _);
+                    Color32[] coloured = ReadClose(camera, measurement);
+                    Save(Path.Combine(directory, "measurement-" + CatLine.NameOfCode(route) + ".png"),
+                        coloured, measurement);
                     int coatChanged = positiveCoat.Count(index => ChannelDelta(natural[index], coloured[index]) > 8);
                     Color meanCoat = Color.clear;
                     foreach (int index in positiveCoat) meanCoat += (Color)coloured[index];
@@ -218,8 +238,8 @@ namespace CatMetro.Tests.PlayMode
                 }
                 File.WriteAllLines(Path.Combine(directory, "readback.txt"), checks);
                 TestContext.Out.WriteLine("FUR_CAPTURE " + string.Join(" ", checks));
-                // Save every broken-state render before these semantic assertions. A colour
-                // classifier on the natural image is independent of the shader's atlas mask.
+                // Save every render before the unchanged zero-difference assertions.
+                // Unlit source-colour classification is independent of the shader mask.
                 Assert.That(stockDifferent, Is.LessThan(20),
                     "zero-strength fur shader must retain stock URP lighting and atlas appearance");
                 Assert.That(cream.Length, Is.GreaterThan(100), "real cream regions must be present");
@@ -235,7 +255,7 @@ namespace CatMetro.Tests.PlayMode
                 }
                 foreach (int[] indices in protectedSets)
                     Assert.That(indices.Count(index => mask[index].r > 12), Is.Zero,
-                        "natural cream/navy/pink pixels must stay black in the actual GPU mask");
+                        "single-sample cream/navy/pink atlas pixels must stay black in the actual GPU mask");
                 foreach (string check in checks.Where(line => line.Contains("/changed_gt3=")))
                     Assert.That(check.EndsWith("=0"), Is.True, check);
             }
@@ -248,6 +268,8 @@ namespace CatMetro.Tests.PlayMode
                 camera.orthographicSize = oldOrtho;
                 target.Release();
                 Object.DestroyImmediate(target);
+                measurement.Release();
+                Object.DestroyImmediate(measurement);
                 if (checks.Count > 0) File.WriteAllLines(Path.Combine(directory, "readback.txt"), checks);
             }
             LogAssert.NoUnexpectedReceived();
@@ -307,9 +329,11 @@ namespace CatMetro.Tests.PlayMode
         private static Color32[] Read(Camera camera, RenderTexture target)
         {
             RenderTexture old = RenderTexture.active;
+            RenderTexture previousTarget = camera.targetTexture;
             Texture2D pixels = null;
             try
             {
+                camera.targetTexture = target;
                 camera.Render();
                 RenderTexture.active = target;
                 pixels = CaptureRig.ReadRgb24(target);
@@ -318,6 +342,7 @@ namespace CatMetro.Tests.PlayMode
             finally
             {
                 RenderTexture.active = old;
+                camera.targetTexture = previousTarget;
                 if (pixels != null) Object.DestroyImmediate(pixels);
             }
         }
@@ -331,18 +356,64 @@ namespace CatMetro.Tests.PlayMode
             Save(Path.Combine(directory, name + "-board.png"), Read(camera, target), target);
             camera.transform.position = closePosition;
             camera.orthographicSize = closeOrtho;
+            close = ReadClose(camera, target);
+            Save(Path.Combine(directory, name + "-close.png"), close, target);
+        }
+
+        private static Color32[] ReadClose(Camera camera, RenderTexture target)
+        {
             Canvas[] canvases = camera.transform.root.GetComponentsInChildren<Canvas>(true);
             bool[] enabled = canvases.Select(canvas => canvas.enabled).ToArray();
             try
             {
                 foreach (Canvas canvas in canvases) canvas.enabled = false;
-                close = Read(camera, target);
+                return Read(camera, target);
             }
             finally
             {
                 for (int i = 0; i < canvases.Length; i++) canvases[i].enabled = enabled[i];
             }
-            Save(Path.Combine(directory, name + "-close.png"), close, target);
+        }
+
+        private static Color32[] ReadUnlitAtlas(Camera camera, RenderTexture target, Renderer skin)
+        {
+            Material[] original = skin.sharedMaterials;
+            var properties = new MaterialPropertyBlock();
+            skin.GetPropertyBlock(properties);
+            bool hadProperties = skin.HasPropertyBlock();
+            var unlit = new Material[original.Length];
+            var cameraData = camera.GetComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+            bool post = cameraData != null && cameraData.renderPostProcessing;
+            try
+            {
+                Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+                Assert.That(shader != null && shader.isSupported, Is.True);
+                for (int i = 0; i < original.Length; i++)
+                {
+                    var indexed = new MaterialPropertyBlock();
+                    skin.GetPropertyBlock(indexed, i);
+                    Assert.That(indexed.isEmpty, Is.True, "atlas control requires no indexed override");
+                    unlit[i] = new Material(shader);
+                    unlit[i].SetTexture("_BaseMap", original[i].GetTexture("_BaseMap"));
+                    unlit[i].SetTextureScale("_BaseMap", original[i].GetTextureScale("_BaseMap"));
+                    unlit[i].SetTextureOffset("_BaseMap", original[i].GetTextureOffset("_BaseMap"));
+                    unlit[i].SetColor("_BaseColor", Color.white);
+                    unlit[i].SetFloat("_Cull", original[i].GetFloat("_Cull"));
+                }
+                skin.sharedMaterials = unlit;
+                skin.SetPropertyBlock(null);
+                if (cameraData != null) cameraData.renderPostProcessing = false;
+                return ReadClose(camera, target);
+            }
+            finally
+            {
+                skin.sharedMaterials = original;
+                skin.SetPropertyBlock(hadProperties ? properties : null);
+                if (cameraData != null) cameraData.renderPostProcessing = post;
+                foreach (Material material in unlit) if (material != null) Object.DestroyImmediate(material);
+                Assert.That(skin.sharedMaterials, Is.EqualTo(original));
+                Assert.That(skin.HasPropertyBlock(), Is.EqualTo(hadProperties));
+            }
         }
 
         private static void Save(string path, Color32[] colours, RenderTexture target)
