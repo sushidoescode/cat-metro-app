@@ -202,6 +202,11 @@ namespace CatMetro.Tests.PlayMode
                 else
                 {
                     Assert.That(_root.Input.HandleTapAtScreen(_root.Wardrobe.EntryRectPx.center), Is.EqualTo(-3));
+                    var canvas = _root.Wardrobe.GetComponentInParent<Canvas>();
+                    float planeDistance = Vector3.Dot(canvas.transform.position - _root.Cam.transform.position,
+                        _root.Cam.transform.forward);
+                    Assert.That(planeDistance, Is.EqualTo(canvas.planeDistance).Within(.001f),
+                        "restoring the play camera must synchronize the canvas before any render");
                     _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>().Advance(.14f);
                     _root.Wardrobe.LayoutForViewport(safe, dpi);
                 }

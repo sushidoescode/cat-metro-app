@@ -821,6 +821,12 @@ namespace CatMetro.Bootstrap
             if (Cam == null || View == null) return;
             _homeFx?.Finish(Cam, HomeCameraChannel);
             BoardSceneLook.FitCamera(Cam, View);
+            // Match the Home refit: apply the new camera pose to the screens canvas
+            // before Wardrobe measures its lifted rig on the first layout.
+            var canvas = Home.GetComponentInParent<Canvas>();
+            canvas.worldCamera = null;
+            canvas.worldCamera = Cam;
+            Canvas.ForceUpdateCanvases();
         }
 
         private void DollyToPlay()
