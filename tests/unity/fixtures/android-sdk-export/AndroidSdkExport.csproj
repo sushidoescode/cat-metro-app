@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- Unity populates these existing DTO fields through JsonUtility. -->
+    <NoWarn>$(NoWarn);CS0649</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="BoundaryStubs.cs" />
+    <Compile Include="../../../../unity/Assets/Scripts/Services/Messaging/IMessaging.cs" />
+    <Compile Include="../../../../unity/Assets/Scripts/Integrations.OneSignal/OneSignalMessaging.cs" />
+    <Compile Include="../../../../unity/Assets/Scripts/Integrations.OneSignal/OneSignalRuntimeConfig.cs" />
+    <Compile Include="../../../../unity/Assets/Scripts/Integrations/RewardedAdsConfig.cs" />
+    <Compile Include="../../../../unity/Assets/Scripts/Integrations/RewardedAdProviderFactory.cs" />
+    <Compile Include="../../../../unity/Assets/Scripts/Integrations/AndroidOptionalSdkProfile.cs" />
+    <Compile Include="../../../../unity/Assets/Editor/CatMetroAndroidSdkExportTransform.cs" />
+  </ItemGroup>
+</Project>

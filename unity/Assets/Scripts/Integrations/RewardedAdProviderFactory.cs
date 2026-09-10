@@ -14,6 +14,7 @@ namespace CatMetro.Integrations
 
         internal static IRewardedAdProvider Create(RewardedAdsConfig config)
         {
+            if (!AndroidOptionalSdkProfile.AllowLevelPlayRuntime) return null;
             if (config == null || !config.IsConfigured || _factory == null) return null;
             try
             {
