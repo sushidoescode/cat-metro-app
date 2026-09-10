@@ -4,7 +4,9 @@ using UnityEngine;
 namespace CatMetro.Presentation.Cats
 {
     /// <summary>Owns board-clone materials; the licensed atlas and Home source stay untouched.</summary>
-    [DisallowMultipleComponent]
+    // TryInstall also owns explicit Editor previews. Their destruction must restore
+    // renderer bindings even when no Play Mode lifecycle has run.
+    [ExecuteAlways, DisallowMultipleComponent]
     public sealed class BoardFurTint : MonoBehaviour
     {
         public const string ShaderResourcePath = "CatMetroFur/BoardFur";

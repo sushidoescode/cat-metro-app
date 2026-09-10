@@ -131,6 +131,14 @@ namespace CatMetro.Tests.EditMode.Presentation
             _host.GetComponentInChildren<Renderer>().GetPropertyBlock(block);
             Assert.That(block.GetFloat("_FurDebug"), Is.Zero);
             AssertColour(block.GetColor("_FurColor"), Palette.HarborBlue);
+
+            Object.DestroyImmediate(fur);
+            foreach (Renderer renderer in _host.GetComponentsInChildren<Renderer>())
+            {
+                Assert.That(renderer.sharedMaterial, Is.SameAs(_source),
+                    "active and initially inactive preview installs restore their source material");
+                Assert.That(renderer.HasPropertyBlock(), Is.False);
+            }
         }
 
         [Test]
