@@ -270,7 +270,9 @@ namespace CatMetro.Tests.PlayMode
             int renderers = 0;
             foreach (var renderer in _root.View.GetComponentsInChildren<Renderer>(true))
             {
-                if (!renderer.enabled || renderer.transform.IsChildOf(desk)) continue;
+                // Particle envelopes describe transient effects, not the physical diorama.
+                if (!renderer.enabled || renderer is ParticleSystemRenderer
+                    || renderer.transform.IsChildOf(desk)) continue;
                 renderers++;
                 var b = renderer.bounds;
                 for (int i = 0; i < 8; i++)

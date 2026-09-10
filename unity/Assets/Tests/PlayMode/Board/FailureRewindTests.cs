@@ -159,11 +159,15 @@ namespace CatMetro.Tests.PlayMode
                 _root = GameRoot.Launch();
                 _root.MotionOffToggle = false;
                 yield return null;
-                _root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center);
-                _root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center);
+                Assert.That(_root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center), Is.EqualTo(-3));
+                var fx = _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>();
+                fx.Advance(.14f);
+                Assert.That(_root.Intro.IsVisible, Is.True, "finish the Home press before tapping Play");
+                Assert.That(_root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center), Is.EqualTo(-3));
+                fx.Advance(.14f);
                 Assert.That(_root.ScreensVisible, Is.False);
                 // Play begins Home's dolly; rewind must restore the settled gameplay pose.
-                _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>().Advance(.4f);
+                fx.Advance(.4f);
             }
             else
             {

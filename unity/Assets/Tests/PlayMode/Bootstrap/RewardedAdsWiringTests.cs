@@ -357,6 +357,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(game.Wardrobe.EntryVisible, Is.True);
             Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.EntryRectPx.center),
                 Is.EqualTo(-3));
+            game.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             yield return null;
 
             AssertCurrentWardrobeState(game.Wardrobe, game.Input);
@@ -364,6 +365,7 @@ namespace CatMetro.Tests.PlayMode
                 card != null && card.IsActive && card.ItemId == EntitlementIds.OutfitConductor);
             Assert.That(game.Input.HandleTapAtScreen(conductorCard.ScreenRect.center),
                 Is.EqualTo(-3));
+            game.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             yield return null;
             var primary = game.Wardrobe.transform.Find(
                 "WardrobePanel/PrimaryActionChip") as RectTransform;
@@ -372,19 +374,24 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(game.Input.Regions.IsRegistered("wardrobe.primary"), Is.True);
             Assert.That(game.Input.HandleTapAtScreen(ProjectedScreenRect(primary).center),
                 Is.EqualTo(-3));
+            game.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(backend.PurchaseCalls, Is.EqualTo(1));
             Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.RestoreRectPx.center),
                 Is.EqualTo(-3));
+            game.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(backend.RestoreCalls, Is.EqualTo(1));
             Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.BackRectPx.center),
                 Is.EqualTo(-3));
+            game.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
 
             Assert.That(game.Home.IsVisible, Is.True);
             Assert.That(game.Input.HandleTapAtScreen(game.Home.PinPaintedRectPx.center),
                 Is.EqualTo(-3));
+            game.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(game.Intro.IsVisible, Is.True);
             Assert.That(game.Input.HandleTapAtScreen(game.Intro.PlayChipRectPx.center),
                 Is.EqualTo(-3));
+            game.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(game.ScreensVisible, Is.False);
             var boardTarget = game.Cam.WorldToScreenPoint(game.View.SwitchWorldPos(0));
             Assert.That(game.Input.HandleTapAtScreen(boardTarget), Is.EqualTo(0),
@@ -423,6 +430,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(game.Home.IsVisible, Is.True);
             Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.EntryRectPx.center),
                 Is.EqualTo(-3));
+            game.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             yield return null;
             AssertCurrentWardrobeState(game.Wardrobe, game.Input);
             UnityEngine.Object.Destroy(game.gameObject);
@@ -458,6 +466,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(RewardedAdRuntime.IsInstalled, Is.False);
             Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.EntryRectPx.center),
                 Is.EqualTo(-3));
+            game.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             yield return null;
 
             game.Wardrobe.LayoutForViewport(PhoneSafeArea, 408f);
@@ -468,9 +477,11 @@ namespace CatMetro.Tests.PlayMode
             AssertCurrentWardrobeState(game.Wardrobe, game.Input);
             Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.RestoreRectPx.center),
                 Is.EqualTo(-3));
+            game.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(backend.RestoreCalls, Is.EqualTo(1));
             Assert.That(game.Input.HandleTapAtScreen(game.Wardrobe.BackRectPx.center),
                 Is.EqualTo(-3));
+            game.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             yield return null;
             Assert.That(game.Wardrobe.PanelVisible, Is.False);
             Assert.That(game.Home.IsVisible, Is.True);

@@ -78,7 +78,7 @@ namespace CatMetro.Tests.PlayMode
 
             int entryTap = _root.Input.HandleTapAtScreen(_root.Wardrobe.EntryRectPx.center);
             Assert.That(entryTap, Is.EqualTo(-3), "the painted capsule is reachable by real input");
-            yield return null;
+            yield return new WaitForSecondsRealtime(0.17f);
 
             Assert.That(_root.Home.IsVisible, Is.False);
             Assert.That(_root.Wardrobe.PanelVisible, Is.True);
@@ -90,7 +90,7 @@ namespace CatMetro.Tests.PlayMode
 
             int backTap = _root.Input.HandleTapAtScreen(_root.Wardrobe.BackRectPx.center);
             Assert.That(backTap, Is.EqualTo(-3));
-            yield return null;
+            yield return new WaitForSecondsRealtime(0.17f);
 
             Assert.That(_root.Wardrobe.PanelVisible, Is.False);
             Assert.That(_root.Wardrobe.EntryVisible, Is.True);

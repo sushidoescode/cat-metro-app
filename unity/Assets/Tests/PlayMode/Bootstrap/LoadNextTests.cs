@@ -69,6 +69,7 @@ namespace CatMetro.Tests.PlayMode
 
             LogAssert.Expect(LogType.Log, new Regex(@"SEAM_LOADED content/levels/L002\.json"));
             int result = _root.Input.HandleTapAtScreen(panel.ChipPaintedRectPx.center);
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(result, Is.EqualTo(-3), "the chrome region consumed the tap");
 
             Assert.That(_root.CurrentLevelId, Is.EqualTo("L002"),
@@ -109,6 +110,7 @@ namespace CatMetro.Tests.PlayMode
             var center = panel.ChipPaintedRectPx.center;
 
             int first = _root.Input.HandleTapAtScreen(center);
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(first, Is.EqualTo(-3), "precondition: the first tap hit the region");
             Assert.That(_root.CurrentLevelId, Is.EqualTo("L002"),
                 "precondition: the first tap advanced exactly once — otherwise the double-tap "
@@ -116,6 +118,7 @@ namespace CatMetro.Tests.PlayMode
 
             // NO yield here — the race window this pin exists to close.
             _root.Input.HandleTapAtScreen(center);
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
 
             Assert.That(_root.CurrentLevelId, Is.EqualTo("L002"),
                 "a same-frame double tap must not skip a band level (must stay L002, never "
@@ -142,6 +145,7 @@ namespace CatMetro.Tests.PlayMode
 
             LogAssert.Expect(LogType.Log, new Regex(@"SEAM_LOADED content/levels/L001\.json"));
             _root.Input.HandleTapAtScreen(panel.ChipPaintedRectPx.center);
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
 
             Assert.That(_root.CurrentLevelId, Is.EqualTo("L001"),
                 "ASSUMPTION under human review (state/handoffs/CM-LOADNEXT-frozen-contract.md, "
@@ -211,6 +215,7 @@ namespace CatMetro.Tests.PlayMode
                 + "this test cannot tell 'Next claimed it' apart from 'nothing claimed it'");
 
             int result = _root.Input.HandleTapAtScreen(point);
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(result, Is.EqualTo(-3),
                 "the chrome region (Next) claims the tap, never the legacy retry verb — "
                 + "RetryRegionActive is false outside FailureReview, unaffected by this contract");

@@ -77,6 +77,8 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private Image _eyeLeft;
         private Image _eyeRight;
         private Image _muzzle;
+        private PassengerStatusMarks _statusMarks;
+        public void SetTokenFlags(bool stray, bool express) => _statusMarks.Bind(stray, express);
         private CatMicroMotion _microMotion;
         private System.Func<bool> _motionOffSource;
         private Vector2 _layoutCentre;
@@ -208,15 +210,16 @@ namespace CatMetro.Presentation.Hud.WavePreview
             view._eyeLeft = eyeLeft;
             view._eyeRight = eyeRight;
             view._muzzle = muzzle;
+            view._statusMarks = PassengerStatusMarks.Create(go.transform, true);
             return view;
         }
 
         // Read-only binding: the caller hands the colour NAME off the wave DTO, never a Color.
-        public void Bind(string color)
+        public void Bind(string color, string shape = null)
         {
             ColorName = color ?? "";
             var tint = CatLine.ColorOf(ColorName);
-            Shape = CatLine.ShapeOf(ColorName);
+            Shape = DestinationBadge.Resolve(ColorName, shape);
 
             _head.color = tint;
             // Ears take the vocabulary colour EXACTLY — no darkened variant. They briefly had
@@ -294,6 +297,8 @@ namespace CatMetro.Presentation.Hud.WavePreview
             Place(_badge.rectTransform, badgeCentre, new Vector2(badge, badge));
             Place(_badgeRing.rectTransform, badgeCentre,
                 new Vector2(badge * BadgeRingScale, badge * BadgeRingScale));
+            _statusMarks.transform.localPosition = new Vector3(-sizePx * 0.30f, -sizePx * 0.30f, 0f);
+            _statusMarks.transform.localScale = Vector3.one * (sizePx * 0.25f);
 
             _layoutCentre = centrePx;
             _layoutSize = sizePx;

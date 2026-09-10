@@ -38,6 +38,13 @@ namespace CatMetro.Presentation.Fx
         public Func<bool> MotionOffSource;
         public bool MotionOff => MotionOffSource != null && MotionOffSource();
         public int ActiveTweenCount => _tweens.Count;
+        public bool IsAnimating(UnityEngine.Object owner)
+        {
+            if (owner == null) return false;
+            for (int i = 0; i < _tweens.Count; i++)
+                if (_tweens[i].Owner == owner) return true;
+            return false;
+        }
 
         public static BoardFx GetOrCreate(Transform owner, Func<bool> motionOff = null)
         {
@@ -92,9 +99,22 @@ namespace CatMetro.Presentation.Fx
             if (target == null) return;
             Finish(target, ScaleChannel);
             Vector3 neutral = target.localScale;
-            Tween(target, seconds, p => target.localScale = neutral *
-                (p >= 1f ? 1f : 1f + (peak - 1f) * Mathf.Sin(p * Mathf.PI)),
+            Vector3 position = target.localPosition;
+            Vector3 offset = CenterOffset(target, neutral);
+            Tween(target, seconds, p => ScaleAtCenter(target, neutral, position, offset,
+                p >= 1f ? 1f : 1f + (peak - 1f) * Mathf.Sin(p * Mathf.PI)),
                 delay, ScaleChannel);
+        }
+
+        private static Vector3 CenterOffset(Transform target, Vector3 scale) =>
+            target is RectTransform rect
+                ? target.localRotation * Vector3.Scale(rect.rect.center, scale) : Vector3.zero;
+
+        private static void ScaleAtCenter(Transform target, Vector3 neutral, Vector3 position,
+            Vector3 offset, float scale)
+        {
+            target.localScale = neutral * scale;
+            if (target is RectTransform) target.localPosition = position + offset * (1f - scale);
         }
 
         public void Shake(Transform target, float degrees = 4f, float seconds = 0.2f)
@@ -112,12 +132,14 @@ namespace CatMetro.Presentation.Fx
             if (target == null) return;
             Finish(target, ScaleChannel);
             Vector3 neutral = target.localScale;
+            Vector3 position = target.localPosition;
+            Vector3 offset = CenterOffset(target, neutral);
             Tween(target, 0.14f, p =>
             {
                 float scale = p < 0.3f ? Mathf.Lerp(1f, 0.95f, p / 0.3f)
                     : p < 0.7f ? Mathf.Lerp(0.95f, 1.02f, (p - 0.3f) / 0.4f)
                     : Mathf.Lerp(1.02f, 1f, (p - 0.7f) / 0.3f);
-                target.localScale = neutral * scale;
+                ScaleAtCenter(target, neutral, position, offset, scale);
             }, channel: ScaleChannel);
             if (face == null) return;
             Finish(face, PaintChannel);
@@ -130,8 +152,51 @@ namespace CatMetro.Presentation.Fx
             if (face == null) return;
             Finish(face, PaintChannel);
             Color neutral = face.color;
-            StartTween(face, 1f, p => face.color = p >= 1f ? neutral : color,
+            bool painted = false;
+            StartTween(face, 1f, p =>
+            {
+                if (!painted && p < 1f) { face.color = color; painted = true; }
+                else if (painted && p >= 1f && face.color == color) face.color = neutral;
+            },
                 0f, PaintChannel, Mathf.Max(1, frames));
+        }
+
+        public void Flash(Renderer face, Color color, int frames = 2)
+        {
+            if (face == null) return;
+            Finish(face, PaintChannel);
+            var neutral = new MaterialPropertyBlock();
+            var flash = new MaterialPropertyBlock();
+            face.GetPropertyBlock(neutral);
+            face.GetPropertyBlock(flash);
+            flash.SetColor("_BaseColor", color);
+            flash.SetColor("_Color", color);
+            StartTween(face, 1f, p => face.SetPropertyBlock(p >= 1f ? neutral : flash),
+                0f, PaintChannel, Mathf.Max(1, frames));
+        }
+
+        public void RejectStation(Transform station)
+        {
+            if (station == null) return;
+            Finish(station, RotationChannel);
+            var parts = new List<Transform>();
+            var neutral = new List<Quaternion>();
+            foreach (Transform child in station)
+                if (child.name.StartsWith("station:plate-") || child.name.StartsWith("station:keyline-"))
+                {
+                    parts.Add(child);
+                    neutral.Add(child.localRotation);
+                    if (child.name.StartsWith("station:plate-"))
+                        Flash(child.GetComponent<Renderer>(), Theme.Palette.SignalRed);
+                }
+            Vector3 normal = Props.BoardPropDecorator.StationSignRotation * Vector3.forward;
+            Tween(station, 0.3f, p =>
+            {
+                float angle = p >= 1f ? 0f : Mathf.Sin(p * Mathf.PI * 4f) * (1f - p) * 5f;
+                for (int i = 0; i < parts.Count; i++)
+                    if (parts[i] != null)
+                        parts[i].localRotation = Quaternion.AngleAxis(angle, normal) * neutral[i];
+            }, channel: RotationChannel);
         }
 
         private void Update() => Advance(Time.unscaledDeltaTime);
@@ -170,7 +235,8 @@ namespace CatMetro.Presentation.Fx
             if (stop) StopParticles();
         }
 
-        public void Emit(BoardFxSprite sprite, Vector3 worldPosition, Color color, int count = 6)
+        public void Emit(BoardFxSprite sprite, Vector3 worldPosition, Color color, int count = 6,
+            float spread = 0.025f)
         {
             if (MotionOff || !isActiveAndEnabled || count <= 0) return;
             if (_bursts[0] == null)
@@ -187,6 +253,8 @@ namespace CatMetro.Presentation.Fx
             main.startSize = sprite == BoardFxSprite.Puff ? 0.10f : 0.15f;
             main.startSpeed = 0.35f;
             main.gravityModifier = sprite == BoardFxSprite.Puff ? 0f : -0.3f;
+            var shape = ps.shape;
+            shape.radius = Mathf.Max(0f, spread);
             ps.Play();
             ps.Emit(Mathf.Min(count, 24));
         }

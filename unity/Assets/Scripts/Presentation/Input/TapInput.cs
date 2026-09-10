@@ -1,7 +1,9 @@
 using CatMetro.Application.Session;
 using CatMetro.Presentation.Board;
+using CatMetro.Presentation.Fx;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
 namespace CatMetro.Presentation.Input
 {
@@ -18,6 +20,7 @@ namespace CatMetro.Presentation.Input
         private GameSession _session;
         private BoardView _view;
         private Camera _camera;
+        private bool _chromePressPending;
 
         public float EffectiveHitDiameterDp => HIT_DIAMETER_DP;
 
@@ -26,11 +29,13 @@ namespace CatMetro.Presentation.Input
         // composition root; hit-testable from the first FailureReview frame by construction.
         public System.Func<bool> RetryRegionActive;
         public System.Action RetryTapped;
+        public RectTransform RetryPressTarget;
 
         // Presentation-only feedback seams. They are optional and isolated per subscriber: a
         // missing or faulty audio presenter must never block the already-resolved game action.
         public System.Action UiTapAccepted;
         public System.Action SwitchTapAccepted;
+        public System.Action SwitchTapRefused;
 
         // CM-UX-01: chrome hit routing + the board-input gate. Resolution order is law
         // (criterion 1): legacy retry band first (pinned), registered regions next, board discs
@@ -85,17 +90,26 @@ namespace CatMetro.Presentation.Input
             if (RetryRegionActive != null && RetryTapped != null && RetryRegionActive()
                 && screenPos.y < Screen.height * 0.25f)
             {
+                if (_chromePressPending) return -2;
                 InvokeFeedbackSafely(UiTapAccepted);
-                RetryTapped();
+                PressThenInvoke(RetryPressTarget,
+                    RetryPressTarget != null ? RetryPressTarget.GetComponent<Graphic>() : null,
+                    RetryTapped, () => RetryRegionActive != null && RetryRegionActive());
                 return -2; // the retry verb consumed the tap
             }
-            if (Regions.TryResolve(screenPos, out var onTap, out var feedback))
+            if (Regions.TryResolve(screenPos, out var onTap, out var feedback, out var visual,
+                out var face, out var registration))
             {
+                if (_chromePressPending) return -3;
                 if (feedback == ChromeFeedback.WoodTap)
+                {
                     InvokeFeedbackSafely(UiTapAccepted);
-                onTap();
+                    PressThenInvoke(visual, face, onTap, () => Regions.ContainsRegistration(registration));
+                }
+                else onTap();
                 return -3; // a chrome region consumed the tap — never falls through to a disc
             }
+            if (_chromePressPending) return -1;
             // Regions resolve above this line: chrome exists on screens with no board wired
             // (a later Home screen), and a closed gate must never darken chrome or retry.
             if (BoardInputActive != null && !BoardInputActive()) return -1;
@@ -107,10 +121,36 @@ namespace CatMetro.Presentation.Input
                 _discCentersScratch[s] = _camera.WorldToScreenPoint(_view.SwitchWorldPos(s));
             int best = ResolveNearestDisc(screenPos, _discCentersScratch, radiusPx);
             if (best < 0) return -1;
-            InvokeFeedbackSafely(SwitchTapAccepted);
-            _session.EnqueueToggle(best);
-            _view.RefreshSwitches(); // the lever shows the committed route THIS frame
+            if (_session.EnqueueToggle(best))
+            {
+                InvokeFeedbackSafely(SwitchTapAccepted);
+                _view.RefreshSwitches();
+            }
+            else
+            {
+                InvokeFeedbackSafely(SwitchTapRefused);
+                _view.RefuseSwitchTap(best);
+            }
             return best;
+        }
+
+        private void PressThenInvoke(RectTransform target, Graphic face, System.Action action,
+            System.Func<bool> stillCurrent)
+        {
+            if (target == null || !target.gameObject.activeInHierarchy) { action(); return; }
+            var fx = BoardFx.GetOrCreate(transform,
+                () => _view != null && _view.MotionOffSource != null && _view.MotionOffSource());
+            fx.Press(target, face);
+            _chromePressPending = true;
+            // Keep the painted chip visible for its press before navigation hides it.
+            // A screen dismissed by another cause cannot run this stale action later.
+            fx.Tween(this, 0.14f, p =>
+            {
+                if (p < 1f) return;
+                _chromePressPending = false;
+                if (fx != null && fx.isActiveAndEnabled && isActiveAndEnabled
+                    && target != null && target.gameObject.activeInHierarchy && stillCurrent()) action();
+            }, channel: 20);
         }
 
         private static void InvokeFeedbackSafely(System.Action feedback)

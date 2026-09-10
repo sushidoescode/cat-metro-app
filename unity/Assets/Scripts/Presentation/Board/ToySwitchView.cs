@@ -1,4 +1,5 @@
 using CatMetro.Presentation.Theme;
+using CatMetro.Presentation.Fx;
 using UnityEngine;
 
 namespace CatMetro.Presentation.Board
@@ -93,6 +94,10 @@ namespace CatMetro.Presentation.Board
             Color.Lerp(Palette.TicketOrange, Palette.InkNavy, 0.32f);
 
         public Transform LeverPivot { get; private set; }
+        private BoardFx _fx;
+        private bool _hasDirection;
+        private float _targetYaw, _yaw, _leverRock, _refusedRock;
+        private float _punch = 1f, _teachScale = 1f;
 
         // The lever's constant toy lean, applied at the pivot; direction comes from the yaw.
         public static Quaternion LeverLocalRotation => Quaternion.Euler(LeverTiltDegrees, 0f, 0f);
@@ -108,6 +113,7 @@ namespace CatMetro.Presentation.Board
             root.transform.SetParent(parent, false);
             root.transform.localPosition = localPosition;
             var view = root.AddComponent<ToySwitchView>();
+            view._fx = BoardFx.GetOrCreate(parent != null ? parent : root.transform);
 
             root.AddComponent<MeshFilter>().sharedMesh = BaseMesh();
             // submesh 0 = walls + underside (MetroTeal), submesh 1 = the lighter top face;
@@ -148,7 +154,61 @@ namespace CatMetro.Presentation.Board
         public void SetDirection(Vector2 boardPlaneDir)
         {
             if (boardPlaneDir.sqrMagnitude < 1e-6f) return;
-            transform.localRotation = Quaternion.Euler(0f, 0f, YawDegrees(boardPlaneDir));
+            float target = YawDegrees(boardPlaneDir);
+            if (!_hasDirection || !UnityEngine.Application.isPlaying)
+            {
+                _hasDirection = true;
+                _yaw = _targetYaw = target;
+                ApplyPose();
+                return;
+            }
+            if (Mathf.Abs(Mathf.DeltaAngle(_targetYaw, target)) < 0.001f) return;
+            _fx.Finish(this);
+            float from = _yaw;
+            float delta = Mathf.DeltaAngle(from, target);
+            _targetYaw = target;
+            float overshoot = from + delta + Mathf.Sign(delta) * 8f;
+            _fx.Tween(this, 0.14f, p =>
+            {
+                _yaw = p < 0.68f
+                    ? Mathf.LerpUnclamped(from, overshoot, 1f - Mathf.Pow(1f - p / 0.68f, 3f))
+                    : Mathf.Lerp(overshoot, from + delta, Mathf.SmoothStep(0f, 1f, (p - 0.68f) / 0.32f));
+                _leverRock = p >= 1f ? 0f : 12f * Mathf.Sin(p * Mathf.PI * 2f);
+                _punch = p >= 1f ? 1f : 1f + 0.12f * Mathf.Sin(p * Mathf.PI);
+                ApplyPose();
+            });
+            _fx.Emit(BoardFxSprite.Puff, transform.TransformPoint(new Vector3(0f, 0f, -0.19f)),
+                Palette.WarmPaper, 6, 0.42f);
+        }
+
+        public void SetTeachScale(float scale)
+        {
+            _teachScale = scale;
+            ApplyPose();
+        }
+
+        public void RefuseTap()
+        {
+            _fx.Tween(this, 0.2f, p =>
+            {
+                _refusedRock = p >= 1f ? 0f : 4f * Mathf.Sin(p * Mathf.PI * 6f) * (1f - p);
+                ApplyPose();
+            }, channel: 11);
+        }
+
+        private void ApplyPose()
+        {
+            transform.localRotation = Quaternion.Euler(0f, 0f, _yaw);
+            transform.localScale = Vector3.one * (_teachScale * _punch);
+            if (LeverPivot != null)
+                LeverPivot.localRotation = Quaternion.Euler(LeverTiltDegrees + _leverRock, 0f, _refusedRock);
+        }
+
+        private void OnDisable()
+        {
+            if (_fx == null) return;
+            _fx.Finish(this);
+            _fx.Finish(this, 11);
         }
 
         // CM-UX-03's ring, built from this file so the affordance and the toy it rings share

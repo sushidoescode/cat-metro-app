@@ -121,6 +121,8 @@ namespace CatMetro.Presentation.Board
             // explicitly: the gameplay band is unchanged and still fails if a node or a
             // station leaves it, and the decorative band is its own, wider, asserted rule
             // rather than an absence of one.
+            // Steam and pooled bursts can report large bounds even with zero particles.
+            // They decorate the fitted board and must not move or shrink its camera frame.
             Bounds frameBounds = default, contentBounds = default;
             bool foundFrame = false, foundContent = false;
             var deskSurface = board.transform.Find("DeskSurface");
@@ -130,7 +132,7 @@ namespace CatMetro.Presentation.Board
                 if (prop.IsDecorative) decorative.Add(prop.transform);
             foreach (var renderer in board.GetComponentsInChildren<Renderer>(true))
             {
-                if (!renderer.enabled) continue;
+                if (!renderer.enabled || renderer is ParticleSystemRenderer) continue;
                 if (deskSurface != null && renderer.transform.IsChildOf(deskSurface)) continue;
                 if (!foundFrame) { frameBounds = renderer.bounds; foundFrame = true; }
                 else frameBounds.Encapsulate(renderer.bounds);
@@ -202,7 +204,7 @@ namespace CatMetro.Presentation.Board
             float farthestZ = frameBounds.max.z;
             foreach (var renderer in board.GetComponentsInChildren<Renderer>(true))
             {
-                if (!renderer.enabled) continue;
+                if (!renderer.enabled || renderer is ParticleSystemRenderer) continue;
                 if (deskSurface != null && renderer.transform.IsChildOf(deskSurface)) continue;
                 cameraZ = Mathf.Min(cameraZ, renderer.bounds.min.z - DeskNearClearance);
             }
@@ -232,7 +234,8 @@ namespace CatMetro.Presentation.Board
             }
             if (deskSurface != null)
                 foreach (var renderer in deskSurface.GetComponentsInChildren<Renderer>(true))
-                    farthestZ = Mathf.Max(farthestZ, renderer.bounds.max.z);
+                    if (!(renderer is ParticleSystemRenderer))
+                        farthestZ = Mathf.Max(farthestZ, renderer.bounds.max.z);
 
             camera.orthographic = true;
             camera.orthographicSize = size;

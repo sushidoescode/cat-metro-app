@@ -130,8 +130,7 @@ namespace CatMetro.Tests.PlayMode
                 "durable lifetime progress recovers a win interrupted before Home return");
             Assert.That(ReadPreferences().PromptSeen, Is.True);
             Assert.That(_messaging.PromptCalls, Is.Zero);
-            Assert.That(_root.Input.HandleTapAtScreen(
-                _root.Home.ReminderSheet.DismissRectPx.center), Is.EqualTo(-3));
+            Tap(_root.Home.ReminderSheet.DismissRectPx);
             Assert.That(_root.Home.ReminderSheet.IsVisible, Is.False);
             Assert.That(_messaging.PromptCalls, Is.Zero);
             Assert.That(_messaging.ScheduleAttempts.Count, Is.Zero);
@@ -160,8 +159,7 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             yield return null;
             Assert.That(_root.Home.ReminderSheet.IsVisible, Is.True);
-            Assert.That(_root.Input.HandleTapAtScreen(
-                _root.Home.ReminderSheet.DismissRectPx.center), Is.EqualTo(-3));
+            Tap(_root.Home.ReminderSheet.DismissRectPx);
 
             _root.SelectDaily();
             Assert.That(_root.IsDailySession, Is.True);
@@ -195,8 +193,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_messaging.PromptCalls, Is.Zero,
                 "automatic presentation must not request native permission");
             int cancelsBefore = _messaging.CancelAttempts.Count;
-            Assert.That(_root.Input.HandleTapAtScreen(
-                _root.Home.ReminderSheet.AcceptRectPx.center), Is.EqualTo(-3));
+            Tap(_root.Home.ReminderSheet.AcceptRectPx);
             yield return null;
 
             Assert.That(_messaging.PromptCalls, Is.EqualTo(1));
@@ -931,6 +928,7 @@ namespace CatMetro.Tests.PlayMode
         private void Tap(Rect rect)
         {
             Assert.That(_root.Input.HandleTapAtScreen(rect.center), Is.EqualTo(-3));
+            _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
         }
 
         private void ResumeApplicationTwice()
@@ -961,6 +959,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(panel.IsVisible, Is.True);
             Assert.That(_root.Input.HandleTapAtScreen(panel.ChipPaintedRectPx.center),
                 Is.EqualTo(-3));
+            _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
         }
 
         private IEnumerator WinCurrentDaily()

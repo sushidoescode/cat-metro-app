@@ -194,6 +194,7 @@ namespace CatMetro.Tests.PlayMode
 
             // tap the pin: Intro shows with the substituted goal count from the loaded level
             int tapResult = _root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center);
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(tapResult, Is.EqualTo(-3), "the pin is a chrome region");
             Assert.That(_root.Intro.IsVisible, Is.True);
             Assert.That(_root.Intro.NameText, Is.EqualTo(_root.Session.Level.Dto.Name));
@@ -218,6 +219,7 @@ namespace CatMetro.Tests.PlayMode
             // tap Play: both hide, stack empties, board input returns, and CM-BOOT-HOME
             // criterion 2's tick-0 hold lifts — the sim now advances on subsequent frames.
             int playResult = _root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center);
+            _root.Input.GetComponent<CatMetro.Presentation.Fx.BoardFx>()?.Advance(0.14f);
             Assert.That(playResult, Is.EqualTo(-3), "the Play chip is a chrome region");
             Assert.That(_root.Intro.IsVisible, Is.False);
             Assert.That(_root.Home.IsVisible, Is.False);

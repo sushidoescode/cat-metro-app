@@ -7,6 +7,7 @@ using UnityEngine.TestTools;
 using CatMetro.Bootstrap;
 using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Theme;
+using CatMetro.Presentation.Fx;
 
 namespace CatMetro.Tests.PlayMode
 {
@@ -26,6 +27,7 @@ namespace CatMetro.Tests.PlayMode
         [TearDown]
         public void TearDown()
         {
+            Time.timeScale = 1f;
             GameRoot.DevSkipShippedHome = false;
             if (_root != null) Object.DestroyImmediate(_root.gameObject);
             _root = null;
@@ -104,8 +106,9 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator LeverAndArrow_TrackTheCommittedRoute_FlipOnTheTapFrame()
+        public IEnumerator LeverAndArrow_SwingPastTheCommittedRoute_ThenSettle()
         {
+            Time.timeScale = 0f;
             _root = GameRoot.Launch();
             yield return null;
 
@@ -116,6 +119,8 @@ namespace CatMetro.Tests.PlayMode
             AssertAimsAt(sw, view, expectedBefore, "the built lever aims at the initial route");
 
             int before = _root.View.CommittedRoute(0);
+            float initialYaw = sw.localEulerAngles.z;
+            var fx = BoardFx.GetOrCreate(_root.View.transform);
             _root.Input.HandleTapAtScreen(
                 _root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0)));
             Assert.That(_root.View.CommittedRoute(0), Is.Not.EqualTo(before));
@@ -125,9 +130,37 @@ namespace CatMetro.Tests.PlayMode
                 "positive control: L001's two routes genuinely diverge");
             // NO yield between the tap and this assert: the committed lever flips on the tap
             // frame (criterion 3a), exactly as the greybox arm did.
-            AssertAimsAt(sw, view, expectedAfter, "the lever re-aims on the tap frame");
+            float targetYaw = ToySwitchView.YawDegrees(expectedAfter);
+            float sign = Mathf.Sign(Mathf.DeltaAngle(initialYaw, targetYaw));
+            fx.Advance(0.05f);
+            Assert.That(Mathf.Abs(Mathf.DeltaAngle(initialYaw, sw.localEulerAngles.z)), Is.GreaterThan(1f));
+            Assert.That(Quaternion.Angle(view.LeverPivot.localRotation, ToySwitchView.LeverLocalRotation), Is.GreaterThan(1f));
+            Assert.That(sw.localScale.x, Is.GreaterThan(1.05f));
+            _root.View.RefreshSwitches(); // the same committed route must not restart its swing
+            fx.Advance(0.05f);
+            Assert.That(Mathf.DeltaAngle(targetYaw, sw.localEulerAngles.z) * sign, Is.InRange(4f, 8.1f));
+            fx.Advance(0.04f);
+            AssertAimsAt(sw, view, expectedAfter, "the toy settles to the committed route at 140 ms");
+            Assert.That(sw.localScale, Is.EqualTo(Vector3.one));
+        }
+
+        [UnityTest]
+        public IEnumerator MotionOff_CompletesASwing_AndStopsItsDust()
+        {
+            Time.timeScale = 0f;
+            _root = GameRoot.Launch();
             yield return null;
-            AssertAimsAt(sw, view, expectedAfter, "and holds after the frame renders");
+            var view = _root.View.GetComponentInChildren<ToySwitchView>();
+            var fx = BoardFx.GetOrCreate(_root.View.transform, () => _root.MotionOff);
+            _root.Input.HandleTapAtScreen(_root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0)));
+            fx.Advance(0.05f);
+            Assert.That(fx.ActiveTweenCount, Is.GreaterThan(0));
+            _root.MotionOffToggle = true;
+            fx.Advance(0.01f);
+            AssertAimsAt(view.transform, view, RouteDirection(_root.View.CommittedRoute(0)), "reduced motion settles the verb");
+            Assert.That(view.transform.localScale, Is.EqualTo(Vector3.one));
+            foreach (var ps in _root.View.GetComponentsInChildren<ParticleSystem>())
+                Assert.That(ps.particleCount, Is.Zero);
         }
 
         // 2026-08-25 render review: the teach affordance was a solid navy cylinder and read as

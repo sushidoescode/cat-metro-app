@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using CatMetro.Application.Session;
 using CatMetro.Content;
 using CatMetro.Presentation.Theme;
+using CatMetro.Presentation.Fx;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -48,6 +49,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private const float FaceGapFraction = 0.28f;   // of face size
 
         private GameSession _session;
+        public System.Func<bool> MotionOffSource;
         private Canvas _canvas;
         private RectTransform _canvasRect;
         private RectTransform _hudRoot;
@@ -57,7 +59,6 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private RectTransform _waveClip;
         private RectTransform _faceRow;
         private readonly List<CatFaceView> _faces = new List<CatFaceView>();
-        private readonly List<TMP_Text> _tokens = new List<TMP_Text>();
         private TMP_Text _overflow;
         private Image _deliveriesMark;
         private TMP_Text _deliveries;
@@ -65,6 +66,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
         private TMP_Text _riders;
         private TMP_Text _flipBudget;
         private Image _flipMark;
+        private Image _flipBacking;
         private Image _tailStatusMark;
         private int _displayFaceCount;
         private float _faceSizePx;
@@ -225,16 +227,6 @@ namespace CatMetro.Presentation.Hud.WavePreview
                 var face = CatFaceView.Create(_faceRow, "face" + i);
                 _faces.Add(face);
 
-                // Authored shape/stray/express signals stay in the screen-space hierarchy.
-                // Parenting each token to its face also keeps the signal attached to the
-                // face's accessibility motion without introducing a scene Renderer.
-                var token = AddLabel(face.transform, "cat-token", Palette.InkNavy);
-                token.fontStyle = FontStyles.Bold;
-                token.fontSizeMin = 6f; // Temporary token letter: lane B rank 7 removes it.
-                token.gameObject.SetActive(false);
-                _tokens.Add(token);
-                // Construct TMP while the parent is active so its delayed Awake cannot restore
-                // the default raycastTarget=true after AddLabel has made it render-only.
                 face.gameObject.SetActive(false);
             }
             _overflow = AddLabel(_faceRow, "Overflow", Palette.InkNavy);
@@ -265,6 +257,11 @@ namespace CatMetro.Presentation.Hud.WavePreview
             _ridersMark.color = Palette.InkNavy;
             _riders = AddLabel(counters, "Riders", Palette.InkNavy);
 
+            // The flip law starts cream and changes to yellow/red. Keep its own navy well
+            // inside the cream capsule so every budget state has a contrasting background.
+            _flipBacking = AddImage(counters, "FlipBacking", HudShapeSprites.Capsule);
+            _flipBacking.type = Image.Type.Sliced;
+            _flipBacking.color = Palette.InkNavy;
             _flipMark = AddImage(counters, "FlipMark", HudShapeSprites.Lever);
             _flipBudget = AddLabel(counters, "flip-budget", Palette.InkNavy);
             _flipBudget.fontStyle = FontStyles.Bold;
@@ -298,20 +295,22 @@ namespace CatMetro.Presentation.Hud.WavePreview
             {
                 bool used = i < _displayFaceCount;
                 if (_faces[i].gameObject.activeSelf != used) _faces[i].gameObject.SetActive(used);
-                _tokens[i].gameObject.SetActive(used && !completedQueue);
                 if (!used) continue;
                 _faces[i].transform.Find("badge").gameObject.SetActive(!completedQueue);
                 _faces[i].transform.Find("badgeRing").gameObject.SetActive(!completedQueue);
                 if (completedQueue)
                 {
                     _faces[i].Bind("red");
+                    _faces[i].SetTokenFlags(false, false);
                     foreach (string part in new[] { "head", "earL", "earR" })
                         _faces[i].transform.Find(part).GetComponent<Image>().color =
                             Palette.WithAlpha(Palette.InkNavy, 0.35f);
                     continue;
                 }
-                _faces[i].Bind(queue[i].Color);
-                _tokens[i].text = TokenGlyph(waves.Span[queue[i].WaveIndex]);
+                _faces[i].Bind(queue[i].Color, DestinationBadge.UsesShapes(_session.Level.Dto)
+                    ? waves.Span[queue[i].WaveIndex].Shape : null);
+                var wave = waves.Span[queue[i].WaveIndex];
+                _faces[i].SetTokenFlags(wave.Stray, wave.Express);
                 if (summary.Length > 0) summary.Append('|');
                 summary.Append(queue[i].Color);
             }
@@ -368,13 +367,22 @@ namespace CatMetro.Presentation.Hud.WavePreview
             var flipStatus = _session.FlipStatus;
             _flipBudget.gameObject.SetActive(flipStatus.IsBudgeted);
             _flipMark.gameObject.SetActive(flipStatus.IsBudgeted);
+            _flipBacking.gameObject.SetActive(flipStatus.IsBudgeted);
             if (flipStatus.IsBudgeted)
             {
                 _flipBudget.text = flipStatus.Used + "/" + flipStatus.PerfectMaxSwitches;
-                _flipBudget.color = flipStatus.RemainingToPerfect > 0
-                    ? Palette.InkNavy : Palette.SignalRed;
+                _flipBudget.color = flipStatus.RemainingToPerfect > 0 ? Palette.WarmPaper
+                    : flipStatus.RemainingToPerfect == 0 ? Palette.TabbyYellow : Palette.SignalRed;
                 _flipMark.color = _flipBudget.color;
             }
+        }
+
+        public void PulseFlips()
+        {
+            RefreshFlipBudget();
+            if (!_flipBudget.gameObject.activeInHierarchy) return;
+            BoardFx.GetOrCreate(transform.parent, () => MotionOffSource != null && MotionOffSource())
+                .Punch(_flipBudget.transform, 1.15f, 0.2f);
         }
 
         // Cats currently on the board — live train slots. State.Score/Chain are pinned at 0
@@ -476,10 +484,6 @@ namespace CatMetro.Presentation.Hud.WavePreview
             for (int i = 0; i < _displayFaceCount; i++)
             {
                 _faces[i].LayoutAt(new Vector2(cursor, 0f), faceSize);
-                PlaceCentred((RectTransform)_tokens[i].transform,
-                    new Vector2(-faceSize * 0.28f, -faceSize * 0.30f),
-                    new Vector2(faceSize * 0.44f, faceSize * 0.28f));
-                _tokens[i].fontSizeMax = faceSize * 0.24f;
                 cursor += faceSize + gap;
             }
             if (hasOverflow)
@@ -513,7 +517,12 @@ namespace CatMetro.Presentation.Hud.WavePreview
             x = PlaceCounter(_ridersMark, _riders, x + gap, centreY,
                 mark, wideText * 0.5f, gap, row);
             if (budgeted)
-                PlaceCounter(_flipMark, _flipBudget, x + gap, centreY, mark, wideText, gap, row);
+            {
+                float end = PlaceCounter(_flipMark, _flipBudget, x + gap, centreY,
+                    mark, wideText, gap, row);
+                PlacePx(_flipBacking.rectTransform,
+                    new Rect(x + gap * 0.5f, centreY - row * 0.5f, end - x, row));
+            }
             TypeScale.Apply(_deliveries, TypeScale.Body, _lastDpi, body: true);
             TypeScale.Apply(_riders, TypeScale.Body, _lastDpi, body: true);
             TypeScale.Apply(_flipBudget, TypeScale.Caption, _lastDpi, body: true);
@@ -655,18 +664,5 @@ namespace CatMetro.Presentation.Hud.WavePreview
             rect.sizeDelta = size;
         }
 
-        private static string TokenGlyph(WaveDto wave)
-        {
-            string glyph;
-            switch (wave.Shape)
-            {
-                case "square": glyph = "S"; break;
-                case "triangle": glyph = "T"; break;
-                default: glyph = "O"; break;
-            }
-            if (wave.Stray) glyph += "!";
-            if (wave.Express) glyph += "E";
-            return glyph;
-        }
     }
 }

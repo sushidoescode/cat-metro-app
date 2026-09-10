@@ -59,6 +59,8 @@ namespace CatMetro.Presentation.Hud
             }
             _canvas.sortingOrder = 100;
             Cta = RetryCtaView.Create(_canvas.transform);
+            var input = GetComponent<CatMetro.Presentation.Input.TapInput>();
+            if (input != null) input.RetryPressTarget = (RectTransform)Cta.transform;
             Veil = HaltVeilView.Create(_canvas.transform);
             Transition = TransitionVeil.Create(transform, cam, null);
         }

@@ -24,9 +24,9 @@ namespace CatMetro.Presentation.Props
         public static GameObject Decorate(ImportedLevel level, Transform boardRoot,
             PropModelCatalog catalog, Func<string, Vector3> presentationPosition)
         {
-            if (level == null || boardRoot == null || catalog == null
-                || catalog.AdmittedEntryCount == 0)
-                return null;
+            if (level == null || boardRoot == null) return null;
+            BuildStationBadges(level, boardRoot);
+            if (catalog == null || catalog.AdmittedEntryCount == 0) return null;
 
             var alreadyBuilt = boardRoot.Find(RootName);
             if (alreadyBuilt != null) return alreadyBuilt.gameObject;
@@ -402,8 +402,7 @@ namespace CatMetro.Presentation.Props
         {
             // The kiosk supplies the neutral building. Keep only line-owned overlays: the
             // main branch's text symbol and the diorama branch's colored plate/keyline/symbol.
-            EnsureProjectOwnedStationPlate(stationAnchor, accepts,
-                SignFootLocalZ(stationAnchor, boardRoot));
+
             var renderers = stationAnchor.GetComponentsInChildren<Renderer>(true);
             bool hasLinePlate = false;
             foreach (var renderer in renderers)
@@ -458,11 +457,10 @@ namespace CatMetro.Presentation.Props
         // staying put and being tuned later.
         private const float PlateZ = -1.35f;                // the sign HEAD's height off the board
         private const float KeylineFacingOffset = -0.03f;   // behind the plate
-        private const float GlyphFacingOffset = 0.09f;      // in front of it
         private const float PlateY = -1f;
-        private const float PlateSize = 0.9f;
+        private const float PlateSize = 1.035f;
         private const float PlateDepth = 0.1f;
-        private const float KeylineSize = 1.08f;
+        private const float KeylineSize = PlateSize * 1.5f;
         private const float KeylineDepth = 0.11f;
 
         // The secondary accept row runs BESIDE the primary plate, on its row and in its Z band,
@@ -477,11 +475,10 @@ namespace CatMetro.Presentation.Props
         // has, down to the pixel.
         //
         // AcceptFirstX = primary keyline half (0.54) + chip keyline half (0.24) + a 0.08 gap.
-        private const float AcceptFirstX = 0.86f;
-        private const float AcceptPitch = 0.52f;
-        private const float AcceptSize = 0.4f;
-        private const float AcceptKeylineSize = 0.48f;
-        private const float AcceptGlyphSize = 0.22f;
+        private const float AcceptFirstX = (KeylineSize + AcceptKeylineSize) * 0.5f + 0.08f;
+        private const float AcceptPitch = AcceptKeylineSize + 0.08f;
+        private const float AcceptSize = 0.46f;
+        private const float AcceptKeylineSize = AcceptSize * 1.5f;
 
         // The post the badge stands on. Anchor-local, and the anchor is at 0.6, so 0.15 here is
         // 0.09 board units — 8.4 px wide at the conservative yardstick, the same slender-but-
@@ -548,107 +545,51 @@ namespace CatMetro.Presentation.Props
         // lane's; flagged for whoever owns the palette rather than changed here.
         private static readonly Color KeylineCream = new Color(0.94f, 0.88f, 0.75f);
 
-        private static void EnsureProjectOwnedStationPlate(Transform stationAnchor,
-            ReadOnlyMemory<string> accepts, float footLocalZ)
+        private static void BuildStationBadges(ImportedLevel level, Transform boardRoot)
         {
-            foreach (var renderer in stationAnchor.GetComponentsInChildren<Renderer>(true))
-                if (renderer.enabled && renderer.gameObject.name.StartsWith("station:plate"))
-                    return;
-
-            // Main's fallback station carries the correct line color and glyph on a cube.
-            // Recompose those same project-owned signals as a compact badge so the generated
-            // kiosk can replace the cube without letting its fixed blue sign imply a route.
-            var fallback = stationAnchor.GetComponent<Renderer>();
-            TextMesh label = null;
-            foreach (var candidate in stationAnchor.GetComponentsInChildren<TextMesh>(true))
+            bool usesShapes = DestinationBadge.UsesShapes(level.Dto);
+            var stations = level.Dto.Stations.Span;
+            foreach (var anchor in boardRoot.GetComponentsInChildren<BoardElementId>(true))
             {
-                label = candidate;
-                break;
+                if (anchor.Kind != "station") continue;
+                foreach (var station in stations)
+                    if (station.NodeId == anchor.Id)
+                        EnsureProjectOwnedStationPlate(anchor.transform, station.Accepts,
+                            usesShapes ? station.Shape : null,
+                            SignFootLocalZ(anchor.transform, boardRoot));
             }
-            if (fallback == null || label == null) return;
+        }
 
+        private static void EnsureProjectOwnedStationPlate(Transform stationAnchor,
+            ReadOnlyMemory<string> accepts, string authoredShape, float footLocalZ)
+        {
+            if (stationAnchor.Find("station:plate-generated") != null) return;
+            var fallback = stationAnchor.GetComponent<Renderer>();
+            if (fallback == null) return;
             var accepted = accepts.Span;
-            string primary = accepted.Length > 0 ? accepted[0] : "";
-            // STATION-BADGE: the plate's shape comes from the line vocabulary, not from a
-            // switch of its own. This used to read `label.text == "R" ? Cylinder : Cube` —
-            // "red is a circle, everything else is a square" — which stopped being a shape
-            // channel the moment a level authored a third destination colour. CatLine.ShapeOf
-            // is the single source; the HUD's badge sprites key off the very same call.
-            var shape = CatLine.ShapeOf(primary);
-
-            // Put the shape plaque on the clear board apron in front of the kiosk. Centering it
-            // on the line-coloured roof makes the red circle and blue square both read as the
-            // same rectangle in the production near-orthographic view.
-            //
-            // LOOK step 4: it now STANDS on a post there instead of lying on the wood. The
-            // plaque's centre has not moved by a millimetre — same x, same y, same height off
-            // the board — so the composition, the on-wood fit and the chip row are all
-            // untouched; what changed is that its face is perpendicular to the tabletop and
-            // yawed at the camera, and that a mast runs from the wood up to its bottom edge.
-            //
-            // Under the frontal 38-degree pitch, a flat plaque would present cos(38) = 0.788
-            // of its face, while the best upright board-plane direction presents sin(38) =
-            // 0.616. Standing therefore costs about 22% of projected face area; the deliberate
-            // 0.9-unit badge pays that cost in exchange for reading unambiguously as a station
-            // sign rather than another symbol painted onto the tabletop.
-            var head = new Vector3(0f, PlateY, PlateZ);
-            CreateMast("station:signmast-generated", stationAnchor,
-                head, PlateSize, MastThickness, footLocalZ);
-
-            var keyline = CreatePlateGeometry("station:keyline-generated", stationAnchor,
-                shape, head + SignFacing * KeylineFacingOffset, KeylineSize, KeylineDepth);
-            Tint(keyline, KeylineCream);
-
-            var plate = CreatePlateGeometry("station:plate-generated", stationAnchor,
-                shape, head, PlateSize, PlateDepth);
-            // The primary plate keeps wearing the station's OWN line material, exactly as it
-            // did before — that is what makes the fallback cube and the badge the same signal.
-            //
-            // Note the asymmetry with the chips below, because it decides how each is read
-            // back: this plate carries a real per-station material and NO property block, so
-            // its colour is sharedMaterial.color. The chips carry GreyboxMaterial.Shared plus
-            // a property block, so theirs is only in the block. Reading either the other way
-            // returns a plausible wrong colour rather than failing.
-            plate.sharedMaterial = fallback.sharedMaterial != null
-                ? fallback.sharedMaterial : GreyboxMaterial.Shared;
-
-            label.transform.localPosition = head + SignFacing * GlyphFacingOffset;
-            label.transform.localRotation = StationSignRotation;
-            label.characterSize = 0.5f;
-            label.anchor = TextAnchor.MiddleCenter;
-            label.alignment = TextAlignment.Center;
-
-            // STATION-BADGE gap 2: a berth that accepts more than one line used to advertise
-            // only its first. L009's COOL takes blue AND yellow and badged a bare "B", so the
-            // yellow half was unlearnable from the board — the player had to discover it by
-            // sending a cat and watching. Every further accepted line now gets its own chip in
-            // a row under the plate, carrying the same three channels the primary does: line
-            // colour, line shape, line letter. BoardView is untouched; the decorator already
-            // held the station DTO, so the whole fix lives in the badge that had the gap.
-            for (int i = 1; i < accepted.Length; i++)
+            // An empty accept list remains an explicit magenta content error.
+            int count = Mathf.Max(1, accepted.Length);
+            for (int i = 0; i < count; i++)
             {
-                string extra = accepted[i];
-                var extraShape = CatLine.ShapeOf(extra);
-                float x = AcceptFirstX + (i - 1) * AcceptPitch;
-                // The row still runs along board +X, NOT along the standing sign's own width.
-                // Board +X projects to screen (0.869, -0.055) — almost exactly horizontal — so
-                // the chips read as a level row of signage beside the primary, and every
-                // clearance the chip lane worked out in anchor units carries over unchanged.
-                var chipHead = new Vector3(x, PlateY, PlateZ);
-                CreateMast("station:signmast-accept-" + (i - 1), stationAnchor,
-                    chipHead, AcceptSize, ChipMastThickness, footLocalZ);
-
-                var chipKeyline = CreatePlateGeometry("station:keyline-accept-" + (i - 1),
-                    stationAnchor, extraShape, chipHead + SignFacing * KeylineFacingOffset,
-                    AcceptKeylineSize, KeylineDepth);
-                Tint(chipKeyline, KeylineCream);
-
-                var chip = CreatePlateGeometry("station:plate-accept-" + (i - 1),
-                    stationAnchor, extraShape, chipHead, AcceptSize, PlateDepth);
-                Tint(chip, CatLine.ColorOf(extra));
-
-                AddAcceptGlyph(stationAnchor, label, "station:symbol-accept-" + (i - 1),
-                    chipHead + SignFacing * GlyphFacingOffset, CatLine.GlyphOf(extra));
+                string line = accepted.Length > 0 ? accepted[i] : "";
+                var shape = DestinationBadge.Resolve(line, authoredShape);
+                bool primary = i == 0;
+                string suffix = primary ? "generated" : "accept-" + (i - 1);
+                float size = primary ? PlateSize : AcceptSize;
+                float discSize = primary ? KeylineSize : AcceptKeylineSize;
+                var head = new Vector3(primary ? 0f : AcceptFirstX + (i - 1) * AcceptPitch,
+                    PlateY, PlateZ);
+                CreateMast("station:signmast-" + suffix, stationAnchor, head, discSize,
+                    primary ? MastThickness : ChipMastThickness, footLocalZ);
+                // The cream disc is the sign; the coloured silhouette is the destination.
+                var disc = CreatePlateGeometry("station:keyline-" + suffix, stationAnchor,
+                    DestinationShape.Circle, head + SignFacing * KeylineFacingOffset,
+                    discSize, KeylineDepth);
+                Tint(disc, KeylineCream);
+                var plate = CreatePlateGeometry("station:plate-" + suffix, stationAnchor,
+                    shape, head, size, PlateDepth);
+                if (primary) plate.sharedMaterial = fallback.sharedMaterial ?? GreyboxMaterial.Shared;
+                else Tint(plate, CatLine.ColorOf(line));
             }
         }
 
@@ -689,8 +630,15 @@ namespace CatMetro.Presentation.Props
             // apex somewhere else, so the order is pinned by a test rather than by this comment.
             part.transform.localRotation =
                 StationSignRotation * DestinationShapeMesh.PlateRotation(shape);
-            part.transform.localScale = DestinationShapeMesh.PlateScale(shape, size, depth);
-            part.AddComponent<MeshFilter>().sharedMesh = DestinationShapeMesh.ForShape(shape);
+            // Legacy content permits wild-only berths. Their concave star uses the pin's
+            // triangulation; the convex destination-mesh builder deliberately rejects it.
+            var mesh = shape == DestinationShape.Star
+                ? CatPinMeshBuilder.StarBadge() : DestinationShapeMesh.ForShape(shape);
+            var intrinsic = mesh.bounds.size;
+            part.transform.localScale = shape == DestinationShape.Star
+                ? new Vector3(size / intrinsic.x, size / intrinsic.y, depth / intrinsic.z)
+                : DestinationShapeMesh.PlateScale(shape, size, depth);
+            part.AddComponent<MeshFilter>().sharedMesh = mesh;
             var renderer = part.AddComponent<MeshRenderer>();
             renderer.sharedMaterial = GreyboxMaterial.Shared;
             return renderer;
@@ -710,25 +658,5 @@ namespace CatMetro.Presentation.Props
         // than allocating keeps the badge inside the no-ad-hoc-materials rule. It also ties
         // the chips to the primary honestly: wherever the station's own letter renders, these
         // render too, and wherever it doesn't, neither do they.
-        private static void AddAcceptGlyph(Transform parent, TextMesh model, string name,
-            Vector3 localPosition, string glyph)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-            go.transform.localPosition = localPosition;
-            go.transform.localRotation = StationSignRotation;
-            var text = go.AddComponent<TextMesh>();
-            text.font = model.font;
-            text.text = glyph;
-            text.fontSize = model.fontSize;
-            text.fontStyle = model.fontStyle;
-            text.color = model.color;
-            text.characterSize = AcceptGlyphSize;
-            text.anchor = TextAnchor.MiddleCenter;
-            text.alignment = TextAlignment.Center;
-            var modelRenderer = model.GetComponent<Renderer>();
-            if (modelRenderer != null)
-                go.GetComponent<Renderer>().sharedMaterial = modelRenderer.sharedMaterial;
-        }
     }
 }

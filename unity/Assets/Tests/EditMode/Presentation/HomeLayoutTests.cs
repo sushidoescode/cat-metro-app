@@ -2,6 +2,10 @@ using NUnit.Framework;
 using UnityEngine;
 using CatMetro.Presentation.Screens;
 using CatMetro.Presentation.Hud;
+using CatMetro.Application.Session;
+using CatMetro.Presentation.Board;
+using CatMetro.Presentation.Props;
+using CatMetro.Tests.Validation;
 
 namespace CatMetro.Tests.Presentation
 {
@@ -10,6 +14,91 @@ namespace CatMetro.Tests.Presentation
     // 360x640 frame plus the dpi-0 fallback and one bottom-inset case.
     public sealed class HomeLayoutTests
     {
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void CameraFit_IgnoresLiveAndPooledParticleBounds_ButStillFitsMeshGeometry(
+            bool home, bool pooled)
+        {
+            var owner = new GameObject("camera-fit-transient-bounds-test");
+            var target = new RenderTexture(917, 2048, 24);
+            try
+            {
+                var cameraHost = new GameObject("camera");
+                cameraHost.transform.SetParent(owner.transform, false);
+                var camera = cameraHost.AddComponent<Camera>();
+                camera.targetTexture = target;
+                camera.aspect = 917f / 2048f;
+                var level = VFixtures.Import(VFixtures.L001Bytes());
+                var board = BoardView.Build(level, owner.transform, new GameSession(level),
+                    PropModelCatalog.Empty);
+                System.Action fit = () =>
+                {
+                    if (home) BoardSceneLook.FitCamera(camera, board, new Rect(.12f, .28f, .76f, .48f));
+                    else BoardSceneLook.FitCamera(camera, board);
+                };
+                fit();
+                Vector3 restPosition = camera.transform.position;
+                float restSize = camera.orthographicSize, restFar = camera.farClipPlane;
+
+                var particleHost = new GameObject(pooled ? "Pooled steam" : "Live steam");
+                particleHost.transform.SetParent(board.transform, false);
+                var particles = particleHost.AddComponent<ParticleSystem>();
+                particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                particles.Simulate(0f, true, true, false);
+                if (!pooled)
+                    particles.SetParticles(new[] { new ParticleSystem.Particle
+                    {
+                        position = Vector3.zero, startLifetime = 10f, remainingLifetime = 10f,
+                        startSize = 1f, startColor = Color.white,
+                    } }, 1);
+                Assert.That(particles.particleCount, Is.EqualTo(pooled ? 0 : 1));
+                var particleRenderer = particles.GetComponent<ParticleSystemRenderer>();
+                particleRenderer.enabled = true;
+                // A world bounds override makes the failure independent of editor particle
+                // simulation timing. Empty pooled systems retain an enabled renderer too.
+                var transientBounds = new Bounds(new Vector3(95f, 72f, 140f),
+                    new Vector3(160f, 130f, 600f));
+                particleRenderer.bounds = transientBounds;
+                Assert.That(particleRenderer.bounds, Is.EqualTo(transientBounds));
+                fit();
+                Vector3 particlePosition = camera.transform.position;
+                float particleSize = camera.orthographicSize, particleFar = camera.farClipPlane;
+
+                // Positive control: identical bounds on real mesh geometry must still change
+                // both framing and depth. A fitter that ignores all renderers cannot pass.
+                particleRenderer.enabled = false;
+                var meshHost = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                meshHost.name = "Real geometry control";
+                meshHost.transform.SetParent(board.transform, false);
+                meshHost.transform.position = transientBounds.center;
+                meshHost.transform.localScale = transientBounds.size;
+                fit();
+                Assert.That(camera.orthographicSize, Is.GreaterThan(restSize + 1f));
+                Assert.That(Vector3.Distance(camera.transform.position, restPosition), Is.GreaterThan(1f));
+                Assert.That(camera.farClipPlane, Is.GreaterThan(restFar + 1f));
+
+                TestContext.Out.WriteLine("CAMERA_PARTICLE_BOUNDS home=" + home + " pooled=" + pooled
+                    + " restSize=" + restSize + " particleSize=" + particleSize
+                    + " restPosition=" + restPosition.ToString("F5")
+                    + " particlePosition=" + particlePosition.ToString("F5")
+                    + " restFar=" + restFar + " particleFar=" + particleFar);
+                Assert.That(particleSize, Is.EqualTo(restSize).Within(.0001f),
+                    "transient particles must not shrink the Home diorama or gameplay board");
+                Assert.That(Vector3.Distance(particlePosition, restPosition), Is.LessThan(.0001f),
+                    "particle bounds must not translate the board or move its camera depth");
+                Assert.That(particleFar, Is.EqualTo(restFar).Within(.0001f),
+                    "particle bounds must not expand the fitted depth range");
+            }
+            finally
+            {
+                Object.DestroyImmediate(owner);
+                target.Release();
+                Object.DestroyImmediate(target);
+            }
+        }
+
         [Test]
         public void ShortViewport_LeavesARealHolderBetweenTheHeaderAndEveryPin()
         {
