@@ -42,7 +42,14 @@ cyan/magenta rear, yellow/green front, orange lower torso, dark unclassified. Th
 need visual confirmation; provider names alone are explicitly insufficient.
 
 Independent CPU skinning uses each source vertex and `bone.localToWorldMatrix * bindpose`,
-then checks every sampled position against the baked skin within .0001 world units.
+retains the strongest influences allowed by the renderer's effective `skin.quality` (or
+`QualitySettings.skinWeights` for Auto), and renormalizes that retained set. Anatomical membership
+continues to use all source weights. The probe rejects a source with more than four influences
+because its legacy weight representation would then be incomplete. The actual 2026-09-10
+Auto/TwoBones capture matched the independent two-weight calculation within .0000026 world units;
+four-weight calculations disagreed by .0243187. No renderer, global quality, or importer setting
+is changed. Every sampled position still checks against `BakeMesh(true)` transformed to world
+within the unchanged .0001 world units, with the maximum error reported before assertion.
 This catches a scaling/projection error before using it to claim contact. The diagnostic scopes
 `forceMatrixRecalculationPerRender=true` to the actual sampled skin so a synchronous camera
 render cannot reuse a previous pose's GPU matrices; teardown restores the previous flag. It also

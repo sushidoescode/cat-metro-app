@@ -103,6 +103,8 @@ namespace CatMetro.Tests.PlayMode
             Mesh sourceMesh = skin.sharedMesh;
             Vector3[] vertices = SourceVertices(sourceMesh);
             BoneWeight[] weights = sourceMesh.boneWeights;
+            Assert.That(sourceMesh.GetBonesPerVertex().ToArray().All(count => count <= 4), Is.True,
+                "this source uses the complete legacy four-weight representation; reject a changed source with more influences");
             Matrix4x4[] bind = sourceMesh.bindposes;
             int[] triangles = SourceTriangles(sourceMesh);
             var sourcePrefab = Resources.Load<GameObject>(CatModelCatalog.ResourcePath);
@@ -122,6 +124,8 @@ namespace CatMetro.Tests.PlayMode
             }).ToArray();
             _evidence.Add(new { kind = "source", mesh = sourceMesh.name, sourceMesh.isReadable,
                 vertexCount = vertices.Length, weightCount = weights.Length,
+                rendererQuality = skin.quality.ToString(), globalSkinWeights = QualitySettings.skinWeights.ToString(),
+                effectiveInfluenceLimit = EffectiveInfluenceLimit(skin),
                 forceMatricesForSynchronousRender = skin.forceMatrixRecalculationPerRender,
                 sourceFbx = UnityEditor.AssetDatabase.GetAssetPath(sourceMesh),
                 anatomy = Enumerable.Range(1, Regions.Length - 1).Select(r => new {
@@ -347,16 +351,51 @@ namespace CatMetro.Tests.PlayMode
         private static Vector3[] CpuWorld(SkinnedMeshRenderer skin, Vector3[] vertices, BoneWeight[] weights, Matrix4x4[] bind)
         {
             Matrix4x4[] matrices = skin.bones.Select((bone, b) => bone.localToWorldMatrix * bind[b]).ToArray();
-            return vertices.Select((v, i) => matrices[weights[i].boneIndex0].MultiplyPoint3x4(v) * weights[i].weight0
-                + matrices[weights[i].boneIndex1].MultiplyPoint3x4(v) * weights[i].weight1
-                + matrices[weights[i].boneIndex2].MultiplyPoint3x4(v) * weights[i].weight2
-                + matrices[weights[i].boneIndex3].MultiplyPoint3x4(v) * weights[i].weight3).ToArray();
+            int limit = EffectiveInfluenceLimit(skin);
+            // Native Auto/TwoBones bakes the strongest two influences after renormalizing.
+            // Membership above still uses all source weights; only posed world positions
+            // follow the renderer's actual policy. No quality or source data is changed.
+            return vertices.Select((v, i) =>
+            {
+                BoneWeight w = weights[i];
+                var selected = new[] { (bone: w.boneIndex0, weight: w.weight0),
+                    (bone: w.boneIndex1, weight: w.weight1), (bone: w.boneIndex2, weight: w.weight2),
+                    (bone: w.boneIndex3, weight: w.weight3) }
+                    .Where(value => value.weight > 0f).OrderByDescending(value => value.weight).Take(limit).ToArray();
+                float mass = selected.Sum(value => value.weight);
+                if (!(mass > 0f)) throw new InvalidOperationException("Source vertex has no retained skin influence: " + i);
+                Vector3 world = Vector3.zero;
+                foreach (var influence in selected)
+                    world += matrices[influence.bone].MultiplyPoint3x4(v) * influence.weight;
+                return world / mass;
+            }).ToArray();
+        }
+        private static int EffectiveInfluenceLimit(SkinnedMeshRenderer skin)
+        {
+            switch (skin.quality)
+            {
+                case SkinQuality.Bone1: return 1;
+                case SkinQuality.Bone2: return 2;
+                case SkinQuality.Bone4: return 4;
+                case SkinQuality.Auto:
+                    switch (QualitySettings.skinWeights)
+                    {
+                        case SkinWeights.OneBone: return 1;
+                        case SkinWeights.TwoBones: return 2;
+                        case SkinWeights.FourBones:
+                        case SkinWeights.Unlimited: return 4; // Complete source representation asserted above.
+                        default: throw new InvalidOperationException("Unknown global skin influence policy.");
+                    }
+                default: throw new InvalidOperationException("Unknown renderer skin influence policy.");
+            }
         }
         private static void CheckCpuAgainstBake(SkinnedMeshRenderer skin, Vector3[] cpu)
         {
             var baked = new Mesh();
             try { skin.BakeMesh(baked, true); float error = baked.vertices.Select((v, i) =>
                     Vector3.Distance(skin.transform.TransformPoint(v), cpu[i])).Max();
+                TestContext.Out.WriteLine("SEAT_EFFECTIVE_CPU_BAKE " + JsonConvert.SerializeObject(new {
+                    limit = EffectiveInfluenceLimit(skin), maximumWorldError = error, tolerance = .0001f }));
                 Assert.That(error, Is.LessThan(.0001f), "independent CPU source vertices * bone * bindpose versus actual baked skin"); }
             finally { Object.DestroyImmediate(baked); }
         }
