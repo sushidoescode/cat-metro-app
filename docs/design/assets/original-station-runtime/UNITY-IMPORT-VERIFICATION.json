@@ -359,5 +359,217 @@
       "Actual configured board/arrival/win and camera framing captures at selected offset",
       "Android rendering and performance"
     ]
+  },
+  "original_station_display_scale_calibration": {
+    "base_candidate": "45fa49d2d5fdb0f3e8ae2209efd811e933e84902",
+    "previous_display_scale": 0.55,
+    "selected_display_scale": 0.42,
+    "unchanged_early_slab_height_requirement": 0.65,
+    "source_geometry_and_live_badges_unchanged": true,
+    "trial_xml": "/private/tmp/catmetro-owner-original-assets-20260910-104917/results/station-scale-trials.xml",
+    "trial_xml_sha256": "57866097172e1885c89a1e3374661e06164aea5d52b16ea6f6b1ec68823d1f2a",
+    "trial_xml_result": {
+      "result": "Failed(Child)",
+      "passed": 0,
+      "failed": 1,
+      "note": "Intentional unchanged production .55 framing assertion fails L002/L009/L010/L015 after all trial/restoration measurements are recorded. Selected .42 measurements pass the existing requirement; this is not final-candidate suite validation."
+    },
+    "selection": "Both .43 and .42 satisfy the fifteen early-board height checks; .42 provides more margin in L009/L010/L015 (.653505862 versus .6509211). The minimum selected early-board fraction is .6522502 on L001/L002.",
+    "measurements": [
+      {
+        "level": "L001",
+        "baseline_slab_height": 0.6522502,
+        "trial_043_slab_height": 0.6522502,
+        "selected_042_slab_height": 0.6522502,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L001-scale-trials.json",
+        "json_sha256": "417634b6a888227de12482a528b776f59637d80b6ad3b051299db5fc8467952f"
+      },
+      {
+        "level": "L002",
+        "baseline_slab_height": 0.6325081,
+        "trial_043_slab_height": 0.6522502,
+        "selected_042_slab_height": 0.6522502,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L002-scale-trials.json",
+        "json_sha256": "ec7dd47ff08679becd101170b63d976142a6c5d9e7f859c583026ae33a60540a"
+      },
+      {
+        "level": "L003",
+        "baseline_slab_height": 0.664049,
+        "trial_043_slab_height": 0.664049,
+        "selected_042_slab_height": 0.664049,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L003-scale-trials.json",
+        "json_sha256": "2c3f53ac4cc6be2582c6fcf39e32328979ee0cec35a384cc8be325e3cf9a0130"
+      },
+      {
+        "level": "L004",
+        "baseline_slab_height": 0.674000859,
+        "trial_043_slab_height": 0.674000859,
+        "selected_042_slab_height": 0.674000859,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L004-scale-trials.json",
+        "json_sha256": "48834b7ba3a660a0be5eb7597a90d31f80884f1a666fffc4ab3ffe553b464eb1"
+      },
+      {
+        "level": "L005",
+        "baseline_slab_height": 0.664049149,
+        "trial_043_slab_height": 0.664049149,
+        "selected_042_slab_height": 0.664049149,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L005-scale-trials.json",
+        "json_sha256": "16fe5b324167eebdf89d250602c24346e49e44aa403883ba977686ff9589d6cd"
+      },
+      {
+        "level": "L006",
+        "baseline_slab_height": 0.664049,
+        "trial_043_slab_height": 0.664049,
+        "selected_042_slab_height": 0.664049,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L006-scale-trials.json",
+        "json_sha256": "68332ba518542b17b3de81d9bf51928f175c093c8fd578b9d8f97c127583bfa4"
+      },
+      {
+        "level": "L007",
+        "baseline_slab_height": 0.674000859,
+        "trial_043_slab_height": 0.674000859,
+        "selected_042_slab_height": 0.674000859,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L007-scale-trials.json",
+        "json_sha256": "e29be95169364b1742e930706bdd0a49bc1c8ce792217a877f5c26492953f5f5"
+      },
+      {
+        "level": "L008",
+        "baseline_slab_height": 0.682507634,
+        "trial_043_slab_height": 0.682507634,
+        "selected_042_slab_height": 0.682507634,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L008-scale-trials.json",
+        "json_sha256": "cae8adcd40f12fa307939e85744aa31c013e5d28435cf65df6a0e6c920db42c2"
+      },
+      {
+        "level": "L009",
+        "baseline_slab_height": 0.6214273,
+        "trial_043_slab_height": 0.6509211,
+        "selected_042_slab_height": 0.653505862,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L009-scale-trials.json",
+        "json_sha256": "214121ca23e4e0409cec830f49f0a93daeaf29da9090f19fb965c63ebc14db2c"
+      },
+      {
+        "level": "L010",
+        "baseline_slab_height": 0.6214271,
+        "trial_043_slab_height": 0.6509211,
+        "selected_042_slab_height": 0.653505862,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L010-scale-trials.json",
+        "json_sha256": "ed45829c849757a7be1561744cbf4b19a80b849685dc37c77026de0201b6f79f"
+      },
+      {
+        "level": "L011",
+        "baseline_slab_height": 0.6785307,
+        "trial_043_slab_height": 0.682507634,
+        "selected_042_slab_height": 0.682507634,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L011-scale-trials.json",
+        "json_sha256": "622af7167c2447dc44aed0182ab918b8ae8388a9ae97b6437e82833e852c7ba9"
+      },
+      {
+        "level": "L012",
+        "baseline_slab_height": 0.689862847,
+        "trial_043_slab_height": 0.689862847,
+        "selected_042_slab_height": 0.689862847,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L012-scale-trials.json",
+        "json_sha256": "ae0058c587ee6644c00a80f31c7f529967e7f815c6a92263a3651a0668d1a2d5"
+      },
+      {
+        "level": "L013",
+        "baseline_slab_height": 0.664049149,
+        "trial_043_slab_height": 0.664049149,
+        "selected_042_slab_height": 0.664049149,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L013-scale-trials.json",
+        "json_sha256": "4a8c8d5a7872bccd9f934dac8f501ca70fc99b136ea67d10cc5b315ccab3cfdf"
+      },
+      {
+        "level": "L014",
+        "baseline_slab_height": 0.674000859,
+        "trial_043_slab_height": 0.674000859,
+        "selected_042_slab_height": 0.674000859,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L014-scale-trials.json",
+        "json_sha256": "dd9a175afe7e9d4ad168ac94b235f9a0d42362a67f0fffd79b3e81ec1cbbd2e3"
+      },
+      {
+        "level": "L015",
+        "baseline_slab_height": 0.6214273,
+        "trial_043_slab_height": 0.6509211,
+        "selected_042_slab_height": 0.653505862,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L015-scale-trials.json",
+        "json_sha256": "ea8ef284be377c6830d4a73a911964f69ac07b14b49c2f1ae666b66d1e930674"
+      },
+      {
+        "level": "L041",
+        "baseline_slab_height": 0.5436516,
+        "trial_043_slab_height": 0.553702354,
+        "selected_042_slab_height": 0.5545567,
+        "early_65_percent_required": false,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L041-scale-trials.json",
+        "json_sha256": "0ebd5729bbfd5702f0a3c6cc84d9044335d1d88cc5a34f7fc22a1abb4620bb1a"
+      },
+      {
+        "level": "L052",
+        "baseline_slab_height": 0.409554243,
+        "trial_043_slab_height": 0.42716524,
+        "selected_042_slab_height": 0.42870152,
+        "early_65_percent_required": false,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L052-scale-trials.json",
+        "json_sha256": "122cfcb745615dd650054b0b48eac2b4fbe9fde6200e2eacf3c0531a6d0363fb"
+      }
+    ],
+    "capture_manifest": "/private/tmp/catmetro-owner-original-assets-20260910-104917/station-scale-review/manifest.json",
+    "capture_manifest_sha256": "bea4416e361817a7985fb14db90b42619462ca0a7b6ceb9bdf425d9d004f3881",
+    "captures_verified_by_hash": 28,
+    "captured_levels": [
+      "L001",
+      "L002",
+      "L009",
+      "L010",
+      "L015",
+      "L041",
+      "L052"
+    ],
+    "owner_reported_visual_review": "All28 raw PNGs opened through seven comparison pages; roofs/walls remain clear, destination badges prominent and the board fills more of the phone.",
+    "implementer_opened": [
+      "captures/station-scale-trials/L001-scale-0.42.png",
+      "captures/station-scale-trials/L009-scale-0.42.png",
+      "station-scale-review/L009.png"
+    ],
+    "generated_files_preserved": 41,
+    "pending_at_receipt": [
+      "Unchanged complete native framing test with production DisplayScale .42",
+      "Final native full suites and combined original/engine/seat candidate",
+      "Android rendering and performance"
+    ]
   }
 }

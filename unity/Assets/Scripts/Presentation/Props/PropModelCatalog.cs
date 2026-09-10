@@ -126,9 +126,9 @@ namespace CatMetro.Presentation.Props
             // keep their existing admission/rejection behavior and local provenance.
             // Original FBX front is +Z; 180 degrees faces it toward board -Y after
             // BoardPropDecorator's Y-up-to-board conversion. The 3.05-wide platform
-            // becomes 1.68 board units without changing any live badge geometry.
+            // becomes 1.281 board units without changing any live badge geometry.
             return CanRenderOriginalStation(original)
-                ? new Entry(StationKioskId, original, .55f, 180f, Vector3.zero)
+                ? new Entry(StationKioskId, original, .42f, 180f, Vector3.zero)
                 : ResourceEntry(StationKioskId, 1.45f, 270f, Vector3.zero);
         }
 
