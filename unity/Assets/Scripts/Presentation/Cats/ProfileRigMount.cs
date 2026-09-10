@@ -715,6 +715,16 @@ namespace CatMetro.Presentation.Cats
             root.sizeDelta = new Vector2(width, height);
             root.anchoredPosition3D = new Vector3(xMin + width * 0.5f,
                 yMin + height * 0.5f, -shortSide * CosmeticLift);
+            // Large Wardrobe holders can lift the cosmetic plane through the camera's
+            // near plane even while the shallower rig remains visible. Retain the requested
+            // lift whenever it is safe; the orthographic projection keeps this depth-only
+            // correction aligned with the head before the torso fit is measured.
+            float minimumDepth = camera.nearClipPlane
+                + Mathf.Max(.01f, camera.nearClipPlane * .1f);
+            float depth = Vector3.Dot(root.position - camera.transform.position,
+                camera.transform.forward);
+            if (depth < minimumDepth)
+                root.position += camera.transform.forward * (minimumDepth - depth);
             return true;
         }
 

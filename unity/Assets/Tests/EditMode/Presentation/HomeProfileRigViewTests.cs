@@ -85,6 +85,41 @@ namespace CatMetro.Tests.EditMode.Presentation
             Object.DestroyImmediate(home.gameObject);
         }
 
+        [TestCase(1f, false)]
+        [TestCase(5f, true)]
+        public void CosmeticPlane_StaysReachableBeyondNearClip_WithoutChangingSafeLift(float cameraSize, bool needsClamp)
+        {
+            _camera.orthographicSize = cameraSize;
+            _camera.nearClipPlane = .1f;
+            _camera.transform.rotation = Quaternion.Euler(20f, 30f, 0f);
+            var canvas = _canvasHost.GetComponent<Canvas>();
+            canvas.worldCamera = null;
+            canvas.worldCamera = _camera;
+            Canvas.ForceUpdateCanvases();
+            _fixture = new ConformingSkinnedRigFixture();
+            var mount = HomeProfileRigView.Create(_holder, _portrait,
+                CatModelCatalog.FromEntry(new CatModelCatalog.Entry(_fixture.Prefab, 180f)));
+
+            Assert.That(mount.Layout(_camera), Is.True);
+
+            RectTransform portrait = _portrait.RootTransform;
+            float depth = _camera.WorldToScreenPoint(portrait.position).z;
+            Assert.That(depth, Is.GreaterThan(_camera.nearClipPlane),
+                "visible rig cosmetics must remain beyond the camera's near clip plane");
+            Assert.That(RectTransformUtility.ScreenPointToWorldPointInRectangle(portrait,
+                mount.RenderedHeadScreenRect.center, _camera, out _), Is.True,
+                "the projected face must still reach the cosmetic plane for body fitting");
+            float requestedLift = -Mathf.Min(_holder.rect.width, _holder.rect.height) * .2f;
+            if (needsClamp)
+            {
+                Assert.That(portrait.anchoredPosition3D.z, Is.GreaterThan(requestedLift));
+                Assert.That(depth, Is.LessThan(_camera.nearClipPlane + .02f),
+                    "clipping correction must keep the cosmetics close to the requested plane");
+            }
+            else Assert.That(portrait.anchoredPosition3D.z, Is.EqualTo(requestedLift).Within(.0001f),
+                "an already visible portrait must retain its existing lift");
+        }
+
         [Test]
         public void LostCamera_ReportsFallbackAndRecovery_WithoutRepeatingOnEveryLayout()
         {
