@@ -21,7 +21,7 @@ namespace CatMetro.Tests.PlayMode
         internal int TriangleCount { get; private set; }
         internal int HeadVertexCount { get; private set; }
 
-        internal WeightedHeadMaskGeometry(SkinnedMeshRenderer skin, Transform head, bool useScale = true)
+        internal WeightedHeadMaskGeometry(SkinnedMeshRenderer skin, Transform head)
         {
             _skin = skin;
             _wasEnabled = skin.enabled;
@@ -35,7 +35,7 @@ namespace CatMetro.Tests.PlayMode
                 _baked = new Mesh { name = "DiagnosticWeightedHeadBake" };
                 // Keep the renderer-relative bake under the same transform. The rendered
                 // full-bake control must agree with the original skin before any head metric.
-                skin.BakeMesh(_baked, useScale);
+                skin.BakeMesh(_baked, true);
                 Assert.That(_baked.vertexCount, Is.EqualTo(weights.Length));
                 Assert.That(_baked.subMeshCount, Is.EqualTo(skin.sharedMesh.subMeshCount));
                 for (int s = 0; s < _baked.subMeshCount; s++)

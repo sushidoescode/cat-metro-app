@@ -93,7 +93,7 @@ namespace CatMetro.Tests.PlayMode
                 {
                     mount.AdvanceTurntable(delta);
                     AssertFaceClear(name + "-t" + delta.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture),
-                        mount, portrait);
+                        mount, portrait, captureControls: delta == 0f);
                 }
                 source.Set(Snapshot("red_tabby", false));
                 Assert.That(portrait.OutfitLayerTransform.gameObject.activeSelf, Is.False);
@@ -122,18 +122,18 @@ namespace CatMetro.Tests.PlayMode
             }
         }
 
-        private void AssertFaceClear(string name, ProfileRigMount mount, CosmeticPortraitView portrait)
+        private void AssertFaceClear(string name, ProfileRigMount mount, CosmeticPortraitView portrait,
+            bool captureControls = false)
         {
             SkinnedMeshRenderer[] skins = mount.PrefabRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true);
             bool[] refresh = skins.Select(s => s.forceMatrixRecalculationPerRender).ToArray();
-            Save(name + "-before-matrix-refresh", Read());
             try
             {
                 // Unity requires this flag when manually rendering different skin snapshots
                 // more than once in one update. Without it the GPU can retain the tiny pose
                 // from before the test's phone layout while BakeMesh sees current transforms.
                 foreach (SkinnedMeshRenderer skin in skins) skin.forceMatrixRecalculationPerRender = true;
-                AssertFaceClearRefreshed(name, mount, portrait);
+                AssertFaceClearRefreshed(name, mount, portrait, captureControls);
             }
             finally
             {
@@ -141,7 +141,8 @@ namespace CatMetro.Tests.PlayMode
             }
         }
 
-        private void AssertFaceClearRefreshed(string name, ProfileRigMount mount, CosmeticPortraitView portrait)
+        private void AssertFaceClearRefreshed(string name, ProfileRigMount mount, CosmeticPortraitView portrait,
+            bool captureControls)
         {
             Image[] body = portrait.OutfitLayerTransform.GetComponentsInChildren<Image>(true)
                 .Where(i => BodyNames.Contains(i.name)).ToArray();
@@ -158,8 +159,8 @@ namespace CatMetro.Tests.PlayMode
             Save(name + "-equipped", equipped);
             Save(name + "-hat-only", hatOnly);
             Save(name + "-plain", plain);
-            Color32[] head = HeadMask(mount, name);
-            Save(name + "-weighted-head", head);
+            Color32[] head = HeadMask(mount, name, captureControls);
+            if (captureControls) Save(name + "-weighted-head", head);
             int faceChanges = Different(equipped, hatOnly, head);
             int bodyChanges = Different(equipped, hatOnly);
             int hatChanges = Different(hatOnly, plain);
@@ -177,7 +178,7 @@ namespace CatMetro.Tests.PlayMode
                     center, _root.Cam, out Vector3 world), Is.True);
                 coat.position = world;
                 Color32[] forced = Read();
-                Save(name + "-forced-occlusion-control", forced);
+                if (captureControls) Save(name + "-forced-occlusion-control", forced);
                 Assert.That(Different(forced, hatOnly, head), Is.GreaterThan(20),
                     "moving real coat paint over the weighted face must fail the raster criterion");
             }
@@ -188,7 +189,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(faceChanges, Is.Zero, "body paint must leave the actual weighted head, including muzzle, visible");
         }
 
-        private Color32[] HeadMask(ProfileRigMount mount, string name)
+        private Color32[] HeadMask(ProfileRigMount mount, string name, bool captureControls)
         {
             SkinnedMeshRenderer skin = mount.PrefabRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single();
             Transform head = mount.PrefabRoot.GetComponentInChildren<CatRigPresentation>().HeadTransform;
@@ -213,33 +214,30 @@ namespace CatMetro.Tests.PlayMode
                 skin.sharedMaterials = Enumerable.Repeat(white, materials.Length).ToArray();
                 skin.SetPropertyBlock(null);
                 Color32[] realFull = Read();
-                Save(name + "-actual-skin-full", realFull);
-                // Both diagnostics retain the complete skin localToWorld matrix via an identity
-                // child; no TRS decomposition can discard the flattened hierarchy's shear.
-                // Preserve the alternate scale interpretation before the unchanged strict
-                // full-topology comparison. Neither comparison is selected by image similarity.
-                using (var unscaled = new WeightedHeadMaskGeometry(skin, head, useScale: false))
-                {
-                    unscaled.Material.SetFloat("_HeadOnly", 0f);
-                    Color32[] full = Read();
-                    Save(name + "-unscaled-bake-full", full);
-                    LogMaskGeometry(name, "unscaled", skin, unscaled, realFull, full);
-                }
-                using (var geometry = new WeightedHeadMaskGeometry(skin, head, useScale: true))
+                if (captureControls) Save(name + "-actual-skin-full", realFull);
+                // Preserve the full skin localToWorld matrix via an identity child. The fixed
+                // scaled bake must match the actual skin before any face metric is accepted.
+                using (var geometry = new WeightedHeadMaskGeometry(skin, head))
                 {
                     geometry.Material.SetFloat("_HeadOnly", 0f);
                     Color32[] bakedFull = Read();
-                    Save(name + "-scaled-bake-full", bakedFull);
-                    LogMaskGeometry(name, "scaled", skin, geometry, realFull, bakedFull);
-                    AssertContoursAgree(realFull, bakedFull);
+                    if (captureControls) Save(name + "-scaled-bake-full", bakedFull);
+                    try { AssertContoursAgree(realFull, bakedFull); }
+                    catch (AssertionException)
+                    {
+                        LogMaskGeometry(name, skin, geometry, realFull, bakedFull);
+                        throw;
+                    }
                     geometry.Material.SetFloat("_HeadOnly", 1f);
                     Color32[] weighted = Read();
                     geometry.SetZeroInfluence(true);
                     Color32[] zero = Read();
-                    Save(name + "-zero-weight-control", zero);
+                    if (captureControls) Save(name + "-zero-weight-control", zero);
                     Assert.That(zero.Count(White), Is.Zero);
                     geometry.SetZeroInfluence(false);
-                    Assert.That(Read(), Is.EqualTo(weighted));
+                    Color32[] restored = Read();
+                    if (captureControls) Save(name + "-restored-head-control", restored);
+                    Assert.That(restored, Is.EqualTo(weighted));
                     return weighted;
                 }
             }
@@ -256,13 +254,13 @@ namespace CatMetro.Tests.PlayMode
             }
         }
 
-        private void LogMaskGeometry(string name, string mode, SkinnedMeshRenderer skin,
+        private void LogMaskGeometry(string name, SkinnedMeshRenderer skin,
             WeightedHeadMaskGeometry geometry, Color32[] actual, Color32[] diagnostic)
         {
             Mesh mesh = geometry.Root.GetComponent<MeshFilter>().sharedMesh;
             var values = new Newtonsoft.Json.Linq.JObject
             {
-                ["mode"] = mode,
+                ["bake_includes_scale"] = true,
                 ["force_matrix_recalculation"] = skin.forceMatrixRecalculationPerRender,
                 ["actual_white_pixels"] = actual.Count(White),
                 ["diagnostic_white_pixels"] = diagnostic.Count(White),
@@ -281,7 +279,7 @@ namespace CatMetro.Tests.PlayMode
             string json = values.ToString();
             TestContext.Out.WriteLine("BODYWEAR_MASK " + name + " " + json);
             if (!string.IsNullOrEmpty(_directory))
-                File.WriteAllText(Path.Combine(_directory, name + "-" + mode + "-geometry.json"), json);
+                File.WriteAllText(Path.Combine(_directory, name + "-contour-failure-geometry.json"), json);
         }
 
         private static Newtonsoft.Json.Linq.JArray VectorValues(Vector3 v) =>
