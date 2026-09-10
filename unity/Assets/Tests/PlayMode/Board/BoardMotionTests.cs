@@ -130,11 +130,14 @@ namespace CatMetro.Tests.PlayMode
             var rt = new RenderTexture(917, 2048, 24);
             _root.Cam.targetTexture = rt;
             yield return null;
-            var chip = panel.PanelRoot.transform.Find("Panel/PrimaryCta") as RectTransform;
-            if (chip == null)
-                foreach (var part in panel.PanelRoot.GetComponentsInChildren<RectTransform>())
-                    if (part.name == "PrimaryCta") { chip = part; break; }
+            Assert.That(_root.Input.Regions.TryResolve(panel.ChipPaintedRectPx.center,
+                out _, out _, out var chip, out var face), Is.True);
             Assert.That(chip, Is.Not.Null);
+            Assert.That(chip.name, Is.EqualTo("ChromeChip"));
+            Assert.That(face, Is.Not.Null);
+            const float settled = CatMetro.Presentation.Hud.ResultsPanel.PaintDelaySeconds
+                + CatMetro.Presentation.Hud.ResultsPanel.EaseSeconds + .01f;
+            panel.SamplePresentation(settled);
             // Centre the existing painted chip for the macro; phone layout is a separate gate.
             chip.anchorMin = new Vector2(0.12f, 0.45f); chip.anchorMax = new Vector2(0.88f, 0.55f);
             chip.offsetMin = chip.offsetMax = Vector2.zero;
@@ -147,10 +150,13 @@ namespace CatMetro.Tests.PlayMode
                 var fx = _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>();
                 int frame = Time.frameCount;
                 fx.Advance(0.042f, frame + 1);
+                panel.SamplePresentation(settled + .042f);
                 SaveFrame(_root.Cam, Path.Combine(dir, "press-042ms.png"));
                 fx.Advance(0.056f, frame + 2);
+                panel.SamplePresentation(settled + .098f);
                 SaveFrame(_root.Cam, Path.Combine(dir, "press-098ms.png"));
                 fx.Advance(0.043f, frame + 3);
+                panel.SamplePresentation(settled + .141f);
                 SaveFrame(_root.Cam, Path.Combine(dir, "press-140ms.png"));
                 Assert.That(actions, Is.EqualTo(1));
             }

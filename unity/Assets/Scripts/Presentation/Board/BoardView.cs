@@ -690,7 +690,10 @@ namespace CatMetro.Presentation.Board
                 Vector3 anchor = _nodePos[delivery.Node] + Vector3.down * ToyTrainView.PlatformSideOffset
                     + Vector3.forward * ToyTrainView.HeadAnchorZ;
                 var passenger = ToyTrainView.Create(transform, "delivered-cat:" + i, _edgeFrom, _edgeTo);
-                passenger.SyncSlot(i + 1L, delivery.Colour);
+                passenger.SyncSlot(i + 1L, CatToken.Color(delivery.Colour),
+                    DestinationBadge.Resolve(delivery.Colour, _usesShapes));
+                passenger.SetTokenFlags(CatToken.IsStray(delivery.Colour),
+                    CatToken.IsExpress(delivery.Colour));
                 passenger.PrepareDeliveredPassenger(anchor);
                 passenger.gameObject.SetActive(false);
                 var retained = new DeliveredPassenger { Delivery = delivery, View = passenger };

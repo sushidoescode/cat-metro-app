@@ -105,7 +105,7 @@ namespace CatMetro.Presentation.Hud
             if (show && !_registered && _regions != null)
             {
                 _regions.Register(RegionId, () => _chipPaintedPx, InvokeNext, RegionPriority);
-                _regions.BindVisual(RegionId, _chipRect);
+                _regions.BindVisual(RegionId, _chip.Root, _chip.Face);
                 _registered = true;
             }
             else if (!show) Unregister();
@@ -118,6 +118,8 @@ namespace CatMetro.Presentation.Hud
             float alpha = _motionOff != null && _motionOff() ? 1f
                 : Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((elapsedSeconds - PaintDelaySeconds) / EaseSeconds));
             _scrim.color = Palette.WithAlpha(Palette.DepotNavy, .48f * alpha);
+            var fx = GetComponentInParent<CatMetro.Presentation.Fx.BoardFx>();
+            if (fx != null && fx.IsAnimating(_chip.Root)) return;
             _chip.SetOpacity(alpha);
             _chip.Root.localScale = Vector3.one * Mathf.Lerp(.92f, 1f, alpha);
         }

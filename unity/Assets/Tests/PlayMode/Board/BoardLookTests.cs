@@ -428,8 +428,21 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator FallbackPassengerHead_IsReadableAtPhoneScaleAndSitsProudOfCarriageWall(
-            [Values("L001", "L002", "L009")] string levelId)
+        public IEnumerator FallbackPassengerHead_IsReadableAtPhoneScaleAndSitsProudOfCarriageWall()
+        {
+            if (CatModelCatalog.LoadResources().AdmittedEntryCount > 0)
+                Assert.Ignore("fallback passenger geometry is hidden by the admitted cat rig; "
+                    + "this clean-checkout metric does not validate that rig's rendered scale");
+            foreach (string levelId in new[] { "L001", "L002", "L009" })
+            {
+                yield return MeasureFallbackPassengerAtPhoneScale(levelId);
+                Object.DestroyImmediate(_root.gameObject);
+                _root = null;
+                yield return null;
+            }
+        }
+
+        private IEnumerator MeasureFallbackPassengerAtPhoneScale(string levelId)
         {
             _root = GameRoot.Launch(GameRoot.LevelPath(levelId));
             _root.enabled = false;
@@ -459,9 +472,8 @@ namespace CatMetro.Tests.PlayMode
                 Is.EqualTo(CatPresentationState.RideIdle),
                 "the artifact must measure a passenger seated behind its carriage wall, "
                 + "not the new boarding animation beside the train");
-            if (trainView.RigAdmitted)
-                Assert.Ignore("fallback passenger geometry is hidden by the admitted cat rig; "
-                    + "this clean-checkout metric does not validate that rig's rendered scale");
+            Assert.That(trainView.RigAdmitted, Is.False,
+                "the catalog precondition must remain licence-neutral for every measured level");
             var head = train.Find("Carriage/Cat/Head");
             var body = train.Find("Carriage/Body");
             Assert.That(head, Is.Not.Null);

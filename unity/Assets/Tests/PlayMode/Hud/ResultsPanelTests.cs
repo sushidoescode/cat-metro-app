@@ -249,6 +249,63 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator ChipPress_SurvivesTheSameFrameResultsPresentationSample()
+        {
+            Time.timeScale = 0f;
+            var panel = AttachControlled("Won");
+            _root.MotionOffToggle = false;
+            _root.AnimatorDurationScale = 1f;
+            yield return null;
+
+            const float settled = ResultsPanel.PaintDelaySeconds + ResultsPanel.EaseSeconds + .01f;
+            panel.SamplePresentation(settled);
+            Assert.That(panel.PaintedAlpha, Is.EqualTo(1f));
+            Assert.That(_root.Input.Regions.TryResolve(panel.ChipFaceRectPx.center,
+                out _, out _, out var chip, out var face), Is.True);
+            Assert.That(chip, Is.Not.Null, "the live results region owns a painted press target");
+            Assert.That(face, Is.Not.Null, "the live results region owns the face to flash");
+            Vector3 neutralScale = chip.localScale;
+            Color neutralPaint = face.color;
+            int actions = 0;
+            panel.NextRequested = () => actions++;
+            string captureDir = System.Environment.GetEnvironmentVariable("CM_PRESS_CAPTURE_DIR");
+            if (!string.IsNullOrEmpty(captureDir))
+                Capture(captureDir, "results-press-neutral.png", panel.ChipFaceRectPx);
+
+            Assert.That(_root.Input.HandleTapAtScreen(panel.ChipFaceRectPx.center), Is.EqualTo(-3));
+            var fx = _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>();
+            Assert.That(fx, Is.Not.Null);
+            int frame = Time.frameCount;
+            fx.Advance(.042f, frame + 1);
+            Vector3 pressedScale = chip.localScale;
+            Color pressedPaint = face.color;
+            Assert.That(pressedScale.x, Is.LessThan(neutralScale.x),
+                "positive control: real input compresses the chip before presentation samples it");
+            Assert.That(pressedPaint.r, Is.LessThan(neutralPaint.r),
+                "positive control: real input darkens the cream face for the press flash");
+            Assert.That(actions, Is.Zero, "navigation waits until the visible press finishes");
+            if (!string.IsNullOrEmpty(captureDir))
+                Capture(captureDir, "results-press-before-presentation.png", panel.ChipFaceRectPx);
+
+            // ResultsPanel.Update calls this same production path before the frame renders.
+            panel.SamplePresentation(settled + .042f);
+            if (!string.IsNullOrEmpty(captureDir))
+                Capture(captureDir, "results-press-after-presentation.png", panel.ChipFaceRectPx);
+            TestContext.Out.WriteLine($"RESULTS_PRESS beforeScale={pressedScale} afterScale={chip.localScale} "
+                + $"beforePaint={pressedPaint} afterPaint={face.color}");
+            Assert.That(Vector3.Distance(chip.localScale, pressedScale), Is.LessThan(.0001f),
+                "results entrance sampling must preserve the active button compression");
+            Assert.That(face.color, Is.EqualTo(pressedPaint),
+                "results entrance sampling must preserve the active face flash");
+
+            fx.Advance(.1f, frame + 2);
+            panel.SamplePresentation(settled + .142f);
+            Assert.That(actions, Is.EqualTo(1));
+            Assert.That(Vector3.Distance(chip.localScale, neutralScale), Is.LessThan(.0001f));
+            Assert.That(face.color, Is.EqualTo(neutralPaint));
+        }
+
+        [UnityTest]
         public IEnumerator ChipPaintedRect_IsTheSafeAreaThumbBand_AndFloorHoldsLive()
         {
             var panel = AttachControlled("Won");

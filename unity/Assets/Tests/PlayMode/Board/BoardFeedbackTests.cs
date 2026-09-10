@@ -261,13 +261,20 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Session.State.Tick, Is.Zero);
             _root.MotionOffToggle = true;
             _root.View.UpdateFrom(_root.Session, 8f);
-            float rest = _root.Cam.orthographicSize;
+            float homeRest = _root.Cam.orthographicSize;
             _root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center);
             _root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center);
             Assert.That(_root.ScreensVisible, Is.False);
+            float playRest = _root.Cam.orthographicSize;
+            Assert.That(playRest, Is.LessThan(homeRest),
+                "Play frames the board more closely than Home's diorama aperture");
             _root.MotionOffToggle = false;
-            _root.View.UpdateFrom(_root.Session, 9f);
-            Assert.That(_root.Cam.orthographicSize, Is.EqualTo(rest).Within(0.0001f));
+            for (int i = 0; i <= 24; i++)
+            {
+                _root.View.UpdateFrom(_root.Session, 9f + i * 0.25f);
+                Assert.That(_root.Cam.orthographicSize, Is.EqualTo(playRest).Within(0.0001f),
+                    "Home breathing must not overwrite or animate the new Play fit");
+            }
             Assert.That(_root.Session.State.Tick, Is.Zero);
         }
 
@@ -276,12 +283,18 @@ namespace CatMetro.Tests.PlayMode
         {
             GameRoot.DevSkipShippedHome = false;
             _root = GameRoot.Launch();
-            var engine = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            engine.name = "parked engine fixture";
-            engine.transform.SetParent(_root.View.transform, false);
-            var identity = engine.AddComponent<CatMetro.Presentation.Props.BoardPropInstance>();
-            typeof(CatMetro.Presentation.Props.BoardPropInstance).GetProperty("Role")
-                .SetValue(identity, "parked-engine");
+            var identity = Array.Find(_root.View.GetComponentsInChildren<
+                CatMetro.Presentation.Props.BoardPropInstance>(), p => p.Role == "parked-engine");
+            if (identity == null)
+            {
+                var fixture = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                fixture.name = "parked engine fixture";
+                fixture.transform.SetParent(_root.View.transform, false);
+                identity = fixture.AddComponent<CatMetro.Presentation.Props.BoardPropInstance>();
+                typeof(CatMetro.Presentation.Props.BoardPropInstance).GetProperty("Role")
+                    .SetValue(identity, "parked-engine");
+            }
+            var engine = identity.gameObject;
             yield return null;
             _root.View.UpdateFrom(_root.Session, 0f);
             _root.View.UpdateFrom(_root.Session, 4.01f);

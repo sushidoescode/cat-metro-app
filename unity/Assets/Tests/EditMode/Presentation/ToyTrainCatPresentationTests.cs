@@ -532,15 +532,15 @@ namespace CatMetro.Tests.EditMode.Presentation
             var passenger = _board.transform.Find("delivered-cat:0");
             Assert.That(passenger.localPosition.x, Is.EqualTo(2.4f).Within(.0001f),
                 "recorded station X=3 maps to 3 × GridX 0.8, even when both arrivals were unseen");
-            Assert.That(passenger.localPosition.y, Is.EqualTo(2.328f).Within(.0001f),
-                "station Y=2 maps to 2.94; the calibrated 0.612 platform offset stays in board units");
+            Assert.That(passenger.localPosition.y, Is.EqualTo(2.284f).Within(.0001f),
+                "station Y=2 maps to 2.94; the calibrated 0.656 platform offset stays in board units");
             Assert.That(passenger.localPosition.z, Is.EqualTo(-.2f).Within(.0001f),
                 "HeadAnchorZ is the unchanged tabletop lift; the X/Y grid must not scale depth");
         }
 
-        [TestCase(0, 2, 2.4f, 2.808f)]
-        [TestCase(-2, 0, 1.92f, 2.328f)]
-        [TestCase(-2, 2, 2.170553f, 2.749609f)]
+        [TestCase(0, 2, 2.4f, 2.764f)]
+        [TestCase(-2, 0, 1.92f, 2.284f)]
+        [TestCase(-2, 2, 2.170553f, 2.705609f)]
         public void DeliveredPassenger_ObservedHandoffKeepsTheArrivalEndpoint(
             int approachX, int approachY, float endpointX, float endpointY)
         {
@@ -554,12 +554,13 @@ namespace CatMetro.Tests.EditMode.Presentation
             }
             var arriving = BoardTrain().GetComponent<ToyTrainView>();
             // Hand-derived from station (2.4,2.94), a 0.48 carriage trailing distance,
-            // and board-down 0.612. The diagonal uses direction (1.6,-2.94), not (2,-2).
+            // and board-down 0.656. The diagonal uses direction (1.6,-2.94), not (2,-2).
             Vector3 expectedWorld = _board.transform.TransformPoint(
                 new Vector3(endpointX, endpointY, -.2f));
             Assert.That(Vector3.Distance(arriving.PlatformEndpointWorld, expectedWorld),
                 Is.LessThan(.001f),
-                "the arrival endpoint follows the anisotropic grid and transforms with the tilted board");
+                "the arrival endpoint follows the anisotropic grid and transforms with the tilted board; "
+                + $"expected={expectedWorld:F6} actual={arriving.PlatformEndpointWorld:F6}");
             _board.UpdateFrom(_session, .7f);
             var endpoint = BoardTrain().Find("Carriage/Cat").position;
             _board.UpdateFrom(_session, 1.2f);
@@ -612,12 +613,12 @@ namespace CatMetro.Tests.EditMode.Presentation
             _board.UpdateFrom(_session, 10.59f);
             Vector3 anchor = a.localPosition;
             Vector3 neutralScale = a.Find("Carriage/Cat").localScale;
-            Assert.That(Vector3.Distance(anchor, new Vector3(2.4f, 2.328f, -.2f)),
+            Assert.That(Vector3.Distance(anchor, new Vector3(2.4f, 2.284f, -.2f)),
                 Is.LessThan(.0001f),
-                "the win starts on the scaled station's 0.612-offset platform, with unchanged depth");
-            Assert.That(Vector3.Distance(b.localPosition, new Vector3(2.82f, 2.328f, -.2f)),
+                "the win starts on the scaled station's 0.656-offset platform, with unchanged depth");
+            Assert.That(Vector3.Distance(b.localPosition, new Vector3(2.88f, 2.284f, -.2f)),
                 Is.LessThan(.0001f),
-                "the second retained cat keeps 0.42 board-unit lane spacing; GridX does not compress it");
+                "the second retained cat keeps 0.48 board-unit lane spacing; GridX does not compress it");
             Assert.That(a.GetComponent<ToyTrainView>().PresentationState,
                 Is.EqualTo(CatPresentationState.WaitingIdle), "the 0.6-second beat does not depend on board scale");
             _board.UpdateFrom(_session, 10.60f);
