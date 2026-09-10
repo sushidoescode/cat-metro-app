@@ -157,7 +157,7 @@ The frame should contain:
 | Decision | Junction and lever near the optical centre. Track direction from the cat to its matching station can be reconstructed at a glance. |
 | Cat | Head and ears clearly above the carriage wall, with the destination pin separated from the silhouette. It must read as a cat at 20% size. |
 | Stations | At least two distinct, reachable destinations identified by both colour and shape. No text station signs. |
-| Shipped HUD | Wave capsule and delivered/rider counters may remain. No added Score/Moves panel and no marketing copy. |
+| Shipped HUD | Keep the shipped wave capsule, delivered/rider counters, and Pause control visible. No added Score/Moves panel and no marketing copy. |
 | World detail | Warm wooden board, thick navy rails and cream sleepers, depot and admitted props, soft upper-left key, contact shadows. Use desk clutter only if it ships and does not compete with the junction. |
 
 ### 2.2 Reference hierarchy
