@@ -296,6 +296,8 @@ namespace CatMetro.Presentation.Board
 
             var sourceIds = new HashSet<string>();
             foreach (var s in dto.Sources.ToArray()) sourceIds.Add(s.NodeId);
+            var switchNodeIds = new HashSet<string>();
+            foreach (var s in dto.Switches.ToArray()) switchNodeIds.Add(s.NodeId);
             var stationAccept = new Dictionary<string, string>();
             foreach (var s in dto.Stations.ToArray())
             {
@@ -338,8 +340,14 @@ namespace CatMetro.Presentation.Board
                 }
                 else if (kind == "source")
                     TintSharedRenderer(renderer, new Color(0.25f, 0.25f, 0.25f));
+                else if (switchNodeIds.Contains(nodes[i].Id))
+                    // The raised teal switch rests on this support. Preserve its exact
+                    // contact geometry, but make the exposed walls part of the toy wood.
+                    TintSharedRenderer(renderer, Palette.WarmWood);
                 else
-                    TintSharedRenderer(renderer, new Color(0.7f, 0.7f, 0.7f));
+                    // The continuous track already joins here. Keep the gameplay anchor
+                    // and identity without a debug cube obscuring the rails above it.
+                    renderer.enabled = false;
             }
 
             _edgeFrom = new int[edges.Length];
