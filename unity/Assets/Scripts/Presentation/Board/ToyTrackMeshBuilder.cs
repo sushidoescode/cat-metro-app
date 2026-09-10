@@ -139,7 +139,7 @@ namespace CatMetro.Presentation.Board
         // Cross(v1 - v0, v2 - v0) points OUT of the solid: walk the outline with
         // lateral to the right and z downwards, starting along the top surface.
         // Reversing this list mirrors every face inward and the whole sweep is culled.
-        private static readonly Vector2[] BedSection =
+        private static readonly Vector2[] BedSection = RoundSection(new[]
         {
             new Vector2(-(BedHalfWidth - BedChamfer), BedTopZ),
             new Vector2(0f, BedTopZ - BedCrownRise),
@@ -148,9 +148,9 @@ namespace CatMetro.Presentation.Board
             new Vector2(BedHalfWidth, BedBackZ),
             new Vector2(-BedHalfWidth, BedBackZ),
             new Vector2(-BedHalfWidth, BedTopZ + BedChamfer),
-        };
+        }, .025f, new[] { 3, 6 });
 
-        private static readonly Vector2[] RailSection =
+        private static readonly Vector2[] RailSection = RoundSection(new[]
         {
             new Vector2(-RailWidth * 0.5f + 0.025f, RailCrownZ),
             new Vector2(RailWidth * 0.5f - 0.025f, RailCrownZ),
@@ -158,7 +158,7 @@ namespace CatMetro.Presentation.Board
             new Vector2(RailWidth * 0.5f, RailBackZ),
             new Vector2(-RailWidth * 0.5f, RailBackZ),
             new Vector2(-RailWidth * 0.5f, RailShoulderZ),
-        };
+        }, .012f, new[] { 0, 1, 2, 5 });
 
         private static Material _bedMaterial;
         private static Material _sleeperMaterial;
@@ -166,7 +166,8 @@ namespace CatMetro.Presentation.Board
 
         public static GameObject Build(string edgeId, TrackSpline path, Transform parent)
         {
-            var vertices = new List<Vector3>(1024);
+            var vertices = new List<Vector3>(2048);
+            var uvs = new List<Vector2>(2048);
             var bedTriangles = new List<int>(1536);
             var railTriangles = new List<int>(1536);
             var ribbonTriangles = new List<int>(1536);
@@ -174,16 +175,19 @@ namespace CatMetro.Presentation.Board
             // The bed runs the WHOLE spline — no end inset. Edges that share a node
             // butt their beds together there, which is what makes a route read as one
             // ribbon instead of a row of separate track pieces.
-            AppendSweep(path, BedSection, vertices, ribbonTriangles);
+            AppendSweep(path, BedSection, vertices, ribbonTriangles, uvs, 0);
+            int sleeperStart = vertices.Count;
             AppendSleeperTicks(path, vertices, bedTriangles);
             AppendJoinSeam(path, vertices, bedTriangles);
+            AppendDetailUvs(vertices, sleeperStart, uvs);
             AppendSweep(path.CreateLateralRail(-RailOffset), RailSection,
-                vertices, railTriangles);
+                vertices, railTriangles, uvs, 3);
             AppendSweep(path.CreateLateralRail(RailOffset), RailSection,
-                vertices, railTriangles);
+                vertices, railTriangles, uvs, 3);
 
             var mesh = new Mesh { name = "Toy track " + edgeId };
             mesh.SetVertices(vertices);
+            mesh.SetUVs(0, uvs);
             mesh.subMeshCount = 3;
             mesh.SetTriangles(bedTriangles, 0);
             mesh.SetTriangles(railTriangles, 1);
@@ -206,24 +210,81 @@ namespace CatMetro.Presentation.Board
         private static Material BedMaterial()
         {
             if (_bedMaterial == null)
-                _bedMaterial = GreyboxMaterial.CreateTinted("Toy Track — Wood Bed", Palette.WarmWood);
+                _bedMaterial = CreateTrackMaterial("Toy Track — Cream Bed", Palette.CreamCard);
             return _bedMaterial;
         }
 
         private static Material SleeperMaterial()
         {
             if (_sleeperMaterial == null)
-                _sleeperMaterial = GreyboxMaterial.CreateTinted(
-                    "Toy Track — Cream Ballast", Palette.CreamCard);
+                _sleeperMaterial = CreateTrackMaterial(
+                    "Toy Track — Wooden Sleepers", Palette.CreamCard);
             return _sleeperMaterial;
         }
 
         private static Material RailMaterial()
         {
             if (_railMaterial == null)
-                _railMaterial = GreyboxMaterial.CreateTinted(
+                _railMaterial = CreateTrackMaterial(
                     "Toy Track — Navy Rails", Palette.RailNavy);
             return _railMaterial;
+        }
+
+        // Original Blender study: scripts/blender_original_station_track.py. Its
+        // rounded sections are adapted inside the established running/clearance envelope.
+        // A quadratic corner stays inside the old convex outline. Keep the bed's top
+        // intact: BedTopAt, sleeper relief and seam contact depend on it. Only visible
+        // shoulders/crowns get extra faces; buried rail bases and deck contacts do not.
+        private static Vector2[] RoundSection(Vector2[] section, float inset, int[] corners)
+        {
+            var rounded = new List<Vector2>(section.Length * 3);
+            for (int i = 0; i < section.Length; i++)
+            {
+                Vector2 corner = section[i];
+                if (System.Array.IndexOf(corners, i) < 0) { rounded.Add(corner); continue; }
+                Vector2 before = section[(i + section.Length - 1) % section.Length] - corner;
+                Vector2 after = section[(i + 1) % section.Length] - corner;
+                Vector2 a = corner + before.normalized * Mathf.Min(inset, before.magnitude * .25f);
+                Vector2 b = corner + after.normalized * Mathf.Min(inset, after.magnitude * .25f);
+                rounded.Add(a);
+                rounded.Add(.25f * a + .5f * corner + .25f * b);
+                rounded.Add(b);
+            }
+            return rounded.ToArray();
+        }
+
+        private static Material CreateTrackMaterial(string name, Color fallback)
+        {
+            Material material = GreyboxMaterial.CreateTinted(name, fallback);
+            Texture2D atlas = Resources.Load<Texture2D>("Track/original-toy-atlas");
+            if (material == null || atlas == null) return material;
+            material.SetTexture("_BaseMap", atlas);
+            material.SetColor("_BaseColor", Color.white);
+            material.SetTextureScale("_BaseMap", Vector2.one);
+            material.SetTextureOffset("_BaseMap", Vector2.zero);
+            material.SetFloat("_Smoothness", .28f);
+            material.SetFloat("_Metallic", 0f);
+            if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", atlas);
+            return material;
+        }
+
+        // The original atlas has 256px swatches, in four columns and two rows.
+        // Stay 12px inside each swatch to keep bilinear sampling away from adjacent
+        // paint colours and reduce mip bleed at phone scale.
+        private static Vector2 AtlasUv(int column, float u, float v) => new Vector2(
+            (column * 256f + 12f + Mathf.Clamp01(u) * 232f) / 1024f,
+            (12f + Mathf.Clamp01(v) * 232f) / 512f);
+
+        private static void AppendDetailUvs(List<Vector3> vertices, int start, List<Vector2> uvs)
+        {
+            for (int i = start; i < vertices.Count; i++)
+            {
+                Vector3 p = vertices[i];
+                // A bounded continuous fold keeps every triangle in the wood swatch,
+                // including short ticks and the curved connector lobe. Only quiet grain
+                // varies; this never changes geometry or its exclusion zones.
+                uvs.Add(AtlasUv(1, Mathf.PingPong(p.x * .5f, 1f), Mathf.PingPong(p.y * .5f, 1f)));
+            }
         }
 
         // Sweeps a closed cross-section along a spline. Side quads first, then a fan cap
@@ -240,7 +301,7 @@ namespace CatMetro.Presentation.Board
         // inverted faces across all 76 edges of all 17 levels; the tuck bites on 1% of
         // rings and the median edge keeps the full width.
         private static void AppendSweep(TrackSpline centreline, Vector2[] crossSection,
-            List<Vector3> vertices, List<int> triangles)
+            List<Vector3> vertices, List<int> triangles, List<Vector2> uvs, int atlasColumn)
         {
             int segments = Mathf.Clamp(
                 Mathf.CeilToInt(centreline.Length / SampleSpacing), 8, 64);
@@ -291,6 +352,7 @@ namespace CatMetro.Presentation.Board
                     }
                     vertices.Add(centres[segment] + laterals[segment] * offset
                         + Vector3.forward * crossSection[i].y);
+                    uvs.Add(AtlasUv(atlasColumn, (float)segment / segments, (float)i / (ring - 1)));
                 }
             }
 
