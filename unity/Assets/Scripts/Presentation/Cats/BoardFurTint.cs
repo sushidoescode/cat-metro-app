@@ -26,6 +26,7 @@ namespace CatMetro.Presentation.Cats
             public Renderer Renderer;
             public Material[] SourceMaterials;
             public MaterialPropertyBlock SourceProperties;
+            public bool SourceHadProperties;
         }
 
         public static BoardFurTint TryInstall(GameObject instance)
@@ -80,7 +81,8 @@ namespace CatMetro.Presentation.Cats
                 var properties = new MaterialPropertyBlock();
                 renderer.GetPropertyBlock(properties);
                 tint._bindings.Add(new Binding { Renderer = renderer,
-                    SourceMaterials = source, SourceProperties = properties });
+                    SourceMaterials = source, SourceProperties = properties,
+                    SourceHadProperties = renderer.HasPropertyBlock() });
                 renderer.sharedMaterials = mounted;
             }
             return tint;
@@ -118,7 +120,7 @@ namespace CatMetro.Presentation.Cats
             {
                 if (binding.Renderer == null) continue;
                 binding.Renderer.sharedMaterials = binding.SourceMaterials;
-                binding.Renderer.SetPropertyBlock(binding.SourceProperties);
+                binding.Renderer.SetPropertyBlock(binding.SourceHadProperties ? binding.SourceProperties : null);
             }
             foreach (Material material in _ownedMaterials)
             {

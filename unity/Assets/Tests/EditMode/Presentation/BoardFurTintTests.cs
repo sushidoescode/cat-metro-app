@@ -68,6 +68,38 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void RemovingFurAfterColourAndPreviewChangesRestoresAbsentPropertyBlocks()
+        {
+            BuildFixture();
+            Renderer[] renderers = _host.GetComponentsInChildren<Renderer>();
+            Assert.That(renderers.Length, Is.EqualTo(2));
+            foreach (Renderer renderer in renderers)
+                Assert.That(renderer.HasPropertyBlock(), Is.False, "fixture must begin without any block");
+            var fur = BoardFurTint.TryInstall(_host);
+            Assert.That(fur, Is.Not.Null);
+            fur.Apply(Palette.HarborBlue);
+            fur.SetPreview(1f, true);
+            foreach (Renderer renderer in renderers)
+            {
+                Assert.That(renderer.HasPropertyBlock(), Is.True, "positive control: binding really added a block");
+                var block = new MaterialPropertyBlock();
+                renderer.GetPropertyBlock(block);
+                AssertColour(block.GetColor("_FurColor"), Palette.HarborBlue);
+                Assert.That(block.GetFloat("_FurDebug"), Is.EqualTo(1f));
+            }
+            Object.DestroyImmediate(fur);
+            foreach (Renderer renderer in renderers)
+            {
+                Assert.That(renderer.sharedMaterial, Is.SameAs(_source));
+                Assert.That(renderer.HasPropertyBlock(), Is.False,
+                    "an allocated empty block is not the original absent block");
+                var block = new MaterialPropertyBlock();
+                renderer.GetPropertyBlock(block);
+                Assert.That(block.isEmpty, Is.True);
+            }
+        }
+
+        [Test]
         public void MissingAtlas_LeavesEverySourceMaterialUntouched()
         {
             BuildFixture();

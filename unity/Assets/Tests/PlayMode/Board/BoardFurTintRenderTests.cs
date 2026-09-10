@@ -362,6 +362,7 @@ namespace CatMetro.Tests.PlayMode
         {
             Renderer[] renderers = sceneRoot.GetComponentsInChildren<Renderer>(true);
             Material[][] materials = renderers.Select(renderer => renderer.sharedMaterials).ToArray();
+            bool[] hadProperties = renderers.Select(renderer => renderer.HasPropertyBlock()).ToArray();
             var properties = renderers.Select(renderer =>
             {
                 var block = new MaterialPropertyBlock();
@@ -376,6 +377,7 @@ namespace CatMetro.Tests.PlayMode
             var black = new Material(white);
             white.SetColor("_BaseColor", Color.white);
             black.SetColor("_BaseColor", Color.black);
+            Color32[] silhouette;
             try
             {
                 for (int i = 0; i < renderers.Length; i++)
@@ -387,14 +389,14 @@ namespace CatMetro.Tests.PlayMode
                 foreach (Canvas canvas in canvases) canvas.enabled = false;
                 camera.clearFlags = CameraClearFlags.SolidColor;
                 camera.backgroundColor = Color.black;
-                return Read(camera, target);
+                silhouette = Read(camera, target);
             }
             finally
             {
                 for (int i = 0; i < renderers.Length; i++)
                 {
                     renderers[i].sharedMaterials = materials[i];
-                    renderers[i].SetPropertyBlock(properties[i]);
+                    renderers[i].SetPropertyBlock(hadProperties[i] ? properties[i] : null);
                 }
                 for (int i = 0; i < canvases.Length; i++) canvases[i].enabled = enabled[i];
                 camera.clearFlags = oldClear;
@@ -402,6 +404,10 @@ namespace CatMetro.Tests.PlayMode
                 Object.DestroyImmediate(white);
                 Object.DestroyImmediate(black);
             }
+            for (int i = 0; i < renderers.Length; i++)
+                Assert.That(renderers[i].HasPropertyBlock(), Is.EqualTo(hadProperties[i]),
+                    "silhouette control must restore the original block presence: " + renderers[i].name);
+            return silhouette;
         }
 
         private static int[] ProtectedPixels(Color32[] natural, Color32[] silhouette, int region)
