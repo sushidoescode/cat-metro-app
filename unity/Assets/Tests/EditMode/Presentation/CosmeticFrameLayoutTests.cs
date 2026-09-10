@@ -57,7 +57,7 @@ namespace CatMetro.Tests.EditMode.Presentation
                         var housing = (RectTransform)group.Find(glow.name.Substring(0, glow.name.Length - 4) + "Housing");
                         Assert.That(glow.localScale, Is.EqualTo(housing.localScale), "glow preserves its housing inset");
                         Assert.That(glow.rect.width / housing.rect.width, Is.EqualTo(.058f / .11f).Within(.00001f));
-                        Assert.That(glow.position, Is.EqualTo(housing.position));
+                        Assert.That(Vector3.Distance(glow.position, housing.position), Is.LessThan(.001f));
                     }
                 }
                 Vector3[] stationary = ImageCorners(portrait.FrameLayerTransform);

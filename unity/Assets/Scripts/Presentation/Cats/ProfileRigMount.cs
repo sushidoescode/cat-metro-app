@@ -66,6 +66,9 @@ namespace CatMetro.Presentation.Cats
         private Rect _bodyWearScreenRect;
         private Vector2 _bodyAnchorScreen;
         private bool _bodyWearFitted;
+        private bool _frameFitted;
+        private Vector2 _frameCenterScreen;
+        private readonly Vector3[] _frameCorners = new Vector3[4];
 
         public float TurntableAmplitude { get; set; }
         private float _turntableTime;
@@ -459,6 +462,7 @@ namespace CatMetro.Presentation.Cats
                 renderedHead.center, _layoutCamera, out _cosmeticHeadCenter);
             _cosmeticBasePosition = _portrait.RootTransform.anchoredPosition3D;
             FitBodyWear();
+            FitFrame();
             Mounted = true;
             ApplyRendererVisibility();
             FallbackBranch = 0;
@@ -484,6 +488,7 @@ namespace CatMetro.Presentation.Cats
             _portrait.RootTransform.anchoredPosition3D = _cosmeticBasePosition
                 + new Vector3(delta.x, delta.y, 0f);
             FollowBodyWear();
+            FollowFrame();
         }
 
         private static bool UsableDimension(float value) => float.IsFinite(value) && value > 0f;
@@ -687,6 +692,83 @@ namespace CatMetro.Presentation.Cats
                 center, _layoutCamera, out Vector2 local)) _portrait.MoveBodyWearCenter(local);
         }
 
+        private void FitFrame()
+        {
+            _frameFitted = false;
+            _portrait.ResetFrameLayout();
+            // Generic fixture/fallback portraits retain the original painter exactly.
+            if (_rigPresentation == null || !_rigPresentation.AuthoredMotionInstalled || !_portrait.HasFrame) return;
+            Vector2 min = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
+            Vector2 max = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
+            bool hasHat = _portrait.TryGetHeadWearScreenRect(_layoutCamera, out Rect hat);
+            float currentTurn = AppliedFacingYaw - _entry.FacingYaw - _surfaceFacingYaw;
+            int extent = TurntableAmplitude > 0f ? 1 : 0;
+            for (int pose = -extent; pose <= extent; pose++)
+            {
+                Quaternion turn = Quaternion.Euler(0f, pose * TurntableAmplitude - currentTurn, 0f);
+                Vector2 headMin = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
+                Vector2 headMax = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
+                // Reuse the full vertex lists already baked for this layout's head/coat fit.
+                // Simulate the turntable extrema in wrapper space, before its depth flattening.
+                foreach (HeadSample sample in _headSamples)
+                {
+                    if (sample.Skin == null) continue;
+                    Matrix4x4 skinToFit = _fit.worldToLocalMatrix * sample.Skin.transform.localToWorldMatrix;
+                    int head = 0;
+                    for (int i = 0; i < sample.Vertices.Count; i++)
+                    {
+                        bool isHead = head < sample.Indices.Length && sample.Indices[head] == i;
+                        if (isHead) head++;
+                        Vector3 point = skinToFit.MultiplyPoint3x4(sample.Vertices[i]);
+                        Vector3 screen = _layoutCamera.WorldToScreenPoint(_fit.TransformPoint(turn * point));
+                        if (!float.IsFinite(screen.x) || !float.IsFinite(screen.y) || screen.z <= 0f) continue;
+                        min = Vector2.Min(min, screen); max = Vector2.Max(max, screen);
+                        if (isHead)
+                        {
+                            headMin = Vector2.Min(headMin, screen); headMax = Vector2.Max(headMax, screen);
+                        }
+                    }
+                }
+                if (hasHat && headMax.x > headMin.x && headMax.y > headMin.y)
+                {
+                    // Headwear follows this same projected center, with settled dimensions.
+                    Vector2 delta = (headMin + headMax) * .5f - RenderedHeadScreenRect.center;
+                    min = Vector2.Min(min, hat.min + delta); max = Vector2.Max(max, hat.max + delta);
+                }
+            }
+            if (!UsableDimension(max.x - min.x) || !UsableDimension(max.y - min.y)) return;
+            _holder.GetWorldCorners(_frameCorners);
+            Vector2 outerMin = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
+            Vector2 outerMax = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
+            foreach (Vector3 world in _frameCorners)
+            {
+                Vector2 screen = _layoutCamera.WorldToScreenPoint(world);
+                outerMin = Vector2.Min(outerMin, screen); outerMax = Vector2.Max(outerMax, screen);
+            }
+            // Keep an idle/antialiasing gap as well as the measured yaw envelope. Normally
+            // the existing holder supplies the border; only an overhanging hat can extend it.
+            float gap = Mathf.Max(2f, Mathf.Min(outerMax.x - outerMin.x, outerMax.y - outerMin.y) * .01f);
+            Vector2 openingMin = min - Vector2.one * gap, openingMax = max + Vector2.one * gap;
+            outerMin = Vector2.Min(outerMin, openingMin - Vector2.one * gap);
+            outerMax = Vector2.Max(outerMax, openingMax + Vector2.one * gap);
+            if (!FrameLocal(outerMin, out Vector2 localOuterMin) || !FrameLocal(outerMax, out Vector2 localOuterMax)
+                || !FrameLocal(openingMin, out Vector2 localMin) || !FrameLocal(openingMax, out Vector2 localMax)) return;
+            _frameFitted = _portrait.FitFrame(Rect.MinMaxRect(localOuterMin.x, localOuterMin.y, localOuterMax.x, localOuterMax.y),
+                Rect.MinMaxRect(localMin.x, localMin.y, localMax.x, localMax.y));
+            _frameCenterScreen = (outerMin + outerMax) * .5f;
+        }
+
+        private bool FrameLocal(Vector2 screen, out Vector2 local) =>
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(_portrait.RootTransform, screen, _layoutCamera, out local);
+
+        private void FollowFrame()
+        {
+            // Only counter the head-aligned portrait translation. No frame sizing, mesh
+            // sampling, or canvas layout is added to the animated update path.
+            if (_frameFitted && FrameLocal(_frameCenterScreen, out Vector2 local))
+                _portrait.MoveFrameCenter(local);
+        }
+
         private static float BoneWeightFor(BoneWeight weight, int bone) =>
             (weight.boneIndex0 == bone ? weight.weight0 : 0f)
             + (weight.boneIndex1 == bone ? weight.weight1 : 0f)
@@ -765,6 +847,8 @@ namespace CatMetro.Presentation.Cats
             Mounted = false;
             _bodyWearFitted = false;
             _portrait?.ResetBodyWear();
+            _frameFitted = false;
+            _portrait?.ResetFrameLayout();
             RenderedHeadScreenRect = default;
             ApplyRendererVisibility();
             if (_portrait != null)
