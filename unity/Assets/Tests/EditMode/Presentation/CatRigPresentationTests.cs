@@ -279,16 +279,20 @@ namespace CatMetro.Tests.EditMode.Presentation
             AssertDiscriminatingRidePose(animator, 0f);
         }
 
-        [TestCase(0f)]
-        [TestCase(1f)]
-        public void LocalWaitingMotionOffKeepsSingleNeutralSampleThenResumesForItsLocation(float platformBlend)
+        [TestCase(0f, false)]
+        [TestCase(1f, false)]
+        [TestCase(0f, true)]
+        [TestCase(1f, true)]
+        public void LocalWaitingMotionOffKeepsOneStaticSampleThenResumesForItsLocation(float platformBlend, bool original)
         {
-            ToyTrainView view = CreateSampledLocalTrain(out Animator animator);
+            RequireLocalSource();
+            ToyTrainView view = CreateSeatTrain(original, out Animator animator, out Transform rig);
             view.ApplyPresentation(CatPresentationState.RideIdle, 0f, false, 1f, false);
             animator.Update(.37f);
             AssertDiscriminatingRidePose(animator, .37f);
             view.ApplyPresentation(CatPresentationState.WaitingIdle, platformBlend, false, 1f, true);
-            Assert.That(animator.GetCurrentAnimatorStateInfo(0).IsName("Base Layer.Cat_IdleSit"), Is.True);
+            bool seated = original && platformBlend == 0f;
+            AssertStaticMotionOff(view, animator, rig, seated, SampleStaticReference(seated));
             Quaternion neutral = animator.transform.Find(BodyPath).localRotation;
             int samples = view.RigNeutralSampleCount;
             Assert.That(samples, Is.EqualTo(1));
@@ -358,7 +362,7 @@ namespace CatMetro.Tests.EditMode.Presentation
         [TestCase(30)]
         [TestCase(60)]
         [TestCase(120)]
-        public void OriginalCarriageDepthFollowsEvaluatedBoardAlightAndRestoresOnMotionOffAndReuse(int framesPerSecond)
+        public void OriginalCarriageDepthFollowsEvaluatedBoardAlightAndStaticRideOnMotionOffAndReuse(int framesPerSecond)
         {
             RequireLocalSource();
             ToyTrainView view = CreateSeatTrain(true, out Animator animator, out Transform rig);
@@ -387,8 +391,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             view.ApplyPresentation(CatPresentationState.RideIdle, 1f, false);
             Assert.That(rig.localPosition.z, Is.EqualTo(.0983f));
             view.ApplyPresentation(CatPresentationState.RideIdle, 1f, true);
-            Assert.That(rig.localPosition, Is.EqualTo(Vector3.zero), "existing Motion Off neutral pose remains unchanged");
-            Assert.That(animator.GetCurrentAnimatorStateInfo(0).IsName("Base Layer.Cat_IdleSit"), Is.True);
+            AssertStaticMotionOff(view, animator, rig, true, SampleStaticReference(true));
             int samples = view.RigNeutralSampleCount;
             view.ApplyPresentation(CatPresentationState.RideIdle, 2f, true);
             Assert.That(view.RigNeutralSampleCount, Is.EqualTo(samples));
@@ -398,6 +401,133 @@ namespace CatMetro.Tests.EditMode.Presentation
             view.ApplyPresentation(CatPresentationState.WaitingIdle, 0f, false, 3f, false);
             Assert.That(rig.localPosition.z, Is.EqualTo(.0983f));
             Assert.That(animator.GetCurrentAnimatorStateInfo(0).normalizedTime, Is.EqualTo(0f).Within(.00001f));
+        }
+
+        [Test]
+        public void OriginalCarriageMotionOffSeatsAtSourceReleaseAndHoldsAcrossWaitAndReuse()
+        {
+            RequireLocalSource();
+            ToyTrainView view = CreateSeatTrain(true, out Animator animator, out Transform rig);
+            Quaternion[] idle = SampleStaticReference(false), ride = SampleStaticReference(true);
+            Vector3 rootPosition = view.transform.localPosition;
+            Quaternion rootRotation = view.transform.localRotation;
+            var track = new CatPresentationTrack();
+            var slot = new TrainSlot { Id = 42, State = TrainState.OnEdge };
+            // Exercise the actual track: the Motion Off view cuts its inbound walk/board
+            // directly to the seat while the presentation track still reports those phases.
+            float[] times = { 0f, .1f, .33f, .6f };
+            var states = new[] { CatPresentationState.WaitingIdle, CatPresentationState.Walk,
+                CatPresentationState.Board, CatPresentationState.RideIdle };
+            for (int i = 0; i < times.Length; i++)
+            {
+                track.Observe(slot, 1, false, times[i], i == 0);
+                Assert.That(track.State, Is.EqualTo(states[i]));
+                view.ApplyPresentation(track.State, track.PlatformBlend, track.MovingToPlatform, times[i], true);
+                AssertStaticMotionOff(view, animator, rig, i != 0, i == 0 ? idle : ride);
+                Assert.That(view.RigNeutralSampleCount, Is.EqualTo(i == 0 ? 1 : 2));
+            }
+            foreach (byte state in new[] { TrainState.RejectedAtStation, TrainState.OnEdgeReverse, TrainState.AtNode })
+            {
+                slot.State = state;
+                track.Observe(slot, 1, false, 1f);
+                Assert.That(track.State, Is.EqualTo(CatPresentationState.WaitingIdle));
+                for (int repeat = 0; repeat < 3; repeat++)
+                {
+                    view.ApplyPresentation(track.State, track.PlatformBlend, track.MovingToPlatform, 1f + repeat, true);
+                    animator.Update(.2f);
+                    SampleTrainLateUpdate(view);
+                    AssertStaticMotionOff(view, animator, rig, true, ride);
+                    Assert.That(view.RigNeutralSampleCount, Is.EqualTo(2));
+                }
+            }
+            view.SyncSlot(99, CatColor.Blue);
+            view.ApplyPresentation(CatPresentationState.RideIdle, 4f, true);
+            SampleTrainLateUpdate(view);
+            AssertStaticMotionOff(view, animator, rig, true, ride);
+            Assert.That(view.RigNeutralSampleCount, Is.EqualTo(2), "same static pose survives occupant reuse without resampling");
+            Assert.That(view.GetComponentInChildren<Animator>(true), Is.SameAs(animator));
+            Assert.That(view.transform.localPosition, Is.EqualTo(rootPosition));
+            Assert.That(view.transform.localRotation, Is.EqualTo(rootRotation));
+            view.ApplyPresentation(CatPresentationState.RideIdle, 5f, false);
+            animator.Update(.2f);
+            Assert.That(animator.speed, Is.EqualTo(1f));
+            Assert.That(animator.GetCurrentAnimatorStateInfo(0).normalizedTime, Is.GreaterThan(0f));
+        }
+
+        [Test]
+        public void OriginalCarriageMotionOffRestoresNeutralForHiddenAndRetainedPassengers()
+        {
+            RequireLocalSource();
+            ToyTrainView view = CreateSeatTrain(true, out Animator animator, out Transform rig);
+            Quaternion[] idle = SampleStaticReference(false), ride = SampleStaticReference(true);
+            view.ApplyPresentation(CatPresentationState.RideIdle, 0f, true);
+            AssertStaticMotionOff(view, animator, rig, true, ride);
+            view.ApplyPresentation(CatPresentationState.Hidden, 1f, true);
+            AssertStaticMotionOff(view, animator, rig, false, idle);
+            Assert.That(view.transform.Find("Carriage/Cat").gameObject.activeSelf, Is.False);
+            int hiddenSamples = view.RigNeutralSampleCount;
+            view.ApplyPresentation(CatPresentationState.Hidden, 2f, true);
+            Assert.That(view.RigNeutralSampleCount, Is.EqualTo(hiddenSamples));
+            view.ApplyPresentation(CatPresentationState.RideIdle, 3f, true);
+            AssertStaticMotionOff(view, animator, rig, true, ride);
+            view.PrepareDeliveredPassenger(Vector3.zero);
+            Assert.That(view.OriginalCarriageAdmitted, Is.True,
+                "retaining a passenger does not clear original-carriage admission");
+            Assert.That(view.transform.Find("Carriage/OriginalCarriage").gameObject.activeSelf, Is.False);
+            var retained = new CatPresentationTrack();
+            retained.SampleWin(.7f, 0, true);
+            view.ApplyDeliveredPose(retained, .7f, true);
+            SampleTrainLateUpdate(view);
+            AssertStaticMotionOff(view, animator, rig, false, idle);
+            int samples = view.RigNeutralSampleCount;
+            retained.SampleWin(1.2f, 0, true);
+            view.ApplyDeliveredPose(retained, 1.2f, true);
+            AssertStaticMotionOff(view, animator, rig, false, idle);
+            Assert.That(view.RigNeutralSampleCount, Is.EqualTo(samples));
+        }
+
+        [Test]
+        public void OriginalCarriageMotionOffRequiresTheInstalledOpenCarriageController()
+        {
+            RequireLocalSource();
+            ToyTrainView view = CreateSeatTrain(true, out Animator animator, out Transform rig);
+            animator.runtimeAnimatorController = Resources.Load<RuntimeAnimatorController>(CatRigPresentation.ControllerResourcePath);
+            animator.Rebind();
+            Assert.That(animator.GetComponent<CatRigPresentation>().OpenCarriageMotionInstalled, Is.False);
+            view.ApplyPresentation(CatPresentationState.RideIdle, 1f, true);
+            SampleTrainLateUpdate(view);
+            AssertStaticMotionOff(view, animator, rig, false, SampleStaticReference(false));
+        }
+
+        private Quaternion[] SampleStaticReference(bool seated)
+        {
+            GameObject reference = CloneThroughCatalog();
+            try
+            {
+                Animator animator = reference.GetComponentInChildren<Animator>(true);
+                AnimationClip clip = seated
+                    ? Resources.Load<AnimationClip>("CatMotion/OpenCarriage/Cat_Ride")
+                    : animator.runtimeAnimatorController.animationClips.Single(c => c.name == "Cat_IdleSit");
+                Assert.That(clip, Is.Not.Null);
+                clip.SampleAnimation(animator.gameObject, 0f);
+                return BoneRotations(animator.transform);
+            }
+            finally { Object.DestroyImmediate(reference); }
+        }
+
+        private static void AssertStaticMotionOff(ToyTrainView view, Animator animator, Transform rig,
+            bool seated, Quaternion[] expected)
+        {
+            Assert.That(animator.GetCurrentAnimatorStateInfo(0).IsName(
+                seated ? "Base Layer.Cat_Ride" : "Base Layer.Cat_IdleSit"), Is.True);
+            Assert.That(animator.GetCurrentAnimatorStateInfo(0).normalizedTime, Is.EqualTo(0f).Within(.00001f));
+            Assert.That(animator.speed, Is.Zero);
+            Assert.That(animator.applyRootMotion, Is.False);
+            Assert.That(rig.localPosition, Is.EqualTo(new Vector3(0f, 0f, seated ? .0983f : 0f)));
+            AssertRotations(BoneRotations(animator.transform), expected);
+            CatRigPresentation motion = animator.GetComponent<CatRigPresentation>();
+            Assert.That(motion.HeadTransform.localScale, Is.EqualTo(motion.SourceHeadScale * 1.28f));
+            Assert.That(view.GetComponentInChildren<Animator>(true), Is.SameAs(animator));
         }
 
         [Test]
