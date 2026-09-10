@@ -468,7 +468,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             view.ApplyPresentation(CatPresentationState.RideIdle, 0f, true);
             AssertStaticMotionOff(view, animator, rig, true, ride);
             view.ApplyPresentation(CatPresentationState.Hidden, 1f, true);
-            AssertStaticMotionOff(view, animator, rig, false, idle);
+            AssertStaticMotionOff(view, animator, rig, false, idle, hidden: true);
             Assert.That(view.transform.Find("Carriage/Cat").gameObject.activeSelf, Is.False);
             int hiddenSamples = view.RigNeutralSampleCount;
             view.ApplyPresentation(CatPresentationState.Hidden, 2f, true);
@@ -521,11 +521,17 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         private static void AssertStaticMotionOff(ToyTrainView view, Animator animator, Transform rig,
-            bool seated, Quaternion[] expected)
+            bool seated, Quaternion[] expected, bool hidden = false)
         {
-            Assert.That(animator.GetCurrentAnimatorStateInfo(0).IsName(
-                seated ? "Base Layer.Cat_Ride" : "Base Layer.Cat_IdleSit"), Is.True);
-            Assert.That(animator.GetCurrentAnimatorStateInfo(0).normalizedTime, Is.EqualTo(0f).Within(.00001f));
+            Assert.That(animator.gameObject.activeInHierarchy, Is.EqualTo(!hidden));
+            // Disabling this Animator clears its state info but preserves its sampled bones.
+            // Visible callers must still prove both the selected state and frozen phase.
+            if (!hidden)
+            {
+                Assert.That(animator.GetCurrentAnimatorStateInfo(0).IsName(
+                    seated ? "Base Layer.Cat_Ride" : "Base Layer.Cat_IdleSit"), Is.True);
+                Assert.That(animator.GetCurrentAnimatorStateInfo(0).normalizedTime, Is.EqualTo(0f).Within(.00001f));
+            }
             Assert.That(animator.speed, Is.Zero);
             Assert.That(animator.applyRootMotion, Is.False);
             Assert.That(rig.localPosition, Is.EqualTo(new Vector3(0f, 0f, seated ? .0983f : 0f)));
