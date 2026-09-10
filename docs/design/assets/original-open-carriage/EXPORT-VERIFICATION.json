@@ -1,0 +1,39 @@
+{
+  "verified": [
+    {
+      "file": "original-open-carriage.glb",
+      "part": "OpenShell",
+      "triangles": 700,
+      "bounds_and_atlas_match": true
+    },
+    {
+      "file": "original-open-carriage.glb",
+      "part": "Undercarriage",
+      "triangles": 2644,
+      "bounds_and_atlas_match": true
+    },
+    {
+      "file": "original-open-carriage.fbx",
+      "part": "OpenShell",
+      "triangles": 700,
+      "bounds_and_atlas_match": true
+    },
+    {
+      "file": "original-open-carriage.fbx",
+      "part": "Undercarriage",
+      "triangles": 2644,
+      "bounds_and_atlas_match": true
+    }
+  ],
+  "cavity_rays_pass_both_exports": true,
+  "solid_body_negative_control_rejected": true,
+  "fbx_embedded_atlas_matches": true,
+  "generator_sha256": "a376ed71ee9f5c2d24fa45d45ffda6119223a70b131fccdca648f6f1d02b1b9d",
+  "roundtrip_preview_sha256": "b0decd2277f2d734431413d3cb8889b74cf5024fd7041eeecea8071c8d0278a4",
+  "not_verified": [
+    "Unity import",
+    "URP binding",
+    "actual cat pose/occlusion",
+    "Android"
+  ]
+}
