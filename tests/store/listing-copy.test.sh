@@ -20,7 +20,7 @@ for name, (value, limit) in limits.items():
     if len(value) > limit:
         raise SystemExit(f"listing-copy: {name} is {len(value)} characters, limit={limit}")
 
-expected_counts = {"title": 23, "short": 80, "full": 406}
+expected_counts = {"title": 23, "short": 80, "full": 403}
 for name, expected in expected_counts.items():
     observed = len(limits[name][0])
     if observed != expected:

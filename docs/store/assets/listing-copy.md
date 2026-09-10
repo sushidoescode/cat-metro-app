@@ -1,10 +1,10 @@
 # Store listing copy — verified-only
 
-**Source revision:** `02871d644af1f5a7b632578c73e6ba3e6a899787`
-**Claim-ledger SHA-256:** `a822968ad31d19d89cb70d8aa1e99db8dce67492ff239194e546e11bae1e62eb`
+**Source reviewed:** `72c0a862d41fd158d892c97e7b3f0fb01e94ef63` (2026-09-10)
 
-This is the paste-ready listing at the stated source revision. Its fields deliberately use only
-the stable claims listed below; they do not state a level count.
+The paste-ready fields below retain the stable gameplay claims and omit a level count. The source
+notes distinguish the merged campaign from evidence still needed from the final Android build.
+This document update did not build, install, or publish a release candidate.
 
 ## Paste-ready fields
 
@@ -26,11 +26,11 @@ Tap switches to route cat trains. A train puzzle with color-and-symbol stations.
 
 ### Full description
 
-406 characters of 4,000 (3,594 remaining). The count includes the six line feeds between the
+403 characters of 4,000 (3,597 remaining). The count includes the six line feeds between the
 three paragraphs and heading, and excludes the terminal line feed.
 
 ```text
-Cat Metro is an Android train puzzle about routing cat trains. Tap switches to guide each train toward its matching color-and-symbol station.
+Cat Metro is an Android train puzzle about routing cat trains. Tap switches to guide cat trains toward matching color-and-symbol stations.
 
 Read the next waves, choose the route, and finish a level to move to the next. This cat puzzle focuses on switch decisions.
 
@@ -41,7 +41,7 @@ Built toward a tabletop model-railway look, Cat Metro pairs a focused route puzz
 
 ### Play privacy policy URL
 
-Verified live over HTTPS on 2026-09-09 (HTTP 200).
+Verified live over HTTPS on 2026-09-10 (HTTP 200).
 
 ```text
 https://sushidoescode.github.io/cat-metro-app/privacy/
@@ -79,11 +79,11 @@ switches,stations,routing,tabletop,railway,miniature,waves,level,guide,matching,
 
 ### Description
 
-397 characters of 4,000 (3,603 remaining). This is the existing full description with only the
+394 characters of 4,000 (3,606 remaining). This is the existing full description with only the
 platform-specific wording removed; the claims and paragraph structure are otherwise unchanged.
 
 ```text
-Cat Metro is a train puzzle about routing cat trains. Tap switches to guide each train toward its matching color-and-symbol station.
+Cat Metro is a train puzzle about routing cat trains. Tap switches to guide cat trains toward matching color-and-symbol stations.
 
 Read the next waves, choose the route, and finish a level to move to the next. This cat puzzle focuses on switch decisions.
 
@@ -111,7 +111,7 @@ https://sushidoescode.github.io/cat-metro-app/privacy/
 | `Cat Metro is an Android train puzzle about routing cat trains.` | C-01 |
 | Apple description: `Cat Metro is a train puzzle about routing cat trains.` | C-01 |
 | `Tap switches…` / `choose the route` / `switch decisions` | C-01 |
-| `matching color-and-symbol station` | C-04 |
+| `matching color-and-symbol stations` | C-04 |
 | `Read the next waves` | C-05 |
 | `finish a level to move to the next` | C-08 |
 | `tabletop model-railway look` / `warm miniature premise` | C-13 |
@@ -122,37 +122,33 @@ https://sushidoescode.github.io/cat-metro-app/privacy/
 | Apple keyword: `level` | C-08 |
 | Apple keywords: `tabletop`, `railway`, `miniature`, `warm`, `model` | C-13 |
 
-## Stale ledger rows — source evidence is not publication evidence
+## Current source and remaining release evidence
 
-The claim ledger is frozen against an older source baseline. The rows below need a refresh before
-they can be relied on for an exact candidate. Current code and files establish implementation or
-source state only; no item below is promoted for publication by this document.
+The claim IDs above remain useful references for the unchanged copy. The older claim ledger is
+historical context, not an approval process or a prerequisite for release. Use the actual candidate
+and the evidence below when adding claims; no frozen contract or external rater sign-off is needed.
 
-| Row | Current source evidence at the stated revision | Precise promotion or reclassification evidence |
+At the reviewed revision, `content/levels/` and its StreamingAssets mirror contain **60** level JSON
+files, L001–L060, with matching IDs and bytes. `GameRoot.LevelBand` lists those same IDs in order
+and wraps L060 to L001. `LoadNextBandTests` asserts that sequence and wrap; `CampaignArtifactTests`
+and `FullCampaignGateTests` in `QueueReadingBandTests.cs` cover the mirrored corpus and full
+validation/solver run. Reading those tests is not a claim that they ran on the final candidate.
+
+| Claim area / historical IDs | Source basis at the reviewed revision | Evidence needed before adding the public claim |
 |---|---|---|
-| C-02 | `content/levels/` contains L001–L019, not the ledger's ten files. | Reclassify the source fact to the exact 19-file census only after recording the revision and ID list. Do not publish a count until an exact AAB contains the same 19 IDs and its retained artifact census proves it. |
-| C-03 | `CorpusValidator.cs` and `LevelSolver.cs` remain in source; `QueueReadingBandTests.cs` explicitly derives the L001–L019 corpus and validates it. The frozen ten-level certification is therefore stale. | Re-run and retain the validator/solver result over the exact candidate's complete level census, including every published ID; bind that output and the AAB SHA-256 to a refreshed row. |
-| C-09 | The former absence-based proof is stale: source now contains `RewardedAdsComposition.cs`, `LevelPlayRewardedAdProvider.cs`, and the LevelPlay package. Rewarded placements are enabled in configuration, but no ad network is configured, so this build contains no ad surface. Source inspection alone cannot establish an exact binary has no forced surface. | Reclassify only after an exact production-binary census and ordinary-flow on-device inspection prove that every ad entry is player-initiated and that no interstitial, banner, app-open, or other forced surface exists. |
-| C-11 | `GameRoot.LevelBand` and `LoadNextBandTests.cs` now define and test L001–L019; purchase and cosmetics services now also exist. The frozen claim's five-player-level/ten-authored-level basis is stale. | Refresh the ordinary-flow reachable-ID census against the exact candidate, retain its full solver/validator result, and inspect the same binary for a normal-progression purchase gate. Promote only the payment-free normal-progression limb that this evidence proves. |
-| C-14 | `GameRoot.LevelBand` lists L001–L019 and `LoadNextBandTests.cs` asserts the same ordered, wrapping campaign. The frozen five-level wording is stale. | Reclassify to the exact count only with an exact AAB ID census plus an ordinary-player-flow, on-device traversal from L001 through the claimed endpoint and wrap behavior. |
-| C-18 | `ToyTrainView.PlatformQueueSpacing` now gives queued cars a presentation lane, and queue-reading levels L011–L017 are in the current campaign band. The frozen overlap rationale is no longer a complete source description. | Keep blocked until an exact-candidate on-device Playing capture shows a distinct occupied queue, its associated route decision, and clean HUD without development aids. |
-| C-21 | The licensed animated cat rig, `CatModelCatalog`, and line-specific cat presentation are now integrated on main, so “implemented on the art branch” is stale. | Keep blocked until exact-candidate line-to-silhouette assignment tests and asset inventory, on-device frames for every line identity, and the ledger's named CM-R21.3/CM-R21.6 non-author rater receipts all pass. |
-| C-22 | Current source contains 19 authored level files and the 19-ID band, not 30 ordinary-flow levels. | Keep blocked until a production 30-level census, exact-candidate solver/validator pass, ordinary-player reachable-ID census for all 30, and same-build Play-installed traversal evidence exist. |
-| C-23D | `GameRoot.SelectDaily`, `DailyBoardCatalog`, `DailyBoardFactory`, and `DailyRuntimeInputs` implement a Daily entry, precomputed-board lookup, and validated fallback in source. | Keep blocked until an exact candidate has a released Daily entry surface and a clean on-device Daily run through its result; retain matching generation/validation evidence. |
-| C-23P | `DailyLineSeed`, `DailyBoardFactory`, and the shipped UTC-keyed catalog now implement deterministic source behavior with parity tests; “only the pre-validation substrate exists” is stale. | Keep blocked until same-date/seed parity on at least two clean installs, consecutive-date rollover with date-to-seed/board variation, and exact-candidate algorithm/config plus network evidence prove the specific worldwide/no-server limbs. |
-| C-23S | `DailyProgressTracker.cs` and `GameRoot` record and expose lifetime Daily completion state, but source alone is not a player-facing persisted streak receipt. | Keep blocked until exact-candidate streak persistence/state tests and multi-day on-device increment, lapse, and displayed-state receipts prove the specific streak limb. |
-| C-24 | `WardrobeScreenView.BackRequested`, its `GameRoot` binding, and `ScreenStack` now implement a Back path for the Wardrobe limb; the frozen “lane queued” rationale is stale. No level-select proof follows from this. | Promote only the Back limb after exact-candidate route tests and an ordinary-flow on-device navigation receipt. Keep level select blocked until its own route tests and receipt exist. |
-| C-25 | Source now includes `PurchaseCatalog.cs`, `PurchaseService.cs`, `RevenueCatBackend.cs`, and Wardrobe purchase wiring. It does not prove a human production-mode decision, signed catalog/config, or a live store flow. | Keep each named limb blocked until the human mode flip, security-reviewed exact candidate, signed catalog/config, relevant on-device flow, and backend/store receipt exist. Purchase or restore evidence promotes no sibling limb. |
-| C-26 | Rewarded-ad service, coordinator, LevelPlay provider, and RevenueCat ad-reporting source exist. Rewarded placements are enabled in configuration, but no ad network is configured, so this build contains no ad surface. No device opt-in, reward ledger, or dashboard receipt is present here. | Keep blocked until an ad network is configured in the exact candidate, an on-device opt-in surface and reward-ledger proof are retained, and RevenueCat dashboard evidence is recorded. |
-| C-27 | Rewarded provider, coordinator, and Wardrobe placement paths now exist in source. Rewarded placements are enabled in configuration, but no ad network is configured, so this build contains no ad surface. The frozen claim that optional surfaces do not exist at all is stale, while the public wording remains unproved. | Keep blocked until C-26 clears and an exact-production-binary census proves every live ad entry is player-initiated and that no interstitial, banner, app-open, or other forced surface exists; reverify C-09 on the same candidate. |
-| C-30 | `OneSignalMessaging.cs`, `OneSignalRuntimeConfig.cs`, and `GameRoot.InitializeMessaging` implement the adapter, initialization seam, scheduling, and Daily deep-link handling in source. Source does not prove a deployed journey or delivery. | Keep blocked until the merged exact candidate, exact live campaign/message configuration, device delivery receipt, and delivery counts with denominators for every claimed limb are retained. |
-| C-34 | `DailyReminderPreferences.cs`, `DailyReminderSheet.cs`, and `GameRoot` implement enable/disable, permission, scheduling, and cancellation paths in source. There is no on-device opt-in/opt-out or delivery receipt in this source snapshot. | Keep blocked until an exact candidate has the optional enable/disable surface, delivery/config evidence, and on-device opt-in/opt-out behavior. Only then may listing copy say `optional reminders`. |
+| Campaign count and progression — C-02, C-11, C-14, C-22 | The 60-level campaign is merged. The former 19-level and unmerged-ladder descriptions are stale. | Inspect the final AAB for the same 60 IDs, retain its content validation and solver results, and verify ordinary progression through the claimed campaign and wrap on the Play-delivered build. Verify payment-free progression separately before claiming it. |
+| Solver-checked content — C-03 | `CorpusValidator`, `LevelSolver`, and the full-campaign tests are present. | Retain a successful validator/solver run over the exact content shipped in the candidate. |
+| Cat silhouettes and queue readability — C-18, C-21 | `CatModelCatalog` and queued-train presentation are integrated. Paid cat/prop resources live in the main checkout's ignored asset install. | Inspect the candidate's catalog admission counts and phone renders for visible textured cats, readable pins, distinct destinations, and an occupied queue without HUD overlap. |
+| Daily route and date parity — C-23D, C-23P | `SelectDaily`, `DailyBoardCatalog`, `DailyBoardFactory`, and UTC-keyed Daily inputs are present. | Record a real Daily run and completion. For worldwide parity/date-change claims, compare clean installs on the same date and across a rollover; inspect the candidate's generation and network behavior. |
+| Daily lifetime tally — C-23S | `DailyProgressTracker` and `GameRoot` implement completion state. The intended public claim is a lifetime tally, not an expiring streak. | Verify exactly one increment per completion, relaunch persistence, and behavior after a missed day on the candidate. |
+| Wardrobe navigation — C-24 | `BackRequested`, its `GameRoot` binding, and `ScreenStack` implement the Back path. | Exercise entry, Back, purchase, and return through ordinary device navigation. Verify any level-select claim separately. |
+| Purchase and restore — C-25 | `PurchaseCatalog`, `PurchaseService`, `RevenueCatBackend`, and Wardrobe wiring are present. | Verify the final Android configuration, product/offering/entitlement mapping, real purchase and visible unlock, clean-state restore, and corresponding RevenueCat record. Test a judge promo code separately. |
+| Optional rewarded ads — C-09, C-26, C-27 | Rewarded service/coordinator, LevelPlay provider, and RevenueCat reporting code are present. Source alone does not establish which services are configured in a release build. | Inspect the candidate's enabled configuration and ordinary flows. Claim working ads/reporting only after device delivery, reward/failure behavior, and RevenueCat reporting are demonstrated. Verify any no-forced-ads claim against the same binary. |
+| Optional OneSignal/reminders — C-30, C-34 | Messaging, reminder preferences, permission handling, and Daily deep-link paths exist in source. | Verify the deployed campaign and candidate opt-in, opt-out, delivery, reminder window, and deep link before claiming reminders or entering the OneSignal category. |
 
-### 60-level ladder status
+### 60-level campaign status
 
-The 60-level ladder is unmerged and has **zero publication evidence**. It must not be used to
-replace the current 19-file/19-ID source census, and it cannot support a store-count claim. C-22
-remains blocked until its separate 30-level promotion evidence is complete. After the ladder is
-merged, a 60-level claim would require an exact-AAB census of 60 distinct IDs, a solver and
-validator pass over all 60, ordinary-flow reachability of all 60, and same-build traversal from a
-Play-installed candidate.
+The source census is **60 distinct levels, L001–L060**. The tests inspected here expect all 60.
+The unchanged store fields intentionally make no numerical promise until the final AAB's content,
+validation results, and Play-installed progression have been checked. This source refresh provides
+no new device, purchase, public-store, or full-campaign test result.
