@@ -154,6 +154,12 @@ if [ "$command_name" = "dump" ] && [ "${2:-}" = "manifest" ]; then
   if [ "$mode" = "notification-permission" ]; then
     extra_permission='  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />'
   fi
+  if [ "$mode" = "vibrate-permission" ]; then
+    extra_permission='  <uses-permission android:name="android.permission.VIBRATE" />'
+  fi
+  if [ "$mode" = "vibrate-lookalike-permission" ]; then
+    extra_permission='  <uses-permission android:name="android.permission.VIBRATE_EXTRA" />'
+  fi
   if [ "$mode" = "feature-dangerous-permission" ] && [ "$module" = "delivery" ]; then
     extra_permission='  <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />'
   fi
@@ -511,7 +517,21 @@ set -e
 [ "$negative_summary_rc" -ne 0 ] || fail "wrapper accepted a negated jarsigner success sentence"
 [ ! -e "$negative_summary_out" ] || fail "negative-signer-summary artifact escaped staging"
 
-for bad_manifest_mode in bad-package bad-target bad-version-name dangerous-permission notification-permission; do
+# Haptics adds VIBRATE to the merged manifest; the wrapper must still publish the valid bundle.
+vibrate_out="$case_root/vibrate-permission-test-proof.aab"
+if ! FAKE_BUNDLETOOL_MODE=vibrate-permission CM_UNITY_BIN="$fake_unity" \
+  bash "$case_root/scripts/build-aab.sh" "$vibrate_out" \
+  > "$case_root/vibrate-permission.log" 2>&1
+then
+  sed -n '1,160p' "$case_root/vibrate-permission.log" >&2
+  fail "wrapper rejected the haptics VIBRATE permission"
+fi
+[ -f "$vibrate_out" ] && [ -f "${vibrate_out%.aab}-play-listing.md" ] \
+  || fail "valid haptics bundle did not publish its AAB and listing"
+grep -qxF '  android.permission.VIBRATE' "$case_root/vibrate-permission.log" \
+  || fail "wrapper did not report the admitted haptics permission"
+
+for bad_manifest_mode in bad-package bad-target bad-version-name dangerous-permission notification-permission vibrate-lookalike-permission; do
   bad_manifest_out="$case_root/$bad_manifest_mode-test-proof.aab"
   set +e
   FAKE_BUNDLETOOL_MODE="$bad_manifest_mode" CM_UNITY_BIN="$fake_unity" \

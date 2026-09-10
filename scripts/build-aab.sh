@@ -436,7 +436,7 @@ permission_list="$(perl -0ne '
 while IFS= read -r permission_name; do
   [ -z "$permission_name" ] && continue
   case "$permission_name" in
-    android.permission.INTERNET|android.permission.ACCESS_NETWORK_STATE|com.android.vending.BILLING) ;;
+    android.permission.INTERNET|android.permission.ACCESS_NETWORK_STATE|android.permission.VIBRATE|com.android.vending.BILLING) ;;
     *)
       echo "Built manifest: FAIL — permission is outside Cat Metro's release allowlist: $permission_name"
       exit 1
