@@ -21,8 +21,12 @@ namespace CatMetro.Tests.PlayMode
         private Mesh _mesh;
         private Material _source;
         private Texture2D _atlas;
+        private bool _previousDevSkip;
         private static readonly byte[] Routes =
             { CatColor.Red, CatColor.Blue, CatColor.Yellow, CatColor.Green, CatColor.Wild };
+
+        [SetUp]
+        public void SetUp() => _previousDevSkip = GameRoot.DevSkipShippedHome;
 
         [TearDown]
         public void TearDown()
@@ -32,7 +36,7 @@ namespace CatMetro.Tests.PlayMode
             if (_mesh != null) Object.DestroyImmediate(_mesh);
             if (_source != null) Object.DestroyImmediate(_source);
             if (_atlas != null) Object.DestroyImmediate(_atlas);
-            GameRoot.DevSkipShippedHome = false;
+            GameRoot.DevSkipShippedHome = _previousDevSkip;
         }
 
         [UnityTest]
@@ -119,8 +123,12 @@ namespace CatMetro.Tests.PlayMode
             target.Create();
             camera.targetTexture = target;
             var checks = new List<string>();
+            bool previousForceMatrices = skin.forceMatrixRecalculationPerRender;
             try
             {
+                // Route reuse can resample the rig between manual renders in one update.
+                // Refresh actual GPU skin matrices for every comparison, as in the seat probe.
+                skin.forceMatrixRecalculationPerRender = true;
                 yield return null;
                 BoardSceneLook.FitCamera(camera, _root.View);
                 _root.Preview.Refresh();
@@ -233,6 +241,7 @@ namespace CatMetro.Tests.PlayMode
             }
             finally
             {
+                skin.forceMatrixRecalculationPerRender = previousForceMatrices;
                 fur.SetPreview(1f, false);
                 camera.targetTexture = oldTarget;
                 camera.transform.position = oldPosition;
