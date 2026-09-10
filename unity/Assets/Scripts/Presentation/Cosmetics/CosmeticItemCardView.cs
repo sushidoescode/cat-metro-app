@@ -76,10 +76,10 @@ namespace CatMetro.Presentation.Cosmetics
                 new Vector2(0.04f, 0.64f), new Vector2(0.96f, 0.98f), 18f,
                 Palette.InkNavy, TextAlignmentOptions.Center);
             view._nameLabel.fontStyle = FontStyles.Bold;
-            // Two readable lines need more than the old 34dp header. Keep the price band
-            // fixed and let long names wrap above the separately clipped illustration.
+            // Keep the price band fixed and let long names wrap above the separately
+            // clipped illustration; the narrow three-card rail can need a third line.
             view._nameLabel.textWrappingMode = TextWrappingModes.Normal;
-            view._nameLabel.maxVisibleLines = 2;
+            view._nameLabel.maxVisibleLines = 3;
             view._nameLabel.overflowMode = TextOverflowModes.Ellipsis;
             view._statusLabel = MakeText(root.transform, "ItemStatusLabel",
                 new Vector2(0.06f, 0.035f), new Vector2(0.94f, 0.23f), 15f,
@@ -142,7 +142,22 @@ namespace CatMetro.Presentation.Cosmetics
             paper.anchorMax = Vector2.one;
             paper.offsetMin = Vector2.one * 3f * px;
             paper.offsetMax = -paper.offsetMin;
+            FitNameRegion(px);
             FitItemRegion();
+        }
+
+        private void FitNameRegion(float pxPerDp)
+        {
+            float height = RootTransform.rect.height;
+            if (height <= 0f) return;
+            // Measure at the readable maximum size before reserving a header. Two-card
+            // names retain the normal band; narrow cards borrow space from the illustration.
+            float preferred = _nameLabel.GetPreferredValues(_nameLabel.text,
+                _nameLabel.rectTransform.rect.width, Mathf.Infinity).y;
+            float header = Mathf.Clamp((preferred + 4f * pxPerDp) / height, 0.34f, 0.50f);
+            float divider = 0.98f - header;
+            _nameLabel.rectTransform.anchorMin = new Vector2(0.04f, divider);
+            _portraitMount.anchorMax = new Vector2(0.96f, divider);
         }
 
         private void FitItemRegion()

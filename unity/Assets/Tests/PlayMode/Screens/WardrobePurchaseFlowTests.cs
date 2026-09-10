@@ -1567,8 +1567,8 @@ namespace CatMetro.Tests.PlayMode
             Tap(FindRect("Tab-frame"));
             yield return null;
             AssertHorizontalCardBand(3, PhoneSafeArea, 408f);
-            foreach (var card in ActiveCards()) AssertItemCardLabelsFit(card, 408f);
             Capture(directory, "wardrobe-three-card-fixture-917x2048.png");
+            foreach (var card in ActiveCards()) AssertItemCardLabelsFit(card, 408f);
         }
 
         [UnityTest]
@@ -2104,7 +2104,9 @@ namespace CatMetro.Tests.PlayMode
         private static void AssertCompleteLabel(TMP_Text label)
         {
             label.ForceMeshUpdate();
-            string context = label.name + ": " + label.text;
+            string context = label.name + ": " + label.text
+                + " font=" + label.fontSize + " rect=" + label.rectTransform.rect
+                + " lines=" + label.textInfo.lineCount + " preferred=" + label.preferredHeight;
             Assert.That(label.isTextTruncated, Is.False, context);
             Assert.That(label.isTextOverflowing, Is.False, context);
             Assert.That(label.textInfo.characterCount, Is.EqualTo(label.text.Length), context);
