@@ -149,7 +149,10 @@ namespace CatMetro.Presentation.Cosmetics
         private void FitNameRegion(float pxPerDp)
         {
             float height = RootTransform.rect.height;
-            if (height <= 0f) return;
+            // A parent OnEnable can reflow newly created cards before TMP's Awake has
+            // assigned its font material. Open reflows again after activating the panel.
+            if (height <= 0f || _nameLabel.font == null || _nameLabel.fontSharedMaterial == null)
+                return;
             // Measure at the readable maximum size before reserving a header. Two-card
             // names retain the normal band; narrow cards borrow space from the illustration.
             float preferred = _nameLabel.GetPreferredValues(_nameLabel.text,
