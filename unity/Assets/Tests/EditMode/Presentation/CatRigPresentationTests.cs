@@ -351,8 +351,13 @@ namespace CatMetro.Tests.EditMode.Presentation
             foreach (string name in new[] { "Cat_IdleSit", "Cat_Walk", "Cat_Celebrate" })
                 Assert.That(seated.runtimeAnimatorController.animationClips.Single(c => c.name == name),
                     Is.SameAs(prior.runtimeAnimatorController.animationClips.Single(c => c.name == name)), name);
-            foreach (string path in new[] { "Engine", "Carriage", "Carriage/Cat", "Carriage/Pin" })
+            foreach (string path in new[] { "Engine", "Carriage" })
                 Assert.That(original.transform.Find(path).localPosition, Is.EqualTo(fallback.transform.Find(path).localPosition), path);
+            Assert.That(original.transform.Find("Carriage/Cat").localPosition, Is.EqualTo(Vector3.zero),
+                "the calibrated seated body stays centred while its authored bones breathe");
+            Assert.That(Vector3.Distance(original.transform.Find("Carriage/Pin").localPosition,
+                fallback.transform.Find("Carriage/Pin").localPosition - fallback.transform.Find("Carriage/Cat").localPosition),
+                Is.LessThan(.000001f), "removing rider bob preserves the label-to-rider offset");
             Assert.That(seated.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh,
                 Is.SameAs(prior.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh));
             original.ApplyPresentation(CatPresentationState.WaitingIdle, 1f, false, 1f, false);
@@ -556,6 +561,131 @@ namespace CatMetro.Tests.EditMode.Presentation
             animator.Update(.2f);
             SampleTrainLateUpdate(view);
             Assert.That(rig.localPosition.z, Is.EqualTo(.0983f));
+            Assert.That(view.GetComponentInChildren<Animator>(true), Is.SameAs(animator));
+        }
+
+        [Test]
+        public void OriginalCarriageRiderStaysInSeatWhileBonesAnimateAndFallbackAndPlatformStillBob()
+        {
+            RequireLocalSource();
+            ToyTrainView view = CreateSeatTrain(true, out Animator animator, out Transform rig);
+            ToyTrainView fallback = CreateSeatTrain(false, out Animator fallbackAnimator, out _);
+            Transform cat = view.transform.Find("Carriage/Cat"), pin = view.transform.Find("Carriage/Pin");
+            Transform fallbackCat = fallback.transform.Find("Carriage/Cat");
+            Vector3 catSeat = cat.localPosition, pinSeat = pin.localPosition;
+            Vector3 anchor = view.transform.localPosition;
+            Quaternion firstBody = Quaternion.identity;
+            float bodyMovement = 0f;
+            foreach (float time in new[] { 0f, .25f, .8f })
+            {
+                view.ApplyPresentation(CatPresentationState.RideIdle, time, false);
+                animator.Update(.2f); SampleTrainLateUpdate(view);
+                fallback.ApplyPresentation(CatPresentationState.RideIdle, time, false);
+                fallbackAnimator.Update(.2f); SampleTrainLateUpdate(fallback);
+                Assert.That(Vector3.Distance(fallbackCat.localPosition, catSeat), Is.GreaterThan(.004f),
+                    "the independent unchanged fallback must exhibit real rigid bob at this clock");
+                Assert.That(cat.localPosition, Is.EqualTo(catSeat), "rigid bob would slide feet through the original cart walls");
+                Assert.That(pin.localPosition, Is.EqualTo(pinSeat), "pin follows the same bob-free seat position");
+                Assert.That(view.transform.localPosition, Is.EqualTo(anchor));
+                Quaternion body = animator.transform.Find(BodyPath).localRotation;
+                if (time == 0f) firstBody = body; else bodyMovement = Mathf.Max(bodyMovement, Quaternion.Angle(firstBody, body));
+            }
+            Assert.That(bodyMovement, Is.GreaterThan(.1f), "the actual authored Ride breathing must remain animated");
+            float phase = animator.GetCurrentAnimatorStateInfo(0).normalizedTime;
+            view.ApplyPresentation(CatPresentationState.WaitingIdle, 0f, false, 2f, false);
+            SampleTrainLateUpdate(view);
+            Assert.That(animator.GetCurrentAnimatorStateInfo(0).normalizedTime, Is.EqualTo(phase));
+            Assert.That(cat.localPosition, Is.EqualTo(catSeat));
+            foreach (float time in new[] { .1f, .7f })
+            {
+                view.ApplyPresentation(CatPresentationState.WaitingIdle, 1f, false, time, false);
+                fallback.ApplyPresentation(CatPresentationState.WaitingIdle, 1f, false, time, false);
+                animator.Update(0f); fallbackAnimator.Update(0f);
+                SampleTrainLateUpdate(view); SampleTrainLateUpdate(fallback);
+                Assert.That(cat.localPosition, Is.EqualTo(fallbackCat.localPosition), "actual source platform movement is unchanged");
+                Assert.That(pin.localPosition, Is.EqualTo(fallback.transform.Find("Carriage/Pin").localPosition));
+            }
+            view.ApplyPresentation(CatPresentationState.Hidden, 3f, false);
+            view.SyncSlot(99, CatColor.Blue);
+            view.ApplyPresentation(CatPresentationState.WaitingIdle, 0f, false, 3f, false);
+            SampleTrainLateUpdate(view);
+            Assert.That(cat.localPosition, Is.EqualTo(catSeat), "a reused slot cannot retain platform displacement or rigid bob");
+            Assert.That(pin.localPosition, Is.EqualTo(pinSeat));
+            Assert.That(rig.localPosition.z, Is.EqualTo(.0983f));
+        }
+
+        [TestCase(30)]
+        [TestCase(60)]
+        [TestCase(120)]
+        public void OriginalCarriageRigidBobFadesWithEvaluatedBoardAndAlightWithoutAccumulation(int framesPerSecond)
+        {
+            RequireLocalSource();
+            ToyTrainView view = CreateSeatTrain(true, out Animator animator, out _);
+            ToyTrainView fallback = CreateSeatTrain(false, out _, out _);
+            Transform cat = view.transform.Find("Carriage/Cat"), pin = view.transform.Find("Carriage/Pin");
+            Vector3 seat = cat.localPosition, label = pin.localPosition;
+            fallback.ApplyPresentation(CatPresentationState.RideIdle, .25f, false);
+            Vector3 fullBob = fallback.transform.Find("Carriage/Cat").localPosition - seat;
+            Assert.That(fullBob.magnitude, Is.GreaterThan(.004f));
+            foreach (CatPresentationState state in new[] { CatPresentationState.Board, CatPresentationState.Alight })
+            {
+                view.ApplyPresentation(state, .25f, false);
+                float previous = Vector3.Distance(cat.localPosition, seat);
+                Assert.That(previous, Is.EqualTo(state == CatPresentationState.Board ? fullBob.magnitude : 0f).Within(.000001f));
+                float elapsed = 0f;
+                bool sawPartial = false;
+                while (elapsed < .18f)
+                {
+                    float delta = Mathf.Min(1f / framesPerSecond, .18f - elapsed);
+                    animator.Update(delta); SampleTrainLateUpdate(view);
+                    float amount = Vector3.Distance(cat.localPosition, seat);
+                    Assert.That(amount, Is.InRange(0f, fullBob.magnitude + .000001f));
+                    Assert.That(state == CatPresentationState.Board ? amount <= previous + .000001f : amount >= previous - .000001f,
+                        Is.True, "pose evaluation fades rigid translation toward or away from the physical seat");
+                    sawPartial |= amount > .0001f && amount < fullBob.magnitude - .0001f;
+                    Assert.That(Vector3.Distance(pin.localPosition - label, cat.localPosition - seat), Is.LessThan(.000001f));
+                    Vector3 sampledCat = cat.localPosition, sampledPin = pin.localPosition;
+                    for (int repeat = 0; repeat < 3; repeat++)
+                    {
+                        view.ApplyPresentation(state, .25f, false);
+                        SampleTrainLateUpdate(view);
+                        Assert.That(cat.localPosition, Is.EqualTo(sampledCat));
+                        Assert.That(pin.localPosition, Is.EqualTo(sampledPin));
+                    }
+                    previous = amount; elapsed += delta;
+                }
+                Assert.That(sawPartial, Is.True, "an endpoint-only switch would visibly snap instead of fading");
+                Assert.That(previous, Is.EqualTo(state == CatPresentationState.Board ? 0f : fullBob.magnitude).Within(.000001f));
+            }
+        }
+
+        [Test]
+        public void OriginalCarriageRigidBobFollowsActualAnimatorCrossfadeOnTheSameActor()
+        {
+            RequireLocalSource();
+            ToyTrainView view = CreateSeatTrain(true, out Animator animator, out _);
+            Transform cat = view.transform.Find("Carriage/Cat"), pin = view.transform.Find("Carriage/Pin");
+            Vector3 seat = cat.localPosition, label = pin.localPosition;
+            // This overload has no platform path; the independent neutral state exposes the full bob.
+            view.ApplyPresentation(CatPresentationState.Celebrate, .25f, false);
+            Vector3 fullBob = cat.localPosition - seat;
+            Assert.That(fullBob.magnitude, Is.GreaterThan(.004f));
+            view.ApplyPresentation(CatPresentationState.RideIdle, .25f, false);
+            Assert.That(cat.localPosition, Is.EqualTo(seat));
+            animator.CrossFadeInFixedTime("Base Layer.Cat_IdleSit", .2f, 0, 0f);
+            animator.Update(.05f); Assert.That(animator.IsInTransition(0), Is.True);
+            SampleTrainLateUpdate(view);
+            float middle = Vector3.Distance(cat.localPosition, seat);
+            Assert.That(middle, Is.InRange(.0001f, fullBob.magnitude - .0001f));
+            animator.Update(.05f); SampleTrainLateUpdate(view);
+            Assert.That(Vector3.Distance(cat.localPosition, seat), Is.GreaterThan(middle));
+            animator.Update(.2f); SampleTrainLateUpdate(view);
+            Assert.That(Vector3.Distance(cat.localPosition - seat, fullBob), Is.LessThan(.000001f));
+            animator.CrossFadeInFixedTime("Base Layer.Cat_Ride", .2f, 0, 0f);
+            animator.Update(.05f); SampleTrainLateUpdate(view);
+            Assert.That(Vector3.Distance(cat.localPosition, seat), Is.InRange(.0001f, fullBob.magnitude - .0001f));
+            animator.Update(.2f); SampleTrainLateUpdate(view);
+            Assert.That(cat.localPosition, Is.EqualTo(seat)); Assert.That(pin.localPosition, Is.EqualTo(label));
             Assert.That(view.GetComponentInChildren<Animator>(true), Is.SameAs(animator));
         }
 
