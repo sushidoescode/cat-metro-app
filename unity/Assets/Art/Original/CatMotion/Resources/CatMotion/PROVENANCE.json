@@ -1,7 +1,7 @@
 {
     "generator": "CatMetro.ProjectOriginalCatMotion.v1",
     "generatorSourcePath": "Assets/Editor/CatRigMotionAuthoring.cs",
-    "generatorSourceSha256": "a9e109873dfa56ae914d14369553eb471367b753a7d82d3ee5cb99bfa5786675",
+    "generatorSourceSha256": "821cd2fee9abcee6476948903fe6eda66076788c374dbd00d365aaebbbaaaf2c",
     "authorship": "Project-original rotation curves; existing paid provider walk referenced unchanged.",
     "sourceFbxPath": "Assets/Art/Generated/incoming/cat-rig/provider-tripo/candidate-b/walk-fbx/tripo-out/cat-metro-walker-b-walk-fbx-6e32e93a/model.fbx",
     "sourceFbxSha256": "9d87464e3954954d5d64e8eb4aee6150a11f9efcdf320a9f82adb96449dca974",
@@ -9,8 +9,8 @@
     "baselineClipSha256": "a6751d1aa114d6d10f139a91f210cfca45cd5960e827513066ace97d27ba2529",
     "referenceBasis": "Sample original Cat_IdleSit at t=0 on a disposable admitted Unity prefab clone. Animator space faces -X, up +Y. Premultiply world rotations about Animator +Z, then read local quaternions after parent-first application. Blender +Y rotation maps to this axis; no Blender quaternion or bind-pose values are copied.",
     "anatomy": "Head_0 weighted torso hierarchy; Head_1 weighted head; bone_12 weighted tail; bone_4 and Head_3 weighted ears. Coupled/mislabeled limb chains remain at sampled rest. Celebrate lifts forepaws through a small body rear, not a direct limb-chain rotation.",
-    "timing": "60 Hz endpoint-inclusive sampling; IdleSit 3.2 s, Ride 1.6 s loops; Board/Alight 0.18 s smooth transitions; Celebrate 0.48 s returns to the Ride seat.",
-    "motionParameters": "Idle degrees from source neutral: body 0.65*sin, head -0.35*sin, roll 1.2*sin, tail 45+3*sin; ears +3.5/-2.5 pulse. Ride degrees relative to seat: body 0.8*sin, head -0.5*sin, roll 0.8*sin, tail 2*sin. Celebrate body +3 at 0.10 s, -8 at 0.22 s, 0 at 0.48 s; head -0.5*body, tail +12 pulse, head roll +2 pulse, ears +/-2 pulse. Animator +Z is pitch, +X head roll.",
+    "timing": "60 Hz endpoint-inclusive sampling; IdleSit 3.2 s, Ride 1.6 s loops; Board/Alight 0.18 s smooth transitions; Celebrate 0.48 s returns to the neutral platform pose.",
+    "motionParameters": "Idle degrees from source neutral: body 0.65*sin, head -0.35*sin, roll 1.2*sin, tail 45+3*sin; ears +3.5/-2.5 pulse. Ride degrees relative to seat: body 0.8*sin, head -0.5*sin, roll 0.8*sin, tail 2*sin. Celebrate degrees from source neutral: body +3 at 0.10 s, -8 at 0.22 s, 0 at 0.48 s; head -0.5*body, tail 45+12 pulse, head roll +2 pulse, ears +/-2 pulse. Animator +Z is pitch, +X head roll.",
     "scalePolicy": "No scale curves. Presenter owns head enlargement. Walk scale curves must remain at sampled baseline.",
     "translationPolicy": "Static sampled child positions only; no Animator-root curves, dynamic translations, hops or root motion.",
     "seatedAnimatorDegrees": {
@@ -1164,8 +1164,8 @@
         {
             "name": "Cat_Celebrate",
             "path": "Assets/Art/Original/CatMotion/Resources/CatMotion/Cat_Celebrate.anim",
-            "fileSha256": "93e4580d077dfddb8d679eda45595bc77e8588ee1b72ade1fe9bd7fd3a2aa797",
-            "curveSha256": "0f1c9972d75dac8faef6598867459deb4bc3a5780a142c7219a53c33f23721a8",
+            "fileSha256": "191dbb402d4bdc534b433f0c02aee73af7bf582130a5e58c95048f32b594c16b",
+            "curveSha256": "7f46a46bb942756141068c125c002a3ef7d93fba7528d3274e9ff1f84dea829c",
             "seconds": 0.47999998927116396,
             "loop": false,
             "curveCount": 308,
