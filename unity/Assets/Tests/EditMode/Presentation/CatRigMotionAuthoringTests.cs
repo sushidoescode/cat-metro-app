@@ -248,6 +248,62 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void OpenCarriageVariantsMatchCalibratedAxesAndRejoinUnchangedPlatformEndpoints()
+        {
+            var controls = new[] {
+                (Body + "/bone_21/tripo::0_Right_Limb_0/bone_27", Vector3.right, 36f),
+                (Paw + "/tripo::0_Left_Limb_1/tripo::0_Left_Limb_2", Vector3.up, 12f),
+                (Tail + "/tripo::Tail_0", Vector3.right, 30f) };
+            foreach (var control in controls) AddPath(control.Item1);
+            _clips = Generate();
+            var before = _clips.Select(clip => AnimationUtility.GetCurveBindings(clip)
+                .Select(binding => AnimationUtility.GetEditorCurve(clip, binding).keys).ToArray()).ToArray();
+            var variants = (AnimationClip[])Invoke("GenerateOpenCarriageClips", _animator, _neutral, _walk);
+            try
+            {
+                Assert.That(variants.Select(c => c.name), Is.EquivalentTo(new[] { "Cat_Ride", "Cat_Board", "Cat_Alight" }));
+                for (int index = 0; index < _clips.Length; index++)
+                    Assert.That(AnimationUtility.GetCurveBindings(_clips[index])
+                        .Select(binding => AnimationUtility.GetEditorCurve(_clips[index], binding).keys).ToArray(),
+                        Is.EqualTo(before[index]), "fallback/profile clips are not modified by variant generation");
+                AnimationClip ride = variants.Single(c => c.name == "Cat_Ride");
+                Clip("Cat_Ride").SampleAnimation(_root, .4f);
+                Quaternion[] baseline = controls.Select(c => _root.transform.Find(c.Item1).rotation).ToArray();
+                Quaternion body = _root.transform.Find(Body).localRotation, head = _root.transform.Find(Head).localRotation;
+                ride.SampleAnimation(_root, .4f);
+                for (int i = 0; i < controls.Length; i++)
+                    AssertRotation(_root.transform.Find(controls[i].Item1).rotation,
+                        Quaternion.AngleAxis(controls[i].Item3, _root.transform.TransformDirection(controls[i].Item2)) * baseline[i]);
+                AssertRotation(_root.transform.Find(Body).localRotation, body);
+                AssertRotation(_root.transform.Find(Head).localRotation, head);
+                foreach (AnimationClip clip in variants)
+                {
+                    Assert.That(clip.hasRootCurves, Is.False);
+                    Assert.That(AnimationUtility.GetCurveBindings(clip).Any(b => b.path.Length == 0 || b.propertyName.Contains("Scale")), Is.False);
+                }
+                string[] paths = _root.GetComponentsInChildren<Transform>().Where(t => t != _root.transform)
+                    .Select(t => AnimationUtility.CalculateTransformPath(t, _root.transform)).ToArray();
+                foreach (string path in paths)
+                {
+                    AssertRotation(SampleRotation(variants.Single(c => c.name == "Cat_Board"), 0f, path),
+                        SampleRotation(Clip("Cat_Board"), 0f, path));
+                    AssertRotation(SampleRotation(variants.Single(c => c.name == "Cat_Alight"), .18f, path),
+                        SampleRotation(Clip("Cat_Alight"), .18f, path));
+                    Quaternion seated = SampleRotation(ride, 0f, path);
+                    AssertRotation(SampleRotation(variants.Single(c => c.name == "Cat_Board"), .18f, path), seated);
+                    AssertRotation(SampleRotation(variants.Single(c => c.name == "Cat_Alight"), 0f, path), seated);
+                }
+                foreach (var binding in AnimationUtility.GetCurveBindings(ride))
+                {
+                    var keys = AnimationUtility.GetEditorCurve(ride, binding).keys;
+                    Assert.That(keys.Last().value, Is.EqualTo(keys.First().value).Within(.000001f),
+                        "inspect authored loop endpoints directly, since SampleAnimation can wrap");
+                }
+            }
+            finally { foreach (AnimationClip clip in variants) Object.DestroyImmediate(clip); }
+        }
+
+        [Test]
         public void ControllerUsesOriginalWalkReferenceAndSixExactStates()
         {
             _clips = Generate();

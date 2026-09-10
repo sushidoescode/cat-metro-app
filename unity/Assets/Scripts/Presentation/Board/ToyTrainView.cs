@@ -296,6 +296,7 @@ namespace CatMetro.Presentation.Board
         public bool OriginalEngineAdmitted { get; private set; }
         public string EngineFallbackReason { get; private set; }
         private GameObject _rigInstance;
+        private const float OpenCarriageSeatDepth = .0983f;
         private Animator _rigAnimator;
         private CatRigPresentation _rigPresentation;
         private Transform _rigEarDeformerA;
@@ -697,13 +698,45 @@ namespace CatMetro.Presentation.Board
                 && _rigPresentation.AuthoredMotionInstalled
                 ? CatPresentationState.RideIdle : state;
             PlayRig(rigState, false, desiredTravelSpeed);
+            ApplyRigSeatDepth();
             ApplyRigEarTwitch();
         }
 
         // GameRoot supplies presentation state in Update. Unity samples Animator after Update,
         // so the same additive pose is re-applied in LateUpdate to remain visible without ever
         // becoming an input to the deterministic simulation.
-        private void LateUpdate() => ApplyRigEarTwitch();
+        private void LateUpdate()
+        {
+            ApplyRigSeatDepth();
+            ApplyRigEarTwitch();
+        }
+
+        private void ApplyRigSeatDepth()
+        {
+            if (_rigInstance == null) return;
+            float weight = 0f;
+            if (OriginalCarriageAdmitted && _rigPresentation != null
+                && _rigPresentation.OpenCarriageMotionInstalled && !_rigMotionSuppressed
+                && _presentationState != CatPresentationState.Hidden && _rigAnimator != null)
+            {
+                weight = SeatWeight(_rigAnimator.GetCurrentAnimatorStateInfo(0));
+                if (_rigAnimator.IsInTransition(0))
+                    weight = Mathf.Lerp(weight, SeatWeight(_rigAnimator.GetNextAnimatorStateInfo(0)),
+                        Mathf.Clamp01(_rigAnimator.GetAnimatorTransitionInfo(0).normalizedTime));
+            }
+            // Only the visual rig wrapper moves. Read the evaluated animation clock rather
+            // than PlatformBlend: boarding begins at platform blend .35 with a neutral pose.
+            _rigInstance.transform.localPosition = Vector3.forward * (OpenCarriageSeatDepth * weight);
+        }
+
+        private static float SeatWeight(AnimatorStateInfo state)
+        {
+            if (state.IsName("Base Layer.Cat_Ride")) return 1f;
+            float phase = float.IsFinite(state.normalizedTime) ? Mathf.Clamp01(state.normalizedTime) : 0f;
+            if (state.IsName("Base Layer.Cat_Board")) return Mathf.SmoothStep(0f, 1f, phase);
+            if (state.IsName("Base Layer.Cat_Alight")) return 1f - Mathf.SmoothStep(0f, 1f, phase);
+            return 0f;
+        }
 
         private void FaceAlongPlatformPath(bool movingToPlatform, Vector3 seatWorldPosition)
         {
@@ -1142,6 +1175,7 @@ namespace CatMetro.Presentation.Board
 
         private void ResetVisualPose()
         {
+            if (_rigInstance != null) _rigInstance.transform.localPosition = Vector3.zero;
             _cat.localPosition = _catBaseLocalPosition;
             _cat.localRotation = _catBaseLocalRotation;
             _head.localRotation = _headBaseLocalRotation;
@@ -1185,6 +1219,7 @@ namespace CatMetro.Presentation.Board
 
             _rigAnimator = animators[0];
             _rigPresentation = _rigAnimator.GetComponent<CatRigPresentation>();
+            if (OriginalCarriageAdmitted) _rigPresentation?.TryUseOpenCarriageMotion();
             _rigAnimator.applyRootMotion = false;
             _rigInstance.transform.localPosition = Vector3.zero;
             // TASK 17 imports conventional +Y-up, +Z-forward content. This presentation-only

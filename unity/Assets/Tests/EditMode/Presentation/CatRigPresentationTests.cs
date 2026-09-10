@@ -429,6 +429,36 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(view.GetComponentInChildren<Animator>(true), Is.SameAs(animator));
         }
 
+        [TestCase("absent")]
+        [TestCase("missing-ride")]
+        [TestCase("changed-idle")]
+        [TestCase("foreign-base")]
+        public void OpenCarriageOverrideRejectsPartialOrOutOfScopeChanges(string defect)
+        {
+            RequireLocalSource();
+            var installed = Resources.Load<AnimatorOverrideController>(CatRigPresentation.OpenCarriageControllerResourcePath);
+            Assert.That(installed, Is.Not.Null, "generate the owned carriage override before validating admission");
+            var baseline = Resources.Load<RuntimeAnimatorController>(CatRigPresentation.ControllerResourcePath);
+            var clone = Object.Instantiate(installed);
+            try
+            {
+                var method = typeof(CatRigPresentation).GetMethod("HasOpenCarriageClips",
+                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+                Assert.That(method, Is.Not.Null);
+                Assert.That((bool)method.Invoke(null, new object[] { clone, baseline, null }), Is.True,
+                    "an unchanged candidate is the positive control before corrupting only a disposable override");
+                var pairs = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<AnimationClip, AnimationClip>>();
+                clone.GetOverrides(pairs);
+                if (defect == "missing-ride") clone["Cat_Ride"] = null;
+                if (defect == "changed-idle") clone["Cat_IdleSit"] = pairs.Single(p => p.Key.name == "Cat_Ride").Value;
+                RuntimeAnimatorController expectedBase = defect == "foreign-base"
+                    ? _source.GetComponentInChildren<Animator>().runtimeAnimatorController : baseline;
+                Assert.That((bool)method.Invoke(null, new object[] { defect == "absent" ? null : clone, expectedBase, null }), Is.False);
+                Assert.That(Resources.Load<AnimatorOverrideController>(CatRigPresentation.OpenCarriageControllerResourcePath), Is.SameAs(installed));
+            }
+            finally { Object.DestroyImmediate(clone); }
+        }
+
         private ToyTrainView CreateSeatTrain(bool original, out Animator animator, out Transform rig)
         {
             GameObject prefab = Resources.Load<GameObject>(CarriageModelCatalog.ResourcePath);
