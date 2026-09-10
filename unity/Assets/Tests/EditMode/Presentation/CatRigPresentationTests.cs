@@ -327,7 +327,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             {
                 pair.Item1.ApplyPresentation(CatPresentationState.RideIdle, 0f, false);
                 pair.Item2.Update(.4f);
-                pair.Item1.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+                SampleTrainLateUpdate(pair.Item1);
             }
             Assert.That(seatRoot.localPosition, Is.EqualTo(Vector3.forward * .0983f));
             Assert.That(priorRoot.localPosition, Is.EqualTo(Vector3.zero));
@@ -372,12 +372,12 @@ namespace CatMetro.Tests.EditMode.Presentation
                 {
                     float delta = Mathf.Min(1f / framesPerSecond, .18f - elapsed);
                     animator.Update(delta);
-                    view.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+                    SampleTrainLateUpdate(view);
                     float depth = rig.localPosition.z;
                     Assert.That(depth, Is.InRange(-.000001f, .098301f));
                     Assert.That(state == CatPresentationState.Board ? depth >= previous - .000001f : depth <= previous + .000001f,
                         Is.True, "evaluated transition must move monotonically between the actual seat and unchanged platform height");
-                    for (int repeat = 0; repeat < 3; repeat++) view.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+                    for (int repeat = 0; repeat < 3; repeat++) SampleTrainLateUpdate(view);
                     Assert.That(rig.localPosition.z, Is.EqualTo(depth), "repeated rendering cannot accumulate depth");
                     previous = depth;
                     elapsed += delta;
@@ -410,21 +410,21 @@ namespace CatMetro.Tests.EditMode.Presentation
             animator.CrossFadeInFixedTime("Base Layer.Cat_IdleSit", .2f, 0, 0f);
             animator.Update(.05f);
             Assert.That(animator.IsInTransition(0), Is.True, "exercise a real blend, not a synthetic state label");
-            view.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+            SampleTrainLateUpdate(view);
             float middle = rig.localPosition.z;
             Assert.That(middle, Is.InRange(.001f, .097f));
             animator.Update(.05f);
-            view.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+            SampleTrainLateUpdate(view);
             Assert.That(rig.localPosition.z, Is.LessThan(middle));
             animator.Update(.2f);
-            view.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+            SampleTrainLateUpdate(view);
             Assert.That(rig.localPosition, Is.EqualTo(Vector3.zero));
             animator.CrossFadeInFixedTime("Base Layer.Cat_Ride", .2f, 0, 0f);
             animator.Update(.05f);
-            view.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+            SampleTrainLateUpdate(view);
             Assert.That(rig.localPosition.z, Is.InRange(.001f, .097f));
             animator.Update(.2f);
-            view.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+            SampleTrainLateUpdate(view);
             Assert.That(rig.localPosition.z, Is.EqualTo(.0983f));
             Assert.That(view.GetComponentInChildren<Animator>(true), Is.SameAs(animator));
         }
@@ -457,6 +457,16 @@ namespace CatMetro.Tests.EditMode.Presentation
                 Assert.That(Resources.Load<AnimatorOverrideController>(CatRigPresentation.OpenCarriageControllerResourcePath), Is.SameAs(installed));
             }
             finally { Object.DestroyImmediate(clone); }
+        }
+
+        private static void SampleTrainLateUpdate(ToyTrainView view)
+        {
+            // EditMode does not dispatch player lifecycle messages. Invoke the same production
+            // callback body directly after the real Animator evaluation; do not enable edit execution.
+            var callback = typeof(ToyTrainView).GetMethod("LateUpdate",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.That(callback, Is.Not.Null);
+            callback.Invoke(view, null);
         }
 
         private ToyTrainView CreateSeatTrain(bool original, out Animator animator, out Transform rig)
