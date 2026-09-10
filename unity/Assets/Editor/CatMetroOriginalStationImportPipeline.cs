@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -41,12 +42,13 @@ namespace CatMetro.EditorTools
             Texture2D atlas = AssetDatabase.LoadAssetAtPath<Texture2D>(TexturePath);
             if (atlas == null || atlas.width != 1024 || atlas.height != 512)
                 throw new InvalidDataException("Original station atlas must be 1024x512.");
-            Material material = BuildMaterial(atlas);
             GameObject imported = AssetDatabase.LoadAssetAtPath<GameObject>(SourceFbx);
             if (imported == null) throw new InvalidDataException("Original station FBX did not import.");
+            Material material = BuildMaterial(atlas);
 
             var instance = UnityEngine.Object.Instantiate(imported);
             var root = new GameObject("OriginalStation");
+            var temporaryMeshes = new List<Mesh>();
             try
             {
                 var filters = instance.GetComponentsInChildren<MeshFilter>(true);
@@ -57,7 +59,7 @@ namespace CatMetro.EditorTools
                         throw new InvalidDataException("Expected one original station mesh named " + name);
                     MeshFilter source = candidates[0];
                     Mesh mesh = BakeMeshInWorldSpace(source, name);
-                    mesh = SaveAsset(mesh, AssetRoot + "/Meshes/" + name + ".asset");
+                    temporaryMeshes.Add(mesh);
                     var part = new GameObject(name);
                     part.transform.SetParent(root.transform, false);
                     part.AddComponent<MeshFilter>().sharedMesh = mesh;
@@ -66,7 +68,16 @@ namespace CatMetro.EditorTools
                 // BadgePost and BadgeFace are neutral authoring parts only. The live
                 // board already owns cream discs, masts, every accepted shape and the
                 // delivery/rejection animation targets; a second sign would be misleading.
+                // Reject malformed geometry before overwriting the material and meshes
+                // referenced by a previously working station prefab.
                 Validate(root, atlas);
+                material = SaveAsset(material, MaterialPath);
+                foreach (MeshFilter filter in root.GetComponentsInChildren<MeshFilter>())
+                {
+                    filter.sharedMesh = SaveAsset(filter.sharedMesh,
+                        AssetRoot + "/Meshes/" + filter.name + ".asset");
+                    filter.GetComponent<MeshRenderer>().sharedMaterial = material;
+                }
                 GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
                 if (prefab == null) throw new InvalidDataException("Original station prefab was not saved.");
                 AssetDatabase.SaveAssets();
@@ -81,6 +92,9 @@ namespace CatMetro.EditorTools
             {
                 UnityEngine.Object.DestroyImmediate(root);
                 UnityEngine.Object.DestroyImmediate(instance);
+                foreach (Mesh mesh in temporaryMeshes)
+                    if (mesh != null && !EditorUtility.IsPersistent(mesh)) UnityEngine.Object.DestroyImmediate(mesh);
+                if (material != null && !EditorUtility.IsPersistent(material)) UnityEngine.Object.DestroyImmediate(material);
             }
         }
 
@@ -138,7 +152,7 @@ namespace CatMetro.EditorTools
             material.SetFloat("_Smoothness", .28f);
             material.SetFloat("_Metallic", 0f);
             if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", atlas);
-            return SaveAsset(material, MaterialPath);
+            return material;
         }
 
         private static Mesh BakeMeshInWorldSpace(MeshFilter source, string name)
