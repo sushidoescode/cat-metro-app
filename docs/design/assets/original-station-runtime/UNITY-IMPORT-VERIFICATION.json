@@ -1,0 +1,263 @@
+{
+  "unity_version": "6000.3.16f1",
+  "source_candidate": "3aa6bfaf884b98332e093c1d29ebcefdd1982b86",
+  "native_station_parts": [
+    {
+      "part": "Body",
+      "source_triangles": 6832,
+      "source_exact_degenerate": 210,
+      "source_area_squared_under_1e_16": 210,
+      "unity_index_counts": [
+        19866
+      ],
+      "unity_triangles": 6622
+    },
+    {
+      "part": "RoofTint",
+      "source_triangles": 504,
+      "source_exact_degenerate": 0,
+      "source_area_squared_under_1e_16": 0,
+      "unity_index_counts": [
+        1512
+      ],
+      "unity_triangles": 504
+    }
+  ],
+  "station_import_log": "station-import.log",
+  "carriage_import_log": "carriage-import.log",
+  "evidence_directory": ".catshots/owner-2026-09-10/original-first-native-3aa6bfaf",
+  "carriage_runtime_triangles": 3344,
+  "carriage_cavity_ray_hits": 21,
+  "station_native_checks": {
+    "EditMode": {
+      "passed": 2,
+      "total": 2,
+      "xml": "results/station-edit-correct-filter-and-celebrate-red.xml",
+      "note": "Combined XML also contains an unrelated deliberate red celebration regression: 11 pass, 2 fail."
+    },
+    "PlayMode": {
+      "passed": 44,
+      "total": 44,
+      "xml": "results/station-play.xml"
+    }
+  },
+  "owner_opened_frames": [
+    "captures/station-first/step-2-board.png",
+    "captures/carriage-first/step-2-board.png"
+  ],
+  "generated_files": [
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage.meta",
+      "sha256": "0c9eca52ed44d8e602f3a719461990687621ff971c0ba6fcaae1efa8d2715a32",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/Meshes.meta",
+      "sha256": "07fc484d98a3c99689eb09a70b0f74eb053e4be19970c9ff46e2c9899edbc81a",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/Meshes/OpenShell.asset",
+      "sha256": "40d8b1de83c2f2297b0c9acf398debc4f28127b4249a2a286df36c4131d76b0d",
+      "bytes": 69464
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/Meshes/OpenShell.asset.meta",
+      "sha256": "a685c246e83b0ace203e6ffa658716afbd4ecd8cdbbd74f6fd7b50c055d70464",
+      "bytes": 188
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/Meshes/Undercarriage.asset",
+      "sha256": "d9bf4d2f2b6d34ae51dcf860199ba6d186567d0ad27f00b3f1cbedde2a7fd2d0",
+      "bytes": 225663
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/Meshes/Undercarriage.asset.meta",
+      "sha256": "63cff9c81be97dcec7b856acfb254f8745e5c433e8ff199d3af34c782581843d",
+      "bytes": 188
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/OriginalOpenCarriage.mat",
+      "sha256": "00eae5e806b7be568e49de2672ef089ac42edc385c04f060c71ed0c5a636346c",
+      "bytes": 3924
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/OriginalOpenCarriage.mat.meta",
+      "sha256": "6c0d6c792db5e436578582ee1af8d0baa33b1be4d703c3c98772e258292fa12d",
+      "bytes": 188
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/Source.meta",
+      "sha256": "7434ff0a5bb04c2267b6f8e0efaab498037b3a348b2a9c59a8283be511d7ee17",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/Source/original-open-carriage.fbx",
+      "sha256": "69705bb1c161d7dfdd55091b1cc8ed2d0b932fa7c82baae4a49151bb275ffe4b",
+      "bytes": 404716
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/Source/original-open-carriage.fbx.meta",
+      "sha256": "d361a5a93631165b7fd578187b2c32bbee4761397daa5abacc5619f21d041167",
+      "bytes": 2861
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/original-toy-atlas.png",
+      "sha256": "3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45",
+      "bytes": 322072
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/original-toy-atlas.png.meta",
+      "sha256": "ef676693862e5ead7f6740b7b281583387077daa8effe1e569f848d5114e15ca",
+      "bytes": 3717
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station.meta",
+      "sha256": "0e69484902c401a50500be03f488df9353087fe76a138d9485033b5a1cc9e3a3",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/Meshes.meta",
+      "sha256": "705f17accbb6a7d0d8974702606205adf9d4fc484f5e776a280eb7f6167e536c",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/Meshes/Body.asset",
+      "sha256": "6df4b4787cc0cc92237ef20defecf4def0fa112e09e431ff32d6715b6b15f1c2",
+      "bytes": 600084
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/Meshes/Body.asset.meta",
+      "sha256": "42a8606ac224fb4c09f73b45516646162d1f96065f9a6ff0d49b0a381f991532",
+      "bytes": 188
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/Meshes/RoofTint.asset",
+      "sha256": "7f5d44eb2218c00aa9b586f2159102a74a922190448e12be9ee336461ac9632b",
+      "bytes": 48777
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/Meshes/RoofTint.asset.meta",
+      "sha256": "66ce0f0a3a571d87f20c3a831091f083be369267c62decc721cf942dab51eea0",
+      "bytes": 188
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/OriginalStation.mat",
+      "sha256": "3da3cd593e8bf4947d4b4bb1c4388e96a797a5afa7af21fdefc86ae73f833b00",
+      "bytes": 3919
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/OriginalStation.mat.meta",
+      "sha256": "53666352730db44842d01ba393b5442302e33eac6b4d3144bd26ffd26df9beae",
+      "bytes": 188
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/Source.meta",
+      "sha256": "29a2be164122f9fe9db48b67234c963b33f9777d09b76db81587d534e01ffa1f",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/Source/original-station-runtime.fbx",
+      "sha256": "e082f6db8ef2efefb759607141ac116724c10ba5319a6582ea2b797a04d86cfc",
+      "bytes": 504076
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/Source/original-station-runtime.fbx.meta",
+      "sha256": "099947a6577d1ff20f7c3e9e7ec8698bf0efe3c3cfba86bc4953a1551feb91e2",
+      "bytes": 2861
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/original-toy-atlas.png",
+      "sha256": "7661e3f8806fd75ce228d8ae0da5095c3d4eab398396338bafdde20a4e384b94",
+      "bytes": 305148
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/original-toy-atlas.png.meta",
+      "sha256": "577b2f4c5c3001cf00a1350388ac4d0c12ff636769f72fb6ac50d14316a4ae62",
+      "bytes": 3717
+    },
+    {
+      "path": "unity/Assets/Art/Original/Track.meta",
+      "sha256": "e616663a17f8df3b69f72986fe03a78e8d357c5b7279be8291e33ba44c3f2de0",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/Track/PROVENANCE.json.meta",
+      "sha256": "16e476e1d9acc443e1e730266a71b8a30e46e4bf7a1a013fa2edc329ff881678",
+      "bytes": 158
+    },
+    {
+      "path": "unity/Assets/Art/Original/Track/Resources.meta",
+      "sha256": "7edf2b31f2f729caf380474dc87ef30d7185c41f48ec2a2b367c8623f24d0c6f",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/Track/Resources/Track.meta",
+      "sha256": "79e7395ef429915318b67a216e24791554fd5d1fedbc05fa4a7bc52ad90ed68d",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/Track/Resources/Track/original-toy-atlas.png.meta",
+      "sha256": "be83ab36d67ede50da3a7112696b4e7e7f5a750523d1cd8e9dd857a6aa51d32f",
+      "bytes": 3717
+    },
+    {
+      "path": "unity/Assets/Editor/CatMetroOriginalCarriageImportPipeline.cs.meta",
+      "sha256": "51e0fa80d96ab065a7bfaa5ee97c7548358aacca75e227a4376258d7022682d5",
+      "bytes": 59
+    },
+    {
+      "path": "unity/Assets/Editor/CatMetroOriginalStationImportPipeline.cs.meta",
+      "sha256": "4afe4935f47076b0ac4e86f07828ed8bf08ad4143db7b73d79a941cf345dcb28",
+      "bytes": 59
+    },
+    {
+      "path": "unity/Assets/Resources/CatMetroOriginal.meta",
+      "sha256": "c4e405768a34d0ec60f4f8cf3bb943f3d1c8c0a822fe06e18033bdd5b7b257e2",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Resources/CatMetroOriginal/OpenCarriage.prefab",
+      "sha256": "2b67828377151fd08146716be60cd03d333481c826e8f7582e6293fee46107cd",
+      "bytes": 6204
+    },
+    {
+      "path": "unity/Assets/Resources/CatMetroOriginal/OpenCarriage.prefab.meta",
+      "sha256": "31452ed1ef1d65e4ac46e48c1285138f7cb95a72eb4058980a2f161739ccc840",
+      "bytes": 154
+    },
+    {
+      "path": "unity/Assets/Resources/CatMetroOriginal/Station.prefab",
+      "sha256": "5aaaf956b64034fdc05d845e03eae046360285a72ee2e02d14eef4b3ce2e3654",
+      "bytes": 6191
+    },
+    {
+      "path": "unity/Assets/Resources/CatMetroOriginal/Station.prefab.meta",
+      "sha256": "15ddf27d93fc3b217c14d4030a47109ed21b4eb0755a7ac480e4c3ceac68f441",
+      "bytes": 154
+    },
+    {
+      "path": "unity/Assets/Scripts/Presentation/Props/CarriageModelCatalog.cs.meta",
+      "sha256": "40f05c3235f795fcb23c8b40dffd2f8ff614ab245cda3384dcc0ef3b5655cefd",
+      "bytes": 59
+    },
+    {
+      "path": "unity/Assets/Tests/EditMode/Presentation/ToyCarriagePresentationTests.cs.meta",
+      "sha256": "2f7ed7b79fea3a6c003a00feb702454fdb28954967a35d41f18bedf98832d69a",
+      "bytes": 59
+    },
+    {
+      "path": "unity/Assets/Tests/PlayMode/Board/RidingSeatAnatomyProbeTests.cs.meta",
+      "sha256": "4c5b3d4687310a093dd3aeaf1878324cc86ef76758f0cab6e1e9c2e814093045",
+      "bytes": 59
+    }
+  ],
+  "protected_paid_inputs_unchanged": true,
+  "not_verified": [
+    "Full native suites on the generated candidate",
+    "Dense-level station placement",
+    "Original carriage paw contact: diagnostic CPU-vs-Bake error .0243187323 before captures",
+    "Track importer configuration",
+    "Device rendering/performance"
+  ]
+}
