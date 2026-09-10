@@ -372,8 +372,8 @@ namespace CatMetro.Presentation.Board
         public void ApplyDeliveredPose(CatPresentationTrack track, float visualTime, bool motionOff)
         {
             ApplyPresentation(track.State, 1f, true, visualTime, motionOff, 0f);
-            // The current imported Cat_Celebrate is a bind-pose fallback. Keep a visible
-            // presentation hop for it as well as placeholders while the named clip plays.
+            // Retained passengers add a presentation hop while the named celebration plays.
+            // This scale accent stays outside the authored bone curves and also serves placeholders.
             float hop = !motionOff && track.State == CatPresentationState.Celebrate
                 ? Mathf.Sin(Mathf.PI * Mathf.Clamp01(track.StateElapsed
                     / CatPresentationTrack.CelebrateDuration)) : 0f;

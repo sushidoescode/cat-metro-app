@@ -110,11 +110,11 @@ namespace CatMetro.EditorTools
                         + "bone_4 and Head_3 weighted ears. Coupled/mislabeled limb chains remain at sampled rest. "
                         + "Celebrate lifts forepaws through a small body rear, not a direct limb-chain rotation.",
                     timing = "60 Hz endpoint-inclusive sampling; IdleSit 3.2 s, Ride 1.6 s loops; "
-                        + "Board/Alight 0.18 s smooth transitions; Celebrate 0.48 s returns to the Ride seat.",
+                        + "Board/Alight 0.18 s smooth transitions; Celebrate 0.48 s returns to the neutral platform pose.",
                     motionParameters = "Idle degrees from source neutral: body 0.65*sin, head -0.35*sin, roll 1.2*sin, "
                         + "tail 45+3*sin; ears +3.5/-2.5 pulse. Ride degrees relative to seat: body 0.8*sin, head -0.5*sin, roll 0.8*sin, "
-                        + "tail 2*sin. Celebrate body +3 at 0.10 s, -8 at 0.22 s, 0 at 0.48 s; head -0.5*body, "
-                        + "tail +12 pulse, head roll +2 pulse, ears +/-2 pulse. Animator +Z is pitch, +X head roll.",
+                        + "tail 2*sin. Celebrate degrees from source neutral: body +3 at 0.10 s, -8 at 0.22 s, 0 at 0.48 s; head -0.5*body, "
+                        + "tail 45+12 pulse, head roll +2 pulse, ears +/-2 pulse. Animator +Z is pitch, +X head roll.",
                     seatedAnimatorDegrees = new Vector3(-35f, 32f, 45f),
                     scalePolicy = "No scale curves. Presenter owns head enlargement. Walk scale curves must remain at sampled baseline.",
                     translationPolicy = "Static sampled child positions only; no Animator-root curves, dynamic translations, hops or root motion.",
@@ -222,7 +222,7 @@ namespace CatMetro.EditorTools
             if (clip == 0)
             {
                 // The neutral torso/head preserve the weighted chest tuft in profile portraits.
-                // Breathing stays small; the carriage seat remains specific to the other clips.
+                // Breathing stays small; the carriage seat remains in Ride, Board and Alight.
                 body = 0.65f * wave;
                 head = -0.35f * wave;
                 roll = 1.2f * wave;
@@ -239,14 +239,14 @@ namespace CatMetro.EditorTools
             }
             else if (clip == 4)
             {
-                // Anticipation at 0.10 s, gentle rear at 0.22 s, settle to the seated idle.
+                // Anticipation at 0.10 s, gentle rear at 0.22 s, settle to the neutral platform pose.
                 float rear = phase < 0.1f / 0.48f
                     ? Mathf.Lerp(0f, 3f, Smooth(phase / (0.1f / 0.48f)))
                     : phase < 0.22f / 0.48f
                         ? Mathf.Lerp(3f, -8f, Smooth((phase - 0.1f / 0.48f) / (0.12f / 0.48f)))
                         : Mathf.Lerp(-8f, 0f, Smooth((phase - 0.22f / 0.48f) / (0.26f / 0.48f)));
-                body += rear;
-                head -= rear * 0.5f;
+                body = rear;
+                head = -rear * 0.5f;
                 tail += 12f * Pulse(phase, 0.14f, 0.92f);
                 roll = 2f * Pulse(phase, 0.22f, 0.88f);
                 earA = 2f * Pulse(phase, 0.25f, 0.75f);
