@@ -97,8 +97,10 @@ namespace CatMetro.Tests.PlayMode
                         mount.BindMotionOff(() => true);
                         mount.AdvanceTurntable(0f);
                         Color32[] rest = Read(root.Cam, target);
+                        Rect restRegion = SubjectBounds(root.Cam, portrait);
                         mount.AdvanceTurntable(1.2f);
-                        Assert.That(Read(root.Cam, target), Is.EqualTo(rest), "Motion Off freezes the full portrait, including frame");
+                        AssertSubjectPaint(root.Cam, portrait, Read(root.Cam, target), rest, restRegion,
+                            "Motion Off freezes the full portrait, including frame");
                     }
                 }
             }
@@ -128,16 +130,17 @@ namespace CatMetro.Tests.PlayMode
                 // Multiple manual renders in one frame need the current flattened skin matrix.
                 skin.forceMatrixRecalculationPerRender = true;
                 Color32[] equipped = Read(camera, target);
+                Rect subjectRegion = SubjectBounds(camera, portrait);
                 frame.gameObject.SetActive(false);
                 Color32[] unframed = Read(camera, target);
                 hat.gameObject.SetActive(false);
                 Color32[] hatHidden = Read(camera, target);
                 hat.gameObject.SetActive(true);
-                Assert.That(Read(camera, target), Is.EqualTo(unframed), "hat control restores exact unframed paint");
+                AssertSubjectPaint(camera, portrait, Read(camera, target), unframed, subjectRegion, "hat control restores exact unframed paint");
                 frame.gameObject.SetActive(true);
-                Assert.That(Read(camera, target), Is.EqualTo(equipped), "frame control restores exact paint");
+                AssertSubjectPaint(camera, portrait, Read(camera, target), equipped, subjectRegion, "frame control restores exact paint");
                 Color32[] skinMask = ActualSkinMask(camera, target, skin);
-                Assert.That(Read(camera, target), Is.EqualTo(equipped), "skin-mask control restores renderer/camera state");
+                AssertSubjectPaint(camera, portrait, Read(camera, target), equipped, subjectRegion, "skin-mask control restores exact portrait paint");
                 bool[] skinPixels = skinMask.Select(White).ToArray();
                 bool[] hatPixels = unframed.Select((c, i) => Difference(c, hatHidden[i]) > 24).ToArray();
                 Assert.That(skinPixels.Count(p => p), Is.GreaterThan(100));
@@ -161,9 +164,12 @@ namespace CatMetro.Tests.PlayMode
                     ForceRail(rail, camera, PixelBounds(skinPixels).center);
                     Color32[] forcedSkin = Read(camera, target);
                     Assert.That(Overlap(forcedSkin, unframed, skinPixels), Is.GreaterThan(25));
+                    Assert.That(SubjectDifferences(equipped, forcedSkin, subjectRegion, out _), Is.GreaterThan(25),
+                        "the exact subject metric detects the existing real-rail occlusion control");
                     ForceRail(rail, camera, PixelBounds(hatPixels).center);
                     Color32[] forcedHat = Read(camera, target);
                     Assert.That(Overlap(forcedHat, unframed, hatPixels), Is.GreaterThan(5));
+                    Assert.That(SubjectDifferences(equipped, forcedHat, subjectRegion, out _), Is.GreaterThan(5));
                     if (captureControls)
                     {
                         Save(directory, name + "-forced-skin-control", forcedSkin);
@@ -171,7 +177,7 @@ namespace CatMetro.Tests.PlayMode
                     }
                 }
                 finally { rail.localPosition = position; rail.localScale = scale; }
-                Assert.That(Read(camera, target), Is.EqualTo(equipped), "forced rail restores exact local transform and paint");
+                AssertSubjectPaint(camera, portrait, Read(camera, target), equipped, subjectRegion, "forced rail restores exact local transform and paint");
                 Transform token = frame.Find(portrait.AppliedFrameAssetId);
                 string prefix = portrait.AppliedFrameAssetId == "frame.brass" ? "Outer" : "NavyOuter";
                 float verticalStroke = Project(camera, (RectTransform)token.Find(prefix + "Left")).width;
@@ -230,19 +236,70 @@ namespace CatMetro.Tests.PlayMode
             CosmeticPortraitView portrait, PortraitTestSource source)
         {
             Color32[] fallback = Read(camera, target);
+            Rect fallbackRegion = SubjectBounds(camera, portrait);
             CosmeticPortraitView legacy = null;
             try
             {
                 portrait.gameObject.SetActive(false);
                 // A separately painted portrait has never entered the 3D fit path.
                 legacy = CosmeticPortraitView.Create(portrait.transform.parent, source, "LegacyFramePixelControl");
-                Assert.That(Read(camera, target), Is.EqualTo(fallback), "fallback preserves independently painted legacy pixels");
+                Color32[] independent = Read(camera, target);
+                // Include both independently painted layouts so a moved or resized fallback
+                // cannot escape the comparison region.
+                AssertSubjectPaint(camera, legacy, independent, fallback, fallbackRegion,
+                    "fallback preserves independently painted legacy pixels");
             }
             finally
             {
                 if (legacy != null) Object.DestroyImmediate(legacy.gameObject);
                 portrait.gameObject.SetActive(true);
             }
+        }
+
+        private static Rect SubjectBounds(Camera camera, CosmeticPortraitView portrait)
+        {
+            // This test owns the full portrait, including transparent holder space and every
+            // frame corner. It does not own unrelated desk/coffee-cup raster elsewhere in Home.
+            return Bounds(portrait.GetComponentsInChildren<Image>()
+                .Where(image => image.enabled && image.gameObject.activeInHierarchy)
+                .SelectMany(image => Corners(image.rectTransform))
+                .Concat(Corners((RectTransform)portrait.transform.parent))
+                .Concat(Corners(portrait.FrameLayerTransform))
+                .Select(world => (Vector2)camera.WorldToScreenPoint(world)));
+        }
+
+        private static void AssertSubjectPaint(Camera camera, CosmeticPortraitView portrait,
+            Color32[] actual, Color32[] expected, Rect originalRegion, string message)
+        {
+            Rect current = SubjectBounds(camera, portrait);
+            Rect region = Rect.MinMaxRect(Mathf.Min(originalRegion.xMin, current.xMin),
+                Mathf.Min(originalRegion.yMin, current.yMin), Mathf.Max(originalRegion.xMax, current.xMax),
+                Mathf.Max(originalRegion.yMax, current.yMax));
+            int changed = SubjectDifferences(expected, actual, region, out int first);
+            string location = first < 0 ? "none" : (first % Width) + "," + (first / Width);
+            Assert.That(changed, Is.Zero, message + "; subject=" + region + "; first changed pixel=" + location);
+        }
+
+        private static int SubjectDifferences(Color32[] expected, Color32[] actual, Rect region, out int first)
+        {
+            Assert.That(expected.Length, Is.EqualTo(Width * Height));
+            Assert.That(actual.Length, Is.EqualTo(expected.Length));
+            int left = Mathf.Clamp(Mathf.FloorToInt(region.xMin), 0, Width);
+            int right = Mathf.Clamp(Mathf.CeilToInt(region.xMax), 0, Width);
+            int bottom = Mathf.Clamp(Mathf.FloorToInt(region.yMin), 0, Height);
+            int top = Mathf.Clamp(Mathf.CeilToInt(region.yMax), 0, Height);
+            Assert.That(right - left, Is.GreaterThan(0), "subject must intersect the rendered viewport");
+            Assert.That(top - bottom, Is.GreaterThan(0), "subject must intersect the rendered viewport");
+            int changed = 0; first = -1;
+            for (int y = bottom; y < top; y++)
+                for (int x = left; x < right; x++)
+                {
+                    int index = y * Width + x;
+                    if (expected[index].Equals(actual[index])) continue;
+                    changed++;
+                    if (first < 0) first = index;
+                }
+            return changed;
         }
 
         private static bool White(Color32 c) => c.r > 250 && c.g > 250 && c.b > 250;
