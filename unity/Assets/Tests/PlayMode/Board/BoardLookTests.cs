@@ -527,7 +527,8 @@ namespace CatMetro.Tests.PlayMode
             float visibleHeadCoreWidth = visibleHeadCore.width / (float)maskWidth;
             float exposed = Mathf.Min(1f,
                 visibleHeadCore.height / (headRect.height * maskHeight));
-            int propEntries = PropModelCatalog.LoadResources().AdmittedEntryCount;
+            var propCatalog = PropModelCatalog.LoadResources();
+            int propEntries = propCatalog.AdmittedEntryCount;
             string passengerMetrics = string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
                 "level_id=" + levelId + "\nvisible_cat_head_width_fraction={0:F6}\n"
@@ -560,8 +561,27 @@ namespace CatMetro.Tests.PlayMode
             Object.Destroy(catMask);
             Object.Destroy(headCoreMask);
 
-            Assert.That(propEntries, Is.EqualTo(0).Or.EqualTo(5).Or.EqualTo(10),
-                "only an atomic licensed catalog or the licence-neutral fallback is valid");
+            if (propEntries == 1)
+            {
+                GameObject originalStation = Resources.Load<GameObject>(
+                    PropModelCatalog.OriginalStationResourcePath);
+                Assert.That(originalStation, Is.Not.Null,
+                    "one prop is valid only for the optional original station");
+                Assert.That(propCatalog.TryGet(PropModelCatalog.StationKioskId, out var station),
+                    Is.True, "the sole admitted entry must occupy the station slot");
+                Assert.That(station.Prefab, Is.SameAs(originalStation));
+                foreach (string id in new[] { PropModelCatalog.DepotShedId,
+                    PropModelCatalog.StationKioskId, PropModelCatalog.TreesId,
+                    PropModelCatalog.DeskClutterId, PropModelCatalog.ToyEngineId,
+                    PropModelCatalog.FenceId, PropModelCatalog.BushId,
+                    PropModelCatalog.LampPostId, PropModelCatalog.SignpostId,
+                    PropModelCatalog.TrailSignpostId })
+                    Assert.That(Resources.Load<GameObject>("CatMetroProps/" + id), Is.Null,
+                        "original-only must not hide a partial or malformed licensed install: " + id);
+            }
+            else
+                Assert.That(propEntries, Is.EqualTo(0).Or.EqualTo(5).Or.EqualTo(10),
+                    "only an atomic licensed catalog or the licence-neutral fallback is valid");
             float minimumWidth = levelId == "L001" ? 0.05f : 0.04f;
             Assert.That(visibleCatWidth, Is.GreaterThanOrEqualTo(minimumWidth),
                 $"{levelId} fallback head and ears occupy {visibleCatWidth:P1} of frame width; "
