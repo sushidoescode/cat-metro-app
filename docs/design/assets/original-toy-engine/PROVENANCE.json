@@ -91,7 +91,7 @@
         "two_side_window_rays_unobstructed": true,
         "wheel_bottom_z": 0.0
       },
-      "suggested_board_adapter": "Blender (x,y,z) -> board (x,-y,.235-z); ordinary Unity +Y-up import rotated -90 degrees about X and translated Z+.235, scale1. Validate native import before admission.",
+      "suggested_board_adapter": "Native Unity 6000.3.16f1 FBX import initially faces -X. The Editor importer pre-multiplies its flattening matrix by Y180, normalizing the derived mesh to +X forward / +Y up; original FBX bytes stay unchanged. The runtime wrapper then rotates X-90 and translates board-local Z+.235 at scale1. Native dimensions, cab-window rays and funnel-cup ray pass; board/steam graphics remain pending.",
       "retained_runtime_attachment": "Existing Engine/Funnel transform at board local (.15,0,-.085), including its original rotation/scale, remains the steam parent."
     }
   ],

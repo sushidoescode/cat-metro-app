@@ -191,11 +191,14 @@ namespace CatMetro.EditorTools
 
         private static Mesh BakeMeshInWorldSpace(MeshFilter source, string name)
         {
-            // Flatten the FBX import hierarchy into Y-up mesh bytes. Prefab roots and
-            // children remain identity; placement corrections stay in the catalog.
+            // Native Unity 6000.3.16f1 imports this FBX facing -X. Normalize the
+            // imported geometry to vehicle +X before flattening; the original FBX
+            // stays untouched. Independent cab-window/funnel rays verify this basis.
+            // Prefab transforms remain identity; the runtime wrapper supplies board-up.
             Mesh mesh = UnityEngine.Object.Instantiate(source.sharedMesh);
             mesh.name = name;
-            Matrix4x4 matrix = source.transform.localToWorldMatrix;
+            Matrix4x4 matrix = Matrix4x4.Rotate(Quaternion.Euler(0f, 180f, 0f))
+                * source.transform.localToWorldMatrix;
             Vector3[] vertices = mesh.vertices;
             for (int i = 0; i < vertices.Length; i++) vertices[i] = matrix.MultiplyPoint3x4(vertices[i]);
             mesh.vertices = vertices;

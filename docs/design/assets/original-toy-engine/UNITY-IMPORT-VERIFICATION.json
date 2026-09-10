@@ -1,0 +1,43 @@
+{
+  "editor": "Unity 6000.3.16f1",
+  "owner_reported_editor_exit": 0,
+  "native_log": "/private/tmp/catmetro-owner-original-assets-20260910-104917/engine-import/native-axis-calibration.log",
+  "native_log_sha256": "8d7ebe83d25e7c4df17540be9cc30e8fc31cd0832beacae1abb9c30c18a93fdb",
+  "observed_import_lines": [
+    "ORIGINAL_ENGINE_BOUNDS EngineBody min=(-0.226500000, 0.079000000, -0.148000000) max=(0.220500000, 0.370000000, 0.148000000) size=(0.447000000, 0.291000000, 0.296000000) center=(-0.002999999, 0.224500000, 0.000000007) triangles=3904",
+    "ORIGINAL_ENGINE_BOUNDS RunningGear min=(-0.229000000, 0.000000000, -0.149500000) max=(0.229000000, 0.108500000, 0.149500000) size=(0.458000000, 0.108500000, 0.299000000) center=(0.000000000, 0.054249990, 0.000000000) triangles=3584",
+    "ORIGINAL_ENGINE_IMPORT PASS prefab=Assets/Resources/CatMetroOriginal/ToyEngine.prefab meshes=2 materials=1 triangles=7488 atlas=Assets/Art/Original/ToyEngine/original-toy-atlas.png atlas_sha256=3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45 fbx_sha256=d54ab334aebdb0899231494d45e31668f3999a6fabe621382441dd01f488a525"
+  ],
+  "first_import_refutation": {
+    "body_center_y_up": [
+      0.002999991,
+      0.2245,
+      0
+    ],
+    "expected_center_y_up": [
+      -0.003,
+      0.2245,
+      0
+    ],
+    "cause": "Unity FBX basis reverses intended engine forward axis; correct geometry before admission rather than accepting reversed bounds."
+  },
+  "correction": "Matrix4x4.Rotate(Quaternion.Euler(0,180,0)) * source.transform.localToWorldMatrix, applied to derived mesh vertices and inverse-transpose normals; recalculate tangents.",
+  "source_fbx_sha256": "d54ab334aebdb0899231494d45e31668f3999a6fabe621382441dd01f488a525",
+  "source_atlas_sha256": "3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45",
+  "native_assertions_passed": [
+    "two named mesh parts",
+    "shared neutral URP/Lit candidate atlas",
+    "body and running-gear bounds/axes/pivots",
+    "3904+3584 triangles, total7488",
+    "complete UVs",
+    "two unobstructed cab-window rays",
+    "funnel centre first hit at Y.352"
+  ],
+  "generated_unity_output_hashes": "Pending owner inventory/transfer; this receipt does not claim generated file hashes.",
+  "not_verified": [
+    "nine focused EditMode tests",
+    "board/close native appearance",
+    "steam pixel controls and bob",
+    "Android"
+  ]
+}
