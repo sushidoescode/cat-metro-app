@@ -58,10 +58,10 @@ namespace CatMetro.Presentation.Board
         // departure Walk plus Celebrate at every current station-arrival heading and a sampled
         // five-degree retained-heading envelope. Each case crosses the complete active clip at
         // half-frame spacing, a 17-angle applied-ear corpus and independently measured maximum
-        // carriage-ward bob. Lane A's 0.52 rig passed at a 0.612 endpoint. The wider carriage
-        // adds 0.03 on both planar half-extents: at any heading its support grows by at most
-        // sqrt(2)*0.03. Move the endpoint another 0.044 to preserve that separating plane.
-        public const float PlatformSideOffset = 0.656f;
+        // carriage-ward bob. The authored celebrate clip extends the lower body beyond the
+        // provider's static pose. An extra 0.048 board units restores the separating margin
+        // while the shared platform anchor also reserves the new position in camera framing.
+        public const float PlatformSideOffset = 0.704f;
         public const float PlatformEndpointClearance = 0.045f;
         // Horizontal half-extent reserved by the camera around a platform cat's root. The
         // fallback head, ears and 0.28 card all fit inside one HeadDiameter; the admitted-rig
@@ -292,6 +292,7 @@ namespace CatMetro.Presentation.Board
         private CatModelCatalog _catCatalog;
         private GameObject _rigInstance;
         private Animator _rigAnimator;
+        private CatRigPresentation _rigPresentation;
         private Transform _rigEarDeformerA;
         private Transform _rigEarDeformerB;
         private Quaternion _rigEarAPreviousOffset = Quaternion.identity;
@@ -371,8 +372,8 @@ namespace CatMetro.Presentation.Board
         public void ApplyDeliveredPose(CatPresentationTrack track, float visualTime, bool motionOff)
         {
             ApplyPresentation(track.State, 1f, true, visualTime, motionOff, 0f);
-            // The current imported Cat_Celebrate is a bind-pose fallback. Keep a visible
-            // presentation hop for it as well as placeholders while the named clip plays.
+            // Retained passengers add a presentation hop while the named celebration plays.
+            // This scale accent stays outside the authored bone curves and also serves placeholders.
             float hop = !motionOff && track.State == CatPresentationState.Celebrate
                 ? Mathf.Sin(Mathf.PI * Mathf.Clamp01(track.StateElapsed
                     / CatPresentationTrack.CelebrateDuration)) : 0f;
@@ -385,6 +386,7 @@ namespace CatMetro.Presentation.Board
                     : Mathf.Repeat(visualTime / duration, 1f);
                 _rigAnimator.Play(celebrate ? _deliveredCelebrateState : _deliveredIdleState, 0, phase);
                 _rigAnimator.Update(0f);
+                _rigPresentation?.ApplyHeadShape();
                 _rigAnimator.speed = 0f; // the board's unscaled presentation clock owns this pose
             }
         }
@@ -677,7 +679,14 @@ namespace CatMetro.Presentation.Board
             _eyeRight.localScale = new Vector3(_eyeRightBaseLocalScale.x,
                 _eyeRightBaseLocalScale.y * pose.EyeYScale, _eyeRightBaseLocalScale.z);
             SetRigEarTwitch(pose.EarTwitchDegrees);
-            PlayRig(state, false, desiredTravelSpeed);
+            // WaitingIdle also describes source/platform passengers. At the carriage seat,
+            // keep the authored Ride loop and cache that effective playback state so stopping,
+            // reversing and resuming do not restart it or replace the seated body with Idle.
+            CatPresentationState rigState = state == CatPresentationState.WaitingIdle
+                && safePlatformBlend == 0f && _rigPresentation != null
+                && _rigPresentation.AuthoredMotionInstalled
+                ? CatPresentationState.RideIdle : state;
+            PlayRig(rigState, false, desiredTravelSpeed);
             ApplyRigEarTwitch();
         }
 
@@ -1169,6 +1178,7 @@ namespace CatMetro.Presentation.Board
             }
 
             _rigAnimator = animators[0];
+            _rigPresentation = _rigAnimator.GetComponent<CatRigPresentation>();
             _rigAnimator.applyRootMotion = false;
             _rigInstance.transform.localPosition = Vector3.zero;
             // TASK 17 imports conventional +Y-up, +Z-forward content. This presentation-only
@@ -1281,6 +1291,7 @@ namespace CatMetro.Presentation.Board
                 _rigAnimator.Play(_rigAnimator.GetLayerName(0) + "."
                     + CatModelCatalog.IdleSitClip, 0, 0f);
                 _rigAnimator.Update(0f);
+                _rigPresentation?.ApplyHeadShape();
                 _rigAnimator.speed = 0f;
                 _rigNeutralSampleCount++;
                 _lastRigState = CatPresentationState.Hidden;
@@ -1300,8 +1311,12 @@ namespace CatMetro.Presentation.Board
             // presentation-state transition, so retime before the same-state early return.
             _rigAnimator.speed = playbackSpeed;
             if (_lastRigState == state) return;
-            _rigAnimator.Play(_rigAnimator.GetLayerName(0) + "." + CatModelCatalog.ClipFor(state), 0, 0f);
+            string clip = state == CatPresentationState.RideIdle
+                && _rigPresentation != null && _rigPresentation.AuthoredMotionInstalled
+                ? CatRigPresentation.RideClip : CatModelCatalog.ClipFor(state);
+            _rigAnimator.Play(_rigAnimator.GetLayerName(0) + "." + clip, 0, 0f);
             _rigAnimator.Update(0f); // presentation sampling only; root motion stays disabled.
+            _rigPresentation?.ApplyHeadShape();
             _lastRigState = state;
         }
 

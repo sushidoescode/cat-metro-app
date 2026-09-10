@@ -614,8 +614,7 @@ namespace CatMetro.Tests.PlayMode
                 "the pinned licensed artifact owns one measured skinned renderer");
             SkinnedMeshRenderer skin = skins[0];
             Assert.That(skin.enabled, Is.True);
-            Transform headRoot = animator.transform.Find(
-                "Armature/tripo::Root/tripo::Head_0/tripo::Head_1/tripo::Head_2");
+            Transform headRoot = animator.transform.Find(CatRigPresentation.WeightedHeadPath);
             Assert.That(headRoot, Is.Not.Null,
                 "the head mask must bind the measured head-and-ear bone hierarchy");
 
@@ -628,8 +627,14 @@ namespace CatMetro.Tests.PlayMode
             // would still let Animator advance during the mask's required RenderTexture frame.
             SeedMidEdgePassenger(_root);
             trainView.ApplyPresentation(CatPresentationState.RideIdle, 0f, false);
-            animator.Play("Base Layer." + CatModelCatalog.IdleSitClip, 0, 0f);
+            CatRigPresentation motion = animator.GetComponent<CatRigPresentation>();
+            string rideClip = motion != null && motion.AuthoredMotionInstalled
+                ? CatRigPresentation.RideClip : CatModelCatalog.IdleSitClip;
+            Assert.That(animator.GetCurrentAnimatorStateInfo(0).IsName("Base Layer." + rideClip), Is.True,
+                "the evidence must freeze the ride state selected by production presentation");
+            animator.Play("Base Layer." + rideClip, 0, 0f);
             animator.Update(0f);
+            motion?.ApplyHeadShape();
             animator.speed = 0f;
             _root.enabled = false;
             trainView.enabled = false;
@@ -648,21 +653,92 @@ namespace CatMetro.Tests.PlayMode
             {
                 yield return null;
                 fullRigMask = fullRig.Read();
+                SaveDiagnosticMask(captureDir, "step-2-visible-full-rig-mask.png", fullRigMask);
             }
             finally
             {
                 fullRig.Dispose();
             }
 
-            // Head_2 is the rig's neck-to-head joint. Cropping the rendered silhouette at its
-            // projected screen row measures the visible head and ears without counting the
-            // wider torso, and does not require Read/Write access to the licensed source mesh.
-            float headBaseViewportY = camera.WorldToViewportPoint(headRoot.position).y;
-            // Exclude the joint's own raster row. Geometry straddling that boundary belongs to
-            // the neck/torso and a one-row phase shift must not widen the claimed head silhouette.
-            int headBasePixelY = Mathf.Clamp(
-                Mathf.FloorToInt(headBaseViewportY * maskHeight) + 1, 0, maskHeight - 1);
-            headMask = CopyRowsAtOrAbove(fullRigMask, headBasePixelY);
+            int headVertices = 0, meshVertices = 0, meshTriangles = 0;
+            var controls = new List<Texture2D>();
+            GameObject occluder = null;
+            bool masksRetained = false;
+            try
+            {
+                using (var geometry = new WeightedHeadMaskGeometry(skin, headRoot))
+                {
+                    headVertices = geometry.HeadVertexCount;
+                    meshVertices = geometry.VertexCount;
+                    meshTriangles = geometry.TriangleCount;
+                    // This actual depth occluder is registered while enabled, so the mask
+                    // fixture gives it the same black material as all other world occluders.
+                    occluder = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    occluder.name = "DiagnosticHeadOccluder";
+                    occluder.transform.SetParent(_root.transform, false);
+                    occluder.layer = skin.gameObject.layer;
+                    Object.DestroyImmediate(occluder.GetComponent<Collider>());
+                    Assert.That(camera.orthographic, Is.True);
+                    occluder.transform.SetPositionAndRotation(
+                        camera.transform.position + camera.transform.forward * (camera.nearClipPlane + 1f),
+                        camera.transform.rotation);
+                    occluder.transform.localScale = new Vector3(
+                        camera.orthographicSize * camera.aspect * 2.1f,
+                        camera.orthographicSize * 2.1f, 0.02f);
+                    Renderer blocker = occluder.GetComponent<Renderer>();
+                    using (var weighted = new ArtifactMaskRig(_root, geometry.Root.transform,
+                        maskWidth, maskHeight, preserveOcclusion: true, selectedMaterial: geometry.Material))
+                    {
+                        blocker.enabled = false;
+                        yield return null;
+                        geometry.Material.SetFloat("_HeadOnly", 0f);
+                        Texture2D bakedFull = weighted.Read();
+                        controls.Add(bakedFull);
+                        SaveDiagnosticMask(captureDir, "step-2-baked-full-rig-control.png", bakedFull);
+                        AssertMasksWithinOneRasterPixel(bakedFull, fullRigMask,
+                            "full baked topology must match the independently rendered source skin");
+
+                        geometry.Material.SetFloat("_HeadOnly", 1f);
+                        headMask = weighted.Read();
+                        SaveDiagnosticMask(captureDir, "step-2-visible-rig-head-mask.png", headMask);
+                        AssertWhiteMaskSubset(headMask, fullRigMask,
+                            "weighted head pixels must be visible in the independent source-skin mask");
+                        int visibleHeadPixels = WhitePixelCount(headMask);
+                        Assert.That(visibleHeadPixels, Is.GreaterThan(0));
+
+                        geometry.SetZeroInfluence(true);
+                        Texture2D zero = weighted.Read();
+                        controls.Add(zero);
+                        SaveDiagnosticMask(captureDir, "step-2-zero-head-weights-control.png", zero);
+                        Assert.That(WhitePixelCount(zero), Is.Zero,
+                            "zero weights must remove head pixels while retaining full black mesh depth");
+                        geometry.SetZeroInfluence(false);
+                        blocker.enabled = true;
+                        Texture2D blocked = weighted.Read();
+                        controls.Add(blocked);
+                        SaveDiagnosticMask(captureDir, "step-2-occluded-head-control.png", blocked);
+                        Assert.That(WhitePixelCount(blocked), Is.Zero,
+                            "a real foreground occluder must hide the weighted head");
+                        blocker.enabled = false;
+                        Texture2D restored = weighted.Read();
+                        controls.Add(restored);
+                        SaveDiagnosticMask(captureDir, "step-2-restored-head-control.png", restored);
+                        Assert.That(restored.GetPixels32(), Is.EqualTo(headMask.GetPixels32()),
+                            "removing the occluder must restore the same frozen head pixels");
+                    }
+                }
+                masksRetained = true;
+            }
+            finally
+            {
+                if (occluder != null) Object.DestroyImmediate(occluder);
+                foreach (Texture2D control in controls) Object.DestroyImmediate(control);
+                if (!masksRetained)
+                {
+                    if (headMask != null) Object.DestroyImmediate(headMask);
+                    if (fullRigMask != null) Object.DestroyImmediate(fullRigMask);
+                }
+            }
 
             RectInt visibleFullRig = OpaquePixelBounds(fullRigMask);
             RectInt visibleHead = OpaquePixelBounds(headMask);
@@ -673,11 +749,16 @@ namespace CatMetro.Tests.PlayMode
                 System.Globalization.CultureInfo.InvariantCulture,
                 "visible_rig_head_ears_width_fraction={0:F6}\n"
                 + "visible_full_rig_width_fraction={1:F6}\n"
-                + "head_base_viewport_y={2:F6}\n"
+                + "head_weight_threshold={2:F6}\n"
                 + "ortho_size={3:F6}\nprop_entries={4}\ncat_rig_admitted=1\n"
                 + "train_edge=1\ntrain_tick=6\n",
-                headWidth, fullRigWidth, headBaseViewportY,
+                headWidth, fullRigWidth, WeightedHeadMaskGeometry.InfluenceThreshold,
                 camera.orthographicSize, propEntries);
+            metrics += "head_bone_path=" + CatRigPresentation.WeightedHeadPath
+                + "\nhead_weighted_vertices=" + headVertices + "\nmesh_vertices=" + meshVertices
+                + "\nmesh_triangles=" + meshTriangles + "\nvisible_head_pixels=" + WhitePixelCount(headMask)
+                + "\nvisible_full_rig_pixels=" + WhitePixelCount(fullRigMask)
+                + "\nride_clip=" + rideClip + "\nride_normalized_time=0\n";
             var slab = _root.View.transform.Find("BoardBody");
             float[] slabYs = slab.GetComponentsInChildren<MeshFilter>()
                 .SelectMany(filter => filter.sharedMesh.vertices.Select(vertex =>
@@ -1494,21 +1575,50 @@ namespace CatMetro.Tests.PlayMode
             return new RectInt(minX, minY, maxX - minX + 1, maxY - minY + 1);
         }
 
-        private static Texture2D CopyRowsAtOrAbove(Texture2D source, int minimumY)
+        private static int WhitePixelCount(Texture2D texture)
         {
-            Assert.That(minimumY, Is.InRange(0, source.height - 1));
-            Color32[] pixels = source.GetPixels32();
-            for (int y = 0; y < minimumY; y++)
+            return texture.GetPixels32().Count(IsWhite);
+        }
+
+        private static void SaveDiagnosticMask(string directory, string name, Texture2D texture)
+        {
+            if (!string.IsNullOrEmpty(directory))
+                File.WriteAllBytes(Path.Combine(directory, name), texture.EncodeToPNG());
+        }
+
+        private static bool IsWhite(Color32 pixel) => pixel.r >= 128 && pixel.g >= 128 && pixel.b >= 128;
+
+        private static void AssertMasksWithinOneRasterPixel(Texture2D actual, Texture2D expected, string reason)
+        {
+            AssertWhiteMaskSubset(actual, expected, reason);
+            AssertWhiteMaskSubset(expected, actual, reason);
+        }
+
+        private static void AssertWhiteMaskSubset(Texture2D subset, Texture2D superset, string reason)
+        {
+            Assert.That(subset.width, Is.EqualTo(superset.width));
+            Assert.That(subset.height, Is.EqualTo(superset.height));
+            Color32[] small = subset.GetPixels32(), large = superset.GetPixels32();
+            int outside = 0;
+            for (int y = 0; y < subset.height; y++)
             {
-                int row = y * source.width;
-                for (int x = 0; x < source.width; x++)
-                    pixels[row + x] = Color.black;
+                for (int x = 0; x < subset.width; x++)
+                {
+                    if (!IsWhite(small[y * subset.width + x])) continue;
+                    // CPU-baked and GPU-skinned float positions may cross one raster edge.
+                    // Permit only that one-pixel contour, never an enlarged geometric region.
+                    bool found = false;
+                    for (int dy = -1; dy <= 1 && !found; dy++)
+                        for (int dx = -1; dx <= 1 && !found; dx++)
+                        {
+                            int px = x + dx, py = y + dy;
+                            if (px >= 0 && py >= 0 && px < subset.width && py < subset.height
+                                && IsWhite(large[py * subset.width + px])) found = true;
+                        }
+                    if (!found) outside++;
+                }
             }
-            var copy = new Texture2D(source.width, source.height,
-                TextureFormat.RGBA32, false, true);
-            copy.SetPixels32(pixels);
-            copy.Apply(false, false);
-            return copy;
+            Assert.That(outside, Is.Zero, reason + "; white pixels beyond one raster pixel: " + outside);
         }
 
         private static float WhitePixelFraction(Texture2D texture)
@@ -1540,7 +1650,7 @@ namespace CatMetro.Tests.PlayMode
             private readonly List<Material> _textOccluders = new List<Material>();
 
             public ArtifactMaskRig(GameRoot root, Transform target, int width, int height,
-                bool preserveOcclusion)
+                bool preserveOcclusion, Material selectedMaterial = null)
             {
                 _camera = root.Cam;
                 _clearFlags = _camera.clearFlags;
@@ -1590,7 +1700,7 @@ namespace CatMetro.Tests.PlayMode
                             _textOccluders.Add(textMask);
                             replacements[m] = textMask;
                         }
-                        else replacements[m] = selected ? _white : _black;
+                        else replacements[m] = selected ? (selectedMaterial != null ? selectedMaterial : _white) : _black;
                     }
                     renderer.sharedMaterials = replacements;
                 }

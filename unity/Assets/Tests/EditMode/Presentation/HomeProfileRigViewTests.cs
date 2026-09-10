@@ -85,6 +85,41 @@ namespace CatMetro.Tests.EditMode.Presentation
             Object.DestroyImmediate(home.gameObject);
         }
 
+        [TestCase(1f, false)]
+        [TestCase(5f, true)]
+        public void CosmeticPlane_StaysReachableBeyondNearClip_WithoutChangingSafeLift(float cameraSize, bool needsClamp)
+        {
+            _camera.orthographicSize = cameraSize;
+            _camera.nearClipPlane = .1f;
+            _camera.transform.rotation = Quaternion.Euler(20f, 30f, 0f);
+            var canvas = _canvasHost.GetComponent<Canvas>();
+            canvas.worldCamera = null;
+            canvas.worldCamera = _camera;
+            Canvas.ForceUpdateCanvases();
+            _fixture = new ConformingSkinnedRigFixture();
+            var mount = HomeProfileRigView.Create(_holder, _portrait,
+                CatModelCatalog.FromEntry(new CatModelCatalog.Entry(_fixture.Prefab, 180f)));
+
+            Assert.That(mount.Layout(_camera), Is.True);
+
+            RectTransform portrait = _portrait.RootTransform;
+            float depth = _camera.WorldToScreenPoint(portrait.position).z;
+            Assert.That(depth, Is.GreaterThan(_camera.nearClipPlane),
+                "visible rig cosmetics must remain beyond the camera's near clip plane");
+            Assert.That(RectTransformUtility.ScreenPointToWorldPointInRectangle(portrait,
+                mount.RenderedHeadScreenRect.center, _camera, out _), Is.True,
+                "the projected face must still reach the cosmetic plane for body fitting");
+            float requestedLift = -Mathf.Min(_holder.rect.width, _holder.rect.height) * .2f;
+            if (needsClamp)
+            {
+                Assert.That(portrait.anchoredPosition3D.z, Is.GreaterThan(requestedLift));
+                Assert.That(depth, Is.LessThan(_camera.nearClipPlane + .02f),
+                    "clipping correction must keep the cosmetics close to the requested plane");
+            }
+            else Assert.That(portrait.anchoredPosition3D.z, Is.EqualTo(requestedLift).Within(.0001f),
+                "an already visible portrait must retain its existing lift");
+        }
+
         [Test]
         public void LostCamera_ReportsFallbackAndRecovery_WithoutRepeatingOnEveryLayout()
         {
@@ -118,8 +153,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(mount.Layout(_camera), Is.True);
 
             Assert.That(_holder.rect.size, Is.EqualTo(new Vector2(300f, 300f)));
-            Assert.That(mount.PrefabRoot.parent.parent.localScale.x, Is.EqualTo(276f).Within(.01f),
-                "fit must use the settled 300-unit holder, not its initial one-unit rect");
+            AssertFullSkinFits(mount, "fit must use the settled holder and the sampled skin");
             Assert.That(mount.RenderedHeadScreenRect.width, Is.GreaterThan(50f));
         }
 
@@ -135,11 +169,13 @@ namespace CatMetro.Tests.EditMode.Presentation
                 : ProfileRigMount.Create(_holder, _portrait, catalog);
             Assert.That(mount.Layout(_camera), Is.True);
             float originalHeadWidth = mount.RenderedHeadScreenRect.width;
+            float originalScale = mount.PrefabRoot.parent.parent.localScale.x;
 
             _holder.sizeDelta = new Vector2(300f, 300f);
             Canvas.ForceUpdateCanvases(); // No second screen-level Layout call.
 
-            Assert.That(mount.PrefabRoot.parent.parent.localScale.x, Is.EqualTo(276f).Within(.01f));
+            Assert.That(mount.PrefabRoot.parent.parent.localScale.x, Is.EqualTo(originalScale * 2.5f).Within(.01f));
+            AssertFullSkinFits(mount, "resized holder");
             Assert.That(mount.RenderedHeadScreenRect.width, Is.GreaterThan(originalHeadWidth * 2f));
             AssertRectWithin(mount.RenderedHeadScreenRect,
                 IndependentlyProjectedFixtureHead(mount.PrefabRoot), 3f,
@@ -148,11 +184,12 @@ namespace CatMetro.Tests.EditMode.Presentation
             mount.gameObject.SetActive(false);
             _holder.sizeDelta = new Vector2(240f, 240f);
             Canvas.ForceUpdateCanvases();
-            Assert.That(mount.PrefabRoot.parent.parent.localScale.x, Is.EqualTo(276f).Within(.01f),
+            Assert.That(mount.PrefabRoot.parent.parent.localScale.x, Is.EqualTo(originalScale * 2.5f).Within(.01f),
                 "a hidden mount must not refit until it is shown again");
             mount.gameObject.SetActive(true);
             Canvas.ForceUpdateCanvases();
-            Assert.That(mount.PrefabRoot.parent.parent.localScale.x, Is.EqualTo(220.8f).Within(.01f));
+            Assert.That(mount.PrefabRoot.parent.parent.localScale.x, Is.EqualTo(originalScale * 2f).Within(.01f));
+            AssertFullSkinFits(mount, "reshown holder");
         }
 
         [Test]
@@ -232,7 +269,7 @@ namespace CatMetro.Tests.EditMode.Presentation
                     CatModelCatalog.FromEntry(new CatModelCatalog.Entry(_fixture.Prefab, 180f)));
                 Assert.That(mount.Layout(_camera), Is.True);
                 Assert.That(messages, Has.Count.EqualTo(1));
-                Assert.That(messages[0], Does.Contain("scale=113.620 shortSide=123.500"));
+                Assert.That(messages[0], Does.Match(@"scale=[0-9]+\.[0-9]{3} shortSide=123\.500"));
                 Assert.That(messages[0], Does.Contain("holder=123.500x234.750 headPx="));
 
                 mount.Layout(_camera);
@@ -243,7 +280,7 @@ namespace CatMetro.Tests.EditMode.Presentation
                 _holder.sizeDelta = new Vector2(246.5f, 234.75f);
                 Canvas.ForceUpdateCanvases();
                 Assert.That(messages, Has.Count.EqualTo(2));
-                Assert.That(messages[1], Does.Contain("scale=215.970 shortSide=234.750"));
+                Assert.That(messages[1], Does.Match(@"scale=[0-9]+\.[0-9]{3} shortSide=234\.750"));
                 Canvas.ForceUpdateCanvases();
                 Assert.That(messages, Has.Count.EqualTo(2));
             }
@@ -509,6 +546,56 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(root.localRotation, Is.EqualTo(localRotation));
             Assert.That(root.localScale, Is.EqualTo(localScale));
             Object.DestroyImmediate(home.gameObject);
+        }
+
+        [TestCase(300f, 240f, 1.28f)]
+        [TestCase(150f, 260f, 2f)]
+        public void Layout_FitsAndCentersTheWholeSampledSkin_AfterHeadGrowth(
+            float width, float height, float headScale)
+        {
+            _fixture = new ConformingSkinnedRigFixture();
+            _holder.sizeDelta = new Vector2(width, height);
+            var mount = ProfileRigMount.Create(_holder, _portrait,
+                CatModelCatalog.FromEntry(new CatModelCatalog.Entry(_fixture.Prefab, 180f)));
+            var skin = mount.PrefabRoot.GetComponentInChildren<SkinnedMeshRenderer>(true);
+            skin.bones[1].localScale *= headScale;
+            Vector3 enlargedScale = skin.bones[1].localScale;
+            Assert.That(mount.Layout(_camera), Is.True);
+            AssertFullSkinFits(mount, "enlarged head and unweighted body must both remain in the holder");
+            Vector3 settledScale = mount.PrefabRoot.parent.parent.localScale;
+            Assert.That(mount.Layout(_camera), Is.True);
+            Assert.That(Vector3.Distance(mount.PrefabRoot.parent.parent.localScale, settledScale), Is.LessThan(.001f));
+            Assert.That(skin.bones[1].localScale, Is.EqualTo(enlargedScale),
+                "fitting must preserve head growth relative to the body");
+            Assert.That(mount.PrefabRoot.localScale, Is.EqualTo(Vector3.one));
+        }
+
+        private void AssertFullSkinFits(ProfileRigMount mount, string message)
+        {
+            var skin = mount.PrefabRoot.GetComponentInChildren<SkinnedMeshRenderer>(true);
+            // Independent linear skinning of all fixture vertices, including the entirely
+            // body-weighted feet. Do not repeat production's BakeMesh projection.
+            Vector3[] vertices = skin.sharedMesh.vertices;
+            Matrix4x4[] bindposes = skin.sharedMesh.bindposes;
+            var min = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
+            var max = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                int bone = i < 4 ? 0 : 1;
+                Vector3 point = _camera.WorldToScreenPoint((skin.bones[bone].localToWorldMatrix
+                    * bindposes[bone]).MultiplyPoint3x4(vertices[i]));
+                min = Vector2.Min(min, point); max = Vector2.Max(max, point);
+            }
+            Rect full = Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+            Rect holder = ProjectedRect(_holder);
+            Assert.That(full.xMin, Is.GreaterThanOrEqualTo(holder.xMin + holder.width * .03f), message);
+            Assert.That(full.xMax, Is.LessThanOrEqualTo(holder.xMax - holder.width * .03f), message);
+            Assert.That(full.yMin, Is.GreaterThanOrEqualTo(holder.yMin + holder.height * .03f), message);
+            Assert.That(full.yMax, Is.LessThanOrEqualTo(holder.yMax - holder.height * .03f), message);
+            Assert.That(full.center.x, Is.EqualTo(holder.center.x).Within(.5f), message);
+            Assert.That(full.center.y, Is.EqualTo(holder.center.y).Within(.5f), message);
+            Assert.That(Mathf.Max(full.width / holder.width, full.height / holder.height),
+                Is.GreaterThan(.89f), "the full cat should still fill its holder");
         }
 
         private Rect IndependentlyProjectedFixtureHead(Transform prefabRoot)

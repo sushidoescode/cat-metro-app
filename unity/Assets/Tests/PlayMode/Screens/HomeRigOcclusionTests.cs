@@ -9,6 +9,7 @@ using CatMetro.Services;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using UnityEngine.Rendering.Universal;
 using Object = UnityEngine.Object;
 
 namespace CatMetro.Tests.PlayMode
@@ -114,6 +115,7 @@ namespace CatMetro.Tests.PlayMode
         [Test]
         public void ClosingOneModal_DoesNotRevealTheRigThroughAnotherModalOrBootCover()
         {
+            var instance = _root.Home.ProfileRig.PrefabRoot;
             var first = DailyReminderSheet.Create(_root.Home.transform.parent);
             first.Attach(_root.Input.Regions);
             first.ShowSettings();
@@ -122,10 +124,12 @@ namespace CatMetro.Tests.PlayMode
             first.Hide();
             _root.Home.Show();
             _root.Home.LayoutForViewport(Safe, 408, new Rect(0, 0, 917, 2048));
-            Assert.That(RigPixels(new Rect(0, 0, 917, 2048), null), Is.Zero,
+            Assert.That(RigPixels(new Rect(0, 0, 917, 2048), "modal-close-intro-still-open"), Is.Zero,
                 "ending boot or closing one modal cannot reveal a rig behind another modal");
+            Assert.That(_root.Home.ProfileRig.PrefabRoot, Is.SameAs(instance));
             _root.Intro.Hide();
-            Assert.That(RigPixels(new Rect(0, 0, 917, 2048), null), Is.GreaterThan(100));
+            Assert.That(RigPixels(new Rect(0, 0, 917, 2048), "modal-close-all-closed"), Is.GreaterThan(100));
+            Assert.That(_root.Home.ProfileRig.PrefabRoot, Is.SameAs(instance));
         }
 
         [Test]
@@ -174,25 +178,258 @@ namespace CatMetro.Tests.PlayMode
             Render("play-400ms");
         }
 
+        [TestCase(917, 2048, 408f)]
+        [TestCase(600, 1100, 240f)]
+        public void ProfileHolder_ContainsTheFullAnimatedSkinAndRaster_WithoutUndoingHeadGrowth(
+            int width, int height, float dpi)
+        {
+            AdvanceBoot(.3f);
+            _root.Cam.targetTexture = null;
+            _target.Release(); Object.DestroyImmediate(_target);
+            _target = new RenderTexture(width, height, 24);
+            _target.Create();
+            _root.Cam.targetTexture = _target;
+            _root.Cam.aspect = (float)width / height;
+            var safe = new Rect(0, 32, width, height - 64);
+            for (int screen = 0; screen < 2; screen++)
+            {
+                string name = screen == 0 ? "home" : "wardrobe";
+                if (screen == 0)
+                {
+                    // Home owns the title/header and its two pins; Wardrobe owns the third
+                    // Home pin independently. Both must use this capture's viewport/density.
+                    _root.Home.LayoutForViewport(safe, dpi, new Rect(0, 0, width, height));
+                    _root.Wardrobe.LayoutForViewport(safe, dpi);
+                    Assert.That(_root.Wardrobe.EntryRectPx.xMin, Is.GreaterThanOrEqualTo(safe.xMin));
+                    Assert.That(_root.Wardrobe.EntryRectPx.xMax, Is.LessThanOrEqualTo(safe.xMax));
+                    // This synchronous test has not run a player-loop frame since Launch.
+                    // Pump the real HUD lifecycle so its existing Home-state binding observes
+                    // the newly composed screen stack before the first manual camera render.
+                    typeof(CatMetro.Presentation.Hud.WavePreview.WavePreviewStrip)
+                        .GetMethod("LateUpdate", BindingFlags.Instance | BindingFlags.NonPublic)
+                        .Invoke(_root.Preview, null);
+                    Assert.That(_root.Preview.IsVisible, Is.False,
+                        "gameplay HUD must observe Home before capture, without manual visibility overrides");
+                }
+                else
+                {
+                    Assert.That(_root.Input.HandleTapAtScreen(_root.Wardrobe.EntryRectPx.center), Is.EqualTo(-3));
+                    var canvas = _root.Wardrobe.GetComponentInParent<Canvas>();
+                    float planeDistance = Vector3.Dot(canvas.transform.position - _root.Cam.transform.position,
+                        _root.Cam.transform.forward);
+                    Assert.That(planeDistance, Is.EqualTo(canvas.planeDistance).Within(.001f),
+                        "restoring the play camera must synchronize the canvas before any render");
+                    _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>().Advance(.14f);
+                    _root.Wardrobe.LayoutForViewport(safe, dpi);
+                }
+                Canvas.ForceUpdateCanvases();
+                var mount = screen == 0 ? _root.Home.ProfileRig : _root.Wardrobe.ProfileRig;
+                Assert.That(mount.Layout(_root.Cam), Is.True, mount.FallbackReason);
+                var motion = mount.PrefabRoot.GetComponentInChildren<CatRigPresentation>(true);
+                Assert.That(motion, Is.Not.Null);
+                Assert.That(motion.AuthoredMotionInstalled, Is.True);
+                var source = Resources.Load<GameObject>("CatRigs/BoardCatRig");
+                Transform sourceHead = source.GetComponentInChildren<Animator>(true).transform
+                    .Find(CatRigPresentation.WeightedHeadPath);
+                Vector3 grownScale = sourceHead.localScale * 1.28f;
+                var fit = mount.PrefabRoot.parent.parent;
+                Vector3 scale = fit.localScale, position = fit.localPosition;
+                Rect holder = ProfileHolderPixels((RectTransform)mount.transform.parent);
+                _root.MotionOffToggle = false;
+                _root.AnimatorDurationScale = 1f;
+                for (int phase = 0; phase < 3; phase++)
+                {
+                    if (phase > 0) mount.AdvanceTurntable(phase == 1 ? 3f : 6f);
+                    Assert.That(fit.localScale, Is.EqualTo(scale), "idle must not rescale the whole cat");
+                    Assert.That(fit.localPosition, Is.EqualTo(position), "idle must not recenter the whole cat");
+                    Assert.That(motion.HeadTransform.localScale, Is.EqualTo(grownScale));
+                    Rect skin = FullSkinPixels(mount);
+                    AssertContained(skin, holder, 1f, name + " full skin phase " + phase);
+                    Assert.That(skin.height, Is.GreaterThan(holder.height * .55f), "positive size control");
+                    AssertProfileRasterContained(mount, holder, width, height,
+                        name + "-fit-phase-" + phase);
+                }
+                // Compare the head with its unshaped control at the same fitted scale.
+                Rect grown = mount.RenderedHeadScreenRect;
+                motion.HeadTransform.localScale = sourceHead.localScale;
+                typeof(ProfileRigMount).GetMethod("ApplyAnimatedPose", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(mount, null);
+                Rect control = mount.RenderedHeadScreenRect;
+                motion.ApplyHeadShape();
+                typeof(ProfileRigMount).GetMethod("ApplyAnimatedPose", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(mount, null);
+                Assert.That(grown.width, Is.GreaterThan(control.width * 1.15f),
+                    "the holder correction must retain visibly enlarged head geometry");
+            }
+        }
+
+        private Rect ProfileHolderPixels(RectTransform holder)
+        {
+            var corners = new Vector3[4]; holder.GetWorldCorners(corners);
+            Vector3 min = _root.Cam.WorldToScreenPoint(corners[0]);
+            Vector3 max = _root.Cam.WorldToScreenPoint(corners[2]);
+            return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+        }
+
+        private Rect FullSkinPixels(ProfileRigMount mount)
+        {
+            var buffer = new Mesh();
+            Vector2 min = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
+            Vector2 max = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
+            try
+            {
+                foreach (var skin in mount.PrefabRoot.GetComponentsInChildren<SkinnedMeshRenderer>())
+                {
+                    if (!skin.enabled) continue;
+                    skin.BakeMesh(buffer, true);
+                    foreach (Vector3 vertex in buffer.vertices)
+                    {
+                        Vector3 point = _root.Cam.WorldToScreenPoint(skin.transform.TransformPoint(vertex));
+                        Assert.That(point.z, Is.GreaterThan(0f));
+                        min = Vector2.Min(min, point); max = Vector2.Max(max, point);
+                    }
+                }
+            }
+            finally { Object.DestroyImmediate(buffer); }
+            return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+        }
+
+        private static void AssertContained(Rect skin, Rect holder, float tolerance, string message)
+        {
+            Assert.That(skin.xMin, Is.GreaterThanOrEqualTo(holder.xMin - tolerance), message);
+            Assert.That(skin.xMax, Is.LessThanOrEqualTo(holder.xMax + tolerance), message);
+            Assert.That(skin.yMin, Is.GreaterThanOrEqualTo(holder.yMin - tolerance), message);
+            Assert.That(skin.yMax, Is.LessThanOrEqualTo(holder.yMax + tolerance), message);
+        }
+
+        private void AssertProfileRasterContained(ProfileRigMount mount, Rect holder,
+            int width, int height, string name)
+        {
+            Color32[] actual = ReadProfileSkinRaster(mount, width, height, name);
+            int inside = 0, outside = 0;
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                {
+                    Color32 pixel = actual[y * width + x];
+                    if (pixel.r <= 4 && pixel.g <= 4 && pixel.b <= 4) continue;
+                    if (holder.Contains(new Vector2(x + .5f, y + .5f))) inside++;
+                    else outside++;
+                }
+            TestContext.Out.WriteLine(name + " " + width + "x" + height
+                + " isolatedSkinInside=" + inside + " outside=" + outside + " holder=" + holder);
+            Assert.That(inside, Is.GreaterThan(100), "positive control: actual licensed skin must paint");
+            Assert.That(outside, Is.Zero, "no actual skin pixels may escape the holder or cover selector tiles");
+        }
+
+        private Color32[] ReadProfileSkinRaster(ProfileRigMount mount, int width, int height, string name)
+        {
+            // A full-scene before/after subtraction also measures unrelated board changes.
+            // Isolate the actual paid skin, without replacing or rebuilding its geometry.
+            var skins = mount.PrefabRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            Assert.That(skins, Has.Length.EqualTo(1), "isolate every skin in the admitted licensed fixture");
+            var skin = skins[0];
+            bool wasEnabled = skin.enabled; // Modal/boot policy owns this value; never force-enable it.
+            Material[] materials = skin.sharedMaterials;
+            var block = new MaterialPropertyBlock(); skin.GetPropertyBlock(block);
+            var slotBlocks = new MaterialPropertyBlock[materials.Length];
+            for (int i = 0; i < slotBlocks.Length; i++)
+            {
+                slotBlocks[i] = new MaterialPropertyBlock();
+                skin.GetPropertyBlock(slotBlocks[i], i);
+            }
+            int layer = skin.gameObject.layer, culling = _root.Cam.cullingMask;
+            bool forceRefresh = skin.forceMatrixRecalculationPerRender;
+            bool wasActive = mount.PrefabRoot.gameObject.activeSelf;
+            CameraClearFlags clear = _root.Cam.clearFlags;
+            Color background = _root.Cam.backgroundColor;
+            var cameraData = _root.Cam.GetUniversalAdditionalCameraData();
+            bool post = cameraData.renderPostProcessing;
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            Assert.That(shader, Is.Not.Null);
+            Assert.That(shader.isSupported, Is.True);
+            var white = new Material(shader);
+            white.SetColor("_BaseColor", Color.white);
+            try
+            {
+                // Manual Camera.Render calls occur without a player-loop skinning update.
+                skin.forceMatrixRecalculationPerRender = true;
+                ProfileRaster(width, height, name); // Keep the complete beauty capture for review.
+                _root.Cam.cullingMask = 1 << 31;
+                _root.Cam.clearFlags = CameraClearFlags.SolidColor;
+                _root.Cam.backgroundColor = Color.black;
+                cameraData.renderPostProcessing = false;
+                skin.gameObject.layer = 31;
+                var whiteMaterials = new Material[materials.Length];
+                for (int i = 0; i < whiteMaterials.Length; i++) whiteMaterials[i] = white;
+                skin.sharedMaterials = whiteMaterials;
+                skin.SetPropertyBlock(null);
+                for (int i = 0; i < slotBlocks.Length; i++) skin.SetPropertyBlock(null, i);
+                Color32[] actual = ProfileRaster(width, height, name + "-actual-skin");
+                mount.PrefabRoot.gameObject.SetActive(false);
+                Color32[] hidden = ProfileRaster(width, height, name + "-hidden-skin-control");
+                mount.PrefabRoot.gameObject.SetActive(wasActive);
+                Color32[] restored = ProfileRaster(width, height, name + "-restored-skin-control");
+                Assert.That(restored, Is.EqualTo(actual), "restoring the actual skin must restore every mask pixel");
+                int hiddenPixels = 0;
+                foreach (Color32 pixel in hidden)
+                    if (pixel.r != 0 || pixel.g != 0 || pixel.b != 0) hiddenPixels++;
+                Assert.That(hiddenPixels, Is.Zero, "the isolated pass must be black with the actual skin hidden");
+                Assert.That(skin.enabled, Is.EqualTo(wasEnabled), "capture must preserve modal-owned renderer visibility");
+                TestContext.Out.WriteLine(name + " " + width + "x" + height
+                    + " rendererEnabled=" + wasEnabled + " hiddenPixels=" + hiddenPixels);
+                return actual;
+            }
+            finally
+            {
+                skin.sharedMaterials = materials;
+                skin.SetPropertyBlock(block.isEmpty ? null : block);
+                for (int i = 0; i < slotBlocks.Length; i++)
+                    skin.SetPropertyBlock(slotBlocks[i].isEmpty ? null : slotBlocks[i], i);
+                skin.gameObject.layer = layer;
+                skin.forceMatrixRecalculationPerRender = forceRefresh;
+                mount.PrefabRoot.gameObject.SetActive(wasActive);
+                _root.Cam.cullingMask = culling;
+                _root.Cam.clearFlags = clear;
+                _root.Cam.backgroundColor = background;
+                cameraData.renderPostProcessing = post;
+                Object.DestroyImmediate(white);
+            }
+        }
+
+        private Color32[] ProfileRaster(int width, int height, string name)
+        {
+            RenderTexture previous = RenderTexture.active;
+            var texture = new Texture2D(width, height, TextureFormat.RGB24, false);
+            try
+            {
+                Canvas.ForceUpdateCanvases();
+                _root.Cam.Render();
+                RenderTexture.active = _target;
+                texture.ReadPixels(new Rect(0, 0, width, height), 0, 0); texture.Apply();
+                string directory = Environment.GetEnvironmentVariable("CM_HOME_REGRESSION_CAPTURE_DIR");
+                if (!string.IsNullOrEmpty(directory) && name != null)
+                {
+                    Directory.CreateDirectory(directory);
+                    File.WriteAllBytes(Path.Combine(directory, name + "-" + width + "x" + height + ".png"),
+                        CaptureRig.EncodeOpaqueSrgbPng(texture));
+                }
+                return texture.GetPixels32();
+            }
+            finally { RenderTexture.active = previous; Object.DestroyImmediate(texture); }
+        }
+
         private void AdvanceBoot(float seconds) => typeof(GameRoot).GetMethod("AdvanceHomeBootFade",
             BindingFlags.Instance | BindingFlags.NonPublic).Invoke(_root, new object[] { seconds });
 
         private int RigPixels(Rect rect, string name)
         {
-            var rig = _root.Home.ProfileRig;
-            Color32[] actual = Render(name);
-            rig.PrefabRoot.gameObject.SetActive(false);
-            Color32[] withoutRig;
-            try { withoutRig = Render(null); }
-            finally { rig.PrefabRoot.gameObject.SetActive(true); }
+            Color32[] actual = ReadProfileSkinRaster(_root.Home.ProfileRig, 917, 2048, name);
             int count = 0;
             for (int y = Mathf.Max(0, Mathf.CeilToInt(rect.yMin)); y < Mathf.Min(2048, rect.yMax); y++)
                 for (int x = Mathf.Max(0, Mathf.CeilToInt(rect.xMin)); x < Mathf.Min(917, rect.xMax); x++)
                 {
-                    int i = y * 917 + x;
-                    if (Math.Abs(actual[i].r - withoutRig[i].r) > 4
-                        || Math.Abs(actual[i].g - withoutRig[i].g) > 4
-                        || Math.Abs(actual[i].b - withoutRig[i].b) > 4) count++;
+                    Color32 pixel = actual[y * 917 + x];
+                    if (pixel.r > 4 || pixel.g > 4 || pixel.b > 4) count++;
                 }
             Debug.Log("HOME_OCCLUSION " + name + " rigPixels=" + count + " rect=" + rect);
             return count;

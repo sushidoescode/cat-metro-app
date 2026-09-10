@@ -640,6 +640,7 @@ namespace CatMetro.Bootstrap
                 canvasGo.transform, dailyUnlocked, LifetimeDailyCompletions, _cosmetics,
                 CatMetro.Presentation.Cats.CatModelCatalog.LoadResources());
             Home.Attach(Input.Regions, () => MotionOff);
+            Home.ProfileRig?.BindMotionOff(() => MotionOff);
             _homeFx = BoardFx.GetOrCreate(transform, () => MotionOff);
             Home.DioramaLaidOut = RefitHomeDiorama;
             Home.SetCampaignWinCount(_dailyProgress?.CampaignCompletions ?? 0);
@@ -660,6 +661,7 @@ namespace CatMetro.Bootstrap
                 _cosmetics,
                 new CatMetro.Services.Cosmetics.RewardedAdCosmeticRoute());
             Wardrobe.Attach(Input.Regions);
+            Wardrobe.ProfileRig?.BindMotionOff(() => MotionOff);
             // The intro dimmer also covers the retained Wardrobe pin during Home's exit.
             Intro.transform.SetAsLastSibling();
             Wardrobe.PurchaseConfirmed = () => { Audio?.PlayPurchaseSuccess(); Haptics?.PlayPurchaseSuccess(); };
@@ -819,6 +821,12 @@ namespace CatMetro.Bootstrap
             if (Cam == null || View == null) return;
             _homeFx?.Finish(Cam, HomeCameraChannel);
             BoardSceneLook.FitCamera(Cam, View);
+            // Match the Home refit: apply the new camera pose to the screens canvas
+            // before Wardrobe measures its lifted rig on the first layout.
+            var canvas = Home.GetComponentInParent<Canvas>();
+            canvas.worldCamera = null;
+            canvas.worldCamera = Cam;
+            Canvas.ForceUpdateCanvases();
         }
 
         private void DollyToPlay()

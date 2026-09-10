@@ -177,10 +177,11 @@ namespace CatMetro.Tests.PlayMode
             typeof(UnityEngine.UI.Image), typeof(TextMeshProUGUI),
             typeof(CatMetro.Presentation.Screens.HomeScreenView),
             typeof(CatMetro.Presentation.Cosmetics.CosmeticPortraitView),
-            // The optional admitted Home cat remains render-only after its sitting pose is
-            // sampled: HomeProfileRigView owns layout/read-back, and the clone's Animator is
-            // removed before the first rendered frame.
+            // The optional admitted Home cat remains render-only: the mount owns layout,
+            // and CatRigPresentation samples original idle curves and head shape on the clone.
+            // The Animator is removed before the first rendered frame.
             typeof(CatMetro.Presentation.Cats.HomeProfileRigView),
+            typeof(CatMetro.Presentation.Cats.CatRigPresentation),
             typeof(SkinnedMeshRenderer),
         };
 
@@ -218,7 +219,7 @@ namespace CatMetro.Tests.PlayMode
                 .Length, Is.EqualTo(0), "no raycaster-driven interactivity");
             Assert.That(_root.Home.GetComponentsInChildren<Animator>(true).Length
                 + _root.Home.GetComponentsInChildren<Animation>(true).Length, Is.EqualTo(0),
-                "the pulse is code-driven easing — zero animation components");
+                "presentation samples poses directly — zero Animator or legacy Animation components");
 
             // positive controls (anti-vacuity, the HomeScreenTests precedent): both detectors
             // detect on a decoy, proving the absences above are real, not a walk that never runs
