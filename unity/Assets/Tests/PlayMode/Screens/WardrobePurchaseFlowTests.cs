@@ -143,6 +143,7 @@ namespace CatMetro.Tests.PlayMode
                 "the enlarged item must remain inside its tile");
             Assert.That(FindChildText(Card("outfit_conductor").transform, "ItemNameLabel")
                 .fontSizeMin, Is.GreaterThanOrEqualTo(16f * px));
+            AssertItemCardLabelsFit(Card("outfit_conductor"), 408f);
             var coat = ScreenRect(FindChildRect(Card("outfit_conductor").transform, "Coat"));
             Assert.That(coat.width / coat.height, Is.InRange(0.9f, 1.4f),
                 "a wide card must not flatten the coat or its round buttons");
@@ -151,6 +152,7 @@ namespace CatMetro.Tests.PlayMode
             yield return null;
             foreach (var card in ActiveCards())
             {
+                AssertItemCardLabelsFit(card, 408f);
                 Assert.That(card.ItemPortrait.BaseLayerTransform.gameObject.activeSelf, Is.False,
                     "frame tiles show the frame itself");
                 Assert.That(card.ItemPortrait.OutfitLayerTransform.gameObject.activeSelf, Is.False);
@@ -331,6 +333,7 @@ namespace CatMetro.Tests.PlayMode
                 Tap(CardRect("frame_brass"));
                 Canvas.ForceUpdateCanvases();
                 AssertHorizontalCardBand(3, fixture.Safe, fixture.Dpi);
+                foreach (var card in ActiveCards()) AssertItemCardLabelsFit(card, fixture.Dpi);
                 var status = FindChildText(Card("frame_third").transform, "ItemStatusLabel");
                 status.ForceMeshUpdate();
                 var tile = Card("frame_third").RootTransform;
@@ -345,6 +348,7 @@ namespace CatMetro.Tests.PlayMode
                 Tap(FindRect("Tab-outfit"));
                 Canvas.ForceUpdateCanvases();
                 AssertHorizontalCardBand(1, fixture.Safe, fixture.Dpi);
+                AssertItemCardLabelsFit(Card("outfit_conductor"), fixture.Dpi);
             }
 
             Layout(PhoneSafeArea, 408f);
@@ -1534,6 +1538,7 @@ namespace CatMetro.Tests.PlayMode
             Tap(FindRect("Tab-frame"));
             yield return null;
             AssertHorizontalCardBand(2, PhoneSafeArea, 408f);
+            foreach (var card in ActiveCards()) AssertItemCardLabelsFit(card, 408f);
             Capture(directory, "wardrobe-blue-frames-917x2048.png");
 
             Tap(FindRect("CatSelector-yellow_longhair"));
@@ -1562,6 +1567,7 @@ namespace CatMetro.Tests.PlayMode
             Tap(FindRect("Tab-frame"));
             yield return null;
             AssertHorizontalCardBand(3, PhoneSafeArea, 408f);
+            foreach (var card in ActiveCards()) AssertItemCardLabelsFit(card, 408f);
             Capture(directory, "wardrobe-three-card-fixture-917x2048.png");
         }
 
@@ -2067,6 +2073,45 @@ namespace CatMetro.Tests.PlayMode
                 .Count(rect => rect.name == "Tab-accessory"), Is.EqualTo(1));
             Assert.That(_view.GetComponentsInChildren<RectTransform>(true)
                 .Count(rect => rect.name == "Tab-frame"), Is.EqualTo(1));
+        }
+
+        private void AssertItemCardLabelsFit(CosmeticItemCardView card, float dpi)
+        {
+            var nameLabel = FindChildText(card.transform, "ItemNameLabel");
+            AssertCompleteLabel(nameLabel);
+            Assert.That(nameLabel.fontSize, Is.GreaterThanOrEqualTo(16f * HudBands.PxPerDp(dpi)),
+                card.ItemId + " keeps the readable name size");
+            AssertContained(nameLabel.rectTransform, card.RootTransform, card.ItemId + " name");
+            Assert.That(ScreenRect(nameLabel.rectTransform).Overlaps(
+                ScreenRect(FindChildRect(card.transform, "ItemPortraitMount"))), Is.False,
+                card.ItemId + " name must not cover its illustration");
+
+            if (card.PriceChipVisible)
+            {
+                var price = FindChildText(card.transform, "ItemPriceLabel");
+                AssertCompleteLabel(price);
+                Assert.That(price.fontSize, Is.GreaterThanOrEqualTo(14f * HudBands.PxPerDp(dpi)),
+                    card.ItemId + " keeps the readable localized price size");
+                AssertContained(price.rectTransform, card.RootTransform, card.ItemId + " price");
+                Assert.That(ScreenRect(nameLabel.rectTransform).Overlaps(
+                    ScreenRect(price.rectTransform)), Is.False,
+                    card.ItemId + " name and localized price must remain separate");
+            }
+            AssertCompleteLabel(FindText("PrimaryActionLabel"));
+            AssertCompleteLabel(FindText("RestoreLabel"));
+        }
+
+        private static void AssertCompleteLabel(TMP_Text label)
+        {
+            label.ForceMeshUpdate();
+            string context = label.name + ": " + label.text;
+            Assert.That(label.isTextTruncated, Is.False, context);
+            Assert.That(label.isTextOverflowing, Is.False, context);
+            Assert.That(label.textInfo.characterCount, Is.EqualTo(label.text.Length), context);
+            for (int i = 0; i < label.text.Length; i++)
+                if (!char.IsWhiteSpace(label.text[i]))
+                    Assert.That(label.textInfo.characterInfo[i].isVisible, Is.True,
+                        context + " omitted character " + i);
         }
 
         private void AssertContained(RectTransform inner, RectTransform outer, string message)

@@ -68,14 +68,17 @@ namespace CatMetro.Presentation.Cosmetics
             view._paper = MakeImage(root.transform, "CardPaper", new Vector2(0.025f, 0.025f),
                 new Vector2(0.975f, 0.975f), Palette.WarmPaper);
             view._portraitMount = MakeRect(root.transform, "ItemPortraitMount",
-                new Vector2(0.04f, 0.16f), new Vector2(0.96f, 0.76f));
+                new Vector2(0.04f, 0.16f), new Vector2(0.96f, 0.64f));
             view._portraitMount.gameObject.AddComponent<RectMask2D>();
             view.ItemPortrait = CosmeticPortraitView.CreateStaticSnapshot(view._portraitMount,
                 profile, "ItemPortrait");
             view._nameLabel = MakeText(root.transform, "ItemNameLabel",
-                new Vector2(0.04f, 0.76f), new Vector2(0.96f, 0.98f), 18f,
+                new Vector2(0.04f, 0.64f), new Vector2(0.96f, 0.98f), 18f,
                 Palette.InkNavy, TextAlignmentOptions.Center);
             view._nameLabel.fontStyle = FontStyles.Bold;
+            // Two readable lines need more than the old 34dp header. Keep the price band
+            // fixed and let long names wrap above the separately clipped illustration.
+            view._nameLabel.textWrappingMode = TextWrappingModes.Normal;
             view._nameLabel.maxVisibleLines = 2;
             view._nameLabel.overflowMode = TextOverflowModes.Ellipsis;
             view._statusLabel = MakeText(root.transform, "ItemStatusLabel",
