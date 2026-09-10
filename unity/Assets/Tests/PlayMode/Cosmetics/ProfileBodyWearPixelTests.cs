@@ -72,12 +72,22 @@ namespace CatMetro.Tests.PlayMode
                 {
                     Assert.That(_root.Input.HandleTapAtScreen(_root.Wardrobe.EntryRectPx.center), Is.EqualTo(-3));
                     _root.GetComponent<BoardFx>().Advance(.14f);
+                    LogPortraitProjection("wardrobe-after-open", _root.Wardrobe.LargePortrait);
                     yield return null;
+                    LogPortraitProjection("wardrobe-after-frame", _root.Wardrobe.LargePortrait);
                     Assert.That(_root.Stack.Current, Is.EqualTo("wardrobe"));
                     _root.Wardrobe.LayoutForViewport(new Rect(0, 64, Width, 1920), 408f);
+                    LogPortraitProjection("wardrobe-chosen-viewport", _root.Wardrobe.LargePortrait);
                 }
-                else _root.Home.LayoutForViewport(new Rect(0, 64, Width, 1920), 408f,
-                    new Rect(0, 0, Width, Height));
+                else
+                {
+                    Rect safe = new Rect(0, 64, Width, 1920);
+                    _root.Home.LayoutForViewport(safe, 408f, new Rect(0, 0, Width, Height));
+                    _root.Wardrobe.LayoutForViewport(safe, 408f);
+                    Assert.That(_root.Wardrobe.EntryRectPx.xMin, Is.GreaterThanOrEqualTo(safe.xMin));
+                    Assert.That(_root.Wardrobe.EntryRectPx.xMax, Is.LessThanOrEqualTo(safe.xMax));
+                    Assert.That(_root.Preview.IsVisible, Is.False, "Home captures must use the shipped HUD visibility");
+                }
                 CosmeticPortraitView portrait = screen == 0 ? _root.Home.ProfilePortrait : _root.Wardrobe.LargePortrait;
                 ProfileRigMount mount = screen == 0 ? _root.Home.ProfileRig : _root.Wardrobe.ProfileRig;
                 var source = PortraitTestSource.WithRealTokens(Snapshot("red_tabby", true));
@@ -174,8 +184,10 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(headPixels.Length, Is.GreaterThan(100));
                 Vector2 center = new Vector2((float)headPixels.Average(i => i % Width),
                     (float)headPixels.Average(i => i / Width));
-                Assert.That(RectTransformUtility.ScreenPointToWorldPointInRectangle(coat,
-                    center, _root.Cam, out Vector3 world), Is.True);
+                bool projected = RectTransformUtility.ScreenPointToWorldPointInRectangle(coat,
+                    center, _root.Cam, out Vector3 world);
+                if (!projected) LogPortraitProjection(name + "-coat-plane-failure", portrait, coat);
+                Assert.That(projected, Is.True);
                 coat.position = world;
                 Color32[] forced = Read();
                 if (captureControls) Save(name + "-forced-occlusion-control", forced);
@@ -187,6 +199,18 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(bodyChanges, Is.GreaterThan(100), "a hidden/tiny coat cannot pass");
             Assert.That(hatChanges, Is.GreaterThan(100), "the independent hat must remain visible");
             Assert.That(faceChanges, Is.Zero, "body paint must leave the actual weighted head, including muzzle, visible");
+        }
+
+        private void LogPortraitProjection(string phase, CosmeticPortraitView portrait, RectTransform coat = null)
+        {
+            Camera camera = _root.Cam;
+            RectTransform root = portrait.RootTransform;
+            RectTransform holder = (RectTransform)root.parent;
+            Canvas canvas = root.GetComponentInParent<Canvas>();
+            float Depth(Transform target) => target != null
+                ? Vector3.Dot(target.position - camera.transform.position, camera.transform.forward) : float.NaN;
+            TestContext.Out.WriteLine(FormattableString.Invariant(
+                $"BODYWEAR_PLANE {phase} camera_size={camera.orthographicSize:R} near={camera.nearClipPlane:R} canvas_plane={canvas.planeDistance:R} canvas_depth={Depth(canvas.transform):R} holder_depth={Depth(holder):R} portrait_depth={Depth(root):R} coat_depth={Depth(coat):R} holder_short={Mathf.Min(holder.rect.width, holder.rect.height):R} ui_z_world={holder.TransformVector(Vector3.forward).magnitude:R} portrait_z={root.anchoredPosition3D.z:R} portrait_active={root.gameObject.activeInHierarchy}"));
         }
 
         private Color32[] HeadMask(ProfileRigMount mount, string name, bool captureControls)
