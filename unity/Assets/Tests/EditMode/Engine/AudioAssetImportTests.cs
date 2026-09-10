@@ -18,10 +18,13 @@ namespace CatMetro.Tests.Engine
             "wrong-station-thud.wav",
             "celebrate-flourish.wav",
             "purchase-success.wav",
+            "cat-mew-1.wav", "cat-mew-2.wav", "cat-mew-3.wav", "cat-mew-4.wav", "cat-mew-5.wav",
+            "cat-purr-1.wav", "cat-purr-2.wav", "cat-grumble.wav",
+            "win-cadence.wav", "fail-sting.wav", "train-chuff-96.wav",
         };
 
         [Test]
-        public void SourcePayload_IsExactlyTheSevenCoreSoundsAndBelowTwoMegabytes()
+        public void SourcePayload_RetainsTheCoreSoundsAndVoicesBelowTwoMegabytes()
         {
             string[] actual = Directory.GetFiles(AssetRoot, "*.wav")
                 .Select(Path.GetFileName)
@@ -77,10 +80,33 @@ namespace CatMetro.Tests.Engine
         }
 
         [Test]
-        public void PlayerAudioPolicy_MutesOtherSourcesForUnitysFocusPath()
+        public void PlayerAudioPolicy_LeavesOtherMusicPlayingForTheBootCourtesyProbe()
         {
-            Assert.That(PlayerSettings.muteOtherAudioSources, Is.True,
-                "Project audio focus posture drifted; notification ducking still needs a device check");
+            Assert.That(PlayerSettings.muteOtherAudioSources, Is.False,
+                "Unity must not stop the user's music before AudioManager.isMusicActive is sampled");
+        }
+
+        [TestCase("bed", 3528000)]
+        [TestCase("shaker", 3528000)]
+        [TestCase("melody", 3528000)]
+        [TestCase("sparkle", 3528000)]
+        [TestCase("home", 1764000)]
+        public void MusicMasters_StaySampleLockedAndStreamAsStereoVorbis(string name, int samples)
+        {
+            string path = AssetRoot + "/music/" + name + ".wav";
+            var importer = AssetImporter.GetAtPath(path) as AudioImporter;
+            Assert.That(importer, Is.Not.Null, path);
+            Assert.That(importer.defaultSampleSettings.loadType,
+                Is.EqualTo(AudioClipLoadType.Streaming));
+            Assert.That(importer.defaultSampleSettings.compressionFormat,
+                Is.EqualTo(AudioCompressionFormat.Vorbis));
+            Assert.That(importer.defaultSampleSettings.quality, Is.EqualTo(.5f));
+            Assert.That(importer.forceToMono, Is.False);
+            var clip = AssetDatabase.LoadAssetAtPath<AudioClip>(path);
+            Assert.That(clip, Is.Not.Null);
+            Assert.That(clip.samples, Is.EqualTo(samples));
+            Assert.That(clip.frequency, Is.EqualTo(44100));
+            Assert.That(clip.channels, Is.EqualTo(2));
         }
     }
 }

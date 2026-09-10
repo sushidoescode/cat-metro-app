@@ -74,6 +74,195 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator CaptureEvidence_SettingsOverShippedHome_RigOcclusionAndClose_917x2048_WhenRequested()
+        {
+            string dir = Environment.GetEnvironmentVariable("CM_UI_CAPTURE_DIR");
+            if (string.IsNullOrEmpty(dir))
+            {
+                Assert.Pass("combined Home/settings capture disarmed");
+                yield break;
+            }
+
+            // This evidence requires the real locally admitted art even when another capture
+            // has explicitly allowed placeholders. Never substitute an isolated UI fixture.
+            CaptureRig.RequireStoreCaptureArt(null);
+            Assert.That(CatModelCatalog.LoadResources().AdmittedEntryCount, Is.EqualTo(1),
+                "run the combined capture in the licensed main checkout");
+            PurchaseRuntime.ResetForTests();
+            CosmeticRuntime.ResetForTests();
+            _captureStorage = new CaptureStorageRoot();
+            GameRoot.DailyStorageRootOverride = () => _captureStorage;
+            GameRoot.DevSkipShippedHome = false;
+            GameRoot.DailyEntryUnlocked = false;
+            _root = GameRoot.Launch();
+            _root.MotionOffToggle = true;
+            yield return null;
+            yield return null; // Let GameRoot clear the real boot cover through Update.
+
+            Camera camera = _root.Cam;
+            RenderTexture previousTarget = camera.targetTexture;
+            RenderTexture previousActive = RenderTexture.active;
+            float previousAspect = camera.aspect;
+            var target = CaptureRig.CreateTarget(new CaptureRig.Size(CaptureWidth, CaptureHeight));
+            try
+            {
+                camera.targetTexture = target;
+                camera.aspect = CaptureWidth / (float)CaptureHeight;
+                yield return null;
+                LayoutSettingsHomeCapture();
+                yield return null;
+                LayoutSettingsHomeCapture();
+
+                Assert.That(_root.enabled, Is.True, "the real GameRoot update loop remains active");
+                Assert.That(_root.Stack.Current, Is.EqualTo("home"));
+                Assert.That(_root.Home.IsVisible, Is.True);
+                Assert.That(_root.Settings.IsVisible, Is.False);
+                Assert.That(_root.Input.Regions.HasStackedModal, Is.False);
+                Assert.That(_root.Session.State.Tick, Is.Zero);
+                HomeProfileRigView rig = _root.Home.ProfileRig;
+                Assert.That(rig, Is.Not.Null);
+                Assert.That(rig.CatalogAdmittedEntryCount, Is.EqualTo(1));
+                Assert.That(rig.Mounted, Is.True, rig.FallbackReason);
+                Transform instance = rig.PrefabRoot;
+                Assert.That(instance, Is.Not.Null);
+                Assert.That(rig.RenderedHeadScreenRect.width, Is.GreaterThan(24f));
+                Assert.That(rig.RenderedHeadScreenRect.height, Is.GreaterThan(24f));
+                var skins = instance.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                Assert.That(skins, Is.Not.Empty);
+                Assert.That(skins.Any(skin => skin.enabled), Is.True);
+                Assert.That(CaptureSettingsFlowRigPixels(rig, camera, target, dir,
+                    "settings-flow-home-before-917x2048.png"), Is.GreaterThan(100),
+                    "positive control: the admitted rig must visibly paint on Home");
+
+                // Follow the actual Home speaker region: Home.AudioEnabledChanged ->
+                // GameRoot.ShowSettings -> Settings.Show/Register -> StackedModalChanged.
+                bool soundBefore = _root.Audio.Enabled;
+                Assert.That(_root.Input.Regions.IsRegistered("home.audio.toggle"), Is.True);
+                _root.Input.HandleTapAtScreen(_root.Home.AudioToggleRectPx.center);
+                Assert.That(_root.Settings.IsVisible, Is.True);
+                Assert.That(_root.Stack.Current, Is.EqualTo("settings"));
+                Assert.That(_root.Home.IsVisible, Is.True, "Settings overlays the retained Home");
+                Assert.That(_root.Audio.Enabled, Is.EqualTo(soundBefore),
+                    "opening settings must not retain the old speaker-toggle action");
+                Assert.That(_root.Input.Regions.HasStackedModal, Is.True);
+                Assert.That(skins.All(skin => !skin.enabled), Is.True,
+                    "registering the real Settings modal must hide the lifted rig synchronously");
+                LayoutSettingsHomeCapture();
+                Assert.That(_root.Settings.CardRectPx.Overlaps(rig.RenderedHeadScreenRect), Is.True,
+                    "the composed Settings card must overlap the actual Home head");
+                Assert.That(CaptureSettingsFlowRigPixels(rig, camera, target, dir,
+                    "settings-flow-open-first-frame-917x2048.png"), Is.Zero,
+                    "no rig pixels may leak through the first Settings render");
+
+                yield return null;
+                yield return null;
+                LayoutSettingsHomeCapture();
+                Assert.That(rig.Mounted, Is.True, "covering the cat retains its fitted mount");
+                Assert.That(rig.PrefabRoot, Is.SameAs(instance));
+                Assert.That(CaptureSettingsFlowRigPixels(rig, camera, target, dir,
+                    "settings-flow-open-settled-917x2048.png"), Is.Zero,
+                    "the retained Home rig must also stay hidden after normal Updates");
+
+                // Follow Settings' actual Close hit region and GameRoot.CloseSettings.
+                Assert.That(_root.Input.Regions.IsRegistered("settings.close"), Is.True);
+                _root.Input.HandleTapAtScreen(_root.Settings.CloseRectPx.center);
+                Assert.That(_root.Settings.IsVisible, Is.False);
+                Assert.That(_root.Input.Regions.HasStackedModal, Is.False);
+                Assert.That(_root.Stack.Current, Is.EqualTo("home"));
+                Assert.That(skins.Any(skin => skin.enabled), Is.True,
+                    "unregistering the last modal must restore renderer visibility");
+                yield return null;
+                yield return null;
+                LayoutSettingsHomeCapture();
+                Assert.That(_root.Home.IsVisible, Is.True);
+                Assert.That(_root.Session.State.Tick, Is.Zero);
+                Assert.That(rig.Mounted, Is.True);
+                Assert.That(rig.PrefabRoot, Is.SameAs(instance),
+                    "Close restores the same licensed rig instance");
+                Assert.That(CaptureSettingsFlowRigPixels(rig, camera, target, dir,
+                    "settings-flow-home-after-close-917x2048.png"), Is.GreaterThan(100),
+                    "positive control: the same cat must visibly return after Close");
+            }
+            finally
+            {
+                camera.targetTexture = previousTarget;
+                camera.aspect = previousAspect;
+                RenderTexture.active = previousActive;
+                target.Release();
+                Object.DestroyImmediate(target);
+            }
+        }
+
+        private void LayoutSettingsHomeCapture()
+        {
+            // The target is bound before layout. Settings.Update reads the editor's Screen
+            // dimensions, so reapply each real view's viewport seam after any yielded frames.
+            _root.Home.LayoutForViewport(CaptureSafeArea, CaptureDpi,
+                new Rect(0f, 0f, CaptureWidth, CaptureHeight));
+            _root.Wardrobe.LayoutForViewport(CaptureSafeArea, CaptureDpi);
+            if (_root.Settings.IsVisible)
+                _root.Settings.LayoutForViewport(CaptureSafeArea, CaptureDpi);
+            Canvas.ForceUpdateCanvases();
+        }
+
+        private int CaptureSettingsFlowRigPixels(HomeProfileRigView rig, Camera camera,
+            RenderTexture target, string dir, string fileName)
+        {
+            Color32[] actual = ReadSettingsFlowFrame(camera, target, dir, fileName);
+            bool wasActive = rig.PrefabRoot.gameObject.activeSelf;
+            Color32[] withoutRig;
+            rig.PrefabRoot.gameObject.SetActive(false);
+            try { withoutRig = ReadSettingsFlowFrame(camera, target, null, null); }
+            finally { rig.PrefabRoot.gameObject.SetActive(wasActive); }
+            int changed = 0;
+            for (int i = 0; i < actual.Length; i++)
+                if (Math.Abs(actual[i].r - withoutRig[i].r) > 4
+                    || Math.Abs(actual[i].g - withoutRig[i].g) > 4
+                    || Math.Abs(actual[i].b - withoutRig[i].b) > 4) changed++;
+            RectInt head = InsetAndClamp(rig.RenderedHeadScreenRect, .1f, .1f,
+                target.width, target.height);
+            float headFraction = ChangedFraction(actual, withoutRig, head, target.width, 4);
+            if (_root.Stack.Current == "home")
+                Assert.That(headFraction, Is.GreaterThan(.50f),
+                    "the visible positive control must paint its head, not only a scene shadow");
+            TestContext.Out.WriteLine("SETTINGS_HOME_CAPTURE file=" + fileName
+                + " admitted=" + rig.CatalogAdmittedEntryCount + " mounted=" + rig.Mounted
+                + " instance=" + rig.PrefabRoot.GetInstanceID()
+                + " stack=" + _root.Stack.Current + " rigPixels=" + changed
+                + " headFraction=" + headFraction.ToString("F6", CultureInfo.InvariantCulture)
+                + " target=" + target.width + "x" + target.height);
+            return changed;
+        }
+
+        private static Color32[] ReadSettingsFlowFrame(Camera camera, RenderTexture target,
+            string dir, string fileName)
+        {
+            RenderTexture previous = RenderTexture.active;
+            Texture2D texture = null;
+            try
+            {
+                Canvas.ForceUpdateCanvases();
+                camera.Render();
+                RenderTexture.active = target;
+                texture = CaptureRig.ReadRgb24(target);
+                Color32[] pixels = texture.GetPixels32();
+                if (fileName != null)
+                {
+                    Directory.CreateDirectory(dir);
+                    File.WriteAllBytes(Path.Combine(dir, fileName),
+                        CaptureRig.EncodeOpaqueSrgbPng(texture));
+                }
+                return pixels;
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+                if (texture != null) Object.DestroyImmediate(texture);
+            }
+        }
+
+
+        [UnityTest]
         public IEnumerator CaptureEvidence_WardrobeRig_917x2048_WhenRequested()
         {
             string dir = Environment.GetEnvironmentVariable("CM_UI_CAPTURE_DIR");

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using CatMetro.Application.Session;
 using CatMetro.Domain;
+using CatMetro.Presentation.Cats;
 using UnityEngine;
 
 namespace CatMetro.Presentation.Audio
@@ -13,6 +14,7 @@ namespace CatMetro.Presentation.Audio
         Delivery = 1,
         Celebrate = 2,
         WrongStation = 4,
+        Failed = 8,
     }
 
     // Pure edge detector over presentation-readable state. Tests assert state transitions only;
@@ -45,6 +47,8 @@ namespace CatMetro.Presentation.Audio
             if (rejections > _rejections) cues |= GameplayAudioCues.WrongStation;
             if (outcome == OutcomeKind.Won && _outcome != OutcomeKind.Won)
                 cues |= GameplayAudioCues.Celebrate;
+            if (outcome == OutcomeKind.Failed && _outcome != OutcomeKind.Failed)
+                cues |= GameplayAudioCues.Failed;
 
             _deliveries = deliveries;
             _rejections = rejections;
@@ -58,7 +62,10 @@ namespace CatMetro.Presentation.Audio
     public sealed class GameAudio : MonoBehaviour
     {
         public const string ResourceRoot = "Audio/CatMetro/";
-        public const int ExpectedClipCount = 7;
+        public const int ExpectedClipCount = 18;
+        private static readonly int[] DeliverySteps = { 0, 2, 4, 7, 9, 12 };
+        public static float DeliveryPitch(int deliveries) =>
+            Mathf.Pow(2f, DeliverySteps[Mathf.Clamp(deliveries - 1, 0, 5)] / 12f);
 
         private const float TapVolume = 0.48f;
         private const float SwitchVolume = 0.62f;
@@ -75,7 +82,20 @@ namespace CatMetro.Presentation.Audio
         private readonly GameplayAudioCueTracker _cueTracker =
             new GameplayAudioCueTracker();
 
-        private AudioSource _oneShotSource;
+        private readonly AudioSource[] _voices = new AudioSource[4];
+        private readonly bool[] _celebrationVoices = new bool[4];
+        private readonly AudioClip[] _mews = new AudioClip[5];
+        private readonly AudioClip[] _purrs = new AudioClip[2];
+        private int _nextVoice;
+        private int _nextMew;
+        private int _boarded;
+        private float _chuffRelease = -1f;
+        private float _chuffReleaseVolume;
+        private float _homeElapsed;
+        private float _homeInterval = HomeInterval(0);
+        private int _homeBeat;
+        private AudioClip _grumble;
+        private AudioClip _failSting;
         private AudioSource _flourishSource;
         private AudioSource _chuffSource;
         private AudioListener _listener;
@@ -95,26 +115,14 @@ namespace CatMetro.Presentation.Audio
         public bool ChuffPlaying => _chuffSource != null && _chuffSource.isPlaying;
         public int SnapshotObservationCount { get; private set; }
 
-        public int LoadedClipCount
-        {
-            get
-            {
-                int count = 0;
-                if (_woodTap != null) count++;
-                if (_switchClunk != null) count++;
-                if (_trainChuff != null) count++;
-                if (_deliveryChime != null) count++;
-                if (_wrongStationThud != null) count++;
-                if (_celebrateFlourish != null) count++;
-                if (_purchaseSuccess != null) count++;
-                return count;
-            }
-        }
+        public int LoadedClipCount { get; private set; }
 
         public void Initialize(Camera camera)
         {
             EnsureSources();
+            StopOwnedPlayback();
             AttachListener(camera);
+            LoadedClipCount = 0;
 
             _woodTap = LoadClip("wooden-tap");
             _switchClunk = LoadClip("switch-clunk");
@@ -123,14 +131,22 @@ namespace CatMetro.Presentation.Audio
             _wrongStationThud = LoadClip("wrong-station-thud");
             _celebrateFlourish = LoadClip("celebrate-flourish");
             _purchaseSuccess = LoadClip("purchase-success");
+            _trainChuff = LoadClip("train-chuff-96") ?? _trainChuff;
+            _celebrateFlourish = LoadClip("win-cadence") ?? _celebrateFlourish;
+            _failSting = LoadClip("fail-sting") ?? _wrongStationThud;
+            _grumble = LoadClip("cat-grumble") ?? _wrongStationThud;
+            for (int i = 0; i < _mews.Length; i++)
+                _mews[i] = LoadClip("cat-mew-" + (i + 1)) ?? _deliveryChime;
+            for (int i = 0; i < _purrs.Length; i++)
+                _purrs[i] = LoadClip("cat-purr-" + (i + 1)) ?? _woodTap;
 
             _chuffSource.clip = _trainChuff;
         }
 
         public void BindSession(GameSession session)
         {
-            CancelCelebrate();
-            StopChuff();
+            StopOwnedPlayback();
+            _boarded = BoardedCount(session);
             if (session == null)
             {
                 _cueTracker.Rebaseline(0, 0, OutcomeKind.Running);
@@ -154,6 +170,9 @@ namespace CatMetro.Presentation.Audio
             SnapshotObservationCount++;
             GameplayAudioCues cues = _cueTracker.Observe(
                 state.Deliveries, state.Rejections, state.Outcome.Kind);
+            int boarded = BoardedCount(session);
+            bool catBoarded = boarded > _boarded;
+            _boarded = boarded;
 
             bool shouldChuff = gameplayVisible
                 && state.Outcome.Kind == OutcomeKind.Running
@@ -161,12 +180,18 @@ namespace CatMetro.Presentation.Audio
             SetChuffPlaying(shouldChuff);
 
             if (!_enabled || _applicationPaused) return;
+            if (catBoarded && gameplayVisible) PlayMew();
             if ((cues & GameplayAudioCues.Delivery) != 0)
-                PlayOneShot(_deliveryChime, DeliveryVolume);
+            {
+                PlayOneShot(_deliveryChime, DeliveryVolume, DeliveryPitch(state.Deliveries));
+                if ((cues & GameplayAudioCues.Celebrate) == 0) PlayMew(3);
+            }
             if ((cues & GameplayAudioCues.WrongStation) != 0)
                 PlayWrongStationThud();
             if ((cues & GameplayAudioCues.Celebrate) != 0)
                 PlayCelebrate();
+            if ((cues & GameplayAudioCues.Failed) != 0)
+                PlayCadence(_failSting, .52f);
         }
 
         public void SetEnabled(bool enabled)
@@ -184,6 +209,7 @@ namespace CatMetro.Presentation.Audio
         {
             StopChuff();
             PlayOneShot(_wrongStationThud, WrongStationVolume);
+            PlayOneShot(_grumble, .40f);
         }
 
         public void PlayPurchaseSuccess() => PlayOneShot(_purchaseSuccess, PurchaseVolume);
@@ -203,8 +229,8 @@ namespace CatMetro.Presentation.Audio
 
         private void EnsureSources()
         {
-            if (_oneShotSource == null)
-                _oneShotSource = MakeSource(loop: false, priority: 128);
+            for (int i = 0; i < _voices.Length; i++)
+                if (_voices[i] == null) _voices[i] = MakeSource(loop: false, priority: 128);
             if (_flourishSource == null)
                 _flourishSource = MakeSource(loop: false, priority: 128);
             if (_chuffSource == null)
@@ -237,41 +263,79 @@ namespace CatMetro.Presentation.Audio
             _activeManagedListener = _listener;
         }
 
-        private static AudioClip LoadClip(string name)
+        private AudioClip LoadClip(string name)
         {
             var clip = Resources.Load<AudioClip>(ResourceRoot + name);
             if (clip == null)
                 Debug.LogWarning("audio clip unavailable: " + ResourceRoot + name);
+            else LoadedClipCount++;
             return clip;
         }
 
-        private void PlayOneShot(AudioClip clip, float volume)
+        private void PlayOneShot(AudioClip clip, float volume, float pitch = 0f, float delay = 0f,
+            bool celebration = false)
         {
-            if (!_enabled || _applicationPaused || clip == null || _oneShotSource == null) return;
-            _oneShotSource.PlayOneShot(clip, volume);
+            if (!_enabled || _applicationPaused || !isActiveAndEnabled || clip == null) return;
+            int voiceIndex = _nextVoice++ % _voices.Length;
+            var source = _voices[voiceIndex];
+            if (source == null) return;
+            source.Stop();
+            _celebrationVoices[voiceIndex] = celebration;
+            source.clip = clip;
+            source.pitch = pitch > 0f ? pitch : UnityEngine.Random.Range(.96f, 1.04f);
+            source.volume = volume;
+            if (delay > 0f) source.PlayScheduled(AudioSettings.dspTime + delay);
+            else source.Play();
         }
 
         private void PlayCelebrate()
         {
             if (_celebrateFlourish == null || _flourishSource == null) return;
-            _flourishSource.Stop();
+            CancelCelebrate();
             _flourishSource.clip = _celebrateFlourish;
             _flourishSource.volume = CelebrateVolume;
-            _celebrateAt = Time.unscaledTime + Cats.CatPresentationTrack.WinBeatDelay;
+            _celebrateAt = Time.unscaledTime + CatPresentationTrack.WinBeatDelay;
         }
 
-        private void Update()
+        private void PlayCadence(AudioClip clip, float volume)
         {
-            if (!CelebratePending || Time.unscaledTime < _celebrateAt) return;
-            _celebrateAt = -1f;
-            if (_enabled && !_applicationPaused && _flourishSource != null)
-                _flourishSource.Play();
+            if (clip == null || _flourishSource == null) return;
+            _flourishSource.Stop();
+            _flourishSource.clip = clip;
+            _flourishSource.volume = volume;
+            _flourishSource.Play();
         }
 
-        public void CancelCelebrate()
+        private void PlayMew(int semitones = 0, float delay = 0f, bool celebration = false) =>
+            PlayOneShot(_mews[_nextMew++ % _mews.Length], .43f,
+                Mathf.Pow(2f, semitones / 12f) * UnityEngine.Random.Range(.96f, 1.04f), delay, celebration);
+
+        // Use the rig's presentation blink clock, never the simulation RNG or game ticks.
+        public void ObserveHome(bool visible, float elapsedSeconds)
         {
-            _celebrateAt = -1f;
-            if (_flourishSource != null) _flourishSource.Stop();
+            if (!visible || !_enabled || _applicationPaused) { _homeElapsed = 0f; return; }
+            _homeElapsed += Mathf.Max(0f, elapsedSeconds);
+            if (_homeElapsed < _homeInterval) return;
+            _homeElapsed = 0f;
+            PlayMew();
+            if (++_homeBeat % 3 == 0) PlayOneShot(_purrs[_homeBeat % 2], .3f, delay: .4f);
+            _homeInterval = HomeInterval(_homeBeat);
+        }
+
+        private static float HomeInterval(int beat)
+        {
+            var clock = new CatMicroMotion((uint)(27 + beat));
+            return Mathf.Lerp(8f, 14f, Mathf.InverseLerp(CatMicroMotion.BlinkIntervalMinimum,
+                CatMicroMotion.BlinkIntervalMaximum, clock.BlinkInterval));
+        }
+
+        public static int BoardedCount(GameSession session)
+        {
+            if (session == null) return 0;
+            int count = 0;
+            for (int i = 0; i < session.State.Trains.Length; i++)
+                count += session.TrainOccupantGeneration(i);
+            return count;
         }
 
         private void SetChuffPlaying(bool shouldPlay)
@@ -281,7 +345,8 @@ namespace CatMetro.Presentation.Audio
                 StopChuff();
                 return;
             }
-            if (_chuffSource.isPlaying) return;
+            _chuffRelease = -1f;
+            if (_chuffSource.isPlaying) { _chuffSource.volume = ChuffVolume; return; }
             _chuffSource.clip = _trainChuff;
             _chuffSource.volume = ChuffVolume;
             _chuffSource.Play();
@@ -289,15 +354,49 @@ namespace CatMetro.Presentation.Audio
 
         private void StopChuff()
         {
-            if (_chuffSource != null) _chuffSource.Stop();
+            if (_chuffSource == null || !_chuffSource.isPlaying || _chuffRelease >= 0f) return;
+            _chuffRelease = 0f;
+            _chuffReleaseVolume = _chuffSource.volume;
+        }
+
+        public void CancelCelebrate()
+        {
+            _celebrateAt = -1f;
+            if (_flourishSource != null) _flourishSource.Stop();
+            for (int i = 0; i < _voices.Length; i++)
+            {
+                if (!_celebrationVoices[i]) continue;
+                if (_voices[i] != null) _voices[i].Stop();
+                _celebrationVoices[i] = false;
+            }
+        }
+
+        private void Update()
+        {
+            if (CelebratePending && Time.unscaledTime >= _celebrateAt)
+            {
+                _celebrateAt = -1f;
+                if (_enabled && !_applicationPaused && _flourishSource != null)
+                {
+                    _flourishSource.Play();
+                    for (int i = 0; i < 3; i++) PlayMew(i * 2, i * .08f, celebration: true);
+                }
+            }
+            if (_chuffRelease < 0f || _chuffSource == null) return;
+            _chuffRelease += Time.unscaledDeltaTime;
+            _chuffSource.volume = _chuffReleaseVolume * Mathf.Clamp01(1f - _chuffRelease / .09f);
+            if (_chuffRelease < .09f) return;
+            _chuffSource.Stop();
+            _chuffRelease = -1f;
         }
 
         private void StopOwnedPlayback()
         {
             CancelCelebrate();
-            if (_oneShotSource != null) _oneShotSource.Stop();
+            foreach (var voice in _voices) if (voice != null) voice.Stop();
             if (_flourishSource != null) _flourishSource.Stop();
-            StopChuff();
+            if (_chuffSource != null) { _chuffSource.Stop(); _chuffSource.volume = 0f; }
+            _chuffRelease = -1f;
         }
 
         private void OnApplicationPause(bool paused)
@@ -306,10 +405,8 @@ namespace CatMetro.Presentation.Audio
             if (paused) StopOwnedPlayback();
         }
 
-        // Android notification ducking is deliberately not inferred from
-        // OnApplicationFocus: it is not an audio-focus callback. Unity's Android audio-focus
-        // request is enabled by PlayerSettings.muteOtherAudioSources, allowing the OS to apply
-        // its synchronized transient duck/restore behavior; only a real device can verify it.
+        // Do not interpret OnApplicationFocus as Android audio focus. MusicDirector handles
+        // the boot courtesy check; every owned source stops on a real application pause.
 
         private void OnDisable() => StopOwnedPlayback();
 

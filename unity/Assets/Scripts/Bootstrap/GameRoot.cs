@@ -51,6 +51,9 @@ namespace CatMetro.Bootstrap
         public WavePreviewStrip Preview { get; private set; }
         public Camera Cam { get; private set; }
         public GameAudio Audio { get; private set; }
+        public CatMetro.Presentation.Audio.MusicDirector Music { get; private set; }
+        public CatMetro.Presentation.Haptics.GameHaptics Haptics { get; private set; }
+        public CatMetro.Presentation.Screens.SettingsSheet Settings { get; private set; }
         public string ScreenState { get; private set; } = "Playing";
         private GameAnalyticsRuntime _analyticsRuntime;
         private NetworkReachability _lastNetworkReachability;
@@ -349,6 +352,9 @@ namespace CatMetro.Bootstrap
                 _dailyReminderPreferences = new DailyReminderPreferences(_saveStore);
                 _audioPreferences = new AudioPreferences(_saveStore);
                 Audio?.SetEnabled(_audioPreferences.Enabled);
+                Music?.ApplyPreference(_audioPreferences.MusicEnabled);
+                Haptics?.SetEnabled(_audioPreferences.HapticsEnabled);
+                MotionOffToggle = !_audioPreferences.MotionEnabled;
                 _reminderPromptPending = _dailyReminderPreferences.CanOfferPrompt(
                     _dailyProgress.LifetimeCompletions);
             }
@@ -501,6 +507,13 @@ namespace CatMetro.Bootstrap
             if (Audio == null) Audio = gameObject.AddComponent<GameAudio>();
             Audio.Initialize(Cam);
             Audio.BindSession(Session);
+            Music = GetComponent<CatMetro.Presentation.Audio.MusicDirector>();
+            if (Music == null) Music = gameObject.AddComponent<CatMetro.Presentation.Audio.MusicDirector>();
+            Music.Initialize();
+            Haptics = GetComponent<CatMetro.Presentation.Haptics.GameHaptics>();
+            if (Haptics == null) Haptics = gameObject.AddComponent<CatMetro.Presentation.Haptics.GameHaptics>();
+            Haptics.Initialize();
+            Haptics.BindSession(Session);
             View = BoardView.Build(level, transform, Session);
             // LOOK steps 4-5: the camera stays axis-aligned so the existing screen-space
             // input/failure geometry remains exact; the complete board diorama is tilted as
@@ -513,8 +526,12 @@ namespace CatMetro.Bootstrap
             View.MotionOffSource = () => MotionOff;
             Input = gameObject.AddComponent<Presentation.Input.TapInput>();
             Input.Wire(Session, View, Cam);
-            Input.UiTapAccepted = Audio.PlayButtonTap;
-            Input.SwitchTapAccepted = Audio.PlaySwitchClunk;
+            Input.UiTapAccepted = () => { Audio.PlayButtonTap(); Haptics.PlayButtonTap(); };
+            Input.SwitchTapAccepted = () =>
+            {
+                Audio.PlaySwitchClunk();
+                Haptics.PlaySwitch(Session.FlipStatus.IsBudgeted && Session.FlipStatus.RemainingToPerfect <= 0);
+            };
             Input.RetryRegionActive = () => ScreenState == "FailureReview" && !IsTransitioning;
             Input.RetryTapped = Retry;
             // CM-UX-07 criterion 2: the board-input gate. F7 (round-1 review) correction: this
@@ -621,7 +638,9 @@ namespace CatMetro.Bootstrap
             Home.DioramaLaidOut = RefitHomeDiorama;
             Home.SetCampaignWinCount(_dailyProgress?.CampaignCompletions ?? 0);
             Home.ConfigureAudio(Audio == null || Audio.Enabled);
-            Home.AudioEnabledChanged = OnAudioEnabledChanged;
+            // Home's speaker opens the settings sheet. Sound changes below call ConfigureAudio
+            // so the same view updates its speaker state after a successful save.
+            Home.AudioEnabledChanged = _ => ShowSettings();
             Home.ReminderAccepted = BeginEnableDailyReminder;
             Home.ReminderDismissed = ConfigureReminderHome;
             Home.ReminderEnabledChanged = OnReminderEnabledChanged;
@@ -637,7 +656,13 @@ namespace CatMetro.Bootstrap
             Wardrobe.Attach(Input.Regions);
             // The intro dimmer also covers the retained Wardrobe pin during Home's exit.
             Intro.transform.SetAsLastSibling();
-            Wardrobe.PurchaseConfirmed = () => Audio?.PlayPurchaseSuccess();
+            Wardrobe.PurchaseConfirmed = () => { Audio?.PlayPurchaseSuccess(); Haptics?.PlayPurchaseSuccess(); };
+            Settings = CatMetro.Presentation.Screens.SettingsSheet.Create(canvasGo.transform);
+            Settings.Attach(Input.Regions);
+            Settings.Changed = OnSettingChanged;
+            Settings.CloseRequested = CloseSettings;
+            Settings.ReminderRequested = ShowReminderFromSettings;
+            Settings.RestoreRequested = RestoreFromSettings;
 
             Home.LevelSelected = () =>
             {
@@ -776,7 +801,7 @@ namespace CatMetro.Bootstrap
         private void ConfigureReminderHome()
         {
             if (Home == null || _dailyReminderPreferences == null
-                || LifetimeDailyCompletions <= 0)
+                || (LifetimeDailyCompletions <= 0 && Home.ReminderSheet == null))
                 return;
 
             ReadMessagingState(out bool available, out MessagingPermission permission,
@@ -800,6 +825,90 @@ namespace CatMetro.Bootstrap
             // The accepted tap that turns audio back on was necessarily silent. Confirm the new
             // setting with the same soft wooden tap only after persistence succeeds.
             if (enabled) Audio?.PlayButtonTap();
+        }
+
+        public void ShowSettings()
+        {
+            if (Settings == null || Home == null || !Home.IsVisible) return;
+            ConfigureSettings();
+            Settings.Show();
+            if (Stack.Current != "settings") Stack.Push("settings");
+        }
+
+        private void CloseSettings()
+        {
+            Settings?.Hide();
+            if (Stack?.Current == "settings") Stack.TryPop(out _);
+        }
+
+        private void ConfigureSettings() => Settings?.Configure(Audio == null || Audio.Enabled,
+            Music == null || Music.Enabled, Haptics == null || Haptics.Enabled, MotionOffToggle,
+            _dailyEntryUnlocked);
+
+        private void OnSettingChanged(CatMetro.Presentation.Screens.SettingsChannel channel, bool enabled)
+        {
+            bool saved;
+            switch (channel)
+            {
+                case CatMetro.Presentation.Screens.SettingsChannel.Sound:
+                    saved = _audioPreferences == null || _audioPreferences.TrySetEnabled(enabled);
+                    if (saved)
+                    {
+                        Audio?.SetEnabled(enabled); Home?.ConfigureAudio(enabled);
+                        if (enabled) Audio?.PlayButtonTap();
+                    }
+                    break;
+                case CatMetro.Presentation.Screens.SettingsChannel.Music:
+                    saved = _audioPreferences == null || _audioPreferences.TrySetMusicEnabled(enabled);
+                    if (saved) Music?.SetEnabled(enabled);
+                    break;
+                case CatMetro.Presentation.Screens.SettingsChannel.Haptics:
+                    saved = _audioPreferences == null || _audioPreferences.TrySetHapticsEnabled(enabled);
+                    if (saved)
+                    {
+                        Haptics?.SetEnabled(enabled);
+                        if (enabled) Haptics?.PlayButtonTap();
+                    }
+                    break;
+                case CatMetro.Presentation.Screens.SettingsChannel.ReduceMotion:
+                    saved = _audioPreferences == null || _audioPreferences.TrySetMotionEnabled(!enabled);
+                    if (saved) MotionOffToggle = enabled;
+                    break;
+                default: return;
+            }
+            ConfigureSettings();
+            Settings.SetStatus(saved ? "" : CatMetro.Presentation.Strings.UiStrings.Get("settings.save.failed"));
+        }
+
+        private void ShowReminderFromSettings()
+        {
+            if (!_dailyEntryUnlocked || Home == null || _dailyReminderPreferences == null) return;
+            CloseSettings();
+            ReadMessagingState(out bool available, out MessagingPermission permission, out bool canRequest);
+            Home.ConfigureReminder(true, _dailyReminderPreferences.Enabled && available
+                && permission == MessagingPermission.Authorized, _dailyReminderPreferences.Slot,
+                permission, canRequest, available);
+            Home.ShowReminderSettings();
+        }
+
+        private void RestoreFromSettings()
+        {
+            try
+            {
+                CatMetro.Services.Purchases.PurchaseRuntime.Current.Restore(result =>
+                {
+                    if (this == null || Settings == null) return;
+                    string key = result.Outcome == CatMetro.Services.Purchases.RestoreOutcome.Completed
+                        ? (result.RestoredEntitlementCount > 0 ? "wardrobe.status.restored" : "wardrobe.status.none")
+                        : "wardrobe.status.restore.failed";
+                    Settings.SetStatus(CatMetro.Presentation.Strings.UiStrings.Get(key), restoring: false);
+                });
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning("settings restore unavailable: " + ex.GetType().Name);
+                Settings?.SetStatus(CatMetro.Presentation.Strings.UiStrings.Get("wardrobe.status.restore.failed"), restoring: false);
+            }
         }
 
         private void TryPresentEarnedReminderPrompt()
@@ -1254,6 +1363,7 @@ namespace CatMetro.Bootstrap
             if (View != null) View.GetComponent<BoardFx>()?.StopConfetti();
             Session = preparedSession ?? new GameSession(level);
             Audio?.BindSession(Session);
+            Haptics?.BindSession(Session);
             if (View != null) Destroy(View.gameObject);
             View = BoardView.Build(level, transform, Session);
             BoardSceneLook.Apply(transform, Cam, View);
@@ -1467,6 +1577,7 @@ namespace CatMetro.Bootstrap
 
         private void EnterDaily(ImportedLevel resolved, DailyDateSelection selection, string dateKey)
         {
+            CloseSettings();
             Wardrobe?.Hide();
             _preDailyLevel = _level;
             LoadLevel(resolved);
@@ -1832,6 +1943,14 @@ namespace CatMetro.Bootstrap
             try
             {
                 Audio?.Observe(Session, ScreenState == "Playing" && !ScreensVisible && !IsTransitioning);
+                Haptics?.Observe(Session, ScreenState == "Playing" && !ScreensVisible && !IsTransitioning);
+                var musicScene = ScreensVisible ? CatMetro.Presentation.Audio.MusicScene.Home
+                    : ScreenState == "Won" ? CatMetro.Presentation.Audio.MusicScene.Won
+                    : ScreenState == "FailureReview" ? CatMetro.Presentation.Audio.MusicScene.Failed
+                    : ScreenState == "Playing" ? CatMetro.Presentation.Audio.MusicScene.Playing
+                    : CatMetro.Presentation.Audio.MusicScene.Quiet;
+                Music?.Observe(Session, musicScene);
+                Audio?.ObserveHome(!IsTransitioning && Home != null && Home.IsVisible && Stack?.Current == "home", Time.unscaledDeltaTime);
             }
             catch (System.Exception ex)
             {
