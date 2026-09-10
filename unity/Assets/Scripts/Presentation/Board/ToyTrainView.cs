@@ -58,10 +58,10 @@ namespace CatMetro.Presentation.Board
         // departure Walk plus Celebrate at every current station-arrival heading and a sampled
         // five-degree retained-heading envelope. Each case crosses the complete active clip at
         // half-frame spacing, a 17-angle applied-ear corpus and independently measured maximum
-        // carriage-ward bob. Lane A's 0.52 rig passed at a 0.612 endpoint. The wider carriage
-        // adds 0.03 on both planar half-extents: at any heading its support grows by at most
-        // sqrt(2)*0.03. Move the endpoint another 0.044 to preserve that separating plane.
-        public const float PlatformSideOffset = 0.656f;
+        // carriage-ward bob. The authored celebrate clip extends the lower body beyond the
+        // provider's static pose. An extra 0.048 board units restores the separating margin
+        // while the shared platform anchor also reserves the new position in camera framing.
+        public const float PlatformSideOffset = 0.704f;
         public const float PlatformEndpointClearance = 0.045f;
         // Horizontal half-extent reserved by the camera around a platform cat's root. The
         // fallback head, ears and 0.28 card all fit inside one HeadDiameter; the admitted-rig
