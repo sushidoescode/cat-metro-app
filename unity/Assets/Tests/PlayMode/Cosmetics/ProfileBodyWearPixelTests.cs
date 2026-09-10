@@ -178,6 +178,8 @@ namespace CatMetro.Tests.PlayMode
             // Verify this exact raster can detect a coat intentionally placed over the face.
             RectTransform coat = body.Single(i => i.name == "Coat").rectTransform;
             Vector3 position = coat.position;
+            Vector3 localPosition = coat.localPosition;
+            Vector3 worldRestoredLocal = localPosition;
             try
             {
                 var headPixels = Enumerable.Range(0, head.Length).Where(i => White(head[i])).ToArray();
@@ -194,8 +196,21 @@ namespace CatMetro.Tests.PlayMode
                 Assert.That(Different(forced, hatOnly, head), Is.GreaterThan(20),
                     "moving real coat paint over the weighted face must fail the raster criterion");
             }
-            finally { coat.position = position; }
-            Assert.That(Read(), Is.EqualTo(equipped), "diagnostic controls restore the exact production paint");
+            finally
+            {
+                // Measure the former world-space round trip before restoring the authored
+                // local coordinates exactly. Inverse parent transforms can introduce drift.
+                coat.position = position;
+                worldRestoredLocal = coat.localPosition;
+                coat.localPosition = localPosition;
+            }
+            Vector3 drift = worldRestoredLocal - localPosition;
+            TestContext.Out.WriteLine(FormattableString.Invariant(
+                $"BODYWEAR_RESTORE {name} world_round_trip_local_delta=({drift.x:R},{drift.y:R},{drift.z:R})"));
+            Assert.That(coat.localPosition, Is.EqualTo(localPosition), "the control restores exact local transform values");
+            Color32[] restoredPaint = Read();
+            if (!restoredPaint.SequenceEqual(equipped)) Save(name + "-restored-paint-mismatch", restoredPaint);
+            Assert.That(restoredPaint, Is.EqualTo(equipped), "diagnostic controls restore the exact production paint");
             Assert.That(bodyChanges, Is.GreaterThan(100), "a hidden/tiny coat cannot pass");
             Assert.That(hatChanges, Is.GreaterThan(100), "the independent hat must remain visible");
             Assert.That(faceChanges, Is.Zero, "body paint must leave the actual weighted head, including muzzle, visible");
