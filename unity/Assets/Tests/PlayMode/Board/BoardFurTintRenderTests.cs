@@ -96,6 +96,8 @@ namespace CatMetro.Tests.PlayMode
             if (string.IsNullOrEmpty(directory)) yield break;
             Directory.CreateDirectory(directory);
             GameRoot.DevSkipShippedHome = true;
+            LogAssert.Expect(LogType.Log, "SEAM_LOADED content/levels/L001.json");
+            LogAssert.Expect(LogType.Log, CosmeticBootWiringTests.ExpectedDiagnostic);
             _root = GameRoot.Launch();
             _root.enabled = false;
             _root.MotionOffToggle = true;
