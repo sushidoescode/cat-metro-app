@@ -152,8 +152,14 @@ namespace CatMetro.Tests.PlayMode
         public IEnumerator SessionTickLayout_DoesNotLeaveAnActiveFaceNeutralAtCanvasRender()
         {
             _root = GameRoot.Launch();
+            if (_root.Home != null)
+            {
+                _root.Home.LevelSelected?.Invoke();
+                _root.Intro.PlayRequested?.Invoke();
+            }
             yield return null;
             Canvas.ForceUpdateCanvases();
+            Assert.That(_root.Preview.IsVisible, Is.True, "this render-order case exercises gameplay, after Home");
             var face = FirstActiveFace(_root.Preview);
 
             _root.MotionOffToggle = true;
@@ -211,7 +217,7 @@ namespace CatMetro.Tests.PlayMode
         private static CatFaceView FirstActiveFace(WavePreviewStrip preview)
         {
             foreach (var face in preview.GetComponentsInChildren<CatFaceView>(true))
-                if (face.gameObject.activeSelf) return face;
+                if (face.gameObject.activeInHierarchy) return face;
             Assert.Fail("the real preview must expose an active face for this render-order test");
             return null;
         }

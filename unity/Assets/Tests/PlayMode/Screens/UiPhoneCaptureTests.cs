@@ -12,6 +12,7 @@ using CatMetro.Bootstrap;
 using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Cosmetics;
 using CatMetro.Presentation.Hud.WavePreview;
+using CatMetro.Presentation.Screens;
 using CatMetro.Presentation.Theme;
 using CatMetro.Services;
 using CatMetro.Services.Cosmetics;
@@ -60,8 +61,11 @@ namespace CatMetro.Tests.PlayMode
                 yield break;
             }
 
+            _captureStorage = new CaptureStorageRoot();
+            GameRoot.DailyStorageRootOverride = () => _captureStorage;
             GameRoot.DevSkipShippedHome = false;
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true; // still captures settle the cold-boot reveal on the next frame
             yield return null;
             yield return null;
             Assert.That(_root.Home, Is.Not.Null);
@@ -203,6 +207,7 @@ namespace CatMetro.Tests.PlayMode
 
             GameRoot.DevSkipShippedHome = false;
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true; // still captures settle the cold-boot reveal on the next frame
             yield return null;
             yield return null;
 
@@ -301,8 +306,8 @@ namespace CatMetro.Tests.PlayMode
                     headPatch, HomeRigCaptureWidth, minimumPerChannelDelta: 4);
                 Assert.That(rigPixelDelta, Is.GreaterThan(4f / 255f),
                     "the admitted skin must contribute visible pixels inside its head bounds");
-                Assert.That(rigChangedFraction, Is.GreaterThan(0.10f),
-                    "an enabled but offscreen or fully occluded rig must fail this capture");
+                Assert.That(rigChangedFraction, Is.GreaterThan(0.50f),
+                    "the rendered cat must fill most of its head guide; inflated bounds hide the face under cosmetics");
 
                 RectInt cosmeticPatch = InsetAndClamp(
                     ProjectedScreenRect(portrait.RootTransform, camera),
@@ -390,9 +395,12 @@ namespace CatMetro.Tests.PlayMode
                 yield break;
             }
 
+            _captureStorage = new CaptureStorageRoot();
+            GameRoot.DailyStorageRootOverride = () => _captureStorage;
             GameRoot.DevSkipShippedHome = false;
             GameRoot.DailyEntryUnlocked = true;
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true; // still captures settle the cold-boot reveal on the next frame
             yield return null;
             yield return null;
             Assert.That(_root.Home, Is.Not.Null);
@@ -402,10 +410,11 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator ShippedHome_WardrobeEntry_IsRaisedCreamToyButton_WithoutReplacingPortraitMount()
+        public IEnumerator ShippedHome_WardrobeEntry_UsesSharedChromeWithItsLivePortraitInTheIconSlot()
         {
             GameRoot.DevSkipShippedHome = false;
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true; // still captures settle the cold-boot reveal on the next frame
             yield return null;
             yield return null;
 
@@ -418,11 +427,11 @@ namespace CatMetro.Tests.PlayMode
             var capsule = FindRequiredRect(_root.Wardrobe.transform, "WardrobeCapsule");
             Assert.That(capsule.parent, Is.SameAs(_root.Wardrobe.transform),
                 "WardrobeCapsule remains the entry root under WardrobeSurface");
-            var shadow = capsule.GetComponent<Image>();
+            Assert.That(capsule.GetComponent<Image>(), Is.Null, "ChromeChip's root owns geometry only");
+            var shadow = capsule.Find("Shadow").GetComponent<Image>();
             Assert.That(shadow, Is.Not.Null);
-            Assert.That(shadow.color, Is.EqualTo(Palette.DepotNavy),
-                "WardrobeCapsule stays the navy raised-button shadow/root");
-            Assert.That(shadow.sprite, Is.SameAs(HudShapeSprites.RoundedSquare));
+            Assert.That(shadow.color, Is.EqualTo(Palette.WithAlpha(Palette.DepotNavy, .24f)));
+            Assert.That(shadow.sprite, Is.SameAs(HudShapeSprites.SoftRoundedHalo));
             Assert.That(shadow.type, Is.EqualTo(Image.Type.Sliced));
 
             var face = FindRequiredRect(capsule, "WardrobeButtonFace");
@@ -433,29 +442,19 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(faceImage.type, Is.EqualTo(Image.Type.Sliced));
 
             var label = FindRequiredRect(capsule, "WardrobeLabel");
-            Assert.That(label.parent, Is.SameAs(capsule));
+            var content = capsule.Find("Content");
+            Assert.That(label.parent, Is.SameAs(content));
             Assert.That(label.GetComponent<TMPro.TMP_Text>().color,
                 Is.EqualTo(Palette.InkNavy));
 
-            RectTransform portraitMount = null;
-            int mountCount = 0;
-            for (int i = 0; i < capsule.childCount; i++)
-            {
-                var child = capsule.GetChild(i) as RectTransform;
-                if (child == null || child.name != "EntryPortraitMount") continue;
-                portraitMount = child;
-                mountCount++;
-            }
-            Assert.That(mountCount, Is.EqualTo(1),
-                "the cosmetics seam remains one direct WardrobeCapsule child");
-            Assert.That(portraitMount.anchorMin,
-                Is.EqualTo(new Vector2(0.035f, 0.08f)));
-            Assert.That(portraitMount.anchorMax,
-                Is.EqualTo(new Vector2(0.30f, 0.92f)));
-            Assert.That(face.GetSiblingIndex(), Is.LessThan(portraitMount.GetSiblingIndex()),
-                "the cream face paints behind the existing portrait mount");
-            Assert.That(face.GetSiblingIndex(), Is.LessThan(label.GetSiblingIndex()),
-                "the cream face paints behind the existing label");
+            var portraitMount = content.Find("Icon") as RectTransform;
+            Assert.That(portraitMount, Is.Not.Null, "the shared icon slot hosts the selected cat");
+            Assert.That(portraitMount.rect.width, Is.EqualTo(26f * 2.55f).Within(.01f));
+            Assert.That(portraitMount.rect.height, Is.EqualTo(26f * 2.55f).Within(.01f));
+            Assert.That(portraitMount.GetComponent<Image>().enabled, Is.False,
+                "only the live portrait paints in the icon slot");
+            Assert.That(face.GetSiblingIndex(), Is.LessThan(content.GetSiblingIndex()),
+                "the cream face paints behind the measured portrait and label group");
 
             CosmeticPortraitView entryPortrait = _root.Wardrobe.EntryPortrait;
             Assert.That(entryPortrait, Is.Not.Null);
@@ -480,6 +479,7 @@ namespace CatMetro.Tests.PlayMode
 
             GameRoot.DevSkipShippedHome = false;
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true; // still captures settle the cold-boot reveal on the next frame
             yield return null;
             _root.Home.Hide();
             _root.Banner.ShowKey("fail.banner.timeout");
@@ -505,6 +505,7 @@ namespace CatMetro.Tests.PlayMode
 
             GameRoot.DevSkipShippedHome = true;
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true; // still captures settle the cold-boot reveal on the next frame
             yield return null;
             yield return null;
             Assert.That(_root.Preview.FaceCount, Is.GreaterThan(0),
@@ -517,6 +518,7 @@ namespace CatMetro.Tests.PlayMode
         {
             GameRoot.DevSkipShippedHome = false;
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true; // still captures settle the cold-boot reveal on the next frame
             yield return null;
             _root.Home.Hide();
             _root.Banner.ShowKey("fail.banner.timeout");
@@ -541,6 +543,7 @@ namespace CatMetro.Tests.PlayMode
         {
             GameRoot.DevSkipShippedHome = false;
             _root = GameRoot.Launch();
+            _root.MotionOffToggle = true; // still captures settle the cold-boot reveal on the next frame
             yield return null;
             yield return null;
 
@@ -841,6 +844,15 @@ namespace CatMetro.Tests.PlayMode
                     foreach (Component view in layouts)
                         if (view != null) ApplyPhoneLayout(view, size);
                 Canvas.ForceUpdateCanvases();
+                if (layouts != null && layouts.Any(view => view is HomeScreenView))
+                {
+                    // Let the resized skin render once, as the dedicated holder capture does.
+                    // Home holds tick zero while this presentation frame settles.
+                    yield return null;
+                    foreach (Component view in layouts)
+                        if (view != null) ApplyPhoneLayout(view, size);
+                    Canvas.ForceUpdateCanvases();
+                }
                 camera.Render();
                 RenderTexture.active = target;
                 texture = CaptureRig.ReadRgb24(target);
@@ -850,6 +862,9 @@ namespace CatMetro.Tests.PlayMode
                 Directory.CreateDirectory(dir);
                 File.WriteAllBytes(Path.Combine(dir, name),
                     CaptureRig.EncodeOpaqueSrgbPng(texture));
+                if (layouts != null)
+                    foreach (HomeScreenView home in layouts.OfType<HomeScreenView>())
+                        AssertCapturedHomeRigPixels(home, camera, target, texture.GetPixels32());
             }
             finally
             {
@@ -863,6 +878,35 @@ namespace CatMetro.Tests.PlayMode
                     Object.Destroy(target);
                 }
             }
+        }
+
+        private static void AssertCapturedHomeRigPixels(HomeScreenView home, Camera camera,
+            RenderTexture target, Color32[] composed)
+        {
+            HomeProfileRigView rig = home.ProfileRig;
+            if ((rig == null || !rig.Mounted) && string.Equals(
+                Environment.GetEnvironmentVariable("CM_CAPTURE_ALLOW_PLACEHOLDER"),
+                "1", StringComparison.Ordinal)) return; // Explicit placeholder diagnostics stay available.
+            Assert.That(rig, Is.Not.Null, "an armed Home capture requires the admitted rig");
+            Assert.That(rig.Mounted, Is.True);
+            RectInt headPatch = InsetAndClamp(rig.RenderedHeadScreenRect,
+                .10f, .10f, target.width, target.height);
+            var skins = rig.PrefabRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            bool[] enabledStates = skins.Select(skin => skin.enabled).ToArray();
+            Color32[] withoutRig;
+            try
+            {
+                foreach (var skin in skins) skin.enabled = false;
+                withoutRig = ReadFrame(camera, target);
+            }
+            finally
+            {
+                for (int i = 0; i < skins.Length; i++) skins[i].enabled = enabledStates[i];
+            }
+            float changed = ChangedFraction(composed, withoutRig, headPatch, target.width, 4);
+            Debug.Log("HOME_CAPTURE rigHeadChangedFraction=" + changed + " headPatch=" + headPatch);
+            Assert.That(changed, Is.GreaterThan(.10f),
+                "the captured rig must paint at its fitted head bounds after the viewport change");
         }
 
         private static void CaptureBound(Camera camera, RenderTexture target,

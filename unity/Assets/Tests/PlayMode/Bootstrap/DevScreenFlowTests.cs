@@ -135,7 +135,7 @@ namespace CatMetro.Tests.PlayMode
             // CM-BOOT-HOME criterion 2 (the tick-0 hold): board input is now gated while Home
             // is up — the opposite of this pin's old "board input is unaffected" control, which
             // proved the pre-CM-BOOT-HOME design where a dev screen flow never mounted here.
-            var discPos2 = _root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0));
+            var discPos2 = HomeBoardGateProbe.PlaceDiscOutsidePins(_root);
             Assert.That(_root.Home.PinPaintedRectPx.Contains(discPos2), Is.False,
                 "precondition: the disc sits outside the Home pin's rect — otherwise this test "
                 + "cannot tell the board gate apart from the pin's chrome region claiming the tap");
@@ -184,7 +184,7 @@ namespace CatMetro.Tests.PlayMode
 
             // board input is gated while Home is shown (criterion 2c re-confirmed through the
             // composed flow, not a test-side override)
-            var discPos = _root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0));
+            var discPos = HomeBoardGateProbe.PlaceDiscOutsidePins(_root);
             // #44 review F-1 (D-2): if the disc drifted UNDER Home's pin, the tap would resolve
             // as -3 (a chrome region claiming it) rather than -1 (the gate closing it).
             Assert.That(_root.Home.PinPaintedRectPx.Contains(discPos), Is.False,

@@ -137,7 +137,7 @@ namespace CatMetro.Tests.PlayMode
 
             // board input gated: the disc scan misses while Home is shown (the S2 conflict pin,
             // GameRootWiringTests.BoardInputGate_HomeShownUnderDevFlag_DiscScanMisses shape)
-            var discPos = _root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0));
+            var discPos = HomeBoardGateProbe.PlaceDiscOutsidePins(_root);
             Assert.That(_root.Home.PinPaintedRectPx.Contains(discPos), Is.False,
                 "precondition: the disc sits outside the Home pin's rect — otherwise this test "
                 + "cannot tell the board gate apart from the pin's chrome region claiming the tap");

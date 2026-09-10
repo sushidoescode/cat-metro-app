@@ -405,7 +405,7 @@ namespace CatMetro.Presentation.Hud.WavePreview
         // edited by different lanes must not depend on each other's z-order to stay correct.
         // Halted keeps the HUD: the run is paused, not finished.
         public static bool VisibleInState(string state) =>
-            state != "Won" && state != "FailureReview";
+            state != "Home" && state != "Won" && state != "FailureReview";
 
         private void ApplyScreenState()
         {

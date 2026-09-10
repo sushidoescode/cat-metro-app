@@ -162,6 +162,8 @@ namespace CatMetro.Tests.PlayMode
                 _root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center);
                 _root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center);
                 Assert.That(_root.ScreensVisible, Is.False);
+                // Play begins Home's dolly; rewind must restore the settled gameplay pose.
+                _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>().Advance(.4f);
             }
             else
             {

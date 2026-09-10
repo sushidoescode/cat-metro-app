@@ -49,7 +49,7 @@ namespace CatMetro.Tests.PlayMode
         }
 
         [Test]
-        public void PortraitSource_PreservesThreeImageHolders_AndMountsOnlyInsideB()
+        public void PortraitSource_PreservesTheBMount_WithoutEmptyFurniture()
         {
             var source = new RecordingPortraitSource("red_tabby", "cat.red_tabby");
             CreateCanvas();
@@ -57,16 +57,12 @@ namespace CatMetro.Tests.PlayMode
             _home = HomeScreenView.Create(_canvas.transform, portraitSource: source);
 
             var hero = FindRect(_home.transform, "HeroCard");
-            var a = DirectChild(hero, "ParkedDistrictA");
+            var a = hero.Find("ParkedDistrictA");
             var b = DirectChild(hero, "ParkedDistrictB");
-            var c = DirectChild(hero, "ParkedDistrictC");
-            Assert.That(a.GetComponent<Image>(), Is.Not.Null);
+            var c = hero.Find("ParkedDistrictC");
+            Assert.That(a, Is.Null);
+            Assert.That(c, Is.Null);
             Assert.That(b.GetComponent<Image>(), Is.Not.Null);
-            Assert.That(c.GetComponent<Image>(), Is.Not.Null);
-            Assert.That(a.GetComponent<Image>().color,
-                Is.EqualTo(Palette.WithAlpha(Palette.DepotNavy, 0.18f)));
-            Assert.That(c.GetComponent<Image>().color,
-                Is.EqualTo(Palette.WithAlpha(Palette.DepotNavy, 0.18f)));
             Assert.That(b.GetComponent<Image>().color, Is.EqualTo(Color.clear),
                 "only B's fallback paint becomes transparent when the shared portrait is bound");
 
@@ -78,8 +74,6 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_home.ProfilePortraitTransform,
                 Is.SameAs(portraits[0].RootTransform));
             AssertStretched(portraits[0].RootTransform);
-            Assert.That(a.GetComponentsInChildren<CosmeticPortraitView>(true), Is.Empty);
-            Assert.That(c.GetComponentsInChildren<CosmeticPortraitView>(true), Is.Empty);
         }
 
         [UnityTest]
@@ -105,9 +99,9 @@ namespace CatMetro.Tests.PlayMode
             var portraitRect = ScreenRect(portrait.RootTransform);
 
             Assert.That(holderRect.x, Is.EqualTo(597.05f).Within(1f));
-            Assert.That(holderRect.y, Is.EqualTo(1043.935f).Within(1f));
+            Assert.That(holderRect.y, Is.EqualTo(1012.7995f).Within(1f));
             Assert.That(holderRect.width, Is.EqualTo(179.3f).Within(1f));
-            Assert.That(holderRect.height, Is.EqualTo(188.55f).Within(1f));
+            Assert.That(holderRect.height, Is.EqualTo(164.835f).Within(1f));
             AssertRectApproximately(portraitRect, holderRect, 0.5f);
             Assert.That(PhoneSafeArea.Contains(holderRect.min), Is.True);
             Assert.That(PhoneSafeArea.Contains(holderRect.max), Is.True);

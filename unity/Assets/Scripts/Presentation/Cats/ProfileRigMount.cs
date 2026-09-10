@@ -28,6 +28,9 @@ namespace CatMetro.Presentation.Cats
         private Transform _facing;
         private Transform _headRoot;
         private SkinnedMeshRenderer[] _skins;
+        private Renderer[] _renderers;
+        private bool[] _rendererDefaults;
+        private bool _visible = true;
         private CatModelCatalog.Entry _entry;
         private Camera _layoutCamera;
         private bool _portraitSubscribed;
@@ -114,6 +117,21 @@ namespace CatMetro.Presentation.Cats
         public Rect RenderedHeadScreenRect { get; private set; }
         public bool Mounted { get; private set; }
 
+        // Occluding UI must hide the camera-lifted mesh without discarding its fitted pose.
+        public void SetVisible(bool visible)
+        {
+            _visible = visible;
+            ApplyRendererVisibility();
+        }
+
+        private void ApplyRendererVisibility()
+        {
+            if (_renderers == null) return;
+            for (int i = 0; i < _renderers.Length; i++)
+                if (_renderers[i] != null)
+                    _renderers[i].enabled = Mounted && _visible && _rendererDefaults[i];
+        }
+
         public static ProfileRigMount Create(RectTransform holder,
             CosmeticPortraitView portrait, CatModelCatalog catalog, float facingYaw = 0f,
             string logPrefix = "PROFILE_RIG")
@@ -170,6 +188,11 @@ namespace CatMetro.Presentation.Cats
 
             view.PrefabRoot = instance.transform;
             view._skins = instance.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            view._renderers = instance.GetComponentsInChildren<Renderer>(true);
+            view._rendererDefaults = new bool[view._renderers.Length];
+            for (int i = 0; i < view._renderers.Length; i++)
+                view._rendererDefaults[i] = view._renderers[i].enabled;
+            view.ApplyRendererVisibility();
             int validSkins = 0;
             foreach (SkinnedMeshRenderer skin in view._skins)
             {
@@ -286,10 +309,9 @@ namespace CatMetro.Presentation.Cats
 
             bool becameMounted = !Mounted;
             RenderedHeadScreenRect = renderedHead;
-            foreach (SkinnedMeshRenderer skin in _skins)
-                if (skin != null && skin.sharedMesh != null) skin.enabled = true;
             _portrait.SetBaseLayerSuppressed(true);
             Mounted = true;
+            ApplyRendererVisibility();
             FallbackBranch = 0;
             FallbackReason = string.Empty;
             if ((becameMounted || reportGeometry) && !string.IsNullOrEmpty(_logPrefix))
@@ -375,7 +397,9 @@ namespace CatMetro.Presentation.Cats
             foreach (HeadSample sample in _headSamples)
             {
                 if (sample.Skin == null) continue;
-                sample.Skin.BakeMesh(sample.Buffer, false);
+                // Include the imported bone hierarchy's scale when baking. The false
+                // mode misprojects the flattened rig after a camera-space canvas refit.
+                sample.Skin.BakeMesh(sample.Buffer, true);
                 sample.Buffer.GetVertices(sample.Vertices);
                 foreach (int index in sample.Indices)
                 {
@@ -479,9 +503,7 @@ namespace CatMetro.Presentation.Cats
             if (ownsChangeGuard) _changingRepresentation = true;
             Mounted = false;
             RenderedHeadScreenRect = default;
-            if (_skins != null)
-                foreach (SkinnedMeshRenderer skin in _skins)
-                    if (skin != null) skin.enabled = false;
+            ApplyRendererVisibility();
             if (_portrait != null)
             {
                 _portrait.SetBaseLayerSuppressed(false);

@@ -163,7 +163,7 @@ namespace CatMetro.Tests.PlayMode
                 + "in the background behind the screen the way it used to");
             Assert.That(_root.ScreensVisible, Is.True, "Home mounted — the stack is non-empty");
 
-            var discPos = _root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0));
+            var discPos = HomeBoardGateProbe.PlaceDiscOutsidePins(_root);
             // #44 review F-1 (D-2): if the disc drifted UNDER Home's pin, the tap would resolve
             // as -3 (a chrome region claiming it) rather than -1 (the gate closing it) — asserted
             // explicitly so that specific confusion can never hide behind a passing/failing -1.

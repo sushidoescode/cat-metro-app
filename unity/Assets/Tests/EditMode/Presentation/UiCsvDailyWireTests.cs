@@ -1,6 +1,7 @@
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using CatMetro.Presentation.Strings;
 
@@ -91,7 +92,7 @@ namespace CatMetro.Tests.Presentation
             foreach (var file in Directory.GetFiles(
                 "Assets/Scripts/Presentation", "*.cs", SearchOption.AllDirectories))
             {
-                var text = File.ReadAllText(file);
+                var text = WithoutHomeStateComparison(File.ReadAllText(file));
                 foreach (var literal in banned)
                     Assert.That(text.Contains(literal), Is.False,
                         file + " embeds the csv copy " + literal + " as a literal");
@@ -102,6 +103,13 @@ namespace CatMetro.Tests.Presentation
                 "the quoted-literal scan can fire when a literal exists");
             Assert.That("var t = \"Home\";".Contains(banned[1]), Is.True,
                 "the quoted-literal scan can fire when a literal exists");
+            Assert.That(WithoutHomeStateComparison("state != \"Home\"").Contains(banned[1]), Is.False,
+                "the WavePreview state id is not user-facing copy");
+            Assert.That(WithoutHomeStateComparison("state != \"Home\"; label.text = \"Home\";")
+                .Contains(banned[1]), Is.True, "an adjacent hard-coded label must still fail");
         }
+
+        private static string WithoutHomeStateComparison(string source) =>
+            Regex.Replace(source, @"\bstate\s*(?:==|!=)\s*""Home""", string.Empty);
     }
 }

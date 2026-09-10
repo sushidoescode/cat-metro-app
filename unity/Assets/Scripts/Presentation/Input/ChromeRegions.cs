@@ -72,6 +72,16 @@ namespace CatMetro.Presentation.Input
         private long _seq;
 
         public int Count => _entries.Count;
+        public event Action StackedModalChanged;
+        public bool HasStackedModal
+        {
+            get
+            {
+                for (int i = 0; i < _entries.Count; i++)
+                    if (_entries[i].Priority >= StackedModalPriority) return true;
+                return false;
+            }
+        }
 
         // Diagnostic query for lifecycle tests and device self-tests. Counts cannot prove that
         // a particular painted target was removed once a screen gains another legitimate entry.
@@ -100,6 +110,7 @@ namespace CatMetro.Presentation.Input
                 if (_entries[i].Id == id)
                     throw new ArgumentException(
                         "duplicate region id '" + id + "' — a wiring defect, never a silent replace");
+            bool hadModal = HasStackedModal;
             _entries.Add(new Entry
             {
                 Id = id,
@@ -109,6 +120,7 @@ namespace CatMetro.Presentation.Input
                 Seq = _seq++,
                 Feedback = feedback,
             });
+            if (!hadModal && HasStackedModal) StackedModalChanged?.Invoke();
         }
 
         public bool Unregister(string id)
@@ -117,7 +129,9 @@ namespace CatMetro.Presentation.Input
             {
                 if (_entries[i].Id == id)
                 {
+                    bool wasModal = _entries[i].Priority >= StackedModalPriority;
                     _entries.RemoveAt(i);
+                    if (wasModal && !HasStackedModal) StackedModalChanged?.Invoke();
                     return true;
                 }
             }

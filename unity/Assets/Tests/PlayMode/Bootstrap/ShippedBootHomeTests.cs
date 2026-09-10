@@ -139,7 +139,7 @@ namespace CatMetro.Tests.PlayMode
 
         private static readonly string[] BannedNodeNames =
         {
-            "shop", "store", "daily", "badge", "streak", "share", "notif",
+            "shop", "store", "badge", "streak", "share", "notif",
             "night", "harbor", "access", "paywall", "advert", "reward", "ticket",
         };
 
@@ -202,8 +202,7 @@ namespace CatMetro.Tests.PlayMode
                 Is.GreaterThan(1), "the composed Home tree has real children to walk");
 
             Assert.That(FirstBannedNode(_root.Home.gameObject), Is.Null,
-                "S-01 / criterion 5 (commerce-free): the SHIPPED-BOOT Home builds NO shop/"
-                + "daily/badge surface and neither TG-3 variant");
+                "the shipped Home keeps commerce/badge surfaces absent while teasing the locked Daily route");
             var off = FirstOffWhitelist(_root.Home.gameObject);
             Assert.That(off, Is.Null, "render-side types only under the shipped-boot Home; "
                 + "found: " + (off != null ? off.GetType().FullName : ""));

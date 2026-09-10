@@ -50,7 +50,7 @@ namespace CatMetro.Tests.PlayMode
             CreateShown();
             yield return null;
             Assert.That(_home.TitleText,
-                Is.EqualTo(CatMetro.Presentation.Strings.UiStrings.Get("home.title")),
+                Is.EqualTo(CatMetro.Presentation.Strings.UiStrings.Get("home.title").Replace(" ", "\n")),
                 "the title resolves through the csv key, never a literal");
             Assert.That(_home.TitleText.Contains("??"), Is.False,
                 "the key resolves — not the missing-key sentinel");
@@ -142,9 +142,9 @@ namespace CatMetro.Tests.PlayMode
 
         private static readonly string[] BannedNodeNames =
         {
-            // S-01: "No shop entry, no daily entry, no badges rendered in session 1" — plus
+            // Home stays commerce-free; the approved Daily teaser is visible but locked.
             // the monetization-embargo family and BOTH TG-3 Night-Harbor variants (tile absent).
-            "shop", "store", "daily", "badge", "streak", "share", "notif",
+            "shop", "store", "badge", "streak", "share", "notif",
             "night", "harbor", "access", "paywall", "advert", "reward", "ticket",
         };
 
@@ -170,7 +170,7 @@ namespace CatMetro.Tests.PlayMode
                 Is.GreaterThan(1), "the Home tree has real children to walk");
 
             Assert.That(FirstBannedNode(_home.gameObject), Is.Null,
-                "session-1 Home builds NO shop/daily/badge surface and NEITHER TG-3 variant");
+                "session-1 Home builds NO shop/badge surface and NEITHER TG-3 variant");
 
             // positive control: a decoy commerce node makes the walk fire
             var decoy = new GameObject("ShopButton");
