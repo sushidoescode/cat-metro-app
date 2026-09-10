@@ -115,6 +115,7 @@ namespace CatMetro.Tests.PlayMode
         [Test]
         public void ClosingOneModal_DoesNotRevealTheRigThroughAnotherModalOrBootCover()
         {
+            var instance = _root.Home.ProfileRig.PrefabRoot;
             var first = DailyReminderSheet.Create(_root.Home.transform.parent);
             first.Attach(_root.Input.Regions);
             first.ShowSettings();
@@ -123,10 +124,12 @@ namespace CatMetro.Tests.PlayMode
             first.Hide();
             _root.Home.Show();
             _root.Home.LayoutForViewport(Safe, 408, new Rect(0, 0, 917, 2048));
-            Assert.That(RigPixels(new Rect(0, 0, 917, 2048), null), Is.Zero,
+            Assert.That(RigPixels(new Rect(0, 0, 917, 2048), "modal-close-intro-still-open"), Is.Zero,
                 "ending boot or closing one modal cannot reveal a rig behind another modal");
+            Assert.That(_root.Home.ProfileRig.PrefabRoot, Is.SameAs(instance));
             _root.Intro.Hide();
-            Assert.That(RigPixels(new Rect(0, 0, 917, 2048), null), Is.GreaterThan(100));
+            Assert.That(RigPixels(new Rect(0, 0, 917, 2048), "modal-close-all-closed"), Is.GreaterThan(100));
+            Assert.That(_root.Home.ProfileRig.PrefabRoot, Is.SameAs(instance));
         }
 
         [Test]
@@ -302,12 +305,30 @@ namespace CatMetro.Tests.PlayMode
         private void AssertProfileRasterContained(ProfileRigMount mount, Rect holder,
             int width, int height, string name)
         {
+            Color32[] actual = ReadProfileSkinRaster(mount, width, height, name);
+            int inside = 0, outside = 0;
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                {
+                    Color32 pixel = actual[y * width + x];
+                    if (pixel.r <= 4 && pixel.g <= 4 && pixel.b <= 4) continue;
+                    if (holder.Contains(new Vector2(x + .5f, y + .5f))) inside++;
+                    else outside++;
+                }
+            TestContext.Out.WriteLine(name + " " + width + "x" + height
+                + " isolatedSkinInside=" + inside + " outside=" + outside + " holder=" + holder);
+            Assert.That(inside, Is.GreaterThan(100), "positive control: actual licensed skin must paint");
+            Assert.That(outside, Is.Zero, "no actual skin pixels may escape the holder or cover selector tiles");
+        }
+
+        private Color32[] ReadProfileSkinRaster(ProfileRigMount mount, int width, int height, string name)
+        {
             // A full-scene before/after subtraction also measures unrelated board changes.
             // Isolate the actual paid skin, without replacing or rebuilding its geometry.
             var skins = mount.PrefabRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true);
             Assert.That(skins, Has.Length.EqualTo(1), "isolate every skin in the admitted licensed fixture");
             var skin = skins[0];
-            Assert.That(skin.enabled && skin.gameObject.activeInHierarchy, Is.True);
+            bool wasEnabled = skin.enabled; // Modal/boot policy owns this value; never force-enable it.
             Material[] materials = skin.sharedMaterials;
             var block = new MaterialPropertyBlock(); skin.GetPropertyBlock(block);
             var slotBlocks = new MaterialPropertyBlock[materials.Length];
@@ -349,22 +370,14 @@ namespace CatMetro.Tests.PlayMode
                 mount.PrefabRoot.gameObject.SetActive(wasActive);
                 Color32[] restored = ProfileRaster(width, height, name + "-restored-skin-control");
                 Assert.That(restored, Is.EqualTo(actual), "restoring the actual skin must restore every mask pixel");
-                int inside = 0, outside = 0, hiddenPixels = 0;
-                for (int y = 0; y < height; y++)
-                    for (int x = 0; x < width; x++)
-                    {
-                        int i = y * width + x;
-                        if (hidden[i].r != 0 || hidden[i].g != 0 || hidden[i].b != 0) hiddenPixels++;
-                        if (actual[i].r <= 4 && actual[i].g <= 4 && actual[i].b <= 4) continue;
-                        if (holder.Contains(new Vector2(x + .5f, y + .5f))) inside++;
-                        else outside++;
-                    }
-                TestContext.Out.WriteLine(name + " " + width + "x" + height
-                    + " isolatedSkinInside=" + inside + " outside=" + outside
-                    + " hiddenPixels=" + hiddenPixels + " holder=" + holder);
+                int hiddenPixels = 0;
+                foreach (Color32 pixel in hidden)
+                    if (pixel.r != 0 || pixel.g != 0 || pixel.b != 0) hiddenPixels++;
                 Assert.That(hiddenPixels, Is.Zero, "the isolated pass must be black with the actual skin hidden");
-                Assert.That(inside, Is.GreaterThan(100), "positive control: actual licensed skin must paint");
-                Assert.That(outside, Is.Zero, "no actual skin pixels may escape the holder or cover selector tiles");
+                Assert.That(skin.enabled, Is.EqualTo(wasEnabled), "capture must preserve modal-owned renderer visibility");
+                TestContext.Out.WriteLine(name + " " + width + "x" + height
+                    + " rendererEnabled=" + wasEnabled + " hiddenPixels=" + hiddenPixels);
+                return actual;
             }
             finally
             {
@@ -410,20 +423,13 @@ namespace CatMetro.Tests.PlayMode
 
         private int RigPixels(Rect rect, string name)
         {
-            var rig = _root.Home.ProfileRig;
-            Color32[] actual = Render(name);
-            rig.PrefabRoot.gameObject.SetActive(false);
-            Color32[] withoutRig;
-            try { withoutRig = Render(null); }
-            finally { rig.PrefabRoot.gameObject.SetActive(true); }
+            Color32[] actual = ReadProfileSkinRaster(_root.Home.ProfileRig, 917, 2048, name);
             int count = 0;
             for (int y = Mathf.Max(0, Mathf.CeilToInt(rect.yMin)); y < Mathf.Min(2048, rect.yMax); y++)
                 for (int x = Mathf.Max(0, Mathf.CeilToInt(rect.xMin)); x < Mathf.Min(917, rect.xMax); x++)
                 {
-                    int i = y * 917 + x;
-                    if (Math.Abs(actual[i].r - withoutRig[i].r) > 4
-                        || Math.Abs(actual[i].g - withoutRig[i].g) > 4
-                        || Math.Abs(actual[i].b - withoutRig[i].b) > 4) count++;
+                    Color32 pixel = actual[y * 917 + x];
+                    if (pixel.r > 4 || pixel.g > 4 || pixel.b > 4) count++;
                 }
             Debug.Log("HOME_OCCLUSION " + name + " rigPixels=" + count + " rect=" + rect);
             return count;
