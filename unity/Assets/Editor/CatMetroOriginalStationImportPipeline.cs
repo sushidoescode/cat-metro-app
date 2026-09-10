@@ -14,9 +14,6 @@ namespace CatMetro.EditorTools
     {
         public const string AssetRoot = "Assets/Art/Original/Station";
         public const string PrefabPath = "Assets/Resources/CatMetroOriginal/Station.prefab";
-        private const string SourceFbx = AssetRoot + "/Source/original-station-runtime.fbx";
-        private const string TexturePath = AssetRoot + "/original-toy-atlas.png";
-        private const string MaterialPath = AssetRoot + "/OriginalStation.mat";
         private static readonly string[] RuntimeParts = { "Body", "RoofTint" };
 
         [MenuItem("Cat Metro/Art/Build Original Station")]
@@ -28,29 +25,36 @@ namespace CatMetro.EditorTools
                 "..", "..", "docs", "design", "assets", "original-station-runtime"));
             string fbxSource = Path.Combine(recipeRoot, "Models", "original-station-runtime.fbx");
             string textureSource = Path.Combine(recipeRoot, "Textures", "original-toy-atlas.png");
+            BuildFromSources(fbxSource, textureSource, AssetRoot, PrefabPath);
+        }
+
+        private static void BuildFromSources(string fbxSource, string textureSource,
+            string assetRoot, string prefabPath)
+        {
             if (!File.Exists(fbxSource) || !File.Exists(textureSource))
-                throw new FileNotFoundException("Generate the original station runtime study first: " + recipeRoot);
-
-            EnsureFolder(AssetRoot + "/Source");
-            EnsureFolder(AssetRoot + "/Meshes");
-            EnsureFolder("Assets/Resources/CatMetroOriginal");
-            CopyIfChanged(fbxSource, SourceFbx);
-            CopyIfChanged(textureSource, TexturePath);
-            AssetDatabase.ImportAsset(SourceFbx, ImportAssetOptions.ForceSynchronousImport);
-            AssetDatabase.ImportAsset(TexturePath, ImportAssetOptions.ForceSynchronousImport);
-            ConfigureImporters();
-            Texture2D atlas = AssetDatabase.LoadAssetAtPath<Texture2D>(TexturePath);
-            if (atlas == null || atlas.width != 1024 || atlas.height != 512)
-                throw new InvalidDataException("Original station atlas must be 1024x512.");
-            GameObject imported = AssetDatabase.LoadAssetAtPath<GameObject>(SourceFbx);
-            if (imported == null) throw new InvalidDataException("Original station FBX did not import.");
-            Material material = BuildMaterial(atlas);
-
-            var instance = UnityEngine.Object.Instantiate(imported);
-            var root = new GameObject("OriginalStation");
+                throw new FileNotFoundException("Generate the original station runtime study first.");
+            string sourceFbx = assetRoot + "/Source/original-station-runtime.fbx";
+            string texturePath = assetRoot + "/original-toy-atlas.png";
+            string materialPath = assetRoot + "/OriginalStation.mat";
+            // Runtime materials reference the installed atlas by GUID. Decode the candidate
+            // outside AssetDatabase so a rejected size or geometry cannot replace that texture.
+            Texture2D candidateAtlas = LoadCandidateAtlas(textureSource);
+            Material material = null;
+            GameObject instance = null, root = null;
             var temporaryMeshes = new List<Mesh>();
             try
             {
+                EnsureFolder(assetRoot + "/Source");
+                EnsureFolder(assetRoot + "/Meshes");
+                EnsureFolder(Path.GetDirectoryName(prefabPath).Replace('\\', '/'));
+                CopyIfChanged(fbxSource, sourceFbx);
+                AssetDatabase.ImportAsset(sourceFbx, ImportAssetOptions.ForceSynchronousImport);
+                ConfigureModelImporter(sourceFbx);
+                GameObject imported = AssetDatabase.LoadAssetAtPath<GameObject>(sourceFbx);
+                if (imported == null) throw new InvalidDataException("Original station FBX did not import.");
+                material = BuildMaterial(candidateAtlas);
+                instance = UnityEngine.Object.Instantiate(imported);
+                root = new GameObject("OriginalStation");
                 var filters = instance.GetComponentsInChildren<MeshFilter>(true);
                 foreach (string name in RuntimeParts)
                 {
@@ -70,22 +74,31 @@ namespace CatMetro.EditorTools
                 // delivery/rejection animation targets; a second sign would be misleading.
                 // Reject malformed geometry before overwriting the material and meshes
                 // referenced by a previously working station prefab.
-                Validate(root, atlas);
-                material = SaveAsset(material, MaterialPath);
+                Validate(root, candidateAtlas);
+                // Only a validated candidate may replace the shared runtime texture.
+                CopyIfChanged(textureSource, texturePath);
+                AssetDatabase.ImportAsset(texturePath, ImportAssetOptions.ForceSynchronousImport);
+                ConfigureTextureImporter(texturePath);
+                Texture2D atlas = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
+                if (atlas == null || atlas.width != 1024 || atlas.height != 512)
+                    throw new InvalidDataException("Original station runtime atlas import failed.");
+                material.SetTexture("_BaseMap", atlas);
+                if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", atlas);
+                material = SaveAsset(material, materialPath);
                 foreach (MeshFilter filter in root.GetComponentsInChildren<MeshFilter>())
                 {
                     filter.sharedMesh = SaveAsset(filter.sharedMesh,
-                        AssetRoot + "/Meshes/" + filter.name + ".asset");
+                        assetRoot + "/Meshes/" + filter.name + ".asset");
                     filter.GetComponent<MeshRenderer>().sharedMaterial = material;
                 }
-                GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
+                GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, prefabPath);
                 if (prefab == null) throw new InvalidDataException("Original station prefab was not saved.");
                 AssetDatabase.SaveAssets();
                 int triangles = root.GetComponentsInChildren<MeshFilter>()
                     .Sum(filter => filter.sharedMesh.triangles.Length / 3);
-                Debug.Log("ORIGINAL_STATION_IMPORT PASS prefab=" + PrefabPath
+                Debug.Log("ORIGINAL_STATION_IMPORT PASS prefab=" + prefabPath
                     + " meshes=2 materials=1 triangles=" + triangles
-                    + " atlas=" + TexturePath + " atlas_sha256=" + FileSha256(textureSource)
+                    + " atlas=" + texturePath + " atlas_sha256=" + FileSha256(textureSource)
                     + " fbx_sha256=" + FileSha256(fbxSource));
             }
             finally
@@ -95,6 +108,7 @@ namespace CatMetro.EditorTools
                 foreach (Mesh mesh in temporaryMeshes)
                     if (mesh != null && !EditorUtility.IsPersistent(mesh)) UnityEngine.Object.DestroyImmediate(mesh);
                 if (material != null && !EditorUtility.IsPersistent(material)) UnityEngine.Object.DestroyImmediate(material);
+                UnityEngine.Object.DestroyImmediate(candidateAtlas);
             }
         }
 
@@ -112,9 +126,9 @@ namespace CatMetro.EditorTools
             }
         }
 
-        private static void ConfigureImporters()
+        private static void ConfigureModelImporter(string sourceFbx)
         {
-            var model = AssetImporter.GetAtPath(SourceFbx) as ModelImporter;
+            var model = AssetImporter.GetAtPath(sourceFbx) as ModelImporter;
             if (model == null) throw new InvalidDataException("Original station ModelImporter missing.");
             model.globalScale = 1f;
             model.useFileScale = true;
@@ -128,8 +142,11 @@ namespace CatMetro.EditorTools
             model.importNormals = ModelImporterNormals.Import;
             model.materialImportMode = ModelImporterMaterialImportMode.None;
             model.SaveAndReimport();
+        }
 
-            var texture = AssetImporter.GetAtPath(TexturePath) as TextureImporter;
+        private static void ConfigureTextureImporter(string texturePath)
+        {
+            var texture = AssetImporter.GetAtPath(texturePath) as TextureImporter;
             if (texture == null) throw new InvalidDataException("Original station TextureImporter missing.");
             texture.textureType = TextureImporterType.Default;
             texture.sRGBTexture = true;
@@ -140,6 +157,24 @@ namespace CatMetro.EditorTools
             texture.maxTextureSize = 1024;
             texture.anisoLevel = 2;
             texture.SaveAndReimport();
+        }
+
+        private static Texture2D LoadCandidateAtlas(string source)
+        {
+            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false)
+                { name = "OriginalStationCandidateAtlas" };
+            try
+            {
+                if (!ImageConversion.LoadImage(texture, File.ReadAllBytes(source))
+                    || texture.width != 1024 || texture.height != 512)
+                    throw new InvalidDataException("Original station atlas must be 1024x512.");
+                return texture;
+            }
+            catch
+            {
+                UnityEngine.Object.DestroyImmediate(texture);
+                throw;
+            }
         }
 
         private static Material BuildMaterial(Texture2D atlas)
