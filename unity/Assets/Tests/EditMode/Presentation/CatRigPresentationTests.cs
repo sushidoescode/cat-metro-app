@@ -190,6 +190,162 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(motion.HeadTransform.localScale, Is.EqualTo(motion.SourceHeadScale * 1.28f));
         }
 
+        [TestCase(TrainState.RejectedAtStation)]
+        [TestCase(TrainState.OnEdgeReverse)]
+        [TestCase(TrainState.AtNode)]
+        public void LocalCarriageWaitKeepsSeatedBodyAndRidePhaseAcrossStopAndResume(byte simulationState)
+        {
+            ToyTrainView view = CreateSampledLocalTrain(out Animator animator);
+            var track = new CatPresentationTrack();
+            var slot = new TrainSlot { Id = 1, State = TrainState.OnEdge };
+            track.Observe(slot, 1, false, 0f);
+            track.Observe(slot, 1, false, .5f);
+            Assert.That(track.State, Is.EqualTo(CatPresentationState.RideIdle));
+            view.ApplyPresentation(track.State, track.PlatformBlend, false, 1f, false);
+            animator.Update(.37f);
+            AssertDiscriminatingRidePose(animator, .37f);
+            float phase = animator.GetCurrentAnimatorStateInfo(0).normalizedTime;
+            Quaternion body = animator.transform.Find(BodyPath).localRotation;
+            Vector3 root = view.transform.localPosition;
+            Vector3 engine = view.transform.Find("Engine").localPosition;
+            Vector3 carriage = view.transform.Find("Carriage").localPosition;
+            Vector3 pin = view.transform.Find("Carriage/Pin").localPosition;
+
+            slot.State = simulationState;
+            track.Observe(slot, 1, false, .87f);
+            Assert.That(track.State, Is.EqualTo(CatPresentationState.WaitingIdle));
+            Assert.That(track.PlatformBlend, Is.Zero);
+            view.ApplyPresentation(track.State, track.PlatformBlend, false, 1f, false);
+            Assert.That(view.PresentationState, Is.EqualTo(CatPresentationState.WaitingIdle),
+                "simulation-facing presentation state remains a wait");
+            AssertRideStateAndPhase(animator, phase);
+            Assert.That(Quaternion.Angle(animator.transform.Find(BodyPath).localRotation, body), Is.LessThan(.05f));
+            Assert.That(view.transform.localPosition, Is.EqualTo(root));
+            Assert.That(view.transform.Find("Engine").localPosition, Is.EqualTo(engine));
+            Assert.That(view.transform.Find("Carriage").localPosition, Is.EqualTo(carriage));
+            Assert.That(view.transform.Find("Carriage/Pin").localPosition, Is.EqualTo(pin));
+
+            animator.Update(.21f);
+            AssertDiscriminatingRidePose(animator, .58f);
+            phase = animator.GetCurrentAnimatorStateInfo(0).normalizedTime;
+            view.ApplyPresentation(CatPresentationState.WaitingIdle, 0f, false, 1f, false);
+            AssertRideStateAndPhase(animator, phase);
+            slot.State = TrainState.OnEdge;
+            track.Observe(slot, 1, false, 1.08f);
+            view.ApplyPresentation(track.State, track.PlatformBlend, false, 1f, false);
+            AssertRideStateAndPhase(animator, phase);
+        }
+
+        [Test]
+        public void LocalWaitingLocationSelectsPlatformIdleOrCarriageRideEvenWhenPublicStateDoesNotChange()
+        {
+            ToyTrainView view = CreateSampledLocalTrain(out Animator animator);
+            view.ApplyPresentation(CatPresentationState.WaitingIdle, 0f, false, 1f, false);
+            animator.Update(.37f);
+            AssertDiscriminatingRidePose(animator, .37f);
+            Quaternion seated = animator.transform.Find(BodyPath).localRotation;
+            view.ApplyPresentation(CatPresentationState.WaitingIdle, 1f, false, 1f, false);
+            Assert.That(view.PresentationState, Is.EqualTo(CatPresentationState.WaitingIdle));
+            Assert.That(animator.GetCurrentAnimatorStateInfo(0).IsName("Base Layer.Cat_IdleSit"), Is.True);
+            Assert.That(Quaternion.Angle(animator.transform.Find(BodyPath).localRotation, seated), Is.GreaterThan(25f),
+                "source/platform waiting uses the independently distinct neutral body");
+            view.ApplyPresentation(CatPresentationState.WaitingIdle, 0f, false, 1f, false);
+            AssertRideStateAndPhase(animator, 0f);
+            AssertDiscriminatingRidePose(animator, 0f);
+
+            view.PrepareDeliveredPassenger(Vector3.zero);
+            var retained = new CatPresentationTrack(); retained.SampleWin(-1f, 0, false);
+            view.ApplyDeliveredPose(retained, 1f, false);
+            Assert.That(animator.GetCurrentAnimatorStateInfo(0).IsName("Base Layer.Cat_IdleSit"), Is.True,
+                "retained passengers remain on the platform");
+        }
+
+        [Test]
+        public void LocalCarriageWaitRetainsSameOccupantPhaseButResetsForReusedSlot()
+        {
+            ToyTrainView view = CreateSampledLocalTrain(out Animator animator);
+            view.ApplyPresentation(CatPresentationState.RideIdle, 0f, false, 1f, false);
+            animator.Update(.37f);
+            AssertDiscriminatingRidePose(animator, .37f);
+            float phase = animator.GetCurrentAnimatorStateInfo(0).normalizedTime;
+            view.SyncSlot(0x0000000100000001L, CatColor.Red);
+            view.ApplyPresentation(CatPresentationState.WaitingIdle, 0f, false, 1f, false);
+            AssertRideStateAndPhase(animator, phase);
+            view.ApplyPresentation(CatPresentationState.Hidden, 1f, false);
+            view.SyncSlot(0x0000000100000002L, CatColor.Blue);
+            view.ApplyPresentation(CatPresentationState.WaitingIdle, 0f, false, 1f, false);
+            AssertRideStateAndPhase(animator, 0f);
+            AssertDiscriminatingRidePose(animator, 0f);
+        }
+
+        [TestCase(0f)]
+        [TestCase(1f)]
+        public void LocalWaitingMotionOffKeepsSingleNeutralSampleThenResumesForItsLocation(float platformBlend)
+        {
+            ToyTrainView view = CreateSampledLocalTrain(out Animator animator);
+            view.ApplyPresentation(CatPresentationState.RideIdle, 0f, false, 1f, false);
+            animator.Update(.37f);
+            AssertDiscriminatingRidePose(animator, .37f);
+            view.ApplyPresentation(CatPresentationState.WaitingIdle, platformBlend, false, 1f, true);
+            Assert.That(animator.GetCurrentAnimatorStateInfo(0).IsName("Base Layer.Cat_IdleSit"), Is.True);
+            Quaternion neutral = animator.transform.Find(BodyPath).localRotation;
+            int samples = view.RigNeutralSampleCount;
+            Assert.That(samples, Is.EqualTo(1));
+            animator.Update(.3f);
+            view.ApplyPresentation(CatPresentationState.WaitingIdle, platformBlend, false, 2f, true);
+            Assert.That(animator.speed, Is.Zero);
+            Assert.That(view.RigNeutralSampleCount, Is.EqualTo(samples));
+            Assert.That(animator.transform.Find(BodyPath).localRotation, Is.EqualTo(neutral));
+            view.ApplyPresentation(CatPresentationState.WaitingIdle, platformBlend, false, 2f, false);
+            string resumed = platformBlend == 0f ? "Base Layer.Cat_Ride" : "Base Layer.Cat_IdleSit";
+            Assert.That(animator.GetCurrentAnimatorStateInfo(0).IsName(resumed), Is.True);
+            Assert.That(animator.speed, Is.EqualTo(1f));
+            Assert.That(animator.GetCurrentAnimatorStateInfo(0).normalizedTime, Is.EqualTo(0f).Within(.00001f));
+        }
+
+        private ToyTrainView CreateSampledLocalTrain(out Animator animator)
+        {
+            RequireLocalSource();
+            var view = ToyTrainView.Create(_host.transform, "carriage wait regression", new[] { 0 }, new[] { 1 },
+                CatModelCatalog.LoadResources());
+            view.SyncSlot(0x0000000100000001L, CatColor.Red);
+            animator = view.GetComponentInChildren<Animator>(true);
+            Assert.That(animator.GetComponent<CatRigPresentation>().AuthoredMotionInstalled, Is.True);
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            animator.Rebind();
+            return view;
+        }
+
+        private void AssertDiscriminatingRidePose(Animator actual, float seconds)
+        {
+            // Independently sample the committed clip on a separate admitted clone, rather than
+            // accepting a state hash whose Animator has not yet evaluated its transforms.
+            GameObject reference = CloneThroughCatalog();
+            try
+            {
+                Animator expected = reference.GetComponentInChildren<Animator>(true);
+                AnimationClip ride = expected.runtimeAnimatorController.animationClips.Single(c => c.name == "Cat_Ride");
+                AnimationClip idle = expected.runtimeAnimatorController.animationClips.Single(c => c.name == "Cat_IdleSit");
+                idle.SampleAnimation(expected.gameObject, 0f);
+                Quaternion neutral = expected.transform.Find(BodyPath).localRotation;
+                ride.SampleAnimation(expected.gameObject, seconds);
+                Quaternion seated = expected.transform.Find(BodyPath).localRotation;
+                Assert.That(Quaternion.Angle(seated, neutral), Is.GreaterThan(25f), "test clips must discriminate seated and neutral torso");
+                Assert.That(Quaternion.Angle(actual.transform.Find(BodyPath).localRotation, seated), Is.LessThan(.05f),
+                    "real Animator must evaluate the same Ride torso before testing continuity");
+                Assert.That(actual.GetCurrentAnimatorStateInfo(0).IsName("Base Layer.Cat_Ride"), Is.True);
+            }
+            finally { Object.DestroyImmediate(reference); }
+        }
+
+        private static void AssertRideStateAndPhase(Animator animator, float phase)
+        {
+            Assert.That(animator.GetCurrentAnimatorStateInfo(0).IsName("Base Layer.Cat_Ride"), Is.True,
+                "a cat waiting inside its carriage keeps the seated Ride clip");
+            Assert.That(animator.GetCurrentAnimatorStateInfo(0).normalizedTime, Is.EqualTo(phase).Within(.00001f),
+                "a stop/reverse/state notification must not restart the same seated loop");
+        }
+
         [Test]
         public void LocalProfileSamplesIdleWithoutAnimatorAndKeepsFitWhileMotionOffResetsAbsolutely()
         {
