@@ -191,7 +191,14 @@ namespace CatMetro.Tests.PlayMode
             {
                 string name = screen == 0 ? "home" : "wardrobe";
                 if (screen == 0)
+                {
+                    // Home owns the title/header and its two pins; Wardrobe owns the third
+                    // Home pin independently. Both must use this capture's viewport/density.
                     _root.Home.LayoutForViewport(safe, dpi, new Rect(0, 0, width, height));
+                    _root.Wardrobe.LayoutForViewport(safe, dpi);
+                    Assert.That(_root.Wardrobe.EntryRectPx.xMin, Is.GreaterThanOrEqualTo(safe.xMin));
+                    Assert.That(_root.Wardrobe.EntryRectPx.xMax, Is.LessThanOrEqualTo(safe.xMax));
+                }
                 else
                 {
                     Assert.That(_root.Input.HandleTapAtScreen(_root.Wardrobe.EntryRectPx.center), Is.EqualTo(-3));
