@@ -6,6 +6,7 @@ using CatMetro.Domain;
 using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Cosmetics;
+using CatMetro.Presentation.Props;
 using CatMetro.Services.Cosmetics;
 using NUnit.Framework;
 using UnityEditor;
@@ -313,6 +314,164 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(animator.GetComponent<CatRigPresentation>().AuthoredMotionInstalled, Is.True);
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             animator.Rebind();
+            return view;
+        }
+
+        [Test]
+        public void OriginalCarriageSeatUsesCalibratedLimbsAndDepthWithoutChangingFallbackOrPlatformClips()
+        {
+            RequireLocalSource();
+            ToyTrainView original = CreateSeatTrain(true, out Animator seated, out Transform seatRoot);
+            ToyTrainView fallback = CreateSeatTrain(false, out Animator prior, out Transform priorRoot);
+            foreach (var pair in new[] { (original, seated), (fallback, prior) })
+            {
+                pair.Item1.ApplyPresentation(CatPresentationState.RideIdle, 0f, false);
+                pair.Item2.Update(.4f);
+                pair.Item1.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+            }
+            Assert.That(seatRoot.localPosition, Is.EqualTo(Vector3.forward * .0983f));
+            Assert.That(priorRoot.localPosition, Is.EqualTo(Vector3.zero));
+            foreach (var control in new[] {
+                (BodyPath + "/bone_21/tripo::0_Right_Limb_0/bone_27", Vector3.right, 36f),
+                (BodyPath + "/bone_21/tripo::0_Left_Limb_0/tripo::0_Left_Limb_1/tripo::0_Left_Limb_2", Vector3.up, 12f),
+                (BodyPath + "/bone_9/bone_12/tripo::Tail_0", Vector3.right, 30f) })
+            {
+                Quaternion baseline = Quaternion.Inverse(prior.transform.rotation) * prior.transform.Find(control.Item1).rotation;
+                Quaternion actual = Quaternion.Inverse(seated.transform.rotation) * seated.transform.Find(control.Item1).rotation;
+                Assert.That(Quaternion.Angle(actual, Quaternion.AngleAxis(control.Item3, control.Item2) * baseline),
+                    Is.LessThan(.05f), "calibration against independently evaluated unchanged fallback: " + control.Item1);
+            }
+            foreach (string path in new[] { BodyPath, CatRigPresentation.WeightedHeadPath })
+                Assert.That(Quaternion.Angle(seated.transform.Find(path).localRotation,
+                    prior.transform.Find(path).localRotation), Is.LessThan(.001f), path);
+            foreach (string name in new[] { "Cat_IdleSit", "Cat_Walk", "Cat_Celebrate" })
+                Assert.That(seated.runtimeAnimatorController.animationClips.Single(c => c.name == name),
+                    Is.SameAs(prior.runtimeAnimatorController.animationClips.Single(c => c.name == name)), name);
+            foreach (string path in new[] { "Engine", "Carriage", "Carriage/Cat", "Carriage/Pin" })
+                Assert.That(original.transform.Find(path).localPosition, Is.EqualTo(fallback.transform.Find(path).localPosition), path);
+            Assert.That(seated.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh,
+                Is.SameAs(prior.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh));
+            original.ApplyPresentation(CatPresentationState.WaitingIdle, 1f, false, 1f, false);
+            Assert.That(seatRoot.localPosition, Is.EqualTo(Vector3.zero), "platform idle has no carriage correction");
+        }
+
+        [TestCase(30)]
+        [TestCase(60)]
+        [TestCase(120)]
+        public void OriginalCarriageDepthFollowsEvaluatedBoardAlightAndRestoresOnMotionOffAndReuse(int framesPerSecond)
+        {
+            RequireLocalSource();
+            ToyTrainView view = CreateSeatTrain(true, out Animator animator, out Transform rig);
+            foreach (var state in new[] { CatPresentationState.Board, CatPresentationState.Alight })
+            {
+                view.ApplyPresentation(state, 0f, false);
+                float previous = rig.localPosition.z;
+                Assert.That(previous, Is.EqualTo(state == CatPresentationState.Board ? 0f : .0983f).Within(.00001f));
+                float elapsed = 0f;
+                while (elapsed < .18f)
+                {
+                    float delta = Mathf.Min(1f / framesPerSecond, .18f - elapsed);
+                    animator.Update(delta);
+                    view.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+                    float depth = rig.localPosition.z;
+                    Assert.That(depth, Is.InRange(-.000001f, .098301f));
+                    Assert.That(state == CatPresentationState.Board ? depth >= previous - .000001f : depth <= previous + .000001f,
+                        Is.True, "evaluated transition must move monotonically between the actual seat and unchanged platform height");
+                    for (int repeat = 0; repeat < 3; repeat++) view.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+                    Assert.That(rig.localPosition.z, Is.EqualTo(depth), "repeated rendering cannot accumulate depth");
+                    previous = depth;
+                    elapsed += delta;
+                }
+                Assert.That(rig.localPosition.z, Is.EqualTo(state == CatPresentationState.Board ? .0983f : 0f).Within(.00001f));
+            }
+            view.ApplyPresentation(CatPresentationState.RideIdle, 1f, false);
+            Assert.That(rig.localPosition.z, Is.EqualTo(.0983f));
+            view.ApplyPresentation(CatPresentationState.RideIdle, 1f, true);
+            Assert.That(rig.localPosition, Is.EqualTo(Vector3.zero), "existing Motion Off neutral pose remains unchanged");
+            Assert.That(animator.GetCurrentAnimatorStateInfo(0).IsName("Base Layer.Cat_IdleSit"), Is.True);
+            int samples = view.RigNeutralSampleCount;
+            view.ApplyPresentation(CatPresentationState.RideIdle, 2f, true);
+            Assert.That(view.RigNeutralSampleCount, Is.EqualTo(samples));
+            view.ApplyPresentation(CatPresentationState.Hidden, 2f, false);
+            view.SyncSlot(99, CatColor.Blue);
+            Assert.That(rig.localPosition, Is.EqualTo(Vector3.zero));
+            view.ApplyPresentation(CatPresentationState.WaitingIdle, 0f, false, 3f, false);
+            Assert.That(rig.localPosition.z, Is.EqualTo(.0983f));
+            Assert.That(animator.GetCurrentAnimatorStateInfo(0).normalizedTime, Is.EqualTo(0f).Within(.00001f));
+        }
+
+        [Test]
+        public void OriginalCarriageDepthBlendsActualAnimatorCrossfadeOnTheSameActor()
+        {
+            RequireLocalSource();
+            ToyTrainView view = CreateSeatTrain(true, out Animator animator, out Transform rig);
+            view.ApplyPresentation(CatPresentationState.RideIdle, 0f, false);
+            Assert.That(rig.localPosition.z, Is.EqualTo(.0983f));
+            animator.CrossFadeInFixedTime("Base Layer.Cat_IdleSit", .2f, 0, 0f);
+            animator.Update(.05f);
+            Assert.That(animator.IsInTransition(0), Is.True, "exercise a real blend, not a synthetic state label");
+            view.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+            float middle = rig.localPosition.z;
+            Assert.That(middle, Is.InRange(.001f, .097f));
+            animator.Update(.05f);
+            view.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+            Assert.That(rig.localPosition.z, Is.LessThan(middle));
+            animator.Update(.2f);
+            view.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+            Assert.That(rig.localPosition, Is.EqualTo(Vector3.zero));
+            animator.CrossFadeInFixedTime("Base Layer.Cat_Ride", .2f, 0, 0f);
+            animator.Update(.05f);
+            view.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+            Assert.That(rig.localPosition.z, Is.InRange(.001f, .097f));
+            animator.Update(.2f);
+            view.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+            Assert.That(rig.localPosition.z, Is.EqualTo(.0983f));
+            Assert.That(view.GetComponentInChildren<Animator>(true), Is.SameAs(animator));
+        }
+
+        [TestCase("absent")]
+        [TestCase("missing-ride")]
+        [TestCase("changed-idle")]
+        [TestCase("foreign-base")]
+        public void OpenCarriageOverrideRejectsPartialOrOutOfScopeChanges(string defect)
+        {
+            RequireLocalSource();
+            var installed = Resources.Load<AnimatorOverrideController>(CatRigPresentation.OpenCarriageControllerResourcePath);
+            Assert.That(installed, Is.Not.Null, "generate the owned carriage override before validating admission");
+            var baseline = Resources.Load<RuntimeAnimatorController>(CatRigPresentation.ControllerResourcePath);
+            var clone = Object.Instantiate(installed);
+            try
+            {
+                var method = typeof(CatRigPresentation).GetMethod("HasOpenCarriageClips",
+                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+                Assert.That(method, Is.Not.Null);
+                Assert.That((bool)method.Invoke(null, new object[] { clone, baseline, null }), Is.True,
+                    "an unchanged candidate is the positive control before corrupting only a disposable override");
+                var pairs = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<AnimationClip, AnimationClip>>();
+                clone.GetOverrides(pairs);
+                if (defect == "missing-ride") clone["Cat_Ride"] = null;
+                if (defect == "changed-idle") clone["Cat_IdleSit"] = pairs.Single(p => p.Key.name == "Cat_Ride").Value;
+                RuntimeAnimatorController expectedBase = defect == "foreign-base"
+                    ? _source.GetComponentInChildren<Animator>().runtimeAnimatorController : baseline;
+                Assert.That((bool)method.Invoke(null, new object[] { defect == "absent" ? null : clone, expectedBase, null }), Is.False);
+                Assert.That(Resources.Load<AnimatorOverrideController>(CatRigPresentation.OpenCarriageControllerResourcePath), Is.SameAs(installed));
+            }
+            finally { Object.DestroyImmediate(clone); }
+        }
+
+        private ToyTrainView CreateSeatTrain(bool original, out Animator animator, out Transform rig)
+        {
+            GameObject prefab = Resources.Load<GameObject>(CarriageModelCatalog.ResourcePath);
+            Assert.That(prefab, Is.Not.Null, "import the actual owned open carriage for this integration test");
+            var view = ToyTrainView.Create(_host.transform, original ? "original-seat" : "prior-fallback", new[] { 0 }, new[] { 1 },
+                CatModelCatalog.LoadResources(), original ? new CarriageModelCatalog(prefab) : CarriageModelCatalog.Empty);
+            Assert.That(view.OriginalCarriageAdmitted, Is.EqualTo(original), view.CarriageFallbackReason);
+            view.SyncSlot(42, CatColor.Red);
+            animator = view.GetComponentInChildren<Animator>(true);
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            animator.Rebind();
+            rig = animator.transform;
+            while (rig.parent != view.transform.Find("Carriage/Cat")) rig = rig.parent;
             return view;
         }
 

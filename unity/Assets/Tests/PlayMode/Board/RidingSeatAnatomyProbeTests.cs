@@ -89,7 +89,9 @@ namespace CatMetro.Tests.PlayMode
             var rigPresentation = animator.GetComponent<CatRigPresentation>();
             Assert.That(rigPresentation, Is.Not.Null);
             Assert.That(rigPresentation.AuthoredMotionInstalled, Is.True);
-            animator.Rebind(); animator.Update(0f); animator.enabled = false;
+            animator.Rebind(); animator.Update(0f);
+            EstablishActualRide(train, animator);
+            animator.enabled = false;
             var skin = animator.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single();
             _sampledSkin = skin;
             _previousForceMatrices = skin.forceMatrixRecalculationPerRender;
@@ -126,6 +128,8 @@ namespace CatMetro.Tests.PlayMode
                 vertexCount = vertices.Length, weightCount = weights.Length,
                 rendererQuality = skin.quality.ToString(), globalSkinWeights = QualitySettings.skinWeights.ToString(),
                 effectiveInfluenceLimit = EffectiveInfluenceLimit(skin),
+                productionRideWrapperOffset = Vec(baselineOffset),
+                openCarriageMotionInstalled = rigPresentation.OpenCarriageMotionInstalled,
                 forceMatricesForSynchronousRender = skin.forceMatrixRecalculationPerRender,
                 sourceFbx = UnityEditor.AssetDatabase.GetAssetPath(sourceMesh),
                 anatomy = Enumerable.Range(1, Regions.Length - 1).Select(r => new {
@@ -271,7 +275,8 @@ namespace CatMetro.Tests.PlayMode
                         string file = name + "-offsets-0-100-130mm.png";
                         File.WriteAllBytes(Path.Combine(_directory, file),
                             CaptureRig.EncodeOpaqueSrgbPng(sheets[view]));
-                        _evidence.Add(new { kind = "beauty-comparison", file, clip = spec.Item1.name, poseContext });
+                        _evidence.Add(new { kind = "beauty-comparison", file, clip = spec.Item1.name, poseContext,
+                            baselineWrapperOffset = Vec(baselineOffset), additionalDownOffsets = new[] { 0f, .10f, .13f } });
                         Object.DestroyImmediate(sheets[view]);
                     }
                 }
@@ -307,7 +312,19 @@ namespace CatMetro.Tests.PlayMode
             _root.View.UpdateFrom(_root.Session, 0f);
             _root.View.UpdateFrom(_root.Session, 2f);
             var train = _root.View.transform.Find("train:0").GetComponent<ToyTrainView>();
-            train.ApplyPresentation(CatPresentationState.RideIdle, 0f, true);
+            EstablishActualRide(train, train.GetComponentInChildren<Animator>(true));
+        }
+        private static void EstablishActualRide(ToyTrainView train, Animator animator)
+        {
+            Assert.That(animator, Is.Not.Null, "actual admitted rider before freezing the capture");
+            train.ApplyPresentation(CatPresentationState.RideIdle, 0f, false);
+            // A fixture Rebind resets Animator independently of ToyTrainView's state cache.
+            // Evaluate the actual controller's Ride, then let production LateUpdate establish
+            // its wrapper depth before direct pose samples freeze that presentation context.
+            animator.Play("Base Layer.Cat_Ride", 0, 0f);
+            animator.Update(0f);
+            train.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+            Assert.That(animator.GetCurrentAnimatorStateInfo(0).IsName("Base Layer.Cat_Ride"), Is.True);
         }
         private static void Sample(AnimationClip clip, float seconds, Animator animator, CatRigPresentation presentation)
         { clip.SampleAnimation(animator.gameObject, seconds); presentation.ApplyHeadShape(); }

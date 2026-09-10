@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace CatMetro.Presentation.Cats
@@ -8,6 +9,7 @@ namespace CatMetro.Presentation.Cats
     public sealed class CatRigPresentation : MonoBehaviour
     {
         public const string ControllerResourcePath = "CatMotion/BoardCatMotionController";
+        public const string OpenCarriageControllerResourcePath = "CatMotion/OpenCarriage/OpenCarriageMotion";
         public const string RideClip = "Cat_Ride";
         public const string WeightedHeadPath = "Armature/tripo::Root/tripo::Head_0/tripo::Head_1";
         public const float HeadScale = 1.28f;
@@ -16,12 +18,63 @@ namespace CatMetro.Presentation.Cats
             { "Cat_IdleSit", "Cat_Walk", "Cat_Board", "Cat_Alight", "Cat_Celebrate", "Cat_Ride" };
         private Animator _animator;
         private RuntimeAnimatorController _authoredController;
+        private AnimatorOverrideController _openCarriageController;
 
         public Transform HeadTransform { get; private set; }
         public Vector3 SourceHeadScale { get; private set; }
         public AnimationClip IdleClip { get; private set; }
         public bool AuthoredMotionInstalled => _authoredController != null
             && (_animator == null || _animator.runtimeAnimatorController == _authoredController);
+        public bool OpenCarriageMotionInstalled => _openCarriageController != null && AuthoredMotionInstalled;
+
+        // Board creation calls this only after admitting the actual open carriage. Profiles
+        // and fallback vehicles retain the shared base controller and its original six clips.
+        public bool TryUseOpenCarriageMotion()
+        {
+            if (OpenCarriageMotionInstalled) return true;
+            if (!AuthoredMotionInstalled || _animator == null) return false;
+            var candidate = Resources.Load<AnimatorOverrideController>(OpenCarriageControllerResourcePath);
+            if (!HasOpenCarriageClips(candidate, _authoredController, out AnimationClip idle)) return false;
+            _openCarriageController = candidate;
+            _authoredController = candidate;
+            IdleClip = idle;
+            _animator.runtimeAnimatorController = candidate;
+            ApplyHeadShape();
+            return true;
+        }
+
+        private static bool HasOpenCarriageClips(AnimatorOverrideController candidate,
+            RuntimeAnimatorController baseline, out AnimationClip idle)
+        {
+            idle = null;
+            if (candidate == null || baseline == null || candidate.runtimeAnimatorController != baseline
+                || !HasExpectedClips(candidate, baseline, out idle)) return false;
+            var overrides = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+            candidate.GetOverrides(overrides);
+            if (overrides.Count != RequiredClips.Length) return false;
+            foreach (AnimationClip original in baseline.animationClips)
+            {
+                int matches = 0;
+                foreach (var pair in overrides)
+                {
+                    if (pair.Key != original) continue;
+                    matches++;
+                    bool replaced = original.name == "Cat_Ride" || original.name == "Cat_Board" || original.name == "Cat_Alight";
+                    if (!replaced)
+                    {
+                        if (pair.Value != null && pair.Value != original) return false;
+                        continue;
+                    }
+                    AnimationClip replacement = Resources.Load<AnimationClip>("CatMotion/OpenCarriage/" + original.name);
+                    if (replacement == null || pair.Value != replacement || replacement == original
+                        || replacement.name != original.name || replacement.empty || replacement.hasRootCurves
+                        || replacement.events.Length != 0 || Mathf.Abs(replacement.length - original.length) > .00001f)
+                        return false;
+                }
+                if (matches != 1) return false;
+            }
+            return true;
+        }
 
         // Called only after CatModelCatalog has admitted the original prefab. Resource identity
         // plus direct Head_1 skin weights keep synthetic/adapted rigs on their existing path.
