@@ -232,7 +232,7 @@ namespace CatMetro.Tests.PlayMode
             for (int i = 0; i < 4; i++) yield return null;
             Assert.That(_root.Home.IsVisible, Is.True);
             Assert.That(_root.Input.Regions.IsRegistered(RegionId), Is.False);
-            Assert.That(Count("rewind_applied"), Is.Zero);
+            Assert.That(Count("rewind_used"), Is.Zero);
         }
 
         [UnityTest]

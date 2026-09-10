@@ -59,10 +59,20 @@ namespace CatMetro.Tests.PlayMode
 
         private IEnumerator Play()
         {
+            // C's boot cover uses real unscaled time; settling the press clock alone cannot
+            // remove it from the phone capture. The Home stack holds the puzzle at tick zero.
+            yield return new WaitForSecondsRealtime(.35f);
+            Assert.That(_root.Session.State.Tick, Is.Zero);
             _root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center);
+            _root.Input.GetComponent<BoardFx>()?.Advance(.14f);
+            Assert.That(_root.Intro.IsVisible, Is.True,
+                "the real Home press must complete before the intro's Play target is tapped");
             Assert.That(_root.Input.Regions.IsRegistered("game.pause"), Is.False,
                 "the gameplay pin cannot steal an intro tap");
             _root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center);
+            _root.Input.GetComponent<BoardFx>()?.Advance(.14f);
+            Assert.That(_root.Intro.IsVisible, Is.False);
+            Assert.That(_root.ScreensVisible, Is.False);
             yield return null;
         }
 

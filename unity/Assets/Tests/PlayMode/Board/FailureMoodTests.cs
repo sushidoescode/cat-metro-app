@@ -94,6 +94,177 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(_root.Cam.GetUniversalAdditionalCameraData().renderPostProcessing, Is.EqualTo(previous));
         }
 
+        [UnityTest]
+        public IEnumerator FailureMood_OutlastsEarlierRejection_AndRetryRestoresIdlePostProcessing(
+            [Values(false, true)] bool idlePostProcessing)
+        {
+            // L009 produces a real wrong-station arrival through the simulation. The timeout
+            // immediately afterwards is a constructed edge, observed by GameRoot.Update,
+            // so the test does not call either effect's Pulse/Show/Restore implementation.
+            Object.DestroyImmediate(_root.gameObject);
+            _root = GameRoot.LaunchWith(BoardFeedbackTests.Level());
+            _root.MotionOffToggle = false;
+            yield return null;
+            Assert.That(_root.ScreenState, Is.EqualTo("Playing"));
+            Assert.That(_root.MotionOff, Is.False, "both effects must use their animated paths");
+
+            var camera = _root.Cam;
+            var data = camera.GetUniversalAdditionalCameraData();
+            var previousTarget = camera.targetTexture;
+            var previousActive = RenderTexture.active;
+            float previousAspect = camera.aspect;
+            var target = new RenderTexture(917, 2048, 24) { antiAliasing = 4 };
+            string directory = System.Environment.GetEnvironmentVariable("CM_REJECTION_FAILURE_CAPTURE_DIR");
+            string mode = idlePostProcessing ? "idle-post-on" : "idle-post-off";
+            try
+            {
+                camera.targetTexture = target;
+                camera.aspect = 917f / 2048f;
+                Canvas.ForceUpdateCanvases();
+                CatMetro.Presentation.Board.BoardSceneLook.FitCamera(camera, _root.View);
+                _root.CauseCam.CapturePlayPose(-_root.View.transform.forward);
+                data.renderPostProcessing = idlePostProcessing;
+                Color[] idle = RenderCombinedMoodColourField(camera);
+                CaptureCombinedMoodPhone(directory, mode + "-playing", target);
+
+                BoardFeedbackTests.ReachFirstRejection(_root);
+                Assert.That(_root.Session.State.Outcome.Kind, Is.EqualTo(OutcomeKind.Running),
+                    "the rejection must precede the constructed failure");
+                var rejection = _root.View.GetComponentsInChildren<Volume>(true)
+                    .Single(v => v.sharedProfile != null
+                        && v.sharedProfile.name == "Board rejection (runtime)");
+                _root.View.Fx.Advance(.1f);
+                Assert.That(rejection.weight, Is.GreaterThan(0f),
+                    "positive control: the real rejection feedback is still active");
+                Assert.That(data.renderPostProcessing, Is.True);
+                CaptureCombinedMoodPhone(directory, mode + "-rejection-100ms", target);
+
+                Fail();
+                var failure = Mood();
+                Assert.That(failure.weight, Is.EqualTo(1f));
+                AssertMood(failure, 0f, .25f);
+                var failureFx = _root.CauseCam.GetComponent<BoardFx>();
+                Assert.That(failureFx, Is.Not.Null);
+                _root.Preview.BindScreenState(() => _root.ScreenState);
+                // Fix only the framing at the real attributed endpoint. The mood still
+                // advances on its production BoardFx clock with motion enabled.
+                int causal = CatMetro.Application.Retry.CauseAttribution.CausalNode(_root.Session.State);
+                if (causal >= 0)
+                    _root.CauseCam.FrameNode(_root.View.NodeId(causal),
+                        _root.View.NodeWorldPos(causal), true);
+                CaptureCombinedMoodPhone(directory, mode + "-failure-000ms", target, 0f);
+
+                _root.View.Fx.Advance(.175f);
+                failureFx.Advance(.175f);
+                CaptureCombinedMoodPhone(directory, mode + "-failure-175ms", target, .175f);
+                _root.View.Fx.Advance(.175f); // 450 ms since rejection; its 400 ms pulse is over.
+                failureFx.Advance(.175f);
+                Assert.That(rejection.weight, Is.Zero);
+                AssertMood(failure, -35f, .45f);
+                bool postAfterRejection = data.renderPostProcessing;
+                float failureWeightAfterRejection = failure.weight;
+                Color[] failed = RenderCombinedMoodColourField(camera);
+                // Save the actual potentially broken frame before asserting, so a red run
+                // retains evidence. No camera post-processing flag is repaired for capture.
+                CaptureCombinedMoodPhone(directory, mode + "-failure-350ms-after-rejection", target, .35f);
+
+                _root.Retry();
+                _root.GetComponent<ScreenChromeController>().Transition.Advance(.22f, false);
+                bool postAfterRetry = data.renderPostProcessing;
+                Color[] retried = RenderCombinedMoodColourField(camera);
+                CaptureCombinedMoodPhone(directory, mode + "-retry", target);
+                TestContext.Out.WriteLine($"REJECTION_FAILURE idlePost={idlePostProcessing} "
+                    + $"failurePost={postAfterRejection} retryPost={postAfterRetry} "
+                    + $"failureWeight={failureWeightAfterRejection:F3} "
+                    + $"idleChroma={Chroma(idle[0]):F5} failedChroma={Chroma(failed[0]):F5} "
+                    + $"retryChroma={Chroma(retried[0]):F5} "
+                    + $"idleCornerRatio={idle[1].grayscale / idle[0].grayscale:F5} "
+                    + $"failedCornerRatio={failed[1].grayscale / failed[0].grayscale:F5}");
+                Assert.That(postAfterRejection, Is.True,
+                    "an expired rejection must not disable the active failure mood");
+                Assert.That(failureWeightAfterRejection, Is.EqualTo(1f));
+                Assert.That(Chroma(failed[0]), Is.LessThan(Chroma(idle[0]) * .85f),
+                    "the actual failure pixel must remain desaturated after rejection expires");
+                Assert.That(failed[1].grayscale / failed[0].grayscale,
+                    Is.LessThan(idle[1].grayscale / idle[0].grayscale * .9f),
+                    "the actual failure corner must remain shaded after rejection expires");
+                Assert.That(_root.ScreenState, Is.EqualTo("Playing"));
+                Assert.That(failure.weight, Is.Zero);
+                Assert.That(postAfterRetry, Is.EqualTo(idlePostProcessing),
+                    "Retry must restore the original idle path, not the earlier pulse's temporary true flag");
+                Assert.That(Chroma(retried[0]), Is.EqualTo(Chroma(idle[0])).Within(.01f));
+                Assert.That(retried[1].grayscale / retried[0].grayscale,
+                    Is.EqualTo(idle[1].grayscale / idle[0].grayscale).Within(.02f));
+            }
+            finally
+            {
+                camera.targetTexture = previousTarget;
+                camera.aspect = previousAspect;
+                RenderTexture.active = previousActive;
+                target.Release();
+                Object.DestroyImmediate(target);
+            }
+        }
+
+        private Color[] RenderCombinedMoodColourField(Camera camera)
+        {
+            int mask = camera.cullingMask;
+            var flags = camera.clearFlags;
+            var background = camera.backgroundColor;
+            var canvases = _root.GetComponentsInChildren<Canvas>(true);
+            var enabled = canvases.Select(canvas => canvas.enabled).ToArray();
+            try
+            {
+                camera.cullingMask = 0;
+                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.backgroundColor = new Color(.8f, .2f, .1f);
+                foreach (var canvas in canvases) canvas.enabled = false;
+                return RenderColourField(camera);
+            }
+            finally
+            {
+                camera.cullingMask = mask;
+                camera.clearFlags = flags;
+                camera.backgroundColor = background;
+                for (int i = 0; i < canvases.Length; i++) canvases[i].enabled = enabled[i];
+            }
+        }
+
+        private void CaptureCombinedMoodPhone(string directory, string name,
+            RenderTexture target, float failureElapsed = -1f)
+        {
+            if (string.IsNullOrEmpty(directory)) return;
+            var camera = _root.Cam;
+            var active = RenderTexture.active;
+            var pixels = new Texture2D(target.width, target.height, TextureFormat.RGB24, false);
+            try
+            {
+                var safe = new Rect(0f, 64f, 917f, 1920f);
+                Canvas.ForceUpdateCanvases();
+                _root.Preview.LayoutForViewport(safe, 408f);
+                _root.Banner.LayoutForViewport(safe, 408f);
+                _root.GetComponent<ScreenChromeController>().Cta.LayoutForViewport(safe, 408f);
+                if (failureElapsed >= 0f) _root.Banner.SamplePresentation(failureElapsed);
+                Canvas.ForceUpdateCanvases();
+                camera.Render();
+                RenderTexture.active = target;
+                pixels.ReadPixels(new Rect(0, 0, target.width, target.height), 0, 0);
+                pixels.Apply();
+                Directory.CreateDirectory(directory);
+                string path = Path.Combine(directory, "combined-" + name + "-917x2048.png");
+                File.WriteAllBytes(path, pixels.EncodeToPNG());
+                TestContext.Out.WriteLine($"REJECTION_FAILURE_CAPTURE file={path} "
+                    + $"screen={_root.ScreenState} tick={_root.Session.State.Tick} "
+                    + $"post={camera.GetUniversalAdditionalCameraData().renderPostProcessing} "
+                    + $"admitted={CatMetro.Presentation.Cats.CatModelCatalog.LoadResources().AdmittedEntryCount}");
+            }
+            finally
+            {
+                RenderTexture.active = active;
+                Object.DestroyImmediate(pixels);
+            }
+        }
+
         [Test]
         public void MotionOffDuringFailure_SettlesTheMoodWithoutWaiting()
         {
