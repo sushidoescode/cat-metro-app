@@ -64,6 +64,19 @@ namespace CatMetro.Tests.PlayMode
             return imported.Value;
         }
 
+        private void EnterGameplayWithMotion()
+        {
+            _root.MotionOffToggle = false;
+            _root.AnimatorDurationScale = 1f;
+            Assert.That(_root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center), Is.EqualTo(-3));
+            var fx = _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>();
+            fx.Advance(.14f);
+            Assert.That(_root.Intro.IsVisible, Is.True, "finish the Home press before tapping Play");
+            Assert.That(_root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center), Is.EqualTo(-3));
+            fx.Advance(.14f);
+            Assert.That(_root.ScreensVisible, Is.False, "the Play action must finish before forcing an outcome");
+        }
+
         [TestCase("L001")]
         [TestCase("L005")]
         [TestCase("L009")]
@@ -131,15 +144,18 @@ namespace CatMetro.Tests.PlayMode
         {
             _root = GameRoot.Launch();
             yield return null;
-            _root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center);
-            _root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center);
+            EnterGameplayWithMotion();
             _root.Session.State.Outcome = SimOutcome.Won;
             yield return null;
             yield return null;
             var point = _root.GetComponent<ResultsPanel>().ChipPaintedRectPx.center;
-            _root.Input.HandleTapAtScreen(point);
+            Assert.That(_root.Input.HandleTapAtScreen(point), Is.EqualTo(-3));
             Assert.That(_root.CurrentLevelId, Is.EqualTo("L001"), "cover the old board first");
             var veil = _root.GetComponent<ScreenChromeController>().Transition;
+            Assert.That(veil.IsInFlight, Is.False, "the Next press finishes before the cover starts");
+            Assert.That(_root.Input.HandleTapAtScreen(point), Is.EqualTo(-3),
+                "a repeated tap during the pending press is consumed");
+            _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>().Advance(.14f);
             Assert.That(veil.IsInFlight, Is.True);
             _root.Input.HandleTapAtScreen(point);
             veil.Advance(.22f, false);
@@ -180,8 +196,7 @@ namespace CatMetro.Tests.PlayMode
         {
             _root = GameRoot.Launch();
             yield return null;
-            _root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center);
-            _root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center);
+            EnterGameplayWithMotion();
             _root.Session.State.Outcome = SimOutcome.MakeFailed(FailReason.TimeOut);
             yield return null;
             yield return null;

@@ -286,8 +286,11 @@ namespace CatMetro.Tests.PlayMode
                 Resources.Load<TextAsset>("Monetization/product_catalog").text),
                 new NullPurchaseBackend(), () => 1_700_000_000L, ledger));
             _root = GameRoot.Launch();
-            yield return null;
-            _root.Wardrobe.OpenRequested.Invoke();
+            yield return new WaitForSecondsRealtime(.35f); // Settle the real cold-boot cover.
+            Assert.That(_root.Input.HandleTapAtScreen(_root.Wardrobe.EntryRectPx.center), Is.EqualTo(-3));
+            var pressFx = _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>();
+            pressFx.Advance(.14f);
+            Assert.That(_root.Stack.Current, Is.EqualTo("wardrobe"));
             yield return null;
             Camera camera = _root.Cam;
             var previousTarget = camera.targetTexture;
@@ -305,6 +308,7 @@ namespace CatMetro.Tests.PlayMode
                     CaptureWidth, CaptureHeight);
                 Canvas.ForceUpdateCanvases();
                 ProfileRigMount rig = _root.Wardrobe.ProfileRig;
+                CaptureBound(camera, target, dir, "wardrobe-entry-first-frame-917x2048.png");
                 Assert.That(rig.CatalogAdmittedEntryCount, Is.EqualTo(1),
                     "armed Wardrobe evidence requires the licensed resource in the main checkout");
                 Assert.That(rig.Mounted, Is.True, rig.FallbackReason);
@@ -333,7 +337,8 @@ namespace CatMetro.Tests.PlayMode
 
                 var frameTab = _root.Wardrobe.GetComponentsInChildren<RectTransform>(true)
                     .Single(rect => rect.name == "Tab-frame");
-                _root.Input.HandleTapAtScreen(ProjectedScreenRect(frameTab, camera).center);
+                Assert.That(_root.Input.HandleTapAtScreen(ProjectedScreenRect(frameTab, camera).center), Is.EqualTo(-3));
+                pressFx.Advance(.14f);
                 yield return null;
                 ApplyLayout(_root.Wardrobe, CaptureSafeArea, CaptureDpi,
                     CaptureWidth, CaptureHeight);
@@ -345,7 +350,8 @@ namespace CatMetro.Tests.PlayMode
 
                 var blue = _root.Wardrobe.GetComponentsInChildren<RectTransform>(true)
                     .Single(rect => rect.name == "CatSelector-blue_siamese");
-                _root.Input.HandleTapAtScreen(ProjectedScreenRect(blue, camera).center);
+                Assert.That(_root.Input.HandleTapAtScreen(ProjectedScreenRect(blue, camera).center), Is.EqualTo(-3));
+                pressFx.Advance(.14f);
                 yield return null;
                 ApplyLayout(_root.Wardrobe, CaptureSafeArea, CaptureDpi,
                     CaptureWidth, CaptureHeight);
