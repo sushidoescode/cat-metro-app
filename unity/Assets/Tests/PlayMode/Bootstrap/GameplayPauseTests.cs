@@ -109,6 +109,10 @@ namespace CatMetro.Tests.PlayMode
             yield return Play();
             _root.MotionOffToggle = true;
             var point = (Vector2)_root.Cam.WorldToScreenPoint(_root.View.SwitchWorldPos(0));
+            // Use the upper part of the switch's hit target: its centre sits underneath
+            // Resume at the editor's 640x480 viewport. The positive control below proves
+            // this point still hits the real switch before the sheet covers it.
+            point += Vector2.up * (TapInput.HIT_DIAMETER_DP * HudBands.PxPerDp(Screen.dpi) * .375f);
             Assert.That(_root.Input.HandleTapAtScreen(point), Is.EqualTo(0), "positive control");
             var session = _root.Session;
             int tick = session.State.Tick, commands = session.Log.Entries.Count;
@@ -118,6 +122,7 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(session.State.Tick, Is.EqualTo(tick), "pause closes the real simulation gate");
             Assert.That(_root.Input.HandleTapAtScreen(point), Is.EqualTo(-3), "the sheet consumes board taps");
             Assert.That(session.Log.Entries.Count, Is.EqualTo(commands));
+            Assert.That(_root.Stack.Current, Is.EqualTo("pause"), "the covered switch tap must not resume");
             TapLabel("Resume");
             Assert.That(_root.ScreensVisible, Is.False, "MotionOff closes the sheet immediately");
             Assert.That(_root.Session, Is.SameAs(session), "Resume must not restart a run");

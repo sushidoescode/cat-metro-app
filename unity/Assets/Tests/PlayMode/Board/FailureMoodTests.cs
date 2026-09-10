@@ -168,10 +168,20 @@ namespace CatMetro.Tests.PlayMode
                 // retains evidence. No camera post-processing flag is repaired for capture.
                 CaptureCombinedMoodPhone(directory, mode + "-failure-350ms-after-rejection", target, .35f);
 
+                var oldBoard = _root.View;
+                var oldPreview = _root.Preview;
                 _root.Retry();
                 _root.GetComponent<ScreenChromeController>().Transition.Advance(.22f, false);
                 bool postAfterRetry = data.renderPostProcessing;
                 Color[] retried = RenderCombinedMoodColourField(camera);
+                // Keep the immediate effect samples above. A real frame releases the old
+                // board/preview and lets Chrome.Update and Preview.LateUpdate paint Playing.
+                yield return null;
+                Assert.That(oldBoard == null, Is.True, "the prior board must leave the retry frame");
+                Assert.That(oldPreview == null, Is.True, "the prior preview must leave the retry frame");
+                Assert.That(_root.GetComponent<ScreenChromeController>().Cta.IsVisible, Is.False);
+                Assert.That(_root.Preview.IsVisible, Is.True);
+                Assert.That(_root.Session.State.Tick, Is.Zero, "the fixture freezes simulation during capture");
                 CaptureCombinedMoodPhone(directory, mode + "-retry", target);
                 TestContext.Out.WriteLine($"REJECTION_FAILURE idlePost={idlePostProcessing} "
                     + $"failurePost={postAfterRejection} retryPost={postAfterRetry} "
