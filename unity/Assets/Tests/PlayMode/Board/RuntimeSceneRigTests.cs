@@ -81,6 +81,15 @@ namespace CatMetro.Tests.PlayMode
                     Is.EqualTo(root.Session.Level.Dto.Stations.Length * 2
                         + root.Session.Level.Dto.Sources.Length + 11),
                     "the furnished licensed install exercises the full wide prop layout");
+            else if (localCatalog.AdmittedEntryCount == 1)
+            {
+                var original = Resources.Load<GameObject>(PropModelCatalog.OriginalStationResourcePath);
+                Assert.That(original, Is.Not.Null, "the only independent prop is the original station");
+                Assert.That(localCatalog.TryGet(PropModelCatalog.StationKioskId, out var stationEntry), Is.True);
+                Assert.That(stationEntry.Prefab, Is.SameAs(original));
+                Assert.That(props.Length, Is.EqualTo(root.Session.Level.Dto.Stations.Length));
+                Assert.That(props.All(prop => prop.AssetId == PropModelCatalog.StationKioskId), Is.True);
+            }
             else Assert.That(props.Length, Is.Zero,
                 "a licence-neutral checkout uses the primitive fallback atomically");
             // The law is split. A prop that stands in for a board element the player has to

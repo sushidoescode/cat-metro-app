@@ -77,6 +77,79 @@ namespace CatMetro.Tests.PlayMode
                 "a grey/atlasless kiosk must leave the project-owned station visible");
         }
 
+        [TestCase("four-lines")]
+        [TestCase("wild")]
+        [TestCase("multi-accept")]
+        [TestCase("authored-shape")]
+        public void OriginalStation_TintsOnlyItsRoof_AndPreservesEveryLiveBadge(string fixture)
+        {
+            var level = fixture == "authored-shape" ? ImportLevel("L060")
+                : Import(fixture == "multi-accept" ? MultiAcceptJson()
+                    : fixture == "wild" ? FourLineJson().Replace("\"green\"", "\"wild\"")
+                    : FourLineJson());
+            var view = BuildBoard(level);
+            var badges = view.GetComponentsInChildren<Renderer>(true)
+                .Where(renderer => renderer.name.StartsWith("station:plate-")
+                    || renderer.name.StartsWith("station:keyline-")
+                    || renderer.name.StartsWith("station:signmast-"))
+                .ToArray();
+            Assert.That(badges.Length, Is.GreaterThan(0), "pre-decoration badge positive control");
+            var meshes = badges.Select(renderer => renderer.GetComponent<MeshFilter>().sharedMesh).ToArray();
+            var positions = badges.Select(renderer => renderer.transform.localPosition).ToArray();
+            var rotations = badges.Select(renderer => renderer.transform.localRotation).ToArray();
+            var scales = badges.Select(renderer => renderer.transform.localScale).ToArray();
+            var materials = badges.Select(renderer => renderer.sharedMaterial).ToArray();
+            var colours = badges.Select(PropertyColor).ToArray();
+
+            var prefab = MultipartRenderPrefab("OriginalStation", 2);
+            prefab.transform.GetChild(0).name = "Body";
+            prefab.transform.GetChild(1).name = "RoofTint";
+            prefab.transform.GetChild(1).localPosition = new Vector3(0f, 1.5f, 0f);
+            Material atlasMaterial = prefab.transform.GetChild(0).GetComponent<Renderer>().sharedMaterial;
+            Color originalMaterialColour = atlasMaterial.color;
+            var catalog = new PropModelCatalog(new[] { Entry(PropModelCatalog.StationKioskId, prefab) });
+            Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(1), "original render-only admission");
+
+            BoardPropDecorator.Decorate(level, view.transform, catalog);
+
+            foreach (var kiosk in Kiosks(view).Values)
+            {
+                Assert.That(kiosk.transform.Find("station:line-roof"), Is.Null,
+                    "the original roof replaces the old box canopy");
+                Assert.That(kiosk.transform.Find("station:wood-base"), Is.Null,
+                    "the original platform replaces the old box platform");
+                var body = kiosk.transform.Find("Model/Body").GetComponent<Renderer>();
+                var roof = kiosk.transform.Find("Model/RoofTint").GetComponent<Renderer>();
+                Assert.That(body.sharedMaterial, Is.SameAs(atlasMaterial));
+                Assert.That(roof.sharedMaterial, Is.SameAs(atlasMaterial),
+                    "roof tint must retain its UV texture binding");
+                var bodyProperties = new MaterialPropertyBlock();
+                body.GetPropertyBlock(bodyProperties);
+                Assert.That(bodyProperties.isEmpty, Is.True,
+                    "cream, wood, window, and navy body colours must not inherit the route tint");
+                Assert.That(Vector4.Distance(PropertyColor(roof), CatLine.ColorOf(LineOf(level, kiosk.AnchorId))),
+                    Is.LessThan(.0001f), kiosk.AnchorId + " route colour on the authored roof");
+            }
+            Assert.That(atlasMaterial.color, Is.EqualTo(originalMaterialColour),
+                "one station cannot repaint the shared atlas material for every other station");
+            for (int i = 0; i < badges.Length; i++)
+            {
+                Assert.That(badges[i].enabled, Is.True, badges[i].name);
+                Assert.That(badges[i].GetComponent<MeshFilter>().sharedMesh, Is.SameAs(meshes[i]));
+                Assert.That(badges[i].transform.localPosition, Is.EqualTo(positions[i]));
+                Assert.That(badges[i].transform.localRotation, Is.EqualTo(rotations[i]));
+                Assert.That(badges[i].transform.localScale, Is.EqualTo(scales[i]));
+                Assert.That(badges[i].sharedMaterial, Is.SameAs(materials[i]));
+                Assert.That(PropertyColor(badges[i]), Is.EqualTo(colours[i]));
+            }
+            if (fixture == "multi-accept")
+                Assert.That(AcceptChips(Station(view, "COOL")).Length, Is.EqualTo(1));
+            if (fixture == "authored-shape")
+                Assert.That(Station(view, "BLUE_TRIANGLE").transform.Find("station:plate-generated")
+                    .GetComponent<MeshFilter>().sharedMesh,
+                    Is.SameAs(DestinationShapeMesh.ForShape(DestinationShape.Triangle)));
+        }
+
         [Test]
         public void Decorate_L001_AddsBuildingsAndScenery_WithoutChangingAuthoredInventory()
         {
@@ -1633,21 +1706,47 @@ namespace CatMetro.Tests.PlayMode
         public void LocalResources_WhenPresent_AreCompleteUrpPrefabsAndWireThroughBoardView()
         {
             var catalog = PropModelCatalog.LoadResources();
+            var original = Resources.Load<GameObject>(PropModelCatalog.OriginalStationResourcePath);
             if (catalog.AdmittedEntryCount == 0)
+            {
+                Assert.That(original, Is.Null, "an installed original station must pass admission");
                 Assert.Pass("optional paid prop bytes are absent in this licence-neutral checkout");
+            }
 
-            Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(5).Or.EqualTo(10),
-                "local installs are atomic per batch: the core five, optionally plus the"
-                + " five-piece Polyfork furnish set — never a partial batch");
-            Assert.That(catalog.RejectedEntryCount, Is.EqualTo(0));
+            bool originalOnly = catalog.AdmittedEntryCount == 1;
+            if (originalOnly)
+            {
+                Assert.That(original, Is.Not.Null, "a single admitted prop must be the original station");
+                foreach (string id in new[] { PropModelCatalog.DepotShedId, PropModelCatalog.StationKioskId,
+                    PropModelCatalog.TreesId, PropModelCatalog.DeskClutterId, PropModelCatalog.ToyEngineId }
+                    .Concat(FurnishIds))
+                    Assert.That(Resources.Load<GameObject>("CatMetroProps/" + id), Is.Null,
+                        id + ": original-only does not excuse malformed or partial legacy installs");
+                Assert.That(catalog.RejectedEntryCount, Is.EqualTo(4),
+                    "the other four absent core slots retain their existing rejection behavior");
+            }
+            else
+            {
+                Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(5).Or.EqualTo(10),
+                    "local licensed installs remain the complete core five, optionally plus all five furnish props");
+                Assert.That(catalog.RejectedEntryCount, Is.EqualTo(0));
+            }
+            if (original != null)
+            {
+                Assert.That(catalog.TryGet(PropModelCatalog.StationKioskId, out var stationEntry), Is.True);
+                Assert.That(stationEntry.Prefab, Is.SameAs(original), "the original replaces the kiosk slot");
+                Assert.That(original.GetComponentsInChildren<Renderer>(true).Length, Is.EqualTo(2));
+                Assert.That(original.transform.Find("Body"), Is.Not.Null);
+                Assert.That(original.transform.Find("RoofTint"), Is.Not.Null);
+                Assert.That(original.transform.Find("BadgeFace"), Is.Null,
+                    "the live board owns the only destination badge");
+            }
             var expectedIds = new List<string>
             {
-                PropModelCatalog.DepotShedId,
                 PropModelCatalog.StationKioskId,
-                PropModelCatalog.TreesId,
-                PropModelCatalog.DeskClutterId,
-                PropModelCatalog.ToyEngineId,
             };
+            if (!originalOnly) expectedIds.AddRange(new[] { PropModelCatalog.DepotShedId,
+                PropModelCatalog.TreesId, PropModelCatalog.DeskClutterId, PropModelCatalog.ToyEngineId });
             if (catalog.AdmittedEntryCount == 10) expectedIds.AddRange(FurnishIds);
             foreach (var id in expectedIds)
             {
@@ -1666,7 +1765,8 @@ namespace CatMetro.Tests.PlayMode
             var host = Own(new GameObject("local-resource-board-host"));
             var view = BoardView.Build(level, host.transform, new GameSession(level));
             Assert.That(view.GetComponentsInChildren<BoardPropInstance>(true).Length,
-                Is.EqualTo(catalog.AdmittedEntryCount == 10 ? 16 : 6));
+                Is.EqualTo(originalOnly ? level.Dto.Stations.Length
+                    : catalog.AdmittedEntryCount == 10 ? 16 : 6));
         }
 
         private BoardView BuildBoard(ImportedLevel level)

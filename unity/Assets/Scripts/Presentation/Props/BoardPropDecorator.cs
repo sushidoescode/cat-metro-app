@@ -266,6 +266,22 @@ namespace CatMetro.Presentation.Props
                 ? fallback.sharedMaterial.color : Color.magenta;
 
             var model = kiosk.Find("Model");
+            var authoredBody = model == null ? null : model.Find("Body");
+            var authoredRoof = model == null ? null : model.Find("RoofTint");
+            var roofRenderer = authoredRoof == null ? null : authoredRoof.GetComponent<MeshRenderer>();
+            if (authoredBody != null && authoredBody.GetComponent<MeshRenderer>() != null
+                && roofRenderer != null)
+            {
+                // The original building supplies its own platform/posts/roof. Its
+                // neutral roof UVs retain the authored atlas and take only this line's
+                // tint; all body colours and the independent live badges stay intact.
+                var properties = new MaterialPropertyBlock();
+                roofRenderer.GetPropertyBlock(properties);
+                properties.SetColor("_BaseColor", lineColor);
+                properties.SetColor("_Color", lineColor);
+                roofRenderer.SetPropertyBlock(properties);
+                return;
+            }
             Bounds bounds = LocalRendererBounds(kiosk, model);
             float baseWidth = Mathf.Clamp(bounds.size.x * 1.05f, 0.9f, 2.1f);
             float baseDepth = Mathf.Clamp(bounds.size.y * 1.05f, 0.75f, 1.7f);

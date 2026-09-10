@@ -3,8 +3,8 @@ using UnityEngine;
 
 namespace CatMetro.Presentation.Props
 {
-    // Generated prop bytes stay optional: clean/licence-neutral checkouts keep the playable
-    // primitives, while a local Resources catalog admits only the five render-only prefabs.
+    // Authored props stay optional: Resources admits render-only prefabs, including the
+    // original station, while absent entries keep their playable presentation fallback.
     public sealed class PropModelCatalog
     {
         public const string DepotShedId = "prop-depot-shed";
@@ -23,6 +23,7 @@ namespace CatMetro.Presentation.Props
         public const string TrailSignpostId = "prop-trail-signpost";
 
         private const string ResourceRoot = "CatMetroProps/";
+        public const string OriginalStationResourcePath = "CatMetroOriginal/Station";
 
         private static readonly HashSet<string> KnownIds = new HashSet<string>
         {
@@ -83,7 +84,7 @@ namespace CatMetro.Presentation.Props
             var entries = new List<Entry>
             {
                 ResourceEntry(DepotShedId, 2.05f, 270f, Vector3.zero),
-                ResourceEntry(StationKioskId, 1.45f, 270f, Vector3.zero),
+                StationResourceEntry(),
                 ResourceEntry(TreesId, 1.65f, 90f, Vector3.zero),
                 ResourceEntry(DeskClutterId, 1.7f, 90f, Vector3.zero),
                 ResourceEntry(ToyEngineId, 1.55f, 90f, Vector3.zero),
@@ -117,6 +118,19 @@ namespace CatMetro.Presentation.Props
 
         private static Entry ResourceEntry(string assetId, float scale, float yaw, Vector3 offset) =>
             new Entry(assetId, Resources.Load<GameObject>(ResourceRoot + assetId), scale, yaw, offset);
+
+        private static Entry StationResourceEntry()
+        {
+            var original = Resources.Load<GameObject>(OriginalStationResourcePath);
+            // One optional original building replaces the kiosk slot. Other prop slots
+            // keep their existing admission/rejection behavior and local provenance.
+            // Original FBX front is +Z; 180 degrees faces it toward board -Y after
+            // BoardPropDecorator's Y-up-to-board conversion. The 3.05-wide platform
+            // becomes 1.68 board units without changing any live badge geometry.
+            return original != null
+                ? new Entry(StationKioskId, original, .55f, 180f, Vector3.zero)
+                : ResourceEntry(StationKioskId, 1.45f, 270f, Vector3.zero);
+        }
 
         private static bool CanAdmit(Entry entry)
         {

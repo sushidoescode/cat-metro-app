@@ -1,0 +1,60 @@
+{
+  "verified": [
+    {
+      "file": "original-station-runtime.glb",
+      "part": "BadgeFace",
+      "triangles": 476,
+      "bounds_and_atlas_match": true
+    },
+    {
+      "file": "original-station-runtime.glb",
+      "part": "BadgePost",
+      "triangles": 188,
+      "bounds_and_atlas_match": true
+    },
+    {
+      "file": "original-station-runtime.glb",
+      "part": "Body",
+      "triangles": 6832,
+      "bounds_and_atlas_match": true
+    },
+    {
+      "file": "original-station-runtime.glb",
+      "part": "RoofTint",
+      "triangles": 504,
+      "bounds_and_atlas_match": true
+    },
+    {
+      "file": "original-station-runtime.fbx",
+      "part": "BadgeFace",
+      "triangles": 476,
+      "bounds_and_atlas_match": true
+    },
+    {
+      "file": "original-station-runtime.fbx",
+      "part": "BadgePost",
+      "triangles": 188,
+      "bounds_and_atlas_match": true
+    },
+    {
+      "file": "original-station-runtime.fbx",
+      "part": "Body",
+      "triangles": 6832,
+      "bounds_and_atlas_match": true
+    },
+    {
+      "file": "original-station-runtime.fbx",
+      "part": "RoofTint",
+      "triangles": 504,
+      "bounds_and_atlas_match": true
+    }
+  ],
+  "fbx_embedded_atlas_matches": true,
+  "roof_samples_neutral_swatch_only": true,
+  "generator_sha256": "ad27766c1629d87305eaf1358ca2b717a8324ebde8ade3c2bf1a720d319dd786",
+  "not_verified": [
+    "Unity import",
+    "URP binding",
+    "actual board rendering"
+  ]
+}
