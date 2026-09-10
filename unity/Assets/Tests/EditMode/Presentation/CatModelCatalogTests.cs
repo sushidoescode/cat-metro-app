@@ -493,6 +493,88 @@ namespace CatMetro.Tests.EditMode.Presentation
             }
         }
 
+        [Test, Timeout(600000)]
+        public void ResourcesRig_OriginalCarriageDiagonalWaitingEndpointKeepsRequiredClearance()
+        {
+            GameObject prefab = Resources.Load<GameObject>(CatModelCatalog.ResourcePath);
+            if (prefab == null)
+                Assert.Ignore("The licensed local rig is absent; run in the combined asset workspace.");
+            var catalog = new CatModelCatalog(prefab);
+            Assert.That(catalog.AdmittedEntryCount, Is.EqualTo(1), catalog.RejectionReason);
+            var host = new GameObject("original-carriage-diagonal-clearance");
+            var baked = new Mesh { name = "original-carriage-diagonal-snapshot" };
+            try
+            {
+                var view = ToyTrainView.Create(host.transform, "train:diagonal-clearance",
+                    new[] { 0 }, new[] { 1 }, catalog);
+                Assert.That(view.OriginalCarriageAdmitted, Is.True, view.CarriageFallbackReason);
+                view.SyncSlot(41L, CatColor.Red);
+                Transform carriage = view.transform.Find("Carriage");
+                Vector3 seatBoard = host.transform.InverseTransformPoint(carriage.Find("Cat").position);
+                Vector3 side = new Vector3(-1f, 1f, 0f).normalized;
+                float[] visualTimes = TimesAcrossEarRange(41u, out float maximumBobTime,
+                    out float minimumBobTime);
+                float productionGap = float.PositiveInfinity;
+                string productionLabel = string.Empty;
+                view.SetSourcePlatformAnchor(seatBoard, side, 1);
+                MeasureRigClearanceCase(view, host.transform, baked,
+                    CatPresentationState.WaitingIdle, false, side, maximumBobTime, minimumBobTime,
+                    visualTimes, "original/waiting/diagonal-source-b/lane=1",
+                    ref productionGap, ref productionLabel);
+
+                string directory = Environment.GetEnvironmentVariable("CM_ORIGINAL_CLEARANCE_PROBE_DIR");
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                    var trials = new List<object>();
+                    // The old native minimum was .020663172 at offset .704. Simply adding
+                    // the .024337 deficit ignores the queue lane's resulting yaw change.
+                    // Shift only the test's source-node argument to request trial endpoints
+                    // through the production anchor/facing path; never move the vehicle/skin.
+                    foreach (float offset in new[] { .704f, .729f, .734f, .739f, .744f, .749f })
+                    {
+                        Vector3 trialNode = seatBoard + side * (offset - ToyTrainView.PlatformSideOffset);
+                        view.SetSourcePlatformAnchor(trialNode, side, 1);
+                        Vector3 actualAnchor = host.transform.InverseTransformPoint(view.PlatformEndpointWorld);
+                        Assert.That(Vector3.Dot(actualAnchor - seatBoard, side),
+                            Is.EqualTo(offset).Within(.00001f), "trial must move by its requested normal distance");
+                        float gap = float.PositiveInfinity;
+                        string label = string.Empty;
+                        MeasureRigClearanceCase(view, host.transform, baked,
+                            CatPresentationState.WaitingIdle, false, side, maximumBobTime, minimumBobTime,
+                            visualTimes, "offset-trial/" + offset.ToString("F3",
+                                System.Globalization.CultureInfo.InvariantCulture), ref gap, ref label);
+                        var trial = new { offset, minimumGap = gap,
+                            required = ToyTrainView.PlatformEndpointClearance,
+                            margin = gap - ToyTrainView.PlatformEndpointClearance,
+                            catYaw = carriage.Find("Cat").localEulerAngles.z, sample = label };
+                        trials.Add(trial);
+                        TestContext.Out.WriteLine("ORIGINAL_CART_OFFSET_TRIAL "
+                            + Newtonsoft.Json.JsonConvert.SerializeObject(trial));
+                    }
+                    File.WriteAllText(Path.Combine(directory, "diagonal-waiting-offsets.json"),
+                        Newtonsoft.Json.JsonConvert.SerializeObject(new {
+                            productionOffset = ToyTrainView.PlatformSideOffset, productionGap,
+                            productionSample = productionLabel, sourceSide = new[] { side.x, side.y, side.z },
+                            queuePosition = 1, clip = CatModelCatalog.IdleSitClip,
+                            earSamples = visualTimes.Length, trials,
+                            limitation = "Only the previously worst diagonal waiting endpoint; the unchanged full corpus and real camera captures remain required."
+                        }, Newtonsoft.Json.Formatting.Indented));
+                }
+                TestContext.Out.WriteLine("ORIGINAL_CART_DIAGONAL_CLEARANCE offset="
+                    + ToyTrainView.PlatformSideOffset + " minimumGap=" + productionGap
+                    + " sample=" + productionLabel);
+                Assert.That(ToyTrainView.PlatformEndpointClearance, Is.GreaterThanOrEqualTo(.045f));
+                Assert.That(productionGap, Is.GreaterThanOrEqualTo(ToyTrainView.PlatformEndpointClearance),
+                    productionLabel + " must retain .045 against the actual imported carriage");
+            }
+            finally
+            {
+                Object.DestroyImmediate(baked);
+                Object.DestroyImmediate(host);
+            }
+        }
+
         [Test]
         // The 60-level corpus took 251s in the slot with the licensed rig.
         [Timeout(600000)]
