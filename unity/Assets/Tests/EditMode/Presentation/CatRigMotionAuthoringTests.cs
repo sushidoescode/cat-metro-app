@@ -132,12 +132,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             foreach (string path in new[] { Body, Head, EarA, EarB, Tail, Paw })
             {
                 Quaternion seat = SampleRotation(Clip("Cat_Ride"), 0f, path);
-                foreach (string name in new[] { "Cat_Ride", "Cat_Celebrate" })
-                {
-                    AnimationClip clip = Clip(name);
-                    AssertRotation(SampleRotation(clip, 0f, path), seat);
-                    AssertRotation(SampleRotation(clip, clip.length, path), seat);
-                }
+                AssertRotation(SampleRotation(Clip("Cat_Ride"), Clip("Cat_Ride").length, path), seat);
                 AssertRotation(SampleRotation(Clip("Cat_Board"), 0.18f, path), seat);
                 AssertRotation(SampleRotation(Clip("Cat_Alight"), 0f, path), seat);
                 AssertRotation(SampleRotation(Clip("Cat_Board"), 0f, path),
@@ -146,6 +141,10 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(Quaternion.Angle(SampleRotation(Clip("Cat_Celebrate"), 0f, Body),
                 SampleRotation(Clip("Cat_Celebrate"), 0.22f, Body)), Is.GreaterThan(3f),
                 "celebration must actually rear through the proven body control");
+            foreach (string path in new[] { Head, Tail, EarA, EarB })
+                Assert.That(Quaternion.Angle(SampleRotation(Clip("Cat_Celebrate"), 0f, path),
+                    SampleRotation(Clip("Cat_Celebrate"), 0.24f, path)), Is.GreaterThan(0.5f),
+                    "celebration retains its distinct head/tail/ear accents: " + path);
         }
 
         [Test]
@@ -179,6 +178,32 @@ namespace CatMetro.Tests.EditMode.Presentation
                 Quaternion start = SampleRotation(idle, 0f, accent.Item1);
                 Quaternion moving = SampleRotation(idle, idle.length * accent.Item2, accent.Item1);
                 Assert.That(Quaternion.Angle(start, moving), Is.InRange(.5f, 5f), accent.Item1);
+            }
+        }
+
+        [TestCase(0f)]
+        [TestCase(0.48f)]
+        public void CelebrateEndpointsMatchTheSourceNeutralPlatformPose(float time)
+        {
+            // The expected pose is captured before invoking the generator, from the original
+            // sampled idle on this rotated hierarchy; no generated clip defines the expectation.
+            _neutral.SampleAnimation(_root, 0f);
+            Transform body = _root.transform.Find(Body), head = _root.transform.Find(Head);
+            Transform tail = _root.transform.Find(Tail);
+            Quaternion neutralBody = body.rotation, neutralHead = head.rotation;
+            Quaternion raisedTail = Quaternion.AngleAxis(45f, _root.transform.forward) * tail.rotation;
+            _clips = Generate();
+            Clip("Cat_Celebrate").SampleAnimation(_root, time);
+            AssertRotation(body.rotation, neutralBody);
+            AssertRotation(head.rotation, neutralHead);
+            AssertRotation(tail.rotation, raisedTail);
+            // These platform-facing body/head endpoints must agree as well. Ride keeps its
+            // distinct carriage seat; the original provider walk is referenced unchanged.
+            foreach (var endpoint in new[] { ("Cat_IdleSit", 0f), ("Cat_Board", 0f), ("Cat_Alight", 0.18f) })
+            {
+                Clip(endpoint.Item1).SampleAnimation(_root, endpoint.Item2);
+                AssertRotation(body.rotation, neutralBody);
+                AssertRotation(head.rotation, neutralHead);
             }
         }
 
