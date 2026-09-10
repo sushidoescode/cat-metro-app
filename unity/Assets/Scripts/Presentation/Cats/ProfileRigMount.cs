@@ -55,6 +55,9 @@ namespace CatMetro.Presentation.Cats
         private float _idleTime;
         private Vector2 _cosmeticHeadCenter;
         private Vector3 _cosmeticBasePosition;
+        private Mesh _fitBuffer;
+        private readonly List<Vector3> _fitVertices = new List<Vector3>();
+        private readonly List<Vector3> _fitPoints = new List<Vector3>();
 
         public float TurntableAmplitude { get; set; }
         private float _turntableTime;
@@ -328,7 +331,94 @@ namespace CatMetro.Presentation.Cats
             _fit.localScale = new Vector3(scale, scale, scale * CanvasDepthScale);
             _fit.anchoredPosition3D = new Vector3(0f, -0.5f * scale,
                 -shortSide * CanvasLift);
+            bool authored = _rigPresentation != null && _rigPresentation.AuthoredMotionInstalled;
+            if (authored) _rigPresentation.SampleIdle(0f);
+            _facing.localRotation = Quaternion.Euler(0f, _entry.FacingYaw + _surfaceFacingYaw, 0f);
+            bool fitted;
+            try { fitted = TryFitFullSkin(); }
+            finally { if (authored) _rigPresentation.SampleIdle(_idleTime); }
+            if (!fitted)
+            {
+                UsePortraitFallback(8, "full skin bounds or holder fit unavailable");
+                return false;
+            }
+            _measuredScale = _fit.localScale.x;
             return ApplyPose(shortSide, reportGeometry: true);
+        }
+
+        private bool TryFitFullSkin()
+        {
+            // The catalog's standing height only seeds a useful projection scale. The
+            // sampled sitting pose and enlarged head determine the actual holder fit.
+            // Fit only on layout changes: idle/turntable updates keep this wrapper scale.
+            if (!TryCacheFullSkinInFit()) return false;
+            Rect holder = _holder.rect;
+            Vector2 available = holder.size * HolderFill;
+            for (int pass = 0; pass < 4; pass++)
+            {
+                if (!TryMeasureFullSkinInHolder(out Rect skin)) return false;
+                float ratio = Mathf.Min(available.x / skin.width, available.y / skin.height);
+                if (!UsableDimension(ratio)) return false;
+                // First pass may enlarge a small pose. Subsequent passes only correct
+                // perspective/depth drift; an already contained pose must not pump up.
+                if (pass > 0) ratio = Mathf.Min(1f, ratio);
+                _fit.localScale *= ratio;
+                if (!TryMeasureFullSkinInHolder(out skin)) return false;
+                Vector2 offset = holder.center - skin.center;
+                _fit.anchoredPosition3D += new Vector3(offset.x, offset.y, 0f);
+                if (Mathf.Abs(ratio - 1f) < .00001f && offset.sqrMagnitude < .0001f) break;
+            }
+            if (!TryMeasureFullSkinInHolder(out Rect fitted)) return false;
+            // Keep the four-percent breathing/turntable margin. A failed projection
+            // retains the complete 2D fallback rather than painting outside the holder.
+            Vector2 inset = (holder.size - available) * .5f;
+            const float tolerance = .5f;
+            return fitted.xMin >= holder.xMin + inset.x - tolerance
+                && fitted.xMax <= holder.xMax - inset.x + tolerance
+                && fitted.yMin >= holder.yMin + inset.y - tolerance
+                && fitted.yMax <= holder.yMax - inset.y + tolerance;
+        }
+
+        private bool TryCacheFullSkinInFit()
+        {
+            if (_fitBuffer == null) _fitBuffer = new Mesh { name = "ProfileFullSkinFit" };
+            _fitPoints.Clear();
+            for (int i = 0; i < _renderers.Length; i++)
+            {
+                var skin = _renderers[i] as SkinnedMeshRenderer;
+                if (skin == null || skin.sharedMesh == null || !_rendererDefaults[i]) continue;
+                bool active = true;
+                for (Transform node = skin.transform; node != PrefabRoot; node = node.parent)
+                    if (!node.gameObject.activeSelf) { active = false; break; }
+                if (!active) continue;
+                // All vertices, independent of the head-weight mask used by cosmetics.
+                // Bake once per layout; wrapper-space points survive each fit correction.
+                skin.BakeMesh(_fitBuffer, true);
+                _fitBuffer.GetVertices(_fitVertices);
+                Matrix4x4 skinToFit = _fit.worldToLocalMatrix * skin.transform.localToWorldMatrix;
+                foreach (Vector3 vertex in _fitVertices)
+                    _fitPoints.Add(skinToFit.MultiplyPoint3x4(vertex));
+            }
+            return _fitPoints.Count > 0;
+        }
+
+        private bool TryMeasureFullSkinInHolder(out Rect result)
+        {
+            bool initialized = false;
+            Vector2 min = default, max = default;
+            foreach (Vector3 vertex in _fitPoints)
+            {
+                Vector3 screen = _layoutCamera.WorldToScreenPoint(_fit.TransformPoint(vertex));
+                if (!float.IsFinite(screen.x) || !float.IsFinite(screen.y)
+                    || !UsableDimension(screen.z)
+                    || !RectTransformUtility.ScreenPointToLocalPointInRectangle(_holder,
+                        screen, _layoutCamera, out Vector2 point))
+                { result = default; return false; }
+                if (!initialized) { min = max = point; initialized = true; }
+                else { min = Vector2.Min(min, point); max = Vector2.Max(max, point); }
+            }
+            result = initialized ? Rect.MinMaxRect(min.x, min.y, max.x, max.y) : default;
+            return initialized && UsableDimension(result.width) && UsableDimension(result.height);
         }
 
         private bool ApplyPose(float shortSide, bool reportGeometry)
@@ -600,6 +690,8 @@ namespace CatMetro.Presentation.Cats
             _portraitSubscribed = false;
             foreach (HeadSample sample in _headSamples) DestroyMountedInstance(sample.Buffer);
             _headSamples.Clear();
+            DestroyMountedInstance(_fitBuffer);
+            _fitBuffer = null;
         }
 
         private static float HeadWeight(BoneWeight weight, bool[] headBones)

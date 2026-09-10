@@ -174,6 +174,157 @@ namespace CatMetro.Tests.PlayMode
             Render("play-400ms");
         }
 
+        [TestCase(917, 2048)]
+        [TestCase(600, 1100)]
+        public void ProfileHolder_ContainsTheFullAnimatedSkinAndRaster_WithoutUndoingHeadGrowth(
+            int width, int height)
+        {
+            AdvanceBoot(.3f);
+            _root.Cam.targetTexture = null;
+            _target.Release(); Object.DestroyImmediate(_target);
+            _target = new RenderTexture(width, height, 24);
+            _target.Create();
+            _root.Cam.targetTexture = _target;
+            _root.Cam.aspect = (float)width / height;
+            var safe = new Rect(0, 32, width, height - 64);
+            for (int screen = 0; screen < 2; screen++)
+            {
+                string name = screen == 0 ? "home" : "wardrobe";
+                if (screen == 0)
+                    _root.Home.LayoutForViewport(safe, 408, new Rect(0, 0, width, height));
+                else
+                {
+                    Assert.That(_root.Input.HandleTapAtScreen(_root.Wardrobe.EntryRectPx.center), Is.EqualTo(-3));
+                    _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>().Advance(.14f);
+                    _root.Wardrobe.LayoutForViewport(safe, 408);
+                }
+                Canvas.ForceUpdateCanvases();
+                var mount = screen == 0 ? _root.Home.ProfileRig : _root.Wardrobe.ProfileRig;
+                Assert.That(mount.Layout(_root.Cam), Is.True, mount.FallbackReason);
+                var motion = mount.PrefabRoot.GetComponentInChildren<CatRigPresentation>(true);
+                Assert.That(motion, Is.Not.Null);
+                Assert.That(motion.AuthoredMotionInstalled, Is.True);
+                var source = Resources.Load<GameObject>("CatRigs/BoardCatRig");
+                Transform sourceHead = source.GetComponentInChildren<Animator>(true).transform
+                    .Find(CatRigPresentation.WeightedHeadPath);
+                Vector3 grownScale = sourceHead.localScale * 1.28f;
+                var fit = mount.PrefabRoot.parent.parent;
+                Vector3 scale = fit.localScale, position = fit.localPosition;
+                Rect holder = ProfileHolderPixels((RectTransform)mount.transform.parent);
+                _root.MotionOffToggle = false;
+                _root.AnimatorDurationScale = 1f;
+                for (int phase = 0; phase < 3; phase++)
+                {
+                    if (phase > 0) mount.AdvanceTurntable(phase == 1 ? 3f : 6f);
+                    Assert.That(fit.localScale, Is.EqualTo(scale), "idle must not rescale the whole cat");
+                    Assert.That(fit.localPosition, Is.EqualTo(position), "idle must not recenter the whole cat");
+                    Assert.That(motion.HeadTransform.localScale, Is.EqualTo(grownScale));
+                    Rect skin = FullSkinPixels(mount);
+                    AssertContained(skin, holder, 1f, name + " full skin phase " + phase);
+                    Assert.That(skin.height, Is.GreaterThan(holder.height * .55f), "positive size control");
+                    AssertProfileRasterContained(mount, holder, width, height,
+                        name + "-fit-phase-" + phase);
+                }
+                // Compare the head with its unshaped control at the same fitted scale.
+                Rect grown = mount.RenderedHeadScreenRect;
+                motion.HeadTransform.localScale = sourceHead.localScale;
+                typeof(ProfileRigMount).GetMethod("ApplyAnimatedPose", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(mount, null);
+                Rect control = mount.RenderedHeadScreenRect;
+                motion.ApplyHeadShape();
+                typeof(ProfileRigMount).GetMethod("ApplyAnimatedPose", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(mount, null);
+                Assert.That(grown.width, Is.GreaterThan(control.width * 1.15f),
+                    "the holder correction must retain visibly enlarged head geometry");
+            }
+        }
+
+        private Rect ProfileHolderPixels(RectTransform holder)
+        {
+            var corners = new Vector3[4]; holder.GetWorldCorners(corners);
+            Vector3 min = _root.Cam.WorldToScreenPoint(corners[0]);
+            Vector3 max = _root.Cam.WorldToScreenPoint(corners[2]);
+            return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+        }
+
+        private Rect FullSkinPixels(ProfileRigMount mount)
+        {
+            var buffer = new Mesh();
+            Vector2 min = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
+            Vector2 max = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
+            try
+            {
+                foreach (var skin in mount.PrefabRoot.GetComponentsInChildren<SkinnedMeshRenderer>())
+                {
+                    if (!skin.enabled) continue;
+                    skin.BakeMesh(buffer, true);
+                    foreach (Vector3 vertex in buffer.vertices)
+                    {
+                        Vector3 point = _root.Cam.WorldToScreenPoint(skin.transform.TransformPoint(vertex));
+                        Assert.That(point.z, Is.GreaterThan(0f));
+                        min = Vector2.Min(min, point); max = Vector2.Max(max, point);
+                    }
+                }
+            }
+            finally { Object.DestroyImmediate(buffer); }
+            return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+        }
+
+        private static void AssertContained(Rect skin, Rect holder, float tolerance, string message)
+        {
+            Assert.That(skin.xMin, Is.GreaterThanOrEqualTo(holder.xMin - tolerance), message);
+            Assert.That(skin.xMax, Is.LessThanOrEqualTo(holder.xMax + tolerance), message);
+            Assert.That(skin.yMin, Is.GreaterThanOrEqualTo(holder.yMin - tolerance), message);
+            Assert.That(skin.yMax, Is.LessThanOrEqualTo(holder.yMax + tolerance), message);
+        }
+
+        private void AssertProfileRasterContained(ProfileRigMount mount, Rect holder,
+            int width, int height, string name)
+        {
+            Color32[] actual = ProfileRaster(width, height, name);
+            mount.PrefabRoot.gameObject.SetActive(false);
+            Color32[] without;
+            try { without = ProfileRaster(width, height, null); }
+            finally { mount.PrefabRoot.gameObject.SetActive(true); }
+            int inside = 0, outside = 0;
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                {
+                    int i = y * width + x;
+                    if (Math.Abs(actual[i].r - without[i].r) <= 4
+                        && Math.Abs(actual[i].g - without[i].g) <= 4
+                        && Math.Abs(actual[i].b - without[i].b) <= 4) continue;
+                    if (holder.Contains(new Vector2(x + .5f, y + .5f))) inside++;
+                    else outside++;
+                }
+            TestContext.Out.WriteLine(name + " " + width + "x" + height
+                + " inside=" + inside + " outside=" + outside + " holder=" + holder);
+            Assert.That(inside, Is.GreaterThan(100), "positive control: actual licensed rig must paint");
+            Assert.That(outside, Is.Zero, "no rig pixels may escape the holder or cover selector tiles");
+        }
+
+        private Color32[] ProfileRaster(int width, int height, string name)
+        {
+            RenderTexture previous = RenderTexture.active;
+            var texture = new Texture2D(width, height, TextureFormat.RGB24, false);
+            try
+            {
+                Canvas.ForceUpdateCanvases();
+                _root.Cam.Render();
+                RenderTexture.active = _target;
+                texture.ReadPixels(new Rect(0, 0, width, height), 0, 0); texture.Apply();
+                string directory = Environment.GetEnvironmentVariable("CM_HOME_REGRESSION_CAPTURE_DIR");
+                if (!string.IsNullOrEmpty(directory) && name != null)
+                {
+                    Directory.CreateDirectory(directory);
+                    File.WriteAllBytes(Path.Combine(directory, name + "-" + width + "x" + height + ".png"),
+                        CaptureRig.EncodeOpaqueSrgbPng(texture));
+                }
+                return texture.GetPixels32();
+            }
+            finally { RenderTexture.active = previous; Object.DestroyImmediate(texture); }
+        }
+
         private void AdvanceBoot(float seconds) => typeof(GameRoot).GetMethod("AdvanceHomeBootFade",
             BindingFlags.Instance | BindingFlags.NonPublic).Invoke(_root, new object[] { seconds });
 
