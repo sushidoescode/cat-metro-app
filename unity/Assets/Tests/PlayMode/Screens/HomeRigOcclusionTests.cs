@@ -198,6 +198,14 @@ namespace CatMetro.Tests.PlayMode
                     _root.Wardrobe.LayoutForViewport(safe, dpi);
                     Assert.That(_root.Wardrobe.EntryRectPx.xMin, Is.GreaterThanOrEqualTo(safe.xMin));
                     Assert.That(_root.Wardrobe.EntryRectPx.xMax, Is.LessThanOrEqualTo(safe.xMax));
+                    // This synchronous test has not run a player-loop frame since Launch.
+                    // Pump the real HUD lifecycle so its existing Home-state binding observes
+                    // the newly composed screen stack before the first manual camera render.
+                    typeof(CatMetro.Presentation.Hud.WavePreview.WavePreviewStrip)
+                        .GetMethod("LateUpdate", BindingFlags.Instance | BindingFlags.NonPublic)
+                        .Invoke(_root.Preview, null);
+                    Assert.That(_root.Preview.IsVisible, Is.False,
+                        "gameplay HUD must observe Home before capture, without manual visibility overrides");
                 }
                 else
                 {
