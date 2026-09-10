@@ -16,7 +16,7 @@ namespace CatMetro.Presentation.Cats
         private static readonly int DebugMask = Shader.PropertyToID("_FurDebug");
         private readonly List<Material> _ownedMaterials = new List<Material>();
         private readonly List<Binding> _bindings = new List<Binding>();
-        private readonly MaterialPropertyBlock _properties = new MaterialPropertyBlock();
+        private MaterialPropertyBlock _properties;
         private Color _routeColor = Color.white;
         private float _strength = 1f;
         private bool _showMask;
@@ -54,6 +54,9 @@ namespace CatMetro.Presentation.Cats
                         || material.GetFloat("_AlphaClip") != 0f) return null;
             }
             var tint = instance.AddComponent<BoardFurTint>();
+            // Native allocation is forbidden in a MonoBehaviour field initializer.
+            // Install also supports inactive clones, before Awake has run.
+            tint._properties = new MaterialPropertyBlock();
             var replacements = new Dictionary<Material, Material>();
             foreach (Renderer renderer in renderers)
             {

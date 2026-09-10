@@ -109,13 +109,16 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(_host.GetComponentsInChildren<Renderer>().All(r => r.sharedMaterial == _source), Is.True);
         }
 
-        [Test]
-        public void NaturalAndMaskPreview_DoNotLoseTheNextRouteColour()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void NaturalAndMaskPreview_DoNotLoseTheNextRouteColour(bool activeAtInstall)
         {
             BuildFixture();
+            _host.SetActive(activeAtInstall);
             var fur = BoardFurTint.TryInstall(_host);
             Assert.That(fur, Is.Not.Null);
             fur.Apply(Palette.SignalRed);
+            _host.SetActive(true);
             fur.SetPreview(0f, false);
             fur.Apply(Palette.HarborBlue);
             fur.SetPreview(1f, true);
