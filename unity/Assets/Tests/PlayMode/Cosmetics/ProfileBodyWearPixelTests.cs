@@ -72,12 +72,9 @@ namespace CatMetro.Tests.PlayMode
                 {
                     Assert.That(_root.Input.HandleTapAtScreen(_root.Wardrobe.EntryRectPx.center), Is.EqualTo(-3));
                     _root.GetComponent<BoardFx>().Advance(.14f);
-                    LogPortraitProjection("wardrobe-after-open", _root.Wardrobe.LargePortrait);
                     yield return null;
-                    LogPortraitProjection("wardrobe-after-frame", _root.Wardrobe.LargePortrait);
                     Assert.That(_root.Stack.Current, Is.EqualTo("wardrobe"));
                     _root.Wardrobe.LayoutForViewport(new Rect(0, 64, Width, 1920), 408f);
-                    LogPortraitProjection("wardrobe-chosen-viewport", _root.Wardrobe.LargePortrait);
                 }
                 else
                 {
@@ -177,9 +174,8 @@ namespace CatMetro.Tests.PlayMode
             TestContext.Out.WriteLine($"BODYWEAR {name} face_changed={faceChanges} body_changed={bodyChanges} hat_changed={hatChanges}");
             // Verify this exact raster can detect a coat intentionally placed over the face.
             RectTransform coat = body.Single(i => i.name == "Coat").rectTransform;
-            Vector3 position = coat.position;
             Vector3 localPosition = coat.localPosition;
-            Vector3 worldRestoredLocal = localPosition;
+            int forcedFaceChanges = 0;
             try
             {
                 var headPixels = Enumerable.Range(0, head.Length).Where(i => White(head[i])).ToArray();
@@ -188,44 +184,22 @@ namespace CatMetro.Tests.PlayMode
                     (float)headPixels.Average(i => i / Width));
                 bool projected = RectTransformUtility.ScreenPointToWorldPointInRectangle(coat,
                     center, _root.Cam, out Vector3 world);
-                if (!projected) LogPortraitProjection(name + "-coat-plane-failure", portrait, coat);
                 Assert.That(projected, Is.True);
                 coat.position = world;
                 Color32[] forced = Read();
                 if (captureControls) Save(name + "-forced-occlusion-control", forced);
-                Assert.That(Different(forced, hatOnly, head), Is.GreaterThan(20),
-                    "moving real coat paint over the weighted face must fail the raster criterion");
+                forcedFaceChanges = Different(forced, hatOnly, head);
             }
-            finally
-            {
-                // Measure the former world-space round trip before restoring the authored
-                // local coordinates exactly. Inverse parent transforms can introduce drift.
-                coat.position = position;
-                worldRestoredLocal = coat.localPosition;
-                coat.localPosition = localPosition;
-            }
-            Vector3 drift = worldRestoredLocal - localPosition;
-            TestContext.Out.WriteLine(FormattableString.Invariant(
-                $"BODYWEAR_RESTORE {name} world_round_trip_local_delta=({drift.x:R},{drift.y:R},{drift.z:R})"));
-            Assert.That(coat.localPosition, Is.EqualTo(localPosition), "the control restores exact local transform values");
+            finally { coat.localPosition = localPosition; }
             Color32[] restoredPaint = Read();
             if (!restoredPaint.SequenceEqual(equipped)) Save(name + "-restored-paint-mismatch", restoredPaint);
+            Assert.That(forcedFaceChanges, Is.GreaterThan(20),
+                "moving real coat paint over the weighted face must fail the raster criterion");
+            Assert.That(coat.localPosition, Is.EqualTo(localPosition), "the control restores exact local transform values");
             Assert.That(restoredPaint, Is.EqualTo(equipped), "diagnostic controls restore the exact production paint");
             Assert.That(bodyChanges, Is.GreaterThan(100), "a hidden/tiny coat cannot pass");
             Assert.That(hatChanges, Is.GreaterThan(100), "the independent hat must remain visible");
             Assert.That(faceChanges, Is.Zero, "body paint must leave the actual weighted head, including muzzle, visible");
-        }
-
-        private void LogPortraitProjection(string phase, CosmeticPortraitView portrait, RectTransform coat = null)
-        {
-            Camera camera = _root.Cam;
-            RectTransform root = portrait.RootTransform;
-            RectTransform holder = (RectTransform)root.parent;
-            Canvas canvas = root.GetComponentInParent<Canvas>();
-            float Depth(Transform target) => target != null
-                ? Vector3.Dot(target.position - camera.transform.position, camera.transform.forward) : float.NaN;
-            TestContext.Out.WriteLine(FormattableString.Invariant(
-                $"BODYWEAR_PLANE {phase} camera_size={camera.orthographicSize:R} near={camera.nearClipPlane:R} canvas_plane={canvas.planeDistance:R} canvas_depth={Depth(canvas.transform):R} holder_depth={Depth(holder):R} portrait_depth={Depth(root):R} coat_depth={Depth(coat):R} holder_short={Mathf.Min(holder.rect.width, holder.rect.height):R} ui_z_world={holder.TransformVector(Vector3.forward).magnitude:R} portrait_z={root.anchoredPosition3D.z:R} portrait_active={root.gameObject.activeInHierarchy}"));
         }
 
         private Color32[] HeadMask(ProfileRigMount mount, string name, bool captureControls)
@@ -239,6 +213,7 @@ namespace CatMetro.Tests.PlayMode
             var cameraData = camera.GetUniversalAdditionalCameraData();
             bool post = cameraData.renderPostProcessing;
             Material[] materials = skin.sharedMaterials;
+            bool hadPropertyBlock = skin.HasPropertyBlock();
             var block = new MaterialPropertyBlock();
             skin.GetPropertyBlock(block);
             var white = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
@@ -283,13 +258,17 @@ namespace CatMetro.Tests.PlayMode
             finally
             {
                 skin.sharedMaterials = materials;
-                skin.SetPropertyBlock(block);
+                // An absent block and an explicitly empty block select different renderer
+                // state. Preserve absence as well as values so the beauty pixels stay exact.
+                skin.SetPropertyBlock(hadPropertyBlock ? block : null);
                 skin.gameObject.layer = layer;
                 camera.cullingMask = culling;
                 camera.clearFlags = clear;
                 camera.backgroundColor = background;
                 cameraData.renderPostProcessing = post;
                 Object.DestroyImmediate(white);
+                Assert.That(skin.HasPropertyBlock(), Is.EqualTo(hadPropertyBlock),
+                    "the mask control restores the original property-block presence");
             }
         }
 
