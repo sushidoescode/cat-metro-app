@@ -90,7 +90,7 @@ namespace CatMetro.Tests.EditMode.Presentation
         }
 
         [Test]
-        public void LocalPaidHeadShapeChangesWeightedHeadGeometryWhileLowerBodyStaysFixed()
+        public void LocalPaidHeadShapeChangesWeightedHeadGeometryWhileUnweightedLowerBodyStaysFixed()
         {
             RequireLocalSource();
             GameObject neutral = Object.Instantiate(_source, _host.transform, false);
@@ -101,19 +101,59 @@ namespace CatMetro.Tests.EditMode.Presentation
             motion.ApplyHeadShape();
             Vector3[] before = BakeInAnimator(neutral);
             Vector3[] after = BakeInAnimator(shaped);
-            int changed = 0, lowerBody = 0;
+            Animator sourceAnimator = neutral.GetComponentInChildren<Animator>(true);
+            Transform sourceHead = sourceAnimator.transform.Find(CatRigPresentation.WeightedHeadPath);
+            SkinnedMeshRenderer sourceSkin = neutral.GetComponentInChildren<SkinnedMeshRenderer>(true);
+            bool[] headBranch = sourceSkin.bones.Select(b => b == sourceHead || b.IsChildOf(sourceHead)).ToArray();
+            BoneWeight[] weights = sourceSkin.sharedMesh.boneWeights;
+            Assert.That(after.Length, Is.EqualTo(before.Length));
+            Assert.That(weights.Length, Is.EqualTo(before.Length));
+            float[] headInfluence = weights.Select(w => HeadBranchInfluence(w, headBranch)).ToArray();
+            Vector3 headPivot = sourceAnimator.transform.InverseTransformPoint(sourceHead.position);
+            float sourceHeadRadius = before.Where((v, i) => headInfluence[i] > 0f)
+                .Max(v => Vector3.Distance(v, headPivot));
+            // Uniform 28% head expansion moves an entirely head-weighted point by 0.28 * radius.
+            // The source head-influenced region supplies that radius; each lower-body vertex
+            // may receive only its summed head/descendant fraction of that displacement.
+            float sourceHeadDisplacementBound = (CatRigPresentation.HeadScale - 1f) * sourceHeadRadius;
+            const float bakeTolerance = 0.00001f;
+            int changed = 0, unweightedLower = 0, weakLower = 0, weakLowerMoved = 0;
+            int maxUnweightedIndex = -1, maxWeakExcessIndex = -1;
+            float maxUnweighted = 0f, maxWeak = 0f, maxWeakInfluence = 0f, maxHead = 0f;
+            float maxWeakExcess = float.NegativeInfinity;
             for (int i = 0; i < before.Length; i++)
             {
                 float distance = Vector3.Distance(before[i], after[i]);
-                if (distance > 0.00001f) changed++;
-                if (before[i].y < 0.3f)
+                if (distance > bakeTolerance) changed++;
+                if (before[i].y >= 0.3f)
                 {
-                    lowerBody++;
-                    Assert.That(distance, Is.LessThan(0.00001f), "lower-body vertex " + i);
+                    if (headInfluence[i] >= 0.25f) maxHead = Mathf.Max(maxHead, distance);
+                    continue;
                 }
+                if (headInfluence[i] == 0f)
+                {
+                    unweightedLower++;
+                    if (distance > maxUnweighted) { maxUnweighted = distance; maxUnweightedIndex = i; }
+                    continue;
+                }
+                weakLower++;
+                if (distance > bakeTolerance) weakLowerMoved++;
+                maxWeak = Mathf.Max(maxWeak, distance);
+                maxWeakInfluence = Mathf.Max(maxWeakInfluence, headInfluence[i]);
+                float excess = distance - headInfluence[i] * sourceHeadDisplacementBound;
+                if (excess > maxWeakExcess) { maxWeakExcess = excess; maxWeakExcessIndex = i; }
             }
+            Debug.Log($"HEAD_SHAPE_GEOMETRY changed={changed} unweightedLower={unweightedLower} "
+                + $"maxUnweighted={maxUnweighted:R} weakLower={weakLower} weakLowerMoved={weakLowerMoved} "
+                + $"maxWeak={maxWeak:R} maxWeakInfluence={maxWeakInfluence:R} maxHead={maxHead:R} "
+                + $"weakToHeadRatio={maxWeak / maxHead:R} sourceHeadRadius={sourceHeadRadius:R} "
+                + $"sourceHeadDisplacementBound={sourceHeadDisplacementBound:R} maxWeakExcess={maxWeakExcess:R}");
             Assert.That(changed, Is.GreaterThan(4000), "the real weighted head must change, not only weak ear controls");
-            Assert.That(lowerBody, Is.GreaterThan(1000));
+            Assert.That(unweightedLower, Is.GreaterThan(1000));
+            Assert.That(maxUnweighted, Is.LessThan(bakeTolerance), "unweighted lower-body vertex " + maxUnweightedIndex);
+            Assert.That(weakLowerMoved, Is.GreaterThan(0), "the paid mesh has measurable weak head influence on the body");
+            Assert.That(maxWeakExcess, Is.LessThan(bakeTolerance),
+                "lower-body vertex exceeds its weighted source-head expansion bound: " + maxWeakExcessIndex);
         }
 
         [Test]
@@ -238,6 +278,13 @@ namespace CatMetro.Tests.EditMode.Presentation
                 return mesh.vertices.Select(v => animator.InverseTransformPoint(skin.transform.TransformPoint(v))).ToArray();
             }
             finally { Object.DestroyImmediate(mesh); }
+        }
+        private static float HeadBranchInfluence(BoneWeight weight, bool[] headBranch)
+        {
+            return (headBranch[weight.boneIndex0] ? weight.weight0 : 0f)
+                + (headBranch[weight.boneIndex1] ? weight.weight1 : 0f)
+                + (headBranch[weight.boneIndex2] ? weight.weight2 : 0f)
+                + (headBranch[weight.boneIndex3] ? weight.weight3 : 0f);
         }
         private static Quaternion[] BoneRotations(Transform root) => root.GetComponentsInChildren<Transform>(true)
             .Where(t => t != root).Select(t => t.localRotation).ToArray();
