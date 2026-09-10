@@ -77,6 +77,45 @@ namespace CatMetro.Tests.PlayMode
                 "a grey/atlasless kiosk must leave the project-owned station visible");
         }
 
+        [TestCase("disabled-body")]
+        [TestCase("inactive-roof")]
+        [TestCase("missing-mesh")]
+        [TestCase("empty-mesh")]
+        public void OriginalStation_InvisiblePartKeepsThePlayableStationFallback(string defect)
+        {
+            var prefab = MultipartRenderPrefab("BrokenOriginalStation", 2);
+            Transform body = prefab.transform.GetChild(0), roof = prefab.transform.GetChild(1);
+            body.name = "Body";
+            roof.name = "RoofTint";
+            Mesh empty = null;
+            try
+            {
+                if (defect == "disabled-body") body.GetComponent<Renderer>().enabled = false;
+                if (defect == "inactive-roof") roof.gameObject.SetActive(false);
+                if (defect == "missing-mesh") body.GetComponent<MeshFilter>().sharedMesh = null;
+                if (defect == "empty-mesh")
+                {
+                    empty = new Mesh();
+                    roof.GetComponent<MeshFilter>().sharedMesh = empty;
+                }
+                var level = ImportLevel("L001");
+                var board = BuildBoard(level);
+                Renderer[] previouslyVisible = board.GetComponentsInChildren<Renderer>()
+                    .Where(renderer => renderer.enabled).ToArray();
+                Assert.That(previouslyVisible, Is.Not.Empty, "visible fallback positive control");
+                var catalog = new PropModelCatalog(new[] { Entry(PropModelCatalog.StationKioskId, prefab) });
+                Assert.That(catalog.AdmittedEntryCount, Is.Zero, defect);
+                Assert.That(catalog.RejectedEntryCount, Is.EqualTo(1), defect);
+                BoardPropDecorator.Decorate(level, board.transform, catalog);
+                foreach (Renderer renderer in previouslyVisible)
+                    Assert.That(renderer.enabled && renderer.gameObject.activeInHierarchy, Is.True,
+                        defect + " must preserve " + renderer.name);
+                Assert.That(board.GetComponentsInChildren<BoardPropInstance>(true), Is.Empty,
+                    "a rejected original must not suppress the complete station architecture");
+            }
+            finally { if (empty != null) Object.DestroyImmediate(empty); }
+        }
+
         [TestCase("four-lines")]
         [TestCase("wild")]
         [TestCase("multi-accept")]
