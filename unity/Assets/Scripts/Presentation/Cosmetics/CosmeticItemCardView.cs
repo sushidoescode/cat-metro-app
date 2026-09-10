@@ -68,15 +68,18 @@ namespace CatMetro.Presentation.Cosmetics
             view._paper = MakeImage(root.transform, "CardPaper", new Vector2(0.025f, 0.025f),
                 new Vector2(0.975f, 0.975f), Palette.WarmPaper);
             view._portraitMount = MakeRect(root.transform, "ItemPortraitMount",
-                new Vector2(0.04f, 0.16f), new Vector2(0.96f, 0.76f));
+                new Vector2(0.04f, 0.16f), new Vector2(0.96f, 0.64f));
             view._portraitMount.gameObject.AddComponent<RectMask2D>();
             view.ItemPortrait = CosmeticPortraitView.CreateStaticSnapshot(view._portraitMount,
                 profile, "ItemPortrait");
             view._nameLabel = MakeText(root.transform, "ItemNameLabel",
-                new Vector2(0.04f, 0.76f), new Vector2(0.96f, 0.98f), 18f,
+                new Vector2(0.04f, 0.64f), new Vector2(0.96f, 0.98f), 18f,
                 Palette.InkNavy, TextAlignmentOptions.Center);
             view._nameLabel.fontStyle = FontStyles.Bold;
-            view._nameLabel.maxVisibleLines = 2;
+            // Keep the price band fixed and let long names wrap above the separately
+            // clipped illustration; the narrow three-card rail can need a third line.
+            view._nameLabel.textWrappingMode = TextWrappingModes.Normal;
+            view._nameLabel.maxVisibleLines = 3;
             view._nameLabel.overflowMode = TextOverflowModes.Ellipsis;
             view._statusLabel = MakeText(root.transform, "ItemStatusLabel",
                 new Vector2(0.06f, 0.035f), new Vector2(0.94f, 0.23f), 15f,
@@ -139,7 +142,25 @@ namespace CatMetro.Presentation.Cosmetics
             paper.anchorMax = Vector2.one;
             paper.offsetMin = Vector2.one * 3f * px;
             paper.offsetMax = -paper.offsetMin;
+            FitNameRegion(px);
             FitItemRegion();
+        }
+
+        private void FitNameRegion(float pxPerDp)
+        {
+            float height = RootTransform.rect.height;
+            // A parent OnEnable can reflow newly created cards before TMP's Awake has
+            // assigned its font material. Open reflows again after activating the panel.
+            if (height <= 0f || _nameLabel.font == null || _nameLabel.fontSharedMaterial == null)
+                return;
+            // Measure at the readable maximum size before reserving a header. Two-card
+            // names retain the normal band; narrow cards borrow space from the illustration.
+            float preferred = _nameLabel.GetPreferredValues(_nameLabel.text,
+                _nameLabel.rectTransform.rect.width, Mathf.Infinity).y;
+            float header = Mathf.Clamp((preferred + 4f * pxPerDp) / height, 0.34f, 0.50f);
+            float divider = 0.98f - header;
+            _nameLabel.rectTransform.anchorMin = new Vector2(0.04f, divider);
+            _portraitMount.anchorMax = new Vector2(0.96f, divider);
         }
 
         private void FitItemRegion()
