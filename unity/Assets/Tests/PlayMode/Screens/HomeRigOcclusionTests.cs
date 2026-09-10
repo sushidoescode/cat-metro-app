@@ -174,10 +174,10 @@ namespace CatMetro.Tests.PlayMode
             Render("play-400ms");
         }
 
-        [TestCase(917, 2048)]
-        [TestCase(600, 1100)]
+        [TestCase(917, 2048, 408f)]
+        [TestCase(600, 1100, 240f)]
         public void ProfileHolder_ContainsTheFullAnimatedSkinAndRaster_WithoutUndoingHeadGrowth(
-            int width, int height)
+            int width, int height, float dpi)
         {
             AdvanceBoot(.3f);
             _root.Cam.targetTexture = null;
@@ -191,12 +191,12 @@ namespace CatMetro.Tests.PlayMode
             {
                 string name = screen == 0 ? "home" : "wardrobe";
                 if (screen == 0)
-                    _root.Home.LayoutForViewport(safe, 408, new Rect(0, 0, width, height));
+                    _root.Home.LayoutForViewport(safe, dpi, new Rect(0, 0, width, height));
                 else
                 {
                     Assert.That(_root.Input.HandleTapAtScreen(_root.Wardrobe.EntryRectPx.center), Is.EqualTo(-3));
                     _root.GetComponent<CatMetro.Presentation.Fx.BoardFx>().Advance(.14f);
-                    _root.Wardrobe.LayoutForViewport(safe, 408);
+                    _root.Wardrobe.LayoutForViewport(safe, dpi);
                 }
                 Canvas.ForceUpdateCanvases();
                 var mount = screen == 0 ? _root.Home.ProfileRig : _root.Wardrobe.ProfileRig;
