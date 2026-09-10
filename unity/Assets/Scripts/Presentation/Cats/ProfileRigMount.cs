@@ -397,7 +397,9 @@ namespace CatMetro.Presentation.Cats
             foreach (HeadSample sample in _headSamples)
             {
                 if (sample.Skin == null) continue;
-                sample.Skin.BakeMesh(sample.Buffer, false);
+                // Include the imported bone hierarchy's scale when baking. The false
+                // mode misprojects the flattened rig after a camera-space canvas refit.
+                sample.Skin.BakeMesh(sample.Buffer, true);
                 sample.Buffer.GetVertices(sample.Vertices);
                 foreach (int index in sample.Indices)
                 {

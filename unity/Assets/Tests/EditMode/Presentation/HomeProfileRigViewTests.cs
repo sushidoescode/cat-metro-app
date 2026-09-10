@@ -396,8 +396,10 @@ namespace CatMetro.Tests.EditMode.Presentation
             Object.DestroyImmediate(home.gameObject);
         }
 
-        [Test]
-        public void RenderedHeadBounds_DriveTheCosmeticOverlayWithinThreePixels()
+        [TestCase(1f, 1f, 1f)]
+        [TestCase(1.7f, 0.8f, 1.2f)]
+        public void RenderedHeadBounds_DriveTheCosmeticOverlayWithinThreePixels(
+            float skinScaleX, float skinScaleY, float skinScaleZ)
         {
             _fixture = new ConformingSkinnedRigFixture();
             var catalog = CatModelCatalog.FromEntry(
@@ -405,6 +407,8 @@ namespace CatMetro.Tests.EditMode.Presentation
             HomeProfileRigView view = HomeProfileRigView.Create(
                 _holder, _portrait, catalog);
 
+            view.PrefabRoot.GetComponentInChildren<SkinnedMeshRenderer>(true)
+                .transform.localScale = new Vector3(skinScaleX, skinScaleY, skinScaleZ);
             Assert.That(view.Layout(_camera), Is.True);
             Canvas.ForceUpdateCanvases();
 
@@ -510,31 +514,24 @@ namespace CatMetro.Tests.EditMode.Presentation
         private Rect IndependentlyProjectedFixtureHead(Transform prefabRoot)
         {
             var skin = prefabRoot.GetComponentInChildren<SkinnedMeshRenderer>(true);
-            var baked = new Mesh();
-            try
+            // Fixture vertices 4..7 belong entirely to head bone 1. Project from its
+            // bind pose directly; repeating BakeMesh here would share production's error.
+            Vector3[] vertices = skin.sharedMesh.vertices;
+            Assert.That(vertices.Length, Is.EqualTo(8));
+            Matrix4x4 headToWorld = skin.bones[1].localToWorldMatrix
+                * skin.sharedMesh.bindposes[1];
+            Vector3 first = _camera.WorldToScreenPoint(headToWorld.MultiplyPoint3x4(vertices[4]));
+            float xMin = first.x, xMax = first.x;
+            float yMin = first.y, yMax = first.y;
+            for (int i = 5; i <= 7; i++)
             {
-                skin.BakeMesh(baked, false);
-                Vector3[] vertices = baked.vertices;
-                Assert.That(vertices.Length, Is.EqualTo(8));
-                Vector3 first = _camera.WorldToScreenPoint(
-                    skin.transform.TransformPoint(vertices[4]));
-                float xMin = first.x, xMax = first.x;
-                float yMin = first.y, yMax = first.y;
-                for (int i = 5; i <= 7; i++)
-                {
-                    Vector3 point = _camera.WorldToScreenPoint(
-                        skin.transform.TransformPoint(vertices[i]));
-                    xMin = Mathf.Min(xMin, point.x);
-                    xMax = Mathf.Max(xMax, point.x);
-                    yMin = Mathf.Min(yMin, point.y);
-                    yMax = Mathf.Max(yMax, point.y);
-                }
-                return Rect.MinMaxRect(xMin, yMin, xMax, yMax);
+                Vector3 point = _camera.WorldToScreenPoint(headToWorld.MultiplyPoint3x4(vertices[i]));
+                xMin = Mathf.Min(xMin, point.x);
+                xMax = Mathf.Max(xMax, point.x);
+                yMin = Mathf.Min(yMin, point.y);
+                yMax = Mathf.Max(yMax, point.y);
             }
-            finally
-            {
-                Object.DestroyImmediate(baked);
-            }
+            return Rect.MinMaxRect(xMin, yMin, xMax, yMax);
         }
 
         private Rect ProjectedRect(RectTransform rect)

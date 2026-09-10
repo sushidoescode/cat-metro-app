@@ -306,8 +306,8 @@ namespace CatMetro.Tests.PlayMode
                     headPatch, HomeRigCaptureWidth, minimumPerChannelDelta: 4);
                 Assert.That(rigPixelDelta, Is.GreaterThan(4f / 255f),
                     "the admitted skin must contribute visible pixels inside its head bounds");
-                Assert.That(rigChangedFraction, Is.GreaterThan(0.10f),
-                    "an enabled but offscreen or fully occluded rig must fail this capture");
+                Assert.That(rigChangedFraction, Is.GreaterThan(0.50f),
+                    "the rendered cat must fill most of its head guide; inflated bounds hide the face under cosmetics");
 
                 RectInt cosmeticPatch = InsetAndClamp(
                     ProjectedScreenRect(portrait.RootTransform, camera),
