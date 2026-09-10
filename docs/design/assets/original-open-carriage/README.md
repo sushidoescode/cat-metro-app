@@ -105,6 +105,40 @@ image or reference artwork in these renders. Reference direction was personally
 checked against `gen-ref-v2-board.png`, `gen-ref-v2-moments.png` and the owner's
 `seat35-head128-natural-close.png` gameplay probe before generation.
 
+## Unity importer prepared for owner execution
+
+`unity/Assets/Editor/CatMetroOriginalCarriageImportPipeline.cs` provides the menu
+**Cat Metro → Art → Build Original Open Carriage**, or batch method
+`CatMetro.EditorTools.CatMetroOriginalCarriageImportPipeline.BuildAndExit`.
+The importer has not been executed in Unity by the asset author.
+Its C# compiles against installed Unity 6000.3.16f1 assemblies with this project's
+CatMetro assemblies included. A standalone Mono harness executed the exact
+importer's triangle-ray method on the actual GLB coordinates: all 21 queries
+passed, and an added solid top cap failed the floor check. This verifies the
+managed ray math; it does not verify Unity FBX import or rendering.
+
+It copies only this original FBX and atlas into
+`Assets/Art/Original/OpenCarriage/`, then uses Unity APIs to create a shared
+URP/Lit material, explicit `_BaseMap` binding, two baked meshes and
+`Assets/Resources/CatMetroOriginal/OpenCarriage.prefab`. No YAML is authored by
+hand. The prefab keeps `OpenShell` and `Undercarriage` at identity transforms,
+with conventional Unity +Y up. Both renderers use the same white material tint;
+the cream rim/interior, teal exterior and navy wheels retain their atlas colours.
+
+Before saving, it checks 700/2,644 triangles, one submesh per part, complete UVs,
+the .520 × .165 × .540 imported bounds and zero bottom height. Twenty-one CPU
+triangle ray queries verify the recessed floor, rim, four interior walls and
+unobstructed space above the rim. These use a separate triangle-intersection
+implementation rather than the Blender verifier's BVH. Mesh hierarchy
+transforms are baked into new original mesh assets; no source FBX is rewritten.
+
+After the owner runs the importer, transfer the newly generated
+`Assets/Art/Original/OpenCarriage/` directory and `OpenCarriage.meta`,
+`Assets/Resources/CatMetroOriginal/OpenCarriage.prefab` and its `.meta`, plus the
+importer's Unity-created `.cs.meta`. Include new parent folder `.meta` files
+only when those folders did not already exist from the original station import.
+There are no generated Unity assets or `.meta` files in this candidate yet.
+
 Unity import, URP texture binding, actual passenger placement/occlusion,
 gameplay clearances and Android rendering/performance are not verified. This
-commit does not alter runtime code or ship a Unity prefab.
+candidate does not alter runtime placement or load the prefab automatically.
