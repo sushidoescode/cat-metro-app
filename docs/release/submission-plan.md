@@ -78,7 +78,7 @@ dependency.
 |---|---|---:|---|---|---|---|
 | **1** | **0:00–0:05** | 5s | The unbroken tap → moving lever/points → matching arrival → delivered-counter increment described above. One engine, one occupied carriage; no invented three-car consist. | `TAP THE SWITCH` at 0:00.8; `MATCH THE BADGE` at 0:03.3; `CAT METRO` at 0:04.4. | “Tap the switch. Match the cat.” | The whole causal loop fits at shipped speed in a reachable candidate state. Cats, pin, station badge, switch, and counter are readable at laptop playback size. |
 | **2** | **0:05–0:14** | 9s | Three short candidate clips: the wave capsule previews the next cat; a second junction decision; the real clear/result state. | `ONE CONTROL. MANY ROUTES.` | “That is the control scheme. The route gets harder; the gesture does not.” | Actual wave UI and win state; no hand-posed state or editor-only flag. |
-| **3** | **0:14–0:23** | 9s | A wrong delivery produces the shipped failure review. Tap the real retry control and show the board restart. | `WRONG STATION` → `RETRY` | “A wrong station ends the attempt. Retry starts the board again.” | Candidate failure and retry path recorded end to end. Do not promise an exact retry duration. |
+| **3** | **0:14–0:23** | 9s | A platform overflow produces the shipped failure review. Tap the real retry control and show the board restart. | `PLATFORM OVERFLOW` → `RETRY` | “A platform overflow ends the attempt. Retry starts the board again.” | Candidate failure and retry path recorded end to end. Do not promise an exact retry duration. |
 | **4** | **0:23–0:31** | 8s | Four distinct authored boards, two seconds each: different routes, station pairs, switch counts, and furniture. Match camera and exposure so the cuts feel like opening a box of layouts. | `60 AUTHORED BOARDS` / `CHECKED IN THE GAME'S SIMULATION` | “Sixty authored boards use the same small rule in different ways.” | All 60 levels pass final validation and are reachable through ordinary candidate progression. Otherwise replace the number with the proven count. |
 | **5** | **0:31–0:49** | 18s | Wardrobe: large profile cat without the coat; named `Conductor's Coat` card with localized price; player taps Buy; the native Google Play purchase confirmation appears; purchase completes; return to the same portrait with coat and hat visibly equipped. Keep tap → sheet → unlock uncut. | `CONDUCTOR'S COAT` → `REVENUECAT-POWERED PURCHASE` → `PERMANENTLY UNLOCKED` | “The filmed purchase is Conductor's Coat. RevenueCat loads the product and carries its permanent entitlement through Google Play Billing.” | Production product, offering, entitlement, public SDK config, real Pixel transaction, and visible unlock. Google Play Billing provides the native confirmation UI. |
 | **6** | **0:49–0:58** | 9s | After an off-camera delete/reinstall under the same Google Play test account, open Wardrobe. If the candidate presents the coat locked, tap the shipped Restore control; entitlement returns and the coat reappears. If RevenueCat restores automatically on initialization, film that truthful behavior and caption it `ENTITLEMENT RESTORED` instead of staging a locked state. | `RESTORES WITH REVENUECAT` or `ENTITLEMENT RESTORED` | “The entitlement returns on a clean install.” | Real reinstall-and-restore behavior on the same signed Android candidate. A relaunch, fixture backend, or Unity test still is not proof. |
@@ -229,11 +229,11 @@ sentence whose feature or count is not proven. The stable store listing remains 
 ### 3.1 Main description
 
 > Cat Metro is a tabletop train-routing puzzle for Android. Cats leave the depot carrying
-> colour-and-shape destination badges. Tap a junction to move the points and route each little
-> train toward the matching platform.
+> colour-and-shape destination badges. Tap a junction to move the points and route little
+> trains toward matching platforms.
 >
-> Deliver every cat correctly to clear a board. A wrong delivery ends the attempt, and retry
-> starts the board again. The release includes sixty authored boards checked against the same
+> Meet each board's delivery goal to clear it. A wrong station rejects the cat; retry
+> starts a failed board again. The release includes sixty authored boards checked against the same
 > simulation the game runs, plus a Daily route derived from the date.
 >
 > The game is a low-poly wooden railway on a warm desk: navy rails, cream sleepers, chunky
@@ -278,7 +278,7 @@ been tested. The defensible product fact is that colour and shape are both prese
 ### 3.4 Optional: OneSignal — Keep Them Coming Back
 
 > A dated Daily route gives a returning player something genuinely new to solve. Daily unlocks
-> after seven campaign completions. After the player completes a Daily and chooses a morning,
+> after completing seven different campaign boards. After the player completes a Daily and chooses a morning,
 > afternoon, or evening reminder window, OneSignal can send one reminder that opens directly to
 > that day's board.
 >
@@ -301,8 +301,8 @@ from that uncertainty.
 Only if a player-initiated rewarded surface, reward grant, failure path, privacy treatment, and
 RevenueCat Ads reporting all ship and are filmed may the entry replace that note with:
 
-> Cat Metro never interrupts a board with an ad. The only ad surface is deliberately opened by
-> the player for a named reward, grants only after a completed view, and reports through
+> Cat Metro never interrupts a board with an ad. Ad surfaces are deliberately opened by
+> the player for a named reward, grant only after a completed view, and report through
 > RevenueCat Ads. Declining or failing the ad leaves play unchanged, and the reward is never gated
 > behind an ATT prompt.
 

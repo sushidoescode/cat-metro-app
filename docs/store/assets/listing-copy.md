@@ -26,11 +26,11 @@ Tap switches to route cat trains. A train puzzle with color-and-symbol stations.
 
 ### Full description
 
-406 characters of 4,000 (3,594 remaining). The count includes the six line feeds between the
+403 characters of 4,000 (3,597 remaining). The count includes the six line feeds between the
 three paragraphs and heading, and excludes the terminal line feed.
 
 ```text
-Cat Metro is an Android train puzzle about routing cat trains. Tap switches to guide each train toward its matching color-and-symbol station.
+Cat Metro is an Android train puzzle about routing cat trains. Tap switches to guide cat trains toward matching color-and-symbol stations.
 
 Read the next waves, choose the route, and finish a level to move to the next. This cat puzzle focuses on switch decisions.
 
@@ -79,11 +79,11 @@ switches,stations,routing,tabletop,railway,miniature,waves,level,guide,matching,
 
 ### Description
 
-397 characters of 4,000 (3,603 remaining). This is the existing full description with only the
+394 characters of 4,000 (3,606 remaining). This is the existing full description with only the
 platform-specific wording removed; the claims and paragraph structure are otherwise unchanged.
 
 ```text
-Cat Metro is a train puzzle about routing cat trains. Tap switches to guide each train toward its matching color-and-symbol station.
+Cat Metro is a train puzzle about routing cat trains. Tap switches to guide cat trains toward matching color-and-symbol stations.
 
 Read the next waves, choose the route, and finish a level to move to the next. This cat puzzle focuses on switch decisions.
 
@@ -111,7 +111,7 @@ https://sushidoescode.github.io/cat-metro-app/privacy/
 | `Cat Metro is an Android train puzzle about routing cat trains.` | C-01 |
 | Apple description: `Cat Metro is a train puzzle about routing cat trains.` | C-01 |
 | `Tap switches…` / `choose the route` / `switch decisions` | C-01 |
-| `matching color-and-symbol station` | C-04 |
+| `matching color-and-symbol stations` | C-04 |
 | `Read the next waves` | C-05 |
 | `finish a level to move to the next` | C-08 |
 | `tabletop model-railway look` / `warm miniature premise` | C-13 |
