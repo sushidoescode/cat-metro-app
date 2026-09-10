@@ -80,6 +80,20 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(label.overflowMode, Is.EqualTo(TextOverflowModes.Ellipsis));
         }
 
+        [Test]
+        public void CompactIconOnlyPin_CentresTheGlyphWithoutAnEmptyLabelGap()
+        {
+            _canvas = new GameObject("CompactChipCanvas", typeof(Canvas));
+            var chip = ChromeChip.PaintPrimary(_canvas.transform, new Rect(0, 0, 160, 160),
+                "", Palette.InkNavy, HudShapeSprites.Triangle, 408f);
+            chip.LayoutFace(new Rect(100, 1800, 122.4f, 122.4f), 408f);
+            var icon = (RectTransform)chip.Root.Find("Content/Icon");
+            Assert.That(chip.Root.InverseTransformPoint(icon.TransformPoint(icon.rect.center)).x,
+                Is.Zero.Within(.01f), "an empty label must not leave a 10dp phantom gap");
+            Assert.That(chip.Label.fontSizeMin, Is.GreaterThanOrEqualTo(30.6f - .001f));
+            Assert.That(chip.Label.fontSizeMax, Is.EqualTo(61.2f).Within(.001f));
+        }
+
         [TestCase("Unlock · CA$2.79")]
         [TestCase("Débloquer · 2,79 $CA")]
         [TestCase("Equip")]

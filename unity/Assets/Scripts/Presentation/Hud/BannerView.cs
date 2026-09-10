@@ -19,6 +19,13 @@ namespace CatMetro.Presentation.Hud
         private Rect _paintedPx;
         private Rect _lastSafeArea = new Rect(-1f, -1f, -1f, -1f);
         private float _lastDpi = -1f;
+        private bool _navigationSpace;
+
+        public void ReserveNavigationSpace()
+        {
+            _navigationSpace = true;
+            LayoutForViewport(Screen.safeArea, Screen.dpi);
+        }
 
         public System.Func<bool> MotionOffSource;
         public string CurrentKey { get; private set; } = "";
@@ -106,6 +113,13 @@ namespace CatMetro.Presentation.Hud
             _text.color = Palette.WithAlpha(Palette.CreamCard, eased);
             _plaque.color = Palette.WithAlpha(Palette.DepotNavy, eased);
             _rect.localScale = Vector3.one * Mathf.Lerp(.92f, 1f, eased);
+            float drop = 0f;
+            if (CurrentKey.StartsWith("fail.") && !(MotionOffSource != null && MotionOffSource()))
+            {
+                float landed = Fx.BoardFx.EaseOutBack(Mathf.Clamp01(elapsedSeconds / .35f));
+                drop = (1f - landed) * 64f * HudBands.PxPerDp(_lastDpi);
+            }
+            _rect.anchoredPosition = _paintedPx.center + Vector2.up * drop;
         }
 
         public void LayoutForViewport(Rect safeArea, float dpi)
@@ -113,6 +127,9 @@ namespace CatMetro.Presentation.Hud
             float scale = HudBands.PxPerDp(dpi);
             float inset = Mathf.Max(safeArea.width * HorizontalInsetFraction, 16f * scale);
             float width = Mathf.Max(0f, safeArea.width - inset * 2f);
+            if (_navigationSpace)
+                width = Mathf.Min(width, Screens.GameplayPauseView.EntryRect(safeArea, dpi).xMin
+                    - 10f * scale - safeArea.x - inset);
             var statusBand = HudBands.StatusBand(safeArea);
             _paintedPx = new Rect(safeArea.x + inset, statusBand.y, width, statusBand.height);
             _rect.anchorMin = _rect.anchorMax = Vector2.zero;
