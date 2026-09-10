@@ -100,12 +100,18 @@ namespace CatMetro.Tests.PlayMode
                 source.Set(Snapshot("red_tabby", true));
                 AssertFaceClear(name + "-reequipped", mount, portrait);
                 // A fallback cat must get the exact original flat layout even after paid fitting.
-                source.Set(Snapshot("blue_siamese", true));
-                Assert.That(mount.Mounted, Is.False);
-                AssertLegacyBodyAnchors(portrait);
+                foreach (string fallback in new[] { "blue_siamese", "yellow_longhair" })
+                {
+                    source.Set(Snapshot(fallback, true));
+                    Assert.That(mount.Mounted, Is.False);
+                    AssertLegacyBodyAnchors(portrait);
+                    AssertLegacyFallbackPixels(name + "-" + fallback, portrait);
+                }
                 source.Set(Snapshot("red_tabby", true));
-                mount.gameObject.SetActive(false);
-                mount.gameObject.SetActive(true);
+                // Toggle the real holder so both portrait OnEnable and mount OnEnable run.
+                GameObject holder = portrait.transform.parent.gameObject;
+                holder.SetActive(false);
+                holder.SetActive(true);
                 Assert.That(mount.Layout(_root.Cam), Is.True);
                 AssertFaceClear(name + "-reopened", mount, portrait);
                 mount.BindMotionOff(() => true);
@@ -129,10 +135,11 @@ namespace CatMetro.Tests.PlayMode
             Color32[] plain = Read();
             portrait.OutfitLayerTransform.gameObject.SetActive(true);
             foreach (Image part in body) part.enabled = true;
-            Color32[] head = HeadMask(mount, name);
+            // Preserve useful production frames even if the diagnostic control itself fails.
             Save(name + "-equipped", equipped);
             Save(name + "-hat-only", hatOnly);
             Save(name + "-plain", plain);
+            Color32[] head = HeadMask(mount, name);
             Save(name + "-weighted-head", head);
             int faceChanges = Different(equipped, hatOnly, head);
             int bodyChanges = Different(equipped, hatOnly);
@@ -187,10 +194,23 @@ namespace CatMetro.Tests.PlayMode
                 skin.sharedMaterials = Enumerable.Repeat(white, materials.Length).ToArray();
                 skin.SetPropertyBlock(null);
                 Color32[] realFull = Read();
-                using (var geometry = new WeightedHeadMaskGeometry(skin, head))
+                Save(name + "-actual-skin-full", realFull);
+                // Both diagnostics retain the complete skin localToWorld matrix via an identity
+                // child; no TRS decomposition can discard the flattened hierarchy's shear.
+                // The scaled comparison is preserved before checking the unscaled local bake.
+                using (var scaled = new WeightedHeadMaskGeometry(skin, head, useScale: true))
+                {
+                    scaled.Material.SetFloat("_HeadOnly", 0f);
+                    Color32[] full = Read();
+                    Save(name + "-scaled-bake-full", full);
+                    LogMaskGeometry(name, "scaled", skin, scaled, realFull, full);
+                }
+                using (var geometry = new WeightedHeadMaskGeometry(skin, head, useScale: false))
                 {
                     geometry.Material.SetFloat("_HeadOnly", 0f);
                     Color32[] bakedFull = Read();
+                    Save(name + "-unscaled-bake-full", bakedFull);
+                    LogMaskGeometry(name, "unscaled", skin, geometry, realFull, bakedFull);
                     AssertContoursAgree(realFull, bakedFull);
                     geometry.Material.SetFloat("_HeadOnly", 1f);
                     Color32[] weighted = Read();
@@ -215,6 +235,38 @@ namespace CatMetro.Tests.PlayMode
                 Object.DestroyImmediate(white);
             }
         }
+
+        private void LogMaskGeometry(string name, string mode, SkinnedMeshRenderer skin,
+            WeightedHeadMaskGeometry geometry, Color32[] actual, Color32[] diagnostic)
+        {
+            Mesh mesh = geometry.Root.GetComponent<MeshFilter>().sharedMesh;
+            var values = new Newtonsoft.Json.Linq.JObject
+            {
+                ["mode"] = mode,
+                ["actual_white_pixels"] = actual.Count(White),
+                ["diagnostic_white_pixels"] = diagnostic.Count(White),
+                ["skin_renderer_local_to_world"] = MatrixValues(skin.localToWorldMatrix),
+                ["skin_transform_local_to_world"] = MatrixValues(skin.transform.localToWorldMatrix),
+                ["diagnostic_local_to_world"] = MatrixValues(geometry.Root.transform.localToWorldMatrix),
+                ["skin_lossy_scale"] = VectorValues(skin.transform.lossyScale),
+                ["root_bone_lossy_scale"] = VectorValues(skin.rootBone.lossyScale),
+                ["baked_local_min"] = VectorValues(mesh.bounds.min),
+                ["baked_local_max"] = VectorValues(mesh.bounds.max),
+                ["skin_world_min"] = VectorValues(skin.bounds.min),
+                ["skin_world_max"] = VectorValues(skin.bounds.max),
+                ["diagnostic_world_min"] = VectorValues(geometry.Root.GetComponent<Renderer>().bounds.min),
+                ["diagnostic_world_max"] = VectorValues(geometry.Root.GetComponent<Renderer>().bounds.max),
+            };
+            string json = values.ToString();
+            TestContext.Out.WriteLine("BODYWEAR_MASK " + name + " " + json);
+            if (!string.IsNullOrEmpty(_directory))
+                File.WriteAllText(Path.Combine(_directory, name + "-" + mode + "-geometry.json"), json);
+        }
+
+        private static Newtonsoft.Json.Linq.JArray VectorValues(Vector3 v) =>
+            new Newtonsoft.Json.Linq.JArray(v.x, v.y, v.z);
+        private static Newtonsoft.Json.Linq.JArray MatrixValues(Matrix4x4 matrix) =>
+            new Newtonsoft.Json.Linq.JArray(Enumerable.Range(0, 16).Select(i => matrix[i]));
 
         private static void AssertContoursAgree(Color32[] first, Color32[] second)
         {
@@ -251,6 +303,33 @@ namespace CatMetro.Tests.PlayMode
             Assert.That((max.x - root.rect.xMin) / root.rect.width, Is.EqualTo(.76f).Within(.0001f));
             Assert.That((min.y - root.rect.yMin) / root.rect.height, Is.EqualTo(.06f).Within(.0001f));
             Assert.That((max.y - root.rect.yMin) / root.rect.height, Is.EqualTo(.45f).Within(.0001f));
+        }
+
+        private void AssertLegacyFallbackPixels(string name, CosmeticPortraitView portrait)
+        {
+            Color32[] grouped = Read();
+            Image[] pieces = portrait.OutfitLayerTransform.GetComponentsInChildren<Image>(true);
+            Transform[] parents = pieces.Select(p => p.transform.parent).ToArray();
+            int[] order = pieces.Select(p => p.transform.GetSiblingIndex()).ToArray();
+            Transform token = portrait.OutfitLayerTransform.Find("outfit.conductor");
+            try
+            {
+                // Independent legacy control: the original painter placed all nine pieces
+                // directly under the token with these same anchors and rotations.
+                foreach (Image piece in pieces) piece.transform.SetParent(token, false);
+                Color32[] legacy = Read();
+                Save(name + "-fallback", grouped);
+                Save(name + "-legacy-flat-control", legacy);
+                Assert.That(legacy, Is.EqualTo(grouped), "fallback grouping must preserve every legacy pixel");
+            }
+            finally
+            {
+                for (int i = 0; i < pieces.Length; i++)
+                {
+                    pieces[i].transform.SetParent(parents[i], false);
+                    pieces[i].transform.SetSiblingIndex(order[i]);
+                }
+            }
         }
 
         private Color32[] Read()
