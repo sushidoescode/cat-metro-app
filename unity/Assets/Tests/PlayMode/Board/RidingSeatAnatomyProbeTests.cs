@@ -323,8 +323,17 @@ namespace CatMetro.Tests.PlayMode
             // its wrapper depth before direct pose samples freeze that presentation context.
             animator.Play("Base Layer.Cat_Ride", 0, 0f);
             animator.Update(0f);
-            train.SendMessage("LateUpdate", SendMessageOptions.RequireReceiver);
+            SampleTrainLateUpdate(train);
             Assert.That(animator.GetCurrentAnimatorStateInfo(0).IsName("Base Layer.Cat_Ride"), Is.True);
+        }
+        private static void SampleTrainLateUpdate(ToyTrainView train)
+        {
+            // The capture freezes this behaviour. Invoke the same production callback body
+            // directly after Animator evaluation without asking Unity to dispatch a lifecycle message.
+            var callback = typeof(ToyTrainView).GetMethod("LateUpdate",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.That(callback, Is.Not.Null);
+            callback.Invoke(train, null);
         }
         private static void Sample(AnimationClip clip, float seconds, Animator animator, CatRigPresentation presentation)
         { clip.SampleAnimation(animator.gameObject, seconds); presentation.ApplyHeadShape(); }
