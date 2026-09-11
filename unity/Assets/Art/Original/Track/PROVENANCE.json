@@ -1,0 +1,15 @@
+{
+  "authorship": "Original procedural geometry and analytic texture authored for Cat Metro by Codex, 2026-09-10. No imported models, image textures, fonts or provider services.",
+  "source_branch_commit": "2a00506a99d9e2d8606aadbf17e43ff7e0ab4158",
+  "source_recipe": "scripts/blender_original_station_track.py",
+  "source_recipe_sha256": "9ef4732d92936c0f7bd12ce1c0d71727a1abdebe0c324238af79a4f5e8e372f2",
+  "source_atlas": "docs/design/assets/original-station-track/Textures/original-toy-atlas.png",
+  "runtime_atlas": "Resources/Track/original-toy-atlas.png",
+  "atlas_sha256": "3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45",
+  "atlas_dimensions": [
+    1024,
+    512
+  ],
+  "licence": "Project-original asset; no third-party asset licence dependencies.",
+  "runtime_treatment": "The original cream/wood/navy atlas is byte-identical. Rounded sections adapt the recipe inside existing runtime track envelopes; all authored spline paths, rail crown/gauge, curvature tuck, sleeper and seam exclusions remain owned by ToyTrackMeshBuilder. No source FBX is copied or modified."
+}

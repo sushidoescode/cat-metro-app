@@ -1,0 +1,145 @@
+{
+  "generator": "scripts/blender_original_station_track.py",
+  "generator_sha256": "9ef4732d92936c0f7bd12ce1c0d71727a1abdebe0c324238af79a4f5e8e372f2",
+  "blender_version": "5.1.2",
+  "blender_build_hash": "ec6e62d40fa9",
+  "seed": 20260910,
+  "authorship": "Original procedural geometry and analytic texture authored for Cat Metro by Codex, 2026-09-10.",
+  "source_assets": [],
+  "external_services": [],
+  "reference_direction": [
+    "docs/LOOK.md",
+    "docs/reference/gen-ref-NOTES.md",
+    "docs/reference/gen-ref-v2-props.png",
+    "docs/reference/gen-ref-v2-board.png",
+    "docs/reference/gen-ref-v2-moments.png"
+  ],
+  "texture": {
+    "path": "Textures/original-toy-atlas.png",
+    "width": 1024,
+    "height": 512,
+    "sha256": "3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45",
+    "palette_srgb": {
+      "cream": "F1DDB6",
+      "wood": "CCA16C",
+      "red": "CF533E",
+      "navy": "293D50",
+      "bench": "A87646",
+      "teal": "497F7D",
+      "ivory": "FFF0CF",
+      "brass": "D3AC65"
+    }
+  },
+  "assets": [
+    {
+      "id": "original-station-circle",
+      "source": "Original procedural Blender geometry; no imported mesh, image, font, or provider output.",
+      "licence": "Project-original asset; no third-party asset licence dependencies.",
+      "metrics": {
+        "vertices": 4312,
+        "triangles": 8476,
+        "materials": 1,
+        "mesh_objects": 1,
+        "non_manifold_edges": 0,
+        "bounds_blender_z_up": {
+          "min": [
+            -1.524999976158142,
+            -1.2300000190734863,
+            0.0
+          ],
+          "max": [
+            1.524999976158142,
+            0.9399999976158142,
+            2.2220001220703125
+          ]
+        },
+        "dimensions": [
+          3.049999952316284,
+          2.1700000166893005,
+          2.2220001220703125
+        ],
+        "root_transform_identity": true
+      },
+      "exports_sha256": {
+        "original-station-circle.fbx": "b4676d73fa382e781c1de179fff5b4b3d453e6e04cba5a24ec8a56a8a60eeb62",
+        "original-station-circle.glb": "0985d2225e73d7f73a8c9b3c85774819150aa37132dc753bd27f4823fd0fb261"
+      }
+    },
+    {
+      "id": "original-track-straight",
+      "source": "Original procedural Blender geometry; no imported mesh, image, font, or provider output.",
+      "licence": "Project-original asset; no third-party asset licence dependencies.",
+      "metrics": {
+        "vertices": 960,
+        "triangles": 1872,
+        "materials": 1,
+        "mesh_objects": 1,
+        "non_manifold_edges": 0,
+        "bounds_blender_z_up": {
+          "min": [
+            -0.44999998807907104,
+            0.0,
+            0.0
+          ],
+          "max": [
+            0.44999998807907104,
+            3.200000047683716,
+            0.3149999976158142
+          ]
+        },
+        "dimensions": [
+          0.8999999761581421,
+          3.200000047683716,
+          0.3149999976158142
+        ],
+        "root_transform_identity": true
+      },
+      "exports_sha256": {
+        "original-track-straight.fbx": "21270ee7fd9da199bda09b5e863ede006ba51679ffb4ee1167598dbf5aeb9fc7",
+        "original-track-straight.glb": "efb34b6811cc08e3b9e13be2daf5478494e33c4a094e1ecca2aef403e0ca524f"
+      }
+    },
+    {
+      "id": "original-track-curve",
+      "source": "Original procedural Blender geometry; no imported mesh, image, font, or provider output.",
+      "licence": "Project-original asset; no third-party asset licence dependencies.",
+      "metrics": {
+        "vertices": 2832,
+        "triangles": 5616,
+        "materials": 1,
+        "mesh_objects": 1,
+        "non_manifold_edges": 0,
+        "bounds_blender_z_up": {
+          "min": [
+            -0.44999998807907104,
+            0.0,
+            0.0
+          ],
+          "max": [
+            1.899999976158142,
+            2.3499999046325684,
+            0.3149999976158142
+          ]
+        },
+        "dimensions": [
+          2.349999964237213,
+          2.3499999046325684,
+          0.3149999976158142
+        ],
+        "root_transform_identity": true
+      },
+      "exports_sha256": {
+        "original-track-curve.fbx": "96e46a72ed53f3a80e53a8bd1fb1d97b28307558577fa730ec5fafb18309a5bd",
+        "original-track-curve.glb": "05a1d35e9fdbafdf478fc5ec5160239f70ad6605ae1276e7a5fe56ad43d45214"
+      }
+    }
+  ],
+  "blend_sha256": "4a2a8de4685b7d75ba8534f87cd63afbfdfb88ffe836e0d75e1587cf946adf36",
+  "previews_sha256": {
+    "01-station-and-track.png": "309137f7da994c0eb13128a5da4e5ae024e022420c20a23e7457e9fd5e13b924",
+    "02-station-front.png": "6b76edd2159642d51e56a378656aa8402d2a96b028b8a014d7d676a0cfbb5299",
+    "03-station-rear.png": "f7215e18a18c1ac93caae61eb5f346bf5656ae7ecc34fe5d659dceeec3508ec5",
+    "04-station-small.png": "9ff3671805afdc8b14f28686674df203d96b8f7a7c8998b5f48e9eeb6ce3708a",
+    "05-track-pieces.png": "cd25fc6ba370f75fa63e4cb2d2bd05396aca21b66fc1d19060b54336f2593c4f"
+  }
+}

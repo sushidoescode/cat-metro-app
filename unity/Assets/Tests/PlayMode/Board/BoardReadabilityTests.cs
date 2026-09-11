@@ -6,6 +6,7 @@ using CatMetro.Bootstrap;
 using CatMetro.Content;
 using CatMetro.Domain;
 using CatMetro.Presentation.Board;
+using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Theme;
 using NUnit.Framework;
 using UnityEngine;
@@ -245,6 +246,19 @@ namespace CatMetro.Tests.PlayMode
                 + $"express={marks.ExpressVisible} expectedExpress={express} "
                 + $"expressActive={marks.transform.Find("Express").gameObject.activeInHierarchy}");
             Assert.That(Vector4.Distance(toy.CatTint, Palette.SignalRed), Is.LessThan(.001f), context);
+            var fur = toy.GetComponentInChildren<BoardFurTint>(true);
+            if (fur != null)
+            {
+                foreach (var skin in fur.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                {
+                    var coatPaint = new MaterialPropertyBlock();
+                    skin.GetPropertyBlock(coatPaint);
+                    Assert.That(Vector4.Distance(coatPaint.GetColor("_BaseColor"), Color.white),
+                        Is.LessThan(.001f), context + ": protected atlas colours");
+                    Assert.That(Vector4.Distance(coatPaint.GetColor("_FurColor"), Palette.SignalRed),
+                        Is.LessThan(.001f), context + ": actual live/retained fur route colour");
+                }
+            }
             Assert.That(Vector4.Distance(headPaint.GetColor("_BaseColor"), Palette.SignalRed),
                 Is.LessThan(.001f), context + ": actual placeholder paint");
             Assert.That(Vector4.Distance(pinPaint.GetColor("_BaseColor"), Palette.SignalRed),

@@ -1,0 +1,270 @@
+{
+  "assets": [
+    {
+      "id": "original-open-carriage",
+      "authorship": "Original procedural geometry and analytic atlas authored for Cat Metro by Codex, 2026-09-10.",
+      "source": "Code-authored rounded shell, chassis, axles and wheels; no imported meshes, photos or provider outputs.",
+      "licence": "Project-original asset; no third-party asset licence dependencies.",
+      "source_assets": [],
+      "external_services": [],
+      "parts": {
+        "OpenShell": {
+          "vertices": 352,
+          "triangles": 700,
+          "materials": 1,
+          "mesh_objects": 1,
+          "non_manifold_edges": 0,
+          "bounds_blender_z_up": {
+            "min": [
+              -0.25999999046325684,
+              -0.23999999463558197,
+              0.06499999761581421
+            ],
+            "max": [
+              0.25999999046325684,
+              0.23999999463558197,
+              0.16500000655651093
+            ]
+          },
+          "dimensions": [
+            0.5199999809265137,
+            0.47999998927116394,
+            0.10000000894069672
+          ],
+          "root_transform_identity": true
+        },
+        "Undercarriage": {
+          "vertices": 1344,
+          "triangles": 2644,
+          "materials": 1,
+          "mesh_objects": 1,
+          "non_manifold_edges": 0,
+          "bounds_blender_z_up": {
+            "min": [
+              -0.2290000021457672,
+              -0.26999998092651367,
+              0.0
+            ],
+            "max": [
+              0.2290000021457672,
+              0.26999998092651367,
+              0.1080000028014183
+            ]
+          },
+          "dimensions": [
+            0.4580000042915344,
+            0.5399999618530273,
+            0.1080000028014183
+          ],
+          "root_transform_identity": true
+        }
+      },
+      "triangles": 3344,
+      "mesh_objects": 2,
+      "shared_materials": 1,
+      "dimensions_blender_xyz": [
+        0.5199999809265137,
+        0.5399999618530273,
+        0.16500000655651093
+      ],
+      "coordinate_system": "+X forward, +Z up, bottom Z=0",
+      "suggested_board_adapter": "Blender (x,y,z) -> board-local (x,-y,.235-z). For an ordinary +Y-up Unity import, rotate -90 degrees about X then translate board-local Z to .235; validate actual imported axes before mounting.",
+      "cavity": {
+        "depth": 0.08,
+        "floor_z": 0.085,
+        "rim_z": 0.165,
+        "floor_outline_bounds": [
+          0.43,
+          0.39
+        ],
+        "samples": [
+          {
+            "kind": "floor",
+            "xy": [
+              -0.15,
+              -0.13
+            ],
+            "first_hit_z": 0.08499999344348907
+          },
+          {
+            "kind": "floor",
+            "xy": [
+              -0.15,
+              0
+            ],
+            "first_hit_z": 0.08499999344348907
+          },
+          {
+            "kind": "floor",
+            "xy": [
+              -0.15,
+              0.13
+            ],
+            "first_hit_z": 0.08500000834465027
+          },
+          {
+            "kind": "floor",
+            "xy": [
+              0,
+              -0.13
+            ],
+            "first_hit_z": 0.08499999344348907
+          },
+          {
+            "kind": "floor",
+            "xy": [
+              0,
+              0
+            ],
+            "first_hit_z": 0.08499999344348907
+          },
+          {
+            "kind": "floor",
+            "xy": [
+              0,
+              0.13
+            ],
+            "first_hit_z": 0.08499999344348907
+          },
+          {
+            "kind": "floor",
+            "xy": [
+              0.15,
+              -0.13
+            ],
+            "first_hit_z": 0.08500000834465027
+          },
+          {
+            "kind": "floor",
+            "xy": [
+              0.15,
+              0
+            ],
+            "first_hit_z": 0.08499999344348907
+          },
+          {
+            "kind": "floor",
+            "xy": [
+              0.15,
+              0.13
+            ],
+            "first_hit_z": 0.08499999344348907
+          },
+          {
+            "kind": "rim",
+            "xy": [
+              0.245,
+              0
+            ],
+            "first_hit_z": 0.16499999165534973
+          },
+          {
+            "kind": "rim",
+            "xy": [
+              -0.245,
+              0
+            ],
+            "first_hit_z": 0.16499999165534973
+          },
+          {
+            "kind": "rim",
+            "xy": [
+              0,
+              0.225
+            ],
+            "first_hit_z": 0.16500000655651093
+          },
+          {
+            "kind": "rim",
+            "xy": [
+              0,
+              -0.225
+            ],
+            "first_hit_z": 0.16500000655651093
+          },
+          {
+            "kind": "inner_wall",
+            "direction": [
+              1,
+              0,
+              0
+            ],
+            "distance": 0.22387933731079102,
+            "above_rim_open": true
+          },
+          {
+            "kind": "inner_wall",
+            "direction": [
+              -1,
+              0,
+              0
+            ],
+            "distance": 0.22387933731079102,
+            "above_rim_open": true
+          },
+          {
+            "kind": "inner_wall",
+            "direction": [
+              0,
+              1,
+              0
+            ],
+            "distance": 0.20387932658195496,
+            "above_rim_open": true
+          },
+          {
+            "kind": "inner_wall",
+            "direction": [
+              0,
+              -1,
+              0
+            ],
+            "distance": 0.20387932658195496,
+            "above_rim_open": true
+          }
+        ]
+      }
+    }
+  ],
+  "generator": "scripts/blender_original_open_carriage.py",
+  "generator_sha256": "a376ed71ee9f5c2d24fa45d45ffda6119223a70b131fccdca648f6f1d02b1b9d",
+  "base_recipe": "scripts/blender_original_station_track.py",
+  "base_recipe_sha256": "9ef4732d92936c0f7bd12ce1c0d71727a1abdebe0c324238af79a4f5e8e372f2",
+  "blender": "5.1.2",
+  "build_hash": "ec6e62d40fa9",
+  "seed": 20260910,
+  "reference_direction": [
+    "docs/LOOK.md",
+    "docs/reference/gen-ref-v2-board.png",
+    "docs/reference/gen-ref-v2-moments.png"
+  ],
+  "texture": {
+    "size": [
+      1024,
+      512
+    ],
+    "palette_srgb": {
+      "cream": "F1DDB6",
+      "wood": "CCA16C",
+      "red": "CF533E",
+      "navy": "293D50",
+      "bench": "A87646",
+      "teal": "497F7D",
+      "ivory": "FFF0CF",
+      "brass": "D3AC65"
+    }
+  },
+  "outputs_sha256": {
+    "Models/original-open-carriage.fbx": "69705bb1c161d7dfdd55091b1cc8ed2d0b932fa7c82baae4a49151bb275ffe4b",
+    "Models/original-open-carriage.glb": "b373aa3fb1fb4d4c0da56a30b83831c89bb246d843b9aaea26060ef059aa5e50",
+    "Source/original-open-carriage.blend": "113a950d061a0f9d0395a7dfe8c6a29327f72ece552e18d45ae0604ec2f6edda",
+    "Textures/original-toy-atlas.png": "3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45"
+  },
+  "previews_sha256": {
+    "01-open-front.png": "1138aa62c7197d04ca45bb00456e83e5382ad083950fdfabee486529c6eefd24",
+    "02-open-rear.png": "5453a4a4f3c208a51feab178e71662e9e12b6194b024ff08dbcde1fa265f2c09",
+    "03-open-top.png": "512e86fc2935b914e5eb1b8f9b189eca3963b256283aab90af2ea24cb2d62198",
+    "04-low-side.png": "29410b46bdaf0a091e3918389c99cbe603cfddf4f6f5fc9d486e5ac7df783ae3",
+    "05-small.png": "49e53bd762d103c7af9b95804a6c9705706b1aa788caa59ed69372a8d16b3dd0"
+  }
+}

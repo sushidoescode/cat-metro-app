@@ -1,0 +1,139 @@
+{
+  "assets": [
+    {
+      "id": "original-toy-engine",
+      "authorship": "Original code-authored geometry and analytic atlas for Cat Metro, Codex, 2026-09-10.",
+      "source": "Rounded boiler, open cab, arched roof, funnel, chassis and wood/navy wheels; no imported geometry or imagery.",
+      "licence": "Project-original asset; no third-party asset licence dependencies.",
+      "source_assets": [],
+      "external_services": [],
+      "parts": {
+        "EngineBody": {
+          "vertices": 1984,
+          "triangles": 3904,
+          "materials": 1,
+          "mesh_objects": 1,
+          "non_manifold_edges": 0,
+          "bounds_blender_z_up": {
+            "min": [
+              -0.226500004529953,
+              -0.14800000190734863,
+              0.07900000363588333
+            ],
+            "max": [
+              0.22050000727176666,
+              0.14800000190734863,
+              0.3700000047683716
+            ]
+          },
+          "dimensions": [
+            0.44700001180171967,
+            0.29600000381469727,
+            0.29100000113248825
+          ],
+          "root_transform_identity": true
+        },
+        "RunningGear": {
+          "vertices": 1824,
+          "triangles": 3584,
+          "materials": 1,
+          "mesh_objects": 1,
+          "non_manifold_edges": 0,
+          "bounds_blender_z_up": {
+            "min": [
+              -0.2290000021457672,
+              -0.14949999749660492,
+              0.0
+            ],
+            "max": [
+              0.2290000021457672,
+              0.14949999749660492,
+              0.10849999636411667
+            ]
+          },
+          "dimensions": [
+            0.4580000042915344,
+            0.29899999499320984,
+            0.10849999636411667
+          ],
+          "root_transform_identity": true
+        }
+      },
+      "triangles": 7488,
+      "mesh_objects": 2,
+      "shared_materials": 1,
+      "coordinate_system": "+X forward, +Z up, wheel bottoms Z=0",
+      "geometry": {
+        "bounds_blender_z_up": {
+          "min": [
+            -0.2290000021457672,
+            -0.14949999749660492,
+            0.0
+          ],
+          "max": [
+            0.2290000021457672,
+            0.14949999749660492,
+            0.3700000047683716
+          ]
+        },
+        "existing_envelope": {
+          "min": [
+            -0.23,
+            -0.15,
+            0
+          ],
+          "max": [
+            0.23,
+            0.15,
+            0.37
+          ]
+        },
+        "two_side_window_rays_unobstructed": true,
+        "wheel_bottom_z": 0.0
+      },
+      "suggested_board_adapter": "Native Unity 6000.3.16f1 FBX import initially faces -X. The Editor importer pre-multiplies its flattening matrix by Y180, normalizing the derived mesh to +X forward / +Y up; original FBX bytes stay unchanged. The runtime wrapper then rotates X-90 and translates board-local Z+.235 at scale1. Native dimensions, cab-window rays and funnel-cup ray pass; board/steam graphics remain pending.",
+      "retained_runtime_attachment": "Existing Engine/Funnel transform at board local (.15,0,-.085), including its original rotation/scale, remains the steam parent."
+    }
+  ],
+  "generator": "scripts/blender_original_toy_engine.py",
+  "generator_sha256": "cedae209e21ac0c2e30a61bbc457983eb724c8cecae9b13f9f7d4947441eb0e0",
+  "base_recipe": "scripts/blender_original_station_track.py",
+  "base_recipe_sha256": "9ef4732d92936c0f7bd12ce1c0d71727a1abdebe0c324238af79a4f5e8e372f2",
+  "blender": "5.1.2",
+  "build_hash": "ec6e62d40fa9",
+  "seed": 20260910,
+  "reference_direction": [
+    "docs/LOOK.md",
+    "docs/reference/gen-ref-v2-board.png",
+    "docs/reference/gen-ref-v2-props.png"
+  ],
+  "texture": {
+    "size": [
+      1024,
+      512
+    ],
+    "palette_srgb": {
+      "cream": "F1DDB6",
+      "wood": "CCA16C",
+      "red": "CF533E",
+      "navy": "293D50",
+      "bench": "A87646",
+      "teal": "497F7D",
+      "ivory": "FFF0CF",
+      "brass": "D3AC65"
+    }
+  },
+  "outputs_sha256": {
+    "Models/original-toy-engine.fbx": "d54ab334aebdb0899231494d45e31668f3999a6fabe621382441dd01f488a525",
+    "Models/original-toy-engine.glb": "4e44cf42de18afdcf79587c558369f9991af1ef199342ef4c752cc7e7e23532e",
+    "Source/original-toy-engine.blend": "38294095d975faca1e81d30391f22e1be95fc4bde3c073f1c9fccda8fb84d3ab",
+    "Textures/original-toy-atlas.png": "3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45"
+  },
+  "previews_sha256": {
+    "01-front.png": "029a126d51643270df63cddefb7c78ea5e12cfecd1998b6c86fc470e9bd3d5ff",
+    "02-rear.png": "07911634f329d0df21fa8a18d78916e4eb55912b0f36598bf666bb79b0ede9e4",
+    "03-side.png": "ab0bedb7d2b19e0e0c57758cdcc8168e0968c5f0ceda0b7eb8bbb38db091ba1b",
+    "04-board-38deg.png": "0c11442f78aae59cded3fecf563012cf02d389a0c8a0dbce684542ed386b0d1c",
+    "05-small.png": "6cad6115cf5f377a87ee4485f47646f51c91e01993ca3304e777a08b0c3bd7b9"
+  }
+}

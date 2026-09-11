@@ -1,0 +1,122 @@
+{
+  "blender": "5.1.2",
+  "generator_sha256": "9ef4732d92936c0f7bd12ce1c0d71727a1abdebe0c324238af79a4f5e8e372f2",
+  "verified": [
+    {
+      "file": "original-station-circle.glb",
+      "triangles": 8476,
+      "materials": 1,
+      "texture_bound": true,
+      "texture_dimensions": [
+        1024,
+        512
+      ],
+      "bounds_match_tolerance": 5e-05,
+      "fbx_embedded_images_sha256": [],
+      "blender_import_rotation": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "file": "original-track-straight.glb",
+      "triangles": 1872,
+      "materials": 1,
+      "texture_bound": true,
+      "texture_dimensions": [
+        1024,
+        512
+      ],
+      "bounds_match_tolerance": 5e-05,
+      "fbx_embedded_images_sha256": [],
+      "blender_import_rotation": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "file": "original-track-curve.glb",
+      "triangles": 5616,
+      "materials": 1,
+      "texture_bound": true,
+      "texture_dimensions": [
+        1024,
+        512
+      ],
+      "bounds_match_tolerance": 5e-05,
+      "fbx_embedded_images_sha256": [],
+      "blender_import_rotation": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "file": "original-station-circle.fbx",
+      "triangles": 8476,
+      "materials": 1,
+      "texture_bound": true,
+      "texture_dimensions": [
+        1024,
+        512
+      ],
+      "bounds_match_tolerance": 5e-05,
+      "fbx_embedded_images_sha256": [
+        "3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45"
+      ],
+      "blender_import_rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ]
+    },
+    {
+      "file": "original-track-straight.fbx",
+      "triangles": 1872,
+      "materials": 1,
+      "texture_bound": true,
+      "texture_dimensions": [
+        1024,
+        512
+      ],
+      "bounds_match_tolerance": 5e-05,
+      "fbx_embedded_images_sha256": [
+        "3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45"
+      ],
+      "blender_import_rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ]
+    },
+    {
+      "file": "original-track-curve.fbx",
+      "triangles": 5616,
+      "materials": 1,
+      "texture_bound": true,
+      "texture_dimensions": [
+        1024,
+        512
+      ],
+      "bounds_match_tolerance": 5e-05,
+      "fbx_embedded_images_sha256": [
+        "3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45"
+      ],
+      "blender_import_rotation": [
+        1.570796251296997,
+        -0.0,
+        0.0
+      ]
+    }
+  ],
+  "preview": "Previews/06-fbx-roundtrip.png",
+  "preview_sha256": "3532070ac98bc87c39532bb4b0694c8686936f5069c1f6e2b8cb55431583a674",
+  "not_verified": [
+    "Unity import and URP material binding",
+    "runtime catalog admission",
+    "camera composition in authored levels",
+    "Android rendering or frame time"
+  ]
+}

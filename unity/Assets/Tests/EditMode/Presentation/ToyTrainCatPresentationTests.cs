@@ -161,12 +161,15 @@ namespace CatMetro.Tests.EditMode.Presentation
             _view.ApplyPresentation(CatPresentationState.Walk, 1f, 0f, false);
 
             Bounds head = Head().GetComponent<Renderer>().bounds;
-            foreach (string carriagePart in new[] { "Body", "Chassis" })
+            Transform carriageRoot = _view.transform.Find("Carriage");
+            var vehicleRenderers = carriageRoot.GetComponentsInChildren<MeshRenderer>()
+                .Where(renderer => renderer.enabled && !renderer.transform.IsChildOf(Cat())
+                    && !renderer.transform.IsChildOf(Pin())).ToArray();
+            Assert.That(vehicleRenderers, Is.Not.Empty, "measure the carriage actually rendered");
+            foreach (MeshRenderer renderer in vehicleRenderers)
             {
-                Bounds carriage = _view.transform.Find("Carriage/" + carriagePart)
-                    .GetComponent<Renderer>().bounds;
-                Assert.That(head.Intersects(carriage), Is.False,
-                    $"the full platform endpoint must clear Carriage/{carriagePart}; "
+                Assert.That(head.Intersects(renderer.bounds), Is.False,
+                    $"the full platform endpoint must clear Carriage/{renderer.name}; "
                     + "the walking passenger cannot finish embedded in the vehicle");
             }
         }
@@ -532,15 +535,15 @@ namespace CatMetro.Tests.EditMode.Presentation
             var passenger = _board.transform.Find("delivered-cat:0");
             Assert.That(passenger.localPosition.x, Is.EqualTo(2.4f).Within(.0001f),
                 "recorded station X=3 maps to 3 × GridX 0.8, even when both arrivals were unseen");
-            Assert.That(passenger.localPosition.y, Is.EqualTo(2.236f).Within(.0001f),
-                "station Y=2 maps to 2.94; the calibrated 0.704 platform offset stays in board units");
+            Assert.That(passenger.localPosition.y, Is.EqualTo(2.206f).Within(.0001f),
+                "station Y=2 maps to 2.94; the calibrated 0.734 platform offset stays in board units");
             Assert.That(passenger.localPosition.z, Is.EqualTo(-.2f).Within(.0001f),
                 "HeadAnchorZ is the unchanged tabletop lift; the X/Y grid must not scale depth");
         }
 
-        [TestCase(0, 2, 2.4f, 2.716f)]
-        [TestCase(-2, 0, 1.92f, 2.236f)]
-        [TestCase(-2, 2, 2.170553f, 2.657609f)]
+        [TestCase(0, 2, 2.4f, 2.686f)]
+        [TestCase(-2, 0, 1.92f, 2.206f)]
+        [TestCase(-2, 2, 2.170553f, 2.627609f)]
         public void DeliveredPassenger_ObservedHandoffKeepsTheArrivalEndpoint(
             int approachX, int approachY, float endpointX, float endpointY)
         {
@@ -554,7 +557,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             }
             var arriving = BoardTrain().GetComponent<ToyTrainView>();
             // Hand-derived from station (2.4,2.94), a 0.48 carriage trailing distance,
-            // and board-down 0.704. The diagonal uses direction (1.6,-2.94), not (2,-2).
+            // and board-down 0.734. The diagonal uses direction (1.6,-2.94), not (2,-2).
             Vector3 expectedWorld = _board.transform.TransformPoint(
                 new Vector3(endpointX, endpointY, -.2f));
             Assert.That(Vector3.Distance(arriving.PlatformEndpointWorld, expectedWorld),
@@ -613,10 +616,10 @@ namespace CatMetro.Tests.EditMode.Presentation
             _board.UpdateFrom(_session, 10.59f);
             Vector3 anchor = a.localPosition;
             Vector3 neutralScale = a.Find("Carriage/Cat").localScale;
-            Assert.That(Vector3.Distance(anchor, new Vector3(2.4f, 2.236f, -.2f)),
+            Assert.That(Vector3.Distance(anchor, new Vector3(2.4f, 2.206f, -.2f)),
                 Is.LessThan(.0001f),
-                "the win starts on the scaled station's 0.704-offset platform, with unchanged depth");
-            Assert.That(Vector3.Distance(b.localPosition, new Vector3(2.88f, 2.236f, -.2f)),
+                "the win starts on the scaled station's 0.734-offset platform, with unchanged depth");
+            Assert.That(Vector3.Distance(b.localPosition, new Vector3(2.88f, 2.206f, -.2f)),
                 Is.LessThan(.0001f),
                 "the second retained cat keeps 0.48 board-unit lane spacing; GridX does not compress it");
             Assert.That(a.GetComponent<ToyTrainView>().PresentationState,

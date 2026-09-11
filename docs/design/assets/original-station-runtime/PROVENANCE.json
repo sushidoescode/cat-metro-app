@@ -1,0 +1,140 @@
+{
+  "assets": [
+    {
+      "id": "original-station-runtime",
+      "authorship": "Original procedural Blender geometry authored for Cat Metro by Codex, 2026-09-10.",
+      "source": "Regenerated from the original in-repository station recipe; no imported asset bytes.",
+      "licence": "Project-original asset; no third-party asset licence dependencies.",
+      "source_assets": [],
+      "external_services": [],
+      "parts": {
+        "Body": {
+          "vertices": 3480,
+          "triangles": 6832,
+          "materials": 1,
+          "mesh_objects": 1,
+          "non_manifold_edges": 0,
+          "bounds_blender_z_up": {
+            "min": [
+              -1.524999976158142,
+              -1.2300000190734863,
+              0.0
+            ],
+            "max": [
+              1.524999976158142,
+              0.8949999809265137,
+              1.7450000047683716
+            ]
+          },
+          "dimensions": [
+            3.049999952316284,
+            2.125,
+            1.7450000047683716
+          ],
+          "root_transform_identity": true
+        },
+        "RoofTint": {
+          "vertices": 256,
+          "triangles": 504,
+          "materials": 1,
+          "mesh_objects": 1,
+          "non_manifold_edges": 0,
+          "bounds_blender_z_up": {
+            "min": [
+              -1.440000057220459,
+              -0.9399999976158142,
+              1.690000057220459
+            ],
+            "max": [
+              1.440000057220459,
+              0.9399999976158142,
+              2.2220001220703125
+            ]
+          },
+          "dimensions": [
+            2.880000114440918,
+            1.8799999952316284,
+            0.5320000648498535
+          ],
+          "root_transform_identity": true
+        },
+        "BadgePost": {
+          "vertices": 96,
+          "triangles": 188,
+          "materials": 1,
+          "mesh_objects": 1,
+          "non_manifold_edges": 0,
+          "bounds_blender_z_up": {
+            "min": [
+              0.9024999737739563,
+              -0.862500011920929,
+              0.39000001549720764
+            ],
+            "max": [
+              1.0174999237060547,
+              -0.7475000023841858,
+              1.350000023841858
+            ]
+          },
+          "dimensions": [
+            0.11499994993209839,
+            0.11500000953674316,
+            0.9600000083446503
+          ],
+          "root_transform_identity": true
+        },
+        "BadgeFace": {
+          "vertices": 240,
+          "triangles": 476,
+          "materials": 1,
+          "mesh_objects": 1,
+          "non_manifold_edges": 0,
+          "bounds_blender_z_up": {
+            "min": [
+              0.6449999809265137,
+              -0.8799999952316284,
+              1.005000114440918
+            ],
+            "max": [
+              1.274999976158142,
+              -0.7599999904632568,
+              1.6349999904632568
+            ]
+          },
+          "dimensions": [
+            0.6299999952316284,
+            0.12000000476837158,
+            0.6299998760223389
+          ],
+          "root_transform_identity": true
+        }
+      },
+      "unity_prefab_parts": [
+        "Body",
+        "RoofTint"
+      ],
+      "runtime_triangles": 7336,
+      "runtime_renderers": 2,
+      "runtime_materials": 1,
+      "badge_note": "No embedded colored circle. Neutral BadgePost/BadgeFace authoring parts are omitted from the Unity prefab; existing dynamic badges remain unchanged.",
+      "roof_note": "RoofTint UVs use the neutral-white swatch; tint only this renderer with a property block."
+    }
+  ],
+  "generator": "scripts/blender_original_station_runtime.py",
+  "generator_sha256": "ad27766c1629d87305eaf1358ca2b717a8324ebde8ade3c2bf1a720d319dd786",
+  "base_recipe": "scripts/blender_original_station_track.py",
+  "base_recipe_sha256": "9ef4732d92936c0f7bd12ce1c0d71727a1abdebe0c324238af79a4f5e8e372f2",
+  "blender": "5.1.2",
+  "build_hash": "ec6e62d40fa9",
+  "seed": 20260910,
+  "outputs_sha256": {
+    "Models/original-station-runtime.fbx": "e082f6db8ef2efefb759607141ac116724c10ba5319a6582ea2b797a04d86cfc",
+    "Models/original-station-runtime.glb": "f98e188c4883d37bcddcb08f226fd63380f8955870bd397a5bb69dd1633651bf",
+    "Source/original-station-runtime.blend": "fe5aeecaccecdf696c299c0954202da6db1e9ec4362bbb9bc0b28a339da2c0cb",
+    "Textures/original-toy-atlas.png": "7661e3f8806fd75ce228d8ae0da5095c3d4eab398396338bafdde20a4e384b94"
+  },
+  "previews_sha256": {
+    "01-runtime-building-red-preview.png": "61eb9e93a49d55e796dd510f8e7cb635394a206fbbd60b3047e1db4f9b1f9679",
+    "02-neutral-authoring-parts.png": "016dd698175c4a9b239e23f9c02778a2e6477236fb9c853a51d7f7a15ff5670b"
+  }
+}

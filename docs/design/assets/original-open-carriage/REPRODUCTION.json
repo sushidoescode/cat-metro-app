@@ -1,0 +1,20 @@
+{
+  "fresh_output_directory": "/private/tmp/catmetro-original-open-carriage-reproduction",
+  "generator_sha256": "a376ed71ee9f5c2d24fa45d45ffda6119223a70b131fccdca648f6f1d02b1b9d",
+  "geometry_and_cavity_metrics_identical": true,
+  "byte_identical_outputs_sha256": {
+    "Models/original-open-carriage.glb": "b373aa3fb1fb4d4c0da56a30b83831c89bb246d843b9aaea26060ef059aa5e50",
+    "Textures/original-toy-atlas.png": "3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45"
+  },
+  "glb_exported_vertices": 2536,
+  "glb_meshes": 2,
+  "glb_materials": 1,
+  "glb_images": 1,
+  "container_note": "FBX and Blend include path/timestamp data; byte equality is not required.",
+  "not_verified": [
+    "Unity import",
+    "URP binding",
+    "actual passenger placement and occlusion",
+    "Android rendering/performance"
+  ]
+}

@@ -24,6 +24,8 @@ namespace CatMetro.EditorTools
         public const string OutputRoot = "Assets/Art/Original/CatMotion/Resources/CatMotion";
         public const string ControllerPath = OutputRoot + "/BoardCatMotionController.controller";
         public const string ProvenancePath = OutputRoot + "/PROVENANCE.json";
+        public const string OpenCarriageRoot = OutputRoot + "/OpenCarriage";
+        public const string OpenCarriageControllerPath = OpenCarriageRoot + "/OpenCarriageMotion.overrideController";
         private const string Owner = "CatMetro.ProjectOriginalCatMotion.v1";
         private const string SourceSha256 =
             "9d87464e3954954d5d64e8eb4aee6150a11f9efcdf320a9f82adb96449dca974";
@@ -32,6 +34,9 @@ namespace CatMetro.EditorTools
         private const string Tail = Body + "/bone_9/bone_12";
         private const string EarA = Head + "/tripo::Head_2/bone_4";
         private const string EarB = Head + "/tripo::Head_2/tripo::Head_3";
+        private const string SeatHip = Body + "/bone_21/tripo::0_Right_Limb_0/bone_27";
+        private const string SeatForepaw = Body + "/bone_21/tripo::0_Left_Limb_0/tripo::0_Left_Limb_1/tripo::0_Left_Limb_2";
+        private const string SeatTail = Tail + "/tripo::Tail_0";
         private const float SampleRate = 60f;
         private static readonly string[] Names =
             { "Cat_IdleSit", "Cat_Ride", "Cat_Board", "Cat_Alight", "Cat_Celebrate" };
@@ -57,6 +62,7 @@ namespace CatMetro.EditorTools
             Scene scene = EditorSceneManager.NewPreviewScene();
             GameObject host = null;
             AnimationClip[] clips = Array.Empty<AnimationClip>();
+            AnimationClip[] carriageClips = Array.Empty<AnimationClip>();
             try
             {
                 host = new GameObject("CatMotion disposable authoring host");
@@ -77,6 +83,7 @@ namespace CatMetro.EditorTools
                 animator.Update(0f);
                 animator.enabled = false;
                 clips = GenerateClips(animator, neutral, walk);
+                carriageClips = GenerateOpenCarriageClips(animator, neutral, walk);
                 // GenerateClips restores exactly the sampled Unity baseline before returning.
                 BonePose[] baseline = Capture(animator.transform);
                 EnsureFolder(OutputRoot);
@@ -91,6 +98,11 @@ namespace CatMetro.EditorTools
                 EditorUtility.SetDirty(controller);
                 AssetDatabase.SaveAssetIfDirty(controller);
                 foreach (AnimationClip clip in clips) AssetDatabase.SaveAssetIfDirty(clip);
+                EnsureFolder(OpenCarriageRoot);
+                for (int i = 0; i < carriageClips.Length; i++)
+                    carriageClips[i] = SaveClip(carriageClips[i], OpenCarriageRoot);
+                SaveOpenCarriageController(controller, carriageClips);
+                foreach (AnimationClip clip in carriageClips) AssetDatabase.SaveAssetIfDirty(clip);
 
                 var provenance = new Provenance
                 {
@@ -107,7 +119,7 @@ namespace CatMetro.EditorTools
                         + "then read local quaternions after parent-first application. Blender +Y rotation maps "
                         + "to this axis; no Blender quaternion or bind-pose values are copied.",
                     anatomy = "Head_0 weighted torso hierarchy; Head_1 weighted head; bone_12 weighted tail; "
-                        + "bone_4 and Head_3 weighted ears. Coupled/mislabeled limb chains remain at sampled rest. "
+                        + "bone_4 and Head_3 weighted ears. Base-motion limb chains remain at sampled rest. "
                         + "Celebrate lifts forepaws through a small body rear, not a direct limb-chain rotation.",
                     timing = "60 Hz endpoint-inclusive sampling; IdleSit 3.2 s, Ride 1.6 s loops; "
                         + "Board/Alight 0.18 s smooth transitions; Celebrate 0.48 s returns to the neutral platform pose.",
@@ -122,6 +134,14 @@ namespace CatMetro.EditorTools
                     clips = clips.Select(DescribeClip).ToArray(),
                     walk = DescribeReference(walk),
                     controller = new FileReceipt { path = ControllerPath, sha256 = HashFile(ControllerPath) },
+                    openCarriageMotion = "Native original-carriage candidate A: after the existing pose, own-pivot world rotations "
+                        + "about Animator axes: bone_27 +36 X; weighted forepaw Left_Limb_2 +12 Y; Tail_0 +30 X. "
+                        + "Ride full contribution, Board smooth0..1, Alight smooth1..0. Local quaternion curves only. "
+                        + "Shared override replaces exactly Ride/Board/Alight only after original carriage and authored rig admission. "
+                        + "Absolute runtime wrapper depth .0983 follows sampled pose and blends; platform and Motion Off depth0. "
+                        + "Base fallback, profile Idle, provider Walk, platform Celebrate and paid inputs remain unchanged.",
+                    openCarriageClips = carriageClips.Select(DescribeClip).ToArray(),
+                    openCarriageController = new FileReceipt { path = OpenCarriageControllerPath, sha256 = HashFile(OpenCarriageControllerPath) },
                     protectedInputs = protectedInputs,
                 };
                 RequireOwnedPath(ProvenancePath);
@@ -133,7 +153,7 @@ namespace CatMetro.EditorTools
             }
             finally
             {
-                foreach (AnimationClip clip in clips)
+                foreach (AnimationClip clip in clips.Concat(carriageClips))
                     if (clip != null && !EditorUtility.IsPersistent(clip)) Object.DestroyImmediate(clip);
                 if (host != null) Object.DestroyImmediate(host);
                 EditorSceneManager.ClosePreviewScene(scene);
@@ -145,6 +165,13 @@ namespace CatMetro.EditorTools
         }
 
         private static AnimationClip[] GenerateClips(Animator animator, AnimationClip neutral, AnimationClip walk)
+            => GenerateMotionClips(animator, neutral, walk, false);
+
+        private static AnimationClip[] GenerateOpenCarriageClips(Animator animator, AnimationClip neutral, AnimationClip walk)
+            => GenerateMotionClips(animator, neutral, walk, true);
+
+        private static AnimationClip[] GenerateMotionClips(Animator animator, AnimationClip neutral, AnimationClip walk,
+            bool openCarriage)
         {
             if (animator == null || EditorUtility.IsPersistent(animator))
                 throw new InvalidOperationException("Motion sampling requires a disposable rig instance.");
@@ -153,12 +180,17 @@ namespace CatMetro.EditorTools
             foreach (string path in new[] { Body, Head, Tail, EarA, EarB })
                 if (!baseline.Any(b => b.path == path))
                     throw new InvalidDataException("Missing calibrated control: " + path);
+            if (openCarriage)
+                foreach (string path in new[] { SeatHip, SeatForepaw, SeatTail })
+                    if (!baseline.Any(b => b.path == path))
+                        throw new InvalidDataException("Missing calibrated open-carriage control: " + path);
             ValidateWalkBindings(walk, baseline);
             var clips = new List<AnimationClip>();
             try
             {
                 for (int index = 0; index < Names.Length; index++)
                 {
+                    if (openCarriage && index != 1 && index != 2 && index != 3) continue;
                     var clip = new AnimationClip { name = Names[index], frameRate = SampleRate, legacy = false };
                     clips.Add(clip);
                     int steps = Mathf.CeilToInt(Durations[index] * SampleRate);
@@ -167,6 +199,7 @@ namespace CatMetro.EditorTools
                     {
                         Restore(animator.transform, baseline);
                         ApplyPose(animator.transform, index, sample / (float)steps);
+                        if (openCarriage) ApplyOpenCarriagePose(animator.transform, index, sample / (float)steps);
                         for (int bone = 0; bone < baseline.Length; bone++)
                         {
                             Quaternion q = animator.transform.Find(baseline[bone].path).localRotation;
@@ -261,6 +294,13 @@ namespace CatMetro.EditorTools
         }
 
         private static float Smooth(float value) => Mathf.SmoothStep(0f, 1f, value);
+        private static void ApplyOpenCarriagePose(Transform animator, int clip, float phase)
+        {
+            float seat = clip == 2 ? Smooth(phase) : clip == 3 ? 1f - Smooth(phase) : 1f;
+            Rotate(animator, SeatHip, Vector3.right, 36f * seat);
+            Rotate(animator, SeatForepaw, Vector3.up, 12f * seat);
+            Rotate(animator, SeatTail, Vector3.right, 30f * seat);
+        }
         private static float Pulse(float phase, float start, float end) => phase <= start || phase >= end
             ? 0f : Mathf.Pow(Mathf.Sin(Mathf.PI * (phase - start) / (end - start)), 2f);
         private static void Rotate(Transform animator, string path, Vector3 axis, float angle)
@@ -332,9 +372,9 @@ namespace CatMetro.EditorTools
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, typeof(Transform), property), curve);
         }
 
-        private static AnimationClip SaveClip(AnimationClip generated)
+        private static AnimationClip SaveClip(AnimationClip generated, string folder = OutputRoot)
         {
-            string path = OutputRoot + "/" + generated.name + ".anim";
+            string path = folder + "/" + generated.name + ".anim";
             RequireOwnedPath(path);
             AnimationClip existing = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
             if (existing == null)
@@ -347,6 +387,24 @@ namespace CatMetro.EditorTools
             Object.DestroyImmediate(generated);
             EditorUtility.SetDirty(existing);
             return existing;
+        }
+        private static void SaveOpenCarriageController(AnimatorController controller, AnimationClip[] clips)
+        {
+            RequireOwnedPath(OpenCarriageControllerPath);
+            var existing = AssetDatabase.LoadAssetAtPath<AnimatorOverrideController>(OpenCarriageControllerPath);
+            if (existing == null)
+            {
+                existing = new AnimatorOverrideController(controller);
+                AssetDatabase.CreateAsset(existing, OpenCarriageControllerPath);
+                AssetDatabase.SetLabels(existing, new[] { Owner });
+            }
+            existing.runtimeAnimatorController = controller;
+            var overrides = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+            existing.GetOverrides(overrides);
+            existing.ApplyOverrides(overrides.Select(pair => new KeyValuePair<AnimationClip, AnimationClip>(pair.Key,
+                clips.SingleOrDefault(clip => clip.name == pair.Key.name))).ToList());
+            EditorUtility.SetDirty(existing);
+            AssetDatabase.SaveAssetIfDirty(existing);
         }
         private static void ConfigureController(AnimatorController controller, AnimationClip[] clips, AnimationClip walk)
         {
@@ -390,7 +448,9 @@ namespace CatMetro.EditorTools
         private static void RequireOwnedPath(string path)
         {
             if (path != ControllerPath && path != ProvenancePath
-                && !Names.Any(name => path == OutputRoot + "/" + name + ".anim"))
+                && path != OpenCarriageControllerPath
+                && !Names.Any(name => path == OutputRoot + "/" + name + ".anim")
+                && !new[] { "Cat_Ride", "Cat_Board", "Cat_Alight" }.Any(name => path == OpenCarriageRoot + "/" + name + ".anim"))
                 throw new InvalidOperationException("Refusing write outside exact original-motion outputs: " + path);
             string current = UnityEngine.Application.dataPath;
             foreach (string component in path.Substring("Assets/".Length).Split('/'))
@@ -405,7 +465,8 @@ namespace CatMetro.EditorTools
         private static void PreflightOutputs()
         {
             foreach (string path in Names.Select(name => OutputRoot + "/" + name + ".anim")
-                .Concat(new[] { ControllerPath, ProvenancePath }))
+                .Concat(new[] { "Cat_Ride", "Cat_Board", "Cat_Alight" }.Select(name => OpenCarriageRoot + "/" + name + ".anim"))
+                .Concat(new[] { ControllerPath, ProvenancePath, OpenCarriageControllerPath }))
             {
                 RequireOwnedPath(path);
                 if (!File.Exists(Absolute(path))) continue;
@@ -417,7 +478,8 @@ namespace CatMetro.EditorTools
                 }
                 Object asset = AssetDatabase.LoadMainAssetAtPath(path);
                 if (asset == null || !AssetDatabase.GetLabels(asset).Contains(Owner)
-                    || (path == ControllerPath ? !(asset is AnimatorController) : !(asset is AnimationClip)))
+                    || (path == ControllerPath ? !(asset is AnimatorController)
+                        : path == OpenCarriageControllerPath ? !(asset is AnimatorOverrideController) : !(asset is AnimationClip)))
                     throw new InvalidOperationException("Refusing to overwrite an unowned asset: " + path);
             }
         }
@@ -495,6 +557,9 @@ namespace CatMetro.EditorTools
             public ClipReceipt[] clips;
             public ReferenceReceipt walk;
             public FileReceipt controller;
+            public string openCarriageMotion;
+            public ClipReceipt[] openCarriageClips;
+            public FileReceipt openCarriageController;
             public FileReceipt[] protectedInputs;
         }
     }

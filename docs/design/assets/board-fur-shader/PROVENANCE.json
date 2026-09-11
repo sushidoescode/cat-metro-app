@@ -1,0 +1,20 @@
+{
+  "asset_id": "original-board-fur-shader",
+  "authorship": "Original Cat Metro presentation shader wrapper and warm-fur selection/recolour logic authored in this repository.",
+  "source": "unity/Assets/Resources/CatMetroFur/BoardFur.shader",
+  "sha256": "62b86613cf6d55f946de6c581748cf5cb686e158b1010104be236b4c59dc643d",
+  "dependencies": [
+    {
+      "package": "com.unity.render-pipelines.universal",
+      "usage": "Installed LitInput, LitForwardPass, shadow, depth, normal and pipeline includes; no vendored package copy."
+    }
+  ],
+  "licensed_input_policy": "Samples the existing paid cat atlas at runtime without rewriting, exporting or claiming ownership of the provider texture, model or resulting paid-model renders.",
+  "controls": {
+    "FurColor": "separate route colour",
+    "BaseColor": "white",
+    "FurStrength": "zero gives natural-atlas control",
+    "FurDebug": "raw grayscale mask using the same visible surface"
+  },
+  "validation": "C# assembly compilation only. Shader/GPU mask, real renders and Android validation pending owner Unity execution."
+}

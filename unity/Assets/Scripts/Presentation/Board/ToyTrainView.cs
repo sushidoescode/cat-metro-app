@@ -1,4 +1,5 @@
 using CatMetro.Presentation.Cats;
+using CatMetro.Presentation.Props;
 using CatMetro.Presentation.Theme;
 using CatMetro.Presentation.Fx;
 using UnityEngine;
@@ -58,10 +59,10 @@ namespace CatMetro.Presentation.Board
         // departure Walk plus Celebrate at every current station-arrival heading and a sampled
         // five-degree retained-heading envelope. Each case crosses the complete active clip at
         // half-frame spacing, a 17-angle applied-ear corpus and independently measured maximum
-        // carriage-ward bob. The authored celebrate clip extends the lower body beyond the
-        // provider's static pose. An extra 0.048 board units restores the separating margin
-        // while the shared platform anchor also reserves the new position in camera framing.
-        public const float PlatformSideOffset = 0.704f;
+        // carriage-ward bob. The wider original carriage left .020663 clearance at offset
+        // .704 in the worst diagonal waiting lane. Native trials at .734 leave .051693;
+        // the shared platform anchor also reserves the new position in camera framing.
+        public const float PlatformSideOffset = 0.734f;
         public const float PlatformEndpointClearance = 0.045f;
         // Horizontal half-extent reserved by the camera around a platform cat's root. The
         // fallback head, ears and 0.28 card all fit inside one HeadDiameter; the admitted-rig
@@ -268,6 +269,8 @@ namespace CatMetro.Presentation.Board
         private MeshRenderer[] _catRenderers; // placeholder renderers — tinted per cat via property block
 
         private Vector3 _catBaseLocalPosition;
+        private Vector3 _catPathLocalPosition, _pinPathLocalPosition, _riderBobLocalOffset;
+        private bool _hasRiderBobPose;
         private Quaternion _catBaseLocalRotation;
         private Quaternion _headBaseLocalRotation;
         private Quaternion _earLeftBaseLocalRotation;
@@ -290,9 +293,15 @@ namespace CatMetro.Presentation.Board
         private CatPresentationState _presentationState = CatPresentationState.Hidden;
         private CatPresentationState _lastRigState = CatPresentationState.Hidden;
         private CatModelCatalog _catCatalog;
+        private CarriageModelCatalog _carriageCatalog;
+        private EngineModelCatalog _engineCatalog;
+        public bool OriginalEngineAdmitted { get; private set; }
+        public string EngineFallbackReason { get; private set; }
         private GameObject _rigInstance;
+        private const float OpenCarriageSeatDepth = .0983f;
         private Animator _rigAnimator;
         private CatRigPresentation _rigPresentation;
+        private BoardFurTint _rigFurTint;
         private Transform _rigEarDeformerA;
         private Transform _rigEarDeformerB;
         private Quaternion _rigEarAPreviousOffset = Quaternion.identity;
@@ -301,6 +310,7 @@ namespace CatMetro.Presentation.Board
         private Quaternion _rigEarBLastApplied;
         private bool _rigAdmitted;
         private bool _rigMotionSuppressed;
+        private bool _rigStaticSeated;
         private bool _rigEarTwitchSupported;
         private bool _rigEarPoseApplied;
         private bool _rigEarTwitchActive;
@@ -330,6 +340,8 @@ namespace CatMetro.Presentation.Board
         public void SetTokenFlags(bool stray, bool express) => _statusMarks.Bind(stray, express);
 
         public bool RigAdmitted => _rigAdmitted;
+        public bool OriginalCarriageAdmitted { get; private set; }
+        public string CarriageFallbackReason { get; private set; } = "Carriage has not been evaluated.";
         private Vector3 _deliveredBaseScale;
         private int _deliveredIdleState, _deliveredCelebrateState;
         public Vector3 PlatformEndpointWorld => _hasPlatformAnchor ? _platformAnchorWorldPosition
@@ -401,7 +413,8 @@ namespace CatMetro.Presentation.Board
         public bool RigBlinkSupported => false;
 
         public static ToyTrainView Create(Transform parent, string name,
-            int[] edgeFrom, int[] edgeTo, CatModelCatalog catCatalog = null)
+            int[] edgeFrom, int[] edgeTo, CatModelCatalog catCatalog = null,
+            CarriageModelCatalog carriageCatalog = null, EngineModelCatalog engineCatalog = null)
         {
             var root = new GameObject(name);
             root.transform.SetParent(parent, false);
@@ -410,6 +423,8 @@ namespace CatMetro.Presentation.Board
             view._edgeFrom = edgeFrom;
             view._edgeTo = edgeTo;
             view._catCatalog = catCatalog;
+            view._carriageCatalog = carriageCatalog;
+            view._engineCatalog = engineCatalog;
             view.BuildConsist();
             return view;
         }
@@ -532,9 +547,10 @@ namespace CatMetro.Presentation.Board
             if (hidden)
             {
                 // Animator.Update cannot sample an inactive hierarchy. A first motion-off
-                // transition therefore takes its one neutral sample before Cat is hidden;
-                // already-suppressed frames do not reactivate or resample it.
-                if (motionOff && !_rigMotionSuppressed)
+                // transition therefore takes its one neutral sample before Cat is hidden.
+                // A previously seated static pose also returns to neutral before hiding.
+                // Repeated hidden frames do not reactivate or resample it.
+                if (motionOff && (!_rigMotionSuppressed || _rigStaticSeated))
                     _cat.gameObject.SetActive(true);
                 ClearRigEarTwitch();
                 ResetVisualPose();
@@ -639,7 +655,16 @@ namespace CatMetro.Presentation.Board
                     _cat.localPosition = pathLocalPosition;
                     _pin.localPosition = _pinBaseLocalPosition + pathOffset;
                 }
-                PlayRig(state, true, desiredTravelSpeed);
+                // Reduced motion cuts inbound walking/boarding to the actual seat. Source
+                // waits and retained platform passengers keep their neutral standing pose.
+                bool staticSeated = OriginalCarriageAdmitted && _rigPresentation != null
+                    && _rigPresentation.OpenCarriageMotionInstalled
+                    && (state == CatPresentationState.RideIdle
+                        || (state == CatPresentationState.WaitingIdle && safePlatformBlend == 0f)
+                        || (!movingToPlatform && (state == CatPresentationState.Walk
+                            || state == CatPresentationState.Board)));
+                PlayRig(state, true, desiredTravelSpeed, staticSeated);
+                ApplyRigSeatDepth();
                 return;
             }
 
@@ -655,6 +680,10 @@ namespace CatMetro.Presentation.Board
             // it is applied to the cat and its label pin, never to the train/root spline anchor.
             Vector3 boardBob = ScreenUpOffset(BoardSceneLook.BoardTilt, pose.Bob * 0.021f, 0f);
             Vector3 carriageLocalBob = Quaternion.Inverse(_carriage.localRotation) * boardBob;
+            _catPathLocalPosition = pathLocalPosition;
+            _pinPathLocalPosition = _pinBaseLocalPosition + pathOffset;
+            _riderBobLocalOffset = carriageLocalBob;
+            _hasRiderBobPose = true;
             _cat.localPosition = pathLocalPosition
                 + carriageLocalBob;
             // The destination card labels the cat, not its empty seat. Carry the exact same
@@ -687,13 +716,58 @@ namespace CatMetro.Presentation.Board
                 && _rigPresentation.AuthoredMotionInstalled
                 ? CatPresentationState.RideIdle : state;
             PlayRig(rigState, false, desiredTravelSpeed);
+            ApplyRigSeatDepth();
             ApplyRigEarTwitch();
         }
 
         // GameRoot supplies presentation state in Update. Unity samples Animator after Update,
         // so the same additive pose is re-applied in LateUpdate to remain visible without ever
         // becoming an input to the deterministic simulation.
-        private void LateUpdate() => ApplyRigEarTwitch();
+        private void LateUpdate()
+        {
+            ApplyRigSeatDepth();
+            ApplyRigEarTwitch();
+        }
+
+        private void ApplyRigSeatDepth()
+        {
+            if (_rigInstance == null) return;
+            float weight = 0f;
+            bool openCarriageMotion = OriginalCarriageAdmitted && _rigPresentation != null
+                && _rigPresentation.OpenCarriageMotionInstalled;
+            if (openCarriageMotion && _presentationState != CatPresentationState.Hidden && _rigAnimator != null)
+            {
+                if (_rigMotionSuppressed) weight = _rigStaticSeated ? 1f : 0f;
+                else
+                {
+                    weight = SeatWeight(_rigAnimator.GetCurrentAnimatorStateInfo(0));
+                    if (_rigAnimator.IsInTransition(0))
+                        weight = Mathf.Lerp(weight, SeatWeight(_rigAnimator.GetNextAnimatorStateInfo(0)),
+                            Mathf.Clamp01(_rigAnimator.GetAnimatorTransitionInfo(0).normalizedTime));
+                }
+            }
+            // Animated depth follows the evaluated clock rather than PlatformBlend:
+            // boarding starts at blend .35 with a neutral pose.
+            _rigInstance.transform.localPosition = Vector3.forward * (OpenCarriageSeatDepth * weight);
+            if (openCarriageMotion && _hasRiderBobPose && !_rigMotionSuppressed)
+            {
+                // Rigid screen-up bob slides seated feet through the carriage walls. Fade
+                // only that translation with the same evaluated seat contribution; the owned
+                // breathing and ear motion remain. Absolute path samples cannot accumulate.
+                Vector3 bob = _riderBobLocalOffset * (1f - weight);
+                _cat.localPosition = _catPathLocalPosition + bob;
+                _pin.localPosition = _pinPathLocalPosition + bob;
+            }
+        }
+
+        private static float SeatWeight(AnimatorStateInfo state)
+        {
+            if (state.IsName("Base Layer.Cat_Ride")) return 1f;
+            float phase = float.IsFinite(state.normalizedTime) ? Mathf.Clamp01(state.normalizedTime) : 0f;
+            if (state.IsName("Base Layer.Cat_Board")) return Mathf.SmoothStep(0f, 1f, phase);
+            if (state.IsName("Base Layer.Cat_Alight")) return 1f - Mathf.SmoothStep(0f, 1f, phase);
+            return 0f;
+        }
 
         private void FaceAlongPlatformPath(bool movingToPlatform, Vector3 seatWorldPosition)
         {
@@ -740,6 +814,11 @@ namespace CatMetro.Presentation.Board
                 properties.Clear();
             }
             if (_rigInstance == null) return;
+            if (_rigFurTint != null)
+            {
+                _rigFurTint.Apply(color);
+                return;
+            }
             var rigRenderers = _rigInstance.GetComponentsInChildren<Renderer>(true);
             for (int i = 0; i < rigRenderers.Length; i++)
             {
@@ -957,6 +1036,7 @@ namespace CatMetro.Presentation.Board
         // invisible-ears fix: without it, no ear size survives every heading.
         private void SetCarriageHeading(float degrees)
         {
+            _hasRiderBobPose = false;
             _carriage.localRotation = Quaternion.Euler(0f, 0f, degrees);
             _catBaseLocalRotation = Quaternion.Euler(0f, 0f, CatBoardYaw - degrees);
             _cat.localRotation = _catBaseLocalRotation;
@@ -1001,19 +1081,15 @@ namespace CatMetro.Presentation.Board
             CreatePart("Funnel", _engine, CylinderMesh(),
                 new Vector3(0.15f, 0f, -0.085f), new Vector3(0.09f, 0.10f, 0.09f),
                 Quaternion.Euler(90f, 0f, 0f), NavyMaterial()); // cylinder axis off the board
+            BuildEngineVisual();
 
             _carriage = new GameObject("Carriage").transform;
             _carriage.SetParent(transform, false);
-            CreatePart("Chassis", _carriage, CubeMesh(),
-                new Vector3(0f, 0f, 0.205f), new Vector3(0.42f, 0.46f, 0.06f),
-                Quaternion.identity, NavyMaterial());
-            CreatePart("Body", _carriage, CubeMesh(),
-                new Vector3(0f, 0f, 0.185f), new Vector3(0.40f, 0.44f, 0.10f),
-                Quaternion.identity, CreamMaterial());
+            BuildCarriageVisual();
 
-            // The passenger: a chibi head at 82% of the body's width. Its lower fifth intersects
-            // the low wall in board-local geometry, while the frontal artifact keeps nearly all
-            // of its face visible, so it remains seated IN the open box and reads clearly.
+            // Keep the existing passenger anchors with either carriage. The primitive
+            // fallback's chibi head spans 82% of its box width and its lower fifth intersects
+            // the low wall; the authored open shell has separate rendered exposure checks.
             // Head and ears carry the line tint; the face is deliberately OUTSIDE the tinted
             // set, so the eyes stay near-black and the muzzle cream whatever colour the cat
             // is. Ears are 45-degree diamonds anchored in the head, splayed up and out.
@@ -1136,6 +1212,8 @@ namespace CatMetro.Presentation.Board
 
         private void ResetVisualPose()
         {
+            _hasRiderBobPose = false;
+            if (_rigInstance != null) _rigInstance.transform.localPosition = Vector3.zero;
             _cat.localPosition = _catBaseLocalPosition;
             _cat.localRotation = _catBaseLocalRotation;
             _head.localRotation = _headBaseLocalRotation;
@@ -1179,6 +1257,10 @@ namespace CatMetro.Presentation.Board
 
             _rigAnimator = animators[0];
             _rigPresentation = _rigAnimator.GetComponent<CatRigPresentation>();
+            if (OriginalCarriageAdmitted) _rigPresentation?.TryUseOpenCarriageMotion();
+            // Resource/weighted-head admission already identifies the calibrated paid rig.
+            // Only its board clone gets a coat material; profile mounts keep the source atlas.
+            if (_rigPresentation != null) _rigFurTint = BoardFurTint.TryInstall(_rigInstance);
             _rigAnimator.applyRootMotion = false;
             _rigInstance.transform.localPosition = Vector3.zero;
             // TASK 17 imports conventional +Y-up, +Z-forward content. This presentation-only
@@ -1279,17 +1361,18 @@ namespace CatMetro.Presentation.Board
         }
 
         private void PlayRig(CatPresentationState state, bool motionOff,
-            float desiredTravelSpeed)
+            float desiredTravelSpeed, bool staticSeated = false)
         {
             if (!_rigAdmitted || _rigAnimator == null) return;
             _rigAnimator.applyRootMotion = false;
             if (motionOff)
             {
-                if (_rigMotionSuppressed) return;
+                if (_rigMotionSuppressed && _rigStaticSeated == staticSeated) return;
                 _rigMotionSuppressed = true;
+                _rigStaticSeated = staticSeated;
                 _rigAnimator.Rebind();
                 _rigAnimator.Play(_rigAnimator.GetLayerName(0) + "."
-                    + CatModelCatalog.IdleSitClip, 0, 0f);
+                    + (staticSeated ? CatRigPresentation.RideClip : CatModelCatalog.IdleSitClip), 0, 0f);
                 _rigAnimator.Update(0f);
                 _rigPresentation?.ApplyHeadShape();
                 _rigAnimator.speed = 0f;
@@ -1299,6 +1382,7 @@ namespace CatMetro.Presentation.Board
             }
 
             _rigMotionSuppressed = false;
+            _rigStaticSeated = false;
             float playbackSpeed = 1f;
             if (state == CatPresentationState.Walk)
             {
@@ -1327,6 +1411,48 @@ namespace CatMetro.Presentation.Board
             _eyeLeft.GetComponent<MeshRenderer>().enabled = visible;
             _eyeRight.GetComponent<MeshRenderer>().enabled = visible;
             _cat.Find("Muzzle").GetComponent<MeshRenderer>().enabled = visible;
+        }
+
+        private void BuildEngineVisual()
+        {
+            EngineModelCatalog catalog = _engineCatalog ?? EngineModelCatalog.LoadResources();
+            OriginalEngineAdmitted = catalog.TryGetPrefab(out GameObject prefab);
+            EngineFallbackReason = catalog.RejectionReason;
+            if (!OriginalEngineAdmitted) return;
+            GameObject model = Instantiate(prefab, _engine, false);
+            model.name = "OriginalEngine";
+            model.transform.localPosition = new Vector3(0f, 0f, .235f);
+            model.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+            model.transform.localScale = Vector3.one;
+            // Retain every legacy attachment transform, especially Funnel's original
+            // scale/rotation used by Steam. Only its primitive renderer is replaced.
+            foreach (string name in new[] { "Chassis", "Boiler", "Cab", "CabRoof", "Funnel" })
+                _engine.Find(name).GetComponent<MeshRenderer>().enabled = false;
+        }
+
+        private void BuildCarriageVisual()
+        {
+            CarriageModelCatalog catalog = _carriageCatalog ?? CarriageModelCatalog.LoadResources();
+            OriginalCarriageAdmitted = catalog.TryGetPrefab(out GameObject prefab);
+            CarriageFallbackReason = catalog.RejectionReason;
+            if (OriginalCarriageAdmitted)
+            {
+                // The original model is +X forward / +Y up at immutable scale. Only
+                // this visual wrapper adapts it to board-local -Z up and the rail crown.
+                // Cat, pin, vehicle anchors and simulation never inherit this correction.
+                GameObject model = Instantiate(prefab, _carriage, false);
+                model.name = "OriginalCarriage";
+                model.transform.localPosition = new Vector3(0f, 0f, .235f);
+                model.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+                model.transform.localScale = Vector3.one;
+                return;
+            }
+            CreatePart("Chassis", _carriage, CubeMesh(),
+                new Vector3(0f, 0f, 0.205f), new Vector3(0.42f, 0.46f, 0.06f),
+                Quaternion.identity, NavyMaterial());
+            CreatePart("Body", _carriage, CubeMesh(),
+                new Vector3(0f, 0f, 0.185f), new Vector3(0.40f, 0.44f, 0.10f),
+                Quaternion.identity, CreamMaterial());
         }
 
         private static void DestroyOwned(GameObject instance)

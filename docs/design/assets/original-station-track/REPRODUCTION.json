@@ -1,0 +1,7 @@
+{
+  "generator_sha256": "9ef4732d92936c0f7bd12ce1c0d71727a1abdebe0c324238af79a4f5e8e372f2",
+  "same_texture_sha256": true,
+  "same_geometry_metrics": true,
+  "same_glb_sha256": true,
+  "note": "Second fresh Blender 5.1.2 process generated into a separate directory. FBX and blend container bytes can vary with stored path/time metadata; geometry, texture and GLB output compared."
+}

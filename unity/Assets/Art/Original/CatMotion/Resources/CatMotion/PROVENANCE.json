@@ -1,14 +1,14 @@
 {
     "generator": "CatMetro.ProjectOriginalCatMotion.v1",
     "generatorSourcePath": "Assets/Editor/CatRigMotionAuthoring.cs",
-    "generatorSourceSha256": "821cd2fee9abcee6476948903fe6eda66076788c374dbd00d365aaebbbaaaf2c",
+    "generatorSourceSha256": "87e3f4e6e3bc7b4f8be6b90c9625c7255f6186bd91c63677bc6f9d6601eae924",
     "authorship": "Project-original rotation curves; existing paid provider walk referenced unchanged.",
     "sourceFbxPath": "Assets/Art/Generated/incoming/cat-rig/provider-tripo/candidate-b/walk-fbx/tripo-out/cat-metro-walker-b-walk-fbx-6e32e93a/model.fbx",
     "sourceFbxSha256": "9d87464e3954954d5d64e8eb4aee6150a11f9efcdf320a9f82adb96449dca974",
     "baselineClipPath": "Assets/Art/Generated/incoming/cat-rig/Resources/CatRigs/Cat_IdleSit.anim",
     "baselineClipSha256": "a6751d1aa114d6d10f139a91f210cfca45cd5960e827513066ace97d27ba2529",
     "referenceBasis": "Sample original Cat_IdleSit at t=0 on a disposable admitted Unity prefab clone. Animator space faces -X, up +Y. Premultiply world rotations about Animator +Z, then read local quaternions after parent-first application. Blender +Y rotation maps to this axis; no Blender quaternion or bind-pose values are copied.",
-    "anatomy": "Head_0 weighted torso hierarchy; Head_1 weighted head; bone_12 weighted tail; bone_4 and Head_3 weighted ears. Coupled/mislabeled limb chains remain at sampled rest. Celebrate lifts forepaws through a small body rear, not a direct limb-chain rotation.",
+    "anatomy": "Head_0 weighted torso hierarchy; Head_1 weighted head; bone_12 weighted tail; bone_4 and Head_3 weighted ears. Base-motion limb chains remain at sampled rest. Celebrate lifts forepaws through a small body rear, not a direct limb-chain rotation.",
     "timing": "60 Hz endpoint-inclusive sampling; IdleSit 3.2 s, Ride 1.6 s loops; Board/Alight 0.18 s smooth transitions; Celebrate 0.48 s returns to the neutral platform pose.",
     "motionParameters": "Idle degrees from source neutral: body 0.65*sin, head -0.35*sin, roll 1.2*sin, tail 45+3*sin; ears +3.5/-2.5 pulse. Ride degrees relative to seat: body 0.8*sin, head -0.5*sin, roll 0.8*sin, tail 2*sin. Celebrate degrees from source neutral: body +3 at 0.10 s, -8 at 0.22 s, 0 at 0.48 s; head -0.5*body, tail 45+12 pulse, head roll +2 pulse, ears +/-2 pulse. Animator +Z is pitch, +X head roll.",
     "scalePolicy": "No scale curves. Presenter owns head enlargement. Walk scale curves must remain at sampled baseline.",
@@ -507,16 +507,16 @@
                 "z": 1.0
             },
             "rotation": {
-                "x": -0.6601002812385559,
-                "y": 0.27378711104393008,
-                "z": 0.3058619797229767,
-                "w": 0.6290920972824097
+                "x": -0.6601002216339111,
+                "y": 0.27378708124160769,
+                "z": 0.3058619499206543,
+                "w": 0.6290920376777649
             },
             "rotationInAnimator": {
-                "x": 0.20255517959594727,
-                "y": 0.6636812686920166,
-                "z": 0.663681149482727,
-                "w": -0.2793322801589966
+                "x": 0.20255514979362489,
+                "y": 0.663681149482727,
+                "z": 0.6636810898780823,
+                "w": -0.2793321907520294
             }
         },
         {
@@ -538,10 +538,10 @@
                 "w": 0.98980712890625
             },
             "rotationInAnimator": {
-                "x": 0.19964174926280976,
-                "y": 0.6283111572265625,
-                "z": 0.628311038017273,
-                "w": -0.41303032636642458
+                "x": 0.19964173436164857,
+                "y": 0.628311038017273,
+                "z": 0.6283109188079834,
+                "w": -0.4130302667617798
             }
         },
         {
@@ -563,10 +563,10 @@
                 "w": 1.0
             },
             "rotationInAnimator": {
-                "x": 0.19964192807674409,
-                "y": 0.6283112168312073,
-                "z": 0.628311038017273,
-                "w": -0.4130304455757141
+                "x": 0.19964195787906648,
+                "y": 0.628311038017273,
+                "z": 0.6283109188079834,
+                "w": -0.4130304157733917
             }
         },
         {
@@ -588,10 +588,10 @@
                 "w": 1.0
             },
             "rotationInAnimator": {
-                "x": 0.19964192807674409,
-                "y": 0.6283112168312073,
-                "z": 0.628311038017273,
-                "w": -0.4130304455757141
+                "x": 0.19964195787906648,
+                "y": 0.628311038017273,
+                "z": 0.6283109188079834,
+                "w": -0.4130304157733917
             }
         },
         {
@@ -614,9 +614,9 @@
             },
             "rotationInAnimator": {
                 "x": 0.29063084721565249,
-                "y": 0.5818715691566467,
-                "z": 0.5818713307380676,
-                "w": -0.48824751377105715
+                "y": 0.5818714499473572,
+                "z": 0.5818712115287781,
+                "w": -0.48824745416641238
             }
         },
         {
@@ -638,10 +638,10 @@
                 "w": 0.6350482702255249
             },
             "rotationInAnimator": {
-                "x": 0.6340442299842835,
-                "y": 0.7466742992401123,
+                "x": 0.6340441107749939,
+                "y": 0.7466742396354675,
                 "z": 0.14501193165779115,
-                "w": 0.13941900432109834
+                "w": 0.13941897451877595
             }
         },
         {
@@ -663,10 +663,10 @@
                 "w": 1.0
             },
             "rotationInAnimator": {
-                "x": 0.6340442299842835,
-                "y": 0.7466742992401123,
+                "x": 0.6340441107749939,
+                "y": 0.7466742396354675,
                 "z": 0.14501193165779115,
-                "w": 0.13941900432109834
+                "w": 0.13941897451877595
             }
         },
         {
@@ -688,10 +688,10 @@
                 "w": -0.231782928109169
             },
             "rotationInAnimator": {
-                "x": -0.9995442032814026,
-                "y": -0.02108684368431568,
-                "z": -0.021086491644382478,
-                "w": 0.004763455595821142
+                "x": -0.9995440244674683,
+                "y": -0.021086834371089937,
+                "z": -0.02108640782535076,
+                "w": 0.00476345419883728
             }
         },
         {
@@ -713,10 +713,10 @@
                 "w": 1.0
             },
             "rotationInAnimator": {
-                "x": -0.9995450973510742,
-                "y": -0.021097203716635705,
+                "x": -0.9995449781417847,
+                "y": -0.02109718695282936,
                 "z": -0.021096691489219667,
-                "w": 0.004503876902163029
+                "w": 0.004503906238824129
             }
         },
         {
@@ -738,10 +738,10 @@
                 "w": 1.0
             },
             "rotationInAnimator": {
-                "x": -0.9995450973510742,
-                "y": -0.021097203716635705,
+                "x": -0.9995449781417847,
+                "y": -0.02109718695282936,
                 "z": -0.021096691489219667,
-                "w": 0.004503876902163029
+                "w": 0.004503906238824129
             }
         },
         {
@@ -763,10 +763,10 @@
                 "w": 0.9385836720466614
             },
             "rotationInAnimator": {
-                "x": -0.9295743703842163,
-                "y": -0.19629225134849549,
-                "z": -0.1962919682264328,
-                "w": 0.24255147576332093
+                "x": -0.929574191570282,
+                "y": -0.1962922364473343,
+                "z": -0.19629187881946565,
+                "w": 0.24255144596099854
             }
         },
         {
@@ -791,7 +791,7 @@
                 "x": 0.07554283738136292,
                 "y": -0.03439199924468994,
                 "z": -0.9326037168502808,
-                "w": 0.351228266954422
+                "w": 0.3512282073497772
             }
         },
         {
@@ -815,8 +815,8 @@
             "rotationInAnimator": {
                 "x": 0.08434200286865235,
                 "y": -0.004789742175489664,
-                "z": -0.9949806928634644,
-                "w": -0.05364260450005531
+                "z": -0.9949806332588196,
+                "w": -0.05364261195063591
             }
         },
         {
@@ -840,8 +840,8 @@
             "rotationInAnimator": {
                 "x": 0.08434200286865235,
                 "y": -0.004789742175489664,
-                "z": -0.9949806928634644,
-                "w": -0.05364260450005531
+                "z": -0.9949806332588196,
+                "w": -0.05364261195063591
             }
         },
         {
@@ -865,8 +865,8 @@
             "rotationInAnimator": {
                 "x": 0.12283674627542496,
                 "y": 0.22642187774181367,
-                "z": -0.9420986771583557,
-                "w": 0.21469752490520478
+                "z": -0.9420986175537109,
+                "w": 0.2146974354982376
             }
         },
         {
@@ -890,8 +890,8 @@
             "rotationInAnimator": {
                 "x": 0.12283674627542496,
                 "y": 0.22642187774181367,
-                "z": -0.9420986771583557,
-                "w": 0.21469752490520478
+                "z": -0.9420986175537109,
+                "w": 0.2146974354982376
             }
         },
         {
@@ -913,10 +913,10 @@
                 "w": 0.9984588027000427
             },
             "rotationInAnimator": {
-                "x": -0.9968341588973999,
+                "x": -0.9968340396881104,
                 "y": -0.020814718678593637,
-                "z": -0.0765322744846344,
-                "w": 0.0056677162647247318
+                "z": -0.07653219252824784,
+                "w": 0.005667717661708593
             }
         },
         {
@@ -938,10 +938,10 @@
                 "w": 1.0
             },
             "rotationInAnimator": {
-                "x": -0.9968341588973999,
+                "x": -0.9968340396881104,
                 "y": -0.020814718678593637,
-                "z": -0.0765322744846344,
-                "w": 0.0056677162647247318
+                "z": -0.07653219252824784,
+                "w": 0.005667717661708593
             }
         },
         {
@@ -1181,6 +1181,43 @@
     "controller": {
         "path": "Assets/Art/Original/CatMotion/Resources/CatMotion/BoardCatMotionController.controller",
         "sha256": "d6cfb0f2730af9b2d415ff92e73f3900a62e187b8a3d21d7d1c32d318486e5c2"
+    },
+    "openCarriageMotion": "Native original-carriage candidate A: after the existing pose, own-pivot world rotations about Animator axes: bone_27 +36 X; weighted forepaw Left_Limb_2 +12 Y; Tail_0 +30 X. Ride full contribution, Board smooth0..1, Alight smooth1..0. Local quaternion curves only. Shared override replaces exactly Ride/Board/Alight only after original carriage and authored rig admission. Absolute runtime wrapper depth .0983 follows sampled pose and blends; platform and Motion Off depth0. Base fallback, profile Idle, provider Walk, platform Celebrate and paid inputs remain unchanged.",
+    "openCarriageClips": [
+        {
+            "name": "Cat_Ride",
+            "path": "Assets/Art/Original/CatMotion/Resources/CatMotion/OpenCarriage/Cat_Ride.anim",
+            "fileSha256": "773e6509e12907f674c742f30ad737b9e09b536bfc0fdb5d26f5611d3e05c8c6",
+            "curveSha256": "dade37e299bd684d5594681991a2eb7a9356db7cf73bd648a42ee7c8a5c44fbc",
+            "seconds": 1.600000023841858,
+            "loop": true,
+            "curveCount": 308,
+            "keyCount": 3276
+        },
+        {
+            "name": "Cat_Board",
+            "path": "Assets/Art/Original/CatMotion/Resources/CatMotion/OpenCarriage/Cat_Board.anim",
+            "fileSha256": "fd675475cc4a51385beea1bb5b4a73724a5909070d1907f59ac61a36d9641cfb",
+            "curveSha256": "3b1701e826f3fd8a4d4b402279de5594c2b5d5928a858b1a128c726c720f83c9",
+            "seconds": 0.18000000715255738,
+            "loop": false,
+            "curveCount": 308,
+            "keyCount": 896
+        },
+        {
+            "name": "Cat_Alight",
+            "path": "Assets/Art/Original/CatMotion/Resources/CatMotion/OpenCarriage/Cat_Alight.anim",
+            "fileSha256": "6ff13aebae233eae55ff2194d24a98aa02064407345ff16c0143fdb03f6e3a6d",
+            "curveSha256": "9128409c46ccbec406d0a0acd4ffba73d5def5344c1293fbf8dbf6115645b91b",
+            "seconds": 0.18000000715255738,
+            "loop": false,
+            "curveCount": 308,
+            "keyCount": 876
+        }
+    ],
+    "openCarriageController": {
+        "path": "Assets/Art/Original/CatMotion/Resources/CatMotion/OpenCarriage/OpenCarriageMotion.overrideController",
+        "sha256": "3750b0f34f944eb6954ab38f082f86e56ef9f0cd6226c6324e8348cb84990c68"
     },
     "protectedInputs": [
         {

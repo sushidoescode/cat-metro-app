@@ -475,7 +475,8 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(trainView.RigAdmitted, Is.False,
                 "the catalog precondition must remain licence-neutral for every measured level");
             var head = train.Find("Carriage/Cat/Head");
-            var body = train.Find("Carriage/Body");
+            var carriage = train.Find("Carriage");
+            var body = carriage.Find("OriginalCarriage/OpenShell") ?? carriage.Find("Body");
             Assert.That(head, Is.Not.Null);
             Assert.That(body, Is.Not.Null);
             Assert.That(head.GetComponent<Renderer>().enabled, Is.True,
@@ -483,7 +484,8 @@ namespace CatMetro.Tests.PlayMode
             var cat = head.parent;
 
             Rect headRect = ProjectedMeshRect(camera, head);
-            float widthRatio = RenderedAxisSize(head, 0) / RenderedAxisSize(body, 1);
+            float widthRatio = RenderedSpanAlong(head, carriage.right)
+                / RenderedSpanAlong(body, carriage.up);
 
             const int maskWidth = 917;
             const int maskHeight = 2048;
@@ -525,7 +527,8 @@ namespace CatMetro.Tests.PlayMode
             float visibleHeadCoreWidth = visibleHeadCore.width / (float)maskWidth;
             float exposed = Mathf.Min(1f,
                 visibleHeadCore.height / (headRect.height * maskHeight));
-            int propEntries = PropModelCatalog.LoadResources().AdmittedEntryCount;
+            var propCatalog = PropModelCatalog.LoadResources();
+            int propEntries = propCatalog.AdmittedEntryCount;
             string passengerMetrics = string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
                 "level_id=" + levelId + "\nvisible_cat_head_width_fraction={0:F6}\n"
@@ -558,8 +561,27 @@ namespace CatMetro.Tests.PlayMode
             Object.Destroy(catMask);
             Object.Destroy(headCoreMask);
 
-            Assert.That(propEntries, Is.EqualTo(0).Or.EqualTo(5).Or.EqualTo(10),
-                "only an atomic licensed catalog or the licence-neutral fallback is valid");
+            if (propEntries == 1)
+            {
+                GameObject originalStation = Resources.Load<GameObject>(
+                    PropModelCatalog.OriginalStationResourcePath);
+                Assert.That(originalStation, Is.Not.Null,
+                    "one prop is valid only for the optional original station");
+                Assert.That(propCatalog.TryGet(PropModelCatalog.StationKioskId, out var station),
+                    Is.True, "the sole admitted entry must occupy the station slot");
+                Assert.That(station.Prefab, Is.SameAs(originalStation));
+                foreach (string id in new[] { PropModelCatalog.DepotShedId,
+                    PropModelCatalog.StationKioskId, PropModelCatalog.TreesId,
+                    PropModelCatalog.DeskClutterId, PropModelCatalog.ToyEngineId,
+                    PropModelCatalog.FenceId, PropModelCatalog.BushId,
+                    PropModelCatalog.LampPostId, PropModelCatalog.SignpostId,
+                    PropModelCatalog.TrailSignpostId })
+                    Assert.That(Resources.Load<GameObject>("CatMetroProps/" + id), Is.Null,
+                        "original-only must not hide a partial or malformed licensed install: " + id);
+            }
+            else
+                Assert.That(propEntries, Is.EqualTo(0).Or.EqualTo(5).Or.EqualTo(10),
+                    "only an atomic licensed catalog or the licence-neutral fallback is valid");
             float minimumWidth = levelId == "L001" ? 0.05f : 0.04f;
             Assert.That(visibleCatWidth, Is.GreaterThanOrEqualTo(minimumWidth),
                 $"{levelId} fallback head and ears occupy {visibleCatWidth:P1} of frame width; "
@@ -1157,17 +1179,47 @@ namespace CatMetro.Tests.PlayMode
             => 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
 
         [UnityTest]
-        public IEnumerator TrackRails_UseReadableNavyOverWarmWoodWithCreamSleepers()
+        public IEnumerator TrackRails_PaintTheOriginalToyAtlasWithoutTintingItAway()
         {
             _root = GameRoot.Launch();
             yield return null;
             var materials = _root.View.GetComponentsInChildren<BoardElementId>()
                 .First(e => e.Kind == "edge").GetComponent<Renderer>().sharedMaterials;
-            Assert.That(Vector4.Distance(materials[0].color, Palette.CreamCard),
-                Is.LessThan(0.0001f));
-            Assert.That(Vector4.Distance(materials[1].color, new Vector4(64f / 255f, 73f / 255f, 105f / 255f, 1f)), Is.LessThan(0.0001f));
-            Assert.That(Vector4.Distance(materials[2].color, Palette.WarmWood),
-                Is.LessThan(0.0001f));
+            // Sleeper, rail, bed — the submesh order ToyTrackMeshBuilder assigns.
+            Assert.That(materials.Length, Is.EqualTo(3));
+            Assert.That(materials.Distinct().Count(), Is.EqualTo(3),
+                "each track part keeps its own material so one part cannot repaint another");
+            foreach (var material in materials)
+                Assert.That(material.shader.name, Is.EqualTo("Universal Render Pipeline/Lit"),
+                    material.name + " must stay on the committed URP path");
+
+            var atlas = Resources.Load<Texture2D>("Track/original-toy-atlas");
+            if (atlas == null)
+            {
+                // Licence-neutral fallback: no atlas, so the palette still has to carry the
+                // navy rails on a cream bed. This is the path a stripped checkout takes.
+                Assert.That(Vector4.Distance(materials[0].color, Palette.CreamCard),
+                    Is.LessThan(0.0001f));
+                Assert.That(Vector4.Distance(materials[1].color,
+                    new Vector4(64f / 255f, 73f / 255f, 105f / 255f, 1f)), Is.LessThan(0.0001f));
+                Assert.That(Vector4.Distance(materials[2].color, Palette.CreamCard),
+                    Is.LessThan(0.0001f));
+                yield break;
+            }
+
+            // The owned toy atlas carries the navy rail, cream sleeper and wood bed swatches,
+            // so the base colour must stay white. A tint here would multiply the atlas down
+            // and is exactly the silent bind failure AGENTS.md warns about: the track would
+            // still draw, just wrong. The texture identity is asserted, not merely non-null.
+            foreach (var material in materials)
+            {
+                Assert.That(material.GetTexture("_BaseMap"), Is.SameAs(atlas),
+                    material.name + " must bind the original toy atlas");
+                Assert.That(Vector4.Distance(material.color, Vector4.one), Is.LessThan(0.0001f),
+                    material.name + " must not tint the atlas away");
+                Assert.That(material.GetTextureScale("_BaseMap"), Is.EqualTo(Vector2.one));
+                Assert.That(material.GetTextureOffset("_BaseMap"), Is.EqualTo(Vector2.zero));
+            }
         }
 
         [UnityTest]
@@ -1545,12 +1597,24 @@ namespace CatMetro.Tests.PlayMode
             return Rect.MinMaxRect(minX, minY, maxX, maxY);
         }
 
-        private static float RenderedAxisSize(Transform part, int axis)
+        private static float RenderedSpanAlong(Transform part, Vector3 worldAxis)
         {
             var filter = part.GetComponent<MeshFilter>();
-            Vector3 mesh = filter.sharedMesh.bounds.size;
-            Vector3 scale = part.lossyScale;
-            return Mathf.Abs(axis == 0 ? mesh.x * scale.x : mesh.y * scale.y);
+            Assert.That(filter, Is.Not.Null, part.name + " needs an actual mesh");
+            Assert.That(filter.sharedMesh, Is.Not.Null);
+            var renderer = part.GetComponent<MeshRenderer>();
+            Assert.That(renderer.enabled && renderer.gameObject.activeInHierarchy, Is.True,
+                "do not measure hidden fallback geometry");
+            Vector3[] vertices = filter.sharedMesh.vertices;
+            Assert.That(vertices, Is.Not.Empty);
+            float minimum = float.PositiveInfinity, maximum = float.NegativeInfinity;
+            foreach (Vector3 vertex in vertices)
+            {
+                float projection = Vector3.Dot(part.TransformPoint(vertex), worldAxis.normalized);
+                minimum = Mathf.Min(minimum, projection);
+                maximum = Mathf.Max(maximum, projection);
+            }
+            return maximum - minimum;
         }
 
         private static RectInt OpaquePixelBounds(Texture2D texture)

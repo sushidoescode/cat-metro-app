@@ -1,0 +1,65 @@
+{
+  "verified": [
+    {
+      "file": "original-toy-engine.glb",
+      "part": "EngineBody",
+      "triangles": 3904,
+      "bounds_and_atlas_match": true
+    },
+    {
+      "file": "original-toy-engine.glb",
+      "part": "RunningGear",
+      "triangles": 3584,
+      "bounds_and_atlas_match": true
+    },
+    {
+      "file": "original-toy-engine.fbx",
+      "part": "EngineBody",
+      "triangles": 3904,
+      "bounds_and_atlas_match": true
+    },
+    {
+      "file": "original-toy-engine.fbx",
+      "part": "RunningGear",
+      "triangles": 3584,
+      "bounds_and_atlas_match": true
+    }
+  ],
+  "geometry": {
+    "bounds_blender_z_up": {
+      "min": [
+        -0.22899998724460602,
+        -0.14949999749660492,
+        -1.0607455358524476e-08
+      ],
+      "max": [
+        0.22899998724460602,
+        0.14949999749660492,
+        0.3700000047683716
+      ]
+    },
+    "existing_envelope": {
+      "min": [
+        -0.23,
+        -0.15,
+        0
+      ],
+      "max": [
+        0.23,
+        0.15,
+        0.37
+      ]
+    },
+    "two_side_window_rays_unobstructed": true,
+    "wheel_bottom_z": -1.0607455358524476e-08
+  },
+  "fbx_embedded_atlas_matches": true,
+  "roundtrip_preview_sha256": "4dfdfac5f374a560291ced692977130689b28ef2226b64152c0bb527200ed353",
+  "not_verified": [
+    "Unity import and axes",
+    "URP material binding",
+    "actual board readability",
+    "steam placement",
+    "Android"
+  ]
+}

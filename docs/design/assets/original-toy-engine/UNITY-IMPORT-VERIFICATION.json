@@ -1,0 +1,243 @@
+{
+  "editor": "Unity 6000.3.16f1",
+  "owner_reported_editor_exit": 0,
+  "native_log": "/private/tmp/catmetro-owner-original-assets-20260910-104917/engine-import/native-axis-calibration.log",
+  "native_log_sha256": "8d7ebe83d25e7c4df17540be9cc30e8fc31cd0832beacae1abb9c30c18a93fdb",
+  "observed_import_lines": [
+    "ORIGINAL_ENGINE_BOUNDS EngineBody min=(-0.226500000, 0.079000000, -0.148000000) max=(0.220500000, 0.370000000, 0.148000000) size=(0.447000000, 0.291000000, 0.296000000) center=(-0.002999999, 0.224500000, 0.000000007) triangles=3904",
+    "ORIGINAL_ENGINE_BOUNDS RunningGear min=(-0.229000000, 0.000000000, -0.149500000) max=(0.229000000, 0.108500000, 0.149500000) size=(0.458000000, 0.108500000, 0.299000000) center=(0.000000000, 0.054249990, 0.000000000) triangles=3584",
+    "ORIGINAL_ENGINE_IMPORT PASS prefab=Assets/Resources/CatMetroOriginal/ToyEngine.prefab meshes=2 materials=1 triangles=7488 atlas=Assets/Art/Original/ToyEngine/original-toy-atlas.png atlas_sha256=3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45 fbx_sha256=d54ab334aebdb0899231494d45e31668f3999a6fabe621382441dd01f488a525"
+  ],
+  "first_import_refutation": {
+    "body_center_y_up": [
+      0.002999991,
+      0.2245,
+      0
+    ],
+    "expected_center_y_up": [
+      -0.003,
+      0.2245,
+      0
+    ],
+    "cause": "Unity FBX basis reverses intended engine forward axis; correct geometry before admission rather than accepting reversed bounds."
+  },
+  "correction": "Matrix4x4.Rotate(Quaternion.Euler(0,180,0)) * source.transform.localToWorldMatrix, applied to derived mesh vertices and inverse-transpose normals; recalculate tangents.",
+  "source_fbx_sha256": "d54ab334aebdb0899231494d45e31668f3999a6fabe621382441dd01f488a525",
+  "source_atlas_sha256": "3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45",
+  "native_assertions_passed": [
+    "two named mesh parts",
+    "shared neutral URP/Lit candidate atlas",
+    "body and running-gear bounds/axes/pivots",
+    "3904+3584 triangles, total7488",
+    "complete UVs",
+    "two unobstructed cab-window rays",
+    "funnel centre first hit at Y.352"
+  ],
+  "not_verified": [
+    "Final full native suites on combined original/engine/station/seat candidate",
+    "Android rendering and performance"
+  ],
+  "generated_files": [
+    {
+      "path": "unity/Assets/Art/Original/ToyEngine.meta",
+      "sha256": "3c39a6e2decc6bdf4d8ec59f9ea0ce8f1b159ed058fcaf50895ec6beb46cdc43",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/ToyEngine/Meshes.meta",
+      "sha256": "09679bed8388be8365c6493728a186abe7b04c58db1b171f0aa5a5712de52656",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/ToyEngine/Meshes/EngineBody.asset",
+      "sha256": "e1d35a8fe0b3a82f7042bc12c5bfc1ea0d570816e9accd33b483baed632c2dd2",
+      "bytes": 344608
+    },
+    {
+      "path": "unity/Assets/Art/Original/ToyEngine/Meshes/EngineBody.asset.meta",
+      "sha256": "a4561a2af52ec38a6598b57125f7260cc120ab65a4decf63eb56c08f2954587d",
+      "bytes": 188
+    },
+    {
+      "path": "unity/Assets/Art/Original/ToyEngine/Meshes/RunningGear.asset",
+      "sha256": "023d6ef27d8f779018be1369b9454980cfcec320a6fbdcc9cc1923715e4999c8",
+      "bytes": 308381
+    },
+    {
+      "path": "unity/Assets/Art/Original/ToyEngine/Meshes/RunningGear.asset.meta",
+      "sha256": "0f3ff7a382bba5ce99c22906934913398555d465695a833faa0dc9c4380378a7",
+      "bytes": 188
+    },
+    {
+      "path": "unity/Assets/Art/Original/ToyEngine/OriginalToyEngine.mat",
+      "sha256": "6bf681ba9570c27437584a45b5fc06be608b54f5017d9db6302455f44d271072",
+      "bytes": 3921
+    },
+    {
+      "path": "unity/Assets/Art/Original/ToyEngine/OriginalToyEngine.mat.meta",
+      "sha256": "5fad959f4d00e39dd13b3f4db50944f7c53957f90f23fe412ea85ed507199b99",
+      "bytes": 188
+    },
+    {
+      "path": "unity/Assets/Art/Original/ToyEngine/Source.meta",
+      "sha256": "afcbcc44147cfbf202015600ebb15b1f557468e4a9fbdd9649477dff37c5b80c",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/ToyEngine/Source/original-toy-engine.fbx",
+      "sha256": "d54ab334aebdb0899231494d45e31668f3999a6fabe621382441dd01f488a525",
+      "bytes": 489260
+    },
+    {
+      "path": "unity/Assets/Art/Original/ToyEngine/Source/original-toy-engine.fbx.meta",
+      "sha256": "67e7ba4a704b53609d918d8d41085cd5ea3bc7ad3c50263592e1e0f05902834e",
+      "bytes": 2861
+    },
+    {
+      "path": "unity/Assets/Art/Original/ToyEngine/original-toy-atlas.png",
+      "sha256": "3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45",
+      "bytes": 322072
+    },
+    {
+      "path": "unity/Assets/Art/Original/ToyEngine/original-toy-atlas.png.meta",
+      "sha256": "cc6192561697641647b6936398eec629fa1c18a9f8244870b0b26d31105781aa",
+      "bytes": 3717
+    },
+    {
+      "path": "unity/Assets/Editor/CatMetroOriginalEngineImportPipeline.cs.meta",
+      "sha256": "7707c84649338e733220e61aeaa9c9bad225fb9b92353a0dc78dc36802f0842d",
+      "bytes": 59
+    },
+    {
+      "path": "unity/Assets/Resources/CatMetroOriginal/ToyEngine.prefab",
+      "sha256": "5c2bc5526699d8faaa82794248a4712b5699a1ecb95bba8a519f0d78ec129909",
+      "bytes": 6192
+    },
+    {
+      "path": "unity/Assets/Resources/CatMetroOriginal/ToyEngine.prefab.meta",
+      "sha256": "ebee547b0d6094d700f41d94ae44e80301085810662682474fdd5623e318b890",
+      "bytes": 154
+    },
+    {
+      "path": "unity/Assets/Scripts/Presentation/Props/EngineModelCatalog.cs.meta",
+      "sha256": "4c98c10e985e63ed7e3dd1faaf546eed24b1725d4ae2fa34a4d8a8ce680f405b",
+      "bytes": 59
+    },
+    {
+      "path": "unity/Assets/Tests/EditMode/Presentation/OriginalEngineImportTests.cs.meta",
+      "sha256": "918e9fa550e6258d2ccded0323edca2eed03135453322dde900ae351109a4916",
+      "bytes": 59
+    },
+    {
+      "path": "unity/Assets/Tests/EditMode/Presentation/ToyEnginePresentationTests.cs.meta",
+      "sha256": "2043bca40a23c956aae93ea6d3cee66bd8ec2ff699a8719bee62af641abeda70",
+      "bytes": 59
+    }
+  ],
+  "generated_output_transfer_manifest": "/private/tmp/catmetro-owner-original-assets-20260910-104917/engine-import/native-output-transfer.json",
+  "generated_output_transfer_manifest_sha256": "65905330714a65c1acee673d90c349c4ad865fffb9b26522b9b8fb63f260d48a",
+  "native_results": [
+    {
+      "path": "/private/tmp/catmetro-owner-original-assets-20260910-104917/results/engine-focused.xml",
+      "sha256": "e8271eeab18f304cb7e1c414591836086b3e9d269a28058d8513374495b25a2a",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "duration_seconds": 1.6946505
+    },
+    {
+      "path": "/private/tmp/catmetro-owner-original-assets-20260910-104917/results/engine-native-r2.xml",
+      "sha256": "0537c798cde52251a023983fce618c1039577e44e75e5cf4fab4fa9f54304df4",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "duration_seconds": 1.7568955
+    }
+  ],
+  "native_graphics": {
+    "capture_manifest": "/private/tmp/catmetro-owner-original-assets-20260910-104917/engine-review-green/manifest.json",
+    "capture_manifest_sha256": "e591dce557ef01f7d90ab4ba67ee96461295bc9196639a958930a509c7cf7d77",
+    "png_hashes_verified": 24,
+    "measurements": [
+      {
+        "level": "L001",
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/engine-native-r2/L001.json",
+        "sha256": "baae4739193ab62e00781100b89b7a90e581ff023f12e7ac9b04f43c3ffff3c3",
+        "actual_world_travel": 0.440900147,
+        "engine_local_z": -0.004,
+        "particles": 3,
+        "steam_pixel_controls": [
+          {
+            "view": "side",
+            "changed_gt8": 1875,
+            "restored_different": 0
+          },
+          {
+            "view": "front",
+            "changed_gt8": 2393,
+            "restored_different": 0
+          }
+        ]
+      },
+      {
+        "level": "L009",
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/engine-native-r2/L009.json",
+        "sha256": "ef53f30f912c3ae04e1646ed226385075dee47184bd7d578450ee477309c8217",
+        "actual_world_travel": 0.5878642,
+        "engine_local_z": -0.004,
+        "particles": 3,
+        "steam_pixel_controls": [
+          {
+            "view": "side",
+            "changed_gt8": 1872,
+            "restored_different": 0
+          },
+          {
+            "view": "front",
+            "changed_gt8": 2393,
+            "restored_different": 0
+          }
+        ]
+      },
+      {
+        "level": "L048",
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/engine-native-r2/L048.json",
+        "sha256": "49ee3cab1ae7064a4beece740223c40231e68e62b94b3ac5b4a853223570dd0b",
+        "actual_world_travel": 0.8408982,
+        "engine_local_z": -0.004,
+        "particles": 3,
+        "steam_pixel_controls": [
+          {
+            "view": "side",
+            "changed_gt8": 1875,
+            "restored_different": 0
+          },
+          {
+            "view": "front",
+            "changed_gt8": 2379,
+            "restored_different": 0
+          }
+        ]
+      }
+    ],
+    "owner_reported_opened_frames": 24,
+    "implementer_opened_review_pages": [
+      "engine-review-green/L001-board.png",
+      "engine-review-green/L001-close.png",
+      "engine-review-green/L048-close.png"
+    ],
+    "scope": "Actual GameRoot session travel on L001/L009/L048, unchanged legacy Funnel transform, SetMoving(true), production emission/bob and MotionOff/digest controls. Close views hide outside-train renderers only; they are isolated appearance/steam proofs, not full-board occlusion proofs.",
+    "temporary_probe_corrections": "Owner stopped the particle system before assigning its deterministic seed, then restarted it; close views excluded outside-train geometry after the initial front capture was blocked by an actual switch. No engine production geometry change was needed.",
+    "native_test_controls_passed": [
+      "engine/carriage and paid rig admission",
+      "shared original engine meshes and neutral URP atlas",
+      "legacy Funnel position/rotation/scale parity",
+      "actual simulation-step movement",
+      "source-formula .004 bob without train-root/digest movement",
+      "world-space rate5 steam emits nonzero particles",
+      "side/front renderer hide changes pixels and exact restoration in all6 comparisons",
+      "MotionOff clears particles/emission/bob"
+    ]
+  },
+  "existing_original_asset_entries_preserved": 54
+}

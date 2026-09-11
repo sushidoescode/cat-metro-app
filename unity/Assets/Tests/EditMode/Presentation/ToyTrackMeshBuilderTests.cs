@@ -1,9 +1,10 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using CatMetro.Presentation.Board;
-using CatMetro.Presentation.Theme;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEditor;
 
 namespace CatMetro.Tests.EditMode.Presentation
 {
@@ -51,9 +52,12 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(mesh.GetIndexCount(0), Is.GreaterThan(0), "cream sleepers are present");
             Assert.That(mesh.GetIndexCount(1), Is.GreaterThan(0), "both navy rails are present");
             Assert.That(renderer.sharedMaterials.Length, Is.EqualTo(3));
-            AssertColor(renderer.sharedMaterials[0].color, Palette.CreamCard);
-            AssertColor(renderer.sharedMaterials[1].color, new Color(64f / 255f, 73f / 255f, 105f / 255f));
-            AssertColor(renderer.sharedMaterials[2].color, new Color(184f / 255f, 120f / 255f, 63f / 255f));
+            foreach (Material material in renderer.sharedMaterials)
+            {
+                AssertColor(material.color, Color.white);
+                Assert.That(material.GetTexture("_BaseMap"), Is.Not.Null,
+                    "the original atlas supplies each surface's colour");
+            }
             Assert.That(mesh.bounds.size.x, Is.EqualTo(0.88f).Within(0.001f));
             Assert.That(renderer.sharedMaterials[0].shader, Is.EqualTo(GreyboxMaterial.Shared.shader));
             Assert.That(renderer.sharedMaterials[1].shader, Is.EqualTo(GreyboxMaterial.Shared.shader));
@@ -125,23 +129,21 @@ namespace CatMetro.Tests.EditMode.Presentation
 
             Mesh mesh = _track.GetComponent<MeshFilter>().sharedMesh;
             Vector3[] vertices = mesh.vertices;
-            const int ringVertexCount = 6;
+            Vector2[] uvs = mesh.uv;
             var railComponents = ConnectedVertexComponents(mesh.GetTriangles(1));
             Assert.That(railComponents.Count, Is.EqualTo(2));
             foreach (int[] railVertices in railComponents)
             {
-                Assert.That(railVertices.Length % ringVertexCount, Is.Zero);
-                int ringsPerRail = railVertices.Length / ringVertexCount;
+                // Each swept ring has one longitudinal atlas coordinate. Group the
+                // actual generated surface rather than fixing its bevel vertex count.
+                Vector3[] centres = railVertices.GroupBy(index => uvs[index].x)
+                    .OrderBy(group => group.Key)
+                    .Select(group => group.Select(index => vertices[index])
+                        .Aggregate(Vector3.zero, (sum, point) => sum + point) / group.Count()).ToArray();
+                Assert.That(centres.Length, Is.GreaterThanOrEqualTo(9));
                 float shortestStep = float.PositiveInfinity;
-                Vector3 previous = RailRingCentre(vertices,
-                    railVertices[0], ringVertexCount);
-                for (int ring = 1; ring < ringsPerRail; ring++)
-                {
-                    Vector3 current = RailRingCentre(vertices,
-                        railVertices[ring * ringVertexCount], ringVertexCount);
-                    shortestStep = Mathf.Min(shortestStep, Vector3.Distance(previous, current));
-                    previous = current;
-                }
+                for (int ring = 1; ring < centres.Length; ring++)
+                    shortestStep = Mathf.Min(shortestStep, Vector3.Distance(centres[ring - 1], centres[ring]));
                 Assert.That(shortestStep, Is.GreaterThan(0.04f),
                     "a rail offset must not pinch into a cusp on a tight switch route");
             }
@@ -166,13 +168,29 @@ namespace CatMetro.Tests.EditMode.Presentation
             _track = ToyTrackMeshBuilder.Build("E-contrast", path, _host.transform);
 
             Material[] materials = _track.GetComponent<MeshRenderer>().sharedMaterials;
-            float ballast = RelativeLuminance(materials[0].color);
-            float rails = RelativeLuminance(materials[1].color);
+            // The bed is slot 2. Sample the actual bound atlas instead of treating
+            // its white multiplier (or the sleeper slot) as the visible albedo.
+            float ballast = RelativeLuminance(AtlasAlbedo(materials[2], new Vector2(.125f, .25f)));
+            float rails = RelativeLuminance(AtlasAlbedo(materials[1], new Vector2(.875f, .25f)));
 
             Assert.That(ballast - boardInterior, Is.GreaterThan(0.20f),
                 "the ballast bed must read clearly lighter than the board interior");
             Assert.That(ballast - rails, Is.GreaterThan(0.5f),
                 "the rails must stay dark against the bed they are set into");
+        }
+
+        private static Color AtlasAlbedo(Material material, Vector2 uv)
+        {
+            Texture atlas = material.GetTexture("_BaseMap");
+            Assert.That(atlas, Is.Not.Null);
+            var readable = new Texture2D(2, 2);
+            try
+            {
+                Assert.That(ImageConversion.LoadImage(readable,
+                    File.ReadAllBytes(AssetDatabase.GetAssetPath(atlas))), Is.True);
+                return readable.GetPixelBilinear(uv.x, uv.y) * material.GetColor("_BaseColor");
+            }
+            finally { Object.DestroyImmediate(readable); }
         }
 
         private static float RelativeLuminance(Color c) =>
@@ -875,13 +893,6 @@ namespace CatMetro.Tests.EditMode.Presentation
                 neighbours.Add(b, fromB = new HashSet<int>());
             fromA.Add(b);
             fromB.Add(a);
-        }
-
-        private static Vector3 RailRingCentre(Vector3[] vertices, int start, int count)
-        {
-            Vector3 centre = Vector3.zero;
-            for (int i = 0; i < count; i++) centre += vertices[start + i];
-            return centre / count;
         }
 
         private static void AssertColor(Color actual, Color expected)

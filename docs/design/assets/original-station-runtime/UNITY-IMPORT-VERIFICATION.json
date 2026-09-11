@@ -1,0 +1,575 @@
+{
+  "unity_version": "6000.3.16f1",
+  "source_candidate": "3aa6bfaf884b98332e093c1d29ebcefdd1982b86",
+  "native_station_parts": [
+    {
+      "part": "Body",
+      "source_triangles": 6832,
+      "source_exact_degenerate": 210,
+      "source_area_squared_under_1e_16": 210,
+      "unity_index_counts": [
+        19866
+      ],
+      "unity_triangles": 6622
+    },
+    {
+      "part": "RoofTint",
+      "source_triangles": 504,
+      "source_exact_degenerate": 0,
+      "source_area_squared_under_1e_16": 0,
+      "unity_index_counts": [
+        1512
+      ],
+      "unity_triangles": 504
+    }
+  ],
+  "station_import_log": "station-import.log",
+  "carriage_import_log": "carriage-import.log",
+  "evidence_directory": ".catshots/owner-2026-09-10/original-first-native-3aa6bfaf",
+  "carriage_runtime_triangles": 3344,
+  "carriage_cavity_ray_hits": 21,
+  "station_native_checks": {
+    "EditMode": {
+      "passed": 2,
+      "total": 2,
+      "xml": "results/station-edit-correct-filter-and-celebrate-red.xml",
+      "note": "Combined XML also contains an unrelated deliberate red celebration regression: 11 pass, 2 fail."
+    },
+    "PlayMode": {
+      "passed": 44,
+      "total": 44,
+      "xml": "results/station-play.xml"
+    }
+  },
+  "owner_opened_frames": [
+    "captures/station-first/step-2-board.png",
+    "captures/carriage-first/step-2-board.png"
+  ],
+  "generated_files": [
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage.meta",
+      "sha256": "0c9eca52ed44d8e602f3a719461990687621ff971c0ba6fcaae1efa8d2715a32",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/Meshes.meta",
+      "sha256": "07fc484d98a3c99689eb09a70b0f74eb053e4be19970c9ff46e2c9899edbc81a",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/Meshes/OpenShell.asset",
+      "sha256": "40d8b1de83c2f2297b0c9acf398debc4f28127b4249a2a286df36c4131d76b0d",
+      "bytes": 69464
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/Meshes/OpenShell.asset.meta",
+      "sha256": "a685c246e83b0ace203e6ffa658716afbd4ecd8cdbbd74f6fd7b50c055d70464",
+      "bytes": 188
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/Meshes/Undercarriage.asset",
+      "sha256": "d9bf4d2f2b6d34ae51dcf860199ba6d186567d0ad27f00b3f1cbedde2a7fd2d0",
+      "bytes": 225663
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/Meshes/Undercarriage.asset.meta",
+      "sha256": "63cff9c81be97dcec7b856acfb254f8745e5c433e8ff199d3af34c782581843d",
+      "bytes": 188
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/OriginalOpenCarriage.mat",
+      "sha256": "00eae5e806b7be568e49de2672ef089ac42edc385c04f060c71ed0c5a636346c",
+      "bytes": 3924
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/OriginalOpenCarriage.mat.meta",
+      "sha256": "6c0d6c792db5e436578582ee1af8d0baa33b1be4d703c3c98772e258292fa12d",
+      "bytes": 188
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/Source.meta",
+      "sha256": "7434ff0a5bb04c2267b6f8e0efaab498037b3a348b2a9c59a8283be511d7ee17",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/Source/original-open-carriage.fbx",
+      "sha256": "69705bb1c161d7dfdd55091b1cc8ed2d0b932fa7c82baae4a49151bb275ffe4b",
+      "bytes": 404716
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/Source/original-open-carriage.fbx.meta",
+      "sha256": "d361a5a93631165b7fd578187b2c32bbee4761397daa5abacc5619f21d041167",
+      "bytes": 2861
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/original-toy-atlas.png",
+      "sha256": "3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45",
+      "bytes": 322072
+    },
+    {
+      "path": "unity/Assets/Art/Original/OpenCarriage/original-toy-atlas.png.meta",
+      "sha256": "ef676693862e5ead7f6740b7b281583387077daa8effe1e569f848d5114e15ca",
+      "bytes": 3717
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station.meta",
+      "sha256": "0e69484902c401a50500be03f488df9353087fe76a138d9485033b5a1cc9e3a3",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/Meshes.meta",
+      "sha256": "705f17accbb6a7d0d8974702606205adf9d4fc484f5e776a280eb7f6167e536c",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/Meshes/Body.asset",
+      "sha256": "6df4b4787cc0cc92237ef20defecf4def0fa112e09e431ff32d6715b6b15f1c2",
+      "bytes": 600084
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/Meshes/Body.asset.meta",
+      "sha256": "42a8606ac224fb4c09f73b45516646162d1f96065f9a6ff0d49b0a381f991532",
+      "bytes": 188
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/Meshes/RoofTint.asset",
+      "sha256": "7f5d44eb2218c00aa9b586f2159102a74a922190448e12be9ee336461ac9632b",
+      "bytes": 48777
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/Meshes/RoofTint.asset.meta",
+      "sha256": "66ce0f0a3a571d87f20c3a831091f083be369267c62decc721cf942dab51eea0",
+      "bytes": 188
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/OriginalStation.mat",
+      "sha256": "3da3cd593e8bf4947d4b4bb1c4388e96a797a5afa7af21fdefc86ae73f833b00",
+      "bytes": 3919
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/OriginalStation.mat.meta",
+      "sha256": "53666352730db44842d01ba393b5442302e33eac6b4d3144bd26ffd26df9beae",
+      "bytes": 188
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/Source.meta",
+      "sha256": "29a2be164122f9fe9db48b67234c963b33f9777d09b76db81587d534e01ffa1f",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/Source/original-station-runtime.fbx",
+      "sha256": "e082f6db8ef2efefb759607141ac116724c10ba5319a6582ea2b797a04d86cfc",
+      "bytes": 504076
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/Source/original-station-runtime.fbx.meta",
+      "sha256": "099947a6577d1ff20f7c3e9e7ec8698bf0efe3c3cfba86bc4953a1551feb91e2",
+      "bytes": 2861
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/original-toy-atlas.png",
+      "sha256": "7661e3f8806fd75ce228d8ae0da5095c3d4eab398396338bafdde20a4e384b94",
+      "bytes": 305148
+    },
+    {
+      "path": "unity/Assets/Art/Original/Station/original-toy-atlas.png.meta",
+      "sha256": "577b2f4c5c3001cf00a1350388ac4d0c12ff636769f72fb6ac50d14316a4ae62",
+      "bytes": 3717
+    },
+    {
+      "path": "unity/Assets/Art/Original/Track.meta",
+      "sha256": "e616663a17f8df3b69f72986fe03a78e8d357c5b7279be8291e33ba44c3f2de0",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/Track/PROVENANCE.json.meta",
+      "sha256": "16e476e1d9acc443e1e730266a71b8a30e46e4bf7a1a013fa2edc329ff881678",
+      "bytes": 158
+    },
+    {
+      "path": "unity/Assets/Art/Original/Track/Resources.meta",
+      "sha256": "7edf2b31f2f729caf380474dc87ef30d7185c41f48ec2a2b367c8623f24d0c6f",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/Track/Resources/Track.meta",
+      "sha256": "79e7395ef429915318b67a216e24791554fd5d1fedbc05fa4a7bc52ad90ed68d",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Art/Original/Track/Resources/Track/original-toy-atlas.png.meta",
+      "sha256": "94d6eb99398507f8ce7da1d30dc8a486a0b19858a3a050ced61c9eb2c7f8460c",
+      "bytes": 3717
+    },
+    {
+      "path": "unity/Assets/Editor/CatMetroOriginalCarriageImportPipeline.cs.meta",
+      "sha256": "51e0fa80d96ab065a7bfaa5ee97c7548358aacca75e227a4376258d7022682d5",
+      "bytes": 59
+    },
+    {
+      "path": "unity/Assets/Editor/CatMetroOriginalStationImportPipeline.cs.meta",
+      "sha256": "4afe4935f47076b0ac4e86f07828ed8bf08ad4143db7b73d79a941cf345dcb28",
+      "bytes": 59
+    },
+    {
+      "path": "unity/Assets/Resources/CatMetroOriginal.meta",
+      "sha256": "c4e405768a34d0ec60f4f8cf3bb943f3d1c8c0a822fe06e18033bdd5b7b257e2",
+      "bytes": 172
+    },
+    {
+      "path": "unity/Assets/Resources/CatMetroOriginal/OpenCarriage.prefab",
+      "sha256": "2b67828377151fd08146716be60cd03d333481c826e8f7582e6293fee46107cd",
+      "bytes": 6204
+    },
+    {
+      "path": "unity/Assets/Resources/CatMetroOriginal/OpenCarriage.prefab.meta",
+      "sha256": "31452ed1ef1d65e4ac46e48c1285138f7cb95a72eb4058980a2f161739ccc840",
+      "bytes": 154
+    },
+    {
+      "path": "unity/Assets/Resources/CatMetroOriginal/Station.prefab",
+      "sha256": "5aaaf956b64034fdc05d845e03eae046360285a72ee2e02d14eef4b3ce2e3654",
+      "bytes": 6191
+    },
+    {
+      "path": "unity/Assets/Resources/CatMetroOriginal/Station.prefab.meta",
+      "sha256": "15ddf27d93fc3b217c14d4030a47109ed21b4eb0755a7ac480e4c3ceac68f441",
+      "bytes": 154
+    },
+    {
+      "path": "unity/Assets/Scripts/Presentation/Props/CarriageModelCatalog.cs.meta",
+      "sha256": "40f05c3235f795fcb23c8b40dffd2f8ff614ab245cda3384dcc0ef3b5655cefd",
+      "bytes": 59
+    },
+    {
+      "path": "unity/Assets/Tests/EditMode/Presentation/ToyCarriagePresentationTests.cs.meta",
+      "sha256": "2f7ed7b79fea3a6c003a00feb702454fdb28954967a35d41f18bedf98832d69a",
+      "bytes": 59
+    },
+    {
+      "path": "unity/Assets/Tests/PlayMode/Board/RidingSeatAnatomyProbeTests.cs.meta",
+      "sha256": "4c5b3d4687310a093dd3aeaf1878324cc86ef76758f0cab6e1e9c2e814093045",
+      "bytes": 59
+    }
+  ],
+  "protected_paid_inputs_unchanged": true,
+  "not_verified": [
+    "Full native suites on the generated candidate",
+    "Dense-level station placement",
+    "Original carriage paw contact: diagnostic CPU-vs-Bake error .0243187323 before captures",
+    "Device rendering/performance"
+  ],
+  "track_native_configuration": {
+    "source_candidate": "cbd7869c270d64e0d8d573bda7742c81a885de75",
+    "unity_version": "6000.3.16f1",
+    "entry_point": "CatMetro.EditorTools.CatMetroOriginalTrackImportPipeline.BuildAndExit",
+    "evidence_directory": "/private/tmp/catmetro-owner-original-assets-20260910-104917",
+    "log": "track-config.log",
+    "log_sha256": "f851ca96463cab163efe18722c8eb44a327067f71750f5244c23a0863b52b4fe",
+    "native_log_result": "ORIGINAL_TRACK_ATLAS PASS path=Assets/Art/Original/Track/Resources/Track/original-toy-atlas.png sha256=3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45 srgb=true mipmaps=true readable=false wrap=Clamp",
+    "unity_process_exit_code_reported_by_owner": 0,
+    "atlas_path": "unity/Assets/Art/Original/Track/Resources/Track/original-toy-atlas.png",
+    "atlas_sha256": "3081f50fa32d3954e3417b440afd8e92ea7b24008ab071bf1556232d2f4c9c45",
+    "atlas_dimensions": [
+      1024,
+      512
+    ],
+    "meta_path": "unity/Assets/Art/Original/Track/Resources/Track/original-toy-atlas.png.meta",
+    "previous_meta_sha256": "be83ab36d67ede50da3a7112696b4e7e7f5a750523d1cd8e9dd857a6aa51d32f",
+    "native_meta_sha256": "94d6eb99398507f8ce7da1d30dc8a486a0b19858a3a050ced61c9eb2c7f8460c",
+    "native_meta_bytes": 3717,
+    "guid_unchanged": "c81ecf15c1fce4d149e6433bf099f8c8",
+    "settings_changed": {
+      "anisotropy": {
+        "before": 1,
+        "after": 2
+      },
+      "wrap_u_v_w": {
+        "before": "Repeat",
+        "after": "Clamp"
+      },
+      "alpha_source": {
+        "before": "FromInput",
+        "after": "None"
+      },
+      "default_platform_max_texture_size": {
+        "before": 2048,
+        "after": 1024
+      }
+    },
+    "other_generated_files_unchanged": 40,
+    "pending_at_receipt": [
+      "Current original station and configured L001/L009/L015/L048 board render validation",
+      "Current native EditMode checks and wider-carriage platform clearance >=0.045",
+      "Actual device rendering and performance"
+    ]
+  },
+  "original_carriage_platform_clearance_calibration": {
+    "runtime_source_candidate": "fd0451b99e5be107d25b6ebfda39d02c2c9b192a",
+    "focused_test_source_commit": "36b8edac2fb75cb81f6cda5d849d28ed5e217c38",
+    "evidence_directory": "/private/tmp/catmetro-owner-original-assets-20260910-104917",
+    "full_corpus_at_previous_offset": {
+      "offset": 0.704,
+      "xml": "results/original-edit-and-clearance.xml",
+      "combined_passed": 12,
+      "combined_failed": 1,
+      "minimum_gap": 0.020663172,
+      "endpoint_samples": 395,
+      "required_gap": 0.045
+    },
+    "trial_xml": "results/clearance-trials.xml",
+    "trial_xml_sha256": "4cd3b5f4dcbc5e88edc56495221c82356ef60e28f2f9a60d6da6f0b641503c17",
+    "trial_json": "captures/clearance-trials/diagonal-waiting-offsets.json",
+    "trial_json_sha256": "5e155f0bbbf18c15b135fc4d98749429bf6bc6cdcebfd35de1cf1173222db2aa",
+    "trial_run_result": {
+      "passed": 0,
+      "failed": 1,
+      "note": "Expected failure at production offset .704; all six candidate trial measurements were written before the unchanged .045 assertion."
+    },
+    "scope": "Actual original OpenShell and Undercarriage, diagonal-source-b waiting lane1, complete Cat_IdleSit at half-frame spacing, 17 ear samples and conservative independent maximum carriage-ward bob. Source-node trial displacement retains production anchor and facing calculations.",
+    "selected_platform_offset": 0.734,
+    "previous_platform_offset": 0.704,
+    "required_gap_unchanged": 0.045,
+    "selection": "First sampled offset with more than .005 board-unit clearance margin; not a global minimum-offset claim.",
+    "selected_trial": {
+      "offset": 0.734,
+      "minimumGap": 0.05169317,
+      "required": 0.045,
+      "margin": 0.00669316947,
+      "catYaw": 281.8173,
+      "sample": "offset-trial/0.734/vehicle=OpenShell+Undercarriage/clip=Cat_IdleSit/halfFrame=96/384/earSample=4/sourceEar=-7.000/appliedEar=-14.000/bobCorrection=0.035454/maxRoot=-0.715156/currentRoot=-0.750610"
+    },
+    "comparison_trial": {
+      "offset": 0.729,
+      "minimumGap": 0.0465172231,
+      "required": 0.045,
+      "margin": 0.00151722133,
+      "catYaw": 281.637634,
+      "sample": "offset-trial/0.729/vehicle=OpenShell+Undercarriage/clip=Cat_IdleSit/halfFrame=96/384/earSample=10/sourceEar=3.500/appliedEar=7.000/bobCorrection=0.002244/maxRoot=-0.710156/currentRoot=-0.712400"
+    },
+    "exact_vehicle_diagonal_extent": {
+      "old_chassis_minimum": -0.3111269837220809,
+      "original_undercarriage_minimum": -0.33845435587123085,
+      "extra_extent": 0.02732737214914993,
+      "note": "Computed from committed project-original float32 vertices after the existing +X-forward/+Y-up to board conversion, not the union bounding-box corner."
+    },
+    "pending_at_receipt": [
+      "Focused production regression at selected offset .734",
+      "Unchanged full395-endpoint clearance corpus at selected offset",
+      "Actual configured board/arrival/win and camera framing captures at selected offset",
+      "Android rendering and performance"
+    ]
+  },
+  "original_station_display_scale_calibration": {
+    "base_candidate": "45fa49d2d5fdb0f3e8ae2209efd811e933e84902",
+    "previous_display_scale": 0.55,
+    "selected_display_scale": 0.42,
+    "unchanged_early_slab_height_requirement": 0.65,
+    "source_geometry_and_live_badges_unchanged": true,
+    "trial_xml": "/private/tmp/catmetro-owner-original-assets-20260910-104917/results/station-scale-trials.xml",
+    "trial_xml_sha256": "57866097172e1885c89a1e3374661e06164aea5d52b16ea6f6b1ec68823d1f2a",
+    "trial_xml_result": {
+      "result": "Failed(Child)",
+      "passed": 0,
+      "failed": 1,
+      "note": "Intentional unchanged production .55 framing assertion fails L002/L009/L010/L015 after all trial/restoration measurements are recorded. Selected .42 measurements pass the existing requirement; this is not final-candidate suite validation."
+    },
+    "selection": "Both .43 and .42 satisfy the fifteen early-board height checks; .42 provides more margin in L009/L010/L015 (.653505862 versus .6509211). The minimum selected early-board fraction is .6522502 on L001/L002.",
+    "measurements": [
+      {
+        "level": "L001",
+        "baseline_slab_height": 0.6522502,
+        "trial_043_slab_height": 0.6522502,
+        "selected_042_slab_height": 0.6522502,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L001-scale-trials.json",
+        "json_sha256": "417634b6a888227de12482a528b776f59637d80b6ad3b051299db5fc8467952f"
+      },
+      {
+        "level": "L002",
+        "baseline_slab_height": 0.6325081,
+        "trial_043_slab_height": 0.6522502,
+        "selected_042_slab_height": 0.6522502,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L002-scale-trials.json",
+        "json_sha256": "ec7dd47ff08679becd101170b63d976142a6c5d9e7f859c583026ae33a60540a"
+      },
+      {
+        "level": "L003",
+        "baseline_slab_height": 0.664049,
+        "trial_043_slab_height": 0.664049,
+        "selected_042_slab_height": 0.664049,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L003-scale-trials.json",
+        "json_sha256": "2c3f53ac4cc6be2582c6fcf39e32328979ee0cec35a384cc8be325e3cf9a0130"
+      },
+      {
+        "level": "L004",
+        "baseline_slab_height": 0.674000859,
+        "trial_043_slab_height": 0.674000859,
+        "selected_042_slab_height": 0.674000859,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L004-scale-trials.json",
+        "json_sha256": "48834b7ba3a660a0be5eb7597a90d31f80884f1a666fffc4ab3ffe553b464eb1"
+      },
+      {
+        "level": "L005",
+        "baseline_slab_height": 0.664049149,
+        "trial_043_slab_height": 0.664049149,
+        "selected_042_slab_height": 0.664049149,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L005-scale-trials.json",
+        "json_sha256": "16fe5b324167eebdf89d250602c24346e49e44aa403883ba977686ff9589d6cd"
+      },
+      {
+        "level": "L006",
+        "baseline_slab_height": 0.664049,
+        "trial_043_slab_height": 0.664049,
+        "selected_042_slab_height": 0.664049,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L006-scale-trials.json",
+        "json_sha256": "68332ba518542b17b3de81d9bf51928f175c093c8fd578b9d8f97c127583bfa4"
+      },
+      {
+        "level": "L007",
+        "baseline_slab_height": 0.674000859,
+        "trial_043_slab_height": 0.674000859,
+        "selected_042_slab_height": 0.674000859,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L007-scale-trials.json",
+        "json_sha256": "e29be95169364b1742e930706bdd0a49bc1c8ce792217a877f5c26492953f5f5"
+      },
+      {
+        "level": "L008",
+        "baseline_slab_height": 0.682507634,
+        "trial_043_slab_height": 0.682507634,
+        "selected_042_slab_height": 0.682507634,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L008-scale-trials.json",
+        "json_sha256": "cae8adcd40f12fa307939e85744aa31c013e5d28435cf65df6a0e6c920db42c2"
+      },
+      {
+        "level": "L009",
+        "baseline_slab_height": 0.6214273,
+        "trial_043_slab_height": 0.6509211,
+        "selected_042_slab_height": 0.653505862,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L009-scale-trials.json",
+        "json_sha256": "214121ca23e4e0409cec830f49f0a93daeaf29da9090f19fb965c63ebc14db2c"
+      },
+      {
+        "level": "L010",
+        "baseline_slab_height": 0.6214271,
+        "trial_043_slab_height": 0.6509211,
+        "selected_042_slab_height": 0.653505862,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L010-scale-trials.json",
+        "json_sha256": "ed45829c849757a7be1561744cbf4b19a80b849685dc37c77026de0201b6f79f"
+      },
+      {
+        "level": "L011",
+        "baseline_slab_height": 0.6785307,
+        "trial_043_slab_height": 0.682507634,
+        "selected_042_slab_height": 0.682507634,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L011-scale-trials.json",
+        "json_sha256": "622af7167c2447dc44aed0182ab918b8ae8388a9ae97b6437e82833e852c7ba9"
+      },
+      {
+        "level": "L012",
+        "baseline_slab_height": 0.689862847,
+        "trial_043_slab_height": 0.689862847,
+        "selected_042_slab_height": 0.689862847,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L012-scale-trials.json",
+        "json_sha256": "ae0058c587ee6644c00a80f31c7f529967e7f815c6a92263a3651a0668d1a2d5"
+      },
+      {
+        "level": "L013",
+        "baseline_slab_height": 0.664049149,
+        "trial_043_slab_height": 0.664049149,
+        "selected_042_slab_height": 0.664049149,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L013-scale-trials.json",
+        "json_sha256": "4a8c8d5a7872bccd9f934dac8f501ca70fc99b136ea67d10cc5b315ccab3cfdf"
+      },
+      {
+        "level": "L014",
+        "baseline_slab_height": 0.674000859,
+        "trial_043_slab_height": 0.674000859,
+        "selected_042_slab_height": 0.674000859,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L014-scale-trials.json",
+        "json_sha256": "dd9a175afe7e9d4ad168ac94b235f9a0d42362a67f0fffd79b3e81ec1cbbd2e3"
+      },
+      {
+        "level": "L015",
+        "baseline_slab_height": 0.6214273,
+        "trial_043_slab_height": 0.6509211,
+        "selected_042_slab_height": 0.653505862,
+        "early_65_percent_required": true,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L015-scale-trials.json",
+        "json_sha256": "ea8ef284be377c6830d4a73a911964f69ac07b14b49c2f1ae666b66d1e930674"
+      },
+      {
+        "level": "L041",
+        "baseline_slab_height": 0.5436516,
+        "trial_043_slab_height": 0.553702354,
+        "selected_042_slab_height": 0.5545567,
+        "early_65_percent_required": false,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L041-scale-trials.json",
+        "json_sha256": "0ebd5729bbfd5702f0a3c6cc84d9044335d1d88cc5a34f7fc22a1abb4620bb1a"
+      },
+      {
+        "level": "L052",
+        "baseline_slab_height": 0.409554243,
+        "trial_043_slab_height": 0.42716524,
+        "selected_042_slab_height": 0.42870152,
+        "early_65_percent_required": false,
+        "selected_requirement_pass": true,
+        "json": "/private/tmp/catmetro-owner-original-assets-20260910-104917/captures/station-scale-trials/L052-scale-trials.json",
+        "json_sha256": "122cfcb745615dd650054b0b48eac2b4fbe9fde6200e2eacf3c0531a6d0363fb"
+      }
+    ],
+    "capture_manifest": "/private/tmp/catmetro-owner-original-assets-20260910-104917/station-scale-review/manifest.json",
+    "capture_manifest_sha256": "bea4416e361817a7985fb14db90b42619462ca0a7b6ceb9bdf425d9d004f3881",
+    "captures_verified_by_hash": 28,
+    "captured_levels": [
+      "L001",
+      "L002",
+      "L009",
+      "L010",
+      "L015",
+      "L041",
+      "L052"
+    ],
+    "owner_reported_visual_review": "All28 raw PNGs opened through seven comparison pages; roofs/walls remain clear, destination badges prominent and the board fills more of the phone.",
+    "implementer_opened": [
+      "captures/station-scale-trials/L001-scale-0.42.png",
+      "captures/station-scale-trials/L009-scale-0.42.png",
+      "station-scale-review/L009.png"
+    ],
+    "generated_files_preserved": 41,
+    "pending_at_receipt": [
+      "Unchanged complete native framing test with production DisplayScale .42",
+      "Final native full suites and combined original/engine/seat candidate",
+      "Android rendering and performance"
+    ]
+  }
+}
