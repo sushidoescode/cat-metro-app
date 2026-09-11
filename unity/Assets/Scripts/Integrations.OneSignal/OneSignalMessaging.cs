@@ -47,7 +47,12 @@ namespace CatMetro.Integrations.OneSignal
         private bool _listenerAttached;
         private bool _disposed;
 
-        public OneSignalMessaging() : this(new OneSignalSdkBridge()) { }
+        public OneSignalMessaging()
+        {
+            _notificationClicked = HandleNotificationClicked;
+            if (AndroidOptionalSdkProfile.AllowOneSignalRuntime)
+                _bridge = new OneSignalSdkBridge();
+        }
 
         internal OneSignalMessaging(IOneSignalBridge bridge)
         {
@@ -69,7 +74,7 @@ namespace CatMetro.Integrations.OneSignal
 
         public void Initialize(string appId)
         {
-            if (_disposed)
+            if (_disposed || !AndroidOptionalSdkProfile.AllowOneSignalRuntime || _bridge == null)
                 return;
 
             DetachListener();
@@ -138,7 +143,7 @@ namespace CatMetro.Integrations.OneSignal
             DetachListener();
             IsAvailable = false;
             _disposed = true;
-            _bridge.Dispose();
+            _bridge?.Dispose();
         }
 
         private void HandleNotificationClicked(IDictionary<string, object> additionalData)

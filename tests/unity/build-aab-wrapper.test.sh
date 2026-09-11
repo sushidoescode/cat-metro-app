@@ -8,7 +8,16 @@ unset CM_AAB_TEST_MODE
 repo="$(git rev-parse --show-toplevel)"
 subject="$repo/scripts/build-aab.sh"
 case_root="$(mktemp -d)"
-trap 'rm -rf -- "$case_root"' EXIT
+cleanup() {
+  if [ -n "${CM_AAB_FIXTURE_LOG_DIR:-}" ]; then
+    mkdir -p "$CM_AAB_FIXTURE_LOG_DIR"
+    for fixture_log in "$case_root"/*.log; do
+      [ ! -f "$fixture_log" ] || cp "$fixture_log" "$CM_AAB_FIXTURE_LOG_DIR/"
+    done
+  fi
+  rm -rf -- "$case_root"
+}
+trap cleanup EXIT
 
 fail() { echo "build-aab-wrapper.test.sh: FAIL — $*" >&2; exit 1; }
 
@@ -160,6 +169,23 @@ if [ "$command_name" = "dump" ] && [ "${2:-}" = "manifest" ]; then
   if [ "$mode" = "vibrate-lookalike-permission" ]; then
     extra_permission='  <uses-permission android:name="android.permission.VIBRATE_EXTRA" />'
   fi
+  case "$mode" in
+    androidx-*)
+      receiver_permission=com.catmetro.game.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+      protection=signature
+      [ "$mode" != "androidx-foreign" ] || receiver_permission=com.example.other.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+      [ "$mode" != "androidx-normal" ] || protection=normal
+      [ "$mode" != "androidx-privileged" ] || protection='signature|privileged'
+      if [ "$mode" = "androidx-conflicting-feature" ] && [ "$module" = "delivery" ]; then
+        protection=normal
+      fi
+      extra_permission="  <uses-permission android:name=\"$receiver_permission\" />"
+      if [ "$mode" != "androidx-missing" ]; then
+        extra_permission="$extra_permission
+  <permission android:name=\"$receiver_permission\" android:protectionLevel=\"$protection\" />"
+      fi
+      ;;
+  esac
   if [ "$mode" = "feature-dangerous-permission" ] && [ "$module" = "delivery" ]; then
     extra_permission='  <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />'
   fi
@@ -302,6 +328,26 @@ grep -q "Listing fields: OK (title 23/30, short 79/80, full 1040/4000, what's-ne
 if grep -q '__CAMPAIGN_LEVEL_COUNT__' "$listing_out"; then
   fail "unrendered campaign-count token escaped into candidate copy"
 fi
+
+# AndroidX's exact package-scoped permission must retain signature protection in every module.
+androidx_out="$case_root/androidx-signature-test-proof.aab"
+if ! FAKE_BUNDLETOOL_MODE=androidx-signature CM_UNITY_BIN="$fake_unity" \
+  bash "$case_root/scripts/build-aab.sh" "$androidx_out" > "$case_root/androidx-signature.log" 2>&1; then
+  fail "wrapper rejected AndroidX's exact signature-protected receiver permission"
+fi
+echo "PASS AndroidX exact signature permission"
+for invalid_receiver_mode in androidx-missing androidx-normal androidx-privileged androidx-foreign androidx-conflicting-feature; do
+  invalid_receiver_out="$case_root/$invalid_receiver_mode-test-proof.aab"
+  set +e
+  FAKE_UNITY_MODE=feature-module FAKE_BUNDLETOOL_MODE="$invalid_receiver_mode" \
+    CM_UNITY_BIN="$fake_unity" bash "$case_root/scripts/build-aab.sh" "$invalid_receiver_out" \
+    > "$case_root/$invalid_receiver_mode.log" 2>&1
+  invalid_receiver_rc=$?
+  set -e
+  [ "$invalid_receiver_rc" -ne 0 ] && [ ! -e "$invalid_receiver_out" ] \
+    || fail "wrapper accepted invalid receiver permission: $invalid_receiver_mode"
+  echo "PASS rejected $invalid_receiver_mode"
+done
 
 # Exercise default validator discovery instead of letting every behavioral case ride explicit
 # validator overrides. Only Unity itself is overridden; its sibling PlaybackEngines tree mirrors

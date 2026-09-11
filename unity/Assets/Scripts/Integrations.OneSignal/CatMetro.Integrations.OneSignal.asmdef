@@ -3,6 +3,7 @@
     "rootNamespace": "CatMetro.Integrations.OneSignal",
     "references": [
         "CatMetro.Services",
+        "CatMetro.Integrations",
         "OneSignal.Core"
     ],
     "includePlatforms": [],

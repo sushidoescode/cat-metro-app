@@ -437,6 +437,23 @@ while IFS= read -r permission_name; do
   [ -z "$permission_name" ] && continue
   case "$permission_name" in
     android.permission.INTERNET|android.permission.ACCESS_NETWORK_STATE|android.permission.VIBRATE|com.android.vending.BILLING) ;;
+    com.catmetro.game.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION)
+      # AndroidX protects non-exported receiver registration with this app-scoped permission.
+      # Every declaration across modules must retain signature-only protection.
+      perl -0ne '
+        my $found = 0;
+        while (/<permission\b([^>]*)>/g) {
+          my $attributes = $1;
+          next unless $attributes =~ /\bandroid:name="com\.catmetro\.game\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"/;
+          $found++;
+          exit 1 unless $attributes =~ /\bandroid:protectionLevel="signature"/;
+        }
+        exit($found ? 0 : 1);
+      ' "$all_manifests" || {
+        echo "Built manifest: FAIL — AndroidX receiver permission lacks signature-only protection."
+        exit 1
+      }
+      ;;
     *)
       echo "Built manifest: FAIL — permission is outside Cat Metro's release allowlist: $permission_name"
       exit 1
