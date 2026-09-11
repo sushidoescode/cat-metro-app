@@ -1179,17 +1179,47 @@ namespace CatMetro.Tests.PlayMode
             => 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
 
         [UnityTest]
-        public IEnumerator TrackRails_UseReadableNavyOverWarmWoodWithCreamSleepers()
+        public IEnumerator TrackRails_PaintTheOriginalToyAtlasWithoutTintingItAway()
         {
             _root = GameRoot.Launch();
             yield return null;
             var materials = _root.View.GetComponentsInChildren<BoardElementId>()
                 .First(e => e.Kind == "edge").GetComponent<Renderer>().sharedMaterials;
-            Assert.That(Vector4.Distance(materials[0].color, Palette.CreamCard),
-                Is.LessThan(0.0001f));
-            Assert.That(Vector4.Distance(materials[1].color, new Vector4(64f / 255f, 73f / 255f, 105f / 255f, 1f)), Is.LessThan(0.0001f));
-            Assert.That(Vector4.Distance(materials[2].color, Palette.WarmWood),
-                Is.LessThan(0.0001f));
+            // Sleeper, rail, bed — the submesh order ToyTrackMeshBuilder assigns.
+            Assert.That(materials.Length, Is.EqualTo(3));
+            Assert.That(materials.Distinct().Count(), Is.EqualTo(3),
+                "each track part keeps its own material so one part cannot repaint another");
+            foreach (var material in materials)
+                Assert.That(material.shader.name, Is.EqualTo("Universal Render Pipeline/Lit"),
+                    material.name + " must stay on the committed URP path");
+
+            var atlas = Resources.Load<Texture2D>("Track/original-toy-atlas");
+            if (atlas == null)
+            {
+                // Licence-neutral fallback: no atlas, so the palette still has to carry the
+                // navy rails on a cream bed. This is the path a stripped checkout takes.
+                Assert.That(Vector4.Distance(materials[0].color, Palette.CreamCard),
+                    Is.LessThan(0.0001f));
+                Assert.That(Vector4.Distance(materials[1].color,
+                    new Vector4(64f / 255f, 73f / 255f, 105f / 255f, 1f)), Is.LessThan(0.0001f));
+                Assert.That(Vector4.Distance(materials[2].color, Palette.CreamCard),
+                    Is.LessThan(0.0001f));
+                yield break;
+            }
+
+            // The owned toy atlas carries the navy rail, cream sleeper and wood bed swatches,
+            // so the base colour must stay white. A tint here would multiply the atlas down
+            // and is exactly the silent bind failure AGENTS.md warns about: the track would
+            // still draw, just wrong. The texture identity is asserted, not merely non-null.
+            foreach (var material in materials)
+            {
+                Assert.That(material.GetTexture("_BaseMap"), Is.SameAs(atlas),
+                    material.name + " must bind the original toy atlas");
+                Assert.That(Vector4.Distance(material.color, Vector4.one), Is.LessThan(0.0001f),
+                    material.name + " must not tint the atlas away");
+                Assert.That(material.GetTextureScale("_BaseMap"), Is.EqualTo(Vector2.one));
+                Assert.That(material.GetTextureOffset("_BaseMap"), Is.EqualTo(Vector2.zero));
+            }
         }
 
         [UnityTest]

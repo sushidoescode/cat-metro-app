@@ -191,6 +191,21 @@ namespace CatMetro.Tests.PlayMode
                     checkedRenderers++;
                     continue;
                 }
+                // The admitted board cat wears the project's own fur-tint shader so a route
+                // colour can repaint the coat while the rig's atlas keeps the cream muzzle,
+                // navy eyes and stripes. That is still an explicit committed bind, so it is
+                // held to the same rule the generated props get: the named owned shader, and
+                // an atlas that is actually bound underneath it.
+                if (r.sharedMaterial.shader.name == CatMetro.Presentation.Cats.BoardFurTint.ShaderName)
+                {
+                    Assert.That(r.GetComponentInParent<CatMetro.Presentation.Board.ToyTrainView>(),
+                        Is.Not.Null,
+                        r.gameObject.name + " may only wear the board fur shader inside a train");
+                    Assert.That(r.sharedMaterial.GetTexture("_BaseMap"), Is.Not.Null,
+                        r.gameObject.name + " must still bind the rig atlas under the tint");
+                    checkedRenderers++;
+                    continue;
+                }
                 Assert.That(r.sharedMaterial.shader, Is.EqualTo(greybox.shader),
                     r.gameObject.name + " must bind the committed material, not the engine default");
                 checkedRenderers++;
