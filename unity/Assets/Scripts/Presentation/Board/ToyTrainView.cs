@@ -269,6 +269,8 @@ namespace CatMetro.Presentation.Board
         private MeshRenderer[] _catRenderers; // placeholder renderers — tinted per cat via property block
 
         private Vector3 _catBaseLocalPosition;
+        private Vector3 _catPathLocalPosition, _pinPathLocalPosition, _riderBobLocalOffset;
+        private bool _hasRiderBobPose;
         private Quaternion _catBaseLocalRotation;
         private Quaternion _headBaseLocalRotation;
         private Quaternion _earLeftBaseLocalRotation;
@@ -678,6 +680,10 @@ namespace CatMetro.Presentation.Board
             // it is applied to the cat and its label pin, never to the train/root spline anchor.
             Vector3 boardBob = ScreenUpOffset(BoardSceneLook.BoardTilt, pose.Bob * 0.021f, 0f);
             Vector3 carriageLocalBob = Quaternion.Inverse(_carriage.localRotation) * boardBob;
+            _catPathLocalPosition = pathLocalPosition;
+            _pinPathLocalPosition = _pinBaseLocalPosition + pathOffset;
+            _riderBobLocalOffset = carriageLocalBob;
+            _hasRiderBobPose = true;
             _cat.localPosition = pathLocalPosition
                 + carriageLocalBob;
             // The destination card labels the cat, not its empty seat. Carry the exact same
@@ -727,9 +733,9 @@ namespace CatMetro.Presentation.Board
         {
             if (_rigInstance == null) return;
             float weight = 0f;
-            if (OriginalCarriageAdmitted && _rigPresentation != null
-                && _rigPresentation.OpenCarriageMotionInstalled
-                && _presentationState != CatPresentationState.Hidden && _rigAnimator != null)
+            bool openCarriageMotion = OriginalCarriageAdmitted && _rigPresentation != null
+                && _rigPresentation.OpenCarriageMotionInstalled;
+            if (openCarriageMotion && _presentationState != CatPresentationState.Hidden && _rigAnimator != null)
             {
                 if (_rigMotionSuppressed) weight = _rigStaticSeated ? 1f : 0f;
                 else
@@ -740,9 +746,18 @@ namespace CatMetro.Presentation.Board
                             Mathf.Clamp01(_rigAnimator.GetAnimatorTransitionInfo(0).normalizedTime));
                 }
             }
-            // Only the visual rig wrapper moves. Animated depth follows the evaluated clock
-            // rather than PlatformBlend: boarding starts at blend .35 with a neutral pose.
+            // Animated depth follows the evaluated clock rather than PlatformBlend:
+            // boarding starts at blend .35 with a neutral pose.
             _rigInstance.transform.localPosition = Vector3.forward * (OpenCarriageSeatDepth * weight);
+            if (openCarriageMotion && _hasRiderBobPose && !_rigMotionSuppressed)
+            {
+                // Rigid screen-up bob slides seated feet through the carriage walls. Fade
+                // only that translation with the same evaluated seat contribution; the owned
+                // breathing and ear motion remain. Absolute path samples cannot accumulate.
+                Vector3 bob = _riderBobLocalOffset * (1f - weight);
+                _cat.localPosition = _catPathLocalPosition + bob;
+                _pin.localPosition = _pinPathLocalPosition + bob;
+            }
         }
 
         private static float SeatWeight(AnimatorStateInfo state)
@@ -1021,6 +1036,7 @@ namespace CatMetro.Presentation.Board
         // invisible-ears fix: without it, no ear size survives every heading.
         private void SetCarriageHeading(float degrees)
         {
+            _hasRiderBobPose = false;
             _carriage.localRotation = Quaternion.Euler(0f, 0f, degrees);
             _catBaseLocalRotation = Quaternion.Euler(0f, 0f, CatBoardYaw - degrees);
             _cat.localRotation = _catBaseLocalRotation;
@@ -1196,6 +1212,7 @@ namespace CatMetro.Presentation.Board
 
         private void ResetVisualPose()
         {
+            _hasRiderBobPose = false;
             if (_rigInstance != null) _rigInstance.transform.localPosition = Vector3.zero;
             _cat.localPosition = _catBaseLocalPosition;
             _cat.localRotation = _catBaseLocalRotation;
