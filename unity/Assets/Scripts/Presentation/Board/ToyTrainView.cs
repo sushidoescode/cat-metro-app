@@ -30,7 +30,7 @@ namespace CatMetro.Presentation.Board
         // Arc-length from the engine anchor back to the carriage centre: half an engine
         // (0.23) + a toy-tight coupling gap (0.04) + half a carriage chassis (0.21), sized against
         // the 0.5 track gauge (ToyTrackMeshBuilder.RailOffset * 2).
-        public const float CarriageOffset = 0.48f;
+        public const float CarriageOffset = 0.48f * CatModelCatalog.ConsistScale;
 
         // The pinned head anchor lift off the board plane (the old capsule's -0.2). Part
         // z-offsets below are anchor-local: +z points down into the table, and the rail
@@ -62,7 +62,7 @@ namespace CatMetro.Presentation.Board
         // carriage-ward bob. The wider original carriage left .020663 clearance at offset
         // .704 in the worst diagonal waiting lane. Native trials at .734 leave .051693;
         // the shared platform anchor also reserves the new position in camera framing.
-        public const float PlatformSideOffset = 0.734f;
+        public const float PlatformSideOffset = 0.734f * CatModelCatalog.ConsistScale;
         // Board-X clearance that keeps an ARRIVING cat out from behind the station badge.
         // station:keyline-generated is KeylineSize (1.5525) x the 0.6 anchor scale = 0.9315
         // board units across, standing vertically at the node and .67 units nearer the camera
@@ -71,12 +71,17 @@ namespace CatMetro.Presentation.Board
         // the badge suppressed, while suppressing the roof changed nothing. Half the keyline
         // (.46575) plus half the admitted rig's measured head-and-ears width (.2696) plus a
         // .044 margin = .78. Departures only; sources carry no badge.
-        public const float PlatformBadgeClearance = 0.78f;
-        public const float PlatformEndpointClearance = 0.045f;
+        // .78 is half the station keyline (.46575, board-fixed) plus half the rider's measured
+        // width (.2696) plus a .044 margin. Only the rider's half scales with the consist, so the
+        // clearance grows by that half's increase — and at ConsistScale 1 this is exactly .78,
+        // the value the rendered probe was calibrated against.
+        public const float PlatformBadgeClearance =
+            0.78f + 0.2696f * (CatModelCatalog.ConsistScale - 1f);
+        public const float PlatformEndpointClearance = 0.045f * CatModelCatalog.ConsistScale;
         // Horizontal half-extent reserved by the camera around a platform cat's root. The
         // fallback head, ears and 0.28 card all fit inside one HeadDiameter; the admitted-rig
         // artifact sweep remains the authority if that model's animated silhouette grows.
-        public const float PlatformFramingHalfWidth = HeadDiameter;
+        public const float PlatformFramingHalfWidth = HeadDiameter * CatModelCatalog.ConsistScale;
         // At 93 px/unit, the foreshortened queue pitch is 0.48*cos(38)*93 = 35.2 px,
         // leaving a visible gap around each enlarged 26 px card and its waiting cat.
         public const float PlatformQueueSpacing = 0.48f;
@@ -85,7 +90,8 @@ namespace CatMetro.Presentation.Board
         // 0.6383 board units wide and its Alight pose at 0.8044, so two 0.48 lanes overlap by
         // about a quarter of a cat. .5392 is the measured head-and-ears width (2 x the .2696
         // half at :70); .044 is the same margin the badge clearance uses.
-        public const float PlatformDeliveredQueueSpacing = 0.5832f;
+        public const float PlatformDeliveredQueueSpacing =
+            0.5392f * CatModelCatalog.ConsistScale + 0.044f;
 
         internal static float PlatformLaneOffset(int lane)
         {
@@ -313,7 +319,7 @@ namespace CatMetro.Presentation.Board
         public bool OriginalEngineAdmitted { get; private set; }
         public string EngineFallbackReason { get; private set; }
         private GameObject _rigInstance;
-        private const float OpenCarriageSeatDepth = .0983f;
+        private const float OpenCarriageSeatDepth = .0983f * CatModelCatalog.ConsistScale;
         private Animator _rigAnimator;
         private CatRigPresentation _rigPresentation;
         private BoardFurTint _rigFurTint;
@@ -1465,7 +1471,7 @@ namespace CatMetro.Presentation.Board
             model.name = "OriginalEngine";
             model.transform.localPosition = new Vector3(0f, 0f, .235f);
             model.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
-            model.transform.localScale = Vector3.one;
+            model.transform.localScale = Vector3.one * CatModelCatalog.ConsistScale;
             // Retain every legacy attachment transform, especially Funnel's original
             // scale/rotation used by Steam. Only its primitive renderer is replaced.
             foreach (string name in new[] { "Chassis", "Boiler", "Cab", "CabRoof", "Funnel" })
@@ -1486,7 +1492,7 @@ namespace CatMetro.Presentation.Board
                 model.name = "OriginalCarriage";
                 model.transform.localPosition = new Vector3(0f, 0f, .235f);
                 model.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
-                model.transform.localScale = Vector3.one;
+                model.transform.localScale = Vector3.one * CatModelCatalog.ConsistScale;
                 return;
             }
             CreatePart("Chassis", _carriage, CubeMesh(),
