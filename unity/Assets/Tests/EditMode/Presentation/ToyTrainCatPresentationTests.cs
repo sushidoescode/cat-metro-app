@@ -526,6 +526,16 @@ namespace CatMetro.Tests.EditMode.Presentation
                 "motion-off removes phase motion without removing the platform-wait information");
         }
 
+        // An arriving cat now steps clear of the station badge, which stands vertically at the
+        // node and used to cover the platform spot outright (a rendered probe measured 3.0% of
+        // the delivered cat's own pixels visible, 93.2% with the badge suppressed). Derive the
+        // direction the way BoardView does so these stay statements about the law rather than
+        // about one measured number.
+        // The step is derived from the platform spot itself, not from a node, so a reused slot
+        // whose train is still at its approach node cannot pick the opposite side.
+        private float BadgeStepX(float platformLocalX)
+            => ToyTrainView.BadgeStepX(_board.PresentationCenterLocal.x, platformLocalX);
+
         [Test]
         public void DeliveredPassenger_HitchUsesTheSameFloorLiftAsTheTrainPassenger()
         {
@@ -533,8 +543,9 @@ namespace CatMetro.Tests.EditMode.Presentation
             _session.AdvanceMs(4 * TickInterpolator.TICK_MS);
             _board.UpdateFrom(_session, 0f);
             var passenger = _board.transform.Find("delivered-cat:0");
-            Assert.That(passenger.localPosition.x, Is.EqualTo(2.4f).Within(.0001f),
-                "recorded station X=3 maps to 3 × GridX 0.8, even when both arrivals were unseen");
+            Assert.That(passenger.localPosition.x, Is.EqualTo(2.4f + BadgeStepX(2.4f)).Within(.0001f),
+                "recorded station X=3 maps to 3 × GridX 0.8 plus the badge clearance step, "
+                + "even when both arrivals were unseen");
             Assert.That(passenger.localPosition.y, Is.EqualTo(2.206f).Within(.0001f),
                 "station Y=2 maps to 2.94; the calibrated 0.734 platform offset stays in board units");
             Assert.That(passenger.localPosition.z, Is.EqualTo(-.2f).Within(.0001f),
@@ -559,7 +570,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             // Hand-derived from station (2.4,2.94), a 0.48 carriage trailing distance,
             // and board-down 0.734. The diagonal uses direction (1.6,-2.94), not (2,-2).
             Vector3 expectedWorld = _board.transform.TransformPoint(
-                new Vector3(endpointX, endpointY, -.2f));
+                new Vector3(endpointX + BadgeStepX(endpointX), endpointY, -.2f));
             Assert.That(Vector3.Distance(arriving.PlatformEndpointWorld, expectedWorld),
                 Is.LessThan(.001f),
                 "the arrival endpoint follows the anisotropic grid and transforms with the tilted board; "
@@ -616,12 +627,16 @@ namespace CatMetro.Tests.EditMode.Presentation
             _board.UpdateFrom(_session, 10.59f);
             Vector3 anchor = a.localPosition;
             Vector3 neutralScale = a.Find("Carriage/Cat").localScale;
-            Assert.That(Vector3.Distance(anchor, new Vector3(2.4f, 2.206f, -.2f)),
+            Assert.That(Vector3.Distance(anchor,
+                    new Vector3(2.4f + BadgeStepX(2.4f), 2.206f, -.2f)),
                 Is.LessThan(.0001f),
-                "the win starts on the scaled station's 0.734-offset platform, with unchanged depth");
-            Assert.That(Vector3.Distance(b.localPosition, new Vector3(2.88f, 2.206f, -.2f)),
+                "the win starts on the scaled station's 0.734-offset platform, stepped clear of "
+                + "the badge, with unchanged depth");
+            Assert.That(Vector3.Distance(b.localPosition,
+                    new Vector3(2.88f + BadgeStepX(2.4f), 2.206f, -.2f)),
                 Is.LessThan(.0001f),
-                "the second retained cat keeps 0.48 board-unit lane spacing; GridX does not compress it");
+                "the second retained cat keeps 0.48 board-unit lane spacing on top of the same "
+                + "badge step; GridX does not compress it");
             Assert.That(a.GetComponent<ToyTrainView>().PresentationState,
                 Is.EqualTo(CatPresentationState.WaitingIdle), "the 0.6-second beat does not depend on board scale");
             _board.UpdateFrom(_session, 10.60f);

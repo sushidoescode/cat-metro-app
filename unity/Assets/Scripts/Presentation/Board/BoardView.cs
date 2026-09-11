@@ -705,6 +705,7 @@ namespace CatMetro.Presentation.Board
                 }
                 // Always place from the copied simulation snapshot before applying visual-only
                 // cat transforms. No bob/head motion can feed back into spline placement.
+                consist.SetBoardCentreX(PresentationCenterLocal.x);
                 consist.ApplyPresentation(_catTracks[t].State,
                     _catTracks[t].PlatformBlend, _catTracks[t].MovingToPlatform,
                     visualTime, motionOff, _catTracks[t].PlatformBlendSpeed);
@@ -758,7 +759,11 @@ namespace CatMetro.Presentation.Board
                 if (Mathf.Abs(inward) > .1f) side = lane * (inward > 0f ? 1 : -1);
                 // Unseen arrivals use the same calibrated board-unit platform offset as
                 // observed departures; the presentation grid scales node coordinates only.
+                // The unseen-arrival fallback must land on the identical point the live
+                // departing view uses, or the hand-off below teleports the passenger.
                 Vector3 anchor = _nodePos[delivery.Node] + Vector3.down * ToyTrainView.PlatformSideOffset
+                    + Vector3.right * ToyTrainView.BadgeStepX(
+                        PresentationCenterLocal.x, _nodePos[delivery.Node].x)
                     + Vector3.forward * ToyTrainView.HeadAnchorZ;
                 var passenger = ToyTrainView.Create(transform, "delivered-cat:" + i, _edgeFrom, _edgeTo,
                     carriageCatalog: _carriageCatalog);

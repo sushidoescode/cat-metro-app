@@ -63,6 +63,15 @@ namespace CatMetro.Presentation.Board
         // .704 in the worst diagonal waiting lane. Native trials at .734 leave .051693;
         // the shared platform anchor also reserves the new position in camera framing.
         public const float PlatformSideOffset = 0.734f;
+        // Board-X clearance that keeps an ARRIVING cat out from behind the station badge.
+        // station:keyline-generated is KeylineSize (1.5525) x the 0.6 anchor scale = 0.9315
+        // board units across, standing vertically at the node and .67 units nearer the camera
+        // than the platform anchor, so it covers that anchor outright: a measured probe of the
+        // delivered passenger found only 3.0% of its own pixels visible, rising to 93.1% with
+        // the badge suppressed, while suppressing the roof changed nothing. Half the keyline
+        // (.46575) plus half the admitted rig's measured head-and-ears width (.2696) plus a
+        // .044 margin = .78. Departures only; sources carry no badge.
+        public const float PlatformBadgeClearance = 0.78f;
         public const float PlatformEndpointClearance = 0.045f;
         // Horizontal half-extent reserved by the camera around a platform cat's root. The
         // fallback head, ears and 0.28 card all fit inside one HeadDiameter; the admitted-rig
@@ -344,9 +353,36 @@ namespace CatMetro.Presentation.Board
         public string CarriageFallbackReason { get; private set; } = "Carriage has not been evaluated.";
         private Vector3 _deliveredBaseScale;
         private int _deliveredIdleState, _deliveredCelebrateState;
-        public Vector3 PlatformEndpointWorld => _hasPlatformAnchor ? _platformAnchorWorldPosition
-            : transform.parent.TransformPoint(transform.parent.InverseTransformPoint(
-                _carriage.TransformPoint(_catBaseLocalPosition)) + Vector3.down * PlatformSideOffset);
+        // The board-X the arriving cat steps away from, so it clears the station badge. Derived
+        // from the SEAT at anchor time, never from the train's current node: the anchor resolves
+        // on the frame movingToPlatform flips, and on a reused slot the train can still be at its
+        // approach node then, which would pick the opposite side and teleport the hand-off.
+        // BoardView supplies the centre because only it knows the board's extent.
+        private float _boardCentreX;
+        private bool _hasBoardCentre;
+        public void SetBoardCentreX(float centreX)
+        {
+            _boardCentreX = centreX;
+            _hasBoardCentre = true;
+        }
+
+        public static float BadgeStepX(float boardCentreX, float seatBoardX) =>
+            (boardCentreX - seatBoardX < 0f ? -1f : 1f) * PlatformBadgeClearance;
+
+        private Vector3 BadgeStep(float seatBoardX) => _hasBoardCentre
+            ? Vector3.right * BadgeStepX(_boardCentreX, seatBoardX) : Vector3.zero;
+
+        public Vector3 PlatformEndpointWorld
+        {
+            get
+            {
+                if (_hasPlatformAnchor) return _platformAnchorWorldPosition;
+                Vector3 seat = transform.parent.InverseTransformPoint(
+                    _carriage.TransformPoint(_catBaseLocalPosition));
+                return transform.parent.TransformPoint(
+                    seat + Vector3.down * PlatformSideOffset + BadgeStep(seat.x));
+            }
+        }
 
         // The existing rig/placeholder renderer also paints passengers after delivery.
         // Vehicle geometry is hidden; no second model implementation or licensed asset.
@@ -596,7 +632,7 @@ namespace CatMetro.Presentation.Board
                     Vector3 seatBoard = board.InverseTransformPoint(
                         _carriage.TransformPoint(_catBaseLocalPosition));
                     _platformAnchorWorldPosition = board.TransformPoint(
-                        seatBoard + Vector3.down * PlatformSideOffset);
+                        seatBoard + Vector3.down * PlatformSideOffset + BadgeStep(seatBoard.x));
                 }
                 else
                 {

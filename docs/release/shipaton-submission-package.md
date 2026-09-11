@@ -50,17 +50,46 @@ Fetched from <https://revenuecat-shipaton-2026.devpost.com/rules> on 2026-09-11.
    holds 1.0.0-2, so a production upload needs a strictly higher code — 3 or more. That file
    is one of the nine permanently-dirty tracked files carrying your keystore path, so I have
    not touched it.
-2. **Build the signed release AAB in the Unity GUI**, with the upload key configured in
-   Player → Publishing Settings for that session. `scripts/build-aab.sh` cannot sign: it never
-   reads keystore material, and `CatMetroCliAabBuild.cs:93` only *reads*
-   `PlayerSettings.Android.useCustomKeystore`. Keystore `~/catmetro-keys/catmetro-upload.keystore`,
-   alias `catmetro-upload`. Afterwards inspect the git diff — Unity can serialize the local
-   keystore path and alias into the tracked ProjectSettings file; do not commit that.
+2. **Build the signed release AAB.** *(Corrected 2026-09-11 — my earlier claim that this
+   requires the GUI was wrong.)* `scripts/build-aab.sh` already accepts a custom-signed build:
+   its receipt regex at `:542` treats `signing=custom` as first class, the debug-signing refusal
+   at `:551-555` only fires for `signing=debug`, and the success epilogue at `:728-735` is
+   written for the custom case. What is genuinely missing is a **password seam**, and that is a
+   deliberate policy of this repo, not a Unity limitation:
+   `PlayerSettings.Android.keystorePass` / `.keyaliasPass` have public setters in 6000.3.16f1, but
+   `tests/unity/cli-aab-build.test.sh:56-59` fails the build if `CatMetroCliAabBuild.cs` so much
+   as names a keystore identifier or writes any `PlayerSettings.X`. Keystore path and alias are
+   persisted in `ProjectSettings.asset:276-277` with `androidUseCustomKeystore: 1` at :289 — but
+   only as your uncommitted working-tree drift; committed MAIN has them empty and the flag 0.
+   There is no password field in that file at all.
+   **Practical consequence:** a batch `scripts/build-aab.sh` run today inherits
+   `useCustomKeystore: 1` and dies in `PrepareForBuild` with "Unable to sign the application;
+   please provide passwords!" — exactly the 2026-09-05 failure recorded at
+   `CatMetroCliBuild.cs:13-20`. So the GUI build remains the path that works **today**, and the
+   irreducible human part is supplying the two passwords to whichever process signs. Afterwards
+   inspect the git diff — Unity serialises the keystore path and alias into the tracked
+   ProjectSettings file; do not commit that.
+   **Do NOT upload `build/CatMetro-1.0.0-2.aab`.** It is genuinely custom-signed by your own
+   certificate (CN=Sushant Srikrish, verified with `jarsigner`), but it is from 2026-08-30 and
+   predates both the art merge and the SDK-export transform: it still carries OneSignal and
+   Firebase resources. Cut a fresh bundle.
 3. **Verify the AAB before upload**: `unzip` the base manifest and confirm `com.catmetro.game`,
    and `keytool -printcert -jarfile` to confirm your own certificate rather than Android Debug.
 4. **Upload to the production track**, complete content rating and data safety, submit for
-   review. Data safety is simple on this build: the APK carries no advertising-ID library and
-   no `AD_ID` permission (see the finding below).
+   review. *(Corrected 2026-09-11 — my earlier "data safety is simple" line was wrong.)* The
+   build DOES carry `play-services-ads-identifier:17.0.1` and the `AdvertisingIdClient` classes,
+   transitively via RevenueCat; what it lacks is the `AD_ID` permission, because 17.0.1 predates
+   the AAR that declares one. Evidence and the corrected rule:
+   `.catshots/owner-2026-09-11/android-apk-88ae1ddc/ads-identifier-recheck/`. What the form has to
+   declare, at minimum: **purchase history** (RevenueCat + Play Billing, transmitted off-device),
+   **device or other IDs** (RevenueCat's anonymous app-user ID — answering "no collection" here is
+   the likeliest way to get the form wrong), and possibly **app performance/diagnostics**
+   (`api-diagnostics.revenuecat.com` is in the binary; whether the SDK enables it by default is
+   vendor behaviour I could not settle). Gameplay analytics currently declare **nothing**:
+   `unity/Assets/Resources/Config/analytics_transport.json` has `enabled: false` and an empty
+   token — if you turn that on before release, the form changes, per
+   `docs/release/analytics-data-declaration.md`. Declare against the **exact uploaded bundle**,
+   not against this APK.
 5. **Generate a Play promo code** for `cm_outfit_conductor` and keep it for the Devpost entry.
 6. **Connect the Pixel 9 Pro** (`48121FDAP006X4`) when you are not playing, so the device pass
    can run. It was absent at every check today (only the Quest 3 and the Pico emulator were
@@ -70,31 +99,31 @@ Fetched from <https://revenuecat-shipaton-2026.devpost.com/rules> on 2026-09-11.
 
 ## Findings from today worth acting on
 
-- **`export_purchases_retained` pin was wrong, not the build.** The 2026-09-10 APK plan expected
-  `com.google.android.gms:play-services-ads-identifier:17.0.1` to survive the SDK-export
-  transform. RevenueCat's own `RevenueCatDependencies.xml` declares only
-  `purchases-hybrid-common:[18.32.1]` and `androidx.annotation:annotation:[1.2.0]` — it never
-  declares an ads-identifier. The only one in the graph was LevelPlay's `18.1.0`, which the
-  transform correctly removes. Corrected plan and full reasoning:
-  `/private/tmp/catmetro-apk-plan-20260911-corrected/CORRECTION.md`, archived at
-  `.catshots/owner-2026-09-11/android-apk-88ae1ddc/corrected-plan/`.
-- **The CLI AAB entry point does not resolve Android dependencies.**
-  `CatMetroCliBuild.cs:55-56` (APK) calls `LogGradleTemplateState()` then
-  `ResolveAndroidDependencies()` before `BuildPlayer`; `CatMetroCliAabBuild.cs` goes straight to
-  `BuildPlayer` with no resolver call, while `unity/Assets/Plugins/Android/mainTemplate.gradle:17`
-  still carries the unresolved `**DEPS**` token. A green APK therefore does **not** prove the
-  bundle path resolves dependencies. Your GUI build uses Unity's own pipeline with EDM4U
-  auto-resolution, so the release path is probably unaffected — but a CLI AAB build is not
-  covered. I tried to settle it by building a `-debug-proof.aab` and the sandbox classifier
-  refused the `CM_ALLOW_DEBUG_SIGNING=1` flag as a signing bypass. It is not a bypass —
-  `scripts/build-aab.sh` supports that mode explicitly and forces a `-debug-proof.aab` filename —
-  but I left the denial alone rather than route around it. If you want that proof, run:
-  ```
-  env -u CM_DEV_BUILD -u CM_UNITY_BIN -u CM_BUNDLETOOL_BIN -u CM_BUNDLETOOL_JAR \
-      -u CM_JAVA_BIN -u CM_JARSIGNER_BIN CM_AAB_TEST_MODE=0 CM_ALLOW_DEBUG_SIGNING=1 \
-      bash scripts/build-aab.sh build/CatMetro-20260911-88ae1ddc-debug-proof.aab
-  ```
-  A debug-proof AAB is never a substitute for the release cut.
+- **`export_purchases_retained`: the pin looked in the wrong place, and so did my first
+  correction.** `play-services-ads-identifier:17.0.1` arrives **transitively** from
+  `com.revenuecat.purchases:purchases`, downstream of the export transform, which only rewrites
+  declared `implementation` lines. So it can never appear as a declared coordinate (killing the
+  original pin) and it is nevertheless in the binary (killing my correction, which expected none).
+  Verified by hand on the APK: `play-services-ads-identifier.properties` → `version=17.0.1`,
+  `AdvertisingIdClient` in `classes.dex` and `classes5.dex`, 5 merger-report hits, and zero
+  `AD_ID`. The transform's `RevenueCatIdentifier` constant names a real arrival it structurally
+  cannot reach — not dead weight. Correct rule and receipt:
+  `.catshots/owner-2026-09-11/android-apk-88ae1ddc/ads-identifier-recheck/` (5/5 green).
+- **The CLI AAB dependency claim was wrong.** *(Corrected 2026-09-11.)* `**DEPS**` is Unity's own
+  substitution token in a *source* template; it does not survive into generated output, and the
+  only AAB that exists (`build/CatMetro-1.0.0-2.aab`) was built through that path with a full
+  resolved dependency graph. The same post-generate callbacks run for AAB and APK — they share
+  one `BuildPlayer` pipeline. The real, smaller finding that survives: `CatMetroCliBuild.cs:55-56`
+  calls `LogGradleTemplateState()` + `ResolveAndroidDependencies()` before building while
+  `CatMetroCliAabBuild.cs` does not, and resolution is persisted in the
+  `unity/Assets/Plugins/Android` templates rather than recomputed. So a batch AAB inherits
+  whatever those templates held at build time — if someone changes an EDM4U-managed package and
+  builds an AAB with no intervening editor session or APK build, the bundle is cut from stale
+  coordinates silently, since the AAB receipt has no template/resolve line to notice it by. That
+  is a staleness gap worth closing (a few lines, and it collides with no test gate — the denylist
+  at `cli-aab-build.test.sh:56-59` forbids keystore identifiers and `PlayerSettings` writes, not
+  a resolver call), not a broken build path.
+
 - **The win frame is dim and its title renders grey.** `FlowCaptureTests` measures the win
   banner's title band at max luminance 0.692 with zero bright pixels on the board-camera path,
   versus 0.9195 / 8418 on the UI-only path. This reproduces byte-identically on pre-merge MAIN

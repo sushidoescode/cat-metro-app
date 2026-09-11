@@ -165,8 +165,23 @@ namespace CatMetro.Tests.PlayMode
             _root = GameRoot.Launch();
             Time.timeScale = 0f;
             yield return null;
+            // These two taps used to fire in the same frame. With motion ON the Home pin is a
+            // WoodTap, so TapInput latches _chromePressPending and defers its action behind a
+            // 0.14s BoardFx tween; the Play tap was then swallowed and the level never started,
+            // and the deferred pin tap raised the intro sheet OVER the already-won board. Its
+            // 0.48 DepotNavy full-screen shade is what dropped the captured title from
+            // CreamCard's 0.9195035 to 0.692083955. Wait the press tween out on the unscaled
+            // clock (timeScale is 0 here), then the 0.4s Play dolly, and assert the board is
+            // actually live before driving the session.
             _root.Input.HandleTapAtScreen(_root.Home.PinPaintedRectPx.center);
+            yield return new WaitForSecondsRealtime(.25f);
+            Assert.That(_root.Intro.IsVisible, Is.True,
+                "the Home pin must have opened the level intro before Play is tapped");
             _root.Input.HandleTapAtScreen(_root.Intro.PlayChipRectPx.center);
+            yield return new WaitForSecondsRealtime(.6f);
+            Assert.That(_root.Intro.IsVisible, Is.False, "Play must have dismissed the intro");
+            Assert.That(_root.ScreensVisible, Is.False,
+                "a win frame measured under a screen measures that screen's shade, not the win");
             _root.Session.EnqueueToggle(0);
             _root.Session.AdvanceMs(200 * CatMetro.Application.Session.TickInterpolator.TICK_MS);
             _winCaptureStart = Time.unscaledTime;

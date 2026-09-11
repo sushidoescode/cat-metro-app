@@ -674,6 +674,12 @@ namespace CatMetro.Bootstrap
 
             Home.LevelSelected = () =>
             {
+                // TapInput defers a WoodTap action behind a 0.14s press tween, so this can
+                // land in a screen state the player never tapped in. Every legitimate path to
+                // a visible Home runs LoadLevel first, which sets "Playing", so this guard is
+                // inert on device — but without it a deferred pin tap can raise the intro
+                // ticket and its 0.48 DepotNavy full-screen shade over a finished board.
+                if (ScreenState != "Playing") return;
                 _introAdvancedFrame = -1;
                 CancelPendingDailyFallback();
                 // The intro owns input; retain the frame/pins until Play starts the dolly.
