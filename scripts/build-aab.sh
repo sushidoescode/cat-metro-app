@@ -604,9 +604,19 @@ for campaign_id in "${campaign_id_list[@]}"; do
     exit 1
   fi
   seen_campaign_ids="${seen_campaign_ids}${campaign_id},"
-  artifact_level="base/assets/bin/Data/StreamingAssets/content/levels/$campaign_id.json"
+  # Unity maps Assets/StreamingAssets/X to assets/X inside the module — NOT into bin/Data,
+  # which holds global-metadata.dat and data.unity3d. This gate previously looked under
+  # base/assets/bin/Data/StreamingAssets/, a path Unity has never emitted, so it could only
+  # ever fail; its fixture passed vacuously because it built the same wrong shape.
+  artifact_level="base/assets/content/levels/$campaign_id.json"
   if ! grep -qxF "$artifact_level" <<<"$bundle_entries"; then
-    echo "Campaign receipt: FAIL — AAB does not contain reachable level $campaign_id."
+    echo "Campaign receipt: FAIL — AAB does not contain reachable level $campaign_id at $artifact_level."
+    actual_paths="$(grep -E "/levels/$campaign_id\.json\$" <<<"$bundle_entries" || true)"
+    if [ -n "$actual_paths" ]; then
+      echo "Campaign receipt: the bundle carries that level at a DIFFERENT path:"
+      printf '  %s\n' $actual_paths
+      echo "Campaign receipt: refusing to guess — confirm the Unity StreamingAssets layout first."
+    fi
     exit 1
   fi
   source_level="$ROOT/unity/Assets/StreamingAssets/content/levels/$campaign_id.json"

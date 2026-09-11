@@ -19,13 +19,12 @@ Publishing Settings steps after any editor relaunch.
 
 **Three further reasons the script cannot cut today's release**, each verified against artifacts:
 
-1. **The campaign-receipt gate checks a path Unity never emits.** `scripts/build-aab.sh:607`
-   requires `base/assets/bin/Data/StreamingAssets/content/levels/L001.json`. The real layout, read
-   out of `build/CatMetro-1.0.0-2.aab`, is `base/assets/content/levels/L001.json` — Unity maps
-   `Assets/StreamingAssets/X` to `assets/X`. The wrapper test never caught it because
-   `tests/unity/build-aab-wrapper.test.sh` builds a synthetic zip at the `bin/Data/…` path, so it
-   passes against a shape Unity does not produce. Even with signing solved the script would abort
-   at `Campaign receipt: FAIL`.
+1. ~~**The campaign-receipt gate checks a path Unity never emits.**~~ **FIXED 2026-09-11.** The
+   gate now requires `base/assets/content/levels/<id>.json`, the layout Unity actually emits, and
+   names the real path in its failure message when a bundle is shaped differently. The fixture was
+   rebuilt at that path and at the full 60-level campaign, with two new regression cases:
+   `legacy-level-path` (levels present only at the old `bin/Data` path) and `missing-one-level`.
+   Mutation-checked: restoring the old path makes the suite fail.
 2. **The permission allowlist may be stale** — though probably not for *this* build. It permits
    only INTERNET, ACCESS_NETWORK_STATE, VIBRATE, BILLING and the signature-only AndroidX receiver
    permission. The 2026-08-30 AAB also declared POST_NOTIFICATIONS, WAKE_LOCK,
@@ -77,12 +76,36 @@ tree and `0` at committed MAIN. Build from a state you are willing to ship, or c
 7. **Build** (not Build And Run) → `build/CatMetro-1.0.0-3.aab` (next unused number).
 8. Expect 25–45 minutes cold.
 
+### The version code does NOT get committed
+
+I previously wrote "commit that single line by explicit path". **That is wrong** — `git add
+<path>` stages the whole file, keystore drift included. There is no way to stage one line, and
+`ProjectSettings.asset` is one of the nine permanently-dirty protected files.
+
+**The rule is absolute: none of the nine protected files is ever committed.** They are
+`.claude/settings.json`, `unity/Assets/DefaultVolumeProfile.asset`,
+`unity/Assets/Plugins/Android/{gradleTemplate.properties,mainTemplate.gradle}`,
+`unity/Assets/Settings/CatMetro_URP.asset`,
+`unity/Assets/UniversalRenderPipelineGlobalSettings.asset`, and
+`unity/ProjectSettings/{PackageManagerSettings,ProjectSettings,UnityConnectSettings}.asset`.
+
+So: **set the Bundle Version Code in the Unity window only.** It lives in your working tree, which
+is where the build reads it, and it is recorded for the release in
+`docs/release/release-record.md` — a tracked file that carries the exact settings the bundle was
+cut with, without carrying your keystore path. Fill that record in after the build.
+
+If a future change genuinely has to move the committed default, use the established preservation
+protocol rather than staging the dirty file: `/private/tmp/catmetro-merge-owner.py` backs up your
+version, writes the base version, performs the git operation, then restores yours —
+`catmetro_merge_settings.preserve_disjoint_changes` merges disjoint edits byte-for-byte and
+refuses anything ambiguous. That protocol exists precisely so a settings change never launders the
+keystore path into a commit.
+
 ### Do not
 
 - Never `git commit -a`, `git add -A`, or `git add unity/ProjectSettings/`.
-- After the build, `git diff -- unity/ProjectSettings/ProjectSettings.asset`. The
-  `AndroidKeystoreName` / `AndroidKeyaliasName` / `androidUseCustomKeystore` hunk **must never be
-  committed**. If you bump the version code, commit that single line by explicit path.
+- After the build, run `git status --porcelain | grep -c '^ M'` — it must print **9**, and
+  `git diff -- unity/ProjectSettings/ProjectSettings.asset` must still show your keystore hunk.
 - Do not paste a password anywhere outside the Unity window.
 - Do not run a Play upload from an agent session.
 
@@ -118,20 +141,25 @@ the APK receipt.
 
 ## What I need from Console
 
+**Already known — do not re-ask:** the Play account **predates 2023-11-13**, so it is exempt from
+the 12-tester / 14-day closed-testing gate and can go straight to production. Recorded 2026-09-09
+and again 2026-09-11.
+
+**Blocking, needed before the build:**
+
 1. **The highest versionCode that exists on this app across ALL tracks** — internal, closed, open,
    production — including superseded, halted, draft and rejected releases. *Play refuses any upload
-   at or below the highest code ever seen, drafts included.*
-2. **Which tracks currently hold a release, and each release's exact status** (Draft / In review /
-   Rejected / Live / Halted / Superseded). *Decides new release vs edit draft.*
-3. **Is Play App Signing enrolled, and by which method?** *If it is, the fingerprint below must
-   match the UPLOAD certificate, not the app-signing one. If it is not, this keystore becomes the
-   permanent signing key and losing it is unrecoverable.*
-4. **The upload-certificate SHA-256 fingerprint** Console shows under Release ▸ Setup ▸ App
-   integrity. *The only value that proves the bundle will be accepted.*
-5. **The app's current review state** — has anything passed review, is anything in review now, are
-   there open policy or pre-launch-report issues?
-6. **Is this account post-2023-11-13?** If yes, what does Console currently show for opted-in
-   testers and production-access eligibility? *Decides closed track vs straight to production.*
-7. **Were Data safety, content rating, target audience, ads declaration and privacy policy already
-   completed — and were they answered for a binary containing OneSignal and LevelPlay?** *If so they
-   are now false for this binary; see `data-safety-assessment.md`.*
+   at or below the highest code ever seen, drafts included, and `ProjectSettings.asset:180` is
+   still `1`. This is the only answer needed to start the build.*
+
+**Needed before upload, not before the build:**
+
+2. **The upload-certificate SHA-256 fingerprint** under Release ▸ Setup ▸ App integrity, and
+   whether Play App Signing is enrolled. *If enrolled, my verification must compare against the
+   UPLOAD certificate, not the app-signing one; if not, this keystore becomes the permanent signing
+   key.*
+3. **Which tracks hold a release and each one's status**, plus the app's current review state.
+   *Decides new release vs edit draft, and whether a release is blocked.*
+4. **Whether Data safety, content rating, target audience and the ads declaration were already
+   completed — and whether they were answered for a binary containing OneSignal and LevelPlay.**
+   *If so they are now false for this binary; see `data-safety-assessment.md`.*

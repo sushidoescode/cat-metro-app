@@ -1,4 +1,23 @@
-# Google Play Data safety — assessment for `com.catmetro.game`
+# Google Play Data safety — **PROVISIONAL** assessment for `com.catmetro.game`
+
+> **Status: PROVISIONAL. Do not file from this yet.** Two inputs are unresolved and both can
+> change the answers, not merely annotate them:
+>
+> 1. **RevenueCat dashboard integrations.** RevenueCat's own guidance is explicit: *"If you are
+>    using integrations set up between RevenueCat and third parties that are not considered service
+>    providers, you may need to disclose 'Shared' here as well"*, and *"If you are using
+>    integrations that utilize an advertising identifier, like `gpsAdId` and `androidId`"* you must
+>    declare device identifiers on that basis too. The repo cannot see the dashboard. **Until the
+>    integrations list is read, the `Shared: No` answers below are unconfirmed**, and an
+>    ad-identifier integration would change the Device-IDs row's *reason* and could put the
+>    advertising ID in scope after all.
+> 2. **The Unity configuration that actually ships.** `UnityConnectSettings.asset` root
+>    `m_Enabled` is `1` in the working tree and `0` at committed MAIN, and the measured binary was
+>    built from the working tree. The declaration must be made against the exact uploaded AAB.
+>
+> Everything below is correct for the measured APK and for a dashboard with no third-party
+> integrations. Resolve the two items, re-measure against the release AAB, then file.
+
 
 Written 2026-09-11. Measured against `build/CatMetro-main-88ae1ddc-20260911-run02.apk`
 (sha256 `b2a61858…f375b5`, built from `88ae1ddc`, an ancestor of MAIN). The `88ae1ddc..ba603c76`
@@ -89,14 +108,28 @@ only zeros are available — but a zeros-valued attribute could still be POSTed,
 question rather than an ad-ID-value question. **Resolution:** install the release build on the
 Pixel and capture logcat plus a TLS-terminated network trace across a cold start and one purchase.
 
+## Blocking questions before filing
+
+1. **RevenueCat dashboard ▸ Integrations — what is enabled?** Name every integration. For each,
+   say whether it receives data as a service provider/processor on your behalf, and whether it
+   consumes an advertising identifier (`gpsAdId`, `androidId`). *This decides both the `Shared`
+   answers and whether the advertising ID enters scope.*
+2. **RevenueCat dashboard ▸ the PostHog integration specifically** — the repo's PostHog lane is
+   off, but a server-side RevenueCat→PostHog integration is a different thing and would be a
+   disclosure.
+3. **Which Unity configuration does the release AAB carry** — `UnityConnectSettings.m_Enabled`
+   `0` or `1`?
+
 ## Three things to check before filing
 
 1. **`UnityConnectSettings.asset` root `m_Enabled` is `1` in the working tree and `0` at committed
    MAIN**, and the measured binary was built from the working tree. Build the release from a state
    you are willing to ship, or commit the `0`.
-2. **`docs/privacy/privacy-policy.txt:49-53` describes OneSignal and LevelPlay as processors.**
-   Neither ships. The conditional framing at line 19 is weak cover for a Data safety section that
-   must match the actual binary — scope the policy to what ships.
+2. **`docs/privacy/privacy-policy.txt` describes OneSignal and LevelPlay as processors.**
+   Neither ships in this binary. The conditional "which optional services are enabled" framing is
+   weak cover for a Data safety section that must match the actual bundle. **A prepared correction
+   is in `docs/privacy/privacy-policy-correction-2026-09-11.md`** — apply it when the release
+   binary is cut, and only if that binary still excludes both SDKs.
 3. **Confirm the RevenueCat dashboard's PostHog integration is disabled**, and re-run the APK
    verification against the actual release AAB.
 

@@ -58,7 +58,7 @@ done
 mode="${FAKE_UNITY_MODE:-success}"
 if [ "$mode" = "fail" ]; then
   printf '%s\n' \
-    'CLI_AAB_RESULT Failed signing=custom size=0 errors=1 campaignLevels=17 campaignIds=L001,L002,L003,L004,L005,L006,L007,L008,L009,L010,L011,L012,L013,L014,L015,L016,L017 out=fake' \
+    'CLI_AAB_RESULT Failed signing=custom size=0 errors=1 campaignLevels=60 campaignIds=L001,L002,L003,L004,L005,L006,L007,L008,L009,L010,L011,L012,L013,L014,L015,L016,L017,L018,L019,L020,L021,L022,L023,L024,L025,L026,L027,L028,L029,L030,L031,L032,L033,L034,L035,L036,L037,L038,L039,L040,L041,L042,L043,L044,L045,L046,L047,L048,L049,L050,L051,L052,L053,L054,L055,L056,L057,L058,L059,L060 out=fake' \
     > "$log"
   exit 42
 fi
@@ -66,7 +66,11 @@ fi
 fixture="$(mktemp -d)"
 trap 'rm -rf -- "$fixture"' EXIT
 mkdir -p "$fixture/base/manifest" "$fixture/base/dex" "$fixture/base/lib/arm64-v8a"
-mkdir -p "$fixture/base/assets/bin/Data/StreamingAssets/content/levels"
+# Unity maps Assets/StreamingAssets/X to assets/X. The old fixture built the levels
+# under bin/Data/StreamingAssets, a shape Unity never emits, so both the positive and
+# the negative campaign cases passed against a layout that cannot occur.
+mkdir -p "$fixture/base/assets/content/levels"
+[ "$mode" != "legacy-level-path" ] || mkdir -p "$fixture/base/assets/bin/Data/StreamingAssets/content/levels"
 printf 'bundle-config\n' > "$fixture/BundleConfig.pb"
 [ "$mode" = "missing-manifest" ] \
   || printf 'manifest\n' > "$fixture/base/manifest/AndroidManifest.xml"
@@ -90,25 +94,30 @@ fi
 if [ -n "${FAKE_BUILD_MARKER:-}" ]; then
   printf '%s\n' "$FAKE_BUILD_MARKER" > "$fixture/base/assets/build-marker.txt"
 fi
+# The shipped campaign is 60 levels; the fixture mirrors it so the receipt gate is exercised
+# at the real size and every level's bytes are hashed against the staged source.
+fixture_levels="$fixture/base/assets/content/levels"
+[ "$mode" != "legacy-level-path" ] || fixture_levels="$fixture/base/assets/bin/Data/StreamingAssets/content/levels"
 level_number=1
-while [ "$level_number" -le 17 ]; do
+while [ "$level_number" -le 60 ]; do
   level_id="$(printf 'L%03d' "$level_number")"
-  cp "$FAKE_LEVEL_SOURCE/$level_id.json" \
-    "$fixture/base/assets/bin/Data/StreamingAssets/content/levels/$level_id.json"
+  cp "$FAKE_LEVEL_SOURCE/$level_id.json" "$fixture_levels/$level_id.json"
   level_number=$((level_number + 1))
 done
 if [ "$mode" = "mutated-level-bytes" ]; then
-  printf '{"id":"L017","mutated":true}\n' \
-    > "$fixture/base/assets/bin/Data/StreamingAssets/content/levels/L017.json"
+  printf '{"id":"L060","mutated":true}\n' > "$fixture_levels/L060.json"
+fi
+if [ "$mode" = "missing-one-level" ]; then
+  rm -f "$fixture_levels/L042.json"
 fi
 if [ -d "$fixture/delivery" ]; then
   (cd "$fixture" && zip -q -r "$CM_AAB_OUT" BundleConfig.pb base delivery)
 else
   (cd "$fixture" && zip -q -r "$CM_AAB_OUT" BundleConfig.pb base)
 fi
-campaign_receipt='campaignLevels=17 campaignIds=L001,L002,L003,L004,L005,L006,L007,L008,L009,L010,L011,L012,L013,L014,L015,L016,L017'
+campaign_receipt='campaignLevels=60 campaignIds=L001,L002,L003,L004,L005,L006,L007,L008,L009,L010,L011,L012,L013,L014,L015,L016,L017,L018,L019,L020,L021,L022,L023,L024,L025,L026,L027,L028,L029,L030,L031,L032,L033,L034,L035,L036,L037,L038,L039,L040,L041,L042,L043,L044,L045,L046,L047,L048,L049,L050,L051,L052,L053,L054,L055,L056,L057,L058,L059,L060'
 if [ "$mode" = "receipt-names-missing-level" ]; then
-  campaign_receipt='campaignLevels=18 campaignIds=L001,L002,L003,L004,L005,L006,L007,L008,L009,L010,L011,L012,L013,L014,L015,L016,L017,L018'
+  campaign_receipt='campaignLevels=61 campaignIds=L001,L002,L003,L004,L005,L006,L007,L008,L009,L010,L011,L012,L013,L014,L015,L016,L017,L018,L019,L020,L021,L022,L023,L024,L025,L026,L027,L028,L029,L030,L031,L032,L033,L034,L035,L036,L037,L038,L039,L040,L041,L042,L043,L044,L045,L046,L047,L048,L049,L050,L051,L052,L053,L054,L055,L056,L057,L058,L059,L060,L061'
 fi
 signing_state=custom
 if [ "$mode" = "debug-signing" ] || [ "$mode" = "spoofed-receipt" ]; then
@@ -319,9 +328,9 @@ grep -q 'COUNT-BOUND LISTING CANDIDATE' "$listing_out" \
   || fail "listing sidecar overstated automatic clearance of release-gated claims"
 grep -q 'TEST MODE PIPELINE PROOF.*NOT UPLOADABLE' "$listing_out" \
   || fail "test-seam listing was not unmistakably marked non-uploadable"
-grep -q 'Campaign levels in exact AAB: 17' "$listing_out" \
+grep -q 'Campaign levels in exact AAB: 60' "$listing_out" \
   || fail "listing receipt is not bound to the exact AAB campaign count"
-grep -q '17 HANDCRAFTED LEVELS' "$listing_out" \
+grep -q '60 HANDCRAFTED LEVELS' "$listing_out" \
   || fail "listing copy did not render the artifact-derived campaign count"
 grep -q "Listing fields: OK (title 23/30, short 79/80, full 1040/4000, what's-new 249/500)" "$run_log" \
   || fail "wrapper did not enforce and report Play listing field limits"
@@ -614,6 +623,41 @@ set -e
   || fail "wrapper trusted a campaign receipt naming content absent from the exact AAB"
 [ ! -e "$missing_campaign_out" ] \
   || fail "campaign-mismatched bundle escaped staging"
+
+# The regression guard for the defect this gate had for its whole life: levels present, but
+# only at the pre-2026-09-11 bin/Data/StreamingAssets path Unity never emits. A bundle shaped
+# that way must be refused, and the failure must name the path that IS carrying the level.
+legacy_path_out="$case_root/legacy-level-path-test-proof.aab"
+set +e
+FAKE_UNITY_MODE=legacy-level-path CM_UNITY_BIN="$fake_unity" \
+  bash "$case_root/scripts/build-aab.sh" "$legacy_path_out" \
+  > "$case_root/legacy-level-path.log" 2>&1
+legacy_path_rc=$?
+set -e
+[ "$legacy_path_rc" -ne 0 ] \
+  || fail "wrapper accepted an AAB whose levels sit at the legacy bin/Data path"
+[ ! -e "$legacy_path_out" ] \
+  || fail "legacy-level-path bundle escaped staging"
+grep -q 'carries that level at a DIFFERENT path' "$case_root/legacy-level-path.log" \
+  || fail "the layout failure must name where the level actually is"
+echo "PASS rejected legacy-level-path"
+
+# One level missing from an otherwise correct bundle: every ID in the receipt is checked, not
+# a prefix or a sample.
+missing_one_out="$case_root/missing-one-level-test-proof.aab"
+set +e
+FAKE_UNITY_MODE=missing-one-level CM_UNITY_BIN="$fake_unity" \
+  bash "$case_root/scripts/build-aab.sh" "$missing_one_out" \
+  > "$case_root/missing-one-level.log" 2>&1
+missing_one_rc=$?
+set -e
+[ "$missing_one_rc" -ne 0 ] \
+  || fail "wrapper accepted an AAB missing one of the 60 campaign levels"
+[ ! -e "$missing_one_out" ] \
+  || fail "missing-one-level bundle escaped staging"
+grep -q 'L042' "$case_root/missing-one-level.log" \
+  || fail "the missing-level failure must name the level it could not find"
+echo "PASS rejected missing-one-level"
 
 mutated_level_out="$case_root/mutated-level-bytes-test-proof.aab"
 set +e
