@@ -80,6 +80,12 @@ namespace CatMetro.Presentation.Board
         // At 93 px/unit, the foreshortened queue pitch is 0.48*cos(38)*93 = 35.2 px,
         // leaving a visible gap around each enlarged 26 px card and its waiting cat.
         public const float PlatformQueueSpacing = 0.48f;
+        // The delivered queue needs more pitch than the source queue. 0.48 was sized against
+        // the 0.28 pin card; a rendered probe measured the admitted rig's settled silhouette at
+        // 0.6383 board units wide and its Alight pose at 0.8044, so two 0.48 lanes overlap by
+        // about a quarter of a cat. .5392 is the measured head-and-ears width (2 x the .2696
+        // half at :70); .044 is the same margin the badge clearance uses.
+        public const float PlatformDeliveredQueueSpacing = 0.5832f;
 
         internal static float PlatformLaneOffset(int lane)
         {

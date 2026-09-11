@@ -531,10 +531,42 @@ namespace CatMetro.Tests.EditMode.Presentation
         // the delivered cat's own pixels visible, 93.2% with the badge suppressed). Derive the
         // direction the way BoardView does so these stay statements about the law rather than
         // about one measured number.
-        // The step is derived from the platform spot itself, not from a node, so a reused slot
-        // whose train is still at its approach node cannot pick the opposite side.
-        private float BadgeStepX(float platformLocalX)
-            => ToyTrainView.BadgeStepX(_board.PresentationCenterLocal.x, platformLocalX);
+        // Hand-written answers for the badge step. This is the ONE place its magnitude, its
+        // direction law and its tie are decided; forwarding to ToyTrainView.BadgeStepX anywhere
+        // else is only legitimate because this table exists. Without it the expectations below
+        // are circular: setting PlatformBadgeClearance to 0 — the original bug — would pass
+        // every positional assertion in this file.
+        [TestCase(0f, 0f, 0.78f)]          // a station on the centre line: the tie resolves right
+        [TestCase(0.05f, 0f, 0.78f)]       // centre right of the spot: step right
+        [TestCase(-0.05f, 0f, -0.78f)]     // centre left of the spot: step left
+        [TestCase(3.2f, 0f, 0.78f)]        // L011 ROUND: node 0.0, centre 3.2
+        [TestCase(3.2f, 3.2f, 0.78f)]      // L011 TRIANGLE: node equals the centre
+        [TestCase(3.2f, 6.4f, -0.78f)]     // L011 SQUARE: node 6.4, centre 3.2
+        public void BadgeStepX_StepsTowardTheBoardCentreByTheWholeClearance(
+            float boardCentreX, float seatBoardX, float expected)
+        {
+            Assert.That(ToyTrainView.BadgeStepX(boardCentreX, seatBoardX),
+                Is.EqualTo(expected).Within(1e-6f));
+            Assert.That(ToyTrainView.PlatformBadgeClearance, Is.EqualTo(0.78f).Within(1e-6f),
+                "the table above is written in absolute board units, not in terms of the constant");
+        }
+
+        // Independent expectation: the authored grid and the named constants only, never the
+        // production positioner. A fixture's board centre is the midpoint of its authored node
+        // columns, which is what BoardView derives too — stating it here from the fixture is
+        // what stops these assertions from merely agreeing with the code under test.
+        // Board centres, hand-derived from each fixture's authored node columns and GridX 0.8.
+        // TwoCollapsedLifecyclesLevel(stationX: 3) puts SRC and RED both on column 3, so the
+        // centre IS the station: 3 * 0.8 = 2.4. NonFinalReuseLevel(3, 2, approachX, _) spans
+        // columns 3+approachX and 3, so its centre is (3 + approachX/2) * 0.8.
+        private const float TwoCollapsedCentreX = 2.4f;
+        private static float NonFinalReuseCentreX(int approachX)
+            => (3f + approachX * 0.5f) * 0.8f;
+
+        // The step law, written out rather than called: a whole PlatformBadgeClearance toward
+        // the board centre, and a station sitting exactly on the centre resolves toward +X.
+        private static float ExpectedBadgeStepX(float centreX, float platformLocalX)
+            => (centreX < platformLocalX ? -0.78f : 0.78f);
 
         [Test]
         public void DeliveredPassenger_HitchUsesTheSameFloorLiftAsTheTrainPassenger()
@@ -543,7 +575,8 @@ namespace CatMetro.Tests.EditMode.Presentation
             _session.AdvanceMs(4 * TickInterpolator.TICK_MS);
             _board.UpdateFrom(_session, 0f);
             var passenger = _board.transform.Find("delivered-cat:0");
-            Assert.That(passenger.localPosition.x, Is.EqualTo(2.4f + BadgeStepX(2.4f)).Within(.0001f),
+            Assert.That(passenger.localPosition.x,
+                Is.EqualTo(2.4f + ExpectedBadgeStepX(TwoCollapsedCentreX, 2.4f)).Within(.0001f),
                 "recorded station X=3 maps to 3 × GridX 0.8 plus the badge clearance step, "
                 + "even when both arrivals were unseen");
             Assert.That(passenger.localPosition.y, Is.EqualTo(2.206f).Within(.0001f),
@@ -570,7 +603,8 @@ namespace CatMetro.Tests.EditMode.Presentation
             // Hand-derived from station (2.4,2.94), a 0.48 carriage trailing distance,
             // and board-down 0.734. The diagonal uses direction (1.6,-2.94), not (2,-2).
             Vector3 expectedWorld = _board.transform.TransformPoint(
-                new Vector3(endpointX + BadgeStepX(endpointX), endpointY, -.2f));
+                new Vector3(endpointX + ExpectedBadgeStepX(NonFinalReuseCentreX(approachX), endpointX),
+                    endpointY, -.2f));
             Assert.That(Vector3.Distance(arriving.PlatformEndpointWorld, expectedWorld),
                 Is.LessThan(.001f),
                 "the arrival endpoint follows the anisotropic grid and transforms with the tilted board; "
@@ -627,16 +661,22 @@ namespace CatMetro.Tests.EditMode.Presentation
             _board.UpdateFrom(_session, 10.59f);
             Vector3 anchor = a.localPosition;
             Vector3 neutralScale = a.Find("Carriage/Cat").localScale;
+            // Both parked cats step off the shared arrival spot now: lane 0 used to resolve to
+            // side 0 and sit exactly where the next arrival walks to. Lane n parks at n+1 pitches
+            // in the badge-step direction, so a queue reads as a queue and not as one cat.
+            float arrivalX = 2.4f + ExpectedBadgeStepX(TwoCollapsedCentreX, 2.4f);
+            float pitch = Mathf.Sign(ExpectedBadgeStepX(TwoCollapsedCentreX, 2.4f))
+                * ToyTrainView.PlatformDeliveredQueueSpacing;
             Assert.That(Vector3.Distance(anchor,
-                    new Vector3(2.4f + BadgeStepX(2.4f), 2.206f, -.2f)),
+                    new Vector3(arrivalX + pitch, 2.206f, -.2f)),
                 Is.LessThan(.0001f),
                 "the win starts on the scaled station's 0.734-offset platform, stepped clear of "
-                + "the badge, with unchanged depth");
+                + "the badge and off the arrival spot, with unchanged depth");
             Assert.That(Vector3.Distance(b.localPosition,
-                    new Vector3(2.88f + BadgeStepX(2.4f), 2.206f, -.2f)),
+                    new Vector3(arrivalX + 2f * pitch, 2.206f, -.2f)),
                 Is.LessThan(.0001f),
-                "the second retained cat keeps 0.48 board-unit lane spacing on top of the same "
-                + "badge step; GridX does not compress it");
+                "the second retained cat parks one further delivered-queue pitch out; "
+                + "GridX does not compress it");
             Assert.That(a.GetComponent<ToyTrainView>().PresentationState,
                 Is.EqualTo(CatPresentationState.WaitingIdle), "the 0.6-second beat does not depend on board scale");
             _board.UpdateFrom(_session, 10.60f);

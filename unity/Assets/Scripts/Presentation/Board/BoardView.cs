@@ -752,11 +752,16 @@ namespace CatMetro.Presentation.Board
                 int lane = 0;
                 foreach (var existing in _deliveredPassengers)
                     if (existing.Delivery.Node == delivery.Node) lane++;
-                // Stable positions grow toward the board's centre at outer stations.
-                // Campaign boards deliver at most five passengers this sprint.
-                int side = lane == 0 ? 0 : (lane + 1) / 2 * (lane % 2 == 1 ? 1 : -1);
-                float inward = PresentationCenterLocal.x - _nodePos[delivery.Node].x;
-                if (Mathf.Abs(inward) > .1f) side = lane * (inward > 0f ? 1 : -1);
+                // Every parked passenger steps off the arrival spot, including the first.
+                // lane 0 used to resolve to side 0 in both branches, so delivered-cat:0 stayed
+                // exactly where the next arrival walks to and every later delivery spent its
+                // whole Alight-Walk-Celebrate standing inside it: a rendered probe measured the
+                // second cat at TRIANGLE 28.2% visible with the badge and the building each
+                // accounting for under 0.1% of that. Stepping in the badge direction keeps the
+                // queue marching toward the board centre rather than back under the sign.
+                int side = lane + 1;
+                float laneDirection = ToyTrainView.BadgeStepX(
+                    PresentationCenterLocal.x, _nodePos[delivery.Node].x) < 0f ? -1f : 1f;
                 // Unseen arrivals use the same calibrated board-unit platform offset as
                 // observed departures; the presentation grid scales node coordinates only.
                 // The unseen-arrival fallback must land on the identical point the live
@@ -786,7 +791,8 @@ namespace CatMetro.Presentation.Board
                     anchor = transform.InverseTransformPoint(original.PlatformEndpointWorld);
                 }
                 retained.AnchorFrom = anchor;
-                retained.AnchorTo = anchor + Vector3.right * (side * ToyTrainView.PlatformQueueSpacing);
+                retained.AnchorTo = anchor + Vector3.right
+                    * (side * laneDirection * ToyTrainView.PlatformDeliveredQueueSpacing);
                 _deliveredPassengers.Add(retained);
             }
             for (int i = 0; i < _deliveredPassengers.Count; i++)
