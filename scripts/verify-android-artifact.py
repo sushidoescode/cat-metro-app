@@ -115,9 +115,33 @@ def normalise_xmltree(xmltree):
     return "\n".join(out).replace('<manifest android:package=', '<manifest package=')
 
 
-def run(args):
-    done = subprocess.run([str(a) for a in args], capture_output=True, text=True)
+def run(args, c_locale=False):
+    import os
+    env = None
+    if c_locale:   # jarsigner's diagnostics are parsed by text; pin the language.
+        env = dict(os.environ, LC_ALL="C", LANG="C")
+    done = subprocess.run([str(a) for a in args], capture_output=True, text=True, env=env)
     return done.returncode, done.stdout, done.stderr
+
+
+def normalise_fingerprint(value):
+    """Console prints AA:BB:..., apksigner prints aabb...; compare them on one form."""
+    return re.sub(r"[^0-9a-f]", "", (value or "").lower())
+
+
+def jarsigner_errors(output):
+    """The lines of jarsigner's `Error:` block, which is what actually distinguishes a benign
+    self-signed chain from an expired certificate. Both produce strict status 4."""
+    lines, collecting, found = output.splitlines(), False, []
+    for line in lines:
+        if re.match(r"^Error:\s*$", line):
+            collecting = True
+            continue
+        if collecting and re.match(r"^Warning:\s*$", line):
+            break
+        if collecting and line.strip():
+            found.append(line.strip())
+    return found
 
 
 def run_with_java(args):
@@ -175,6 +199,10 @@ def main():
                         help="the code you typed into Unity; omit to record whatever is there")
     parser.add_argument("--allow-debug-signature", action="store_true",
                         help="for a CLI packaging rehearsal that is NEVER uploaded")
+    parser.add_argument("--expect-cert-sha256", default=None,
+                        help="the upload certificate SHA-256 from Console (Release > Setup > App "
+                             "integrity). Either AA:BB:.. or aabb.. Upload readiness cannot be "
+                             "established without it.")
     args = parser.parse_args()
     aab = args.bundle.resolve()
     report = Report()
@@ -256,17 +284,49 @@ def main():
     report.check("no advertising-ID permission",
                  "com.google.android.gms.permission.AD_ID" not in declared)
 
-    # An App Bundle is jar-signed, so jarsigner is the right reader; -strict returns non-zero on
-    # any disqualifying signer condition and prints "jar verified, with signer errors." while
-    # still containing "jar verified", so require the clean phrase AND the clean exit code. An
-    # APK may be v2/v3-only and then carries no META-INF manifest at all, which jarsigner reports
-    # as "no manifest." -- apksigner is the reader for those.
+    # ---- signing: three SEPARATE questions, deliberately not conflated ----------------
+    #
+    #   integrity  — is every byte in the archive covered by a valid signature?
+    #   identity   — WHICH certificate signed it? (the only thing Console can corroborate)
+    #   chain trust— does Java trust a CA chain up from that certificate?
+    #
+    # An Android upload certificate is self-signed BY DESIGN, so chain trust always fails and
+    # must never, on its own, fail a release. Measured on real controls built from a real
+    # bundle (scripts/test-aab-signature-controls.sh):
+    #
+    #   valid self-signed  rc=4   "jar verified, with signer errors" + invalid-chain + self-signed
+    #   EXPIRED cert       rc=4   the same two, PLUS "signer certificate has expired"
+    #   unsigned           rc=0   "jar is unsigned."
+    #   entry added later  rc=20  "unsigned entries which have not been integrity-checked"
+    #   tampered byte      rc=1   SecurityException: SHA-256 digest error
+    #
+    # So requiring rc==0 rejects every real release, and allowing rc==4 admits an expired
+    # certificate. The exit code is not the signal; the Error block is.
+    CHAIN_ERRORS = ("This jar contains entries whose certificate chain is invalid",
+                    "This jar contains entries whose signer certificate is self-signed")
+    cert_sha = owner = None
+    chain_note = ""
     if is_bundle:
-        code, signed, _ = run([JARSIGNER, "-verify", "-strict", aab])
-        first = signed.strip().splitlines()[0] if signed.strip() else "no output"
-        report.check("jarsigner reports the bundle verified, with no signer errors",
-                     code == 0 and "jar verified." in signed,
-                     first + " (exit " + str(code) + ")")
+        code, signed, _ = run([JARSIGNER, "-verify", "-strict", aab], c_locale=True)
+        errors = jarsigner_errors(signed)
+        verified = re.search(r"^jar verified(, with signer errors)?\.?$", signed, re.M) is not None
+        unsigned = ("jar is unsigned." in signed or "no manifest." in signed
+                    or any("unsigned entries" in e for e in errors) or bool(code & 16))
+        digest_error = "SecurityException" in signed or "digest error" in signed
+        report.check("signature integrity: every entry is covered by a valid signature",
+                     verified and not unsigned and not digest_error,
+                     ("unsigned" if unsigned else "digest error" if digest_error
+                      else "not verified") if not (verified and not unsigned and not digest_error)
+                     else "jarsigner strict status " + str(code))
+
+        unexpected = [e for e in errors if not any(e.startswith(c) for c in CHAIN_ERRORS)]
+        report.check("signer certificate is healthy: not expired, not pre-dated, "
+                     "no disabled algorithm",
+                     not unexpected, "; ".join(unexpected)[:240])
+        chain_note = ("self-signed with no CA chain — normal and expected for an Android "
+                      "upload key" if any(e.startswith(CHAIN_ERRORS[1]) for e in errors)
+                      else "no self-signed diagnostic reported")
+
         code, cert, _ = run([KEYTOOL, "-printcert", "-jarfile", aab])
     else:
         apksigner = next(iter(sorted((ANDROID / "SDK/build-tools").glob("*/apksigner"),
@@ -274,24 +334,43 @@ def main():
         if apksigner is None:
             print("no apksigner under the pinned Android SDK build-tools")
             return 2
-        # apksigner is a shell wrapper that needs a JRE on PATH; point it at the pinned one
-        # rather than whatever the login shell happens to have.
         code, cert, err = run_with_java([apksigner, "verify", "--print-certs", "--verbose", aab])
-        report.check("apksigner reports the apk verified", code == 0,
+        report.check("signature integrity: apksigner verifies the apk", code == 0,
                      (err or cert).strip().splitlines()[0] if code else
                      ", ".join(line.strip() for line in cert.splitlines()
                                if line.startswith("Verified using")))
-    owner = re.search(r"(?:Owner|Signer #1 certificate DN):\s*(.+)", cert)
-    cert_sha = re.search(r"(?:SHA256:\s*([0-9A-F:]+)"
-                         r"|Signer #1 certificate SHA-256 digest:\s*([0-9a-f]+))", cert)
-    cert_sha = (cert_sha[1] or cert_sha[2]) if cert_sha else None
-    is_debug = bool(owner and "Android Debug" in owner[1])
+        chain_note = "apk signature schemes are self-contained; no CA chain is involved"
+
+    owner_match = re.search(r"(?:Owner|Signer #1 certificate DN):\s*(.+)", cert)
+    sha_match = re.search(r"(?:SHA256:\s*([0-9A-Fa-f:]+)"
+                          r"|Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]+))", cert)
+    owner = owner_match[1].strip() if owner_match else None
+    cert_sha = normalise_fingerprint(sha_match[1] or sha_match[2]) if sha_match else None
+    report.check("signer certificate extracted", cert_sha is not None,
+                 (owner or "no Owner line") + ("  sha256=" + cert_sha if cert_sha else ""))
+    print("      NOTE: certificate-chain trust — " + chain_note + ". Not a release gate.")
+
+    is_debug = bool(owner and "Android Debug" in owner)
     report.check("signed by a real key, not the Android debug key",
                  args.allow_debug_signature or not is_bundle or not is_debug,
-                 (owner[1].strip() if owner else "no Owner line"))
+                 owner or "no Owner line")
     if is_debug and (args.allow_debug_signature or not is_bundle):
-        print("      NOTE: debug-signed. This is a packaging rehearsal artifact and must never "
-              "be uploaded.")
+        print("      NOTE: debug-signed. This is a local sideload/rehearsal artifact and must "
+              "never be uploaded.")
+
+    # Identity is the ONLY signing fact a machine here cannot establish alone: the tool can say
+    # which certificate signed the bundle, but only Console knows which certificate Play expects.
+    identity_confirmed = False
+    if args.expect_cert_sha256:
+        expected = normalise_fingerprint(args.expect_cert_sha256)
+        identity_confirmed = cert_sha is not None and cert_sha == expected
+        report.check("signer certificate matches the Console upload certificate",
+                     identity_confirmed,
+                     "artifact=" + (cert_sha or "none") + " expected=" + expected)
+    elif is_bundle:
+        report.check("signer certificate matches the Console upload certificate", False,
+                     "NOT SUPPLIED — pass --expect-cert-sha256 from Console ▸ Release ▸ Setup ▸ "
+                     "App integrity. Upload readiness cannot be established without it.")
 
     with zipfile.ZipFile(aab) as bundle:
         names = bundle.namelist()
@@ -340,8 +419,10 @@ def main():
         "package": package[1] if package else None, "versionName": attr("versionName"),
         "versionCode": version_code, "minSdk": MIN_SDK, "targetSdk": TARGET_SDK,
         "permissions": sorted(declared),
-        "signer_owner": owner[1].strip() if owner else None,
+        "signer_owner": owner,
         "signer_cert_sha256": cert_sha,
+        "certificate_identity_confirmed": identity_confirmed,
+        "chain_trust_note": chain_note,
         "checks": report.rows,
         "passed": not report.failures,
     }
@@ -349,11 +430,20 @@ def main():
     out_path.write_text(json.dumps(receipt, indent=2) + "\n")
     print()
     print("receipt   " + str(out_path))
-    if report.failures:
-        print("RESULT    FAIL — " + str(len(report.failures)) + " check(s): "
-              + ", ".join(r["check"] for r in report.failures))
-        print("          Do not upload this bundle.")
+    identity_row = "signer certificate matches the Console upload certificate"
+    blocking = [r for r in report.failures if r["check"] != identity_row]
+    if blocking:
+        print("RESULT    FAIL — " + str(len(blocking)) + " check(s): "
+              + ", ".join(r["check"] for r in blocking))
+        print("          Do not upload this artifact.")
         return 1
+    if is_bundle and not identity_confirmed:
+        print("RESULT    CONTENT AND SIGNATURE OK, UPLOAD READINESS UNCONFIRMED.")
+        print("          The bundle is internally sound and signed by "
+              + (owner or "an unknown certificate") + " (sha256 " + (cert_sha or "?") + "),")
+        print("          but nothing here can say that is the certificate Play expects. Re-run")
+        print("          with --expect-cert-sha256 <Console fingerprint> before uploading.")
+        return 3
     print("RESULT    PASS — every check above. A human still performs the upload.")
     return 0
 

@@ -154,8 +154,46 @@ packaging rehearsal that is never uploaded.
 **One command does all of it:**
 
 ```sh
-python3 scripts/verify-android-artifact.py build/CatMetro-1.0.0-3.aab --expect-version-code <N>
+python3 scripts/verify-android-artifact.py build/CatMetro-1.0.0-3.aab \
+    --expect-version-code <N> --expect-cert-sha256 <Console upload certificate SHA-256>
 ```
+
+Exit **0** = every check passed and upload readiness is established. Exit **1** = a real defect,
+do not upload. Exit **3** = the bundle is internally sound and correctly signed, but no Console
+fingerprint was supplied, so *which* certificate signed it could not be corroborated.
+
+### Signing: three separate questions, never conflated
+
+An Android upload certificate is **self-signed by design**, so Java can never build a trusted CA
+chain up from it. Measured on real controls (`tests/unity/aab-signature-controls.test.sh`):
+
+| control | `jarsigner -verify -strict` | what it means |
+|---|---|---|
+| **valid self-signed release** | **rc=4**, invalid-chain + self-signed | the normal, correct shape |
+| **expired signer** | **rc=4**, *plus* "signer certificate has expired" | must be refused |
+| unsigned | rc=0, "jar is unsigned." | must be refused |
+| entry added after signing | rc=20, "unsigned entries … not integrity-checked" | must be refused |
+| one byte tampered | rc=1, `SecurityException: SHA-256 digest error` | must be refused |
+
+So **the exit code is not the signal**. Requiring `rc == 0` rejects every genuine release;
+accepting `rc == 4` admits an expired certificate. The verifier reads jarsigner's `Error:` block
+and separates:
+
+1. **Signature integrity** — is every entry covered by a valid signature? (unsigned, tampered and
+   added-after-signing all fail here; an expired or foreign certificate does *not*.)
+2. **Certificate health** — not expired, not pre-dated, no disabled or weak algorithm. Any error
+   line other than the two benign self-signed-chain diagnostics fails this.
+3. **Certificate identity** — the extracted SHA-256 compared against the fingerprint Console
+   shows. **This is the only signing fact a local tool cannot establish by itself**, which is why
+   it is a required input rather than an inference.
+
+**Certificate-chain trust is reported as a NOTE and is never a release gate.**
+
+**`scripts/build-aab.sh` already handled this correctly and was not changed.** It rejects strict
+bit 16 (unsigned entries), accepts bit 4 only when the `Error:` block contains exactly the
+invalid-chain and self-signed diagnostics, refuses any other strict error text, separately refuses
+expiry/not-yet-valid/disabled/weak-algorithm warnings, and states that the fingerprint comparison
+remains human-only. The controls above confirm each of those branches against a real artifact.
 
 It prints a PASS/FAIL line per check, writes `<bundle>.verify.json` beside the bundle, and exits
 non-zero if anything fails. It reads only — it never uploads, and it never touches a password.
@@ -166,11 +204,16 @@ not the Android debug key; all **60** levels are present at `base/assets/content
 is **byte-identical** to the staged source; no OneSignal / ironSource / Unity-mediation /
 Firebase file **or dex class**; RevenueCat and Play Billing classes **are** present; ARM64 only.
 
-It is not vacuous, and you can prove that yourself in ten seconds:
+It is not vacuous, and you can prove that yourself:
 
 ```sh
 python3 scripts/verify-android-artifact.py build/CatMetro-1.0.0-2.aab   # must FAIL
+bash tests/unity/aab-signature-controls.test.sh                         # must print OK
 ```
+
+The second builds unsigned, tampered, entry-added, expired-signer and wrong-certificate bundles by
+re-signing a real one, and asserts each is caught by the right check while a **valid self-signed
+bundle is accepted** — the direction that rejecting an obsolete bundle can never establish.
 
 That 2026-08-30 bundle fails six checks — 22 extra permissions (the OneSignal push and
 launcher-badge set), `jarsigner` exiting 4 with "jar verified, **with signer errors**", only
@@ -220,12 +263,16 @@ and again 2026-09-11.
    at or below the highest code ever seen, drafts included, and `ProjectSettings.asset:180` is
    still `1`. This is the only answer needed to start the build.*
 
-**Needed before upload, not before the build:**
+**Needed before the artifact can be called upload-ready (not before the build starts):**
 
 2. **The upload-certificate SHA-256 fingerprint** under Release ▸ Setup ▸ App integrity, and
-   whether Play App Signing is enrolled. *If enrolled, my verification must compare against the
-   UPLOAD certificate, not the app-signing one; if not, this keystore becomes the permanent signing
-   key.*
+   whether Play App Signing is enrolled. *If enrolled, compare against the UPLOAD certificate, not
+   the app-signing one; if not, this keystore becomes the permanent signing key.* Without it the
+   verifier exits 3 and explicitly refuses to call the bundle upload-ready — it can say the bundle
+   is correctly signed and by whom, but not that Play expects that certificate. For reference, the
+   2026-08-30 bundle was signed by `CN=Sushant Srikrish` with SHA-256
+   `548257b29e36012b06ca6577f422fd843d411110accbf14cdfeac9bb95354408`; if the new bundle reports a
+   different fingerprint, the keystore changed and the upload will be rejected.
 3. **Which tracks hold a release and each one's status**, plus the app's current review state.
    *Decides new release vs edit draft, and whether a release is blocked.*
 4. **Whether Data safety, content rating, target audience and the ads declaration were already

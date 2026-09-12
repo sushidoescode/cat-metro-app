@@ -122,6 +122,11 @@ documented above: transitive, no `AD_ID` permission, no first-party call site.
 **Say "no Firebase app or collecting Firebase component", not "no Firebase".** The earlier
 shorthand was imprecise about a library that ships and collects nothing.
 
+The component-level rule earns its keep in both directions. Run against the obsolete 2026-08-30
+bundle it reports `FirebaseApp;=1, installations/=81, messaging/=114, analytics/=5, iid/=4` — the
+collecting components really are in that binary, which is exactly why it must not be uploaded and
+why its Data safety answers would differ from this one's. The clean artifact has none of them.
+
 **Still to re-measure against the release AAB itself.** These numbers are the APK's. Run
 `python3 scripts/verify-android-artifact.py build/CatMetro-1.0.0-<N>.aab --expect-version-code <N>`
 on the signed bundle and confirm the same class counts before filing.

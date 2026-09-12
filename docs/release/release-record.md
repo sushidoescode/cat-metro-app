@@ -32,10 +32,19 @@ Fill a row in immediately after each build, from the Unity window and the verifi
 
 ## Verifying a bundle
 
-`python3 scripts/verify-android-artifact.py <bundle> --expect-version-code <N>` runs every check below
-in one pass and writes `<bundle>.verify.json` beside it. Attach that receipt to the row. Prove the
-verifier is live first with `python3 scripts/verify-android-artifact.py build/CatMetro-1.0.0-2.aab`,
-which must FAIL six checks.
+`python3 scripts/verify-android-artifact.py <bundle> --expect-version-code <N> --expect-cert-sha256 <fingerprint>`
+runs every check below in one pass and writes `<bundle>.verify.json` beside it. Attach that receipt
+to the row. Exit 0 = upload-ready; 1 = a real defect; **3 = sound and correctly signed, but the
+Console fingerprint was not supplied so upload readiness is unconfirmed**.
+
+Signing is checked as three separate things — signature integrity, certificate health, certificate
+identity — with chain trust reported as a note only, because an Android upload certificate is
+self-signed and can never chain to a public CA. Prove the verifier is live before trusting it:
+
+```sh
+python3 scripts/verify-android-artifact.py build/CatMetro-1.0.0-2.aab   # must FAIL
+bash tests/unity/aab-signature-controls.test.sh                         # must print OK
+```
 
 ## What to record for the release bundle
 
@@ -46,7 +55,8 @@ which must FAIL six checks.
 - the level count from `unzip -l "$AAB" | grep -c 'base/assets/content/levels/L0'` (must be 60)
 - whether `UnityConnectSettings.m_Enabled` was 0 or 1 in the tree at build time
 - the git HEAD at build time, and `git status --porcelain | grep -c '^ M'` (must be 9)
-- the `<bundle>.verify.json` receipt from `scripts/verify-android-artifact.py`
+- the `<bundle>.verify.json` receipt from `scripts/verify-android-artifact.py`, run WITH the
+  Console fingerprint so `certificate_identity_confirmed` is true
 
 ## Two independent gates, both required
 
