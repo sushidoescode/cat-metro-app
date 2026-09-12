@@ -166,9 +166,9 @@ namespace CatMetro.Tests.PlayMode
             {
                 wrapper = Object.Instantiate(original, carriage, false).transform;
                 wrapper.name = "SeatProbeOriginalCarriage";
-                wrapper.localPosition = new Vector3(0f, 0f, .235f);
+                wrapper.localPosition = new Vector3(0f, 0f, ToyTrainView.RailCrownDepth);
                 wrapper.localRotation = Quaternion.Euler(-90f, 0f, 0f);
-                wrapper.localScale = Vector3.one;
+                wrapper.localScale = Vector3.one * CatModelCatalog.ConsistScale;
                 foreach (string name in new[] { "Body", "Chassis" })
                 {
                     Transform fallback = carriage.Find(name);
@@ -443,7 +443,7 @@ namespace CatMetro.Tests.PlayMode
             foreach (Vector3 p in points)
             {
                 if (!Ray(shell, triangles, new Vector3(p.x, p.y, -1f), Vector3.forward, out Vector3 hit)) { outside++; continue; }
-                if (Mathf.Abs(hit.z - .150f) < .001f) floor.Add(hit.z - p.z);
+                if (Mathf.Abs(hit.z - FromRailCrown(.150f)) < .001f * ConsistScale) floor.Add(hit.z - p.z);
                 else rim.Add(hit.z - p.z);
             }
             return new Measurement { edge = edge, clip = clip, seconds = seconds, region = Regions[region],
@@ -451,21 +451,36 @@ namespace CatMetro.Tests.PlayMode
                 minimumFloorGap = floor.Count == 0 ? float.NaN : floor.Min(), medianFloorGap = Percentile(floor, .5f),
                 minimumRimGap = rim.Count == 0 ? float.NaN : rim.Min(), carriageLocalBounds = BoundsRecord(points) };
         }
+        // The cavity is the VEHICLE's, so its width and its heights scale with the consist --
+        // but the heights are measured from the rail crown, which is BOARD geometry and does not
+        // move. Every literal below is the value at ConsistScale 1.
+        private static float ConsistScale => CatModelCatalog.ConsistScale;
+        private static float FromRailCrown(float atUnitScale) => ToyTrainView.RailCrownDepth
+            - (ToyTrainView.RailCrownDepth - atUnitScale) * ConsistScale;
+
         private void ValidateActualCavity(Vector3[] vertices, int[] triangles)
         {
             foreach (float x in new[] { -.15f, 0f, .15f }) foreach (float y in new[] { -.13f, 0f, .13f })
             {
-                Assert.That(Ray(vertices, triangles, new Vector3(x, y, -1f), Vector3.forward, out Vector3 hit), Is.True);
-                Assert.That(hit.z, Is.EqualTo(.150f).Within(.0002f), "actual recessed floor: a solid slab at rim height fails");
+                Assert.That(Ray(vertices, triangles, new Vector3(x * ConsistScale, y * ConsistScale, -1f),
+                    Vector3.forward, out Vector3 hit), Is.True);
+                Assert.That(hit.z, Is.EqualTo(FromRailCrown(.150f)).Within(.0002f),
+                    "actual recessed floor: a solid slab at rim height fails");
             }
             foreach (Vector2 p in new[] { new Vector2(.245f,0f), new Vector2(-.245f,0f), new Vector2(0f,.225f), new Vector2(0f,-.225f) })
             {
-                Assert.That(Ray(vertices, triangles, new Vector3(p.x,p.y,-1f), Vector3.forward, out Vector3 hit), Is.True);
-                Assert.That(hit.z, Is.EqualTo(.070f).Within(.0002f), "actual rim, distinct from floor");
+                Assert.That(Ray(vertices, triangles,
+                    new Vector3(p.x * ConsistScale, p.y * ConsistScale, -1f), Vector3.forward,
+                    out Vector3 hit), Is.True);
+                Assert.That(hit.z, Is.EqualTo(FromRailCrown(.070f)).Within(.0002f),
+                    "actual rim, distinct from floor");
             }
-            Assert.That(Ray(vertices, triangles, new Vector3(0f,0f,.10f), Vector3.right, out Vector3 wall), Is.True);
-            Assert.That(wall.x, Is.InRange(.20f,.261f), "real inner wall at cavity depth");
-            Assert.That(Ray(vertices, triangles, new Vector3(0f,0f,.05f), Vector3.right, out _), Is.False,
+            Assert.That(Ray(vertices, triangles, new Vector3(0f,0f,FromRailCrown(.10f)),
+                Vector3.right, out Vector3 wall), Is.True);
+            Assert.That(wall.x, Is.InRange(.20f * ConsistScale, .261f * ConsistScale),
+                "real inner wall at cavity depth");
+            Assert.That(Ray(vertices, triangles, new Vector3(0f,0f,FromRailCrown(.05f)),
+                Vector3.right, out _), Is.False,
                 "negative control above actual open rim must miss; no artificial lid");
             _evidence.Add(new { kind = "actual-cavity-controls", floorRays = 9, rimRays = 4,
                 innerWall = Vec(wall), openAboveRim = true });

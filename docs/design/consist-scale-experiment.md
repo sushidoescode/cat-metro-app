@@ -1,8 +1,8 @@
-# Consist scale — the experiment, the renders, and what landing 1.30 still costs
+# Consist scale — the experiment, the renders, and what 1.30 actually cost
 
 The human's ask is "the trains with the cats in them can be slightly larger on screen, and it
-can be a lot cuter to look at". This records what was measured, what was rendered, and exactly
-what remains.
+can be a lot cuter to look at". **Shipped: `CatModelCatalog.ConsistScale = 1.30`.** This records
+what was measured, what was rendered and looked at, and what had to be corrected to land it.
 
 ## The head alone cannot do it
 
@@ -24,18 +24,16 @@ binding case is the ear corpus at maximum carriage-ward bob, so buying more mean
 animation the human wants more of, not less. Raw data:
 `.catshots/owner-2026-09-11/arrival-queue-and-scale/head-scale-sweep/head-scale-sweep.json`.
 
-## The consist scale does, and it was rendered
+## Choosing the factor from renders
 
-Scaling cat, carriage, engine and the seat sink by one factor preserves every internal seat
-clearance by construction — those are relative — and changes only clearance against the board.
 A probe rendered candidates at ordinary phone framing and measured the rider's own silhouette
 against an empty-scene pass:
 
 | ConsistScale | L001 width of frame | L009 width of frame |
 |---|---|---|
-| **1.00 (shipped)** | 7.63% | 6.22% |
+| **1.00 (was shipped)** | 7.63% | 6.22% |
 | 1.15 | 8.83% | 7.20% |
-| 1.30 | **9.92%** | 8.18% |
+| **1.30 (shipped)** | **9.92%** | 8.18% |
 | 1.45 | 11.12% | 9.05% |
 
 Renders and JSON: `.catshots/owner-2026-09-11/consist-scale/`. Opened at 1.00/1.15/1.30/1.45: the
@@ -43,53 +41,98 @@ face becomes clearly readable by 1.30, and at 1.45 the vehicles overhang the rai
 `docs/reference/gen-ref-v2-board.png` actually shows a toy carriage doing. Reference proportion is
 ~20% of frame width; treat it as an artistic target, not a threshold.
 
-## What is landed
+## The 5–6% target is retired
 
-`CatModelCatalog.ConsistScale`, **shipped at 1.0 so it is a no-op today**, with every dependent
-quantity derived from it rather than hand-written:
+TASK 17 pinned `PresenterScale = 0.52` with the comment "the GridY=1.47 phone composition retains
+the strict 5-6% rendered head target". That target is **explicitly retired**, and not quietly: it
+was written against a different camera framing and 0.52 had already outgrown it — the rendered
+probe measured the rider at 7.63% of frame width on L001 while that line still claimed 5–6%.
 
-- `PresenterScale = 0.52 × ConsistScale` — and `WalkTravelSpeedAtOneX` already derives from
-  `PresenterScale`, so foot cadence follows the scale automatically. Expressive animation is
-  preserved by construction.
-- the carriage and engine visual wrapper scales
-- `OpenCarriageSeatDepth`, `CarriageOffset`, `PlatformSideOffset`, `PlatformEndpointClearance`,
-  `PlatformFramingHalfWidth`
-- `PlatformBadgeClearance` and `PlatformDeliveredQueueSpacing`, recomputed from the geometry they
-  must clear: half the board-fixed station keyline plus half the rider's measured width **at the
-  current scale**, plus the margin
+What replaces it is a rendered floor, not a comment. `BoardLookTests`
+`AdmittedRigPassengerHeadAndEars_AreReadableAtPhoneScale` measured the licensed head at ≥5% of
+frame width on L001 and ≥4% on L002/L009; those floors now carry the consist scale, because the
+camera fits the **board** and not the consist, so a rendered rider's width is proportional to the
+scale. The retirement itself is recorded in
+`CatModelCatalogTests.Task17HandoffContract_UsesThePinnedResourceAndStateLiterals`.
 
-**The licensed model bytes are untouched.** This is a presentation wrapper scale, which is the
-only place `AGENTS.md` permits a correction.
+## What scales, and what does not
 
-## What flipping it to 1.30 still costs
+Scaling "the whole consist" is not one multiplication. Three different kinds of quantity are
+involved, and getting the classification wrong is what the work actually consisted of:
 
-A full EditMode run at 1.30 was **2358 total, 2335 passed, 23 failed** — every failure a pinned
-pre-scale literal, and **no clearance violation anywhere**, which is the important result: the
-geometry scales coherently. 15 of the 23 were mechanical and were confirmed fixable by deriving
-the pin from `ConsistScale`. The remaining work is:
+1. **Vehicle-own dimensions** — carriage width/depth/height, engine envelope, the coupling
+   distance `CarriageOffset`. These are the toy's own size: multiply.
+2. **Contacts with fixed board geometry** — the wheel bottom at the rail crown
+   (`ToyTrainView.RailCrownDepth`, 0.235 anchor-local). The rails do **not** move when the toy
+   gets bigger, so this does not scale, and every vertical vehicle dimension is measured *from*
+   it. A probe of the imported tub confirms the contact holds: its deepest vertex measures exactly
+   0.235 at both 1.00 and 1.30.
+3. **Composites** — `PlatformBadgeClearance` is half the board-fixed station keyline (0.46575)
+   plus half the rider's rendered width (0.2696, which scales) plus a 0.044 margin;
+   `PlatformDeliveredQueueSpacing` is the scaled rider width plus that same fixed margin. Only
+   the rider's share moves.
 
-1. **Three `DeliveredPassenger_ObservedHandoffKeepsTheArrivalEndpoint` cases** pin hand-derived
-   absolute points computed from the station at (2.4, 2.94) **and a 0.48 carriage trailing
-   distance**. Scaling `CarriageOffset` moves the seat along the spline, so those literals no
-   longer describe the same relationship. They must be **re-derived** — Hermite arc-length at the
-   new trailing distance — not re-pinned from observed output, and not restated by reading the
-   already-lerped cat transform (I tried that; it reads the platform-path position, not the seat).
-2. **`ToyEnginePresentationTests.OriginalEngineKeepsVehicleSpacing…`** carries several vertex-extent
-   bounds (±.23001, ±.15001, and at least one more). Each needs deciding individually: some are the
-   engine's own envelope and scale with it; any that encode a board or track clearance do not.
-3. **`CatModelCatalogTests.Task17HandoffContract`** pins "the strict 5-6% rendered head target".
-   Raising the scale deliberately retires that target — it is a design decision to record, not a
-   number to bump quietly.
-4. Then the full graphics PlayMode suite, including the horizontal safe-frame law in
-   `RuntimeSceneRigTests`, which measures cat-vs-board-edge and does **not** scale.
+### The one place the classification was wrong
 
-Estimate: a focused half-day with two full admission cycles. It is a look improvement, not an
-eligibility blocker, so it should not jump the queue ahead of getting the app publicly live.
+`OpenCarriageSeatDepth` — how far the rider sinks into the open tub — was written as
+`.0983 × ConsistScale`, i.e. measured from the carriage *anchor origin*. It belongs to class 2:
+the tub grows upward from the rail crown, so its floor **rises** as the vehicle scales, and a
+taller rider must sit **higher**, not deeper. Measured with the real imported meshes and the real
+licensed skin:
 
-## Also available, not tried
+| | tub floor (Carriage-local z) | seated rider's deepest vertex | clearance |
+|---|---|---|---|
+| 1.00 | 0.150000 | 0.143856 | **+0.006144** |
+| 1.30, `.0983 × k` | 0.124500 | 0.187013 | **−0.062513** — 6cm of cat through the floor |
+| 1.30, corrected | 0.124500 | 0.116513 | **+0.007988** = 0.006144 × 1.2999 |
+
+The corrected form is `RailCrownDepth − (RailCrownDepth − .0983) × ConsistScale`. **No horizontal
+clearance test could see this**: every one of them projects onto a board-plane direction. The
+guard added for it, `SeatFloorClearanceTests`, finds the floor plateau in the actual mesh and
+bakes the actual seated skin, so it holds at any scale; reverting the constant fails it at
+−0.0625.
+
+## Production evidence, not a probe
+
+`ConsistProductionCaptureTests` (opt-in, `CM_CONSIST_PRODUCTION_DIR`) runs the **shipped GameRoot
+loop** with the shipped `ConsistScale` — so every derived constant is exercised the way the player
+gets it — with the **UI left on**, and `Time.captureDeltaTime` pinning presentation, simulation and
+Animator to one clock so frame N is the same moment at either scale. Frames from
+`/private/tmp/catmetro-verify-…`, opened and compared side by side at 1.00 and 1.30:
+
+| moment | levels | what the frames show at 1.30 |
+|---|---|---|
+| riding mid-edge | L001 sparse, L009 crowded | rider clearly larger, face readable, consist still inside the track corridor |
+| boarding | L001, L008, L009 | unchanged staging, larger cat |
+| arrival / Alight | L001, L008 | steps clear of the station badge exactly as at 1.00 |
+| successive arrivals to one station | L008 | two delivered cats still read as two, with a visible gap |
+| celebration | L008 | unchanged beat and stagger |
+| win chrome | L001 | "All cats home!" banner unchanged and bright |
+
+Alongside the frames it records per-frame numbers, so "the animation is preserved by construction"
+is not the evidence:
+
+- **Feet actually move.** Foot stride, measured in scale-free MODEL units from the baked skin,
+  ranges 0.4409→0.7840 at 1.30 against 0.4390→0.7824 at 1.00 — the same walk, rendered bigger.
+- **Seating holds through motion.** Live playback goes slightly deeper than the bare Ride clip
+  because the micro-motion breathing pose does: minimum floor clearance is **−0.004483** at 1.00
+  and **−0.005826** at 1.30, a ratio of **1.2996**. That sub-millimetre overlap is shipped
+  behaviour hidden by the tub walls, unchanged in relative terms; the test's law is that it must
+  not get proportionally worse, which a mis-anchored sink immediately would.
+
+## Verification at 1.30
+
+- **EditMode: 2359 / 2359 passed, 0 failed, 466.3s** (all captures armed).
+- The 60-level rig clearance sweep passes with a *better* proportional margin: `minimumGap`
+  0.083850 against a required 0.058500, versus 0.051693 against 0.045 at 1.00 — identical case
+  counts (endpointSamples 395, stationArrivalCases 118, uniqueStationHeadings 69,
+  retainedHeadingSamples 72, departureStates 2, earSamples 17).
+- One earlier full run recorded that sweep at 664.4s and it tripped its 600s timeout. That was
+  **not** the candidate: the same test at 1.30 runs 363.77s alone and 364.82s inside the full
+  suite, against 367.50s at 1.00, on identical case counts. The timeout was left at 600000.
+
+## Also available, not needed
 
 The open carriage is **owned original Blender art** with a reproduction script
 (`scripts/blender_original_open_carriage.py`), so widening the tub is permitted and would buy head
-room without scaling the engine or the track footprint. That is a different, narrower experiment
-than the uniform scale and may be the better answer if the uniform scale's board-clearance cost
-proves awkward.
+room without scaling the engine or the track footprint. The uniform scale did not need it.

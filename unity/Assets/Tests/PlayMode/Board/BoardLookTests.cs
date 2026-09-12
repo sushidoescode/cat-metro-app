@@ -808,10 +808,17 @@ namespace CatMetro.Tests.PlayMode
             Assert.That(headWidth, Is.GreaterThan(0f), "each reported level needs visible head pixels");
             if (levelId == "L001" || levelId == "L002" || levelId == "L009")
             {
-                float minimumWidth = levelId == "L001" ? 0.05f : 0.04f;
+                // TASK 17's floors were 5% of frame width on L001 and 4% elsewhere, at
+                // ConsistScale 1. The camera fits the BOARD, not the consist, so a rendered
+                // rider's width is proportional to the consist scale -- carrying those floors
+                // at the chosen scale is what makes the bigger rider a requirement instead of
+                // an accident. Retiring the old absolute numbers is recorded at
+                // CatModelCatalogTests.Task17HandoffContract_UsesThePinnedResourceAndStateLiterals.
+                float minimumWidth = (levelId == "L001" ? 0.05f : 0.04f)
+                    * CatModelCatalog.ConsistScale;
                 Assert.That(headWidth, Is.GreaterThanOrEqualTo(minimumWidth),
                     $"{levelId} licensed head and ears occupy {headWidth:P1} of frame width; "
-                    + $"required {minimumWidth:P0}");
+                    + $"required {minimumWidth:P1} at consist scale {CatModelCatalog.ConsistScale}");
             }
         }
 

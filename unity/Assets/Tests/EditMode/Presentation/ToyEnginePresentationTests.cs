@@ -81,12 +81,19 @@ namespace CatMetro.Tests.EditMode.Presentation
             Transform model = engine.Find("OriginalEngine");
             Vector3[] vertices = model.GetComponentsInChildren<MeshFilter>().SelectMany(filter =>
                 filter.sharedMesh.vertices.Select(v => engine.InverseTransformPoint(filter.transform.TransformPoint(v)))).ToArray();
-            Assert.That(vertices.Min(v => v.x), Is.GreaterThanOrEqualTo(-.23001f));
-            Assert.That(vertices.Max(v => v.x), Is.LessThanOrEqualTo(.23001f));
-            Assert.That(vertices.Min(v => v.y), Is.GreaterThanOrEqualTo(-.15001f));
-            Assert.That(vertices.Max(v => v.y), Is.LessThanOrEqualTo(.15001f));
-            Assert.That(vertices.Min(v => v.z), Is.GreaterThanOrEqualTo(-.13501f));
-            Assert.That(vertices.Max(v => v.z), Is.EqualTo(.235f).Within(.00001f));
+            // Length, width and height are the ENGINE's own envelope and scale with the consist.
+            // The wheel bottom is where it meets the FIXED rails, so it does not; the cab roof
+            // height is therefore measured from the rail crown, not from the engine anchor.
+            float scale = CatModelCatalog.ConsistScale;
+            Assert.That(vertices.Min(v => v.x), Is.GreaterThanOrEqualTo(-.23001f * scale));
+            Assert.That(vertices.Max(v => v.x), Is.LessThanOrEqualTo(.23001f * scale));
+            Assert.That(vertices.Min(v => v.y), Is.GreaterThanOrEqualTo(-.15001f * scale));
+            Assert.That(vertices.Max(v => v.y), Is.LessThanOrEqualTo(.15001f * scale));
+            Assert.That(vertices.Min(v => v.z), Is.GreaterThanOrEqualTo(ToyTrainView.RailCrownDepth
+                - (ToyTrainView.RailCrownDepth + .13501f) * scale));
+            Assert.That(vertices.Max(v => v.z),
+                Is.EqualTo(ToyTrainView.RailCrownDepth).Within(.00001f),
+                "wheel bottom at the rail crown -- board geometry, unchanged by the consist scale");
             Assert.That(Vector3.Dot(model.right, engine.right), Is.GreaterThan(.99999f));
             Assert.That(original.GetComponentsInChildren<Collider>(true), Is.Empty);
             foreach (MeshRenderer renderer in model.GetComponentsInChildren<MeshRenderer>())

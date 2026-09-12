@@ -333,7 +333,7 @@ namespace CatMetro.Tests.EditMode.Presentation
                 pair.Item2.Update(.4f);
                 SampleTrainLateUpdate(pair.Item1);
             }
-            Assert.That(seatRoot.localPosition, Is.EqualTo(Vector3.forward * .0983f));
+            Assert.That(seatRoot.localPosition, Is.EqualTo(Vector3.forward * ToyTrainView.OpenCarriageSeatDepth));
             Assert.That(priorRoot.localPosition, Is.EqualTo(Vector3.zero));
             foreach (var control in new[] {
                 (BodyPath + "/bone_21/tripo::0_Right_Limb_0/bone_27", Vector3.right, 36f),
@@ -375,7 +375,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             {
                 view.ApplyPresentation(state, 0f, false);
                 float previous = rig.localPosition.z;
-                Assert.That(previous, Is.EqualTo(state == CatPresentationState.Board ? 0f : .0983f).Within(.00001f));
+                Assert.That(previous, Is.EqualTo(state == CatPresentationState.Board ? 0f : ToyTrainView.OpenCarriageSeatDepth).Within(.00001f));
                 float elapsed = 0f;
                 while (elapsed < .18f)
                 {
@@ -383,7 +383,7 @@ namespace CatMetro.Tests.EditMode.Presentation
                     animator.Update(delta);
                     SampleTrainLateUpdate(view);
                     float depth = rig.localPosition.z;
-                    Assert.That(depth, Is.InRange(-.000001f, .098301f));
+                    Assert.That(depth, Is.InRange(-.000001f, (ToyTrainView.OpenCarriageSeatDepth + .000001f)));
                     Assert.That(state == CatPresentationState.Board ? depth >= previous - .000001f : depth <= previous + .000001f,
                         Is.True, "evaluated transition must move monotonically between the actual seat and unchanged platform height");
                     for (int repeat = 0; repeat < 3; repeat++) SampleTrainLateUpdate(view);
@@ -391,10 +391,10 @@ namespace CatMetro.Tests.EditMode.Presentation
                     previous = depth;
                     elapsed += delta;
                 }
-                Assert.That(rig.localPosition.z, Is.EqualTo(state == CatPresentationState.Board ? .0983f : 0f).Within(.00001f));
+                Assert.That(rig.localPosition.z, Is.EqualTo(state == CatPresentationState.Board ? ToyTrainView.OpenCarriageSeatDepth : 0f).Within(.00001f));
             }
             view.ApplyPresentation(CatPresentationState.RideIdle, 1f, false);
-            Assert.That(rig.localPosition.z, Is.EqualTo(.0983f));
+            Assert.That(rig.localPosition.z, Is.EqualTo(ToyTrainView.OpenCarriageSeatDepth));
             view.ApplyPresentation(CatPresentationState.RideIdle, 1f, true);
             AssertStaticMotionOff(view, animator, rig, true, SampleStaticReference(true));
             int samples = view.RigNeutralSampleCount;
@@ -404,7 +404,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             view.SyncSlot(99, CatColor.Blue);
             Assert.That(rig.localPosition, Is.EqualTo(Vector3.zero));
             view.ApplyPresentation(CatPresentationState.WaitingIdle, 0f, false, 3f, false);
-            Assert.That(rig.localPosition.z, Is.EqualTo(.0983f));
+            Assert.That(rig.localPosition.z, Is.EqualTo(ToyTrainView.OpenCarriageSeatDepth));
             Assert.That(animator.GetCurrentAnimatorStateInfo(0).normalizedTime, Is.EqualTo(0f).Within(.00001f));
         }
 
@@ -534,7 +534,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             }
             Assert.That(animator.speed, Is.Zero);
             Assert.That(animator.applyRootMotion, Is.False);
-            Assert.That(rig.localPosition, Is.EqualTo(new Vector3(0f, 0f, seated ? .0983f : 0f)));
+            Assert.That(rig.localPosition, Is.EqualTo(new Vector3(0f, 0f, seated ? ToyTrainView.OpenCarriageSeatDepth : 0f)));
             AssertRotations(BoneRotations(animator.transform), expected);
             CatRigPresentation motion = animator.GetComponent<CatRigPresentation>();
             Assert.That(motion.HeadTransform.localScale, Is.EqualTo(motion.SourceHeadScale * 1.28f));
@@ -547,7 +547,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             RequireLocalSource();
             ToyTrainView view = CreateSeatTrain(true, out Animator animator, out Transform rig);
             view.ApplyPresentation(CatPresentationState.RideIdle, 0f, false);
-            Assert.That(rig.localPosition.z, Is.EqualTo(.0983f));
+            Assert.That(rig.localPosition.z, Is.EqualTo(ToyTrainView.OpenCarriageSeatDepth));
             animator.CrossFadeInFixedTime("Base Layer.Cat_IdleSit", .2f, 0, 0f);
             animator.Update(.05f);
             Assert.That(animator.IsInTransition(0), Is.True, "exercise a real blend, not a synthetic state label");
@@ -566,7 +566,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(rig.localPosition.z, Is.InRange(.001f, .097f));
             animator.Update(.2f);
             SampleTrainLateUpdate(view);
-            Assert.That(rig.localPosition.z, Is.EqualTo(.0983f));
+            Assert.That(rig.localPosition.z, Is.EqualTo(ToyTrainView.OpenCarriageSeatDepth));
             Assert.That(view.GetComponentInChildren<Animator>(true), Is.SameAs(animator));
         }
 
@@ -617,7 +617,7 @@ namespace CatMetro.Tests.EditMode.Presentation
             SampleTrainLateUpdate(view);
             Assert.That(cat.localPosition, Is.EqualTo(catSeat), "a reused slot cannot retain platform displacement or rigid bob");
             Assert.That(pin.localPosition, Is.EqualTo(pinSeat));
-            Assert.That(rig.localPosition.z, Is.EqualTo(.0983f));
+            Assert.That(rig.localPosition.z, Is.EqualTo(ToyTrainView.OpenCarriageSeatDepth));
         }
 
         [TestCase(30)]

@@ -37,8 +37,20 @@ namespace CatMetro.Tests.EditMode.Presentation
             Assert.That(CatModelCatalog.BoardClip, Is.EqualTo("Cat_Board"));
             Assert.That(CatModelCatalog.AlightClip, Is.EqualTo("Cat_Alight"));
             Assert.That(CatModelCatalog.CelebrateClip, Is.EqualTo("Cat_Celebrate"));
-            Assert.That(CatModelCatalog.PresenterScale, Is.EqualTo(0.52f),
-                "the GridY=1.47 phone composition retains the strict 5-6% rendered head target");
+            // TASK 17's 5-6% rendered-head target is RETIRED, deliberately and by measurement.
+            // It was written against a different camera framing and the shipped 0.52 had already
+            // outgrown it: a rendered probe measured the rider's silhouette at 7.63% of frame
+            // width on L001 and 6.22% on L009 while that line still read "strict 5-6%". The
+            // human asked for visibly bigger, cuter riders, so the replacement requirement is
+            // the one that was actually rendered and looked at -- the rider spans roughly a
+            // tenth of the frame on a sparse level at ordinary phone framing, 9.92% on L001 and
+            // 8.18% on L009 at ConsistScale 1.30. That is enforced by measuring pixels, in
+            // BoardLookTests.AdmittedRigPassengerHeadAndEars_AreReadableAtPhoneScale, which
+            // carries the rendered floors at the chosen scale, not by this literal;
+            // docs/design/consist-scale-experiment.md carries the candidate renders.
+            Assert.That(CatModelCatalog.ConsistScale, Is.EqualTo(1.30f).Within(1e-6f));
+            Assert.That(CatModelCatalog.PresenterScale, Is.EqualTo(0.676f).Within(1e-6f),
+                "the TASK 17 base composition of 0.52, carried at the chosen consist scale");
             Assert.That(CatModelCatalog.NormalizedWalkTravelSpeedAtOneX,
                 Is.EqualTo(0.238969f));
             Assert.That(CatModelCatalog.WalkTravelSpeedAtOneX,

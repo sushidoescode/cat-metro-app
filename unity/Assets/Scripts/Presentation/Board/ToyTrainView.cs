@@ -37,6 +37,15 @@ namespace CatMetro.Presentation.Board
         // crowns (board z +0.035) sit at +0.235, which is where the chassis parts bottom out.
         public const float HeadAnchorZ = -0.2f;
 
+        // The rail crown, in carriage/engine-anchor-local units. This is where the imported
+        // vehicles are mounted and where their wheels bottom out, and it is FIXED BOARD
+        // GEOMETRY: the track does not move when the consist grows. Every vertical quantity
+        // that belongs to the vehicle is therefore measured FROM here, not from the anchor
+        // origin, so scaling the consist grows it upward off the rails instead of driving it
+        // through them. A probe of the imported tub confirms the contact holds at both
+        // scales: its deepest vertex measures exactly .235 at ConsistScale 1.0 and 1.30.
+        public const float RailCrownDepth = 0.235f;
+
         // ── Cat geometry ────────────────────────────────────────────────────────────────
         // Rank 15 on the portrait grid: a 0.36-unit head in a 0.44-unit carriage keeps the
         // reference's ~82% proportion. BoardLookTests measures the rendered head and ears at
@@ -319,7 +328,16 @@ namespace CatMetro.Presentation.Board
         public bool OriginalEngineAdmitted { get; private set; }
         public string EngineFallbackReason { get; private set; }
         private GameObject _rigInstance;
-        private const float OpenCarriageSeatDepth = .0983f * CatModelCatalog.ConsistScale;
+        // How far the rider sinks toward the rails when seated in the open tub. Both ends of
+        // this measurement live on the vehicle, which grows UPWARD from RailCrownDepth, so the
+        // sink shrinks as the consist scales: a taller cat in a taller tub whose floor has
+        // risen must sit higher, not deeper. Scaling .0983 directly instead put the licensed
+        // rig's deepest vertex at .187013 against a floor at .124500 -- .0625 board units
+        // through the carriage floor. Measured with the real meshes at both scales:
+        // ConsistScale 1.0 leaves .006144 of floor clearance, and this form reproduces exactly
+        // that clearance proportionally at any scale.
+        public const float OpenCarriageSeatDepth =
+            RailCrownDepth - (RailCrownDepth - .0983f) * CatModelCatalog.ConsistScale;
         private Animator _rigAnimator;
         private CatRigPresentation _rigPresentation;
         private BoardFurTint _rigFurTint;
@@ -1469,7 +1487,7 @@ namespace CatMetro.Presentation.Board
             if (!OriginalEngineAdmitted) return;
             GameObject model = Instantiate(prefab, _engine, false);
             model.name = "OriginalEngine";
-            model.transform.localPosition = new Vector3(0f, 0f, .235f);
+            model.transform.localPosition = new Vector3(0f, 0f, RailCrownDepth);
             model.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
             model.transform.localScale = Vector3.one * CatModelCatalog.ConsistScale;
             // Retain every legacy attachment transform, especially Funnel's original
@@ -1490,7 +1508,7 @@ namespace CatMetro.Presentation.Board
                 // Cat, pin, vehicle anchors and simulation never inherit this correction.
                 GameObject model = Instantiate(prefab, _carriage, false);
                 model.name = "OriginalCarriage";
-                model.transform.localPosition = new Vector3(0f, 0f, .235f);
+                model.transform.localPosition = new Vector3(0f, 0f, RailCrownDepth);
                 model.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
                 model.transform.localScale = Vector3.one * CatModelCatalog.ConsistScale;
                 return;

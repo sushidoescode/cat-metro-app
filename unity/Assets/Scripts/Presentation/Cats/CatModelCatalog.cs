@@ -33,24 +33,25 @@ namespace CatMetro.Presentation.Cats
             "Armature/tripo::Root/tripo::Head_0/tripo::Head_1/tripo::Head_2";
         public const float NormalizedStandingHeight = 1f;
         private const float PivotCenterTolerance = 1e-4f;
-        // With GridY=1.47 the admitted head/ears measured 43/917 pixels at scale .46725,
-        // below the unchanged 5-6% phone target. Calibrate the presentation wrapper to that
-        // rendered artifact; the licensed model bytes and normalized admission stay fixed.
+        // With GridY=1.47 the admitted head/ears measured 43/917 pixels at scale .46725. TASK 17
+        // then held that to a "strict 5-6%" phone target; that target is retired — see
+        // CatModelCatalogTests.Task17HandoffContract_UsesThePinnedResourceAndStateLiterals.
+        //
         // One factor for the whole consist — cat, carriage, engine and the seat sink. Scaling
-        // them together preserves every internal seat clearance by construction, because those
-        // are relative; only clearance against the BOARD changes, and the constants that govern
-        // it are derived from this below and in ToyTrainView. The head alone could not deliver
-        // this: it is capped near 1.318 by the carriage's own ear-at-maximum-bob case, worth
-        // about 3% of head width. Chosen from rendered candidates at ordinary phone framing —
-        // the rider's silhouette measures 7.63% of frame width at 1.00 and 9.92% at 1.30 on
-        // L001, 6.22% and 8.18% on L009. The licensed model bytes are untouched; this is a
-        // presentation wrapper scale, which is the only place AGENTS.md permits a correction.
-        // SHIPPED AT 1.0 — the plumbing is landed and proven, the value is not yet chosen.
-        // Flipping this to 1.30 scales the whole consist coherently and was rendered and
-        // measured (see docs/design/consist-scale-experiment.md); it also moves 8 assertions
-        // that still pin pre-scale literals, three of which encode hand-derived spline
-        // arithmetic at the old carriage trailing distance and need re-deriving, not re-pinning.
-        public const float ConsistScale = 1.0f;
+        // them together preserves every internal seat clearance that is expressed relatively;
+        // what changes is every quantity measured against something that does NOT scale, which
+        // is either the board or the rail crown. Those are derived from this factor below and
+        // in ToyTrainView, each one classified where it is written. The head alone could not
+        // deliver this: it is capped near 1.318 by the carriage's own ear-at-maximum-bob case,
+        // worth about 3% of head width.
+        //
+        // Chosen from rendered candidates at ordinary phone framing: the rider's silhouette
+        // measures 7.63% of frame width at 1.00 and 9.92% at 1.30 on L001, 6.22% and 8.18% on
+        // L009, and the face only becomes clearly readable at 1.30. See
+        // docs/design/consist-scale-experiment.md for the candidate renders and the numbers.
+        // The licensed model bytes are untouched; this is a presentation wrapper scale, which
+        // is the only place AGENTS.md permits a correction.
+        public const float ConsistScale = 1.30f;
         private const float BasePresenterScale = 0.52f;
         public const float PresenterScale = BasePresenterScale * ConsistScale;
         // TASK 17 measured the source walk at 0.238969 normalized standing heights/second.

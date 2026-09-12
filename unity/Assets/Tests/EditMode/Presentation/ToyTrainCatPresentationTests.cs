@@ -536,18 +536,24 @@ namespace CatMetro.Tests.EditMode.Presentation
         // else is only legitimate because this table exists. Without it the expectations below
         // are circular: setting PlatformBadgeClearance to 0 — the original bug — would pass
         // every positional assertion in this file.
-        [TestCase(0f, 0f, 0.78f)]          // a station on the centre line: the tie resolves right
-        [TestCase(0.05f, 0f, 0.78f)]       // centre right of the spot: step right
-        [TestCase(-0.05f, 0f, -0.78f)]     // centre left of the spot: step left
-        [TestCase(3.2f, 0f, 0.78f)]        // L011 ROUND: node 0.0, centre 3.2
-        [TestCase(3.2f, 3.2f, 0.78f)]      // L011 TRIANGLE: node equals the centre
-        [TestCase(3.2f, 6.4f, -0.78f)]     // L011 SQUARE: node 6.4, centre 3.2
+        // The magnitude is composed by hand here too, from the two things it must clear. Half
+        // the station keyline is .46575 board units (KeylineSize 1.5525 x the 0.6 anchor scale,
+        // halved) and it is BOARD geometry: the badge does not grow when the toy does. Half the
+        // admitted rig's rendered head-and-ears width is .2696 at ConsistScale 1 and it is the
+        // RIDER's, so it scales. Plus a .044 margin, rounded to the .78 the rendered probe was
+        // calibrated against. At the shipped 1.30 that is .78 + .2696 x .30 = .86088.
+        [TestCase(0f, 0f, 0.86088f)]          // a station on the centre line: the tie resolves right
+        [TestCase(0.05f, 0f, 0.86088f)]       // centre right of the spot: step right
+        [TestCase(-0.05f, 0f, -0.86088f)]     // centre left of the spot: step left
+        [TestCase(3.2f, 0f, 0.86088f)]        // L011 ROUND: node 0.0, centre 3.2
+        [TestCase(3.2f, 3.2f, 0.86088f)]      // L011 TRIANGLE: node equals the centre
+        [TestCase(3.2f, 6.4f, -0.86088f)]     // L011 SQUARE: node 6.4, centre 3.2
         public void BadgeStepX_StepsTowardTheBoardCentreByTheWholeClearance(
             float boardCentreX, float seatBoardX, float expected)
         {
             Assert.That(ToyTrainView.BadgeStepX(boardCentreX, seatBoardX),
                 Is.EqualTo(expected).Within(1e-6f));
-            Assert.That(ToyTrainView.PlatformBadgeClearance, Is.EqualTo(0.78f).Within(1e-6f),
+            Assert.That(ToyTrainView.PlatformBadgeClearance, Is.EqualTo(0.86088f).Within(1e-6f),
                 "the table above is written in absolute board units, not in terms of the constant");
         }
 
@@ -566,7 +572,14 @@ namespace CatMetro.Tests.EditMode.Presentation
         // The step law, written out rather than called: a whole PlatformBadgeClearance toward
         // the board centre, and a station sitting exactly on the centre resolves toward +X.
         private static float ExpectedBadgeStepX(float centreX, float platformLocalX)
-            => (centreX < platformLocalX ? -0.78f : 0.78f);
+            => (centreX < platformLocalX ? -0.86088f : 0.86088f);
+
+        // The platform stand-off, hand-written in absolute board units for the same reason. The
+        // delivered cat stands clear of the carriage parked at the station, and BOTH of those
+        // bodies scale with the consist, so the offset does: .734 x 1.30 = .9542. The station
+        // grid it is measured from does not scale -- station Y=2 is 2.94 at every consist scale.
+        private const float ExpectedPlatformSideOffset = 0.9542f;
+        private const float ExpectedStationPlatformY = 2.94f - ExpectedPlatformSideOffset;
 
         [Test]
         public void DeliveredPassenger_HitchUsesTheSameFloorLiftAsTheTrainPassenger()
@@ -579,18 +592,42 @@ namespace CatMetro.Tests.EditMode.Presentation
                 Is.EqualTo(2.4f + ExpectedBadgeStepX(TwoCollapsedCentreX, 2.4f)).Within(.0001f),
                 "recorded station X=3 maps to 3 × GridX 0.8 plus the badge clearance step, "
                 + "even when both arrivals were unseen");
-            Assert.That(passenger.localPosition.y, Is.EqualTo(2.206f).Within(.0001f),
-                "station Y=2 maps to 2.94; the calibrated 0.734 platform offset stays in board units");
+            Assert.That(passenger.localPosition.y,
+                Is.EqualTo(ExpectedStationPlatformY).Within(.0001f),
+                "station Y=2 maps to 2.94 at any consist scale; the platform offset is the part "
+                + "that scales, because it clears the scaled carriage with the scaled rider");
+            Assert.That(ToyTrainView.PlatformSideOffset,
+                Is.EqualTo(ExpectedPlatformSideOffset).Within(.0001f),
+                "the line above is written in absolute board units, not in terms of the constant");
             Assert.That(passenger.localPosition.z, Is.EqualTo(-.2f).Within(.0001f),
                 "HeadAnchorZ is the unchanged tabletop lift; the X/Y grid must not scale depth");
         }
 
-        [TestCase(0, 2, 2.4f, 2.686f)]
-        [TestCase(-2, 0, 1.92f, 2.206f)]
-        [TestCase(-2, 2, 2.170553f, 2.627609f)]
+        [TestCase(0, 2)]
+        [TestCase(-2, 0)]
+        [TestCase(-2, 2)]
         public void DeliveredPassenger_ObservedHandoffKeepsTheArrivalEndpoint(
-            int approachX, int approachY, float endpointX, float endpointY)
+            int approachX, int approachY)
         {
+            // Derived here from the authored grid, not pinned from observed output and not read
+            // back off the already-lerped cat transform, which samples the platform path rather
+            // than the seat. NonFinalReuseLevel(3, 2, dx, dy) authors exactly two nodes joined by
+            // one straight edge: the station at grid (3,2) and the approach at (3+dx, 2+dy). So
+            //   station        = (3 * GridX, 2 * GridY)      = (2.4, 2.94)      -- board, fixed
+            //   heading        = normalize(station - approach)
+            //   carriageCentre = station - heading * CarriageOffset
+            //   endpoint       = carriageCentre + board-down * PlatformSideOffset
+            // CarriageOffset and PlatformSideOffset are vehicle distances and scale with the
+            // consist; GridX and GridY are the board and do not. The third case is the one worth
+            // having: its heading is (1.6, -2.94) normalized, NOT the (1, -1) the node deltas
+            // suggest, because GridY is 1.47 and GridX is 0.8.
+            var station = new Vector2(3f * BoardView.GridX, 2f * BoardView.GridY);
+            var approach = new Vector2((3f + approachX) * BoardView.GridX,
+                (2f + approachY) * BoardView.GridY);
+            Vector2 heading = (station - approach).normalized;
+            Vector2 carriageCentre = station - heading * ToyTrainView.CarriageOffset;
+            float endpointX = carriageCentre.x;
+            float endpointY = carriageCentre.y - ToyTrainView.PlatformSideOffset;
             BuildBoard(NonFinalReuseLevel(3, 2, approachX, approachY));
             _boardHost.transform.SetPositionAndRotation(new Vector3(2f, -3f, 5f),
                 Quaternion.Euler(17f, -12f, 9f));
@@ -600,8 +637,6 @@ namespace CatMetro.Tests.EditMode.Presentation
                 _board.UpdateFrom(_session, i * .1f);
             }
             var arriving = BoardTrain().GetComponent<ToyTrainView>();
-            // Hand-derived from station (2.4,2.94), a 0.48 carriage trailing distance,
-            // and board-down 0.734. The diagonal uses direction (1.6,-2.94), not (2,-2).
             Vector3 expectedWorld = _board.transform.TransformPoint(
                 new Vector3(endpointX + ExpectedBadgeStepX(NonFinalReuseCentreX(approachX), endpointX),
                     endpointY, -.2f));
@@ -668,12 +703,12 @@ namespace CatMetro.Tests.EditMode.Presentation
             float pitch = Mathf.Sign(ExpectedBadgeStepX(TwoCollapsedCentreX, 2.4f))
                 * ToyTrainView.PlatformDeliveredQueueSpacing;
             Assert.That(Vector3.Distance(anchor,
-                    new Vector3(arrivalX + pitch, 2.206f, -.2f)),
+                    new Vector3(arrivalX + pitch, ExpectedStationPlatformY, -.2f)),
                 Is.LessThan(.0001f),
-                "the win starts on the scaled station's 0.734-offset platform, stepped clear of "
+                "the win starts on the scaled station's platform offset, stepped clear of "
                 + "the badge and off the arrival spot, with unchanged depth");
             Assert.That(Vector3.Distance(b.localPosition,
-                    new Vector3(arrivalX + 2f * pitch, 2.206f, -.2f)),
+                    new Vector3(arrivalX + 2f * pitch, ExpectedStationPlatformY, -.2f)),
                 Is.LessThan(.0001f),
                 "the second retained cat parks one further delivered-queue pitch out; "
                 + "GridX does not compress it");

@@ -129,16 +129,28 @@ namespace CatMetro.Tests.EditMode.Presentation
             view.PlaceOnEdge(_paths, 1, 1.4f);
             Transform carriage = view.transform.Find("Carriage");
             Transform model = carriage.Find("OriginalCarriage");
+            // Two different kinds of number live in this block. The tub's own width, depth and
+            // height are the VEHICLE's dimensions and grow with the consist. The wheel bottom is
+            // a CONTACT WITH THE FIXED BOARD -- the rails do not move when the toy gets bigger --
+            // so it stays exactly at the rail crown, and every vehicle height is measured from
+            // there rather than from the carriage anchor.
+            float scale = CatModelCatalog.ConsistScale;
+            float FromRailCrown(float atUnitScale) => ToyTrainView.RailCrownDepth
+                - (ToyTrainView.RailCrownDepth - atUnitScale) * scale;
             Bounds bounds = MeshBoundsRelativeTo(model, carriage);
-            Assert.That(bounds.size.x, Is.EqualTo(.520f).Within(.0001f));
-            Assert.That(bounds.size.y, Is.EqualTo(.540f).Within(.0001f));
-            Assert.That(bounds.min.z, Is.EqualTo(.070f).Within(.0001f), "rim above the seat");
-            Assert.That(bounds.max.z, Is.EqualTo(.235f).Within(.0001f), "wheel bottom at the rail crown");
+            Assert.That(bounds.size.x, Is.EqualTo(.520f * scale).Within(.0001f));
+            Assert.That(bounds.size.y, Is.EqualTo(.540f * scale).Within(.0001f));
+            Assert.That(bounds.min.z, Is.EqualTo(FromRailCrown(.070f)).Within(.0001f),
+                "rim above the seat, lifted off the rails with the rest of the tub");
+            Assert.That(bounds.max.z, Is.EqualTo(ToyTrainView.RailCrownDepth).Within(.0001f),
+                "wheel bottom at the rail crown -- board geometry, unchanged by the consist scale");
             MeshFilter shell = model.Find("OpenShell").GetComponent<MeshFilter>();
             Vector3[] points = shell.sharedMesh.vertices.Select(vertex =>
                 carriage.InverseTransformPoint(shell.transform.TransformPoint(vertex))).ToArray();
-            Assert.That(points.Any(point => Mathf.Abs(point.x) < .24f && Mathf.Abs(point.y) < .22f
-                && Mathf.Abs(point.z - .150f) < .0001f), Is.True, "actual recessed floor vertices");
+            Assert.That(points.Any(point => Mathf.Abs(point.x) < .24f * scale
+                && Mathf.Abs(point.y) < .22f * scale
+                && Mathf.Abs(point.z - FromRailCrown(.150f)) < .0001f), Is.True,
+                "actual recessed floor vertices");
             Assert.That(Vector3.Dot(model.right, carriage.right), Is.GreaterThan(.9999f),
                 "+X remains vehicle forward through the board-up adapter");
         }
