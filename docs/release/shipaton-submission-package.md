@@ -12,11 +12,11 @@ Fetched from <https://revenuecat-shipaton-2026.devpost.com/rules> on 2026-09-11.
 | Deadline | "Wednesday, September 30, 2026 at 11:45pm PDT" | 19 days out |
 | First public release window | "The first public version of the Project must be released during the Submission Period" on App Store, Google Play or Samsung Galaxy Store | **NOT MET — the app is live only on Play's internal track. Production release is the critical path.** |
 | RevenueCat SDK | "uses the RevenueCat SDK to power at least one in-app or web purchase, or that serves ads through RevenueCat Ads" | Met in mechanism; a real Play Billing purchase was recorded 2026-08-31. Not re-proven on this build (no device). |
-| Video | "less than two (2) minutes", YouTube or Vimeo, "footage that shows the Project functioning on the device", no third-party trademarks or copyrighted music | Not cut. Music and SFX are original synthesis, so the music clause is satisfied by construction. |
+| Video | "less than two (2) minutes", YouTube or Vimeo, "footage that shows the Project functioning on the device", no third-party trademarks or copyrighted music | **Sequenced, not cut** — `docs/store/video-sequence.md`, ten shots to 1:35. Needs the Pixel: the rule asks for device footage. Music and SFX are original synthesis, so the music clause is satisfied by construction. |
 | Store URL | "a URL to a fully published app" | Blocked on production release |
-| Description | "a text description that should explain the features and functionality" | Drafted, count-bound — see below |
+| Description | "a text description that should explain the features and functionality" | **Drafted in full** — `docs/release/devpost-draft.md`. Count-bound listing copy is separate, below. |
 | Icon | "1024x1024 app icon" | **Ready**: `docs/store/assets/icon/cat-metro-icon-devpost-1024.png` (verified 1024×1024) |
-| Screenshot | "at least one screenshot of the app with a resolution of 1179px width and 2556px height WITHOUT device frames" | **Ready**: five files in `docs/store/assets/screenshots/`, all verified exactly 1179×2556 |
+| Screenshot | "at least one screenshot of the app with a resolution of 1179px width and 2556px height WITHOUT device frames" | **Ready and refreshed from the 1.30 candidate**: six files in `docs/store/assets/screenshots/`, all verified exactly 1179×2556 |
 | Judge access | "the app must either offer a free trial or the Entrant must include a promo code for judges to unlock the in-app purchase" | **GAP — newly identified.** Cat Metro is free with a $1.99 cosmetic IAP and no trial. A Play promo code for `cm_outfit_conductor` must be generated and pasted into the Devpost entry. |
 | Judging | Oct 1 00:00 PDT – Oct 13, winners Oct 21 | Judges test the live app, so ship visible changes before Sep 28 |
 
@@ -123,6 +123,13 @@ Fetched from <https://revenuecat-shipaton-2026.devpost.com/rules> on 2026-09-11.
   is a staleness gap worth closing (a few lines, and it collides with no test gate — the denylist
   at `cli-aab-build.test.sh:56-59` forbids keystore identifiers and `PlayerSettings` writes, not
   a resolver call), not a broken build path.
+
+> **All three of the findings below were fixed on 2026-09-11/12 and are re-measured on the current
+> candidate. Kept for the record; none of them still blocks the video.** Win title now
+> **0.9195035 / 8318** bright pixels; arriving cat **badge_share 0.0000, ≥99.79% visible** on
+> L001/L009/L011 and the L008 second delivery; rider **9.92% of frame width on L001** (8.07% on
+> L009) at `ConsistScale = 1.30`, against ~1/12 before. Video sequence:
+> `docs/store/video-sequence.md`. Devpost text: `docs/release/devpost-draft.md`.
 
 - **The win frame is dim and its title renders grey.** `FlowCaptureTests` measures the win
   banner's title band at max luminance 0.692 with zero bright pixels on the board-camera path,
