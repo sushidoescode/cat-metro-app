@@ -26,9 +26,16 @@ Fill a row in immediately after each build, from the Unity window and the verifi
 | Date | File | versionCode | versionName | Signing | AAB SHA-256 | Uploaded? | Notes |
 |---|---|---|---|---|---|---|---|
 | 2026-08-29 | `build/CatMetro-1.0.0-1.aab` | 1 | 1.0.0 | custom (`CN=Sushant Srikrish`) | not recorded | unknown | GUI build. **Predates the SDK-export transform — contains OneSignal/Firebase. Do not upload.** |
-| 2026-08-30 | `build/CatMetro-1.0.0-2.aab` | 2 | 1.0.0 | custom (`CN=Sushant Srikrish`, SHA256withRSA, 2048-bit, valid to 2054-01-14) | not recorded | unknown — **ask Console** | GUI build. Same exclusion problem. |
+| 2026-08-30 | `build/CatMetro-1.0.0-2.aab` | 2 | 1.0.0 | custom (`CN=Sushant Srikrish`, SHA256withRSA, 2048-bit, valid to 2054-01-14) | `a9be8b9d46c37c3e09a8fd92eae150421821cda778f1e7ef7a44f531c07e5dbc` | unknown — **ask Console** | GUI build. **Verified 2026-09-12: FAILS six checks** — 22 extra permissions, `jarsigner` exit 4 "with signer errors", 19 of 60 levels, altered level bytes, 4 OneSignal resources, 1430 OneSignal + 467 Firebase dex classes. Receipt `build/CatMetro-1.0.0-2.aab.verify.json`. **Do not upload.** |
 | 2026-09-11 | `build/CatMetro-main-88ae1ddc-20260911-run02.apk` | 1 | 1.0.0 | debug | `b2a61858fecfb655ff9360242746f3ac6a2746e4bfb7b0f50ed5877162f375b5` | no — APK, sideload only | Verification APK, 23/23 checks. Excludes OneSignal/LevelPlay; carries RevenueCat + Billing. |
 | _next_ | `build/CatMetro-1.0.0-<N>.aab` | _from Console max + 1_ | 1.0.0 | custom | | **human-only upload** | Fill from the verification commands. |
+
+## Verifying a bundle
+
+`python3 scripts/verify-android-artifact.py <bundle> --expect-version-code <N>` runs every check below
+in one pass and writes `<bundle>.verify.json` beside it. Attach that receipt to the row. Prove the
+verifier is live first with `python3 scripts/verify-android-artifact.py build/CatMetro-1.0.0-2.aab`,
+which must FAIL six checks.
 
 ## What to record for the release bundle
 
@@ -39,3 +46,11 @@ Fill a row in immediately after each build, from the Unity window and the verifi
 - the level count from `unzip -l "$AAB" | grep -c 'base/assets/content/levels/L0'` (must be 60)
 - whether `UnityConnectSettings.m_Enabled` was 0 or 1 in the tree at build time
 - the git HEAD at build time, and `git status --porcelain | grep -c '^ M'` (must be 9)
+- the `<bundle>.verify.json` receipt from `scripts/verify-android-artifact.py`
+
+## Two independent gates, both required
+
+The **version code** is a Console fact. The **keystore passwords** are yours and live only in
+Unity's session memory, so they must be typed into the Unity window at build time and re-typed
+after every editor relaunch. Knowing the version code does not make the build possible; no agent
+session can supply the passwords. See `signed-aab-local-steps.md`.

@@ -17,6 +17,30 @@ Unity keeps the keystore **passwords in session memory only**. They are not in
 in the prefs plist. That is the real reason batch mode cannot sign, and it is why you must redo the
 Publishing Settings steps after any editor relaunch.
 
+**PROVEN 2026-09-12, not merely argued.** A real batchmode invocation at MAIN `e1a2a288` —
+`CM_ALLOW_DEBUG_SIGNING=1 bash scripts/build-aab.sh build/CatMetro-e1a2a288-20260912-debug-proof.aab`
+— reached `Prepare For Build` and stopped with Unity's own message:
+
+```
+UnityException: Can not sign the application
+Unable to sign the application; please provide passwords!
+```
+
+It emitted `CLI_AAB_RESULT Failed signing=custom campaignLevels=60 campaignIds=L001,…,L060`, which
+also confirms the campaign-receipt fix enumerates all sixty levels in a live run. Two things follow.
+First, the password constraint is now an artifact rather than an inference. Second,
+`CM_ALLOW_DEBUG_SIGNING=1` does **not** make a CLI bundle possible: it only *permits* a debug
+result, and the working tree has `androidUseCustomKeystore: 1`, so Unity attempts the custom key
+and fails before compiling anything. Producing a CLI bundle would mean flipping that flag in
+`ProjectSettings.asset`, which is one of the nine protected files, so it is not done.
+Log: `build/CatMetro-e1a2a288-20260912-debug-proof-failed-release-build.log`.
+
+**Also fixed in passing:** the wrapper staged its build in `build/.catmetro-aab.XXXXXX`, and
+Unity's Android post-processor rejects a dot-prefixed directory name — it printed
+`.catmetro-aab.6QsdqH is not a valid directory name` twice into the build log. The staging
+directory is now `build/catmetro-aab-staging.XXXXXX`; `build/` is gitignored either way.
+`tests/unity/build-aab-wrapper.test.sh` still exits 0 with all PASS lines.
+
 **Three further reasons the script cannot cut today's release**, each verified against artifacts:
 
 1. ~~**The campaign-receipt gate checks a path Unity never emits.**~~ **FIXED 2026-09-11.** The
@@ -109,7 +133,51 @@ keystore path into a commit.
 - Do not paste a password anywhere outside the Unity window.
 - Do not run a Play upload from an agent session.
 
+## Signing readiness is a SEPARATE gate from the version code
+
+Two independent things block the release build, and answering one does not unblock the other:
+
+1. **The version code** — a Console fact, listed under "What I need from Console" below.
+2. **The keystore passwords** — yours, typed into the Unity window at build time, step 5 below.
+   Unity holds them in **session memory only**: they are not in `ProjectSettings.asset` (which has
+   no password field), not in `unity/UserSettings/`, not in the prefs plist. **They must be
+   re-entered after every editor relaunch**, and an agent session can never supply them. So even
+   with the version code in hand, the build does not start until you are at the machine and
+   willing to type them.
+
+A build that produces an unsigned or debug-signed bundle is not a release candidate. The verifier
+below refuses one unless you explicitly pass `--allow-debug-signature`, which exists only for a
+packaging rehearsal that is never uploaded.
+
 ## Verify the artifact before upload
+
+**One command does all of it:**
+
+```sh
+python3 scripts/verify-android-artifact.py build/CatMetro-1.0.0-3.aab --expect-version-code <N>
+```
+
+It prints a PASS/FAIL line per check, writes `<bundle>.verify.json` beside the bundle, and exits
+non-zero if anything fails. It reads only — it never uploads, and it never touches a password.
+Checks: bundletool validate; package / versionName / versionCode / minSdk / targetSdk /
+`allowBackup=false` / not debuggable; the permission set is **exactly** the allowed five and
+carries no `AD_ID`; `jarsigner -verify -strict` exits clean with no signer errors; the signer is
+not the Android debug key; all **60** levels are present at `base/assets/content/levels/` and each
+is **byte-identical** to the staged source; no OneSignal / ironSource / Unity-mediation /
+Firebase file **or dex class**; RevenueCat and Play Billing classes **are** present; ARM64 only.
+
+It is not vacuous, and you can prove that yourself in ten seconds:
+
+```sh
+python3 scripts/verify-android-artifact.py build/CatMetro-1.0.0-2.aab   # must FAIL
+```
+
+That 2026-08-30 bundle fails six checks — 22 extra permissions (the OneSignal push and
+launcher-badge set), `jarsigner` exiting 4 with "jar verified, **with signer errors**", only
+**19 of 60** levels, altered level bytes, four OneSignal resource files, and **1430 OneSignal +
+467 Firebase** dex classes. Receipt: `build/CatMetro-1.0.0-2.aab.verify.json`.
+
+### The same checks by hand, if you want to see them individually
 
 Tools are the pinned ones under
 `/Applications/Unity/Hub/Editor/6000.3.16f1/PlaybackEngines/AndroidPlayer`.

@@ -19,6 +19,13 @@ the shipped binary: the export transform removes both, the build log records
 components. The hedge is weaker than it looks — a policy that describes push and ad processing
 while the form declares neither is the kind of inconsistency Play checks for.
 
+Re-measured 2026-09-12 by dex class table, not by filename, with
+`scripts/verify-android-artifact.py`: still zero. The same pass found 41
+`com.google.firebase.encoders*` classes — a serialization utility, with **no** `FirebaseApp`,
+installations, messaging, analytics, crashlytics or iid component — so no Firebase identifier
+enters scope and no policy paragraph is needed for it. See the artifact-reconciliation section of
+`docs/release/data-safety-assessment.md`.
+
 ## Change 1 — remove the two "When enabled" processor sections
 
 Delete the `OneSignal — When enabled` block and the `LevelPlay — When enabled` block in their

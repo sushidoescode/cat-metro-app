@@ -93,6 +93,39 @@ declare. Keep both sides negative; do not add the permission.
 Local save data (`save.dat`, `Application.persistentDataPath`, `allowBackup: 0`) is never read by
 any network call site — nothing in it is transmitted.
 
+## Artifact reconciliation, 2026-09-12
+
+Re-measured with `scripts/verify-android-artifact.py`, which reads the dex class tables directly
+rather than grepping filenames. Against `build/CatMetro-main-88ae1ddc-20260911-run02.apk`:
+**PASS on every check** — package, versionName, minSdk 25, targetSdk 36, `allowBackup=false`, the
+permission set exactly the allowed five with no `AD_ID`, all 60 levels byte-identical to the staged
+source, RevenueCat 2822 + Play Billing 251 classes present, ARM64 only, and no OneSignal /
+ironSource / Unity-mediation class or file. Receipt:
+`build/CatMetro-main-88ae1ddc-20260911-run02.apk.verify.json`.
+
+**One finding, and it does NOT change any answer.** The binary carries **41
+`com.google.firebase.*` classes**. They are entirely `firebase-encoders`, `firebase-encoders-json`
+and `firebase-encoders-proto` — a standalone JSON/proto serialization utility that Play Services
+pulls in transitively — plus three exception types. Probed explicitly, the APK contains **zero**
+classes under `FirebaseApp`, `firebase/installations/`, `firebase/messaging/`,
+`firebase/analytics/`, `firebase/crashlytics/`, `firebase/iid/`, `firebase/components/` or
+`gms/measurement/`. The three shipped `.properties` files are `firebase-encoders*.properties` only.
+
+That matters because **Firebase Installations would generate an installation ID**, which is exactly
+the vendor-assigned app-scoped identifier Play's "Device or other IDs" definition names — so if
+that component shipped, the Device-IDs row would need a second basis. It does not ship. The
+declared basis remains RevenueCat's anonymous App User ID alone. `com.google.android.datatransport`
+(310 classes) is likewise transport plumbing with no Firebase app behind it, and
+`com.google.android.gms.ads.identifier` remains the 5-class `AdvertisingIdClient` already
+documented above: transitive, no `AD_ID` permission, no first-party call site.
+
+**Say "no Firebase app or collecting Firebase component", not "no Firebase".** The earlier
+shorthand was imprecise about a library that ships and collects nothing.
+
+**Still to re-measure against the release AAB itself.** These numbers are the APK's. Run
+`python3 scripts/verify-android-artifact.py build/CatMetro-1.0.0-<N>.aab --expect-version-code <N>`
+on the signed bundle and confirm the same class counts before filing.
+
 ## Confirmed vs unresolved
 
 **Confirmed from artifacts, no device needed:** purchase history leaves the device via RevenueCat;

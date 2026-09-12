@@ -1,0 +1,11 @@
+format=cm-capture-state-v1
+level=L001
+tick=22
+switches=
+hud=on
+outcome=Running
+deliveries=0
+switches_used=0
+switch[S1]=authoritative_route:1,committed_route:1,edge:E_BLUE
+train[0]=id:1,color:1,state:1,edge:E_BLUE,progress:3,node:J1,generation:1
+live_trains=1

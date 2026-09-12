@@ -274,7 +274,10 @@ then
   echo "FAIL: release output or evidence path appeared before lock acquisition; choose a new AAB path."
   exit 1
 fi
-BUILD_TMP="$(mktemp -d "$OUT_DIR/.catmetro-aab.XXXXXX")"
+# Not dot-prefixed. Unity's Android post-processor validates the output directory name and
+# prints "<name> is not a valid directory name" twice for a hidden one, which muddies the log of
+# a real release build. build/ is gitignored in its entirety, so the leading dot bought nothing.
+BUILD_TMP="$(mktemp -d "$OUT_DIR/catmetro-aab-staging.XXXXXX")"
 TMP_OUT="$BUILD_TMP/CatMetro-building.aab"
 TMP_LISTING="$BUILD_TMP/CatMetro-play-listing.md"
 LOG="$BUILD_TMP/unity-aab-build.log"
