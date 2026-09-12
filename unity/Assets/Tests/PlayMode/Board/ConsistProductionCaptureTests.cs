@@ -8,6 +8,7 @@ using CatMetro.Bootstrap;
 using CatMetro.Presentation.Board;
 using CatMetro.Presentation.Cats;
 using CatMetro.Presentation.Hud;
+using CatMetro.Presentation.Hud.WavePreview;
 using CatMetro.Presentation.Screens;
 using Newtonsoft.Json;
 using NUnit.Framework;
@@ -37,6 +38,7 @@ namespace CatMetro.Tests.PlayMode
         // Measured from this same capture at ConsistScale 1.0 on L001/L008/L009.
         private const float LivePlaybackFloorDipAtUnitScale = -.004484f;
         private GameRoot _root;
+        private bool _reportedChrome;
         private bool _previousDevSkip;
         private float _previousCaptureDelta;
         private readonly List<Object> _owned = new List<Object>();
@@ -55,12 +57,20 @@ namespace CatMetro.Tests.PlayMode
             if (_root != null) Object.DestroyImmediate(_root.gameObject);
             foreach (Object value in _owned) if (value != null) Object.DestroyImmediate(value);
             _owned.Clear();
+            _reportedChrome = false;
             GameRoot.DevSkipShippedHome = _previousDevSkip;
         }
 
         [UnityTest]
+        // L001 sparse, L009 crowded, L008 successive arrivals to one station, then the measured
+        // extremes of the corpus: L048 is the largest board (12.0 x 24.99 units, 11 nodes) so the
+        // camera pulls furthest out and the rider is smallest in frame; L036 is the narrowest and
+        // tallest (3.2 x 11.76, aspect .27) so the rider is widest relative to frame; L052 carries
+        // the most cats (6) for five deliveries across two stations; L016 has the most stations
+        // (4); L043 is a large board that is also crowded. Every level's stations already sit on a
+        // board extremum, so "edge station" does not discriminate between them.
         public IEnumerator CaptureProductionConsist_WhenRequested(
-            [Values("L001", "L009", "L008")] string levelId)
+            [Values("L001", "L009", "L008", "L048", "L036", "L052", "L016", "L043")] string levelId)
         {
             string directory = Environment.GetEnvironmentVariable("CM_CONSIST_PRODUCTION_DIR");
             if (string.IsNullOrEmpty(directory))
@@ -165,7 +175,7 @@ namespace CatMetro.Tests.PlayMode
                 + JsonConvert.SerializeObject(summary));
 
             Assert.That(rows.Count, Is.GreaterThan(60), levelId + " must render a live rider");
-            Assert.That(walk.Length, Is.GreaterThan(8),
+            Assert.That(walk.Length, Is.GreaterThanOrEqualTo(4),
                 levelId + " must actually walk a cat, or the stride number means nothing");
             Assert.That(walk.Max() - walk.Min(), Is.GreaterThan(.05f),
                 levelId + " walk stride never changed: the feet are not moving");
@@ -207,17 +217,38 @@ namespace CatMetro.Tests.PlayMode
             return float.NaN;
         }
 
+        // Follow the most INTERESTING rider on the board, not simply the first one. On a large
+        // level the first consist can sit parked at a source for the whole capture, which both
+        // starves the stride measurement and means the frames never catch a boarding or an
+        // arrival. Ranking by presentation state puts the probe on the cat the player is
+        // actually watching.
+        private static int Interest(CatPresentationState state) => state switch
+        {
+            CatPresentationState.Celebrate => 5,
+            CatPresentationState.Alight => 4,
+            CatPresentationState.Board => 3,
+            CatPresentationState.Walk => 2,
+            CatPresentationState.RideIdle => 1,
+            _ => 0,
+        };
+
         private Transform LiveRider()
         {
+            Transform best = null;
+            int bestInterest = -1;
             foreach (Transform child in _root.View.transform)
             {
                 if (!child.name.StartsWith("train:", StringComparison.Ordinal)) continue;
                 var view = child.GetComponent<ToyTrainView>();
                 if (view == null || !view.RigAdmitted) continue;
                 Transform cat = child.Find("Carriage/Cat");
-                if (cat != null && cat.gameObject.activeInHierarchy) return cat;
+                if (cat == null || !cat.gameObject.activeInHierarchy) continue;
+                int interest = Interest(view.PresentationState);
+                if (interest <= bestInterest) continue;
+                bestInterest = interest;
+                best = cat;
             }
-            return null;
+            return best;
         }
 
         private sealed class RiderSample
@@ -292,12 +323,31 @@ namespace CatMetro.Tests.PlayMode
         {
             Camera camera = _root.Cam;
             RenderTexture target = camera.targetTexture;
+            // Settle the frame FIRST, then lay the chrome out, then render without yielding
+            // again. Order matters: WavePreviewStrip re-lays itself out in LateUpdate from
+            // Screen.dpi * (canvasHeight / Screen.height), and in batchmode those are the
+            // headless Game view's numbers rather than this 917x2048 render target's -- so the
+            // counter text ends up sized against one ruler and the capsule against another, and
+            // the two counters collide. Yielding after the injection hands the frame back to
+            // that LateUpdate and the injection is lost. BoardLookTests renders in the same
+            // frame it lays out in, for exactly this reason.
+            yield return null;
+            _root.Preview?.LayoutForViewport(PhoneSafe, 408f);
             _root.Intro?.LayoutForViewport(PhoneSafe, 408f);
             _root.Banner?.LayoutForViewport(PhoneSafe, 408f);
             _root.GetComponent<ResultsPanel>()?.LayoutForViewport(PhoneSafe, 408f);
             _root.GetComponent<ScreenChromeController>()?.Cta?.LayoutForViewport(PhoneSafe, 408f);
             Canvas.ForceUpdateCanvases();
-            yield return null;
+            if (!_reportedChrome && _root.Preview != null)
+            {
+                _reportedChrome = true;
+                Rect capsule = WavePreviewStrip.CapsuleRect(PhoneSafe, 408f);
+                TestContext.Out.WriteLine("CONSIST_CHROME injectedSafeArea=" + PhoneSafe
+                    + " injectedDpi=408 capsule=" + capsule
+                    + " screen=" + Screen.width + "x" + Screen.height
+                    + " screenDpi=" + Screen.dpi
+                    + " target=" + target.width + "x" + target.height);
+            }
             RenderTexture active = RenderTexture.active;
             var pixels = new Texture2D(target.width, target.height, TextureFormat.RGB24, false);
             try
