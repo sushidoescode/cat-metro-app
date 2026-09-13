@@ -158,9 +158,19 @@ python3 scripts/verify-android-artifact.py build/CatMetro-1.0.0-3.aab \
     --expect-version-code <N> --expect-cert-sha256 <Console upload certificate SHA-256>
 ```
 
-Exit **0** = every check passed and upload readiness is established. Exit **1** = a real defect,
-do not upload. Exit **3** = the bundle is internally sound and correctly signed, but no Console
-fingerprint was supplied, so *which* certificate signed it could not be corroborated.
+Three outcomes, consistent across the terminal line, the exit status and the `result` field of
+the JSON receipt:
+
+| Outcome | Exit | When | Meaning |
+|---|---|---|---|
+| **PASS** | 0 | every applicable check satisfied | the line also states the artifact's scope — *release bundle, upload-ready* for an `.aab`, *local testing artifact, sideload-only* for an `.apk` |
+| **UNCONFIRMED** | 3 | an otherwise valid `.aab` with no `--expect-cert-sha256` | sound and correctly signed, but nothing local can say Play expects that certificate |
+| **FAIL** | 1 | any real defect, **including a supplied fingerprint that does not match** | do not upload |
+
+A **known mismatch is a FAIL, for an `.apk` exactly as for an `.aab`** — it is never softened into
+UNCONFIRMED. Only a *missing* fingerprint withholds the verdict. An unconfirmed row can never
+downgrade a genuine failure either: a broken bundle with no fingerprint supplied still reports
+FAIL.
 
 ### Signing: three separate questions, never conflated
 
@@ -209,6 +219,7 @@ It is not vacuous, and you can prove that yourself:
 ```sh
 python3 scripts/verify-android-artifact.py build/CatMetro-1.0.0-2.aab   # must FAIL
 bash tests/unity/aab-signature-controls.test.sh                         # must print OK
+python3 tests/unity/artifact-verdict.test.py                            # must print OK
 ```
 
 The second builds unsigned, tampered, entry-added, expired-signer and wrong-certificate bundles by
@@ -271,8 +282,13 @@ and again 2026-09-11.
    verifier exits 3 and explicitly refuses to call the bundle upload-ready — it can say the bundle
    is correctly signed and by whom, but not that Play expects that certificate. For reference, the
    2026-08-30 bundle was signed by `CN=Sushant Srikrish` with SHA-256
-   `548257b29e36012b06ca6577f422fd843d411110accbf14cdfeac9bb95354408`; if the new bundle reports a
-   different fingerprint, the keystore changed and the upload will be rejected.
+   `548257b29e36012b06ca6577f422fd843d411110accbf14cdfeac9bb95354408`.
+   **A mismatch does not by itself prove the keystore changed.** Reconcile three things before
+   concluding anything: which **certificate** actually signed the artifact (`keytool -printcert
+   -jarfile`), which **alias** inside the keystore Unity used, and which fingerprint **Console is
+   showing** — with Play App Signing enrolled Console publishes both an upload certificate and an
+   app-signing certificate, and only the upload one corresponds to what you built. A stale or
+   wrong-alias selection in Publishing Settings produces the same symptom as a replaced keystore.
 3. **Which tracks hold a release and each one's status**, plus the app's current review state.
    *Decides new release vs edit draft, and whether a release is blocked.*
 4. **Whether Data safety, content rating, target audience and the ads declaration were already

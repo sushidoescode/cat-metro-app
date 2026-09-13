@@ -183,13 +183,38 @@ class Report:
         self.rows = []
 
     def check(self, name, ok, detail=""):
-        self.rows.append({"check": name, "pass": bool(ok), "detail": detail})
+        self.rows.append({"check": name, "pass": bool(ok),
+                          "status": "pass" if ok else "fail", "detail": detail})
         print(("PASS  " if ok else "FAIL  ") + name + (("  — " + detail) if detail else ""))
         return bool(ok)
+
+    def unconfirmed(self, name, detail=""):
+        """A question this tool cannot answer alone. NOT a defect, and NOT a pass: it withholds
+        the verdict rather than failing it."""
+        self.rows.append({"check": name, "pass": False,
+                          "status": "unconfirmed", "detail": detail})
+        print("UNCONF " + name + (("  — " + detail) if detail else ""))
 
     @property
     def failures(self):
         return [r for r in self.rows if not r["pass"]]
+
+
+def decide_result(rows, is_bundle):
+    """The whole verdict, as a pure function of the check rows. Kept separate from the reading of
+    any artifact so the decision table can be tested without building one.
+
+    A row with status "unconfirmed" withholds the verdict; a row with status "fail" decides it.
+    A KNOWN certificate mismatch is an ordinary failing row, so it blocks — the earlier version
+    of this exempted the identity row unconditionally, which turned a mismatch into "unconfirmed"
+    on a bundle and into an outright PASS on an apk.
+    """
+    blocking = [r for r in rows if r.get("status") == "fail"]
+    if blocking:
+        return "FAIL", 1
+    if any(r.get("status") == "unconfirmed" for r in rows):
+        return "UNCONFIRMED", 3
+    return "PASS", 0
 
 
 def main():
@@ -360,17 +385,32 @@ def main():
 
     # Identity is the ONLY signing fact a machine here cannot establish alone: the tool can say
     # which certificate signed the bundle, but only Console knows which certificate Play expects.
+    IDENTITY_ROW = "signer certificate matches the Console upload certificate"
     identity_confirmed = False
     if args.expect_cert_sha256:
         expected = normalise_fingerprint(args.expect_cert_sha256)
         identity_confirmed = cert_sha is not None and cert_sha == expected
-        report.check("signer certificate matches the Console upload certificate",
-                     identity_confirmed,
+        identity_state = "confirmed" if identity_confirmed else "mismatch"
+        # A supplied-and-mismatched fingerprint is a DEFECT, on an apk exactly as on a bundle.
+        report.check(IDENTITY_ROW, identity_confirmed,
                      "artifact=" + (cert_sha or "none") + " expected=" + expected)
+        if not identity_confirmed:
+            print("      A mismatch does NOT by itself mean the keystore changed. Reconcile three")
+            print("      things before concluding anything: which CERTIFICATE signed the artifact,")
+            print("      which ALIAS inside the keystore was used, and which fingerprint Console is")
+            print("      showing — with Play App Signing enrolled it publishes both an upload")
+            print("      certificate and an app-signing certificate, and only the upload one")
+            print("      matches what you built.")
     elif is_bundle:
-        report.check("signer certificate matches the Console upload certificate", False,
-                     "NOT SUPPLIED — pass --expect-cert-sha256 from Console ▸ Release ▸ Setup ▸ "
-                     "App integrity. Upload readiness cannot be established without it.")
+        identity_state = "unsupplied"
+        report.unconfirmed(IDENTITY_ROW,
+                           "NOT SUPPLIED — pass --expect-cert-sha256 from Console ▸ Release ▸ "
+                           "Setup ▸ App integrity. Upload readiness cannot be established "
+                           "without it.")
+    else:
+        identity_state = "not_applicable"
+        print("      NOTE: certificate identity not checked — an apk is a local testing artifact, "
+              "not the release upload. Pass --expect-cert-sha256 to check it anyway.")
 
     with zipfile.ZipFile(aab) as bundle:
         names = bundle.namelist()
@@ -422,30 +462,40 @@ def main():
         "signer_owner": owner,
         "signer_cert_sha256": cert_sha,
         "certificate_identity_confirmed": identity_confirmed,
+        "certificate_identity_state": identity_state,
         "chain_trust_note": chain_note,
         "checks": report.rows,
-        "passed": not report.failures,
     }
     out_path = aab.with_suffix(aab.suffix + ".verify.json")
-    out_path.write_text(json.dumps(receipt, indent=2) + "\n")
     print()
     print("receipt   " + str(out_path))
-    identity_row = "signer certificate matches the Console upload certificate"
-    blocking = [r for r in report.failures if r["check"] != identity_row]
-    if blocking:
+    result, status = decide_result(report.rows, is_bundle)
+    receipt["result"] = result
+    receipt["exit_code"] = status
+    receipt["passed"] = result == "PASS"
+    out_path.write_text(json.dumps(receipt, indent=2) + "\n")
+
+    if result == "FAIL":
+        blocking = [r for r in report.rows if r.get("status") == "fail"]
         print("RESULT    FAIL — " + str(len(blocking)) + " check(s): "
               + ", ".join(r["check"] for r in blocking))
         print("          Do not upload this artifact.")
-        return 1
-    if is_bundle and not identity_confirmed:
-        print("RESULT    CONTENT AND SIGNATURE OK, UPLOAD READINESS UNCONFIRMED.")
+        return status
+    if result == "UNCONFIRMED":
+        print("RESULT    UNCONFIRMED — every applicable check passed, but upload readiness is "
+              "not established.")
         print("          The bundle is internally sound and signed by "
               + (owner or "an unknown certificate") + " (sha256 " + (cert_sha or "?") + "),")
-        print("          but nothing here can say that is the certificate Play expects. Re-run")
+        print("          and nothing here can say that is the certificate Play expects. Re-run")
         print("          with --expect-cert-sha256 <Console fingerprint> before uploading.")
-        return 3
-    print("RESULT    PASS — every check above. A human still performs the upload.")
-    return 0
+        return status
+    print("RESULT    PASS — every applicable check passed.")
+    if is_bundle:
+        print("          Scope: RELEASE BUNDLE, upload-ready. A human still performs the upload.")
+    else:
+        print("          Scope: LOCAL TESTING ARTIFACT. An apk is sideload-only and is never a "
+              "Play upload.")
+    return status
 
 
 if __name__ == "__main__":

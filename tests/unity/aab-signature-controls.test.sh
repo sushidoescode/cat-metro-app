@@ -98,6 +98,10 @@ PY
 
 run_verify() { python3 "$VERIFY" "$@" >/dev/null 2>&1; }
 
+# The verdict recorded in the receipt, and the exit status the run produced.
+receipt_result() { python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["result"])' "$1.verify.json"; }
+identity_state() { python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["certificate_identity_state"])' "$1.verify.json"; }
+
 echo "carrier  $CARRIER"
 echo "work     $WORK"
 echo
@@ -171,6 +175,29 @@ for content in 'all 60 levels' 'byte-identical' 'ad or push SDK class' 'exactly 
     && say PASS "carrier still fails content check: $content" \
     || say FAIL "carrier no longer fails content check: $content"
 done
+
+# --- the VERDICT, end to end, not just the individual rows -----------------------------
+# The controls are carved out of an obsolete carrier whose CONTENT fails, so every run here
+# exits 1. What is asserted is that the identity STATE is recorded correctly and that a known
+# mismatch is classified as a failure rather than as merely unconfirmed. The full decision
+# table, on content-clean rows where nothing else can mask the outcome, is
+# tests/unity/artifact-verdict.test.py.
+python3 "$VERIFY" "$WORK/signedB.aab" --expect-cert-sha256 "$shaA" >/dev/null 2>&1
+mismatch_rc=$?
+[ "$mismatch_rc" = 1 ] && [ "$(receipt_result "$WORK/signedB.aab")" = FAIL ] \
+  && [ "$(identity_state "$WORK/signedB.aab")" = mismatch ] \
+  && say PASS "known fingerprint mismatch: recorded as mismatch, verdict FAIL, exit 1" \
+  || say FAIL "known fingerprint mismatch did not produce a FAIL verdict (exit $mismatch_rc)"
+
+python3 "$VERIFY" "$WORK/signedA.aab" --expect-cert-sha256 "$shaA" >/dev/null 2>&1
+[ "$(identity_state "$WORK/signedA.aab")" = confirmed ] \
+  && say PASS "matching fingerprint recorded as confirmed" \
+  || say FAIL "matching fingerprint was not recorded as confirmed"
+
+python3 "$VERIFY" "$WORK/signedA.aab" >/dev/null 2>&1
+[ "$(identity_state "$WORK/signedA.aab")" = unsupplied ] \
+  && say PASS "absent fingerprint recorded as unsupplied, not as a mismatch" \
+  || say FAIL "absent fingerprint was not recorded as unsupplied"
 
 echo
 if [ "$fails" -ne 0 ]; then

@@ -34,8 +34,12 @@ Fill a row in immediately after each build, from the Unity window and the verifi
 
 `python3 scripts/verify-android-artifact.py <bundle> --expect-version-code <N> --expect-cert-sha256 <fingerprint>`
 runs every check below in one pass and writes `<bundle>.verify.json` beside it. Attach that receipt
-to the row. Exit 0 = upload-ready; 1 = a real defect; **3 = sound and correctly signed, but the
-Console fingerprint was not supplied so upload readiness is unconfirmed**.
+to the row. **PASS/exit 0** = every applicable check satisfied, with the scope stated (release
+bundle vs local testing apk); **UNCONFIRMED/exit 3** = sound and correctly signed but no Console
+fingerprint supplied; **FAIL/exit 1** = a real defect, *including a supplied fingerprint that does
+not match*. A known mismatch is never softened into UNCONFIRMED, and an unconfirmed row never
+downgrades a genuine failure. The terminal line, the exit status and the receipt's `result` field
+always agree.
 
 Signing is checked as three separate things — signature integrity, certificate health, certificate
 identity — with chain trust reported as a note only, because an Android upload certificate is
